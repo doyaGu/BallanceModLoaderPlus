@@ -68,6 +68,18 @@ namespace {
                utils::CStringEqual(property->GetName(), "SecondaryFontFilename");
     }
 
+    const char *GetModDisplayName(IMod *mod) {
+        if (!mod)
+            return "";
+
+        const char *name = mod->GetName();
+        if (name && name[0] != '\0')
+            return name;
+
+        const char *id = mod->GetID();
+        return id ? id : "";
+    }
+
     void RefreshFontList() {
         g_FontFilenames.clear();
         std::string fontsDir = std::string(BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER)) + "\\Fonts";
@@ -143,8 +155,12 @@ void ModListPage::OnDraw() {
         IMod *mod = BML_GetModContext()->GetMod(static_cast<int>(n + index));
         if (!mod)
             return false;
-        const char *id = mod->GetID();
-        if (Bui::MainButton(id ? id : "")) {
+
+        ImGui::PushID(mod);
+        const bool clicked = Bui::MainButton(GetModDisplayName(mod));
+        ImGui::PopID();
+
+        if (clicked) {
             dynamic_cast<ModMenu *>(m_Menu)->SetCurrentMod(mod);
             m_Menu->OpenPage("Mod Page");
         }
@@ -214,7 +230,11 @@ void ModPage::OnDraw() {
         if (!name)
             return true;
 
-        if (Bui::LevelButton(name, &v)) {
+        ImGui::PushID(category);
+        const bool clicked = Bui::LevelButton(name, &v);
+        ImGui::PopID();
+
+        if (clicked) {
             dynamic_cast<ModMenu *>(m_Menu)->SetCurrentCategory(category);
             m_Menu->OpenPage("Mod Options");
         }
@@ -287,6 +307,8 @@ void ModOptionPage::OnDraw() {
         if (!name || name[0] == '\0')
             return true;
 
+        ImGui::PushID(property);
+
         switch (property->GetType()) {
             case IProperty::STRING: {
                 auto *modMenu = dynamic_cast<ModMenu *>(m_Menu);
@@ -330,6 +352,8 @@ void ModOptionPage::OnDraw() {
                 ImGui::Dummy(Bui::GetButtonSize(Bui::BUTTON_OPTION));
                 break;
         }
+
+        ImGui::PopID();
 
         if (ImGui::IsItemHovered()) {
             ShowCommentBox(property);
