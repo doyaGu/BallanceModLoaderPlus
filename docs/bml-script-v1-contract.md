@@ -121,14 +121,15 @@ not dynamic mod discovery and not dependency graph reconstruction.
   A script can opt into state migration with optional object methods:
   `void SaveState(BML::StateBag@ state)`,
   `void MigrateState(const string &in fromVersion, BML::StateBag@ state)`, and
-  `void RestoreState(BML::StateBag@ state)`. BML calls `SaveState` on the old
-  runtime before `OnUnload`; if it is present and succeeds, the old runtime must
-  provide `RestoreState` so rollback can restore the old object without running
-  migration code. The candidate must provide `RestoreState` or `MigrateState`,
-  otherwise reload is rejected before unloading the old runtime. The candidate
-  receives `MigrateState`, then `RestoreState`, then `OnLoad`. Rollback receives
-  a clone of the original state bag and calls only old `RestoreState` before
-  rollback `OnLoad`.
+  `void RestoreState(BML::StateBag@ state)`. If `SaveState` is present, BML
+  first verifies that the old runtime can call `RestoreState` for rollback and
+  that the candidate can call `RestoreState` or `MigrateState`. If those
+  declarations are incompatible, reload is rejected without executing
+  `SaveState` or unloading the old runtime. Once verified, BML calls
+  `SaveState` on the old runtime before `OnUnload`. The candidate receives
+  `MigrateState`, then `RestoreState`, then `OnLoad`. Rollback receives a clone
+  of the original state bag and calls only old `RestoreState` before rollback
+  `OnLoad`.
 - `StateBag` stores only `bool`, `int`, `float`, and `string` values keyed by
   string. It never carries AngelScript object handles, callbacks, BML resource
   handles, CK object handles, or other runtime-owned pointers across reload.
