@@ -57,7 +57,7 @@ static std::string MakeMissingFeatureDiagnostic(CKAS_FEATURE feature) {
     } else if (feature == CKAS_FEATURE_OBJECT_HANDLE_ARGS) {
         message += " BML requires CKAngelScript object-handle argument writing for script hot reload state migration.";
     } else if (feature == CKAS_FEATURE_HOST_CALL_FILTER) {
-        message += " BML requires CKAngelScript host-call filtering to block world-mutating CKAS APIs during script hot reload state hooks.";
+        message += " BML requires CKAngelScript host-call filtering so participating world-mutating CKAS APIs can be rejected during script hot reload state hooks.";
     }
     return message;
 }

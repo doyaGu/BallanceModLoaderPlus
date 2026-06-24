@@ -146,6 +146,11 @@ not dynamic mod discovery and not dependency graph reconstruction.
   mutate DataShare/config/input/game-world state, call `ExportRef`/native
   exports, or otherwise cross into external host side effects; resources are
   rebuilt from restored pure data in `OnLoad`.
+- BML enforces this restriction for BML-owned host APIs and CKAngelScript APIs
+  that explicitly participate in CKAS host-call filtering. This is not a full
+  sandbox. CKAS raw CK/Vx bindings, plugin extension APIs, and CKAS surfaces
+  that have not been marked as mutating remain the owning API's responsibility.
+  A script author must still treat state hooks as pure migration code.
 - Script mods are reload-aware through `BML::ModContext`: `IsReloading` is true
   only during script lifecycle callbacks that are part of hot reload, and
   `ReloadPhase` reports `RELOAD_UNLOAD`, `RELOAD_LOAD`, `RELOAD_ROLLBACK`,
@@ -196,11 +201,16 @@ builds may still disable script support with `BML_ENABLE_ANGELSCRIPT=OFF`.
 BML script support requires a CKAngelScript build that reports
 `CKAS_FEATURE_OBJECT_TYPE_NAMESPACE`,
 `CKAS_FEATURE_OBJECT_METHOD_CONTEXT_ACCESS`, and
-`CKAS_FEATURE_SCRIPT_ARRAY_ACCESS`. These are not Interop feature flags:
+`CKAS_FEATURE_SCRIPT_ARRAY_ACCESS`, `CKAS_FEATURE_SOURCE_SECTIONS`,
+`CKAS_FEATURE_OBJECT_HANDLE_ARGS`, and `CKAS_FEATURE_HOST_CALL_FILTER`.
+These are not Interop feature flags:
 object-method context access lets hosts configure/read prepared AngelScript
 contexts, and script-array access exposes CKAS-owned `array<T>` objects through
-generic lifecycle/type/size/element-address operations. CKAS never depends on
-BML or Interop.
+generic lifecycle/type/size/element-address operations. Source sections keep
+hot reload snapshots and diagnostics tied to real files. Object-handle args
+allow `BML::StateBag@` to be passed through the CKAS public ABI. Host-call
+filtering lets BML reject participating mutating host APIs during reload state
+hooks. CKAS never depends on BML or Interop.
 
 ## Shutdown Anomaly Policy
 

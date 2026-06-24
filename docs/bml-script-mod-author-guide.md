@@ -477,6 +477,11 @@ void RestoreState(BML::StateBag@ state) {
   content; they must not execute commands, write DataShare/config values, mutate
   input state, call `ExportRef`/native exports, or change CK/game-world objects.
   Rebuild resources in `OnLoad` after pure state has been restored.
+- BML rejects BML-owned mutating APIs in these hooks, and rejects CKAngelScript
+  host APIs that have explicitly opted into CKAS host-call filtering. This does
+  not make hot reload a sandbox. Raw CK/Vx calls, CKAS APIs that have not been
+  marked as mutating, and other plugin extension APIs can still have external
+  side effects; do not call them from state hooks.
 - Rollback restores only resources BML owns: callbacks, exports, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,

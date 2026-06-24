@@ -247,13 +247,17 @@ static void AppendReloadFields(std::vector<ScriptModReloadDiagnosticField> &fiel
 static std::vector<ScriptModReloadDiagnosticField> BuildStateMigrationFailureFields(const char *hook,
                                                                                     const char *operation,
                                                                                     bool stateHookExecuted,
-                                                                                    bool oldSaveStateExecuted) {
+                                                                                    bool oldSaveStateExecuted,
+                                                                                    bool oldRuntimeKept) {
     return {
         {"boundary", "state_migration"},
         {"hook", hook ? hook : ""},
         {"operation", operation ? operation : ""},
         {"stateHookExecuted", stateHookExecuted ? "true" : "false"},
         {"oldSaveStateExecuted", oldSaveStateExecuted ? "true" : "false"},
+        {"oldRuntimeKept", oldRuntimeKept ? "true" : "false"},
+        {"rollbackScope", kReloadRollbackBoundary},
+        {"stateHookContract", "state hooks may only copy primitive/string values through BML::StateBag and use read-only queries/logging"},
     };
 }
 
@@ -946,7 +950,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
     if (restoreState) {
         auto setStateFailureFields = [&](const char *hook, const char *operation, bool executed) {
             if (failureFields)
-                *failureFields = BuildStateMigrationFailureFields(hook, operation, executed, true);
+                *failureFields = BuildStateMigrationFailureFields(hook, operation, executed, true, false);
         };
         bool restored = false;
         if (migrateState) {
@@ -2436,7 +2440,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
             releaseCandidate();
             return finishWithDiagnosticFields(
                 stateDiagnostic,
-                BuildStateMigrationFailureFields("SaveState", "lookup_current_save", false, false));
+                BuildStateMigrationFailureFields("SaveState", "lookup_current_save", false, false, true));
         }
         if (dryRunCurrentSavesState) {
             bool oldCanRestore = false;
@@ -2447,7 +2451,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                 releaseCandidate();
                 return finishWithDiagnosticFields(
                     stateDiagnostic,
-                    BuildStateMigrationFailureFields("RestoreState", "lookup_current_restore", false, false));
+                    BuildStateMigrationFailureFields("RestoreState", "lookup_current_restore", false, false, true));
             }
             if (!oldCanRestore) {
                 releaseCandidate();
@@ -2472,7 +2476,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                 releaseCandidate();
                 return finishWithDiagnosticFields(
                     stateDiagnostic,
-                    BuildStateMigrationFailureFields("RestoreState|MigrateState", "lookup_candidate_restore", false, false));
+                    BuildStateMigrationFailureFields("RestoreState|MigrateState", "lookup_candidate_restore", false, false, true));
             }
             if (!candidateCanRestore) {
                 releaseCandidate();
@@ -2514,7 +2518,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                         releaseCandidate();
                         return finishWithDiagnosticFields(
                             stateDiagnostic,
-                            BuildStateMigrationFailureFields("SaveState", "execute_current_save", true, true));
+                            BuildStateMigrationFailureFields("SaveState", "execute_current_save", true, true, true));
                     }
                 }
 
@@ -2532,7 +2536,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                             releaseCandidate();
                             return finishWithDiagnosticFields(
                                 stateDiagnostic,
-                                BuildStateMigrationFailureFields("MigrateState", "execute_candidate_migrate", true, true));
+                                BuildStateMigrationFailureFields("MigrateState", "execute_candidate_migrate", true, true, true));
                         }
                     }
 
@@ -2548,7 +2552,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                             releaseCandidate();
                             return finishWithDiagnosticFields(
                                 stateDiagnostic,
-                                BuildStateMigrationFailureFields("RestoreState", "execute_candidate_restore", true, true));
+                                BuildStateMigrationFailureFields("RestoreState", "execute_candidate_restore", true, true, true));
                         }
                     }
 
@@ -2760,7 +2764,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             ReleaseRuntimeOnly(candidateRuntime);
             return finishWithDiagnosticFields(
                 stateDiagnostic,
-                BuildStateMigrationFailureFields("SaveState", "lookup_current_save", false, false));
+                BuildStateMigrationFailureFields("SaveState", "lookup_current_save", false, false, true));
         }
 
         if (currentSavesState) {
@@ -2774,7 +2778,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                 ReleaseRuntimeOnly(candidateRuntime);
                 return finishWithDiagnosticFields(
                     stateDiagnostic,
-                    BuildStateMigrationFailureFields("RestoreState", "lookup_current_restore", false, false));
+                    BuildStateMigrationFailureFields("RestoreState", "lookup_current_restore", false, false, true));
             }
             if (!oldCanRestore) {
                 candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
@@ -2802,7 +2806,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                 ReleaseRuntimeOnly(candidateRuntime);
                 return finishWithDiagnosticFields(
                     stateDiagnostic,
-                    BuildStateMigrationFailureFields("RestoreState|MigrateState", "lookup_candidate_restore", false, false));
+                    BuildStateMigrationFailureFields("RestoreState|MigrateState", "lookup_candidate_restore", false, false, true));
             }
             if (!candidateCanRestore) {
                 candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
@@ -2845,7 +2849,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                     ReleaseRuntimeOnly(candidateRuntime);
                     return finishWithDiagnosticFields(
                         stateDiagnostic,
-                        BuildStateMigrationFailureFields("SaveState", "execute_current_save", true, true));
+                        BuildStateMigrationFailureFields("SaveState", "execute_current_save", true, true, true));
                 }
             }
             if (!stateSaved) {
