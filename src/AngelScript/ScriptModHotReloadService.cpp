@@ -72,9 +72,14 @@ void SendReloadResultMessage(ModContext *context,
 }
 
 std::vector<ScriptDevEventField> BuildReloadResultFields(const std::string &reason,
+                                                         const ScriptModReloadOptions &options,
                                                          const ScriptModReloadResult &result) {
     std::vector<ScriptDevEventField> fields = {
         {"reason", reason},
+        {"automatic", options.Automatic ? "true" : "false"},
+        {"dryRun", options.DryRun ? "true" : "false"},
+        {"checkState", options.CheckStateHooks ? "true" : "false"},
+        {"forceExports", options.ForceExports ? "true" : "false"},
     };
     for (const ScriptModReloadDiagnosticField &field : result.Fields)
         fields.push_back({field.Key, field.Value});
@@ -312,7 +317,7 @@ void ScriptModHotReloadService::Process() {
                 code = "ScriptReloadCommitted";
             else if (rolledBack)
                 code = "ScriptReloadRolledBack";
-            std::vector<ScriptDevEventField> fields = BuildReloadResultFields(pending.Reason, result);
+            std::vector<ScriptDevEventField> fields = BuildReloadResultFields(pending.Reason, pending.Options, result);
             const std::string successMessage = !result.Diagnostic.empty()
                                                    ? result.Diagnostic
                                                    : (pending.Options.DryRun ? "Script reload dry-run passed." : "Script reload committed.");
