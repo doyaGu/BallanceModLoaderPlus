@@ -72,7 +72,7 @@ BML+ script mods require CKAngelScript.
 
 This package installs the matching AngelScript.dll into BuildingBlocks next to
 BMLPlus.dll. Keep the two DLLs together when deploying this release. BML script
-support in this release requires CKAngelScript API v8 and the host-call filter,
+support in this release requires CKAngelScript API v4 and the host-call filter,
 source-section, object-handle argument, script-array, namespace, and
 object-method context features.
 "@ | Set-Content -Path (Join-Path $DestinationDir 'CKAngelScript-README.txt') -Encoding UTF8
@@ -308,8 +308,8 @@ function Assert-CKAngelScriptRuntimeCompatible {
 
     $headerPath = Join-Path $RootDir 'include\CKAngelScript.h'
     $apiVersion = Get-CKAngelScriptHeaderApiVersion -HeaderPath $headerPath
-    if ($apiVersion -lt 8) {
-        throw "CKAngelScript API version $apiVersion is too old. BML script support requires API version 8 or newer."
+    if ($apiVersion -lt 4) {
+        throw "CKAngelScript API version $apiVersion is too old. BML script support requires API version 4 or newer."
     }
 
     foreach ($feature in @(

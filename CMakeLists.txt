@@ -87,8 +87,8 @@ if (BML_ENABLE_ANGELSCRIPT)
         endif ()
         string(REGEX REPLACE ".*CKAS_API_VERSION[ \t]+([0-9]+).*" "\\1"
                 CKANGELSCRIPT_API_VERSION "${CKANGELSCRIPT_API_VERSION_LINE}")
-        if (CKANGELSCRIPT_API_VERSION LESS 8)
-            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript API version 8 or newer")
+        if (CKANGELSCRIPT_API_VERSION LESS 4)
+            message(FATAL_ERROR "BML AngelScript script support requires CKAngelScript API version 4 or newer")
         endif ()
 
         file(STRINGS "${CKANGELSCRIPT_INCLUDE_DIR}/CKAngelScript.h"
