@@ -18,7 +18,7 @@ env:
   PROJECT_NAME: BallanceModLoaderPlus
   BASE_BUILD_DIR: ${{ github.workspace }}\build
   BASE_DIST_DIR: ${{ github.workspace }}\dist
-  CKANGELSCRIPT_VERSION: v0.2.0
+  CKANGELSCRIPT_VERSION: v0.3.0
 
 jobs:
   validate-release:
