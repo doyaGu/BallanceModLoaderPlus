@@ -540,7 +540,7 @@ void ScriptDevToolsService::PublishEvent(ScriptDevEventSeverity severity,
     event.Code = code;
     event.ModId = modId;
     event.Phase = phase;
-    event.SourcePath = sourcePath;
+    event.SourcePath = DisplayScriptPath(m_Context, sourcePath);
     event.Message = message;
     event.Fields = fields;
 
@@ -567,7 +567,7 @@ void ScriptDevToolsService::PublishDiagnostic(ScriptDevEventSeverity severity,
                  code,
                  modId,
                  ScriptDiagnosticPhaseName(diagnostic.Phase),
-                 DisplayScriptPath(m_Context, diagnostic.EntryPath),
+                 diagnostic.EntryPath,
                  diagnostic.Message,
                  fields,
                  reloadAttemptId);
