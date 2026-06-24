@@ -2666,31 +2666,19 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     bool stateSaved = false;
     const std::string oldVersion = m_Definition.Version;
     if (m_State.IsLoaded()) {
-        savedState.Reset(new ScriptStateBag());
-        savedState->SetScriptAccessEnabled(false);
-        savedState->SetReloadState(true);
         ScriptDiagnostic stateDiagnostic;
-        {
-            ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::SaveState);
-            if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
-                                            m_Runtime,
-                                            *savedState.Get(),
-                                            stateSaved,
-                                            stateDiagnostic)) {
-                RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
-                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-                ReleaseRuntimeOnly(candidateRuntime);
-                return finishWithDiagnostic(stateDiagnostic);
-            }
-        }
-        if (!stateSaved) {
-            savedState.Reset();
-        } else {
-            rollbackState.Reset(savedState->Clone());
-            rollbackState->SetScriptAccessEnabled(false);
+        bool currentSavesState = false;
+        if (!ScriptStateMigration::HasSaveHook(m_Context ? m_Context->GetCKContext() : nullptr,
+                                               m_Runtime,
+                                               currentSavesState,
+                                               stateDiagnostic)) {
+            RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
+            candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+            ReleaseRuntimeOnly(candidateRuntime);
+            return finishWithDiagnostic(stateDiagnostic);
         }
 
-        if (savedState) {
+        if (currentSavesState) {
             bool oldCanRestore = false;
             if (!ScriptStateMigration::HasRestoreState(m_Context ? m_Context->GetCKContext() : nullptr,
                                                        m_Runtime,
@@ -2732,7 +2720,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                 ReleaseRuntimeOnly(candidateRuntime);
                 const ScriptDiagnostic failure = MakeScriptDiagnostic(
                     ScriptDiagnosticPhase::Runtime,
-                    "Script hot reload state migration is unsafe: current runtime saved state, "
+                    "Script hot reload state migration is unsafe: current runtime declares SaveState(StateBag@), "
                     "but the candidate does not declare RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@).");
                 std::vector<ScriptModReloadDiagnosticField> fields = {
                     {"boundary", "state_migration"},
@@ -2742,7 +2730,52 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                 return finish(false, failure.Message, &failure, &fields);
             }
 
-            if (m_Context && m_Context->GetScriptDevTools()) {
+            savedState.Reset(new (std::nothrow) ScriptStateBag());
+            if (!savedState) {
+                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                ReleaseRuntimeOnly(candidateRuntime);
+                const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                                      "Script hot reload could not allocate a StateBag.");
+                std::vector<ScriptModReloadDiagnosticField> fields = {
+                    {"boundary", "state_migration"},
+                    {"action", "retry_or_restart"},
+                };
+                return finish(false, failure.Message, &failure, &fields);
+            }
+            savedState->SetScriptAccessEnabled(false);
+            savedState->SetReloadState(true);
+            {
+                ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::SaveState);
+                if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                m_Runtime,
+                                                *savedState.Get(),
+                                                stateSaved,
+                                                stateDiagnostic)) {
+                    RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
+                    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                    ReleaseRuntimeOnly(candidateRuntime);
+                    return finishWithDiagnostic(stateDiagnostic);
+                }
+            }
+            if (!stateSaved) {
+                savedState.Reset();
+            } else {
+                rollbackState.Reset(savedState->CloneNoThrow());
+                if (!rollbackState) {
+                    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+                    ReleaseRuntimeOnly(candidateRuntime);
+                    const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                                          "Script hot reload could not clone StateBag for rollback.");
+                    std::vector<ScriptModReloadDiagnosticField> fields = {
+                        {"boundary", "state_migration"},
+                        {"action", "retry_or_restart"},
+                    };
+                    return finish(false, failure.Message, &failure, &fields);
+                }
+                rollbackState->SetScriptAccessEnabled(false);
+            }
+
+            if (stateSaved && savedState && m_Context && m_Context->GetScriptDevTools()) {
                 m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                              "ScriptReloadStateSaved",
                                                              GetID() ? GetID() : "",

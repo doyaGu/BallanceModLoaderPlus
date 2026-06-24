@@ -104,3 +104,17 @@ TEST(ScriptStateBagTest, ReloadStateFlagDistinguishesHostReloadBags) {
     EXPECT_EQ(1, clone->GetStoredCount());
     EXPECT_EQ(0, clone->GetCount());
 }
+
+TEST(ScriptStateBagTest, CloneNoThrowPreservesReloadBagState) {
+    ScriptStateBag reloadState;
+    reloadState.SetReloadState(true);
+    reloadState.SetInt("counter", 9);
+    reloadState.SetScriptAccessEnabled(false);
+
+    BML::ScriptStateBagHandle clone(reloadState.CloneNoThrow());
+    ASSERT_TRUE(clone);
+    EXPECT_TRUE(clone->IsReloadState());
+    EXPECT_FALSE(clone->IsScriptAccessEnabled());
+    EXPECT_EQ(1, clone->GetStoredCount());
+    EXPECT_EQ(0, clone->GetCount());
+}

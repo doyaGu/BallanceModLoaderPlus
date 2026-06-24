@@ -46,6 +46,7 @@ public:
     std::string GetString(const std::string &key, const std::string &defaultValue) const;
 
     ScriptStateBag *Clone() const;
+    ScriptStateBag *CloneNoThrow() const;
 
 private:
     struct Value {

@@ -1,6 +1,7 @@
 #include "ScriptStateBag.h"
 
 #include <iterator>
+#include <new>
 
 namespace BML {
 
@@ -146,6 +147,14 @@ std::string ScriptStateBag::GetString(const std::string &key, const std::string 
 
 ScriptStateBag *ScriptStateBag::Clone() const {
     return new ScriptStateBag(*this);
+}
+
+ScriptStateBag *ScriptStateBag::CloneNoThrow() const {
+    try {
+        return new (std::nothrow) ScriptStateBag(*this);
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 ScriptStateBagHandle::~ScriptStateBagHandle() {
