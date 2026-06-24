@@ -182,6 +182,17 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptModState.cpp
     )
 
+    add_bml_test(ScriptModRuntimeTest
+            SOURCES
+            ScriptModRuntimeTest.cpp
+            ScriptModRuntimeTestStubs.cpp
+            ${BML_SOURCE_DIR}/AngelScript/CKAngelScriptAdapter.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptModLifecycle.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptModRuntime.cpp
+    )
+    target_compile_definitions(ScriptModRuntimeTest PRIVATE BML_SCRIPT_RUNTIME_TEST_ACCESS)
+
     add_bml_test(ScriptStateBagTest
             SOURCES
             ScriptStateBagTest.cpp

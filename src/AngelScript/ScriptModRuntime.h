@@ -154,7 +154,20 @@ public:
                     ScriptDiagnostic &diagnostic);
     bool Release(CKContext *context, ScriptDiagnostic *diagnostic = nullptr);
 
+#ifdef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    void TestSetActiveCachedApi() {
+        m_AngelScript = reinterpret_cast<CKAngelScript *>(1);
+        m_Api = &m_Adapter.GetApi();
+    }
+    const ::CKAngelScriptAdapter::Api *TestCachedApi() const { return m_Api; }
+    const ::CKAngelScriptAdapter::Api *TestAdapterApi() const { return &m_Adapter.GetApi(); }
+    CKAngelScript *TestAngelScript() const { return m_AngelScript; }
+#endif
+
 private:
+    void RebindCachedPointersAfterMove() noexcept;
+    void ResetMovedFrom() noexcept;
+
     std::string m_ModuleName;
     ::CKAngelScriptAdapter m_Adapter;
     CKAngelScript *m_AngelScript = nullptr;

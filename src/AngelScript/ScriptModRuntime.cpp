@@ -154,17 +154,13 @@ ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
     : m_ModuleName(std::move(other.m_ModuleName)),
       m_Adapter(std::move(other.m_Adapter)),
       m_AngelScript(other.m_AngelScript),
-      m_Api(other.m_AngelScript ? &m_Adapter.GetApi() : nullptr),
+      m_Api(nullptr),
       m_Object(other.m_Object),
       m_ModuleLoaded(other.m_ModuleLoaded),
       m_Loaded(other.m_Loaded),
       m_Owner(other.m_Owner) {
-    other.m_AngelScript = nullptr;
-    other.m_Api = nullptr;
-    other.m_Object = nullptr;
-    other.m_ModuleLoaded = false;
-    other.m_Loaded = false;
-    other.m_Owner = nullptr;
+    RebindCachedPointersAfterMove();
+    other.ResetMovedFrom();
 }
 
 ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept {
@@ -174,19 +170,28 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
     m_ModuleName = std::move(other.m_ModuleName);
     m_Adapter = std::move(other.m_Adapter);
     m_AngelScript = other.m_AngelScript;
-    m_Api = other.m_AngelScript ? &m_Adapter.GetApi() : nullptr;
+    m_Api = nullptr;
     m_Object = other.m_Object;
     m_ModuleLoaded = other.m_ModuleLoaded;
     m_Loaded = other.m_Loaded;
     m_Owner = other.m_Owner;
 
-    other.m_AngelScript = nullptr;
-    other.m_Api = nullptr;
-    other.m_Object = nullptr;
-    other.m_ModuleLoaded = false;
-    other.m_Loaded = false;
-    other.m_Owner = nullptr;
+    RebindCachedPointersAfterMove();
+    other.ResetMovedFrom();
     return *this;
+}
+
+void ScriptModRuntime::RebindCachedPointersAfterMove() noexcept {
+    m_Api = m_AngelScript ? &m_Adapter.GetApi() : nullptr;
+}
+
+void ScriptModRuntime::ResetMovedFrom() noexcept {
+    m_AngelScript = nullptr;
+    m_Api = nullptr;
+    m_Object = nullptr;
+    m_ModuleLoaded = false;
+    m_Loaded = false;
+    m_Owner = nullptr;
 }
 
 ScriptMod *ScriptModRuntime::GetCurrentScriptMod() {
