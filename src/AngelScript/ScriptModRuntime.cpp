@@ -154,7 +154,7 @@ ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
     : m_ModuleName(std::move(other.m_ModuleName)),
       m_Adapter(std::move(other.m_Adapter)),
       m_AngelScript(other.m_AngelScript),
-      m_Api(other.m_Api),
+      m_Api(other.m_AngelScript ? &m_Adapter.GetApi() : nullptr),
       m_Object(other.m_Object),
       m_ModuleLoaded(other.m_ModuleLoaded),
       m_Loaded(other.m_Loaded),
@@ -174,7 +174,7 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
     m_ModuleName = std::move(other.m_ModuleName);
     m_Adapter = std::move(other.m_Adapter);
     m_AngelScript = other.m_AngelScript;
-    m_Api = other.m_Api;
+    m_Api = other.m_AngelScript ? &m_Adapter.GetApi() : nullptr;
     m_Object = other.m_Object;
     m_ModuleLoaded = other.m_ModuleLoaded;
     m_Loaded = other.m_Loaded;
@@ -545,7 +545,7 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
         diagnostic.Status = CKAS_INVALIDARGUMENT;
         return false;
     }
-    if (!m_Api || !m_AngelScript) {
+    if (!m_Api || m_Api != &m_Adapter.GetApi() || !m_AngelScript) {
         if (!Refresh(context, diagnostic))
             return false;
         m_Api = &m_Adapter.GetApi();
