@@ -216,6 +216,34 @@ struct ScriptModReloadSourceSnapshot {
     }
 };
 
+static size_t CountReloadSnapshotSourceBytes(const ScriptModReloadSourceSnapshot &snapshot) {
+    size_t bytes = 0;
+    for (const ScriptSourceSection &section : snapshot.SourceSections)
+        bytes += section.Code.size();
+    return bytes;
+}
+
+static std::vector<ScriptModReloadDiagnosticField> BuildReloadSnapshotFields(const ScriptModReloadSourceSnapshot &snapshot) {
+    return {
+        {"sourceSections", std::to_string(snapshot.SourceSections.size())},
+        {"sourceBytes", std::to_string(CountReloadSnapshotSourceBytes(snapshot))},
+    };
+}
+
+static std::vector<ScriptDevEventField> BuildReloadSnapshotEventFields(const ScriptModReloadSourceSnapshot &snapshot) {
+    return {
+        {"sourceSections", std::to_string(snapshot.SourceSections.size())},
+        {"sourceBytes", std::to_string(CountReloadSnapshotSourceBytes(snapshot))},
+    };
+}
+
+static void AppendReloadFields(std::vector<ScriptModReloadDiagnosticField> &fields,
+                               std::vector<ScriptModReloadDiagnosticField> extra) {
+    fields.insert(fields.end(),
+                  std::make_move_iterator(extra.begin()),
+                  std::make_move_iterator(extra.end()));
+}
+
 static void ReplaceAllText(std::string &value, const std::string &from, const std::string &to) {
     if (from.empty())
         return;
@@ -2507,15 +2535,16 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                      "reload",
                                                      snapshot.CommitEntryPathUtf8,
                                                      "Script reload candidate prepared.",
-                                                     {},
+                                                     BuildReloadSnapshotEventFields(snapshot),
                                                      GetReloadAttemptId());
     }
 
     releaseCandidate();
-    std::vector<ScriptModReloadDiagnosticField> fields = {
+    std::vector<ScriptModReloadDiagnosticField> fields = BuildReloadSnapshotFields(snapshot);
+    AppendReloadFields(fields, {
         {"stateHooksExecuted", dryRunStateHooksExecuted ? "true" : "false"},
         {"stateHookValidation", dryRunStateHooksExecuted ? "executed" : (dryRunCurrentSavesState ? "declarations-only" : "not-needed")},
-    };
+    });
     if (dryRunStateHooksExecuted)
         fields.push_back({"stateKeys", std::to_string(dryRunStateKeyCount)});
     if (dryRunStateHooksExecuted)
@@ -2657,7 +2686,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
                                                      "reload",
                                                      snapshot.CommitEntryPathUtf8,
                                                      "Script reload candidate prepared.",
-                                                     {},
+                                                     BuildReloadSnapshotEventFields(snapshot),
                                                      GetReloadAttemptId());
     }
 
@@ -2872,7 +2901,11 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
             m_Context->GetCommandContext().SortCommands();
         ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
-        return finish(true, std::string());
+        std::vector<ScriptModReloadDiagnosticField> fields = BuildReloadSnapshotFields(snapshot);
+        fields.push_back({"stateSaved", stateSaved ? "true" : "false"});
+        if (stateSaved && savedState)
+            fields.push_back({"stateKeys", std::to_string(savedState->GetStoredCount())});
+        return finish(true, std::string(), nullptr, &fields);
     }
 
     const ScriptDiagnostic reloadDiagnostic = m_State.GetLastDiagnostic();
