@@ -107,6 +107,8 @@ std::string DisplayScriptPath(ModContext *context, const std::string &path) {
         return {};
     if (path.find('\\') == std::string::npos && path.find('/') == std::string::npos)
         return path;
+    if (!utils::IsAbsolutePathUtf8(path))
+        return path;
 
     const std::string modsRoot = ModsRootUtf8(context);
     if (!modsRoot.empty()) {
@@ -565,7 +567,7 @@ void ScriptDevToolsService::PublishDiagnostic(ScriptDevEventSeverity severity,
                  code,
                  modId,
                  ScriptDiagnosticPhaseName(diagnostic.Phase),
-                 diagnostic.EntryPath,
+                 DisplayScriptPath(m_Context, diagnostic.EntryPath),
                  diagnostic.Message,
                  fields,
                  reloadAttemptId);
