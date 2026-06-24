@@ -389,6 +389,7 @@ std::string ScriptModHotReloadService::GetStatus() const {
            << " pending=" << m_Pending.size()
            << " blocked=" << blockedCount
            << " automatic=" << (m_AutomaticEnabled ? "on" : "off")
+           << " watches=" << m_ActiveWatches.size()
            << " watcherDropped=" << m_Watcher.GetDroppedEventCount();
     return stream.str();
 }
