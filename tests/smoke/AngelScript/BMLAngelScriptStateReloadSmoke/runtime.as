@@ -10,6 +10,7 @@ class BMLStateReloadSmokeMod {
   }
 
   void OnProcess(const BML::ModContext &in ctx) {
+    DrawWindow("v1");
     ++frames;
     if ((frames % 30) != 0) {
       return;
@@ -34,5 +35,15 @@ class BMLStateReloadSmokeMod {
     if (state is null) {
       return;
     }
+  }
+
+  private void DrawWindow(const string &in label) {
+    ImGui::SetNextWindowPos(ImVec2(64.0f, 64.0f), ImGuiCond_Once);
+    ImGui::SetNextWindowSize(ImVec2(320.0f, 0.0f), ImGuiCond_Once);
+    if (ImGui::Begin("State Reload Smoke")) {
+      ImGui::TextUnformatted("runtime " + label);
+      ImGui::TextUnformatted("frames " + frames);
+    }
+    ImGui::End();
   }
 }

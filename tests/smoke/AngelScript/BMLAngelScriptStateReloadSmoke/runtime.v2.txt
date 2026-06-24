@@ -36,4 +36,15 @@ class BMLStateReloadSmokeMod {
                   " text=" + text);
     }
   }
+
+  void OnProcess(const BML::ModContext &in ctx) {
+    ImGui::SetNextWindowPos(ImVec2(64.0f, 64.0f), ImGuiCond_Once);
+    ImGui::SetNextWindowSize(ImVec2(320.0f, 0.0f), ImGuiCond_Once);
+    if (ImGui::Begin("State Reload Smoke")) {
+      ImGui::TextUnformatted("runtime v2");
+      ImGui::TextUnformatted("migrated=" + (migrated ? "true" : "false"));
+      ImGui::TextUnformatted("counter=" + counter);
+    }
+    ImGui::End();
+  }
 }

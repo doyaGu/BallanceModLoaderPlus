@@ -342,8 +342,10 @@ if (-not $SkipPlayer) {
 }
 
 $modLogText = Get-BMLTextIfExists $modLoaderLog
+$playerLogText = Get-BMLTextIfExists $playerLog
 $checks = [System.Collections.Generic.List[object]]::new()
 if (-not $SkipPlayer) {
+    Add-SmokeCheck $checks 'player-postprocess-clean' (-not (Test-SmokeTextContains $playerLogText 'Error : PostProcess')) 'Player.log must not contain Error : PostProcess'
     $scriptCoreCapabilityExpected = 'BML core capability facade smoke: hud=<mode> srTimeOk=true rawMessage=0 rawHandle=true'
     $scriptCoreCapabilityPassed = [regex]::IsMatch(
         $modLogText,
