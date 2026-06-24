@@ -39,6 +39,7 @@ struct ScriptModReloadOptions {
     bool Automatic = false;
     bool ForceExports = false;
     bool DryRun = false;
+    bool CheckStateHooks = false;
 };
 
 struct ScriptModReloadDiagnosticField {

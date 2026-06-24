@@ -25,13 +25,6 @@ public:
                      bool &called,
                      ScriptDiagnostic &diagnostic);
 
-    static bool MigrateAndRestore(CKContext *context,
-                                  ScriptModRuntime &runtime,
-                                  const std::string &fromVersion,
-                                  ScriptStateBag &state,
-                                  bool &called,
-                                  ScriptDiagnostic &diagnostic);
-
     static bool Migrate(CKContext *context,
                         ScriptModRuntime &runtime,
                         const std::string &fromVersion,

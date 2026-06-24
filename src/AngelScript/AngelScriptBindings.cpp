@@ -92,7 +92,17 @@ std::string BMLAS_GetErrorString(int errorCode) {
 }
 
 static BML::ScriptStateBag *BMLAS_CreateStateBag() {
-    return new (std::nothrow) BML::ScriptStateBag();
+    BML::ScriptStateBag *bag = new (std::nothrow) BML::ScriptStateBag();
+    if (!bag) {
+        const CKAngelScriptAdapter::Api &api = g_AngelScriptHost.GetApi();
+        CKAngelScript *angelScript = g_AngelScriptHost.GetAngelScript();
+        if (api.InitResult && api.SetActiveContextException && angelScript) {
+            CKAngelScriptResult result = {};
+            api.InitResult(&result);
+            api.SetActiveContextException(angelScript, "Out of memory creating BML::StateBag.", &result);
+        }
+    }
+    return bag;
 }
 
 std::string BMLAS_GetGameEventName(int event) {

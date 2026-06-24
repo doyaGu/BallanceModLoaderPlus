@@ -372,6 +372,7 @@ Commands:
 script reload              # reload all script mods
 script reload <id>         # reload one script mod
 script reload <id> --dry-run
+script reload <id> --dry-run --check-state
 script reload <id> --force-exports
 script diag <id>
 script logs error
@@ -389,6 +390,11 @@ Expected behavior:
 - `--dry-run` does not call `SaveState`, `MigrateState`, `RestoreState`, or
   candidate `OnLoad`. It validates compilation, metadata, compatibility, and
   required state hook declarations only.
+- `--dry-run --check-state` additionally calls old `SaveState` and candidate
+  `MigrateState`/`RestoreState`, then unloads the candidate without calling
+  candidate `OnLoad` or replacing the runtime. Use it when validating state
+  migration hooks; keep those hooks pure because the old script code really
+  executes during this check.
 - If the mod failed during initial startup, BML keeps a failed placeholder. Fix
   the file, then run `script reload` or `script reload <placeholder-id>` to
   recover it. The placeholder can promote to the real mod id when that id does

@@ -657,6 +657,7 @@ void ScriptDevToolsService::ExecuteReloadAction(const ScriptDevAction &action) {
                      "",
                      message,
                      {{"dryRun", action.ReloadOptions.DryRun ? "true" : "false"},
+                      {"checkState", action.ReloadOptions.CheckStateHooks ? "true" : "false"},
                       {"forceExports", action.ReloadOptions.ForceExports ? "true" : "false"}});
     }
 }
@@ -674,6 +675,7 @@ void ScriptDevToolsService::ExecuteReloadAllAction(const ScriptDevAction &action
                  action.ReloadOptions.DryRun ? "Queued script reload dry-runs." : "Queued script reloads.",
                  {{"count", std::to_string(count)},
                   {"dryRun", action.ReloadOptions.DryRun ? "true" : "false"},
+                  {"checkState", action.ReloadOptions.CheckStateHooks ? "true" : "false"},
                   {"forceExports", action.ReloadOptions.ForceExports ? "true" : "false"}});
 }
 
@@ -1022,9 +1024,13 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
                 options.DryRun = true;
             else if (args[i] == "--force-exports")
                 options.ForceExports = true;
+            else if (args[i] == "--check-state")
+                options.CheckStateHooks = true;
             else
-                return {"Usage: script reload [id|all] [--dry-run] [--force-exports]"};
+                return {"Usage: script reload [id|all] [--dry-run] [--check-state] [--force-exports]"};
         }
+        if (options.CheckStateHooks && !options.DryRun)
+            return {"Usage: script reload [id|all] --dry-run --check-state [--force-exports]"};
         ScriptDevAction action;
         action.Kind = target == "all" ? ScriptDevActionKind::ReloadAll : ScriptDevActionKind::Reload;
         action.ModId = target == "all" ? "" : target;
@@ -1055,7 +1061,7 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
         return GetScriptModIds();
     }
     if (args.size() == 3 && args[1] == "reload" && !args[2].empty() && args[2][0] == '-')
-        return {"--dry-run", "--force-exports"};
+        return {"--dry-run", "--check-state", "--force-exports"};
     if (args.size() == 3 && args[1] == "reload") {
         std::vector<std::string> ids = {"all"};
         std::vector<std::string> modIds = GetScriptModIds();
@@ -1063,7 +1069,7 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
         return ids;
     }
     if (args.size() >= 4 && args[1] == "reload")
-        return {"--dry-run", "--force-exports"};
+        return {"--dry-run", "--check-state", "--force-exports"};
     if (args.size() == 3 && (args[1] == "watch" || args[1] == "auto"))
         return {"on", "off"};
     return {};
@@ -1281,7 +1287,7 @@ void ScriptDevToolsService::DrawReloadTab(const ScriptModSnapshot *selected) {
     }
     ImGui::Text("policy %s", selected->ReloadPolicy.c_str());
     ImGui::Text("source %s", DisplayScriptPath(m_Context, selected->SourcePath).c_str());
-    ImGui::TextWrapped("dry-run compiles and validates without calling candidate OnLoad or replacing runtime.");
+    ImGui::TextWrapped("dry-run compiles and validates without calling candidate OnLoad or replacing runtime. Check State also executes SaveState/MigrateState/RestoreState without committing.");
 }
 
 void ScriptDevToolsService::DrawResourcesTab(const ScriptModSnapshot *selected) {
@@ -1629,6 +1635,15 @@ void ScriptDevToolsService::DrawBottomBar(const ScriptModSnapshot *selected) {
         action.Kind = ScriptDevActionKind::Reload;
         action.ModId = selected ? selected->Id : "";
         action.ReloadOptions.DryRun = true;
+        EnqueueAction(action);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Check State")) {
+        ScriptDevAction action;
+        action.Kind = ScriptDevActionKind::Reload;
+        action.ModId = selected ? selected->Id : "";
+        action.ReloadOptions.DryRun = true;
+        action.ReloadOptions.CheckStateHooks = true;
         EnqueueAction(action);
     }
     ImGui::SameLine();

@@ -85,6 +85,10 @@ not dynamic mod discovery and not dependency graph reconstruction.
   validates compatibility, then unloads the candidate without calling its
   `OnLoad`. It also checks required state hook declarations, but it does not
   execute `SaveState`, `MigrateState`, or `RestoreState`.
+- `script reload <id> --dry-run --check-state` keeps the no-commit dry-run
+  boundary but also executes old `SaveState` and candidate
+  `MigrateState`/`RestoreState` to validate state migration code. It still does
+  not call candidate `OnLoad` and does not replace the runtime.
 - Each reload attempt first captures the entry and included `.as` sources into
   an in-memory source snapshot. Prepare and commit use the same compiled
   candidate runtime, so a save between validation and commit cannot change what

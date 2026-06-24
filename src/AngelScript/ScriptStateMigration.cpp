@@ -141,37 +141,6 @@ bool ScriptStateMigration::Migrate(CKContext *context,
                                    diagnostic);
 }
 
-bool ScriptStateMigration::MigrateAndRestore(CKContext *context,
-                                             ScriptModRuntime &runtime,
-                                             const std::string &fromVersion,
-                                             ScriptStateBag &state,
-                                             bool &called,
-                                             ScriptDiagnostic &diagnostic) {
-    called = false;
-
-    bool migrated = false;
-    if (!Migrate(context, runtime, fromVersion, state, migrated, diagnostic)) {
-        return false;
-    }
-
-    bool restored = false;
-    StateOnlyArgs restoreArgs = {&runtime.GetApi(), &state};
-    if (!CallOptionalStateMethod(context,
-                                 runtime,
-                                 RestoreStateDecl,
-                                 WriteStateOnlyArgs,
-                                 &restoreArgs,
-                                 "RestoreState failed",
-                                 ScriptModReloadPhase::RestoreState,
-                                 restored,
-                                 diagnostic)) {
-        return false;
-    }
-
-    called = migrated || restored;
-    return true;
-}
-
 bool ScriptStateMigration::Restore(CKContext *context,
                                    ScriptModRuntime &runtime,
                                    ScriptStateBag &state,

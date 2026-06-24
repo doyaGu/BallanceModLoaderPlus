@@ -53,7 +53,9 @@ void SendReloadResultMessage(ModContext *context,
         return;
 
     std::string message = "[script] ";
-    if (options.DryRun)
+    if (options.DryRun && options.CheckStateHooks)
+        message += "reload dry-run state-check ";
+    else if (options.DryRun)
         message += "reload dry-run ";
     else
         message += "reload ";
@@ -243,7 +245,9 @@ void ScriptModHotReloadService::Process() {
                                                          "reload",
                                                          "",
                                                          pending.Options.DryRun ? "Script reload dry-run started." : "Script reload started.",
-                                                         {{"reason", pending.Reason}});
+                                                         {{"reason", pending.Reason},
+                                                          {"dryRun", pending.Options.DryRun ? "true" : "false"},
+                                                          {"checkState", pending.Options.CheckStateHooks ? "true" : "false"}});
         }
         ScriptModReloadResult result = pending.Options.DryRun
                                            ? mod->TryHotReloadDryRun(pending.Options)
@@ -481,6 +485,7 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
                                                      {{"reason", reason},
                                                       {"automatic", options.Automatic ? "true" : "false"},
                                                       {"dryRun", dryRun ? "true" : "false"},
+                                                      {"checkState", options.CheckStateHooks ? "true" : "false"},
                                                       {"forceExports", options.ForceExports ? "true" : "false"}});
     }
 }
@@ -511,6 +516,7 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
                                                      {{"reason", reason},
                                                       {"automatic", options.Automatic ? "true" : "false"},
                                                       {"dryRun", dryRun ? "true" : "false"},
+                                                      {"checkState", options.CheckStateHooks ? "true" : "false"},
                                                       {"forceExports", options.ForceExports ? "true" : "false"}});
     }
 }

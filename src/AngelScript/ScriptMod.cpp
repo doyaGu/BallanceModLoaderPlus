@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iterator>
+#include <new>
 #include <set>
 #include <sstream>
 #include <system_error>
@@ -2351,26 +2352,29 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
+    auto releaseCandidate = [&]() {
+        candidateEvents.Release(nullptr);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
+        ReleaseRuntimeOnly(candidateRuntime);
+    };
 
     std::string validationDiagnostic;
     std::vector<ScriptModReloadDiagnosticField> validationFields;
     if (!ValidateReloadDefinition(candidateDefinition, candidateExports, options, validationDiagnostic, &validationFields)) {
-        candidateEvents.Release(nullptr);
-        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-        ReleaseRuntimeOnly(candidateRuntime);
+        releaseCandidate();
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
         return finish(false, validationDiagnostic, &failure, &validationFields);
     }
     bool dryRunCurrentSavesState = false;
+    bool dryRunStateHooksExecuted = false;
+    int dryRunStateKeyCount = 0;
     if (m_State.IsLoaded()) {
         ScriptDiagnostic stateDiagnostic;
         if (!ScriptStateMigration::HasSaveHook(m_Context ? m_Context->GetCKContext() : nullptr,
                                                m_Runtime,
                                                dryRunCurrentSavesState,
                                                stateDiagnostic)) {
-            candidateEvents.Release(nullptr);
-            candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-            ReleaseRuntimeOnly(candidateRuntime);
+            releaseCandidate();
             return finishWithDiagnostic(stateDiagnostic);
         }
         if (dryRunCurrentSavesState) {
@@ -2379,15 +2383,11 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                        m_Runtime,
                                                        oldCanRestore,
                                                        stateDiagnostic)) {
-                candidateEvents.Release(nullptr);
-                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-                ReleaseRuntimeOnly(candidateRuntime);
+                releaseCandidate();
                 return finishWithDiagnostic(stateDiagnostic);
             }
             if (!oldCanRestore) {
-                candidateEvents.Release(nullptr);
-                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-                ReleaseRuntimeOnly(candidateRuntime);
+                releaseCandidate();
                 const ScriptDiagnostic failure = MakeScriptDiagnostic(
                     ScriptDiagnosticPhase::Runtime,
                     "Script hot reload state migration is unsafe: current runtime declares SaveState(StateBag@) "
@@ -2406,15 +2406,11 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                       candidateCanRestore,
                                                       stateDiagnostic)) {
                 RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
-                candidateEvents.Release(nullptr);
-                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-                ReleaseRuntimeOnly(candidateRuntime);
+                releaseCandidate();
                 return finishWithDiagnostic(stateDiagnostic);
             }
             if (!candidateCanRestore) {
-                candidateEvents.Release(nullptr);
-                candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-                ReleaseRuntimeOnly(candidateRuntime);
+                releaseCandidate();
                 const ScriptDiagnostic failure = MakeScriptDiagnostic(
                     ScriptDiagnosticPhase::Runtime,
                     "Script hot reload state migration is unsafe: current runtime declares SaveState(StateBag@), "
@@ -2425,6 +2421,82 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                     {"action", "add_candidate_restore_hook"},
                 };
                 return finish(false, failure.Message, &failure, &fields);
+            }
+
+            if (options.CheckStateHooks) {
+                ScriptStateBagHandle dryRunState(new (std::nothrow) ScriptStateBag());
+                if (!dryRunState) {
+                    releaseCandidate();
+                    const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                                          "Reload dry-run could not allocate a StateBag.");
+                    std::vector<ScriptModReloadDiagnosticField> fields = {
+                        {"boundary", "state_migration"},
+                        {"action", "retry_or_restart"},
+                    };
+                    return finish(false, failure.Message, &failure, &fields);
+                }
+                dryRunState->SetScriptAccessEnabled(false);
+                dryRunState->SetReloadState(true);
+
+                bool stateSaved = false;
+                {
+                    ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::SaveState);
+                    if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                    m_Runtime,
+                                                    *dryRunState.Get(),
+                                                    stateSaved,
+                                                    stateDiagnostic)) {
+                        releaseCandidate();
+                        return finishWithDiagnostic(stateDiagnostic);
+                    }
+                }
+
+                if (stateSaved) {
+                    bool migrated = false;
+                    {
+                        ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::MigrateState);
+                        if (!ScriptStateMigration::Migrate(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                           candidateRuntime,
+                                                           m_Definition.Version,
+                                                           *dryRunState.Get(),
+                                                           migrated,
+                                                           stateDiagnostic)) {
+                            RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
+                            releaseCandidate();
+                            return finishWithDiagnostic(stateDiagnostic);
+                        }
+                    }
+
+                    bool restored = false;
+                    {
+                        ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::RestoreState);
+                        if (!ScriptStateMigration::Restore(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                           candidateRuntime,
+                                                           *dryRunState.Get(),
+                                                           restored,
+                                                           stateDiagnostic)) {
+                            RewriteSnapshotDiagnosticPaths(snapshot, stateDiagnostic);
+                            releaseCandidate();
+                            return finishWithDiagnostic(stateDiagnostic);
+                        }
+                    }
+
+                    dryRunStateHooksExecuted = true;
+                    dryRunStateKeyCount = dryRunState->GetStoredCount();
+                    if (!migrated && !restored) {
+                        releaseCandidate();
+                        const ScriptDiagnostic failure = MakeScriptDiagnostic(
+                            ScriptDiagnosticPhase::Runtime,
+                            "Reload dry-run saved state, but the candidate did not execute RestoreState(StateBag@) "
+                            "or MigrateState(fromVersion, StateBag@).");
+                        std::vector<ScriptModReloadDiagnosticField> fields = {
+                            {"boundary", "state_migration"},
+                            {"required", "RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@)"},
+                            {"action", "add_candidate_restore_hook"},
+                        };
+                        return finish(false, failure.Message, &failure, &fields);
+                    }
+                }
             }
         }
     }
@@ -2439,15 +2511,17 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
                                                      GetReloadAttemptId());
     }
 
-    candidateEvents.Release(nullptr);
-    candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
-    ReleaseRuntimeOnly(candidateRuntime);
+    releaseCandidate();
     std::vector<ScriptModReloadDiagnosticField> fields = {
-        {"stateHooksExecuted", "false"},
-        {"stateHookValidation", dryRunCurrentSavesState ? "declarations-only" : "not-needed"},
+        {"stateHooksExecuted", dryRunStateHooksExecuted ? "true" : "false"},
+        {"stateHookValidation", dryRunStateHooksExecuted ? "executed" : (dryRunCurrentSavesState ? "declarations-only" : "not-needed")},
     };
+    if (dryRunStateHooksExecuted)
+        fields.push_back({"stateKeys", std::to_string(dryRunStateKeyCount)});
     return finish(true,
-                  dryRunCurrentSavesState
+                  dryRunStateHooksExecuted
+                      ? "Reload dry-run passed. State migration hooks executed without committing candidate runtime."
+                      : dryRunCurrentSavesState
                       ? "Reload dry-run passed. State migration hook declarations were checked, but SaveState/MigrateState/RestoreState were not executed."
                       : "Reload dry-run passed.",
                   nullptr,
