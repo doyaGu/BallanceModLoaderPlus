@@ -1112,12 +1112,12 @@ void ModContext::OnProcess() {
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_TryRegisterAngelScriptBindings(this);
-    ProcessScriptModQueuedCallbacks();
     ProcessScriptModFailureCleanup();
     if (m_ScriptDevTools)
         m_ScriptDevTools->ProcessActions();
     if (m_ScriptHotReload)
         m_ScriptHotReload->Process();
+    ProcessScriptModQueuedCallbacks();
 #endif
     Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
     BroadcastCallback(&IMod::OnProcess);
