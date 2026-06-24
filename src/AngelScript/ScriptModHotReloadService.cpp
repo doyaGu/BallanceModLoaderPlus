@@ -1,6 +1,7 @@
 #include "ScriptModHotReloadService.h"
 
 #include <algorithm>
+#include <cwctype>
 #include <sstream>
 
 #include "Logger.h"
@@ -31,16 +32,6 @@ bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
     const std::wstring resolvedLeft = utils::ResolvePathW(left);
     const std::wstring resolvedRight = utils::ResolvePathW(right);
     return _wcsicmp(resolvedLeft.c_str(), resolvedRight.c_str()) == 0;
-}
-
-bool IsCoveredByWatchedRoot(const std::wstring &root, const std::vector<std::wstring> &watchedRoots) {
-    if (root.empty())
-        return true;
-    for (const auto &watched : watchedRoots) {
-        if (SamePathInsensitive(watched, root) || utils::IsPathInsideRootW(root, watched))
-            return true;
-    }
-    return false;
 }
 
 std::wstring ScriptEntryStem(const std::wstring &entryPath) {
@@ -163,6 +154,7 @@ void ScriptModHotReloadService::Start() {
 void ScriptModHotReloadService::Stop() {
     m_Started = false;
     m_Watcher.StopAll();
+    m_ActiveWatches.clear();
     m_Pending.clear();
 }
 
@@ -317,14 +309,15 @@ void ScriptModHotReloadService::Process() {
             else if (rolledBack)
                 code = "ScriptReloadRolledBack";
             std::vector<ScriptDevEventField> fields = BuildReloadResultFields(pending.Reason, result);
+            const std::string successMessage = !result.Diagnostic.empty()
+                                                   ? result.Diagnostic
+                                                   : (pending.Options.DryRun ? "Script reload dry-run passed." : "Script reload committed.");
             m_Context->GetScriptDevTools()->PublishEvent(result.Success ? ScriptDevEventSeverity::Info : ScriptDevEventSeverity::Warn,
                                                          code,
                                                          resultId,
                                                          "reload",
                                                          result.SourcePath,
-                                                         result.Success
-                                                             ? (pending.Options.DryRun ? "Script reload dry-run passed." : "Script reload committed.")
-                                                             : result.Diagnostic,
+                                                         result.Success ? successMessage : result.Diagnostic,
                                                          fields,
                                                          result.ReloadAttemptId);
         }
@@ -400,28 +393,59 @@ ScriptMod *ScriptModHotReloadService::FindMod(const std::string &id) const {
 }
 
 void ScriptModHotReloadService::RebuildWatches() {
-    m_Watcher.StopAll();
-    if (!m_Started || !m_AutomaticEnabled)
+    if (!m_Started || !m_AutomaticEnabled) {
+        m_Watcher.StopAll();
+        m_ActiveWatches.clear();
         return;
+    }
 
-    std::vector<std::wstring> watchedRoots;
-    auto watchOnce = [&](const std::wstring &root) {
-        if (root.empty())
-            return;
-        if (IsCoveredByWatchedRoot(root, watchedRoots))
-            return;
-        if (m_Watcher.Watch(root))
-            watchedRoots.push_back(root);
-    };
-
-    watchOnce(GetModsRoot());
+    std::unordered_map<std::wstring, WatchSpec> desired;
+    AddDesiredWatch(desired, GetModsRoot(), false);
     for (auto &record : m_Mods) {
         if (!record.Mod)
             continue;
         record.Policy = ResolvePolicy(record.Mod);
         record.WatchRoot = GetWatchRoot(record.Mod);
-        if (record.Policy == ScriptModReloadPolicy::Auto)
-            watchOnce(record.WatchRoot);
+        if (record.Policy != ScriptModReloadPolicy::Auto)
+            continue;
+
+        const ScriptModEntry &entry = record.Mod->GetEntry();
+        if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage) {
+            AddDesiredWatch(desired, utils::GetDirectoryW(entry.SourcePath), false);
+        } else if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
+            AddDesiredWatch(desired, utils::GetDirectoryW(entry.EntryPath), false);
+            AddDesiredWatch(desired, entry.ResourceRootDirectory, true);
+        } else {
+            AddDesiredWatch(desired, entry.RootDirectory, true);
+        }
+    }
+
+    for (auto it = m_ActiveWatches.begin(); it != m_ActiveWatches.end();) {
+        const auto desiredIt = desired.find(it->first);
+        if (desiredIt == desired.end() ||
+            desiredIt->second.Recursive != it->second.Recursive) {
+            m_Watcher.Unwatch(it->second.Root);
+            it = m_ActiveWatches.erase(it);
+            continue;
+        }
+        ++it;
+    }
+
+    for (const auto &entry : desired) {
+        const auto activeIt = m_ActiveWatches.find(entry.first);
+        if (activeIt != m_ActiveWatches.end())
+            continue;
+        if (m_Watcher.Watch(entry.second.Root, entry.second.Recursive)) {
+            m_ActiveWatches.emplace(entry.first, entry.second);
+        } else if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+                                                         "ScriptWatchFailed",
+                                                         "",
+                                                         "watch",
+                                                         utils::Utf16ToUtf8(entry.second.Root),
+                                                         "Failed to watch script mod directory.",
+                                                         {{"recursive", entry.second.Recursive ? "true" : "false"}});
+        }
     }
 }
 
@@ -518,12 +542,71 @@ std::wstring ScriptModHotReloadService::GetModsRoot() const {
     return utils::CombinePathW(loaderDir, L"Mods");
 }
 
+std::wstring ScriptModHotReloadService::MakeWatchKey(const std::wstring &root) const {
+    std::wstring key = utils::ResolvePathW(root);
+    if (key.empty())
+        key = root;
+    std::transform(key.begin(), key.end(), key.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return key;
+}
+
+void ScriptModHotReloadService::AddDesiredWatch(std::unordered_map<std::wstring, WatchSpec> &desired,
+                                                const std::wstring &root,
+                                                bool recursive) const {
+    if (root.empty())
+        return;
+    const std::wstring key = MakeWatchKey(root);
+    if (key.empty())
+        return;
+    auto it = desired.find(key);
+    if (it == desired.end()) {
+        desired.emplace(key, WatchSpec{root, recursive});
+        return;
+    }
+    if (recursive && !it->second.Recursive)
+        it->second.Recursive = true;
+}
+
+bool ScriptModHotReloadService::EventOverflowCanAffectMod(const ScriptFileWatcherWin32::Event &event,
+                                                          const ScriptMod *mod) const {
+    if (!mod)
+        return false;
+    if (event.Root.empty())
+        return true;
+
+    const ScriptModEntry &entry = mod->GetEntry();
+    const std::wstring root = event.Root;
+    auto pathUnderOverflowRoot = [&](const std::wstring &path) {
+        if (path.empty())
+            return false;
+        if (event.Recursive)
+            return SamePathInsensitive(path, root) || utils::IsPathInsideRootW(path, root);
+        return SamePathInsensitive(utils::GetDirectoryW(path), root);
+    };
+    auto directoryAffected = [&](const std::wstring &directory) {
+        if (directory.empty())
+            return false;
+        if (event.Recursive)
+            return SamePathInsensitive(directory, root) || utils::IsPathInsideRootW(directory, root);
+        return SamePathInsensitive(directory, root) || SamePathInsensitive(utils::GetDirectoryW(directory), root);
+    };
+
+    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage)
+        return pathUnderOverflowRoot(entry.SourcePath);
+    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile)
+        return pathUnderOverflowRoot(entry.EntryPath) ||
+               directoryAffected(entry.ResourceRootDirectory);
+    return directoryAffected(entry.RootDirectory);
+}
+
 bool ScriptModHotReloadService::EventLooksRelevant(const ScriptFileWatcherWin32::Event &event,
                                                    const ScriptMod *mod) const {
     if (!mod)
         return false;
     if (event.Overflow)
-        return true;
+        return EventOverflowCanAffectMod(event, mod);
     if (!EventBelongsToKnownMod(event.Path, mod))
         return false;
     const ScriptModEntry &entry = mod->GetEntry();

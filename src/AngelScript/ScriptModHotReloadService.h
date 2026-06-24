@@ -50,6 +50,11 @@ private:
         size_t BlockedRetryCount = 0;
     };
 
+    struct WatchSpec {
+        std::wstring Root;
+        bool Recursive = true;
+    };
+
     ScriptMod *FindMod(const std::string &id) const;
     void RebuildWatches();
     void ClearAutomaticPendingReloads();
@@ -58,6 +63,11 @@ private:
     bool ShouldWatch(const ScriptMod *mod, ScriptModReloadPolicy *outPolicy = nullptr) const;
     std::wstring GetWatchRoot(const ScriptMod *mod) const;
     std::wstring GetModsRoot() const;
+    std::wstring MakeWatchKey(const std::wstring &root) const;
+    void AddDesiredWatch(std::unordered_map<std::wstring, WatchSpec> &desired,
+                         const std::wstring &root,
+                         bool recursive) const;
+    bool EventOverflowCanAffectMod(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
     bool EventLooksRelevant(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
     bool EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const;
     void PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event);
@@ -67,6 +77,7 @@ private:
     bool m_AutomaticEnabled = true;
     std::vector<ModRecord> m_Mods;
     std::unordered_map<std::string, PendingReload> m_Pending;
+    std::unordered_map<std::wstring, WatchSpec> m_ActiveWatches;
     std::unordered_set<std::wstring> m_ReportedNewModRoots;
     ScriptFileWatcherWin32 m_Watcher;
     uint64_t m_LastWatcherDroppedEvents = 0;

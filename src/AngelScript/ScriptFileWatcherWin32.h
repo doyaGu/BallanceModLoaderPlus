@@ -21,6 +21,7 @@ public:
         std::wstring Path;
         DWORD Action = 0;
         bool Overflow = false;
+        bool Recursive = true;
     };
 
     ScriptFileWatcherWin32() = default;
@@ -29,7 +30,8 @@ public:
     ScriptFileWatcherWin32(const ScriptFileWatcherWin32 &) = delete;
     ScriptFileWatcherWin32 &operator=(const ScriptFileWatcherWin32 &) = delete;
 
-    bool Watch(const std::wstring &root);
+    bool Watch(const std::wstring &root, bool recursive = true);
+    bool Unwatch(const std::wstring &root);
     void StopAll();
     std::vector<Event> DrainEvents();
     uint64_t GetDroppedEventCount() const;
@@ -37,14 +39,18 @@ public:
 private:
     struct WatchState {
         std::wstring Root;
+        bool Recursive = true;
         HANDLE Directory = INVALID_HANDLE_VALUE;
         HANDLE StopEvent = nullptr;
         std::thread Worker;
     };
 
+    static bool SameRoot(const std::wstring &left, const std::wstring &right);
+    static void StopWatches(std::vector<WatchState *> &watches);
+
     void WorkerLoop(WatchState *state);
     void PushEvent(const Event &event);
-    void PushOverflowEventLocked(const std::wstring &root);
+    void PushOverflowEventLocked(const std::wstring &root, bool recursive);
 
     mutable std::mutex m_Mutex;
     std::vector<Event> m_Events;

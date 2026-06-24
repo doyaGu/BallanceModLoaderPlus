@@ -137,5 +137,47 @@ TEST(ScriptFileWatcherWin32Test, StopAllClearsQueuedEvents) {
     EXPECT_TRUE(watcher.DrainEvents().empty());
 }
 
+TEST(ScriptFileWatcherWin32Test, NonRecursiveWatchIgnoresNestedFiles) {
+    const TempWatchRoot root;
+    ScriptFileWatcherWin32 watcher;
+    ASSERT_TRUE(watcher.Watch(root.Path().wstring(), false));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    const std::filesystem::path child = root.Path() / "Child";
+    std::filesystem::create_directories(child);
+    const std::filesystem::path nested = child / "Nested.mod.as";
+    WriteText(nested, "class Nested {}\n");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    const std::vector<ScriptFileWatcherWin32::Event> events = watcher.DrainEvents();
+    EXPECT_FALSE(HasPathEvent(events, L"Nested.mod.as"));
+
+    watcher.StopAll();
+}
+
+TEST(ScriptFileWatcherWin32Test, UnwatchStopsOnlySelectedRoot) {
+    const TempWatchRoot rootA;
+    const TempWatchRoot rootB;
+    ScriptFileWatcherWin32 watcher;
+    ASSERT_TRUE(watcher.Watch(rootA.Path().wstring()));
+    ASSERT_TRUE(watcher.Watch(rootB.Path().wstring()));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    EXPECT_TRUE(watcher.Unwatch(rootA.Path().wstring()));
+
+    const std::filesystem::path stale = rootA.Path() / "Stopped.mod.as";
+    const std::filesystem::path live = rootB.Path() / "Live.mod.as";
+    WriteText(stale, "class Stopped {}\n");
+    WriteText(live, "class Live {}\n");
+
+    const std::vector<ScriptFileWatcherWin32::Event> events = DrainUntil(watcher, [](const auto &seen) {
+        return HasPathEvent(seen, L"Live.mod.as");
+    });
+    EXPECT_FALSE(HasPathEvent(events, L"Stopped.mod.as"));
+    EXPECT_TRUE(HasPathEvent(events, L"Live.mod.as"));
+
+    watcher.StopAll();
+}
+
 } // namespace Test
 } // namespace BML

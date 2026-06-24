@@ -1,5 +1,6 @@
 #include "ScriptFileWatcherWin32.h"
 
+#include <algorithm>
 #include <memory>
 
 namespace BML {
@@ -22,15 +23,54 @@ ScriptFileWatcherWin32::~ScriptFileWatcherWin32() {
     StopAll();
 }
 
-bool ScriptFileWatcherWin32::Watch(const std::wstring &root) {
+bool ScriptFileWatcherWin32::SameRoot(const std::wstring &left, const std::wstring &right) {
+    if (left.empty() || right.empty())
+        return false;
+    return _wcsicmp(left.c_str(), right.c_str()) == 0;
+}
+
+void ScriptFileWatcherWin32::StopWatches(std::vector<WatchState *> &watches) {
+    for (WatchState *state : watches) {
+        if (!state)
+            continue;
+        if (state->StopEvent)
+            ::SetEvent(state->StopEvent);
+        if (state->Directory != INVALID_HANDLE_VALUE)
+            ::CancelIoEx(state->Directory, nullptr);
+    }
+
+    for (WatchState *state : watches) {
+        if (!state)
+            continue;
+        if (state->Worker.joinable())
+            state->Worker.join();
+        if (state->Directory != INVALID_HANDLE_VALUE)
+            ::CloseHandle(state->Directory);
+        if (state->StopEvent)
+            ::CloseHandle(state->StopEvent);
+        delete state;
+    }
+    watches.clear();
+}
+
+bool ScriptFileWatcherWin32::Watch(const std::wstring &root, bool recursive) {
     if (root.empty())
         return false;
+
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        for (const WatchState *existing : m_Watches) {
+            if (existing && SameRoot(existing->Root, root) && existing->Recursive == recursive)
+                return true;
+        }
+    }
 
     auto *state = new (std::nothrow) WatchState();
     if (!state)
         return false;
 
     state->Root = root;
+    state->Recursive = recursive;
     state->StopEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
     state->Directory = ::CreateFileW(root.c_str(),
                                      FILE_LIST_DIRECTORY,
@@ -56,6 +96,28 @@ bool ScriptFileWatcherWin32::Watch(const std::wstring &root) {
     return true;
 }
 
+bool ScriptFileWatcherWin32::Unwatch(const std::wstring &root) {
+    if (root.empty())
+        return false;
+
+    std::vector<WatchState *> removed;
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        auto it = std::remove_if(m_Watches.begin(), m_Watches.end(), [&](WatchState *state) {
+            if (!state || !SameRoot(state->Root, root))
+                return false;
+            removed.push_back(state);
+            return true;
+        });
+        m_Watches.erase(it, m_Watches.end());
+    }
+
+    if (removed.empty())
+        return false;
+    StopWatches(removed);
+    return true;
+}
+
 void ScriptFileWatcherWin32::StopAll() {
     std::vector<WatchState *> watches;
     {
@@ -63,26 +125,7 @@ void ScriptFileWatcherWin32::StopAll() {
         watches.swap(m_Watches);
     }
 
-    for (WatchState *state : watches) {
-        if (!state)
-            continue;
-        if (state->StopEvent)
-            ::SetEvent(state->StopEvent);
-        if (state->Directory != INVALID_HANDLE_VALUE)
-            ::CancelIoEx(state->Directory, nullptr);
-    }
-
-    for (WatchState *state : watches) {
-        if (!state)
-            continue;
-        if (state->Worker.joinable())
-            state->Worker.join();
-        if (state->Directory != INVALID_HANDLE_VALUE)
-            ::CloseHandle(state->Directory);
-        if (state->StopEvent)
-            ::CloseHandle(state->StopEvent);
-        delete state;
-    }
+    StopWatches(watches);
 
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
@@ -122,7 +165,7 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
         const BOOL started = ::ReadDirectoryChangesW(state->Directory,
                                                      buffer.data(),
                                                      static_cast<DWORD>(buffer.size()),
-                                                     TRUE,
+                                                     state->Recursive ? TRUE : FALSE,
                                                      filter,
                                                      nullptr,
                                                      &overlapped,
@@ -149,6 +192,7 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
                 overflow.Root = state->Root;
                 overflow.Path = state->Root;
                 overflow.Overflow = true;
+                overflow.Recursive = state->Recursive;
                 PushEvent(overflow);
                 ::CloseHandle(overlapped.hEvent);
                 continue;
@@ -161,6 +205,7 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
                 event.Root = state->Root;
                 event.Path = JoinWatchedPath(state->Root, info->FileName, info->FileNameLength);
                 event.Action = info->Action;
+                event.Recursive = state->Recursive;
                 PushEvent(event);
                 if (info->NextEntryOffset == 0)
                     break;
@@ -174,18 +219,18 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
 void ScriptFileWatcherWin32::PushEvent(const Event &event) {
     std::lock_guard<std::mutex> lock(m_Mutex);
     if (event.Overflow) {
-        PushOverflowEventLocked(event.Root);
+        PushOverflowEventLocked(event.Root, event.Recursive);
         return;
     }
     if (m_Events.size() >= kMaxQueuedEvents) {
         ++m_DroppedEvents;
-        PushOverflowEventLocked(event.Root);
+        PushOverflowEventLocked(event.Root, event.Recursive);
         return;
     }
     m_Events.push_back(event);
 }
 
-void ScriptFileWatcherWin32::PushOverflowEventLocked(const std::wstring &root) {
+void ScriptFileWatcherWin32::PushOverflowEventLocked(const std::wstring &root, bool recursive) {
     if (m_OverflowQueued)
         return;
     if (m_Events.size() >= kMaxQueuedEvents && !m_Events.empty()) {
@@ -197,6 +242,7 @@ void ScriptFileWatcherWin32::PushOverflowEventLocked(const std::wstring &root) {
     overflow.Root = root;
     overflow.Path = root;
     overflow.Overflow = true;
+    overflow.Recursive = recursive;
     m_Events.push_back(overflow);
     m_OverflowQueued = true;
 }
