@@ -78,6 +78,8 @@ struct ScriptDevStatusSnapshot {
     size_t LoadedCount = 0;
     size_t FailedCount = 0;
     size_t ReloadingCount = 0;
+    size_t PendingActions = 0;
+    uint64_t DroppedActions = 0;
     uint64_t DroppedEvents = 0;
     uint64_t EventCount = 0;
 };
@@ -140,6 +142,7 @@ public:
 
 private:
     static constexpr size_t kEventCapacity = 8192;
+    static constexpr size_t kActionCapacity = 256;
 
     ScriptMod *FindScriptMod(const std::string &id) const;
     void RefreshSnapshotsIfNeeded(bool force);
@@ -188,6 +191,7 @@ private:
 
     mutable std::mutex m_ActionMutex;
     std::deque<ScriptDevAction> m_Actions;
+    uint64_t m_DroppedActions = 0;
 
     std::vector<ScriptModSnapshot> m_Snapshots;
     uint64_t m_SnapshotGeneration = 0;

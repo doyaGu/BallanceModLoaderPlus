@@ -584,11 +584,28 @@ void ScriptDevToolsService::PublishLogLine(const char *level, const char *source
 }
 
 void ScriptDevToolsService::EnqueueAction(const ScriptDevAction &action) {
+    const std::string target = action.ModId.empty() ? "all" : action.ModId;
+    bool dropped = false;
+    uint64_t droppedCount = 0;
     {
         std::lock_guard<std::mutex> lock(m_ActionMutex);
+        if (m_Actions.size() >= kActionCapacity) {
+            m_Actions.pop_front();
+            dropped = true;
+            droppedCount = ++m_DroppedActions;
+        }
         m_Actions.push_back(action);
     }
-    std::string target = action.ModId.empty() ? "all" : action.ModId;
+    if (dropped) {
+        PublishEvent(ScriptDevEventSeverity::Warn,
+                     "ScriptActionDropped",
+                     target,
+                     "action",
+                     "",
+                     "Script action queue dropped the oldest pending action.",
+                     {{"capacity", std::to_string(kActionCapacity)},
+                      {"droppedActions", std::to_string(droppedCount)}});
+    }
     PublishEvent(ScriptDevEventSeverity::Info,
                  "ScriptActionQueued",
                  target,
@@ -835,6 +852,11 @@ ScriptDevStatusSnapshot ScriptDevToolsService::GetStatusSnapshot() {
         status.DroppedEvents = m_EventStore.GetDroppedCount();
         status.EventCount = m_EventStore.GetCount();
     }
+    {
+        std::lock_guard<std::mutex> lock(m_ActionMutex);
+        status.PendingActions = m_Actions.size();
+        status.DroppedActions = m_DroppedActions;
+    }
     return status;
 }
 
@@ -845,6 +867,8 @@ std::string ScriptDevToolsService::FormatStatus() {
            << " loaded=" << status.LoadedCount
            << " failed=" << status.FailedCount
            << " reloading=" << status.ReloadingCount
+           << " actions=" << status.PendingActions
+           << " actionDropped=" << status.DroppedActions
            << " logs=" << status.EventCount
            << " dropped=" << status.DroppedEvents;
     return stream.str();
@@ -1219,6 +1243,12 @@ void ScriptDevToolsService::DrawStatusBar() {
     ImGui::Text("logs %llu", static_cast<unsigned long long>(status.EventCount));
     ImGui::SameLine();
     ImGui::Text("dropped %llu", static_cast<unsigned long long>(status.DroppedEvents));
+    if (status.PendingActions != 0 || status.DroppedActions != 0) {
+        ImGui::SameLine();
+        ImGui::Text("actions %zu", status.PendingActions);
+        ImGui::SameLine();
+        ImGui::Text("action dropped %llu", static_cast<unsigned long long>(status.DroppedActions));
+    }
 }
 
 void ScriptDevToolsService::DrawModList() {
