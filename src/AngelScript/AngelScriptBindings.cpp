@@ -68,6 +68,11 @@ static bool RejectScriptObjectConstructionHostCall(const char *apiName) {
     return BML::ScriptModRuntime::RecordConstructionHostCallViolation(apiName);
 }
 
+static bool RejectRestrictedHostCall(const char *apiName) {
+    return BML::ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
+           BML::ScriptModRuntime::RecordStateHookHostCallViolation(apiName);
+}
+
 static std::string CopyAndFree(char *value) {
     if (!value)
         return {};
@@ -102,7 +107,7 @@ bool BMLAS_IsPlaying() { ModContext *ctx = nullptr; return RequireContext(ctx) &
 bool BMLAS_IsCheatEnabled() { ModContext *ctx = nullptr; return RequireContext(ctx) && ctx->IsCheatEnabled(); }
 
 void BMLAS_EnableCheat(bool enable) {
-    if (RejectScriptObjectConstructionHostCall("BML::EnableCheat"))
+    if (RejectRestrictedHostCall("BML::EnableCheat"))
         return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx))
@@ -110,7 +115,7 @@ void BMLAS_EnableCheat(bool enable) {
 }
 
 void BMLAS_SendIngameMessage(const std::string &message) {
-    if (RejectScriptObjectConstructionHostCall("BML::SendIngameMessage"))
+    if (RejectRestrictedHostCall("BML::SendIngameMessage"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -118,7 +123,7 @@ void BMLAS_SendIngameMessage(const std::string &message) {
 }
 
 void BMLAS_ExecuteCommand(const std::string &command) {
-    if (RejectScriptObjectConstructionHostCall("BML::ExecuteCommand"))
+    if (RejectRestrictedHostCall("BML::ExecuteCommand"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -126,7 +131,7 @@ void BMLAS_ExecuteCommand(const std::string &command) {
 }
 
 void BMLAS_OpenModsMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::OpenModsMenu"))
+    if (RejectRestrictedHostCall("BML::OpenModsMenu"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -134,7 +139,7 @@ void BMLAS_OpenModsMenu() {
 }
 
 void BMLAS_CloseModsMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::CloseModsMenu"))
+    if (RejectRestrictedHostCall("BML::CloseModsMenu"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -142,7 +147,7 @@ void BMLAS_CloseModsMenu() {
 }
 
 void BMLAS_OpenMapMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::OpenMapMenu"))
+    if (RejectRestrictedHostCall("BML::OpenMapMenu"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -150,7 +155,7 @@ void BMLAS_OpenMapMenu() {
 }
 
 void BMLAS_CloseMapMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::CloseMapMenu"))
+    if (RejectRestrictedHostCall("BML::CloseMapMenu"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -158,7 +163,7 @@ void BMLAS_CloseMapMenu() {
 }
 
 void BMLAS_ClearIngameMessages() {
-    if (RejectScriptObjectConstructionHostCall("BML::ClearIngameMessages"))
+    if (RejectRestrictedHostCall("BML::ClearIngameMessages"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -181,7 +186,7 @@ int BMLAS_GetHUD() {
 }
 
 void BMLAS_SetHUD(int mode) {
-    if (RejectScriptObjectConstructionHostCall("BML::SetHUD"))
+    if (RejectRestrictedHostCall("BML::SetHUD"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -189,7 +194,7 @@ void BMLAS_SetHUD(int mode) {
 }
 
 void BMLAS_ShowTitle(bool show) {
-    if (RejectScriptObjectConstructionHostCall("BML::ShowTitle"))
+    if (RejectRestrictedHostCall("BML::ShowTitle"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -197,7 +202,7 @@ void BMLAS_ShowTitle(bool show) {
 }
 
 void BMLAS_ShowFPS(bool show) {
-    if (RejectScriptObjectConstructionHostCall("BML::ShowFPS"))
+    if (RejectRestrictedHostCall("BML::ShowFPS"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -205,7 +210,7 @@ void BMLAS_ShowFPS(bool show) {
 }
 
 void BMLAS_ShowSRTimer(bool show) {
-    if (RejectScriptObjectConstructionHostCall("BML::ShowSRTimer"))
+    if (RejectRestrictedHostCall("BML::ShowSRTimer"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -213,7 +218,7 @@ void BMLAS_ShowSRTimer(bool show) {
 }
 
 void BMLAS_StartSRTimer() {
-    if (RejectScriptObjectConstructionHostCall("BML::StartSRTimer"))
+    if (RejectRestrictedHostCall("BML::StartSRTimer"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -221,7 +226,7 @@ void BMLAS_StartSRTimer() {
 }
 
 void BMLAS_PauseSRTimer() {
-    if (RejectScriptObjectConstructionHostCall("BML::PauseSRTimer"))
+    if (RejectRestrictedHostCall("BML::PauseSRTimer"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -229,7 +234,7 @@ void BMLAS_PauseSRTimer() {
 }
 
 void BMLAS_ResetSRTimer() {
-    if (RejectScriptObjectConstructionHostCall("BML::ResetSRTimer"))
+    if (RejectRestrictedHostCall("BML::ResetSRTimer"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -242,37 +247,37 @@ float BMLAS_GetSRTime() {
 }
 
 void BMLAS_CoreUI_SendMessage(const std::string &message) {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::UI::SendMessage"))
+    if (RejectRestrictedHostCall("BML::Core::UI::SendMessage"))
         return;
     BML::Core::UI::SendMessage(message.c_str());
 }
 
 void BMLAS_CoreUI_ClearMessages() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::UI::ClearMessages"))
+    if (RejectRestrictedHostCall("BML::Core::UI::ClearMessages"))
         return;
     BML::Core::UI::ClearMessages();
 }
 
 void BMLAS_CoreMenu_OpenModsMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::OpenModsMenu"))
+    if (RejectRestrictedHostCall("BML::Core::Menu::OpenModsMenu"))
         return;
     BML::Core::Menu::OpenModsMenu();
 }
 
 void BMLAS_CoreMenu_CloseModsMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::CloseModsMenu"))
+    if (RejectRestrictedHostCall("BML::Core::Menu::CloseModsMenu"))
         return;
     BML::Core::Menu::CloseModsMenu();
 }
 
 void BMLAS_CoreMenu_OpenMapMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::OpenMapMenu"))
+    if (RejectRestrictedHostCall("BML::Core::Menu::OpenMapMenu"))
         return;
     BML::Core::Menu::OpenMapMenu();
 }
 
 void BMLAS_CoreMenu_CloseMapMenu() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::Menu::CloseMapMenu"))
+    if (RejectRestrictedHostCall("BML::Core::Menu::CloseMapMenu"))
         return;
     BML::Core::Menu::CloseMapMenu();
 }
@@ -282,43 +287,43 @@ int BMLAS_CoreHUD_GetMode() {
 }
 
 void BMLAS_CoreHUD_SetMode(int mode) {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::SetMode"))
+    if (RejectRestrictedHostCall("BML::Core::HUD::SetMode"))
         return;
     BML::Core::HUD::SetMode(mode);
 }
 
 void BMLAS_CoreHUD_ShowTitle(bool show) {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ShowTitle"))
+    if (RejectRestrictedHostCall("BML::Core::HUD::ShowTitle"))
         return;
     BML::Core::HUD::ShowTitle(show);
 }
 
 void BMLAS_CoreHUD_ShowFPS(bool show) {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ShowFPS"))
+    if (RejectRestrictedHostCall("BML::Core::HUD::ShowFPS"))
         return;
     BML::Core::HUD::ShowFPS(show);
 }
 
 void BMLAS_CoreHUD_ShowSRTimer(bool show) {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ShowSRTimer"))
+    if (RejectRestrictedHostCall("BML::Core::HUD::ShowSRTimer"))
         return;
     BML::Core::HUD::ShowSRTimer(show);
 }
 
 void BMLAS_CoreHUD_StartSRTimer() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::StartSRTimer"))
+    if (RejectRestrictedHostCall("BML::Core::HUD::StartSRTimer"))
         return;
     BML::Core::HUD::StartSRTimer();
 }
 
 void BMLAS_CoreHUD_PauseSRTimer() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::PauseSRTimer"))
+    if (RejectRestrictedHostCall("BML::Core::HUD::PauseSRTimer"))
         return;
     BML::Core::HUD::PauseSRTimer();
 }
 
 void BMLAS_CoreHUD_ResetSRTimer() {
-    if (RejectScriptObjectConstructionHostCall("BML::Core::HUD::ResetSRTimer"))
+    if (RejectRestrictedHostCall("BML::Core::HUD::ResetSRTimer"))
         return;
     BML::Core::HUD::ResetSRTimer();
 }
@@ -328,7 +333,7 @@ float BMLAS_CoreHUD_GetSRTime() {
 }
 
 void BMLAS_SkipRenderForNextTick() {
-    if (RejectScriptObjectConstructionHostCall("BML::SkipRenderForNextTick"))
+    if (RejectRestrictedHostCall("BML::SkipRenderForNextTick"))
         return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx))
@@ -346,7 +351,7 @@ CKRenderContext *BMLAS_GetRenderContext() {
 }
 
 void BMLAS_ExitGame() {
-    if (RejectScriptObjectConstructionHostCall("BML::ExitGame"))
+    if (RejectRestrictedHostCall("BML::ExitGame"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
@@ -428,7 +433,7 @@ std::string BMLAS_GetDirectoryUtf8(DirectoryType type) {
 
 static bool BMLAS_InputHookIsValid(InputHook *input) { return BML::ScriptFacadeAccess::IsInputValid(input); }
 static void BMLAS_InputHookEnableKeyboardRepetition(InputHook *input, bool enable) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::EnableKeyboardRepetition"))
+    if (RejectRestrictedHostCall("InputHook::EnableKeyboardRepetition"))
         return;
     BML::ScriptFacadeAccess::EnableKeyboardRepetition(input, enable);
 }
@@ -487,46 +492,46 @@ static bool BMLAS_InputHookIsJoystickButtonDown(InputHook *input, int joystick, 
     return BML::ScriptFacadeAccess::IsJoystickButtonDown(input, joystick, button);
 }
 static void BMLAS_InputHookPause(InputHook *input, bool pause) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::Pause"))
+    if (RejectRestrictedHostCall("InputHook::Pause"))
         return;
     BML::ScriptFacadeAccess::PauseInput(input, pause);
 }
 static void BMLAS_InputHookShowCursor(InputHook *input, bool show) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::ShowCursor"))
+    if (RejectRestrictedHostCall("InputHook::ShowCursor"))
         return;
     BML::ScriptFacadeAccess::ShowCursor(input, show);
 }
 static bool BMLAS_InputHookGetCursorVisibility(InputHook *input) { return BML::ScriptFacadeAccess::GetCursorVisibility(input); }
 static int BMLAS_InputHookGetSystemCursor(InputHook *input) { return BML::ScriptFacadeAccess::GetSystemCursor(input); }
 static void BMLAS_InputHookSetSystemCursor(InputHook *input, int cursor) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::SetSystemCursor"))
+    if (RejectRestrictedHostCall("InputHook::SetSystemCursor"))
         return;
     BML::ScriptFacadeAccess::SetSystemCursor(input, cursor);
 }
 static bool BMLAS_InputHookIsBlock(InputHook *input) { return BML::ScriptFacadeAccess::IsBlock(input); }
 static void BMLAS_InputHookSetBlock(InputHook *input, bool block) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::SetBlock"))
+    if (RejectRestrictedHostCall("InputHook::SetBlock"))
         return;
     BML::ScriptFacadeAccess::SetBlock(input, block);
 }
 static int BMLAS_InputHookIsBlocked(InputHook *input, int device) { return BML::ScriptFacadeAccess::IsBlocked(input, device); }
 static void BMLAS_InputHookBlock(InputHook *input, int device) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::Block"))
+    if (RejectRestrictedHostCall("InputHook::Block"))
         return;
     BML::ScriptFacadeAccess::Block(input, device);
 }
 static void BMLAS_InputHookUnblock(InputHook *input, int device) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::Unblock"))
+    if (RejectRestrictedHostCall("InputHook::Unblock"))
         return;
     BML::ScriptFacadeAccess::Unblock(input, device);
 }
 static uint64_t BMLAS_InputHookAcquireBlock(InputHook *input, unsigned int mask) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::AcquireBlock"))
+    if (RejectRestrictedHostCall("InputHook::AcquireBlock"))
         return 0;
     return BML::ScriptFacadeAccess::AcquireBlock(input, mask);
 }
 static void BMLAS_InputHookReleaseBlock(InputHook *input, uint64_t token) {
-    if (RejectScriptObjectConstructionHostCall("InputHook::ReleaseBlock"))
+    if (RejectRestrictedHostCall("InputHook::ReleaseBlock"))
         return;
     BML::ScriptFacadeAccess::ReleaseBlock(input, token);
 }
@@ -654,7 +659,7 @@ CKBehavior *BMLAS_GetScriptByName(const std::string &name) {
 }
 
 void BMLAS_SetIC(CKBeObject *object, bool hierarchy) {
-    if (RejectScriptObjectConstructionHostCall("BML::SetIC"))
+    if (RejectRestrictedHostCall("BML::SetIC"))
         return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx) && object)
@@ -662,7 +667,7 @@ void BMLAS_SetIC(CKBeObject *object, bool hierarchy) {
 }
 
 void BMLAS_RestoreIC(CKBeObject *object, bool hierarchy) {
-    if (RejectScriptObjectConstructionHostCall("BML::RestoreIC"))
+    if (RejectRestrictedHostCall("BML::RestoreIC"))
         return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx) && object)
@@ -670,7 +675,7 @@ void BMLAS_RestoreIC(CKBeObject *object, bool hierarchy) {
 }
 
 void BMLAS_Show(CKBeObject *object, CK_OBJECT_SHOWOPTION show, bool hierarchy) {
-    if (RejectScriptObjectConstructionHostCall("BML::Show"))
+    if (RejectRestrictedHostCall("BML::Show"))
         return;
     ModContext *ctx = nullptr;
     if (RequireContext(ctx) && object)
@@ -691,7 +696,7 @@ std::string BMLAS_RemoveExtensionUtf8(const std::string &path) { return CopyAndF
 std::string BMLAS_ReadTextFileUtf8(const std::string &path) { return CopyAndFree(BML_ReadTextFileUtf8(path.c_str())); }
 
 bool BMLAS_DataShareSetString(const std::string &key, const std::string &value, const std::string &name) {
-    if (RejectScriptObjectConstructionHostCall("BML::DataShareSetString"))
+    if (RejectRestrictedHostCall("BML::DataShareSetString"))
         return false;
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
@@ -703,7 +708,7 @@ bool BMLAS_DataShareSetString(const std::string &key, const std::string &value, 
 
 template <typename T>
 bool BMLAS_DataShareSetValue(const std::string &key, T value, const std::string &name) {
-    if (RejectScriptObjectConstructionHostCall("BML::DataShareSet"))
+    if (RejectRestrictedHostCall("BML::DataShareSet"))
         return false;
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
@@ -782,7 +787,7 @@ bool BMLAS_DataShareHas(const std::string &key, const std::string &name) {
 }
 
 void BMLAS_DataShareRemove(const std::string &key, const std::string &name) {
-    if (RejectScriptObjectConstructionHostCall("BML::DataShareRemove"))
+    if (RejectRestrictedHostCall("BML::DataShareRemove"))
         return;
     BML_DataShare *share = BML_GetDataShare(name.empty() ? nullptr : name.c_str());
     if (!share)
@@ -1143,56 +1148,78 @@ public:
     }
 
     void SetString(const std::string &value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetString"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetString(value.c_str());
     }
 
     void SetBoolean(bool value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetBoolean"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetBoolean(value);
     }
 
     void SetInteger(int value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetInteger"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetInteger(value);
     }
 
     void SetFloat(float value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetFloat"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetFloat(value);
     }
 
     void SetKey(CKKEYBOARD value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetKey"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetKey(value);
     }
 
     void SetComment(const std::string &comment) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetComment"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetComment(comment.c_str());
     }
 
     void SetDefaultString(const std::string &value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetDefaultString"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetDefaultString(value.c_str());
     }
 
     void SetDefaultBoolean(bool value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetDefaultBoolean"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetDefaultBoolean(value);
     }
 
     void SetDefaultInteger(int value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetDefaultInteger"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetDefaultInteger(value);
     }
 
     void SetDefaultFloat(float value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetDefaultFloat"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetDefaultFloat(value);
     }
 
     void SetDefaultKey(CKKEYBOARD value) const {
+        if (RejectRestrictedHostCall("ConfigProperty::SetDefaultKey"))
+            return;
         if (IProperty *property = ResolveProperty())
             property->SetDefaultKey(value);
     }
@@ -1240,6 +1267,8 @@ public:
     }
 
     void SetCategoryComment(const std::string &category, const std::string &comment) const {
+        if (RejectRestrictedHostCall("Config::SetCategoryComment"))
+            return;
         if (BML::ScriptMod *owner = Resolve())
             owner->SetConfigCategoryComment(category, comment);
     }
@@ -1272,7 +1301,7 @@ static BMLAS_ConfigPropertyRef *BMLAS_ConfigEventBorrowProperty(const BML::Scrip
 }
 
 static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions &options) {
-    if (RejectScriptObjectConstructionHostCall("CK::LoadObject"))
+    if (RejectRestrictedHostCall("CK::LoadObject"))
         return BMLAS_CreateObjectLoadResult(nullptr, false, 0, {});
     ModContext *ctx = nullptr;
     if (!RequireLoadedContext(ctx))
@@ -1310,7 +1339,7 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
                                            const BMLAS_Text2DDefinition &definition,
                                            CKMaterial *backgroundMaterial,
                                            CKMaterial *caretMaterial) {
-    if (RejectScriptObjectConstructionHostCall("Text::Create2DText"))
+    if (RejectRestrictedHostCall("Text::Create2DText"))
         return nullptr;
     ModContext *ctx = nullptr;
     if (!ownerScript || !target || !RequireLoadedContext(ctx))
@@ -1379,14 +1408,14 @@ static bool BMLAS_ContextRegisterModule(const BML::ScriptModContextView *view,
 }
 
 static void BMLAS_CK_Set3dEntityPosition(CK3dEntity *entity, const VxVector &position) {
-    if (RejectScriptObjectConstructionHostCall("CK3dEntity::SetPosition"))
+    if (RejectRestrictedHostCall("CK3dEntity::SetPosition"))
         return;
     if (entity)
         entity->SetPosition(&position);
 }
 
 static void BMLAS_CK_Set3dEntityScale(CK3dEntity *entity, const VxVector &scale, bool local) {
-    if (RejectScriptObjectConstructionHostCall("CK3dEntity::SetScale"))
+    if (RejectRestrictedHostCall("CK3dEntity::SetScale"))
         return;
     if (entity)
         entity->SetScale(&scale, FALSE, local ? TRUE : FALSE);
@@ -1468,7 +1497,7 @@ static bool BMLAS_CK_SetDataArrayString(CKDataArray *array,
                                         int row,
                                         int column,
                                         const std::string &value) {
-    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetString"))
+    if (RejectRestrictedHostCall("CKDataArray::SetString"))
         return false;
     if (!BMLAS_CK_HasDataArrayCell(array, row, column))
         return false;
@@ -1477,7 +1506,7 @@ static bool BMLAS_CK_SetDataArrayString(CKDataArray *array,
 }
 
 static bool BMLAS_CK_SetDataArrayBool(CKDataArray *array, int row, int column, bool value) {
-    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetBool"))
+    if (RejectRestrictedHostCall("CKDataArray::SetBool"))
         return false;
     if (!BMLAS_CK_HasDataArrayCell(array, row, column))
         return false;
@@ -1486,13 +1515,13 @@ static bool BMLAS_CK_SetDataArrayBool(CKDataArray *array, int row, int column, b
 }
 
 static bool BMLAS_CK_SetDataArrayInt(CKDataArray *array, int row, int column, int value) {
-    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetInt"))
+    if (RejectRestrictedHostCall("CKDataArray::SetInt"))
         return false;
     return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
 }
 
 static bool BMLAS_CK_SetDataArrayFloat(CKDataArray *array, int row, int column, float value) {
-    if (RejectScriptObjectConstructionHostCall("CKDataArray::SetFloat"))
+    if (RejectRestrictedHostCall("CKDataArray::SetFloat"))
         return false;
     return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
 }
@@ -1505,7 +1534,7 @@ static bool BMLAS_Physics_HasTarget(CK3dEntity *target) {
 static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
                                             const BMLAS_PhysicalizeDefinition &definition,
                                             CKMesh *mesh) {
-    if (RejectScriptObjectConstructionHostCall("Physics::PhysicalizeConvex"))
+    if (RejectRestrictedHostCall("Physics::PhysicalizeConvex"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1521,7 +1550,7 @@ static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
                                           const BMLAS_PhysicalizeDefinition &definition,
                                           const VxVector &center,
                                           float radius) {
-    if (RejectScriptObjectConstructionHostCall("Physics::PhysicalizeBall"))
+    if (RejectRestrictedHostCall("Physics::PhysicalizeBall"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1536,7 +1565,7 @@ static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
 static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
                                              const BMLAS_PhysicalizeDefinition &definition,
                                              CKMesh *mesh) {
-    if (RejectScriptObjectConstructionHostCall("Physics::PhysicalizeConcave"))
+    if (RejectRestrictedHostCall("Physics::PhysicalizeConcave"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1549,7 +1578,7 @@ static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
 }
 
 static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
-    if (RejectScriptObjectConstructionHostCall("Physics::Unphysicalize"))
+    if (RejectRestrictedHostCall("Physics::Unphysicalize"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1563,7 +1592,7 @@ static bool BMLAS_Physics_SetForce(CK3dEntity *target,
                                    const VxVector &direction,
                                    CK3dEntity *directionReference,
                                    float force) {
-    if (RejectScriptObjectConstructionHostCall("Physics::SetForce"))
+    if (RejectRestrictedHostCall("Physics::SetForce"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1572,7 +1601,7 @@ static bool BMLAS_Physics_SetForce(CK3dEntity *target,
 }
 
 static bool BMLAS_Physics_ClearForce(CK3dEntity *target) {
-    if (RejectScriptObjectConstructionHostCall("Physics::ClearForce"))
+    if (RejectRestrictedHostCall("Physics::ClearForce"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1586,7 +1615,7 @@ static bool BMLAS_Physics_Impulse(CK3dEntity *target,
                                   const VxVector &direction,
                                   CK3dEntity *directionReference,
                                   float impulse) {
-    if (RejectScriptObjectConstructionHostCall("Physics::Impulse"))
+    if (RejectRestrictedHostCall("Physics::Impulse"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1595,7 +1624,7 @@ static bool BMLAS_Physics_Impulse(CK3dEntity *target,
 }
 
 static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
-    if (RejectScriptObjectConstructionHostCall("Physics::WakeUp"))
+    if (RejectRestrictedHostCall("Physics::WakeUp"))
         return false;
     if (!BMLAS_Physics_HasTarget(target))
         return false;
@@ -1604,7 +1633,7 @@ static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
 }
 
 static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {
-    if (RejectScriptObjectConstructionHostCall("BML::AddTimer"))
+    if (RejectRestrictedHostCall("BML::AddTimer"))
         return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     if (owner)
@@ -1613,7 +1642,7 @@ static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {
 }
 
 static BML::ScriptCommandRef *BMLAS_RegisterCommand(asIScriptObject *command) {
-    if (RejectScriptObjectConstructionHostCall("BML::RegisterCommand"))
+    if (RejectRestrictedHostCall("BML::RegisterCommand"))
         return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     if (owner)
@@ -1626,20 +1655,20 @@ static BML::ScriptCommandRef *BMLAS_ContextRegisterCommandDelegate(
     const BMLAS_CommandDefinition &definition,
     asIScriptFunction *execute,
     asIScriptFunction *complete) {
-    if (RejectScriptObjectConstructionHostCall("BML::ModContext::RegisterCommand"))
+    if (RejectRestrictedHostCall("BML::ModContext::RegisterCommand"))
         return nullptr;
     return context ? context->RegisterCommand(definition, execute, complete) : nullptr;
 }
 
 static bool BMLAS_UnregisterCommand(const std::string &name) {
-    if (RejectScriptObjectConstructionHostCall("BML::UnregisterCommand"))
+    if (RejectRestrictedHostCall("BML::UnregisterCommand"))
         return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->UnregisterScriptCommand(name);
 }
 
 static BML::ScriptDataShareRequestRef *BMLAS_RequestDataShare(asIScriptObject *request) {
-    if (RejectScriptObjectConstructionHostCall("BML::RequestDataShare"))
+    if (RejectRestrictedHostCall("BML::RequestDataShare"))
         return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     if (owner)
@@ -1653,7 +1682,7 @@ static BML::ScriptDataShareRequestRef *BMLAS_ContextRequestDataShareDelegate(
     int type,
     asIScriptFunction *callback,
     const std::string &name) {
-    if (RejectScriptObjectConstructionHostCall("BML::ModContext::RequestDataShare"))
+    if (RejectRestrictedHostCall("BML::ModContext::RequestDataShare"))
         return nullptr;
     return context ? context->RequestDataShare(key, type, callback, name) : nullptr;
 }
@@ -1663,7 +1692,7 @@ static BML::ScriptHookBlockRef *BMLAS_Hook_Create(CKBehavior *ownerScript,
                                                   const std::string &name,
                                                   int inputCount,
                                                   int outputCount) {
-    if (RejectScriptObjectConstructionHostCall("BML::Hook::Create"))
+    if (RejectRestrictedHostCall("BML::Hook::Create"))
         return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner ? owner->CreateScriptHookBlock(ownerScript, callback, name, inputCount, outputCount) : nullptr;
@@ -1675,7 +1704,7 @@ static BML::ScriptHookBlockRef *BMLAS_Hook_InsertAfter(CKBehavior *ownerScript,
                                                        const std::string &name,
                                                        int sourceOutput,
                                                        int targetInput) {
-    if (RejectScriptObjectConstructionHostCall("BML::Hook::InsertAfter"))
+    if (RejectRestrictedHostCall("BML::Hook::InsertAfter"))
         return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner ? owner->InsertScriptHookBlockAfter(ownerScript, source, callback, name, sourceOutput, targetInput) : nullptr;
@@ -1687,7 +1716,7 @@ static BML::ScriptHookBlockRef *BMLAS_Hook_InsertBefore(CKBehavior *ownerScript,
                                                         const std::string &name,
                                                         int sourceOutput,
                                                         int targetInput) {
-    if (RejectScriptObjectConstructionHostCall("BML::Hook::InsertBefore"))
+    if (RejectRestrictedHostCall("BML::Hook::InsertBefore"))
         return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner ? owner->InsertScriptHookBlockBefore(ownerScript, target, callback, name, sourceOutput, targetInput) : nullptr;
@@ -1700,7 +1729,7 @@ static BML::ScriptHookBlockRef *BMLAS_Hook_InsertBetween(CKBehavior *ownerScript
                                                          const std::string &name,
                                                          int sourceOutput,
                                                          int targetInput) {
-    if (RejectScriptObjectConstructionHostCall("BML::Hook::InsertBetween"))
+    if (RejectRestrictedHostCall("BML::Hook::InsertBetween"))
         return nullptr;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner ? owner->InsertScriptHookBlockBetween(ownerScript, source, target, callback, name, sourceOutput, targetInput) : nullptr;
@@ -1728,7 +1757,7 @@ static bool BMLAS_RegisterBallType(const std::string &ballFile,
                                    float rotDamp,
                                    float force,
                                    float radius) {
-    if (RejectScriptObjectConstructionHostCall("BML::RegisterBallType"))
+    if (RejectRestrictedHostCall("BML::RegisterBallType"))
         return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptBallType(ballFile, ballId, ballName, objName, friction, elasticity, mass,
@@ -1741,7 +1770,7 @@ static bool BMLAS_RegisterFloorType(const std::string &floorName,
                                     float mass,
                                     const std::string &collGroup,
                                     bool enableColl) {
-    if (RejectScriptObjectConstructionHostCall("BML::RegisterFloorType"))
+    if (RejectRestrictedHostCall("BML::RegisterFloorType"))
         return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
@@ -1759,7 +1788,7 @@ static bool BMLAS_RegisterModulBall(const std::string &modulName,
                                     float linearDamp,
                                     float rotDamp,
                                     float radius) {
-    if (RejectScriptObjectConstructionHostCall("BML::RegisterModulBall"))
+    if (RejectRestrictedHostCall("BML::RegisterModulBall"))
         return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
@@ -1777,7 +1806,7 @@ static bool BMLAS_RegisterModulConvex(const std::string &modulName,
                                       bool calcMassCenter,
                                       float linearDamp,
                                       float rotDamp) {
-    if (RejectScriptObjectConstructionHostCall("BML::RegisterModulConvex"))
+    if (RejectRestrictedHostCall("BML::RegisterModulConvex"))
         return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
@@ -1785,14 +1814,14 @@ static bool BMLAS_RegisterModulConvex(const std::string &modulName,
 }
 
 static bool BMLAS_RegisterTrafo(const std::string &modulName) {
-    if (RejectScriptObjectConstructionHostCall("BML::RegisterTrafo"))
+    if (RejectRestrictedHostCall("BML::RegisterTrafo"))
         return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptTrafo(modulName);
 }
 
 static bool BMLAS_RegisterModul(const std::string &modulName) {
-    if (RejectScriptObjectConstructionHostCall("BML::RegisterModul"))
+    if (RejectRestrictedHostCall("BML::RegisterModul"))
         return false;
     BML::ScriptMod *owner = BMLAS_CurrentScriptMod();
     return owner && owner->RegisterScriptModul(modulName);
