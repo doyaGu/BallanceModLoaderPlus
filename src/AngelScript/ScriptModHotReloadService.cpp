@@ -475,7 +475,14 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
                                                const std::string &reason) {
     if (!mod || !mod->GetID())
         return;
-    PendingReload &pending = m_Pending[mod->GetID()];
+    const std::string id = mod->GetID();
+    auto existingIt = m_Pending.find(id);
+    const bool replaced = existingIt != m_Pending.end();
+    PendingReload previous;
+    if (replaced)
+        previous = existingIt->second;
+
+    PendingReload &pending = m_Pending[id];
     pending.Options = options;
     pending.Due = std::chrono::steady_clock::now();
     pending.QueuedAt = pending.Due;
@@ -483,10 +490,28 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
     pending.BlockedRetryCount = 0;
     pending.Reason = reason;
     if (m_Context && m_Context->GetScriptDevTools()) {
+        if (replaced) {
+            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                         "ScriptReloadPendingReplaced",
+                                                         id,
+                                                         "reload",
+                                                         "",
+                                                         "Pending script reload was replaced by a newer request.",
+                                                         {{"previousReason", previous.Reason},
+                                                          {"previousAutomatic", previous.Options.Automatic ? "true" : "false"},
+                                                          {"previousDryRun", previous.Options.DryRun ? "true" : "false"},
+                                                          {"previousCheckState", previous.Options.CheckStateHooks ? "true" : "false"},
+                                                          {"previousForceExports", previous.Options.ForceExports ? "true" : "false"},
+                                                          {"reason", reason},
+                                                          {"automatic", options.Automatic ? "true" : "false"},
+                                                          {"dryRun", options.DryRun ? "true" : "false"},
+                                                          {"checkState", options.CheckStateHooks ? "true" : "false"},
+                                                          {"forceExports", options.ForceExports ? "true" : "false"}});
+        }
         const bool dryRun = options.DryRun;
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                      dryRun ? "ScriptReloadDryRunQueued" : "ScriptReloadQueued",
-                                                     mod->GetID(),
+                                                     id,
                                                      "reload",
                                                      "",
                                                      dryRun ? "Script reload dry-run queued." : "Script reload queued.",
