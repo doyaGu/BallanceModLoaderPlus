@@ -87,3 +87,20 @@ TEST(ScriptStateBagTest, DisabledScriptAccessHidesValuesAndRejectsMutations) {
     EXPECT_EQ(7, bag.GetInt("counter", 0));
     EXPECT_EQ("before", bag.GetString("name", ""));
 }
+
+TEST(ScriptStateBagTest, ReloadStateFlagDistinguishesHostReloadBags) {
+    ScriptStateBag scriptOwned;
+    EXPECT_FALSE(scriptOwned.IsReloadState());
+
+    ScriptStateBag reloadState;
+    reloadState.SetReloadState(true);
+    reloadState.SetInt("counter", 3);
+    reloadState.SetScriptAccessEnabled(false);
+
+    BML::ScriptStateBagHandle clone(reloadState.Clone());
+    ASSERT_TRUE(clone);
+    EXPECT_TRUE(clone->IsReloadState());
+    EXPECT_FALSE(clone->IsScriptAccessEnabled());
+    EXPECT_EQ(1, clone->GetStoredCount());
+    EXPECT_EQ(0, clone->GetCount());
+}

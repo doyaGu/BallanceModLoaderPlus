@@ -15,6 +15,7 @@
 #if BML_ENABLE_ANGELSCRIPT
 #include "ScriptExportDispatcher.h"
 #include "ScriptMod.h"
+#include "ScriptModRuntime.h"
 #endif
 
 BML_ModExport::BML_ModExport(BML_ExportKey key)
@@ -484,6 +485,11 @@ int ExportRegistry::Call(BML_ModExport *handle, BML_CallFrame *frame) {
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
 
     BML_ResetCallValue(frame->Result);
+
+#if BML_ENABLE_ANGELSCRIPT
+    if (ScriptModRuntime::RecordStateHookHostCallViolation("BML_ModExport::Call"))
+        return BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED;
+#endif
 
     if (handle->Kind == BML_ResolvedExportKind::Native &&
         handle->NativeGeneration == g_NativeGeneration.load(std::memory_order_acquire) &&

@@ -25,6 +25,8 @@ public:
 
     bool IsScriptAccessEnabled() const { return m_ScriptAccessEnabled; }
     void SetScriptAccessEnabled(bool enabled) { m_ScriptAccessEnabled = enabled; }
+    bool IsReloadState() const { return m_ReloadState; }
+    void SetReloadState(bool reloadState) { m_ReloadState = reloadState; }
     int GetStoredCount() const;
 
     bool Has(const std::string &key) const;
@@ -57,6 +59,7 @@ private:
     std::map<std::string, Value> m_Values;
     int m_RefCount = 1;
     bool m_ScriptAccessEnabled = true;
+    bool m_ReloadState = false;
 };
 
 class ScriptStateBagHandle {

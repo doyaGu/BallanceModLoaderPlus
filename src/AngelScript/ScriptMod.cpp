@@ -2361,19 +2361,19 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
         return finish(false, validationDiagnostic, &failure, &validationFields);
     }
+    bool dryRunCurrentSavesState = false;
     if (m_State.IsLoaded()) {
         ScriptDiagnostic stateDiagnostic;
-        bool currentSavesState = false;
         if (!ScriptStateMigration::HasSaveHook(m_Context ? m_Context->GetCKContext() : nullptr,
                                                m_Runtime,
-                                               currentSavesState,
+                                               dryRunCurrentSavesState,
                                                stateDiagnostic)) {
             candidateEvents.Release(nullptr);
             candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
             ReleaseRuntimeOnly(candidateRuntime);
             return finishWithDiagnostic(stateDiagnostic);
         }
-        if (currentSavesState) {
+        if (dryRunCurrentSavesState) {
             bool oldCanRestore = false;
             if (!ScriptStateMigration::HasRestoreState(m_Context ? m_Context->GetCKContext() : nullptr,
                                                        m_Runtime,
@@ -2442,7 +2442,16 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     candidateEvents.Release(nullptr);
     candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, candidateRuntime, nullptr, false);
     ReleaseRuntimeOnly(candidateRuntime);
-    return finish(true, "Reload dry-run passed.");
+    std::vector<ScriptModReloadDiagnosticField> fields = {
+        {"stateHooksExecuted", "false"},
+        {"stateHookValidation", dryRunCurrentSavesState ? "declarations-only" : "not-needed"},
+    };
+    return finish(true,
+                  dryRunCurrentSavesState
+                      ? "Reload dry-run passed. State migration hook declarations were checked, but SaveState/MigrateState/RestoreState were not executed."
+                      : "Reload dry-run passed.",
+                  nullptr,
+                  &fields);
 }
 
 ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &options) {
@@ -2583,6 +2592,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
     if (m_State.IsLoaded()) {
         savedState.Reset(new ScriptStateBag());
         savedState->SetScriptAccessEnabled(false);
+        savedState->SetReloadState(true);
         ScriptDiagnostic stateDiagnostic;
         {
             ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::SaveState);

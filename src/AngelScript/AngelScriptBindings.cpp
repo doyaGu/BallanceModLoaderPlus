@@ -3969,6 +3969,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"StateBag", "void Clear()", "void StateBag::Clear()", asMETHOD(BML::ScriptStateBag, Clear), asCALL_THISCALL},
     {"StateBag", "int get_Count() const", "int StateBag::get_Count() const", asMETHOD(BML::ScriptStateBag, GetCount), asCALL_THISCALL},
     {"StateBag", "int GetCount() const", "int StateBag::GetCount() const", asMETHOD(BML::ScriptStateBag, GetCount), asCALL_THISCALL},
+    {"StateBag", "bool get_IsReloadState() const", "bool StateBag::get_IsReloadState() const", asMETHOD(BML::ScriptStateBag, IsReloadState), asCALL_THISCALL},
+    {"StateBag", "bool IsReloadState() const", "bool StateBag::IsReloadState() const", asMETHOD(BML::ScriptStateBag, IsReloadState), asCALL_THISCALL},
     {"StateBag", "string GetKey(int index) const", "string StateBag::GetKey(int) const", asMETHOD(BML::ScriptStateBag, GetKey), asCALL_THISCALL},
     {"StateBag", "StateValueType GetType(const string &in key) const", "StateValueType StateBag::GetType(const string &in) const", asMETHOD(BML::ScriptStateBag, GetType), asCALL_THISCALL},
     {"StateBag", "void SetBool(const string &in key, bool value)", "void StateBag::SetBool(const string &in, bool)", asMETHOD(BML::ScriptStateBag, SetBool), asCALL_THISCALL},

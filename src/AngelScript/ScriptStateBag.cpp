@@ -6,12 +6,14 @@ namespace BML {
 
 ScriptStateBag::ScriptStateBag(const ScriptStateBag &other)
     : m_Values(other.m_Values),
-      m_ScriptAccessEnabled(other.m_ScriptAccessEnabled) {}
+      m_ScriptAccessEnabled(other.m_ScriptAccessEnabled),
+      m_ReloadState(other.m_ReloadState) {}
 
 ScriptStateBag &ScriptStateBag::operator=(const ScriptStateBag &other) {
     if (this != &other) {
         m_Values = other.m_Values;
         m_ScriptAccessEnabled = other.m_ScriptAccessEnabled;
+        m_ReloadState = other.m_ReloadState;
     }
     return *this;
 }

@@ -200,9 +200,9 @@ bool ScriptModRuntime::RecordConstructionHostCallViolation(const char *apiName) 
     ScriptModRuntime *runtime = g_ConstructingScriptModRuntime;
     if (runtime) {
         const ::CKAngelScriptAdapter::Api &api = runtime->m_Adapter.GetApi();
-        CKAngelScriptResult result = {};
-        api.InitResult(&result);
-        if (api.SetActiveContextException) {
+        if (api.InitResult && api.SetActiveContextException) {
+            CKAngelScriptResult result = {};
+            api.InitResult(&result);
             api.SetActiveContextException(runtime->m_Adapter.GetAngelScript(),
                                           g_ScriptObjectConstructionViolation.c_str(),
                                           &result);
@@ -231,9 +231,9 @@ bool ScriptModRuntime::RecordStateHookHostCallViolation(const char *apiName) {
     ScriptModRuntime *runtime = g_StateHookScriptModRuntime;
     if (runtime) {
         const ::CKAngelScriptAdapter::Api &api = runtime->m_Adapter.GetApi();
-        CKAngelScriptResult result = {};
-        api.InitResult(&result);
-        if (api.SetActiveContextException) {
+        if (api.InitResult && api.SetActiveContextException) {
+            CKAngelScriptResult result = {};
+            api.InitResult(&result);
             api.SetActiveContextException(runtime->m_Adapter.GetAngelScript(),
                                           message.c_str(),
                                           &result);
