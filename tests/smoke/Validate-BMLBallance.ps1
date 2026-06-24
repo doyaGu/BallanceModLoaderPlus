@@ -239,8 +239,10 @@ if ($CKAngelScriptDll) {
 
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupPath = $null
+$angelScriptBackupPath = $null
 $sourceHash = Get-BMLOptionalHash $BuildDll
 $installedHashBefore = Get-BMLOptionalHash $installedDll
+$installedAngelScriptHashBefore = Get-BMLOptionalHash $installedAngelScriptDll
 
 if (-not $SkipInstall) {
     if (Test-Path -LiteralPath $installedDll) {
@@ -251,6 +253,10 @@ if (-not $SkipInstall) {
 }
 
 if ($CKAngelScriptDll) {
+    if (Test-Path -LiteralPath $installedAngelScriptDll) {
+        $angelScriptBackupPath = "$installedAngelScriptDll.bak-$timestamp"
+        Copy-Item -LiteralPath $installedAngelScriptDll -Destination $angelScriptBackupPath
+    }
     Copy-Item -LiteralPath $CKAngelScriptDll -Destination $installedAngelScriptDll -Force
 }
 
@@ -367,6 +373,9 @@ if ($playerTimedOut -or $failedChecks.Count -gt 0) {
 if (-not $KeepInstalled -and -not $SkipInstall -and $backupPath -and (Test-Path -LiteralPath $backupPath)) {
     Copy-FileWithRetry -Source $backupPath -Destination $installedDll
 }
+if (-not $KeepInstalled -and $CKAngelScriptDll -and $angelScriptBackupPath -and (Test-Path -LiteralPath $angelScriptBackupPath)) {
+    Copy-FileWithRetry -Source $angelScriptBackupPath -Destination $installedAngelScriptDll
+}
 
 $result = [pscustomobject]@{
     Status = $status
@@ -377,6 +386,10 @@ $result = [pscustomobject]@{
     SourceHash = $sourceHash
     InstalledHashBefore = $installedHashBefore
     InstalledHashAfter = Get-BMLOptionalHash $installedDll
+    InstalledAngelScriptDll = $installedAngelScriptDll
+    AngelScriptBackupPath = $angelScriptBackupPath
+    InstalledAngelScriptHashBefore = $installedAngelScriptHashBefore
+    InstalledAngelScriptHashAfter = Get-BMLOptionalHash $installedAngelScriptDll
     NativeSmokeMod = $NativeSmokeMod
     CKAngelScriptDll = $CKAngelScriptDll
     SingleFileSmoke = [bool]$SingleFileSmoke
