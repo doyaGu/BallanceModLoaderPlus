@@ -934,7 +934,7 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
 ## Advanced ImGui
 
 `ImGui` is the lower-level frame-scope API for scripts that need custom debug
-or tooling UI. It is generated from BML's cimgui headers and documented in
+or tooling UI. The checked-in generated binding surface is documented in
 `docs/bml-imgui-api.as`; the generation report is
 `src/AngelScript/generated/BMLImGuiAngelScriptBindings.report.md`.
 

@@ -20,6 +20,7 @@ def check_file(path: Path, text: str) -> bool:
 
 def assert_approved_skip_reasons(report: list[tuple[str, str]]) -> None:
     approved_exact = {
+        "hand-written overload",
         "non-Imgui namespace",
         "imgui_internal",
         "templated",
@@ -47,6 +48,24 @@ def assert_approved_skip_reasons(report: list[tuple[str, str]]) -> None:
     if bad:
         sample = ", ".join(f"{name}: {reason}" for name, reason in bad[:10])
         raise RuntimeError(f"unapproved AngelScript binding skip reason(s): {sample}")
+
+
+def parse_report_skip_reasons(report_text: str) -> list[tuple[str, str]]:
+    entries: list[tuple[str, str]] = []
+    in_relevant_section = False
+    for line in report_text.splitlines():
+        if line in {"## Hand-Written Symbols", "## Skipped Symbols"}:
+            in_relevant_section = True
+            continue
+        if line.startswith("## "):
+            in_relevant_section = False
+            continue
+        if not in_relevant_section:
+            continue
+        match = re.match(r"^- `([^`]+)`: (.+)$", line)
+        if match:
+            entries.append((match.group(1), match.group(2)))
+    return entries
 
 
 def assert_no_forbidden_symbols(texts: dict[Path, str]) -> None:

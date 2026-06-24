@@ -5,9 +5,9 @@
 - Registered hand-written overloads: 33
 - Registered hand-written object methods: 25
 - Registered global functions total: 351
-- Hand-written cimgui symbols: 12
+- Hand-written source symbols: 12
 - Skipped symbols: 427
-- Source cimgui symbols scanned: 757
+- Source symbols scanned: 757
 - Script global function coverage estimate: 46.4%
 - Enum types referenced by registered functions: 35
 
