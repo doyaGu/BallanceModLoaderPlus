@@ -224,6 +224,10 @@ void ScriptModHotReloadService::Process() {
                                                                  "",
                                                                  "Script reload is waiting for active script calls to finish.",
                                                                  {{"reason", pending.Reason},
+                                                                  {"automatic", pending.Options.Automatic ? "true" : "false"},
+                                                                  {"dryRun", pending.Options.DryRun ? "true" : "false"},
+                                                                  {"checkState", pending.Options.CheckStateHooks ? "true" : "false"},
+                                                                  {"forceExports", pending.Options.ForceExports ? "true" : "false"},
                                                                   {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
                                                                   {"queuedServiceCallbacks", std::to_string(mod->GetQueuedScriptServiceCallbackCount())},
                                                                   {"retries", std::to_string(pending.BlockedRetryCount)},
@@ -243,8 +247,10 @@ void ScriptModHotReloadService::Process() {
                                                          "",
                                                          pending.Options.DryRun ? "Script reload dry-run started." : "Script reload started.",
                                                          {{"reason", pending.Reason},
+                                                          {"automatic", pending.Options.Automatic ? "true" : "false"},
                                                           {"dryRun", pending.Options.DryRun ? "true" : "false"},
-                                                          {"checkState", pending.Options.CheckStateHooks ? "true" : "false"}});
+                                                          {"checkState", pending.Options.CheckStateHooks ? "true" : "false"},
+                                                          {"forceExports", pending.Options.ForceExports ? "true" : "false"}});
         }
         ScriptModReloadResult result = pending.Options.DryRun
                                            ? mod->TryHotReloadDryRun(pending.Options)
@@ -265,6 +271,10 @@ void ScriptModHotReloadService::Process() {
                                                                      ? "Script reload asked to retry later."
                                                                      : result.Diagnostic,
                                                                  {{"reason", pending.Reason},
+                                                                  {"automatic", pending.Options.Automatic ? "true" : "false"},
+                                                                  {"dryRun", pending.Options.DryRun ? "true" : "false"},
+                                                                  {"checkState", pending.Options.CheckStateHooks ? "true" : "false"},
+                                                                  {"forceExports", pending.Options.ForceExports ? "true" : "false"},
                                                                   {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
                                                                   {"queuedServiceCallbacks", std::to_string(mod->GetQueuedScriptServiceCallbackCount())},
                                                                   {"retries", std::to_string(pending.BlockedRetryCount)},
