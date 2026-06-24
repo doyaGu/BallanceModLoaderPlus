@@ -2596,11 +2596,14 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
     });
     if (dryRunStateHooksExecuted)
         fields.push_back({"stateKeys", std::to_string(dryRunStateKeyCount)});
-    if (dryRunStateHooksExecuted)
+    if (dryRunStateHooksExecuted) {
         fields.push_back({"oldSaveStateExecuted", "true"});
+        fields.push_back({"liveRuntimeSaveStateExecuted", "true"});
+        fields.push_back({"stateHookPurityRequired", "true"});
+    }
     return finish(true,
                   dryRunStateHooksExecuted
-                      ? "Reload dry-run passed. State migration hooks executed without committing candidate runtime; old SaveState did run."
+                      ? "Reload dry-run passed. State migration hooks executed without committing candidate runtime; old SaveState ran on the live runtime and must be pure."
                       : dryRunCurrentSavesState
                       ? "Reload dry-run passed. State migration hook declarations were checked, but SaveState/MigrateState/RestoreState were not executed."
                       : "Reload dry-run passed.",

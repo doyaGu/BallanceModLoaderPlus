@@ -393,8 +393,9 @@ Expected behavior:
 - `--dry-run --check-state` additionally calls old `SaveState` and candidate
   `MigrateState`/`RestoreState`, then unloads the candidate without calling
   candidate `OnLoad` or replacing the runtime. Use it when validating state
-  migration hooks; keep those hooks pure because the old script code really
-  executes during this check.
+  migration hooks; keep those hooks pure because the old `SaveState` runs on
+  the live script object. It should copy values into the `StateBag`, not mutate
+  script members or host state.
 - If the mod failed during initial startup, BML keeps a failed placeholder. Fix
   the file, then run `script reload` or `script reload <placeholder-id>` to
   recover it. The placeholder can promote to the real mod id when that id does

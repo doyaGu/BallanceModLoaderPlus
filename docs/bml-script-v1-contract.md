@@ -88,7 +88,9 @@ not dynamic mod discovery and not dependency graph reconstruction.
 - `script reload <id> --dry-run --check-state` keeps the no-commit dry-run
   boundary but also executes old `SaveState` and candidate
   `MigrateState`/`RestoreState` to validate state migration code. It still does
-  not call candidate `OnLoad` and does not replace the runtime.
+  not call candidate `OnLoad` and does not replace the runtime. Because old
+  `SaveState` runs on the live script object, it must be pure: copy values into
+  the `StateBag` only, and do not mutate script members or host state.
 - Each reload attempt first captures the entry and included `.as` sources into
   an in-memory source snapshot. Prepare and commit use the same compiled
   candidate runtime, so a save between validation and commit cannot change what
