@@ -27,6 +27,27 @@ sibling resource directory. Use `-ZipSmoke` to package and install a `.zip`
 script smoke. These use distinct mod ids and can run alongside the directory
 smokes and the native `.bmodp` smoke.
 
+Use `-HotReloadStateSmoke` to replace the shutdown smoke with a script hot
+reload state migration smoke. `-HotReloadStateScenario` selects the candidate
+source that is copied over the live mod after v1 is ready:
+
+```powershell
+tests/smoke/Validate-BMLBallance.ps1 `
+  -BallanceRoot $env:BML_BALLANCE_ROOT `
+  -BuildDll cmake-build-release/bin/BMLPlus.dll `
+  -CKAngelScriptDll "$env:CKANGELSCRIPT_ROOT\build-ci-release\src\Release\AngelScript.dll" `
+  -HotReloadStateSmoke `
+  -HotReloadStateScenario Success
+
+tests/smoke/Validate-BMLBallance.ps1 ... -HotReloadStateSmoke -HotReloadStateScenario CompileFailure
+tests/smoke/Validate-BMLBallance.ps1 ... -HotReloadStateSmoke -HotReloadStateScenario MigrateFailure
+tests/smoke/Validate-BMLBallance.ps1 ... -HotReloadStateSmoke -HotReloadStateScenario RestoreFailure
+```
+
+The failure scenarios verify that the candidate is rejected, candidate `OnLoad`
+does not run, and the previous v1 runtime keeps processing after the failed
+reload.
+
 If Player exits with a non-zero code after `Goodbye!` was written, the script
 reports `Status = shutdown_anomaly`. Treat that separately from script facade
 regressions. Missing smoke log lines, timeout, or missing `Goodbye!` are

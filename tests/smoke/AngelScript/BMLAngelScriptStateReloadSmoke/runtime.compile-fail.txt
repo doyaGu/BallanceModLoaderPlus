@@ -1,0 +1,15 @@
+[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload state migration compile failure."]
+class BMLStateReloadSmokeMod {
+  void OnLoad(const BML::ModContext &in ctx) {
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null) {
+      logger.Info("BML state reload smoke compile-fail candidate should not load");
+    }
+  }
+
+  void BrokenSyntax() {
+    if (true) {
+      int x = 1
+    }
+  }
+}

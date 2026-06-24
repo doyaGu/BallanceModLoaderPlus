@@ -23,7 +23,10 @@ param(
 
     [switch]$ZipSmoke,
 
-    [switch]$HotReloadStateSmoke
+    [switch]$HotReloadStateSmoke,
+
+    [ValidateSet('Success', 'CompileFailure', 'MigrateFailure', 'RestoreFailure')]
+    [string]$HotReloadStateScenario = 'Success'
 )
 
 Set-StrictMode -Version Latest
@@ -44,6 +47,32 @@ function Test-SmokeTextContains {
         return $false
     }
     return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+function Test-SmokeTextContainsAfter {
+    param(
+        [AllowNull()]
+        [object]$Text,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Needle,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AfterNeedle
+    )
+
+    if ($null -eq $Text) {
+        return $false
+    }
+
+    $textString = [string]::Join("`n", @($Text))
+    $afterIndex = $textString.IndexOf($AfterNeedle, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($afterIndex -lt 0) {
+        return $false
+    }
+
+    $needleIndex = $textString.IndexOf($Needle, $afterIndex + $AfterNeedle.Length, [System.StringComparison]::OrdinalIgnoreCase)
+    return $needleIndex -ge 0
 }
 
 function Add-SmokeCheck {
@@ -202,6 +231,9 @@ function Install-SmokeMods {
 if (-not $BallanceRoot) {
     throw 'Ballance root is required. Pass -BallanceRoot or set BML_BALLANCE_ROOT.'
 }
+if (-not $HotReloadStateSmoke -and $HotReloadStateScenario -ne 'Success') {
+    throw '-HotReloadStateScenario requires -HotReloadStateSmoke.'
+}
 
 $layout = Get-BMLProjectLayout
 $scriptSmokeRoot = Join-Path $layout.RepoRoot 'tests\smoke\AngelScript'
@@ -216,6 +248,12 @@ $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 $angelScriptLog = Join-Path $ballanceRootFull 'Bin\AngelScript.log'
 $stateReloadSmokeRuntime = Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.as'
 $stateReloadSmokeRuntimeV2 = Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.v2.txt'
+$stateReloadSmokeRuntimeReplacement = switch ($HotReloadStateScenario) {
+    'CompileFailure' { Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.compile-fail.txt' }
+    'MigrateFailure' { Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.migrate-fail.txt' }
+    'RestoreFailure' { Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.restore-fail.txt' }
+    default { $stateReloadSmokeRuntimeV2 }
+}
 
 if (-not $BuildDll) {
     $BuildDll = Join-Path $layout.DefaultReleaseBin 'BMLPlus.dll'
@@ -287,7 +325,7 @@ if (-not $SkipPlayer) {
             $liveLogText = Get-BMLTextIfExists $modLoaderLog
             if ((Test-SmokeTextContains $liveLogText 'BML state reload smoke v1 ready') -and
                 (Test-SmokeTextContains $liveLogText 'BML script mod summary:')) {
-                Copy-Item -LiteralPath $stateReloadSmokeRuntimeV2 -Destination $stateReloadSmokeRuntime -Force
+                Copy-Item -LiteralPath $stateReloadSmokeRuntimeReplacement -Destination $stateReloadSmokeRuntime -Force
                 $hotReloadStateSourcePatched = $true
             }
         }
@@ -348,8 +386,24 @@ if (-not $SkipPlayer) {
     if ($HotReloadStateSmoke) {
         Add-SmokeCheck $checks 'state-reload-source-patched' $hotReloadStateSourcePatched 'BML state reload smoke source patched'
         Add-SmokeCheck $checks 'state-reload-ready' (Test-SmokeTextContains $modLogText 'BML state reload smoke v1 ready') 'BML state reload smoke v1 ready'
-        Add-SmokeCheck $checks 'state-reload-migrated' (Test-SmokeTextContains $modLogText 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated') 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated'
-        Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
+        if ($HotReloadStateScenario -eq 'Success') {
+            Add-SmokeCheck $checks 'state-reload-migrated' (Test-SmokeTextContains $modLogText 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated') 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated'
+            Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
+        } else {
+            $reloadFailedNeedle = 'Script mod bml.state.reload.smoke hot reload failed:'
+            Add-SmokeCheck $checks 'state-reload-rejected' (Test-SmokeTextContains $modLogText $reloadFailedNeedle) $reloadFailedNeedle
+            Add-SmokeCheck $checks 'state-reload-old-runtime-kept' (Test-SmokeTextContainsAfter $modLogText 'BML state reload smoke v1 heartbeat' $reloadFailedNeedle) 'BML state reload smoke v1 heartbeat after failed reload'
+            Add-SmokeCheck $checks 'state-reload-candidate-not-loaded' (-not (Test-SmokeTextContains $modLogText 'candidate should not load')) 'candidate should not load'
+            if ($HotReloadStateScenario -eq 'CompileFailure') {
+                Add-SmokeCheck $checks 'state-reload-compile-failed' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
+            } elseif ($HotReloadStateScenario -eq 'MigrateFailure') {
+                Add-SmokeCheck $checks 'state-reload-migrate-failed' (Test-SmokeTextContains $modLogText 'intentional state reload migrate failure smoke') 'intentional state reload migrate failure smoke'
+                Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
+            } elseif ($HotReloadStateScenario -eq 'RestoreFailure') {
+                Add-SmokeCheck $checks 'state-reload-restore-failed' (Test-SmokeTextContains $modLogText 'intentional state reload restore failure smoke') 'intentional state reload restore failure smoke'
+                Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
+            }
+        }
     }
     Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
     Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
@@ -395,6 +449,7 @@ $result = [pscustomobject]@{
     SingleFileSmoke = [bool]$SingleFileSmoke
     ZipSmoke = [bool]$ZipSmoke
     HotReloadStateSmoke = [bool]$HotReloadStateSmoke
+    HotReloadStateScenario = $HotReloadStateScenario
     PlayerStarted = $playerStarted
     PlayerExitCode = $playerExitCode
     PlayerTimedOut = $playerTimedOut
