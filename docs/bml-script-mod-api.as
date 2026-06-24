@@ -234,8 +234,8 @@ class ObjectLoadOptions {
 }
 
 class ObjectLoadResult {
-  bool Success;
-  int Count;
+  bool get_Success() const;
+  int get_Count() const;
   CKObject@ BorrowMainObject() const;
   CKObject@ BorrowObject(int index) const;
 }
@@ -853,6 +853,10 @@ class ModContext {
   void CloseMapMenu() const;
 
   string GetDirectoryUtf8(int type) const;
+  float GetTimeMs() const;
+  float GetAbsoluteTimeMs() const;
+  float GetDeltaTimeMs() const;
+  uint GetFrameCount() const;
   string GetModRootUtf8() const;
   string ResolveModPathUtf8(const string &in relativePath) const;
   bool ModFileExistsUtf8(const string &in relativePath) const;

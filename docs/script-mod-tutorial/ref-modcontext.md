@@ -60,9 +60,25 @@ bool IsInLevel;
 bool IsPaused;
 bool IsPlaying;
 bool IsCheatEnabled;
+bool IsReloading;
+BML::ReloadPhase ReloadPhase;
 ```
 
-用法：`ctx.IsInLevel`、`ctx.IsPaused`（不是方法调用，不加括号）。
+用法：`ctx.IsInLevel`、`ctx.IsPaused`、`ctx.ReloadPhase`（不是方法调用，不加括号）。
+
+`IsReloading` 只在热重载生命周期回调里为 true。`ReloadPhase` 常用来区分正常启动/退出和热重载：
+
+| 值 | 含义 |
+| --- | --- |
+| `BML::RELOAD_NONE` | 正常启动、正常运行、正常退出 |
+| `BML::RELOAD_UNLOAD` | 热重载正在卸载旧 runtime |
+| `BML::RELOAD_LOAD` | 热重载正在加载新 runtime |
+| `BML::RELOAD_ROLLBACK` | 新 runtime 失败，BML 正在恢复旧 runtime |
+| `BML::RELOAD_RECOVERY` | 启动时失败的占位 mod 正在恢复 |
+| `BML::RELOAD_CLEANUP` | 热重载清理阶段 |
+| `BML::RELOAD_SAVE_STATE` | 正在调用旧 runtime 的 `SaveState` |
+| `BML::RELOAD_MIGRATE_STATE` | 正在调用新 runtime 的 `MigrateState` |
+| `BML::RELOAD_RESTORE_STATE` | 正在调用 `RestoreState` |
 
 ## 消息与 HUD
 
@@ -82,6 +98,17 @@ void CloseModsMenu() const;
 void OpenMapMenu() const;
 void CloseMapMenu() const;
 ```
+
+## 时间
+
+```angelscript
+float GetTimeMs() const;          // 游戏时间，毫秒
+float GetAbsoluteTimeMs() const;  // 绝对时间，毫秒
+float GetDeltaTimeMs() const;     // 上一帧到当前帧的间隔，毫秒
+uint GetFrameCount() const;       // 当前帧计数
+```
+
+需要按时间间隔执行逻辑时优先用 Timer。`GetDeltaTimeMs()` 适合平滑显示、插值和一次性调试统计，不要用它绕过 Timer 写复杂调度器。
 
 ## 文件与资源
 

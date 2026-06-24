@@ -11,12 +11,13 @@
 按以下步骤逐层缩小范围。前一层不成立时，后一层的表现没有参考意义。
 
 1. **打开日志**：`ModLoader/ModLoader.log`
-2. **确认脚本被发现**：搜索你的 mod id，找 `Loading Mod` 行
-3. **确认编译通过**：紧跟其后有没有 ERROR 行
-4. **确认 OnLoad 执行**：OnLoad 第一行放日志输出
-5. **确认 OnProcess 在跑**：加一次性日志（用 bool 标记只打一次）
-6. **在出问题的位置前后加日志**：入口出现但出口没有，问题在两行之间
-7. **一次只改一个变量**：不要同时改文件名、代码、命令名和对象名
+2. **在游戏内看结构化日志**：用 `script logs error` 或 `script panel`
+3. **确认脚本被发现**：搜索你的 mod id，找 `Loading Mod` 行，或用 `script list`
+4. **确认编译通过**：紧跟其后有没有 ERROR 行，或用 `script diag <id>`
+5. **确认 OnLoad 执行**：OnLoad 第一行放日志输出
+6. **确认 OnProcess 在跑**：加一次性日志（用 bool 标记只打一次）
+7. **在出问题的位置前后加日志**：入口出现但出口没有，问题在两行之间
+8. **一次只改一个变量**：不要同时改文件名、代码、命令名和对象名
 
 确认 OnProcess 的一次性日志写法：
 
@@ -80,6 +81,29 @@ void OnProcess(const BML::ModContext &in ctx) {
 
 ---
 
+## 游戏内脚本诊断命令
+
+打开 BML 命令栏后可以用 `script` 命令查询脚本状态：
+
+| 命令 | 用途 |
+| --- | --- |
+| `script status` | 查看 watcher、pending reload、loaded/failed 数量 |
+| `script list` | 列出脚本 mod |
+| `script info <id>` | 查看单个 mod 摘要 |
+| `script diag <id>` | 查看最近诊断、编译错误、reload 失败原因 |
+| `script logs` | 查看最近日志 |
+| `script logs error` | 只看错误日志 |
+| `script panel` | 打开/关闭 Script Developer Tools 面板 |
+| `script reload` | 热重载全部脚本 mod |
+| `script reload <id>` | 热重载单个脚本 mod |
+| `script reload <id> --dry-run` | 只编译和验证，不替换 runtime |
+| `script reload <id> --dry-run --check-state` | 额外执行状态迁移检查，不替换 runtime |
+| `script watch on` / `script watch off` | 打开/关闭自动热重载 watcher |
+
+命令返回 `queued` 时表示动作已排队，实际结果会在下一帧安全点完成。最终结果看 `script diag <id>`、`script logs error` 或面板的 Logs/Diag 页。
+
+---
+
 ## 编译错误与运行时错误
 
 | | 编译错误 | 运行时错误 |
@@ -101,6 +125,23 @@ void OnProcess(const BML::ModContext &in ctx) {
 ... (进入关卡后)
 [ModLoader/ERROR]: Null pointer access in script 'HelloMod.mod.as' at line 45
 ```
+
+---
+
+## 热重载失败
+
+热重载失败时，游戏内消息通常只提示 reload failed，详细原因看 `script diag <id>` 和 `script logs error`。
+
+常见情况：
+
+- **编译失败**：旧 runtime 仍继续运行；修正脚本后再次 `script reload <id>`。
+- **启动时首次编译失败**：BML 会保留 failed placeholder。修好文件后运行 `script reload` 或 `script reload <id>`，可以恢复到真实 mod id。
+- **运行中新增 `.mod.as` 文件**：不会加载新 mod。BML 不在运行中新增 registry 节点，需要重启 Player。
+- **改了 mod id 或 dependency 声明**：热重载会拒绝。依赖图变化需要重启。
+- **删除或改签名旧 export**：默认拒绝。只有确认调用方能接受时才用 `--force-exports`。
+- **状态迁移失败**：检查 `SaveState`、`MigrateState`、`RestoreState` 签名和日志。`--dry-run --check-state` 可以在不替换 runtime 的情况下验证迁移代码。
+
+状态迁移方法只能搬运纯数据。不要在 `SaveState`、`MigrateState`、`RestoreState` 里注册命令/Timer、写 DataShare/config、执行命令、调用 export、或修改 CK/game-world 对象。BML 回滚只能恢复自己持有的脚本资源，不能撤销脚本已经改过的游戏世界状态。
 
 ---
 
