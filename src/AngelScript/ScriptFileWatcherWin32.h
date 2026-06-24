@@ -35,6 +35,9 @@ public:
     void StopAll();
     std::vector<Event> DrainEvents();
     uint64_t GetDroppedEventCount() const;
+#ifdef BML_TEST
+    void PushOverflowEventForTest(const std::wstring &root, bool recursive = true);
+#endif
 
 private:
     struct WatchState {
@@ -45,18 +48,25 @@ private:
         std::thread Worker;
     };
 
+    struct OverflowKey {
+        std::wstring Root;
+        bool Recursive = true;
+    };
+
     static bool SameRoot(const std::wstring &left, const std::wstring &right);
     static void StopWatches(std::vector<WatchState *> &watches);
 
     void WorkerLoop(WatchState *state);
     void PushEvent(const Event &event);
+    bool HasOverflowEventLocked(const std::wstring &root, bool recursive) const;
+    void ForgetOverflowEventLocked(const Event &event);
     void PushOverflowEventLocked(const std::wstring &root, bool recursive);
 
     mutable std::mutex m_Mutex;
     std::vector<Event> m_Events;
     std::vector<WatchState *> m_Watches;
     uint64_t m_DroppedEvents = 0;
-    bool m_OverflowQueued = false;
+    std::vector<OverflowKey> m_OverflowQueued;
 };
 
 } // namespace BML

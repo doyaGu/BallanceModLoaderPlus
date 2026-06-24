@@ -137,6 +137,32 @@ TEST(ScriptFileWatcherWin32Test, StopAllClearsQueuedEvents) {
     EXPECT_TRUE(watcher.DrainEvents().empty());
 }
 
+TEST(ScriptFileWatcherWin32Test, OverflowEventsAreDeduplicatedPerRoot) {
+    ScriptFileWatcherWin32 watcher;
+    watcher.PushOverflowEventForTest(L"C:\\Mods\\One", true);
+    watcher.PushOverflowEventForTest(L"C:\\Mods\\Two", true);
+    watcher.PushOverflowEventForTest(L"C:\\Mods\\One", true);
+
+    const std::vector<ScriptFileWatcherWin32::Event> events = watcher.DrainEvents();
+    ASSERT_EQ(2u, events.size());
+    EXPECT_TRUE(events[0].Overflow);
+    EXPECT_TRUE(events[1].Overflow);
+    EXPECT_TRUE(EndsWithInsensitive(events[0].Root, L"Mods\\One"));
+    EXPECT_TRUE(EndsWithInsensitive(events[1].Root, L"Mods\\Two"));
+}
+
+TEST(ScriptFileWatcherWin32Test, DrainingAllowsNextOverflowForSameRoot) {
+    ScriptFileWatcherWin32 watcher;
+    watcher.PushOverflowEventForTest(L"C:\\Mods\\One", true);
+    ASSERT_EQ(1u, watcher.DrainEvents().size());
+
+    watcher.PushOverflowEventForTest(L"C:\\Mods\\One", true);
+    const std::vector<ScriptFileWatcherWin32::Event> events = watcher.DrainEvents();
+    ASSERT_EQ(1u, events.size());
+    EXPECT_TRUE(events[0].Overflow);
+    EXPECT_TRUE(EndsWithInsensitive(events[0].Root, L"Mods\\One"));
+}
+
 TEST(ScriptFileWatcherWin32Test, NonRecursiveWatchIgnoresNestedFiles) {
     const TempWatchRoot root;
     ScriptFileWatcherWin32 watcher;

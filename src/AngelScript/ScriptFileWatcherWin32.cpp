@@ -130,7 +130,7 @@ void ScriptFileWatcherWin32::StopAll() {
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
         m_Events.clear();
-        m_OverflowQueued = false;
+        m_OverflowQueued.clear();
     }
 }
 
@@ -138,7 +138,7 @@ std::vector<ScriptFileWatcherWin32::Event> ScriptFileWatcherWin32::DrainEvents()
     std::vector<Event> events;
     std::lock_guard<std::mutex> lock(m_Mutex);
     events.swap(m_Events);
-    m_OverflowQueued = false;
+    m_OverflowQueued.clear();
     return events;
 }
 
@@ -230,10 +230,29 @@ void ScriptFileWatcherWin32::PushEvent(const Event &event) {
     m_Events.push_back(event);
 }
 
+bool ScriptFileWatcherWin32::HasOverflowEventLocked(const std::wstring &root, bool recursive) const {
+    for (const OverflowKey &key : m_OverflowQueued) {
+        if (key.Recursive == recursive && SameRoot(key.Root, root))
+            return true;
+    }
+    return false;
+}
+
+void ScriptFileWatcherWin32::ForgetOverflowEventLocked(const Event &event) {
+    if (!event.Overflow)
+        return;
+
+    auto it = std::remove_if(m_OverflowQueued.begin(), m_OverflowQueued.end(), [&](const OverflowKey &key) {
+        return key.Recursive == event.Recursive && SameRoot(key.Root, event.Root);
+    });
+    m_OverflowQueued.erase(it, m_OverflowQueued.end());
+}
+
 void ScriptFileWatcherWin32::PushOverflowEventLocked(const std::wstring &root, bool recursive) {
-    if (m_OverflowQueued)
+    if (HasOverflowEventLocked(root, recursive))
         return;
     if (m_Events.size() >= kMaxQueuedEvents && !m_Events.empty()) {
+        ForgetOverflowEventLocked(m_Events.front());
         m_Events.erase(m_Events.begin());
         ++m_DroppedEvents;
     }
@@ -244,7 +263,21 @@ void ScriptFileWatcherWin32::PushOverflowEventLocked(const std::wstring &root, b
     overflow.Overflow = true;
     overflow.Recursive = recursive;
     m_Events.push_back(overflow);
-    m_OverflowQueued = true;
+    OverflowKey key;
+    key.Root = root;
+    key.Recursive = recursive;
+    m_OverflowQueued.push_back(key);
 }
+
+#ifdef BML_TEST
+void ScriptFileWatcherWin32::PushOverflowEventForTest(const std::wstring &root, bool recursive) {
+    Event overflow;
+    overflow.Root = root;
+    overflow.Path = root;
+    overflow.Overflow = true;
+    overflow.Recursive = recursive;
+    PushEvent(overflow);
+}
+#endif
 
 } // namespace BML
