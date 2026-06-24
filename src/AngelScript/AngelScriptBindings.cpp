@@ -2771,17 +2771,23 @@ public:
     bool IsValid() const { return m_Handle && BML_IsModExportValid(m_Handle) != 0; }
 
     int Call(BMLAS_CallFrame *frame) const {
+        if (RejectRestrictedHostCall("ExportRef::Call"))
+            return BML_ERROR_FROZEN;
         if (!frame || !frame->GetNativeFrame())
             return BML_ERROR_INTEROP_BAD_CALL_FRAME;
         return BML_CallModExport(m_Handle, frame->GetNativeFrame());
     }
 
     int CallVoid() const {
+        if (RejectRestrictedHostCall("ExportRef::CallVoid"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         return BML_CallModExport(m_Handle, &frame);
     }
 
     int CallString(const std::string &argument, std::string &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallString"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallFrame_SetString(&frame, 0, argument.c_str());
         if (status == BML_OK)
@@ -2792,6 +2798,8 @@ public:
     }
 
     int CallStringNoArgs(std::string &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallString"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallModExport(m_Handle, &frame);
         if (status == BML_OK)
@@ -2800,6 +2808,8 @@ public:
     }
 
     int CallBool(bool argument, bool &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallBool"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallFrame_SetBool(&frame, 0, argument ? 1 : 0);
         if (status == BML_OK)
@@ -2810,6 +2820,8 @@ public:
     }
 
     int CallBoolNoArgs(bool &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallBool"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallModExport(m_Handle, &frame);
         if (status == BML_OK)
@@ -2818,6 +2830,8 @@ public:
     }
 
     int CallInt(int argument, int &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallInt"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallFrame_SetInt(&frame, 0, argument);
         if (status == BML_OK)
@@ -2828,6 +2842,8 @@ public:
     }
 
     int CallIntNoArgs(int &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallInt"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallModExport(m_Handle, &frame);
         if (status == BML_OK)
@@ -2836,6 +2852,8 @@ public:
     }
 
     int CallFloat(float argument, float &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallFloat"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallFrame_SetFloat(&frame, 0, argument);
         if (status == BML_OK)
@@ -2846,6 +2864,8 @@ public:
     }
 
     int CallFloatNoArgs(float &result) const {
+        if (RejectRestrictedHostCall("ExportRef::CallFloat"))
+            return BML_ERROR_FROZEN;
         BML_CallFrame frame;
         int status = BML_CallModExport(m_Handle, &frame);
         if (status == BML_OK)
