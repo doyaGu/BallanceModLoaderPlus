@@ -7,6 +7,7 @@
 #include "Logger.h"
 #include "ModContext.h"
 #include "ScriptDevToolsService.h"
+#include "ScriptModHotReloadPathFilter.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -16,15 +17,6 @@ namespace {
 constexpr auto kDebounceDelay = std::chrono::milliseconds(500);
 constexpr auto kRetryDelay = std::chrono::milliseconds(100);
 constexpr auto kBlockedNoticeDelay = std::chrono::seconds(1);
-
-bool EndsWithInsensitive(const std::wstring &value, const wchar_t *suffix) {
-    if (!suffix)
-        return false;
-    const size_t suffixLength = std::wcslen(suffix);
-    if (value.size() < suffixLength)
-        return false;
-    return _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
-}
 
 bool SamePathInsensitive(const std::wstring &left, const std::wstring &right) {
     if (left.empty() || right.empty())
@@ -584,65 +576,20 @@ bool ScriptModHotReloadService::EventOverflowCanAffectMod(const ScriptFileWatche
                                                           const ScriptMod *mod) const {
     if (!mod)
         return false;
-    if (event.Root.empty())
-        return true;
-
-    const ScriptModEntry &entry = mod->GetEntry();
-    const std::wstring root = event.Root;
-    auto pathUnderOverflowRoot = [&](const std::wstring &path) {
-        if (path.empty())
-            return false;
-        if (event.Recursive)
-            return SamePathInsensitive(path, root) || utils::IsPathInsideRootW(path, root);
-        return SamePathInsensitive(utils::GetDirectoryW(path), root);
-    };
-    auto directoryAffected = [&](const std::wstring &directory) {
-        if (directory.empty())
-            return false;
-        if (event.Recursive)
-            return SamePathInsensitive(directory, root) || utils::IsPathInsideRootW(directory, root);
-        return SamePathInsensitive(directory, root) || SamePathInsensitive(utils::GetDirectoryW(directory), root);
-    };
-
-    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage)
-        return pathUnderOverflowRoot(entry.SourcePath);
-    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile)
-        return pathUnderOverflowRoot(entry.EntryPath) ||
-               directoryAffected(entry.ResourceRootDirectory);
-    return directoryAffected(entry.RootDirectory);
+    return ScriptHotReloadOverflowCanAffectEntry(event, mod->GetEntry());
 }
 
 bool ScriptModHotReloadService::EventLooksRelevant(const ScriptFileWatcherWin32::Event &event,
                                                    const ScriptMod *mod) const {
     if (!mod)
         return false;
-    if (event.Overflow)
-        return EventOverflowCanAffectMod(event, mod);
-    if (!EventBelongsToKnownMod(event.Path, mod))
-        return false;
-    const ScriptModEntry &entry = mod->GetEntry();
-    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage)
-        return EndsWithInsensitive(event.Path, L".zip") && SamePathInsensitive(event.Path, entry.SourcePath);
-    return EndsWithInsensitive(event.Path, L".as");
+    return ScriptHotReloadEventLooksRelevant(event, mod->GetEntry());
 }
 
 bool ScriptModHotReloadService::EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const {
     if (!mod || path.empty())
         return false;
-
-    const ScriptModEntry &entry = mod->GetEntry();
-    if (entry.SourceKind == ScriptModEntrySourceKind::ZipPackage)
-        return SamePathInsensitive(path, entry.SourcePath);
-
-    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
-        if (SamePathInsensitive(path, entry.EntryPath))
-            return true;
-        if (!entry.ResourceRootDirectory.empty() && utils::IsPathInsideRootW(path, entry.ResourceRootDirectory))
-            return true;
-        return false;
-    }
-
-    return !entry.RootDirectory.empty() && utils::IsPathInsideRootW(path, entry.RootDirectory);
+    return ScriptHotReloadEventBelongsToEntry(path, mod->GetEntry());
 }
 
 void ScriptModHotReloadService::PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event) {

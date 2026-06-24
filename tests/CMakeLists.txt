@@ -146,6 +146,14 @@ if (BML_WITH_ANGELSCRIPT)
                 ScriptFileWatcherWin32Test.cpp
                 ${BML_SOURCE_DIR}/AngelScript/ScriptFileWatcherWin32.cpp
         )
+
+        add_bml_test(ScriptModHotReloadPathFilterTest
+                SOURCES
+                ScriptModHotReloadPathFilterTest.cpp
+                ${BML_SOURCE_DIR}/AngelScript/ScriptModHotReloadPathFilter.cpp
+                DEPENDENCIES
+                BML_PathUtils
+        )
     endif ()
 
     add_bml_test(ScriptServiceLifecycleTest
