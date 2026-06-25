@@ -183,7 +183,10 @@ private:
     std::vector<std::string> FormatDiag(const std::string &id);
     std::vector<std::string> FormatDeps(const std::string &id);
     std::vector<std::string> FormatLibs(const std::string &idFilter);
-    std::vector<std::string> FormatLibCheck(const std::string &id, const std::string &version);
+    std::vector<std::string> FormatLibCheck(const std::string &id,
+                                            const std::string &version,
+                                            bool includeHashes,
+                                            bool includeGraph);
     std::vector<std::string> FormatExports(const std::string &id);
     std::vector<std::string> FormatResources(const std::string &id);
     const ScriptModSnapshot *FindSnapshot(const std::string &id);

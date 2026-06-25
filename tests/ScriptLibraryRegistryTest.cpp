@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "AngelScript/ScriptLibraryRegistry.h"
+#include "AngelScript/ScriptLibraryTools.h"
 #include "AngelScript/ScriptLibraryValidator.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
@@ -126,6 +127,87 @@ TEST_F(ScriptLibraryRegistryTest, ValidatorAcceptsPackageWithRelativeInclude) {
     EXPECT_NE(lines.end(), std::find(lines.begin(), lines.end(), "  check=ok files=2 includes=1"));
 }
 
+TEST_F(ScriptLibraryRegistryTest, ToolReportRecordsHashesAndIncludeEdges) {
+    const std::wstring packageRoot = utils::CombinePathW(Root, L"com.example.score\\1.2.0");
+    Write(utils::CombinePathW(packageRoot, L"client.as"), "#include \"api.as\"\nnamespace ScoreApi {}\n");
+    Write(utils::CombinePathW(packageRoot, L"api.as"), "namespace ScoreApi { const int Version = 12; }\n");
+
+    ScriptLibraryRegistry registry(Root);
+    std::string diagnostic;
+    ASSERT_TRUE(registry.Scan(diagnostic)) << diagnostic;
+
+    ScriptLibraryPackage package;
+    ASSERT_TRUE(registry.FindPackage("com.example.score", "1.2.0", package));
+
+    ScriptLibraryPackageCheckReport report;
+    ASSERT_TRUE(BuildScriptLibraryPackageCheckReport(registry, package, report));
+    EXPECT_TRUE(report.Success);
+    EXPECT_EQ(2u, report.Files.size());
+    EXPECT_EQ(1u, report.IncludeCount);
+    ASSERT_EQ(1u, report.IncludeEdges.size());
+    EXPECT_EQ("/bml/libs/com.example.score@1.2.0/client.as", report.IncludeEdges.front().FromSection);
+    EXPECT_EQ("api.as", report.IncludeEdges.front().Include);
+    EXPECT_EQ("/bml/libs/com.example.score@1.2.0/api.as", report.IncludeEdges.front().ToSection);
+    EXPECT_EQ(1u, report.IncludeEdges.front().Line);
+    EXPECT_EQ("com.example.score", report.IncludeEdges.front().LibraryId);
+    EXPECT_EQ("1.2.0", report.IncludeEdges.front().LibraryVersion);
+
+    EXPECT_TRUE(std::all_of(report.Files.begin(), report.Files.end(), [](const ScriptLibraryToolFileReport &file) {
+        return file.ContentHash.size() == 64;
+    }));
+
+    std::vector<std::string> lines;
+    ScriptLibraryToolReportOptions options;
+    options.IncludeFileHashes = true;
+    options.IncludeIncludeGraph = true;
+    AppendScriptLibraryPackageCheckLines(report, lines, options);
+    EXPECT_TRUE(std::any_of(lines.begin(), lines.end(), [](const std::string &line) {
+        return line.find("source hashes:") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::any_of(lines.begin(), lines.end(), [](const std::string &line) {
+        return line.find("include graph:") != std::string::npos;
+    }));
+}
+
+TEST_F(ScriptLibraryRegistryTest, ParsesToolReportOptions) {
+    const std::vector<std::string> args = {
+        "script", "lib", "check", "com.example.score", "1.2.0", "--hashes", "--graph",
+    };
+
+    ScriptLibraryToolReportOptions options;
+    std::string diagnostic;
+    EXPECT_TRUE(ParseScriptLibraryToolReportOptions(args, 5, options, diagnostic)) << diagnostic;
+    EXPECT_TRUE(options.IncludeFileHashes);
+    EXPECT_TRUE(options.IncludeIncludeGraph);
+    EXPECT_TRUE(diagnostic.empty());
+
+    const std::vector<std::string> badArgs = {
+        "script", "lib", "check", "com.example.score", "1.2.0", "--unknown",
+    };
+    EXPECT_FALSE(ParseScriptLibraryToolReportOptions(badArgs, 5, options, diagnostic));
+    EXPECT_FALSE(diagnostic.empty());
+}
+
+TEST_F(ScriptLibraryRegistryTest, ToolReportRejectsMissingIncludeDespiteCatalogFile) {
+    const std::wstring packageRoot = utils::CombinePathW(Root, L"com.example.score\\1.2.0");
+    Write(utils::CombinePathW(packageRoot, L"api.as"), "#include \"missing.as\"\nnamespace ScoreApi {}\n");
+    Write(utils::CombinePathW(packageRoot, L"catalog.json"), "{\"files\":[\"missing.as\"]}\n");
+
+    ScriptLibraryRegistry registry(Root);
+    std::string diagnostic;
+    ASSERT_TRUE(registry.Scan(diagnostic)) << diagnostic;
+
+    ScriptLibraryPackage package;
+    ASSERT_TRUE(registry.FindPackage("com.example.score", "1.2.0", package));
+
+    ScriptLibraryPackageCheckReport report;
+    EXPECT_FALSE(BuildScriptLibraryPackageCheckReport(registry, package, report));
+    EXPECT_FALSE(report.Success);
+    EXPECT_TRUE(std::any_of(report.Errors.begin(), report.Errors.end(), [](const std::string &line) {
+        return line.find("unresolved relative include") != std::string::npos;
+    }));
+}
+
 TEST_F(ScriptLibraryRegistryTest, ValidatorRejectsBmlMetadata) {
     const std::wstring packageRoot = utils::CombinePathW(Root, L"com.example.bad\\1.0.0");
     Write(utils::CombinePathW(packageRoot, L"api.as"),
@@ -141,6 +223,13 @@ TEST_F(ScriptLibraryRegistryTest, ValidatorRejectsBmlMetadata) {
     EXPECT_FALSE(ValidateScriptLibraryPackage(registry, package, lines));
     EXPECT_TRUE(std::any_of(lines.begin(), lines.end(), [](const std::string &line) {
         return line.find("metadata is not allowed") != std::string::npos;
+    }));
+    EXPECT_NE(lines.end(),
+              std::find(lines.begin(),
+                        lines.end(),
+                        "    [bml.mod id=\"bad\" name=\"Bad\" version=\"1.0.0\"]"));
+    EXPECT_TRUE(std::none_of(lines.begin(), lines.end(), [](const std::string &line) {
+        return line.rfind("  error [bml.", 0) == 0;
     }));
 }
 

@@ -211,6 +211,7 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/CKAngelScriptAdapter.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptLibraryRegistry.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptLibraryTools.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptLibraryValidator.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptModEntryScanner.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptSourceSnapshotBuilder.cpp

@@ -16,7 +16,7 @@
 #include "ModContext.h"
 #include "ScriptLibraryRegistry.h"
 #include "ScriptLibraryServices.h"
-#include "ScriptLibraryValidator.h"
+#include "ScriptLibraryTools.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -1104,7 +1104,9 @@ std::vector<std::string> ScriptDevToolsService::FormatLibs(const std::string &id
 }
 
 std::vector<std::string> ScriptDevToolsService::FormatLibCheck(const std::string &id,
-                                                               const std::string &version) {
+                                                               const std::string &version,
+                                                               bool includeHashes,
+                                                               bool includeGraph) {
     if (!ScriptLibraryRegistry::IsValidLibraryId(id))
         return {"Invalid script library id: " + id};
     if (!ScriptLibraryRegistry::IsValidLibraryVersion(version))
@@ -1123,7 +1125,12 @@ std::vector<std::string> ScriptDevToolsService::FormatLibCheck(const std::string
     lines.push_back("Script library " + ScriptLibraryPackageKey(id, version) + ":");
     lines.push_back("  root=" + DisplayScriptPath(m_Context, utils::Utf16ToUtf8(package.RootDirectory)));
     lines.push_back("  virtual=" + package.VirtualRoot);
-    ValidateScriptLibraryPackage(registry, package, lines);
+    ScriptLibraryPackageCheckReport report;
+    BuildScriptLibraryPackageCheckReport(registry, package, report);
+    ScriptLibraryToolReportOptions reportOptions;
+    reportOptions.IncludeFileHashes = includeHashes;
+    reportOptions.IncludeIncludeGraph = includeGraph;
+    AppendScriptLibraryPackageCheckLines(report, lines, reportOptions);
 
     RefreshSnapshotsIfNeeded(false);
     size_t consumerCount = 0;
@@ -1201,9 +1208,13 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
         return FormatLibs(args.size() == 3 ? args[2] : "");
     }
     if (command == "lib") {
-        if (args.size() != 5 || args[2] != "check")
-            return {"Usage: script lib check <id> <version>"};
-        return FormatLibCheck(args[3], args[4]);
+        if (args.size() < 5 || args[2] != "check")
+            return {"Usage: script lib check <id> <version> [--hashes] [--graph]"};
+        ScriptLibraryToolReportOptions options;
+        std::string diagnostic;
+        if (!ParseScriptLibraryToolReportOptions(args, 5, options, diagnostic))
+            return {"Usage: script lib check <id> <version> [--hashes] [--graph]"};
+        return FormatLibCheck(args[3], args[4], options.IncludeFileHashes, options.IncludeIncludeGraph);
     }
     if (command == "info" || command == "diag" || command == "deps" || command == "exports" || command == "resources") {
         if (args.size() < 3)
@@ -1282,6 +1293,8 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
         return {"info", "warn", "error", "clear"};
     if (args.size() == 3 && args[1] == "lib")
         return {"check"};
+    if (args.size() >= 5 && args[1] == "lib" && args[2] == "check")
+        return {"--hashes", "--graph"};
     if (args.size() == 3 && (args[1] == "info" || args[1] == "diag" || args[1] == "deps" ||
                              args[1] == "exports" || args[1] == "resources")) {
         return GetScriptModIds();

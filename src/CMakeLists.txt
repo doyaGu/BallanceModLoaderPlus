@@ -173,6 +173,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptHookBlockService.h
             AngelScript/ScriptLibraryRegistry.h
             AngelScript/ScriptLibraryServices.h
+            AngelScript/ScriptLibraryTools.h
             AngelScript/ScriptLibraryValidator.h
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
@@ -217,6 +218,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptHookBlockService.cpp
             AngelScript/ScriptLibraryRegistry.cpp
             AngelScript/ScriptLibraryServices.cpp
+            AngelScript/ScriptLibraryTools.cpp
             AngelScript/ScriptLibraryValidator.cpp
             AngelScript/ScriptMod.cpp
             AngelScript/ScriptModContextView.cpp
