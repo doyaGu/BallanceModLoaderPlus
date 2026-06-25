@@ -15711,6 +15711,27 @@ class ExportRef {
   int CallFloat(float &out result) const;
 }
 
+class ExportResolver {
+  bool get_IsBound() const;
+  int get_LastStatus() const;
+  string get_ModId() const;
+  string get_Name() const;
+  string get_Signature() const;
+  void Clear();
+  int Rebind();
+  int Resolve(ExportRef@ &out exportRef);
+  int Call(CallFrame@ frame);
+  int CallVoid();
+  int CallString(const string &in argument, string &out result);
+  int CallString(string &out result);
+  int CallBool(bool argument, bool &out result);
+  int CallBool(bool &out result);
+  int CallInt(int argument, int &out result);
+  int CallInt(int &out result);
+  int CallFloat(float argument, float &out result);
+  int CallFloat(float &out result);
+}
+
 class StateBag {
   bool get_IsReloadState() const;
   bool IsReloadState() const;

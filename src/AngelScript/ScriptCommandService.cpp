@@ -1,11 +1,11 @@
+#include "ScriptStringInterop.h"
+
 #include "ScriptCommandService.h"
 
 #include <algorithm>
 #include <cctype>
 #include <utility>
 #include <vector>
-
-#include <angelscript.h>
 
 #include "CommandContext.h"
 #include "ScriptAngelScriptHandle.h"
@@ -214,8 +214,12 @@ static bool ReadStringProperty(asIScriptObject *object,
         return false;
     }
 
-    auto *result = static_cast<std::string *>(context->GetReturnObject());
-    value = result ? *result : std::string();
+    if (!ScriptStringInterop::ReadContextReturnString(context, value)) {
+        diagnostic.Status = CKAS_TYPEMISMATCH;
+        diagnostic.Message = std::string("Command object property returned an incompatible string for ") + declaration;
+        context->Release();
+        return false;
+    }
     context->Release();
     return true;
 }

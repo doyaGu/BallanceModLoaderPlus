@@ -1,10 +1,10 @@
+#include "ScriptStringInterop.h"
+
 #include "ScriptTimerService.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <utility>
-
-#include <angelscript.h>
 
 #include "BML/ILogger.h"
 #include "ModContext.h"
@@ -195,8 +195,12 @@ static bool ReadStringProperty(asIScriptObject *object,
         return false;
     }
 
-    auto *result = static_cast<std::string *>(context->GetReturnObject());
-    value = result ? *result : std::string();
+    if (!ScriptStringInterop::ReadContextReturnString(context, value)) {
+        diagnostic.Status = CKAS_TYPEMISMATCH;
+        diagnostic.Message = std::string("Timer property returned an incompatible string for ") + declaration;
+        context->Release();
+        return false;
+    }
     context->Release();
     return true;
 }

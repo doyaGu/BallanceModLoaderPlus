@@ -1038,6 +1038,38 @@ class BMLBindingsSmokeMod {
         }
         LogInfo(ctx, "BML export Sum status=" + scriptSumStatus + " result=" + scriptSumResult);
       }
+
+      BML::ExportResolver@ sumResolver = BML::ExportResolver(ctx.GetModId(), "Sum", "int Sum(int, int)");
+      BML::CallFrame@ resolverFrame = BML::CallFrame();
+      int resolverStatus = sumResolver.Rebind();
+      if (resolverStatus == 0) {
+        resolverStatus = resolverFrame.SetInt(0, 20);
+      }
+      if (resolverStatus == 0) {
+        resolverStatus = resolverFrame.SetInt(1, 22);
+      }
+      if (resolverStatus == 0) {
+        resolverStatus = sumResolver.Call(resolverFrame);
+      }
+      int resolverResult = 0;
+      if (resolverStatus == 0) {
+        resolverFrame.GetResultInt(resolverResult);
+      }
+
+      BML::ExportRef@ resolvedSum;
+      int resolveStatus = sumResolver.Resolve(resolvedSum);
+      BML::ExportResolver@ echoResolver = BML::ExportResolver(ctx.GetModId(), "Echo");
+      string resolverEchoResult;
+      int resolverEchoStatus = echoResolver.CallString("resolver", resolverEchoResult);
+      BML::ExportResolver@ missingResolver = BML::ExportResolver(ctx.GetModId(), "MissingResolverExport");
+      int missingResolverStatus = missingResolver.Rebind();
+      LogInfo(ctx, "BML export resolver smoke sum=" + resolverStatus +
+                  " result=" + resolverResult +
+                  " resolve=" + resolveStatus +
+                  " resolvedValid=" + BoolText(resolvedSum !is null && resolvedSum.IsValid) +
+                  " echo=" + resolverEchoStatus +
+                  " echoResult=" + resolverEchoResult +
+                  " missing=" + missingResolverStatus);
     }
   }
 
@@ -1189,6 +1221,8 @@ class BMLBindingsSmokeMod {
                 " combo=" + imguiCombo +
                 " list=" + imguiList +
                 " text=" + imguiText);
+    ImGui::PushID("BML ImGui recovery smoke");
+    ImGui::PushStyleColor(ImGuiCol_Text, 0xffffffff);
   }
 
   void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {

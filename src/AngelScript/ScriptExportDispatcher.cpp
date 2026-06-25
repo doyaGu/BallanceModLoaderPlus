@@ -1,3 +1,5 @@
+#include "ScriptStringInterop.h"
+
 #include "ScriptExportDispatcher.h"
 
 #include <algorithm>
@@ -26,7 +28,7 @@ struct FrameExportCallArgs {
     CKAngelScript *AngelScript = nullptr;
     const ::CKAngelScriptAdapter::Api *Api = nullptr;
     int FailureStatus = BML_OK;
-    std::vector<std::string> StringArgs;
+    std::vector<ScriptStringInterop::ScriptStringObject> StringArgs;
     std::vector<void *> ArrayArgs;
 
     ~FrameExportCallArgs() {
@@ -186,8 +188,12 @@ static CKAS_STATUS SetScriptArrayArg(asIScriptContext *context,
             return status;
         const auto *strings = static_cast<const char *const *>(data);
         for (CKDWORD i = 0; i < count; ++i) {
-            const std::string value(strings && strings[i] ? strings[i] : "");
-            status = args->Api->ArraySetElementValue(array, i, &value);
+            ScriptStringInterop::ScriptStringObject value(context->GetEngine(), strings && strings[i] ? strings[i] : "");
+            if (!value) {
+                args->Api->ArrayRelease(array);
+                return CKAS_TYPEMISMATCH;
+            }
+            status = args->Api->ArraySetElementValue(array, i, value.Get());
             if (status != CKAS_OK) {
                 args->Api->ArrayRelease(array);
                 return status;
@@ -314,8 +320,11 @@ static CKAS_STATUS ConfigureFrameExportContext(asIScriptContext *context, void *
             const int status = BML_GetCallFrameArgChecked(args->Frame, i, BML_CallValueType::String, &slot);
             if (status != BML_OK)
                 return MapFrameStatus(args, status);
-            args->StringArgs.push_back(slot->StringValue);
-            result = context->SetArgObject(index, &args->StringArgs.back());
+            args->StringArgs.emplace_back(context->GetEngine(), slot->StringValue);
+            if (!args->StringArgs.back()) {
+                return MapFrameStatus(args, BML_ERROR_INTEROP_TYPE_MISMATCH);
+            }
+            result = context->SetArgObject(index, args->StringArgs.back().Get());
         } else if (IsScriptArrayType(parameterType)) {
             const CKAS_STATUS arrayStatus = SetScriptArrayArg(context, args, index, parameterType, i);
             if (arrayStatus != CKAS_OK)
@@ -349,6 +358,7 @@ static CKAS_STATUS ConfigureFrameExportContext(asIScriptContext *context, void *
 
 static int SetFrameResultFromScriptArray(FrameExportCallArgs *args,
                                          ScriptExportValueType type,
+                                         asIScriptEngine *engine,
                                          void *array) {
     if (!args || !args->Frame || !args->Api || !array)
         return BML_ERROR_INTEROP_TYPE_MISMATCH;
@@ -393,8 +403,8 @@ static int SetFrameResultFromScriptArray(FrameExportCallArgs *args,
             status = args->Api->ArrayGetElementAddress(array, i, &address);
             if (status != CKAS_OK)
                 return status == CKAS_TYPEMISMATCH ? BML_ERROR_INTEROP_TYPE_MISMATCH : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-            const auto *value = static_cast<const std::string *>(address);
-            storage[i] = value ? *value : "";
+            if (!ScriptStringInterop::ReadStringObject(engine, address, storage[i]))
+                return BML_ERROR_INTEROP_TYPE_MISMATCH;
             values[i] = storage[i].c_str();
         }
         return BML_CallFrame_SetResultValue(args->Frame, BML_CALL_VALUE_STRING_ARRAY, values.data(), values.size());
@@ -431,12 +441,13 @@ static CKAS_STATUS ReadFrameExportContextResult(asIScriptContext *context, void 
     } else if (returnType == ScriptExportValueType::Float) {
         frameStatus = BML_CallFrame_SetResultFloat(args->Frame, context->GetReturnFloat());
     } else if (returnType == ScriptExportValueType::String) {
-        const auto *value = static_cast<const std::string *>(context->GetReturnObject());
-        frameStatus = value ? BML_CallFrame_SetResultString(args->Frame, value->c_str())
-                            : BML_ERROR_INTEROP_TYPE_MISMATCH;
+        std::string value;
+        frameStatus = ScriptStringInterop::ReadContextReturnString(context, value)
+                          ? BML_CallFrame_SetResultString(args->Frame, value.c_str())
+                          : BML_ERROR_INTEROP_TYPE_MISMATCH;
     } else if (IsScriptArrayType(returnType)) {
         void *array = context->GetReturnObject();
-        frameStatus = SetFrameResultFromScriptArray(args, returnType, array);
+        frameStatus = SetFrameResultFromScriptArray(args, returnType, context->GetEngine(), array);
     } else if (returnType == ScriptExportValueType::ObjectId) {
         auto *object = static_cast<CKObject *>(context->GetReturnObject());
         frameStatus = BML_CallFrame_SetResultObjectId(args->Frame, object ? static_cast<int>(object->GetID()) : 0);

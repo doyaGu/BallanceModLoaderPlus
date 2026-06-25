@@ -1,3 +1,5 @@
+#include "ScriptStringInterop.h"
+
 #include "ScriptDataShareService.h"
 
 #include <cstring>
@@ -6,8 +8,6 @@
 #include <utility>
 #include <unordered_map>
 #include <vector>
-
-#include <angelscript.h>
 
 #include "ModContext.h"
 #include "ScriptAngelScriptHandle.h"
@@ -183,9 +183,12 @@ static bool ReadStringProperty(asIScriptObject *object,
         return false;
     }
 
-    auto *result = static_cast<std::string *>(context->GetReturnObject());
-    if (result)
-        value = *result;
+    if (!ScriptStringInterop::ReadContextReturnString(context, value)) {
+        diagnostic.Status = CKAS_TYPEMISMATCH;
+        diagnostic.Message = std::string("DataShare request property returned an incompatible string for ") + declaration;
+        context->Release();
+        return false;
+    }
     context->Release();
     return true;
 }
