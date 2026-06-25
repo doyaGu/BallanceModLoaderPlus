@@ -25,11 +25,22 @@ struct ScriptSourceDependency {
     std::string LibraryVersion;
 };
 
+struct ScriptSourceIncludeEdge {
+    std::string FromSection;
+    std::string Include;
+    std::string ToSection;
+    size_t Line = 0;
+    bool LibraryOwned = false;
+    std::string LibraryId;
+    std::string LibraryVersion;
+};
+
 struct ScriptSourceSnapshot {
     ScriptModEntry CompileEntry;
     std::vector<ScriptSourceSection> Sections;
     std::vector<ScriptLibraryUse> Libraries;
     std::vector<ScriptSourceDependency> Dependencies;
+    std::vector<ScriptSourceIncludeEdge> IncludeEdges;
     std::string EntrySectionName;
 };
 

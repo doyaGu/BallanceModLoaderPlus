@@ -24,6 +24,7 @@ void ScriptModReloadSourceSnapshot::Reset() {
     SourceSections.clear();
     SourceLibraries.clear();
     SourceDependencies.clear();
+    SourceIncludeEdges.clear();
     DiagnosticStagedRootUtf8.clear();
     DiagnosticDisplayRootUtf8.clear();
 }

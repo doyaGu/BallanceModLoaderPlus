@@ -9,6 +9,7 @@
 #include <set>
 #include <sstream>
 #include <unordered_set>
+#include <utility>
 
 #include "Utils/CryptoUtils.h"
 #include "Utils/PathUtils.h"
@@ -204,6 +205,35 @@ bool ParseIncludeDirectiveAt(const std::string &code, size_t hash, ScriptInclude
 
 std::string LibraryUseKey(const std::string &id, const std::string &version) {
     return id + "@" + version;
+}
+
+size_t LineNumberFromOffset(const std::string &code, size_t offset) {
+    size_t line = 1;
+    const size_t end = std::min(offset, code.size());
+    for (size_t i = 0; i < end; ++i) {
+        if (code[i] == '\n')
+            ++line;
+    }
+    return line;
+}
+
+void AddIncludeEdge(ScriptSourceSnapshot &snapshot,
+                    const std::string &fromSection,
+                    const ScriptIncludeDirective &include,
+                    const std::string &toSection,
+                    size_t line,
+                    const ScriptLibraryInclude *libraryInclude = nullptr) {
+    ScriptSourceIncludeEdge edge;
+    edge.FromSection = fromSection;
+    edge.Include = include.Include;
+    edge.ToSection = toSection;
+    edge.Line = line;
+    if (libraryInclude) {
+        edge.LibraryOwned = true;
+        edge.LibraryId = libraryInclude->Id;
+        edge.LibraryVersion = libraryInclude->Version;
+    }
+    snapshot.IncludeEdges.push_back(std::move(edge));
 }
 
 bool ResolveLocalIncludeSectionName(const std::string &includingSection,
@@ -563,26 +593,28 @@ bool ScriptSourceSnapshotBuilder::ResolveLibraryClosure(ScriptSourceSnapshot &sn
         if (!processed.insert(sectionIndexValue).second)
             continue;
         const ScriptSourceSection &section = snapshot.Sections[sectionIndexValue];
-        const bool libraryOwned = ScriptLibraryRegistry::IsLibraryVirtualPath(section.Name);
+        const std::string sectionName = section.Name;
+        const bool libraryOwned = ScriptLibraryRegistry::IsLibraryVirtualPath(sectionName);
         if (libraryOwned) {
             std::string metadata;
             if (ContainsBmlMetadata(section.Code, &metadata)) {
                 diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata,
                                                   "BML metadata is not allowed in script library source: " + metadata);
-                diagnostic.EntryPath = section.Name;
+                diagnostic.EntryPath = sectionName;
                 return false;
             }
         }
 
         const std::vector<ScriptIncludeDirective> includes = ScanIncludeDirectives(section.Code);
         for (const ScriptIncludeDirective &include : includes) {
+            const size_t includeLine = LineNumberFromOffset(section.Code, include.Offset);
             if (!include.Quoted) {
                 diagnostic = MakeScriptDiagnostic(
                     ScriptDiagnosticPhase::Entry,
                     libraryOwned
                         ? "Script library source only supports direct quoted #include directives."
                         : "Script source only supports direct quoted #include directives.");
-                diagnostic.EntryPath = section.Name;
+                diagnostic.EntryPath = sectionName;
                 return false;
             }
             std::string virtualInclude = include.Include;
@@ -592,7 +624,7 @@ bool ScriptSourceSnapshotBuilder::ResolveLibraryClosure(ScriptSourceSnapshot &sn
                     libraryOwned
                         ? "Script library source does not allow empty #include directives."
                         : "Script source does not allow empty #include directives.");
-                diagnostic.EntryPath = section.Name;
+                diagnostic.EntryPath = sectionName;
                 return false;
             }
             if (ScriptLibraryRegistry::IsLibraryVirtualPath(virtualInclude)) {
@@ -600,11 +632,17 @@ bool ScriptSourceSnapshotBuilder::ResolveLibraryClosure(ScriptSourceSnapshot &sn
                 std::string parseDiagnostic;
                 if (!ScriptLibraryRegistry::TryParseVirtualInclude(virtualInclude, parsed, parseDiagnostic)) {
                     diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, parseDiagnostic);
-                    diagnostic.EntryPath = section.Name;
+                    diagnostic.EntryPath = sectionName;
                     return false;
                 }
                 if (!AddLibrarySection(parsed, snapshot, sectionIndex, pending, diagnostic))
                     return false;
+                AddIncludeEdge(snapshot,
+                               sectionName,
+                               include,
+                               parsed.VirtualSection,
+                               includeLine,
+                               &parsed);
                 continue;
             }
             if (libraryOwned) {
@@ -612,40 +650,52 @@ bool ScriptSourceSnapshotBuilder::ResolveLibraryClosure(ScriptSourceSnapshot &sn
                     diagnostic = MakeScriptDiagnostic(
                         ScriptDiagnosticPhase::Entry,
                         "Script library source cannot include physical or non-library absolute paths: " + virtualInclude);
-                    diagnostic.EntryPath = section.Name;
+                    diagnostic.EntryPath = sectionName;
                     return false;
                 }
                 std::string resolved;
                 std::string parseDiagnostic;
-                if (!ScriptLibraryRegistry::ResolveRelativeInclude(section.Name, virtualInclude, resolved, parseDiagnostic)) {
+                if (!ScriptLibraryRegistry::ResolveRelativeInclude(sectionName, virtualInclude, resolved, parseDiagnostic)) {
                     diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, parseDiagnostic);
-                    diagnostic.EntryPath = section.Name;
+                    diagnostic.EntryPath = sectionName;
                     return false;
                 }
                 ScriptLibraryInclude parsed;
                 if (!ScriptLibraryRegistry::TryParseVirtualInclude(resolved, parsed, parseDiagnostic)) {
                     diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, parseDiagnostic);
-                    diagnostic.EntryPath = section.Name;
+                    diagnostic.EntryPath = sectionName;
                     return false;
                 }
                 if (!AddLibrarySection(parsed, snapshot, sectionIndex, pending, diagnostic))
                     return false;
+                AddIncludeEdge(snapshot,
+                               sectionName,
+                               include,
+                               parsed.VirtualSection,
+                               includeLine,
+                               &parsed);
                 continue;
             }
 
             std::string localSection;
-            if (!ResolveLocalIncludeSectionName(section.Name, virtualInclude, localSection)) {
+            if (!ResolveLocalIncludeSectionName(sectionName, virtualInclude, localSection)) {
                 const std::string message =
                     virtualInclude[0] == '/'
                         ? "Script source cannot include physical or non-library absolute paths: " + virtualInclude
                         : "Script source include escapes the script package or uses an unsupported path: " + virtualInclude;
                 diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry, message);
-                diagnostic.EntryPath = section.Name;
+                diagnostic.EntryPath = sectionName;
                 return false;
             }
             const auto localIt = sectionIndex.find(FoldSectionKey(localSection));
-            if (localIt != sectionIndex.end())
+            if (localIt != sectionIndex.end()) {
                 pending.push_back(localIt->second);
+                AddIncludeEdge(snapshot,
+                               sectionName,
+                               include,
+                               localSection,
+                               includeLine);
+            }
         }
     }
     return true;

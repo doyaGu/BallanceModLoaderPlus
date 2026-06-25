@@ -415,6 +415,7 @@ static bool CaptureReloadSourceSnapshot(ModContext *context,
     snapshot.SourceSections = std::move(sourceSnapshot.Sections);
     snapshot.SourceLibraries = std::move(sourceSnapshot.Libraries);
     snapshot.SourceDependencies = std::move(sourceSnapshot.Dependencies);
+    snapshot.SourceIncludeEdges = std::move(sourceSnapshot.IncludeEdges);
 
     return true;
 }
@@ -511,6 +512,7 @@ bool ScriptReloadCandidateBuilder::Build(ScriptModReloadResult &result, Failure 
     }
     m_State.CandidateDefinition.SourceLibraries = m_State.Snapshot.SourceLibraries;
     m_State.CandidateDefinition.SourceDependencies = m_State.Snapshot.SourceDependencies;
+    m_State.CandidateDefinition.SourceIncludeEdges = m_State.Snapshot.SourceIncludeEdges;
 
     m_State.CandidateRuntime.SetOwner(&m_Mod);
     if (!m_State.CandidateRuntime.CreateObject(m_Mod.m_Context ? m_Mod.m_Context->GetCKContext() : nullptr,

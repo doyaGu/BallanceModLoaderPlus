@@ -83,6 +83,25 @@ const ScriptSourceDependency *FindDependency(const ScriptSourceSnapshot &snapsho
     return it == snapshot.Dependencies.end() ? nullptr : &*it;
 }
 
+const ScriptSourceIncludeEdge *FindIncludeEdge(const ScriptSourceSnapshot &snapshot,
+                                               const std::string &from,
+                                               const std::string &to) {
+    auto it = std::find_if(snapshot.IncludeEdges.begin(), snapshot.IncludeEdges.end(), [&](const ScriptSourceIncludeEdge &edge) {
+        return edge.FromSection == from && edge.ToSection == to;
+    });
+    return it == snapshot.IncludeEdges.end() ? nullptr : &*it;
+}
+
+std::string DumpIncludeEdges(const ScriptSourceSnapshot &snapshot) {
+    std::string dump;
+    for (const ScriptSourceIncludeEdge &edge : snapshot.IncludeEdges) {
+        if (!dump.empty())
+            dump += "\n";
+        dump += edge.FromSection + " -> " + edge.ToSection + " include=" + edge.Include;
+    }
+    return dump;
+}
+
 } // namespace
 
 TEST_F(ScriptSourceSnapshotBuilderTest, DirectoryModKeepsEntryFirstAndLocalHelpers) {
@@ -124,6 +143,26 @@ TEST_F(ScriptSourceSnapshotBuilderTest, LibraryIncludeInjectsOnlyDiscoveredClosu
     ASSERT_NE(nullptr, apiDependency);
     EXPECT_TRUE(apiDependency->LibraryOwned);
     EXPECT_EQ(64u, apiDependency->ContentHash.size());
+
+    const ScriptSourceIncludeEdge *clientEdge =
+        FindIncludeEdge(snapshot, "User.mod.as", "/bml/libs/com.example.score@1.2.0/client.as");
+    ASSERT_NE(nullptr, clientEdge) << DumpIncludeEdges(snapshot);
+    EXPECT_EQ("/bml/libs/com.example.score@1.2.0/client.as", clientEdge->Include);
+    EXPECT_EQ(1u, clientEdge->Line);
+    EXPECT_TRUE(clientEdge->LibraryOwned);
+    EXPECT_EQ("com.example.score", clientEdge->LibraryId);
+    EXPECT_EQ("1.2.0", clientEdge->LibraryVersion);
+
+    const ScriptSourceIncludeEdge *apiEdge =
+        FindIncludeEdge(snapshot,
+                        "/bml/libs/com.example.score@1.2.0/client.as",
+                        "/bml/libs/com.example.score@1.2.0/api.as");
+    ASSERT_NE(nullptr, apiEdge);
+    EXPECT_EQ("api.as", apiEdge->Include);
+    EXPECT_EQ(1u, apiEdge->Line);
+    EXPECT_TRUE(apiEdge->LibraryOwned);
+    EXPECT_EQ("com.example.score", apiEdge->LibraryId);
+    EXPECT_EQ("1.2.0", apiEdge->LibraryVersion);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytesAcrossBuilds) {
@@ -274,6 +313,22 @@ TEST_F(ScriptSourceSnapshotBuilderTest, DiscoversLibraryIncludesThroughReachable
     EXPECT_TRUE(HasSection(snapshot, "/bml/libs/com.example.score@1.2.0/api.as"));
     ASSERT_EQ(1u, snapshot.Libraries.size());
     EXPECT_EQ("com.example.score", snapshot.Libraries.front().Id);
+
+    const ScriptSourceIncludeEdge *localEdge =
+        FindIncludeEdge(snapshot, "User.mod.as", "scripts/helper.as");
+    ASSERT_NE(nullptr, localEdge);
+    EXPECT_EQ("scripts/helper.as", localEdge->Include);
+    EXPECT_EQ(1u, localEdge->Line);
+    EXPECT_FALSE(localEdge->LibraryOwned);
+
+    const ScriptSourceIncludeEdge *libraryEdge =
+        FindIncludeEdge(snapshot, "scripts/helper.as", "/bml/libs/com.example.score@1.2.0/api.as");
+    ASSERT_NE(nullptr, libraryEdge) << DumpIncludeEdges(snapshot);
+    EXPECT_EQ("/bml/libs/com.example.score@1.2.0/api.as", libraryEdge->Include);
+    EXPECT_EQ(1u, libraryEdge->Line);
+    EXPECT_TRUE(libraryEdge->LibraryOwned);
+    EXPECT_EQ("com.example.score", libraryEdge->LibraryId);
+    EXPECT_EQ("1.2.0", libraryEdge->LibraryVersion);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, LibraryBmlMetadataIsRejectedButCommentsAndStringsAreIgnored) {

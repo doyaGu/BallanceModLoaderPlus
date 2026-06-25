@@ -66,6 +66,7 @@ ScriptModLoadResult ScriptModLoader::Load(ModContext *owner,
                 } else {
                     definition.SourceLibraries = std::move(snapshot.Libraries);
                     definition.SourceDependencies = std::move(snapshot.Dependencies);
+                    definition.SourceIncludeEdges = std::move(snapshot.IncludeEdges);
                 }
             }
         }

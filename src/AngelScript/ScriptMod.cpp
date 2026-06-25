@@ -184,6 +184,7 @@ static std::vector<ScriptModReloadDiagnosticField> BuildReloadSnapshotFields(con
         {"sourceSections", std::to_string(snapshot.SourceSections.size())},
         {"sourceBytes", std::to_string(CountReloadSnapshotSourceBytes(snapshot))},
         {"sourceLibraries", std::to_string(snapshot.SourceLibraries.size())},
+        {"sourceIncludeEdges", std::to_string(snapshot.SourceIncludeEdges.size())},
     };
 }
 
@@ -192,6 +193,7 @@ static std::vector<ScriptDevEventField> BuildReloadSnapshotEventFields(const Scr
         {"sourceSections", std::to_string(snapshot.SourceSections.size())},
         {"sourceBytes", std::to_string(CountReloadSnapshotSourceBytes(snapshot))},
         {"sourceLibraries", std::to_string(snapshot.SourceLibraries.size())},
+        {"sourceIncludeEdges", std::to_string(snapshot.SourceIncludeEdges.size())},
     };
 }
 

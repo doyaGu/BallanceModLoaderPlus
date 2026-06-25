@@ -38,6 +38,7 @@ struct ScriptModDefinition {
     std::vector<ScriptModExportDefinition> Exports;
     std::vector<ScriptLibraryUse> SourceLibraries;
     std::vector<ScriptSourceDependency> SourceDependencies;
+    std::vector<ScriptSourceIncludeEdge> SourceIncludeEdges;
     std::unordered_map<std::string, std::string> Metadata;
 };
 

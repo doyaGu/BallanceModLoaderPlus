@@ -39,6 +39,7 @@ struct ScriptModReloadSourceSnapshot {
     std::vector<ScriptSourceSection> SourceSections;
     std::vector<ScriptLibraryUse> SourceLibraries;
     std::vector<ScriptSourceDependency> SourceDependencies;
+    std::vector<ScriptSourceIncludeEdge> SourceIncludeEdges;
     std::wstring StagedRoot;
     std::string DiagnosticStagedRootUtf8;
     std::string DiagnosticDisplayRootUtf8;
