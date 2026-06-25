@@ -118,12 +118,21 @@ def _cpp_string(text: str) -> str:
     return text.replace("\\", "\\\\").replace("\"", "\\\"")
 
 
+def _uses_string_bridge(declaration: str) -> bool:
+    return "string" in declaration
+
+
 def assert_handwritten_bindings_synchronized(source: str, stub: str) -> None:
     missing: list[str] = []
     for binding in script_friendly_global_bindings():
         declaration = binding.declaration
         cpp_declaration = _cpp_string(declaration)
-        if f'RegisterGlobalFunction("{cpp_declaration}", asFUNCTION({binding.wrapper})' not in source:
+        expected = (
+            f'RegisterGlobalFunction("{cpp_declaration}", BML_AS_GENERIC_FUNCTION(&{binding.wrapper})'
+            if _uses_string_bridge(declaration)
+            else f'RegisterGlobalFunction("{cpp_declaration}", asFUNCTION({binding.wrapper})'
+        )
+        if expected not in source:
             missing.append(f"cpp global {declaration}")
         if f"  {declaration};" not in stub:
             missing.append(f"stub global {declaration}")
@@ -131,7 +140,12 @@ def assert_handwritten_bindings_synchronized(source: str, stub: str) -> None:
     for binding in draw_list_method_bindings():
         declaration = binding.declaration
         cpp_declaration = _cpp_string(declaration)
-        if f'RegisterObjectMethod("ImDrawList", "{cpp_declaration}", asFUNCTION({binding.function})' not in source:
+        expected = (
+            f'RegisterObjectMethod("ImDrawList", "{cpp_declaration}", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&{binding.function})'
+            if _uses_string_bridge(declaration)
+            else f'RegisterObjectMethod("ImDrawList", "{cpp_declaration}", asFUNCTION({binding.function})'
+        )
+        if expected not in source:
             missing.append(f"cpp ImDrawList method {declaration}")
         if f"  {declaration};" not in stub:
             missing.append(f"stub ImDrawList method {declaration}")

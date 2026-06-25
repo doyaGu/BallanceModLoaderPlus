@@ -44,6 +44,10 @@ def cpp_string(text: str) -> str:
     return text.replace("\\", "\\\\").replace("\"", "\\\"")
 
 
+def needs_string_bridge(declaration: str) -> bool:
+    return "string" in declaration
+
+
 def emit_object_member_wrappers() -> list[str]:
     out: list[str] = []
     for type_name, fields in object_properties().items():
@@ -68,7 +72,10 @@ def emit_object_members() -> list[str]:
                 out.append(f'    r = engine->RegisterObjectMethod("{type_name}", "void set_{field}({as_type} value) property", asFUNCTION(BMLImGuiAS_Set_{suffix}), asCALL_CDECL_OBJFIRST); BML_IMGUI_AS_CHECK(r, "{type_name}.set_{field}");\n')
 
     for binding in draw_list_method_bindings():
-        out.append(f'    r = engine->RegisterObjectMethod("ImDrawList", "{binding.declaration}", asFUNCTION({binding.function}), asCALL_CDECL_OBJFIRST); BML_IMGUI_AS_CHECK(r, "ImDrawList.{binding.declaration}");\n')
+        if needs_string_bridge(binding.declaration):
+            out.append(f'    r = engine->RegisterObjectMethod("ImDrawList", "{binding.declaration}", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&{binding.function}), asCALL_GENERIC); BML_IMGUI_AS_CHECK(r, "ImDrawList.{binding.declaration}");\n')
+        else:
+            out.append(f'    r = engine->RegisterObjectMethod("ImDrawList", "{binding.declaration}", asFUNCTION({binding.function}), asCALL_CDECL_OBJFIRST); BML_IMGUI_AS_CHECK(r, "ImDrawList.{binding.declaration}");\n')
     return out
 
 
@@ -135,7 +142,10 @@ def emit_script_friendly_global_registrations() -> list[str]:
     for binding in script_friendly_global_bindings():
         declaration = cpp_string(binding.declaration)
         diagnostic_name = cpp_string(binding.diagnostic_name or binding.declaration)
-        out.append(f'    r = engine->RegisterGlobalFunction("{declaration}", asFUNCTION({binding.wrapper}), {binding.call_convention}); BML_IMGUI_AS_CHECK_RESET_NAMESPACE(engine, r, "{diagnostic_name}");\n')
+        if needs_string_bridge(binding.declaration):
+            out.append(f'    r = engine->RegisterGlobalFunction("{declaration}", BML_AS_GENERIC_FUNCTION(&{binding.wrapper}), asCALL_GENERIC); BML_IMGUI_AS_CHECK_RESET_NAMESPACE(engine, r, "{diagnostic_name}");\n')
+        else:
+            out.append(f'    r = engine->RegisterGlobalFunction("{declaration}", asFUNCTION({binding.wrapper}), {binding.call_convention}); BML_IMGUI_AS_CHECK_RESET_NAMESPACE(engine, r, "{diagnostic_name}");\n')
     return out
 
 
@@ -143,7 +153,10 @@ def emit_generated_global_registrations(functions: list[FunctionBinding]) -> lis
     out: list[str] = []
     for fn in functions:
         decl = cpp_string(fn.script_decl)
-        out.append(f'    r = engine->RegisterGlobalFunction("{decl}", asFUNCTION({fn.wrapper_name}), asCALL_CDECL); BML_IMGUI_AS_CHECK_RESET_NAMESPACE(engine, r, "{decl}");\n')
+        if needs_string_bridge(fn.script_decl):
+            out.append(f'    r = engine->RegisterGlobalFunction("{decl}", BML_AS_GENERIC_FUNCTION(&{fn.wrapper_name}), asCALL_GENERIC); BML_IMGUI_AS_CHECK_RESET_NAMESPACE(engine, r, "{decl}");\n')
+        else:
+            out.append(f'    r = engine->RegisterGlobalFunction("{decl}", asFUNCTION({fn.wrapper_name}), asCALL_CDECL); BML_IMGUI_AS_CHECK_RESET_NAMESPACE(engine, r, "{decl}");\n')
     return out
 
 
@@ -151,6 +164,7 @@ def emit_source(ctx, functions: list[FunctionBinding]) -> str:
     out: list[str] = []
     out.append(HEADER)
     out.append('#include "AngelScript/generated/BMLImGuiAngelScriptBindings.h"\n')
+    out.append('#include "ScriptStringInterop.h"\n')
     out.append('#include "AngelScriptImGuiBindings.h"\n')
     out.append('#include "CKTexture.h"\n')
     out.append('#include "imgui.h"\n')

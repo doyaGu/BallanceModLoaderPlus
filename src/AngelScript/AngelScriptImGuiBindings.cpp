@@ -8,6 +8,7 @@
 
 #include "ModContext.h"
 #include "Overlay.h"
+#include "ScriptModRuntime.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -22,6 +23,14 @@ CKBOOL BMLImGuiASActivateContext(ImGuiContext *&previous, CKBOOL &changed) {
     ModContext *context = BML_GetModContext();
     if (!context || !context->IsInited())
         return FALSE;
+    if (!BML::ScriptModRuntime::IsInRenderCallback()) {
+        static bool loggedOutsideRender = false;
+        if (!loggedOutsideRender) {
+            loggedOutsideRender = true;
+            BMLImGuiASReportRuntimeWarning("ImGui calls are only active during script OnRender callbacks.");
+        }
+        return FALSE;
+    }
     if (!Overlay::IsImGuiReady() || !Overlay::IsImGuiFrameActive())
         return FALSE;
 
@@ -59,6 +68,7 @@ bool BMLImGuiASNeedsRecovery(const ImGuiErrorRecoveryState &state) {
            g.BeginPopupStack.Size > state.SizeOfBeginPopupStack ||
            g.DisabledStackSize > state.SizeOfDisabledStack;
 }
+
 } // namespace
 
 CKBOOL BMLImGuiASBeginCall(BMLImGuiASCallScope *scope) {
@@ -95,6 +105,7 @@ CKBOOL BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope) {
     scope->Previous = nullptr;
     scope->Active = FALSE;
     scope->Changed = FALSE;
+    scope->PreviousErrorRecoveryEnableAssert = TRUE;
 
     if (!BMLImGuiASActivateContext(scope->Previous, scope->Changed))
         return FALSE;
@@ -103,6 +114,10 @@ CKBOOL BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope) {
                   "BMLImGuiASCallbackRecoveryScope::State is too small");
     ImGuiErrorRecoveryState *state = new (scope->State) ImGuiErrorRecoveryState();
     ImGui::ErrorRecoveryStoreState(state);
+    if (ImGuiContext *context = ImGui::GetCurrentContext()) {
+        scope->PreviousErrorRecoveryEnableAssert = context->IO.ConfigErrorRecoveryEnableAssert ? TRUE : FALSE;
+        context->IO.ConfigErrorRecoveryEnableAssert = false;
+    }
     scope->Active = TRUE;
     return TRUE;
 }
@@ -114,10 +129,13 @@ void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
         return;
 
     ImGuiErrorRecoveryState *state = reinterpret_cast<ImGuiErrorRecoveryState *>(scope->State);
-    const bool recovered = BMLImGuiASNeedsRecovery(*state);
-    if (recovered) {
+    const bool needsRecovery = BMLImGuiASNeedsRecovery(*state);
+    if (needsRecovery) {
         ImGui::ErrorRecoveryTryToRecoverState(state);
     }
+
+    if (ImGuiContext *context = ImGui::GetCurrentContext())
+        context->IO.ConfigErrorRecoveryEnableAssert = scope->PreviousErrorRecoveryEnableAssert != FALSE;
 
     state->~ImGuiErrorRecoveryState();
 
@@ -128,7 +146,7 @@ void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
     scope->Active = FALSE;
     scope->Changed = FALSE;
 
-    if (recovered) {
+    if (needsRecovery) {
         char buffer[512];
         std::snprintf(buffer,
                       sizeof(buffer),

@@ -17,6 +17,7 @@ struct BMLImGuiASCallbackRecoveryScope {
     ImGuiContext *Previous = nullptr;
     CKBOOL Active = FALSE;
     CKBOOL Changed = FALSE;
+    CKBOOL PreviousErrorRecoveryEnableAssert = TRUE;
     alignas(8) unsigned char State[64] = {};
 };
 
