@@ -76,6 +76,13 @@ const ScriptSourceSection *FindSection(const ScriptSourceSnapshot &snapshot, con
     return it == snapshot.Sections.end() ? nullptr : &*it;
 }
 
+const ScriptSourceDependency *FindDependency(const ScriptSourceSnapshot &snapshot, const std::string &name) {
+    auto it = std::find_if(snapshot.Dependencies.begin(), snapshot.Dependencies.end(), [&](const ScriptSourceDependency &dependency) {
+        return dependency.VirtualSection == name;
+    });
+    return it == snapshot.Dependencies.end() ? nullptr : &*it;
+}
+
 } // namespace
 
 TEST_F(ScriptSourceSnapshotBuilderTest, DirectoryModKeepsEntryFirstAndLocalHelpers) {
@@ -89,6 +96,9 @@ TEST_F(ScriptSourceSnapshotBuilderTest, DirectoryModKeepsEntryFirstAndLocalHelpe
     EXPECT_EQ("Hello.mod.as", snapshot.EntrySectionName);
     EXPECT_EQ("Hello.mod.as", snapshot.Sections.front().Name);
     EXPECT_TRUE(HasSection(snapshot, "runtime.as"));
+    const ScriptSourceDependency *entryDependency = FindDependency(snapshot, "Hello.mod.as");
+    ASSERT_NE(nullptr, entryDependency);
+    EXPECT_EQ(64u, entryDependency->ContentHash.size());
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, LibraryIncludeInjectsOnlyDiscoveredClosure) {
@@ -109,6 +119,11 @@ TEST_F(ScriptSourceSnapshotBuilderTest, LibraryIncludeInjectsOnlyDiscoveredClosu
     ASSERT_EQ(1u, snapshot.Libraries.size());
     EXPECT_EQ("com.example.score", snapshot.Libraries.front().Id);
     EXPECT_EQ("1.2.0", snapshot.Libraries.front().Version);
+    const ScriptSourceDependency *apiDependency =
+        FindDependency(snapshot, "/bml/libs/com.example.score@1.2.0/api.as");
+    ASSERT_NE(nullptr, apiDependency);
+    EXPECT_TRUE(apiDependency->LibraryOwned);
+    EXPECT_EQ(64u, apiDependency->ContentHash.size());
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytesAcrossBuilds) {
@@ -151,6 +166,15 @@ TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytes
     EXPECT_NE(std::string::npos, firstApi->Code.find("Version = 1"));
     EXPECT_NE(std::string::npos, secondApi->Code.find("Version = 1"));
     EXPECT_EQ(std::string::npos, secondApi->Code.find("Version = 2"));
+
+    const ScriptSourceDependency *firstDependency =
+        FindDependency(firstSnapshot, "/bml/libs/com.example.score@1.2.0/api.as");
+    const ScriptSourceDependency *secondDependency =
+        FindDependency(secondSnapshot, "/bml/libs/com.example.score@1.2.0/api.as");
+    ASSERT_NE(nullptr, firstDependency);
+    ASSERT_NE(nullptr, secondDependency);
+    EXPECT_EQ(64u, firstDependency->ContentHash.size());
+    EXPECT_EQ(firstDependency->ContentHash, secondDependency->ContentHash);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, IgnoresLibraryIncludesInUnreachableLocalSections) {

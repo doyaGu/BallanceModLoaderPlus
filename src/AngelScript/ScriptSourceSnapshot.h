@@ -19,6 +19,7 @@ struct ScriptLibraryUse {
 struct ScriptSourceDependency {
     std::wstring PhysicalPath;
     std::string VirtualSection;
+    std::string ContentHash;
     bool LibraryOwned = false;
     std::string LibraryId;
     std::string LibraryVersion;

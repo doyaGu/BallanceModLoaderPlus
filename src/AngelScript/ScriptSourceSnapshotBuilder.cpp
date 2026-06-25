@@ -1,6 +1,7 @@
 #include "ScriptSourceSnapshotBuilder.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cwchar>
 #include <cwctype>
@@ -10,6 +11,7 @@
 #include <sstream>
 #include <unordered_set>
 
+#include "Utils/CryptoUtils.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -75,6 +77,20 @@ bool RegisterSectionKey(const std::string &sectionName,
     return true;
 }
 
+std::string Sha256Hex(const std::string &code) {
+    std::array<uint8_t, 32> digest{};
+    if (!utils::Sha256(reinterpret_cast<const uint8_t *>(code.data()), code.size(), digest.data()))
+        return {};
+
+    constexpr char kHex[] = "0123456789abcdef";
+    std::string hex(digest.size() * 2, '\0');
+    for (size_t i = 0; i < digest.size(); ++i) {
+        hex[i * 2] = kHex[digest[i] >> 4];
+        hex[i * 2 + 1] = kHex[digest[i] & 0x0f];
+    }
+    return hex;
+}
+
 bool AddScriptSourceSection(const std::wstring &path,
                             const std::wstring &sectionRoot,
                             std::set<std::wstring> &seen,
@@ -103,6 +119,7 @@ bool AddScriptSourceSection(const std::wstring &path,
     ScriptSourceDependency dependency;
     dependency.PhysicalPath = utils::ResolvePathW(path);
     dependency.VirtualSection = section.Name;
+    dependency.ContentHash = Sha256Hex(section.Code);
     snapshot.Dependencies.push_back(std::move(dependency));
     snapshot.Sections.push_back(std::move(section));
     return true;
@@ -683,15 +700,17 @@ bool ScriptSourceSnapshotBuilder::AddLibrarySection(const ScriptLibraryInclude &
     ScriptSourceSection section;
     section.Name = include.VirtualSection;
     section.Code = std::move(code);
-    snapshot.Sections.push_back(std::move(section));
-    pending.push_back(newIndex);
 
     ScriptSourceDependency dependency;
     dependency.PhysicalPath = physicalPath;
     dependency.VirtualSection = include.VirtualSection;
+    dependency.ContentHash = Sha256Hex(section.Code);
     dependency.LibraryOwned = true;
     dependency.LibraryId = include.Id;
     dependency.LibraryVersion = include.Version;
+
+    snapshot.Sections.push_back(std::move(section));
+    pending.push_back(newIndex);
     snapshot.Dependencies.push_back(std::move(dependency));
 
     const std::string useKey = LibraryUseKey(include.Id, include.Version);

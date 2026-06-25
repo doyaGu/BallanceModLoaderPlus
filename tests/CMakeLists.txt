@@ -164,6 +164,7 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptDataShareService.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptFunctionSupport.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptStringInterop.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptTimerService.cpp
             ${BML_SOURCE_DIR}/DataShare.cpp
     )
@@ -205,6 +206,7 @@ if (BML_WITH_ANGELSCRIPT)
             DEPENDENCIES
             BML_PathUtils
             BML_StringUtils
+            BML_CryptoUtils
     )
 
     add_bml_test(ScriptSourceSnapshotBuilderTest
@@ -218,6 +220,7 @@ if (BML_WITH_ANGELSCRIPT)
             DEPENDENCIES
             BML_PathUtils
             BML_StringUtils
+            BML_CryptoUtils
     )
 
     add_bml_test(ScriptStateBagTest
