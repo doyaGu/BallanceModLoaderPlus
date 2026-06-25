@@ -43,6 +43,7 @@
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
+#include "Overlay.h"
 
 static constexpr const char *kExtensionName = "BML";
 static constexpr CKDWORD kRegistrationRetryTicks = 300;
@@ -3276,7 +3277,7 @@ BMLAS_ModRef *BMLAS_ContextGetMod(BML::ScriptModContextView *view, int index) {
 }
 
 bool BMLAS_UI_BeginRenderCall() {
-    if (BML::ScriptModRuntime::IsInRenderCallback() && Bui::GetImGuiContext())
+    if (Bui::GetImGuiContext() && Overlay::IsImGuiReady() && Overlay::IsImGuiFrameActive())
         return true;
 
     static bool logged = false;
@@ -3284,7 +3285,7 @@ bool BMLAS_UI_BeginRenderCall() {
         logged = true;
         ModContext *ctx = GetActiveContext();
         if (ctx && ctx->GetLogger()) {
-            ctx->GetLogger()->Warn("BML::UI drawing calls are only active during script OnRender callbacks.");
+            ctx->GetLogger()->Warn("BML::UI drawing calls require an active BML ImGui frame.");
         }
     }
     return false;

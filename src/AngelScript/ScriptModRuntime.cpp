@@ -17,7 +17,6 @@ thread_local ScriptMod *g_StateHookScriptMod = nullptr;
 thread_local ScriptModRuntime *g_StateHookScriptModRuntime = nullptr;
 thread_local ScriptModReloadPhase g_StateHookPhase = ScriptModReloadPhase::None;
 thread_local int g_StateHookDepth = 0;
-thread_local bool g_InRenderCallback = false;
 
 void ReplaceAll(std::string &value, const std::string &from, const std::string &to) {
     if (from.empty())
@@ -115,15 +114,6 @@ ScriptStateHookScope::~ScriptStateHookScope() {
     g_StateHookScriptMod = m_PreviousMod;
     g_StateHookScriptModRuntime = m_PreviousRuntime;
     g_StateHookPhase = m_PreviousDepth > 0 ? m_PreviousPhase : ScriptModReloadPhase::None;
-}
-
-ScriptRenderCallbackScope::ScriptRenderCallbackScope()
-    : m_Previous(g_InRenderCallback) {
-    g_InRenderCallback = true;
-}
-
-ScriptRenderCallbackScope::~ScriptRenderCallbackScope() {
-    g_InRenderCallback = m_Previous;
 }
 
 class ScriptRuntimeCallScope {
@@ -257,10 +247,6 @@ bool ScriptModRuntime::RecordStateHookHostCallViolation(const char *apiName) {
         }
     }
     return true;
-}
-
-bool ScriptModRuntime::IsInRenderCallback() {
-    return g_InRenderCallback;
 }
 
 bool ScriptModRuntime::Refresh(CKContext *context, ScriptDiagnostic &diagnostic) {

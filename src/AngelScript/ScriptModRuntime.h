@@ -59,18 +59,6 @@ private:
     bool m_Active = false;
 };
 
-class ScriptRenderCallbackScope {
-public:
-    ScriptRenderCallbackScope();
-    ~ScriptRenderCallbackScope();
-
-    ScriptRenderCallbackScope(const ScriptRenderCallbackScope &) = delete;
-    ScriptRenderCallbackScope &operator=(const ScriptRenderCallbackScope &) = delete;
-
-private:
-    bool m_Previous = false;
-};
-
 struct ScriptMethodCall {
     CKAngelScriptMethod *Method = nullptr;
     CKAngelScriptWriteArgsCallback WriteArgs = nullptr;
@@ -110,7 +98,6 @@ public:
     static bool IsInStateHook();
     static ScriptModReloadPhase GetStateHookPhase();
     static bool RecordStateHookHostCallViolation(const char *apiName);
-    static bool IsInRenderCallback();
     bool IsModuleLoaded() const { return m_ModuleLoaded; }
     bool HasObject() const { return m_Object != nullptr; }
 

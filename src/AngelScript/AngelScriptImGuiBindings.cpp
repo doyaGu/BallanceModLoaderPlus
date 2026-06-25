@@ -8,7 +8,6 @@
 
 #include "ModContext.h"
 #include "Overlay.h"
-#include "ScriptModRuntime.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -16,23 +15,21 @@
 static std::string g_BMLImGuiASLastRegistrationError;
 
 namespace {
-bool BMLImGuiASActivateContext(ImGuiContext *&previous, bool &changed) {
+bool BMLImGuiASActivateContext(ImGuiContext *&previous, bool &changed, bool reportOutsideFrame) {
     previous = nullptr;
     changed = false;
 
     ModContext *context = BML_GetModContext();
     if (!context || !context->IsInited())
         return false;
-    if (!BML::ScriptModRuntime::IsInRenderCallback()) {
-        static bool loggedOutsideRender = false;
-        if (!loggedOutsideRender) {
-            loggedOutsideRender = true;
-            BMLImGuiASReportRuntimeWarning("ImGui calls are only active during script OnRender callbacks.");
+    if (!Overlay::IsImGuiReady() || !Overlay::IsImGuiFrameActive()) {
+        static bool loggedOutsideFrame = false;
+        if (reportOutsideFrame && !loggedOutsideFrame) {
+            loggedOutsideFrame = true;
+            BMLImGuiASReportRuntimeWarning("ImGui calls require an active BML ImGui frame.");
         }
         return false;
     }
-    if (!Overlay::IsImGuiReady() || !Overlay::IsImGuiFrameActive())
-        return false;
 
     ImGuiContext *imguiContext = Overlay::GetImGuiContext();
     if (!imguiContext)
@@ -80,7 +77,7 @@ bool BMLImGuiASCallScope::Begin() {
     Active = false;
     Changed = false;
 
-    if (!BMLImGuiASActivateContext(Previous, Changed))
+    if (!BMLImGuiASActivateContext(Previous, Changed, true))
         return false;
 
     Active = true;
@@ -120,7 +117,7 @@ bool BMLImGuiASCallbackRecoveryScope::Begin() {
     PreviousErrorRecoveryEnableDebugLog = true;
     PreviousErrorRecoveryEnableTooltip = true;
 
-    if (!BMLImGuiASActivateContext(Previous, Changed))
+    if (!BMLImGuiASActivateContext(Previous, Changed, false))
         return false;
 
     static_assert(sizeof(ImGuiErrorRecoveryState) <= sizeof(State),

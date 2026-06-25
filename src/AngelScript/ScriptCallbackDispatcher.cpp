@@ -147,7 +147,6 @@ bool ScriptCallbackDispatcher::CallGameEvent(CKContext *context, ScriptModRuntim
 
 bool ScriptCallbackDispatcher::CallRender(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, CK_RENDER_FLAGS flags, ScriptDiagnostic &diagnostic) {
     ScriptRenderEventView event(flags);
-    ScriptRenderCallbackScope renderScope;
     return CallWithEvent(context, runtime, ScriptCallbackOnRender, contextView, &event, diagnostic);
 }
 
