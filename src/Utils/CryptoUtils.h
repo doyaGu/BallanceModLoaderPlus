@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace utils {
@@ -14,6 +15,9 @@ namespace utils {
     [[nodiscard]] bool Sha256File(const std::wstring &path, uint8_t outDigest[32]);
     [[nodiscard]] std::vector<uint8_t> Sha256Bytes(const uint8_t *data, size_t dataLength);
     [[nodiscard]] std::vector<uint8_t> Sha256FileBytes(const std::wstring &path);
+    [[nodiscard]] std::string Sha256Hex(const uint8_t *data, size_t dataLength);
+    [[nodiscard]] std::string Sha256Hex(std::string_view data);
+    [[nodiscard]] std::string Sha256FileHex(const std::wstring &path);
     [[nodiscard]] bool VerifyEcdsaP256Sha256RawSignature(const uint8_t publicKeyX[32],
                                                          const uint8_t publicKeyY[32],
                                                          const uint8_t digest[32],

@@ -88,6 +88,17 @@ add_bml_test(IniFileTest
         BMLUtils
 )
 
+if (WIN32)
+    add_bml_test(CryptoUtilsTest
+            SOURCES
+            CryptoUtilsTest.cpp
+            DEPENDENCIES
+            BML_CryptoUtils
+            BML_PathUtils
+            BML_StringUtils
+    )
+endif ()
+
 add_bml_test(AnsiPaletteTest
         SOURCES
         AnsiPaletteTest.cpp

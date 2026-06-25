@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 
-#include <array>
 #include <memory>
 #include <string>
 
@@ -27,9 +26,9 @@ namespace {
     }
 
     std::string Sha256Hex(const std::wstring &path) {
-        std::array<uint8_t, 32> digest{};
-        EXPECT_TRUE(utils::Sha256File(path, digest.data()));
-        return bmlupdater::BytesToHex(digest.data(), digest.size());
+        std::string digest = utils::Sha256FileHex(path);
+        EXPECT_FALSE(digest.empty());
+        return digest;
     }
 }
 

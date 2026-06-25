@@ -19,6 +19,16 @@ namespace utils {
     namespace {
         constexpr size_t kSha256Length = 32;
 
+        std::string BytesToLowerHex(const uint8_t *bytes, size_t size) {
+            constexpr char kHex[] = "0123456789abcdef";
+            std::string hex(size * 2, '\0');
+            for (size_t i = 0; i < size; ++i) {
+                hex[i * 2] = kHex[bytes[i] >> 4];
+                hex[i * 2 + 1] = kHex[bytes[i] & 0x0f];
+            }
+            return hex;
+        }
+
         bool OpenHmacProvider(BCRYPT_ALG_HANDLE *provider) {
             return BCryptOpenAlgorithmProvider(
                 provider,
@@ -169,6 +179,24 @@ namespace utils {
             digest.clear();
         }
         return digest;
+    }
+
+    std::string Sha256Hex(const uint8_t *data, size_t dataLength) {
+        std::array<uint8_t, kSha256Length> digest{};
+        if (!Sha256(data, dataLength, digest.data()))
+            return {};
+        return BytesToLowerHex(digest.data(), digest.size());
+    }
+
+    std::string Sha256Hex(std::string_view data) {
+        return Sha256Hex(reinterpret_cast<const uint8_t *>(data.data()), data.size());
+    }
+
+    std::string Sha256FileHex(const std::wstring &path) {
+        std::array<uint8_t, kSha256Length> digest{};
+        if (!Sha256File(path, digest.data()))
+            return {};
+        return BytesToLowerHex(digest.data(), digest.size());
     }
 
     bool VerifyEcdsaP256Sha256RawSignature(const uint8_t publicKeyX[32],
