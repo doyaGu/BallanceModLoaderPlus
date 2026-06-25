@@ -193,10 +193,45 @@ if (BML_WITH_ANGELSCRIPT)
     )
     target_compile_definitions(ScriptModRuntimeTest PRIVATE BML_SCRIPT_RUNTIME_TEST_ACCESS)
 
+    add_bml_test(ScriptLibraryRegistryTest
+            SOURCES
+            ScriptLibraryRegistryTest.cpp
+            ${BML_SOURCE_DIR}/AngelScript/CKAngelScriptAdapter.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptLibraryRegistry.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptLibraryValidator.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptModEntryScanner.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptSourceSnapshotBuilder.cpp
+            DEPENDENCIES
+            BML_PathUtils
+            BML_StringUtils
+    )
+
+    add_bml_test(ScriptSourceSnapshotBuilderTest
+            SOURCES
+            ScriptSourceSnapshotBuilderTest.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptLibraryRegistry.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptSourceSnapshotBuilder.cpp
+            ${BML_SOURCE_DIR}/AngelScript/CKAngelScriptAdapter.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptDiagnostic.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptModEntryScanner.cpp
+            DEPENDENCIES
+            BML_PathUtils
+            BML_StringUtils
+    )
+
     add_bml_test(ScriptStateBagTest
             SOURCES
             ScriptStateBagTest.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptStateBag.cpp
+    )
+
+    add_bml_test(ScriptApiReferenceTest
+            SOURCES
+            ScriptApiReferenceTest.cpp
+    )
+    target_compile_definitions(ScriptApiReferenceTest PRIVATE
+            "BML_TEST_SOURCE_ROOT=\"${PROJECT_SOURCE_DIR}\""
     )
 
     add_bml_test(ScriptReloadStagingCleanupTest
