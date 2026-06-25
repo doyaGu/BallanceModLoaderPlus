@@ -18,6 +18,8 @@ struct BMLImGuiASCallbackRecoveryScope {
     CKBOOL Active = FALSE;
     CKBOOL Changed = FALSE;
     CKBOOL PreviousErrorRecoveryEnableAssert = TRUE;
+    CKBOOL PreviousErrorRecoveryEnableDebugLog = TRUE;
+    CKBOOL PreviousErrorRecoveryEnableTooltip = TRUE;
     alignas(8) unsigned char State[64] = {};
 };
 

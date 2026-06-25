@@ -106,6 +106,8 @@ CKBOOL BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope) {
     scope->Active = FALSE;
     scope->Changed = FALSE;
     scope->PreviousErrorRecoveryEnableAssert = TRUE;
+    scope->PreviousErrorRecoveryEnableDebugLog = TRUE;
+    scope->PreviousErrorRecoveryEnableTooltip = TRUE;
 
     if (!BMLImGuiASActivateContext(scope->Previous, scope->Changed))
         return FALSE;
@@ -116,7 +118,11 @@ CKBOOL BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope) {
     ImGui::ErrorRecoveryStoreState(state);
     if (ImGuiContext *context = ImGui::GetCurrentContext()) {
         scope->PreviousErrorRecoveryEnableAssert = context->IO.ConfigErrorRecoveryEnableAssert ? TRUE : FALSE;
+        scope->PreviousErrorRecoveryEnableDebugLog = context->IO.ConfigErrorRecoveryEnableDebugLog ? TRUE : FALSE;
+        scope->PreviousErrorRecoveryEnableTooltip = context->IO.ConfigErrorRecoveryEnableTooltip ? TRUE : FALSE;
         context->IO.ConfigErrorRecoveryEnableAssert = false;
+        context->IO.ConfigErrorRecoveryEnableDebugLog = false;
+        context->IO.ConfigErrorRecoveryEnableTooltip = false;
     }
     scope->Active = TRUE;
     return TRUE;
@@ -134,8 +140,11 @@ void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
         ImGui::ErrorRecoveryTryToRecoverState(state);
     }
 
-    if (ImGuiContext *context = ImGui::GetCurrentContext())
+    if (ImGuiContext *context = ImGui::GetCurrentContext()) {
         context->IO.ConfigErrorRecoveryEnableAssert = scope->PreviousErrorRecoveryEnableAssert != FALSE;
+        context->IO.ConfigErrorRecoveryEnableDebugLog = scope->PreviousErrorRecoveryEnableDebugLog != FALSE;
+        context->IO.ConfigErrorRecoveryEnableTooltip = scope->PreviousErrorRecoveryEnableTooltip != FALSE;
+    }
 
     state->~ImGuiErrorRecoveryState();
 
