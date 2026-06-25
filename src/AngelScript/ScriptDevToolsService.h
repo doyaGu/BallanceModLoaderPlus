@@ -39,6 +39,16 @@ struct ScriptSourceDependencySnapshot {
     std::string LibraryVersion;
 };
 
+struct ScriptSourceIncludeEdgeSnapshot {
+    std::string FromSection;
+    std::string Include;
+    std::string ToSection;
+    size_t Line = 0;
+    bool LibraryOwned = false;
+    std::string LibraryId;
+    std::string LibraryVersion;
+};
+
 struct ScriptExportSnapshot {
     std::string Name;
     std::string Signature;
@@ -85,6 +95,7 @@ struct ScriptModSnapshot {
     std::vector<ScriptDependencySnapshot> Dependencies;
     std::vector<ScriptSourceLibrarySnapshot> SourceLibraries;
     std::vector<ScriptSourceDependencySnapshot> SourceDependencies;
+    std::vector<ScriptSourceIncludeEdgeSnapshot> SourceIncludeEdges;
     std::vector<ScriptExportSnapshot> Exports;
     std::vector<std::string> Callbacks;
     ScriptResourceSnapshot Resources;

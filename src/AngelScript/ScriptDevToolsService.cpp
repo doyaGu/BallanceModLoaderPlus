@@ -825,6 +825,18 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
         snapshot.SourceDependencies.push_back(std::move(item));
     }
 
+    for (const ScriptSourceIncludeEdge &edge : definition.SourceIncludeEdges) {
+        ScriptSourceIncludeEdgeSnapshot item;
+        item.FromSection = edge.FromSection;
+        item.Include = edge.Include;
+        item.ToSection = edge.ToSection;
+        item.Line = edge.Line;
+        item.LibraryOwned = edge.LibraryOwned;
+        item.LibraryId = edge.LibraryId;
+        item.LibraryVersion = edge.LibraryVersion;
+        snapshot.SourceIncludeEdges.push_back(std::move(item));
+    }
+
     const int exportCount = mod->GetExportCount();
     for (int i = 0; i < exportCount; ++i) {
         ScriptExportSnapshot item;
@@ -1009,6 +1021,20 @@ std::vector<std::string> ScriptDevToolsService::FormatDeps(const std::string &id
                         " root=" + DisplayScriptPath(m_Context, library.RootDirectory));
     }
     if (snapshot->SourceLibraries.empty())
+        lines.push_back("    none");
+    lines.push_back("  source include graph:");
+    for (const auto &edge : snapshot->SourceIncludeEdges) {
+        std::ostringstream stream;
+        stream << "    " << edge.FromSection;
+        if (edge.Line != 0)
+            stream << ':' << edge.Line;
+        stream << " -> " << edge.ToSection
+               << " include=\"" << edge.Include << "\"";
+        if (edge.LibraryOwned)
+            stream << " lib=" << ScriptLibraryPackageKey(edge.LibraryId, edge.LibraryVersion);
+        lines.push_back(stream.str());
+    }
+    if (snapshot->SourceIncludeEdges.empty())
         lines.push_back("    none");
     lines.push_back("  source files:");
     for (const auto &dependency : snapshot->SourceDependencies) {
@@ -1601,6 +1627,37 @@ void ScriptDevToolsService::DrawDependenciesTab(const ScriptModSnapshot *selecte
         ImGui::EndTable();
     }
     if (selected->SourceLibraries.empty())
+        ImGui::TextDisabled("none");
+
+    ImGui::Separator();
+    ImGui::TextDisabled("source include graph");
+    if (ImGui::BeginTable("script-dev-source-include-table", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("from", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("line", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+        ImGui::TableSetupColumn("to", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("owner", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("include", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const auto &item : selected->SourceIncludeEdges) {
+            const std::string owner = item.LibraryOwned
+                                          ? ScriptLibraryPackageKey(item.LibraryId, item.LibraryVersion)
+                                          : "mod";
+            const std::string line = item.Line == 0 ? std::string() : std::to_string(item.Line);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(item.FromSection.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(line.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(item.ToSection.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(owner.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(item.Include.c_str());
+        }
+        ImGui::EndTable();
+    }
+    if (selected->SourceIncludeEdges.empty())
         ImGui::TextDisabled("none");
 
     ImGui::Separator();
