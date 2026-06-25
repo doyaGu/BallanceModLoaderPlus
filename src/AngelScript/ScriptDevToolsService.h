@@ -30,6 +30,15 @@ struct ScriptSourceLibrarySnapshot {
     std::string VirtualRoot;
 };
 
+struct ScriptSourceDependencySnapshot {
+    std::string VirtualSection;
+    std::string PhysicalPath;
+    std::string ContentHash;
+    bool LibraryOwned = false;
+    std::string LibraryId;
+    std::string LibraryVersion;
+};
+
 struct ScriptExportSnapshot {
     std::string Name;
     std::string Signature;
@@ -75,6 +84,7 @@ struct ScriptModSnapshot {
     unsigned int ReloadAttemptId = 0;
     std::vector<ScriptDependencySnapshot> Dependencies;
     std::vector<ScriptSourceLibrarySnapshot> SourceLibraries;
+    std::vector<ScriptSourceDependencySnapshot> SourceDependencies;
     std::vector<ScriptExportSnapshot> Exports;
     std::vector<std::string> Callbacks;
     ScriptResourceSnapshot Resources;

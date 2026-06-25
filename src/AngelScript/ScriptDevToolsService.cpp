@@ -130,6 +130,13 @@ std::string DisplayScriptPath(ModContext *context, const std::string &path) {
     return BaseNameUtf8(path);
 }
 
+std::string ShortHash(const std::string &hash) {
+    constexpr size_t kVisibleHashChars = 12;
+    if (hash.size() <= kVisibleHashChars)
+        return hash;
+    return hash.substr(0, kVisibleHashChars);
+}
+
 void ReplaceAll(std::string &text, const std::string &from, const std::string &to) {
     if (from.empty())
         return;
@@ -807,6 +814,17 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
         snapshot.SourceLibraries.push_back(std::move(item));
     }
 
+    for (const ScriptSourceDependency &dependency : definition.SourceDependencies) {
+        ScriptSourceDependencySnapshot item;
+        item.VirtualSection = dependency.VirtualSection;
+        item.PhysicalPath = utils::Utf16ToUtf8(dependency.PhysicalPath);
+        item.ContentHash = dependency.ContentHash;
+        item.LibraryOwned = dependency.LibraryOwned;
+        item.LibraryId = dependency.LibraryId;
+        item.LibraryVersion = dependency.LibraryVersion;
+        snapshot.SourceDependencies.push_back(std::move(item));
+    }
+
     const int exportCount = mod->GetExportCount();
     for (int i = 0; i < exportCount; ++i) {
         ScriptExportSnapshot item;
@@ -991,6 +1009,19 @@ std::vector<std::string> ScriptDevToolsService::FormatDeps(const std::string &id
                         " root=" + DisplayScriptPath(m_Context, library.RootDirectory));
     }
     if (snapshot->SourceLibraries.empty())
+        lines.push_back("    none");
+    lines.push_back("  source files:");
+    for (const auto &dependency : snapshot->SourceDependencies) {
+        std::ostringstream stream;
+        stream << "    " << dependency.VirtualSection
+               << " hash=" << ShortHash(dependency.ContentHash);
+        if (dependency.LibraryOwned) {
+            stream << " lib=" << ScriptLibraryPackageKey(dependency.LibraryId, dependency.LibraryVersion);
+        }
+        stream << " path=" << DisplayScriptPath(m_Context, dependency.PhysicalPath);
+        lines.push_back(stream.str());
+    }
+    if (snapshot->SourceDependencies.empty())
         lines.push_back("    none");
     return lines;
 }
@@ -1570,6 +1601,33 @@ void ScriptDevToolsService::DrawDependenciesTab(const ScriptModSnapshot *selecte
         ImGui::EndTable();
     }
     if (selected->SourceLibraries.empty())
+        ImGui::TextDisabled("none");
+
+    ImGui::Separator();
+    ImGui::TextDisabled("source files");
+    if (ImGui::BeginTable("script-dev-source-file-table", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("section", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("owner", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("hash", ImGuiTableColumnFlags_WidthFixed, 98.0f);
+        ImGui::TableSetupColumn("path", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const auto &item : selected->SourceDependencies) {
+            const std::string owner = item.LibraryOwned
+                                          ? ScriptLibraryPackageKey(item.LibraryId, item.LibraryVersion)
+                                          : "mod";
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(item.VirtualSection.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(owner.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(ShortHash(item.ContentHash).c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(DisplayScriptPath(m_Context, item.PhysicalPath).c_str());
+        }
+        ImGui::EndTable();
+    }
+    if (selected->SourceDependencies.empty())
         ImGui::TextDisabled("none");
 }
 
