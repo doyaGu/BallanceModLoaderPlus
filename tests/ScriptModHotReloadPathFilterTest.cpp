@@ -54,6 +54,15 @@ ScriptModEntry MakeZipEntry() {
     return entry;
 }
 
+ScriptLibraryUse MakeLibraryUse() {
+    ScriptLibraryUse library;
+    library.Id = "com.example.score";
+    library.Version = "1.2.0";
+    library.RootDirectory = L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0";
+    library.VirtualRoot = "/bml/libs/com.example.score@1.2.0/";
+    return library;
+}
+
 } // namespace
 
 TEST(ScriptModHotReloadPathFilterTest, DirectoryRootLifecycleEventsAreRelevant) {
@@ -121,6 +130,31 @@ TEST(ScriptModHotReloadPathFilterTest, OverflowMatchesWatchedScope) {
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(MakeOverflow(L"C:\\Mods", false), entry));
     EXPECT_TRUE(ScriptHotReloadEventLooksRelevant(MakeOverflow(L"C:\\Mods\\Hello", true), entry));
     EXPECT_FALSE(ScriptHotReloadEventLooksRelevant(MakeOverflow(L"C:\\Other", true), entry));
+}
+
+TEST(ScriptModHotReloadPathFilterTest, LibraryUseSourceFilesAreRelevant) {
+    const ScriptLibraryUse library = MakeLibraryUse();
+
+    EXPECT_TRUE(ScriptHotReloadEventLooksRelevantToLibraryUse(
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0\\api.as", FILE_ACTION_MODIFIED),
+        library));
+    EXPECT_TRUE(ScriptHotReloadEventLooksRelevantToLibraryUse(
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0", FILE_ACTION_REMOVED),
+        library));
+    EXPECT_FALSE(ScriptHotReloadEventLooksRelevantToLibraryUse(
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0\\readme.md", FILE_ACTION_MODIFIED),
+        library));
+    EXPECT_FALSE(ScriptHotReloadEventLooksRelevantToLibraryUse(
+        MakeEvent(L"C:\\ModLoader\\ScriptLibs", L"C:\\ModLoader\\ScriptLibs\\com.example.other\\1.2.0\\api.as", FILE_ACTION_MODIFIED),
+        library));
+}
+
+TEST(ScriptModHotReloadPathFilterTest, LibraryUseOverflowMatchesPackageScope) {
+    const ScriptLibraryUse library = MakeLibraryUse();
+
+    EXPECT_TRUE(ScriptHotReloadEventLooksRelevantToLibraryUse(MakeOverflow(L"C:\\ModLoader\\ScriptLibs", true), library));
+    EXPECT_TRUE(ScriptHotReloadEventLooksRelevantToLibraryUse(MakeOverflow(L"C:\\ModLoader\\ScriptLibs\\com.example.score\\1.2.0", true), library));
+    EXPECT_FALSE(ScriptHotReloadEventLooksRelevantToLibraryUse(MakeOverflow(L"C:\\Other", true), library));
 }
 
 } // namespace Test

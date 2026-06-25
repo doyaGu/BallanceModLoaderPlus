@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iterator>
+#include <memory>
 #include <new>
 #include <set>
 #include <sstream>
@@ -16,7 +17,9 @@
 #include "ExportRegistry.h"
 #include "ModContext.h"
 #include "ScriptDevToolsService.h"
+#include "ScriptLibraryServices.h"
 #include "ScriptModDefinitionBuilder.h"
+#include "ScriptSourceSnapshotBuilder.h"
 #include "ScriptStateBag.h"
 #include "ScriptStateMigration.h"
 #include "Utils/PathUtils.h"
@@ -179,6 +182,8 @@ struct ScriptModReloadSourceSnapshot {
     std::string CommitEntryPathUtf8;
     std::string EntrySectionNameUtf8;
     std::vector<ScriptSourceSection> SourceSections;
+    std::vector<ScriptLibraryUse> SourceLibraries;
+    std::vector<ScriptSourceDependency> SourceDependencies;
     std::wstring StagedRoot;
     std::string DiagnosticStagedRootUtf8;
     std::string DiagnosticDisplayRootUtf8;
@@ -200,6 +205,8 @@ struct ScriptModReloadSourceSnapshot {
         CommitEntryPathUtf8.clear();
         EntrySectionNameUtf8.clear();
         SourceSections.clear();
+        SourceLibraries.clear();
+        SourceDependencies.clear();
         DiagnosticStagedRootUtf8.clear();
         DiagnosticDisplayRootUtf8.clear();
     }
@@ -216,6 +223,63 @@ struct ScriptModReloadSourceSnapshot {
     }
 };
 
+struct ScriptModReloadCandidate::State {
+    ScriptMod *Owner = nullptr;
+    ScriptModReloadSourceSnapshot Snapshot;
+    ScriptModDefinition CandidateDefinition;
+    ScriptModRuntime CandidateRuntime;
+    bool Prepared = false;
+    bool Committed = false;
+    bool RolledBack = false;
+    bool OldRuntimeRetained = false;
+    bool RecoveryPromoted = false;
+    std::string RecoveryOldId;
+    std::string CandidateId;
+    std::string OldVersion;
+    ScriptStateBagHandle RollbackState;
+    bool StateSaved = false;
+    ScriptModDefinition OldDefinition;
+    ScriptModEntry OldEntry;
+    ScriptModRuntime OldRuntime;
+    std::string OldDiagnosticPathFrom;
+    std::string OldDiagnosticPathTo;
+};
+
+ScriptModReloadCandidate::ScriptModReloadCandidate()
+    : m_State(std::make_unique<State>()) {
+}
+
+ScriptModReloadCandidate::~ScriptModReloadCandidate() {
+    if (!m_State || !m_State->Owner)
+        return;
+
+    ScriptMod *owner = m_State->Owner;
+    if (m_State->Prepared && !m_State->Committed) {
+        owner->ReleaseRuntimeOnly(m_State->CandidateRuntime);
+        return;
+    }
+
+    if (m_State->Committed && m_State->OldRuntimeRetained) {
+        owner->ReleaseRuntimeOnly(m_State->OldRuntime);
+        if (m_State->OldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
+            !m_State->OldEntry.RootDirectory.empty() &&
+            m_State->OldEntry.RootDirectory != owner->m_Entry.RootDirectory) {
+            if (!utils::DeleteDirectoryW(m_State->OldEntry.RootDirectory)) {
+                const std::string oldRoot = utils::Utf16ToUtf8(m_State->OldEntry.RootDirectory);
+                owner->Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                   "Failed to remove previous script package reload staging directory: " + oldRoot));
+                if (owner->m_Context && owner->m_Context->GetLogger()) {
+                    owner->m_Context->GetLogger()->Warn("Failed to remove previous script package reload staging directory: %s",
+                                                        oldRoot.c_str());
+                }
+            }
+        }
+    }
+}
+
+ScriptModReloadCandidate::ScriptModReloadCandidate(ScriptModReloadCandidate &&other) noexcept = default;
+ScriptModReloadCandidate &ScriptModReloadCandidate::operator=(ScriptModReloadCandidate &&other) noexcept = default;
+
 static size_t CountReloadSnapshotSourceBytes(const ScriptModReloadSourceSnapshot &snapshot) {
     size_t bytes = 0;
     for (const ScriptSourceSection &section : snapshot.SourceSections)
@@ -227,6 +291,7 @@ static std::vector<ScriptModReloadDiagnosticField> BuildReloadSnapshotFields(con
     return {
         {"sourceSections", std::to_string(snapshot.SourceSections.size())},
         {"sourceBytes", std::to_string(CountReloadSnapshotSourceBytes(snapshot))},
+        {"sourceLibraries", std::to_string(snapshot.SourceLibraries.size())},
     };
 }
 
@@ -234,6 +299,7 @@ static std::vector<ScriptDevEventField> BuildReloadSnapshotEventFields(const Scr
     return {
         {"sourceSections", std::to_string(snapshot.SourceSections.size())},
         {"sourceBytes", std::to_string(CountReloadSnapshotSourceBytes(snapshot))},
+        {"sourceLibraries", std::to_string(snapshot.SourceLibraries.size())},
     };
 }
 
@@ -315,143 +381,6 @@ static bool EndsWithInsensitiveW(const std::wstring &value, const wchar_t *suffi
     return _wcsicmp(value.c_str() + value.size() - suffixLength, suffix) == 0;
 }
 
-static std::string ToScriptSectionNameUtf8(const std::wstring &path,
-                                           const std::wstring &root) {
-    std::wstring relative;
-    if (!root.empty() && utils::IsPathInsideRootW(path, root)) {
-        relative = utils::MakeRelativePathW(path, root);
-    }
-    if (relative.empty() || relative == L".")
-        relative = utils::GetFileNameW(path);
-
-    std::string section = utils::Utf16ToUtf8(relative);
-    for (char &ch : section) {
-        if (ch == '\\')
-            ch = '/';
-    }
-    return section;
-}
-
-static std::wstring FoldPathKeyW(std::wstring path) {
-    path = utils::ResolvePathW(path);
-    std::replace(path.begin(), path.end(), L'/', L'\\');
-    std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
-        return static_cast<wchar_t>(std::towlower(ch));
-    });
-    return path;
-}
-
-static bool AddScriptSourceSection(const std::wstring &path,
-                                   const std::wstring &sectionRoot,
-                                   std::set<std::wstring> &seen,
-                                   std::vector<ScriptSourceSection> &sections,
-                                   ScriptDiagnostic &diagnostic) {
-    const std::wstring key = FoldPathKeyW(path);
-    if (!seen.insert(key).second)
-        return true;
-
-    std::string code;
-    const std::string pathUtf8 = utils::Utf16ToUtf8(path);
-    if (!utils::ReadFileBytesUtf8(pathUtf8, code)) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
-                                          "Failed to read script source into reload snapshot.");
-        diagnostic.EntryPath = pathUtf8;
-        return false;
-    }
-
-    ScriptSourceSection section;
-    section.Name = ToScriptSectionNameUtf8(path, sectionRoot);
-    section.Code = std::move(code);
-    sections.push_back(std::move(section));
-    return true;
-}
-
-static bool AddScriptSourceDirectory(const std::wstring &root,
-                                     const std::wstring &sectionRoot,
-                                     const std::wstring &entryPath,
-                                     bool includeModEntries,
-                                     std::set<std::wstring> &seen,
-                                     std::vector<ScriptSourceSection> &sections,
-                                     ScriptDiagnostic &diagnostic) {
-    if (root.empty() || !utils::DirectoryExistsW(root))
-        return true;
-
-    std::error_code ec;
-    for (std::filesystem::recursive_directory_iterator it(root, ec), end;
-         it != end && !ec;
-         it.increment(ec)) {
-        if (!it->is_regular_file(ec)) {
-            if (ec)
-                break;
-            continue;
-        }
-        const std::wstring path = it->path().wstring();
-        if (!EndsWithInsensitiveW(path, L".as"))
-            continue;
-        if (!includeModEntries &&
-            IsScriptModEntryName(utils::GetFileNameW(path).c_str()) &&
-            FoldPathKeyW(path) != FoldPathKeyW(entryPath)) {
-            continue;
-        }
-        if (!AddScriptSourceSection(path, sectionRoot, seen, sections, diagnostic))
-            return false;
-    }
-
-    if (ec) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
-                                          "Failed to enumerate script source snapshot directory.");
-        diagnostic.EntryPath = utils::Utf16ToUtf8(root);
-        return false;
-    }
-    return true;
-}
-
-static bool CaptureReloadSourceSections(const ScriptModEntry &entry,
-                                        const ScriptModEntry &compileEntry,
-                                        std::vector<ScriptSourceSection> &sections,
-                                        std::string &entrySectionName,
-                                        ScriptDiagnostic &diagnostic) {
-    sections.clear();
-    entrySectionName.clear();
-    if (compileEntry.EntryPath.empty() || !utils::FileExistsW(compileEntry.EntryPath)) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
-                                          "Script entry file no longer exists.");
-        diagnostic.EntryPath = utils::Utf16ToUtf8(compileEntry.EntryPath);
-        return false;
-    }
-
-    std::wstring sectionRoot = compileEntry.RootDirectory;
-    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile || sectionRoot.empty())
-        sectionRoot = utils::GetDirectoryW(compileEntry.EntryPath);
-
-    std::set<std::wstring> seen;
-    if (!AddScriptSourceSection(compileEntry.EntryPath, sectionRoot, seen, sections, diagnostic))
-        return false;
-    entrySectionName = sections.front().Name;
-
-    if (entry.SourceKind == ScriptModEntrySourceKind::SingleFile) {
-        if (!compileEntry.ResourceRootDirectory.empty() &&
-            !AddScriptSourceDirectory(compileEntry.ResourceRootDirectory,
-                                      compileEntry.ResourceRootDirectory,
-                                      compileEntry.EntryPath,
-                                      false,
-                                      seen,
-                                      sections,
-                                      diagnostic)) {
-            return false;
-        }
-        return true;
-    }
-
-    return AddScriptSourceDirectory(compileEntry.RootDirectory,
-                                    sectionRoot,
-                                    compileEntry.EntryPath,
-                                    true,
-                                    seen,
-                                    sections,
-                                    diagnostic);
-}
-
 static ScriptModEntry MakeFilesystemCommitEntry(const ScriptModEntry &currentEntry,
                                                 const ScriptModLoadCandidate &compileCandidate,
                                                 const ScriptModEntry &compileEntry) {
@@ -474,7 +403,8 @@ static ScriptModEntry MakeFilesystemCommitEntry(const ScriptModEntry &currentEnt
     return commitEntry;
 }
 
-static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
+static bool CaptureReloadSourceSnapshot(ModContext *context,
+                                        const ScriptModEntry &entry,
                                         ScriptModReloadSourceSnapshot &snapshot,
                                         ScriptDiagnostic &diagnostic) {
     snapshot.Reset();
@@ -525,14 +455,20 @@ static bool CaptureReloadSourceSnapshot(const ScriptModEntry &entry,
     }
     snapshot.CommitEntryPathUtf8 = utils::Utf16ToUtf8(snapshot.CommitEntry.EntryPath);
 
-    if (!CaptureReloadSourceSections(entry,
-                                     snapshot.CompileEntry,
-                                     snapshot.SourceSections,
-                                     snapshot.EntrySectionNameUtf8,
-                                     diagnostic)) {
+    ScriptLibraryRegistry registry = MakeInstalledScriptLibraryRegistry(context, diagnostic);
+    if (!diagnostic.Message.empty())
+        return false;
+
+    ScriptSourceSnapshot sourceSnapshot;
+    ScriptSourceSnapshotBuilder snapshotBuilder(std::move(registry));
+    if (!snapshotBuilder.Build(snapshot.CompileEntry, sourceSnapshot, diagnostic)) {
         RewriteSnapshotDiagnosticPaths(snapshot, diagnostic);
         return false;
     }
+    snapshot.EntrySectionNameUtf8 = sourceSnapshot.EntrySectionName;
+    snapshot.SourceSections = std::move(sourceSnapshot.Sections);
+    snapshot.SourceLibraries = std::move(sourceSnapshot.Libraries);
+    snapshot.SourceDependencies = std::move(sourceSnapshot.Dependencies);
 
     return true;
 }
@@ -1509,6 +1445,28 @@ bool ScriptMod::CanHotReloadNow() const {
            m_ActiveScriptCalls == 0;
 }
 
+bool ScriptMod::TryAcquireReloadLease(std::string &diagnostic) {
+    std::lock_guard<std::mutex> lock(m_ReloadMutex);
+    if (m_Reloading.load(std::memory_order_acquire)) {
+        diagnostic = "Reload already in progress.";
+        return false;
+    }
+    if (m_ActiveScriptCalls != 0) {
+        diagnostic = "Script callback/export is active; reload deferred.";
+        return false;
+    }
+    m_ReloadThreadId = std::this_thread::get_id();
+    m_Reloading.store(true, std::memory_order_release);
+    diagnostic.clear();
+    return true;
+}
+
+void ScriptMod::ReleaseReloadLease() {
+    std::lock_guard<std::mutex> lock(m_ReloadMutex);
+    m_ReloadThreadId = std::thread::id();
+    m_Reloading.store(false, std::memory_order_release);
+}
+
 bool ScriptMod::EnterScriptCall() const {
     std::lock_guard<std::mutex> lock(m_ReloadMutex);
     if (m_Reloading.load(std::memory_order_acquire) &&
@@ -2286,6 +2244,714 @@ bool ScriptMod::ReleaseRuntimeOnly(ScriptModRuntime &runtime) {
     return ok;
 }
 
+std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(const ScriptModReloadOptions &options,
+                                                                            ScriptModReloadResult &result) {
+    result = ScriptModReloadResult();
+    TouchReloadAttempt();
+    result.ReloadAttemptId = GetReloadAttemptId();
+
+    auto finishFailure = [&](const std::string &diagnostic,
+                             const ScriptDiagnostic *structuredDiagnostic = nullptr,
+                             const std::vector<ScriptModReloadDiagnosticField> *fields = nullptr) {
+        result.Success = false;
+        result.ReloadAttemptId = GetReloadAttemptId();
+        result.Diagnostic = diagnostic;
+        if (fields)
+            result.Fields = *fields;
+        if (structuredDiagnostic)
+            SetReloadDiagnostic(*structuredDiagnostic);
+        else
+            SetReloadDiagnostic(diagnostic);
+        return std::unique_ptr<ScriptModReloadCandidate>();
+    };
+    auto finishWithDiagnostic = [&](const ScriptDiagnostic &diagnostic) {
+        if (result.SourcePath.empty())
+            result.SourcePath = diagnostic.EntryPath;
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+                                                              options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
+                                                              GetID() ? GetID() : "",
+                                                              diagnostic,
+                                                              GetReloadAttemptId());
+        }
+        return finishFailure(FormatScriptDiagnostic(diagnostic), &diagnostic);
+    };
+    auto finishWithDiagnosticFields = [&](const ScriptDiagnostic &diagnostic,
+                                          const std::vector<ScriptModReloadDiagnosticField> &fields) {
+        if (result.SourcePath.empty())
+            result.SourcePath = diagnostic.EntryPath;
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+                                                              options.DryRun ? "ScriptReloadDryRunDiagnostic" : "ScriptReloadDiagnostic",
+                                                              GetID() ? GetID() : "",
+                                                              diagnostic,
+                                                              GetReloadAttemptId());
+        }
+        return finishFailure(FormatScriptDiagnostic(diagnostic), &diagnostic, &fields);
+    };
+
+    std::unique_ptr<ScriptModReloadCandidate> candidate(new (std::nothrow) ScriptModReloadCandidate());
+    if (!candidate) {
+        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                              "Script hot reload could not allocate a reload candidate.");
+        return finishFailure(failure.Message, &failure);
+    }
+    ScriptModReloadCandidate::State &state = *candidate->m_State;
+    state.Owner = this;
+
+    ScriptDiagnostic diagnostic;
+    if (!CaptureReloadSourceSnapshot(m_Context, m_Entry, state.Snapshot, diagnostic))
+        return finishWithDiagnostic(diagnostic);
+    result.SourcePath = state.Snapshot.CommitEntryPathUtf8;
+
+    state.CandidateRuntime = ScriptModRuntime(MakeReloadModuleName(m_Runtime));
+    if (!state.CandidateRuntime.LoadModuleFromSections(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                       state.Snapshot.SourceSections,
+                                                       state.Snapshot.EntrySectionNameUtf8,
+                                                       diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(state.Snapshot, diagnostic);
+        ReleaseRuntimeOnly(state.CandidateRuntime);
+        return finishWithDiagnostic(diagnostic);
+    }
+
+    ScriptModDefinitionBuilder builder;
+    if (!builder.Build(m_Context ? m_Context->GetCKContext() : nullptr,
+                       state.Snapshot.CommitEntry,
+                       state.CandidateRuntime,
+                       state.CandidateDefinition,
+                       diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(state.Snapshot, diagnostic);
+        ReleaseRuntimeOnly(state.CandidateRuntime);
+        return finishWithDiagnostic(diagnostic);
+    }
+    state.CandidateDefinition.SourceLibraries = state.Snapshot.SourceLibraries;
+    state.CandidateDefinition.SourceDependencies = state.Snapshot.SourceDependencies;
+
+    state.CandidateRuntime.SetOwner(this);
+    if (!state.CandidateRuntime.CreateObject(m_Context ? m_Context->GetCKContext() : nullptr,
+                                             state.CandidateDefinition.ClassNamespace,
+                                             state.CandidateDefinition.ClassName,
+                                             diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(state.Snapshot, diagnostic);
+        ReleaseRuntimeOnly(state.CandidateRuntime);
+        return finishWithDiagnostic(diagnostic);
+    }
+
+    ScriptModEventRouter candidateEvents;
+    candidateEvents.Bind(m_Context ? m_Context->GetCKContext() : nullptr, &state.CandidateRuntime, &m_ContextView);
+    if (!candidateEvents.Cache(diagnostic)) {
+        RewriteSnapshotDiagnosticPaths(state.Snapshot, diagnostic);
+        candidateEvents.Release(nullptr);
+        ReleaseRuntimeOnly(state.CandidateRuntime);
+        return finishWithDiagnostic(diagnostic);
+    }
+
+    ScriptExportTable candidateExports;
+    if (!candidateExports.Cache(m_Context ? m_Context->GetCKContext() : nullptr,
+                                state.CandidateRuntime,
+                                state.CandidateDefinition.Exports,
+                                diagnostic,
+                                false)) {
+        RewriteSnapshotDiagnosticPaths(state.Snapshot, diagnostic);
+        candidateEvents.Release(nullptr);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, state.CandidateRuntime, nullptr, false);
+        ReleaseRuntimeOnly(state.CandidateRuntime);
+        return finishWithDiagnostic(diagnostic);
+    }
+    auto releasePreparedHandles = [&]() {
+        candidateEvents.Release(nullptr);
+        candidateExports.Release(m_Context ? m_Context->GetCKContext() : nullptr, state.CandidateRuntime, nullptr, false);
+    };
+
+    std::string validationDiagnostic;
+    std::vector<ScriptModReloadDiagnosticField> validationFields;
+    if (!ValidateReloadDefinition(state.CandidateDefinition, candidateExports, options, validationDiagnostic, &validationFields)) {
+        releasePreparedHandles();
+        ReleaseRuntimeOnly(state.CandidateRuntime);
+        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata, validationDiagnostic);
+        return finishFailure(validationDiagnostic, &failure, &validationFields);
+    }
+
+    bool currentSavesState = false;
+    bool dryRunStateHooksExecuted = false;
+    int dryRunStateKeyCount = 0;
+    if (m_State.IsLoaded()) {
+        ScriptDiagnostic stateDiagnostic;
+        if (!ScriptStateMigration::HasSaveHook(m_Context ? m_Context->GetCKContext() : nullptr,
+                                               m_Runtime,
+                                               currentSavesState,
+                                               stateDiagnostic)) {
+            releasePreparedHandles();
+            ReleaseRuntimeOnly(state.CandidateRuntime);
+            return finishWithDiagnosticFields(
+                stateDiagnostic,
+                BuildStateMigrationFailureFields("SaveState", "lookup_current_save", false, false, true));
+        }
+        if (currentSavesState) {
+            bool oldCanRestore = false;
+            if (!ScriptStateMigration::HasRestoreState(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                       m_Runtime,
+                                                       oldCanRestore,
+                                                       stateDiagnostic)) {
+                releasePreparedHandles();
+                ReleaseRuntimeOnly(state.CandidateRuntime);
+                return finishWithDiagnosticFields(
+                    stateDiagnostic,
+                    BuildStateMigrationFailureFields("RestoreState", "lookup_current_restore", false, false, true));
+            }
+            if (!oldCanRestore) {
+                releasePreparedHandles();
+                ReleaseRuntimeOnly(state.CandidateRuntime);
+                const ScriptDiagnostic failure = MakeScriptDiagnostic(
+                    ScriptDiagnosticPhase::Runtime,
+                    "Script hot reload state migration is unsafe: current runtime declares SaveState(StateBag@) "
+                    "but does not declare RestoreState(StateBag@); rollback could not restore saved state.");
+                std::vector<ScriptModReloadDiagnosticField> fields = {
+                    {"boundary", "state_migration"},
+                    {"required", "RestoreState(StateBag@)"},
+                    {"action", "add_restore_hook_or_remove_SaveState"},
+                };
+                return finishFailure(failure.Message, &failure, &fields);
+            }
+
+            bool candidateCanRestore = false;
+            if (!ScriptStateMigration::HasRestoreHook(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                      state.CandidateRuntime,
+                                                      candidateCanRestore,
+                                                      stateDiagnostic)) {
+                RewriteSnapshotDiagnosticPaths(state.Snapshot, stateDiagnostic);
+                releasePreparedHandles();
+                ReleaseRuntimeOnly(state.CandidateRuntime);
+                return finishWithDiagnosticFields(
+                    stateDiagnostic,
+                    BuildStateMigrationFailureFields("RestoreState|MigrateState", "lookup_candidate_restore", false, false, true));
+            }
+            if (!candidateCanRestore) {
+                releasePreparedHandles();
+                ReleaseRuntimeOnly(state.CandidateRuntime);
+                const ScriptDiagnostic failure = MakeScriptDiagnostic(
+                    ScriptDiagnosticPhase::Runtime,
+                    "Script hot reload state migration is unsafe: current runtime declares SaveState(StateBag@), "
+                    "but the candidate does not declare RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@).");
+                std::vector<ScriptModReloadDiagnosticField> fields = {
+                    {"boundary", "state_migration"},
+                    {"required", "RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@)"},
+                    {"action", "add_candidate_restore_hook"},
+                };
+                return finishFailure(failure.Message, &failure, &fields);
+            }
+
+            if (options.DryRun && options.CheckStateHooks) {
+                ScriptStateBagHandle dryRunState(new (std::nothrow) ScriptStateBag());
+                if (!dryRunState) {
+                    releasePreparedHandles();
+                    ReleaseRuntimeOnly(state.CandidateRuntime);
+                    const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                                          "Reload dry-run could not allocate a StateBag.");
+                    std::vector<ScriptModReloadDiagnosticField> fields = {
+                        {"boundary", "state_migration"},
+                        {"action", "retry_or_restart"},
+                    };
+                    return finishFailure(failure.Message, &failure, &fields);
+                }
+                dryRunState->SetScriptAccessEnabled(false);
+                dryRunState->SetReloadState(true);
+
+                bool stateSaved = false;
+                {
+                    ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::SaveState);
+                    if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                    m_Runtime,
+                                                    *dryRunState.Get(),
+                                                    stateSaved,
+                                                    stateDiagnostic)) {
+                        releasePreparedHandles();
+                        ReleaseRuntimeOnly(state.CandidateRuntime);
+                        return finishWithDiagnosticFields(
+                            stateDiagnostic,
+                            BuildStateMigrationFailureFields("SaveState", "execute_current_save", true, true, true));
+                    }
+                }
+
+                if (stateSaved) {
+                    bool migrated = false;
+                    {
+                        ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::MigrateState);
+                        if (!ScriptStateMigration::Migrate(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                           state.CandidateRuntime,
+                                                           m_Definition.Version,
+                                                           *dryRunState.Get(),
+                                                           migrated,
+                                                           stateDiagnostic)) {
+                            RewriteSnapshotDiagnosticPaths(state.Snapshot, stateDiagnostic);
+                            releasePreparedHandles();
+                            ReleaseRuntimeOnly(state.CandidateRuntime);
+                            return finishWithDiagnosticFields(
+                                stateDiagnostic,
+                                BuildStateMigrationFailureFields("MigrateState", "execute_candidate_migrate", true, true, true));
+                        }
+                    }
+
+                    bool restored = false;
+                    {
+                        ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::RestoreState);
+                        if (!ScriptStateMigration::Restore(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                           state.CandidateRuntime,
+                                                           *dryRunState.Get(),
+                                                           restored,
+                                                           stateDiagnostic)) {
+                            RewriteSnapshotDiagnosticPaths(state.Snapshot, stateDiagnostic);
+                            releasePreparedHandles();
+                            ReleaseRuntimeOnly(state.CandidateRuntime);
+                            return finishWithDiagnosticFields(
+                                stateDiagnostic,
+                                BuildStateMigrationFailureFields("RestoreState", "execute_candidate_restore", true, true, true));
+                        }
+                    }
+
+                    dryRunStateHooksExecuted = true;
+                    dryRunStateKeyCount = dryRunState->GetStoredCount();
+                    if (!migrated && !restored) {
+                        releasePreparedHandles();
+                        ReleaseRuntimeOnly(state.CandidateRuntime);
+                        const ScriptDiagnostic failure = MakeScriptDiagnostic(
+                            ScriptDiagnosticPhase::Runtime,
+                            "Reload dry-run saved state, but the candidate did not execute RestoreState(StateBag@) "
+                            "or MigrateState(fromVersion, StateBag@).");
+                        std::vector<ScriptModReloadDiagnosticField> fields = {
+                            {"boundary", "state_migration"},
+                            {"required", "RestoreState(StateBag@) or MigrateState(fromVersion, StateBag@)"},
+                            {"action", "add_candidate_restore_hook"},
+                        };
+                        return finishFailure(failure.Message, &failure, &fields);
+                    }
+                }
+            }
+        }
+    }
+
+    releasePreparedHandles();
+    state.Prepared = true;
+    result.Success = true;
+    result.ReloadAttemptId = GetReloadAttemptId();
+    result.Fields = BuildReloadSnapshotFields(state.Snapshot);
+    if (options.DryRun) {
+        AppendReloadFields(result.Fields, {
+            {"stateHooksExecuted", dryRunStateHooksExecuted ? "true" : "false"},
+            {"stateHookValidation", dryRunStateHooksExecuted ? "executed" : (currentSavesState ? "declarations-only" : "not-needed")},
+        });
+        if (dryRunStateHooksExecuted)
+            result.Fields.push_back({"stateKeys", std::to_string(dryRunStateKeyCount)});
+    }
+    result.Diagnostic = dryRunStateHooksExecuted
+                            ? "Reload dry-run passed. State migration hooks executed without committing candidate runtime; old SaveState ran on the live runtime and must be pure."
+                            : options.DryRun
+                            ? currentSavesState
+                                  ? "Reload dry-run passed. State migration hook declarations were checked, but SaveState/MigrateState/RestoreState were not executed."
+                                  : "Reload dry-run passed."
+                            : std::string();
+    SetReloadDiagnostic(std::string());
+    if (m_Context && m_Context->GetScriptDevTools()) {
+        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                     "ScriptReloadPrepared",
+                                                     GetID() ? GetID() : "",
+                                                     "reload",
+                                                     state.Snapshot.CommitEntryPathUtf8,
+                                                     "Script reload candidate prepared.",
+                                                     BuildReloadSnapshotEventFields(state.Snapshot),
+                                                     GetReloadAttemptId());
+    }
+    return candidate;
+}
+
+ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate &candidate,
+                                                       const ScriptModReloadOptions &) {
+    ScriptModReloadResult result;
+    result.ReloadAttemptId = GetReloadAttemptId();
+    if (!candidate.m_State || candidate.m_State->Owner != this || !candidate.m_State->Prepared ||
+        candidate.m_State->Committed) {
+        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                              "Script reload candidate is not valid for this mod.");
+        result.Diagnostic = failure.Message;
+        SetReloadDiagnostic(failure);
+        return result;
+    }
+
+    ScriptModReloadCandidate::State &state = *candidate.m_State;
+    result.SourcePath = state.Snapshot.CommitEntryPathUtf8;
+
+    auto finish = [&](bool success,
+                      const std::string &diagnostic,
+                      const ScriptDiagnostic *structuredDiagnostic = nullptr,
+                      const std::vector<ScriptModReloadDiagnosticField> *fields = nullptr) {
+        result.Success = success;
+        result.ReloadAttemptId = GetReloadAttemptId();
+        result.Diagnostic = diagnostic;
+        if (fields)
+            result.Fields = *fields;
+        if (!success) {
+            if (structuredDiagnostic)
+                SetReloadDiagnostic(*structuredDiagnostic);
+            else
+                SetReloadDiagnostic(diagnostic);
+        } else {
+            SetReloadDiagnostic(std::string());
+        }
+        return result;
+    };
+    auto finishWithDiagnosticFields = [&](const ScriptDiagnostic &diagnostic,
+                                          const std::vector<ScriptModReloadDiagnosticField> &fields) {
+        if (result.SourcePath.empty())
+            result.SourcePath = diagnostic.EntryPath;
+        if (m_Context && m_Context->GetScriptDevTools()) {
+            m_Context->GetScriptDevTools()->PublishDiagnostic(ScriptDevEventSeverity::Error,
+                                                              "ScriptReloadDiagnostic",
+                                                              GetID() ? GetID() : "",
+                                                              diagnostic,
+                                                              GetReloadAttemptId());
+        }
+        return finish(false, FormatScriptDiagnostic(diagnostic), &diagnostic, &fields);
+    };
+
+    ScriptStateBagHandle savedState;
+    bool stateSaved = false;
+    state.OldVersion = m_Definition.Version;
+    if (m_State.IsLoaded()) {
+        ScriptDiagnostic stateDiagnostic;
+        bool currentSavesState = false;
+        if (!ScriptStateMigration::HasSaveHook(m_Context ? m_Context->GetCKContext() : nullptr,
+                                               m_Runtime,
+                                               currentSavesState,
+                                               stateDiagnostic)) {
+            RewriteSnapshotDiagnosticPaths(state.Snapshot, stateDiagnostic);
+            return finishWithDiagnosticFields(
+                stateDiagnostic,
+                BuildStateMigrationFailureFields("SaveState", "lookup_current_save", false, false, true));
+        }
+        if (currentSavesState) {
+            savedState.Reset(new (std::nothrow) ScriptStateBag());
+            if (!savedState) {
+                const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                                      "Script hot reload could not allocate a StateBag.");
+                std::vector<ScriptModReloadDiagnosticField> fields = {
+                    {"boundary", "state_migration"},
+                    {"action", "retry_or_restart"},
+                };
+                return finish(false, failure.Message, &failure, &fields);
+            }
+            savedState->SetScriptAccessEnabled(false);
+            savedState->SetReloadState(true);
+            {
+                ScriptModReloadPhaseScope statePhase(*this, ScriptModReloadPhase::SaveState);
+                if (!ScriptStateMigration::Save(m_Context ? m_Context->GetCKContext() : nullptr,
+                                                m_Runtime,
+                                                *savedState.Get(),
+                                                stateSaved,
+                                                stateDiagnostic)) {
+                    RewriteSnapshotDiagnosticPaths(state.Snapshot, stateDiagnostic);
+                    return finishWithDiagnosticFields(
+                        stateDiagnostic,
+                        BuildStateMigrationFailureFields("SaveState", "execute_current_save", true, true, true));
+                }
+            }
+            if (!stateSaved) {
+                savedState.Reset();
+            } else {
+                state.RollbackState.Reset(savedState->CloneNoThrow());
+                if (!state.RollbackState) {
+                    const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                                          "Script hot reload could not clone StateBag for rollback.");
+                    std::vector<ScriptModReloadDiagnosticField> fields = {
+                        {"boundary", "state_migration"},
+                        {"action", "retry_or_restart"},
+                    };
+                    return finish(false, failure.Message, &failure, &fields);
+                }
+                state.RollbackState->SetScriptAccessEnabled(false);
+            }
+
+            if (stateSaved && savedState && m_Context && m_Context->GetScriptDevTools()) {
+                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                             "ScriptReloadStateSaved",
+                                                             GetID() ? GetID() : "",
+                                                             "reload",
+                                                             state.Snapshot.CommitEntryPathUtf8,
+                                                             "Script hot reload state saved.",
+                                                             {{"keys", std::to_string(savedState->GetStoredCount())},
+                                                              {"fromVersion", state.OldVersion}},
+                                                             GetReloadAttemptId());
+            }
+        }
+    }
+    state.StateSaved = stateSaved;
+
+    const bool recoveringPlaceholder = IsFailedPlaceholder();
+    state.RecoveryOldId = m_Definition.Id;
+    if (recoveringPlaceholder) {
+        if (!m_Context) {
+            const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata,
+                                                                  "Script mod failed-load recovery requires a ModContext.");
+            return finish(false, failure.Message, &failure);
+        }
+        std::string recoveryDiagnostic;
+        if (!m_Context->PromoteFailedScriptModPlaceholder(this,
+                                                          state.RecoveryOldId,
+                                                          state.CandidateDefinition,
+                                                          recoveryDiagnostic)) {
+            const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Metadata,
+                                                                  recoveryDiagnostic);
+            return finish(false, recoveryDiagnostic, &failure);
+        }
+        state.RecoveryPromoted = true;
+    }
+
+    ExportRegistry::NotifyScriptExportsChanged();
+    ScriptDiagnostic unloadDiagnostic;
+    if (m_State.IsLoaded()) {
+        ScriptModReloadPhaseScope unloadPhase(*this, ScriptModReloadPhase::Unload);
+        if (!m_EventRouter.CallOnUnload(unloadDiagnostic))
+            Record(unloadDiagnostic);
+    }
+
+    ReleaseScriptServices();
+    ReleaseScriptMethodHandles();
+    m_State.MarkLoaded(false);
+
+    state.OldDefinition = std::move(m_Definition);
+    state.OldEntry = std::move(m_Entry);
+    state.OldRuntime = std::move(m_Runtime);
+    state.OldDiagnosticPathFrom = m_RuntimeDiagnosticPathFrom;
+    state.OldDiagnosticPathTo = m_RuntimeDiagnosticPathTo;
+    state.OldRuntimeRetained = true;
+
+    m_Definition = std::move(state.CandidateDefinition);
+    m_Entry = state.Snapshot.CommitEntry;
+    m_Runtime = std::move(state.CandidateRuntime);
+    m_Runtime.SetOwner(this);
+    SetRuntimeDiagnosticPathRewrite(state.Snapshot.DiagnosticStagedRootUtf8,
+                                    state.Snapshot.DiagnosticDisplayRootUtf8);
+    m_State.ClearFailure();
+
+    bool liveRuntimeLoaded = false;
+    std::vector<ScriptModReloadDiagnosticField> liveRuntimeFailureFields;
+    const ScriptModReloadPhase loadPhase = recoveringPlaceholder
+                                               ? ScriptModReloadPhase::Recovery
+                                               : ScriptModReloadPhase::Load;
+    {
+        ScriptModReloadPhaseScope phase(*this, loadPhase);
+        liveRuntimeLoaded = LoadCurrentRuntime(true,
+                                               recoveringPlaceholder,
+                                               savedState.Get(),
+                                               state.OldVersion,
+                                               true,
+                                               &liveRuntimeFailureFields);
+    }
+
+    if (liveRuntimeLoaded) {
+        if (state.Snapshot.CommitEntry.RootDirectory == state.Snapshot.CompileEntry.RootDirectory)
+            state.Snapshot.KeepStagedRoot();
+        if (m_Context)
+            m_Context->GetCommandContext().SortCommands();
+        ExportRegistry::NotifyScriptExportsChanged();
+        FenceCallbacksForCurrentFrame();
+        state.Prepared = false;
+        state.Committed = true;
+        std::vector<ScriptModReloadDiagnosticField> fields = BuildReloadSnapshotFields(state.Snapshot);
+        fields.push_back({"stateSaved", stateSaved ? "true" : "false"});
+        if (stateSaved && savedState)
+            fields.push_back({"stateKeys", std::to_string(savedState->GetStoredCount())});
+        return finish(true, std::string(), nullptr, &fields);
+    }
+
+    const ScriptDiagnostic reloadDiagnostic = m_State.GetLastDiagnostic();
+    const std::string reloadFailure = m_State.GetLastDiagnosticText().empty()
+                                          ? "Reload candidate OnLoad failed."
+                                          : m_State.GetLastDiagnosticText();
+    ReleaseRuntime();
+
+    if (recoveringPlaceholder) {
+        const std::string candidateId = m_Definition.Id;
+        m_Definition = std::move(state.OldDefinition);
+        m_Entry = std::move(state.OldEntry);
+        m_Runtime = std::move(state.OldRuntime);
+        m_Runtime.SetOwner(this);
+        state.OldRuntimeRetained = false;
+        SetRuntimeDiagnosticPathRewrite(state.OldDiagnosticPathFrom, state.OldDiagnosticPathTo);
+        if (state.RecoveryPromoted && m_Context)
+            m_Context->RestoreFailedScriptModPlaceholder(this, candidateId, m_Definition);
+
+        ScriptDiagnostic failure = reloadDiagnostic;
+        failure.Phase = ScriptDiagnosticPhase::Runtime;
+        if (failure.Message.empty())
+            failure.Message = "Failed-load recovery did not complete; fixed script was not loaded.";
+        if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
+            failure.RawMessage = reloadFailure;
+        Fail(failure);
+        ExportRegistry::NotifyScriptExportsChanged();
+        FenceCallbacksForCurrentFrame();
+        std::vector<ScriptModReloadDiagnosticField> fields = {
+            {"boundary", "failed_load_recovery"},
+            {"candidateId", candidateId},
+            {"action", "fix_script_and_reload_again_or_restart"},
+        };
+        AppendReloadFields(fields, std::move(liveRuntimeFailureFields));
+        return finish(false, FormatScriptDiagnostic(failure), &failure, &fields);
+    }
+
+    m_Definition = std::move(state.OldDefinition);
+    m_Entry = std::move(state.OldEntry);
+    m_Runtime = std::move(state.OldRuntime);
+    m_Runtime.SetOwner(this);
+    state.OldRuntimeRetained = false;
+    SetRuntimeDiagnosticPathRewrite(state.OldDiagnosticPathFrom, state.OldDiagnosticPathTo);
+    m_State.ClearFailure();
+
+    bool rollbackLoaded = false;
+    std::vector<ScriptModReloadDiagnosticField> rollbackRuntimeFailureFields;
+    {
+        ScriptModReloadPhaseScope phase(*this, ScriptModReloadPhase::Rollback);
+        rollbackLoaded = LoadCurrentRuntime(true,
+                                            false,
+                                            state.RollbackState.Get(),
+                                            state.OldVersion,
+                                            false,
+                                            &rollbackRuntimeFailureFields);
+    }
+
+    if (rollbackLoaded) {
+        if (m_Context)
+            m_Context->GetCommandContext().SortCommands();
+        ExportRegistry::NotifyScriptExportsChanged();
+        FenceCallbacksForCurrentFrame();
+        ScriptDiagnostic failure = reloadDiagnostic;
+        failure.Phase = ScriptDiagnosticPhase::Runtime;
+        failure.Message = "Reload failed; rolled back to previous runtime. "
+                          + std::string(kReloadRollbackBoundary);
+        if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
+            failure.RawMessage = reloadFailure;
+        std::vector<ScriptModReloadDiagnosticField> fields = {
+            {"boundary", "rollback_scope"},
+            {"rollback", "success"},
+            {"restored", "BML-managed script resources and runtime handles"},
+            {"notRestored", "game-world side effects made by script code"},
+            {"action", "restart_if_game_world_state_changed"},
+        };
+        AppendReloadFields(fields, std::move(liveRuntimeFailureFields));
+        return finish(false, FormatScriptDiagnostic(failure), &failure, &fields);
+    }
+
+    const std::string rollbackFailure = m_State.GetLastDiagnosticText().empty()
+                                            ? "Rollback failed."
+                                            : m_State.GetLastDiagnosticText();
+    ScriptDiagnostic rollbackDiagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                               "Reload failed and rollback failed. "
+                                                               + std::string(kReloadRollbackBoundary));
+    rollbackDiagnostic.RawMessage = reloadFailure + "\n" + rollbackFailure;
+    Fail(rollbackDiagnostic);
+    ExportRegistry::NotifyScriptExportsChanged();
+    std::vector<ScriptModReloadDiagnosticField> fields = {
+        {"boundary", "rollback_scope"},
+        {"rollback", "failed"},
+        {"state", "failed"},
+        {"action", "restart_required"},
+    };
+    AppendReloadFields(fields, std::move(liveRuntimeFailureFields));
+    AppendReloadFields(fields, std::move(rollbackRuntimeFailureFields));
+    return finish(false, m_State.GetLastDiagnosticText(), &m_State.GetLastDiagnostic(), &fields);
+}
+
+ScriptModReloadResult ScriptMod::RollbackCommittedCandidate(ScriptModReloadCandidate &candidate) {
+    ScriptModReloadResult result;
+    result.ReloadAttemptId = GetReloadAttemptId();
+    if (!candidate.m_State || candidate.m_State->Owner != this || !candidate.m_State->Committed ||
+        !candidate.m_State->OldRuntimeRetained) {
+        const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                              "Script reload candidate has no committed runtime to roll back.");
+        result.Diagnostic = failure.Message;
+        SetReloadDiagnostic(failure);
+        return result;
+    }
+
+    ScriptModReloadCandidate::State &state = *candidate.m_State;
+    result.SourcePath = state.Snapshot.CommitEntryPathUtf8;
+    ScriptDiagnostic unloadDiagnostic;
+    if (m_State.IsLoaded()) {
+        ScriptModReloadPhaseScope unloadPhase(*this, ScriptModReloadPhase::Unload);
+        if (!m_EventRouter.CallOnUnload(unloadDiagnostic))
+            Record(unloadDiagnostic);
+    }
+    const ScriptModEntry committedEntry = m_Entry;
+    ReleaseScriptServices();
+    ReleaseScriptMethodHandles();
+    m_State.MarkLoaded(false);
+    ReleaseRuntime();
+    if (committedEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
+        !committedEntry.RootDirectory.empty() &&
+        committedEntry.RootDirectory != state.OldEntry.RootDirectory) {
+        if (!utils::DeleteDirectoryW(committedEntry.RootDirectory)) {
+            const std::string committedRoot = utils::Utf16ToUtf8(committedEntry.RootDirectory);
+            Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                        "Failed to remove rolled-back script package reload staging directory: " + committedRoot));
+            if (m_Context && m_Context->GetLogger()) {
+                m_Context->GetLogger()->Warn("Failed to remove rolled-back script package reload staging directory: %s",
+                                             committedRoot.c_str());
+            }
+        }
+    }
+
+    m_Definition = std::move(state.OldDefinition);
+    m_Entry = std::move(state.OldEntry);
+    m_Runtime = std::move(state.OldRuntime);
+    m_Runtime.SetOwner(this);
+    state.OldRuntimeRetained = false;
+    SetRuntimeDiagnosticPathRewrite(state.OldDiagnosticPathFrom, state.OldDiagnosticPathTo);
+    m_State.ClearFailure();
+
+    bool rollbackLoaded = false;
+    std::vector<ScriptModReloadDiagnosticField> rollbackRuntimeFailureFields;
+    {
+        ScriptModReloadPhaseScope phase(*this, ScriptModReloadPhase::Rollback);
+        rollbackLoaded = LoadCurrentRuntime(true,
+                                            false,
+                                            state.RollbackState.Get(),
+                                            state.OldVersion,
+                                            false,
+                                            &rollbackRuntimeFailureFields);
+    }
+    if (rollbackLoaded) {
+        if (m_Context)
+            m_Context->GetCommandContext().SortCommands();
+        ExportRegistry::NotifyScriptExportsChanged();
+        FenceCallbacksForCurrentFrame();
+        state.RolledBack = true;
+        result.Success = true;
+        result.Fields = {
+            {"boundary", "library_batch_commit"},
+            {"rollback", "success"},
+            {"action", "batch_rejected_previous_runtime_restored"},
+        };
+        SetReloadDiagnostic(std::string());
+        return result;
+    }
+
+    ScriptDiagnostic rollbackDiagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                               "Library batch reload rollback failed. "
+                                                               + std::string(kReloadRollbackBoundary));
+    rollbackDiagnostic.RawMessage = m_State.GetLastDiagnosticText();
+    Fail(rollbackDiagnostic);
+    ExportRegistry::NotifyScriptExportsChanged();
+    result.Diagnostic = m_State.GetLastDiagnosticText();
+    result.Fields = {
+        {"boundary", "library_batch_commit"},
+        {"rollback", "failed"},
+        {"state", "failed"},
+        {"action", "restart_required"},
+    };
+    AppendReloadFields(result.Fields, std::move(rollbackRuntimeFailureFields));
+    SetReloadDiagnostic(m_State.GetLastDiagnostic());
+    return result;
+}
+
 ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions &options) {
     ScriptModReloadResult result;
     {
@@ -2358,7 +3024,7 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
 
     ScriptDiagnostic diagnostic;
     ScriptModReloadSourceSnapshot snapshot;
-    if (!CaptureReloadSourceSnapshot(m_Entry, snapshot, diagnostic))
+    if (!CaptureReloadSourceSnapshot(m_Context, m_Entry, snapshot, diagnostic))
         return finishWithDiagnostic(diagnostic);
     result.SourcePath = snapshot.CommitEntryPathUtf8;
 
@@ -2383,6 +3049,8 @@ ScriptModReloadResult ScriptMod::TryHotReloadDryRun(const ScriptModReloadOptions
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
+    candidateDefinition.SourceLibraries = snapshot.SourceLibraries;
+    candidateDefinition.SourceDependencies = snapshot.SourceDependencies;
 
     candidateRuntime.SetOwner(this);
     if (!candidateRuntime.CreateObject(m_Context ? m_Context->GetCKContext() : nullptr,
@@ -2681,7 +3349,7 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
 
     ScriptDiagnostic diagnostic;
     ScriptModReloadSourceSnapshot snapshot;
-    if (!CaptureReloadSourceSnapshot(m_Entry, snapshot, diagnostic))
+    if (!CaptureReloadSourceSnapshot(m_Context, m_Entry, snapshot, diagnostic))
         return finishWithDiagnostic(diagnostic);
     result.SourcePath = snapshot.CommitEntryPathUtf8;
 
@@ -2706,6 +3374,8 @@ ScriptModReloadResult ScriptMod::TryHotReload(const ScriptModReloadOptions &opti
         ReleaseRuntimeOnly(candidateRuntime);
         return finishWithDiagnostic(diagnostic);
     }
+    candidateDefinition.SourceLibraries = snapshot.SourceLibraries;
+    candidateDefinition.SourceDependencies = snapshot.SourceDependencies;
 
     candidateRuntime.SetOwner(this);
     if (!candidateRuntime.CreateObject(m_Context ? m_Context->GetCKContext() : nullptr,

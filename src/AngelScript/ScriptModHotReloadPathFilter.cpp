@@ -129,4 +129,23 @@ bool ScriptHotReloadEventLooksRelevant(const ScriptFileWatcherWin32::Event &even
     return EndsWithInsensitive(event.Path, L".as");
 }
 
+bool ScriptHotReloadEventLooksRelevantToLibraryUse(const ScriptFileWatcherWin32::Event &event,
+                                                   const ScriptLibraryUse &library) {
+    if (library.RootDirectory.empty())
+        return false;
+
+    if (event.Overflow)
+        return IsDirectoryAffectedByWatchedRoot(event, library.RootDirectory);
+
+    if (IsRootLifecycleAction(event.Action) &&
+        SamePathInsensitive(event.Path, library.RootDirectory)) {
+        return true;
+    }
+
+    if (!IsPathInsideOrSameRoot(event.Path, library.RootDirectory))
+        return false;
+
+    return EndsWithInsensitive(event.Path, L".as");
+}
+
 } // namespace BML

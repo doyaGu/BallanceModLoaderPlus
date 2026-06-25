@@ -107,6 +107,10 @@ public:
     bool QueueScriptModReload(const std::string &id,
                               const BML::ScriptModReloadOptions &options,
                               std::string &message);
+    bool QueueScriptLibraryReload(const std::string &id,
+                                  const std::string &version,
+                                  const BML::ScriptModReloadOptions &options,
+                                  std::string &message);
     size_t QueueAllScriptModReloads(const BML::ScriptModReloadOptions &options);
     bool SetScriptHotReloadAutomatic(bool enabled);
     bool SetScriptHotReloadWatching(bool enabled);

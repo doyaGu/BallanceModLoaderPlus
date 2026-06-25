@@ -2,6 +2,7 @@
 #define BML_SCRIPTMOD_H
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -32,6 +33,7 @@ class asIScriptObject;
 namespace BML {
 
 class ScriptMod;
+class ScriptModReloadCandidate;
 class ScriptModReloadPhaseScope;
 class ScriptStateBag;
 
@@ -59,6 +61,24 @@ struct ScriptModReloadResult {
 struct ScriptModHostRegistration {
     std::string Kind;
     std::string Key;
+};
+
+class ScriptModReloadCandidate final {
+public:
+    ScriptModReloadCandidate();
+    ~ScriptModReloadCandidate();
+
+    ScriptModReloadCandidate(ScriptModReloadCandidate &&other) noexcept;
+    ScriptModReloadCandidate &operator=(ScriptModReloadCandidate &&other) noexcept;
+
+    ScriptModReloadCandidate(const ScriptModReloadCandidate &) = delete;
+    ScriptModReloadCandidate &operator=(const ScriptModReloadCandidate &) = delete;
+
+private:
+    friend class ScriptMod;
+
+    struct State;
+    std::unique_ptr<State> m_State;
 };
 
 class ScriptMod final : public IMod {
@@ -273,6 +293,13 @@ public:
                          bool hasArgument,
                          std::string &result);
     int CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame);
+    bool TryAcquireReloadLease(std::string &diagnostic);
+    void ReleaseReloadLease();
+    std::unique_ptr<ScriptModReloadCandidate> PrepareReloadCandidate(const ScriptModReloadOptions &options,
+                                                                     ScriptModReloadResult &result);
+    ScriptModReloadResult CommitReloadCandidate(ScriptModReloadCandidate &candidate,
+                                                const ScriptModReloadOptions &options);
+    ScriptModReloadResult RollbackCommittedCandidate(ScriptModReloadCandidate &candidate);
     ScriptModReloadResult TryHotReload(const ScriptModReloadOptions &options);
     ScriptModReloadResult TryHotReloadDryRun(const ScriptModReloadOptions &options);
     void ProcessQueuedScriptServiceCallbacks();
@@ -301,6 +328,7 @@ private:
         Validate,
     };
 
+    friend class ScriptModReloadCandidate;
     friend class ScriptModReloadPhaseScope;
 
     bool CompileAndCreate();

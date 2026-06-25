@@ -1918,6 +1918,17 @@ bool ModContext::QueueScriptModReload(const std::string &id,
     return m_ScriptHotReload->QueueReload(id, options, message);
 }
 
+bool ModContext::QueueScriptLibraryReload(const std::string &id,
+                                          const std::string &version,
+                                          const BML::ScriptModReloadOptions &options,
+                                          std::string &message) {
+    if (!m_ScriptHotReload) {
+        message = "Script hot reload service is unavailable.";
+        return false;
+    }
+    return m_ScriptHotReload->QueueReloadLibrary(id, version, options, message);
+}
+
 size_t ModContext::QueueAllScriptModReloads(const BML::ScriptModReloadOptions &options) {
     return m_ScriptHotReload ? m_ScriptHotReload->QueueReloadAll(options) : 0;
 }
