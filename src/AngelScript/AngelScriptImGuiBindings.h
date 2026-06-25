@@ -1,31 +1,29 @@
 #ifndef BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 #define BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 
-#include "CKTypes.h"
-
 struct ImDrawList;
 struct ImGuiContext;
 class asIScriptEngine;
 
 struct BMLImGuiASCallScope {
     ImGuiContext *Previous = nullptr;
-    CKBOOL Active = FALSE;
-    CKBOOL Changed = FALSE;
+    bool Active = false;
+    bool Changed = false;
 };
 
 struct BMLImGuiASCallbackRecoveryScope {
     ImGuiContext *Previous = nullptr;
-    CKBOOL Active = FALSE;
-    CKBOOL Changed = FALSE;
-    CKBOOL PreviousErrorRecoveryEnableAssert = TRUE;
-    CKBOOL PreviousErrorRecoveryEnableDebugLog = TRUE;
-    CKBOOL PreviousErrorRecoveryEnableTooltip = TRUE;
     alignas(8) unsigned char State[64] = {};
+    bool Active = false;
+    bool Changed = false;
+    bool PreviousErrorRecoveryEnableAssert = true;
+    bool PreviousErrorRecoveryEnableDebugLog = true;
+    bool PreviousErrorRecoveryEnableTooltip = true;
 };
 
-CKBOOL BMLImGuiASBeginCall(BMLImGuiASCallScope *scope);
+bool BMLImGuiASBeginCall(BMLImGuiASCallScope *scope);
 void BMLImGuiASEndCall(BMLImGuiASCallScope *scope);
-CKBOOL BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope);
+bool BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope);
 void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
                                    const char *modId,
                                    const char *phase);
