@@ -6,6 +6,9 @@ struct ImGuiContext;
 class asIScriptEngine;
 
 struct BMLImGuiASCallScope {
+    friend bool BMLImGuiASBeginCall(BMLImGuiASCallScope *scope);
+    friend void BMLImGuiASEndCall(BMLImGuiASCallScope *scope);
+
     BMLImGuiASCallScope() = default;
     BMLImGuiASCallScope(const BMLImGuiASCallScope &) = delete;
     BMLImGuiASCallScope &operator=(const BMLImGuiASCallScope &) = delete;
@@ -13,12 +16,18 @@ struct BMLImGuiASCallScope {
 
     void End();
 
+private:
     ImGuiContext *Previous = nullptr;
     bool Active = false;
     bool Changed = false;
 };
 
 struct BMLImGuiASCallbackRecoveryScope {
+    friend bool BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope);
+    friend void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
+                                              const char *modId,
+                                              const char *phase);
+
     BMLImGuiASCallbackRecoveryScope() = default;
     BMLImGuiASCallbackRecoveryScope(const BMLImGuiASCallbackRecoveryScope &) = delete;
     BMLImGuiASCallbackRecoveryScope &operator=(const BMLImGuiASCallbackRecoveryScope &) = delete;
@@ -26,6 +35,7 @@ struct BMLImGuiASCallbackRecoveryScope {
 
     void End(const char *modId, const char *phase);
 
+private:
     ImGuiContext *Previous = nullptr;
     alignas(8) unsigned char State[64] = {};
     bool Active = false;
