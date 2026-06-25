@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "BML/IMod.h"
+#include "ScriptSourceSnapshot.h"
 
 namespace BML {
 
@@ -35,6 +36,8 @@ struct ScriptModDefinition {
     std::string ReloadPolicy;
     std::vector<ScriptModDependency> Dependencies;
     std::vector<ScriptModExportDefinition> Exports;
+    std::vector<ScriptLibraryUse> SourceLibraries;
+    std::vector<ScriptSourceDependency> SourceDependencies;
     std::unordered_map<std::string, std::string> Metadata;
 };
 

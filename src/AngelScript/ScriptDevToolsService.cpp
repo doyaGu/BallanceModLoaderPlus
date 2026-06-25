@@ -1,16 +1,22 @@
 #include "ScriptDevToolsService.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "imgui.h"
 
 #include "CKAngelScriptAdapter.h"
 #include "ModContext.h"
+#include "ScriptLibraryRegistry.h"
+#include "ScriptLibraryServices.h"
+#include "ScriptLibraryValidator.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -792,6 +798,15 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
         snapshot.Dependencies.push_back(std::move(item));
     }
 
+    for (const ScriptLibraryUse &library : definition.SourceLibraries) {
+        ScriptSourceLibrarySnapshot item;
+        item.Id = library.Id;
+        item.Version = library.Version;
+        item.RootDirectory = utils::Utf16ToUtf8(library.RootDirectory);
+        item.VirtualRoot = library.VirtualRoot;
+        snapshot.SourceLibraries.push_back(std::move(item));
+    }
+
     const int exportCount = mod->GetExportCount();
     for (int i = 0; i < exportCount; ++i) {
         ScriptExportSnapshot item;
@@ -962,13 +977,112 @@ std::vector<std::string> ScriptDevToolsService::FormatDeps(const std::string &id
         return {"Script mod not found: " + id};
     std::vector<std::string> lines;
     lines.push_back("Dependencies for " + snapshot->Id + ":");
+    lines.push_back("  runtime [bml.require]/[bml.optional]:");
     for (const auto &dependency : snapshot->Dependencies) {
-        lines.push_back("  " + dependency.Id + " >= " + dependency.MinVersion +
+        lines.push_back("    " + dependency.Id + " >= " + dependency.MinVersion +
                         (dependency.Optional ? " optional" : " required") +
                         (dependency.Satisfied ? " ok" : " missing"));
     }
     if (snapshot->Dependencies.empty())
+        lines.push_back("    none");
+    lines.push_back("  source libraries:");
+    for (const auto &library : snapshot->SourceLibraries) {
+        lines.push_back("    " + ScriptLibraryPackageKey(library.Id, library.Version) +
+                        " root=" + DisplayScriptPath(m_Context, library.RootDirectory));
+    }
+    if (snapshot->SourceLibraries.empty())
+        lines.push_back("    none");
+    return lines;
+}
+
+std::vector<std::string> ScriptDevToolsService::FormatLibs(const std::string &idFilter) {
+    RefreshSnapshotsIfNeeded(false);
+
+    std::unordered_map<std::string, std::vector<std::string>> consumers;
+    for (const ScriptModSnapshot &snapshot : m_Snapshots) {
+        for (const ScriptSourceLibrarySnapshot &library : snapshot.SourceLibraries)
+            consumers[ScriptLibraryPackageKey(library.Id, library.Version)].push_back(snapshot.Id);
+    }
+
+    ScriptDiagnostic registryDiagnostic;
+    ScriptLibraryRegistry registry = MakeInstalledScriptLibraryRegistry(m_Context, registryDiagnostic);
+    if (!registryDiagnostic.Message.empty())
+        return {"Script library registry error: " + registryDiagnostic.Message};
+
+    std::vector<std::string> lines;
+    lines.push_back(idFilter.empty() ? "Script libraries:" : "Script libraries for " + idFilter + ":");
+    std::unordered_set<std::string> emitted;
+    for (const ScriptLibraryPackage &package : registry.GetPackages()) {
+        if (!idFilter.empty() && package.Id != idFilter)
+            continue;
+        const std::string key = ScriptLibraryPackageKey(package.Id, package.Version);
+        emitted.insert(key);
+        std::ostringstream stream;
+        stream << "  " << key
+               << " installed=yes"
+               << " consumers=" << consumers[key].size()
+               << " root=" << DisplayScriptPath(m_Context, utils::Utf16ToUtf8(package.RootDirectory));
+        lines.push_back(stream.str());
+        for (const std::string &consumer : consumers[key])
+            lines.push_back("    used by " + consumer);
+    }
+
+    for (const auto &entry : consumers) {
+        if (emitted.find(entry.first) != emitted.end())
+            continue;
+        const size_t at = entry.first.find('@');
+        const std::string id = at == std::string::npos ? entry.first : entry.first.substr(0, at);
+        if (!idFilter.empty() && id != idFilter)
+            continue;
+        lines.push_back("  " + entry.first +
+                        " installed=no consumers=" + std::to_string(entry.second.size()) +
+                        " state=active-snapshot-only");
+        for (const std::string &consumer : entry.second)
+            lines.push_back("    used by " + consumer);
+    }
+
+    if (lines.size() == 1)
         lines.push_back("  none");
+    return lines;
+}
+
+std::vector<std::string> ScriptDevToolsService::FormatLibCheck(const std::string &id,
+                                                               const std::string &version) {
+    if (!ScriptLibraryRegistry::IsValidLibraryId(id))
+        return {"Invalid script library id: " + id};
+    if (!ScriptLibraryRegistry::IsValidLibraryVersion(version))
+        return {"Invalid script library version: " + version};
+
+    ScriptDiagnostic registryDiagnostic;
+    ScriptLibraryRegistry registry = MakeInstalledScriptLibraryRegistry(m_Context, registryDiagnostic);
+    if (!registryDiagnostic.Message.empty())
+        return {"Script library registry error: " + registryDiagnostic.Message};
+
+    ScriptLibraryPackage package;
+    if (!registry.FindPackage(id, version, package))
+        return {"Script library package not found: " + ScriptLibraryPackageKey(id, version)};
+
+    std::vector<std::string> lines;
+    lines.push_back("Script library " + ScriptLibraryPackageKey(id, version) + ":");
+    lines.push_back("  root=" + DisplayScriptPath(m_Context, utils::Utf16ToUtf8(package.RootDirectory)));
+    lines.push_back("  virtual=" + package.VirtualRoot);
+    ValidateScriptLibraryPackage(registry, package, lines);
+
+    RefreshSnapshotsIfNeeded(false);
+    size_t consumerCount = 0;
+    for (const ScriptModSnapshot &snapshot : m_Snapshots) {
+        for (const ScriptSourceLibrarySnapshot &library : snapshot.SourceLibraries) {
+            if (library.Id == id && library.Version == version) {
+                if (consumerCount == 0)
+                    lines.push_back("  consumers:");
+                lines.push_back("    " + snapshot.Id);
+                ++consumerCount;
+                break;
+            }
+        }
+    }
+    if (consumerCount == 0)
+        lines.push_back("  consumers: none");
     return lines;
 }
 
@@ -1024,6 +1138,16 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
     }
     if (command == "list")
         return FormatList();
+    if (command == "libs") {
+        if (args.size() > 3)
+            return {"Usage: script libs [id]"};
+        return FormatLibs(args.size() == 3 ? args[2] : "");
+    }
+    if (command == "lib") {
+        if (args.size() != 5 || args[2] != "check")
+            return {"Usage: script lib check <id> <version>"};
+        return FormatLibCheck(args[3], args[4]);
+    }
     if (command == "info" || command == "diag" || command == "deps" || command == "exports" || command == "resources") {
         if (args.size() < 3)
             return {"Usage: script " + command + " <id>"};
@@ -1064,6 +1188,23 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
         EnqueueAction(action);
         return {options.DryRun ? "Queued script reload dry-run request." : "Queued script reload request."};
     }
+    if (command == "reload-lib") {
+        if (args.size() < 4)
+            return {"Usage: script reload-lib <id> <version> [--dry-run] [--force-exports]"};
+        ScriptModReloadOptions options;
+        for (size_t i = 4; i < args.size(); ++i) {
+            if (args[i] == "--dry-run")
+                options.DryRun = true;
+            else if (args[i] == "--force-exports")
+                options.ForceExports = true;
+            else
+                return {"Usage: script reload-lib <id> <version> [--dry-run] [--force-exports]"};
+        }
+        std::string message;
+        if (!m_Context || !m_Context->QueueScriptLibraryReload(args[2], args[3], options, message))
+            return {message.empty() ? "Script library reload could not be queued." : message};
+        return {message};
+    }
     if (command == "watch" || command == "auto") {
         if (args.size() != 3 || (args[2] != "on" && args[2] != "off"))
             return {"Usage: script watch <on|off>"};
@@ -1074,14 +1215,16 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
         return {action.WatchEnabled ? "Queued script watch on." : "Queued script watch off."};
     }
 
-    return {"Usage: script <status|panel|logs|list|info|diag|deps|exports|resources|reload|watch>"};
+    return {"Usage: script <status|panel|logs|list|libs|lib|info|diag|deps|exports|resources|reload|reload-lib|watch>"};
 }
 
 std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vector<std::string> &args) {
     if (args.size() == 2)
-        return {"status", "panel", "logs", "list", "info", "diag", "deps", "exports", "resources", "reload", "watch"};
+        return {"status", "panel", "logs", "list", "libs", "lib", "info", "diag", "deps", "exports", "resources", "reload", "reload-lib", "watch"};
     if (args.size() == 3 && (args[1] == "logs" || args[1] == "log"))
         return {"info", "warn", "error", "clear"};
+    if (args.size() == 3 && args[1] == "lib")
+        return {"check"};
     if (args.size() == 3 && (args[1] == "info" || args[1] == "diag" || args[1] == "deps" ||
                              args[1] == "exports" || args[1] == "resources")) {
         return GetScriptModIds();
@@ -1096,6 +1239,8 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
     }
     if (args.size() >= 4 && args[1] == "reload")
         return {"--dry-run", "--check-state", "--force-exports"};
+    if (args.size() >= 4 && args[1] == "reload-lib")
+        return {"--dry-run", "--force-exports"};
     if (args.size() == 3 && (args[1] == "watch" || args[1] == "auto"))
         return {"on", "off"};
     return {};
@@ -1381,6 +1526,7 @@ void ScriptDevToolsService::DrawDependenciesTab(const ScriptModSnapshot *selecte
         ImGui::TextUnformatted("No script mod selected.");
         return;
     }
+    ImGui::TextDisabled("runtime dependencies");
     if (ImGui::BeginTable("script-dev-dep-table", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
         ImGui::TableSetupColumn("id", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("min", ImGuiTableColumnFlags_WidthFixed, 70.0f);
@@ -1402,6 +1548,29 @@ void ScriptDevToolsService::DrawDependenciesTab(const ScriptModSnapshot *selecte
         }
         ImGui::EndTable();
     }
+    if (selected->Dependencies.empty())
+        ImGui::TextDisabled("none");
+
+    ImGui::Separator();
+    ImGui::TextDisabled("source libraries");
+    if (ImGui::BeginTable("script-dev-source-lib-table", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
+        ImGui::TableSetupColumn("id", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("version", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+        ImGui::TableSetupColumn("root", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const auto &item : selected->SourceLibraries) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(item.Id.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(item.Version.c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(DisplayScriptPath(m_Context, item.RootDirectory).c_str());
+        }
+        ImGui::EndTable();
+    }
+    if (selected->SourceLibraries.empty())
+        ImGui::TextDisabled("none");
 }
 
 void ScriptDevToolsService::DrawLogsTab() {

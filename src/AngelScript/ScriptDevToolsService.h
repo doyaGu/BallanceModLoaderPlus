@@ -23,6 +23,13 @@ struct ScriptDependencySnapshot {
     bool Satisfied = false;
 };
 
+struct ScriptSourceLibrarySnapshot {
+    std::string Id;
+    std::string Version;
+    std::string RootDirectory;
+    std::string VirtualRoot;
+};
+
 struct ScriptExportSnapshot {
     std::string Name;
     std::string Signature;
@@ -67,6 +74,7 @@ struct ScriptModSnapshot {
     unsigned int RuntimeGeneration = 0;
     unsigned int ReloadAttemptId = 0;
     std::vector<ScriptDependencySnapshot> Dependencies;
+    std::vector<ScriptSourceLibrarySnapshot> SourceLibraries;
     std::vector<ScriptExportSnapshot> Exports;
     std::vector<std::string> Callbacks;
     ScriptResourceSnapshot Resources;
@@ -153,6 +161,8 @@ private:
     std::vector<std::string> FormatInfo(const std::string &id);
     std::vector<std::string> FormatDiag(const std::string &id);
     std::vector<std::string> FormatDeps(const std::string &id);
+    std::vector<std::string> FormatLibs(const std::string &idFilter);
+    std::vector<std::string> FormatLibCheck(const std::string &id, const std::string &version);
     std::vector<std::string> FormatExports(const std::string &id);
     std::vector<std::string> FormatResources(const std::string &id);
     const ScriptModSnapshot *FindSnapshot(const std::string &id);

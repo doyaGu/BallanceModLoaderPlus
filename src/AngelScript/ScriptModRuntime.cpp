@@ -50,6 +50,7 @@ CKAS_STATUS __cdecl BMLScriptHostCallFilter(const char *apiName, CKDWORD flags, 
                ? CKAS_INVALIDSTATE
                : CKAS_OK;
 }
+
 } // namespace
 
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
