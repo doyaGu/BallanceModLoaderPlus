@@ -269,8 +269,92 @@ ScriptSourceSnapshotBuilder::ScriptSourceSnapshotBuilder(ScriptLibraryRegistry r
     : m_LibraryRegistry(std::move(registry)) {
 }
 
+bool ScriptLibrarySourceCache::CapturePackage(const ScriptLibraryRegistry &registry,
+                                              const std::string &id,
+                                              const std::string &version,
+                                              ScriptDiagnostic &diagnostic) {
+    const std::string packageKey = LibraryUseKey(id, version);
+    if (m_CapturedPackages.find(packageKey) != m_CapturedPackages.end())
+        return true;
+
+    ScriptLibraryPackage package;
+    if (!registry.FindPackage(id, version, package)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Script library package not found: " + id + "@" + version + ".");
+        diagnostic.EntryPath = id + "@" + version;
+        return false;
+    }
+
+    std::error_code ec;
+    for (std::filesystem::recursive_directory_iterator it(package.RootDirectory, ec), end;
+         it != end && !ec;
+         it.increment(ec)) {
+        if (!it->is_regular_file(ec)) {
+            if (ec)
+                break;
+            continue;
+        }
+
+        const std::wstring path = it->path().wstring();
+        if (!EndsWithInsensitiveW(path, L".as"))
+            continue;
+
+        const std::wstring resolved = utils::ResolvePathW(path);
+        if (!utils::IsPathInsideRootW(resolved, package.RootDirectory)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                              "Script library source escapes package root while capturing batch source.");
+            diagnostic.EntryPath = utils::Utf16ToUtf8(path);
+            return false;
+        }
+
+        std::string code;
+        if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(resolved), code)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                              "Failed to read script library source while capturing batch source.");
+            diagnostic.EntryPath = utils::Utf16ToUtf8(path);
+            return false;
+        }
+        m_Files[FoldPathKeyW(resolved)] = std::move(code);
+    }
+
+    if (ec) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Failed to enumerate script library package while capturing batch source.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(package.RootDirectory);
+        return false;
+    }
+    m_CapturedPackages.insert(packageKey);
+    return true;
+}
+
+bool ScriptLibrarySourceCache::ReadFileUtf8(const std::wstring &physicalPath,
+                                            const std::string &virtualSection,
+                                            std::string &code,
+                                            ScriptDiagnostic &diagnostic) {
+    const std::wstring resolved = utils::ResolvePathW(physicalPath);
+    const std::wstring key = FoldPathKeyW(resolved);
+    const auto cached = m_Files.find(key);
+    if (cached != m_Files.end()) {
+        code = cached->second;
+        return true;
+    }
+
+    if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(resolved), code)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Failed to read script library source: " + virtualSection + ".");
+        diagnostic.EntryPath = virtualSection;
+        return false;
+    }
+    m_Files.emplace(key, code);
+    return true;
+}
+
 void ScriptSourceSnapshotBuilder::SetLibraryRegistry(ScriptLibraryRegistry registry) {
     m_LibraryRegistry = std::move(registry);
+}
+
+void ScriptSourceSnapshotBuilder::SetLibrarySourceCache(ScriptLibrarySourceCache *cache) {
+    m_LibrarySourceCache = cache;
 }
 
 std::vector<ScriptIncludeDirective> ScriptSourceSnapshotBuilder::ScanIncludeDirectives(const std::string &code) {
@@ -571,11 +655,18 @@ bool ScriptSourceSnapshotBuilder::AddLibrarySection(const ScriptLibraryInclude &
         return false;
     }
     std::string code;
-    if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(physicalPath), code)) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
-                                          "Failed to read script library source: " + include.VirtualSection + ".");
-        diagnostic.EntryPath = include.VirtualSection;
-        return false;
+    if (m_LibrarySourceCache) {
+        if (!m_LibrarySourceCache->CapturePackage(m_LibraryRegistry, include.Id, include.Version, diagnostic))
+            return false;
+        if (!m_LibrarySourceCache->ReadFileUtf8(physicalPath, include.VirtualSection, code, diagnostic))
+            return false;
+    } else {
+        if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(physicalPath), code)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                              "Failed to read script library source: " + include.VirtualSection + ".");
+            diagnostic.EntryPath = include.VirtualSection;
+            return false;
+        }
     }
 
     ScriptLibraryPackage package;

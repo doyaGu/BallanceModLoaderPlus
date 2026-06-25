@@ -9,7 +9,9 @@
 #include "Logger.h"
 #include "ModContext.h"
 #include "ScriptDevToolsService.h"
+#include "ScriptLibraryServices.h"
 #include "ScriptModHotReloadPathFilter.h"
+#include "ScriptSourceSnapshotBuilder.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -988,6 +990,7 @@ private:
         }
 
         std::string Package;
+        ScriptLibrarySourceCache SourceCache;
         std::vector<ScriptMod *> Consumers;
         std::vector<ScriptMod *> Leased;
         std::vector<std::unique_ptr<ScriptModReloadCandidate>> Candidates;
@@ -1008,6 +1011,7 @@ public:
 private:
     bool DeferForManualPending(std::chrono::steady_clock::time_point now);
     bool TryAcquireLeases(std::chrono::steady_clock::time_point now);
+    bool CaptureLibrarySources();
     bool PrepareBatch();
     bool CommitBatch();
     void PublishNoConsumers();
@@ -1131,19 +1135,45 @@ void ScriptLibraryReloadOperation::PublishStarted() {
                            BuildLibraryBatchRequestFields(m_Pending.Reason, m_Pending.Options, m_Batch.Consumers.size()));
 }
 
+bool ScriptLibraryReloadOperation::CaptureLibrarySources() {
+    ScriptDiagnostic diagnostic;
+    ScriptLibraryRegistry registry = MakeInstalledScriptLibraryRegistry(m_Service.m_Context, diagnostic);
+    if (diagnostic.Message.empty()) {
+        if (m_Batch.SourceCache.CapturePackage(registry, m_Pending.Id, m_Pending.Version, diagnostic))
+            return true;
+    }
+    if (diagnostic.Message.empty()) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Script library batch source capture failed.");
+        diagnostic.EntryPath = m_Batch.Package;
+    }
+
+    ScriptModReloadResult result;
+    result.Diagnostic = FormatScriptDiagnostic(diagnostic);
+    result.SourcePath = diagnostic.EntryPath;
+    result.Fields = {
+        {"library", m_Batch.Package},
+        {"phase", "capture"},
+    };
+    PublishRejected(nullptr, result);
+    return false;
+}
+
 bool ScriptLibraryReloadOperation::PrepareBatch() {
     m_Batch.Candidates.reserve(m_Batch.Consumers.size());
     for (ScriptMod *mod : m_Batch.Consumers) {
         ScriptModReloadResult prepareResult;
-        std::unique_ptr<ScriptModReloadCandidate> candidate = mod->PrepareReloadCandidate(m_Pending.Options, prepareResult);
+        ScriptModReloadOptions options = m_Pending.Options;
+        options.LibrarySourceCache = &m_Batch.SourceCache;
+        std::unique_ptr<ScriptModReloadCandidate> candidate = mod->PrepareReloadCandidate(options, prepareResult);
         const char *modId = mod->GetID();
         if (!candidate) {
-            m_Service.PublishReloadResult(modId ? modId : "", m_Pending.Reason, m_Pending.Options, prepareResult);
+            m_Service.PublishReloadResult(modId ? modId : "", m_Pending.Reason, options, prepareResult);
             PublishRejected(mod, prepareResult);
             return false;
         }
         if (m_Pending.Options.DryRun)
-            m_Service.PublishReloadResult(modId ? modId : "", m_Pending.Reason, m_Pending.Options, prepareResult);
+            m_Service.PublishReloadResult(modId ? modId : "", m_Pending.Reason, options, prepareResult);
         m_Batch.Candidates.push_back(std::move(candidate));
     }
 
@@ -1267,6 +1297,11 @@ bool ScriptLibraryReloadOperation::Run() {
         return false;
 
     PublishStarted();
+
+    if (!CaptureLibrarySources()) {
+        m_Batch.DiscardResources();
+        return true;
+    }
 
     if (!PrepareBatch()) {
         m_Batch.DiscardResources();

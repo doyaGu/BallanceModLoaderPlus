@@ -34,7 +34,8 @@ protected:
 
     bool TryBuildDirectoryMod(const std::wstring &modName,
                               ScriptSourceSnapshot &snapshot,
-                              ScriptDiagnostic &diagnostic) {
+                              ScriptDiagnostic &diagnostic,
+                              ScriptLibrarySourceCache *sourceCache = nullptr) {
         const std::wstring modRoot = utils::CombinePathW(ModsRoot, modName);
         ScriptModLoadCandidate candidate = MakeDirectoryScriptModCandidate(
             modRoot,
@@ -46,6 +47,7 @@ protected:
         std::string registryDiagnostic;
         EXPECT_TRUE(registry.Scan(registryDiagnostic)) << registryDiagnostic;
         ScriptSourceSnapshotBuilder builder(std::move(registry));
+        builder.SetLibrarySourceCache(sourceCache);
         return builder.Build(entry, snapshot, diagnostic);
     }
 
@@ -65,6 +67,13 @@ bool HasSection(const ScriptSourceSnapshot &snapshot, const std::string &name) {
     return std::any_of(snapshot.Sections.begin(), snapshot.Sections.end(), [&](const ScriptSourceSection &section) {
         return section.Name == name;
     });
+}
+
+const ScriptSourceSection *FindSection(const ScriptSourceSnapshot &snapshot, const std::string &name) {
+    auto it = std::find_if(snapshot.Sections.begin(), snapshot.Sections.end(), [&](const ScriptSourceSection &section) {
+        return section.Name == name;
+    });
+    return it == snapshot.Sections.end() ? nullptr : &*it;
 }
 
 } // namespace
@@ -100,6 +109,48 @@ TEST_F(ScriptSourceSnapshotBuilderTest, LibraryIncludeInjectsOnlyDiscoveredClosu
     ASSERT_EQ(1u, snapshot.Libraries.size());
     EXPECT_EQ("com.example.score", snapshot.Libraries.front().Id);
     EXPECT_EQ("1.2.0", snapshot.Libraries.front().Version);
+}
+
+TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytesAcrossBuilds) {
+    const std::string include = "#include \"/bml/libs/com.example.score@1.2.0/api.as\"\nclass User {}\n";
+    const std::wstring firstModRoot = utils::CombinePathW(ModsRoot, L"UserA");
+    const std::wstring secondModRoot = utils::CombinePathW(ModsRoot, L"UserB");
+    Write(utils::CombinePathW(firstModRoot, L"UserA.mod.as"), include);
+    Write(utils::CombinePathW(secondModRoot, L"UserB.mod.as"), include);
+
+    const std::wstring packageRoot = utils::CombinePathW(LibRoot, L"com.example.score\\1.2.0");
+    const std::wstring apiPath = utils::CombinePathW(packageRoot, L"api.as");
+    Write(apiPath, "namespace ScoreApi { const int Version = 1; }\n");
+
+    ScriptLibraryRegistry registry(LibRoot);
+    std::string registryDiagnostic;
+    ASSERT_TRUE(registry.Scan(registryDiagnostic)) << registryDiagnostic;
+    ScriptLibrarySourceCache sourceCache;
+    ScriptDiagnostic diagnostic;
+    ASSERT_TRUE(sourceCache.CapturePackage(registry, "com.example.score", "1.2.0", diagnostic)) << diagnostic.Message;
+    ASSERT_EQ(1u, sourceCache.GetFileCount());
+
+    Write(apiPath, "namespace ScoreApi { const int Version = 2; }\n");
+
+    ScriptSourceSnapshot firstSnapshot;
+    diagnostic = ScriptDiagnostic();
+    ASSERT_TRUE(TryBuildDirectoryMod(L"UserA", firstSnapshot, diagnostic, &sourceCache)) << diagnostic.Message;
+    ASSERT_EQ(1u, sourceCache.GetFileCount());
+
+    ScriptSourceSnapshot secondSnapshot;
+    diagnostic = ScriptDiagnostic();
+    ASSERT_TRUE(TryBuildDirectoryMod(L"UserB", secondSnapshot, diagnostic, &sourceCache)) << diagnostic.Message;
+    ASSERT_EQ(1u, sourceCache.GetFileCount());
+
+    const ScriptSourceSection *firstApi =
+        FindSection(firstSnapshot, "/bml/libs/com.example.score@1.2.0/api.as");
+    const ScriptSourceSection *secondApi =
+        FindSection(secondSnapshot, "/bml/libs/com.example.score@1.2.0/api.as");
+    ASSERT_NE(nullptr, firstApi);
+    ASSERT_NE(nullptr, secondApi);
+    EXPECT_NE(std::string::npos, firstApi->Code.find("Version = 1"));
+    EXPECT_NE(std::string::npos, secondApi->Code.find("Version = 1"));
+    EXPECT_EQ(std::string::npos, secondApi->Code.find("Version = 2"));
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, IgnoresLibraryIncludesInUnreachableLocalSections) {

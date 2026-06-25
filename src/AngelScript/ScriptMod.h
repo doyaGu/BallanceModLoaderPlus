@@ -38,6 +38,7 @@ class ScriptReloadCandidateBuilder;
 class ScriptReloadStateValidator;
 class ScriptModReloadPhaseScope;
 class ScriptModReloadTransaction;
+class ScriptLibrarySourceCache;
 class ScriptStateBag;
 
 struct ScriptModReloadOptions {
@@ -45,6 +46,7 @@ struct ScriptModReloadOptions {
     bool ForceExports = false;
     bool DryRun = false;
     bool CheckStateHooks = false;
+    ScriptLibrarySourceCache *LibrarySourceCache = nullptr;
 };
 
 struct ScriptModReloadDiagnosticField {

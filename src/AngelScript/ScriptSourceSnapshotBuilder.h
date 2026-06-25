@@ -3,6 +3,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ScriptDiagnostic.h"
@@ -17,12 +18,30 @@ struct ScriptIncludeDirective {
     size_t Offset = 0;
 };
 
+class ScriptLibrarySourceCache {
+public:
+    bool CapturePackage(const ScriptLibraryRegistry &registry,
+                        const std::string &id,
+                        const std::string &version,
+                        ScriptDiagnostic &diagnostic);
+    bool ReadFileUtf8(const std::wstring &physicalPath,
+                      const std::string &virtualSection,
+                      std::string &code,
+                      ScriptDiagnostic &diagnostic);
+    size_t GetFileCount() const { return m_Files.size(); }
+
+private:
+    std::unordered_map<std::wstring, std::string> m_Files;
+    std::unordered_set<std::string> m_CapturedPackages;
+};
+
 class ScriptSourceSnapshotBuilder {
 public:
     ScriptSourceSnapshotBuilder() = default;
     explicit ScriptSourceSnapshotBuilder(ScriptLibraryRegistry registry);
 
     void SetLibraryRegistry(ScriptLibraryRegistry registry);
+    void SetLibrarySourceCache(ScriptLibrarySourceCache *cache);
     bool Build(const ScriptModEntry &entry,
                ScriptSourceSnapshot &snapshot,
                ScriptDiagnostic &diagnostic) const;
@@ -45,6 +64,7 @@ private:
                            ScriptDiagnostic &diagnostic) const;
 
     ScriptLibraryRegistry m_LibraryRegistry;
+    ScriptLibrarySourceCache *m_LibrarySourceCache = nullptr;
 };
 
 } // namespace BML

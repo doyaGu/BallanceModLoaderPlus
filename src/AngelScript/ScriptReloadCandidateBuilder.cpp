@@ -350,6 +350,7 @@ static bool PrepareZipReloadCandidate(const ScriptModEntry &entry,
 static bool CaptureReloadSourceSnapshot(ModContext *context,
                                         const ScriptModEntry &entry,
                                         ScriptModReloadSourceSnapshot &snapshot,
+                                        ScriptLibrarySourceCache *librarySourceCache,
                                         ScriptDiagnostic &diagnostic) {
     snapshot.Reset();
 
@@ -405,6 +406,7 @@ static bool CaptureReloadSourceSnapshot(ModContext *context,
 
     ScriptSourceSnapshot sourceSnapshot;
     ScriptSourceSnapshotBuilder snapshotBuilder(std::move(registry));
+    snapshotBuilder.SetLibrarySourceCache(librarySourceCache);
     if (!snapshotBuilder.Build(snapshot.CompileEntry, sourceSnapshot, diagnostic)) {
         RewriteReloadSnapshotDiagnosticPaths(snapshot, diagnostic);
         return false;
@@ -482,7 +484,11 @@ bool ScriptReloadCandidateBuilder::Build(ScriptModReloadResult &result, Failure 
     failure = Failure();
 
     ScriptDiagnostic diagnostic;
-    if (!CaptureReloadSourceSnapshot(m_Mod.m_Context, m_Mod.m_Entry, m_State.Snapshot, diagnostic))
+    if (!CaptureReloadSourceSnapshot(m_Mod.m_Context,
+                                     m_Mod.m_Entry,
+                                     m_State.Snapshot,
+                                     m_Options.LibrarySourceCache,
+                                     diagnostic))
         return FailWithDiagnostic(diagnostic, failure, false);
     result.SourcePath = m_State.Snapshot.CommitEntryPathUtf8;
 
