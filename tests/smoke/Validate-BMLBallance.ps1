@@ -392,6 +392,7 @@ if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'script-export-hardening' (Test-SmokeTextContains $modLogText 'BML native export hardening script tryEcho=0') 'BML native export hardening script tryEcho=0'
     Add-SmokeCheck $checks 'script-export-hardening-callstring' (Test-SmokeTextContains $modLogText 'voidString=-3') 'voidString=-3'
     Add-SmokeCheck $checks 'script-export-hardening-constants' (Test-SmokeTextContains $modLogText 'constants=true') 'constants=true'
+    Add-SmokeCheck $checks 'script-export-resolver' (Test-SmokeTextContains $modLogText 'BML export resolver smoke sum=0 result=42 resolve=0 resolvedValid=true echo=0 echoResult=echo:resolver missing=-702') 'BML export resolver smoke sum=0 result=42 resolve=0 resolvedValid=true echo=0 echoResult=echo:resolver missing=-702'
     if ($SingleFileSmoke) {
         Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
     }
