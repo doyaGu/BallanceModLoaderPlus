@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO_ROOT / "scripts" / "lib"))
+
+from bml_script_export_stub import ExportStubError, generate_export_stub
+
+
+class ExportStubGeneratorTest(unittest.TestCase):
+    def test_generates_resolver_wrapper_for_supported_shapes(self) -> None:
+        stub = generate_export_stub({
+            "providerModId": "example.score",
+            "namespace": "Example::Score",
+            "className": "ScoreClient",
+            "exports": [
+                {
+                    "name": "AddScore",
+                    "return": "int",
+                    "params": [
+                        {"name": "left", "type": "int"},
+                        {"name": "right", "type": "int"},
+                    ],
+                },
+                {
+                    "name": "score.reset",
+                    "method": "Reset",
+                    "signature": "void()",
+                },
+                {
+                    "name": "Digest",
+                    "signature": "array<uint8>@ Digest(const array<uint8> &in bytes)",
+                    "params": [{"name": "bytes"}],
+                },
+                {
+                    "name": "Resolve",
+                    "signature": "CKObject@ Resolve(CKObject@ object)",
+                    "params": [{"name": "object"}],
+                },
+            ],
+        })
+
+        self.assertIn("namespace Example {\nnamespace Score {", stub)
+        self.assertIn("class ScoreClient", stub)
+        self.assertIn('@addScoreResolver = BML::ExportResolver(providerModId, "AddScore", "int AddScore(int left, int right)")', stub)
+        self.assertIn('@resetResolver = BML::ExportResolver(providerModId, "score.reset", "void()")', stub)
+        self.assertIn("int AddScore(int left, int right, int &out result)", stub)
+        self.assertIn("return frame.GetResultInt(result);", stub)
+        self.assertIn("int Reset() {\n    return resetResolver.CallVoid();", stub)
+        self.assertIn("int Digest(const array<uint8> &in bytes, array<uint8>@ &out result)", stub)
+        self.assertIn("frame.SetArray(0, bytes)", stub)
+        self.assertIn("return frame.GetResultArray(result);", stub)
+        self.assertIn("int Resolve(CKObject@ object, CKObject@ &out result)", stub)
+        self.assertIn("frame.SetObject(0, object)", stub)
+        self.assertIn("return frame.GetResultObject(result);", stub)
+
+    def test_rejects_unsupported_export_type(self) -> None:
+        with self.assertRaisesRegex(ExportStubError, "unsupported export type"):
+            generate_export_stub({
+                "providerModId": "example.score",
+                "className": "ScoreClient",
+                "exports": [
+                    {"name": "Lookup", "signature": "dictionary@ Lookup()"},
+                ],
+            })
+
+    def test_rejects_named_signature_mismatch(self) -> None:
+        with self.assertRaisesRegex(ExportStubError, "does not match export name"):
+            generate_export_stub({
+                "providerModId": "example.score",
+                "className": "ScoreClient",
+                "exports": [
+                    {"name": "AddScore", "signature": "int Other(int value)"},
+                ],
+            })
+
+    def test_rejects_script_keyword_identifiers(self) -> None:
+        with self.assertRaisesRegex(ExportStubError, "AngelScript identifier"):
+            generate_export_stub({
+                "providerModId": "example.score",
+                "className": "class",
+                "exports": [
+                    {"name": "Ping", "signature": "void Ping()"},
+                ],
+            })
+
+    def test_author_facing_cli_writes_stub(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            idl_path = tmp_path / "score-api.json"
+            out_path = tmp_path / "client.as"
+            idl_path.write_text(json.dumps({
+                "providerModId": "example.score",
+                "className": "ScoreClient",
+                "exports": [
+                    {"name": "Ping", "signature": "void Ping()"},
+                ],
+            }), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(_REPO_ROOT / "scripts" / "Generate-BMLScriptExportStub.py"),
+                    "--idl",
+                    str(idl_path),
+                    "--out",
+                    str(out_path),
+                ],
+                cwd=_REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            stub = out_path.read_text(encoding="utf-8")
+            self.assertIn("generated by scripts/Generate-BMLScriptExportStub.py", stub)
+            self.assertIn('@pingResolver = BML::ExportResolver(providerModId, "Ping", "void Ping()")', stub)
+
+
+if __name__ == "__main__":
+    unittest.main()
