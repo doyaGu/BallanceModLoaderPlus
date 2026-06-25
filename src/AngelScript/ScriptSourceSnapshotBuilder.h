@@ -28,6 +28,7 @@ public:
                       const std::string &virtualSection,
                       std::string &code,
                       ScriptDiagnostic &diagnostic);
+    bool GetFileContentHash(const std::wstring &physicalPath, std::string &hash) const;
     size_t GetFileCount() const { return m_Files.size(); }
 
 private:

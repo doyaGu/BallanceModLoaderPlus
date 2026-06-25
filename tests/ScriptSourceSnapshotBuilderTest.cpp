@@ -144,8 +144,14 @@ TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytes
     ScriptDiagnostic diagnostic;
     ASSERT_TRUE(sourceCache.CapturePackage(registry, "com.example.score", "1.2.0", diagnostic)) << diagnostic.Message;
     ASSERT_EQ(1u, sourceCache.GetFileCount());
+    std::string capturedHash;
+    ASSERT_TRUE(sourceCache.GetFileContentHash(apiPath, capturedHash));
+    EXPECT_EQ(64u, capturedHash.size());
 
     Write(apiPath, "namespace ScoreApi { const int Version = 2; }\n");
+    std::string hashAfterDiskRewrite;
+    ASSERT_TRUE(sourceCache.GetFileContentHash(apiPath, hashAfterDiskRewrite));
+    EXPECT_EQ(capturedHash, hashAfterDiskRewrite);
 
     ScriptSourceSnapshot firstSnapshot;
     diagnostic = ScriptDiagnostic();
@@ -175,6 +181,7 @@ TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytes
     ASSERT_NE(nullptr, secondDependency);
     EXPECT_EQ(64u, firstDependency->ContentHash.size());
     EXPECT_EQ(firstDependency->ContentHash, secondDependency->ContentHash);
+    EXPECT_EQ(capturedHash, firstDependency->ContentHash);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, IgnoresLibraryIncludesInUnreachableLocalSections) {

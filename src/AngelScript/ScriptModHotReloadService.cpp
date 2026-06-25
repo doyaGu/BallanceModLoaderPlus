@@ -1012,9 +1012,11 @@ private:
     bool DeferForManualPending(std::chrono::steady_clock::time_point now);
     bool TryAcquireLeases(std::chrono::steady_clock::time_point now);
     bool CaptureLibrarySources();
+    bool CapturedSourcesMatchActiveConsumers() const;
     bool PrepareBatch();
     bool CommitBatch();
     void PublishNoConsumers();
+    void PublishNoSourceChanges();
     void PublishStarted();
     void PublishRejected(ScriptMod *failedMod, const ScriptModReloadResult &prepareResult);
     void PublishDryRunPassed();
@@ -1045,6 +1047,22 @@ void ScriptLibraryReloadOperation::PublishNoConsumers() {
                            "",
                            "No active script mods use this script library.",
                            BuildReloadRequestFields(m_Pending.Reason, m_Pending.Options, false, false));
+}
+
+void ScriptLibraryReloadOperation::PublishNoSourceChanges() {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    devTools->PublishEvent(ScriptDevEventSeverity::Info,
+                           "ScriptLibraryReloadNoSourceChanges",
+                           m_Batch.Package,
+                           "reload",
+                           "",
+                           "Script library reload skipped because captured source hashes match active consumers.",
+                           {{"reason", m_Pending.Reason},
+                            {"consumers", std::to_string(m_Batch.Consumers.size())},
+                            {"capturedFiles", std::to_string(m_Batch.SourceCache.GetFileCount())}});
 }
 
 bool ScriptLibraryReloadOperation::DeferForManualPending(std::chrono::steady_clock::time_point now) {
@@ -1157,6 +1175,39 @@ bool ScriptLibraryReloadOperation::CaptureLibrarySources() {
     };
     PublishRejected(nullptr, result);
     return false;
+}
+
+bool ScriptLibraryReloadOperation::CapturedSourcesMatchActiveConsumers() const {
+    bool comparedAny = false;
+    for (const ScriptMod *mod : m_Batch.Consumers) {
+        if (!mod)
+            return false;
+
+        bool comparedConsumer = false;
+        for (const ScriptSourceDependency &dependency : mod->GetDefinition().SourceDependencies) {
+            if (!dependency.LibraryOwned ||
+                dependency.LibraryId != m_Pending.Id ||
+                dependency.LibraryVersion != m_Pending.Version) {
+                continue;
+            }
+
+            comparedAny = true;
+            comparedConsumer = true;
+            if (dependency.ContentHash.empty())
+                return false;
+
+            std::string capturedHash;
+            if (!m_Batch.SourceCache.GetFileContentHash(dependency.PhysicalPath, capturedHash))
+                return false;
+            if (capturedHash != dependency.ContentHash)
+                return false;
+        }
+
+        if (!comparedConsumer)
+            return false;
+    }
+
+    return comparedAny;
 }
 
 bool ScriptLibraryReloadOperation::PrepareBatch() {
@@ -1299,6 +1350,14 @@ bool ScriptLibraryReloadOperation::Run() {
     PublishStarted();
 
     if (!CaptureLibrarySources()) {
+        m_Batch.DiscardResources();
+        return true;
+    }
+
+    if (m_Pending.Options.Automatic &&
+        !m_Pending.Options.DryRun &&
+        CapturedSourcesMatchActiveConsumers()) {
+        PublishNoSourceChanges();
         m_Batch.DiscardResources();
         return true;
     }

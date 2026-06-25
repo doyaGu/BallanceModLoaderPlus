@@ -351,6 +351,17 @@ bool ScriptLibrarySourceCache::ReadFileUtf8(const std::wstring &physicalPath,
     return true;
 }
 
+bool ScriptLibrarySourceCache::GetFileContentHash(const std::wstring &physicalPath, std::string &hash) const {
+    hash.clear();
+    const std::wstring resolved = utils::ResolvePathW(physicalPath);
+    const std::wstring key = FoldPathKeyW(resolved);
+    const auto cached = m_Files.find(key);
+    if (cached == m_Files.end())
+        return false;
+    hash = utils::Sha256Hex(cached->second);
+    return !hash.empty();
+}
+
 void ScriptSourceSnapshotBuilder::SetLibraryRegistry(ScriptLibraryRegistry registry) {
     m_LibraryRegistry = std::move(registry);
 }
