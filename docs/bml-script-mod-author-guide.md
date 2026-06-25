@@ -48,9 +48,9 @@ Start from `templates/script-mod-template` or create a single file named
 The smallest useful mod logs one line when it loads:
 
 ```angelscript
-[bml.mod(id: "example.hello", name: "Hello Script", version: "1.0.0",
-         author: "You", description: "Minimal BML script mod",
-         bml: "0.3.12")]
+[bml.mod id="example.hello" name="Hello Script" version="1.0.0"
+         author="You" description="Minimal BML script mod"
+         bml="0.3.12"]
 class HelloMod {
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
@@ -168,7 +168,7 @@ resource root, not arbitrary global include paths.
 | Add commands or command completion | `Command And Completion` | `BML::Command`, `BML::CommandDefinition`, `BML::CommandCompletion` |
 | Delay or repeat work | `Timer` | `BML::Timer`, `ctx.AddTimer()` |
 | Draw BML/ImGui UI | `UI`, `Advanced ImGui` | `OnRender`, `ctx.Draw*`, `BML::ImGui::*` |
-| Call another mod or expose functions to other mods | `ExportRef And CallFrame` | `ModRef.FindExport()`, `ExportRef.Call*`, `CallFrame` |
+| Call another mod or expose functions to other mods | `ExportRef And CallFrame` | `ModRef.FindExport()`, `ExportResolver`, `ExportRef.Call*`, `CallFrame` |
 | Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Hook an existing behavior graph path | `CK, Physics, And Text Helpers` | CKAS `Behavior`/`BB` lookup plus `ctx.InsertHookBlock*` or `BML::Hook::*` |
 | Work with Virtools objects, behavior graphs, or CKDataArray/CKMesh/CKTexture | `What BML Adds To CKAngelScript`, CKAS docs | CKAS `Scene`, `Behavior`, `BB`, `Param`, raw CK/Vx SDK bindings where needed |
@@ -301,8 +301,8 @@ the owner boundary instead of smuggling raw engine objects through BML.
 exactly once.
 
 ```angelscript
-[bml.mod(id: "example.core", name: "Example Core", version: "1.2.0",
-         author: "You", description: "Example", bml: "0.3.12")]
+[bml.mod id="example.core" name="Example Core" version="1.2.0"
+         author="You" description="Example" bml="0.3.12"]
 class ExampleCore {
 }
 ```
@@ -321,10 +321,10 @@ Dependencies are also metadata. They participate in BML's dependency graph;
 scripts cannot mutate dependencies at runtime.
 
 ```angelscript
-[bml.require(id: "other.mod", version: "1.0.0")]
-[bml.optional(id: "debug.helper", version: "0.1.0")]
-[bml.mod(id: "example.dep", name: "Example With Deps", version: "1.0.0",
-         author: "You", description: "Dependency example", bml: "0.3.12")]
+[bml.require id="other.mod" version="1.0.0"]
+[bml.optional id="debug.helper" version="0.1.0"]
+[bml.mod id="example.dep" name="Example With Deps" version="1.0.0"
+         author="You" description="Dependency example" bml="0.3.12"]
 class ExampleWithDeps {
 }
 ```
@@ -342,12 +342,12 @@ part of the contract.
 
 ```angelscript
 class ExportExample {
-  [bml.export(name: "Add", signature: "int(int, int)")]
+  [bml.export]
   int Add(int a, int b) {
     return a + b;
   }
 
-  [bml.export(name: "Greeting", signature: "string(string)")]
+  [bml.export name="Greeting"]
   string Greeting(const string &in name) {
     return "Hello " + name;
   }
@@ -1080,6 +1080,23 @@ old handles do not call stale runtime state and return
 `ERROR_INTEROP_BAD_SIGNATURE`, or `ERROR_INTEROP_SIGNATURE_MISMATCH` for lookup
 failures.
 
+For reusable client libraries, prefer `BML::ExportResolver` over storing a raw
+`ExportRef@`. It caches the lookup, verifies the cached export generation, and
+rebinds once after `ERROR_INTEROP_HANDLE_STALE` while returning the same status
+codes:
+
+```angelscript
+BML::ExportResolver@ add = BML::ExportResolver("example.provider", "Add", "int Add(int, int)");
+BML::CallFrame@ frame = BML::CallFrame();
+frame.SetInt(0, 2);
+frame.SetInt(1, 40);
+
+int result = 0;
+int status = add.Call(frame);
+if (status == BML::ERROR_OK)
+  status = frame.GetResultInt(result);
+```
+
 Interop signatures support:
 
 - scalars: `void`, `bool`, `int`, `float`, `string`, `const string &in`
@@ -1348,12 +1365,12 @@ void OnLoad(const BML::ModContext &in ctx) {
 ### Expose A Small Service To Other Mods
 
 ```angelscript
-[bml.export(name: "IsFeatureEnabled", signature: "bool()")]
+[bml.export]
 bool IsFeatureEnabled() {
   return enabled;
 }
 
-[bml.export(name: "SetFeatureEnabled", signature: "void(bool)")]
+[bml.export]
 void SetFeatureEnabled(bool value) {
   enabled = value;
 }

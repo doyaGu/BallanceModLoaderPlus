@@ -9,6 +9,10 @@
 - [脚本 Mod 创作教程](script-mod-tutorial/README.md)
 - [BML 脚本 API](api.md)
 
+## 设计草案
+
+- [BML Script Library Design](bml-script-library-design.md)（未实现）
+
 ## 教程主线
 
 教程按四段推进：
