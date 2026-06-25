@@ -6,14 +6,12 @@ struct ImGuiContext;
 class asIScriptEngine;
 
 struct BMLImGuiASCallScope {
-    friend bool BMLImGuiASBeginCall(BMLImGuiASCallScope *scope);
-    friend void BMLImGuiASEndCall(BMLImGuiASCallScope *scope);
-
     BMLImGuiASCallScope() = default;
     BMLImGuiASCallScope(const BMLImGuiASCallScope &) = delete;
     BMLImGuiASCallScope &operator=(const BMLImGuiASCallScope &) = delete;
     ~BMLImGuiASCallScope();
 
+    bool Begin();
     void End();
 
 private:
@@ -23,16 +21,12 @@ private:
 };
 
 struct BMLImGuiASCallbackRecoveryScope {
-    friend bool BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope);
-    friend void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
-                                              const char *modId,
-                                              const char *phase);
-
     BMLImGuiASCallbackRecoveryScope() = default;
     BMLImGuiASCallbackRecoveryScope(const BMLImGuiASCallbackRecoveryScope &) = delete;
     BMLImGuiASCallbackRecoveryScope &operator=(const BMLImGuiASCallbackRecoveryScope &) = delete;
     ~BMLImGuiASCallbackRecoveryScope();
 
+    bool Begin();
     void End(const char *modId, const char *phase);
 
 private:

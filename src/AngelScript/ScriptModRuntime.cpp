@@ -582,7 +582,7 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
     }
     ScriptCurrentModScope callScope(m_Owner);
     BMLImGuiASCallbackRecoveryScope imguiRecovery;
-    BMLImGuiASBeginCallbackRecovery(&imguiRecovery);
+    imguiRecovery.Begin();
     const CKAS_STATUS status = m_Api->CallObjectMethod(m_AngelScript, &options, &result);
     imguiRecovery.End(m_Owner ? m_Owner->GetID() : nullptr,
                       failurePrefix ? failurePrefix : "script method");

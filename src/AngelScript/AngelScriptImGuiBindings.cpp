@@ -75,101 +75,94 @@ BMLImGuiASCallScope::~BMLImGuiASCallScope() {
     End();
 }
 
-void BMLImGuiASCallScope::End() {
-    BMLImGuiASEndCall(this);
-}
+bool BMLImGuiASCallScope::Begin() {
+    Previous = nullptr;
+    Active = false;
+    Changed = false;
 
-bool BMLImGuiASBeginCall(BMLImGuiASCallScope *scope) {
-    if (!scope)
+    if (!BMLImGuiASActivateContext(Previous, Changed))
         return false;
 
-    scope->Previous = nullptr;
-    scope->Active = false;
-    scope->Changed = false;
-
-    if (!BMLImGuiASActivateContext(scope->Previous, scope->Changed))
-        return false;
-
-    scope->Active = true;
+    Active = true;
     return true;
 }
 
-void BMLImGuiASEndCall(BMLImGuiASCallScope *scope) {
-    if (!scope || !scope->Active)
+void BMLImGuiASCallScope::End() {
+    if (!Active)
         return;
 
-    if (scope->Changed)
-        ImGui::SetCurrentContext(scope->Previous);
+    if (Changed)
+        ImGui::SetCurrentContext(Previous);
 
-    scope->Previous = nullptr;
-    scope->Active = false;
-    scope->Changed = false;
+    Previous = nullptr;
+    Active = false;
+    Changed = false;
+}
+
+bool BMLImGuiASBeginCall(BMLImGuiASCallScope *scope) {
+    return scope && scope->Begin();
+}
+
+void BMLImGuiASEndCall(BMLImGuiASCallScope *scope) {
+    if (scope)
+        scope->End();
 }
 
 BMLImGuiASCallbackRecoveryScope::~BMLImGuiASCallbackRecoveryScope() {
     End(nullptr, nullptr);
 }
 
-void BMLImGuiASCallbackRecoveryScope::End(const char *modId, const char *phase) {
-    BMLImGuiASEndCallbackRecovery(this, modId, phase);
-}
+bool BMLImGuiASCallbackRecoveryScope::Begin() {
+    Previous = nullptr;
+    Active = false;
+    Changed = false;
+    PreviousErrorRecoveryEnableAssert = true;
+    PreviousErrorRecoveryEnableDebugLog = true;
+    PreviousErrorRecoveryEnableTooltip = true;
 
-bool BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope) {
-    if (!scope)
+    if (!BMLImGuiASActivateContext(Previous, Changed))
         return false;
 
-    scope->Previous = nullptr;
-    scope->Active = false;
-    scope->Changed = false;
-    scope->PreviousErrorRecoveryEnableAssert = true;
-    scope->PreviousErrorRecoveryEnableDebugLog = true;
-    scope->PreviousErrorRecoveryEnableTooltip = true;
-
-    if (!BMLImGuiASActivateContext(scope->Previous, scope->Changed))
-        return false;
-
-    static_assert(sizeof(ImGuiErrorRecoveryState) <= sizeof(scope->State),
+    static_assert(sizeof(ImGuiErrorRecoveryState) <= sizeof(State),
                   "BMLImGuiASCallbackRecoveryScope::State is too small");
-    ImGuiErrorRecoveryState *state = new (scope->State) ImGuiErrorRecoveryState();
+    ImGuiErrorRecoveryState *state = new (State) ImGuiErrorRecoveryState();
     ImGui::ErrorRecoveryStoreState(state);
     if (ImGuiContext *context = ImGui::GetCurrentContext()) {
-        scope->PreviousErrorRecoveryEnableAssert = context->IO.ConfigErrorRecoveryEnableAssert;
-        scope->PreviousErrorRecoveryEnableDebugLog = context->IO.ConfigErrorRecoveryEnableDebugLog;
-        scope->PreviousErrorRecoveryEnableTooltip = context->IO.ConfigErrorRecoveryEnableTooltip;
+        PreviousErrorRecoveryEnableAssert = context->IO.ConfigErrorRecoveryEnableAssert;
+        PreviousErrorRecoveryEnableDebugLog = context->IO.ConfigErrorRecoveryEnableDebugLog;
+        PreviousErrorRecoveryEnableTooltip = context->IO.ConfigErrorRecoveryEnableTooltip;
         context->IO.ConfigErrorRecoveryEnableAssert = false;
         context->IO.ConfigErrorRecoveryEnableDebugLog = false;
         context->IO.ConfigErrorRecoveryEnableTooltip = false;
     }
-    scope->Active = true;
+    Active = true;
     return true;
 }
 
-void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
-                                   const char *modId,
-                                   const char *phase) {
-    if (!scope || !scope->Active)
+void BMLImGuiASCallbackRecoveryScope::End(const char *modId, const char *phase) {
+    if (!Active)
         return;
 
-    ImGuiErrorRecoveryState *state = reinterpret_cast<ImGuiErrorRecoveryState *>(scope->State);
+    ImGuiErrorRecoveryState *state = reinterpret_cast<ImGuiErrorRecoveryState *>(State);
     const bool needsRecovery = BMLImGuiASNeedsRecovery(*state);
     if (needsRecovery) {
         ImGui::ErrorRecoveryTryToRecoverState(state);
     }
 
     if (ImGuiContext *context = ImGui::GetCurrentContext()) {
-        context->IO.ConfigErrorRecoveryEnableAssert = scope->PreviousErrorRecoveryEnableAssert;
-        context->IO.ConfigErrorRecoveryEnableDebugLog = scope->PreviousErrorRecoveryEnableDebugLog;
-        context->IO.ConfigErrorRecoveryEnableTooltip = scope->PreviousErrorRecoveryEnableTooltip;
+        context->IO.ConfigErrorRecoveryEnableAssert = PreviousErrorRecoveryEnableAssert;
+        context->IO.ConfigErrorRecoveryEnableDebugLog = PreviousErrorRecoveryEnableDebugLog;
+        context->IO.ConfigErrorRecoveryEnableTooltip = PreviousErrorRecoveryEnableTooltip;
     }
 
     state->~ImGuiErrorRecoveryState();
 
-    if (scope->Changed)
-        ImGui::SetCurrentContext(scope->Previous);
+    if (Changed)
+        ImGui::SetCurrentContext(Previous);
 
-    scope->Previous = nullptr;
-    scope->Active = false;
-    scope->Changed = false;
+    Previous = nullptr;
+    Active = false;
+    Changed = false;
 
     if (needsRecovery) {
         char buffer[512];
@@ -181,6 +174,17 @@ void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
         buffer[sizeof(buffer) - 1] = '\0';
         BMLImGuiASReportRuntimeWarning(buffer);
     }
+}
+
+bool BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope) {
+    return scope && scope->Begin();
+}
+
+void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope,
+                                   const char *modId,
+                                   const char *phase) {
+    if (scope)
+        scope->End(modId, phase);
 }
 
 void BMLImGuiASSetRegistrationError(const char **errorMessage, const char *expression, int code) {
@@ -211,7 +215,7 @@ void BMLImGuiASReportRuntimeWarning(const char *message) {
 
 ImDrawList *BMLImGuiASGetBackgroundDrawList() {
     BMLImGuiASCallScope scope;
-    if (!BMLImGuiASBeginCall(&scope))
+    if (!scope.Begin())
         return nullptr;
 
     return ImGui::GetBackgroundDrawList();
@@ -219,7 +223,7 @@ ImDrawList *BMLImGuiASGetBackgroundDrawList() {
 
 ImDrawList *BMLImGuiASGetForegroundDrawList() {
     BMLImGuiASCallScope scope;
-    if (!BMLImGuiASBeginCall(&scope))
+    if (!scope.Begin())
         return nullptr;
 
     return ImGui::GetForegroundDrawList();
