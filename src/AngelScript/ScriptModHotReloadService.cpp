@@ -49,6 +49,83 @@ std::string LibraryPackageKey(const std::string &id, const std::string &version)
     return id + "@" + version;
 }
 
+std::string LibraryPackageKey(const ScriptLibraryReloadPackage &package) {
+    return LibraryPackageKey(package.Id, package.Version);
+}
+
+bool SameLibraryPackage(const ScriptLibraryReloadPackage &package,
+                        const std::string &id,
+                        const std::string &version) {
+    return package.Id == id && package.Version == version;
+}
+
+bool AddLibraryPackage(std::vector<ScriptLibraryReloadPackage> &packages,
+                       const std::string &id,
+                       const std::string &version) {
+    if (id.empty() || version.empty())
+        return false;
+    const auto existing = std::find_if(packages.begin(), packages.end(), [&](const ScriptLibraryReloadPackage &package) {
+        return SameLibraryPackage(package, id, version);
+    });
+    if (existing != packages.end())
+        return false;
+    packages.push_back({id, version});
+    std::sort(packages.begin(), packages.end(), [](const ScriptLibraryReloadPackage &left,
+                                                   const ScriptLibraryReloadPackage &right) {
+        if (left.Id == right.Id)
+            return left.Version < right.Version;
+        return left.Id < right.Id;
+    });
+    return true;
+}
+
+bool RemoveLibraryPackage(std::vector<ScriptLibraryReloadPackage> &packages,
+                          const std::string &id,
+                          const std::string &version) {
+    const auto oldSize = packages.size();
+    packages.erase(std::remove_if(packages.begin(), packages.end(), [&](const ScriptLibraryReloadPackage &package) {
+        return SameLibraryPackage(package, id, version);
+    }), packages.end());
+    return packages.size() != oldSize;
+}
+
+bool HasLibraryPackage(const std::vector<ScriptLibraryReloadPackage> &packages,
+                       const std::string &id,
+                       const std::string &version) {
+    return std::any_of(packages.begin(), packages.end(), [&](const ScriptLibraryReloadPackage &package) {
+        return SameLibraryPackage(package, id, version);
+    });
+}
+
+std::string FormatLibraryPackageList(const std::vector<ScriptLibraryReloadPackage> &packages) {
+    std::string value;
+    for (const ScriptLibraryReloadPackage &package : packages) {
+        if (!value.empty())
+            value += ", ";
+        value += LibraryPackageKey(package);
+    }
+    return value;
+}
+
+std::string MakeLibraryPendingKey(const std::string &id,
+                                  const std::string &version,
+                                  const ScriptModReloadOptions &options) {
+    if (options.Automatic)
+        return "automatic";
+    return LibraryPackageKey(id, version);
+}
+
+std::string MakeLibraryPendingReason(const std::string &reason,
+                                     const std::vector<ScriptLibraryReloadPackage> &packages) {
+    const bool libraryChangeReason = utils::StartsWith(reason, "library changed") ||
+                                     utils::StartsWith(reason, "libraries changed");
+    if (packages.empty() || (!libraryChangeReason && packages.size() <= 1))
+        return reason;
+    if (packages.size() == 1)
+        return "library changed " + LibraryPackageKey(packages.front());
+    return "libraries changed " + FormatLibraryPackageList(packages);
+}
+
 void SendReloadResultMessage(ModContext *context,
                              const std::string &id,
                              const ScriptModReloadOptions &options,
@@ -117,9 +194,12 @@ std::vector<ScriptDevEventField> BuildReloadRequestFields(const std::string &rea
 
 std::vector<ScriptDevEventField> BuildLibraryBatchRequestFields(const std::string &reason,
                                                                 const ScriptModReloadOptions &options,
-                                                                size_t consumerCount) {
+                                                                size_t consumerCount,
+                                                                const std::vector<ScriptLibraryReloadPackage> &packages) {
     std::vector<ScriptDevEventField> fields = BuildReloadRequestFields(reason, options, false, true);
     fields.push_back({"consumers", std::to_string(consumerCount)});
+    fields.push_back({"libraries", std::to_string(packages.size())});
+    fields.push_back({"packages", FormatLibraryPackageList(packages)});
     return fields;
 }
 
@@ -344,25 +424,20 @@ void ScriptModHotReloadService::Process() {
         automaticOptions.Automatic = true;
         for (const auto &event : events) {
             PublishNewModRestartRequired(event);
-            std::unordered_set<std::string> queuedLibraryMods;
             std::unordered_set<std::string> queuedLibraryPackages;
             for (const auto &record : m_Mods) {
                 if (!record.Mod || record.Policy != ScriptModReloadPolicy::Auto)
                     continue;
-                std::string libraryPackage;
-                if (EventLooksRelevantToLibraryUse(event, record.Mod, &libraryPackage)) {
-                    if (!libraryPackage.empty() && queuedLibraryPackages.insert(libraryPackage).second) {
-                        const size_t separator = libraryPackage.rfind('@');
-                        if (separator != std::string::npos && separator > 0 && separator + 1 < libraryPackage.size()) {
-                            QueueLibraryReloadDebounced(libraryPackage.substr(0, separator),
-                                                        libraryPackage.substr(separator + 1),
+                const std::vector<ScriptLibraryReloadPackage> libraryPackages = GetEventAffectedLibraryPackages(event, record.Mod);
+                if (!libraryPackages.empty()) {
+                    for (const ScriptLibraryReloadPackage &package : libraryPackages) {
+                        const std::string libraryPackage = LibraryPackageKey(package);
+                        if (queuedLibraryPackages.insert(libraryPackage).second) {
+                            QueueLibraryReloadDebounced(package.Id,
+                                                        package.Version,
                                                         automaticOptions,
                                                         "library changed " + libraryPackage);
                         }
-                    } else {
-                        const char *modId = record.Mod->GetID();
-                        if (modId && queuedLibraryMods.insert(modId).second)
-                            QueueReloadDebounced(record.Mod, automaticOptions, "library changed");
                     }
                     continue;
                 }
@@ -385,6 +460,8 @@ void ScriptModHotReloadService::Process() {
             continue;
         PendingLibraryReload pending = pendingIt->second;
         m_PendingLibraries.erase(pendingIt);
+        if (pending.Packages.empty())
+            continue;
         if (pending.Options.Automatic && !m_AutomaticEnabled)
             continue;
         if (!ProcessLibraryReload(pending)) {
@@ -475,6 +552,7 @@ bool ScriptModHotReloadService::SetAutomaticEnabled(bool enabled) {
 std::string ScriptModHotReloadService::GetStatus() const {
     size_t autoCount = 0;
     std::unordered_set<std::string> activeLibraryPackages;
+    size_t pendingLibraryPackageCount = 0;
     for (const auto &record : m_Mods) {
         if (record.Policy == ScriptModReloadPolicy::Auto)
             ++autoCount;
@@ -483,6 +561,8 @@ std::string ScriptModHotReloadService::GetStatus() const {
                 activeLibraryPackages.insert(LibraryUseKey(library));
         }
     }
+    for (const auto &entry : m_PendingLibraries)
+        pendingLibraryPackageCount += entry.second.Packages.size();
     size_t blockedCount = 0;
     for (const auto &entry : m_Pending) {
         ScriptMod *mod = FindMod(entry.first);
@@ -494,6 +574,7 @@ std::string ScriptModHotReloadService::GetStatus() const {
            << " auto=" << autoCount
            << " pending=" << m_Pending.size()
            << " pendingLibs=" << m_PendingLibraries.size()
+           << " pendingLibPackages=" << pendingLibraryPackageCount
            << " blocked=" << blockedCount
            << " sourceLibs=" << activeLibraryPackages.size()
            << " automatic=" << (m_AutomaticEnabled ? "on" : "off")
@@ -682,7 +763,20 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
                                                       const std::string &reason) {
     if (id.empty() || version.empty())
         return;
-    const std::string key = LibraryPackageKey(id, version);
+    if (!options.Automatic) {
+        for (auto it = m_PendingLibraries.begin(); it != m_PendingLibraries.end();) {
+            if (it->second.Options.Automatic && RemoveLibraryPackage(it->second.Packages, id, version)) {
+                if (it->second.Packages.empty()) {
+                    it = m_PendingLibraries.erase(it);
+                    continue;
+                }
+                it->second.Reason = MakeLibraryPendingReason(it->second.Reason, it->second.Packages);
+            }
+            ++it;
+        }
+    }
+
+    const std::string key = MakeLibraryPendingKey(id, version, options);
     auto existingIt = m_PendingLibraries.find(key);
     const bool replaced = existingIt != m_PendingLibraries.end();
     PendingLibraryReload previous;
@@ -690,20 +784,23 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
         previous = existingIt->second;
 
     PendingLibraryReload &pending = m_PendingLibraries[key];
-    pending.Id = id;
-    pending.Version = version;
+    if (!replaced || !options.Automatic)
+        pending.Packages.clear();
+    AddLibraryPackage(pending.Packages, id, version);
     pending.Options = options;
     pending.Due = std::chrono::steady_clock::now();
     pending.QueuedAt = pending.Due;
     pending.LastBlockedNotice = {};
     pending.BlockedRetryCount = 0;
-    pending.Reason = reason;
+    pending.Reason = MakeLibraryPendingReason(reason, pending.Packages);
 
     if (m_Context && m_Context->GetScriptDevTools()) {
         if (replaced) {
             std::vector<ScriptDevEventField> fields;
             AppendReloadRequestFields(fields, previous.Reason, previous.Options, "previous", false, false);
-            AppendReloadRequestFields(fields, reason, options, std::string(), false, false);
+            fields.push_back({"previousPackages", FormatLibraryPackageList(previous.Packages)});
+            AppendReloadRequestFields(fields, pending.Reason, options, std::string(), false, false);
+            fields.push_back({"packages", FormatLibraryPackageList(pending.Packages)});
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptLibraryReloadPendingReplaced",
                                                          key,
@@ -719,7 +816,10 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
                                                      "",
                                                      options.DryRun ? "Script library reload dry-run queued."
                                                                     : "Script library reload queued.",
-                                                     BuildReloadRequestFields(reason, options, false, true));
+                                                     BuildLibraryBatchRequestFields(pending.Reason,
+                                                                                    options,
+                                                                                    GetLibraryConsumers(pending.Packages, options.Automatic).size(),
+                                                                                    pending.Packages));
     }
 }
 
@@ -731,35 +831,52 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
         return;
     if (options.Automatic && !m_AutomaticEnabled)
         return;
-    const std::string key = LibraryPackageKey(id, version);
-    auto existingIt = m_PendingLibraries.find(key);
-    if (options.Automatic &&
-        existingIt != m_PendingLibraries.end() &&
-        !existingIt->second.Options.Automatic) {
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            std::vector<ScriptDevEventField> fields = {{"reason", reason},
-                                                       {"pendingReason", existingIt->second.Reason}};
-            AppendReloadOptionFields(fields, existingIt->second.Options, "pending", false, false, true);
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                         "ScriptLibraryReloadAutoCoalesced",
-                                                         key,
-                                                         "reload",
-                                                         "",
-                                                         "Automatic script library reload was coalesced into a pending manual reload.",
-                                                         fields);
+    const std::string packageKey = LibraryPackageKey(id, version);
+    if (options.Automatic) {
+        for (const auto &entry : m_PendingLibraries) {
+            if (entry.second.Options.Automatic || !HasLibraryPackage(entry.second.Packages, id, version))
+                continue;
+            if (m_Context && m_Context->GetScriptDevTools()) {
+                std::vector<ScriptDevEventField> fields = {{"reason", reason},
+                                                           {"pendingReason", entry.second.Reason},
+                                                           {"package", packageKey}};
+                AppendReloadOptionFields(fields, entry.second.Options, "pending", false, false, true);
+                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                             "ScriptLibraryReloadAutoCoalesced",
+                                                             packageKey,
+                                                             "reload",
+                                                             "",
+                                                             "Automatic script library reload was coalesced into a pending manual reload.",
+                                                             fields);
+            }
+            return;
         }
-        return;
+    } else {
+        for (auto it = m_PendingLibraries.begin(); it != m_PendingLibraries.end();) {
+            if (it->second.Options.Automatic && RemoveLibraryPackage(it->second.Packages, id, version)) {
+                if (it->second.Packages.empty()) {
+                    it = m_PendingLibraries.erase(it);
+                    continue;
+                }
+                it->second.Reason = MakeLibraryPendingReason(it->second.Reason, it->second.Packages);
+            }
+            ++it;
+        }
     }
 
+    const std::string key = MakeLibraryPendingKey(id, version, options);
+    auto existingIt = m_PendingLibraries.find(key);
+    const bool replaced = existingIt != m_PendingLibraries.end();
     PendingLibraryReload &pending = m_PendingLibraries[key];
-    pending.Id = id;
-    pending.Version = version;
+    if (!replaced || !options.Automatic)
+        pending.Packages.clear();
+    AddLibraryPackage(pending.Packages, id, version);
     pending.Options = options;
     pending.QueuedAt = std::chrono::steady_clock::now();
     pending.Due = pending.QueuedAt + kDebounceDelay;
     pending.LastBlockedNotice = {};
     pending.BlockedRetryCount = 0;
-    pending.Reason = reason;
+    pending.Reason = MakeLibraryPendingReason(reason, pending.Packages);
 
     if (m_Context && m_Context->GetScriptDevTools()) {
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -769,7 +886,10 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
                                                      "",
                                                      options.DryRun ? "Script library reload dry-run queued after debounce."
                                                                     : "Script library reload queued after debounce.",
-                                                     BuildReloadRequestFields(reason, options, false, true));
+                                                     BuildLibraryBatchRequestFields(pending.Reason,
+                                                                                    options,
+                                                                                    GetLibraryConsumers(pending.Packages, options.Automatic).size(),
+                                                                                    pending.Packages));
     }
 }
 
@@ -850,21 +970,18 @@ bool ScriptModHotReloadService::EventLooksRelevant(const ScriptFileWatcherWin32:
     return ScriptHotReloadEventLooksRelevant(event, mod->GetEntry());
 }
 
-bool ScriptModHotReloadService::EventLooksRelevantToLibraryUse(const ScriptFileWatcherWin32::Event &event,
-                                                               const ScriptMod *mod,
-                                                               std::string *packageKey) const {
-    if (packageKey)
-        packageKey->clear();
+std::vector<ScriptLibraryReloadPackage> ScriptModHotReloadService::GetEventAffectedLibraryPackages(
+    const ScriptFileWatcherWin32::Event &event,
+    const ScriptMod *mod) const {
+    std::vector<ScriptLibraryReloadPackage> packages;
     if (!mod)
-        return false;
+        return packages;
     for (const ScriptLibraryUse &library : mod->GetDefinition().SourceLibraries) {
         if (!ScriptHotReloadEventLooksRelevantToLibraryUse(event, library))
             continue;
-        if (packageKey)
-            *packageKey = LibraryUseKey(library);
-        return true;
+        AddLibraryPackage(packages, library.Id, library.Version);
     }
-    return false;
+    return packages;
 }
 
 bool ScriptModHotReloadService::EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const {
@@ -885,22 +1002,35 @@ bool ScriptModHotReloadService::ModUsesLibrary(const ScriptMod *mod,
     return false;
 }
 
+bool ScriptModHotReloadService::ModUsesAnyLibrary(const ScriptMod *mod,
+                                                  const std::vector<ScriptLibraryReloadPackage> &packages) const {
+    if (!mod || packages.empty())
+        return false;
+    for (const ScriptLibraryReloadPackage &package : packages) {
+        if (ModUsesLibrary(mod, package.Id, package.Version))
+            return true;
+    }
+    return false;
+}
+
 std::vector<ScriptMod *> ScriptModHotReloadService::GetLibraryConsumers(const std::string &id,
                                                                         const std::string &version,
                                                                         bool automaticOnly) const {
+    std::vector<ScriptLibraryReloadPackage> packages;
+    AddLibraryPackage(packages, id, version);
+    return GetLibraryConsumers(packages, automaticOnly);
+}
+
+std::vector<ScriptMod *> ScriptModHotReloadService::GetLibraryConsumers(const std::vector<ScriptLibraryReloadPackage> &packages,
+                                                                        bool automaticOnly) const {
     std::vector<ScriptMod *> consumers;
     for (const auto &record : m_Mods) {
-        if (!record.Mod || !ModUsesLibrary(record.Mod, id, version))
+        if (!record.Mod || !ModUsesAnyLibrary(record.Mod, packages))
             continue;
         if (automaticOnly && record.Policy != ScriptModReloadPolicy::Auto)
             continue;
         consumers.push_back(record.Mod);
     }
-    std::sort(consumers.begin(), consumers.end(), [](ScriptMod *left, ScriptMod *right) {
-        const char *leftId = left ? left->GetID() : nullptr;
-        const char *rightId = right ? right->GetID() : nullptr;
-        return std::string(leftId ? leftId : "") < std::string(rightId ? rightId : "");
-    });
     return consumers;
 }
 
@@ -990,6 +1120,7 @@ private:
         }
 
         std::string Package;
+        std::vector<ScriptLibraryReloadPackage> Packages;
         ScriptLibrarySourceCache SourceCache;
         std::vector<ScriptMod *> Consumers;
         std::vector<ScriptMod *> Leased;
@@ -1000,9 +1131,9 @@ private:
 public:
     ScriptLibraryReloadOperation(ScriptModHotReloadService &service, PendingLibraryReload &pending)
         : m_Service(service), m_Pending(pending) {
-        m_Batch.Package = LibraryPackageKey(m_Pending.Id, m_Pending.Version);
-        m_Batch.Consumers = m_Service.GetLibraryConsumers(m_Pending.Id,
-                                                          m_Pending.Version,
+        m_Batch.Packages = m_Pending.Packages;
+        m_Batch.Package = FormatLibraryPackageList(m_Batch.Packages);
+        m_Batch.Consumers = m_Service.GetLibraryConsumers(m_Batch.Packages,
                                                           m_Pending.Options.Automatic);
     }
 
@@ -1045,8 +1176,11 @@ void ScriptLibraryReloadOperation::PublishNoConsumers() {
                            m_Batch.Package,
                            "reload",
                            "",
-                           "No active script mods use this script library.",
-                           BuildReloadRequestFields(m_Pending.Reason, m_Pending.Options, false, false));
+                           "No active script mods use these script libraries.",
+                           BuildLibraryBatchRequestFields(m_Pending.Reason,
+                                                          m_Pending.Options,
+                                                          0,
+                                                          m_Batch.Packages));
 }
 
 void ScriptLibraryReloadOperation::PublishNoSourceChanges() {
@@ -1061,6 +1195,8 @@ void ScriptLibraryReloadOperation::PublishNoSourceChanges() {
                            "",
                            "Script library reload skipped because captured source hashes match active consumers.",
                            {{"reason", m_Pending.Reason},
+                            {"libraries", std::to_string(m_Batch.Packages.size())},
+                            {"packages", m_Batch.Package},
                             {"consumers", std::to_string(m_Batch.Consumers.size())},
                             {"capturedFiles", std::to_string(m_Batch.SourceCache.GetFileCount())}});
 }
@@ -1150,14 +1286,26 @@ void ScriptLibraryReloadOperation::PublishStarted() {
                            "",
                            m_Pending.Options.DryRun ? "Script library reload dry-run batch started."
                                                     : "Script library reload batch started.",
-                           BuildLibraryBatchRequestFields(m_Pending.Reason, m_Pending.Options, m_Batch.Consumers.size()));
+                           BuildLibraryBatchRequestFields(m_Pending.Reason,
+                                                          m_Pending.Options,
+                                                          m_Batch.Consumers.size(),
+                                                          m_Batch.Packages));
 }
 
 bool ScriptLibraryReloadOperation::CaptureLibrarySources() {
     ScriptDiagnostic diagnostic;
     ScriptLibraryRegistry registry = MakeInstalledScriptLibraryRegistry(m_Service.m_Context, diagnostic);
     if (diagnostic.Message.empty()) {
-        if (m_Batch.SourceCache.CapturePackage(registry, m_Pending.Id, m_Pending.Version, diagnostic))
+        bool captured = true;
+        for (const ScriptLibraryReloadPackage &package : m_Batch.Packages) {
+            if (!m_Batch.SourceCache.CapturePackage(registry, package.Id, package.Version, diagnostic)) {
+                captured = false;
+                if (diagnostic.EntryPath.empty())
+                    diagnostic.EntryPath = LibraryPackageKey(package);
+                break;
+            }
+        }
+        if (captured)
             return true;
     }
     if (diagnostic.Message.empty()) {
@@ -1170,7 +1318,7 @@ bool ScriptLibraryReloadOperation::CaptureLibrarySources() {
     result.Diagnostic = FormatScriptDiagnostic(diagnostic);
     result.SourcePath = diagnostic.EntryPath;
     result.Fields = {
-        {"library", m_Batch.Package},
+        {"libraries", m_Batch.Package},
         {"phase", "capture"},
     };
     PublishRejected(nullptr, result);
@@ -1186,8 +1334,7 @@ bool ScriptLibraryReloadOperation::CapturedSourcesMatchActiveConsumers() const {
         bool comparedConsumer = false;
         for (const ScriptSourceDependency &dependency : mod->GetDefinition().SourceDependencies) {
             if (!dependency.LibraryOwned ||
-                dependency.LibraryId != m_Pending.Id ||
-                dependency.LibraryVersion != m_Pending.Version) {
+                !HasLibraryPackage(m_Batch.Packages, dependency.LibraryId, dependency.LibraryVersion)) {
                 continue;
             }
 
@@ -1245,6 +1392,8 @@ void ScriptLibraryReloadOperation::PublishRejected(ScriptMod *failedMod,
                            prepareResult.SourcePath,
                            "Script library reload batch rejected before commit; all old runtimes were kept.",
                            {{"reason", m_Pending.Reason},
+                            {"libraries", std::to_string(m_Batch.Packages.size())},
+                            {"packages", m_Batch.Package},
                             {"failedMod", modId ? modId : ""},
                             {"consumers", std::to_string(m_Batch.Consumers.size())},
                             {"diagnostic", prepareResult.Diagnostic}});
@@ -1262,6 +1411,8 @@ void ScriptLibraryReloadOperation::PublishDryRunPassed() {
                            "",
                            "Script library reload dry-run batch passed.",
                            {{"reason", m_Pending.Reason},
+                            {"libraries", std::to_string(m_Batch.Packages.size())},
+                            {"packages", m_Batch.Package},
                             {"consumers", std::to_string(m_Batch.Consumers.size())}});
 }
 
@@ -1313,6 +1464,8 @@ void ScriptLibraryReloadOperation::PublishCommitFailure(ScriptMod *failedMod,
                                ? "Script library reload batch failed during commit; committed consumers were rolled back."
                                : "Script library reload batch failed and at least one committed consumer could not roll back; restart is required.",
                            {{"reason", m_Pending.Reason},
+                            {"libraries", std::to_string(m_Batch.Packages.size())},
+                            {"packages", m_Batch.Package},
                             {"failedMod", modId ? modId : ""},
                             {"committedBeforeFailure", std::to_string(m_Batch.Committed.size())},
                             {"rollback", rollbackOk ? "success" : "failed"},
@@ -1331,6 +1484,8 @@ void ScriptLibraryReloadOperation::PublishCommitted() {
                            "",
                            "Script library reload batch committed.",
                            {{"reason", m_Pending.Reason},
+                            {"libraries", std::to_string(m_Batch.Packages.size())},
+                            {"packages", m_Batch.Package},
                             {"consumers", std::to_string(m_Batch.Consumers.size())}});
 }
 

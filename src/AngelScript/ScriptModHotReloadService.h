@@ -18,6 +18,11 @@ namespace BML {
 class ScriptLibraryReloadOperation;
 class ScriptModReloadOperation;
 
+struct ScriptLibraryReloadPackage {
+    std::string Id;
+    std::string Version;
+};
+
 class ScriptModHotReloadService {
 public:
     explicit ScriptModHotReloadService(ModContext *context);
@@ -58,8 +63,7 @@ private:
     };
 
     struct PendingLibraryReload {
-        std::string Id;
-        std::string Version;
+        std::vector<ScriptLibraryReloadPackage> Packages;
         ScriptModReloadOptions Options;
         std::chrono::steady_clock::time_point QueuedAt;
         std::chrono::steady_clock::time_point Due;
@@ -99,13 +103,15 @@ private:
                          bool recursive) const;
     bool EventOverflowCanAffectMod(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
     bool EventLooksRelevant(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
-    bool EventLooksRelevantToLibraryUse(const ScriptFileWatcherWin32::Event &event,
-                                        const ScriptMod *mod,
-                                        std::string *packageKey = nullptr) const;
+    std::vector<ScriptLibraryReloadPackage> GetEventAffectedLibraryPackages(const ScriptFileWatcherWin32::Event &event,
+                                                                            const ScriptMod *mod) const;
     bool EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const;
     bool ModUsesLibrary(const ScriptMod *mod, const std::string &id, const std::string &version) const;
+    bool ModUsesAnyLibrary(const ScriptMod *mod, const std::vector<ScriptLibraryReloadPackage> &packages) const;
     std::vector<ScriptMod *> GetLibraryConsumers(const std::string &id,
                                                  const std::string &version,
+                                                 bool automaticOnly) const;
+    std::vector<ScriptMod *> GetLibraryConsumers(const std::vector<ScriptLibraryReloadPackage> &packages,
                                                  bool automaticOnly) const;
     size_t QueueLibraryConsumers(const std::string &id,
                                  const std::string &version,
