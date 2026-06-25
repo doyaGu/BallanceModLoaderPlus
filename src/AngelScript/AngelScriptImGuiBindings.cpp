@@ -71,6 +71,14 @@ bool BMLImGuiASNeedsRecovery(const ImGuiErrorRecoveryState &state) {
 
 } // namespace
 
+BMLImGuiASCallScope::~BMLImGuiASCallScope() {
+    End();
+}
+
+void BMLImGuiASCallScope::End() {
+    BMLImGuiASEndCall(this);
+}
+
 bool BMLImGuiASBeginCall(BMLImGuiASCallScope *scope) {
     if (!scope)
         return false;
@@ -96,6 +104,14 @@ void BMLImGuiASEndCall(BMLImGuiASCallScope *scope) {
     scope->Previous = nullptr;
     scope->Active = false;
     scope->Changed = false;
+}
+
+BMLImGuiASCallbackRecoveryScope::~BMLImGuiASCallbackRecoveryScope() {
+    End(nullptr, nullptr);
+}
+
+void BMLImGuiASCallbackRecoveryScope::End(const char *modId, const char *phase) {
+    BMLImGuiASEndCallbackRecovery(this, modId, phase);
 }
 
 bool BMLImGuiASBeginCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope) {
@@ -198,9 +214,7 @@ ImDrawList *BMLImGuiASGetBackgroundDrawList() {
     if (!BMLImGuiASBeginCall(&scope))
         return nullptr;
 
-    ImDrawList *drawList = ImGui::GetBackgroundDrawList();
-    BMLImGuiASEndCall(&scope);
-    return drawList;
+    return ImGui::GetBackgroundDrawList();
 }
 
 ImDrawList *BMLImGuiASGetForegroundDrawList() {
@@ -208,9 +222,7 @@ ImDrawList *BMLImGuiASGetForegroundDrawList() {
     if (!BMLImGuiASBeginCall(&scope))
         return nullptr;
 
-    ImDrawList *drawList = ImGui::GetForegroundDrawList();
-    BMLImGuiASEndCall(&scope);
-    return drawList;
+    return ImGui::GetForegroundDrawList();
 }
 
 #endif
