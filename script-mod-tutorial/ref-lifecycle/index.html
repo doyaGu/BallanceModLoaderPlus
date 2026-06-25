@@ -1166,6 +1166,17 @@
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
+        热重载
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
         规则
       
     </span>
@@ -1550,6 +1561,17 @@
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
+        热重载
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
         规则
       
     </span>
@@ -1593,6 +1615,12 @@
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="kt">void</span><span class="w"> </span><span class="n">OnCheatEnabled</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CheatEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">)</span>
 </code></pre></div>
 <p>签名必须完全匹配，否则 BML 不会调用。</p>
+<p>热重载状态迁移使用三个可选方法：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kt">void</span><span class="w"> </span><span class="n">SaveState</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">StateBag</span><span class="err">@</span><span class="w"> </span><span class="n">state</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kt">void</span><span class="w"> </span><span class="n">MigrateState</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">fromVersion</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">StateBag</span><span class="err">@</span><span class="w"> </span><span class="n">state</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kt">void</span><span class="w"> </span><span class="n">RestoreState</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">StateBag</span><span class="err">@</span><span class="w"> </span><span class="n">state</span><span class="p">)</span>
+</code></pre></div>
+<p>这些方法不是普通回调。只有热重载需要迁移脚本字段时才实现它们。</p>
 <h2 id="_3">回调时机<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1683,6 +1711,10 @@
 <td>进入主菜单后</td>
 </tr>
 <tr>
+<td><code>GAME_EVENT_EXIT_GAME</code></td>
+<td>游戏退出</td>
+</tr>
+<tr>
 <td><code>GAME_EVENT_PRE_LOAD_LEVEL</code></td>
 <td>关卡加载前</td>
 </tr>
@@ -1695,16 +1727,20 @@
 <td>关卡开始</td>
 </tr>
 <tr>
+<td><code>GAME_EVENT_PRE_RESET_LEVEL</code></td>
+<td>重置关卡前</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_POST_RESET_LEVEL</code></td>
+<td>重置关卡后</td>
+</tr>
+<tr>
 <td><code>GAME_EVENT_PAUSE_LEVEL</code></td>
 <td>关卡暂停</td>
 </tr>
 <tr>
 <td><code>GAME_EVENT_UNPAUSE_LEVEL</code></td>
 <td>关卡恢复</td>
-</tr>
-<tr>
-<td><code>GAME_EVENT_DEAD</code></td>
-<td>玩家死亡</td>
 </tr>
 <tr>
 <td><code>GAME_EVENT_PRE_EXIT_LEVEL</code></td>
@@ -1715,20 +1751,52 @@
 <td>退出关卡后</td>
 </tr>
 <tr>
-<td><code>GAME_EVENT_EXIT_GAME</code></td>
-<td>退出游戏</td>
+<td><code>GAME_EVENT_PRE_NEXT_LEVEL</code></td>
+<td>进入下一关前</td>
 </tr>
 <tr>
-<td><code>GAME_EVENT_PRE_RESET_LEVEL</code></td>
-<td>重置关卡前</td>
+<td><code>GAME_EVENT_POST_NEXT_LEVEL</code></td>
+<td>进入下一关后</td>
 </tr>
 <tr>
-<td><code>GAME_EVENT_POST_RESET_LEVEL</code></td>
-<td>重置关卡后</td>
+<td><code>GAME_EVENT_DEAD</code></td>
+<td>玩家死亡</td>
 </tr>
 <tr>
-<td><code>GAME_EVENT_EXTRA_POINT</code></td>
-<td>获得额外分数</td>
+<td><code>GAME_EVENT_PRE_END_LEVEL</code></td>
+<td>关卡结束前</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_POST_END_LEVEL</code></td>
+<td>关卡结束后</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_COUNTER_ACTIVE</code></td>
+<td>倒计时/计数器激活</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_COUNTER_INACTIVE</code></td>
+<td>倒计时/计数器关闭</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_BALL_NAV_ACTIVE</code></td>
+<td>球导航激活</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_BALL_NAV_INACTIVE</code></td>
+<td>球导航关闭</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_CAM_NAV_ACTIVE</code></td>
+<td>摄像机导航激活</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_CAM_NAV_INACTIVE</code></td>
+<td>摄像机导航关闭</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_BALL_OFF</code></td>
+<td>球离开有效区域</td>
 </tr>
 <tr>
 <td><code>GAME_EVENT_PRE_CHECKPOINT_REACHED</code></td>
@@ -1738,24 +1806,96 @@
 <td><code>GAME_EVENT_POST_CHECKPOINT_REACHED</code></td>
 <td>到达存档点后</td>
 </tr>
+<tr>
+<td><code>GAME_EVENT_LEVEL_FINISH</code></td>
+<td>关卡完成</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_GAME_OVER</code></td>
+<td>游戏结束</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_EXTRA_POINT</code></td>
+<td>获得额外分数</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_PRE_SUB_LIFE</code></td>
+<td>扣除生命前</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_POST_SUB_LIFE</code></td>
+<td>扣除生命后</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_PRE_LIFE_UP</code></td>
+<td>增加生命前</td>
+</tr>
+<tr>
+<td><code>GAME_EVENT_POST_LIFE_UP</code></td>
+<td>增加生命后</td>
+</tr>
 </tbody>
 </table>
 <p>工具函数：<code>string BML::GetGameEventName(BML::GameEvent event)</code>，返回枚举的可读名称。</p>
 <h2 id="_4">执行顺序<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>启动 -&gt; BML 扫描脚本 -&gt; 创建脚本对象 -&gt; OnLoad
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  -&gt; [每帧: OnProcess]
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  -&gt; OnUnload
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>启动 -&gt; BML 扫描脚本 -&gt; 创建脚本对象 -&gt; OnLoad
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  -&gt; [每帧: OnProcess]
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  -&gt; OnUnload
 </code></pre></div>
 <p>关卡加载序列：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>PRE_LOAD_LEVEL -&gt; POST_LOAD_LEVEL -&gt; START_LEVEL
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>PRE_LOAD_LEVEL -&gt; POST_LOAD_LEVEL -&gt; START_LEVEL
 </code></pre></div>
-<h2 id="_5">规则<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_5">热重载<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>热重载只替换已经被 BML 发现的脚本 mod runtime，不会在运行中新增 mod，也不会重排依赖图。</p>
+<p>常用命令：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>script reload                  # 重载全部脚本 mod
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>script reload &lt;id&gt;             # 重载一个脚本 mod
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>script reload &lt;id&gt; --dry-run
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>script reload &lt;id&gt; --dry-run --check-state
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>script reload &lt;id&gt; --force-exports
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>script diag &lt;id&gt;
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>script logs error
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>script panel
+</code></pre></div>
+<p>关键规则：</p>
+<ul>
+<li>编译失败或 metadata 失败时，如果旧 runtime 存在，旧 runtime 会继续运行。</li>
+<li>启动时首次编译失败的脚本会保留 failed placeholder。修好文件后可以用 <code>script reload</code> 或 <code>script reload &lt;id&gt;</code> 恢复。</li>
+<li>运行中放入新的 <code>*.mod.as</code> 不会新增 mod。新增 mod 需要重启 Player。</li>
+<li>改 mod id、改 dependency 声明、删除或改签名旧 export，默认会拒绝热重载。只有明确知道调用方能接受时才用 <code>--force-exports</code>。</li>
+<li>旧 Timer、Command、DataShare、callback、export method handle 在替换后失效。新资源必须在新 <code>OnLoad</code> 里重新注册。</li>
+<li>BML 只能恢复自己持有的脚本资源，不能自动撤销脚本改过的游戏世界状态。</li>
+</ul>
+<p>状态迁移示例：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">int</span><span class="w"> </span><span class="n">counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">string</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;idle&quot;</span><span class="p">;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kt">void</span><span class="w"> </span><span class="nf">SaveState</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">StateBag</span><span class="err">@</span><span class="w"> </span><span class="n">state</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="n">state</span><span class="p">.</span><span class="n">SetInt</span><span class="p">(</span><span class="s">&quot;counter&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">counter</span><span class="p">);</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="n">state</span><span class="p">.</span><span class="n">SetString</span><span class="p">(</span><span class="s">&quot;mode&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">mode</span><span class="p">);</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="p">}</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="kt">void</span><span class="w"> </span><span class="nf">MigrateState</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">fromVersion</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">StateBag</span><span class="err">@</span><span class="w"> </span><span class="n">state</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">fromVersion</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">Has</span><span class="p">(</span><span class="s">&quot;oldMode&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">        </span><span class="n">state</span><span class="p">.</span><span class="n">SetString</span><span class="p">(</span><span class="s">&quot;mode&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">GetString</span><span class="p">(</span><span class="s">&quot;oldMode&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;idle&quot;</span><span class="p">));</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">        </span><span class="n">state</span><span class="p">.</span><span class="n">Remove</span><span class="p">(</span><span class="s">&quot;oldMode&quot;</span><span class="p">);</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="p">}</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="kt">void</span><span class="w"> </span><span class="nf">RestoreState</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">StateBag</span><span class="err">@</span><span class="w"> </span><span class="n">state</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">    </span><span class="n">counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">GetInt</span><span class="p">(</span><span class="s">&quot;counter&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">counter</span><span class="p">);</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">    </span><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">state</span><span class="p">.</span><span class="n">GetString</span><span class="p">(</span><span class="s">&quot;mode&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">mode</span><span class="p">);</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>StateBag</code> 只保存 <code>bool</code>、<code>int</code>、<code>float</code>、<code>string</code>。不要把 CK 句柄、脚本对象、Timer、Command、DataShare、ModRef、ExportRef 放进去。状态迁移方法应只复制/转换纯数据，不注册资源、不执行命令、不修改游戏世界。资源在 <code>RestoreState</code> 后的 <code>OnLoad</code> 里按当前状态重新创建。</p>
+<h2 id="_6">规则<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <ul>
 <li>不要在 <code>GAME_EVENT_START_LEVEL</code> 之前查询关卡对象</li>
 <li>在 <code>PRE_EXIT_LEVEL</code> 或 <code>PRE_LOAD_LEVEL</code> 时清除关卡状态</li>
 <li>禁止在 <code>OnProcess</code> 中每帧打日志</li>
 <li>成员变量在帧之间持久存在</li>
 <li>回调签名必须精确匹配，否则 BML 不会调用</li>
+<li>如果需要跨热重载保留成员变量，实现 <code>SaveState</code> / <code>RestoreState</code>，版本升级时再实现 <code>MigrateState</code></li>
 </ul>
 
 

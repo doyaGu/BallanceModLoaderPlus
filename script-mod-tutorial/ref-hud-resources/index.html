@@ -1660,15 +1660,19 @@
 - 读取前先检查 ModFileExistsUtf8</p>
 <h2 id="_4">文件布局<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ModLoader/Mods/
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  MyMod.mod.as
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  MyMod/
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    data/
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>      message.txt
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  MyMod/
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    MyMod.mod.as
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    libs/
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>      MyUtils.as
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    data/
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>      message.txt
 </code></pre></div>
 <h2 id="include">脚本库 (#include)<a class="headerlink" href="#include" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;libs/MyUtils.as&quot;</span>
 </code></pre></div>
-<p>库文件不能有 [bml.mod] 属性。放在 <code>ModLoader/Mods/libs/</code> 下。</p>
+<p>库文件不能有 [bml.mod] 属性。放在当前 mod 目录自己的 <code>libs/</code> 下，不要放到全局
+<code>ModLoader/Mods/libs/</code> 里给多个 mod 共用。热重载按单个 mod 的入口和资源根目录
+计算源码范围；全局 include 文件不是稳定的热重载边界。</p>
 <h2 id="_5">加载资源对象<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">ObjectLoadOptions</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">options</span><span class="p">.</span><span class="n">File</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Path</span><span class="o">::</span><span class="n">Combine</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">GetDirectoryUtf8</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">DIR_GAME</span><span class="p">),</span><span class="w"> </span><span class="s">&quot;3D Entities</span><span class="se">\\</span><span class="s">PH</span><span class="se">\\</span><span class="s">P_Ball_Wood.nmo&quot;</span><span class="p">);</span>

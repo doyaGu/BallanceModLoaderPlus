@@ -1784,7 +1784,9 @@ Clear(), ResultType</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">DataShareCallback</span><span class="err">@</span><span class="w"> </span><span class="n">cb</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">DataShareCallback</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="n">OnValue</span><span class="p">);</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">ctx</span><span class="p">.</span><span class="n">RequestDataShare</span><span class="p">(</span><span class="s">&quot;key&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">DATASHARE_STRING</span><span class="p">,</span><span class="w"> </span><span class="n">cb</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;ns&quot;</span><span class="p">);</span>
 </code></pre></div>
-<p>One-shot. If value exists, callback may fire immediately.</p>
+<p>One-shot. Script callbacks are queued to the BML main-thread safe point; if the
+value already exists, the callback runs on a later process tick rather than
+inside <code>RequestDataShare</code>.</p>
 <p>Types: DATASHARE_STRING, DATASHARE_BOOL, DATASHARE_INT, DATASHARE_FLOAT</p>
 <h3 id="_8">选择指南<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
 <table>

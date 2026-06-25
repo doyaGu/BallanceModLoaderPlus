@@ -25,6 +25,26 @@ enum ModState {
   MOD_STATE_FAILED = 3
 }
 
+enum ReloadPhase {
+  RELOAD_NONE = 0,
+  RELOAD_UNLOAD = 1,
+  RELOAD_LOAD = 2,
+  RELOAD_ROLLBACK = 3,
+  RELOAD_RECOVERY = 4,
+  RELOAD_CLEANUP = 5,
+  RELOAD_SAVE_STATE = 6,
+  RELOAD_MIGRATE_STATE = 7,
+  RELOAD_RESTORE_STATE = 8
+}
+
+enum StateValueType {
+  STATE_VALUE_EMPTY = 0,
+  STATE_VALUE_BOOL = 1,
+  STATE_VALUE_INT = 2,
+  STATE_VALUE_FLOAT = 3,
+  STATE_VALUE_STRING = 4
+}
+
 enum HudFlag {
   HUD_TITLE = 1,
   HUD_FPS = 2,
@@ -214,8 +234,8 @@ class ObjectLoadOptions {
 }
 
 class ObjectLoadResult {
-  bool Success;
-  int Count;
+  bool get_Success() const;
+  int get_Count() const;
   CKObject@ BorrowMainObject() const;
   CKObject@ BorrowObject(int index) const;
 }
@@ -358,6 +378,13 @@ bool WakeUp(CK3dEntity@ target);
 namespace Text {
 CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition);
 CKBehavior@ Create2DText(CKBehavior@ ownerScript, CK2dEntity@ target, const BML::Text2DDefinition &in definition, CKMaterial@ backgroundMaterial, CKMaterial@ caretMaterial);
+}
+
+namespace Hook {
+HookBlockRef@ Create(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = "", int inputCount = 1, int outputCount = 1);
+HookBlockRef@ InsertAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = -1);
+HookBlockRef@ InsertBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = -1, int targetInput = 0);
+HookBlockRef@ InsertBetween(CKBehavior@ ownerScript, CKBehavior@ source, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = 0);
 }
 
 namespace UI {
@@ -593,6 +620,37 @@ class DataShareRequestRef {
   bool Cancel();
 }
 
+class HookBlockEvent {
+  bool get_IsValid() const;
+  int get_BlockId() const;
+  string get_BlockName() const;
+  float get_DeltaTime() const;
+  int get_InputCount() const;
+  int get_OutputCount() const;
+  CKBehavior@ BorrowBlock() const;
+  CKBehavior@ BorrowOwnerScript() const;
+  bool ActivateOutput(int index) const;
+  void ActivateAllOutputs() const;
+}
+
+funcdef int HookBlockCallback(const BML::ModContext &in ctx, const BML::HookBlockEvent &in event);
+
+class HookBlockRef {
+  bool get_IsValid() const;
+  bool get_IsInstalled() const;
+  bool get_Enabled() const;
+  void set_Enabled(bool enabled);
+  bool SetEnabled(bool enabled);
+  bool get_AutoActivateOutputs() const;
+  void set_AutoActivateOutputs(bool enabled);
+  bool SetAutoActivateOutputs(bool enabled);
+  int get_BlockId() const;
+  string get_Name() const;
+  CKBehavior@ BorrowBlock() const;
+  CKBehavior@ BorrowOwnerScript() const;
+  bool Uninstall();
+}
+
 class PhysicalizeEvent {
   int get_TargetId() const;
   string get_TargetName() const;
@@ -721,6 +779,16 @@ class ModContext {
   string GetModId(int index) const;
   string get_ModName() const;
   string GetModName() const;
+  bool get_IsReloading() const;
+  bool IsReloading() const;
+  ReloadPhase get_ReloadPhase() const;
+  ReloadPhase GetReloadPhase() const;
+  uint get_ReloadAttemptId() const;
+  uint GetReloadAttemptId() const;
+  uint get_ModGeneration() const;
+  uint GetModGeneration() const;
+  uint get_RuntimeGeneration() const;
+  uint GetRuntimeGeneration() const;
 
   CKContext@ BorrowCKContext() const;
   CKRenderContext@ BorrowRenderContext() const;
@@ -785,6 +853,10 @@ class ModContext {
   void CloseMapMenu() const;
 
   string GetDirectoryUtf8(int type) const;
+  float GetTimeMs() const;
+  float GetAbsoluteTimeMs() const;
+  float GetDeltaTimeMs() const;
+  uint GetFrameCount() const;
   string GetModRootUtf8() const;
   string ResolveModPathUtf8(const string &in relativePath) const;
   bool ModFileExistsUtf8(const string &in relativePath) const;
@@ -801,6 +873,10 @@ class ModContext {
   bool UnregisterCommand(const string &in name) const;
   DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const;
   DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = "") const;
+  HookBlockRef@ CreateHookBlock(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = "", int inputCount = 1, int outputCount = 1) const;
+  HookBlockRef@ InsertHookBlockAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = -1) const;
+  HookBlockRef@ InsertHookBlockBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = -1, int targetInput = 0) const;
+  HookBlockRef@ InsertHookBlockBetween(CKBehavior@ ownerScript, CKBehavior@ source, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = 0) const;
   bool RegisterBallType(const BallTypeDefinition &in definition) const;
   bool RegisterFloorType(const FloorTypeDefinition &in definition) const;
   bool RegisterModule(const ModuleBallDefinition &in definition) const;
@@ -868,6 +944,47 @@ class ExportRef {
   int CallInt(int &out result) const;
   int CallFloat(float argument, float &out result) const;
   int CallFloat(float &out result) const;
+}
+
+class ExportResolver {
+  bool get_IsBound() const;
+  int get_LastStatus() const;
+  string get_ModId() const;
+  string get_Name() const;
+  string get_Signature() const;
+  void Clear();
+  int Rebind();
+  int Resolve(ExportRef@ &out exportRef);
+  int Call(CallFrame@ frame);
+  int CallVoid();
+  int CallString(const string &in argument, string &out result);
+  int CallString(string &out result);
+  int CallBool(bool argument, bool &out result);
+  int CallBool(bool &out result);
+  int CallInt(int argument, int &out result);
+  int CallInt(int &out result);
+  int CallFloat(float argument, float &out result);
+  int CallFloat(float &out result);
+}
+
+class StateBag {
+  bool get_IsReloadState() const;
+  bool IsReloadState() const;
+  bool Has(const string &in key) const;
+  bool Remove(const string &in key);
+  void Clear();
+  int get_Count() const;
+  int GetCount() const;
+  string GetKey(int index) const;
+  StateValueType GetType(const string &in key) const;
+  void SetBool(const string &in key, bool value);
+  bool GetBool(const string &in key, bool defaultValue = false) const;
+  void SetInt(const string &in key, int value);
+  int GetInt(const string &in key, int defaultValue = 0) const;
+  void SetFloat(const string &in key, float value);
+  float GetFloat(const string &in key, float defaultValue = 0.0f) const;
+  void SetString(const string &in key, const string &in value);
+  string GetString(const string &in key, const string &in defaultValue = "") const;
 }
 
 class CallFrame {
