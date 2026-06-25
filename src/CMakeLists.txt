@@ -183,9 +183,13 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptModHotReloadPathFilter.h
             AngelScript/ScriptModHotReloadService.h
             AngelScript/ScriptModLifecycle.h
+            AngelScript/ScriptModReloadCandidateInternal.h
             AngelScript/ScriptModLoader.h
+            AngelScript/ScriptModReloadTransaction.h
             AngelScript/ScriptModRuntime.h
             AngelScript/ScriptModState.h
+            AngelScript/ScriptReloadCandidateBuilder.h
+            AngelScript/ScriptReloadStateValidator.h
             AngelScript/ScriptReloadStagingCleanup.h
             AngelScript/ScriptSourceSnapshot.h
             AngelScript/ScriptSourceSnapshotBuilder.h
@@ -224,8 +228,12 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptModHotReloadService.cpp
             AngelScript/ScriptModLifecycle.cpp
             AngelScript/ScriptModLoader.cpp
+            AngelScript/ScriptModReloadCandidateInternal.cpp
+            AngelScript/ScriptModReloadTransaction.cpp
             AngelScript/ScriptModRuntime.cpp
             AngelScript/ScriptModState.cpp
+            AngelScript/ScriptReloadCandidateBuilder.cpp
+            AngelScript/ScriptReloadStateValidator.cpp
             AngelScript/ScriptReloadStagingCleanup.cpp
             AngelScript/ScriptSourceSnapshotBuilder.cpp
             AngelScript/ScriptStringInterop.cpp

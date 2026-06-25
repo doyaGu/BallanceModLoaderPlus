@@ -15,6 +15,9 @@ class ModContext;
 
 namespace BML {
 
+class ScriptLibraryReloadOperation;
+class ScriptModReloadOperation;
+
 class ScriptModHotReloadService {
 public:
     explicit ScriptModHotReloadService(ModContext *context);
@@ -69,6 +72,9 @@ private:
         std::wstring Root;
         bool Recursive = true;
     };
+
+    friend class ScriptLibraryReloadOperation;
+    friend class ScriptModReloadOperation;
 
     ScriptMod *FindMod(const std::string &id) const;
     void RebuildWatches();

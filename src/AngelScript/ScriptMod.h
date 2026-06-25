@@ -34,7 +34,10 @@ namespace BML {
 
 class ScriptMod;
 class ScriptModReloadCandidate;
+class ScriptReloadCandidateBuilder;
+class ScriptReloadStateValidator;
 class ScriptModReloadPhaseScope;
+class ScriptModReloadTransaction;
 class ScriptStateBag;
 
 struct ScriptModReloadOptions {
@@ -76,6 +79,9 @@ public:
 
 private:
     friend class ScriptMod;
+    friend class ScriptReloadCandidateBuilder;
+    friend class ScriptReloadStateValidator;
+    friend class ScriptModReloadTransaction;
 
     struct State;
     std::unique_ptr<State> m_State;
@@ -329,7 +335,10 @@ private:
     };
 
     friend class ScriptModReloadCandidate;
+    friend class ScriptReloadCandidateBuilder;
+    friend class ScriptReloadStateValidator;
     friend class ScriptModReloadPhaseScope;
+    friend class ScriptModReloadTransaction;
 
     bool CompileAndCreate();
     bool LoadCurrentRuntime(bool validateHostRegistrations,

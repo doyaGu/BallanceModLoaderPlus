@@ -4,6 +4,7 @@
 #include <cwctype>
 #include <memory>
 #include <sstream>
+#include <utility>
 
 #include "Logger.h"
 #include "ModContext.h"
@@ -72,16 +73,58 @@ void SendReloadResultMessage(ModContext *context,
     context->SendIngameMessage(message.c_str());
 }
 
+const char *BoolField(bool value) {
+    return value ? "true" : "false";
+}
+
+void AppendReloadOptionFields(std::vector<ScriptDevEventField> &fields,
+                              const ScriptModReloadOptions &options,
+                              const std::string &prefix = std::string(),
+                              bool includeAutomatic = true,
+                              bool includeCheckState = true,
+                              bool includeForceExports = true) {
+    const bool prefixed = !prefix.empty();
+    if (includeAutomatic)
+        fields.push_back({prefixed ? prefix + "Automatic" : "automatic", BoolField(options.Automatic)});
+    fields.push_back({prefixed ? prefix + "DryRun" : "dryRun", BoolField(options.DryRun)});
+    if (includeCheckState)
+        fields.push_back({prefixed ? prefix + "CheckState" : "checkState", BoolField(options.CheckStateHooks)});
+    if (includeForceExports)
+        fields.push_back({prefixed ? prefix + "ForceExports" : "forceExports", BoolField(options.ForceExports)});
+}
+
+void AppendReloadRequestFields(std::vector<ScriptDevEventField> &fields,
+                               const std::string &reason,
+                               const ScriptModReloadOptions &options,
+                               const std::string &prefix = std::string(),
+                               bool includeCheckState = true,
+                               bool includeForceExports = true) {
+    const bool prefixed = !prefix.empty();
+    fields.push_back({prefixed ? prefix + "Reason" : "reason", reason});
+    AppendReloadOptionFields(fields, options, prefix, true, includeCheckState, includeForceExports);
+}
+
+std::vector<ScriptDevEventField> BuildReloadRequestFields(const std::string &reason,
+                                                          const ScriptModReloadOptions &options,
+                                                          bool includeCheckState = true,
+                                                          bool includeForceExports = true) {
+    std::vector<ScriptDevEventField> fields;
+    AppendReloadRequestFields(fields, reason, options, std::string(), includeCheckState, includeForceExports);
+    return fields;
+}
+
+std::vector<ScriptDevEventField> BuildLibraryBatchRequestFields(const std::string &reason,
+                                                                const ScriptModReloadOptions &options,
+                                                                size_t consumerCount) {
+    std::vector<ScriptDevEventField> fields = BuildReloadRequestFields(reason, options, false, true);
+    fields.push_back({"consumers", std::to_string(consumerCount)});
+    return fields;
+}
+
 std::vector<ScriptDevEventField> BuildReloadResultFields(const std::string &reason,
                                                          const ScriptModReloadOptions &options,
                                                          const ScriptModReloadResult &result) {
-    std::vector<ScriptDevEventField> fields = {
-        {"reason", reason},
-        {"automatic", options.Automatic ? "true" : "false"},
-        {"dryRun", options.DryRun ? "true" : "false"},
-        {"checkState", options.CheckStateHooks ? "true" : "false"},
-        {"forceExports", options.ForceExports ? "true" : "false"},
-    };
+    std::vector<ScriptDevEventField> fields = BuildReloadRequestFields(reason, options);
     for (const ScriptModReloadDiagnosticField &field : result.Fields)
         fields.push_back({field.Key, field.Value});
     return fields;
@@ -106,6 +149,115 @@ ScriptModReloadPolicy ResolvePolicy(const ScriptMod *mod) {
                : ScriptModReloadPolicy::Auto;
 }
 } // namespace
+
+class ScriptModReloadOperation final {
+private:
+    using PendingReload = ScriptModHotReloadService::PendingReload;
+
+public:
+    ScriptModReloadOperation(ScriptModHotReloadService &service,
+                             const std::string &id,
+                             PendingReload &pending)
+        : m_Service(service), m_Id(id), m_Pending(pending) {
+    }
+
+    bool Run(std::chrono::steady_clock::time_point now);
+
+private:
+    ScriptDevToolsService *DevTools() const;
+    void PublishBlocked(const std::string &message, std::chrono::steady_clock::time_point now);
+    void PublishStarted();
+    ScriptModReloadResult ExecuteReload();
+    void PublishResult(const ScriptModReloadResult &result);
+
+    ScriptModHotReloadService &m_Service;
+    const std::string &m_Id;
+    PendingReload &m_Pending;
+    ScriptMod *m_Mod = nullptr;
+};
+
+ScriptDevToolsService *ScriptModReloadOperation::DevTools() const {
+    return m_Service.m_Context ? m_Service.m_Context->GetScriptDevTools() : nullptr;
+}
+
+void ScriptModReloadOperation::PublishBlocked(const std::string &message,
+                                              std::chrono::steady_clock::time_point now) {
+    ++m_Pending.BlockedRetryCount;
+    const bool firstNotice = m_Pending.LastBlockedNotice.time_since_epoch().count() == 0;
+    if (!firstNotice && now - m_Pending.LastBlockedNotice < kBlockedNoticeDelay)
+        return;
+
+    m_Pending.LastBlockedNotice = now;
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    const auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_Pending.QueuedAt).count();
+    std::vector<ScriptDevEventField> fields = BuildReloadRequestFields(m_Pending.Reason, m_Pending.Options);
+    fields.push_back({"activeCalls", m_Mod ? std::to_string(m_Mod->GetActiveScriptCallCount()) : "0"});
+    fields.push_back({"queuedServiceCallbacks", m_Mod ? std::to_string(m_Mod->GetQueuedScriptServiceCallbackCount()) : "0"});
+    fields.push_back({"retries", std::to_string(m_Pending.BlockedRetryCount)});
+    fields.push_back({"waitMs", std::to_string(waitMs)});
+    devTools->PublishEvent(ScriptDevEventSeverity::Warn,
+                           "ScriptReloadBlocked",
+                           m_Id,
+                           "reload",
+                           "",
+                           message,
+                           fields);
+}
+
+void ScriptModReloadOperation::PublishStarted() {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    devTools->PublishEvent(ScriptDevEventSeverity::Info,
+                           m_Pending.Options.DryRun ? "ScriptReloadDryRunStarted" : "ScriptReloadStarted",
+                           m_Id,
+                           "reload",
+                           "",
+                           m_Pending.Options.DryRun ? "Script reload dry-run started." : "Script reload started.",
+                           BuildReloadRequestFields(m_Pending.Reason, m_Pending.Options));
+}
+
+ScriptModReloadResult ScriptModReloadOperation::ExecuteReload() {
+    return m_Pending.Options.DryRun
+               ? m_Mod->TryHotReloadDryRun(m_Pending.Options)
+               : m_Mod->TryHotReload(m_Pending.Options);
+}
+
+void ScriptModReloadOperation::PublishResult(const ScriptModReloadResult &result) {
+    const char *currentId = m_Mod ? m_Mod->GetID() : nullptr;
+    const std::string resultId = currentId && *currentId ? currentId : m_Id;
+    m_Service.PublishReloadResult(resultId, m_Pending.Reason, m_Pending.Options, result);
+    if (result.Success && !m_Pending.Options.DryRun)
+        m_Service.RegisterMod(m_Mod);
+}
+
+bool ScriptModReloadOperation::Run(std::chrono::steady_clock::time_point now) {
+    m_Mod = m_Service.FindMod(m_Id);
+    if (!m_Mod)
+        return true;
+
+    if (!m_Mod->CanHotReloadNow()) {
+        PublishBlocked("Script reload is waiting for active script calls to finish.", now);
+        return false;
+    }
+
+    PublishStarted();
+    const ScriptModReloadResult result = ExecuteReload();
+    if (result.RetryLater) {
+        PublishBlocked(result.Diagnostic.empty()
+                           ? "Script reload asked to retry later."
+                           : result.Diagnostic,
+                       now);
+        return false;
+    }
+
+    PublishResult(result);
+    return true;
+}
 
 ScriptModHotReloadService::ScriptModHotReloadService(ModContext *context)
     : m_Context(context) {
@@ -254,91 +406,10 @@ void ScriptModHotReloadService::Process() {
         if (pending.Options.Automatic && !m_AutomaticEnabled) {
             continue;
         }
-        ScriptMod *mod = FindMod(id);
-        if (!mod) {
-            continue;
-        }
-        if (!mod->CanHotReloadNow()) {
-            ++pending.BlockedRetryCount;
-            const bool firstNotice = pending.LastBlockedNotice.time_since_epoch().count() == 0;
-            if (firstNotice || now - pending.LastBlockedNotice >= kBlockedNoticeDelay) {
-                pending.LastBlockedNotice = now;
-                if (m_Context && m_Context->GetScriptDevTools()) {
-                    const auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - pending.QueuedAt).count();
-                    m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
-                                                                 "ScriptReloadBlocked",
-                                                                 id,
-                                                                 "reload",
-                                                                 "",
-                                                                 "Script reload is waiting for active script calls to finish.",
-                                                                 {{"reason", pending.Reason},
-                                                                  {"automatic", pending.Options.Automatic ? "true" : "false"},
-                                                                  {"dryRun", pending.Options.DryRun ? "true" : "false"},
-                                                                  {"checkState", pending.Options.CheckStateHooks ? "true" : "false"},
-                                                                  {"forceExports", pending.Options.ForceExports ? "true" : "false"},
-                                                                  {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
-                                                                  {"queuedServiceCallbacks", std::to_string(mod->GetQueuedScriptServiceCallbackCount())},
-                                                                  {"retries", std::to_string(pending.BlockedRetryCount)},
-                                                                  {"waitMs", std::to_string(waitMs)}});
-                }
-            }
+        if (!ScriptModReloadOperation(*this, id, pending).Run(now)) {
             pending.Due = now + kRetryDelay;
             m_Pending[id] = pending;
-            continue;
         }
-
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                         pending.Options.DryRun ? "ScriptReloadDryRunStarted" : "ScriptReloadStarted",
-                                                         id,
-                                                         "reload",
-                                                         "",
-                                                         pending.Options.DryRun ? "Script reload dry-run started." : "Script reload started.",
-                                                         {{"reason", pending.Reason},
-                                                          {"automatic", pending.Options.Automatic ? "true" : "false"},
-                                                          {"dryRun", pending.Options.DryRun ? "true" : "false"},
-                                                          {"checkState", pending.Options.CheckStateHooks ? "true" : "false"},
-                                                          {"forceExports", pending.Options.ForceExports ? "true" : "false"}});
-        }
-        ScriptModReloadResult result = pending.Options.DryRun
-                                           ? mod->TryHotReloadDryRun(pending.Options)
-                                           : mod->TryHotReload(pending.Options);
-        if (result.RetryLater) {
-            ++pending.BlockedRetryCount;
-            if (pending.LastBlockedNotice.time_since_epoch().count() == 0 ||
-                now - pending.LastBlockedNotice >= kBlockedNoticeDelay) {
-                pending.LastBlockedNotice = now;
-                if (m_Context && m_Context->GetScriptDevTools()) {
-                    const auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - pending.QueuedAt).count();
-                    m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
-                                                                 "ScriptReloadBlocked",
-                                                                 id,
-                                                                 "reload",
-                                                                 "",
-                                                                 result.Diagnostic.empty()
-                                                                     ? "Script reload asked to retry later."
-                                                                     : result.Diagnostic,
-                                                                 {{"reason", pending.Reason},
-                                                                  {"automatic", pending.Options.Automatic ? "true" : "false"},
-                                                                  {"dryRun", pending.Options.DryRun ? "true" : "false"},
-                                                                  {"checkState", pending.Options.CheckStateHooks ? "true" : "false"},
-                                                                  {"forceExports", pending.Options.ForceExports ? "true" : "false"},
-                                                                  {"activeCalls", std::to_string(mod->GetActiveScriptCallCount())},
-                                                                  {"queuedServiceCallbacks", std::to_string(mod->GetQueuedScriptServiceCallbackCount())},
-                                                                  {"retries", std::to_string(pending.BlockedRetryCount)},
-                                                                  {"waitMs", std::to_string(waitMs)}});
-                }
-            }
-            pending.Due = now + kRetryDelay;
-            m_Pending[id] = pending;
-            continue;
-        }
-
-        const char *currentId = mod->GetID();
-        const std::string resultId = currentId && *currentId ? currentId : id;
-        PublishReloadResult(resultId, pending.Reason, pending.Options, result);
-        if (result.Success && !pending.Options.DryRun)
-            RegisterMod(mod);
     }
 }
 
@@ -535,22 +606,16 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
     pending.Reason = reason;
     if (m_Context && m_Context->GetScriptDevTools()) {
         if (replaced) {
+            std::vector<ScriptDevEventField> fields;
+            AppendReloadRequestFields(fields, previous.Reason, previous.Options, "previous");
+            AppendReloadRequestFields(fields, reason, options);
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptReloadPendingReplaced",
                                                          id,
                                                          "reload",
                                                          "",
                                                          "Pending script reload was replaced by a newer request.",
-                                                         {{"previousReason", previous.Reason},
-                                                          {"previousAutomatic", previous.Options.Automatic ? "true" : "false"},
-                                                          {"previousDryRun", previous.Options.DryRun ? "true" : "false"},
-                                                          {"previousCheckState", previous.Options.CheckStateHooks ? "true" : "false"},
-                                                          {"previousForceExports", previous.Options.ForceExports ? "true" : "false"},
-                                                          {"reason", reason},
-                                                          {"automatic", options.Automatic ? "true" : "false"},
-                                                          {"dryRun", options.DryRun ? "true" : "false"},
-                                                          {"checkState", options.CheckStateHooks ? "true" : "false"},
-                                                          {"forceExports", options.ForceExports ? "true" : "false"}});
+                                                         fields);
         }
         const bool dryRun = options.DryRun;
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -559,11 +624,7 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
                                                      "reload",
                                                      "",
                                                      dryRun ? "Script reload dry-run queued." : "Script reload queued.",
-                                                     {{"reason", reason},
-                                                      {"automatic", options.Automatic ? "true" : "false"},
-                                                      {"dryRun", dryRun ? "true" : "false"},
-                                                      {"checkState", options.CheckStateHooks ? "true" : "false"},
-                                                      {"forceExports", options.ForceExports ? "true" : "false"}});
+                                                     BuildReloadRequestFields(reason, options));
     }
 }
 
@@ -580,17 +641,16 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
         existingIt != m_Pending.end() &&
         !existingIt->second.Options.Automatic) {
         if (m_Context && m_Context->GetScriptDevTools()) {
+            std::vector<ScriptDevEventField> fields = {{"reason", reason},
+                                                       {"pendingReason", existingIt->second.Reason}};
+            AppendReloadOptionFields(fields, existingIt->second.Options, "pending", false, true, true);
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptReloadAutoCoalesced",
                                                          id,
                                                          "reload",
                                                          "",
                                                          "Automatic script reload was coalesced into a pending manual reload.",
-                                                         {{"reason", reason},
-                                                          {"pendingReason", existingIt->second.Reason},
-                                                          {"pendingDryRun", existingIt->second.Options.DryRun ? "true" : "false"},
-                                                          {"pendingCheckState", existingIt->second.Options.CheckStateHooks ? "true" : "false"},
-                                                          {"pendingForceExports", existingIt->second.Options.ForceExports ? "true" : "false"}});
+                                                         fields);
         }
         return;
     }
@@ -610,11 +670,7 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
                                                      "",
                                                      dryRun ? "Script reload dry-run queued after debounce."
                                                             : "Script reload queued after debounce.",
-                                                     {{"reason", reason},
-                                                      {"automatic", options.Automatic ? "true" : "false"},
-                                                      {"dryRun", dryRun ? "true" : "false"},
-                                                      {"checkState", options.CheckStateHooks ? "true" : "false"},
-                                                      {"forceExports", options.ForceExports ? "true" : "false"}});
+                                                     BuildReloadRequestFields(reason, options));
     }
 }
 
@@ -643,18 +699,16 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
 
     if (m_Context && m_Context->GetScriptDevTools()) {
         if (replaced) {
+            std::vector<ScriptDevEventField> fields;
+            AppendReloadRequestFields(fields, previous.Reason, previous.Options, "previous", false, false);
+            AppendReloadRequestFields(fields, reason, options, std::string(), false, false);
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptLibraryReloadPendingReplaced",
                                                          key,
                                                          "reload",
                                                          "",
                                                          "Pending script library reload was replaced by a newer request.",
-                                                         {{"previousReason", previous.Reason},
-                                                          {"previousAutomatic", previous.Options.Automatic ? "true" : "false"},
-                                                          {"previousDryRun", previous.Options.DryRun ? "true" : "false"},
-                                                          {"reason", reason},
-                                                          {"automatic", options.Automatic ? "true" : "false"},
-                                                          {"dryRun", options.DryRun ? "true" : "false"}});
+                                                         fields);
         }
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                      options.DryRun ? "ScriptLibraryReloadDryRunQueued" : "ScriptLibraryReloadQueued",
@@ -663,10 +717,7 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
                                                      "",
                                                      options.DryRun ? "Script library reload dry-run queued."
                                                                     : "Script library reload queued.",
-                                                     {{"reason", reason},
-                                                      {"automatic", options.Automatic ? "true" : "false"},
-                                                      {"dryRun", options.DryRun ? "true" : "false"},
-                                                      {"forceExports", options.ForceExports ? "true" : "false"}});
+                                                     BuildReloadRequestFields(reason, options, false, true));
     }
 }
 
@@ -684,16 +735,16 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
         existingIt != m_PendingLibraries.end() &&
         !existingIt->second.Options.Automatic) {
         if (m_Context && m_Context->GetScriptDevTools()) {
+            std::vector<ScriptDevEventField> fields = {{"reason", reason},
+                                                       {"pendingReason", existingIt->second.Reason}};
+            AppendReloadOptionFields(fields, existingIt->second.Options, "pending", false, false, true);
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptLibraryReloadAutoCoalesced",
                                                          key,
                                                          "reload",
                                                          "",
                                                          "Automatic script library reload was coalesced into a pending manual reload.",
-                                                         {{"reason", reason},
-                                                          {"pendingReason", existingIt->second.Reason},
-                                                          {"pendingDryRun", existingIt->second.Options.DryRun ? "true" : "false"},
-                                                          {"pendingForceExports", existingIt->second.Options.ForceExports ? "true" : "false"}});
+                                                         fields);
         }
         return;
     }
@@ -716,10 +767,7 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
                                                      "",
                                                      options.DryRun ? "Script library reload dry-run queued after debounce."
                                                                     : "Script library reload queued after debounce.",
-                                                     {{"reason", reason},
-                                                      {"automatic", options.Automatic ? "true" : "false"},
-                                                      {"dryRun", options.DryRun ? "true" : "false"},
-                                                      {"forceExports", options.ForceExports ? "true" : "false"}});
+                                                     BuildReloadRequestFields(reason, options, false, true));
     }
 }
 
@@ -921,219 +969,330 @@ void ScriptModHotReloadService::PublishReloadResult(const std::string &id,
     }
 }
 
-bool ScriptModHotReloadService::ProcessLibraryReload(PendingLibraryReload &pending) {
-    const std::string package = LibraryPackageKey(pending.Id, pending.Version);
-    const auto now = std::chrono::steady_clock::now();
-    std::vector<ScriptMod *> consumers = GetLibraryConsumers(pending.Id,
-                                                             pending.Version,
-                                                             pending.Options.Automatic);
-    if (consumers.empty()) {
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
-                                                         "ScriptLibraryReloadNoConsumers",
-                                                         package,
-                                                         "reload",
-                                                         "",
-                                                         "No active script mods use this script library.",
-                                                         {{"reason", pending.Reason},
-                                                          {"automatic", pending.Options.Automatic ? "true" : "false"},
-                                                          {"dryRun", pending.Options.DryRun ? "true" : "false"}});
+class ScriptLibraryReloadOperation final {
+private:
+    using PendingLibraryReload = ScriptModHotReloadService::PendingLibraryReload;
+
+    struct Batch {
+        ~Batch() {
+            DiscardResources();
         }
-        return true;
+
+        void DiscardResources() {
+            Candidates.clear();
+            for (ScriptMod *mod : Leased) {
+                if (mod)
+                    mod->ReleaseReloadLease();
+            }
+            Leased.clear();
+        }
+
+        std::string Package;
+        std::vector<ScriptMod *> Consumers;
+        std::vector<ScriptMod *> Leased;
+        std::vector<std::unique_ptr<ScriptModReloadCandidate>> Candidates;
+        std::vector<size_t> Committed;
+    };
+
+public:
+    ScriptLibraryReloadOperation(ScriptModHotReloadService &service, PendingLibraryReload &pending)
+        : m_Service(service), m_Pending(pending) {
+        m_Batch.Package = LibraryPackageKey(m_Pending.Id, m_Pending.Version);
+        m_Batch.Consumers = m_Service.GetLibraryConsumers(m_Pending.Id,
+                                                          m_Pending.Version,
+                                                          m_Pending.Options.Automatic);
     }
 
-    for (ScriptMod *mod : consumers) {
+    bool Run();
+
+private:
+    bool DeferForManualPending(std::chrono::steady_clock::time_point now);
+    bool TryAcquireLeases(std::chrono::steady_clock::time_point now);
+    bool PrepareBatch();
+    bool CommitBatch();
+    void PublishNoConsumers();
+    void PublishStarted();
+    void PublishRejected(ScriptMod *failedMod, const ScriptModReloadResult &prepareResult);
+    void PublishDryRunPassed();
+    void PublishCommitFailure(ScriptMod *failedMod,
+                              const ScriptModReloadResult &commitResult,
+                              bool rollbackOk);
+    void PublishCommitted();
+    ScriptDevToolsService *DevTools() const;
+
+    ScriptModHotReloadService &m_Service;
+    PendingLibraryReload &m_Pending;
+    Batch m_Batch;
+};
+
+ScriptDevToolsService *ScriptLibraryReloadOperation::DevTools() const {
+    return m_Service.m_Context ? m_Service.m_Context->GetScriptDevTools() : nullptr;
+}
+
+void ScriptLibraryReloadOperation::PublishNoConsumers() {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    devTools->PublishEvent(ScriptDevEventSeverity::Warn,
+                           "ScriptLibraryReloadNoConsumers",
+                           m_Batch.Package,
+                           "reload",
+                           "",
+                           "No active script mods use this script library.",
+                           BuildReloadRequestFields(m_Pending.Reason, m_Pending.Options, false, false));
+}
+
+bool ScriptLibraryReloadOperation::DeferForManualPending(std::chrono::steady_clock::time_point now) {
+    for (ScriptMod *mod : m_Batch.Consumers) {
         const char *modId = mod ? mod->GetID() : nullptr;
         if (!modId || !*modId)
             continue;
-        auto perModPending = m_Pending.find(modId);
-        if (perModPending == m_Pending.end())
+
+        auto perModPending = m_Service.m_Pending.find(modId);
+        if (perModPending == m_Service.m_Pending.end())
             continue;
         if (perModPending->second.Options.Automatic) {
-            m_Pending.erase(perModPending);
+            m_Service.m_Pending.erase(perModPending);
             continue;
         }
 
-        ++pending.BlockedRetryCount;
-        const bool firstNotice = pending.LastBlockedNotice.time_since_epoch().count() == 0;
-        if (firstNotice || now - pending.LastBlockedNotice >= kBlockedNoticeDelay) {
-            pending.LastBlockedNotice = now;
-            if (m_Context && m_Context->GetScriptDevTools()) {
-                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
-                                                             "ScriptLibraryReloadBlocked",
-                                                             package,
-                                                             "reload",
-                                                             "",
-                                                             "Script library reload is waiting for a pending manual mod reload.",
-                                                             {{"reason", pending.Reason},
-                                                              {"mod", modId},
-                                                              {"pendingReason", perModPending->second.Reason},
-                                                              {"retries", std::to_string(pending.BlockedRetryCount)}});
+        ++m_Pending.BlockedRetryCount;
+        const bool firstNotice = m_Pending.LastBlockedNotice.time_since_epoch().count() == 0;
+        if (firstNotice || now - m_Pending.LastBlockedNotice >= kBlockedNoticeDelay) {
+            m_Pending.LastBlockedNotice = now;
+            if (ScriptDevToolsService *devTools = DevTools()) {
+                devTools->PublishEvent(ScriptDevEventSeverity::Warn,
+                                       "ScriptLibraryReloadBlocked",
+                                       m_Batch.Package,
+                                       "reload",
+                                       "",
+                                       "Script library reload is waiting for a pending manual mod reload.",
+                                       {{"reason", m_Pending.Reason},
+                                        {"mod", modId},
+                                        {"pendingReason", perModPending->second.Reason},
+                                        {"retries", std::to_string(m_Pending.BlockedRetryCount)}});
             }
-        }
-        return false;
-    }
-
-    std::vector<ScriptMod *> leased;
-    auto releaseLeases = [&]() {
-        for (ScriptMod *mod : leased) {
-            if (mod)
-                mod->ReleaseReloadLease();
-        }
-        leased.clear();
-    };
-
-    for (ScriptMod *mod : consumers) {
-        std::string diagnostic;
-        if (!mod || !mod->TryAcquireReloadLease(diagnostic)) {
-            ++pending.BlockedRetryCount;
-            const bool firstNotice = pending.LastBlockedNotice.time_since_epoch().count() == 0;
-            if (firstNotice || now - pending.LastBlockedNotice >= kBlockedNoticeDelay) {
-                pending.LastBlockedNotice = now;
-                if (m_Context && m_Context->GetScriptDevTools()) {
-                    const char *modId = mod ? mod->GetID() : nullptr;
-                    const auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - pending.QueuedAt).count();
-                    m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
-                                                                 "ScriptLibraryReloadBlocked",
-                                                                 package,
-                                                                 "reload",
-                                                                 "",
-                                                                 diagnostic.empty()
-                                                                     ? "Script library reload is waiting for active script calls to finish."
-                                                                     : diagnostic,
-                                                                 {{"reason", pending.Reason},
-                                                                  {"mod", modId ? modId : ""},
-                                                                  {"activeCalls", mod ? std::to_string(mod->GetActiveScriptCallCount()) : "0"},
-                                                                  {"queuedServiceCallbacks", mod ? std::to_string(mod->GetQueuedScriptServiceCallbackCount()) : "0"},
-                                                                  {"retries", std::to_string(pending.BlockedRetryCount)},
-                                                                  {"waitMs", std::to_string(waitMs)}});
-                }
-            }
-            releaseLeases();
-            return false;
-        }
-        leased.push_back(mod);
-    }
-
-    if (m_Context && m_Context->GetScriptDevTools()) {
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                     pending.Options.DryRun ? "ScriptLibraryReloadDryRunStarted" : "ScriptLibraryReloadStarted",
-                                                     package,
-                                                     "reload",
-                                                     "",
-                                                     pending.Options.DryRun ? "Script library reload dry-run batch started."
-                                                                            : "Script library reload batch started.",
-                                                     {{"reason", pending.Reason},
-                                                      {"consumers", std::to_string(consumers.size())},
-                                                      {"automatic", pending.Options.Automatic ? "true" : "false"},
-                                                      {"dryRun", pending.Options.DryRun ? "true" : "false"},
-                                                      {"forceExports", pending.Options.ForceExports ? "true" : "false"}});
-    }
-
-    std::vector<std::unique_ptr<ScriptModReloadCandidate>> candidates;
-    candidates.reserve(consumers.size());
-    for (ScriptMod *mod : consumers) {
-        ScriptModReloadResult prepareResult;
-        std::unique_ptr<ScriptModReloadCandidate> candidate = mod->PrepareReloadCandidate(pending.Options, prepareResult);
-        const char *modId = mod->GetID();
-        if (!candidate) {
-            PublishReloadResult(modId ? modId : "", pending.Reason, pending.Options, prepareResult);
-            candidates.clear();
-            releaseLeases();
-            if (m_Context && m_Context->GetScriptDevTools()) {
-                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
-                                                             "ScriptLibraryReloadRejected",
-                                                             package,
-                                                             "reload",
-                                                             prepareResult.SourcePath,
-                                                             "Script library reload batch rejected before commit; all old runtimes were kept.",
-                                                             {{"reason", pending.Reason},
-                                                              {"failedMod", modId ? modId : ""},
-                                                              {"consumers", std::to_string(consumers.size())},
-                                                              {"diagnostic", prepareResult.Diagnostic}});
-            }
-            return true;
-        }
-        if (pending.Options.DryRun)
-            PublishReloadResult(modId ? modId : "", pending.Reason, pending.Options, prepareResult);
-        candidates.push_back(std::move(candidate));
-    }
-
-    if (pending.Options.DryRun) {
-        candidates.clear();
-        releaseLeases();
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                         "ScriptLibraryReloadDryRunPassed",
-                                                         package,
-                                                         "reload",
-                                                         "",
-                                                         "Script library reload dry-run batch passed.",
-                                                         {{"reason", pending.Reason},
-                                                          {"consumers", std::to_string(consumers.size())}});
         }
         return true;
     }
 
-    std::vector<size_t> committed;
-    for (size_t i = 0; i < consumers.size(); ++i) {
-        ScriptModReloadResult commitResult = consumers[i]->CommitReloadCandidate(*candidates[i], pending.Options);
-        const char *modId = consumers[i]->GetID();
-        PublishReloadResult(modId ? modId : "", pending.Reason, pending.Options, commitResult);
+    return false;
+}
+
+bool ScriptLibraryReloadOperation::TryAcquireLeases(std::chrono::steady_clock::time_point now) {
+    for (ScriptMod *mod : m_Batch.Consumers) {
+        std::string diagnostic;
+        if (!mod || !mod->TryAcquireReloadLease(diagnostic)) {
+            ++m_Pending.BlockedRetryCount;
+            const bool firstNotice = m_Pending.LastBlockedNotice.time_since_epoch().count() == 0;
+            if (firstNotice || now - m_Pending.LastBlockedNotice >= kBlockedNoticeDelay) {
+                m_Pending.LastBlockedNotice = now;
+                if (ScriptDevToolsService *devTools = DevTools()) {
+                    const char *modId = mod ? mod->GetID() : nullptr;
+                    const auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_Pending.QueuedAt).count();
+                    devTools->PublishEvent(ScriptDevEventSeverity::Warn,
+                                           "ScriptLibraryReloadBlocked",
+                                           m_Batch.Package,
+                                           "reload",
+                                           "",
+                                           diagnostic.empty()
+                                               ? "Script library reload is waiting for active script calls to finish."
+                                               : diagnostic,
+                                           {{"reason", m_Pending.Reason},
+                                            {"mod", modId ? modId : ""},
+                                            {"activeCalls", mod ? std::to_string(mod->GetActiveScriptCallCount()) : "0"},
+                                            {"queuedServiceCallbacks", mod ? std::to_string(mod->GetQueuedScriptServiceCallbackCount()) : "0"},
+                                            {"retries", std::to_string(m_Pending.BlockedRetryCount)},
+                                            {"waitMs", std::to_string(waitMs)}});
+                }
+            }
+            m_Batch.DiscardResources();
+            return false;
+        }
+        m_Batch.Leased.push_back(mod);
+    }
+
+    return true;
+}
+
+void ScriptLibraryReloadOperation::PublishStarted() {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    devTools->PublishEvent(ScriptDevEventSeverity::Info,
+                           m_Pending.Options.DryRun ? "ScriptLibraryReloadDryRunStarted" : "ScriptLibraryReloadStarted",
+                           m_Batch.Package,
+                           "reload",
+                           "",
+                           m_Pending.Options.DryRun ? "Script library reload dry-run batch started."
+                                                    : "Script library reload batch started.",
+                           BuildLibraryBatchRequestFields(m_Pending.Reason, m_Pending.Options, m_Batch.Consumers.size()));
+}
+
+bool ScriptLibraryReloadOperation::PrepareBatch() {
+    m_Batch.Candidates.reserve(m_Batch.Consumers.size());
+    for (ScriptMod *mod : m_Batch.Consumers) {
+        ScriptModReloadResult prepareResult;
+        std::unique_ptr<ScriptModReloadCandidate> candidate = mod->PrepareReloadCandidate(m_Pending.Options, prepareResult);
+        const char *modId = mod->GetID();
+        if (!candidate) {
+            m_Service.PublishReloadResult(modId ? modId : "", m_Pending.Reason, m_Pending.Options, prepareResult);
+            PublishRejected(mod, prepareResult);
+            return false;
+        }
+        if (m_Pending.Options.DryRun)
+            m_Service.PublishReloadResult(modId ? modId : "", m_Pending.Reason, m_Pending.Options, prepareResult);
+        m_Batch.Candidates.push_back(std::move(candidate));
+    }
+
+    return true;
+}
+
+void ScriptLibraryReloadOperation::PublishRejected(ScriptMod *failedMod,
+                                                   const ScriptModReloadResult &prepareResult) {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    const char *modId = failedMod ? failedMod->GetID() : nullptr;
+    devTools->PublishEvent(ScriptDevEventSeverity::Warn,
+                           "ScriptLibraryReloadRejected",
+                           m_Batch.Package,
+                           "reload",
+                           prepareResult.SourcePath,
+                           "Script library reload batch rejected before commit; all old runtimes were kept.",
+                           {{"reason", m_Pending.Reason},
+                            {"failedMod", modId ? modId : ""},
+                            {"consumers", std::to_string(m_Batch.Consumers.size())},
+                            {"diagnostic", prepareResult.Diagnostic}});
+}
+
+void ScriptLibraryReloadOperation::PublishDryRunPassed() {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    devTools->PublishEvent(ScriptDevEventSeverity::Info,
+                           "ScriptLibraryReloadDryRunPassed",
+                           m_Batch.Package,
+                           "reload",
+                           "",
+                           "Script library reload dry-run batch passed.",
+                           {{"reason", m_Pending.Reason},
+                            {"consumers", std::to_string(m_Batch.Consumers.size())}});
+}
+
+bool ScriptLibraryReloadOperation::CommitBatch() {
+    for (size_t i = 0; i < m_Batch.Consumers.size(); ++i) {
+        ScriptModReloadResult commitResult = m_Batch.Consumers[i]->CommitReloadCandidate(*m_Batch.Candidates[i], m_Pending.Options);
+        const char *modId = m_Batch.Consumers[i]->GetID();
+        m_Service.PublishReloadResult(modId ? modId : "", m_Pending.Reason, m_Pending.Options, commitResult);
         if (commitResult.Success) {
-            committed.push_back(i);
+            m_Batch.Committed.push_back(i);
             continue;
         }
 
         bool rollbackOk = true;
-        for (auto it = committed.rbegin(); it != committed.rend(); ++it) {
-            ScriptMod *rollbackMod = consumers[*it];
-            ScriptModReloadResult rollbackResult = rollbackMod->RollbackCommittedCandidate(*candidates[*it]);
+        for (auto it = m_Batch.Committed.rbegin(); it != m_Batch.Committed.rend(); ++it) {
+            ScriptMod *rollbackMod = m_Batch.Consumers[*it];
+            ScriptModReloadResult rollbackResult = rollbackMod->RollbackCommittedCandidate(*m_Batch.Candidates[*it]);
             const char *rollbackId = rollbackMod->GetID();
-            ScriptModReloadOptions rollbackOptions = pending.Options;
+            ScriptModReloadOptions rollbackOptions = m_Pending.Options;
             rollbackOptions.DryRun = false;
-            PublishReloadResult(rollbackId ? rollbackId : "",
-                                pending.Reason + " batch rollback",
-                                rollbackOptions,
-                                rollbackResult);
+            m_Service.PublishReloadResult(rollbackId ? rollbackId : "",
+                                          m_Pending.Reason + " batch rollback",
+                                          rollbackOptions,
+                                          rollbackResult);
             rollbackOk = rollbackOk && rollbackResult.Success;
-            RegisterMod(rollbackMod);
+            m_Service.RegisterMod(rollbackMod);
         }
-        candidates.clear();
-        releaseLeases();
-        if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishEvent(rollbackOk ? ScriptDevEventSeverity::Warn : ScriptDevEventSeverity::Error,
-                                                         rollbackOk ? "ScriptLibraryReloadRolledBack" : "ScriptLibraryReloadRestartRequired",
-                                                         package,
-                                                         "reload",
-                                                         commitResult.SourcePath,
-                                                         rollbackOk
-                                                             ? "Script library reload batch failed during commit; committed consumers were rolled back."
-                                                             : "Script library reload batch failed and at least one committed consumer could not roll back; restart is required.",
-                                                         {{"reason", pending.Reason},
-                                                          {"failedMod", modId ? modId : ""},
-                                                          {"committedBeforeFailure", std::to_string(committed.size())},
-                                                          {"rollback", rollbackOk ? "success" : "failed"},
-                                                          {"diagnostic", commitResult.Diagnostic}});
-        }
+        PublishCommitFailure(m_Batch.Consumers[i], commitResult, rollbackOk);
+        return false;
+    }
+
+    return true;
+}
+
+void ScriptLibraryReloadOperation::PublishCommitFailure(ScriptMod *failedMod,
+                                                        const ScriptModReloadResult &commitResult,
+                                                        bool rollbackOk) {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    const char *modId = failedMod ? failedMod->GetID() : nullptr;
+    devTools->PublishEvent(rollbackOk ? ScriptDevEventSeverity::Warn : ScriptDevEventSeverity::Error,
+                           rollbackOk ? "ScriptLibraryReloadRolledBack" : "ScriptLibraryReloadRestartRequired",
+                           m_Batch.Package,
+                           "reload",
+                           commitResult.SourcePath,
+                           rollbackOk
+                               ? "Script library reload batch failed during commit; committed consumers were rolled back."
+                               : "Script library reload batch failed and at least one committed consumer could not roll back; restart is required.",
+                           {{"reason", m_Pending.Reason},
+                            {"failedMod", modId ? modId : ""},
+                            {"committedBeforeFailure", std::to_string(m_Batch.Committed.size())},
+                            {"rollback", rollbackOk ? "success" : "failed"},
+                            {"diagnostic", commitResult.Diagnostic}});
+}
+
+void ScriptLibraryReloadOperation::PublishCommitted() {
+    ScriptDevToolsService *devTools = DevTools();
+    if (!devTools)
+        return;
+
+    devTools->PublishEvent(ScriptDevEventSeverity::Info,
+                           "ScriptLibraryReloadCommitted",
+                           m_Batch.Package,
+                           "reload",
+                           "",
+                           "Script library reload batch committed.",
+                           {{"reason", m_Pending.Reason},
+                            {"consumers", std::to_string(m_Batch.Consumers.size())}});
+}
+
+bool ScriptLibraryReloadOperation::Run() {
+    if (m_Batch.Consumers.empty()) {
+        PublishNoConsumers();
         return true;
     }
 
-    for (ScriptMod *mod : consumers)
-        RegisterMod(mod);
-    candidates.clear();
-    releaseLeases();
-    if (m_Context && m_Context->GetScriptDevTools()) {
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                     "ScriptLibraryReloadCommitted",
-                                                     package,
-                                                     "reload",
-                                                     "",
-                                                     "Script library reload batch committed.",
-                                                     {{"reason", pending.Reason},
-                                                      {"consumers", std::to_string(consumers.size())}});
+    const auto now = std::chrono::steady_clock::now();
+    if (DeferForManualPending(now))
+        return false;
+
+    if (!TryAcquireLeases(now))
+        return false;
+
+    PublishStarted();
+
+    if (!PrepareBatch()) {
+        m_Batch.DiscardResources();
+        return true;
     }
+
+    if (m_Pending.Options.DryRun) {
+        m_Batch.DiscardResources();
+        PublishDryRunPassed();
+        return true;
+    }
+
+    if (!CommitBatch()) {
+        m_Batch.DiscardResources();
+        return true;
+    }
+
+    for (ScriptMod *mod : m_Batch.Consumers)
+        m_Service.RegisterMod(mod);
+    m_Batch.DiscardResources();
+    PublishCommitted();
     return true;
+}
+
+bool ScriptModHotReloadService::ProcessLibraryReload(PendingLibraryReload &pending) {
+    return ScriptLibraryReloadOperation(*this, pending).Run();
 }
 
 void ScriptModHotReloadService::PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event) {
