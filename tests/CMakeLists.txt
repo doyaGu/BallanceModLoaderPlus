@@ -248,14 +248,6 @@ if (BML_WITH_ANGELSCRIPT)
             "BML_TEST_SOURCE_ROOT=\"${PROJECT_SOURCE_DIR}\""
     )
 
-    find_package(Python3 COMPONENTS Interpreter)
-    if (Python3_Interpreter_FOUND)
-        add_test(NAME ScriptExportStubGeneratorTest
-                COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/ScriptExportStubGeneratorTest.py)
-        set_tests_properties(ScriptExportStubGeneratorTest PROPERTIES
-                WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-    endif ()
-
     add_bml_test(ScriptReloadStagingCleanupTest
             SOURCES
             ScriptReloadStagingCleanupTest.cpp

@@ -1097,18 +1097,6 @@ if (status == BML::ERROR_OK)
   status = frame.GetResultInt(result);
 ```
 
-For larger service APIs, `scripts/Generate-BMLScriptExportStub.py` can generate a pure
-script wrapper from a JSON export IDL:
-
-```text
-python scripts/Generate-BMLScriptExportStub.py --idl score-api.json --out client.as
-```
-
-The JSON IDL is only an authoring-time generator input. It is not a BML
-manifest, and the loader never reads it. Package the generated `.as` file as a
-normal `ScriptLibs/<id>/<version>/` library source file and include it with a
-versioned virtual include.
-
 Interop signatures support:
 
 - scalars: `void`, `bool`, `int`, `float`, `string`, `const string &in`
