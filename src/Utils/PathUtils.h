@@ -135,6 +135,7 @@ namespace utils {
     std::string NormalizePathUtf8(const std::string &path);
     std::wstring TrimTrailingSeparatorsW(const std::wstring &path);
     bool IsPathInsideRootW(const std::wstring &path, const std::wstring &root);
+    bool TryGetFinalPathW(const std::wstring &path, std::wstring &finalPath);
 
     // Path validation
     bool IsPathValidA(const std::string &path);

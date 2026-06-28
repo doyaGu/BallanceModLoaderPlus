@@ -84,13 +84,45 @@ bool AddScriptSourceSection(const std::wstring &path,
                             ScriptSourceSnapshot &snapshot,
                             std::unordered_map<std::string, size_t> &sectionIndex,
                             ScriptDiagnostic &diagnostic) {
-    const std::wstring key = FoldPathKeyW(path);
+    const std::string pathUtf8 = utils::Utf16ToUtf8(path);
+    const std::wstring normalized = utils::ResolvePathW(path);
+    std::wstring finalPath;
+    if (!utils::TryGetFinalPathW(normalized, finalPath)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Failed to resolve script source final path.");
+        diagnostic.EntryPath = pathUtf8;
+        return false;
+    }
+
+    if (!sectionRoot.empty()) {
+        std::wstring finalRoot;
+        if (!utils::TryGetFinalPathW(sectionRoot, finalRoot)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                              "Failed to resolve script source root final path.");
+            diagnostic.EntryPath = utils::Utf16ToUtf8(sectionRoot);
+            return false;
+        }
+        if (!utils::IsPathInsideRootW(finalPath, finalRoot)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                              "Script source escapes the source snapshot root.");
+            diagnostic.EntryPath = pathUtf8;
+            return false;
+        }
+    }
+
+    if (!sectionRoot.empty() && !utils::IsPathInsideRootW(normalized, sectionRoot)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Script source escapes the source snapshot root.");
+        diagnostic.EntryPath = pathUtf8;
+        return false;
+    }
+
+    const std::wstring key = FoldPathKeyW(finalPath);
     if (!seen.insert(key).second)
         return true;
 
     std::string code;
-    const std::string pathUtf8 = utils::Utf16ToUtf8(path);
-    if (!utils::ReadFileBytesUtf8(pathUtf8, code)) {
+    if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(finalPath), code)) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
                                           "Failed to read script source into source snapshot.");
         diagnostic.EntryPath = pathUtf8;
@@ -104,7 +136,7 @@ bool AddScriptSourceSection(const std::wstring &path,
         return false;
 
     ScriptSourceDependency dependency;
-    dependency.PhysicalPath = utils::ResolvePathW(path);
+    dependency.PhysicalPath = finalPath;
     dependency.VirtualSection = section.Name;
     dependency.ContentHash = utils::Sha256Hex(section.Code);
     snapshot.Dependencies.push_back(std::move(dependency));
@@ -330,6 +362,14 @@ bool ScriptLibrarySourceCache::CapturePackage(const ScriptLibraryRegistry &regis
         return false;
     }
 
+    std::wstring finalPackageRoot;
+    if (!utils::TryGetFinalPathW(package.RootDirectory, finalPackageRoot)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Failed to resolve script library package root while capturing batch source.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(package.RootDirectory);
+        return false;
+    }
+
     std::error_code ec;
     for (std::filesystem::recursive_directory_iterator it(package.RootDirectory, ec), end;
          it != end && !ec;
@@ -344,22 +384,35 @@ bool ScriptLibrarySourceCache::CapturePackage(const ScriptLibraryRegistry &regis
         if (!EndsWithInsensitiveW(path, L".as"))
             continue;
 
-        const std::wstring resolved = utils::ResolvePathW(path);
-        if (!utils::IsPathInsideRootW(resolved, package.RootDirectory)) {
+        const std::wstring normalized = utils::ResolvePathW(path);
+        std::wstring finalPath;
+        if (!utils::TryGetFinalPathW(normalized, finalPath)) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                              "Failed to resolve script library source final path while capturing batch source.");
+            diagnostic.EntryPath = utils::Utf16ToUtf8(path);
+            return false;
+        }
+        if (!utils::IsPathInsideRootW(finalPath, finalPackageRoot)) {
             diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
                                               "Script library source escapes package root while capturing batch source.");
             diagnostic.EntryPath = utils::Utf16ToUtf8(path);
             return false;
         }
+        if (!EndsWithInsensitiveW(finalPath, L".as")) {
+            diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                              "Script library source resolves to a non-script file while capturing batch source.");
+            diagnostic.EntryPath = utils::Utf16ToUtf8(path);
+            return false;
+        }
 
         std::string code;
-        if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(resolved), code)) {
+        if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(finalPath), code)) {
             diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
                                               "Failed to read script library source while capturing batch source.");
             diagnostic.EntryPath = utils::Utf16ToUtf8(path);
             return false;
         }
-        m_Files[FoldPathKeyW(resolved)] = std::move(code);
+        m_Files[FoldPathKeyW(finalPath)] = std::move(code);
     }
 
     if (ec) {
@@ -377,9 +430,13 @@ bool ScriptLibrarySourceCache::ReadFileUtf8(const std::wstring &physicalPath,
                                             std::string &code,
                                             ScriptDiagnostic &diagnostic) {
     code.clear();
-    const std::wstring resolved = utils::ResolvePathW(physicalPath);
-    const std::wstring key = FoldPathKeyW(resolved);
-    const auto cached = m_Files.find(key);
+    const std::wstring normalized = utils::ResolvePathW(physicalPath);
+    auto cached = m_Files.find(FoldPathKeyW(normalized));
+    if (cached == m_Files.end()) {
+        std::wstring finalPath;
+        if (utils::TryGetFinalPathW(normalized, finalPath))
+            cached = m_Files.find(FoldPathKeyW(finalPath));
+    }
     if (cached != m_Files.end()) {
         code = cached->second;
         return true;
@@ -396,21 +453,28 @@ bool ScriptLibrarySourceCache::ReadFileUtf8(const std::wstring &physicalPath,
         return false;
     }
 
-    if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(resolved), code)) {
+    std::wstring readPath;
+    if (!utils::TryGetFinalPathW(normalized, readPath))
+        readPath = normalized;
+    if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(readPath), code)) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
                                           "Failed to read script library source: " + virtualSection + ".");
         diagnostic.EntryPath = virtualSection;
         return false;
     }
-    m_Files.emplace(key, code);
+    m_Files.emplace(FoldPathKeyW(readPath), code);
     return true;
 }
 
 bool ScriptLibrarySourceCache::GetFileContentHash(const std::wstring &physicalPath, std::string &hash) const {
     hash.clear();
-    const std::wstring resolved = utils::ResolvePathW(physicalPath);
-    const std::wstring key = FoldPathKeyW(resolved);
-    const auto cached = m_Files.find(key);
+    const std::wstring normalized = utils::ResolvePathW(physicalPath);
+    auto cached = m_Files.find(FoldPathKeyW(normalized));
+    if (cached == m_Files.end()) {
+        std::wstring finalPath;
+        if (utils::TryGetFinalPathW(normalized, finalPath))
+            cached = m_Files.find(FoldPathKeyW(finalPath));
+    }
     if (cached == m_Files.end())
         return false;
     hash = utils::Sha256Hex(cached->second);

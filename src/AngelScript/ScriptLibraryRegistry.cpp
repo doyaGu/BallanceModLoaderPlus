@@ -382,15 +382,31 @@ bool ScriptLibraryRegistry::ResolveInclude(const ScriptLibraryInclude &include,
         diagnostic = "Invalid script library relative path '" + include.RelativePath + "'.";
         return false;
     }
-    physicalPath = utils::ResolvePathW(JoinRelativePathW(package.RootDirectory, include.RelativePath));
-    if (!utils::IsPathInsideRootW(physicalPath, package.RootDirectory)) {
+    const std::wstring candidatePath = utils::ResolvePathW(JoinRelativePathW(package.RootDirectory, include.RelativePath));
+    if (!utils::IsPathInsideRootW(candidatePath, package.RootDirectory)) {
         diagnostic = "Script library include escapes package root: " + include.VirtualSection + ".";
         return false;
     }
-    if (!EndsWithInsensitiveW(physicalPath, L".as") || !utils::FileExistsW(physicalPath)) {
+    if (!EndsWithInsensitiveW(candidatePath, L".as")) {
         diagnostic = "Script library source file not found: " + include.VirtualSection + ".";
         return false;
     }
+    std::wstring finalPackageRoot;
+    std::wstring finalPath;
+    if (!utils::TryGetFinalPathW(package.RootDirectory, finalPackageRoot) ||
+        !utils::TryGetFinalPathW(candidatePath, finalPath)) {
+        diagnostic = "Script library source file not found: " + include.VirtualSection + ".";
+        return false;
+    }
+    if (!utils::IsPathInsideRootW(finalPath, finalPackageRoot)) {
+        diagnostic = "Script library include escapes package root: " + include.VirtualSection + ".";
+        return false;
+    }
+    if (!EndsWithInsensitiveW(finalPath, L".as")) {
+        diagnostic = "Script library include resolves to a non-script file: " + include.VirtualSection + ".";
+        return false;
+    }
+    physicalPath = std::move(finalPath);
     return true;
 }
 

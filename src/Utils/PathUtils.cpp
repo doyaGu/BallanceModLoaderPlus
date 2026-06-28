@@ -6,6 +6,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cstdio>
+#include <cwchar>
 #include <cwctype>
 #include <memory>
 
@@ -127,6 +128,16 @@ namespace utils {
             std::transform(path.begin(), path.end(), path.begin(), [](wchar_t ch) {
                 return static_cast<wchar_t>(std::towlower(ch));
             });
+            return path;
+        }
+
+        std::wstring StripExtendedPathPrefixW(std::wstring path) {
+            constexpr wchar_t uncPrefix[] = L"\\\\?\\UNC\\";
+            constexpr wchar_t dosPrefix[] = L"\\\\?\\";
+            if (path.compare(0, std::wcslen(uncPrefix), uncPrefix) == 0)
+                return L"\\\\" + path.substr(std::wcslen(uncPrefix));
+            if (path.compare(0, std::wcslen(dosPrefix), dosPrefix) == 0)
+                return path.substr(std::wcslen(dosPrefix));
             return path;
         }
 
@@ -281,8 +292,8 @@ namespace utils {
         if (dir.empty())
             return false;
         DWORD attr = ::GetFileAttributesW(dir.c_str());
-        return (attr != INVALID_FILE_ATTRIBUTES &&
-            ((attr & FILE_ATTRIBUTE_DIRECTORY) || (attr & FILE_ATTRIBUTE_REPARSE_POINT)));
+        return attr != INVALID_FILE_ATTRIBUTES &&
+               (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
     }
 
     bool DirectoryExistsUtf8(const std::string &dir) {
@@ -447,8 +458,14 @@ namespace utils {
 
             std::wstring filePath = path + L'\\' + findData.cFileName;
 
-            if ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
-                (findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            const bool isDirectory = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            const bool isReparsePoint = (findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+            if (isReparsePoint) {
+                success = (isDirectory
+                               ? ::RemoveDirectoryW(filePath.c_str()) == TRUE
+                               : ::DeleteFileW(filePath.c_str()) == TRUE) &&
+                          success;
+            } else if (isDirectory) {
                 success = DeleteDirectoryW(filePath) && success;
             } else {
                 success = ::DeleteFileW(filePath.c_str()) == TRUE && success;
@@ -709,6 +726,41 @@ namespace utils {
             return false;
         return foldedPath.compare(0, foldedRoot.size(), foldedRoot) == 0 &&
                (foldedPath[foldedRoot.size()] == L'\\' || foldedPath[foldedRoot.size()] == L'/');
+    }
+
+    bool TryGetFinalPathW(const std::wstring &path, std::wstring &finalPath) {
+        finalPath.clear();
+        if (path.empty())
+            return false;
+
+        HANDLE handle = ::CreateFileW(path.c_str(),
+                                      0,
+                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                      nullptr,
+                                      OPEN_EXISTING,
+                                      FILE_FLAG_BACKUP_SEMANTICS,
+                                      nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return false;
+
+        std::vector<wchar_t> buffer(kInitialPathBufferSize, L'\0');
+        while (true) {
+            const DWORD copied = ::GetFinalPathNameByHandleW(handle,
+                                                             buffer.data(),
+                                                             static_cast<DWORD>(buffer.size()),
+                                                             FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+            if (copied == 0) {
+                ::CloseHandle(handle);
+                finalPath.clear();
+                return false;
+            }
+            if (copied < buffer.size()) {
+                ::CloseHandle(handle);
+                finalPath = ResolvePathW(StripExtendedPathPrefixW(std::wstring(buffer.data(), copied)));
+                return !finalPath.empty();
+            }
+            buffer.assign(static_cast<size_t>(copied) + 1, L'\0');
+        }
     }
 
     // ========================================================================

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <vector>
 
 #include "AngelScript/ScriptLibraryRegistry.h"
@@ -18,11 +19,14 @@ protected:
     void SetUp() override {
         Root = utils::CombinePathW(utils::GetTempPathW(), L"BMLScriptLibraryRegistryTest");
         utils::DeleteDirectoryW(Root);
+        OutsideRoot = Root + L"_Outside";
+        utils::DeleteDirectoryW(OutsideRoot);
         utils::CreateFileTreeW(Root);
     }
 
     void TearDown() override {
         utils::DeleteDirectoryW(Root);
+        utils::DeleteDirectoryW(OutsideRoot);
     }
 
     void Write(const std::wstring &path, const std::string &content) {
@@ -30,6 +34,7 @@ protected:
     }
 
     std::wstring Root;
+    std::wstring OutsideRoot;
 };
 
 } // namespace
@@ -65,6 +70,35 @@ TEST_F(ScriptLibraryRegistryTest, ScansAndResolvesExactPackage) {
     std::wstring physical;
     ASSERT_TRUE(registry.ResolveInclude(include, physical, diagnostic)) << diagnostic;
     EXPECT_TRUE(utils::IsPathInsideRootW(physical, packageRoot));
+}
+
+TEST_F(ScriptLibraryRegistryTest, ResolveIncludeRejectsSymlinkEscapingPackageRoot) {
+    const std::wstring packageRoot = utils::CombinePathW(Root, L"com.example.score\\1.2.0");
+    const std::wstring outsideSource = utils::CombinePathW(OutsideRoot, L"api.as");
+    const std::wstring linkedSource = utils::CombinePathW(packageRoot, L"api.as");
+    ASSERT_TRUE(utils::CreateFileTreeW(packageRoot));
+    Write(outsideSource, "namespace ScoreApi {}\n");
+    utils::DeleteFileW(linkedSource);
+    utils::DeleteDirectoryW(linkedSource);
+
+    std::error_code ec;
+    std::filesystem::create_symlink(outsideSource, linkedSource, ec);
+    if (ec)
+        GTEST_SKIP() << "file symlink unavailable: " << ec.message();
+
+    ScriptLibraryRegistry registry(Root);
+    std::string diagnostic;
+    ASSERT_TRUE(registry.Scan(diagnostic)) << diagnostic;
+
+    ScriptLibraryInclude include;
+    ASSERT_TRUE(ScriptLibraryRegistry::TryParseVirtualInclude(
+        "/bml/libs/com.example.score@1.2.0/api.as",
+        include,
+        diagnostic)) << diagnostic;
+
+    std::wstring physical;
+    EXPECT_FALSE(registry.ResolveInclude(include, physical, diagnostic));
+    EXPECT_NE(std::string::npos, diagnostic.find("escapes package root"));
 }
 
 TEST_F(ScriptLibraryRegistryTest, ScanOrdersPackagesByIdAndNumericVersion) {
@@ -186,6 +220,34 @@ TEST_F(ScriptLibraryRegistryTest, ToolReportRecordsHashesAndIncludeEdges) {
     }));
     EXPECT_TRUE(std::any_of(lines.begin(), lines.end(), [](const std::string &line) {
         return line.find("include graph:") != std::string::npos;
+    }));
+}
+
+TEST_F(ScriptLibraryRegistryTest, ToolReportRejectsSymlinkEscapingPackageRoot) {
+    const std::wstring packageRoot = utils::CombinePathW(Root, L"com.example.score\\1.2.0");
+    const std::wstring outsideSource = utils::CombinePathW(OutsideRoot, L"api.as");
+    const std::wstring linkedSource = utils::CombinePathW(packageRoot, L"api.as");
+    ASSERT_TRUE(utils::CreateFileTreeW(packageRoot));
+    Write(outsideSource, "namespace ScoreApi {}\n");
+    utils::DeleteFileW(linkedSource);
+    utils::DeleteDirectoryW(linkedSource);
+
+    std::error_code ec;
+    std::filesystem::create_symlink(outsideSource, linkedSource, ec);
+    if (ec)
+        GTEST_SKIP() << "file symlink unavailable: " << ec.message();
+
+    ScriptLibraryRegistry registry(Root);
+    std::string diagnostic;
+    ASSERT_TRUE(registry.Scan(diagnostic)) << diagnostic;
+
+    ScriptLibraryPackage package;
+    ASSERT_TRUE(registry.FindPackage("com.example.score", "1.2.0", package));
+
+    ScriptLibraryPackageCheckReport report;
+    EXPECT_FALSE(BuildScriptLibraryPackageCheckReport(registry, package, report));
+    EXPECT_TRUE(std::any_of(report.Errors.begin(), report.Errors.end(), [](const std::string &line) {
+        return line.find("source escapes package root") != std::string::npos;
     }));
 }
 

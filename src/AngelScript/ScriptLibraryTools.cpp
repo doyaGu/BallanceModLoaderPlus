@@ -55,6 +55,12 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
     report = ScriptLibraryPackageCheckReport();
     report.Package = package;
 
+    std::wstring finalPackageRoot;
+    if (!utils::TryGetFinalPathW(package.RootDirectory, finalPackageRoot)) {
+        AddError(report, "failed to resolve package root: " + PackageKey(package));
+        return false;
+    }
+
     std::error_code ec;
     std::set<std::string> sections;
     for (std::filesystem::recursive_directory_iterator it(package.RootDirectory, ec), end;
@@ -66,16 +72,31 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
             continue;
         }
         const std::wstring path = it->path().wstring();
-        const std::wstring resolvedPath = utils::ResolvePathW(path);
-        std::string pathUtf8 = utils::Utf16ToUtf8(resolvedPath);
-        if (!utils::EndsWith(pathUtf8, ".as"))
+        const std::string logicalPathUtf8 = utils::Utf16ToUtf8(path);
+        if (!utils::EndsWith(logicalPathUtf8, ".as"))
             continue;
-        if (!utils::IsPathInsideRootW(resolvedPath, package.RootDirectory)) {
-            AddError(report, "source escapes package root: " + pathUtf8);
+        const std::wstring resolvedPath = utils::ResolvePathW(path);
+        const std::string resolvedPathUtf8 = utils::Utf16ToUtf8(resolvedPath);
+        if (!utils::EndsWith(resolvedPathUtf8, ".as")) {
+            AddError(report, "script source resolves to a non-script file: " + logicalPathUtf8);
+            return false;
+        }
+        std::wstring finalPath;
+        if (!utils::TryGetFinalPathW(resolvedPath, finalPath)) {
+            AddError(report, "failed to resolve source final path: " + logicalPathUtf8);
+            return false;
+        }
+        if (!utils::IsPathInsideRootW(finalPath, finalPackageRoot)) {
+            AddError(report, "source escapes package root: " + logicalPathUtf8);
+            return false;
+        }
+        const std::string finalPathUtf8 = utils::Utf16ToUtf8(finalPath);
+        if (!utils::EndsWith(finalPathUtf8, ".as")) {
+            AddError(report, "script source resolves to a non-script file: " + logicalPathUtf8);
             return false;
         }
 
-        const std::wstring relativeW = utils::MakeRelativePathW(resolvedPath, package.RootDirectory);
+        const std::wstring relativeW = utils::MakeRelativePathW(path, package.RootDirectory);
         const std::string relative = RelativePathToVirtualPath(relativeW);
         const std::string section = package.VirtualRoot + relative;
         const std::string sectionKey = FoldVirtualSectionKey(section);
@@ -85,7 +106,7 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
         }
 
         std::string code;
-        if (!utils::ReadFileBytesUtf8(pathUtf8, code)) {
+        if (!utils::ReadFileBytesUtf8(finalPathUtf8, code)) {
             AddError(report, "failed to read: " + section);
             return false;
         }
@@ -100,7 +121,7 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
 
         ScriptLibraryToolFileReport file;
         file.VirtualSection = section;
-        file.PhysicalPath = resolvedPath;
+        file.PhysicalPath = finalPath;
         file.ContentHash = utils::Sha256Hex(code);
         report.Files.push_back(std::move(file));
 

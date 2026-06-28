@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <utility>
 
 #include "AngelScript/ScriptLibraryRegistry.h"
@@ -123,6 +124,40 @@ TEST_F(ScriptSourceSnapshotBuilderTest, DirectoryModKeepsEntryFirstAndOrdersLoca
     const ScriptSourceDependency *entryDependency = FindDependency(snapshot, "Hello.mod.as");
     ASSERT_NE(nullptr, entryDependency);
     EXPECT_EQ(64u, entryDependency->ContentHash.size());
+}
+
+TEST_F(ScriptSourceSnapshotBuilderTest, RejectsEntrySymlinkEscapingModRoot) {
+    const std::wstring modRoot = utils::CombinePathW(ModsRoot, L"Escaper");
+    const std::wstring outsideRoot = utils::CombinePathW(Root, L"Outside");
+    const std::wstring outsideEntry = utils::CombinePathW(outsideRoot, L"Escaper.mod.as");
+    const std::wstring linkedEntry = utils::CombinePathW(modRoot, L"Escaper.mod.as");
+    ASSERT_TRUE(utils::CreateFileTreeW(modRoot));
+    Write(outsideEntry, "class Escaper {}\n");
+    utils::DeleteFileW(linkedEntry);
+    utils::DeleteDirectoryW(linkedEntry);
+
+    std::error_code ec;
+    std::filesystem::create_symlink(outsideEntry, linkedEntry, ec);
+    if (ec)
+        GTEST_SKIP() << "file symlink unavailable: " << ec.message();
+
+    ScriptModLoadCandidate candidate;
+    candidate.SourceKind = ScriptModEntrySourceKind::Directory;
+    candidate.SourcePath = modRoot;
+    candidate.RootDirectory = modRoot;
+    candidate.ResourceRootDirectory = modRoot;
+    candidate.EntryPaths.push_back(linkedEntry);
+    ScriptModEntry entry = MakeScriptModEntry(candidate, linkedEntry);
+
+    ScriptLibraryRegistry registry(LibRoot);
+    std::string registryDiagnostic;
+    ASSERT_TRUE(registry.Scan(registryDiagnostic)) << registryDiagnostic;
+    ScriptSourceSnapshotBuilder builder(std::move(registry));
+    ScriptSourceSnapshot snapshot;
+    ScriptDiagnostic diagnostic;
+    EXPECT_FALSE(builder.Build(entry, snapshot, diagnostic));
+    EXPECT_NE(std::string::npos, diagnostic.Message.find("escapes the source snapshot root"));
+    EXPECT_EQ(utils::Utf16ToUtf8(linkedEntry), diagnostic.EntryPath);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, LibraryIncludeInjectsOnlyDiscoveredClosure) {
