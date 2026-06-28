@@ -64,8 +64,25 @@ std::vector<uint8_t> MakeBinaryFileBuffer(const uint8_t *data, size_t size) {
     return std::vector<uint8_t>(data, data + size);
 }
 
+char *AllocateCharBuffer(size_t length) {
+    if (length == (std::numeric_limits<size_t>::max)())
+        return nullptr;
+    return static_cast<char *>(malloc(length + 1));
+}
+
+wchar_t *AllocateWCharBuffer(size_t length) {
+    if (length == (std::numeric_limits<size_t>::max)())
+        return nullptr;
+
+    const size_t count = length + 1;
+    if (count > (std::numeric_limits<size_t>::max)() / sizeof(wchar_t))
+        return nullptr;
+
+    return static_cast<wchar_t *>(malloc(count * sizeof(wchar_t)));
+}
+
 wchar_t *CopyWString(const std::wstring &value) {
-    wchar_t *copy = static_cast<wchar_t *>(malloc((value.length() + 1) * sizeof(wchar_t)));
+    wchar_t *copy = AllocateWCharBuffer(value.length());
     if (copy)
         wcscpy(copy, value.c_str());
     return copy;
@@ -157,7 +174,7 @@ char *BML_Strdup(const char *str) {
         return nullptr;
 
     size_t len = strlen(str);
-    char *dup = static_cast<char *>(malloc(len + 1));
+    char *dup = AllocateCharBuffer(len);
     if (dup) {
         memcpy(dup, str, len);
         dup[len] = '\0';
@@ -229,7 +246,7 @@ char **BML_SplitString(const char *str, const char *delim, size_t *count) {
 
     while ((end = strstr(start, delim)) != nullptr && idx < segments) {
         size_t segLen = end - start;
-        result[idx] = static_cast<char *>(malloc(segLen + 1));
+        result[idx] = AllocateCharBuffer(segLen);
         if (!result[idx]) {
             // Cleanup on failure
             for (size_t i = 0; i < idx; ++i) {
@@ -304,7 +321,7 @@ char **BML_SplitStringChar(const char *str, char delim, size_t *count) {
 
     while ((end = strchr(start, delim)) != nullptr && idx < segments) {
         size_t segLen = end - start;
-        result[idx] = static_cast<char *>(malloc(segLen + 1));
+        result[idx] = AllocateCharBuffer(segLen);
         if (!result[idx]) {
             for (size_t i = 0; i < idx; ++i) {
                 free(result[i]);
@@ -405,7 +422,7 @@ char *BML_JoinString(const char **strings, size_t count, const char *delim) {
         return nullptr;
 
     // Allocate result buffer
-    char *result = static_cast<char *>(malloc(totalLen + 1));
+    char *result = AllocateCharBuffer(totalLen);
     if (!result) return nullptr;
 
     // Build the joined string
@@ -442,7 +459,7 @@ char *BML_JoinStringChar(const char **strings, size_t count, char delim) {
         return nullptr;
 
     // Allocate result buffer
-    char *result = static_cast<char *>(malloc(totalLen + 1));
+    char *result = AllocateCharBuffer(totalLen);
     if (!result) return nullptr;
 
     // Build the joined string
@@ -467,7 +484,7 @@ char *BML_ToLower(const char *str) {
     if (!str) return nullptr;
 
     size_t len = strlen(str);
-    char *result = static_cast<char *>(malloc(len + 1));
+    char *result = AllocateCharBuffer(len);
     if (!result) return nullptr;
 
     for (size_t i = 0; i < len; ++i) {
@@ -482,7 +499,7 @@ char *BML_ToUpper(const char *str) {
     if (!str) return nullptr;
 
     size_t len = strlen(str);
-    char *result = static_cast<char *>(malloc(len + 1));
+    char *result = AllocateCharBuffer(len);
     if (!result) return nullptr;
 
     for (size_t i = 0; i < len; ++i) {
@@ -555,9 +572,7 @@ wchar_t *BML_ToWString(const char *str, int isUtf8) {
     if (!str) return nullptr;
 
     std::wstring result = utils::ToWString(str, isUtf8 != 0);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_ToString(const wchar_t *wstr, int toUtf8) {
@@ -571,9 +586,7 @@ char *BML_ToString(const wchar_t *wstr, int toUtf8) {
 wchar_t *BML_Utf8ToUtf16(const char *str) {
     if (!str) return nullptr;
     std::wstring result = utils::Utf8ToUtf16(str);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_Utf16ToUtf8(const wchar_t *wstr) {
@@ -585,9 +598,7 @@ char *BML_Utf16ToUtf8(const wchar_t *wstr) {
 wchar_t *BML_AnsiToUtf16(const char *str) {
     if (!str) return nullptr;
     std::wstring result = utils::AnsiToUtf16(str);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_Utf16ToAnsi(const wchar_t *wstr) {
@@ -764,9 +775,7 @@ char *BML_GetDriveA(const char *path) {
 wchar_t *BML_GetDriveW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetDriveW(path);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_GetDriveUtf8(const char *path) {
@@ -784,9 +793,7 @@ char *BML_GetDirectoryA(const char *path) {
 wchar_t *BML_GetDirectoryW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetDirectoryW(path);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_GetDirectoryUtf8(const char *path) {
@@ -866,9 +873,7 @@ char *BML_GetFileNameA(const char *path) {
 wchar_t *BML_GetFileNameW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetFileNameW(path);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_GetFileNameUtf8(const char *path) {
@@ -886,9 +891,7 @@ char *BML_GetExtensionA(const char *path) {
 wchar_t *BML_GetExtensionW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::GetExtensionW(path);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_GetExtensionUtf8(const char *path) {
@@ -906,9 +909,7 @@ char *BML_RemoveExtensionA(const char *path) {
 wchar_t *BML_RemoveExtensionW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::RemoveExtensionW(path);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_RemoveExtensionUtf8(const char *path) {
@@ -926,9 +927,7 @@ char *BML_CombinePathA(const char *path1, const char *path2) {
 wchar_t *BML_CombinePathW(const wchar_t *path1, const wchar_t *path2) {
     if (!path1 || !path2) return nullptr;
     std::wstring result = utils::CombinePathW(path1, path2);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_CombinePathUtf8(const char *path1, const char *path2) {
@@ -946,9 +945,7 @@ char *BML_NormalizePathA(const char *path) {
 wchar_t *BML_NormalizePathW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::NormalizePathW(path);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_NormalizePathUtf8(const char *path) {
@@ -1017,9 +1014,7 @@ char *BML_ResolvePathA(const char *path) {
 wchar_t *BML_ResolvePathW(const wchar_t *path) {
     if (!path) return nullptr;
     std::wstring result = utils::ResolvePathW(path);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_ResolvePathUtf8(const char *path) {
@@ -1037,9 +1032,7 @@ char *BML_MakeRelativePathA(const char *path, const char *basePath) {
 wchar_t *BML_MakeRelativePathW(const wchar_t *path, const wchar_t *basePath) {
     if (!path || !basePath) return nullptr;
     std::wstring result = utils::MakeRelativePathW(path, basePath);
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_MakeRelativePathUtf8(const char *path, const char *basePath) {
@@ -1056,9 +1049,7 @@ char *BML_GetTempPathA() {
 
 wchar_t *BML_GetTempPathW() {
     std::wstring result = utils::GetTempPathW();
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_GetTempPathUtf8() {
@@ -1073,9 +1064,7 @@ char *BML_GetCurrentDirectoryA() {
 
 wchar_t *BML_GetCurrentDirectoryW() {
     std::wstring result = utils::GetCurrentDirectoryW();
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_GetCurrentDirectoryUtf8() {
@@ -1102,9 +1091,7 @@ char *BML_GetExecutablePathA() {
 
 wchar_t *BML_GetExecutablePathW() {
     std::wstring result = utils::GetExecutablePathW();
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_GetExecutablePathUtf8() {
@@ -1264,9 +1251,7 @@ wchar_t *BML_CreateTempFileW(const wchar_t *prefix) {
     std::wstring result = utils::CreateTempFileW(prefixStr);
     if (result.empty()) return nullptr;
 
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    return CopyWString(result);
 }
 
 char *BML_CreateTempFileUtf8(const char *prefix) {
@@ -1328,10 +1313,8 @@ wchar_t **BML_ListFilesW(const wchar_t *dir, const wchar_t *pattern, size_t *cou
     }
 
     for (size_t i = 0; i < result.size(); ++i) {
-        arr[i] = static_cast<wchar_t *>(malloc((result[i].length() + 1) * sizeof(wchar_t)));
-        if (arr[i]) {
-            wcscpy(arr[i], result[i].c_str());
-        } else {
+        arr[i] = CopyWString(result[i]);
+        if (!arr[i]) {
             for (size_t j = 0; j < i; ++j) {
                 free(arr[j]);
             }
@@ -1429,10 +1412,8 @@ wchar_t **BML_ListDirectoriesW(const wchar_t *dir, const wchar_t *pattern, size_
     }
 
     for (size_t i = 0; i < result.size(); ++i) {
-        arr[i] = static_cast<wchar_t *>(malloc((result[i].length() + 1) * sizeof(wchar_t)));
-        if (arr[i]) {
-            wcscpy(arr[i], result[i].c_str());
-        } else {
+        arr[i] = CopyWString(result[i]);
+        if (!arr[i]) {
             for (size_t j = 0; j < i; ++j) {
                 free(arr[j]);
             }
