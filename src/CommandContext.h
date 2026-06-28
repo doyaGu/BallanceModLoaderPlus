@@ -53,6 +53,8 @@ namespace BML {
         static char *AllocPrintf(const char *format, ...);
 
         static std::vector<std::string> ParseCommandLine(const char *cmd);
+        static bool IsValidCommandAlias(const char *alias);
+        static bool IsValidCommandName(const char *name);
 
     private:
         struct CommandKeyHash {
@@ -71,8 +73,6 @@ namespace BML {
         };
 
         static std::string NormalizeCommandKey(const char *name);
-        static bool ValidateCommandAlias(const char *alias);
-        static bool ValidateCommandName(const char *name);
 
         std::vector<ICommand *> m_Commands;
         typedef std::unordered_map<std::string, ICommand *, CommandKeyHash, CommandKeyEqual>

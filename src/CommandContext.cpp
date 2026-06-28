@@ -160,7 +160,7 @@ bool CommandContext::RegisterCommand(ICommand *cmd) {
         return false;
 
     const auto name = cmd->GetName();
-    if (!ValidateCommandName(name.c_str())) {
+    if (!IsValidCommandName(name.c_str())) {
         Logger::GetDefault()->Error("Command name %s is invalid.", name.c_str());
         return false;
     }
@@ -175,8 +175,11 @@ bool CommandContext::RegisterCommand(ICommand *cmd) {
 
     const auto alias = cmd->GetAlias();
     if (!alias.empty()) {
-        if (!ValidateCommandAlias(alias.c_str())) {
-            Logger::GetDefault()->Warn("Command alias %s is invalid and will be ignored.", alias.c_str());
+        if (!IsValidCommandAlias(alias.c_str())) {
+            Logger::GetDefault()->Error("Command alias %s is invalid.", alias.c_str());
+            m_CommandMap.erase(nameKey);
+            m_Commands.pop_back();
+            return false;
         } else {
             auto aliasIt = m_CommandMap.find(alias.c_str());
             if (aliasIt == m_CommandMap.end()) {
@@ -347,7 +350,7 @@ char *CommandContext::AllocPrintf(const char *format, ...) {
     return string;
 }
 
-bool CommandContext::ValidateCommandName(const char *name) {
+bool CommandContext::IsValidCommandName(const char *name) {
     if (!name || name[0] == '\0')
         return false;
 
@@ -386,7 +389,7 @@ bool CommandContext::ValidateCommandName(const char *name) {
     return true;
 }
 
-bool CommandContext::ValidateCommandAlias(const char *alias) {
+bool CommandContext::IsValidCommandAlias(const char *alias) {
     if (!alias || alias[0] == '\0')
         return false;
 

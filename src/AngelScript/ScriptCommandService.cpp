@@ -88,6 +88,31 @@ static bool IsCommandCompleteSignature(asIScriptFunction *callback) {
     return ScriptFunctionHasSignature(callback, asTYPEID_VOID, params, 3);
 }
 
+static bool ValidateCommandNames(ScriptMod *owner, const ScriptCommandEntry &entry) {
+    if (entry.Name.empty()) {
+        if (owner) {
+            owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                "Command name cannot be empty."));
+        }
+        return false;
+    }
+    if (!CommandContext::IsValidCommandName(entry.Name.c_str())) {
+        if (owner) {
+            owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                "Command name is invalid: " + entry.Name));
+        }
+        return false;
+    }
+    if (!entry.Alias.empty() && !CommandContext::IsValidCommandAlias(entry.Alias.c_str())) {
+        if (owner) {
+            owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                "Command alias is invalid: " + entry.Alias));
+        }
+        return false;
+    }
+    return true;
+}
+
 static ScriptDiagnostic MakeAngelScriptDiagnostic(ScriptDiagnosticPhase phase,
                                                   int code,
                                                   asIScriptContext *context,
@@ -539,12 +564,10 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
         return nullptr;
     }
 
-    const std::string key = NormalizeCommandName(entry.Name);
-    if (key.empty()) {
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Command name cannot be empty."));
+    if (!ValidateCommandNames(m_State->Owner, entry))
         return nullptr;
-    }
+
+    const std::string key = NormalizeCommandName(entry.Name);
     if (m_State->Commands.find(key) != m_State->Commands.end()) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             "Command name is already registered by this script mod: " + entry.Name));
@@ -614,12 +637,10 @@ ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &
     entry.Hidden = definition.Hidden;
     entry.Enabled = definition.Enabled;
 
-    const std::string key = NormalizeCommandName(entry.Name);
-    if (key.empty()) {
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Command name cannot be empty."));
+    if (!ValidateCommandNames(m_State->Owner, entry))
         return nullptr;
-    }
+
+    const std::string key = NormalizeCommandName(entry.Name);
     if (m_State->Commands.find(key) != m_State->Commands.end()) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             "Command name is already registered by this script mod: " + entry.Name));

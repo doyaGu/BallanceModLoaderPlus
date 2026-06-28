@@ -29,6 +29,14 @@ bool CommandContext::RegisterCommand(ICommand *) {
     return false;
 }
 
+bool CommandContext::IsValidCommandAlias(const char *alias) {
+    return alias && alias[0] != '\0';
+}
+
+bool CommandContext::IsValidCommandName(const char *name) {
+    return name && name[0] != '\0';
+}
+
 bool CommandContext::UnregisterCommand(const char *) {
     return false;
 }

@@ -111,6 +111,15 @@ TEST_F(CommandContextTest, RegisterWithSymbolAlias) {
     EXPECT_EQ(static_cast<ICommand *>(punctuationCmd), ctx->GetCommandByName("!"));
 }
 
+TEST_F(CommandContextTest, RegisterRejectsInvalidAliasWithoutAddingCommand) {
+    auto *cmd = MakeCommand("teleport", "bad alias");
+
+    EXPECT_FALSE(ctx->RegisterCommand(cmd));
+    EXPECT_EQ(0u, ctx->GetCommandCount());
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("teleport"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("bad alias"));
+}
+
 TEST_F(CommandContextTest, RegisterRejectsCaseInsensitiveDuplicateName) {
     auto *cmd1 = MakeCommand("Teleport");
     auto *cmd2 = MakeCommand("teleport");
