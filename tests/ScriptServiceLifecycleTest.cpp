@@ -327,13 +327,16 @@ TEST_F(ScriptServiceLifecycleTest, DataShareCancelDropsQueuedCallback) {
     EXPECT_EQ(1, BML_DataShare_Set(share, "script-service-cancel-queued-datashare", value, sizeof(value)));
     BML_DataShare_Release(share);
 
+    EXPECT_EQ(1u, service.GetQueuedCallbackCount());
     EXPECT_TRUE(ref->IsValid());
     EXPECT_TRUE(ref->Cancel());
     EXPECT_FALSE(ref->IsValid());
+    EXPECT_EQ(1u, service.GetQueuedCallbackCount());
 
     service.ProcessQueuedCallbacks();
 
     EXPECT_EQ(0, calls);
+    EXPECT_EQ(0u, service.GetQueuedCallbackCount());
     EXPECT_FALSE(ref->IsValid());
     ref->Release();
 }

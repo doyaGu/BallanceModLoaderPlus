@@ -2,6 +2,7 @@
 
 #include "ScriptDataShareService.h"
 
+#include <algorithm>
 #include <cstring>
 #include <deque>
 #include <mutex>
@@ -863,7 +864,15 @@ size_t ScriptDataShareService::GetQueuedCallbackCount() const {
     if (!m_State)
         return 0;
     std::lock_guard<std::mutex> guard(m_State->Mutex);
-    return m_State->Active ? m_State->PendingCallbacks.size() : 0;
+    if (!m_State->Active)
+        return 0;
+
+    size_t queuedCalls = 0;
+    for (const auto &request : m_State->Requests) {
+        if (request.second.QueuedCalls > 0)
+            queuedCalls += static_cast<size_t>(request.second.QueuedCalls);
+    }
+    return std::max(m_State->PendingCallbacks.size(), queuedCalls);
 }
 
 #ifdef BML_TEST
