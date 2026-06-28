@@ -497,6 +497,20 @@ TEST_F(ScriptSourceSnapshotBuilderTest, DiscoversLibraryIncludesThroughReachable
     EXPECT_EQ("1.2.0", libraryEdge->LibraryVersion);
 }
 
+TEST_F(ScriptSourceSnapshotBuilderTest, LocalIncludeEdgesUseActualSnapshotSectionName) {
+    const std::wstring modRoot = utils::CombinePathW(ModsRoot, L"User");
+    Write(utils::CombinePathW(modRoot, L"User.mod.as"), "#include \"Scripts/Helper.as\"\nclass User {}\n");
+    Write(utils::CombinePathW(modRoot, L"scripts\\helper.as"), "void Helper() {}\n");
+
+    ScriptSourceSnapshot snapshot = BuildDirectoryMod(L"User");
+
+    const ScriptSourceIncludeEdge *edge =
+        FindIncludeEdge(snapshot, "User.mod.as", "scripts/helper.as");
+    ASSERT_NE(nullptr, edge) << DumpIncludeEdges(snapshot);
+    EXPECT_EQ("Scripts/Helper.as", edge->Include);
+    EXPECT_FALSE(edge->LibraryOwned);
+}
+
 TEST_F(ScriptSourceSnapshotBuilderTest, LibraryBmlMetadataIsRejectedButCommentsAndStringsAreIgnored) {
     const std::wstring modRoot = utils::CombinePathW(ModsRoot, L"User");
     Write(utils::CombinePathW(modRoot, L"User.mod.as"),
@@ -565,6 +579,19 @@ TEST_F(ScriptSourceSnapshotBuilderTest, RejectsEscapingIncludeInReachableModSour
     EXPECT_FALSE(TryBuildDirectoryMod(L"User", snapshot, diagnostic));
     EXPECT_EQ(ScriptDiagnosticPhase::Entry, diagnostic.Phase);
     EXPECT_NE(std::string::npos, diagnostic.Message.find("escapes the script package"));
+}
+
+TEST_F(ScriptSourceSnapshotBuilderTest, RejectsMissingLocalIncludeInReachableModSource) {
+    const std::wstring modRoot = utils::CombinePathW(ModsRoot, L"User");
+    Write(utils::CombinePathW(modRoot, L"User.mod.as"),
+          "#include \"missing/helper.as\"\nclass User {}\n");
+
+    ScriptSourceSnapshot snapshot;
+    ScriptDiagnostic diagnostic;
+    EXPECT_FALSE(TryBuildDirectoryMod(L"User", snapshot, diagnostic));
+    EXPECT_EQ(ScriptDiagnosticPhase::Entry, diagnostic.Phase);
+    EXPECT_NE(std::string::npos, diagnostic.Message.find("include not found"));
+    EXPECT_EQ("User.mod.as", diagnostic.EntryPath);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, RejectsMacroGeneratedIncludeInsideLibrary) {

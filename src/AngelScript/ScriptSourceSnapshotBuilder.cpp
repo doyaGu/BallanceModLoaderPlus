@@ -778,11 +778,17 @@ bool ScriptSourceSnapshotBuilder::ResolveLibraryClosure(ScriptSourceSnapshot &sn
             const auto localIt = sectionIndex.find(FoldSectionKey(localSection));
             if (localIt != sectionIndex.end()) {
                 pending.push_back(localIt->second);
+                const std::string &targetSection = snapshot.Sections[localIt->second].Name;
                 AddIncludeEdge(snapshot,
                                sectionName,
                                include,
-                               localSection,
+                               targetSection,
                                includeLine);
+            } else {
+                diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                                  "Script source include not found in source snapshot: " + virtualInclude + ".");
+                diagnostic.EntryPath = sectionName;
+                return false;
             }
         }
     }
