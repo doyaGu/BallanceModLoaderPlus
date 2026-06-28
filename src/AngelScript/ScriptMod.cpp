@@ -138,7 +138,7 @@ static void AppendHostRegistrationDiff(std::string &diagnostic,
 }
 
 ScriptModReloadCandidate::ScriptModReloadCandidate()
-    : m_State(std::make_unique<State>()) {
+    : m_State(new (std::nothrow) State()) {
 }
 
 ScriptModReloadCandidate::~ScriptModReloadCandidate() {
@@ -1785,7 +1785,7 @@ std::unique_ptr<ScriptModReloadCandidate> ScriptMod::PrepareReloadCandidate(cons
     };
 
     std::unique_ptr<ScriptModReloadCandidate> candidate(new (std::nothrow) ScriptModReloadCandidate());
-    if (!candidate) {
+    if (!candidate || !candidate->m_State) {
         const ScriptDiagnostic failure = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
                                                               "Script hot reload could not allocate a reload candidate.");
         return finishFailure(failure.Message, &failure);
