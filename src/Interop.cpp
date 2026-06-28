@@ -436,7 +436,11 @@ BML_EXPORT int BML_CallFrame_BorrowValue(const BML_CallFrame *frame,
     const BML_CallValueType internalType = ToInternalCallValueType(type);
     const BML_CallValue *slot = nullptr;
     const int status = BML_GetCallFrameArgChecked(frame, index, internalType, &slot);
-    return status == BML_OK ? BorrowValueData(*slot, type, outData, outCount, outElementSize) : status;
+    return status == BML_OK
+               ? GuardInteropMutation([&]() {
+                     return BorrowValueData(*slot, type, outData, outCount, outElementSize);
+                 })
+               : status;
 }
 
 BML_EXPORT int BML_CallFrame_SetBool(BML_CallFrame *frame, size_t index, int value) {
@@ -636,7 +640,11 @@ BML_EXPORT int BML_CallFrame_BorrowResultValue(const BML_CallFrame *frame,
     const BML_CallValueType internalType = ToInternalCallValueType(type);
     const BML_CallValue *result = nullptr;
     const int status = BML_GetCallFrameResultChecked(frame, internalType, &result);
-    return status == BML_OK ? BorrowValueData(*result, type, outData, outCount, outElementSize) : status;
+    return status == BML_OK
+               ? GuardInteropMutation([&]() {
+                     return BorrowValueData(*result, type, outData, outCount, outElementSize);
+                 })
+               : status;
 }
 
 BML_EXPORT int BML_CallFrame_SetResultInt(BML_CallFrame *frame, int value) {
