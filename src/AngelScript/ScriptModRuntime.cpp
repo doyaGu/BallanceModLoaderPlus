@@ -347,6 +347,8 @@ bool ScriptModRuntime::LoadModule(CKContext *context, const std::string &entryPa
     }
 
     m_ModuleLoaded = true;
+    m_AngelScript = angelScript;
+    m_Api = &api;
     return true;
 }
 
@@ -380,6 +382,8 @@ bool ScriptModRuntime::LoadModuleFromCode(CKContext *context,
     }
 
     m_ModuleLoaded = true;
+    m_AngelScript = angelScript;
+    m_Api = &api;
     return true;
 }
 
@@ -431,6 +435,8 @@ bool ScriptModRuntime::LoadModuleFromSections(CKContext *context,
     }
 
     m_ModuleLoaded = true;
+    m_AngelScript = angelScript;
+    m_Api = &api;
     return true;
 }
 
@@ -739,21 +745,27 @@ bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic)
         return true;
     }
 
-    ScriptDiagnostic localDiagnostic;
-    if (!Refresh(context, localDiagnostic)) {
-        if (diagnostic)
-            *diagnostic = localDiagnostic;
-        return false;
+    const ::CKAngelScriptAdapter::Api *api = m_Api;
+    CKAngelScript *angelScript = m_AngelScript;
+    if (!api || api != &m_Adapter.GetApi() || !angelScript) {
+        ScriptDiagnostic localDiagnostic;
+        if (!Refresh(context, localDiagnostic)) {
+            if (diagnostic)
+                *diagnostic = localDiagnostic;
+            return false;
+        }
+        api = &m_Adapter.GetApi();
+        angelScript = m_Adapter.GetAngelScript();
+        m_Api = api;
+        m_AngelScript = angelScript;
     }
 
-    const ::CKAngelScriptAdapter::Api &api = m_Adapter.GetApi();
-    CKAngelScript *angelScript = m_Adapter.GetAngelScript();
     CKAngelScriptResult result = {};
-    api.InitResult(&result);
+    api->InitResult(&result);
     bool ok = true;
 
     if (m_Object) {
-        const CKAS_STATUS status = api.ReleaseObject(angelScript, m_Object, &result);
+        const CKAS_STATUS status = api->ReleaseObject(angelScript, m_Object, &result);
         if (status == CKAS_OK) {
             m_Object = nullptr;
         } else {
@@ -767,8 +779,8 @@ bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic)
         }
     }
     if (ok && !m_ModuleName.empty() && m_ModuleLoaded) {
-        api.InitResult(&result);
-        const CKAS_STATUS status = api.UnloadModule(angelScript, m_ModuleName.c_str(), &result);
+        api->InitResult(&result);
+        const CKAS_STATUS status = api->UnloadModule(angelScript, m_ModuleName.c_str(), &result);
         if (status != CKAS_OK) {
             ok = false;
             if (diagnostic) {
