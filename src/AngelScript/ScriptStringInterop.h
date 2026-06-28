@@ -10,6 +10,8 @@
 #include <angelscript.h>
 
 #include <cstdint>
+#include <exception>
+#include <new>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -21,7 +23,8 @@ bool ReadStringObject(asIScriptEngine *engine, const void *object, std::string &
 bool AssignStringObject(asIScriptEngine *engine, void *object, const std::string &value);
 bool SetReturnString(asIScriptGeneric *gen, const std::string &value);
 bool ReadContextReturnString(asIScriptContext *context, std::string &out);
-void RaiseActiveException(const char *message);
+void RaiseActiveException(const char *message) noexcept;
+void RaiseNativeException(const char *operation, const char *detail) noexcept;
 
 class ScriptStringObject {
 public:
@@ -217,31 +220,46 @@ bool WriteBackTuple(Tuple &tuple, asIScriptGeneric *gen, std::index_sequence<I..
     return ok;
 }
 
+template <typename Function>
+void InvokeGenericBinding(const char *operation, Function &&function) {
+    try {
+        std::forward<Function>(function)();
+    } catch (const std::bad_alloc &) {
+        RaiseNativeException(operation, "out of memory");
+    } catch (const std::exception &e) {
+        RaiseNativeException(operation, e.what());
+    } catch (...) {
+        RaiseNativeException(operation, "unknown C++ exception");
+    }
+}
+
 template <auto Function>
 struct GenericFunction;
 
 template <typename R, typename... Args, R (*Function)(Args...)>
 struct GenericFunction<Function> {
     static void Call(asIScriptGeneric *gen) {
-        bool ok = true;
-        auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
-        if (!ok) {
-            RaiseActiveException("Failed to marshal AngelScript generic function arguments.");
-            return;
-        }
+        InvokeGenericBinding("AngelScript generic function", [gen]() {
+            bool ok = true;
+            auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
+            if (!ok) {
+                RaiseActiveException("Failed to marshal AngelScript generic function arguments.");
+                return;
+            }
 
-        if constexpr (std::is_void_v<R>) {
-            CallVoid(args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
-                RaiseActiveException("Failed to marshal AngelScript generic function outputs.");
+            if constexpr (std::is_void_v<R>) {
+                CallVoid(args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
+                    RaiseActiveException("Failed to marshal AngelScript generic function outputs.");
+                }
+            } else {
+                R result = CallReturn(args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
+                    !SetGenericReturn(gen, result)) {
+                    RaiseActiveException("Failed to marshal AngelScript generic function result.");
+                }
             }
-        } else {
-            R result = CallReturn(args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                !SetGenericReturn(gen, result)) {
-                RaiseActiveException("Failed to marshal AngelScript generic function result.");
-            }
-        }
+        });
     }
 
 private:
@@ -269,30 +287,32 @@ struct GenericMethod;
 template <typename C, typename R, typename... Args, R (C::*Method)(Args...)>
 struct GenericMethod<Method> {
     static void Call(asIScriptGeneric *gen) {
-        C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
-        if (!self) {
-            RaiseActiveException("Missing AngelScript generic method object.");
-            return;
-        }
-        bool ok = true;
-        auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
-        if (!ok) {
-            RaiseActiveException("Failed to marshal AngelScript generic method arguments.");
-            return;
-        }
+        InvokeGenericBinding("AngelScript generic method", [gen]() {
+            C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
+            if (!self) {
+                RaiseActiveException("Missing AngelScript generic method object.");
+                return;
+            }
+            bool ok = true;
+            auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
+            if (!ok) {
+                RaiseActiveException("Failed to marshal AngelScript generic method arguments.");
+                return;
+            }
 
-        if constexpr (std::is_void_v<R>) {
-            CallVoid(self, args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
-                RaiseActiveException("Failed to marshal AngelScript generic method outputs.");
+            if constexpr (std::is_void_v<R>) {
+                CallVoid(self, args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
+                    RaiseActiveException("Failed to marshal AngelScript generic method outputs.");
+                }
+            } else {
+                R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
+                    !SetGenericReturn(gen, result)) {
+                    RaiseActiveException("Failed to marshal AngelScript generic method result.");
+                }
             }
-        } else {
-            R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                !SetGenericReturn(gen, result)) {
-                RaiseActiveException("Failed to marshal AngelScript generic method result.");
-            }
-        }
+        });
     }
 
 private:
@@ -317,30 +337,32 @@ private:
 template <typename C, typename R, typename... Args, R (C::*Method)(Args...) const>
 struct GenericMethod<Method> {
     static void Call(asIScriptGeneric *gen) {
-        const C *self = static_cast<const C *>(gen ? gen->GetObject() : nullptr);
-        if (!self) {
-            RaiseActiveException("Missing AngelScript generic method object.");
-            return;
-        }
-        bool ok = true;
-        auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
-        if (!ok) {
-            RaiseActiveException("Failed to marshal AngelScript generic method arguments.");
-            return;
-        }
+        InvokeGenericBinding("AngelScript generic method", [gen]() {
+            const C *self = static_cast<const C *>(gen ? gen->GetObject() : nullptr);
+            if (!self) {
+                RaiseActiveException("Missing AngelScript generic method object.");
+                return;
+            }
+            bool ok = true;
+            auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
+            if (!ok) {
+                RaiseActiveException("Failed to marshal AngelScript generic method arguments.");
+                return;
+            }
 
-        if constexpr (std::is_void_v<R>) {
-            CallVoid(self, args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
-                RaiseActiveException("Failed to marshal AngelScript generic method outputs.");
+            if constexpr (std::is_void_v<R>) {
+                CallVoid(self, args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
+                    RaiseActiveException("Failed to marshal AngelScript generic method outputs.");
+                }
+            } else {
+                R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
+                    !SetGenericReturn(gen, result)) {
+                    RaiseActiveException("Failed to marshal AngelScript generic method result.");
+                }
             }
-        } else {
-            R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                !SetGenericReturn(gen, result)) {
-                RaiseActiveException("Failed to marshal AngelScript generic method result.");
-            }
-        }
+        });
     }
 
 private:
@@ -378,30 +400,32 @@ struct GenericObjectFirstFunction;
 template <typename C, typename R, typename... Args, R (*Function)(C *, Args...)>
 struct GenericObjectFirstFunction<Function> {
     static void Call(asIScriptGeneric *gen) {
-        C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
-        if (!self) {
-            RaiseActiveException("Missing AngelScript generic object-first method object.");
-            return;
-        }
-        bool ok = true;
-        auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
-        if (!ok) {
-            RaiseActiveException("Failed to marshal AngelScript generic object-first method arguments.");
-            return;
-        }
+        InvokeGenericBinding("AngelScript generic object-first method", [gen]() {
+            C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
+            if (!self) {
+                RaiseActiveException("Missing AngelScript generic object-first method object.");
+                return;
+            }
+            bool ok = true;
+            auto args = MakeArgs(gen, ok, std::index_sequence_for<Args...>{});
+            if (!ok) {
+                RaiseActiveException("Failed to marshal AngelScript generic object-first method arguments.");
+                return;
+            }
 
-        if constexpr (std::is_void_v<R>) {
-            CallVoid(self, args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
-                RaiseActiveException("Failed to marshal AngelScript generic object-first method outputs.");
+            if constexpr (std::is_void_v<R>) {
+                CallVoid(self, args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{})) {
+                    RaiseActiveException("Failed to marshal AngelScript generic object-first method outputs.");
+                }
+            } else {
+                R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
+                if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
+                    !SetGenericReturn(gen, result)) {
+                    RaiseActiveException("Failed to marshal AngelScript generic object-first method result.");
+                }
             }
-        } else {
-            R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
-            if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                !SetGenericReturn(gen, result)) {
-                RaiseActiveException("Failed to marshal AngelScript generic object-first method result.");
-            }
-        }
+        });
     }
 
 private:
@@ -431,26 +455,30 @@ asSFuncPtr GenericObjectFirstFunctionPtr() {
 template <typename C, std::string C::*Member>
 struct GenericStringFieldAccessor {
     static void Get(asIScriptGeneric *gen) {
-        const C *self = static_cast<const C *>(gen ? gen->GetObject() : nullptr);
-        if (!self || !SetReturnString(gen, self->*Member)) {
-            RaiseActiveException("Failed to marshal AngelScript string property getter.");
-        }
+        InvokeGenericBinding("AngelScript string property getter", [gen]() {
+            const C *self = static_cast<const C *>(gen ? gen->GetObject() : nullptr);
+            if (!self || !SetReturnString(gen, self->*Member)) {
+                RaiseActiveException("Failed to marshal AngelScript string property getter.");
+            }
+        });
     }
 
     static void Set(asIScriptGeneric *gen) {
-        C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
-        if (!self) {
-            RaiseActiveException("Missing AngelScript string property object.");
-            return;
-        }
+        InvokeGenericBinding("AngelScript string property setter", [gen]() {
+            C *self = static_cast<C *>(gen ? gen->GetObject() : nullptr);
+            if (!self) {
+                RaiseActiveException("Missing AngelScript string property object.");
+                return;
+            }
 
-        bool ok = true;
-        GenericArg<const std::string &> value(gen, 0, ok);
-        if (!ok) {
-            RaiseActiveException("Failed to marshal AngelScript string property setter.");
-            return;
-        }
-        self->*Member = value.Get();
+            bool ok = true;
+            GenericArg<const std::string &> value(gen, 0, ok);
+            if (!ok) {
+                RaiseActiveException("Failed to marshal AngelScript string property setter.");
+                return;
+            }
+            self->*Member = value.Get();
+        });
     }
 };
 

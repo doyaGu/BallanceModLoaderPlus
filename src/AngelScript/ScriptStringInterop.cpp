@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 
+#include <cstdio>
 #include <vector>
 
 namespace BML::ScriptStringInterop {
@@ -154,12 +155,20 @@ bool ReadContextReturnString(asIScriptContext *context, std::string &out) {
     return ReadStringObject(engine, context->GetReturnObject(), out);
 }
 
-void RaiseActiveException(const char *message) {
+void RaiseActiveException(const char *message) noexcept {
     AsGetActiveContextFn getActiveContext = ResolveAsGetActiveContext();
     asIScriptContext *context = getActiveContext ? getActiveContext() : nullptr;
     if (context) {
         context->SetException(message ? message : "AngelScript native binding failed.");
     }
+}
+
+void RaiseNativeException(const char *operation, const char *detail) noexcept {
+    char message[512] = {};
+    const char *safeOperation = operation && *operation ? operation : "AngelScript native binding";
+    const char *safeDetail = detail && *detail ? detail : "C++ exception";
+    std::snprintf(message, sizeof(message), "%s failed: %s", safeOperation, safeDetail);
+    RaiseActiveException(message);
 }
 
 } // namespace BML::ScriptStringInterop
