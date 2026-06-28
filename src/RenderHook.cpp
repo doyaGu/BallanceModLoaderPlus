@@ -95,19 +95,15 @@ bool CP_HOOK_CLASS_NAME(CKRenderContext)::Unhook(void *base) {
     auto *table = utils::ForceReinterpretCast<CP_CLASS_VTABLE_NAME(CKRenderContext)<CKRenderContext> *>(base, 0x86AF8);
     void **vtable = reinterpret_cast<void **>(table);
 
-    size_t maxSlot = 0;
-    for (size_t i = 0; i < s_RenderHookedSlotCount; ++i) {
-        if (s_RenderHookedSlotIndices[i] > maxSlot)
-            maxSlot = s_RenderHookedSlotIndices[i];
-    }
-    size_t regionSize = (maxSlot + 1) * sizeof(void *);
-
-    uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
-    if (oldProtect) {
-        for (size_t i = 0; i < s_RenderHookedSlotCount; ++i) {
-            vtable[s_RenderHookedSlotIndices[i]] = s_RenderOriginalSlots[i];
+    size_t regionSize = 0;
+    if (utils::TryGetVTableRegionSize(s_RenderHookedSlotIndices, s_RenderHookedSlotCount, &regionSize)) {
+        uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
+        if (oldProtect) {
+            for (size_t i = 0; i < s_RenderHookedSlotCount; ++i) {
+                vtable[s_RenderHookedSlotIndices[i]] = s_RenderOriginalSlots[i];
+            }
+            utils::ProtectRegion(vtable, regionSize, oldProtect);
         }
-        utils::ProtectRegion(vtable, regionSize, oldProtect);
     }
     s_RenderHookedSlotCount = 0;
 

@@ -338,19 +338,15 @@ struct InputHook::Impl {
         if (!vtable) return;
 
         // Calculate the region to unprotect: from vtable start to the last hooked slot.
-        size_t maxSlot = 0;
-        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
-            if (s_HookedSlotIndices[i] > maxSlot)
-                maxSlot = s_HookedSlotIndices[i];
-        }
-        size_t regionSize = (maxSlot + 1) * sizeof(void *);
-
-        uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
-        if (oldProtect) {
-            for (size_t i = 0; i < s_HookedSlotCount; ++i) {
-                vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
+        size_t regionSize = 0;
+        if (utils::TryGetVTableRegionSize(s_HookedSlotIndices, s_HookedSlotCount, &regionSize)) {
+            uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
+            if (oldProtect) {
+                for (size_t i = 0; i < s_HookedSlotCount; ++i) {
+                    vtable[s_HookedSlotIndices[i]] = s_OriginalSlots[i];
+                }
+                utils::ProtectRegion(vtable, regionSize, oldProtect);
             }
-            utils::ProtectRegion(vtable, regionSize, oldProtect);
         }
 
         // Always invalidate to prevent use-after-free in public methods

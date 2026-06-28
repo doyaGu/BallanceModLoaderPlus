@@ -89,6 +89,13 @@ add_bml_test(IniFileTest
 )
 
 if (WIN32)
+    add_bml_test(HookUtilsTest
+            SOURCES
+            HookUtilsTest.cpp
+            DEPENDENCIES
+            BML_HookUtils
+    )
+
     add_bml_test(CryptoUtilsTest
             SOURCES
             CryptoUtilsTest.cpp

@@ -8,6 +8,8 @@
 #include <Psapi.h>
 #include <strsafe.h>
 
+#include <limits>
+
 namespace utils {
     void OutputDebugA(const char *format, ...) {
         char buf[4096] = {0};
@@ -81,6 +83,26 @@ namespace utils {
         if (!VirtualProtect(region, size, PAGE_EXECUTE_READWRITE, &oldProtect))
             return 0;
         return oldProtect;
+    }
+
+    bool TryGetVTableRegionSize(const size_t *slotIndices, size_t slotCount, size_t *outSize) {
+        if (outSize)
+            *outSize = 0;
+        if (!slotIndices || slotCount == 0 || !outSize)
+            return false;
+
+        size_t maxSlot = 0;
+        for (size_t i = 0; i < slotCount; ++i) {
+            if (slotIndices[i] > maxSlot)
+                maxSlot = slotIndices[i];
+        }
+
+        const size_t maxRegionSlots = (std::numeric_limits<size_t>::max)() / sizeof(void *);
+        if (maxSlot >= maxRegionSlots)
+            return false;
+
+        *outSize = (maxSlot + 1) * sizeof(void *);
+        return true;
     }
 
     void *HookVirtualMethod(void *instance, void *hook, size_t offset) {

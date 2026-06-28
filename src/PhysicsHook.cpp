@@ -51,12 +51,9 @@ struct PhysicsHook {
         void **vtable = utils::GetVTable(s_IpionManager);
         if (!vtable) return;
 
-        size_t maxSlot = 0;
-        for (size_t i = 0; i < s_HookedSlotCount; ++i) {
-            if (s_HookedSlotIndices[i] > maxSlot)
-                maxSlot = s_HookedSlotIndices[i];
-        }
-        size_t regionSize = (maxSlot + 1) * sizeof(void *);
+        size_t regionSize = 0;
+        if (!utils::TryGetVTableRegionSize(s_HookedSlotIndices, s_HookedSlotCount, &regionSize))
+            return;
 
         uint32_t oldProtect = utils::UnprotectRegion(vtable, regionSize);
         if (!oldProtect) return;

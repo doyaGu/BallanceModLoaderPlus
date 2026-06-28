@@ -1,6 +1,7 @@
 #ifndef BML_HOOKUTILS_H
 #define BML_HOOKUTILS_H
 
+#include <cstddef>
 #include <cstdint>
 
 namespace utils {
@@ -30,6 +31,7 @@ namespace utils {
 
     uint32_t ProtectRegion(void *region, size_t size, uint32_t protection);
     uint32_t UnprotectRegion(void *region, size_t size);
+    bool TryGetVTableRegionSize(const size_t *slotIndices, size_t slotCount, size_t *outSize);
 
     inline void **GetVTable(void *instance) {
         if (instance) {
