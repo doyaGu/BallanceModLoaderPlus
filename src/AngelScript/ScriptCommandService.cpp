@@ -596,7 +596,13 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
     entry.Generation = m_State->NextGeneration++;
     ScriptObjectHandle retained = ScriptObjectHandle::Retain(command);
     entry.Object = retained.Detach();
-    entry.Command.reset(new ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
+    entry.Command.reset(new (std::nothrow) ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
+    if (!entry.Command) {
+        ReleaseScriptCommandObject(entry);
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create command wrapper."));
+        return nullptr;
+    }
 
     const unsigned int generation = entry.Generation;
     ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
@@ -674,7 +680,13 @@ ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &
     entry.CompleteMethod = complete;
     entry.OwnsFunctionRefs = true;
     entry.Generation = m_State->NextGeneration++;
-    entry.Command.reset(new ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
+    entry.Command.reset(new (std::nothrow) ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
+    if (!entry.Command) {
+        ReleaseScriptCommandObject(entry);
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create command wrapper."));
+        return nullptr;
+    }
 
     const unsigned int generation = entry.Generation;
     ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
