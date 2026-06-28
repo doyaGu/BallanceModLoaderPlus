@@ -361,7 +361,7 @@ private:
     bool ReleaseScriptMethodHandles();
     bool ReleaseRuntime();
     bool ReleaseRuntimeOnly(ScriptModRuntime &runtime);
-    void RebindServices();
+    bool RebindServices();
     bool CanDispatchScriptCallback();
     void FenceCallbacksForCurrentFrame();
     void SetReloadDiagnostic(const std::string &diagnostic);

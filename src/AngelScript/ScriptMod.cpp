@@ -360,7 +360,10 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
         return false;
     }
 
-    RebindServices();
+    if (!RebindServices()) {
+        cleanupFailedPrepare();
+        return false;
+    }
     m_State.MarkLoaded(true);
 
     if (restoreState) {
@@ -978,11 +981,17 @@ size_t ScriptMod::GetQueuedScriptServiceCallbackCount() const {
     return m_DataShareRequests.GetQueuedCallbackCount();
 }
 
-void ScriptMod::RebindServices() {
-    m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView);
-    m_Commands.Bind(m_Context, this, &m_ContextView);
-    m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView);
-    m_HookBlocks.Bind(m_Context, this, &m_ContextView);
+bool ScriptMod::RebindServices() {
+    if (m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
+        m_Commands.Bind(m_Context, this, &m_ContextView) &&
+        m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
+        m_HookBlocks.Bind(m_Context, this, &m_ContextView)) {
+        return true;
+    }
+
+    Fail(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                              "Script services could not allocate runtime state."));
+    return false;
 }
 
 bool ScriptMod::CanDispatchScriptCallback() {

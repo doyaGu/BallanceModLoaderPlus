@@ -531,15 +531,21 @@ bool ScriptCommandRef::Unregister() {
 ScriptCommandService::ScriptCommandService() : m_State(std::make_shared<ScriptCommandServiceState>()) {}
 ScriptCommandService::~ScriptCommandService() { Release(nullptr); }
 
-void ScriptCommandService::Bind(ModContext *context,
+bool ScriptCommandService::Bind(ModContext *context,
                                 ScriptMod *owner,
                                 ScriptModContextView *contextView) {
-    if (!m_State)
-        m_State = std::make_shared<ScriptCommandServiceState>();
+    if (!m_State) {
+        try {
+            m_State = std::make_shared<ScriptCommandServiceState>();
+        } catch (const std::bad_alloc &) {
+            return false;
+        }
+    }
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->ContextView = contextView;
     m_State->Active = true;
+    return true;
 }
 
 ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {

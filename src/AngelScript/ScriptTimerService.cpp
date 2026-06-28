@@ -617,14 +617,20 @@ void ScriptTimerRef::Cancel() {
 ScriptTimerService::ScriptTimerService() : m_State(std::make_shared<ScriptTimerServiceState>()) {}
 ScriptTimerService::~ScriptTimerService() { Release(nullptr); }
 
-void ScriptTimerService::Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView) {
-    if (!m_State)
-        m_State = std::make_shared<ScriptTimerServiceState>();
+bool ScriptTimerService::Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView) {
+    if (!m_State) {
+        try {
+            m_State = std::make_shared<ScriptTimerServiceState>();
+        } catch (const std::bad_alloc &) {
+            return false;
+        }
+    }
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->Runtime = runtime;
     m_State->ContextView = contextView;
     m_State->Active = true;
+    return true;
 }
 
 ScriptTimerRef *ScriptTimerService::Add(asIScriptObject *timer) {

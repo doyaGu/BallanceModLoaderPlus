@@ -620,18 +620,24 @@ bool ScriptDataShareRequestRef::Cancel() {
 ScriptDataShareService::ScriptDataShareService() : m_State(std::make_shared<ScriptDataShareServiceState>()) {}
 ScriptDataShareService::~ScriptDataShareService() { Release(nullptr); }
 
-void ScriptDataShareService::Bind(ModContext *context,
+bool ScriptDataShareService::Bind(ModContext *context,
                                   ScriptMod *owner,
                                   ScriptModRuntime *runtime,
                                   ScriptModContextView *contextView) {
-    if (!m_State)
-        m_State = std::make_shared<ScriptDataShareServiceState>();
+    if (!m_State) {
+        try {
+            m_State = std::make_shared<ScriptDataShareServiceState>();
+        } catch (const std::bad_alloc &) {
+            return false;
+        }
+    }
     std::lock_guard<std::mutex> guard(m_State->Mutex);
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->Runtime = runtime;
     m_State->ContextView = contextView;
     m_State->Active = true;
+    return true;
 }
 
 ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *request) {

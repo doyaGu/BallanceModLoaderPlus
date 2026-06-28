@@ -80,7 +80,7 @@ public:
     ScriptTimerService();
     ~ScriptTimerService();
 
-    void Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView);
+    bool Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView);
     ScriptTimerRef *Add(asIScriptObject *timer);
     ScriptTimerRef *AddTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name = std::string());
     ScriptTimerRef *AddTimeoutMs(float delayMs, asIScriptFunction *callback, const std::string &name = std::string());

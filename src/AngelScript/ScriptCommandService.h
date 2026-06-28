@@ -70,7 +70,7 @@ public:
     ScriptCommandService();
     ~ScriptCommandService();
 
-    void Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView);
+    bool Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView);
     ScriptCommandRef *Register(asIScriptObject *command);
     ScriptCommandRef *Register(const ScriptCommandDefinition &definition,
                                asIScriptFunction *execute,

@@ -77,7 +77,7 @@ public:
     ScriptDataShareService();
     ~ScriptDataShareService();
 
-    void Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView);
+    bool Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView);
     ScriptDataShareRequestRef *Request(asIScriptObject *request);
     ScriptDataShareRequestRef *Request(const std::string &key,
                                        int type,

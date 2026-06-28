@@ -499,13 +499,19 @@ ScriptHookBlockService::ScriptHookBlockService()
 
 ScriptHookBlockService::~ScriptHookBlockService() { Release(nullptr); }
 
-void ScriptHookBlockService::Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView) {
-    if (!m_State)
-        m_State = std::make_shared<ScriptHookBlockServiceState>();
+bool ScriptHookBlockService::Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView) {
+    if (!m_State) {
+        try {
+            m_State = std::make_shared<ScriptHookBlockServiceState>();
+        } catch (const std::bad_alloc &) {
+            return false;
+        }
+    }
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->ContextView = contextView;
     m_State->Active = true;
+    return true;
 }
 
 ScriptHookBlockRef *ScriptHookBlockService::Create(CKBehavior *ownerScript,

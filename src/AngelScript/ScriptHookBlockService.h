@@ -72,7 +72,7 @@ public:
     ScriptHookBlockService();
     ~ScriptHookBlockService();
 
-    void Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView);
+    bool Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView);
     ScriptHookBlockRef *Create(CKBehavior *ownerScript,
                                asIScriptFunction *callback,
                                const std::string &name,
