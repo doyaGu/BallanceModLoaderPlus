@@ -618,7 +618,12 @@ bool ScriptDataShareRequestRef::Cancel() {
 }
 
 ScriptDataShareService::ScriptDataShareService() : m_State(std::make_shared<ScriptDataShareServiceState>()) {}
-ScriptDataShareService::~ScriptDataShareService() { Release(nullptr); }
+ScriptDataShareService::~ScriptDataShareService() {
+    try {
+        Release(nullptr);
+    } catch (...) {
+    }
+}
 
 bool ScriptDataShareService::Bind(ModContext *context,
                                   ScriptMod *owner,

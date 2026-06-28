@@ -497,7 +497,12 @@ bool ScriptHookBlockRef::Uninstall() {
 ScriptHookBlockService::ScriptHookBlockService()
     : m_State(std::make_shared<ScriptHookBlockServiceState>()) {}
 
-ScriptHookBlockService::~ScriptHookBlockService() { Release(nullptr); }
+ScriptHookBlockService::~ScriptHookBlockService() {
+    try {
+        Release(nullptr);
+    } catch (...) {
+    }
+}
 
 bool ScriptHookBlockService::Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView) {
     if (!m_State) {

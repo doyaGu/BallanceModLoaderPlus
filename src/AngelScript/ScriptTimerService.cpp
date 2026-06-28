@@ -615,7 +615,12 @@ void ScriptTimerRef::Cancel() {
 }
 
 ScriptTimerService::ScriptTimerService() : m_State(std::make_shared<ScriptTimerServiceState>()) {}
-ScriptTimerService::~ScriptTimerService() { Release(nullptr); }
+ScriptTimerService::~ScriptTimerService() {
+    try {
+        Release(nullptr);
+    } catch (...) {
+    }
+}
 
 bool ScriptTimerService::Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView) {
     if (!m_State) {

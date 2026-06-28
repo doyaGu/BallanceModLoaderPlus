@@ -142,30 +142,33 @@ ScriptModReloadCandidate::ScriptModReloadCandidate()
 }
 
 ScriptModReloadCandidate::~ScriptModReloadCandidate() {
-    if (!m_State || !m_State->Owner)
-        return;
+    try {
+        if (!m_State || !m_State->Owner)
+            return;
 
-    ScriptMod *owner = m_State->Owner;
-    if (m_State->Prepared && !m_State->Committed) {
-        owner->ReleaseRuntimeOnly(m_State->CandidateRuntime);
-        return;
-    }
+        ScriptMod *owner = m_State->Owner;
+        if (m_State->Prepared && !m_State->Committed) {
+            owner->ReleaseRuntimeOnly(m_State->CandidateRuntime);
+            return;
+        }
 
-    if (m_State->Committed && m_State->OldRuntimeRetained) {
-        owner->ReleaseRuntimeOnly(m_State->OldRuntime);
-        if (m_State->OldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
-            !m_State->OldEntry.RootDirectory.empty() &&
-            m_State->OldEntry.RootDirectory != owner->m_Entry.RootDirectory) {
-            if (!utils::DeleteDirectoryW(m_State->OldEntry.RootDirectory)) {
-                const std::string oldRoot = utils::Utf16ToUtf8(m_State->OldEntry.RootDirectory);
-                owner->Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-                                                   "Failed to remove previous script package reload staging directory: " + oldRoot));
-                if (owner->m_Context && owner->m_Context->GetLogger()) {
-                    owner->m_Context->GetLogger()->Warn("Failed to remove previous script package reload staging directory: %s",
-                                                        oldRoot.c_str());
+        if (m_State->Committed && m_State->OldRuntimeRetained) {
+            owner->ReleaseRuntimeOnly(m_State->OldRuntime);
+            if (m_State->OldEntry.SourceKind == ScriptModEntrySourceKind::ZipPackage &&
+                !m_State->OldEntry.RootDirectory.empty() &&
+                m_State->OldEntry.RootDirectory != owner->m_Entry.RootDirectory) {
+                if (!utils::DeleteDirectoryW(m_State->OldEntry.RootDirectory)) {
+                    const std::string oldRoot = utils::Utf16ToUtf8(m_State->OldEntry.RootDirectory);
+                    owner->Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                                       "Failed to remove previous script package reload staging directory: " + oldRoot));
+                    if (owner->m_Context && owner->m_Context->GetLogger()) {
+                        owner->m_Context->GetLogger()->Warn("Failed to remove previous script package reload staging directory: %s",
+                                                            oldRoot.c_str());
+                    }
                 }
             }
         }
+    } catch (...) {
     }
 }
 
@@ -284,7 +287,10 @@ ScriptMod::ScriptMod(ModContext *context,
 }
 
 ScriptMod::~ScriptMod() {
-    ReleaseRuntime();
+    try {
+        ReleaseRuntime();
+    } catch (...) {
+    }
 }
 
 const char *ScriptMod::GetID() {

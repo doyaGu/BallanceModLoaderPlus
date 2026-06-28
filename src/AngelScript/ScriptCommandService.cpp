@@ -529,7 +529,12 @@ bool ScriptCommandRef::Unregister() {
 }
 
 ScriptCommandService::ScriptCommandService() : m_State(std::make_shared<ScriptCommandServiceState>()) {}
-ScriptCommandService::~ScriptCommandService() { Release(nullptr); }
+ScriptCommandService::~ScriptCommandService() {
+    try {
+        Release(nullptr);
+    } catch (...) {
+    }
+}
 
 bool ScriptCommandService::Bind(ModContext *context,
                                 ScriptMod *owner,

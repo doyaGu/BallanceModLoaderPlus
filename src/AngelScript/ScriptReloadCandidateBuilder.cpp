@@ -427,8 +427,11 @@ ScriptReloadCandidateBuilder::ScriptReloadCandidateBuilder(ScriptMod &mod,
 }
 
 ScriptReloadCandidateBuilder::~ScriptReloadCandidateBuilder() {
-    if (m_RuntimeOwned)
-        DiscardPreparedCandidate();
+    try {
+        if (m_RuntimeOwned)
+            DiscardPreparedCandidate();
+    } catch (...) {
+    }
 }
 
 bool ScriptReloadCandidateBuilder::FailWithDiagnostic(ScriptDiagnostic diagnostic,

@@ -188,7 +188,10 @@ ScriptModRuntime::ScriptModRuntime(std::string moduleName)
 }
 
 ScriptModRuntime::~ScriptModRuntime() {
-    Release(nullptr, nullptr);
+    try {
+        Release(nullptr, nullptr);
+    } catch (...) {
+    }
 }
 
 ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
