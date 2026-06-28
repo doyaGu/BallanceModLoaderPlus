@@ -94,17 +94,21 @@ std::string BMLAS_GetErrorString(int errorCode) {
     return message ? message : "";
 }
 
+static void BMLAS_SetActiveContextException(const char *message) {
+    const CKAngelScriptAdapter::Api &api = g_AngelScriptHost.GetApi();
+    CKAngelScript *angelScript = g_AngelScriptHost.GetAngelScript();
+    if (!api.InitResult || !api.SetActiveContextException || !angelScript)
+        return;
+
+    CKAngelScriptResult result = {};
+    api.InitResult(&result);
+    api.SetActiveContextException(angelScript, message ? message : "AngelScript host call failed.", &result);
+}
+
 static BML::ScriptStateBag *BMLAS_CreateStateBag() {
     BML::ScriptStateBag *bag = new (std::nothrow) BML::ScriptStateBag();
-    if (!bag) {
-        const CKAngelScriptAdapter::Api &api = g_AngelScriptHost.GetApi();
-        CKAngelScript *angelScript = g_AngelScriptHost.GetAngelScript();
-        if (api.InitResult && api.SetActiveContextException && angelScript) {
-            CKAngelScriptResult result = {};
-            api.InitResult(&result);
-            api.SetActiveContextException(angelScript, "Out of memory creating BML::StateBag.", &result);
-        }
-    }
+    if (!bag)
+        BMLAS_SetActiveContextException("Out of memory creating BML::StateBag.");
     return bag;
 }
 
@@ -2767,7 +2771,17 @@ private:
 };
 
 BMLAS_CallFrame *BMLAS_CreateCallFrame() {
-    return new (std::nothrow) BMLAS_CallFrame();
+    BMLAS_CallFrame *frame = new (std::nothrow) BMLAS_CallFrame();
+    if (!frame) {
+        BMLAS_SetActiveContextException("Out of memory creating BML::CallFrame.");
+        return nullptr;
+    }
+    if (!frame->IsValid()) {
+        BMLAS_SetActiveContextException("Out of memory creating BML::CallFrame storage.");
+        frame->Release();
+        return nullptr;
+    }
+    return frame;
 }
 
 class BMLAS_ExportRef {
