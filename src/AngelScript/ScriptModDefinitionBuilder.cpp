@@ -66,16 +66,20 @@ static CKAS_STATUS CollectScriptMetadata(const CKAngelScriptMetadataEntry *entry
     if (!entry || !collection)
         return CKAS_INVALIDARGUMENT;
 
-    ScriptMetadataRecord record;
-    record.Target = entry->Target;
-    record.Name = entry->Name ? entry->Name : "";
-    record.Namespace = entry->Namespace ? entry->Namespace : "";
-    record.Declaration = entry->Declaration ? entry->Declaration : "";
-    record.ParentTypeName = entry->ParentTypeName ? entry->ParentTypeName : "";
-    record.ParentTypeNamespace = entry->ParentTypeNamespace ? entry->ParentTypeNamespace : "";
-    record.Metadata = metadata ? metadata : "";
-    collection->Records.push_back(record);
-    return CKAS_OK;
+    try {
+        ScriptMetadataRecord record;
+        record.Target = entry->Target;
+        record.Name = entry->Name ? entry->Name : "";
+        record.Namespace = entry->Namespace ? entry->Namespace : "";
+        record.Declaration = entry->Declaration ? entry->Declaration : "";
+        record.ParentTypeName = entry->ParentTypeName ? entry->ParentTypeName : "";
+        record.ParentTypeNamespace = entry->ParentTypeNamespace ? entry->ParentTypeNamespace : "";
+        record.Metadata = metadata ? metadata : "";
+        collection->Records.push_back(record);
+        return CKAS_OK;
+    } catch (...) {
+        return CKAS_EXECUTIONFAILED;
+    }
 }
 
 bool ScriptModDefinitionBuilder::Build(CKContext *context,

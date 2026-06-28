@@ -44,45 +44,58 @@ std::string CopyCkasString(const char *value) {
     return value ? value : "";
 }
 
+template <typename Function>
+CKAS_STATUS CaptureCkasEnumeration(Function &&function) noexcept {
+    try {
+        std::forward<Function>(function)();
+        return CKAS_OK;
+    } catch (...) {
+        return CKAS_EXECUTIONFAILED;
+    }
+}
+
 CKAS_STATUS __cdecl CaptureImportedFunction(const CKAngelScriptImportEntry *entry, void *userData) {
     if (!entry || !userData)
         return CKAS_INVALIDARGUMENT;
 
-    auto *items = static_cast<std::vector<ScriptRuntimeImportInfo> *>(userData);
-    ScriptRuntimeImportInfo item;
-    item.Index = entry->Index;
-    item.Declaration = CopyCkasString(entry->Declaration);
-    item.SourceModuleName = CopyCkasString(entry->SourceModuleName);
-    items->push_back(std::move(item));
-    return CKAS_OK;
+    return CaptureCkasEnumeration([&]() {
+        auto *items = static_cast<std::vector<ScriptRuntimeImportInfo> *>(userData);
+        ScriptRuntimeImportInfo item;
+        item.Index = entry->Index;
+        item.Declaration = CopyCkasString(entry->Declaration);
+        item.SourceModuleName = CopyCkasString(entry->SourceModuleName);
+        items->push_back(std::move(item));
+    });
 }
 
 CKAS_STATUS __cdecl CaptureBoundImportEdge(const CKAngelScriptBoundImportEdge *edge, void *userData) {
     if (!edge || !userData)
         return CKAS_INVALIDARGUMENT;
 
-    auto *items = static_cast<std::vector<ScriptRuntimeBoundImportInfo> *>(userData);
-    ScriptRuntimeBoundImportInfo item;
-    item.ImportModuleName = CopyCkasString(edge->ImportModuleName);
-    item.ImportIndex = edge->ImportIndex;
-    item.SourceModuleName = CopyCkasString(edge->SourceModuleName);
-    item.FunctionDecl = CopyCkasString(edge->FunctionDecl);
-    items->push_back(std::move(item));
-    return CKAS_OK;
+    return CaptureCkasEnumeration([&]() {
+        auto *items = static_cast<std::vector<ScriptRuntimeBoundImportInfo> *>(userData);
+        ScriptRuntimeBoundImportInfo item;
+        item.ImportModuleName = CopyCkasString(edge->ImportModuleName);
+        item.ImportIndex = edge->ImportIndex;
+        item.SourceModuleName = CopyCkasString(edge->SourceModuleName);
+        item.FunctionDecl = CopyCkasString(edge->FunctionDecl);
+        items->push_back(std::move(item));
+    });
 }
 
 CKAS_STATUS __cdecl CaptureIncludeEdge(const CKAngelScriptIncludeEdge *edge, void *userData) {
     if (!edge || !userData)
         return CKAS_INVALIDARGUMENT;
 
-    auto *items = static_cast<std::vector<ScriptRuntimeIncludeInfo> *>(userData);
-    ScriptRuntimeIncludeInfo item;
-    item.ModuleName = CopyCkasString(edge->ModuleName);
-    item.FromSection = CopyCkasString(edge->FromSection);
-    item.ToSection = CopyCkasString(edge->ToSection);
-    item.ResolvedFromSnapshot = edge->ResolvedFromSnapshot != 0;
-    items->push_back(std::move(item));
-    return CKAS_OK;
+    return CaptureCkasEnumeration([&]() {
+        auto *items = static_cast<std::vector<ScriptRuntimeIncludeInfo> *>(userData);
+        ScriptRuntimeIncludeInfo item;
+        item.ModuleName = CopyCkasString(edge->ModuleName);
+        item.FromSection = CopyCkasString(edge->FromSection);
+        item.ToSection = CopyCkasString(edge->ToSection);
+        item.ResolvedFromSnapshot = edge->ResolvedFromSnapshot != 0;
+        items->push_back(std::move(item));
+    });
 }
 
 CKAS_STATUS __cdecl BMLScriptHostCallFilter(const char *apiName, CKDWORD flags, void *) {
