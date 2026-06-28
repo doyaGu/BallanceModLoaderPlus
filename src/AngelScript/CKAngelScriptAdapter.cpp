@@ -28,6 +28,11 @@ static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_SOURCE_SECTIONS,
     CKAS_FEATURE_OBJECT_HANDLE_ARGS,
     CKAS_FEATURE_HOST_CALL_FILTER,
+    CKAS_FEATURE_MODULE_IMPORTS,
+    CKAS_FEATURE_MODULE_BYTECODE,
+    CKAS_FEATURE_MODULE_REPLACE_TRANSACTION,
+    CKAS_FEATURE_MODULE_GRAPH,
+    CKAS_FEATURE_MODULE_FINGERPRINT,
 };
 
 template <typename T>
@@ -58,6 +63,16 @@ static std::string MakeMissingFeatureDiagnostic(CKAS_FEATURE feature) {
         message += " BML requires CKAngelScript object-handle argument writing for script hot reload state migration.";
     } else if (feature == CKAS_FEATURE_HOST_CALL_FILTER) {
         message += " BML requires CKAngelScript host-call filtering so participating world-mutating CKAS APIs can be rejected during script hot reload state hooks.";
+    } else if (feature == CKAS_FEATURE_MODULE_IMPORTS) {
+        message += " BML requires CKAngelScript module import APIs for script library module binding.";
+    } else if (feature == CKAS_FEATURE_MODULE_BYTECODE) {
+        message += " BML requires CKAngelScript module bytecode APIs for future script module cache and rollback support.";
+    } else if (feature == CKAS_FEATURE_MODULE_REPLACE_TRANSACTION) {
+        message += " BML requires CKAngelScript transactional module replacement for safe script hot reload.";
+    } else if (feature == CKAS_FEATURE_MODULE_GRAPH) {
+        message += " BML requires CKAngelScript module graph APIs for script dependency diagnostics.";
+    } else if (feature == CKAS_FEATURE_MODULE_FINGERPRINT) {
+        message += " BML requires CKAngelScript module fingerprint APIs for script cache diagnostics.";
     }
     return message;
 }
@@ -121,7 +136,7 @@ bool CKAngelScriptAdapter::IsAvailable() const {
 
 bool CKAngelScriptAdapter::HasFeature(CKAS_FEATURE feature) const {
     const int index = static_cast<int>(feature);
-    return index >= 0 && index <= CKAS_FEATURE_HOST_CALL_FILTER && m_Features[index];
+    return index >= 0 && index < kFeatureCount && m_Features[index];
 }
 
 CKAngelScriptAdapter::State CKAngelScriptAdapter::GetState() const {
@@ -233,6 +248,16 @@ const char *CKAngelScriptAdapter::FeatureName(CKAS_FEATURE feature) {
         return "CKAS_FEATURE_OBJECT_HANDLE_ARGS";
     case CKAS_FEATURE_HOST_CALL_FILTER:
         return "CKAS_FEATURE_HOST_CALL_FILTER";
+    case CKAS_FEATURE_MODULE_IMPORTS:
+        return "CKAS_FEATURE_MODULE_IMPORTS";
+    case CKAS_FEATURE_MODULE_BYTECODE:
+        return "CKAS_FEATURE_MODULE_BYTECODE";
+    case CKAS_FEATURE_MODULE_REPLACE_TRANSACTION:
+        return "CKAS_FEATURE_MODULE_REPLACE_TRANSACTION";
+    case CKAS_FEATURE_MODULE_GRAPH:
+        return "CKAS_FEATURE_MODULE_GRAPH";
+    case CKAS_FEATURE_MODULE_FINGERPRINT:
+        return "CKAS_FEATURE_MODULE_FINGERPRINT";
     default:
         return "CKAS_FEATURE_UNKNOWN";
     }
@@ -260,6 +285,10 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptHasFeature", m_Api.HasFeature, missing) &&
         Resolve(module, "CKAngelScriptInitResult", m_Api.InitResult, missing) &&
         Resolve(module, "CKAngelScriptInitLoadOptions", m_Api.InitLoadOptions, missing) &&
+        Resolve(module, "CKAngelScriptInitImportBindOptions", m_Api.InitImportBindOptions, missing) &&
+        Resolve(module, "CKAngelScriptInitBytecodeSaveOptions", m_Api.InitBytecodeSaveOptions, missing) &&
+        Resolve(module, "CKAngelScriptInitBytecodeLoadOptions", m_Api.InitBytecodeLoadOptions, missing) &&
+        Resolve(module, "CKAngelScriptInitModuleFingerprint", m_Api.InitModuleFingerprint, missing) &&
         Resolve(module, "CKAngelScriptInitObjectOptions", m_Api.InitObjectOptions, missing) &&
         Resolve(module, "CKAngelScriptInitMethodOptions", m_Api.InitMethodOptions, missing) &&
         Resolve(module, "CKAngelScriptInitObjectMethodExecuteOptions", m_Api.InitObjectMethodExecuteOptions, missing) &&
@@ -272,6 +301,17 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptHasModule", m_Api.HasModule, missing) &&
         Resolve(module, "CKAngelScriptGetModuleGeneration", m_Api.GetModuleGeneration, missing) &&
         Resolve(module, "CKAngelScriptEnumerateMetadata", m_Api.EnumerateMetadata, missing) &&
+        Resolve(module, "CKAngelScriptGetImportedFunctionCount", m_Api.GetImportedFunctionCount, missing) &&
+        Resolve(module, "CKAngelScriptEnumerateImportedFunctions", m_Api.EnumerateImportedFunctions, missing) &&
+        Resolve(module, "CKAngelScriptBindImportedFunction", m_Api.BindImportedFunction, missing) &&
+        Resolve(module, "CKAngelScriptBindAllImportedFunctions", m_Api.BindAllImportedFunctions, missing) &&
+        Resolve(module, "CKAngelScriptUnbindImportedFunction", m_Api.UnbindImportedFunction, missing) &&
+        Resolve(module, "CKAngelScriptUnbindAllImportedFunctions", m_Api.UnbindAllImportedFunctions, missing) &&
+        Resolve(module, "CKAngelScriptSaveModuleBytecode", m_Api.SaveModuleBytecode, missing) &&
+        Resolve(module, "CKAngelScriptLoadModuleBytecode", m_Api.LoadModuleBytecode, missing) &&
+        Resolve(module, "CKAngelScriptEnumerateBoundImportEdges", m_Api.EnumerateBoundImportEdges, missing) &&
+        Resolve(module, "CKAngelScriptEnumerateModuleIncludeEdges", m_Api.EnumerateModuleIncludeEdges, missing) &&
+        Resolve(module, "CKAngelScriptGetModuleFingerprint", m_Api.GetModuleFingerprint, missing) &&
         Resolve(module, "CKAngelScriptCreateObject", m_Api.CreateObject, missing) &&
         Resolve(module, "CKAngelScriptReleaseObject", m_Api.ReleaseObject, missing) &&
         Resolve(module, "CKAngelScriptFindObjectMethod", m_Api.FindObjectMethod, missing) &&
@@ -322,12 +362,14 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
 }
 
 bool CKAngelScriptAdapter::ValidateFeatures() {
+    for (int index = 0; index < kFeatureCount; ++index) {
+        const CKAS_FEATURE feature = static_cast<CKAS_FEATURE>(index);
+        m_Features[index] = m_Api.HasFeature(feature) != 0;
+    }
+
     for (CKAS_FEATURE feature : kRequiredFeatures) {
         const int index = static_cast<int>(feature);
-        const bool supported = m_Api.HasFeature(feature) != 0;
-        if (index >= 0 && index <= CKAS_FEATURE_HOST_CALL_FILTER)
-            m_Features[index] = supported;
-
+        const bool supported = index >= 0 && index < kFeatureCount && m_Features[index];
         if (!supported) {
             SetUnavailable(State::MissingFeature, MakeMissingFeatureDiagnostic(feature));
             return false;

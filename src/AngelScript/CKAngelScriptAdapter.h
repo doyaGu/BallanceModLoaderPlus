@@ -22,6 +22,10 @@ public:
     typedef CKBOOL(__cdecl *HasFeatureFn)(CKAS_FEATURE);
     typedef void(__cdecl *InitResultFn)(CKAngelScriptResult *);
     typedef void(__cdecl *InitLoadOptionsFn)(CKAngelScriptLoadOptions *);
+    typedef void(__cdecl *InitImportBindOptionsFn)(CKAngelScriptImportBindOptions *);
+    typedef void(__cdecl *InitBytecodeSaveOptionsFn)(CKAngelScriptBytecodeSaveOptions *);
+    typedef void(__cdecl *InitBytecodeLoadOptionsFn)(CKAngelScriptBytecodeLoadOptions *);
+    typedef void(__cdecl *InitModuleFingerprintFn)(CKAngelScriptModuleFingerprint *);
     typedef void(__cdecl *InitObjectOptionsFn)(CKAngelScriptObjectOptions *);
     typedef void(__cdecl *InitMethodOptionsFn)(CKAngelScriptMethodOptions *);
     typedef void(__cdecl *InitObjectMethodExecuteOptionsFn)(CKAngelScriptObjectMethodExecuteOptions *);
@@ -44,6 +48,48 @@ public:
                                                       CKAngelScriptMetadataCallback,
                                                       void *,
                                                       CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *GetImportedFunctionCountFn)(CKAngelScript *,
+                                                             const char *,
+                                                             CKDWORD *,
+                                                             CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *EnumerateImportedFunctionsFn)(CKAngelScript *,
+                                                               const char *,
+                                                               CKAngelScriptImportCallback,
+                                                               void *,
+                                                               CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *BindImportedFunctionFn)(CKAngelScript *,
+                                                         const CKAngelScriptImportBindOptions *,
+                                                         CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *BindAllImportedFunctionsFn)(CKAngelScript *,
+                                                             const char *,
+                                                             CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *UnbindImportedFunctionFn)(CKAngelScript *,
+                                                           const char *,
+                                                           CKDWORD,
+                                                           CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *UnbindAllImportedFunctionsFn)(CKAngelScript *,
+                                                               const char *,
+                                                               CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *SaveModuleBytecodeFn)(CKAngelScript *,
+                                                       const CKAngelScriptBytecodeSaveOptions *,
+                                                       CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *LoadModuleBytecodeFn)(CKAngelScript *,
+                                                       const CKAngelScriptBytecodeLoadOptions *,
+                                                       CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *EnumerateBoundImportEdgesFn)(CKAngelScript *,
+                                                              const char *,
+                                                              CKAngelScriptBoundImportEdgeCallback,
+                                                              void *,
+                                                              CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *EnumerateModuleIncludeEdgesFn)(CKAngelScript *,
+                                                                const char *,
+                                                                CKAngelScriptIncludeEdgeCallback,
+                                                                void *,
+                                                                CKAngelScriptResult *);
+    typedef CKAS_STATUS(__cdecl *GetModuleFingerprintFn)(CKAngelScript *,
+                                                         const char *,
+                                                         CKAngelScriptModuleFingerprint *,
+                                                         CKAngelScriptResult *);
     typedef CKAS_STATUS(__cdecl *CreateObjectFn)(CKAngelScript *,
                                                  const CKAngelScriptObjectOptions *,
                                                  CKAngelScriptObject **,
@@ -107,6 +153,10 @@ public:
         HasFeatureFn HasFeature = nullptr;
         InitResultFn InitResult = nullptr;
         InitLoadOptionsFn InitLoadOptions = nullptr;
+        InitImportBindOptionsFn InitImportBindOptions = nullptr;
+        InitBytecodeSaveOptionsFn InitBytecodeSaveOptions = nullptr;
+        InitBytecodeLoadOptionsFn InitBytecodeLoadOptions = nullptr;
+        InitModuleFingerprintFn InitModuleFingerprint = nullptr;
         InitObjectOptionsFn InitObjectOptions = nullptr;
         InitMethodOptionsFn InitMethodOptions = nullptr;
         InitObjectMethodExecuteOptionsFn InitObjectMethodExecuteOptions = nullptr;
@@ -119,6 +169,17 @@ public:
         HasModuleFn HasModule = nullptr;
         GetModuleGenerationFn GetModuleGeneration = nullptr;
         EnumerateMetadataFn EnumerateMetadata = nullptr;
+        GetImportedFunctionCountFn GetImportedFunctionCount = nullptr;
+        EnumerateImportedFunctionsFn EnumerateImportedFunctions = nullptr;
+        BindImportedFunctionFn BindImportedFunction = nullptr;
+        BindAllImportedFunctionsFn BindAllImportedFunctions = nullptr;
+        UnbindImportedFunctionFn UnbindImportedFunction = nullptr;
+        UnbindAllImportedFunctionsFn UnbindAllImportedFunctions = nullptr;
+        SaveModuleBytecodeFn SaveModuleBytecode = nullptr;
+        LoadModuleBytecodeFn LoadModuleBytecode = nullptr;
+        EnumerateBoundImportEdgesFn EnumerateBoundImportEdges = nullptr;
+        EnumerateModuleIncludeEdgesFn EnumerateModuleIncludeEdges = nullptr;
+        GetModuleFingerprintFn GetModuleFingerprint = nullptr;
         CreateObjectFn CreateObject = nullptr;
         ReleaseObjectFn ReleaseObject = nullptr;
         FindObjectMethodFn FindObjectMethod = nullptr;
@@ -187,7 +248,8 @@ private:
     Api m_Api;
     State m_State = State::Unchecked;
     CKDWORD m_ApiVersion = 0;
-    bool m_Features[CKAS_FEATURE_HOST_CALL_FILTER + 1] = {};
+    static constexpr int kFeatureCount = static_cast<int>(CKAS_FEATURE_MODULE_FINGERPRINT) + 1;
+    bool m_Features[kFeatureCount] = {};
     std::string m_Diagnostic;
 };
 
