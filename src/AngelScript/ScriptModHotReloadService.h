@@ -107,6 +107,7 @@ private:
                          bool recursive) const;
     bool EventOverflowCanAffectMod(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
     bool EventLooksRelevant(const ScriptFileWatcherWin32::Event &event, const ScriptMod *mod) const;
+    std::vector<ScriptLibraryReloadPackage> GetActiveLibraryPackages(bool automaticOnly) const;
     std::vector<ScriptLibraryReloadPackage> GetEventAffectedLibraryPackages(const ScriptFileWatcherWin32::Event &event,
                                                                             const ScriptMod *mod) const;
     bool EventBelongsToKnownMod(const std::wstring &path, const ScriptMod *mod) const;

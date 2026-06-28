@@ -427,6 +427,7 @@ void ScriptModHotReloadService::Process() {
         const uint64_t watcherDroppedEvents = m_Watcher.GetDroppedEventCount();
         ScriptModReloadOptions automaticOptions;
         automaticOptions.Automatic = true;
+        std::vector<ScriptLibraryReloadPackage> changedLibraryPackages;
         if (watcherDroppedEvents != m_LastWatcherDroppedEvents) {
             if (m_Context && m_Context->GetScriptDevTools()) {
                 m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
@@ -438,12 +439,12 @@ void ScriptModHotReloadService::Process() {
                                                              {{"dropped", std::to_string(watcherDroppedEvents)}});
             }
             m_LastWatcherDroppedEvents = watcherDroppedEvents;
+            AddLibraryPackages(changedLibraryPackages, GetActiveLibraryPackages(true));
             for (const auto &record : m_Mods) {
                 if (record.Mod && record.Policy == ScriptModReloadPolicy::Auto)
                     QueueReloadDebounced(record.Mod, automaticOptions, "watch overflow");
             }
         }
-        std::vector<ScriptLibraryReloadPackage> changedLibraryPackages;
         for (const auto &event : events) {
             PublishNewModRestartRequired(event);
             for (const auto &record : m_Mods) {
@@ -1080,6 +1081,19 @@ bool ScriptModHotReloadService::EventLooksRelevant(const ScriptFileWatcherWin32:
     if (!mod)
         return false;
     return ScriptHotReloadEventLooksRelevant(event, mod->GetEntry());
+}
+
+std::vector<ScriptLibraryReloadPackage> ScriptModHotReloadService::GetActiveLibraryPackages(bool automaticOnly) const {
+    std::vector<ScriptLibraryReloadPackage> packages;
+    for (const auto &record : m_Mods) {
+        if (!record.Mod)
+            continue;
+        if (automaticOnly && record.Policy != ScriptModReloadPolicy::Auto)
+            continue;
+        for (const ScriptLibraryUse &library : record.Mod->GetDefinition().SourceLibraries)
+            AddLibraryPackage(packages, library.Id, library.Version);
+    }
+    return packages;
 }
 
 std::vector<ScriptLibraryReloadPackage> ScriptModHotReloadService::GetEventAffectedLibraryPackages(
