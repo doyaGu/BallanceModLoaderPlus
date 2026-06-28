@@ -610,8 +610,11 @@ CKAngelScriptMethod *ScriptModRuntime::FindMethod(CKContext *context,
     api.InitResult(&result);
     CKAngelScriptMethod *method = nullptr;
     const CKAS_STATUS status = api.FindObjectMethod(m_Adapter.GetAngelScript(), &options, &method, &result);
-    if (status == CKAS_OK)
+    if (status == CKAS_OK) {
+        m_AngelScript = m_Adapter.GetAngelScript();
+        m_Api = &m_Adapter.GetApi();
         return method;
+    }
     if (status == CKAS_NOTFOUND && optional)
         return nullptr;
 
@@ -628,16 +631,20 @@ bool ScriptModRuntime::ReleaseMethod(CKContext *context,
     if (!method)
         return true;
 
-    ScriptDiagnostic localDiagnostic;
-    if (!Refresh(context, localDiagnostic)) {
-        if (diagnostic)
-            *diagnostic = localDiagnostic;
-        return false;
+    if (!m_Api || m_Api != &m_Adapter.GetApi() || !m_AngelScript) {
+        ScriptDiagnostic localDiagnostic;
+        if (!Refresh(context, localDiagnostic)) {
+            if (diagnostic)
+                *diagnostic = localDiagnostic;
+            return false;
+        }
+        m_Api = &m_Adapter.GetApi();
+        m_AngelScript = m_Adapter.GetAngelScript();
     }
 
     CKAngelScriptResult result = {};
-    m_Adapter.GetApi().InitResult(&result);
-    const CKAS_STATUS status = m_Adapter.GetApi().ReleaseMethod(m_Adapter.GetAngelScript(), method, &result);
+    m_Api->InitResult(&result);
+    const CKAS_STATUS status = m_Api->ReleaseMethod(m_AngelScript, method, &result);
     if (status == CKAS_OK) {
         method = nullptr;
         return true;
