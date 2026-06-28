@@ -66,11 +66,16 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
             continue;
         }
         const std::wstring path = it->path().wstring();
-        std::string pathUtf8 = utils::Utf16ToUtf8(path);
+        const std::wstring resolvedPath = utils::ResolvePathW(path);
+        std::string pathUtf8 = utils::Utf16ToUtf8(resolvedPath);
         if (!utils::EndsWith(pathUtf8, ".as"))
             continue;
+        if (!utils::IsPathInsideRootW(resolvedPath, package.RootDirectory)) {
+            AddError(report, "source escapes package root: " + pathUtf8);
+            return false;
+        }
 
-        const std::wstring relativeW = utils::MakeRelativePathW(path, package.RootDirectory);
+        const std::wstring relativeW = utils::MakeRelativePathW(resolvedPath, package.RootDirectory);
         const std::string relative = RelativePathToVirtualPath(relativeW);
         const std::string section = package.VirtualRoot + relative;
         const std::string sectionKey = FoldVirtualSectionKey(section);
@@ -95,7 +100,7 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
 
         ScriptLibraryToolFileReport file;
         file.VirtualSection = section;
-        file.PhysicalPath = utils::ResolvePathW(path);
+        file.PhysicalPath = resolvedPath;
         file.ContentHash = utils::Sha256Hex(code);
         report.Files.push_back(std::move(file));
 
@@ -155,6 +160,20 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
         AddError(report, "failed to enumerate package source.");
         return false;
     }
+    std::sort(report.Files.begin(), report.Files.end(), [](const ScriptLibraryToolFileReport &left,
+                                                           const ScriptLibraryToolFileReport &right) {
+        return FoldVirtualSectionKey(left.VirtualSection) < FoldVirtualSectionKey(right.VirtualSection);
+    });
+    std::sort(report.IncludeEdges.begin(), report.IncludeEdges.end(), [](const ScriptSourceIncludeEdge &left,
+                                                                         const ScriptSourceIncludeEdge &right) {
+        const std::string leftFrom = FoldVirtualSectionKey(left.FromSection);
+        const std::string rightFrom = FoldVirtualSectionKey(right.FromSection);
+        if (leftFrom != rightFrom)
+            return leftFrom < rightFrom;
+        if (left.Line != right.Line)
+            return left.Line < right.Line;
+        return FoldVirtualSectionKey(left.ToSection) < FoldVirtualSectionKey(right.ToSection);
+    });
     report.Success = true;
     return true;
 }
@@ -170,6 +189,8 @@ bool ParseScriptLibraryToolReportOptions(const std::vector<std::string> &args,
             options.IncludeFileHashes = true;
         else if (args[i] == "--graph")
             options.IncludeIncludeGraph = true;
+        else if (args[i] == "--compile")
+            options.Compile = true;
         else {
             diagnostic = "unknown script library check option: " + args[i];
             return false;
@@ -217,6 +238,26 @@ void AppendScriptLibraryPackageCheckLines(const ScriptLibraryPackageCheckReport 
         if (report.IncludeEdges.empty())
             lines.push_back("    none");
     }
+}
+
+std::vector<std::string> GetScriptLibraryCompileRoots(const ScriptLibraryPackageCheckReport &report) {
+    std::set<std::string> includedSections;
+    for (const ScriptSourceIncludeEdge &edge : report.IncludeEdges)
+        includedSections.insert(FoldVirtualSectionKey(edge.ToSection));
+
+    std::vector<std::string> roots;
+    for (const ScriptLibraryToolFileReport &file : report.Files) {
+        if (includedSections.find(FoldVirtualSectionKey(file.VirtualSection)) == includedSections.end())
+            roots.push_back(file.VirtualSection);
+    }
+
+    if (!roots.empty())
+        return roots;
+
+    roots.reserve(report.Files.size());
+    for (const ScriptLibraryToolFileReport &file : report.Files)
+        roots.push_back(file.VirtualSection);
+    return roots;
 }
 
 } // namespace BML

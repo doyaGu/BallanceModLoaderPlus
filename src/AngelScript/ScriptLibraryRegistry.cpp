@@ -73,6 +73,33 @@ std::string ParentVirtualDirectory(const std::string &virtualSection) {
     return virtualSection.substr(0, slash + 1);
 }
 
+std::string ReadVersionPart(const std::string &version, size_t &pos) {
+    const size_t begin = pos;
+    while (pos < version.size() && version[pos] >= '0' && version[pos] <= '9') {
+        ++pos;
+    }
+    std::string value = version.substr(begin, pos - begin);
+    const size_t firstDigit = value.find_first_not_of('0');
+    value = firstDigit == std::string::npos ? "0" : value.substr(firstDigit);
+    if (pos < version.size() && version[pos] == '.')
+        ++pos;
+    return value;
+}
+
+bool VersionLess(const std::string &left, const std::string &right) {
+    size_t leftPos = 0;
+    size_t rightPos = 0;
+    for (int i = 0; i < 3; ++i) {
+        const std::string leftPart = ReadVersionPart(left, leftPos);
+        const std::string rightPart = ReadVersionPart(right, rightPos);
+        if (leftPart.size() != rightPart.size())
+            return leftPart.size() < rightPart.size();
+        if (leftPart != rightPart)
+            return leftPart < rightPart;
+    }
+    return left < right;
+}
+
 } // namespace
 
 ScriptLibraryRegistry::ScriptLibraryRegistry(std::wstring rootDirectory)
@@ -321,6 +348,13 @@ bool ScriptLibraryRegistry::Scan(std::string &diagnostic) {
         _findclose(versionHandle);
     } while (_wfindnext(idHandle, &idInfo) == 0);
     _findclose(idHandle);
+    std::sort(m_Packages.begin(), m_Packages.end(), [](const ScriptLibraryPackage &left,
+                                                       const ScriptLibraryPackage &right) {
+        if (left.Id != right.Id)
+            return left.Id < right.Id;
+        return VersionLess(left.Version, right.Version);
+    });
+    RebuildIndex();
     return true;
 }
 

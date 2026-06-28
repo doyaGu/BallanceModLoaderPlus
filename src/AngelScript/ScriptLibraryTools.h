@@ -29,6 +29,7 @@ struct ScriptLibraryPackageCheckReport {
 struct ScriptLibraryToolReportOptions {
     bool IncludeFileHashes = false;
     bool IncludeIncludeGraph = false;
+    bool Compile = false;
 };
 
 bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
@@ -43,6 +44,8 @@ bool ParseScriptLibraryToolReportOptions(const std::vector<std::string> &args,
 void AppendScriptLibraryPackageCheckLines(const ScriptLibraryPackageCheckReport &report,
                                           std::vector<std::string> &lines,
                                           const ScriptLibraryToolReportOptions &options = ScriptLibraryToolReportOptions());
+
+std::vector<std::string> GetScriptLibraryCompileRoots(const ScriptLibraryPackageCheckReport &report);
 
 } // namespace BML
 
