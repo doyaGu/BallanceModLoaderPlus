@@ -624,6 +624,8 @@ void ScriptDataShareService::Bind(ModContext *context,
                                   ScriptMod *owner,
                                   ScriptModRuntime *runtime,
                                   ScriptModContextView *contextView) {
+    if (!m_State)
+        m_State = std::make_shared<ScriptDataShareServiceState>();
     std::lock_guard<std::mutex> guard(m_State->Mutex);
     m_State->Context = context;
     m_State->Owner = owner;
@@ -634,6 +636,8 @@ void ScriptDataShareService::Bind(ModContext *context,
 
 ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *request) {
     std::shared_ptr<ScriptDataShareServiceState> state = m_State;
+    if (!state)
+        return nullptr;
     ScriptMod *owner = nullptr;
     {
         std::lock_guard<std::mutex> guard(state->Mutex);
@@ -734,6 +738,8 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(const std::string &ke
                                                            asIScriptFunction *callback,
                                                            const std::string &name) {
     std::shared_ptr<ScriptDataShareServiceState> state = m_State;
+    if (!state)
+        return nullptr;
     ScriptMod *owner = nullptr;
     {
         std::lock_guard<std::mutex> guard(state->Mutex);
@@ -843,7 +849,7 @@ void ScriptDataShareService::Release(ScriptDiagnostic *) {
     }
     for (auto &entry : retiredRequests)
         ReleaseScriptDataShareRequestObject(entry.second);
-    m_State = std::make_shared<ScriptDataShareServiceState>();
+    m_State.reset();
 }
 
 size_t ScriptDataShareService::GetActiveCount() const {

@@ -500,6 +500,8 @@ ScriptHookBlockService::ScriptHookBlockService()
 ScriptHookBlockService::~ScriptHookBlockService() { Release(nullptr); }
 
 void ScriptHookBlockService::Bind(ModContext *context, ScriptMod *owner, ScriptModContextView *contextView) {
+    if (!m_State)
+        m_State = std::make_shared<ScriptHookBlockServiceState>();
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->ContextView = contextView;
@@ -511,6 +513,8 @@ ScriptHookBlockRef *ScriptHookBlockService::Create(CKBehavior *ownerScript,
                                                    const std::string &name,
                                                    int inputCount,
                                                    int outputCount) {
+    if (!m_State)
+        return nullptr;
     std::unique_ptr<ScriptHookBlockEntry> entry = CreateHookBlockEntry(m_State,
                                                                        ownerScript,
                                                                        callback,
@@ -526,6 +530,8 @@ ScriptHookBlockRef *ScriptHookBlockService::InsertAfter(CKBehavior *ownerScript,
                                                         const std::string &name,
                                                         int sourceOutput,
                                                         int targetInput) {
+    if (!m_State)
+        return nullptr;
     CKBehaviorLink *link = FindNextLink(ownerScript, source, nullptr, sourceOutput, targetInput);
     if (!link) {
         RecordHookBlockDiagnostic(m_State, "InsertHookBlockAfter could not find a matching outgoing behavior link.");
@@ -560,6 +566,8 @@ ScriptHookBlockRef *ScriptHookBlockService::InsertBefore(CKBehavior *ownerScript
                                                          const std::string &name,
                                                          int sourceOutput,
                                                          int targetInput) {
+    if (!m_State)
+        return nullptr;
     CKBehaviorLink *link = FindPreviousLink(ownerScript, nullptr, target, sourceOutput, targetInput);
     if (!link) {
         RecordHookBlockDiagnostic(m_State, "InsertHookBlockBefore could not find a matching incoming behavior link.");
@@ -595,6 +603,8 @@ ScriptHookBlockRef *ScriptHookBlockService::InsertBetween(CKBehavior *ownerScrip
                                                           const std::string &name,
                                                           int sourceOutput,
                                                           int targetInput) {
+    if (!m_State)
+        return nullptr;
     CKBehaviorLink *link = FindNextLink(ownerScript, source, target, sourceOutput, targetInput);
     if (!link) {
         RecordHookBlockDiagnostic(m_State, "InsertHookBlockBetween could not find the requested behavior link.");
@@ -637,7 +647,7 @@ void ScriptHookBlockService::Release(ScriptDiagnostic *) {
         }
         releasedState->Entries.erase(it);
     }
-    m_State = std::make_shared<ScriptHookBlockServiceState>();
+    m_State.reset();
 }
 
 size_t ScriptHookBlockService::GetActiveCount() const {

@@ -618,6 +618,8 @@ ScriptTimerService::ScriptTimerService() : m_State(std::make_shared<ScriptTimerS
 ScriptTimerService::~ScriptTimerService() { Release(nullptr); }
 
 void ScriptTimerService::Bind(ModContext *context, ScriptMod *owner, ScriptModRuntime *runtime, ScriptModContextView *contextView) {
+    if (!m_State)
+        m_State = std::make_shared<ScriptTimerServiceState>();
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->Runtime = runtime;
@@ -626,7 +628,7 @@ void ScriptTimerService::Bind(ModContext *context, ScriptMod *owner, ScriptModRu
 }
 
 ScriptTimerRef *ScriptTimerService::Add(asIScriptObject *timer) {
-    if (!timer || !m_State->Active || !m_State->Context || !m_State->Owner || !timer->GetObjectType())
+    if (!m_State || !timer || !m_State->Active || !m_State->Context || !m_State->Owner || !timer->GetObjectType())
         return nullptr;
 
     asITypeInfo *timerInterface = timer->GetEngine()->GetTypeInfoByDecl(kTimerInterfaceDecl);
@@ -692,7 +694,7 @@ ScriptTimerRef *ScriptTimerService::Add(asIScriptObject *timer) {
 ScriptTimerRef *ScriptTimerService::AddTimeoutTicks(unsigned int delayTicks,
                                                     asIScriptFunction *callback,
                                                     const std::string &name) {
-    if (!callback || delayTicks == 0 || !m_State->Active || !m_State->Context || !m_State->Owner)
+    if (!m_State || !callback || delayTicks == 0 || !m_State->Active || !m_State->Context || !m_State->Owner)
         return nullptr;
     if (!IsTimerCallbackSignature(callback, false)) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
@@ -716,7 +718,7 @@ ScriptTimerRef *ScriptTimerService::AddTimeoutTicks(unsigned int delayTicks,
 ScriptTimerRef *ScriptTimerService::AddTimeoutMs(float delayMs,
                                                  asIScriptFunction *callback,
                                                  const std::string &name) {
-    if (!callback || delayMs <= 0.0f || !m_State->Active || !m_State->Context || !m_State->Owner)
+    if (!m_State || !callback || delayMs <= 0.0f || !m_State->Active || !m_State->Context || !m_State->Owner)
         return nullptr;
     if (!IsTimerCallbackSignature(callback, false)) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
@@ -740,7 +742,7 @@ ScriptTimerRef *ScriptTimerService::AddTimeoutMs(float delayMs,
 ScriptTimerRef *ScriptTimerService::AddIntervalTicks(unsigned int delayTicks,
                                                      asIScriptFunction *callback,
                                                      const std::string &name) {
-    if (!callback || delayTicks == 0 || !m_State->Active || !m_State->Context || !m_State->Owner)
+    if (!m_State || !callback || delayTicks == 0 || !m_State->Active || !m_State->Context || !m_State->Owner)
         return nullptr;
     if (!IsTimerCallbackSignature(callback, true)) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
@@ -764,7 +766,7 @@ ScriptTimerRef *ScriptTimerService::AddIntervalTicks(unsigned int delayTicks,
 ScriptTimerRef *ScriptTimerService::AddIntervalMs(float delayMs,
                                                   asIScriptFunction *callback,
                                                   const std::string &name) {
-    if (!callback || delayMs <= 0.0f || !m_State->Active || !m_State->Context || !m_State->Owner)
+    if (!m_State || !callback || delayMs <= 0.0f || !m_State->Active || !m_State->Context || !m_State->Owner)
         return nullptr;
     if (!IsTimerCallbackSignature(callback, true)) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
@@ -790,7 +792,7 @@ ScriptTimerRef *ScriptTimerService::AddTimer(Timer::Builder &builder,
                                              const ScriptTimerRegistration &registration,
                                              size_t tick,
                                              float time) {
-    if (!m_State->Active || !m_State->Owner || !timer || !timer->GetObjectType())
+    if (!m_State || !m_State->Active || !m_State->Owner || !timer || !timer->GetObjectType())
         return nullptr;
 
     std::weak_ptr<ScriptTimerServiceState> weakState = m_State;
@@ -837,7 +839,7 @@ ScriptTimerRef *ScriptTimerService::AddCallbackTimer(Timer::Builder &builder,
                                                      const std::string &name,
                                                      size_t tick,
                                                      float time) {
-    if (!m_State->Active || !m_State->Owner || !callback)
+    if (!m_State || !m_State->Active || !m_State->Owner || !callback)
         return nullptr;
 
     std::weak_ptr<ScriptTimerServiceState> weakState = m_State;
@@ -890,7 +892,7 @@ void ScriptTimerService::Release(ScriptDiagnostic *) {
         ReleaseScriptTimerObject(entry.second);
     }
     releasedState->Timers.clear();
-    m_State = std::make_shared<ScriptTimerServiceState>();
+    m_State.reset();
 }
 
 size_t ScriptTimerService::GetActiveCount() const {

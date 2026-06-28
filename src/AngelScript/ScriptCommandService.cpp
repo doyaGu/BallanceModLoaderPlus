@@ -534,6 +534,8 @@ ScriptCommandService::~ScriptCommandService() { Release(nullptr); }
 void ScriptCommandService::Bind(ModContext *context,
                                 ScriptMod *owner,
                                 ScriptModContextView *contextView) {
+    if (!m_State)
+        m_State = std::make_shared<ScriptCommandServiceState>();
     m_State->Context = context;
     m_State->Owner = owner;
     m_State->ContextView = contextView;
@@ -541,7 +543,7 @@ void ScriptCommandService::Bind(ModContext *context,
 }
 
 ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
-    if (!command || !m_State->Active || !m_State->Context || !m_State->Owner || !command->GetObjectType())
+    if (!m_State || !command || !m_State->Active || !m_State->Context || !m_State->Owner || !command->GetObjectType())
         return nullptr;
 
     asITypeInfo *commandInterface = command->GetEngine()->GetTypeInfoByDecl(kCommandInterfaceDecl);
@@ -629,7 +631,7 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
 ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &definition,
                                                  asIScriptFunction *execute,
                                                  asIScriptFunction *complete) {
-    if (!execute || !m_State->Active || !m_State->Context || !m_State->Owner)
+    if (!m_State || !execute || !m_State->Active || !m_State->Context || !m_State->Owner)
         return nullptr;
 
     if (!IsCommandExecuteSignature(execute)) {
@@ -711,7 +713,7 @@ ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &
 }
 
 bool ScriptCommandService::Unregister(const std::string &name) {
-    if (!m_State->Context)
+    if (!m_State || !m_State->Context)
         return false;
     const std::string key = NormalizeCommandName(name);
     auto it = m_State->Commands.find(key);
@@ -741,7 +743,7 @@ void ScriptCommandService::Release(ScriptDiagnostic *) {
     }
     releasedState->Commands.clear();
     releasedState->RetiredCommands.clear();
-    m_State = std::make_shared<ScriptCommandServiceState>();
+    m_State.reset();
 }
 
 size_t ScriptCommandService::GetActiveCount() const {
