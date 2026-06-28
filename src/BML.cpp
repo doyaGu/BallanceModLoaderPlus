@@ -85,6 +85,21 @@ bool AddSizeChecked(size_t *total, size_t value) {
     *total += value;
     return true;
 }
+
+bool MultiplySizeChecked(size_t left, size_t right, size_t *result) {
+    if (left != 0 && right > (std::numeric_limits<size_t>::max)() / left)
+        return false;
+    *result = left * right;
+    return true;
+}
+
+template <typename T>
+T **AllocatePointerArray(size_t count) {
+    size_t bytes = 0;
+    if (!MultiplySizeChecked(count, sizeof(T *), &bytes))
+        return nullptr;
+    return static_cast<T **>(malloc(bytes));
+}
 }
 
 void BML_GetVersion(int *major, int *minor, int *patch) {
@@ -152,7 +167,7 @@ char *BML_Strdup(const char *str) {
 
 namespace {
 char **MakeSingleStringArray(const char *str, size_t *count) {
-    char **result = static_cast<char **>(malloc(sizeof(char *)));
+    char **result = AllocatePointerArray<char>(1);
     if (!result) {
         *count = 0;
         return nullptr;
@@ -201,7 +216,7 @@ char **BML_SplitString(const char *str, const char *delim, size_t *count) {
     }
 
     // Allocate result array
-    char **result = static_cast<char **>(malloc(segments * sizeof(char *)));
+    char **result = AllocatePointerArray<char>(segments);
     if (!result) {
         *count = 0;
         return nullptr;
@@ -276,7 +291,7 @@ char **BML_SplitStringChar(const char *str, char delim, size_t *count) {
     }
 
     // Allocate result array
-    char **result = static_cast<char **>(malloc(segments * sizeof(char *)));
+    char **result = AllocatePointerArray<char>(segments);
     if (!result) {
         *count = 0;
         return nullptr;
@@ -1273,7 +1288,7 @@ char **BML_ListFilesA(const char *dir, const char *pattern, size_t *count) {
 
     if (result.empty()) return nullptr;
 
-    char **arr = static_cast<char **>(malloc(result.size() * sizeof(char *)));
+    char **arr = AllocatePointerArray<char>(result.size());
     if (!arr) {
         *count = 0;
         return nullptr;
@@ -1306,7 +1321,7 @@ wchar_t **BML_ListFilesW(const wchar_t *dir, const wchar_t *pattern, size_t *cou
 
     if (result.empty()) return nullptr;
 
-    wchar_t **arr = static_cast<wchar_t **>(malloc(result.size() * sizeof(wchar_t *)));
+    wchar_t **arr = AllocatePointerArray<wchar_t>(result.size());
     if (!arr) {
         *count = 0;
         return nullptr;
@@ -1341,7 +1356,7 @@ char **BML_ListFilesUtf8(const char *dir, const char *pattern, size_t *count) {
 
     if (result.empty()) return nullptr;
 
-    char **arr = static_cast<char **>(malloc(result.size() * sizeof(char *)));
+    char **arr = AllocatePointerArray<char>(result.size());
     if (!arr) {
         *count = 0;
         return nullptr;
@@ -1374,7 +1389,7 @@ char **BML_ListDirectoriesA(const char *dir, const char *pattern, size_t *count)
 
     if (result.empty()) return nullptr;
 
-    char **arr = static_cast<char **>(malloc(result.size() * sizeof(char *)));
+    char **arr = AllocatePointerArray<char>(result.size());
     if (!arr) {
         *count = 0;
         return nullptr;
@@ -1407,7 +1422,7 @@ wchar_t **BML_ListDirectoriesW(const wchar_t *dir, const wchar_t *pattern, size_
 
     if (result.empty()) return nullptr;
 
-    wchar_t **arr = static_cast<wchar_t **>(malloc(result.size() * sizeof(wchar_t *)));
+    wchar_t **arr = AllocatePointerArray<wchar_t>(result.size());
     if (!arr) {
         *count = 0;
         return nullptr;
@@ -1442,7 +1457,7 @@ char **BML_ListDirectoriesUtf8(const char *dir, const char *pattern, size_t *cou
 
     if (result.empty()) return nullptr;
 
-    char **arr = static_cast<char **>(malloc(result.size() * sizeof(char *)));
+    char **arr = AllocatePointerArray<char>(result.size());
     if (!arr) {
         *count = 0;
         return nullptr;
