@@ -72,7 +72,7 @@ public:
 };
 
 struct ScriptDataShareRequestCookie {
-    std::shared_ptr<ScriptDataShareServiceState> State;
+    std::weak_ptr<ScriptDataShareServiceState> State;
     int Id = 0;
 };
 
@@ -490,14 +490,14 @@ static void __cdecl OnDataShareRequest(const char *, const void *data, size_t si
     auto *cookie = static_cast<ScriptDataShareRequestCookie *>(userdata);
     if (!cookie)
         return;
-    QueueDataShareRequest(cookie->State, cookie->Id, data, size);
+    QueueDataShareRequest(cookie->State.lock(), cookie->Id, data, size);
 }
 
 static void __cdecl CleanupDataShareRequest(const char *, void *userdata) {
     auto *cookie = static_cast<ScriptDataShareRequestCookie *>(userdata);
     if (!cookie)
         return;
-    RetireRequestEntry(cookie->State, cookie->Id);
+    RetireRequestEntry(cookie->State.lock(), cookie->Id);
     delete cookie;
 }
 
