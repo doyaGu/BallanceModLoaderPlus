@@ -358,26 +358,31 @@ static bool ExecuteDataShareReceive(asIScriptObject *object,
 static void QueueDataShareRequest(const std::shared_ptr<ScriptDataShareServiceState> &state,
                                   int id,
                                   const void *data,
-                                  size_t size) {
+                                  size_t size) noexcept {
     if (!state)
         return;
 
-    std::lock_guard<std::mutex> guard(state->Mutex);
-    if (!state->Active)
-        return;
-    auto it = state->Requests.find(id);
-    if (it == state->Requests.end())
-        return;
+    try {
+        PendingDataShareCallback event;
+        event.Id = id;
+        event.Exists = data != nullptr && size > 0;
+        if (event.Exists) {
+            const auto *bytes = static_cast<const unsigned char *>(data);
+            event.Data.assign(bytes, bytes + size);
+        }
 
-    PendingDataShareCallback event;
-    event.Id = id;
-    event.Exists = data != nullptr && size > 0;
-    if (event.Exists) {
-        const auto *bytes = static_cast<const unsigned char *>(data);
-        event.Data.assign(bytes, bytes + size);
+        std::lock_guard<std::mutex> guard(state->Mutex);
+        if (!state->Active)
+            return;
+        auto it = state->Requests.find(id);
+        if (it == state->Requests.end())
+            return;
+
+        state->PendingCallbacks.push_back(std::move(event));
+        ++it->second.QueuedCalls;
+    } catch (...) {
+        // DataShare invokes this through a C callback; exceptions must not escape.
     }
-    ++it->second.QueuedCalls;
-    state->PendingCallbacks.push_back(std::move(event));
 }
 
 static bool DequeueDataShareCallback(const std::shared_ptr<ScriptDataShareServiceState> &state,
