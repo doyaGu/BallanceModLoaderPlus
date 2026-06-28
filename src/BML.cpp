@@ -68,6 +68,14 @@ wchar_t *CopyWString(const std::wstring &value) {
         wcscpy(copy, value.c_str());
     return copy;
 }
+
+template <typename T>
+void ResetPointerPair(T **first, T **second) {
+    if (first)
+        *first = nullptr;
+    if (second)
+        *second = nullptr;
+}
 }
 
 void BML_GetVersion(int *major, int *minor, int *patch) {
@@ -730,7 +738,9 @@ char *BML_GetDirectoryUtf8(const char *path) {
 
 // Drive and directory as separate outputs
 int BML_GetDriveAndDirectoryA(const char *path, char **drive, char **directory) {
-    if (!path || !drive || !directory) return 0;
+    if (!drive || !directory) return 0;
+    ResetPointerPair(drive, directory);
+    if (!path) return 0;
 
     auto result = utils::GetDriveAndDirectoryA(path);
     char *tmpDrive = BML_Strdup(result.first.c_str());
@@ -748,16 +758,16 @@ int BML_GetDriveAndDirectoryA(const char *path, char **drive, char **directory) 
 }
 
 int BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **directory) {
-    if (!path || !drive || !directory) return 0;
+    if (!drive || !directory) return 0;
+    ResetPointerPair(drive, directory);
+    if (!path) return 0;
 
     auto result = utils::GetDriveAndDirectoryW(path);
 
-    wchar_t *tmpDrive = static_cast<wchar_t *>(malloc((result.first.length() + 1) * sizeof(wchar_t)));
-    wchar_t *tmpDir = static_cast<wchar_t *>(malloc((result.second.length() + 1) * sizeof(wchar_t)));
+    wchar_t *tmpDrive = CopyWString(result.first);
+    wchar_t *tmpDir = CopyWString(result.second);
 
     if (tmpDrive && tmpDir) {
-        wcscpy(tmpDrive, result.first.c_str());
-        wcscpy(tmpDir, result.second.c_str());
         *drive = tmpDrive;
         *directory = tmpDir;
         return 1;
@@ -769,7 +779,9 @@ int BML_GetDriveAndDirectoryW(const wchar_t *path, wchar_t **drive, wchar_t **di
 }
 
 int BML_GetDriveAndDirectoryUtf8(const char *path, char **drive, char **directory) {
-    if (!path || !drive || !directory) return 0;
+    if (!drive || !directory) return 0;
+    ResetPointerPair(drive, directory);
+    if (!path) return 0;
 
     auto result = utils::GetDriveAndDirectoryUtf8(path);
     char *tmpDrive = BML_Strdup(result.first.c_str());
