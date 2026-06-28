@@ -51,6 +51,20 @@ static CKAS_STATUS WriteEventObjectArgs(CKAngelScriptArgWriter *writer, void *us
 } // namespace
 
 bool ScriptCallbackDispatcher::CacheAll(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic &diagnostic) {
+    for (CKAngelScriptMethod *method : m_Methods) {
+        if (!method)
+            continue;
+        ScriptDiagnostic releaseDiagnostic;
+        if (!Release(context, runtime, &releaseDiagnostic)) {
+            diagnostic = releaseDiagnostic;
+            if (diagnostic.Message.empty())
+                diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Unload,
+                                                  "Previous script callback handles could not be released.");
+            return false;
+        }
+        break;
+    }
+
     for (const ScriptCallbackContract &descriptor : ScriptApiContract::Callbacks()) {
         m_Methods[descriptor.Id] = runtime.FindMethod(context, descriptor.Declaration, diagnostic);
         if (!m_Methods[descriptor.Id] && diagnostic.Status != CKAS_OK && !diagnostic.Message.empty()) {

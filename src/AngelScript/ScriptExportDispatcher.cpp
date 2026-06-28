@@ -496,6 +496,17 @@ bool ScriptExportTable::Cache(CKContext *context,
                               const std::vector<ScriptModExportDefinition> &definitions,
                               ScriptDiagnostic &diagnostic,
                               bool publishChange) {
+    if (!m_Exports.empty()) {
+        ScriptDiagnostic releaseDiagnostic;
+        if (!Release(context, runtime, &releaseDiagnostic, publishChange)) {
+            diagnostic = releaseDiagnostic;
+            if (diagnostic.Message.empty())
+                diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Unload,
+                                                  "Previous script export handles could not be released.");
+            return false;
+        }
+    }
+
     auto rollback = [&]() {
         Release(context, runtime, nullptr, false);
     };
