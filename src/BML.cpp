@@ -5,6 +5,8 @@
 
 #include <MinHook.h>
 
+#include <limits>
+
 #include "CKContext.h"
 
 #include "BML/BML.h"
@@ -75,6 +77,13 @@ void ResetPointerPair(T **first, T **second) {
         *first = nullptr;
     if (second)
         *second = nullptr;
+}
+
+bool AddSizeChecked(size_t *total, size_t value) {
+    if (value > (std::numeric_limits<size_t>::max)() - *total)
+        return false;
+    *total += value;
+    return true;
 }
 }
 
@@ -341,12 +350,16 @@ char *BML_JoinString(const char **strings, size_t count, const char *delim) {
 
     for (size_t i = 0; i < count; ++i) {
         if (strings[i]) {
-            totalLen += strlen(strings[i]);
+            if (!AddSizeChecked(&totalLen, strlen(strings[i])))
+                return nullptr;
         }
         if (i > 0) {
-            totalLen += delimLen;
+            if (!AddSizeChecked(&totalLen, delimLen))
+                return nullptr;
         }
     }
+    if (totalLen == (std::numeric_limits<size_t>::max)())
+        return nullptr;
 
     // Allocate result buffer
     char *result = static_cast<char *>(malloc(totalLen + 1));
@@ -378,9 +391,12 @@ char *BML_JoinStringChar(const char **strings, size_t count, char delim) {
 
     for (size_t i = 0; i < count; ++i) {
         if (strings[i]) {
-            totalLen += strlen(strings[i]);
+            if (!AddSizeChecked(&totalLen, strlen(strings[i])))
+                return nullptr;
         }
     }
+    if (totalLen == (std::numeric_limits<size_t>::max)())
+        return nullptr;
 
     // Allocate result buffer
     char *result = static_cast<char *>(malloc(totalLen + 1));
