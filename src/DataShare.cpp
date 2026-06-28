@@ -4,9 +4,36 @@
 #include <atomic>
 #include <climits>
 #include <cstring>
+#include <new>
 #include <utility>
 
 namespace BML {
+    namespace {
+        void InvokeDataShareCallbackNoexcept(BML_DataShareCallback callback,
+                                             const char *key,
+                                             const void *data,
+                                             size_t size,
+                                             void *userdata) noexcept {
+            if (!callback)
+                return;
+            try {
+                callback(key, data, size, userdata);
+            } catch (...) {
+            }
+        }
+
+        void InvokeDataShareCleanupNoexcept(BML_DataShareCleanupCallback cleanup,
+                                            const char *key,
+                                            void *userdata) noexcept {
+            if (!cleanup)
+                return;
+            try {
+                cleanup(key, userdata);
+            } catch (...) {
+            }
+        }
+    }
+
     // ----------------------- Static registry ------------------------------------
 
     std::mutex DataShare::s_RegMutex;
@@ -43,11 +70,27 @@ namespace BML {
     // ----------------------- Registry ops ----------------------------------------
 
     DataShare *DataShare::GetInstance(const char *name) {
-        if (!name) name = "BML";
-        std::lock_guard<std::mutex> g(s_RegMutex);
-        auto &p = s_Registry[std::string(name)];
-        if (!p) p = new DataShare(std::string(name));
-        return p;
+        try {
+            std::string key(name ? name : "BML");
+            std::lock_guard<std::mutex> g(s_RegMutex);
+            const auto existing = s_Registry.find(key);
+            if (existing != s_Registry.end())
+                return existing->second;
+
+            DataShare *created = new (std::nothrow) DataShare(key);
+            if (!created)
+                return nullptr;
+
+            try {
+                s_Registry.emplace(std::move(key), created);
+            } catch (...) {
+                delete created;
+                return nullptr;
+            }
+            return created;
+        } catch (...) {
+            return nullptr;
+        }
     }
 
     void DataShare::DestroyAllInstances() {
@@ -78,10 +121,14 @@ namespace BML {
 
     void DataShare::AddCallbackLocked(const char *key, BML_DataShareCallback cb, BML_DataShareCleanupCallback cleanup, void *ud) const {
         if (!cb) {
-            if (cleanup) cleanup(key, ud);
+            InvokeDataShareCleanupNoexcept(cleanup, key, ud);
             return;
         }
-        m_Cbs[std::string(key)].emplace_back(cb, cleanup, ud);
+        try {
+            m_Cbs[std::string(key)].emplace_back(cb, cleanup, ud);
+        } catch (...) {
+            InvokeDataShareCleanupNoexcept(cleanup, key, ud);
+        }
     }
 
     void DataShare::TriggerCallbacksUnlocked(const char *key, const void *data, size_t size) const {
@@ -96,8 +143,8 @@ namespace BML {
         }
         // Callers guarantee data outlives this call, so no extra snapshot needed.
         for (auto &cb : pending) {
-            if (cb.fn) cb.fn(key, data, size, cb.userdata);
-            if (cb.cleanup) cb.cleanup(key, cb.userdata);
+            InvokeDataShareCallbackNoexcept(cb.fn, key, data, size, cb.userdata);
+            InvokeDataShareCleanupNoexcept(cb.cleanup, key, cb.userdata);
         }
     }
 
@@ -111,7 +158,7 @@ namespace BML {
         for (auto &kv : pending) {
             const char *key = kv.first.c_str();
             for (const auto &cb : kv.second) {
-                if (cb.cleanup) cb.cleanup(key, cb.userdata);
+                InvokeDataShareCleanupNoexcept(cb.cleanup, key, cb.userdata);
             }
         }
     }
@@ -200,11 +247,11 @@ namespace BML {
 
     void DataShare::Request(const char *key, BML_DataShareCallback cb, BML_DataShareCleanupCallback cleanup, void *userdata) {
         if (!ValidateKey(key)) {
-            if (cleanup) cleanup(key, userdata);
+            InvokeDataShareCleanupNoexcept(cleanup, key, userdata);
             return;
         }
         if (!cb) {
-            if (cleanup) cleanup(key, userdata);
+            InvokeDataShareCleanupNoexcept(cleanup, key, userdata);
             return;
         }
         std::vector<std::uint8_t> snapshot;
@@ -220,8 +267,8 @@ namespace BML {
         }
 
         const void *payload = snapshot.empty() ? nullptr : snapshot.data();
-        cb(key, payload, snapshot.size(), userdata);
-        if (cleanup) cleanup(key, userdata);
+        InvokeDataShareCallbackNoexcept(cb, key, payload, snapshot.size(), userdata);
+        InvokeDataShareCleanupNoexcept(cleanup, key, userdata);
     }
 
 } // namespace BML
@@ -233,73 +280,124 @@ namespace BML {
 BML_BEGIN_CDECLS
 
 BML_EXPORT BML_DataShare *BML_GetDataShare(const char *name) {
-    if (!name) name = "BML";
-    auto *ds = BML::DataShare::GetInstance(name);
-    if (!ds) return nullptr;
-    ds->AddRef();
-    return reinterpret_cast<BML_DataShare *>(ds);
+    try {
+        if (!name) name = "BML";
+        auto *ds = BML::DataShare::GetInstance(name);
+        if (!ds) return nullptr;
+        ds->AddRef();
+        return reinterpret_cast<BML_DataShare *>(ds);
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 BML_EXPORT uint32_t BML_DataShare_AddRef(BML_DataShare *handle) {
-    if (!handle) return 0;
-    return reinterpret_cast<BML::DataShare *>(handle)->AddRef();
+    try {
+        if (!handle) return 0;
+        return reinterpret_cast<BML::DataShare *>(handle)->AddRef();
+    } catch (...) {
+        return 0;
+    }
 }
 
 BML_EXPORT uint32_t BML_DataShare_Release(BML_DataShare *handle) {
-    if (!handle) return 0;
-    return reinterpret_cast<BML::DataShare *>(handle)->Release();
+    try {
+        if (!handle) return 0;
+        return reinterpret_cast<BML::DataShare *>(handle)->Release();
+    } catch (...) {
+        return 0;
+    }
 }
 
 BML_EXPORT int BML_DataShare_Set(BML_DataShare *handle, const char *key, const void *data, size_t size) {
-    if (!handle) return 0;
-    return reinterpret_cast<BML::DataShare *>(handle)->Set(key, data, size) ? 1 : 0;
+    try {
+        if (!handle) return 0;
+        return reinterpret_cast<BML::DataShare *>(handle)->Set(key, data, size) ? 1 : 0;
+    } catch (...) {
+        return 0;
+    }
 }
 
 BML_EXPORT void BML_DataShare_Remove(BML_DataShare *handle, const char *key) {
-    if (!handle) return;
-    reinterpret_cast<BML::DataShare *>(handle)->Remove(key);
+    try {
+        if (!handle) return;
+        reinterpret_cast<BML::DataShare *>(handle)->Remove(key);
+    } catch (...) {
+    }
 }
 
 BML_EXPORT const void *BML_DataShare_Get(const BML_DataShare *handle, const char *key, size_t *outSize) {
-    if (!handle) {
+    try {
+        if (!handle) {
+            if (outSize) *outSize = 0;
+            return nullptr;
+        }
+        return reinterpret_cast<const BML::DataShare *>(handle)->Get(key, outSize);
+    } catch (...) {
         if (outSize) *outSize = 0;
         return nullptr;
     }
-    return reinterpret_cast<const BML::DataShare *>(handle)->Get(key, outSize);
 }
 
 BML_EXPORT int BML_DataShare_Copy(const BML_DataShare *handle, const char *key, void *dst, size_t dstSize) {
-    if (!handle) return 0;
-    return reinterpret_cast<const BML::DataShare *>(handle)->Copy(key, dst, dstSize) ? 1 : 0;
+    try {
+        if (!handle) return 0;
+        return reinterpret_cast<const BML::DataShare *>(handle)->Copy(key, dst, dstSize) ? 1 : 0;
+    } catch (...) {
+        return 0;
+    }
 }
 
 BML_EXPORT int BML_DataShare_CopyEx(const BML_DataShare *handle, const char *key, void *dst, size_t dstSize, size_t *outFullSize) {
-    if (!handle) { if (outFullSize) *outFullSize = 0; return 0; }
-    return reinterpret_cast<const BML::DataShare *>(handle)->CopyEx(key, dst, dstSize, outFullSize);
+    try {
+        if (!handle) {
+            if (outFullSize) *outFullSize = 0;
+            return 0;
+        }
+        return reinterpret_cast<const BML::DataShare *>(handle)->CopyEx(key, dst, dstSize, outFullSize);
+    } catch (...) {
+        if (outFullSize) *outFullSize = 0;
+        return 0;
+    }
 }
 
 BML_EXPORT int BML_DataShare_Has(const BML_DataShare *handle, const char *key) {
-    if (!handle) return 0;
-    return reinterpret_cast<const BML::DataShare *>(handle)->Has(key) ? 1 : 0;
+    try {
+        if (!handle) return 0;
+        return reinterpret_cast<const BML::DataShare *>(handle)->Has(key) ? 1 : 0;
+    } catch (...) {
+        return 0;
+    }
 }
 
 BML_EXPORT size_t BML_DataShare_SizeOf(const BML_DataShare *handle, const char *key) {
-    if (!handle) return 0;
-    return reinterpret_cast<const BML::DataShare *>(handle)->SizeOf(key);
+    try {
+        if (!handle) return 0;
+        return reinterpret_cast<const BML::DataShare *>(handle)->SizeOf(key);
+    } catch (...) {
+        return 0;
+    }
 }
 
 BML_EXPORT void BML_DataShare_Request(BML_DataShare *handle, const char *key,
                                       BML_DataShareCallback callback, void *userdata,
                                       BML_DataShareCleanupCallback cleanup) {
-    if (!handle) {
-        if (cleanup) cleanup(key, userdata);
-        return;
+    try {
+        if (!handle) {
+            BML::InvokeDataShareCleanupNoexcept(cleanup, key, userdata);
+            return;
+        }
+        reinterpret_cast<BML::DataShare *>(handle)->Request(key, callback, cleanup, userdata);
+    } catch (...) {
+        BML::InvokeDataShareCleanupNoexcept(cleanup, key, userdata);
     }
-    reinterpret_cast<BML::DataShare *>(handle)->Request(key, callback, cleanup, userdata);
 }
 
 BML_EXPORT void BML_DataShare_DestroyAll(void) {
-    BML::DataShare::DestroyAllInstances();
+    try {
+        BML::DataShare::DestroyAllInstances();
+    } catch (...) {
+    }
 }
 
 BML_END_CDECLS

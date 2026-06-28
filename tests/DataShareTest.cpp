@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <stdexcept>
 #include <string>
 
 #include "BML/DataShare.h"
@@ -40,6 +41,18 @@ void __cdecl RecordCleanup(const char *, void *userdata) {
     auto *probe = static_cast<RequestProbe *>(userdata);
     ASSERT_NE(nullptr, probe);
     probe->cleanups++;
+}
+
+void __cdecl ThrowingRequest(const char *key, const void *data, size_t size, void *userdata) {
+    RecordRequest(key, data, size, userdata);
+    throw std::runtime_error("request failed");
+}
+
+void __cdecl ThrowingCleanup(const char *, void *userdata) {
+    auto *probe = static_cast<RequestProbe *>(userdata);
+    ASSERT_NE(nullptr, probe);
+    probe->cleanups++;
+    throw std::runtime_error("cleanup failed");
 }
 
 class DataShareTest : public ::testing::Test {
@@ -98,6 +111,37 @@ TEST_F(DataShareTest, DestroyAllCancelsPendingRequestWithoutCallback) {
 
     EXPECT_EQ(0, probe.callbacks);
     EXPECT_EQ(1, probe.cleanups);
+}
+
+TEST_F(DataShareTest, RequestCallbacksDoNotThrowThroughCApi) {
+    BML_DataShare *share = BML_GetDataShare("reload-lifecycle");
+    ASSERT_NE(nullptr, share);
+
+    RequestProbe probe;
+    BML_DataShare_Request(share, "throwing-key", ThrowingRequest, &probe, RecordCleanup);
+
+    const char value[] = "value";
+    EXPECT_NO_THROW(EXPECT_EQ(1, BML_DataShare_Set(share, "throwing-key", value, sizeof(value))));
+
+    EXPECT_EQ(1, probe.callbacks);
+    EXPECT_EQ(1, probe.cleanups);
+    EXPECT_EQ("throwing-key", probe.key);
+    EXPECT_TRUE(probe.exists);
+
+    BML_DataShare_Release(share);
+}
+
+TEST_F(DataShareTest, CleanupDoesNotThrowThroughCApi) {
+    BML_DataShare *share = BML_GetDataShare("reload-lifecycle");
+    ASSERT_NE(nullptr, share);
+
+    RequestProbe probe;
+    EXPECT_NO_THROW(BML_DataShare_Request(share, "", RecordRequest, &probe, ThrowingCleanup));
+
+    EXPECT_EQ(0, probe.callbacks);
+    EXPECT_EQ(1, probe.cleanups);
+
+    BML_DataShare_Release(share);
 }
 
 } // namespace Test
