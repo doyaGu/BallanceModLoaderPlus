@@ -9,6 +9,23 @@ namespace {
 
 constexpr size_t kMaxQueuedEvents = 4096;
 
+class ScopedHandle {
+public:
+    explicit ScopedHandle(HANDLE handle = nullptr) : m_Handle(handle) {}
+    ~ScopedHandle() {
+        if (m_Handle)
+            ::CloseHandle(m_Handle);
+    }
+
+    ScopedHandle(const ScopedHandle &) = delete;
+    ScopedHandle &operator=(const ScopedHandle &) = delete;
+
+    HANDLE Get() const { return m_Handle; }
+
+private:
+    HANDLE m_Handle = nullptr;
+};
+
 std::wstring JoinWatchedPath(const std::wstring &root, const wchar_t *relativeName, DWORD lengthBytes) {
     std::wstring path = root;
     if (!path.empty() && path.back() != L'\\' && path.back() != L'/')
@@ -90,9 +107,35 @@ bool ScriptFileWatcherWin32::Watch(const std::wstring &root, bool recursive) {
 
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        m_Watches.push_back(state);
+        try {
+            m_Watches.push_back(state);
+        } catch (...) {
+            if (state->Directory != INVALID_HANDLE_VALUE)
+                ::CloseHandle(state->Directory);
+            if (state->StopEvent)
+                ::CloseHandle(state->StopEvent);
+            delete state;
+            return false;
+        }
     }
-    state->Worker = std::thread([this, state] { WorkerLoop(state); });
+
+    try {
+        state->Worker = std::thread([this, state] { WorkerLoop(state); });
+    } catch (...) {
+        std::vector<WatchState *> removed;
+        {
+            std::lock_guard<std::mutex> lock(m_Mutex);
+            auto it = std::find(m_Watches.begin(), m_Watches.end(), state);
+            if (it != m_Watches.end()) {
+                removed.push_back(*it);
+                m_Watches.erase(it);
+            }
+        }
+        if (removed.empty())
+            removed.push_back(state);
+        StopWatches(removed);
+        return false;
+    }
     return true;
 }
 
@@ -151,68 +194,68 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
     if (!state)
         return;
 
-    std::vector<unsigned char> buffer(64 * 1024);
-    while (::WaitForSingleObject(state->StopEvent, 0) == WAIT_TIMEOUT) {
-        OVERLAPPED overlapped = {};
-        overlapped.hEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        if (!overlapped.hEvent)
-            break;
+    try {
+        std::vector<unsigned char> buffer(64 * 1024);
+        while (::WaitForSingleObject(state->StopEvent, 0) == WAIT_TIMEOUT) {
+            OVERLAPPED overlapped = {};
+            ScopedHandle eventHandle(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
+            overlapped.hEvent = eventHandle.Get();
+            if (!overlapped.hEvent)
+                break;
 
-        const DWORD filter = FILE_NOTIFY_CHANGE_FILE_NAME |
-                             FILE_NOTIFY_CHANGE_DIR_NAME |
-                             FILE_NOTIFY_CHANGE_LAST_WRITE |
-                             FILE_NOTIFY_CHANGE_SIZE;
-        const BOOL started = ::ReadDirectoryChangesW(state->Directory,
-                                                     buffer.data(),
-                                                     static_cast<DWORD>(buffer.size()),
-                                                     state->Recursive ? TRUE : FALSE,
-                                                     filter,
-                                                     nullptr,
-                                                     &overlapped,
-                                                     nullptr);
-        if (!started) {
-            ::CloseHandle(overlapped.hEvent);
-            break;
-        }
+            const DWORD filter = FILE_NOTIFY_CHANGE_FILE_NAME |
+                                 FILE_NOTIFY_CHANGE_DIR_NAME |
+                                 FILE_NOTIFY_CHANGE_LAST_WRITE |
+                                 FILE_NOTIFY_CHANGE_SIZE;
+            const BOOL started = ::ReadDirectoryChangesW(state->Directory,
+                                                         buffer.data(),
+                                                         static_cast<DWORD>(buffer.size()),
+                                                         state->Recursive ? TRUE : FALSE,
+                                                         filter,
+                                                         nullptr,
+                                                         &overlapped,
+                                                         nullptr);
+            if (!started)
+                break;
 
-        HANDLE handles[2] = {state->StopEvent, overlapped.hEvent};
-        const DWORD wait = ::WaitForMultipleObjects(2, handles, FALSE, INFINITE);
-        if (wait == WAIT_OBJECT_0) {
-            ::CancelIoEx(state->Directory, &overlapped);
-            DWORD ignored = 0;
-            ::GetOverlappedResult(state->Directory, &overlapped, &ignored, TRUE);
-            ::CloseHandle(overlapped.hEvent);
-            break;
-        }
-
-        DWORD bytes = 0;
-        if (::GetOverlappedResult(state->Directory, &overlapped, &bytes, FALSE)) {
-            if (bytes == 0) {
-                Event overflow;
-                overflow.Root = state->Root;
-                overflow.Path = state->Root;
-                overflow.Overflow = true;
-                overflow.Recursive = state->Recursive;
-                PushEvent(overflow);
-                ::CloseHandle(overlapped.hEvent);
-                continue;
+            HANDLE handles[2] = {state->StopEvent, overlapped.hEvent};
+            const DWORD wait = ::WaitForMultipleObjects(2, handles, FALSE, INFINITE);
+            if (wait == WAIT_OBJECT_0) {
+                ::CancelIoEx(state->Directory, &overlapped);
+                DWORD ignored = 0;
+                ::GetOverlappedResult(state->Directory, &overlapped, &ignored, TRUE);
+                break;
             }
 
-            size_t offset = 0;
-            while (offset < bytes) {
-                auto *info = reinterpret_cast<FILE_NOTIFY_INFORMATION *>(buffer.data() + offset);
-                Event event;
-                event.Root = state->Root;
-                event.Path = JoinWatchedPath(state->Root, info->FileName, info->FileNameLength);
-                event.Action = info->Action;
-                event.Recursive = state->Recursive;
-                PushEvent(event);
-                if (info->NextEntryOffset == 0)
-                    break;
-                offset += info->NextEntryOffset;
+            DWORD bytes = 0;
+            if (::GetOverlappedResult(state->Directory, &overlapped, &bytes, FALSE)) {
+                if (bytes == 0) {
+                    Event overflow;
+                    overflow.Root = state->Root;
+                    overflow.Path = state->Root;
+                    overflow.Overflow = true;
+                    overflow.Recursive = state->Recursive;
+                    PushEvent(overflow);
+                    continue;
+                }
+
+                size_t offset = 0;
+                while (offset < bytes) {
+                    auto *info = reinterpret_cast<FILE_NOTIFY_INFORMATION *>(buffer.data() + offset);
+                    Event event;
+                    event.Root = state->Root;
+                    event.Path = JoinWatchedPath(state->Root, info->FileName, info->FileNameLength);
+                    event.Action = info->Action;
+                    event.Recursive = state->Recursive;
+                    PushEvent(event);
+                    if (info->NextEntryOffset == 0)
+                        break;
+                    offset += info->NextEntryOffset;
+                }
             }
         }
-        ::CloseHandle(overlapped.hEvent);
+    } catch (...) {
+        // File watching is best-effort; a background watcher must not terminate the host process.
     }
 }
 
