@@ -21,10 +21,8 @@ void BML_GetVersion(int *major, int *minor, int *patch) {
     if (patch) *patch = BML_PATCH_VERSION;
 }
 
-void BML_GetVersionString(char *version, size_t size) {
-    if (version && size > 0) {
-        snprintf(version, size, "%d.%d.%d", BML_MAJOR_VERSION, BML_MINOR_VERSION, BML_PATCH_VERSION);
-    }
+const char *BML_GetVersionString() {
+    return BML_VERSION;
 }
 
 void *BML_Malloc(size_t size) {
