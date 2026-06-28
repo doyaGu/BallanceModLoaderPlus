@@ -79,6 +79,14 @@ bool AddLibraryPackage(std::vector<ScriptLibraryReloadPackage> &packages,
     return true;
 }
 
+bool AddLibraryPackages(std::vector<ScriptLibraryReloadPackage> &packages,
+                        const std::vector<ScriptLibraryReloadPackage> &additions) {
+    bool changed = false;
+    for (const ScriptLibraryReloadPackage &package : additions)
+        changed = AddLibraryPackage(packages, package.Id, package.Version) || changed;
+    return changed;
+}
+
 bool RemoveLibraryPackage(std::vector<ScriptLibraryReloadPackage> &packages,
                           const std::string &id,
                           const std::string &version) {
@@ -435,29 +443,26 @@ void ScriptModHotReloadService::Process() {
                     QueueReloadDebounced(record.Mod, automaticOptions, "watch overflow");
             }
         }
+        std::vector<ScriptLibraryReloadPackage> changedLibraryPackages;
         for (const auto &event : events) {
             PublishNewModRestartRequired(event);
-            std::unordered_set<std::string> queuedLibraryPackages;
             for (const auto &record : m_Mods) {
                 if (!record.Mod || record.Policy != ScriptModReloadPolicy::Auto)
                     continue;
                 const std::vector<ScriptLibraryReloadPackage> libraryPackages = GetEventAffectedLibraryPackages(event, record.Mod);
                 if (!libraryPackages.empty()) {
-                    for (const ScriptLibraryReloadPackage &package : libraryPackages) {
-                        const std::string libraryPackage = LibraryPackageKey(package);
-                        if (queuedLibraryPackages.insert(libraryPackage).second) {
-                            QueueLibraryReloadDebounced(package.Id,
-                                                        package.Version,
-                                                        automaticOptions,
-                                                        "library changed " + libraryPackage);
-                        }
-                    }
+                    AddLibraryPackages(changedLibraryPackages, libraryPackages);
                     continue;
                 }
                 if (!EventLooksRelevant(event, record.Mod))
                     continue;
                 QueueReloadDebounced(record.Mod, automaticOptions, "file changed");
             }
+        }
+        if (!changedLibraryPackages.empty()) {
+            QueueLibraryReloadDebounced(changedLibraryPackages,
+                                        automaticOptions,
+                                        MakeLibraryPendingReason("libraries changed", changedLibraryPackages));
         }
     }
 
@@ -901,35 +906,62 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
                                                             const std::string &version,
                                                             const ScriptModReloadOptions &options,
                                                             const std::string &reason) {
-    if (id.empty() || version.empty())
+    std::vector<ScriptLibraryReloadPackage> packages;
+    AddLibraryPackage(packages, id, version);
+    QueueLibraryReloadDebounced(packages, options, reason);
+}
+
+void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::vector<ScriptLibraryReloadPackage> &packages,
+                                                            const ScriptModReloadOptions &options,
+                                                            const std::string &reason) {
+    std::vector<ScriptLibraryReloadPackage> pendingPackages;
+    AddLibraryPackages(pendingPackages, packages);
+    if (pendingPackages.empty())
         return;
     if (options.Automatic && !m_AutomaticEnabled)
         return;
-    const std::string packageKey = LibraryPackageKey(id, version);
+
     if (options.Automatic) {
-        for (const auto &entry : m_PendingLibraries) {
-            if (entry.second.Options.Automatic ||
-                entry.second.Options.DryRun ||
-                !HasLibraryPackage(entry.second.Packages, id, version))
-                continue;
-            if (m_Context && m_Context->GetScriptDevTools()) {
-                std::vector<ScriptDevEventField> fields = {{"reason", reason},
-                                                           {"pendingReason", entry.second.Reason},
-                                                           {"package", packageKey}};
-                AppendReloadOptionFields(fields, entry.second.Options, "pending", false, false, true);
-                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                             "ScriptLibraryReloadAutoCoalesced",
-                                                             packageKey,
-                                                             "reload",
-                                                             "",
-                                                             "Automatic script library reload was coalesced into a pending manual reload.",
-                                                             fields);
+        std::vector<ScriptLibraryReloadPackage> uncoalesced;
+        for (const ScriptLibraryReloadPackage &package : pendingPackages) {
+            bool coalesced = false;
+            const std::string packageKey = LibraryPackageKey(package);
+            for (const auto &entry : m_PendingLibraries) {
+                if (entry.second.Options.Automatic ||
+                    entry.second.Options.DryRun ||
+                    !HasLibraryPackage(entry.second.Packages, package.Id, package.Version)) {
+                    continue;
+                }
+                coalesced = true;
+                if (m_Context && m_Context->GetScriptDevTools()) {
+                    std::vector<ScriptDevEventField> fields = {{"reason", reason},
+                                                               {"pendingReason", entry.second.Reason},
+                                                               {"package", packageKey}};
+                    AppendReloadOptionFields(fields, entry.second.Options, "pending", false, false, true);
+                    m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                                                                 "ScriptLibraryReloadAutoCoalesced",
+                                                                 packageKey,
+                                                                 "reload",
+                                                                 "",
+                                                                 "Automatic script library reload was coalesced into a pending manual reload.",
+                                                                 fields);
+                }
+                break;
             }
-            return;
+            if (!coalesced)
+                AddLibraryPackage(uncoalesced, package.Id, package.Version);
         }
+        pendingPackages = std::move(uncoalesced);
+        if (pendingPackages.empty())
+            return;
     } else if (!options.DryRun) {
         for (auto it = m_PendingLibraries.begin(); it != m_PendingLibraries.end();) {
-            if (it->second.Options.Automatic && RemoveLibraryPackage(it->second.Packages, id, version)) {
+            bool removed = false;
+            if (it->second.Options.Automatic) {
+                for (const ScriptLibraryReloadPackage &package : pendingPackages)
+                    removed = RemoveLibraryPackage(it->second.Packages, package.Id, package.Version) || removed;
+            }
+            if (removed) {
                 if (it->second.Packages.empty()) {
                     it = m_PendingLibraries.erase(it);
                     continue;
@@ -949,7 +981,7 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
     PendingLibraryReload &pending = m_PendingLibraries[key];
     if (!replaced)
         pending.Packages.clear();
-    AddLibraryPackage(pending.Packages, id, version);
+    AddLibraryPackages(pending.Packages, pendingPackages);
     pending.Options = options;
     const auto queuedAt = std::chrono::steady_clock::now();
     pending.QueuedAt = replaced ? previous.QueuedAt : queuedAt;

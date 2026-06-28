@@ -94,6 +94,9 @@ private:
                                      const std::string &version,
                                      const ScriptModReloadOptions &options,
                                      const std::string &reason);
+    void QueueLibraryReloadDebounced(const std::vector<ScriptLibraryReloadPackage> &packages,
+                                     const ScriptModReloadOptions &options,
+                                     const std::string &reason);
     bool ShouldWatch(const ScriptMod *mod, ScriptModReloadPolicy *outPolicy = nullptr) const;
     std::wstring GetWatchRoot(const ScriptMod *mod) const;
     std::wstring GetModsRoot() const;
