@@ -270,7 +270,7 @@ static ScriptHookBlockEntry *ResolveHookBlockEntry(const std::shared_ptr<ScriptH
     return it->second.get();
 }
 
-static int ScriptHookBlockCallback(const CKBehaviorContext *context, void *arg) {
+static int RunScriptHookBlockCallback(const CKBehaviorContext *context, void *arg) {
     auto *entry = static_cast<ScriptHookBlockEntry *>(arg);
     if (!entry || !entry->Enabled || !entry->Callback)
         return CKBR_OK;
@@ -310,6 +310,15 @@ static int ScriptHookBlockCallback(const CKBehaviorContext *context, void *arg) 
         RetireHookBlockEntry(state, id, generation);
 
     return ok ? args.Result : CKBR_OK;
+}
+
+static int ScriptHookBlockCallback(const CKBehaviorContext *context, void *arg) {
+    try {
+        return RunScriptHookBlockCallback(context, arg);
+    } catch (...) {
+        // Virtools invokes this through a native BB callback; exceptions must not escape.
+        return CKBR_OK;
+    }
 }
 
 static ScriptHookBlockRef *RegisterHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceState> &state,
