@@ -89,6 +89,7 @@ struct ScriptModSnapshot {
     std::string LastReloadDiagnostic;
     ScriptDiagnosticSnapshot LastDiagnosticInfo;
     ScriptDiagnosticSnapshot LastReloadDiagnosticInfo;
+    size_t LoadOrder = 0;
     unsigned int ModGeneration = 0;
     unsigned int RuntimeGeneration = 0;
     unsigned int ReloadAttemptId = 0;
@@ -99,6 +100,8 @@ struct ScriptModSnapshot {
     std::vector<ScriptExportSnapshot> Exports;
     std::vector<std::string> Callbacks;
     ScriptResourceSnapshot Resources;
+    ScriptRuntimeModuleInfo RuntimeModule;
+    ScriptDiagnosticSnapshot RuntimeModuleDiagnostic;
 };
 
 struct ScriptDevStatusSnapshot {
@@ -186,7 +189,8 @@ private:
     std::vector<std::string> FormatLibCheck(const std::string &id,
                                             const std::string &version,
                                             bool includeHashes,
-                                            bool includeGraph);
+                                            bool includeGraph,
+                                            bool compile);
     std::vector<std::string> FormatExports(const std::string &id);
     std::vector<std::string> FormatResources(const std::string &id);
     const ScriptModSnapshot *FindSnapshot(const std::string &id);

@@ -318,6 +318,7 @@ public:
     unsigned int GetModGeneration() const { return m_ModGeneration.load(std::memory_order_acquire); }
     unsigned int GetRuntimeGeneration() const { return m_RuntimeGeneration.load(std::memory_order_acquire); }
     unsigned int GetReloadAttemptId() const { return m_ReloadAttemptId.load(std::memory_order_acquire); }
+    bool CaptureRuntimeModuleInfo(ScriptRuntimeModuleInfo &info, ScriptDiagnostic &diagnostic);
     ScriptModReloadPhase GetReloadPhase() const {
         return static_cast<ScriptModReloadPhase>(m_ReloadPhase.load(std::memory_order_acquire));
     }

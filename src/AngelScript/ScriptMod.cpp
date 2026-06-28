@@ -1054,6 +1054,10 @@ void ScriptMod::TouchRuntimeGeneration() {
     m_RuntimeGeneration.fetch_add(1, std::memory_order_acq_rel);
 }
 
+bool ScriptMod::CaptureRuntimeModuleInfo(ScriptRuntimeModuleInfo &info, ScriptDiagnostic &diagnostic) {
+    return m_Runtime.CaptureModuleInfo(m_Context ? m_Context->GetCKContext() : nullptr, info, diagnostic);
+}
+
 void ScriptMod::TouchReloadAttempt() {
     m_ReloadAttemptId.fetch_add(1, std::memory_order_acq_rel);
     TouchModGeneration();

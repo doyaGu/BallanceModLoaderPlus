@@ -75,6 +75,50 @@ struct ScriptSourceSection {
     std::string Code;
 };
 
+struct ScriptRuntimeImportInfo {
+    CKDWORD Index = 0;
+    std::string Declaration;
+    std::string SourceModuleName;
+};
+
+struct ScriptRuntimeBoundImportInfo {
+    std::string ImportModuleName;
+    CKDWORD ImportIndex = 0;
+    std::string SourceModuleName;
+    std::string FunctionDecl;
+};
+
+struct ScriptRuntimeIncludeInfo {
+    std::string ModuleName;
+    std::string FromSection;
+    std::string ToSection;
+    bool ResolvedFromSnapshot = false;
+};
+
+struct ScriptRuntimeModuleFingerprintInfo {
+    bool Present = false;
+    CKAS_MODULEKIND Kind = CKAS_MODULEKIND_UNKNOWN;
+    CKDWORD Generation = 0;
+    CKDWORD ApiVersion = 0;
+    std::string AngelScriptVersion;
+    std::string AngelScriptOptions;
+    unsigned long long SourceHash = 0;
+    unsigned long long IncludeHash = 0;
+    unsigned long long DeclaredImportHash = 0;
+    unsigned long long BoundImportHash = 0;
+    unsigned long long CombinedHash = 0;
+    CKDWORD Flags = 0;
+};
+
+struct ScriptRuntimeModuleInfo {
+    std::string ModuleName;
+    bool ModuleLoaded = false;
+    ScriptRuntimeModuleFingerprintInfo Fingerprint;
+    std::vector<ScriptRuntimeImportInfo> DeclaredImports;
+    std::vector<ScriptRuntimeBoundImportInfo> BoundImports;
+    std::vector<ScriptRuntimeIncludeInfo> IncludeEdges;
+};
+
 class ScriptModRuntime {
 public:
     ScriptModRuntime() = default;
@@ -114,6 +158,9 @@ public:
     bool EnumerateMetadata(CKContext *context,
                            CKAngelScriptMetadataCallback callback,
                            void *userData,
+                           ScriptDiagnostic &diagnostic);
+    bool CaptureModuleInfo(CKContext *context,
+                           ScriptRuntimeModuleInfo &info,
                            ScriptDiagnostic &diagnostic);
     bool CreateObject(CKContext *context,
                       const std::string &classNamespace,

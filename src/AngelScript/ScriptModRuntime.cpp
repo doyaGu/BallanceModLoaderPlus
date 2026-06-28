@@ -40,6 +40,51 @@ void ReplaceCompilerMessageSection(ScriptDiagnostic &diagnostic,
     }
 }
 
+std::string CopyCkasString(const char *value) {
+    return value ? value : "";
+}
+
+CKAS_STATUS __cdecl CaptureImportedFunction(const CKAngelScriptImportEntry *entry, void *userData) {
+    if (!entry || !userData)
+        return CKAS_INVALIDARGUMENT;
+
+    auto *items = static_cast<std::vector<ScriptRuntimeImportInfo> *>(userData);
+    ScriptRuntimeImportInfo item;
+    item.Index = entry->Index;
+    item.Declaration = CopyCkasString(entry->Declaration);
+    item.SourceModuleName = CopyCkasString(entry->SourceModuleName);
+    items->push_back(std::move(item));
+    return CKAS_OK;
+}
+
+CKAS_STATUS __cdecl CaptureBoundImportEdge(const CKAngelScriptBoundImportEdge *edge, void *userData) {
+    if (!edge || !userData)
+        return CKAS_INVALIDARGUMENT;
+
+    auto *items = static_cast<std::vector<ScriptRuntimeBoundImportInfo> *>(userData);
+    ScriptRuntimeBoundImportInfo item;
+    item.ImportModuleName = CopyCkasString(edge->ImportModuleName);
+    item.ImportIndex = edge->ImportIndex;
+    item.SourceModuleName = CopyCkasString(edge->SourceModuleName);
+    item.FunctionDecl = CopyCkasString(edge->FunctionDecl);
+    items->push_back(std::move(item));
+    return CKAS_OK;
+}
+
+CKAS_STATUS __cdecl CaptureIncludeEdge(const CKAngelScriptIncludeEdge *edge, void *userData) {
+    if (!edge || !userData)
+        return CKAS_INVALIDARGUMENT;
+
+    auto *items = static_cast<std::vector<ScriptRuntimeIncludeInfo> *>(userData);
+    ScriptRuntimeIncludeInfo item;
+    item.ModuleName = CopyCkasString(edge->ModuleName);
+    item.FromSection = CopyCkasString(edge->FromSection);
+    item.ToSection = CopyCkasString(edge->ToSection);
+    item.ResolvedFromSnapshot = edge->ResolvedFromSnapshot != 0;
+    items->push_back(std::move(item));
+    return CKAS_OK;
+}
+
 CKAS_STATUS __cdecl BMLScriptHostCallFilter(const char *apiName, CKDWORD flags, void *) {
     if ((flags & CKAS_HOSTCALL_MUTATES_HOST_STATE) == 0)
         return CKAS_OK;
@@ -411,6 +456,94 @@ bool ScriptModRuntime::EnumerateMetadata(CKContext *context,
                                       result,
                                       "Metadata reflection failed");
     return false;
+}
+
+bool ScriptModRuntime::CaptureModuleInfo(CKContext *context,
+                                         ScriptRuntimeModuleInfo &info,
+                                         ScriptDiagnostic &diagnostic) {
+    info = ScriptRuntimeModuleInfo();
+    info.ModuleName = m_ModuleName;
+    info.ModuleLoaded = m_ModuleLoaded;
+    if (!m_ModuleLoaded || m_ModuleName.empty())
+        return true;
+    if (!Refresh(context, diagnostic))
+        return false;
+
+    const ::CKAngelScriptAdapter::Api &api = m_Adapter.GetApi();
+    CKAngelScript *angelScript = m_Adapter.GetAngelScript();
+    CKAngelScriptResult result = {};
+
+    api.InitResult(&result);
+    CKAngelScriptModuleFingerprint fingerprint = {};
+    api.InitModuleFingerprint(&fingerprint);
+    CKAS_STATUS status = api.GetModuleFingerprint(angelScript,
+                                                  m_ModuleName.c_str(),
+                                                  &fingerprint,
+                                                  &result);
+    if (status != CKAS_OK) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost,
+                                          status,
+                                          result,
+                                          "Module fingerprint query failed");
+        return false;
+    }
+
+    info.Fingerprint.Present = true;
+    info.Fingerprint.Kind = fingerprint.Kind;
+    info.Fingerprint.Generation = fingerprint.Generation;
+    info.Fingerprint.ApiVersion = fingerprint.ApiVersion;
+    info.Fingerprint.AngelScriptVersion = CopyCkasString(fingerprint.AngelScriptVersion);
+    info.Fingerprint.AngelScriptOptions = CopyCkasString(fingerprint.AngelScriptOptions);
+    info.Fingerprint.SourceHash = fingerprint.SourceHash;
+    info.Fingerprint.IncludeHash = fingerprint.IncludeHash;
+    info.Fingerprint.DeclaredImportHash = fingerprint.DeclaredImportHash;
+    info.Fingerprint.BoundImportHash = fingerprint.BoundImportHash;
+    info.Fingerprint.CombinedHash = fingerprint.CombinedHash;
+    info.Fingerprint.Flags = fingerprint.Flags;
+
+    api.InitResult(&result);
+    status = api.EnumerateImportedFunctions(angelScript,
+                                            m_ModuleName.c_str(),
+                                            CaptureImportedFunction,
+                                            &info.DeclaredImports,
+                                            &result);
+    if (status != CKAS_OK) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost,
+                                          status,
+                                          result,
+                                          "Imported function enumeration failed");
+        return false;
+    }
+
+    api.InitResult(&result);
+    status = api.EnumerateBoundImportEdges(angelScript,
+                                           m_ModuleName.c_str(),
+                                           CaptureBoundImportEdge,
+                                           &info.BoundImports,
+                                           &result);
+    if (status != CKAS_OK) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost,
+                                          status,
+                                          result,
+                                          "Bound import edge enumeration failed");
+        return false;
+    }
+
+    api.InitResult(&result);
+    status = api.EnumerateModuleIncludeEdges(angelScript,
+                                             m_ModuleName.c_str(),
+                                             CaptureIncludeEdge,
+                                             &info.IncludeEdges,
+                                             &result);
+    if (status != CKAS_OK) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost,
+                                          status,
+                                          result,
+                                          "Module include edge enumeration failed");
+        return false;
+    }
+
+    return true;
 }
 
 bool ScriptModRuntime::CreateObject(CKContext *context,

@@ -17,6 +17,8 @@
 #include "ScriptLibraryRegistry.h"
 #include "ScriptLibraryServices.h"
 #include "ScriptLibraryTools.h"
+#include "ScriptModRuntime.h"
+#include "ScriptSourceSnapshotBuilder.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 
@@ -135,6 +137,42 @@ std::string ShortHash(const std::string &hash) {
     if (hash.size() <= kVisibleHashChars)
         return hash;
     return hash.substr(0, kVisibleHashChars);
+}
+
+std::vector<const ScriptModSnapshot *> MakeLoadOrderSnapshotView(const std::vector<ScriptModSnapshot> &snapshots) {
+    std::vector<const ScriptModSnapshot *> ordered;
+    ordered.reserve(snapshots.size());
+    for (const ScriptModSnapshot &snapshot : snapshots)
+        ordered.push_back(&snapshot);
+    std::sort(ordered.begin(), ordered.end(), [](const ScriptModSnapshot *left,
+                                                 const ScriptModSnapshot *right) {
+        if (left->LoadOrder == right->LoadOrder)
+            return left->Id < right->Id;
+        return left->LoadOrder < right->LoadOrder;
+    });
+    return ordered;
+}
+
+std::string Hex64(unsigned long long value) {
+    std::ostringstream stream;
+    stream << "0x"
+           << std::hex
+           << std::setw(16)
+           << std::setfill('0')
+           << value;
+    return stream.str();
+}
+
+const char *ModuleKindName(CKAS_MODULEKIND kind) {
+    switch (kind) {
+    case CKAS_MODULEKIND_SOURCE:
+        return "source";
+    case CKAS_MODULEKIND_BYTECODE:
+        return "bytecode";
+    case CKAS_MODULEKIND_UNKNOWN:
+    default:
+        return "unknown";
+    }
 }
 
 void ReplaceAll(std::string &text, const std::string &from, const std::string &to) {
@@ -436,6 +474,83 @@ void AppendDiagnosticLines(std::vector<std::string> &lines,
     }
     if (HasDiagnosticDetails(diagnostic))
         lines.push_back("    raw output available in the Logs panel");
+}
+
+void AppendIndentedDiagnosticLines(std::vector<std::string> &lines,
+                                   const std::string &indent,
+                                   const std::string &label,
+                                   const ScriptDiagnosticSnapshot &diagnostic) {
+    std::vector<std::string> diagnosticLines;
+    AppendDiagnosticLines(diagnosticLines, label, diagnostic);
+    for (std::string &line : diagnosticLines)
+        lines.push_back(indent + line);
+}
+
+void AppendRuntimeModuleLines(std::vector<std::string> &lines,
+                              const std::string &indent,
+                              const std::string &label,
+                              const ScriptRuntimeModuleInfo &module,
+                              const ScriptDiagnosticSnapshot &diagnostic) {
+    lines.push_back(indent + label + ":");
+    const std::string childIndent = indent + "  ";
+    if (!module.ModuleLoaded) {
+        lines.push_back(childIndent + "none");
+        return;
+    }
+
+    const ScriptRuntimeModuleFingerprintInfo &fingerprint = module.Fingerprint;
+    std::ostringstream summary;
+    summary << childIndent << "name=" << module.ModuleName;
+    if (fingerprint.Present) {
+        summary << " kind=" << ModuleKindName(fingerprint.Kind)
+                << " generation=" << fingerprint.Generation
+                << " ckasApi=" << fingerprint.ApiVersion
+                << " fingerprint=" << Hex64(fingerprint.CombinedHash);
+    }
+    lines.push_back(summary.str());
+
+    if (!fingerprint.AngelScriptVersion.empty()) {
+        lines.push_back(childIndent + "angelscript=" + fingerprint.AngelScriptVersion +
+                        (fingerprint.AngelScriptOptions.empty()
+                             ? std::string()
+                             : " options=" + fingerprint.AngelScriptOptions));
+    }
+    if (fingerprint.Present) {
+        lines.push_back(childIndent + "hashes source=" + Hex64(fingerprint.SourceHash) +
+                        " include=" + Hex64(fingerprint.IncludeHash) +
+                        " declaredImports=" + Hex64(fingerprint.DeclaredImportHash) +
+                        " boundImports=" + Hex64(fingerprint.BoundImportHash));
+    }
+    if (diagnostic.Present)
+        AppendIndentedDiagnosticLines(lines, indent, "module diagnostic", diagnostic);
+
+    lines.push_back(childIndent + "declared imports:");
+    for (const ScriptRuntimeImportInfo &item : module.DeclaredImports) {
+        lines.push_back(childIndent + "  #" + std::to_string(item.Index) +
+                        " from=" + (item.SourceModuleName.empty() ? "<default>" : item.SourceModuleName) +
+                        " decl=\"" + item.Declaration + "\"");
+    }
+    if (module.DeclaredImports.empty())
+        lines.push_back(childIndent + "  none");
+
+    lines.push_back(childIndent + "bound imports:");
+    for (const ScriptRuntimeBoundImportInfo &item : module.BoundImports) {
+        lines.push_back(childIndent + "  " + item.ImportModuleName +
+                        "#" + std::to_string(item.ImportIndex) +
+                        " -> " + item.SourceModuleName +
+                        " decl=\"" + item.FunctionDecl + "\"");
+    }
+    if (module.BoundImports.empty())
+        lines.push_back(childIndent + "  none");
+
+    lines.push_back(childIndent + "ckas include graph:");
+    for (const ScriptRuntimeIncludeInfo &edge : module.IncludeEdges) {
+        lines.push_back(childIndent + "  " + edge.FromSection +
+                        " -> " + edge.ToSection +
+                        (edge.ResolvedFromSnapshot ? " snapshot=yes" : " snapshot=no"));
+    }
+    if (module.IncludeEdges.empty())
+        lines.push_back(childIndent + "  none");
 }
 
 void DrawDiagnosticMetaRow(const char *label, const std::string &value) {
@@ -750,8 +865,11 @@ void ScriptDevToolsService::RefreshSnapshotsIfNeeded(bool force) {
     std::vector<ScriptModSnapshot> snapshots;
     for (int i = 0; i < m_Context->GetModCount(); ++i) {
         auto *mod = dynamic_cast<ScriptMod *>(m_Context->GetMod(i));
-        if (mod)
-            snapshots.push_back(BuildSnapshot(mod));
+        if (mod) {
+            ScriptModSnapshot snapshot = BuildSnapshot(mod);
+            snapshot.LoadOrder = static_cast<size_t>(i);
+            snapshots.push_back(std::move(snapshot));
+        }
     }
     std::sort(snapshots.begin(), snapshots.end(), [](const ScriptModSnapshot &left, const ScriptModSnapshot &right) {
         return left.Id < right.Id;
@@ -790,6 +908,11 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
     snapshot.ModGeneration = mod->GetModGeneration();
     snapshot.RuntimeGeneration = mod->GetRuntimeGeneration();
     snapshot.ReloadAttemptId = mod->GetReloadAttemptId();
+    ScriptDiagnostic runtimeModuleDiagnostic;
+    if (!mod->CaptureRuntimeModuleInfo(snapshot.RuntimeModule, runtimeModuleDiagnostic))
+        snapshot.RuntimeModuleDiagnostic = MakeDiagnosticSnapshot(m_Context,
+                                                                  runtimeModuleDiagnostic,
+                                                                  runtimeModuleDiagnostic.RawMessage);
 
     for (const auto &dependency : definition.Dependencies) {
         ScriptDependencySnapshot item;
@@ -1049,6 +1172,11 @@ std::vector<std::string> ScriptDevToolsService::FormatDeps(const std::string &id
     }
     if (snapshot->SourceDependencies.empty())
         lines.push_back("    none");
+    AppendRuntimeModuleLines(lines,
+                             "  ",
+                             "runtime module",
+                             snapshot->RuntimeModule,
+                             snapshot->RuntimeModuleDiagnostic);
     return lines;
 }
 
@@ -1056,9 +1184,9 @@ std::vector<std::string> ScriptDevToolsService::FormatLibs(const std::string &id
     RefreshSnapshotsIfNeeded(false);
 
     std::unordered_map<std::string, std::vector<std::string>> consumers;
-    for (const ScriptModSnapshot &snapshot : m_Snapshots) {
-        for (const ScriptSourceLibrarySnapshot &library : snapshot.SourceLibraries)
-            consumers[ScriptLibraryPackageKey(library.Id, library.Version)].push_back(snapshot.Id);
+    for (const ScriptModSnapshot *snapshot : MakeLoadOrderSnapshotView(m_Snapshots)) {
+        for (const ScriptSourceLibrarySnapshot &library : snapshot->SourceLibraries)
+            consumers[ScriptLibraryPackageKey(library.Id, library.Version)].push_back(snapshot->Id);
     }
 
     ScriptDiagnostic registryDiagnostic;
@@ -1084,17 +1212,23 @@ std::vector<std::string> ScriptDevToolsService::FormatLibs(const std::string &id
             lines.push_back("    used by " + consumer);
     }
 
-    for (const auto &entry : consumers) {
-        if (emitted.find(entry.first) != emitted.end())
+    std::vector<std::string> activeOnlyKeys;
+    activeOnlyKeys.reserve(consumers.size());
+    for (const auto &entry : consumers)
+        activeOnlyKeys.push_back(entry.first);
+    std::sort(activeOnlyKeys.begin(), activeOnlyKeys.end());
+    for (const std::string &key : activeOnlyKeys) {
+        if (emitted.find(key) != emitted.end())
             continue;
-        const size_t at = entry.first.find('@');
-        const std::string id = at == std::string::npos ? entry.first : entry.first.substr(0, at);
+        const size_t at = key.find('@');
+        const std::string id = at == std::string::npos ? key : key.substr(0, at);
         if (!idFilter.empty() && id != idFilter)
             continue;
-        lines.push_back("  " + entry.first +
-                        " installed=no consumers=" + std::to_string(entry.second.size()) +
+        const std::vector<std::string> &packageConsumers = consumers[key];
+        lines.push_back("  " + key +
+                        " installed=no consumers=" + std::to_string(packageConsumers.size()) +
                         " state=active-snapshot-only");
-        for (const std::string &consumer : entry.second)
+        for (const std::string &consumer : packageConsumers)
             lines.push_back("    used by " + consumer);
     }
 
@@ -1106,7 +1240,8 @@ std::vector<std::string> ScriptDevToolsService::FormatLibs(const std::string &id
 std::vector<std::string> ScriptDevToolsService::FormatLibCheck(const std::string &id,
                                                                const std::string &version,
                                                                bool includeHashes,
-                                                               bool includeGraph) {
+                                                               bool includeGraph,
+                                                               bool compile) {
     if (!ScriptLibraryRegistry::IsValidLibraryId(id))
         return {"Invalid script library id: " + id};
     if (!ScriptLibraryRegistry::IsValidLibraryVersion(version))
@@ -1130,16 +1265,80 @@ std::vector<std::string> ScriptDevToolsService::FormatLibCheck(const std::string
     ScriptLibraryToolReportOptions reportOptions;
     reportOptions.IncludeFileHashes = includeHashes;
     reportOptions.IncludeIncludeGraph = includeGraph;
+    reportOptions.Compile = compile;
     AppendScriptLibraryPackageCheckLines(report, lines, reportOptions);
+
+    if (compile) {
+        lines.push_back("  compile:");
+        if (!report.Success) {
+            lines.push_back("    skipped: source check failed");
+        } else if (!m_Context) {
+            lines.push_back("    skipped: CK context unavailable");
+        } else {
+            const std::vector<std::string> roots = GetScriptLibraryCompileRoots(report);
+            if (roots.empty()) {
+                lines.push_back("    skipped: no AngelScript source files");
+            } else {
+                ScriptSourceSnapshotBuilder snapshotBuilder(registry);
+                size_t rootIndex = 0;
+                for (const std::string &root : roots) {
+                    ScriptLibraryInclude include;
+                    std::string parseDiagnostic;
+                    if (!ScriptLibraryRegistry::TryParseVirtualInclude(root, include, parseDiagnostic)) {
+                        lines.push_back("    " + root + " error " + parseDiagnostic);
+                        continue;
+                    }
+
+                    ScriptSourceSnapshot snapshot;
+                    ScriptDiagnostic diagnostic;
+                    if (!snapshotBuilder.BuildLibraryIncludeSnapshot(include, snapshot, diagnostic)) {
+                        lines.push_back("    " + root + " error " + diagnostic.Message);
+                        continue;
+                    }
+
+                    ScriptModRuntime runtime("BML.__libcheck." + ScriptLibraryPackageKey(id, version) +
+                                             "." + std::to_string(rootIndex++));
+                    if (runtime.LoadModuleFromSections(m_Context->GetCKContext(), snapshot.Sections, root, diagnostic)) {
+                        lines.push_back("    " + root + " ok sections=" + std::to_string(snapshot.Sections.size()));
+                        ScriptRuntimeModuleInfo moduleInfo;
+                        ScriptDiagnostic moduleDiagnostic;
+                        if (runtime.CaptureModuleInfo(m_Context->GetCKContext(), moduleInfo, moduleDiagnostic)) {
+                            AppendRuntimeModuleLines(lines,
+                                                     "      ",
+                                                     "module",
+                                                     moduleInfo,
+                                                     ScriptDiagnosticSnapshot());
+                        } else {
+                            const ScriptDiagnosticSnapshot diagnosticSnapshot =
+                                MakeDiagnosticSnapshot(m_Context, moduleDiagnostic, moduleDiagnostic.RawMessage);
+                            AppendRuntimeModuleLines(lines,
+                                                     "      ",
+                                                     "module",
+                                                     moduleInfo,
+                                                     diagnosticSnapshot);
+                        }
+                        ScriptDiagnostic releaseDiagnostic;
+                        if (!runtime.Release(m_Context->GetCKContext(), &releaseDiagnostic))
+                            lines.push_back("      unload warning: " + releaseDiagnostic.Message);
+                    } else {
+                        lines.push_back("    " + root + " error " + diagnostic.Message);
+                        const ScriptDiagnosticSnapshot diagnosticSnapshot =
+                            MakeDiagnosticSnapshot(m_Context, diagnostic, diagnostic.RawMessage);
+                        AppendDiagnosticLines(lines, "compile diagnostic", diagnosticSnapshot);
+                    }
+                }
+            }
+        }
+    }
 
     RefreshSnapshotsIfNeeded(false);
     size_t consumerCount = 0;
-    for (const ScriptModSnapshot &snapshot : m_Snapshots) {
-        for (const ScriptSourceLibrarySnapshot &library : snapshot.SourceLibraries) {
+    for (const ScriptModSnapshot *snapshot : MakeLoadOrderSnapshotView(m_Snapshots)) {
+        for (const ScriptSourceLibrarySnapshot &library : snapshot->SourceLibraries) {
             if (library.Id == id && library.Version == version) {
                 if (consumerCount == 0)
                     lines.push_back("  consumers:");
-                lines.push_back("    " + snapshot.Id);
+                lines.push_back("    " + snapshot->Id);
                 ++consumerCount;
                 break;
             }
@@ -1209,12 +1408,16 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
     }
     if (command == "lib") {
         if (args.size() < 5 || args[2] != "check")
-            return {"Usage: script lib check <id> <version> [--hashes] [--graph]"};
+            return {"Usage: script lib check <id> <version> [--hashes] [--graph] [--compile]"};
         ScriptLibraryToolReportOptions options;
         std::string diagnostic;
         if (!ParseScriptLibraryToolReportOptions(args, 5, options, diagnostic))
-            return {"Usage: script lib check <id> <version> [--hashes] [--graph]"};
-        return FormatLibCheck(args[3], args[4], options.IncludeFileHashes, options.IncludeIncludeGraph);
+            return {"Usage: script lib check <id> <version> [--hashes] [--graph] [--compile]"};
+        return FormatLibCheck(args[3],
+                              args[4],
+                              options.IncludeFileHashes,
+                              options.IncludeIncludeGraph,
+                              options.Compile);
     }
     if (command == "info" || command == "diag" || command == "deps" || command == "exports" || command == "resources") {
         if (args.size() < 3)
@@ -1294,7 +1497,7 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
     if (args.size() == 3 && args[1] == "lib")
         return {"check"};
     if (args.size() >= 5 && args[1] == "lib" && args[2] == "check")
-        return {"--hashes", "--graph"};
+        return {"--hashes", "--graph", "--compile"};
     if (args.size() == 3 && (args[1] == "info" || args[1] == "diag" || args[1] == "deps" ||
                              args[1] == "exports" || args[1] == "resources")) {
         return GetScriptModIds();
