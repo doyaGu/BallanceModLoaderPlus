@@ -223,6 +223,24 @@ TEST_F(ScriptLibraryRegistryTest, ToolReportRecordsHashesAndIncludeEdges) {
     }));
 }
 
+TEST_F(ScriptLibraryRegistryTest, ToolReportMatchesScriptExtensionsCaseInsensitively) {
+    const std::wstring packageRoot = utils::CombinePathW(Root, L"com.example.score\\1.2.0");
+    Write(utils::CombinePathW(packageRoot, L"API.AS"), "namespace ScoreApi { const int Version = 12; }\n");
+
+    ScriptLibraryRegistry registry(Root);
+    std::string diagnostic;
+    ASSERT_TRUE(registry.Scan(diagnostic)) << diagnostic;
+
+    ScriptLibraryPackage package;
+    ASSERT_TRUE(registry.FindPackage("com.example.score", "1.2.0", package));
+
+    ScriptLibraryPackageCheckReport report;
+    ASSERT_TRUE(BuildScriptLibraryPackageCheckReport(registry, package, report));
+    EXPECT_TRUE(report.Success);
+    ASSERT_EQ(1u, report.Files.size());
+    EXPECT_EQ("/bml/libs/com.example.score@1.2.0/API.AS", report.Files.front().VirtualSection);
+}
+
 TEST_F(ScriptLibraryRegistryTest, ToolReportRejectsSymlinkEscapingPackageRoot) {
     const std::wstring packageRoot = utils::CombinePathW(Root, L"com.example.score\\1.2.0");
     const std::wstring outsideSource = utils::CombinePathW(OutsideRoot, L"api.as");

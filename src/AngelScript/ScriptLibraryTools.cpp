@@ -73,11 +73,11 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
         }
         const std::wstring path = it->path().wstring();
         const std::string logicalPathUtf8 = utils::Utf16ToUtf8(path);
-        if (!utils::EndsWith(logicalPathUtf8, ".as"))
+        if (!utils::EndsWith(logicalPathUtf8, ".as", false))
             continue;
         const std::wstring resolvedPath = utils::ResolvePathW(path);
         const std::string resolvedPathUtf8 = utils::Utf16ToUtf8(resolvedPath);
-        if (!utils::EndsWith(resolvedPathUtf8, ".as")) {
+        if (!utils::EndsWith(resolvedPathUtf8, ".as", false)) {
             AddError(report, "script source resolves to a non-script file: " + logicalPathUtf8);
             return false;
         }
@@ -91,7 +91,7 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
             return false;
         }
         const std::string finalPathUtf8 = utils::Utf16ToUtf8(finalPath);
-        if (!utils::EndsWith(finalPathUtf8, ".as")) {
+        if (!utils::EndsWith(finalPathUtf8, ".as", false)) {
             AddError(report, "script source resolves to a non-script file: " + logicalPathUtf8);
             return false;
         }
