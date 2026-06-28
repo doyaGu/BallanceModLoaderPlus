@@ -34,6 +34,14 @@ std::wstring JoinWatchedPath(const std::wstring &root, const wchar_t *relativeNa
     return path;
 }
 
+void CancelAndDrainOverlapped(HANDLE directory, OVERLAPPED &overlapped) {
+    if (directory == INVALID_HANDLE_VALUE)
+        return;
+    ::CancelIoEx(directory, &overlapped);
+    DWORD ignored = 0;
+    ::GetOverlappedResult(directory, &overlapped, &ignored, TRUE);
+}
+
 } // namespace
 
 ScriptFileWatcherWin32::~ScriptFileWatcherWin32() {
@@ -218,37 +226,40 @@ void ScriptFileWatcherWin32::WorkerLoop(WatchState *state) {
             HANDLE handles[2] = {state->StopEvent, overlapped.hEvent};
             const DWORD wait = ::WaitForMultipleObjects(2, handles, FALSE, INFINITE);
             if (wait == WAIT_OBJECT_0) {
-                ::CancelIoEx(state->Directory, &overlapped);
-                DWORD ignored = 0;
-                ::GetOverlappedResult(state->Directory, &overlapped, &ignored, TRUE);
+                CancelAndDrainOverlapped(state->Directory, overlapped);
+                break;
+            }
+            if (wait != WAIT_OBJECT_0 + 1) {
+                CancelAndDrainOverlapped(state->Directory, overlapped);
                 break;
             }
 
             DWORD bytes = 0;
-            if (::GetOverlappedResult(state->Directory, &overlapped, &bytes, FALSE)) {
-                if (bytes == 0) {
-                    Event overflow;
-                    overflow.Root = state->Root;
-                    overflow.Path = state->Root;
-                    overflow.Overflow = true;
-                    overflow.Recursive = state->Recursive;
-                    PushEvent(overflow);
-                    continue;
-                }
+            if (!::GetOverlappedResult(state->Directory, &overlapped, &bytes, FALSE))
+                break;
 
-                size_t offset = 0;
-                while (offset < bytes) {
-                    auto *info = reinterpret_cast<FILE_NOTIFY_INFORMATION *>(buffer.data() + offset);
-                    Event event;
-                    event.Root = state->Root;
-                    event.Path = JoinWatchedPath(state->Root, info->FileName, info->FileNameLength);
-                    event.Action = info->Action;
-                    event.Recursive = state->Recursive;
-                    PushEvent(event);
-                    if (info->NextEntryOffset == 0)
-                        break;
-                    offset += info->NextEntryOffset;
-                }
+            if (bytes == 0) {
+                Event overflow;
+                overflow.Root = state->Root;
+                overflow.Path = state->Root;
+                overflow.Overflow = true;
+                overflow.Recursive = state->Recursive;
+                PushEvent(overflow);
+                continue;
+            }
+
+            size_t offset = 0;
+            while (offset < bytes) {
+                auto *info = reinterpret_cast<FILE_NOTIFY_INFORMATION *>(buffer.data() + offset);
+                Event event;
+                event.Root = state->Root;
+                event.Path = JoinWatchedPath(state->Root, info->FileName, info->FileNameLength);
+                event.Action = info->Action;
+                event.Recursive = state->Recursive;
+                PushEvent(event);
+                if (info->NextEntryOffset == 0)
+                    break;
+                offset += info->NextEntryOffset;
             }
         }
     } catch (...) {
