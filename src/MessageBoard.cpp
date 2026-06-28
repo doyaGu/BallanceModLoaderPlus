@@ -1,12 +1,41 @@
 #include "MessageBoard.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdarg>
-#include <algorithm>
+#include <cstdio>
+#include <utility>
 
 #include "imgui_internal.h"
 
 #include "ModContext.h"
+
+namespace {
+    bool FormatMessageString(const char *format, va_list args, std::string &out) {
+        out.clear();
+        if (!format)
+            return false;
+
+        va_list measureArgs;
+        va_copy(measureArgs, args);
+        const int needed = vsnprintf(nullptr, 0, format, measureArgs);
+        va_end(measureArgs);
+        if (needed < 0)
+            return false;
+
+        std::string buffer(static_cast<size_t>(needed) + 1, '\0');
+        va_list writeArgs;
+        va_copy(writeArgs, args);
+        const int written = vsnprintf(buffer.data(), buffer.size(), format, writeArgs);
+        va_end(writeArgs);
+        if (written < 0)
+            return false;
+
+        buffer.resize(static_cast<size_t>(needed));
+        out = std::move(buffer);
+        return true;
+    }
+}
 
 // =============================================================================
 // MessageUnit Implementation
@@ -579,35 +608,27 @@ void MessageBoard::AddMessage(const char *msg) {
 void MessageBoard::Printf(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    int needed = vsnprintf(nullptr, 0, format, args);
+    std::string message;
+    const bool formatted = FormatMessageString(format, args, message);
     va_end(args);
-    if (needed < 0) return;
-    std::string buf((size_t) needed + 1, '\0');
-    va_start(args, format);
-    vsnprintf(buf.data(), buf.size(), format, args);
-    va_end(args);
-    // Remove the embedded NUL we reserved space for
-    buf.resize((size_t)needed);
-    AddMessage(buf.c_str());
+    if (formatted)
+        AddMessage(message.c_str());
 }
 
 void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
     va_list args;
     va_start(args, format);
-    int needed = vsnprintf(nullptr, 0, format, args);
+    std::string message;
+    const bool formatted = FormatMessageString(format, args, message);
     va_end(args);
-    if (needed < 0) return;
-    std::string buf((size_t) needed + 1, '\0');
-    va_start(args, format);
-    vsnprintf(buf.data(), buf.size(), format, args);
-    va_end(args);
-    buf.resize((size_t)needed);
+    if (!formatted)
+        return;
 
     const ImU32 r = (color >> IM_COL32_R_SHIFT) & 0xFF;
     const ImU32 g = (color >> IM_COL32_G_SHIFT) & 0xFF;
     const ImU32 b = (color >> IM_COL32_B_SHIFT) & 0xFF;
 
-    std::string coloredBuffer = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + buf + "\033[0m";
+    std::string coloredBuffer = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + message + "\033[0m";
     AddMessage(coloredBuffer.c_str());
 }
 
