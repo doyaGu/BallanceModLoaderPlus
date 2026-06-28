@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -597,17 +598,26 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
     entry.Object = retained.Detach();
     entry.Command.reset(new ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
 
+    const unsigned int generation = entry.Generation;
+    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
+    if (!ref) {
+        ReleaseScriptCommandObject(entry);
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create command reference."));
+        return nullptr;
+    }
+
     ICommand *nativeCommand = entry.Command.get();
     if (!m_State->Context->GetCommandContext().RegisterCommand(nativeCommand)) {
+        ref->Release();
         ReleaseScriptCommandObject(entry);
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             "Command registration failed: " + entry.Name));
         return nullptr;
     }
 
-    const unsigned int generation = entry.Generation;
     m_State->Commands.emplace(key, std::move(entry));
-    return new ScriptCommandRef(m_State, key, generation);
+    return ref;
 }
 
 ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &definition,
@@ -666,17 +676,26 @@ ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &
     entry.Generation = m_State->NextGeneration++;
     entry.Command.reset(new ScriptCommand(m_State, key, entry.Name, entry.Alias, entry.Description, entry.Cheat));
 
+    const unsigned int generation = entry.Generation;
+    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
+    if (!ref) {
+        ReleaseScriptCommandObject(entry);
+        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create command reference."));
+        return nullptr;
+    }
+
     ICommand *nativeCommand = entry.Command.get();
     if (!m_State->Context->GetCommandContext().RegisterCommand(nativeCommand)) {
+        ref->Release();
         ReleaseScriptCommandObject(entry);
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             "Command registration failed: " + entry.Name));
         return nullptr;
     }
 
-    const unsigned int generation = entry.Generation;
     m_State->Commands.emplace(key, std::move(entry));
-    return new ScriptCommandRef(m_State, key, generation);
+    return ref;
 }
 
 bool ScriptCommandService::Unregister(const std::string &name) {
@@ -734,8 +753,11 @@ ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(const std::stri
 
     const std::string key = NormalizeCommandName(entry.Name);
     const unsigned int generation = entry.Generation;
+    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
+    if (!ref)
+        return nullptr;
     m_State->Commands.emplace(key, std::move(entry));
-    return new ScriptCommandRef(m_State, key, generation);
+    return ref;
 }
 
 bool ScriptCommandService::InvokeTestCommandForRelease(const std::string &name,

@@ -2767,7 +2767,7 @@ private:
 };
 
 BMLAS_CallFrame *BMLAS_CreateCallFrame() {
-    return new BMLAS_CallFrame();
+    return new (std::nothrow) BMLAS_CallFrame();
 }
 
 class BMLAS_ExportRef {
@@ -3236,7 +3236,13 @@ BMLAS_ExportRef *BMLAS_ModRef::GetExport(int index) const {
         return nullptr;
 
     BML_ModExport *handle = BML_FindModExport(m_Id.c_str(), info.Name.c_str(), info.Signature.c_str());
-    return handle ? new BMLAS_ExportRef(m_Id, info.Name, info.Signature, handle) : nullptr;
+    if (!handle)
+        return nullptr;
+
+    BMLAS_ExportRef *exportRef = new (std::nothrow) BMLAS_ExportRef(m_Id, info.Name, info.Signature, handle);
+    if (!exportRef)
+        BML_ReleaseModExport(handle);
+    return exportRef;
 }
 
 BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
@@ -3244,7 +3250,7 @@ BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
     if (!RequireContext(ctx))
         return nullptr;
     IMod *mod = ctx->FindMod(id.c_str());
-    return mod ? new BMLAS_ModRef(mod->GetID()) : nullptr;
+    return mod ? new (std::nothrow) BMLAS_ModRef(mod->GetID()) : nullptr;
 }
 
 int BMLAS_GetModCount() {
@@ -3265,7 +3271,7 @@ BMLAS_ModRef *BMLAS_GetMod(int index) {
     if (!RequireContext(ctx))
         return nullptr;
     IMod *mod = ctx->GetMod(index);
-    return mod ? new BMLAS_ModRef(mod->GetID()) : nullptr;
+    return mod ? new (std::nothrow) BMLAS_ModRef(mod->GetID()) : nullptr;
 }
 
 BMLAS_ModRef *BMLAS_ContextFindMod(BML::ScriptModContextView *view, const std::string &id) {

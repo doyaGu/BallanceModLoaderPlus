@@ -5,6 +5,7 @@
 #include <cstring>
 #include <deque>
 #include <mutex>
+#include <new>
 #include <utility>
 #include <unordered_map>
 #include <vector>
@@ -701,13 +702,30 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(asIScriptObject *requ
         requestId = nextId;
     }
 
-    auto *cookie = new ScriptDataShareRequestCookie;
+    auto *cookie = new (std::nothrow) ScriptDataShareRequestCookie;
+    if (!cookie) {
+        RetireRequestEntry(state, requestId);
+        BML_DataShare_Release(share);
+        owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create DataShare request cookie."));
+        return nullptr;
+    }
     cookie->State = state;
     cookie->Id = requestId;
 
+    ScriptDataShareRequestRef *ref = new (std::nothrow) ScriptDataShareRequestRef(state, requestId, generation);
+    if (!ref) {
+        delete cookie;
+        RetireRequestEntry(state, requestId);
+        BML_DataShare_Release(share);
+        owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create DataShare request reference."));
+        return nullptr;
+    }
+
     BML_DataShare_Request(share, requestKey.c_str(), OnDataShareRequest, cookie, CleanupDataShareRequest);
     BML_DataShare_Release(share);
-    return new ScriptDataShareRequestRef(state, requestId, generation);
+    return ref;
 }
 
 ScriptDataShareRequestRef *ScriptDataShareService::Request(const std::string &key,
@@ -770,13 +788,30 @@ ScriptDataShareRequestRef *ScriptDataShareService::Request(const std::string &ke
         state->Requests.emplace(requestId, std::move(entry));
     }
 
-    auto *cookie = new ScriptDataShareRequestCookie;
+    auto *cookie = new (std::nothrow) ScriptDataShareRequestCookie;
+    if (!cookie) {
+        RetireRequestEntry(state, requestId);
+        BML_DataShare_Release(share);
+        owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create DataShare request cookie."));
+        return nullptr;
+    }
     cookie->State = state;
     cookie->Id = requestId;
 
+    ScriptDataShareRequestRef *ref = new (std::nothrow) ScriptDataShareRequestRef(state, requestId, generation);
+    if (!ref) {
+        delete cookie;
+        RetireRequestEntry(state, requestId);
+        BML_DataShare_Release(share);
+        owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create DataShare request reference."));
+        return nullptr;
+    }
+
     BML_DataShare_Request(share, requestKey.c_str(), OnDataShareRequest, cookie, CleanupDataShareRequest);
     BML_DataShare_Release(share);
-    return new ScriptDataShareRequestRef(state, requestId, generation);
+    return ref;
 }
 
 void ScriptDataShareService::ProcessQueuedCallbacks() {
@@ -859,12 +894,24 @@ ScriptDataShareRequestRef *ScriptDataShareService::AddTestRequestForRelease(cons
         state->Requests.emplace(requestId, std::move(entry));
     }
 
-    auto *cookie = new ScriptDataShareRequestCookie;
+    auto *cookie = new (std::nothrow) ScriptDataShareRequestCookie;
+    if (!cookie) {
+        RetireRequestEntry(state, requestId);
+        BML_DataShare_Release(share);
+        return nullptr;
+    }
     cookie->State = state;
     cookie->Id = requestId;
+    ScriptDataShareRequestRef *ref = new (std::nothrow) ScriptDataShareRequestRef(state, requestId, generation);
+    if (!ref) {
+        delete cookie;
+        RetireRequestEntry(state, requestId);
+        BML_DataShare_Release(share);
+        return nullptr;
+    }
     BML_DataShare_Request(share, key.c_str(), OnDataShareRequest, cookie, CleanupDataShareRequest);
     BML_DataShare_Release(share);
-    return new ScriptDataShareRequestRef(state, requestId, generation);
+    return ref;
 }
 #endif
 

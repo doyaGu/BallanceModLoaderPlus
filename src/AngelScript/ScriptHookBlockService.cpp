@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <new>
 #include <unordered_map>
 #include <utility>
 
@@ -317,8 +318,15 @@ static ScriptHookBlockRef *RegisterHookBlockEntry(const std::shared_ptr<ScriptHo
         return nullptr;
     const unsigned int id = entry->Id;
     const unsigned int generation = entry->Generation;
+    ScriptHookBlockRef *ref = new (std::nothrow) ScriptHookBlockRef(state, id, generation);
+    if (!ref) {
+        RestoreHookBlockGraph(*entry);
+        ReleaseHookBlockCallback(*entry);
+        RecordHookBlockDiagnostic(state, "Unable to create HookBlock reference.");
+        return nullptr;
+    }
     state->Entries.emplace(id, std::move(entry));
-    return new ScriptHookBlockRef(state, id, generation);
+    return ref;
 }
 
 static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
@@ -339,7 +347,11 @@ static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
     inputCount = std::max(1, inputCount);
     outputCount = std::max(1, outputCount);
 
-    std::unique_ptr<ScriptHookBlockEntry> entry(new ScriptHookBlockEntry());
+    std::unique_ptr<ScriptHookBlockEntry> entry(new (std::nothrow) ScriptHookBlockEntry());
+    if (!entry) {
+        RecordHookBlockDiagnostic(state, "Unable to create HookBlock entry.");
+        return nullptr;
+    }
     entry->State = state;
     entry->Id = state->NextId++;
     entry->Generation = state->NextGeneration++;

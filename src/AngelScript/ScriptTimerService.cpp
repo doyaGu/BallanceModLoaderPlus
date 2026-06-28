@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <new>
 #include <utility>
 
 #include "BML/ILogger.h"
@@ -809,6 +810,16 @@ ScriptTimerRef *ScriptTimerService::AddTimer(Timer::Builder &builder,
     if (!nativeTimer)
         return nullptr;
 
+    ScriptTimerRef *ref = new (std::nothrow) ScriptTimerRef(m_State, nativeTimer->GetId());
+    if (!ref) {
+        nativeTimer->Cancel();
+        if (m_State->Owner) {
+            m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                "Unable to create timer reference."));
+        }
+        return nullptr;
+    }
+
     ScriptObjectHandle retained = ScriptObjectHandle::Retain(timer);
     ScriptTimerEntry entry;
     entry.Object = retained.Detach();
@@ -817,7 +828,7 @@ ScriptTimerRef *ScriptTimerService::AddTimer(Timer::Builder &builder,
     entry.ReturnsBool = true;
     entry.Name = registration.Name;
     m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
-    return new ScriptTimerRef(m_State, nativeTimer->GetId());
+    return ref;
 }
 
 ScriptTimerRef *ScriptTimerService::AddCallbackTimer(Timer::Builder &builder,
@@ -846,6 +857,16 @@ ScriptTimerRef *ScriptTimerService::AddCallbackTimer(Timer::Builder &builder,
     if (!nativeTimer)
         return nullptr;
 
+    ScriptTimerRef *ref = new (std::nothrow) ScriptTimerRef(m_State, nativeTimer->GetId());
+    if (!ref) {
+        nativeTimer->Cancel();
+        if (m_State->Owner) {
+            m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                "Unable to create timer reference."));
+        }
+        return nullptr;
+    }
+
     callback->AddRef();
     ScriptTimerEntry entry;
     entry.Callback = callback;
@@ -854,7 +875,7 @@ ScriptTimerRef *ScriptTimerService::AddCallbackTimer(Timer::Builder &builder,
     entry.ReturnsBool = loop;
     entry.Name = name;
     m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
-    return new ScriptTimerRef(m_State, nativeTimer->GetId());
+    return ref;
 }
 
 void ScriptTimerService::Release(ScriptDiagnostic *) {
@@ -896,8 +917,13 @@ ScriptTimerRef *ScriptTimerService::AddTestTimerForRelease(const std::string &na
 
     ScriptTimerEntry entry;
     entry.Name = name;
+    ScriptTimerRef *ref = new (std::nothrow) ScriptTimerRef(m_State, nativeTimer->GetId());
+    if (!ref) {
+        nativeTimer->Cancel();
+        return nullptr;
+    }
     m_State->Timers.emplace(nativeTimer->GetId(), std::move(entry));
-    return new ScriptTimerRef(m_State, nativeTimer->GetId());
+    return ref;
 }
 #endif
 
