@@ -458,6 +458,7 @@ BML_EXPORT int BML_CallFrame_SetBool(BML_CallFrame *frame, size_t index, int val
 BML_EXPORT int BML_CallFrame_GetBool(const BML_CallFrame *frame, size_t index, int *outValue) {
     if (!outValue)
         return BML_ERROR_INVALID_PARAMETER;
+    *outValue = 0;
     const BML_CallValue *slot = nullptr;
     const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::Bool, &slot);
     if (status != BML_OK)
@@ -481,6 +482,7 @@ BML_EXPORT int BML_CallFrame_SetInt(BML_CallFrame *frame, size_t index, int valu
 BML_EXPORT int BML_CallFrame_GetInt(const BML_CallFrame *frame, size_t index, int *outValue) {
     if (!outValue)
         return BML_ERROR_INVALID_PARAMETER;
+    *outValue = 0;
     const BML_CallValue *slot = nullptr;
     const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::Int, &slot);
     if (status != BML_OK)
@@ -504,6 +506,7 @@ BML_EXPORT int BML_CallFrame_SetFloat(BML_CallFrame *frame, size_t index, float 
 BML_EXPORT int BML_CallFrame_GetFloat(const BML_CallFrame *frame, size_t index, float *outValue) {
     if (!outValue)
         return BML_ERROR_INVALID_PARAMETER;
+    *outValue = 0.0f;
     const BML_CallValue *slot = nullptr;
     const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::Float, &slot);
     if (status != BML_OK)
@@ -569,6 +572,7 @@ BML_EXPORT int BML_CallFrame_SetObjectId(BML_CallFrame *frame, size_t index, int
 BML_EXPORT int BML_CallFrame_GetObjectId(const BML_CallFrame *frame, size_t index, int *outObjectId) {
     if (!outObjectId)
         return BML_ERROR_INVALID_PARAMETER;
+    *outObjectId = 0;
     const BML_CallValue *slot = nullptr;
     const int status = BML_GetCallFrameArgChecked(frame, index, BML_CallValueType::ObjectId, &slot);
     if (status != BML_OK)
@@ -591,6 +595,7 @@ BML_EXPORT int BML_CallFrame_SetResultBool(BML_CallFrame *frame, int value) {
 BML_EXPORT int BML_CallFrame_GetResultBool(const BML_CallFrame *frame, int *outValue) {
     if (!outValue)
         return BML_ERROR_INVALID_PARAMETER;
+    *outValue = 0;
     if (!frame)
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
     if (frame->Result.Type == BML_CallValueType::Empty)
@@ -661,6 +666,7 @@ BML_EXPORT int BML_CallFrame_SetResultInt(BML_CallFrame *frame, int value) {
 BML_EXPORT int BML_CallFrame_GetResultInt(const BML_CallFrame *frame, int *outValue) {
     if (!outValue)
         return BML_ERROR_INVALID_PARAMETER;
+    *outValue = 0;
     if (!frame)
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
     if (frame->Result.Type == BML_CallValueType::Empty)
@@ -685,6 +691,7 @@ BML_EXPORT int BML_CallFrame_SetResultFloat(BML_CallFrame *frame, float value) {
 BML_EXPORT int BML_CallFrame_GetResultFloat(const BML_CallFrame *frame, float *outValue) {
     if (!outValue)
         return BML_ERROR_INVALID_PARAMETER;
+    *outValue = 0.0f;
     if (!frame)
         return BML_ERROR_INTEROP_BAD_CALL_FRAME;
     if (frame->Result.Type == BML_CallValueType::Empty)
@@ -754,6 +761,7 @@ BML_EXPORT int BML_CallFrame_SetResultObjectId(BML_CallFrame *frame, int objectI
 BML_EXPORT int BML_CallFrame_GetResultObjectId(const BML_CallFrame *frame, int *outObjectId) {
     if (!outObjectId)
         return BML_ERROR_INVALID_PARAMETER;
+    *outObjectId = 0;
     const BML_CallValue *result = nullptr;
     const int status = BML_GetCallFrameResultChecked(frame, BML_CallValueType::ObjectId, &result);
     if (status != BML_OK)
