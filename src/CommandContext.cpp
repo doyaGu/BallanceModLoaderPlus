@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 
 #include <utf8.h>
@@ -128,6 +129,12 @@ namespace {
 
             return false;
         });
+    }
+
+    char *AllocEmptyCString() {
+        char *string = new char[1];
+        string[0] = '\0';
+        return string;
     }
 }
 
@@ -332,13 +339,20 @@ void CommandContext::OutputV(const char *format, va_list args) {
 }
 
 char *CommandContext::AllocPrintfV(const char *format, va_list args) {
+    if (!format)
+        return AllocEmptyCString();
+
     va_list args2;
     va_copy(args2, args);
     int len = vsnprintf(nullptr, 0, format, args2);
     va_end(args2);
+    if (len < 0)
+        return AllocEmptyCString();
 
-    auto *string = new char[len + 2];
-    vsnprintf(string, len + 1, format, args);
+    const size_t bufferSize = static_cast<size_t>(len) + 1;
+    auto *string = new char[bufferSize];
+    if (vsnprintf(string, bufferSize, format, args) < 0)
+        string[0] = '\0';
     return string;
 }
 

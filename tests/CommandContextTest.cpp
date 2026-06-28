@@ -301,6 +301,18 @@ TEST_F(CommandContextTest, VariableNullValue) {
     EXPECT_STREQ("", ctx->GetVariable("key"));
 }
 
+TEST_F(CommandContextTest, AllocPrintfHandlesNullAndFormatsText) {
+    char *empty = BML::CommandContext::AllocPrintf(nullptr);
+    ASSERT_NE(empty, nullptr);
+    EXPECT_STREQ("", empty);
+    delete[] empty;
+
+    char *formatted = BML::CommandContext::AllocPrintf("%s %d", "value", 42);
+    ASSERT_NE(formatted, nullptr);
+    EXPECT_STREQ("value 42", formatted);
+    delete[] formatted;
+}
+
 // Output callback
 TEST_F(CommandContextTest, OutputCallback) {
     std::string captured;
