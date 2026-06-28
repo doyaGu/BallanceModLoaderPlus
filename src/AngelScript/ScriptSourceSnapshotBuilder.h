@@ -46,6 +46,9 @@ public:
     bool Build(const ScriptModEntry &entry,
                ScriptSourceSnapshot &snapshot,
                ScriptDiagnostic &diagnostic) const;
+    bool BuildLibraryIncludeSnapshot(const ScriptLibraryInclude &include,
+                                     ScriptSourceSnapshot &snapshot,
+                                     ScriptDiagnostic &diagnostic) const;
 
     static std::vector<ScriptIncludeDirective> ScanIncludeDirectives(const std::string &code);
     static bool ContainsBmlMetadata(const std::string &code, std::string *metadata = nullptr);

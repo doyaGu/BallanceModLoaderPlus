@@ -104,16 +104,21 @@ std::string DumpIncludeEdges(const ScriptSourceSnapshot &snapshot) {
 
 } // namespace
 
-TEST_F(ScriptSourceSnapshotBuilderTest, DirectoryModKeepsEntryFirstAndLocalHelpers) {
+TEST_F(ScriptSourceSnapshotBuilderTest, DirectoryModKeepsEntryFirstAndOrdersLocalHelpers) {
     const std::wstring modRoot = utils::CombinePathW(ModsRoot, L"Hello");
     Write(utils::CombinePathW(modRoot, L"Hello.mod.as"), "#include \"runtime.as\"\nclass Hello {}\n");
+    Write(utils::CombinePathW(modRoot, L"z.as"), "void ZHelper() {}\n");
     Write(utils::CombinePathW(modRoot, L"runtime.as"), "void RuntimeHelper() {}\n");
+    Write(utils::CombinePathW(modRoot, L"a.as"), "void AHelper() {}\n");
 
     ScriptSourceSnapshot snapshot = BuildDirectoryMod(L"Hello");
 
-    ASSERT_GE(snapshot.Sections.size(), 2u);
+    ASSERT_GE(snapshot.Sections.size(), 4u);
     EXPECT_EQ("Hello.mod.as", snapshot.EntrySectionName);
     EXPECT_EQ("Hello.mod.as", snapshot.Sections.front().Name);
+    EXPECT_EQ("a.as", snapshot.Sections[1].Name);
+    EXPECT_EQ("runtime.as", snapshot.Sections[2].Name);
+    EXPECT_EQ("z.as", snapshot.Sections[3].Name);
     EXPECT_TRUE(HasSection(snapshot, "runtime.as"));
     const ScriptSourceDependency *entryDependency = FindDependency(snapshot, "Hello.mod.as");
     ASSERT_NE(nullptr, entryDependency);
@@ -163,6 +168,38 @@ TEST_F(ScriptSourceSnapshotBuilderTest, LibraryIncludeInjectsOnlyDiscoveredClosu
     EXPECT_TRUE(apiEdge->LibraryOwned);
     EXPECT_EQ("com.example.score", apiEdge->LibraryId);
     EXPECT_EQ("1.2.0", apiEdge->LibraryVersion);
+}
+
+TEST_F(ScriptSourceSnapshotBuilderTest, BuildsLibraryIncludeSnapshotWithRealResolver) {
+    const std::wstring packageRoot = utils::CombinePathW(LibRoot, L"com.example.score\\1.2.0");
+    Write(utils::CombinePathW(packageRoot, L"api.as"),
+          "#include \"detail.as\"\nnamespace ScoreApi { const int Version = 12; }\n");
+    Write(utils::CombinePathW(packageRoot, L"detail.as"),
+          "namespace ScoreApi { void Detail() {} }\n");
+
+    ScriptLibraryRegistry registry(LibRoot);
+    std::string registryDiagnostic;
+    ASSERT_TRUE(registry.Scan(registryDiagnostic)) << registryDiagnostic;
+
+    ScriptLibraryInclude include;
+    std::string parseDiagnostic;
+    ASSERT_TRUE(ScriptLibraryRegistry::TryParseVirtualInclude(
+        "/bml/libs/com.example.score@1.2.0/api.as",
+        include,
+        parseDiagnostic)) << parseDiagnostic;
+
+    ScriptSourceSnapshotBuilder builder(std::move(registry));
+    ScriptSourceSnapshot snapshot;
+    ScriptDiagnostic diagnostic;
+    ASSERT_TRUE(builder.BuildLibraryIncludeSnapshot(include, snapshot, diagnostic)) << diagnostic.Message;
+
+    EXPECT_EQ("__bml_lib_check__.as", snapshot.EntrySectionName);
+    ASSERT_GE(snapshot.Sections.size(), 3u);
+    EXPECT_EQ("__bml_lib_check__.as", snapshot.Sections.front().Name);
+    EXPECT_TRUE(HasSection(snapshot, "/bml/libs/com.example.score@1.2.0/api.as"));
+    EXPECT_TRUE(HasSection(snapshot, "/bml/libs/com.example.score@1.2.0/detail.as"));
+    ASSERT_EQ(1u, snapshot.Libraries.size());
+    EXPECT_EQ("com.example.score", snapshot.Libraries.front().Id);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytesAcrossBuilds) {
@@ -221,6 +258,34 @@ TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheKeepsStableBytes
     EXPECT_EQ(64u, firstDependency->ContentHash.size());
     EXPECT_EQ(firstDependency->ContentHash, secondDependency->ContentHash);
     EXPECT_EQ(capturedHash, firstDependency->ContentHash);
+}
+
+TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheRejectsFilesAddedAfterPackageCapture) {
+    const std::wstring packageRoot = utils::CombinePathW(LibRoot, L"com.example.score\\1.2.0");
+    const std::wstring apiPath = utils::CombinePathW(packageRoot, L"api.as");
+    const std::wstring detailPath = utils::CombinePathW(packageRoot, L"detail.as");
+    Write(apiPath, "namespace ScoreApi { const int Version = 1; }\n");
+
+    ScriptLibraryRegistry registry(LibRoot);
+    std::string registryDiagnostic;
+    ASSERT_TRUE(registry.Scan(registryDiagnostic)) << registryDiagnostic;
+
+    ScriptLibrarySourceCache sourceCache;
+    ScriptDiagnostic diagnostic;
+    ASSERT_TRUE(sourceCache.CapturePackage(registry, "com.example.score", "1.2.0", diagnostic)) << diagnostic.Message;
+    ASSERT_EQ(1u, sourceCache.GetFileCount());
+
+    Write(detailPath, "namespace ScoreApi { const int Detail = 2; }\n");
+
+    std::string code;
+    EXPECT_FALSE(sourceCache.ReadFileUtf8(
+        detailPath,
+        "/bml/libs/com.example.score@1.2.0/detail.as",
+        code,
+        diagnostic));
+    EXPECT_TRUE(code.empty());
+    EXPECT_NE(std::string::npos, diagnostic.Message.find("batch snapshot"));
+    EXPECT_EQ("/bml/libs/com.example.score@1.2.0/detail.as", diagnostic.EntryPath);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, ScriptLibraryScenarioCanBeConsumedThroughVersionedVirtualInclude) {

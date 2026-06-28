@@ -10,6 +10,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "Utils/CryptoUtils.h"
 #include "Utils/PathUtils.h"
@@ -123,6 +124,7 @@ bool AddScriptSourceDirectory(const std::wstring &root,
         return true;
 
     std::error_code ec;
+    std::vector<std::wstring> sourcePaths;
     for (std::filesystem::recursive_directory_iterator it(root, ec), end;
          it != end && !ec;
          it.increment(ec)) {
@@ -139,8 +141,7 @@ bool AddScriptSourceDirectory(const std::wstring &root,
             FoldPathKeyW(path) != FoldPathKeyW(entryPath)) {
             continue;
         }
-        if (!AddScriptSourceSection(path, sectionRoot, seen, snapshot, sectionIndex, diagnostic))
-            return false;
+        sourcePaths.push_back(path);
     }
 
     if (ec) {
@@ -148,6 +149,18 @@ bool AddScriptSourceDirectory(const std::wstring &root,
                                           "Failed to enumerate script source snapshot directory.");
         diagnostic.EntryPath = utils::Utf16ToUtf8(root);
         return false;
+    }
+    std::sort(sourcePaths.begin(), sourcePaths.end(), [&](const std::wstring &left,
+                                                          const std::wstring &right) {
+        const std::string leftSection = FoldSectionKey(ToScriptSectionNameUtf8(left, sectionRoot));
+        const std::string rightSection = FoldSectionKey(ToScriptSectionNameUtf8(right, sectionRoot));
+        if (leftSection != rightSection)
+            return leftSection < rightSection;
+        return FoldPathKeyW(left) < FoldPathKeyW(right);
+    });
+    for (const std::wstring &path : sourcePaths) {
+        if (!AddScriptSourceSection(path, sectionRoot, seen, snapshot, sectionIndex, diagnostic))
+            return false;
     }
     return true;
 }
@@ -363,12 +376,24 @@ bool ScriptLibrarySourceCache::ReadFileUtf8(const std::wstring &physicalPath,
                                             const std::string &virtualSection,
                                             std::string &code,
                                             ScriptDiagnostic &diagnostic) {
+    code.clear();
     const std::wstring resolved = utils::ResolvePathW(physicalPath);
     const std::wstring key = FoldPathKeyW(resolved);
     const auto cached = m_Files.find(key);
     if (cached != m_Files.end()) {
         code = cached->second;
         return true;
+    }
+
+    ScriptLibraryInclude include;
+    std::string parseDiagnostic;
+    if (ScriptLibraryRegistry::TryParseVirtualInclude(virtualSection, include, parseDiagnostic) &&
+        m_CapturedPackages.find(LibraryUseKey(include.Id, include.Version)) != m_CapturedPackages.end()) {
+        diagnostic = MakeScriptDiagnostic(
+            ScriptDiagnosticPhase::Entry,
+            "Captured script library source is missing from the batch snapshot: " + virtualSection + ".");
+        diagnostic.EntryPath = virtualSection;
+        return false;
     }
 
     if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(resolved), code)) {
@@ -534,6 +559,22 @@ bool ScriptSourceSnapshotBuilder::Build(const ScriptModEntry &entry,
     std::unordered_map<std::string, size_t> sectionIndex;
     if (!AddLocalSources(entry, snapshot, sectionIndex, diagnostic))
         return false;
+    return ResolveLibraryClosure(snapshot, sectionIndex, diagnostic);
+}
+
+bool ScriptSourceSnapshotBuilder::BuildLibraryIncludeSnapshot(const ScriptLibraryInclude &include,
+                                                              ScriptSourceSnapshot &snapshot,
+                                                              ScriptDiagnostic &diagnostic) const {
+    snapshot = ScriptSourceSnapshot();
+    snapshot.EntrySectionName = "__bml_lib_check__.as";
+
+    ScriptSourceSection entry;
+    entry.Name = snapshot.EntrySectionName;
+    entry.Code = "#include \"" + include.VirtualSection + "\"\n";
+    snapshot.Sections.push_back(std::move(entry));
+
+    std::unordered_map<std::string, size_t> sectionIndex;
+    sectionIndex.emplace(FoldSectionKey(snapshot.EntrySectionName), 0);
     return ResolveLibraryClosure(snapshot, sectionIndex, diagnostic);
 }
 
