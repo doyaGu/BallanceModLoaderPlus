@@ -107,20 +107,26 @@ std::string FormatLibraryPackageList(const std::vector<ScriptLibraryReloadPackag
     return value;
 }
 
-std::string MakeLibraryPendingKey(const std::string &id,
-                                  const std::string &version,
-                                  const ScriptModReloadOptions &options) {
-    if (options.Automatic)
-        return "automatic";
-    return LibraryPackageKey(id, version);
+std::string MakeLibraryPendingKey(const ScriptModReloadOptions &options) {
+    std::ostringstream stream;
+    stream << (options.Automatic ? "automatic" : "manual")
+           << ":dry=" << (options.DryRun ? '1' : '0')
+           << ":check=" << (options.CheckStateHooks ? '1' : '0')
+           << ":force=" << (options.ForceExports ? '1' : '0');
+    return stream.str();
 }
 
 std::string MakeLibraryPendingReason(const std::string &reason,
                                      const std::vector<ScriptLibraryReloadPackage> &packages) {
+    if (packages.empty())
+        return reason;
+    const bool manualReason = utils::StartsWith(reason, "manual library reload");
     const bool libraryChangeReason = utils::StartsWith(reason, "library changed") ||
                                      utils::StartsWith(reason, "libraries changed");
-    if (packages.empty() || (!libraryChangeReason && packages.size() <= 1))
+    if (!manualReason && !libraryChangeReason && packages.size() <= 1)
         return reason;
+    if (manualReason)
+        return "manual library reload " + FormatLibraryPackageList(packages);
     if (packages.size() == 1)
         return "library changed " + LibraryPackageKey(packages.front());
     return "libraries changed " + FormatLibraryPackageList(packages);
@@ -360,6 +366,7 @@ void ScriptModHotReloadService::RegisterMod(ScriptMod *mod) {
             record.Mod = mod;
             record.Policy = ResolvePolicy(mod);
             record.WatchRoot = GetWatchRoot(mod);
+            RefreshRegisteredModOrder();
             if (m_Started)
                 RebuildWatches();
             return;
@@ -370,6 +377,7 @@ void ScriptModHotReloadService::RegisterMod(ScriptMod *mod) {
     record.Policy = ResolvePolicy(mod);
     record.WatchRoot = GetWatchRoot(mod);
     m_Mods.push_back(std::move(record));
+    RefreshRegisteredModOrder();
     if (m_Started)
         RebuildWatches();
 }
@@ -390,6 +398,7 @@ void ScriptModHotReloadService::Start() {
     if (m_Started)
         return;
     m_Started = true;
+    RefreshRegisteredModOrder();
     RebuildWatches();
 }
 
@@ -408,6 +417,8 @@ void ScriptModHotReloadService::Process() {
     if (m_AutomaticEnabled) {
         const std::vector<ScriptFileWatcherWin32::Event> events = m_Watcher.DrainEvents();
         const uint64_t watcherDroppedEvents = m_Watcher.GetDroppedEventCount();
+        ScriptModReloadOptions automaticOptions;
+        automaticOptions.Automatic = true;
         if (watcherDroppedEvents != m_LastWatcherDroppedEvents) {
             if (m_Context && m_Context->GetScriptDevTools()) {
                 m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
@@ -419,9 +430,11 @@ void ScriptModHotReloadService::Process() {
                                                              {{"dropped", std::to_string(watcherDroppedEvents)}});
             }
             m_LastWatcherDroppedEvents = watcherDroppedEvents;
+            for (const auto &record : m_Mods) {
+                if (record.Mod && record.Policy == ScriptModReloadPolicy::Auto)
+                    QueueReloadDebounced(record.Mod, automaticOptions, "watch overflow");
+            }
         }
-        ScriptModReloadOptions automaticOptions;
-        automaticOptions.Automatic = true;
         for (const auto &event : events) {
             PublishNewModRestartRequired(event);
             std::unordered_set<std::string> queuedLibraryPackages;
@@ -449,11 +462,26 @@ void ScriptModHotReloadService::Process() {
     }
 
     const auto now = std::chrono::steady_clock::now();
+    auto sortReadyKeys = [](std::vector<std::string> &keys, const auto &pending) {
+        std::sort(keys.begin(), keys.end(), [&](const std::string &left, const std::string &right) {
+            const auto leftIt = pending.find(left);
+            const auto rightIt = pending.find(right);
+            if (leftIt == pending.end() || rightIt == pending.end())
+                return left < right;
+            if (leftIt->second.Due != rightIt->second.Due)
+                return leftIt->second.Due < rightIt->second.Due;
+            if (leftIt->second.QueuedAt != rightIt->second.QueuedAt)
+                return leftIt->second.QueuedAt < rightIt->second.QueuedAt;
+            return left < right;
+        });
+    };
+
     std::vector<std::string> readyLibraries;
     for (const auto &entry : m_PendingLibraries) {
         if (entry.second.Due <= now)
             readyLibraries.push_back(entry.first);
     }
+    sortReadyKeys(readyLibraries, m_PendingLibraries);
     for (const std::string &key : readyLibraries) {
         auto pendingIt = m_PendingLibraries.find(key);
         if (pendingIt == m_PendingLibraries.end())
@@ -475,6 +503,7 @@ void ScriptModHotReloadService::Process() {
         if (entry.second.Due <= now)
             ready.push_back(entry.first);
     }
+    sortReadyKeys(ready, m_Pending);
 
     for (const std::string &id : ready) {
         auto pendingIt = m_Pending.find(id);
@@ -591,6 +620,47 @@ ScriptMod *ScriptModHotReloadService::FindMod(const std::string &id) const {
             return record.Mod;
     }
     return nullptr;
+}
+
+void ScriptModHotReloadService::RefreshRegisteredModOrder() {
+    if (!m_Context || m_Mods.size() < 2)
+        return;
+
+    std::vector<ModRecord> ordered;
+    ordered.reserve(m_Mods.size());
+    std::unordered_set<std::string> orderedIds;
+    orderedIds.reserve(m_Mods.size());
+
+    for (int i = 0; i < m_Context->GetModCount(); ++i) {
+        auto *scriptMod = dynamic_cast<ScriptMod *>(m_Context->GetMod(i));
+        if (!scriptMod || !scriptMod->GetID())
+            continue;
+
+        const std::string id = scriptMod->GetID();
+        auto it = std::find_if(m_Mods.begin(), m_Mods.end(), [&](const ModRecord &record) {
+            return record.Mod && record.Mod->GetID() && id == record.Mod->GetID();
+        });
+        if (it == m_Mods.end())
+            continue;
+
+        ModRecord record = *it;
+        record.Mod = scriptMod;
+        record.Policy = ResolvePolicy(scriptMod);
+        record.WatchRoot = GetWatchRoot(scriptMod);
+        ordered.push_back(std::move(record));
+        orderedIds.insert(id);
+    }
+
+    if (ordered.empty())
+        return;
+
+    for (const ModRecord &record : m_Mods) {
+        const char *id = record.Mod ? record.Mod->GetID() : nullptr;
+        if (!id || orderedIds.find(id) == orderedIds.end())
+            ordered.push_back(record);
+    }
+
+    m_Mods = std::move(ordered);
 }
 
 void ScriptModHotReloadService::RebuildWatches() {
@@ -722,7 +792,8 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
     auto existingIt = m_Pending.find(id);
     if (options.Automatic &&
         existingIt != m_Pending.end() &&
-        !existingIt->second.Options.Automatic) {
+        !existingIt->second.Options.Automatic &&
+        !existingIt->second.Options.DryRun) {
         if (m_Context && m_Context->GetScriptDevTools()) {
             std::vector<ScriptDevEventField> fields = {{"reason", reason},
                                                        {"pendingReason", existingIt->second.Reason}};
@@ -763,7 +834,7 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
                                                       const std::string &reason) {
     if (id.empty() || version.empty())
         return;
-    if (!options.Automatic) {
+    if (!options.Automatic && !options.DryRun) {
         for (auto it = m_PendingLibraries.begin(); it != m_PendingLibraries.end();) {
             if (it->second.Options.Automatic && RemoveLibraryPackage(it->second.Packages, id, version)) {
                 if (it->second.Packages.empty()) {
@@ -776,7 +847,7 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
         }
     }
 
-    const std::string key = MakeLibraryPendingKey(id, version, options);
+    const std::string key = MakeLibraryPendingKey(options);
     auto existingIt = m_PendingLibraries.find(key);
     const bool replaced = existingIt != m_PendingLibraries.end();
     PendingLibraryReload previous;
@@ -784,12 +855,12 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
         previous = existingIt->second;
 
     PendingLibraryReload &pending = m_PendingLibraries[key];
-    if (!replaced || !options.Automatic)
+    if (!replaced)
         pending.Packages.clear();
-    AddLibraryPackage(pending.Packages, id, version);
+    const bool packageAdded = AddLibraryPackage(pending.Packages, id, version);
     pending.Options = options;
     pending.Due = std::chrono::steady_clock::now();
-    pending.QueuedAt = pending.Due;
+    pending.QueuedAt = replaced ? previous.QueuedAt : pending.Due;
     pending.LastBlockedNotice = {};
     pending.BlockedRetryCount = 0;
     pending.Reason = MakeLibraryPendingReason(reason, pending.Packages);
@@ -801,12 +872,15 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
             fields.push_back({"previousPackages", FormatLibraryPackageList(previous.Packages)});
             AppendReloadRequestFields(fields, pending.Reason, options, std::string(), false, false);
             fields.push_back({"packages", FormatLibraryPackageList(pending.Packages)});
+            const bool merged = packageAdded && previous.Packages.size() != pending.Packages.size();
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
-                                                         "ScriptLibraryReloadPendingReplaced",
+                                                         merged ? "ScriptLibraryReloadPendingMerged"
+                                                                : "ScriptLibraryReloadPendingReplaced",
                                                          key,
                                                          "reload",
                                                          "",
-                                                         "Pending script library reload was replaced by a newer request.",
+                                                         merged ? "Script library reload was coalesced into an existing pending batch."
+                                                                : "Pending script library reload was replaced by a newer request.",
                                                          fields);
         }
         m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -834,7 +908,9 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
     const std::string packageKey = LibraryPackageKey(id, version);
     if (options.Automatic) {
         for (const auto &entry : m_PendingLibraries) {
-            if (entry.second.Options.Automatic || !HasLibraryPackage(entry.second.Packages, id, version))
+            if (entry.second.Options.Automatic ||
+                entry.second.Options.DryRun ||
+                !HasLibraryPackage(entry.second.Packages, id, version))
                 continue;
             if (m_Context && m_Context->GetScriptDevTools()) {
                 std::vector<ScriptDevEventField> fields = {{"reason", reason},
@@ -851,7 +927,7 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
             }
             return;
         }
-    } else {
+    } else if (!options.DryRun) {
         for (auto it = m_PendingLibraries.begin(); it != m_PendingLibraries.end();) {
             if (it->second.Options.Automatic && RemoveLibraryPackage(it->second.Packages, id, version)) {
                 if (it->second.Packages.empty()) {
@@ -864,16 +940,20 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::string &i
         }
     }
 
-    const std::string key = MakeLibraryPendingKey(id, version, options);
+    const std::string key = MakeLibraryPendingKey(options);
     auto existingIt = m_PendingLibraries.find(key);
     const bool replaced = existingIt != m_PendingLibraries.end();
+    PendingLibraryReload previous;
+    if (replaced)
+        previous = existingIt->second;
     PendingLibraryReload &pending = m_PendingLibraries[key];
-    if (!replaced || !options.Automatic)
+    if (!replaced)
         pending.Packages.clear();
     AddLibraryPackage(pending.Packages, id, version);
     pending.Options = options;
-    pending.QueuedAt = std::chrono::steady_clock::now();
-    pending.Due = pending.QueuedAt + kDebounceDelay;
+    const auto queuedAt = std::chrono::steady_clock::now();
+    pending.QueuedAt = replaced ? previous.QueuedAt : queuedAt;
+    pending.Due = queuedAt + kDebounceDelay;
     pending.LastBlockedNotice = {};
     pending.BlockedRetryCount = 0;
     pending.Reason = MakeLibraryPendingReason(reason, pending.Packages);

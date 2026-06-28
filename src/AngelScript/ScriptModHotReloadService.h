@@ -81,6 +81,7 @@ private:
     friend class ScriptModReloadOperation;
 
     ScriptMod *FindMod(const std::string &id) const;
+    void RefreshRegisteredModOrder();
     void RebuildWatches();
     void ClearAutomaticPendingReloads();
     void QueueReloadNow(ScriptMod *mod, const ScriptModReloadOptions &options, const std::string &reason);
