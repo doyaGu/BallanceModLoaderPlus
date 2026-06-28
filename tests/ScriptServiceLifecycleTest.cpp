@@ -253,6 +253,36 @@ TEST_F(ScriptServiceLifecycleTest, DataShareCallbackQueuesUntilServiceDrain) {
     ref->Release();
 }
 
+TEST_F(ScriptServiceLifecycleTest, DataShareQueuedCallbackCountClearsAfterDrain) {
+    int calls = 0;
+    const char value[] = "queued";
+
+    ScriptDataShareService service;
+    ScriptDataShareRequestRef *ref = service.AddTestRequestForRelease(
+        "script-service-counted-datashare",
+        ScriptDataShareRequestType::String,
+        [&calls](const ScriptDataShareEventView &) {
+            ++calls;
+        });
+    ASSERT_NE(nullptr, ref);
+    EXPECT_EQ(0u, service.GetQueuedCallbackCount());
+
+    BML_DataShare *share = BML_GetDataShare(nullptr);
+    ASSERT_NE(nullptr, share);
+    EXPECT_EQ(1, BML_DataShare_Set(share, "script-service-counted-datashare", value, sizeof(value)));
+    BML_DataShare_Release(share);
+
+    EXPECT_EQ(0, calls);
+    EXPECT_EQ(1u, service.GetQueuedCallbackCount());
+
+    service.ProcessQueuedCallbacks();
+
+    EXPECT_EQ(1, calls);
+    EXPECT_EQ(0u, service.GetQueuedCallbackCount());
+    EXPECT_FALSE(ref->IsValid());
+    ref->Release();
+}
+
 TEST_F(ScriptServiceLifecycleTest, DataShareReleaseDropsQueuedCallback) {
     int calls = 0;
     const char value[] = "dropped";
