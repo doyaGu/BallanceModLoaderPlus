@@ -345,6 +345,24 @@ TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheRejectsFilesAdde
     EXPECT_EQ("/bml/libs/com.example.score@1.2.0/detail.as", diagnostic.EntryPath);
 }
 
+TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheRejectsUncapturedReads) {
+    const std::wstring packageRoot = utils::CombinePathW(LibRoot, L"com.example.score\\1.2.0");
+    const std::wstring apiPath = utils::CombinePathW(packageRoot, L"api.as");
+    Write(apiPath, "namespace ScoreApi { const int Version = 1; }\n");
+
+    ScriptLibrarySourceCache sourceCache;
+    ScriptDiagnostic diagnostic;
+    std::string code;
+    EXPECT_FALSE(sourceCache.ReadFileUtf8(
+        apiPath,
+        "/bml/libs/com.example.score@1.2.0/api.as",
+        code,
+        diagnostic));
+    EXPECT_TRUE(code.empty());
+    EXPECT_NE(std::string::npos, diagnostic.Message.find("batch snapshot"));
+    EXPECT_EQ("/bml/libs/com.example.score@1.2.0/api.as", diagnostic.EntryPath);
+}
+
 TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheRejectsSymlinkEscapingPackageRoot) {
     const std::wstring packageRoot = utils::CombinePathW(LibRoot, L"com.example.score\\1.2.0");
     const std::wstring outsideRoot = utils::CombinePathW(Root, L"Outside");

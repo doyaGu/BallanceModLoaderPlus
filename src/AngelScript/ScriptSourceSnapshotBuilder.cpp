@@ -442,28 +442,11 @@ bool ScriptLibrarySourceCache::ReadFileUtf8(const std::wstring &physicalPath,
         return true;
     }
 
-    ScriptLibraryInclude include;
-    std::string parseDiagnostic;
-    if (ScriptLibraryRegistry::TryParseVirtualInclude(virtualSection, include, parseDiagnostic) &&
-        m_CapturedPackages.find(LibraryUseKey(include.Id, include.Version)) != m_CapturedPackages.end()) {
-        diagnostic = MakeScriptDiagnostic(
-            ScriptDiagnosticPhase::Entry,
-            "Captured script library source is missing from the batch snapshot: " + virtualSection + ".");
-        diagnostic.EntryPath = virtualSection;
-        return false;
-    }
-
-    std::wstring readPath;
-    if (!utils::TryGetFinalPathW(normalized, readPath))
-        readPath = normalized;
-    if (!utils::ReadFileBytesUtf8(utils::Utf16ToUtf8(readPath), code)) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
-                                          "Failed to read script library source: " + virtualSection + ".");
-        diagnostic.EntryPath = virtualSection;
-        return false;
-    }
-    m_Files.emplace(FoldPathKeyW(readPath), code);
-    return true;
+    diagnostic = MakeScriptDiagnostic(
+        ScriptDiagnosticPhase::Entry,
+        "Captured script library source is missing from the batch snapshot: " + virtualSection + ".");
+    diagnostic.EntryPath = virtualSection;
+    return false;
 }
 
 bool ScriptLibrarySourceCache::GetFileContentHash(const std::wstring &physicalPath, std::string &hash) const {
