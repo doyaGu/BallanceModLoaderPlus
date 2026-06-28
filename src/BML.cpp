@@ -150,6 +150,26 @@ char *BML_Strdup(const char *str) {
     return dup;
 }
 
+namespace {
+char **MakeSingleStringArray(const char *str, size_t *count) {
+    char **result = static_cast<char **>(malloc(sizeof(char *)));
+    if (!result) {
+        *count = 0;
+        return nullptr;
+    }
+
+    result[0] = BML_Strdup(str);
+    if (!result[0]) {
+        free(result);
+        *count = 0;
+        return nullptr;
+    }
+
+    *count = 1;
+    return result;
+}
+}
+
 // String splitting
 char **BML_SplitString(const char *str, const char *delim, size_t *count) {
     if (!str || !delim || !count) {
@@ -163,16 +183,7 @@ char **BML_SplitString(const char *str, const char *delim, size_t *count) {
     }
 
     if (*delim == '\0') {
-        char **result = static_cast<char **>(malloc(sizeof(char *)));
-        if (!result) return nullptr;
-        result[0] = BML_Strdup(str);
-        if (!result[0]) {
-            free(result);
-            *count = 0;
-            return nullptr;
-        }
-        *count = 1;
-        return result;
+        return MakeSingleStringArray(str, count);
     }
 
     // Count occurrences first
@@ -245,6 +256,10 @@ char **BML_SplitStringChar(const char *str, char delim, size_t *count) {
     if (*str == '\0') {
         *count = 0;
         return nullptr;
+    }
+
+    if (delim == '\0') {
+        return MakeSingleStringArray(str, count);
     }
 
     // Count occurrences first
