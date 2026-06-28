@@ -17,6 +17,12 @@ ScriptHostCallScope::~ScriptHostCallScope() {
         m_Owner->LeaveScriptCall();
 }
 
+static bool MatchParameterFlags(asDWORD actual, asDWORD expected) {
+    constexpr asDWORD kReferenceDirectionMask = asTM_INOUTREF;
+    return (actual & kReferenceDirectionMask) == (expected & kReferenceDirectionMask) &&
+           (actual & asTM_CONST) == (expected & asTM_CONST);
+}
+
 bool ScriptFunctionHasSignature(asIScriptFunction *function,
                                 int returnTypeId,
                                 const ScriptFunctionParam *params,
@@ -35,7 +41,7 @@ bool ScriptFunctionHasSignature(asIScriptFunction *function,
         if (expectedType < 0 ||
             function->GetParam(static_cast<asUINT>(i), &actualType, &flags) < 0 ||
             actualType != expectedType ||
-            (flags & params[i].RequiredFlags) != params[i].RequiredFlags) {
+            !MatchParameterFlags(flags, params[i].RequiredFlags)) {
             return false;
         }
     }
