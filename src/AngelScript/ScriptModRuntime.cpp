@@ -204,6 +204,9 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
     if (this == &other)
         return *this;
 
+    if (m_Object || (m_ModuleLoaded && !m_ModuleName.empty()))
+        Release(nullptr, nullptr);
+
     m_ModuleName = std::move(other.m_ModuleName);
     m_Adapter = std::move(other.m_Adapter);
     m_AngelScript = other.m_AngelScript;
