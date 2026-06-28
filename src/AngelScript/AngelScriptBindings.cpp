@@ -1074,7 +1074,13 @@ static BMLAS_ObjectLoadResult *BMLAS_CreateObjectLoadResult(CKContext *context,
                                                             bool success,
                                                             CK_ID mainObjectId,
                                                             std::vector<CK_ID> objectIds) {
-    return new (std::nothrow) BMLAS_ObjectLoadResult(context, success, mainObjectId, std::move(objectIds));
+    BMLAS_ObjectLoadResult *result = new (std::nothrow) BMLAS_ObjectLoadResult(context,
+                                                                               success,
+                                                                               mainObjectId,
+                                                                               std::move(objectIds));
+    if (!result)
+        BMLAS_SetActiveContextException("Out of memory creating BML::ObjectLoadResult.");
+    return result;
 }
 
 static BML::ScriptMod *BMLAS_ResolveScriptModOwner(const std::string &modId) {
