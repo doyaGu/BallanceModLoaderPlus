@@ -160,6 +160,28 @@ TEST_F(ScriptSourceSnapshotBuilderTest, RejectsEntrySymlinkEscapingModRoot) {
     EXPECT_EQ(utils::Utf16ToUtf8(linkedEntry), diagnostic.EntryPath);
 }
 
+TEST_F(ScriptSourceSnapshotBuilderTest, KeepsLogicalSectionsForInternalSymlinkAlias) {
+    const std::wstring modRoot = utils::CombinePathW(ModsRoot, L"Alias");
+    const std::wstring entryPath = utils::CombinePathW(modRoot, L"Alias.mod.as");
+    const std::wstring targetPath = utils::CombinePathW(modRoot, L"target.as");
+    const std::wstring aliasPath = utils::CombinePathW(modRoot, L"alias.as");
+    Write(entryPath, "#include \"target.as\"\n#include \"alias.as\"\nclass Alias {}\n");
+    Write(targetPath, "void Shared() {}\n");
+    utils::DeleteFileW(aliasPath);
+    utils::DeleteDirectoryW(aliasPath);
+
+    std::error_code ec;
+    std::filesystem::create_symlink(targetPath, aliasPath, ec);
+    if (ec)
+        GTEST_SKIP() << "file symlink unavailable: " << ec.message();
+
+    ScriptSourceSnapshot snapshot = BuildDirectoryMod(L"Alias");
+    EXPECT_TRUE(HasSection(snapshot, "target.as"));
+    EXPECT_TRUE(HasSection(snapshot, "alias.as"));
+    EXPECT_NE(nullptr, FindIncludeEdge(snapshot, "Alias.mod.as", "target.as"));
+    EXPECT_NE(nullptr, FindIncludeEdge(snapshot, "Alias.mod.as", "alias.as"));
+}
+
 TEST_F(ScriptSourceSnapshotBuilderTest, LibraryIncludeInjectsOnlyDiscoveredClosure) {
     const std::wstring modRoot = utils::CombinePathW(ModsRoot, L"User");
     Write(utils::CombinePathW(modRoot, L"User.mod.as"),
@@ -321,6 +343,32 @@ TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheRejectsFilesAdde
     EXPECT_TRUE(code.empty());
     EXPECT_NE(std::string::npos, diagnostic.Message.find("batch snapshot"));
     EXPECT_EQ("/bml/libs/com.example.score@1.2.0/detail.as", diagnostic.EntryPath);
+}
+
+TEST_F(ScriptSourceSnapshotBuilderTest, SharedLibrarySourceCacheRejectsSymlinkEscapingPackageRoot) {
+    const std::wstring packageRoot = utils::CombinePathW(LibRoot, L"com.example.score\\1.2.0");
+    const std::wstring outsideRoot = utils::CombinePathW(Root, L"Outside");
+    const std::wstring outsideSource = utils::CombinePathW(outsideRoot, L"api.as");
+    const std::wstring linkedSource = utils::CombinePathW(packageRoot, L"api.as");
+    ASSERT_TRUE(utils::CreateFileTreeW(packageRoot));
+    Write(outsideSource, "namespace ScoreApi {}\n");
+    utils::DeleteFileW(linkedSource);
+    utils::DeleteDirectoryW(linkedSource);
+
+    std::error_code ec;
+    std::filesystem::create_symlink(outsideSource, linkedSource, ec);
+    if (ec)
+        GTEST_SKIP() << "file symlink unavailable: " << ec.message();
+
+    ScriptLibraryRegistry registry(LibRoot);
+    std::string registryDiagnostic;
+    ASSERT_TRUE(registry.Scan(registryDiagnostic)) << registryDiagnostic;
+
+    ScriptLibrarySourceCache sourceCache;
+    ScriptDiagnostic diagnostic;
+    EXPECT_FALSE(sourceCache.CapturePackage(registry, "com.example.score", "1.2.0", diagnostic));
+    EXPECT_NE(std::string::npos, diagnostic.Message.find("escapes package root"));
+    EXPECT_EQ(utils::Utf16ToUtf8(linkedSource), diagnostic.EntryPath);
 }
 
 TEST_F(ScriptSourceSnapshotBuilderTest, ScriptLibraryScenarioCanBeConsumedThroughVersionedVirtualInclude) {

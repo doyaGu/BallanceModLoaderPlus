@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdio>
 #include <algorithm>
+#include <filesystem>
 
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -228,6 +229,27 @@ TEST_F(PathUtilsTest, DeleteDirectory) {
     EXPECT_TRUE(utils::DirectoryExistsUtf8(nestedDirUtf8));
     EXPECT_TRUE(utils::DeleteDirectoryUtf8(nestedDirUtf8));
     EXPECT_FALSE(utils::DirectoryExistsUtf8(nestedDirUtf8));
+}
+
+TEST_F(PathUtilsTest, DeleteDirectoryRemovesRootSymlinkWithoutDeletingTarget) {
+    const std::wstring target = utils::CombinePathW(testDirW, L"target");
+    const std::wstring nested = utils::CombinePathW(target, L"nested");
+    const std::wstring keep = utils::CombinePathW(nested, L"keep.txt");
+    const std::wstring link = utils::CombinePathW(testDirW, L"target_link");
+    ASSERT_TRUE(utils::CreateFileTreeW(nested));
+    ASSERT_TRUE(utils::WriteTextFileUtf8(utils::Utf16ToUtf8(keep), "keep"));
+    utils::DeleteDirectoryW(link);
+
+    std::error_code ec;
+    std::filesystem::create_directory_symlink(target, link, ec);
+    if (ec)
+        GTEST_SKIP() << "directory symlink unavailable: " << ec.message();
+
+    ASSERT_TRUE(utils::DirectoryExistsW(link));
+    EXPECT_TRUE(utils::DeleteDirectoryW(link));
+    EXPECT_FALSE(utils::PathExistsW(link));
+    EXPECT_TRUE(utils::DirectoryExistsW(target));
+    EXPECT_TRUE(utils::FileExistsW(keep));
 }
 
 // Test file copying

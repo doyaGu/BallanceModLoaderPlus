@@ -117,7 +117,7 @@ bool AddScriptSourceSection(const std::wstring &path,
         return false;
     }
 
-    const std::wstring key = FoldPathKeyW(finalPath);
+    const std::wstring key = FoldPathKeyW(normalized);
     if (!seen.insert(key).second)
         return true;
 

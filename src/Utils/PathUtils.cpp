@@ -439,6 +439,13 @@ namespace utils {
     bool DeleteDirectoryW(const std::wstring &path) {
         if (path.empty() || !DirectoryExistsW(path))
             return false;
+        const DWORD rootAttr = ::GetFileAttributesW(path.c_str());
+        if (rootAttr == INVALID_FILE_ATTRIBUTES ||
+            (rootAttr & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+            return false;
+        }
+        if ((rootAttr & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+            return ::RemoveDirectoryW(path.c_str()) == TRUE;
 
         WIN32_FIND_DATAW findData;
         std::wstring searchMask = path + L"\\*";
