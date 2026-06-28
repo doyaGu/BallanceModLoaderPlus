@@ -32,7 +32,7 @@ struct ScriptFunctionParam {
 };
 
 using ScriptFunctionArgWriter = int (*)(asIScriptContext *context, void *userdata);
-using ScriptFunctionResultReader = void (*)(asIScriptContext *context, void *userdata);
+using ScriptFunctionResultReader = int (*)(asIScriptContext *context, void *userdata);
 
 struct ScriptFunctionCall {
     asIScriptFunction *Function = nullptr;

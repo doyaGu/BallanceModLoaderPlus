@@ -142,8 +142,14 @@ bool ExecuteScriptFunction(const ScriptFunctionCall &call, ScriptDiagnostic &dia
         return false;
     }
 
-    if (call.ReadResult)
-        call.ReadResult(context, call.UserData);
+    if (call.ReadResult) {
+        code = call.ReadResult(context, call.UserData);
+        if (code < 0) {
+            diagnostic = MakeScriptFunctionDiagnostic(call, code, context);
+            context->Release();
+            return false;
+        }
+    }
 
     context->Release();
     return true;

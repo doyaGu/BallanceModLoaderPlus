@@ -164,10 +164,12 @@ static int WriteHookBlockArgs(asIScriptContext *context, void *userdata) {
     return code;
 }
 
-static void ReadHookBlockResult(asIScriptContext *context, void *userdata) {
+static int ReadHookBlockResult(asIScriptContext *context, void *userdata) {
     auto *args = static_cast<HookBlockFunctionCallArgs *>(userdata);
-    if (args)
-        args->Result = static_cast<int>(context->GetReturnDWord());
+    if (!context || !args)
+        return asERROR;
+    args->Result = static_cast<int>(context->GetReturnDWord());
+    return asSUCCESS;
 }
 
 } // namespace

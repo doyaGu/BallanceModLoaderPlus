@@ -460,10 +460,12 @@ static int WriteTimerFunctionArgs(asIScriptContext *context, void *userdata) {
     return code;
 }
 
-static void ReadTimerFunctionResult(asIScriptContext *context, void *userdata) {
+static int ReadTimerFunctionResult(asIScriptContext *context, void *userdata) {
     auto *args = static_cast<TimerFunctionCallArgs *>(userdata);
-    if (args)
-        args->Result = args->ReturnsBool ? context->GetReturnByte() != 0 : false;
+    if (!context || !args)
+        return asERROR;
+    args->Result = args->ReturnsBool ? context->GetReturnByte() != 0 : false;
+    return asSUCCESS;
 }
 
 static bool ExecuteTimerCallback(const std::weak_ptr<ScriptTimerServiceState> &weakState,
