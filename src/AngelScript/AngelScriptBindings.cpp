@@ -105,6 +105,13 @@ static void BMLAS_SetActiveContextException(const char *message) {
     api.SetActiveContextException(angelScript, message ? message : "AngelScript host call failed.", &result);
 }
 
+template <typename T>
+static T *BMLAS_ReportOutOfMemory(T *value, const char *message) {
+    if (!value)
+        BMLAS_SetActiveContextException(message);
+    return value;
+}
+
 static BML::ScriptStateBag *BMLAS_CreateStateBag() {
     BML::ScriptStateBag *bag = new (std::nothrow) BML::ScriptStateBag();
     if (!bag)
@@ -1289,7 +1296,8 @@ public:
         BML::ScriptMod *owner = Resolve();
         if (!owner || !owner->GetConfigProperty(category, key))
             return nullptr;
-        return new (std::nothrow) BMLAS_ConfigPropertyRef(m_ModId, category, key);
+        return BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ConfigPropertyRef(m_ModId, category, key),
+                                       "Out of memory creating BML::ConfigProperty.");
     }
 
     void SetCategoryComment(const std::string &category, const std::string &comment) const {
@@ -1310,20 +1318,27 @@ static BMLAS_LoggerRef *BMLAS_ContextBorrowLogger(BML::ScriptModContextView *vie
     if (!view || !view->HasContext())
         return nullptr;
     BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(view->GetModId());
-    return owner ? new (std::nothrow) BMLAS_LoggerRef(owner->GetID()) : nullptr;
+    return owner ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_LoggerRef(owner->GetID()),
+                                           "Out of memory creating BML::Logger.")
+                 : nullptr;
 }
 
 static BMLAS_ConfigRef *BMLAS_ContextBorrowConfig(BML::ScriptModContextView *view) {
     if (!view || !view->HasContext())
         return nullptr;
     BML::ScriptMod *owner = BMLAS_ResolveScriptModOwner(view->GetModId());
-    return owner ? new (std::nothrow) BMLAS_ConfigRef(owner->GetID()) : nullptr;
+    return owner ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ConfigRef(owner->GetID()),
+                                           "Out of memory creating BML::Config.")
+                 : nullptr;
 }
 
 static BMLAS_ConfigPropertyRef *BMLAS_ConfigEventBorrowProperty(const BML::ScriptConfigEventView *event) {
     if (!event || !event->HasProperty())
         return nullptr;
-    return new (std::nothrow) BMLAS_ConfigPropertyRef(event->GetModId(), event->GetCategory(), event->GetKey());
+    return BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ConfigPropertyRef(event->GetModId(),
+                                                                              event->GetCategory(),
+                                                                              event->GetKey()),
+                                   "Out of memory creating BML::ConfigProperty.");
 }
 
 static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions &options) {
@@ -3228,7 +3243,10 @@ BMLAS_ExportResolver *BMLAS_CreateExportResolverNoSignature(const std::string &m
 
 BMLAS_ExportRef *BMLAS_ModRef::FindExport(const std::string &name, const std::string &signature) const {
     BMLAS_ExportRef *exportRef = nullptr;
-    return TryFindExport(name, exportRef, signature) == BML_OK ? exportRef : nullptr;
+    const int status = TryFindExport(name, exportRef, signature);
+    if (status == BML_ERROR_OUT_OF_MEMORY)
+        BMLAS_SetActiveContextException("Out of memory creating BML::ExportRef.");
+    return status == BML_OK ? exportRef : nullptr;
 }
 
 int BMLAS_ModRef::TryFindExport(const std::string &name,
@@ -3266,8 +3284,10 @@ BMLAS_ExportRef *BMLAS_ModRef::GetExport(int index) const {
         return nullptr;
 
     BMLAS_ExportRef *exportRef = new (std::nothrow) BMLAS_ExportRef(m_Id, info.Name, info.Signature, handle);
-    if (!exportRef)
+    if (!exportRef) {
         BML_ReleaseModExport(handle);
+        BMLAS_SetActiveContextException("Out of memory creating BML::ExportRef.");
+    }
     return exportRef;
 }
 
@@ -3276,7 +3296,9 @@ BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
     if (!RequireContext(ctx))
         return nullptr;
     IMod *mod = ctx->FindMod(id.c_str());
-    return mod ? new (std::nothrow) BMLAS_ModRef(mod->GetID()) : nullptr;
+    return mod ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ModRef(mod->GetID()),
+                                         "Out of memory creating BML::ModRef.")
+               : nullptr;
 }
 
 int BMLAS_GetModCount() {
@@ -3297,7 +3319,9 @@ BMLAS_ModRef *BMLAS_GetMod(int index) {
     if (!RequireContext(ctx))
         return nullptr;
     IMod *mod = ctx->GetMod(index);
-    return mod ? new (std::nothrow) BMLAS_ModRef(mod->GetID()) : nullptr;
+    return mod ? BMLAS_ReportOutOfMemory(new (std::nothrow) BMLAS_ModRef(mod->GetID()),
+                                         "Out of memory creating BML::ModRef.")
+               : nullptr;
 }
 
 BMLAS_ModRef *BMLAS_ContextFindMod(BML::ScriptModContextView *view, const std::string &id) {
