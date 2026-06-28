@@ -163,10 +163,15 @@ char **BML_SplitString(const char *str, const char *delim, size_t *count) {
     }
 
     if (*delim == '\0') {
-        *count = 1;
         char **result = static_cast<char **>(malloc(sizeof(char *)));
         if (!result) return nullptr;
         result[0] = BML_Strdup(str);
+        if (!result[0]) {
+            free(result);
+            *count = 0;
+            return nullptr;
+        }
+        *count = 1;
         return result;
     }
 
@@ -176,6 +181,10 @@ char **BML_SplitString(const char *str, const char *delim, size_t *count) {
     size_t segments = 1;
 
     while ((ptr = strstr(ptr, delim)) != nullptr) {
+        if (segments == (std::numeric_limits<size_t>::max)()) {
+            *count = 0;
+            return nullptr;
+        }
         segments++;
         ptr += delimLen;
     }
@@ -243,6 +252,10 @@ char **BML_SplitStringChar(const char *str, char delim, size_t *count) {
     size_t segments = 1;
 
     while ((ptr = strchr(ptr, delim)) != nullptr) {
+        if (segments == (std::numeric_limits<size_t>::max)()) {
+            *count = 0;
+            return nullptr;
+        }
         segments++;
         ptr++;
     }
