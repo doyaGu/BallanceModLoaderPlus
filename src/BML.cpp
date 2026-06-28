@@ -34,6 +34,33 @@ int StoreMissingFileTimeResult(int64_t *creationTime,
     StoreFileTimeResult({0, 0, 0}, creationTime, lastAccessTime, lastWriteTime);
     return 0;
 }
+
+void ResetBinaryFileOutput(uint8_t **data, size_t *size) {
+    if (data)
+        *data = nullptr;
+    if (size)
+        *size = 0;
+}
+
+int CopyBinaryFileResult(const std::vector<uint8_t> &result, uint8_t **data, size_t *size) {
+    ResetBinaryFileOutput(data, size);
+    if (result.empty())
+        return 1;
+
+    *data = static_cast<uint8_t *>(malloc(result.size()));
+    if (!*data)
+        return 0;
+
+    memcpy(*data, result.data(), result.size());
+    *size = result.size();
+    return 1;
+}
+
+std::vector<uint8_t> MakeBinaryFileBuffer(const uint8_t *data, size_t size) {
+    if (size == 0)
+        return {};
+    return std::vector<uint8_t>(data, data + size);
+}
 }
 
 void BML_GetVersion(int *major, int *minor, int *patch) {
@@ -1083,83 +1110,59 @@ int BML_WriteTextFileUtf8(const char *path, const char *content) {
 }
 
 int BML_ReadBinaryFileA(const char *path, uint8_t **data, size_t *size) {
-    if (!path || !data || !size) return 0;
+    if (!data || !size) return 0;
+    ResetBinaryFileOutput(data, size);
+    if (!path) return 0;
+
+    const int64_t fileSize = utils::GetFileSizeA(path);
+    if (fileSize < 0) return 0;
+    if (fileSize == 0) return 1;
 
     std::vector<uint8_t> result = utils::ReadBinaryFileA(path);
-    if (result.empty()) {
-        *data = nullptr;
-        *size = 0;
-        return 0;
-    }
-
-    *size = result.size();
-    *data = static_cast<uint8_t *>(malloc(*size));
-    if (!*data) {
-        *size = 0;
-        return 0;
-    }
-
-    memcpy(*data, result.data(), *size);
-    return 1;
+    return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
 }
 
 int BML_ReadBinaryFileW(const wchar_t *path, uint8_t **data, size_t *size) {
-    if (!path || !data || !size) return 0;
+    if (!data || !size) return 0;
+    ResetBinaryFileOutput(data, size);
+    if (!path) return 0;
+
+    const int64_t fileSize = utils::GetFileSizeW(path);
+    if (fileSize < 0) return 0;
+    if (fileSize == 0) return 1;
 
     std::vector<uint8_t> result = utils::ReadBinaryFileW(path);
-    if (result.empty()) {
-        *data = nullptr;
-        *size = 0;
-        return 0;
-    }
-
-    *size = result.size();
-    *data = static_cast<uint8_t *>(malloc(*size));
-    if (!*data) {
-        *size = 0;
-        return 0;
-    }
-
-    memcpy(*data, result.data(), *size);
-    return 1;
+    return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
 }
 
 int BML_ReadBinaryFileUtf8(const char *path, uint8_t **data, size_t *size) {
-    if (!path || !data || !size) return 0;
+    if (!data || !size) return 0;
+    ResetBinaryFileOutput(data, size);
+    if (!path) return 0;
+
+    const int64_t fileSize = utils::GetFileSizeUtf8(path);
+    if (fileSize < 0) return 0;
+    if (fileSize == 0) return 1;
 
     std::vector<uint8_t> result = utils::ReadBinaryFileUtf8(path);
-    if (result.empty()) {
-        *data = nullptr;
-        *size = 0;
-        return 0;
-    }
-
-    *size = result.size();
-    *data = static_cast<uint8_t *>(malloc(*size));
-    if (!*data) {
-        *size = 0;
-        return 0;
-    }
-
-    memcpy(*data, result.data(), *size);
-    return 1;
+    return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
 }
 
 int BML_WriteBinaryFileA(const char *path, const uint8_t *data, size_t size) {
-    if (!path || !data) return 0;
-    std::vector<uint8_t> vec(data, data + size);
+    if (!path || (!data && size != 0)) return 0;
+    std::vector<uint8_t> vec = MakeBinaryFileBuffer(data, size);
     return utils::WriteBinaryFileA(path, vec) ? 1 : 0;
 }
 
 int BML_WriteBinaryFileW(const wchar_t *path, const uint8_t *data, size_t size) {
-    if (!path || !data) return 0;
-    std::vector<uint8_t> vec(data, data + size);
+    if (!path || (!data && size != 0)) return 0;
+    std::vector<uint8_t> vec = MakeBinaryFileBuffer(data, size);
     return utils::WriteBinaryFileW(path, vec) ? 1 : 0;
 }
 
 int BML_WriteBinaryFileUtf8(const char *path, const uint8_t *data, size_t size) {
-    if (!path || !data) return 0;
-    std::vector<uint8_t> vec(data, data + size);
+    if (!path || (!data && size != 0)) return 0;
+    std::vector<uint8_t> vec = MakeBinaryFileBuffer(data, size);
     return utils::WriteBinaryFileUtf8(path, vec) ? 1 : 0;
 }
 
