@@ -15,6 +15,27 @@
 #include "PathUtils.h"
 #include "StringUtils.h"
 
+namespace {
+void StoreFileTimeResult(const utils::FileTime &fileTime,
+                         int64_t *creationTime,
+                         int64_t *lastAccessTime,
+                         int64_t *lastWriteTime) {
+    if (creationTime)
+        *creationTime = fileTime.creationTime;
+    if (lastAccessTime)
+        *lastAccessTime = fileTime.lastAccessTime;
+    if (lastWriteTime)
+        *lastWriteTime = fileTime.lastWriteTime;
+}
+
+int StoreMissingFileTimeResult(int64_t *creationTime,
+                               int64_t *lastAccessTime,
+                               int64_t *lastWriteTime) {
+    StoreFileTimeResult({0, 0, 0}, creationTime, lastAccessTime, lastWriteTime);
+    return 0;
+}
+}
+
 void BML_GetVersion(int *major, int *minor, int *patch) {
     if (major) *major = BML_MAJOR_VERSION;
     if (minor) *minor = BML_MINOR_VERSION;
@@ -1000,44 +1021,29 @@ int64_t BML_GetFileSizeUtf8(const char *path) {
 }
 
 int BML_GetFileTimeA(const char *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
-    if (!path) return 0;
+    if (!path || !utils::PathExistsA(path))
+        return StoreMissingFileTimeResult(creationTime, lastAccessTime, lastWriteTime);
 
     utils::FileTime ft = utils::GetFileTimeA(path);
-    if (creationTime)
-        *creationTime = ft.creationTime;
-    if (lastAccessTime)
-        *lastAccessTime = ft.lastAccessTime;
-    if (lastWriteTime)
-        *lastWriteTime = ft.lastWriteTime;
-
+    StoreFileTimeResult(ft, creationTime, lastAccessTime, lastWriteTime);
     return 1;
 }
 
 int BML_GetFileTimeW(const wchar_t *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
-    if (!path) return 0;
+    if (!path || !utils::PathExistsW(path))
+        return StoreMissingFileTimeResult(creationTime, lastAccessTime, lastWriteTime);
 
     utils::FileTime ft = utils::GetFileTimeW(path);
-    if (creationTime)
-        *creationTime = ft.creationTime;
-    if (lastAccessTime)
-        *lastAccessTime = ft.lastAccessTime;
-    if (lastWriteTime)
-        *lastWriteTime = ft.lastWriteTime;
-
+    StoreFileTimeResult(ft, creationTime, lastAccessTime, lastWriteTime);
     return 1;
 }
 
 int BML_GetFileTimeUtf8(const char *path, int64_t *creationTime, int64_t *lastAccessTime, int64_t *lastWriteTime) {
-    if (!path) return 0;
+    if (!path || !utils::PathExistsUtf8(path))
+        return StoreMissingFileTimeResult(creationTime, lastAccessTime, lastWriteTime);
 
     utils::FileTime ft = utils::GetFileTimeUtf8(path);
-    if (creationTime)
-        *creationTime = ft.creationTime;
-    if (lastAccessTime)
-        *lastAccessTime = ft.lastAccessTime;
-    if (lastWriteTime)
-        *lastWriteTime = ft.lastWriteTime;
-
+    StoreFileTimeResult(ft, creationTime, lastAccessTime, lastWriteTime);
     return 1;
 }
 
