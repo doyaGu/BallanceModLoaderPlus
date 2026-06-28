@@ -35,6 +35,13 @@ static int BorrowStringOut(const std::string &value, const char **outValue, size
     return BML_OK;
 }
 
+static void ClearExportInfoOutputSizes(size_t *outNameRequiredSize, size_t *outSignatureRequiredSize) {
+    if (outNameRequiredSize)
+        *outNameRequiredSize = 0;
+    if (outSignatureRequiredSize)
+        *outSignatureRequiredSize = 0;
+}
+
 template <typename Function>
 static int GuardInteropMutation(Function function) {
     try {
@@ -811,17 +818,16 @@ BML_EXPORT int BML_GetModExportInfo(const char *modId,
                                     char *signatureBuffer,
                                     size_t signatureBufferSize,
                                     size_t *outSignatureRequiredSize) {
-    if (!IsValidKeyPart(modId))
+    if (!IsValidKeyPart(modId)) {
+        ClearExportInfoOutputSizes(outNameRequiredSize, outSignatureRequiredSize);
         return BML_ERROR_INVALID_PARAMETER;
+    }
 
     return GuardInteropMutation([&]() {
         BML::ExportInfo info;
         const int status = BML::ExportRegistry::GetInfo(modId, index, info);
         if (status != BML_OK) {
-            if (outNameRequiredSize)
-                *outNameRequiredSize = 0;
-            if (outSignatureRequiredSize)
-                *outSignatureRequiredSize = 0;
+            ClearExportInfoOutputSizes(outNameRequiredSize, outSignatureRequiredSize);
             return status;
         }
 
