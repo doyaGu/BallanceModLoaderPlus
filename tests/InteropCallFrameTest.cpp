@@ -1,6 +1,7 @@
 #include "CallFrameInternal.h"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,14 @@ TEST(InteropCallFrameTest, TracksArgumentTypesAndTrimsClearedTailSlots) {
 
     EXPECT_EQ(BML_ClearCallFrameArg(&frame, 2), BML_ERROR_NOT_FOUND);
     EXPECT_EQ(BML_ClearCallFrameArg(nullptr, 0), BML_ERROR_NOT_FOUND);
+}
+
+TEST(InteropCallFrameTest, RejectsOverflowingArgumentIndex) {
+    BML_CallFrame frame;
+    const size_t maxIndex = (std::numeric_limits<size_t>::max)();
+
+    EXPECT_EQ(BML_EnsureCallFrameArg(&frame, maxIndex), nullptr);
+    EXPECT_EQ(BML_GetCallFrameArgCount(&frame), 0u);
 }
 
 TEST(InteropCallFrameTest, DistinguishesMissingAndMismatchedArgumentTypes) {

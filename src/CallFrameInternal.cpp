@@ -1,6 +1,7 @@
 #include "CallFrameInternal.h"
 
 #include <algorithm>
+#include <limits>
 
 static BML_CallValue *GetCallFrameArgSlot(BML_CallFrame *frame, size_t index) {
     if (!frame || index >= frame->ArgCount)
@@ -38,6 +39,8 @@ static void TrimCallFrameArgCount(BML_CallFrame *frame) {
 BML_CallValue *BML_EnsureCallFrameArg(BML_CallFrame *frame, size_t index) {
     if (!frame)
         return nullptr;
+    if (index == (std::numeric_limits<size_t>::max)())
+        return nullptr;
 
     const size_t newArgCount = std::max(frame->ArgCount, index + 1);
     if (index < BML_CallFrame::InlineArgCount) {
@@ -46,8 +49,11 @@ BML_CallValue *BML_EnsureCallFrameArg(BML_CallFrame *frame, size_t index) {
     }
 
     const size_t extraIndex = index - BML_CallFrame::InlineArgCount;
+    const size_t newExtraCount = extraIndex + 1;
+    if (newExtraCount > frame->ExtraArgs.max_size())
+        return nullptr;
     if (frame->ExtraArgs.size() <= extraIndex)
-        frame->ExtraArgs.resize(extraIndex + 1);
+        frame->ExtraArgs.resize(newExtraCount);
     frame->ArgCount = newArgCount;
     return &frame->ExtraArgs[extraIndex];
 }
