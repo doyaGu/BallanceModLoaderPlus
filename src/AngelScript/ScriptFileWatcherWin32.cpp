@@ -105,36 +105,33 @@ bool ScriptFileWatcherWin32::Watch(const std::wstring &root, bool recursive) {
         return false;
     }
 
+    bool duplicate = false;
+    bool registered = false;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        try {
-            m_Watches.push_back(state);
-        } catch (...) {
-            if (state->Directory != INVALID_HANDLE_VALUE)
-                ::CloseHandle(state->Directory);
-            if (state->StopEvent)
-                ::CloseHandle(state->StopEvent);
-            delete state;
-            return false;
+        for (const WatchState *existing : m_Watches) {
+            if (existing && SameRoot(existing->Root, root) && existing->Recursive == recursive) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            try {
+                m_Watches.reserve(m_Watches.size() + 1);
+                state->Worker = std::thread([this, state] { WorkerLoop(state); });
+                m_Watches.push_back(state);
+                registered = true;
+            } catch (...) {
+                // The unpublished state is stopped and released after dropping m_Mutex.
+            }
         }
     }
 
-    try {
-        state->Worker = std::thread([this, state] { WorkerLoop(state); });
-    } catch (...) {
-        std::vector<WatchState *> removed;
-        {
-            std::lock_guard<std::mutex> lock(m_Mutex);
-            auto it = std::find(m_Watches.begin(), m_Watches.end(), state);
-            if (it != m_Watches.end()) {
-                removed.push_back(*it);
-                m_Watches.erase(it);
-            }
-        }
-        if (removed.empty())
-            removed.push_back(state);
-        StopWatches(removed);
-        return false;
+    if (!registered) {
+        std::vector<WatchState *> failed;
+        failed.push_back(state);
+        StopWatches(failed);
+        return duplicate;
     }
     return true;
 }
