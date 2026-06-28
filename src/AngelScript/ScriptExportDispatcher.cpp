@@ -562,7 +562,14 @@ bool ScriptExportTable::Release(CKContext *context,
             ok = false;
         }
     }
-    m_Exports.clear();
+    if (ok) {
+        m_Exports.clear();
+    } else {
+        m_Exports.erase(std::remove_if(m_Exports.begin(), m_Exports.end(), [](const ScriptExportBinding &entry) {
+                            return entry.Method == nullptr;
+                        }),
+                        m_Exports.end());
+    }
     m_ExportsByName.clear();
     m_ExportsByCanonicalSignature.clear();
     if (publishChange)
@@ -622,17 +629,28 @@ void ScriptExportTable::GetSignatures(const std::string &name, std::vector<std::
 }
 
 int ScriptExportTable::GetCount() const {
-    return static_cast<int>(m_Exports.size());
+    return static_cast<int>(m_ExportsByCanonicalSignature.size());
 }
 
 bool ScriptExportTable::GetInfo(int index, std::string &name, std::string &signature) const {
-    if (index < 0 || index >= static_cast<int>(m_Exports.size()))
+    if (index < 0)
         return false;
 
-    const ScriptExportBinding &binding = m_Exports[static_cast<size_t>(index)];
-    name = binding.Name;
-    signature = binding.Signature;
-    return true;
+    int activeIndex = 0;
+    for (size_t i = 0; i < m_Exports.size(); ++i) {
+        const ScriptExportBinding &binding = m_Exports[i];
+        const auto bySignature = m_ExportsByCanonicalSignature.find(
+            MakeExportCanonicalKey(binding.Name, binding.SignatureInfo.CanonicalSignature));
+        if (bySignature == m_ExportsByCanonicalSignature.end() || bySignature->second != i)
+            continue;
+        if (activeIndex == index) {
+            name = binding.Name;
+            signature = binding.Signature;
+            return true;
+        }
+        ++activeIndex;
+    }
+    return false;
 }
 
 void ScriptExportTable::Clear(bool publishChange) {

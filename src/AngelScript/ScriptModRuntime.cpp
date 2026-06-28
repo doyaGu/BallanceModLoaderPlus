@@ -632,7 +632,6 @@ bool ScriptModRuntime::ReleaseMethod(CKContext *context,
     if (!Refresh(context, localDiagnostic)) {
         if (diagnostic)
             *diagnostic = localDiagnostic;
-        method = nullptr;
         return false;
     }
 
@@ -650,7 +649,6 @@ bool ScriptModRuntime::ReleaseMethod(CKContext *context,
                                            result,
                                            "Method release failed");
     }
-    method = nullptr;
     return false;
 }
 

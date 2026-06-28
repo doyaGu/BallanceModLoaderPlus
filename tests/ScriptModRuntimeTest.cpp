@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <utility>
 
 namespace BML {
@@ -49,6 +50,18 @@ TEST(ScriptModRuntimeTest, MoveAssignmentRebindsCachedApiToDestinationAdapter) {
     EXPECT_NE(sourceApi, target.TestCachedApi());
     EXPECT_EQ(nullptr, source.TestCachedApi());
     EXPECT_EQ(nullptr, source.TestAngelScript());
+}
+
+TEST(ScriptModRuntimeTest, ReleaseMethodKeepsHandleWhenAdapterRefreshFails) {
+    ScriptModRuntime runtime("source");
+    CKAngelScriptMethod *method = reinterpret_cast<CKAngelScriptMethod *>(static_cast<std::uintptr_t>(0x1234));
+    CKAngelScriptMethod *original = method;
+    ScriptDiagnostic diagnostic;
+
+    EXPECT_FALSE(runtime.ReleaseMethod(nullptr, method, &diagnostic));
+
+    EXPECT_EQ(original, method);
+    EXPECT_FALSE(diagnostic.Message.empty());
 }
 
 } // namespace
