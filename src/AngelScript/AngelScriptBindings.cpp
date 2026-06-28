@@ -1004,7 +1004,10 @@ BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ObjectEvent, ObjectEvent)
 #undef BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS
 
 static BML::ScriptModContextView *BMLAS_CreateInvalidModContext() {
-    return new (std::nothrow) BML::ScriptModContextView();
+    BML::ScriptModContextView *view = new (std::nothrow) BML::ScriptModContextView();
+    if (!view)
+        BMLAS_SetActiveContextException("Out of memory creating BML::ModContext.");
+    return view;
 }
 
 static void BMLAS_ReleaseModContext(BML::ScriptModContextView *view) {
@@ -3206,7 +3209,10 @@ private:
 BMLAS_ExportResolver *BMLAS_CreateExportResolver(const std::string &modId,
                                                  const std::string &name,
                                                  const std::string &signature) {
-    return new (std::nothrow) BMLAS_ExportResolver(modId, name, signature);
+    BMLAS_ExportResolver *resolver = new (std::nothrow) BMLAS_ExportResolver(modId, name, signature);
+    if (!resolver)
+        BMLAS_SetActiveContextException("Out of memory creating BML::ExportResolver.");
+    return resolver;
 }
 
 BMLAS_ExportResolver *BMLAS_CreateExportResolverNoSignature(const std::string &modId,
