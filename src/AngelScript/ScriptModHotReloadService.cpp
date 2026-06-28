@@ -1281,6 +1281,7 @@ private:
                               const ScriptModReloadResult &commitResult,
                               bool rollbackOk);
     void PublishCommitted();
+    void ClearCoveredAutomaticModReloads();
     ScriptDevToolsService *DevTools() const;
 
     ScriptModHotReloadService &m_Service;
@@ -1615,6 +1616,18 @@ void ScriptLibraryReloadOperation::PublishCommitted() {
                             {"consumers", std::to_string(m_Batch.Consumers.size())}});
 }
 
+void ScriptLibraryReloadOperation::ClearCoveredAutomaticModReloads() {
+    for (ScriptMod *mod : m_Batch.Consumers) {
+        const char *modId = mod ? mod->GetID() : nullptr;
+        if (!modId || !*modId)
+            continue;
+
+        auto pendingIt = m_Service.m_Pending.find(modId);
+        if (pendingIt != m_Service.m_Pending.end() && pendingIt->second.Options.Automatic)
+            m_Service.m_Pending.erase(pendingIt);
+    }
+}
+
 bool ScriptLibraryReloadOperation::Run() {
     if (m_Batch.Consumers.empty()) {
         PublishNoConsumers();
@@ -1659,6 +1672,7 @@ bool ScriptLibraryReloadOperation::Run() {
         return true;
     }
 
+    ClearCoveredAutomaticModReloads();
     for (ScriptMod *mod : m_Batch.Consumers)
         m_Service.RegisterMod(mod);
     m_Batch.DiscardResources();
