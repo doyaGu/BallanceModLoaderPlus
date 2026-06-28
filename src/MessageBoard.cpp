@@ -4,38 +4,11 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
-#include <utility>
 
 #include "imgui_internal.h"
 
 #include "ModContext.h"
-
-namespace {
-    bool FormatMessageString(const char *format, va_list args, std::string &out) {
-        out.clear();
-        if (!format)
-            return false;
-
-        va_list measureArgs;
-        va_copy(measureArgs, args);
-        const int needed = vsnprintf(nullptr, 0, format, measureArgs);
-        va_end(measureArgs);
-        if (needed < 0)
-            return false;
-
-        std::string buffer(static_cast<size_t>(needed) + 1, '\0');
-        va_list writeArgs;
-        va_copy(writeArgs, args);
-        const int written = vsnprintf(buffer.data(), buffer.size(), format, writeArgs);
-        va_end(writeArgs);
-        if (written < 0)
-            return false;
-
-        buffer.resize(static_cast<size_t>(needed));
-        out = std::move(buffer);
-        return true;
-    }
-}
+#include "StringUtils.h"
 
 // =============================================================================
 // MessageUnit Implementation
@@ -609,7 +582,7 @@ void MessageBoard::Printf(const char *format, ...) {
     va_list args;
     va_start(args, format);
     std::string message;
-    const bool formatted = FormatMessageString(format, args, message);
+    const bool formatted = utils::FormatStringV(format, args, message);
     va_end(args);
     if (formatted)
         AddMessage(message.c_str());
@@ -619,7 +592,7 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
     va_list args;
     va_start(args, format);
     std::string message;
-    const bool formatted = FormatMessageString(format, args, message);
+    const bool formatted = utils::FormatStringV(format, args, message);
     va_end(args);
     if (!formatted)
         return;
@@ -729,4 +702,3 @@ void MessageBoard::SetMessageBackgroundAlpha(float alpha) {
 void MessageBoard::SetFadeMaxAlpha(float alpha) {
     m_FadeMaxAlpha = std::clamp(alpha, 0.0f, 1.0f);
 }
-

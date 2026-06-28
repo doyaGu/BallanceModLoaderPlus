@@ -1,11 +1,22 @@
 #include <gtest/gtest.h>
 
+#include <cstdarg>
 #include <vector>
 #include <string>
 #include <locale>
 #include <algorithm>
 
 #include "Utils/StringUtils.h"
+
+namespace {
+    bool FormatStringForTest(std::string &out, const char *format, ...) {
+        va_list args;
+        va_start(args, format);
+        const bool result = utils::FormatStringV(format, args, out);
+        va_end(args);
+        return result;
+    }
+}
 
 class StringUtilsTest : public ::testing::Test {
 protected:
@@ -224,6 +235,17 @@ TEST_F(StringUtilsTest, CaseConversion) {
         EXPECT_EQ(L"hello world 123", utils::ToLower(test));
         EXPECT_EQ(L"HELLO WORLD 123", utils::ToUpper(test));
     }
+}
+
+TEST_F(StringUtilsTest, FormatStringVFormatsAndClearsFailures) {
+    std::string value = "stale";
+
+    EXPECT_TRUE(FormatStringForTest(value, "%s %d", "value", 42));
+    EXPECT_EQ("value 42", value);
+
+    value = "stale";
+    EXPECT_FALSE(FormatStringForTest(value, nullptr));
+    EXPECT_TRUE(value.empty());
 }
 
 // Test string comparison functions

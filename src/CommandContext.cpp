@@ -2,13 +2,13 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstring>
 
 #include <utf8.h>
 
 #include "HashUtils.h"
 #include "Logger.h"
+#include "StringUtils.h"
 
 #define MAX_CMD_NAME_LENGTH 256
 
@@ -131,11 +131,6 @@ namespace {
         });
     }
 
-    char *AllocEmptyCString() {
-        char *string = new char[1];
-        string[0] = '\0';
-        return string;
-    }
 }
 
 CommandContext::CommandContext() = default;
@@ -339,20 +334,12 @@ void CommandContext::OutputV(const char *format, va_list args) {
 }
 
 char *CommandContext::AllocPrintfV(const char *format, va_list args) {
-    if (!format)
-        return AllocEmptyCString();
+    std::string message;
+    utils::FormatStringV(format, args, message);
 
-    va_list args2;
-    va_copy(args2, args);
-    int len = vsnprintf(nullptr, 0, format, args2);
-    va_end(args2);
-    if (len < 0)
-        return AllocEmptyCString();
-
-    const size_t bufferSize = static_cast<size_t>(len) + 1;
+    const size_t bufferSize = message.size() + 1;
     auto *string = new char[bufferSize];
-    if (vsnprintf(string, bufferSize, format, args) < 0)
-        string[0] = '\0';
+    std::memcpy(string, message.c_str(), bufferSize);
     return string;
 }
 

@@ -1,6 +1,7 @@
 #ifndef BML_STRINGUTILS_H
 #define BML_STRINGUTILS_H
 
+#include <cstdarg>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -211,6 +212,7 @@ namespace utils {
     std::string StripAnsiCodes(const char *str);
 
     bool CStringEqual(const char *lhs, const char *rhs);
+    bool FormatStringV(const char *format, va_list args, std::string &out);
     bool CopyStringToBuffer(std::string_view value,
                             char *buffer,
                             size_t bufferSize,

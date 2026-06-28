@@ -1,6 +1,8 @@
 #include "StringUtils.h"
 
+#include <cstdio>
 #include <cstring>
+#include <utility>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -536,6 +538,31 @@ namespace utils {
         if (!lhs || !rhs)
             return lhs == rhs;
         return std::strcmp(lhs, rhs) == 0;
+    }
+
+    bool FormatStringV(const char *format, va_list args, std::string &out) {
+        out.clear();
+        if (!format)
+            return false;
+
+        va_list measureArgs;
+        va_copy(measureArgs, args);
+        const int needed = std::vsnprintf(nullptr, 0, format, measureArgs);
+        va_end(measureArgs);
+        if (needed < 0)
+            return false;
+
+        std::string buffer(static_cast<size_t>(needed) + 1, '\0');
+        va_list writeArgs;
+        va_copy(writeArgs, args);
+        const int written = std::vsnprintf(buffer.data(), buffer.size(), format, writeArgs);
+        va_end(writeArgs);
+        if (written < 0)
+            return false;
+
+        buffer.resize(static_cast<size_t>(needed));
+        out = std::move(buffer);
+        return true;
     }
 
     bool CopyStringToBuffer(std::string_view value,
