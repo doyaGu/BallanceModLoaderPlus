@@ -1006,7 +1006,11 @@ bool ScriptMod::CanDispatchScriptCallback() {
 }
 
 bool ScriptMod::CanDispatchScriptServiceCallback() {
-    return CanDispatchScriptCallback();
+    // Service callbacks own their lifetime and cancellation semantics. Do not
+    // apply the same-frame reload fence here: Timer callbacks interpret a
+    // false dispatch result as completion, which would silently cancel loop
+    // timers registered by the freshly loaded runtime.
+    return m_State.IsLoaded() && !m_State.IsFailed() && !m_Reloading.load(std::memory_order_acquire);
 }
 
 void ScriptMod::FenceCallbacksForCurrentFrame() {
