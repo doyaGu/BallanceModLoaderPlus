@@ -1,5 +1,6 @@
 ﻿#include "ScriptModLoader.h"
 
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -80,10 +81,23 @@ ScriptModLoadResult ScriptModLoader::Load(ModContext *owner,
         }
     }
 
-    result.Definition = definition;
-    result.Mod = std::make_unique<ScriptMod>(owner, definition, entry, std::move(runtime));
-    if (result.Failed)
-        result.Mod->SetLoadFailure(failure);
+    try {
+        std::unique_ptr<ScriptMod> mod(new (std::nothrow) ScriptMod(owner,
+                                                                     std::move(definition),
+                                                                     std::move(entry),
+                                                                     std::move(runtime)));
+        if (!mod) {
+            result.Failed = true;
+            return result;
+        }
+
+        if (result.Failed)
+            mod->SetLoadFailure(failure);
+        result.Definition = mod->GetDefinition();
+        result.Mod = std::move(mod);
+    } catch (const std::bad_alloc &) {
+        result.Failed = true;
+    }
     return result;
 }
 

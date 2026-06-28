@@ -1689,6 +1689,11 @@ IMod *ModContext::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
     BML::ScriptModLoader loader;
     BML::ScriptModLoadResult loadResult = loader.Load(this, GetCKContext(), candidate);
     auto &scriptMod = loadResult.Mod;
+    if (!scriptMod) {
+        m_Logger->Error("Script Mod could not be loaded due to allocation failure.");
+        return nullptr;
+    }
+
     IMod *mod = scriptMod.get();
     if (!RegisterMod(mod)) {
         m_Logger->Warn("Duplicate or incompatible script Mod: %s", mod->GetID());

@@ -187,6 +187,10 @@ ScriptModRuntime::ScriptModRuntime(std::string moduleName)
     : m_ModuleName(std::move(moduleName)) {
 }
 
+ScriptModRuntime::~ScriptModRuntime() {
+    Release(nullptr, nullptr);
+}
+
 ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
     : m_ModuleName(std::move(other.m_ModuleName)),
       m_Adapter(std::move(other.m_Adapter)),

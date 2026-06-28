@@ -123,6 +123,7 @@ class ScriptModRuntime {
 public:
     ScriptModRuntime() = default;
     explicit ScriptModRuntime(std::string moduleName);
+    ~ScriptModRuntime();
     ScriptModRuntime(ScriptModRuntime &&other) noexcept;
     ScriptModRuntime &operator=(ScriptModRuntime &&other) noexcept;
 
