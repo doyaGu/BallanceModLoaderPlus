@@ -61,6 +61,13 @@ std::vector<uint8_t> MakeBinaryFileBuffer(const uint8_t *data, size_t size) {
         return {};
     return std::vector<uint8_t>(data, data + size);
 }
+
+wchar_t *CopyWString(const std::wstring &value) {
+    wchar_t *copy = static_cast<wchar_t *>(malloc((value.length() + 1) * sizeof(wchar_t)));
+    if (copy)
+        wcscpy(copy, value.c_str());
+    return copy;
+}
 }
 
 void BML_GetVersion(int *major, int *minor, int *patch) {
@@ -1077,24 +1084,32 @@ int BML_GetFileTimeUtf8(const char *path, int64_t *creationTime, int64_t *lastAc
 // File I/O
 char *BML_ReadTextFileA(const char *path) {
     if (!path) return nullptr;
+    const int64_t fileSize = utils::GetFileSizeA(path);
+    if (fileSize < 0) return nullptr;
+
     std::string result = utils::ReadTextFileA(path);
-    return result.empty() ? nullptr : BML_Strdup(result.c_str());
+    if (result.empty() && fileSize > 0) return nullptr;
+    return BML_Strdup(result.c_str());
 }
 
 wchar_t *BML_ReadTextFileW(const wchar_t *path) {
     if (!path) return nullptr;
-    std::wstring result = utils::ReadTextFileW(path);
-    if (result.empty()) return nullptr;
+    const int64_t fileSize = utils::GetFileSizeW(path);
+    if (fileSize < 0) return nullptr;
 
-    wchar_t *copy = static_cast<wchar_t *>(malloc((result.length() + 1) * sizeof(wchar_t)));
-    if (copy) wcscpy(copy, result.c_str());
-    return copy;
+    std::wstring result = utils::ReadTextFileW(path);
+    if (result.empty() && fileSize > 0) return nullptr;
+    return CopyWString(result);
 }
 
 char *BML_ReadTextFileUtf8(const char *path) {
     if (!path) return nullptr;
+    const int64_t fileSize = utils::GetFileSizeUtf8(path);
+    if (fileSize < 0) return nullptr;
+
     std::string result = utils::ReadTextFileUtf8(path);
-    return result.empty() ? nullptr : BML_Strdup(result.c_str());
+    if (result.empty() && fileSize > 0) return nullptr;
+    return BML_Strdup(result.c_str());
 }
 
 int BML_WriteTextFileA(const char *path, const char *content) {
