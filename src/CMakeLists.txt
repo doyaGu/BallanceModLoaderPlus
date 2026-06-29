@@ -159,6 +159,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/AngelScriptImGuiBindings.h
             AngelScript/ScriptApiContract.h
             AngelScript/ScriptAngelScriptHandle.h
+            AngelScript/ScriptAvailabilityLogLimiter.h
             AngelScript/ScriptCallbackDispatcher.h
             AngelScript/ScriptCallbackEvents.h
             AngelScript/ScriptCommandService.h

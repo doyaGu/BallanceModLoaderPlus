@@ -34,6 +34,7 @@
 #include "BMLMod.h"
 #include "CKAngelScriptAdapter.h"
 #include "ScriptApiContract.h"
+#include "ScriptAvailabilityLogLimiter.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptFacadeAccess.h"
 #include "ScriptFunctionSupport.h"
@@ -50,8 +51,7 @@ static constexpr CKDWORD kRegistrationRetryTicks = 300;
 
 static CKAngelScriptAdapter g_AngelScriptHost;
 static std::string g_LastRegistrationError;
-static CKAngelScriptAdapter::State g_LastUnavailableState = CKAngelScriptAdapter::State::Unchecked;
-static std::string g_LastUnavailableDiagnostic;
+static BML::ScriptAvailabilityLogLimiter g_UnavailableLogLimiter;
 static CKDWORD g_NextRegistrationAttemptTick = 0;
 
 static ModContext *GetActiveContext() {
@@ -3692,19 +3692,11 @@ BML::ScriptCommandCompletion *BMLAS_CreateInvalidCommandCompletion() {
 void BMLAS_ReleaseCommandCompletion(BML::ScriptCommandCompletion *) {}
 
 bool ShouldLogAngelScriptUnavailable(CKAngelScriptAdapter::State state, const std::string &diagnostic) {
-    if (state == CKAngelScriptAdapter::State::MissingModule)
-        return false;
-    if (state == g_LastUnavailableState && diagnostic == g_LastUnavailableDiagnostic)
-        return false;
-
-    g_LastUnavailableState = state;
-    g_LastUnavailableDiagnostic = diagnostic;
-    return true;
+    return g_UnavailableLogLimiter.ShouldLog(state, diagnostic);
 }
 
 void ResetAngelScriptUnavailableLog() {
-    g_LastUnavailableState = CKAngelScriptAdapter::State::Unchecked;
-    g_LastUnavailableDiagnostic.clear();
+    g_UnavailableLogLimiter.Reset();
 }
 
 bool IsForbiddenRegistrationDeclaration(const char *declaration, const char **matchedToken) {

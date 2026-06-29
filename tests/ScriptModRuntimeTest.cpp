@@ -1,3 +1,4 @@
+#include "AngelScript/ScriptAvailabilityLogLimiter.h"
 #include "AngelScript/ScriptModRuntime.h"
 
 #include <gtest/gtest.h>
@@ -19,6 +20,27 @@ TEST(CKAngelScriptAdapterTest, NamesModuleFoundationFeatures) {
                  CKAngelScriptAdapter::FeatureName(CKAS_FEATURE_MODULE_GRAPH));
     EXPECT_STREQ("CKAS_FEATURE_MODULE_FINGERPRINT",
                  CKAngelScriptAdapter::FeatureName(CKAS_FEATURE_MODULE_FINGERPRINT));
+}
+
+TEST(ScriptAvailabilityLogLimiterTest, LogsMissingModuleOnceUntilReset) {
+    ScriptAvailabilityLogLimiter limiter;
+    const std::string diagnostic = "AngelScript.dll is not loaded; script mods are unavailable.";
+
+    EXPECT_TRUE(limiter.ShouldLog(CKAngelScriptAdapter::State::MissingModule, diagnostic));
+    EXPECT_FALSE(limiter.ShouldLog(CKAngelScriptAdapter::State::MissingModule, diagnostic));
+
+    limiter.Reset();
+
+    EXPECT_TRUE(limiter.ShouldLog(CKAngelScriptAdapter::State::MissingModule, diagnostic));
+}
+
+TEST(ScriptAvailabilityLogLimiterTest, LogsChangedUnavailableDiagnostic) {
+    ScriptAvailabilityLogLimiter limiter;
+
+    EXPECT_TRUE(limiter.ShouldLog(CKAngelScriptAdapter::State::MissingModule, "missing"));
+    EXPECT_TRUE(limiter.ShouldLog(CKAngelScriptAdapter::State::MissingRuntime, "missing"));
+    EXPECT_TRUE(limiter.ShouldLog(CKAngelScriptAdapter::State::MissingRuntime, "runtime unavailable"));
+    EXPECT_FALSE(limiter.ShouldLog(CKAngelScriptAdapter::State::MissingRuntime, "runtime unavailable"));
 }
 
 TEST(ScriptModRuntimeTest, MoveConstructorRebindsCachedApiToDestinationAdapter) {
