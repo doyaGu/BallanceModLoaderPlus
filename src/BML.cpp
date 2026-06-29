@@ -182,8 +182,7 @@ char *BML_Strdup(const char *str) {
     return dup;
 }
 
-namespace {
-char **MakeSingleStringArray(const char *str, size_t *count) {
+static char **MakeSingleStringArray(const char *str, size_t *count) {
     char **result = AllocatePointerArray<char>(1);
     if (!result) {
         *count = 0;
@@ -199,7 +198,6 @@ char **MakeSingleStringArray(const char *str, size_t *count) {
 
     *count = 1;
     return result;
-}
 }
 
 // String splitting
