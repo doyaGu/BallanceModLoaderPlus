@@ -72,9 +72,10 @@ BML+ script mods require CKAngelScript.
 
 This package installs the matching AngelScript.dll into BuildingBlocks next to
 BMLPlus.dll. Keep the two DLLs together when deploying this release. BML script
-support in this release requires CKAngelScript API v4 and the host-call filter,
-source-section, object-handle argument, script-array, namespace, and
-object-method context features.
+support in this release requires CKAngelScript API v6, including source-section
+loading, host-call filtering, object-handle arguments, script-array access,
+module import binding, module bytecode, transactional replacement, module graph,
+and module fingerprint features.
 "@ | Set-Content -Path (Join-Path $DestinationDir 'CKAngelScript-README.txt') -Encoding UTF8
 }
 
@@ -308,8 +309,8 @@ function Assert-CKAngelScriptRuntimeCompatible {
 
     $headerPath = Join-Path $RootDir 'include\CKAngelScript.h'
     $apiVersion = Get-CKAngelScriptHeaderApiVersion -HeaderPath $headerPath
-    if ($apiVersion -lt 4) {
-        throw "CKAngelScript API version $apiVersion is too old. BML script support requires API version 4 or newer."
+    if ($apiVersion -lt 6) {
+        throw "CKAngelScript API version $apiVersion is too old. BML script support requires API version 6 or newer."
     }
 
     foreach ($feature in @(
@@ -318,7 +319,12 @@ function Assert-CKAngelScriptRuntimeCompatible {
         'CKAS_FEATURE_SCRIPT_ARRAY_ACCESS',
         'CKAS_FEATURE_SOURCE_SECTIONS',
         'CKAS_FEATURE_OBJECT_HANDLE_ARGS',
-        'CKAS_FEATURE_HOST_CALL_FILTER'
+        'CKAS_FEATURE_HOST_CALL_FILTER',
+        'CKAS_FEATURE_MODULE_IMPORTS',
+        'CKAS_FEATURE_MODULE_BYTECODE',
+        'CKAS_FEATURE_MODULE_REPLACE_TRANSACTION',
+        'CKAS_FEATURE_MODULE_GRAPH',
+        'CKAS_FEATURE_MODULE_FINGERPRINT'
     )) {
         Assert-CKAngelScriptHeaderFeature -HeaderPath $headerPath -Feature $feature
     }
