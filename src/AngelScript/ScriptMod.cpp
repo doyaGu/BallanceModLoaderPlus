@@ -12,6 +12,7 @@
 
 #include "BML/IConfig.h"
 #include "ExportRegistry.h"
+#include "ImGuiStateRecovery.h"
 #include "ModContext.h"
 #include "ScriptDevToolsService.h"
 #include "ScriptModReloadCandidateInternal.h"
@@ -1678,6 +1679,7 @@ bool ScriptMod::ReleaseRuntime() {
 
     ScriptDiagnostic diagnostic;
     ok = m_Runtime.Release(ckContext, &diagnostic) && ok;
+    ReleaseScriptImGuiInput();
     m_State.MarkLoaded(false);
     if (!ok) {
         if (!diagnostic.Message.empty())
@@ -1689,6 +1691,10 @@ bool ScriptMod::ReleaseRuntime() {
         }
     }
     return ok;
+}
+
+void ScriptMod::ReleaseScriptImGuiInput() {
+    ReleaseStaleImGuiMouseCapture(this);
 }
 
 bool ScriptMod::ReleaseScriptServices() {

@@ -131,6 +131,18 @@ add_bml_test(AnsiTextTest
 target_include_directories(AnsiTextTest PRIVATE ${IMGUI_SOURCE_DIR})
 target_compile_definitions(AnsiTextTest PRIVATE IMGUI_EXPORT)
 
+add_bml_test(ImGuiStateRecoveryTest
+        SOURCES
+        ImGuiStateRecoveryTest.cpp
+        ${BML_SOURCE_DIR}/ImGuiStateRecovery.cpp
+        ${IMGUI_SOURCE_DIR}/imgui.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+)
+target_include_directories(ImGuiStateRecoveryTest PRIVATE ${IMGUI_SOURCE_DIR})
+target_compile_definitions(ImGuiStateRecoveryTest PRIVATE IMGUI_EXPORT)
+
 add_bml_test(FpsCounterTest
         SOURCES
         FpsCounterTest.cpp

@@ -359,6 +359,7 @@ private:
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
     bool ReleaseScriptMethodHandles();
+    void ReleaseScriptImGuiInput();
     bool ReleaseRuntime();
     bool ReleaseRuntimeOnly(ScriptModRuntime &runtime);
     bool RebindServices();

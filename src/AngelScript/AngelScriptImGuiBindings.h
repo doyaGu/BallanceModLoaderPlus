@@ -1,6 +1,8 @@
 #ifndef BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 #define BML_ANGELSCRIPT_IMGUI_BINDINGS_H
 
+#include "ImGuiStateRecovery.h"
+
 struct ImDrawList;
 struct ImGuiContext;
 class asIScriptEngine;
@@ -16,6 +18,7 @@ struct BMLImGuiASCallScope {
 
 private:
     ImGuiContext *Previous = nullptr;
+    BML::ScriptImGuiCallState ScriptCallState;
     bool Active = false;
     bool Changed = false;
 };

@@ -8,6 +8,7 @@
 
 #include "ModContext.h"
 #include "Overlay.h"
+#include "ScriptModRuntime.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -80,6 +81,9 @@ bool BMLImGuiASCallScope::Begin() {
     if (!BMLImGuiASActivateContext(Previous, Changed, true))
         return false;
 
+    BML::BeginScriptImGuiCall(ScriptCallState,
+                              BML::ScriptModRuntime::GetCurrentScriptMod(),
+                              ImGui::GetCurrentContext());
     Active = true;
     return true;
 }
@@ -87,6 +91,8 @@ bool BMLImGuiASCallScope::Begin() {
 void BMLImGuiASCallScope::End() {
     if (!Active)
         return;
+
+    BML::EndScriptImGuiCall(ScriptCallState);
 
     if (Changed)
         ImGui::SetCurrentContext(Previous);

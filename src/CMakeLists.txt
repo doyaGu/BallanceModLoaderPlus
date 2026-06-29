@@ -74,6 +74,7 @@ set(BML_PRIVATE_HEADERS
         AnsiPalette.h
         AnsiText.h
         EventHook.h
+        ImGuiStateRecovery.h
 
         Overlay.h
 
@@ -113,6 +114,7 @@ set(BML_SOURCES
         AnsiPalette.cpp
         AnsiText.cpp
         EventHook.cpp
+        ImGuiStateRecovery.cpp
 
         Gui/Element.cpp
         Gui/Text.cpp
