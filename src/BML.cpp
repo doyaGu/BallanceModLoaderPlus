@@ -1187,7 +1187,7 @@ int BML_ReadBinaryFileA(const char *path, uint8_t **data, size_t *size) {
 
     const int64_t fileSize = utils::GetFileSizeA(path);
     if (fileSize < 0) return 0;
-    if (fileSize == 0) return 1;
+    if (fileSize == 0) return 0;
 
     std::vector<uint8_t> result = utils::ReadBinaryFileA(path);
     return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
@@ -1200,7 +1200,7 @@ int BML_ReadBinaryFileW(const wchar_t *path, uint8_t **data, size_t *size) {
 
     const int64_t fileSize = utils::GetFileSizeW(path);
     if (fileSize < 0) return 0;
-    if (fileSize == 0) return 1;
+    if (fileSize == 0) return 0;
 
     std::vector<uint8_t> result = utils::ReadBinaryFileW(path);
     return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
@@ -1213,7 +1213,7 @@ int BML_ReadBinaryFileUtf8(const char *path, uint8_t **data, size_t *size) {
 
     const int64_t fileSize = utils::GetFileSizeUtf8(path);
     if (fileSize < 0) return 0;
-    if (fileSize == 0) return 1;
+    if (fileSize == 0) return 0;
 
     std::vector<uint8_t> result = utils::ReadBinaryFileUtf8(path);
     return result.empty() ? 0 : CopyBinaryFileResult(result, data, size);
