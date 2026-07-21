@@ -419,5 +419,17 @@ write_basic_package_version_file(
 install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
+)
+
+install(FILES
+        "${PROJECT_SOURCE_DIR}/tools/interop_codegen.py"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/tools"
+)
+
+install(FILES
+        "${PROJECT_SOURCE_DIR}/docs/imc-author-guide.md"
+        "${PROJECT_SOURCE_DIR}/docs/interop-v2.md"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs"
 )

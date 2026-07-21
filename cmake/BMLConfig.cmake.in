@@ -4,3 +4,7 @@ include(CMakeFindDependencyMacro)
 find_dependency(VirtoolsSDK)
 
 include("${CMAKE_CURRENT_LIST_DIR}/BMLTargets.cmake")
+
+set_and_check(BML_INTEROP_CODEGEN
+              "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/BML/tools/interop_codegen.py")
+include("${CMAKE_CURRENT_LIST_DIR}/BMLImc.cmake")
