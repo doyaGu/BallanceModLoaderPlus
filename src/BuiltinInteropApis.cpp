@@ -23,6 +23,11 @@
 #include "BML/Generated/bml_runtime_api.h"
 #include "BML/Generated/bml_scene_api.h"
 #include "BML/Generated/bml_ui_api.h"
+#include "BML/Generated/bml_events_imc.hpp"
+#include "BML/Generated/bml_gameplay_imc.hpp"
+#include "BML/Generated/bml_scene_imc.hpp"
+#include "BML/Generated/bml_ui_imc.hpp"
+#include "BML/Generated/bml_runtime_imc.hpp"
 
 namespace {
 
@@ -31,6 +36,11 @@ namespace SceneApi = BML::Interop::Generated::Bml::Scene;
 namespace GameplayApi = BML::Interop::Generated::Bml::Gameplay;
 namespace UiApi = BML::Interop::Generated::Bml::Ui;
 namespace EventsApi = BML::Interop::Generated::Bml::Events;
+namespace ImcRuntimeApi = BML::Imc::Generated::Bml::Runtime;
+namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
+namespace ImcGameplayApi = BML::Imc::Generated::Bml::Gameplay;
+namespace ImcSceneApi = BML::Imc::Generated::Bml::Scene;
+namespace ImcUiApi = BML::Imc::Generated::Bml::Ui;
 
 constexpr uint32_t kVirtoolsObjectDomain = BML_INTEROP_OBJECT_DOMAIN_VIRTOOLS;
 
@@ -120,10 +130,24 @@ public:
             }
             return status;
         }
+        const int imcStatus = RegisterImc();
+        if (imcStatus != BML_OK) {
+            (void)registry.UnregisterProvider(owner, EventsApi::ApiId);
+            (void)registry.UnregisterProvider(owner, UiApi::ApiId);
+            (void)registry.UnregisterProvider(owner, GameplayApi::ApiId);
+            (void)registry.UnregisterProvider(owner, SceneApi::ApiId);
+            (void)registry.UnregisterProvider(owner, RuntimeApi::ApiId);
+            return imcStatus;
+        }
         return BML_OK;
     }
 
     void Unregister() {
+        (void)m_ImcEvents.Close();
+        (void)m_ImcUi.Close();
+        (void)m_ImcGameplay.Close();
+        (void)m_ImcScene.Close();
+        (void)m_ImcRuntime.Close();
         ModContext *context = GetContext();
         if (!context)
             return;
@@ -149,12 +173,20 @@ public:
     void InvalidateObjectRefs(const CK_ID *ids, int count) { m_ObjectReferences.Invalidate(ids, count); }
     void InvalidateAllObjectRefs() { m_ObjectReferences.InvalidateAll(); }
 
+    bool HasImcEventConsumers() const noexcept {
+        std::size_t count = 0;
+        return m_ImcEvents.GetAllSubscriberCount(count) == BML_OK && count != 0;
+    }
+
     void PublishEvent(const BML::InteropEventSnapshot &event) {
+        PublishImcEvent(event);
         ModContext *context = GetContext();
         if (!context)
             return;
-        BML_InteropRecordBuilder *record = nullptr;
         BML::InteropRegistry &registry = context->GetInteropRegistry();
+        if (!registry.HasStreamConsumers(EventsApi::Descriptor.ApiId, "all"))
+            return;
+        BML_InteropRecordBuilder *record = nullptr;
         if (registry.CreateStreamRecord(m_Mod.GetID(), EventsApi::ApiId, "all", &record) != BML_OK || !record)
             return;
         struct RecordGuard {
@@ -229,6 +261,302 @@ public:
     }
 
 private:
+    int RegisterImc() {
+        const char *owner = m_Mod.GetID();
+        int status = m_ImcRuntime.Open(owner);
+        if (status == BML_OK) status = m_ImcRuntime.RegisterState(&ReadImcRuntimeState, this);
+        if (status == BML_OK) status = m_ImcRuntime.RegisterClock(&ReadImcRuntimeClock, this);
+        if (status == BML_OK) status = m_ImcRuntime.RegisterScore(&ReadImcRuntimeScore, this);
+        if (status == BML_OK) status = m_ImcScene.Open(owner);
+        if (status == BML_OK) status = m_ImcScene.RegisterObject(&ReadImcSceneObject, this);
+        if (status == BML_OK) status = m_ImcScene.RegisterEntity(&ReadImcSceneEntity, this);
+        if (status == BML_OK) status = m_ImcScene.RegisterFindName(&ReadImcSceneFindName, this);
+        if (status == BML_OK) status = m_ImcScene.RegisterFindNameClass(&ReadImcSceneFindNameClass, this);
+        if (status == BML_OK) status = m_ImcGameplay.Open(owner);
+        if (status == BML_OK) status = m_ImcGameplay.RegisterLevel(&ReadImcGameplayLevel, this);
+        if (status == BML_OK) status = m_ImcGameplay.RegisterEnergy(&ReadImcGameplayEnergy, this);
+        if (status == BML_OK) status = m_ImcGameplay.RegisterCatalog(&ReadImcGameplayCatalog, this);
+        if (status == BML_OK) status = m_ImcGameplay.RegisterCheckpoints(&ReadImcGameplayCheckpoints, this);
+        if (status == BML_OK) status = m_ImcGameplay.RegisterResetpoints(&ReadImcGameplayResetpoints, this);
+        if (status == BML_OK) status = m_ImcUi.Open(owner);
+        if (status == BML_OK) status = RegisterImcUi();
+        if (status == BML_OK) status = m_ImcEvents.Open(owner);
+        if (status != BML_OK) {
+            (void)m_ImcEvents.Close();
+            (void)m_ImcUi.Close();
+            (void)m_ImcGameplay.Close();
+            (void)m_ImcScene.Close();
+            (void)m_ImcRuntime.Close();
+        }
+        return status;
+    }
+
+    static int ReadImcRuntimeState(ImcRuntimeApi::RuntimeStateValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context) return BML_ERROR_INTEROP_UNSUPPORTED;
+        out.InGame = context->IsIngame(); out.InLevel = context->IsInLevel();
+        out.Paused = context->IsPaused(); out.Playing = context->IsPlaying();
+        out.CheatEnabled = context->IsCheatEnabled(); return BML_OK;
+    }
+
+    static int ReadImcRuntimeClock(ImcRuntimeApi::ClockStateValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        CKTimeManager *time = context ? context->GetTimeManager() : nullptr;
+        if (!time) return BML_ERROR_INTEROP_UNSUPPORTED;
+        out.TimeMs = time->GetTime(); out.AbsoluteMs = time->GetAbsoluteTime(); out.DeltaMs = time->GetLastDeltaTime();
+        const CKDWORD tick = time->GetMainTickCount();
+        out.Frame = tick > static_cast<CKDWORD>((std::numeric_limits<int>::max)())
+                        ? (std::numeric_limits<int>::max)() : static_cast<int>(tick);
+        return BML_OK;
+    }
+
+    static int ReadImcRuntimeScore(ImcRuntimeApi::ScoreStateValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        out.Sr = provider->m_Mod.GetSRScore(); out.Hs = provider->m_Mod.GetHSScore(); return BML_OK;
+    }
+
+    void PublishImcEvent(const BML::InteropEventSnapshot &event) {
+        ImcEventsApi::EventValue value{}; value.Kind = event.Kind;
+        const bool isLoad = event.Kind == BML_EVENT_LOAD_OBJECT || event.Kind == BML_EVENT_LOAD_SCRIPT;
+        const bool isPhysics = event.Kind == BML_EVENT_PHYSICALIZE || event.Kind == BML_EVENT_UNPHYSICALIZE;
+        const bool isCommand = event.Kind == BML_EVENT_COMMAND_PRE || event.Kind == BML_EVENT_COMMAND_POST;
+        if (isLoad) {
+            value.HasFilename = true; value.Filename = event.Filename;
+            value.HasIsMap = true; value.IsMap = event.IsMap;
+            value.HasMasterName = true; value.MasterName = event.MasterName;
+            value.HasFilterClass = true; value.FilterClass = event.FilterClass;
+            value.HasAddToScene = true; value.AddToScene = event.AddToScene;
+            value.HasReuseMeshes = true; value.ReuseMeshes = event.ReuseMeshes;
+            value.HasReuseMaterials = true; value.ReuseMaterials = event.ReuseMaterials;
+            value.HasDynamic = true; value.Dynamic = event.IsDynamic;
+            if (event.Kind == BML_EVENT_LOAD_OBJECT) {
+                value.HasObjectIds = true; value.ObjectIds = event.ObjectIds;
+                value.HasMasterObject = true; value.MasterObject = event.MasterObject;
+            } else {
+                value.HasScript = true; value.Script = event.Script;
+            }
+        }
+        if (isPhysics) {
+            value.HasTarget = true; value.Target = event.Target;
+            if (event.Kind == BML_EVENT_PHYSICALIZE) {
+                value.HasFixed = true; value.Fixed = event.Fixed;
+                value.HasFriction = true; value.Friction = event.Friction;
+                value.HasElasticity = true; value.Elasticity = event.Elasticity;
+                value.HasMass = true; value.Mass = event.Mass;
+                value.HasCollisionGroup = true; value.CollisionGroup = event.CollisionGroup;
+                value.HasStartFrozen = true; value.StartFrozen = event.StartFrozen;
+                value.HasEnableCollision = true; value.EnableCollision = event.EnableCollision;
+                value.HasAutoCalculateMassCenter = true; value.AutoCalculateMassCenter = event.AutoCalculateMassCenter;
+                value.HasLinearDamp = true; value.LinearDamp = event.LinearDamp;
+                value.HasRotDamp = true; value.RotDamp = event.RotDamp;
+                value.HasCollisionSurface = true; value.CollisionSurface = event.CollisionSurface;
+                value.HasMassCenter = true; value.MassCenter = event.MassCenter;
+                value.HasConvexMeshes = true; value.ConvexMeshes = event.ConvexMeshes;
+                value.HasBallCenters = true; value.BallCenters = event.BallCenters;
+                value.HasBallRadii = true; value.BallRadii = event.BallRadii;
+                value.HasConcaveMeshes = true; value.ConcaveMeshes = event.ConcaveMeshes;
+            }
+        }
+        if (isCommand) {
+            value.HasCommand = true; value.Command = event.Command;
+            value.HasCommandArgs = true; value.CommandArgs = event.CommandArgs;
+        }
+        if (event.Kind == BML_EVENT_CONFIG_MODIFIED) {
+            value.HasConfigCategory = true; value.ConfigCategory = event.ConfigCategory;
+            value.HasConfigKey = true; value.ConfigKey = event.ConfigKey;
+            value.HasConfigType = true; value.ConfigType = event.ConfigType;
+            value.HasConfigValue = true; value.ConfigValue = event.ConfigValue;
+        }
+        if (event.Kind == BML_EVENT_CHEAT_CHANGED) {
+            value.HasCheatEnabled = true; value.CheatEnabled = event.CheatEnabled;
+        }
+        (void)m_ImcEvents.PublishAll(value);
+    }
+
+    static int ReadImcSceneObject(const BML_ObjectRef &reference, ImcSceneApi::ObjectInfoValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), reference) : nullptr;
+        if (!object) return BML_ERROR_INTEROP_OBJECT_INVALID;
+        out.Id = static_cast<int>(object->GetID()); out.Name = object->GetName() ? object->GetName() : "";
+        out.ClassId = static_cast<int>(object->GetClassID()); out.Visible = object->IsVisible() != FALSE;
+        out.Dynamic = object->IsDynamic() != FALSE; return BML_OK;
+    }
+
+    static int ReadImcSceneEntity(const BML_ObjectRef &reference, ImcSceneApi::EntityTransformValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), reference) : nullptr;
+        CK3dEntity *entity = dynamic_cast<CK3dEntity *>(object);
+        if (!entity) return BML_ERROR_INTEROP_OBJECT_INVALID;
+        VxVector position, scale; entity->GetPosition(&position); entity->GetScale(&scale);
+        out.Position = BML::ToVec3(position); out.Scale = BML::ToVec3(scale);
+        out.Parent = provider->m_ObjectReferences.Make(entity->GetParent());
+        out.ChildCount = entity->GetChildrenCount(); return BML_OK;
+    }
+
+    static int ReadImcSceneFindName(const ImcSceneApi::FindNameRequestValue &input,
+                                    ImcSceneApi::FindResultValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context || !context->GetCKContext()) return BML_ERROR_INTEROP_UNSUPPORTED;
+        out.Object = provider->m_ObjectReferences.Make(context->GetCKContext()->GetObjectByName(const_cast<char *>(input.Name.c_str())));
+        return BML_OK;
+    }
+
+    static int ReadImcSceneFindNameClass(const ImcSceneApi::FindNameClassRequestValue &input,
+                                         ImcSceneApi::FindResultValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context || !context->GetCKContext()) return BML_ERROR_INTEROP_UNSUPPORTED;
+        out.Object = provider->m_ObjectReferences.Make(
+            context->GetCKContext()->GetObjectByNameAndClass(const_cast<char *>(input.Name.c_str()), static_cast<CK_CLASSID>(input.ClassId)));
+        return BML_OK;
+    }
+
+    static int ReadImcGameplayLevel(ImcGameplayApi::LevelStateValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context || !provider->ProbeGameplaySource("level")) return BML_ERROR_INTEROP_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("CurrentLevel");
+        int id = 0, points = 0; VxMatrix matrix;
+        if (!ReadValue(array, 0, 0, id) || !ReadMatrix(array, 0, 3, matrix) || !ReadValue(array, 0, 5, points))
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        out.Id = id; out.ActiveBall = provider->m_ObjectReferences.Make(ReadObject(array, 0, 1));
+        out.ResetMatrix = BML::ToMat4(matrix); out.Points = points; return BML_OK;
+    }
+
+    static int ReadImcGameplayEnergy(ImcGameplayApi::EnergyStateValue &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context || !provider->ProbeGameplaySource("energy")) return BML_ERROR_INTEROP_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("Energy");
+        if (!ReadValue(array, 0, 0, out.Points) || !ReadValue(array, 0, 1, out.Lives) ||
+            !ReadValue(array, 0, 2, out.StartPoints) || !ReadValue(array, 0, 3, out.StartLives) ||
+            !ReadValue(array, 0, 4, out.TimeFactor) || !ReadValue(array, 0, 5, out.LifeBonus))
+            return BML_ERROR_INTEROP_UNSUPPORTED;
+        return BML_OK;
+    }
+
+    static int ReadImcGameplayCatalog(std::vector<ImcGameplayApi::CatalogEntryValue> &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context || !provider->ProbeGameplaySource("catalog")) return BML_ERROR_INTEROP_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("AllLevel"); out.clear(); out.reserve(array->GetRowCount());
+        for (int row = 0; row < array->GetRowCount(); ++row) {
+            ImcGameplayApi::CatalogEntryValue value{};
+            if (!ReadString(array, row, 0, value.File) || !ReadString(array, row, 1, value.StartBall) ||
+                !ReadString(array, row, 2, value.Sky) || !ReadValue(array, row, 3, value.Bonus) ||
+                !ReadValue(array, row, 4, value.Music)) return BML_ERROR_INTEROP_UNSUPPORTED;
+            out.push_back(std::move(value));
+        }
+        return BML_OK;
+    }
+
+    static int ReadImcGameplayCheckpoints(std::vector<ImcGameplayApi::CheckpointValue> &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context || !provider->ProbeGameplaySource("checkpoints")) return BML_ERROR_INTEROP_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("Checkpoints"); out.clear(); out.reserve(array->GetRowCount());
+        for (int row = 0; row < array->GetRowCount(); ++row) {
+            VxMatrix matrix; if (!ReadMatrix(array, row, 0, matrix)) return BML_ERROR_INTEROP_UNSUPPORTED;
+            ImcGameplayApi::CheckpointValue value{}; value.Matrix = BML::ToMat4(matrix);
+            value.Object = provider->m_ObjectReferences.Make(ReadObject(array, row, 1)); out.push_back(value);
+        }
+        return BML_OK;
+    }
+
+    static int ReadImcGameplayResetpoints(std::vector<ImcGameplayApi::ResetpointValue> &out, void *userdata) {
+        auto *provider = static_cast<BuiltinInteropProvider *>(userdata);
+        ModContext *context = provider ? provider->GetContext() : nullptr;
+        if (!context || !provider->ProbeGameplaySource("resetpoints")) return BML_ERROR_INTEROP_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("ResetPoints"); out.clear(); out.reserve(array->GetRowCount());
+        for (int row = 0; row < array->GetRowCount(); ++row) {
+            ImcGameplayApi::ResetpointValue value{};
+            value.Object = provider->m_ObjectReferences.Make(ReadObject(array, row, 0)); out.push_back(value);
+        }
+        return BML_OK;
+    }
+    int RegisterImcUi() {
+        int status = m_ImcUi.RegisterMessageAdd(&ImcUiMessageAdd, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterMessageClear(&ImcUiMessageClear, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterModsMenuOpen(&ImcUiModsMenuOpen, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterModsMenuClose(&ImcUiModsMenuClose, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterMapMenuOpen(&ImcUiMapMenuOpen, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterMapMenuClose(&ImcUiMapMenuClose, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterHudSet(&ImcUiHudSet, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterHudTitleShow(&ImcUiHudTitleShow, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterHudFpsShow(&ImcUiHudFpsShow, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterHudSrShow(&ImcUiHudSrShow, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterHudSrStart(&ImcUiHudSrStart, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterHudSrPause(&ImcUiHudSrPause, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterHudSrReset(&ImcUiHudSrReset, this);
+        if (status == BML_OK) status = m_ImcUi.RegisterState(&ReadImcUiState, this);
+        return status;
+    }
+
+    static BuiltinInteropProvider *ImcUiProvider(void *userdata) {
+        return static_cast<BuiltinInteropProvider *>(userdata);
+    }
+
+    static int ImcUiMessageAdd(const ImcUiApi::MessageInputValue &input,
+                               ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.AddIngameMessage(input.Message.c_str()); return BML_OK;
+    }
+    static int ImcUiMessageClear(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.ClearIngameMessages(); return BML_OK;
+    }
+    static int ImcUiModsMenuOpen(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.OpenModsMenu(); return BML_OK;
+    }
+    static int ImcUiModsMenuClose(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.CloseModsMenu(); return BML_OK;
+    }
+    static int ImcUiMapMenuOpen(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.OpenMapMenu(); return BML_OK;
+    }
+    static int ImcUiMapMenuClose(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.CloseMapMenu(); return BML_OK;
+    }
+    static int ImcUiHudSet(const ImcUiApi::HudModeInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.SetHUD(input.Mode); return BML_OK;
+    }
+    static int ImcUiHudTitleShow(const ImcUiApi::VisibleInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.ShowTitle(input.Visible); return BML_OK;
+    }
+    static int ImcUiHudFpsShow(const ImcUiApi::VisibleInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.ShowFPS(input.Visible); return BML_OK;
+    }
+    static int ImcUiHudSrShow(const ImcUiApi::VisibleInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.ShowSRTimer(input.Visible); return BML_OK;
+    }
+    static int ImcUiHudSrStart(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.StartSRTimer(); return BML_OK;
+    }
+    static int ImcUiHudSrPause(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.PauseSRTimer(); return BML_OK;
+    }
+    static int ImcUiHudSrReset(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.ResetSRTimer(); return BML_OK;
+    }
+    static int ReadImcUiState(ImcUiApi::HudStateValue &out, void *userdata) {
+        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        out.Mode = provider->m_Mod.GetHUD(); out.SrTime = provider->m_Mod.GetSRTime(); return BML_OK;
+    }
     ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
 
     template <typename T>
@@ -658,6 +986,11 @@ private:
 
     BMLMod &m_Mod;
     ObjectReferences m_ObjectReferences;
+    ImcRuntimeApi::Provider m_ImcRuntime;
+    ImcSceneApi::Provider m_ImcScene;
+    ImcGameplayApi::Provider m_ImcGameplay;
+    ImcUiApi::Provider m_ImcUi;
+    ImcEventsApi::Client m_ImcEvents;
 };
 
 std::unordered_map<BMLMod *, std::unique_ptr<BuiltinInteropProvider>> g_Providers;
@@ -707,7 +1040,9 @@ void PublishBuiltinInteropEvent(ModContext &context, const BML::InteropEventSnap
 
 bool HasBuiltinInteropEventConsumers(ModContext &context) noexcept {
     try {
-        return context.GetInteropRegistry().HasStreamConsumers(EventsApi::Descriptor.ApiId, "all");
+        BuiltinInteropProvider *provider = FindProvider(context);
+        return (provider && provider->HasImcEventConsumers()) ||
+               context.GetInteropRegistry().HasStreamConsumers(EventsApi::Descriptor.ApiId, "all");
     } catch (...) {
         return false;
     }
