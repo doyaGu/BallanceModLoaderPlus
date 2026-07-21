@@ -19,8 +19,8 @@ The supported native cross-mod model is documented in
   APIs;
 - authoring a native provider uses a versioned `.bmlapi` contract and generated
   IMC bindings;
-- the script `BML::Interop` provider surface remains available for existing
-  script-defined services;
+- script-only mods consume the typed built-in facades and use DataShare for
+  simple shared state; custom generated IMC providers are native-only;
 - provider/source lifetime is tied to the mod runtime and all stale handles are
   diagnosed rather than dereferenced.
 

@@ -1,7 +1,7 @@
 # BML Script Mod Validation
 
-This checklist covers the current BML Script Mod Platform and experimental
-Interop smoke matrix. Interop remains experimental in BML 0.3.13.
+This checklist covers the current BML Script Mod Platform and its typed
+IMC-backed facade smoke matrix.
 
 ## Automated Ballance validation
 
@@ -17,7 +17,7 @@ BallanceRoot is required unless BML_BALLANCE_ROOT is set. The script backs up
 the installed DLL, installs the current DLL and smoke packages, starts Player,
 collects ModLoader, Player, and AngelScript logs, and returns a structured
 result. A non-zero exit after Goodbye! is reported as shutdown_anomaly rather
-than as an Interop failure.
+than as an IMC failure.
 
 Use SingleFileSmoke or ZipSmoke to exercise those package forms. Use
 HotReloadStateSmoke to exercise script-runtime migration:
@@ -46,15 +46,13 @@ Both builds must produce bin/BMLPlus.dll.
 
 ## Current Player smoke API
 
-The AngelScript-enabled normal path installs BMLAngelScriptSmoke and
-BMLNativeInteropSmoke. It must show all of the following in ModLoader.log:
+The AngelScript-enabled normal path installs BMLAngelScriptSmoke. It must show
+all of the following in ModLoader.log:
 
 - Registered BML AngelScript bindings.
-- BML script mod summary: api-interop.
-- BML interop smoke: runtime=true stream=true provider=true.
-- A successful BML interop stream poll.
-- Interop API smoke register: status=0 value=0.
-- Interop API smoke read: status=0 value=42.
+- BML script mod summary: imc-facades.
+- BML IMC facade smoke: runtime=true stream=true.
+- A successful BML IMC stream poll.
 - Compile and callback diagnostics from their negative smokes, contained ImGui
   recovery, and Goodbye! from the shutdown smoke.
 
@@ -71,8 +69,8 @@ files present, and verify native BML loads without script-mod execution. If
 AngelScript.dll is absent, expect the ckas-host diagnostic that script mods
 are unavailable.
 
-The old export-registry, ExportRef, and CallFrame smoke assertions are
-deliberately gone. They are not part of the experimental Interop surface.
+The old Record/Registry, export-registry, ExportRef, and CallFrame smoke
+assertions are deliberately gone. They are not public APIs.
 
 ## Entry and safety checks
 

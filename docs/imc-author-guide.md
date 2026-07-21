@@ -106,7 +106,7 @@ The IMC field vocabulary is:
 Wide numeric arrays support `array<int64>`, `array<uint64>`, and
 `array<double>`. A byte blob uses `bytes`; there is no redundant
 `array<bytes>` shape. The CMake helper selects typed IMC generation
-automatically. A manual generator invocation must pass `--imc-only`.
+automatically. Manual generation uses the same IMC-only generator.
 
 An enum declaration uses `underlying: "int"`, `"int64"`, or `"uint64"`;
 `int` is the default. Values must have unique names and numbers and fit the
@@ -189,10 +189,10 @@ missing generated header. `OUTPUT_DIR` can override the generated directory.
 checks; a missing predecessor fails during CMake configuration.
 
 For a manual or committed-output workflow, the package exposes the
-`BML_INTEROP_CODEGEN` path:
+`BML_IMC_CODEGEN` path:
 
 ```text
-python interop_codegen.py --imc-only \
+python imc_codegen.py \
   --input api/example.echo.bmlapi \
   --expected-api-id example.echo \
   --out-dir generated
@@ -273,7 +273,7 @@ if (client.IsEchoAvailable(available) == BML_OK && available) {
 `IsEchoAvailable` is one read-only lookup for the already cached RPC ID. It is
 an advisory point-in-time snapshot: the provider may unload immediately after
 the check, so `CallEcho`/`BeginCallEcho` must still handle
-`BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND`. It does not enumerate providers or
+`BML_ERROR_IMC_ENDPOINT_NOT_FOUND`. It does not enumerate providers or
 create a future.
 
 Every generated RPC also has a typed future method. It avoids manual request
@@ -338,8 +338,8 @@ Use `DroppedCount()` to observe backpressure loss.
 All generated methods return BML status codes. Log both the code and
 `BML_GetErrorString(status)`. The common integration failures are:
 
-- `BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND`: no provider registered that RPC route;
-- `BML_ERROR_INTEROP_API_MISMATCH`: payload descriptor is incompatible;
+- `BML_ERROR_IMC_ENDPOINT_NOT_FOUND`: no provider registered that RPC route;
+- `BML_ERROR_IMC_API_MISMATCH`: payload descriptor is incompatible;
 - `BML_ERROR_WRONG_THREAD`: a pending future was synchronously waited on the
   game thread;
 - `BML_ERROR_WOULD_BLOCK`: a bounded queue using FAIL backpressure is full;

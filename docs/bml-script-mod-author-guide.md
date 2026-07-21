@@ -21,7 +21,7 @@ If you already use CKAngelScript, read this as the BML-owned layer on top of
 CKAS. Scene objects, behavior graphs, components, raw CK/Vx bindings, messages,
 async work, and plugin extension namespaces still belong to CKAngelScript and
 its docs. BML adds mod identity, dependencies, resources, config, commands,
-logging, UI hooks, API Interop, DataShare, and load diagnostics.
+logging, UI hooks, typed IMC-backed facades, DataShare, and load diagnostics.
 
 If you are exposing APIs from a native plugin, this guide tells script authors
 how they will consume those APIs. Use the CKAngelScript registration docs for
@@ -168,8 +168,8 @@ resource root, not arbitrary global include paths.
 | Add commands or command completion | `Command And Completion` | `BML::Command`, `BML::CommandDefinition`, `BML::CommandCompletion` |
 | Delay or repeat work | `Timer` | `BML::Timer`, `ctx.AddTimer()` |
 | Draw BML/ImGui UI | `UI`, `Advanced ImGui` | `OnRender`, `ctx.Draw*`, `BML::ImGui::*` |
-| Read BML runtime, scene, gameplay, or event snapshots | `API Interop` | `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events` |
-| Expose a typed capability to another mod | `API Interop` | generated `.bmlapi` binding and `BML::Interop` provider setup in `OnLoad` |
+| Read BML runtime, scene, gameplay, or event snapshots | `IMC-Backed APIs` | `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events` |
+| Expose simple shared state to another script mod | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Hook an existing behavior graph path | `CK, Physics, And Text Helpers` | CKAS `Behavior`/`BB` lookup plus `ctx.InsertHookBlock*` or `BML::Hook::*` |
 | Work with Virtools objects, behavior graphs, or CKDataArray/CKMesh/CKTexture | `What BML Adds To CKAngelScript`, CKAS docs | CKAS `Scene`, `Behavior`, `BB`, `Param`, raw CK/Vx SDK bindings where needed |
@@ -185,7 +185,7 @@ resource root, not arbitrary global include paths.
 | `BML::ModContext` | The per-mod service object passed into callbacks. Start here for logging, config, commands, resources, timers, DataShare, and BML UI. |
 | Borrowed handle | A handle returned for immediate use, usually to CK/Virtools state. Do not keep it as long-term identity unless that section says it is safe. |
 | CKAS ref | A CKAngelScript reference object such as an `ObjectRef@`-derived handle. Prefer this for long-lived CK object identity. |
-| API provider | A mod-owned implementation of a declared Interop API. The API schema, not an arbitrary method signature, is the public boundary. |
+| IMC provider | A native mod implementation of a generated `.bmlapi` contract. The schema, not an arbitrary C++ method signature, is the public boundary. |
 
 ## Entry Rules
 
@@ -196,8 +196,8 @@ resource root, not arbitrary global include paths.
   `[bml.optional]` are AngelScript metadata, not a separate
   manifest DSL.
 - BML does not use a source lexer/parser to infer namespace or class name.
-  Those facts come from CKAngelScript metadata reflection; Interop APIs
-  are declared separately in `.bmlapi` files and compiled before runtime.
+  Those facts come from CKAngelScript metadata reflection. Native IMC APIs are
+  declared separately in `.bmlapi` files and compiled before runtime.
 - The `[bml.mod]` class may live in any AngelScript namespace. BML records the
   namespace and class name reported by CKAS metadata reflection.
 
@@ -219,7 +219,7 @@ language rules matter when reading this guide:
   script code; the marker documents the native ownership transfer.
 - BML fixed callbacks run with CKAS no-suspend semantics. Do not call an API
   that suspends from `OnLoad`, `OnProcess`, `OnRender`, command callbacks,
-  timer callbacks, DataShare callbacks, or Interop provider callbacks.
+  timer callbacks, or DataShare callbacks.
 
 Keep interface method signatures exact when implementing `BML::Command`,
 `BML::Timer`, and `BML::DataShareRequest`. A missing `const`, `&in`, return
@@ -230,7 +230,7 @@ callback.
 
 BML script mods run inside CKAngelScript, but a BML script mod is only one
 script shape: an AngelScript module/class that BML gives mod identity, load
-order, callbacks, resources, dependencies, declared Interop capabilities, commands, config, logging,
+order, callbacks, resources, dependencies, typed IMC-backed facades, commands, config, logging,
 timers, DataShare, and BML UI helpers. It is not a replacement for every CKAS
 runtime surface.
 
@@ -271,7 +271,7 @@ not the BML mod dependency graph.
 
 | Goal | Best surface | Reason |
 | --- | --- | --- |
-| Publish a mod with BML identity, dependency ordering, config, commands, logs, HUD/menu UI, resources, a declared Interop capability, or DataShare | BML script mod | These are BML-owned mod semantics. |
+| Publish a mod with BML identity, dependency ordering, config, commands, logs, HUD/menu UI, resources, typed built-in capabilities, or DataShare | BML script mod | These are BML-owned mod semantics. |
 | Patch or inspect a level object, data array, material, mesh, texture, camera, or scene membership | BML script mod plus CKAS `Scene`/raw CK APIs, or a CKAS runtime script when no BML mod identity is needed | BML can orchestrate the mod; CKAS should own Virtools object lookup and identity. |
 | Add per-object or per-behavior logic inside an existing behavior graph | `AngelScript Component` | It naturally receives `CKBehaviorContext` and editor/component metadata injection. |
 | Search, edit, or drive behavior graphs and Building Blocks | CKAS `Behavior`, `BB`, and `Param`, often from a component; a BML script mod can coordinate by borrowing `CKContext@` where CKAS overloads allow it | The graph and parameter model is CKAS-owned, not a BML facade clone. |
@@ -288,9 +288,9 @@ the owner boundary instead of smuggling raw engine objects through BML.
 ## Common Project Shapes
 
 - Pure BML script mod: good for commands, config-driven toggles, HUD/menu
-  changes, DataShare, API providers, resource loading, and light level scripting.
+  changes, DataShare, resource loading, and light level scripting.
 - BML orchestrator plus CKAS components: BML owns mod configuration and public
-  interop; components live on behavior instances and execute per-object logic.
+  coordination; components live on behavior instances and execute per-object logic.
 - Native core plus script policy: native code owns hooks, renderer/input patches,
   or high-frequency loops; AngelScript exposes safe knobs, scripts, and
   callbacks through a CKAS extension.
@@ -338,13 +338,10 @@ through `ModRef`, but it does not block loading when absent. Dependency metadata
 does not replace CKAngelScript `[script.depends]`; that belongs to CKAS runtime
 scripts.
 
-`bml.export` is no longer an Interop feature. Cross-mod capabilities are
-declared by a versioned `.bmlapi` API definition and registered from `OnLoad`. This
-makes ownership, field IDs, record shape, and lifecycle explicit instead of
-turning an arbitrary script method signature into a runtime ABI. Most script
-authors consume the generated shallow namespaces (`BML::Runtime`,
-`BML::Scene`, `BML::Gameplay`, and `BML::Events`) and do not need to create a
-provider themselves.
+`bml.export` was removed with the experimental dynamic-call ABI. Native
+cross-mod capabilities use a versioned `.bmlapi` contract and generated IMC
+bindings. Script mods use typed facades or DataShare; they do not register raw
+RPC/Topic providers.
 
 ## Hot Reload
 
@@ -393,10 +390,7 @@ Expected behavior:
 - Hot reload does not cascade into dependent mods. If a dependent mod now
   requires a version that the candidate no longer satisfies, reload is rejected.
   Restart or reload the affected dependent mods explicitly.
-- Registered API schemas and endpoints are frozen for the lifetime of a
-  script runtime. Change them by reloading the provider; consumers receive
-  `provider_unloaded` or stale-handle diagnostics until the new source exists.
-- Old Timer, Command, DataShare request, callback, and Interop handles become
+- Old Timer, Command, DataShare request, and callback handles become
   invalid or stale after replacement. New registrations from the new `OnLoad`
   are the only active resources.
 - A script mod can detect reload lifecycle callbacks through `ModContext`:
@@ -446,7 +440,7 @@ void RestoreState(BML::StateBag@ state) {
   uses a clone of the original state bag and calls only old `RestoreState`
   before rollback `OnLoad`.
 - `StateBag` is intentionally limited to `bool`, `int`, `float`, and `string`.
-  Do not store AngelScript objects, callbacks, `ModRef`, Interop handles, CK handles,
+  Do not store AngelScript objects, callbacks, `ModRef`, CK handles,
   timers, commands, or DataShare requests in it; those resources are rebound
   through the normal `OnLoad` path.
 - A `StateBag` passed by BML to `SaveState`, `MigrateState`, or `RestoreState`
@@ -459,14 +453,14 @@ void RestoreState(BML::StateBag@ state) {
   through `StateBag`, read context information, and log diagnostics. They must
   not register timers, commands, hooks, DataShare requests, or irreversible
   content; they must not execute commands, write DataShare/config values, mutate
-  input state, invoke Interop providers, or change CK/game-world objects.
+  input state, invoke IMC-backed mutating facades, or change CK/game-world objects.
   Rebuild resources in `OnLoad` after pure state has been restored.
 - BML rejects BML-owned mutating APIs in these hooks, and rejects CKAngelScript
   host APIs that have explicitly opted into CKAS host-call filtering. This does
   not make hot reload a sandbox. Raw CK/Vx calls, CKAS APIs that have not been
   marked as mutating, and other plugin extension APIs can still have external
   side effects; do not call them from state hooks.
-- Rollback restores only resources BML owns: callbacks, Interop providers, timers,
+- Rollback restores only resources BML owns: callbacks, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
   raw CK/Vx calls, or another plugin. If a feature mutates world state during
@@ -523,7 +517,7 @@ handles and should be used immediately.
 
 | Callback | When to use it | Payload notes |
 | --- | --- | --- |
-| `OnLoad` | Initialize config, commands, timers, DataShare requests, API providers, and content registration. | No event object. Failures here fail the script mod load. |
+| `OnLoad` | Initialize config, commands, timers, DataShare requests, and content registration. | No event object. Failures here fail the script mod load. |
 | `OnUnload` | Cancel optional work, unregister commands explicitly when desired, and clear script-side state. | BML also cleans up script-owned resources. |
 | `OnProcess` | Light per-tick orchestration. | Avoid expensive scene scans; cache durable ids/refs and revalidate near use. |
 | `OnRender` | BML UI and ImGui drawing. | `RenderEvent.Flags` is a snapshot of the render flags. Frame-scope handles from ImGui must not be stored. |
@@ -540,12 +534,12 @@ Use event snapshots for logging, decisions, and delayed work. For delayed CK
 object work, store `CK_ID` values or CKAS `ObjectRef@`-derived handles and
 resolve raw CK handles only when the operation runs.
 
-## API Interop
+## IMC-Backed APIs
 
 Use the shallow API facades for BML-owned read-only snapshots. A read
 returns a BML status code and changes its output only on success; an
-`ERROR_INTEROP_UNSUPPORTED` or source diagnostic means that only that source is
-unavailable, not that every Interop capability failed.
+`ERROR_IMC_UNSUPPORTED` or source diagnostic means that only that source is
+unavailable, not that every IMC-backed capability failed.
 
 ```angelscript
 BML::Runtime::State runtime;
@@ -561,11 +555,10 @@ if (BML::Runtime::ReadState(runtime) == BML::ERROR_OK && runtime.InLevel &&
 `BML::Runtime` covers state, clock, score, and cheats. `BML::Scene` covers
 lookup and object/entity snapshots. `BML::Gameplay` covers independently
 probed gameplay sources. `BML::Events::Stream` supplies immutable event
-snapshots in hook order. For a third-party API, include its generated
-`.as` binding and use the typed facade it declares. `BML::Interop` is the
-advanced transport behind those facades; its `Record`, `Input`, `Stream`, and
-`Cursor` types are available for reflection tooling when no generated binding
-is present.
+snapshots in hook order. Script code receives only typed facades; raw IMC
+messages, providers, subscriptions, and transport handles are intentionally not
+registered in AngelScript. A native plugin can expose another typed script
+facade when it also owns the generated IMC client.
 
 ## The ModContext Object
 
@@ -598,8 +591,8 @@ Common capabilities:
 - Mod registry queries such as `FindMod`, `GetModCount`, and `GetMod`.
 - Script-owned Timer and Command registration.
 - Typed DataShare read/request helpers.
-- API-backed runtime, scene, gameplay, UI, and event facades. Use a
-  generated Interop API only when authoring a new cross-mod capability.
+- IMC-backed runtime, scene, gameplay, UI, and event facades. Custom generated
+  IMC providers remain a native-mod capability.
 
 `BorrowLogger()` and `BorrowConfig()` return BML service wrappers that may be
 stored as handles, but every call still revalidates the owning script mod. CK
@@ -981,38 +974,21 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
 }
 ```
 
-## Declared API Providers
+## Cross-Mod Services
 
 `ModRef` remains useful for dependency and diagnostics inspection, but it is
 not a dynamic function-call surface. `ExportRef`, `ExportResolver`,
 `CallFrame`, and `[bml.export]` were removed with the old experimental ABI.
 
-For state-like cross-mod data, use DataShare. For a reusable typed capability,
-write one `.bmlapi` API definition, generate bindings, and implement its provider in
-`OnLoad`. An API has stable ID/version/field IDs and exposes only one
-of `Resource`, `Component`, `Collection`, `Stream`, `Query`, or `Command` per
-endpoint. Consumers use generated shallow APIs; only provider authors and
-reflection tools use `BML::Interop` directly.
+For state-like cross-mod data, use DataShare. Script mods do not register custom
+RPC or Topic providers. This keeps the script surface typed and avoids a second
+dynamic schema/record system beside IMC.
 
-```angelscript
-// Generated bindings normally build this API for you.
-BML::Interop::ApiBuilder@ api = BML::Interop::CreateApi(
-    "example.provider", 1, 0, uint64(0x1234567890abcdef));
-api.AddSchema(1, "state");
-api.AddField(1, 1, "enabled", BML::Interop::FIELD_BOOL);
-api.AddEndpoint("state", BML::Interop::ENDPOINT_RESOURCE, 0, 1);
-
-BML::Interop::Provider@ provider = BML::Interop::CreateProvider();
-provider.SetRead("state", ReadState);
-int status = BML::Interop::RegisterProvider(api, provider); // OnLoad only
-```
-
-Providers are frozen after successful registration and are automatically
-revoked on unload or hot reload. Provider callbacks run on the game thread;
-they write one complete snapshot into `RecordWriter` and must never retain the
-request or writer. `ObjectRef` is `domain + slot + generation`, not a CK
-pointer. Streams are the cross-mod event mechanism and own immutable copied
-records; consumers must handle queue overflow and stale handles.
+For a reusable or performance-sensitive service, implement a native mod: write
+one versioned `.bmlapi` contract, generate its C++ binding, and register the
+generated provider. Expose a small AngelScript facade only if scripts also need
+the service. See [Inter-mod communication](imc.md) and
+[Create a typed IMC API](imc-author-guide.md).
 
 ## Timer
 
@@ -1260,17 +1236,11 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 ### Expose A Small Service To Other Mods
 
-Declare an explicit typed capability instead of marking ordinary methods for
-export. The current script `BML::Interop` provider builder remains a
-compatibility surface: use `Resource`, `Component`, `Collection`, `Stream`, and
-`Command` only when maintaining a script-defined provider that already depends
-on it. A provider must be registered from `OnLoad`; its source schema and
-callbacks cannot change until reload.
-
-For a new native or performance-sensitive cross-mod capability, define stable
-payloads and expose generated IMC RPCs or Topics. Keep the script-facing wrapper
-typed and small; do not expose raw message buffers or invent another transport
-endpoint kind. See [Inter-mod communication](imc.md) and
+Use DataShare when a script mod only needs to publish or request a small typed
+value. Script-defined RPC/Topic providers are not supported. When the service
+needs requests, streaming events, explicit threading, or high throughput,
+implement a native generated IMC provider and keep any script-facing wrapper
+typed and small. See [Inter-mod communication](imc.md) and
 [Create a typed IMC API](imc-author-guide.md).
 
 ## Diagnostics
@@ -1280,7 +1250,6 @@ Script failures are recorded as structured diagnostics:
 ```text
 phase=compile message=...
 phase=callback message=...
-phase=interop-provider message=...
 ```
 
 You can inspect diagnostics from:
@@ -1298,7 +1267,6 @@ Common phases:
 - `compile`: AngelScript compilation failed.
 - `metadata`: `bml.mod` or dependency metadata is invalid.
 - `callback`: a fixed callback failed at runtime.
-- `interop-provider`: a provider callback, schema, or registration failed.
 
 Debugging order:
 

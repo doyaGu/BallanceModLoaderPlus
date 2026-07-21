@@ -1,46 +1,46 @@
 # 跨 Mod 通信
 
-`[bml.export]`、`ExportRef` 和 `CallFrame` 已随旧实验 ABI 移除。不要把任意
-脚本方法当作跨 Mod ABI。
+BML+ 只保留一套 RPC/事件传输：IMC。旧的 `[bml.export]`、`ExportRef`、
+`CallFrame` 和 `BML::Interop` Record/Registry 接口已经移除，不存在兼容层。
 
-按数据形态选择接口：
+## 脚本 Mod 如何选择
 
-- 一次原子只读快照：声明 `Resource<T>`。
-- 按 `ObjectRef` 读取的快照：声明 `Component<T>`。
-- 分页结果：声明 `Collection<T>`。
-- 有序事件或可缓存变化：声明 `Stream<T>`。
-- 只有已有 UI 等明确命令能力才使用 `Command<Req, Resp>`。
-- 简单、延后读取的状态可继续使用 DataShare。
-
-普通消费者应使用生成的浅层 API，例如 `BML::Runtime::ReadState`、
-`BML::Scene::Find`、`BML::Gameplay::ReadLevel` 和 `BML::Events::Open`。
-不要手写记录字段或调用底层 C ABI。
-
-要提供新能力时，先写版本化 `.bmlapi`：包 ID、主/次版本、稳定 record/field
-ID 和 endpoint。生成器会同时给 native 和 AngelScript 生成绑定。AngelScript
-provider 只能在 `OnLoad` 中注册：
+脚本中读取 BML 自带能力时，直接使用有类型的浅层接口：
 
 ```angelscript
-int ReadState(const BML::Interop::Request &in request,
-              BML::Interop::RecordWriter@ writer) {
-  return writer.SetBool(1, true);
+BML::Runtime::State runtime;
+if (BML::Runtime::ReadState(runtime) == BML::ERROR_OK && runtime.InLevel) {
+  // 使用 runtime 的复制快照。
 }
 
-void OnLoad(const BML::ModContext &in ctx) {
-  // 实际项目使用由 .bmlapi 生成的 CreateApi()。
-  BML::Interop::ApiBuilder@ api = BML::Interop::CreateApi(
-      "example.provider", 1, 0, uint64(0x1234567890abcdef));
-  api.AddSchema(1, "state");
-  api.AddField(1, 1, "enabled", BML::Interop::FIELD_BOOL);
-  api.AddEndpoint("state", BML::Interop::ENDPOINT_RESOURCE, 0, 1);
-
-  BML::Interop::Provider@ provider = BML::Interop::CreateProvider();
-  provider.SetRead("state", ReadState);
-  BML::Interop::RegisterProvider(api, provider);
+BML::Events::Stream@ events;
+if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
+  // 在 OnProcess 中 Poll；用完后 Close。
 }
 ```
 
-注册成功后 schema、endpoint 和 callback 配置冻结。卸载或热重载会撤销 provider；
-消费者已有的复制快照仍可读到释放，但 stream/cursor 等 session 句柄会返回
-stale 或 provider-unloaded 诊断。`ObjectRef` 只是 `domain + slot + generation`，
-绝不保存或传递 `CKObject*`。
+可用的内置命名空间包括 `BML::Runtime`、`BML::Scene`、
+`BML::Gameplay`、`BML::UI` 和 `BML::Events`。这些接口内部使用 IMC，
+但不会把原始消息、provider 或 subscription 句柄暴露给脚本。
+
+两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
+类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。
+
+## 何时需要原生 IMC Provider
+
+下面任一条件成立时，应把服务实现为原生 Mod：
+
+- 需要请求/响应 RPC；
+- 需要高频或有背压策略的事件流；
+- 需要显式选择 caller thread 或 game thread；
+- 需要稳定的跨 DLL ABI，供多个独立 Mod 使用。
+
+原生实现流程是：编写版本化 `.bmlapi` 合约，用 `imc_codegen.py` 或
+`bml_target_imc_api()` 生成 C++ 绑定，实现生成的 provider，并让消费者
+使用生成的 client。不要手写字段编码，也不要跨 DLL 传递 C++ 对象、STL
+容器、allocator 所有权或 `CKObject*`。
+
+完整示例与兼容演进规则见：
+
+- [Inter-mod communication](../imc.md)
+- [Create a typed IMC API](../imc-author-guide.md)
