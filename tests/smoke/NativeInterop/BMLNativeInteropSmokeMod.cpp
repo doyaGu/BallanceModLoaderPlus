@@ -1,708 +1,195 @@
 #include "BML/IMod.h"
-#include "BML/Import.h"
-#include "BML/Interop.h"
+#include "BML/InteropApi.h"
 
-#include <cstdint>
-#include <stdexcept>
-#include <string>
-#include <vector>
+#include <cstring>
 
-static constexpr const char *SMOKE_MOD_ID = "bml.native.interop.smoke";
+namespace {
 
-static int NativeEchoExport(BML_CallFrame *frame, void *) {
-    char input[256] = {};
-    size_t required = 0;
-    int status = BML_CallFrame_GetString(frame, 0, input, sizeof(input), &required);
-    if (status != BML_OK)
-        return status;
+constexpr BML_InteropFieldDescriptor kStateFields[] = {
+    {1u, "value", BML_INTEROP_FIELD_INT, 0},
+};
 
-    std::string output = "native:";
-    output += input;
-    return BML_CallFrame_SetResultString(frame, output.c_str());
+constexpr BML_InteropSchemaDescriptor kSchemas[] = {
+    {1u, "state", kStateFields, sizeof(kStateFields) / sizeof(kStateFields[0])},
+};
+
+constexpr BML_InteropEndpointDescriptor kEndpoints[] = {
+    {"state", BML_INTEROP_ENDPOINT_RESOURCE, 0u, 1u, 0},
+};
+
+constexpr BML_InteropApiDescriptor kApi = {
+    sizeof(BML_InteropApiDescriptor),
+    "bml.smoke.api",
+    1u,
+    0u,
+    0x5467F4E62C5ADA4DULL,
+    kSchemas,
+    sizeof(kSchemas) / sizeof(kSchemas[0]),
+    kEndpoints,
+    sizeof(kEndpoints) / sizeof(kEndpoints[0]),
+    nullptr,
+    0,
+};
+
+int ReadState(const BML_InteropProviderRequest *, BML_InteropRecordBuilder *record, void *) {
+    const int value = 42;
+    return BML_Interop_RecordBuilder_SetValue(record,
+                                              1u,
+                                              BML_INTEROP_FIELD_INT,
+                                              &value,
+                                              1u);
 }
 
-static int NativeNotExport(BML_CallFrame *frame, void *) {
-    int value = 0;
-    const int status = BML_CallFrame_GetBool(frame, 0, &value);
+const BML_InteropProviderCallbacks kCallbacks = {
+    sizeof(BML_InteropProviderCallbacks),
+    nullptr,
+    &ReadState,
+    nullptr,
+    nullptr,
+    nullptr,
+};
+
+int VerifyScriptProviderState(BML_RecordRef record, int &outValue) {
+    outValue = 0;
+    int status = BML_Interop_RecordGetInt(record, 1u, &outValue);
+    if (status != BML_OK || outValue != 42)
+        return status != BML_OK ? status : BML_ERROR_INTEROP_RECORD_INVALID;
+
+    const void *data = nullptr;
+    size_t count = 0;
+    size_t elementSize = 0;
+    status = BML_Interop_RecordBorrowValue(record,
+                                            2u,
+                                            BML_INTEROP_FIELD_INT_ARRAY,
+                                            &data,
+                                            &count,
+                                            &elementSize);
     if (status != BML_OK)
         return status;
-    return BML_CallFrame_SetResultBool(frame, value == 0);
-}
+    const int *numbers = static_cast<const int *>(data);
+    if (elementSize != sizeof(int) || count != 3 || !numbers ||
+        numbers[0] != 1 || numbers[1] != 2 || numbers[2] != 3) {
+        return BML_ERROR_INTEROP_RECORD_INVALID;
+    }
 
-static int NativeAddOneExport(BML_CallFrame *frame, void *) {
-    int value = 0;
-    const int status = BML_CallFrame_GetInt(frame, 0, &value);
+    size_t stringCount = 0;
+    status = BML_Interop_RecordGetStringArrayCount(record, 3u, &stringCount);
     if (status != BML_OK)
         return status;
-    return BML_CallFrame_SetResultInt(frame, value + 1);
-}
+    if (stringCount != 2)
+        return BML_ERROR_INTEROP_RECORD_INVALID;
+    const char *expectedNames[] = {"alpha", "beta"};
+    for (size_t index = 0; index < stringCount; ++index) {
+        char value[16]{};
+        size_t required = 0;
+        status = BML_Interop_RecordGetStringArrayItem(record, 3u, index, value, sizeof(value), &required);
+        if (status != BML_OK)
+            return status;
+        if (required != std::strlen(expectedNames[index]) + 1 || std::strcmp(value, expectedNames[index]) != 0)
+            return BML_ERROR_INTEROP_RECORD_INVALID;
+    }
 
-static int NativeSumExport(BML_CallFrame *frame, void *) {
-    int left = 0;
-    int right = 0;
-    int status = BML_CallFrame_GetInt(frame, 0, &left);
+    data = nullptr;
+    count = 0;
+    elementSize = 0;
+    status = BML_Interop_RecordBorrowValue(record,
+                                            4u,
+                                            BML_INTEROP_FIELD_VEC3_ARRAY,
+                                            &data,
+                                            &count,
+                                            &elementSize);
     if (status != BML_OK)
         return status;
-    status = BML_CallFrame_GetInt(frame, 1, &right);
+    const BML_Vec3 *points = static_cast<const BML_Vec3 *>(data);
+    if (elementSize != sizeof(BML_Vec3) || count != 1 || !points ||
+        points[0].x != 1.0f || points[0].y != 2.0f || points[0].z != 3.0f) {
+        return BML_ERROR_INTEROP_RECORD_INVALID;
+    }
+
+    data = nullptr;
+    count = 0;
+    elementSize = 0;
+    status = BML_Interop_RecordBorrowValue(record,
+                                            5u,
+                                            BML_INTEROP_FIELD_MAT4_ARRAY,
+                                            &data,
+                                            &count,
+                                            &elementSize);
     if (status != BML_OK)
         return status;
-    return BML_CallFrame_SetResultInt(frame, left + right);
-}
-
-static int NativeScaleExport(BML_CallFrame *frame, void *) {
-    float value = 0.0f;
-    const int status = BML_CallFrame_GetFloat(frame, 0, &value);
-    if (status != BML_OK)
-        return status;
-    return BML_CallFrame_SetResultFloat(frame, value * 2.0f);
-}
-
-static int NativeFrameReportExport(BML_CallFrame *frame, void *) {
-    const size_t argCount = BML_CallFrame_GetArgCount(frame);
-    const int type0 = BML_CallFrame_GetArgType(frame, 0);
-    const int type1 = BML_CallFrame_GetArgType(frame, 1);
-    const int resultTypeBefore = BML_CallFrame_GetResultType(frame);
-
-    int status = BML_CallFrame_ClearArg(frame, 1);
-    if (status != BML_OK)
-        return status;
-
-    status = BML_CallFrame_SetResultInt(frame,
-                                        static_cast<int>(argCount * 1000) +
-                                        type0 * 100 +
-                                        type1 * 10 +
-                                        resultTypeBefore);
-    if (status != BML_OK)
-        return status;
-
-    return BML_CallFrame_GetArgCount(frame) == 1 ? BML_OK : BML_ERROR_FAIL;
-}
-
-static int NativeAutoCleanupSmokeExport(BML_CallFrame *, void *) {
+    const BML_Mat4 *matrices = static_cast<const BML_Mat4 *>(data);
+    if (elementSize != sizeof(BML_Mat4) || count != 1 || !matrices ||
+        matrices[0].m00 != 1.0f || matrices[0].m11 != 1.0f ||
+        matrices[0].m22 != 1.0f || matrices[0].m33 != 1.0f) {
+        return BML_ERROR_INTEROP_RECORD_INVALID;
+    }
     return BML_OK;
-}
-
-static int NativeAmbiguousIntExport(BML_CallFrame *frame, void *) {
-    int value = 0;
-    const int status = BML_CallFrame_GetInt(frame, 0, &value);
-    if (status != BML_OK)
-        return status;
-    return BML_CallFrame_SetResultInt(frame, value);
-}
-
-static int NativeAmbiguousFloatExport(BML_CallFrame *frame, void *) {
-    float value = 0.0f;
-    const int status = BML_CallFrame_GetFloat(frame, 0, &value);
-    if (status != BML_OK)
-        return status;
-    return BML_CallFrame_SetResultFloat(frame, value);
-}
-
-static int NativeThrowExport(BML_CallFrame *, void *) {
-    throw std::runtime_error("native smoke exception");
-}
-
-static int NativeFailWithResultExport(BML_CallFrame *frame, void *) {
-    BML_CallFrame_SetResultInt(frame, 99);
-    return BML_ERROR_FAIL;
-}
-
-static int NativeSumIntArrayExport(BML_CallFrame *frame, void *) {
-    const void *data = nullptr;
-    size_t required = 0;
-    size_t elementSize = 0;
-    const int status = BML_CallFrame_BorrowValue(frame,
-                                                 0,
-                                                 BML_CALL_VALUE_INT_ARRAY,
-                                                 &data,
-                                                 &required,
-                                                 &elementSize);
-    if (status != BML_OK)
-        return status;
-    if (elementSize != sizeof(int))
-        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-
-    const int *values = static_cast<const int *>(data);
-    int sum = 0;
-    for (size_t i = 0; i < required; ++i)
-        sum += values[i];
-    return BML_CallFrame_SetResultInt(frame, sum);
-}
-
-static int NativeMirrorBufferExport(BML_CallFrame *frame, void *) {
-    const void *borrowed = nullptr;
-    size_t required = 0;
-    size_t elementSize = 0;
-    const int status = BML_CallFrame_BorrowValue(frame,
-                                                 0,
-                                                 BML_CALL_VALUE_BUFFER,
-                                                 &borrowed,
-                                                 &required,
-                                                 &elementSize);
-    if (status != BML_OK)
-        return status;
-    if (elementSize != sizeof(std::uint8_t))
-        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-
-    const auto *bytesIn = static_cast<const std::uint8_t *>(borrowed);
-    std::vector<std::uint8_t> bytes;
-    if (bytesIn && required > 0)
-        bytes.assign(bytesIn, bytesIn + required);
-    for (std::uint8_t &byte : bytes)
-        byte = static_cast<std::uint8_t>(byte ^ 0xffu);
-    return BML_CallFrame_SetResultValue(frame, BML_CALL_VALUE_BUFFER, bytes.data(), bytes.size());
-}
-
-static int NativeStringArrayCountExport(BML_CallFrame *frame, void *) {
-    const void *data = nullptr;
-    size_t count = 0;
-    size_t elementSize = 0;
-    const int status = BML_CallFrame_BorrowValue(frame,
-                                                 0,
-                                                 BML_CALL_VALUE_STRING_ARRAY,
-                                                 &data,
-                                                 &count,
-                                                 &elementSize);
-    if (status != BML_OK)
-        return status;
-    if (elementSize != sizeof(const char *))
-        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    return BML_CallFrame_SetResultInt(frame, static_cast<int>(count));
-}
-
-static int NativeObjectIdentityExport(BML_CallFrame *frame, void *) {
-    const void *data = nullptr;
-    size_t count = 0;
-    size_t elementSize = 0;
-    const int status = BML_CallFrame_BorrowValue(frame,
-                                                 0,
-                                                 BML_CALL_VALUE_OBJECT_ID,
-                                                 &data,
-                                                 &count,
-                                                 &elementSize);
-    if (status != BML_OK)
-        return status;
-    if (!data || count != 1 || elementSize != sizeof(int))
-        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    return BML_CallFrame_SetResultValue(frame, BML_CALL_VALUE_OBJECT_ID, data, 1);
-}
-
-static int NativeLifecycleSmokeExport(BML_CallFrame *frame, void *userdata) {
-    auto *called = static_cast<bool *>(userdata);
-    if (called)
-        *called = true;
-    return BML_CallFrame_SetResultInt(frame, 7);
-}
-
-static void ReleaseExport(BML_ModExport *handle) {
-    if (handle)
-        BML_ReleaseModExport(handle);
-}
-
-static void DestroyFrame(BML_CallFrame *frame) {
-    if (frame)
-        BML_DestroyCallFrame(frame);
 }
 
 class BMLNativeInteropSmokeMod final : public IMod {
 public:
     explicit BMLNativeInteropSmokeMod(IBML *bml) : IMod(bml) {}
 
-    const char *GetID() override { return SMOKE_MOD_ID; }
+    const char *GetID() override { return "bml.native.interop.smoke"; }
     const char *GetVersion() override { return "1.0.0"; }
-    const char *GetName() override { return "BML Native Interop Smoke"; }
-    const char *GetAuthor() override { return "BML+"; }
+    const char *GetName() override { return "Interop API smoke"; }
+    const char *GetAuthor() override { return "BML"; }
     const char *GetDescription() override {
-        return "Validation-only native mod for BML script interop smoke tests.";
+        return "Registers and consumes one C-ABI Interop API.";
     }
     DECLARE_BML_VERSION;
 
     void OnLoad() override {
-        RegisterExport("NativeEcho", "string NativeEcho(const string &in value)", NativeEchoExport);
-        RegisterExport("NativeNot", "bool NativeNot(bool value)", NativeNotExport);
-        RegisterExport("NativeAddOne", "int NativeAddOne(int value)", NativeAddOneExport);
-        RegisterExport("NativeSum", "int NativeSum(int left, int right)", NativeSumExport);
-        RegisterExport("NativeScale", "float NativeScale(float value)", NativeScaleExport);
-        RegisterExport("NativeFrameReport", "int NativeFrameReport(int value, const string &in label)", NativeFrameReportExport);
-        RegisterExport("NativeAutoCleanupSmoke", "void NativeAutoCleanupSmoke()", NativeAutoCleanupSmokeExport);
-        RegisterExport("NativeAmbiguous", "int NativeAmbiguous(int value)", NativeAmbiguousIntExport);
-        RegisterExport("NativeAmbiguous", "float NativeAmbiguous(float value)", NativeAmbiguousFloatExport);
-        RegisterExport("NativeThrow", "void NativeThrow()", NativeThrowExport);
-        RegisterExport("NativeFailWithResult", "int NativeFailWithResult()", NativeFailWithResultExport);
-        RegisterExport("NativeSumIntArray",
-                       "int NativeSumIntArray(const array<int> &in values)",
-                       NativeSumIntArrayExport);
-        RegisterExport("NativeMirrorBuffer",
-                       "array<uint8>@ NativeMirrorBuffer(const array<uint8> &in bytes)",
-                       NativeMirrorBufferExport);
-        RegisterExport("NativeStringArrayCount",
-                       "int NativeStringArrayCount(const array<string> &in values)",
-                       NativeStringArrayCountExport);
-        RegisterExport("NativeObjectIdentity",
-                       "CKObject@ NativeObjectIdentity(CKObject@ object)",
-                       NativeObjectIdentityExport);
-        RunNativeExportLifecycleSmoke();
-        RunNativeExportHardeningSmoke();
-        RunNativeExtendedExportSmoke();
-        RunCoreCapabilitySmoke();
-    }
+        m_RegisterStatus = BML_Interop_RegisterProvider(&kApi, &kCallbacks, this);
+        if (m_RegisterStatus != BML_OK) {
+            Log("register", m_RegisterStatus, 0);
+            return;
+        }
 
-    void OnUnload() override {
-        BML_UnregisterNativeModExports(GetID());
+        BML_RecordRef record{};
+        int value = 0;
+        int status = BML_Interop_ReadResource(kApi.ApiId, "state", &record);
+        if (status == BML_OK)
+            status = BML_Interop_RecordGetInt(record, 1u, &value);
+        if (record.Value)
+            (void)BML_Interop_ReleaseRecord(record);
+        Log("read", status, value);
     }
 
     void OnProcess() override {
-        if (!m_InteropChecked) {
-            m_InteropChecked = true;
-            RunNativeToScriptExportSmoke();
-            RunScriptCommandCompletionSmoke();
-        }
-
-        if (m_Checked)
+        if (m_RegisterStatus != BML_OK || m_ScriptConsumerLogged)
             return;
-        ++m_Frames;
-        if (m_Frames < 180)
-            return;
-        m_Checked = true;
 
-        GetLogger()->Info("BML native shutdown smoke requesting exit");
-        if (m_BML)
-            m_BML->ExecuteCommand("exit");
+        BML_RecordRef record{};
+        int value = 0;
+        int status = BML_Interop_ReadResource("bml.smoke.script", "state", &record);
+        if (status == BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND)
+            return; // The dependent script has not completed OnLoad yet.
+        if (status == BML_OK)
+            status = VerifyScriptProviderState(record, value);
+        if (record.Value)
+            (void)BML_Interop_ReleaseRecord(record);
+        Log("script-read", status, value);
+        m_ScriptConsumerLogged = true;
+    }
+
+    void OnUnload() override {
+        if (m_RegisterStatus == BML_OK)
+            (void)BML_Interop_UnregisterProvider(kApi.ApiId);
+        m_RegisterStatus = BML_ERROR_INTEROP_PROVIDER_UNLOADED;
     }
 
 private:
-    void RegisterExport(const char *name, const char *signature, BML_NativeExportCallback callback) {
-        const int status = BML_RegisterNativeModExport(GetID(), name, signature, callback, this);
-        if (status != BML_OK) {
-            GetLogger()->Warn("BML native interop smoke export register failed: %s %s status=%d",
-                              name,
-                              signature,
-                              status);
-        }
+    void Log(const char *operation, int status, int value) {
+        if (ILogger *logger = GetLogger())
+            logger->Info("Interop API smoke %s: status=%d value=%d", operation, status, value);
     }
 
-    void RunNativeExportLifecycleSmoke() {
-        bool callbackCalled = false;
-        const char *name = "NativeLifecycleSmoke";
-        const char *signature = "int NativeLifecycleSmoke()";
-
-        const int firstRegister = BML_RegisterNativeModExport(GetID(),
-                                                              name,
-                                                              signature,
-                                                              NativeLifecycleSmokeExport,
-                                                              &callbackCalled);
-        const int duplicateRegister = BML_RegisterNativeModExport(GetID(),
-                                                                  name,
-                                                                  signature,
-                                                                  NativeLifecycleSmokeExport,
-                                                                  &callbackCalled);
-
-        BML_ModExport *handle = BML_FindModExport(GetID(), name, signature);
-        BML_CallFrame *frame = BML_CreateCallFrame();
-        const int validBeforeUnregister = handle ? BML_IsModExportValid(handle) : 0;
-        const int unregisterStatus = BML_UnregisterNativeModExport(GetID(), name, signature);
-        const int validAfterUnregister = handle ? BML_IsModExportValid(handle) : 0;
-        const int staleCallStatus = handle && frame ? BML_CallModExport(handle, frame) : BML_ERROR_INVALID_PARAMETER;
-
-        char signatureBuffer[128] = {};
-        size_t signatureRequired = 0;
-        const int signatureStatus = handle
-                                        ? BML_GetModExportSignature(handle,
-                                                                    signatureBuffer,
-                                                                    sizeof(signatureBuffer),
-                                                                    &signatureRequired)
-                                        : BML_ERROR_INVALID_PARAMETER;
-
-        GetLogger()->Info("BML native export lifecycle smoke first=%d duplicate=%d unregister=%d validBefore=%d validAfter=%d staleCall=%d callback=%s signatureStatus=%d signature=%s",
-                          firstRegister,
-                          duplicateRegister,
-                          unregisterStatus,
-                          validBeforeUnregister,
-                          validAfterUnregister,
-                          staleCallStatus,
-                          callbackCalled ? "true" : "false",
-                          signatureStatus,
-                          signatureBuffer);
-
-        DestroyFrame(frame);
-        ReleaseExport(handle);
-        if (firstRegister == BML_OK && unregisterStatus != BML_OK)
-            BML_UnregisterNativeModExport(GetID(), name, signature);
-    }
-
-    void RunNativeExportHardeningSmoke() {
-        BML_ModExport *handle = nullptr;
-        int findExStatus = BML_FindModExportEx(GetID(), "NativeAddOne", nullptr, &handle);
-        ReleaseExport(handle);
-        handle = nullptr;
-
-        BML_ModExport *ambiguousHandle = nullptr;
-        const int ambiguousStatus = BML_FindModExportEx(GetID(), "NativeAmbiguous", nullptr, &ambiguousHandle);
-        ReleaseExport(ambiguousHandle);
-
-        BML_ModExport *explicitHandle = nullptr;
-        const int explicitStatus = BML_FindModExportEx(GetID(),
-                                                       "NativeAmbiguous",
-                                                       "int NativeAmbiguous(int value)",
-                                                       &explicitHandle);
-        ReleaseExport(explicitHandle);
-
-        BML_ModExport *mismatchHandle = nullptr;
-        const int mismatchStatus = BML_FindModExportEx(GetID(),
-                                                       "NativeAddOne",
-                                                       "float NativeAddOne(float value)",
-                                                       &mismatchHandle);
-        ReleaseExport(mismatchHandle);
-
-        BML_ModExport *badSignatureHandle = nullptr;
-        const int badSignatureStatus = BML_FindModExportEx(GetID(),
-                                                           "NativeAddOne",
-                                                           "double NativeAddOne(double value)",
-                                                           &badSignatureHandle);
-        ReleaseExport(badSignatureHandle);
-
-        BML_ModExport *missingTargetHandle = nullptr;
-        const int missingTargetStatus = BML_FindModExportEx("bml.missing.interop.smoke",
-                                                            "Missing",
-                                                            "void Missing()",
-                                                            &missingTargetHandle);
-        ReleaseExport(missingTargetHandle);
-
-        BML_ModExport *throwHandle = nullptr;
-        int throwStatus = BML_FindModExportEx(GetID(), "NativeThrow", nullptr, &throwHandle);
-        BML_CallFrame *throwFrame = BML_CreateCallFrame();
-        if (throwStatus == BML_OK)
-            throwStatus = BML_CallModExport(throwHandle, throwFrame);
-        const int throwResultType = throwFrame ? BML_CallFrame_GetResultType(throwFrame) : BML_CALL_VALUE_EMPTY;
-        DestroyFrame(throwFrame);
-        ReleaseExport(throwHandle);
-
-        BML_ModExport *failHandle = nullptr;
-        int failStatus = BML_FindModExportEx(GetID(), "NativeFailWithResult", nullptr, &failHandle);
-        BML_CallFrame *failFrame = BML_CreateCallFrame();
-        if (failStatus == BML_OK)
-            failStatus = BML_CallModExport(failHandle, failFrame);
-        const int failResultType = failFrame ? BML_CallFrame_GetResultType(failFrame) : BML_CALL_VALUE_EMPTY;
-        DestroyFrame(failFrame);
-        ReleaseExport(failHandle);
-
-        GetLogger()->Info("BML native export hardening smoke findEx=%d ambiguous=%d explicit=%d mismatch=%d badSig=%d missingTarget=%d exception=%d exceptionResult=%d fail=%d failResult=%d",
-                          findExStatus,
-                          ambiguousStatus,
-                          explicitStatus,
-                          mismatchStatus,
-                          badSignatureStatus,
-                          missingTargetStatus,
-                          throwStatus,
-                          throwResultType,
-                          failStatus,
-                          failResultType);
-    }
-
-    void RunNativeExtendedExportSmoke() {
-        int sumStatus = BML_ERROR_FAIL;
-        int sumResult = 0;
-        {
-            BML_ModExport *handle = nullptr;
-            sumStatus = BML_FindModExportEx(GetID(),
-                                            "NativeSumIntArray",
-                                            "int NativeSumIntArray(const array<int> &in input)",
-                                            &handle);
-            BML_CallFrame *frame = BML_CreateCallFrame();
-            const int values[] = {3, 5, 8};
-            if (sumStatus == BML_OK && frame)
-                sumStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_INT_ARRAY, values, 3);
-            if (sumStatus == BML_OK)
-                sumStatus = BML_CallModExport(handle, frame);
-            if (sumStatus == BML_OK)
-                sumStatus = BML_CallFrame_GetResultInt(frame, &sumResult);
-            DestroyFrame(frame);
-            ReleaseExport(handle);
-        }
-
-        int bufferStatus = BML_ERROR_FAIL;
-        std::vector<std::uint8_t> bufferResult;
-        {
-            BML_ModExport *handle = nullptr;
-            bufferStatus = BML_FindModExportEx(GetID(),
-                                               "NativeMirrorBuffer",
-                                               "array<uint8>@ NativeMirrorBuffer(const array<uint8> &in bytes)",
-                                               &handle);
-            BML_CallFrame *frame = BML_CreateCallFrame();
-            const std::uint8_t bytes[] = {0x00u, 0x55u, 0xffu};
-            if (bufferStatus == BML_OK && frame)
-                bufferStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_BUFFER, bytes, 3);
-            if (bufferStatus == BML_OK)
-                bufferStatus = BML_CallModExport(handle, frame);
-            if (bufferStatus == BML_OK) {
-                size_t required = 0;
-                size_t elementSize = 0;
-                const void *borrowed = nullptr;
-                bufferStatus = BML_CallFrame_BorrowResultValue(frame,
-                                                               BML_CALL_VALUE_BUFFER,
-                                                               &borrowed,
-                                                               &required,
-                                                               &elementSize);
-                const auto *bytesOut = static_cast<const std::uint8_t *>(borrowed);
-                if (bufferStatus == BML_OK && elementSize == sizeof(std::uint8_t) && bytesOut)
-                    bufferResult.assign(bytesOut, bytesOut + required);
-            }
-            DestroyFrame(frame);
-            ReleaseExport(handle);
-        }
-
-        int stringArrayStatus = BML_ERROR_FAIL;
-        int stringArrayCount = 0;
-        {
-            BML_ModExport *handle = nullptr;
-            stringArrayStatus = BML_FindModExportEx(GetID(),
-                                                    "NativeStringArrayCount",
-                                                    "int NativeStringArrayCount(const array<string> &in values)",
-                                                    &handle);
-            BML_CallFrame *frame = BML_CreateCallFrame();
-            const char *values[] = {"alpha", "beta"};
-            if (stringArrayStatus == BML_OK && frame)
-                stringArrayStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_STRING_ARRAY, values, 2);
-            if (stringArrayStatus == BML_OK)
-                stringArrayStatus = BML_CallModExport(handle, frame);
-            if (stringArrayStatus == BML_OK)
-                stringArrayStatus = BML_CallFrame_GetResultInt(frame, &stringArrayCount);
-            DestroyFrame(frame);
-            ReleaseExport(handle);
-        }
-
-        int objectStatus = BML_ERROR_FAIL;
-        int objectResult = -1;
-        {
-            BML_ModExport *handle = nullptr;
-            objectStatus = BML_FindModExportEx(GetID(),
-                                               "NativeObjectIdentity",
-                                               "CKObject@ NativeObjectIdentity(CKObject@ object)",
-                                               &handle);
-            BML_CallFrame *frame = BML_CreateCallFrame();
-            int objectId = 0;
-            if (objectStatus == BML_OK && frame)
-                objectStatus = BML_CallFrame_SetValue(frame, 0, BML_CALL_VALUE_OBJECT_ID, &objectId, 1);
-            if (objectStatus == BML_OK)
-                objectStatus = BML_CallModExport(handle, frame);
-            if (objectStatus == BML_OK) {
-                const void *borrowed = nullptr;
-                size_t count = 0;
-                size_t elementSize = 0;
-                objectStatus = BML_CallFrame_BorrowResultValue(frame,
-                                                               BML_CALL_VALUE_OBJECT_ID,
-                                                               &borrowed,
-                                                               &count,
-                                                               &elementSize);
-                if (objectStatus == BML_OK && borrowed && count == 1 && elementSize == sizeof(int))
-                    objectResult = *static_cast<const int *>(borrowed);
-            }
-            DestroyFrame(frame);
-            ReleaseExport(handle);
-        }
-
-        const int bufferFirst = bufferResult.empty() ? -1 : static_cast<int>(bufferResult[0]);
-        const int bufferLast = bufferResult.size() < 3 ? -1 : static_cast<int>(bufferResult[2]);
-        GetLogger()->Info("BML native interop extended smoke sumStatus=%d sum=%d bufferStatus=%d bufferFirst=%d bufferLast=%d stringArrayStatus=%d stringCount=%d objectStatus=%d objectId=%d",
-                          sumStatus,
-                          sumResult,
-                          bufferStatus,
-                          bufferFirst,
-                          bufferLast,
-                          stringArrayStatus,
-                          stringArrayCount,
-                          objectStatus,
-                          objectResult);
-    }
-
-    void RunCoreCapabilitySmoke() {
-        BML::Import<int()> getHud;
-        int hud = -1;
-        int getStatus = getHud.Bind("BML", "ui.hud.get", "int()");
-        if (getStatus == BML_OK)
-            getStatus = getHud.Invoke(hud);
-
-        BML::Import<void(int)> setHud;
-        int setStatus = setHud.Bind("BML", "ui.hud.set", "void(int)");
-        if (getStatus == BML_OK && setStatus == BML_OK)
-            setStatus = setHud.Invoke(hud);
-
-        BML_ModExport *messageHandle = nullptr;
-        const int rawMessageStatus = BML_FindModExportEx("BML",
-                                                         "ui.message.add",
-                                                         "void(string)",
-                                                         &messageHandle);
-        if (messageHandle)
-            BML_ReleaseModExport(messageHandle);
-
-        GetLogger()->Info("BML native core capability smoke get=%d hud=%d set=%d rawMessage=%d",
-                          getStatus,
-                          hud,
-                          setStatus,
-                          rawMessageStatus);
-    }
-
-    void RunNativeToScriptExportSmoke() {
-        GetLogger()->Info("BML native interop smoke state self kind=%d state=%d script kind=%d state=%d",
-                          BML_GetModKind(GetID()),
-                          BML_GetModState(GetID()),
-                          BML_GetModKind("bml.bindings.smoke"),
-                          BML_GetModState("bml.bindings.smoke"));
-
-        CallScriptEchoSmoke();
-        CallScriptAddOneSmoke();
-        CallScriptSumSmoke();
-    }
-
-    void RunScriptCommandCompletionSmoke() {
-        ICommand *command = m_BML ? m_BML->FindCommand("assmoke") : nullptr;
-        std::vector<std::string> args;
-        args.emplace_back("assmoke");
-        args.emplace_back("a");
-        const std::vector<std::string> completions = command ? command->GetTabCompletion(m_BML, args) : std::vector<std::string>();
-        bool hasAlpha = false;
-        bool hasBeta = false;
-        for (const std::string &completion : completions) {
-            if (completion == "alpha")
-                hasAlpha = true;
-            if (completion == "beta")
-                hasBeta = true;
-        }
-        GetLogger()->Info("BML native command completion smoke command=%s count=%d alpha=%s beta=%s",
-                          command ? "true" : "false",
-                          static_cast<int>(completions.size()),
-                          hasAlpha ? "true" : "false",
-                          hasBeta ? "true" : "false");
-
-        ICommand *delegateCommand = m_BML ? m_BML->FindCommand("assdelegate") : nullptr;
-        args.clear();
-        args.emplace_back("assdelegate");
-        args.emplace_back("delegate");
-        const std::vector<std::string> delegateCompletions = delegateCommand ? delegateCommand->GetTabCompletion(m_BML, args) : std::vector<std::string>();
-        bool hasDelegateAlpha = false;
-        bool hasDelegateBeta = false;
-        for (const std::string &completion : delegateCompletions) {
-            if (completion == "delegate-alpha")
-                hasDelegateAlpha = true;
-            if (completion == "delegate-beta")
-                hasDelegateBeta = true;
-        }
-        GetLogger()->Info("BML native command delegate completion smoke command=%s count=%d alpha=%s beta=%s",
-                          delegateCommand ? "true" : "false",
-                          static_cast<int>(delegateCompletions.size()),
-                          hasDelegateAlpha ? "true" : "false",
-                          hasDelegateBeta ? "true" : "false");
-
-        ICommand *methodCommand = m_BML ? m_BML->FindCommand("assmethod") : nullptr;
-        args.clear();
-        args.emplace_back("assmethod");
-        args.emplace_back("method");
-        const std::vector<std::string> methodCompletions = methodCommand ? methodCommand->GetTabCompletion(m_BML, args) : std::vector<std::string>();
-        bool hasMethodAlpha = false;
-        bool hasMethodBeta = false;
-        for (const std::string &completion : methodCompletions) {
-            if (completion == "method-alpha")
-                hasMethodAlpha = true;
-            if (completion == "method-beta")
-                hasMethodBeta = true;
-        }
-        GetLogger()->Info("BML native command method delegate completion smoke command=%s count=%d alpha=%s beta=%s",
-                          methodCommand ? "true" : "false",
-                          static_cast<int>(methodCompletions.size()),
-                          hasMethodAlpha ? "true" : "false",
-                          hasMethodBeta ? "true" : "false");
-    }
-
-    void CallScriptEchoSmoke() {
-        BML_ModExport *exportHandle = BML_FindModExport("bml.bindings.smoke",
-                                                        "Echo",
-                                                        "string Echo(const string &in)");
-        if (!exportHandle)
-            return;
-
-        BML_CallFrame *frame = BML_CreateCallFrame();
-        if (!frame) {
-            ReleaseExport(exportHandle);
-            GetLogger()->Warn("BML native -> script export smoke failed: out of memory");
-            return;
-        }
-
-        int status = BML_CallFrame_SetString(frame, 0, "native");
-        if (status == BML_OK)
-            status = BML_CallModExport(exportHandle, frame);
-
-        std::string result;
-        if (status == BML_OK) {
-            size_t required = 0;
-            BML_CallFrame_GetResultString(frame, nullptr, 0, &required);
-            if (required > 0) {
-                result.resize(required);
-                if (BML_CallFrame_GetResultString(frame, &result[0], result.size(), &required) == BML_OK &&
-                    !result.empty() && result.back() == '\0') {
-                    result.pop_back();
-                }
-            }
-        }
-
-        GetLogger()->Info("BML native -> script export Echo status=%d result=%s", status, result.c_str());
-        DestroyFrame(frame);
-        ReleaseExport(exportHandle);
-    }
-
-    void CallScriptAddOneSmoke() {
-        BML_ModExport *exportHandle = BML_FindModExport("bml.bindings.smoke", "AddOne", "int AddOne(int)");
-        if (!exportHandle)
-            return;
-
-        BML_CallFrame *frame = BML_CreateCallFrame();
-        if (!frame) {
-            ReleaseExport(exportHandle);
-            GetLogger()->Warn("BML native -> script export AddOne smoke failed: out of memory");
-            return;
-        }
-
-        int result = 0;
-        int status = BML_CallFrame_SetInt(frame, 0, 40);
-        if (status == BML_OK)
-            status = BML_CallModExport(exportHandle, frame);
-        if (status == BML_OK)
-            BML_CallFrame_GetResultInt(frame, &result);
-
-        GetLogger()->Info("BML native -> script export AddOne status=%d result=%d", status, result);
-        DestroyFrame(frame);
-        ReleaseExport(exportHandle);
-    }
-
-    void CallScriptSumSmoke() {
-        BML_ModExport *exportHandle = BML_FindModExport("bml.bindings.smoke", "Sum", "int Sum(int, int)");
-        if (!exportHandle)
-            return;
-
-        BML_CallFrame *frame = BML_CreateCallFrame();
-        if (!frame) {
-            ReleaseExport(exportHandle);
-            GetLogger()->Warn("BML native -> script export Sum smoke failed: out of memory");
-            return;
-        }
-
-        int result = 0;
-        int status = BML_CallFrame_SetInt(frame, 0, 20);
-        if (status == BML_OK)
-            status = BML_CallFrame_SetInt(frame, 1, 22);
-        if (status == BML_OK)
-            status = BML_CallModExport(exportHandle, frame);
-        if (status == BML_OK)
-            BML_CallFrame_GetResultInt(frame, &result);
-
-        GetLogger()->Info("BML native -> script export Sum status=%d result=%d", status, result);
-        DestroyFrame(frame);
-        ReleaseExport(exportHandle);
-    }
-
-    bool m_Checked = false;
-    bool m_InteropChecked = false;
-    int m_Frames = 0;
+    int m_RegisterStatus = BML_ERROR_INTEROP_PROVIDER_UNLOADED;
+    bool m_ScriptConsumerLogged = false;
 };
+
+} // namespace
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml) {
     return new BMLNativeInteropSmokeMod(bml);

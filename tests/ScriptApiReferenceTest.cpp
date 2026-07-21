@@ -32,42 +32,68 @@ void ExpectContainsAll(const std::string &text,
     }
 }
 
+void ExpectContainsNone(const std::string &text,
+                        const std::vector<std::string> &needles,
+                        const char *label) {
+    ASSERT_FALSE(text.empty()) << label << " should be readable";
+    for (const std::string &needle : needles) {
+        EXPECT_EQ(std::string::npos, text.find(needle))
+            << label << " still exposes removed Interop surface: " << needle;
+    }
+}
+
 } // namespace
 
-TEST(ScriptApiReferenceTest, ExportResolverBindingSurfaceIsDocumented) {
-    const std::vector<std::string> resolverDeclarations = {
-        "class ExportResolver",
-        "bool get_IsBound() const",
-        "int get_LastStatus() const",
-        "string get_ModId() const",
-        "string get_Name() const",
-        "string get_Signature() const",
-        "void Clear()",
-        "int Rebind()",
-        "int Resolve(ExportRef@ &out exportRef)",
-        "int Call(CallFrame@ frame)",
-        "int CallVoid()",
-        "int CallString(const string &in argument, string &out result)",
-        "int CallString(string &out result)",
-        "int CallBool(bool argument, bool &out result)",
-        "int CallBool(bool &out result)",
-        "int CallInt(int argument, int &out result)",
-        "int CallInt(int &out result)",
-        "int CallFloat(float argument, float &out result)",
-        "int CallFloat(float &out result)",
+TEST(ScriptApiReferenceTest, InteropApiFacadeIsDocumented) {
+    const std::vector<std::string> declarations = {
+        "namespace Runtime",
+        "class State",
+        "int ReadState(State &out state)",
+        "namespace Scene",
+        "class ObjectInfo",
+        "int ReadObject(CKObject@ object, ObjectInfo &out info)",
+        "namespace Gameplay",
+        "class LevelState",
+        "int OpenCatalog(CatalogCursor@ &out cursor)",
+        "namespace Events",
+        "class Stream",
+        "int Open(Stream@ &out stream, int capacity = 256)",
+        "namespace Interop",
+        "class Record",
+        "int GetMat4Array(uint field, array<::BML::Mat4> &out values) const",
+        "class Cursor",
+        "int CreateInput(const string &in apiId, uint schema, Input@ &out input)",
+        "int InvokeQuery(const string &in apiId, const string &in endpoint, Input@ input, Record@ &out record)",
+        "class ApiBuilder",
+        "int AddCompatibleApiHash(uint64 hash)",
+        "class Provider",
+        "int RegisterProvider(ApiBuilder@ api, Provider@ provider)",
+        "int GetInputVec3Array(uint field, array<::BML::Vec3> &out values)",
+        "int SetMat4Array(uint field, const array<::BML::Mat4> &in values)",
     };
 
-    ExpectContainsAll(ReadTextFile("docs/bml-script-mod-api.as"),
-                      resolverDeclarations,
-                      "docs/bml-script-mod-api.as");
-    ExpectContainsAll(ReadTextFile("docs/as.predefined"),
-                      resolverDeclarations,
-                      "docs/as.predefined");
+    ExpectContainsAll(ReadTextFile("docs/bml-script-mod-api.as"), declarations, "docs/bml-script-mod-api.as");
+    ExpectContainsAll(ReadTextFile("docs/as.predefined"), declarations, "docs/as.predefined");
+    ExpectContainsAll(ReadTextFile("src/AngelScript/ScriptInteropFacade.cpp"),
+                      {"RegisterScriptInteropFacade", "RegisterRuntime", "RegisterScene", "RegisterGameplay", "RegisterEvents"},
+                      "src/AngelScript/ScriptInteropFacade.cpp");
+    ExpectContainsAll(ReadTextFile("src/AngelScript/ScriptInteropProviderBridge.cpp"),
+                      {"RegisterScriptInteropProviderBridge", "AddCompatibleApiHash", "RegisterProvider"},
+                      "src/AngelScript/ScriptInteropProviderBridge.cpp");
+    ExpectContainsAll(ReadTextFile("src/AngelScript/ScriptInteropConsumerBridge.cpp"),
+                      {"RegisterScriptInteropConsumerBridge", "OpenCollection", "InvokeCommand"},
+                      "src/AngelScript/ScriptInteropConsumerBridge.cpp");
+}
 
-    std::vector<std::string> bindingDeclarations = resolverDeclarations;
-    bindingDeclarations.push_back("ExportResolver@ f(const string &in modId, const string &in name)");
-    bindingDeclarations.push_back("ExportResolver@ f(const string &in modId, const string &in name, const string &in signature)");
-    ExpectContainsAll(ReadTextFile("src/AngelScript/AngelScriptBindings.cpp"),
-                      bindingDeclarations,
-                      "src/AngelScript/AngelScriptBindings.cpp");
+TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
+    const std::vector<std::string> removed = {
+        "namespace Observe",
+        "class CallFrame",
+        "class EventSubscription",
+        "class EventRef",
+        "class ExportResolver",
+        "class ExportRef",
+    };
+    ExpectContainsNone(ReadTextFile("docs/bml-script-mod-api.as"), removed, "docs/bml-script-mod-api.as");
+    ExpectContainsNone(ReadTextFile("docs/as.predefined"), removed, "docs/as.predefined");
 }

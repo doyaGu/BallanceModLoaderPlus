@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$BallanceRoot = $env:BML_BALLANCE_ROOT,
 
@@ -359,40 +359,13 @@ $playerLogText = Convert-SmokeText (Get-BMLTextIfExists $playerLog)
 $checks = [System.Collections.Generic.List[object]]::new()
 if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'player-postprocess-clean' (-not (Test-SmokeTextContains $playerLogText 'Error : PostProcess')) 'Player.log must not contain Error : PostProcess'
-    $scriptCoreCapabilityExpected = 'BML core capability facade smoke: hud=<mode> srTimeOk=true rawMessage=0 rawHandle=true'
-    $scriptCoreCapabilityPassed = [regex]::IsMatch(
-        $modLogText,
-        'BML core capability facade smoke: hud=-?\d+ srTimeOk=true rawMessage=0 rawHandle=true',
-        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
-    Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary:') 'BML script mod summary:'
-    Add-SmokeCheck $checks 'script-state-bag' (Test-SmokeTextContains $modLogText 'BML state bag smoke: ok=true') 'BML state bag smoke: ok=true'
-    Add-SmokeCheck $checks 'script-datashare-request' (Test-SmokeTextContains $modLogText 'BML datashare request: immediate=') 'BML datashare request: immediate='
-    $scriptDataShareDelegatePassed =
-        (Test-SmokeTextContains $modLogText 'BML datashare delegate immediate callback key=AngelScriptSmokeDelegateImmediate exists=true value=delegate-ready') -and
-        (Test-SmokeTextContains $modLogText 'BML datashare delegate pending callback key=AngelScriptSmokeDelegatePending exists=true value=88') -and
-        (Test-SmokeTextContains $modLogText 'BML datashare delegate bool callback key=AngelScriptSmokeDelegateBool exists=true value=true') -and
-        (Test-SmokeTextContains $modLogText 'BML datashare delegate method callback key=AngelScriptSmokeDelegateObject exists=true value=object-ready hits=1') -and
-        (Test-SmokeTextContains $modLogText 'dataShareDelegate=true')
-    Add-SmokeCheck $checks 'script-datashare-delegate' $scriptDataShareDelegatePassed 'BML datashare delegate callbacks and summary dataShareDelegate=true'
-    Add-SmokeCheck $checks 'script-object-ownership' (Test-SmokeTextContains $modLogText 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true') 'BML script object ownership: transientTimer=true heldTimer=true transientCommand=true heldCommand=true transientDataShare=true heldDataShare=true'
-    Add-SmokeCheck $checks 'script-command-delegate' (Test-SmokeTextContains $modLogText 'BML script command delegate registration: global=true method=true invalid=true') 'BML script command delegate registration: global=true method=true invalid=true'
-    Add-SmokeCheck $checks 'command-completion-script' (Test-SmokeTextContains $modLogText 'BML script command completion callback') 'BML script command completion callback'
-    Add-SmokeCheck $checks 'command-completion-native' (Test-SmokeTextContains $modLogText 'BML native command completion smoke') 'BML native command completion smoke'
-    Add-SmokeCheck $checks 'command-completion-native-delegate' (Test-SmokeTextContains $modLogText 'BML native command delegate completion smoke command=true') 'BML native command delegate completion smoke command=true'
-    Add-SmokeCheck $checks 'command-completion-native-method-delegate' (Test-SmokeTextContains $modLogText 'BML native command method delegate completion smoke command=true') 'BML native command method delegate completion smoke command=true'
-    Add-SmokeCheck $checks 'script-ui-facade' (Test-SmokeTextContains $modLogText 'BML UI facade smoke:') 'BML UI facade smoke:'
-    Add-SmokeCheck $checks 'script-core-capability-facade' $scriptCoreCapabilityPassed $scriptCoreCapabilityExpected
-    Add-SmokeCheck $checks 'script-input-invalid-key' (Test-SmokeTextContains $modLogText 'keyboardInvalidDefaults=true') 'keyboardInvalidDefaults=true'
-    Add-SmokeCheck $checks 'script-imgui-advanced' (Test-SmokeTextContains $modLogText 'BML ImGui advanced smoke:') 'BML ImGui advanced smoke:'
-    Add-SmokeCheck $checks 'native-export-lifecycle' (Test-SmokeTextContains $modLogText 'BML native export lifecycle smoke') 'BML native export lifecycle smoke'
-    Add-SmokeCheck $checks 'native-core-capability' (Test-SmokeTextContains $modLogText 'BML native core capability smoke get=0') 'BML native core capability smoke get=0'
-    Add-SmokeCheck $checks 'native-core-capability-set' (Test-SmokeTextContains $modLogText 'set=0 rawMessage=0') 'set=0 rawMessage=0'
-    Add-SmokeCheck $checks 'native-export-hardening' (Test-SmokeTextContains $modLogText 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708') 'BML native export hardening smoke findEx=0 ambiguous=-703 explicit=0 mismatch=-705 badSig=-704 missingTarget=-700 exception=-708'
-    Add-SmokeCheck $checks 'script-export-hardening' (Test-SmokeTextContains $modLogText 'BML native export hardening script tryEcho=0') 'BML native export hardening script tryEcho=0'
-    Add-SmokeCheck $checks 'script-export-hardening-callstring' (Test-SmokeTextContains $modLogText 'voidString=-3') 'voidString=-3'
-    Add-SmokeCheck $checks 'script-export-hardening-constants' (Test-SmokeTextContains $modLogText 'constants=true') 'constants=true'
-    Add-SmokeCheck $checks 'script-export-resolver' (Test-SmokeTextContains $modLogText 'BML export resolver smoke sum=0 result=42 resolve=0 resolvedValid=true echo=0 echoResult=echo:resolver missing=-702') 'BML export resolver smoke sum=0 result=42 resolve=0 resolvedValid=true echo=0 echoResult=echo:resolver missing=-702'
+    Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: api-interop') 'BML script mod summary: api-interop'
+    Add-SmokeCheck $checks 'script-interop-provider' (Test-SmokeTextContains $modLogText 'BML interop smoke: runtime=true stream=true provider=true native=true') 'BML interop smoke: runtime=true stream=true provider=true native=true'
+    Add-SmokeCheck $checks 'script-interop-stream' (Test-SmokeTextContains $modLogText 'BML interop stream poll: status=0') 'BML interop stream poll: status=0'
+    Add-SmokeCheck $checks 'native-c-abi-provider' (Test-SmokeTextContains $modLogText 'Interop API smoke register: status=0 value=0') 'Interop API smoke register: status=0 value=0'
+    Add-SmokeCheck $checks 'native-c-abi-consumer' (Test-SmokeTextContains $modLogText 'Interop API smoke read: status=0 value=42') 'Interop API smoke read: status=0 value=42'
+    Add-SmokeCheck $checks 'native-script-provider-consumer' (Test-SmokeTextContains $modLogText 'Interop API smoke script-read: status=0 value=42') 'Interop API smoke script-read: status=0 value=42'
     if ($SingleFileSmoke) {
         Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
     }
