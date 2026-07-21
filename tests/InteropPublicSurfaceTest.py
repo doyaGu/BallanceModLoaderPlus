@@ -22,6 +22,7 @@ def main() -> int:
         "include/BML/InteropTypes.h",
         "include/BML/EventKinds.h",
         "include/BML/InteropApi.h",
+        "include/BML/Imc.h",
     )
     forbidden_cxx_tokens = re.compile(r"(^|[^A-Za-z0-9_])(namespace|class|template|std::)([^A-Za-z0-9_]|$)")
     for relative in strict_c_headers:
@@ -41,6 +42,8 @@ def main() -> int:
     header_only = (
         "include/BML/InteropClient.h",
         "include/BML/InteropMath.h",
+        "include/BML/ImcCpp.hpp",
+        "include/BML/ImcWire.hpp",
         "include/BML/Runtime.h",
         "include/BML/Scene.h",
         "include/BML/Gameplay.h",
@@ -59,6 +62,24 @@ def main() -> int:
             raise AssertionError(f"{header} introduces an exported generated C++ helper")
         if "#ifdef __cplusplus" not in text or "#else" not in text:
             raise AssertionError(f"{header} does not provide separate C and C++ descriptor forms")
+
+    for header in generated.glob("*_imc.hpp"):
+        if "BML_EXPORT" in header.read_text(encoding="utf-8"):
+            raise AssertionError(f"{header} introduces an exported generated C++ helper")
+
+    imc_api = read(root, "src/ImcApi.cpp")
+    open_client = imc_api.find("BML_EXPORT int BML_Imc_OpenClient")
+    capture = imc_api.find("callerReturnAddress = _ReturnAddress()", open_client)
+    guard = imc_api.find("return GuardImc", open_client)
+    resolve_match = re.search(
+        r"GetNativeInteropOwnerId\(\s*callerReturnAddress\s*,\s*ownerId\s*\)",
+        imc_api[open_client:],
+    )
+    resolve = open_client + resolve_match.start() if resolve_match else -1
+    if not (open_client < capture < guard < resolve):
+        raise AssertionError(
+            "BML_Imc_OpenClient must capture the external return address before GuardImc"
+        )
 
     return 0
 

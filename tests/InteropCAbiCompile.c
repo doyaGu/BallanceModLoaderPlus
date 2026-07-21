@@ -2,6 +2,7 @@
  * public Interop boundary from accidentally gaining a C++-only declaration,
  * exported C++ type, STL dependency, or exception ABI requirement. */
 #include "BML/EventKinds.h"
+#include "BML/Imc.h"
 #include "BML/InteropApi.h"
 #include "BML/Generated/bml_events_api.h"
 #include "BML/Generated/bml_gameplay_api.h"
@@ -22,6 +23,15 @@ static int ReadResource(const BML_InteropProviderRequest *request,
 }
 
 int bml_interop_c_abi_compile_probe(void) {
+    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
+    BML_ImcCallOptions call_options = BML_IMC_CALL_OPTIONS_INIT;
+    BML_ImcSubscribeOptions subscribe_options = BML_IMC_SUBSCRIBE_OPTIONS_INIT;
+    int (*get_subscription_dropped)(BML_ImcClient, BML_ImcSubscription, uint64_t *) =
+        &BML_Imc_GetSubscriptionDroppedCount;
+    int (*get_topic_subscribers)(BML_ImcClient, BML_ImcTopicId, size_t *) =
+        &BML_Imc_GetTopicSubscriberCount;
+    int (*is_rpc_available)(BML_ImcClient, BML_ImcRpcId, int *) =
+        &BML_Imc_IsRpcAvailable;
     BML_InteropFieldDescriptor fields[] = {
         {1u, "value", BML_INTEROP_FIELD_INT, 0},
     };
@@ -42,6 +52,10 @@ int bml_interop_c_abi_compile_probe(void) {
     };
     BML_ObjectRef object = {BML_INTEROP_OBJECT_DOMAIN_VIRTOOLS, 7u, 2u};
     return (int)(api.Major + callbacks.Size + object.Slot + BML_EVENT_DEAD +
+                 message.Size + call_options.Size + subscribe_options.Size +
+                 (get_subscription_dropped != 0) + (get_topic_subscribers != 0) +
+                 (is_rpc_available != 0) +
+                 BML_IMC_ABI_VERSION +
                  BML_INTEROP_BML_RUNTIME_DESCRIPTOR.Major +
                  BML_INTEROP_BML_SCENE_DESCRIPTOR.Major +
                  BML_INTEROP_BML_GAMEPLAY_DESCRIPTOR.Major +

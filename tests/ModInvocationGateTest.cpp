@@ -57,3 +57,18 @@ TEST(ModInvocationGateTest, InterleavedGateInstancesPreserveOuterCallState) {
     EXPECT_TRUE(first.IsCallActiveOnCurrentThread());
     EXPECT_FALSE(second.IsCallActiveOnCurrentThread());
 }
+
+TEST(ModInvocationGateTest, NestedMutationsAreReentrant) {
+    BML::ModInvocationGate gate;
+    EXPECT_FALSE(gate.IsMutationActiveOnCurrentThread());
+    {
+        auto outer = gate.LockMutation();
+        EXPECT_TRUE(gate.IsMutationActiveOnCurrentThread());
+        auto inner = gate.LockMutation();
+        EXPECT_TRUE(gate.IsMutationActiveOnCurrentThread());
+        auto call = gate.LockCall();
+        EXPECT_TRUE(gate.IsCallActiveOnCurrentThread());
+    }
+    EXPECT_FALSE(gate.IsMutationActiveOnCurrentThread());
+    EXPECT_FALSE(gate.IsCallActiveOnCurrentThread());
+}

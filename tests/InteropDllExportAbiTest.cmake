@@ -24,20 +24,25 @@ foreach(required_export
         BML_Interop_RequireApi
         BML_Interop_ReadResource
         BML_Interop_OpenStream
-        BML_Interop_RecordBuilder_SetValue)
+        BML_Interop_RecordBuilder_SetValue
+        BML_Imc_OpenClient
+        BML_Imc_IsRpcAvailable
+        BML_Imc_CallRpc
+        BML_Imc_Subscribe
+        BML_Imc_Publish)
     string(FIND "${exports}" "${required_export}" required_export_index)
     if(required_export_index EQUAL -1)
         message(FATAL_ERROR "Missing required C Interop export: ${required_export}")
     endif()
 endforeach()
 
-# Any export whose name mentions Interop must use the unmangled BML_Interop_
-# C spelling.  The rest of BML still has historical C++ exports; this check is
-# deliberately scoped to the new experimental ABI.
-string(REGEX MATCHALL "[^\r\n]*Interop[^\r\n]*" interop_export_lines "${exports}")
+# Any export whose name mentions Interop or IMC must use an unmangled public C
+# spelling. The rest of BML still has historical C++ exports, so keep this
+# check scoped to the two cross-mod ABI families.
+string(REGEX MATCHALL "[^\r\n]*(Interop|_Imc_)[^\r\n]*" interop_export_lines "${exports}")
 foreach(export_line IN LISTS interop_export_lines)
-    if(NOT export_line MATCHES "[ 	]BML_Interop_[A-Za-z0-9_]+[ 	=]")
-        message(FATAL_ERROR "Interop leaked a non-C or mangled DLL export: ${export_line}")
+    if(NOT export_line MATCHES "[ \t](BML_Interop_|BML_Imc_)[A-Za-z0-9_]+([ \t=]|$)")
+        message(FATAL_ERROR "Interop/IMC leaked a non-C or mangled DLL export: ${export_line}")
     endif()
 endforeach()
 

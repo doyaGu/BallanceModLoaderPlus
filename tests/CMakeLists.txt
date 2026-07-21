@@ -373,6 +373,20 @@ add_bml_test(InteropMathTest
         VxMath
 )
 
+add_bml_test(ImcRuntimeTest
+        SOURCES
+        ImcRuntimeTest.cpp
+        ${BML_SOURCE_DIR}/ImcRuntime.cpp
+)
+
+add_bml_test(ImcWireTest
+        SOURCES ImcWireTest.cpp
+)
+
+add_bml_test(ImcGeneratedClientTest
+        SOURCES ImcGeneratedClientTest.cpp
+)
+
 add_subdirectory(smoke)
 if (BML_BUILD_UPDATER)
     add_subdirectory(updater)
