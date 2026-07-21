@@ -101,33 +101,23 @@ const char *BML_GetErrorString(int errorCode) {
         case BML_ERROR_CONFIG_FORMAT:
             return "Invalid configuration format";
 
-        /* Interop-specific error codes */
-        case BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND:
-            return "Interop API endpoint not found";
-        case BML_ERROR_INTEROP_VALUE_TYPE_MISMATCH:
-            return "Interop record value type mismatch";
-        case BML_ERROR_INTEROP_HANDLE_STALE:
-            return "Interop handle is stale";
-        case BML_ERROR_INTEROP_UNSUPPORTED:
-            return "Interop operation is unsupported by the current runtime";
-        case BML_ERROR_INTEROP_API_INVALID:
-            return "Interop API descriptor is invalid";
-        case BML_ERROR_INTEROP_API_MISMATCH:
-            return "Interop API is incompatible with the requested API";
-        case BML_ERROR_INTEROP_PROVIDER_UNLOADED:
-            return "Interop provider was unloaded";
-        case BML_ERROR_INTEROP_WRONG_THREAD:
-            return "Interop provider requires the game thread";
-        case BML_ERROR_INTEROP_RECORD_INVALID:
-            return "Interop record is invalid";
-        case BML_ERROR_INTEROP_CURSOR_STALE:
-            return "Interop collection cursor is stale";
-        case BML_ERROR_INTEROP_OBJECT_INVALID:
-            return "Interop object reference is invalid or expired";
-        case BML_ERROR_INTEROP_SCHEMA_MISMATCH:
-            return "Interop record schema does not match the API endpoint";
-        case BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED:
-            return "Interop provider callback execution failed";
+        /* IMC-specific error codes */
+        case BML_ERROR_IMC_ENDPOINT_NOT_FOUND:
+            return "IMC route not found";
+        case BML_ERROR_IMC_HANDLE_STALE:
+            return "IMC handle is stale";
+        case BML_ERROR_IMC_UNSUPPORTED:
+            return "IMC operation is unsupported by the current runtime";
+        case BML_ERROR_IMC_API_MISMATCH:
+            return "IMC payload contract is incompatible";
+        case BML_ERROR_IMC_PROVIDER_UNLOADED:
+            return "IMC provider was unloaded";
+        case BML_ERROR_IMC_OBJECT_INVALID:
+            return "IMC object reference is invalid or expired";
+        case BML_ERROR_IMC_SCHEMA_MISMATCH:
+            return "IMC payload schema does not match the route";
+        case BML_ERROR_IMC_TARGET_EXECUTION_FAILED:
+            return "IMC provider callback execution failed";
 
         /* Unknown error code */
         default:

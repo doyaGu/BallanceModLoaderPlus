@@ -4,7 +4,6 @@
 #include "BML/Generated/bml_scene_imc.hpp"
 #include "BML/Generated/bml_runtime_imc.hpp"
 #include "BML/Generated/bml_ui_imc.hpp"
-#include "BML/InteropApi.h"
 #include "BML/Runtime.h"
 
 #include <gtest/gtest.h>
@@ -47,7 +46,6 @@ std::atomic<int> g_OpenClients{0};
 std::atomic<int> g_CloseClients{0};
 std::atomic<int> g_CloseClientStatus{BML_OK};
 std::atomic<int> g_UnsubscribeStatus{BML_OK};
-std::atomic<int> g_LegacyRequireStatus{BML_OK};
 std::atomic<std::uint32_t> g_LastSubscribeCapacity{0};
 std::mutex g_LiveClientMutex;
 std::unordered_set<BML_ImcClient> g_LiveClients;
@@ -65,7 +63,7 @@ void ResetMock() {
     g_RpcLookups = 0; g_TopicLookups = 0; g_PayloadLookups = 0; g_FutureReleases = 0;
     g_OpenClients = 0; g_CloseClients = 0;
     g_CloseClientStatus = BML_OK; g_UnsubscribeStatus = BML_OK;
-    g_LegacyRequireStatus = BML_OK; g_LastSubscribeCapacity = 0;
+    g_LastSubscribeCapacity = 0;
     g_LastRequest.clear(); g_LastRequestPayload = 0;
     g_LastPublish.clear(); g_LastPublishPayload = 0;
     g_RegisteredHandler = nullptr; g_RegisteredUserdata = nullptr; g_RegisteredRpc = BML_IMC_INVALID_ID;
@@ -234,12 +232,9 @@ int BML_Imc_GetSubscriptionDroppedCount(BML_ImcClient, BML_ImcSubscription subsc
     g_LastPublish.assign(bytes, bytes + message->DataSize); g_LastPublishPayload = message->PayloadType;
     if (outDelivered) *outDelivered = 1; return BML_OK;
 }
-int BML_Interop_RequireApi(const char *, uint32_t, uint64_t) {
-    return g_LegacyRequireStatus.load(std::memory_order_relaxed);
-}
 }
 
-TEST(ImcGeneratedClientTest, PublicFacadeInitializesOnceAndPreservesRequireApiSemantics) {
+TEST(ImcGeneratedClientTest, PublicFacadeInitializesClientOnce) {
     ResetMock();
     constexpr int ThreadCount = 8;
     std::atomic<bool> start{false};
@@ -258,9 +253,6 @@ TEST(ImcGeneratedClientTest, PublicFacadeInitializesOnceAndPreservesRequireApiSe
     for (const int status : statuses) EXPECT_EQ(status, BML_OK);
     EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 1);
 
-    g_LegacyRequireStatus = BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND;
-    EXPECT_EQ(BML::Runtime::RequireApi(), BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND);
-    g_LegacyRequireStatus = BML_OK;
 }
 
 TEST(ImcGeneratedClientTest, ClientCloseRetainsHandleUntilRuntimeTeardownSucceeds) {

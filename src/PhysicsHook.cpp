@@ -1,7 +1,7 @@
 #include "BML/Guids/physics_RT.h"
 
-#include "BuiltinInteropApis.h"
-#include "InteropEventSnapshot.h"
+#include "BuiltinImcApis.h"
+#include "ImcEventSnapshot.h"
 #include "ModContext.h"
 #include "VTables.h"
 #include "HookUtils.h"
@@ -173,7 +173,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         VxVector shiftMassCenter;
         beh->GetLocalParameterValue(3, &shiftMassCenter);
 
-        CaptureBuiltinInteropEventNoexcept(*modContext, [&](BML::InteropEventSnapshot &event) {
+        CaptureBuiltinImcEventNoexcept(*modContext, [&](BML::ImcEventSnapshot &event) {
             event.Kind = BML_EVENT_PHYSICALIZE;
             event.Target = MakeBuiltinObjectRef(*modContext, target);
             event.Fixed = fixed != FALSE;
@@ -211,7 +211,7 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         delete[] ballRadius;
         delete[] concaveMesh;
     } else {
-        CaptureBuiltinInteropEventNoexcept(*modContext, [&](BML::InteropEventSnapshot &event) {
+        CaptureBuiltinImcEventNoexcept(*modContext, [&](BML::ImcEventSnapshot &event) {
             event.Kind = BML_EVENT_UNPHYSICALIZE;
             event.Target = MakeBuiltinObjectRef(*modContext, target);
         });

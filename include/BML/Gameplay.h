@@ -1,6 +1,5 @@
 #ifndef BML_GAMEPLAY_H
 #define BML_GAMEPLAY_H
-#include "BML/Generated/bml_gameplay_api.h"
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include <algorithm>
 #include <cstddef>
@@ -18,10 +17,9 @@ struct Checkpoint { Mat4 Matrix{}; ObjectRef Object{}; };
 struct Resetpoint { ObjectRef Object{}; };
 namespace Detail {
 namespace Api = Imc::Generated::Bml::Gameplay;
-namespace LegacyApi = Interop::Generated::Bml::Gameplay;
 inline Imc::LazyClient<Api::Client> &ClientState() { static Imc::LazyClient<Api::Client> state; return state; }
 inline Api::Client &Client() { return ClientState().Get(); }
-inline int RequireApi() { const int status = LegacyApi::Require(); return status == BML_OK ? ClientState().EnsureOpen() : status; }
+inline int RequireApi() { return ClientState().EnsureOpen(); }
 inline int Slice(std::size_t &offset, bool open, std::uint32_t limit, const auto &source, auto &out, bool &complete) {
     if (!open) return BML_ERROR_INVALID_HANDLE; if (limit == 0) return BML_ERROR_INVALID_PARAMETER;
     const std::size_t count = (std::min)(source.size() - offset, static_cast<std::size_t>(limit));

@@ -64,7 +64,7 @@ def main() -> int:
     args = parser.parse_args()
 
     source_root = args.source_root.resolve()
-    generator = source_root / "tools" / "interop_codegen.py"
+    generator = source_root / "tools" / "imc_codegen.py"
     with tempfile.TemporaryDirectory(prefix="bml-imc-compat-") as temporary:
         root = Path(temporary)
         old_contract = root / "old.bmlapi"
@@ -73,7 +73,7 @@ def main() -> int:
         new_headers = root / "new"
         write_contract(old_contract, minor=0)
         run([
-            sys.executable, str(generator), "--imc-only", "--input", str(old_contract),
+            sys.executable, str(generator), "--input", str(old_contract),
             "--out-dir", str(old_headers),
         ])
         old_header = old_headers / "test_compatibility_imc.hpp"
@@ -83,7 +83,7 @@ def main() -> int:
 
         write_contract(new_contract, minor=1, compatible_hashes=["0x" + match.group(1)])
         run([
-            sys.executable, str(generator), "--imc-only", "--input", str(new_contract),
+            sys.executable, str(generator), "--input", str(new_contract),
             "--previous", str(old_contract), "--out-dir", str(new_headers),
         ])
         new_header = new_headers / "test_compatibility_imc.hpp"
@@ -132,7 +132,7 @@ def main() -> int:
             '    const int oldStatus = OldApi::DecodeSample(newMessage, decodedOld);\n'
             '    if (oldStatus != BML_OK || decodedOld.Value != 29 ||\n'
             '        static_cast<int>(decodedOld.Mode) != 2 || OldApi::IsKnownMode(decodedOld.Mode))\n'
-            '        return oldStatus == BML_ERROR_INTEROP_API_MISMATCH ? 2 : 3;\n'
+            '        return oldStatus == BML_ERROR_IMC_API_MISMATCH ? 2 : 3;\n'
             '    return 0;\n'
             '}\n',
             encoding="utf-8",

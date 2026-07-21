@@ -1,16 +1,14 @@
 #ifndef BML_UI_H
 #define BML_UI_H
-#include "BML/Generated/bml_ui_api.h"
 #include "BML/Generated/bml_ui_imc.hpp"
 #include <string>
 namespace BML::UI {
 struct HUDState { int Mode = 0; float SRTime = 0.0f; };
 namespace Detail {
 namespace Api = Imc::Generated::Bml::Ui;
-namespace LegacyApi = Interop::Generated::Bml::Ui;
 inline Imc::LazyClient<Api::Client> &ClientState() { static Imc::LazyClient<Api::Client> state; return state; }
 inline Api::Client &Client() { return ClientState().Get(); }
-inline int RequireApi() { const int status = LegacyApi::Require(); return status == BML_OK ? ClientState().EnsureOpen() : status; }
+inline int RequireApi() { return ClientState().EnsureOpen(); }
 inline int EmptyCommand(int (Api::Client::*command)(const Api::EmptyInputValue &, Api::CommandResultValue &, std::uint32_t)) { Api::EmptyInputValue input{}; Api::CommandResultValue output{}; int status = RequireApi(); return status == BML_OK ? (Client().*command)(input, output, 5000u) : status; }
 inline int VisibleCommand(int (Api::Client::*command)(const Api::VisibleInputValue &, Api::CommandResultValue &, std::uint32_t), bool visible) { Api::VisibleInputValue input{}; input.Visible = visible; Api::CommandResultValue output{}; int status = RequireApi(); return status == BML_OK ? (Client().*command)(input, output, 5000u) : status; }
 }

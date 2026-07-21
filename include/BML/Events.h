@@ -1,6 +1,5 @@
 #ifndef BML_EVENTS_H
 #define BML_EVENTS_H
-#include "BML/Generated/bml_events_api.h"
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/EventKinds.h"
 #include <cstdint>
@@ -21,10 +20,9 @@ struct Cheat { bool Enabled = false; };
 struct Event { int Kind = 0; std::uint64_t Sequence = 0; std::uint64_t Timestamp = 0; std::optional<Load> LoadData; std::optional<Physics> PhysicsData; std::optional<Command> CommandData; std::optional<Config> ConfigData; std::optional<Cheat> CheatData; };
 namespace Detail {
 namespace Api = Imc::Generated::Bml::Events;
-namespace LegacyApi = Interop::Generated::Bml::Events;
 inline Imc::LazyClient<Api::Client> &ClientState() { static Imc::LazyClient<Api::Client> state; return state; }
 inline Api::Client &Client() { return ClientState().Get(); }
-inline int RequireApi() { const int status = LegacyApi::Require(); return status == BML_OK ? ClientState().EnsureOpen() : status; }
+inline int RequireApi() { return ClientState().EnsureOpen(); }
 inline bool IsLoadKind(int kind) { return kind == BML_EVENT_LOAD_OBJECT || kind == BML_EVENT_LOAD_SCRIPT; }
 inline bool IsPhysicsKind(int kind) { return kind == BML_EVENT_PHYSICALIZE || kind == BML_EVENT_UNPHYSICALIZE; }
 inline bool IsCommandKind(int kind) { return kind == BML_EVENT_COMMAND_PRE || kind == BML_EVENT_COMMAND_POST; }

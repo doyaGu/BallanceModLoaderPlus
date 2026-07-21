@@ -136,7 +136,6 @@ void ScriptModReloadTransaction::DeactivateCurrentRuntime() {
             m_Mod.Record(unloadDiagnostic);
     }
 
-    m_Mod.ReleaseScriptInteropProviders();
     m_Mod.ReleaseScriptServices();
     m_Mod.ReleaseScriptMethodHandles();
     m_Mod.ReleaseScriptImGuiInput();

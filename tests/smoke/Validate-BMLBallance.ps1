@@ -4,8 +4,6 @@ param(
 
     [string]$BuildDll,
 
-    [string]$NativeSmokeMod,
-
     [string]$CKAngelScriptDll,
 
     [ValidateRange(1, 600)]
@@ -238,7 +236,6 @@ function Install-SmokeMods {
         Install-ZipSmoke -SourceDirectory (Join-Path $ScriptSmokeRoot 'BMLAngelScriptZipSmoke') -ModsDirectory $ModsDirectory
     }
 
-    Copy-Item -LiteralPath $NativeSmokeMod -Destination (Join-Path $ModsDirectory 'BMLNativeInteropSmoke.bmodp') -Force
 }
 
 if (-not $BallanceRoot) {
@@ -271,9 +268,6 @@ $stateReloadSmokeRuntimeReplacement = switch ($HotReloadStateScenario) {
 if (-not $BuildDll) {
     $BuildDll = Join-Path $layout.DefaultReleaseBin 'BMLPlus.dll'
 }
-if (-not $NativeSmokeMod) {
-    $NativeSmokeMod = Join-Path (Split-Path -Parent $BuildDll) 'BMLNativeInteropSmoke.bmodp'
-}
 Assert-BMLPath -Path $ballanceRootFull -Type Container
 Assert-BMLPath -Path $buildingBlocksDir -Type Container
 Assert-BMLPath -Path $modsDir -Type Container
@@ -282,7 +276,6 @@ if (-not $SkipInstall) {
     Assert-BMLPath -Path $BuildDll -Type Leaf
 }
 if (-not $SkipSmokeInstall) {
-    Assert-BMLPath -Path $NativeSmokeMod -Type Leaf
 }
 if ($CKAngelScriptDll) {
     Assert-BMLPath -Path $CKAngelScriptDll -Type Leaf
@@ -360,12 +353,9 @@ $checks = [System.Collections.Generic.List[object]]::new()
 if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'player-postprocess-clean' (-not (Test-SmokeTextContains $playerLogText 'Error : PostProcess')) 'Player.log must not contain Error : PostProcess'
     Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
-    Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: api-interop') 'BML script mod summary: api-interop'
-    Add-SmokeCheck $checks 'script-interop-provider' (Test-SmokeTextContains $modLogText 'BML interop smoke: runtime=true stream=true provider=true native=true') 'BML interop smoke: runtime=true stream=true provider=true native=true'
-    Add-SmokeCheck $checks 'script-interop-stream' (Test-SmokeTextContains $modLogText 'BML interop stream poll: status=0') 'BML interop stream poll: status=0'
-    Add-SmokeCheck $checks 'native-c-abi-provider' (Test-SmokeTextContains $modLogText 'Interop API smoke register: status=0 value=0') 'Interop API smoke register: status=0 value=0'
-    Add-SmokeCheck $checks 'native-c-abi-consumer' (Test-SmokeTextContains $modLogText 'Interop API smoke read: status=0 value=42') 'Interop API smoke read: status=0 value=42'
-    Add-SmokeCheck $checks 'native-script-provider-consumer' (Test-SmokeTextContains $modLogText 'Interop API smoke script-read: status=0 value=42') 'Interop API smoke script-read: status=0 value=42'
+    Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: imc-facades') 'BML script mod summary: imc-facades'
+    Add-SmokeCheck $checks 'script-imc-facades' (Test-SmokeTextContains $modLogText 'BML IMC facade smoke: runtime=true stream=true') 'BML IMC facade smoke: runtime=true stream=true'
+    Add-SmokeCheck $checks 'script-imc-stream' (Test-SmokeTextContains $modLogText 'BML IMC stream poll: status=0') 'BML IMC stream poll: status=0'
     if ($SingleFileSmoke) {
         Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
     }
@@ -435,7 +425,6 @@ $result = [pscustomobject]@{
     AngelScriptBackupPath = $angelScriptBackupPath
     InstalledAngelScriptHashBefore = $installedAngelScriptHashBefore
     InstalledAngelScriptHashAfter = Get-BMLOptionalHash $installedAngelScriptDll
-    NativeSmokeMod = $NativeSmokeMod
     CKAngelScriptDll = $CKAngelScriptDll
     SingleFileSmoke = [bool]$SingleFileSmoke
     ZipSmoke = [bool]$ZipSmoke

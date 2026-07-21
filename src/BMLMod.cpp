@@ -19,7 +19,7 @@
 #include "StringUtils.h"
 #include "PathUtils.h"
 #include "EventHook.h"
-#include "BuiltinInteropApis.h"
+#include "BuiltinImcApis.h"
 
 namespace ExecuteBB {
     void Init();
@@ -165,11 +165,11 @@ void BMLMod::OnLoad() {
     // Apply initial FPS update frequency setting
     SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
 
-    RegisterCoreCapabilityExports();
+    RegisterCoreImcApis();
 }
 
 void BMLMod::OnUnload() {
-    UnregisterCoreCapabilityExports();
+    UnregisterCoreImcApis();
 
     m_CommandBar.SaveHistory();
 
@@ -200,12 +200,12 @@ void BMLMod::OnUnload() {
     m_OldWindowRect = VxRect();
 }
 
-void BMLMod::RegisterCoreCapabilityExports() {
-    RegisterBuiltinInteropApis(*this, GetLogger());
+void BMLMod::RegisterCoreImcApis() {
+    RegisterBuiltinImcApis(*this, GetLogger());
 }
 
-void BMLMod::UnregisterCoreCapabilityExports() {
-    UnregisterBuiltinInteropApis(*this);
+void BMLMod::UnregisterCoreImcApis() {
+    UnregisterBuiltinImcApis(*this);
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,

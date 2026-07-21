@@ -59,7 +59,7 @@ TEST(ImcWireTest, RejectsSchemaAndFieldTypeMismatch) {
     ASSERT_EQ(writer.WriteInt(1, 42), BML_OK);
     ASSERT_EQ(writer.Finish(), BML_OK);
     Reader wrongSchema(bytes.data(), bytes.size());
-    EXPECT_EQ(wrongSchema.Begin(4), BML_ERROR_INTEROP_SCHEMA_MISMATCH);
+    EXPECT_EQ(wrongSchema.Begin(4), BML_ERROR_IMC_SCHEMA_MISMATCH);
     Reader reader(bytes.data(), bytes.size());
     ASSERT_EQ(reader.Begin(3), BML_OK);
     FieldView field;

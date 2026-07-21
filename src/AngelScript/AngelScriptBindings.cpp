@@ -39,9 +39,7 @@
 #include "ScriptHookBlockService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
-#include "ScriptInteropConsumerBridge.h"
-#include "ScriptInteropFacade.h"
-#include "ScriptInteropProviderBridge.h"
+#include "ScriptImcFacade.h"
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
@@ -3873,13 +3871,7 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int uiResult = RegisterScriptUiFacade(engine, errorMessage);
     if (uiResult < 0)
         return uiResult;
-    const int interopFacadeResult = RegisterScriptInteropFacade(engine, errorMessage);
-    if (interopFacadeResult < 0)
-        return interopFacadeResult;
-    const int interopProviderResult = BML::RegisterScriptInteropProviderBridge(engine, errorMessage);
-    if (interopProviderResult < 0)
-        return interopProviderResult;
-    return BML::RegisterScriptInteropConsumerBridge(engine, errorMessage);
+    return RegisterScriptImcFacade(engine, errorMessage);
 }
 
 int RegisterImGuiBindings(asIScriptEngine *engine, const char **errorMessage) {

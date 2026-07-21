@@ -137,7 +137,7 @@ def main() -> int:
         (source / "CMakeLists.txt").write_text(
             "cmake_minimum_required(VERSION 3.14)\n"
             "project(ImcConsumer LANGUAGES CXX)\n"
-            f'set(BML_INTEROP_CODEGEN "{quote_cmake(source_root / "tools" / "interop_codegen.py")}")\n'
+            f'set(BML_IMC_CODEGEN "{quote_cmake(source_root / "tools" / "imc_codegen.py")}")\n'
             f'include("{quote_cmake(source_root / "cmake" / "BMLImc.cmake")}")\n'
             "add_library(consumer STATIC consumer.cpp)\n"
             f'target_include_directories(consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
@@ -175,7 +175,7 @@ def main() -> int:
         (missing_source / "CMakeLists.txt").write_text(
             "cmake_minimum_required(VERSION 3.14)\n"
             "project(ImcMissingPrevious LANGUAGES CXX)\n"
-            f'set(BML_INTEROP_CODEGEN "{quote_cmake(source_root / "tools" / "interop_codegen.py")}")\n'
+            f'set(BML_IMC_CODEGEN "{quote_cmake(source_root / "tools" / "imc_codegen.py")}")\n'
             f'include("{quote_cmake(source_root / "cmake" / "BMLImc.cmake")}")\n'
             "add_library(consumer STATIC consumer.cpp)\n"
             f'bml_target_imc_api(consumer INPUT "{quote_cmake(contract_path)}" '
@@ -199,7 +199,7 @@ def main() -> int:
         (invalid_id_source / "CMakeLists.txt").write_text(
             "cmake_minimum_required(VERSION 3.14)\n"
             "project(ImcInvalidApiId LANGUAGES CXX)\n"
-            f'set(BML_INTEROP_CODEGEN "{quote_cmake(source_root / "tools" / "interop_codegen.py")}")\n'
+            f'set(BML_IMC_CODEGEN "{quote_cmake(source_root / "tools" / "imc_codegen.py")}")\n'
             f'include("{quote_cmake(source_root / "cmake" / "BMLImc.cmake")}")\n'
             "add_library(consumer STATIC consumer.cpp)\n"
             f'bml_target_imc_api(consumer INPUT "{quote_cmake(contract_path)}" '

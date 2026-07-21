@@ -1,6 +1,5 @@
 #ifndef BML_SCENE_H
 #define BML_SCENE_H
-#include "BML/Generated/bml_scene_api.h"
 #include "BML/Generated/bml_scene_imc.hpp"
 #include <string>
 #include <utility>
@@ -10,10 +9,9 @@ struct ObjectInfo { int Id = 0; std::string Name; int ClassId = 0; bool Visible 
 struct EntityTransform { Vec3 Position{}; Vec3 Scale{}; ObjectRef Parent{}; int ChildCount = 0; };
 namespace Detail {
 namespace Api = Imc::Generated::Bml::Scene;
-namespace LegacyApi = Interop::Generated::Bml::Scene;
 inline Imc::LazyClient<Api::Client> &ClientState() { static Imc::LazyClient<Api::Client> state; return state; }
 inline Api::Client &Client() { return ClientState().Get(); }
-inline int RequireApi() { const int status = LegacyApi::Require(); return status == BML_OK ? ClientState().EnsureOpen() : status; }
+inline int RequireApi() { return ClientState().EnsureOpen(); }
 }
 inline int RequireApi() { return Detail::RequireApi(); }
 inline int ReadObject(ObjectRef object, ObjectInfo &out) { Imc::Generated::Bml::Scene::ObjectInfoValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().ReadObject(object, wire); if (status == BML_OK) out = {wire.Id, std::move(wire.Name), wire.ClassId, wire.Visible, wire.Dynamic}; return status; }

@@ -36,7 +36,7 @@ BML_EXPORT int BML_Imc_OpenClient(const char *ownerId, BML_ImcClient *outClient)
         auto *context = BML_GetModContext();
         if (!context)
             return BML_ERROR_FROZEN;
-        const std::string resolved = context->GetNativeInteropOwnerId(
+        const std::string resolved = context->GetNativeImcOwnerId(
             callerReturnAddress, ownerId);
         if (resolved.empty() || (ownerId && resolved != ownerId))
             return BML_ERROR_ACCESS_DENIED;

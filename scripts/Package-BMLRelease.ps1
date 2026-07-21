@@ -378,7 +378,6 @@ foreach ($path in @(
     (Join-Path $layout.RepoRoot 'LICENSE'),
     (Join-Path $layout.RepoRoot 'README.md'),
     (Join-Path $layout.RepoRoot 'README_zh-CN.md'),
-    (Join-Path $layout.RepoRoot 'include\BML\Interop.h'),
     (Join-Path $layout.TemplatesRoot 'README.md'),
     $nativeTemplate
 )) {
