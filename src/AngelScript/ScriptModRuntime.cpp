@@ -4,11 +4,30 @@
 
 #include "AngelScriptImGuiBindings.h"
 #include "ScriptMod.h"
+#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
+#include "ScriptInteropImcClients.h"
+#endif
 
 namespace BML {
 
 namespace {
 thread_local ScriptMod *g_CurrentScriptMod = nullptr;
+thread_local ScriptModRuntime *g_CurrentScriptModRuntime = nullptr;
+
+class ScriptCurrentRuntimeScope {
+public:
+    explicit ScriptCurrentRuntimeScope(ScriptModRuntime *runtime)
+        : m_Previous(g_CurrentScriptModRuntime) {
+        g_CurrentScriptModRuntime = runtime;
+    }
+    ~ScriptCurrentRuntimeScope() { g_CurrentScriptModRuntime = m_Previous; }
+
+    ScriptCurrentRuntimeScope(const ScriptCurrentRuntimeScope &) = delete;
+    ScriptCurrentRuntimeScope &operator=(const ScriptCurrentRuntimeScope &) = delete;
+
+private:
+    ScriptModRuntime *m_Previous = nullptr;
+};
 thread_local ScriptMod *g_ConstructingScriptMod = nullptr;
 thread_local ScriptModRuntime *g_ConstructingScriptModRuntime = nullptr;
 thread_local int g_ScriptObjectConstructionDepth = 0;
@@ -196,6 +215,8 @@ private:
     bool m_Entered = false;
 };
 
+ScriptModRuntime::ScriptModRuntime() = default;
+
 ScriptModRuntime::ScriptModRuntime(std::string moduleName)
     : m_ModuleName(std::move(moduleName)) {
 }
@@ -216,6 +237,9 @@ ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
       m_ModuleLoaded(other.m_ModuleLoaded),
       m_Loaded(other.m_Loaded),
       m_Owner(other.m_Owner) {
+#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    m_InteropImcClients = std::move(other.m_InteropImcClients);
+#endif
     RebindCachedPointersAfterMove();
     other.ResetMovedFrom();
 }
@@ -224,7 +248,11 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
     if (this == &other)
         return *this;
 
+#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    if (m_InteropImcClients || m_Object || (m_ModuleLoaded && !m_ModuleName.empty()))
+#else
     if (m_Object || (m_ModuleLoaded && !m_ModuleName.empty()))
+#endif
         Release(nullptr, nullptr);
 
     m_ModuleName = std::move(other.m_ModuleName);
@@ -235,6 +263,9 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
     m_ModuleLoaded = other.m_ModuleLoaded;
     m_Loaded = other.m_Loaded;
     m_Owner = other.m_Owner;
+#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    m_InteropImcClients = std::move(other.m_InteropImcClients);
+#endif
 
     RebindCachedPointersAfterMove();
     other.ResetMovedFrom();
@@ -252,10 +283,35 @@ void ScriptModRuntime::ResetMovedFrom() noexcept {
     m_ModuleLoaded = false;
     m_Loaded = false;
     m_Owner = nullptr;
+#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    m_InteropImcClients.reset();
+#endif
 }
 
 ScriptMod *ScriptModRuntime::GetCurrentScriptMod() {
     return g_CurrentScriptMod;
+}
+
+ScriptModRuntime *ScriptModRuntime::GetCurrentScriptModRuntime() {
+    return g_CurrentScriptModRuntime;
+}
+
+ScriptInteropImcClients *ScriptModRuntime::GetInteropImcClients() noexcept {
+#ifdef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    return nullptr;
+#else
+    if (m_InteropImcClients)
+        return m_InteropImcClients.get();
+    if (!m_Owner || !m_Owner->GetModContext())
+        return nullptr;
+    try {
+        m_InteropImcClients = std::make_unique<ScriptInteropImcClients>(
+            m_Owner->GetModContext(), m_Owner->GetID());
+    } catch (...) {
+        return nullptr;
+    }
+    return m_InteropImcClients.get();
+#endif
 }
 
 bool ScriptModRuntime::IsConstructingScriptObject() {
@@ -734,6 +790,7 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
         return false;
     }
     ScriptCurrentModScope callScope(m_Owner);
+    ScriptCurrentRuntimeScope runtimeScope(this);
     BMLImGuiASCallbackRecoveryScope imguiRecovery;
     imguiRecovery.Begin();
     const CKAS_STATUS status = m_Api->CallObjectMethod(m_AngelScript, &options, &result);
@@ -762,6 +819,9 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
 }
 
 bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic) {
+#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    m_InteropImcClients.reset();
+#endif
     if (!m_Object && (!m_ModuleLoaded || m_ModuleName.empty())) {
         m_ModuleLoaded = false;
         m_Loaded = false;

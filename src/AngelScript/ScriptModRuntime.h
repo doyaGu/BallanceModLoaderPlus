@@ -1,6 +1,7 @@
 #ifndef BML_SCRIPTMODRUNTIME_H
 #define BML_SCRIPTMODRUNTIME_H
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@ namespace BML {
 
 class ScriptMod;
 class ScriptModRuntime;
+class ScriptInteropImcClients;
 
 class ScriptCurrentModScope {
 public:
@@ -121,7 +123,7 @@ struct ScriptRuntimeModuleInfo {
 
 class ScriptModRuntime {
 public:
-    ScriptModRuntime() = default;
+    ScriptModRuntime();
     explicit ScriptModRuntime(std::string moduleName);
     ~ScriptModRuntime();
     ScriptModRuntime(ScriptModRuntime &&other) noexcept;
@@ -138,6 +140,8 @@ public:
     void SetOwner(ScriptMod *owner) { m_Owner = owner; }
     ScriptMod *GetOwner() const { return m_Owner; }
     static ScriptMod *GetCurrentScriptMod();
+    static ScriptModRuntime *GetCurrentScriptModRuntime();
+    ScriptInteropImcClients *GetInteropImcClients() noexcept;
     static bool IsConstructingScriptObject();
     static bool RecordConstructionHostCallViolation(const char *apiName);
     static bool IsInStateHook();
@@ -211,6 +215,9 @@ private:
     bool m_ModuleLoaded = false;
     bool m_Loaded = false;
     ScriptMod *m_Owner = nullptr;
+#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
+    std::unique_ptr<ScriptInteropImcClients> m_InteropImcClients;
+#endif
 };
 
 } // namespace BML

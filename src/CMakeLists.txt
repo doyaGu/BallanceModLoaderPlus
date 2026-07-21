@@ -234,6 +234,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptInteropArray.h
             AngelScript/ScriptInteropConsumerBridge.h
             AngelScript/ScriptInteropFacade.h
+            AngelScript/ScriptInteropImcClients.h
             AngelScript/ScriptInteropProviderBridge.h
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
@@ -280,6 +281,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptModContextView.cpp
             AngelScript/ScriptInteropConsumerBridge.cpp
             AngelScript/ScriptInteropFacade.cpp
+            AngelScript/ScriptInteropImcClients.cpp
             AngelScript/ScriptInteropProviderBridge.cpp
             AngelScript/ScriptModDefinition.cpp
             AngelScript/ScriptModDefinitionBuilder.cpp
