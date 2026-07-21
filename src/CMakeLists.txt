@@ -67,6 +67,9 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IBML.h
         ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
+        ${BML_INCLUDE_DIR}/BML/Imc.h
+        ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
+        ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
         ${BML_INCLUDE_DIR}/BML/InteropTypes.h
         ${BML_INCLUDE_DIR}/BML/EventKinds.h
         ${BML_INCLUDE_DIR}/BML/InteropApi.h
@@ -320,6 +323,8 @@ add_library(BML SHARED
         ${BML_ANGELSCRIPT_SOURCES}
         ${IMGUI_SOURCES} ${IMGUI_HEADERS}
 )
+
+target_compile_features(BML PUBLIC cxx_std_20)
 
 target_include_directories(BML
         PUBLIC

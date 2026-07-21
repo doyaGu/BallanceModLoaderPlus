@@ -26,6 +26,18 @@ const char *BML_GetErrorString(int errorCode) {
             return "Resource busy or locked";
         case BML_ERROR_ALREADY_EXISTS:
             return "Item already exists";
+        case BML_ERROR_INVALID_HANDLE:
+            return "Invalid or stale handle";
+        case BML_ERROR_WOULD_BLOCK:
+            return "Operation would block";
+        case BML_ERROR_CANCELLED:
+            return "Operation cancelled";
+        case BML_ERROR_WRONG_THREAD:
+            return "Operation is not allowed on this thread";
+        case BML_ERROR_MALFORMED_MESSAGE:
+            return "Malformed encoded message";
+        case BML_ERROR_TYPE_MISMATCH:
+            return "Encoded field type mismatch";
 
         /* Mod-specific error codes */
         case BML_ERROR_MOD_LOAD_FAILED:

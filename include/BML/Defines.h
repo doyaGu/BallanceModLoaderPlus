@@ -94,6 +94,12 @@
 #define BML_ERROR_TIMEOUT                   (-8)   /**< Operation timed out */
 #define BML_ERROR_BUSY                      (-9)   /**< Resource busy or locked */
 #define BML_ERROR_ALREADY_EXISTS            (-10)  /**< Item already exists */
+#define BML_ERROR_INVALID_HANDLE             (-11)  /**< Opaque handle is invalid or stale */
+#define BML_ERROR_WOULD_BLOCK                (-12)  /**< Bounded queue cannot accept more work */
+#define BML_ERROR_CANCELLED                  (-13)  /**< Asynchronous operation was cancelled */
+#define BML_ERROR_WRONG_THREAD               (-14)  /**< Operation is not allowed on this thread */
+#define BML_ERROR_MALFORMED_MESSAGE          (-15)  /**< Encoded message is truncated or malformed */
+#define BML_ERROR_TYPE_MISMATCH              (-16)  /**< Encoded field has an unexpected type */
 
 /* Mod-specific error codes */
 #define BML_ERROR_MOD_LOAD_FAILED           (-100) /**< Failed to load mod */
