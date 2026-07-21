@@ -13,8 +13,11 @@
 #include <oniguruma.h>
 
 #include "BML/BML.h"
-#include "BML/Interop.h"
 #include "BML/Timer.h"
+#include "InteropSessionService.h"
+#include "InteropRegistry.h"
+#include "InteropEventSnapshot.h"
+#include "BuiltinInteropApis.h"
 
 #include "RenderHook.h"
 #include "Overlay.h"
@@ -145,7 +148,14 @@ CKRenderContext *BML_GetRenderContext() {
     return g_ModContext ? g_ModContext->GetRenderContext() : nullptr;
 }
 
-ModContext::ModContext(CKContext *context) {
+void ModContext::PublishInteropEvent(int kind) {
+    CaptureBuiltinInteropEventNoexcept(*this, [kind](BML::InteropEventSnapshot &snapshot) {
+        snapshot.Kind = kind;
+    });
+}
+
+ModContext::ModContext(CKContext *context)
+    : m_InteropRegistry(m_InteropSessions) {
     assert(context != nullptr);
     m_CKContext = context;
     m_DataShare = DataShare::GetInstance("BML");
@@ -370,6 +380,11 @@ bool ModContext::LoadMods() {
 void ModContext::UnloadMods() {
     if (!IsInited() || !AreModsLoaded())
         return;
+    if (!IsMainThread()) {
+        if (m_Logger)
+            m_Logger->Error("UnloadMods must run on the game thread.");
+        return;
+    }
 
 #if BML_ENABLE_ANGELSCRIPT
     if (m_ScriptHotReload)
@@ -476,8 +491,14 @@ bool ModContext::InitMods() {
 void ModContext::ShutdownMods() {
     if (!IsInited() || !AreModsLoaded() || !AreModsInited())
         return;
+    if (!IsMainThread()) {
+        if (m_Logger)
+            m_Logger->Error("ShutdownMods must run on the game thread.");
+        return;
+    }
 
     SetFlags(BML_MODS_SHUTTING_DOWN);
+    auto invocationLock = LockModInvocation();
 
 #if BML_ENABLE_ANGELSCRIPT
     if (m_ScriptHotReload)
@@ -516,10 +537,12 @@ void ModContext::ShutdownMods() {
 }
 
 int ModContext::GetModCount() {
+    std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
     return (int) m_Mods.size();
 }
 
 IMod *ModContext::GetMod(int index) {
+    std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
     if (index < 0 || index >= (int) m_Mods.size())
         return nullptr;
     return m_Mods[index];
@@ -529,6 +552,7 @@ IMod *ModContext::FindMod(const char *id) const {
     if (!id)
         return nullptr;
 
+    std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
     auto iter = m_ModMap.find(id);
     if (iter == m_ModMap.end())
         return nullptr;
@@ -541,6 +565,7 @@ int ModContext::RegisterDependency(IMod *mod, const char *dependencyId, int majo
     }
 
     try {
+        std::lock_guard<std::mutex> lock(m_Mutex);
         ModDependency dep;
         dep.id = BML_Strdup(dependencyId);
         dep.minVersion = BMLVersion(major, minor, patch);
@@ -559,6 +584,7 @@ int ModContext::RegisterOptionalDependency(IMod *mod, const char *dependencyId, 
     }
 
     try {
+        std::lock_guard<std::mutex> lock(m_Mutex);
         ModDependency dep;
         dep.id = BML_Strdup(dependencyId);
         dep.minVersion = BMLVersion(major, minor, patch);
@@ -572,7 +598,8 @@ int ModContext::RegisterOptionalDependency(IMod *mod, const char *dependencyId, 
 }
 
 int ModContext::CheckDependencies(IMod *mod) const {
-    if (!mod || !mod->GetID()) return 0;
+    if (!mod) return 0;
+    auto invocationLock = LockModInvocation();
 
     // A relaxed semantic version parser:
     // - Reads up to three numeric parts.
@@ -605,32 +632,57 @@ int ModContext::CheckDependencies(IMod *mod) const {
     };
 
     try {
-        auto it = m_ModDependencies.find(mod);
-        if (it == m_ModDependencies.end()) return 1; // no deps => satisfied
+        struct DependencySnapshot {
+            std::string Id;
+            BMLVersion MinVersion;
+            bool Optional = false;
+            IMod *Mod = nullptr;
+        };
 
-        for (const auto &dep : it->second) {
-            if (!dep.id || !*dep.id) continue;
-
-            // Lookup dependency mod
-            auto depIt = m_ModMap.find(dep.id);
-            if (depIt == m_ModMap.end()) {
-                if (!dep.optional) return 0; // required dep missing
-                continue;                    // optional dep missing -> ignore
+        std::vector<DependencySnapshot> dependencies;
+        {
+            std::lock_guard<std::mutex> dependencyLock(m_Mutex);
+            const auto it = m_ModDependencies.find(mod);
+            if (it == m_ModDependencies.end())
+                return 1;
+            dependencies.reserve(it->second.size());
+            for (const auto &dep : it->second) {
+                if (dep.id && *dep.id)
+                    dependencies.push_back({dep.id, dep.minVersion, dep.optional != 0, nullptr});
             }
+        }
 
-            IMod *depMod = depIt->second;
+        /* The invocation gate keeps registered mod objects alive while the
+         * registry lock is released. Never call a virtual mod method while
+         * either registry mutex is held. */
+        {
+            std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+            for (auto &dependency : dependencies) {
+                const auto found = m_ModMap.find(dependency.Id);
+                if (found != m_ModMap.end())
+                    dependency.Mod = found->second;
+            }
+        }
+
+        for (const auto &dependency : dependencies) {
+            IMod *depMod = dependency.Mod;
+            if (!depMod) {
+                if (!dependency.Optional)
+                    return 0;
+                continue;
+            }
 #if BML_ENABLE_ANGELSCRIPT
             if (BML::IsFailedScriptMod(depMod)) {
-                if (!dep.optional) return 0;
+                if (!dependency.Optional) return 0;
                 continue;
             }
 #endif
-            const char *verStr = depMod ? depMod->GetVersion() : nullptr;
+            const char *verStr = depMod->GetVersion();
             BMLVersion have = parseRelaxed(verStr);
 
             // If version is older than required and it's not optional -> not satisfied
-            if (have < dep.minVersion) {
-                if (!dep.optional) return 0;
+            if (have < dependency.MinVersion) {
+                if (!dependency.Optional) return 0;
             }
         }
         return 1;
@@ -645,6 +697,7 @@ int ModContext::GetDependencyCount(IMod *mod) const {
     }
 
     try {
+        std::lock_guard<std::mutex> lock(m_Mutex);
         auto it = m_ModDependencies.find(mod);
         if (it == m_ModDependencies.end()) {
             return 0;
@@ -663,6 +716,7 @@ int ModContext::GetDependencyInfo(IMod *mod, int index, char *dependencyId, int 
     }
 
     try {
+        std::lock_guard<std::mutex> lock(m_Mutex);
         auto it = m_ModDependencies.find(mod);
         if (it == m_ModDependencies.end() || index >= static_cast<int>(it->second.size())) {
             return BML_ERROR_NOT_FOUND;
@@ -699,6 +753,7 @@ int ModContext::ClearDependencies(IMod *mod) {
     }
 
     try {
+        std::lock_guard<std::mutex> lock(m_Mutex);
         m_ModDependencies.erase(mod);
         return BML_OK;
     } catch (...) {
@@ -758,8 +813,18 @@ void ModContext::ExecuteCommand(const char *cmd) {
     m_Logger->Info("Execute Command: %s", cmd);
 
     try {
+        CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+            event.Kind = BML_EVENT_COMMAND_PRE;
+            event.Command = args[0];
+            event.CommandArgs = args;
+        });
         BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
         command->Execute(this, args);
+        CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+            event.Kind = BML_EVENT_COMMAND_POST;
+            event.Command = args[0];
+            event.CommandArgs = args;
+        });
         BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
     } catch (const std::exception &e) {
         m_Logger->Error("Exception executing command '%s': %s", cmd, e.what());
@@ -993,78 +1058,95 @@ void ModContext::ExitGame() {
 
 void ModContext::OpenModsMenu() {
     m_Logger->Info("Open Mods Menu");
-    m_BuiltinCapabilities.OpenModsMenu();
+    if (m_BMLMod)
+        m_BMLMod->OpenModsMenu();
 }
 
 void ModContext::CloseModsMenu() {
-    m_BuiltinCapabilities.CloseModsMenu();
+    if (m_BMLMod)
+        m_BMLMod->CloseModsMenu();
 }
 
 void ModContext::OpenMapMenu() {
-    m_BuiltinCapabilities.OpenMapMenu();
+    if (m_BMLMod)
+        m_BMLMod->OpenMapMenu();
 }
 
 void ModContext::CloseMapMenu() {
-    m_BuiltinCapabilities.CloseMapMenu();
+    if (m_BMLMod)
+        m_BMLMod->CloseMapMenu();
 }
 
 void ModContext::EnableCheat(bool enable) {
     if (AreFlagsSet(BML_CHEAT) != enable) {
         SetFlags(BML_CHEAT, enable);
+        CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+            event.Kind = BML_EVENT_CHEAT_CHANGED;
+            event.CheatEnabled = enable;
+        });
         BroadcastCallback(&IMod::OnCheatEnabled, enable);
     }
 }
 
 void ModContext::SendIngameMessage(const char *msg) {
-    m_BuiltinCapabilities.SendIngameMessage(msg);
+    if (m_BMLMod)
+        m_BMLMod->AddIngameMessage(msg ? msg : "");
 }
 
 void ModContext::ClearIngameMessages() {
-    m_BuiltinCapabilities.ClearIngameMessages();
+    if (m_BMLMod)
+        m_BMLMod->ClearIngameMessages();
 }
 
 float ModContext::GetSRScore() {
-    return m_BuiltinCapabilities.GetSRTime();
+    return m_BMLMod ? m_BMLMod->GetSRTime() : 0.0f;
 }
 
 int ModContext::GetHSScore() {
-    return m_BMLMod->GetHSScore();
+    return m_BMLMod ? m_BMLMod->GetHSScore() : 0;
 }
 
 int ModContext::GetHUD() {
-    return m_BuiltinCapabilities.GetHUD();
+    return m_BMLMod ? m_BMLMod->GetHUD() : 0;
 }
 
 void ModContext::SetHUD(int mode) {
-    m_BuiltinCapabilities.SetHUD(mode);
+    if (m_BMLMod)
+        m_BMLMod->SetHUD(mode);
 }
 
 void ModContext::ShowTitle(bool show) {
-    m_BuiltinCapabilities.ShowTitle(show);
+    if (m_BMLMod)
+        m_BMLMod->ShowTitle(show);
 }
 
 void ModContext::ShowFPS(bool show) {
-    m_BuiltinCapabilities.ShowFPS(show);
+    if (m_BMLMod)
+        m_BMLMod->ShowFPS(show);
 }
 
 void ModContext::ShowSRTimer(bool show) {
-    m_BuiltinCapabilities.ShowSRTimer(show);
+    if (m_BMLMod)
+        m_BMLMod->ShowSRTimer(show);
 }
 
 void ModContext::StartSRTimer() {
-    m_BuiltinCapabilities.StartSRTimer();
+    if (m_BMLMod)
+        m_BMLMod->StartSRTimer();
 }
 
 void ModContext::PauseSRTimer() {
-    m_BuiltinCapabilities.PauseSRTimer();
+    if (m_BMLMod)
+        m_BMLMod->PauseSRTimer();
 }
 
 void ModContext::ResetSRTimer() {
-    m_BuiltinCapabilities.ResetSRTimer();
+    if (m_BMLMod)
+        m_BMLMod->ResetSRTimer();
 }
 
 float ModContext::GetSRTime() {
-    return m_BuiltinCapabilities.GetSRTime();
+    return m_BMLMod ? m_BMLMod->GetSRTime() : 0.0f;
 }
 
 void ModContext::SkipRenderForNextTick() {
@@ -1131,6 +1213,14 @@ void ModContext::OnRender(CKRenderContext *dev) {
 }
 
 void ModContext::OnLoadGame() {
+    CaptureBuiltinInteropEventNoexcept(*this, [](BML::InteropEventSnapshot &event) {
+        event.Kind = BML_EVENT_LOAD_OBJECT;
+        event.Filename = "base.cmo";
+        event.AddToScene = true;
+        event.ReuseMeshes = true;
+        event.ReuseMaterials = true;
+        event.FilterClass = CKCID_3DOBJECT;
+    });
     BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
                       true, true, true, false, nullptr, nullptr);
 
@@ -1139,149 +1229,187 @@ void ModContext::OnLoadGame() {
     for (int i = 0; i < scriptCnt; i++) {
         auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
         if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
+            CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+                event.Kind = BML_EVENT_LOAD_SCRIPT;
+                event.Filename = "base.cmo";
+                event.Script = MakeBuiltinObjectRef(*this, behavior);
+            });
             BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
         }
     }
 }
 
 void ModContext::OnPreStartMenu() {
+    PublishInteropEvent(BML_EVENT_PRE_START_MENU);
     BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
 }
 
 void ModContext::OnPostStartMenu() {
+    PublishInteropEvent(BML_EVENT_POST_START_MENU);
     BroadcastMessage("PostStartMenu", &IMod::OnPostStartMenu);
 }
 
 void ModContext::OnExitGame() {
+    PublishInteropEvent(BML_EVENT_EXIT_GAME);
     BroadcastMessage("ExitGame", &IMod::OnExitGame);
 }
 
 void ModContext::OnPreLoadLevel() {
+    PublishInteropEvent(BML_EVENT_PRE_LOAD_LEVEL);
     BroadcastMessage("PreLoadLevel", &IMod::OnPreLoadLevel);
 }
 
 void ModContext::OnPostLoadLevel() {
+    PublishInteropEvent(BML_EVENT_POST_LOAD_LEVEL);
     BroadcastMessage("PostLoadLevel", &IMod::OnPostLoadLevel);
 }
 
 void ModContext::OnStartLevel() {
+    PublishInteropEvent(BML_EVENT_START_LEVEL);
     BroadcastMessage("StartLevel", &IMod::OnStartLevel);
     ModifyFlags(BML_INGAME | BML_INLEVEL, BML_PAUSED);
 }
 
 void ModContext::OnPreResetLevel() {
+    PublishInteropEvent(BML_EVENT_PRE_RESET_LEVEL);
     BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
     ClearFlags(BML_INLEVEL);
 }
 
 void ModContext::OnPostResetLevel() {
+    PublishInteropEvent(BML_EVENT_POST_RESET_LEVEL);
     BroadcastMessage("PostResetLevel", &IMod::OnPostResetLevel);
 }
 
 void ModContext::OnPauseLevel() {
+    PublishInteropEvent(BML_EVENT_PAUSE_LEVEL);
     BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
     SetFlags(BML_PAUSED);
 }
 
 void ModContext::OnUnpauseLevel() {
+    PublishInteropEvent(BML_EVENT_UNPAUSE_LEVEL);
     BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
     ClearFlags(BML_PAUSED);
 }
 
 void ModContext::OnPreExitLevel() {
+    PublishInteropEvent(BML_EVENT_PRE_EXIT_LEVEL);
     BroadcastMessage("PreExitLevel", &IMod::OnPreExitLevel);
 }
 
 void ModContext::OnPostExitLevel() {
+    PublishInteropEvent(BML_EVENT_POST_EXIT_LEVEL);
     BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
     ClearFlags(BML_INGAME | BML_INLEVEL);
 }
 
 void ModContext::OnPreNextLevel() {
+    PublishInteropEvent(BML_EVENT_PRE_NEXT_LEVEL);
     BroadcastMessage("PreNextLevel", &IMod::OnPreNextLevel);
 }
 
 void ModContext::OnPostNextLevel() {
+    PublishInteropEvent(BML_EVENT_POST_NEXT_LEVEL);
     BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
     ClearFlags(BML_INLEVEL);
 }
 
 void ModContext::OnDead() {
+    PublishInteropEvent(BML_EVENT_DEAD);
     BroadcastMessage("Dead", &IMod::OnDead);
     ClearFlags(BML_INGAME | BML_INLEVEL);
 }
 
 void ModContext::OnPreEndLevel() {
+    PublishInteropEvent(BML_EVENT_PRE_END_LEVEL);
     BroadcastMessage("PreEndLevel", &IMod::OnPreEndLevel);
 }
 
 void ModContext::OnPostEndLevel() {
+    PublishInteropEvent(BML_EVENT_POST_END_LEVEL);
     BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
     ClearFlags(BML_INGAME | BML_INLEVEL);
 }
 
 void ModContext::OnCounterActive() {
+    PublishInteropEvent(BML_EVENT_COUNTER_ACTIVE);
     BroadcastMessage("CounterActive", &IMod::OnCounterActive);
 }
 
 void ModContext::OnCounterInactive() {
+    PublishInteropEvent(BML_EVENT_COUNTER_INACTIVE);
     BroadcastMessage("CounterInactive", &IMod::OnCounterInactive);
 }
 
 void ModContext::OnBallNavActive() {
+    PublishInteropEvent(BML_EVENT_BALL_NAV_ACTIVE);
     BroadcastMessage("BallNavActive", &IMod::OnBallNavActive);
 }
 
 void ModContext::OnBallNavInactive() {
+    PublishInteropEvent(BML_EVENT_BALL_NAV_INACTIVE);
     BroadcastMessage("BallNavInactive", &IMod::OnBallNavInactive);
 }
 
 void ModContext::OnCamNavActive() {
+    PublishInteropEvent(BML_EVENT_CAM_NAV_ACTIVE);
     BroadcastMessage("CamNavActive", &IMod::OnCamNavActive);
 }
 
 void ModContext::OnCamNavInactive() {
+    PublishInteropEvent(BML_EVENT_CAM_NAV_INACTIVE);
     BroadcastMessage("CamNavInactive", &IMod::OnCamNavInactive);
 }
 
 void ModContext::OnBallOff() {
+    PublishInteropEvent(BML_EVENT_BALL_OFF);
     BroadcastMessage("BallOff", &IMod::OnBallOff);
 }
 
 void ModContext::OnPreCheckpointReached() {
+    PublishInteropEvent(BML_EVENT_PRE_CHECKPOINT_REACHED);
     BroadcastMessage("PreCheckpoint", &IMod::OnPreCheckpointReached);
 }
 
 void ModContext::OnPostCheckpointReached() {
+    PublishInteropEvent(BML_EVENT_POST_CHECKPOINT_REACHED);
     BroadcastMessage("PostCheckpoint", &IMod::OnPostCheckpointReached);
 }
 
 void ModContext::OnLevelFinish() {
+    PublishInteropEvent(BML_EVENT_LEVEL_FINISH);
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
     ClearFlags(BML_INLEVEL);
 }
 
 void ModContext::OnGameOver() {
+    PublishInteropEvent(BML_EVENT_GAME_OVER);
     BroadcastMessage("GameOver", &IMod::OnGameOver);
 }
 
 void ModContext::OnExtraPoint() {
+    PublishInteropEvent(BML_EVENT_EXTRA_POINT);
     BroadcastMessage("ExtraPoint", &IMod::OnExtraPoint);
 }
 
 void ModContext::OnPreSubLife() {
+    PublishInteropEvent(BML_EVENT_PRE_SUB_LIFE);
     BroadcastMessage("PreSubLife", &IMod::OnPreSubLife);
 }
 
 void ModContext::OnPostSubLife() {
+    PublishInteropEvent(BML_EVENT_POST_SUB_LIFE);
     BroadcastMessage("PostSubLife", &IMod::OnPostSubLife);
 }
 
 void ModContext::OnPreLifeUp() {
+    PublishInteropEvent(BML_EVENT_PRE_LIFE_UP);
     BroadcastMessage("PreLifeUp", &IMod::OnPreLifeUp);
 }
 
 void ModContext::OnPostLifeUp() {
+    PublishInteropEvent(BML_EVENT_POST_LIFE_UP);
     BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
 }
 
@@ -1749,6 +1877,9 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
                                                      const BML::ScriptModDefinition &candidate,
                                                      std::string &diagnostic,
                                                      std::vector<BML::ScriptModReloadDiagnosticField> *fields) const {
+    auto invocationLock = LockModInvocation();
+    std::lock_guard<std::mutex> dependencyLock(m_Mutex);
+    std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
     auto addField = [&](const std::string &key, const std::string &value) {
         if (fields)
             fields->push_back({key, value});
@@ -1872,21 +2003,24 @@ bool ModContext::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
         return false;
     }
 
-    auto oldIt = m_ModMap.find(oldId);
-    if (oldIt == m_ModMap.end() || oldIt->second != mod) {
-        diagnostic = "Script mod failed-load recovery lost its placeholder registration.";
-        return false;
-    }
+    {
+        std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        auto oldIt = m_ModMap.find(oldId);
+        if (oldIt == m_ModMap.end() || oldIt->second != mod) {
+            diagnostic = "Script mod failed-load recovery lost its placeholder registration.";
+            return false;
+        }
 
-    auto newIt = m_ModMap.find(candidate.Id);
-    if (newIt != m_ModMap.end() && newIt->second != mod) {
-        diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
-        return false;
-    }
+        auto newIt = m_ModMap.find(candidate.Id);
+        if (newIt != m_ModMap.end() && newIt->second != mod) {
+            diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
+            return false;
+        }
 
-    if (candidate.Id != oldId) {
-        m_ModMap.erase(oldIt);
-        m_ModMap.emplace(candidate.Id, mod);
+        if (candidate.Id != oldId) {
+            m_ModMap.erase(oldIt);
+            m_ModMap.emplace(candidate.Id, mod);
+        }
     }
 
     ClearDependencies(mod);
@@ -1900,14 +2034,17 @@ void ModContext::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
     if (!mod)
         return;
 
-    if (!currentId.empty()) {
-        auto currentIt = m_ModMap.find(currentId);
-        if (currentIt != m_ModMap.end() && currentIt->second == mod)
-            m_ModMap.erase(currentIt);
-    }
+    {
+        std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        if (!currentId.empty()) {
+            auto currentIt = m_ModMap.find(currentId);
+            if (currentIt != m_ModMap.end() && currentIt->second == mod)
+                m_ModMap.erase(currentIt);
+        }
 
-    if (!oldDefinition.Id.empty())
-        m_ModMap[oldDefinition.Id] = mod;
+        if (!oldDefinition.Id.empty())
+            m_ModMap[oldDefinition.Id] = mod;
+    }
 
     ClearDependencies(mod);
     RegisterScriptModDependencies(mod, oldDefinition);
@@ -1955,9 +2092,9 @@ void ModContext::RenderScriptDevToolsPanel() {
         m_ScriptDevTools->RenderPanel();
 }
 
-void ModContext::PublishScriptDevLogEvent(const char *level, const char *source, const std::string &message) {
+void ModContext::PublishScriptDevLogEvent(const char *level, const char *endpoint, const std::string &message) {
     if (m_ScriptDevTools)
-        m_ScriptDevTools->PublishLogLine(level, source, message);
+        m_ScriptDevTools->PublishLogLine(level, endpoint, message);
 }
 
 void ModContext::PublishScriptDevDiagnostic(BML::ScriptDevEventSeverity severity,
@@ -1970,15 +2107,23 @@ void ModContext::PublishScriptDevDiagnostic(BML::ScriptDevEventSeverity severity
 #endif
 
 bool ModContext::UnloadMod(const std::string &id) {
-    auto it = m_ModMap.find(id);
-    if (it == m_ModMap.end())
+    if (!IsMainThread()) {
+        if (m_Logger)
+            m_Logger->Error("UnloadMod must run on the game thread.");
         return false;
-
-    IMod *mod = it->second;
-    auto dit = m_ModToDllHandleMap.find(mod);
+    }
+    IMod *mod = nullptr;
     std::shared_ptr<void> dllHandle;
-    if (dit != m_ModToDllHandleMap.end())
-        dllHandle = dit->second;
+    {
+        std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        auto it = m_ModMap.find(id);
+        if (it == m_ModMap.end())
+            return false;
+        mod = it->second;
+        auto dit = m_ModToDllHandleMap.find(mod);
+        if (dit != m_ModToDllHandleMap.end())
+            dllHandle = dit->second;
+    }
 
     if (!UnregisterMod(mod, dllHandle)) {
         m_Logger->Error("Failed to unload mod %s.", id.c_str());
@@ -2011,6 +2156,11 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         return false;
     }
 
+    if (m_ModInvocationGate.IsCallActiveOnCurrentThread())
+        return false;
+    auto invocationLock = m_ModInvocationGate.LockMutation();
+    std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+
     // Reject duplicates
     if (m_ModMap.find(modId) != m_ModMap.end()) return false;
 
@@ -2029,20 +2179,62 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         m_DllHandleMap[raw] = dllHandle;
     }
 
+    m_InteropSessions.RegisterMod(modId);
+
     return true;
+}
+
+std::string ModContext::GetNativeInteropOwnerId(const void *callerAddress) const {
+    if (!callerAddress)
+        return {};
+
+    HMODULE callerModule = nullptr;
+    if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                  GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              reinterpret_cast<LPCSTR>(callerAddress),
+                              &callerModule)) {
+        return {};
+    }
+
+    std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+    const auto owners = m_DllHandleToModsMap.find(callerModule);
+    if (owners == m_DllHandleToModsMap.end() || owners->second.size() != 1 || !owners->second.front())
+        return {};
+
+    IMod *owner = owners->second.front();
+    const auto id = std::find_if(m_ModMap.begin(), m_ModMap.end(), [owner](const auto &entry) {
+        return entry.second == owner;
+    });
+    return id == m_ModMap.end() ? std::string() : id->first;
 }
 
 bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
     if (!mod) {
         return false;
     }
+    if (!IsMainThread())
+        return false;
+
+    if (m_ModInvocationGate.IsCallActiveOnCurrentThread())
+        return false;
+    auto invocationLock = m_ModInvocationGate.LockMutation();
 
     try {
+        {
+            std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+            if (std::find(m_Mods.begin(), m_Mods.end(), mod) == m_Mods.end())
+                return false;
+        }
         const char *modId = mod->GetID();
         if (!modId) {
             return false;
         }
         const std::string modIdCopy = modId;
+        // Providers must be revoked before the native module can disappear;
+        // consumer-owned snapshots then become stale with its session below.
+        if (m_InteropRegistry.InvalidateOwner(modIdCopy.c_str()) != BML_OK)
+            return false;
+        m_InteropSessions.InvalidateMod(modIdCopy.c_str());
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
             if (auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod))
@@ -2050,12 +2242,18 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
         }
 #endif
         std::shared_ptr<void> ownedDllHandle = dllHandle;
-        auto dit = m_ModToDllHandleMap.find(mod);
-        if (!ownedDllHandle && dit != m_ModToDllHandleMap.end())
-            ownedDllHandle = dit->second;
+        if (!ownedDllHandle) {
+            std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+            const auto handleIt = m_ModToDllHandleMap.find(mod);
+            if (handleIt != m_ModToDllHandleMap.end())
+                ownedDllHandle = handleIt->second;
+        }
 
+        void *rawDllHandle = ownedDllHandle.get();
+        bool dllHandleStillHasMods = false;
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
+            std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
             // Remove from callback map to prevent dangling pointer in BroadcastCallback
             for (auto &kv : m_CallbackMap) {
@@ -2077,29 +2275,24 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
 
             m_ModDependencies.erase(mod);
 
-            if (dit != m_ModToDllHandleMap.end())
-                m_ModToDllHandleMap.erase(dit);
-        }
+            m_ModToDllHandleMap.erase(mod);
 
-        const int removedExports = BML_UnregisterNativeModExports(modIdCopy.c_str());
-        if (removedExports > 0 && m_Logger) {
-            m_Logger->Info("Removed %d native export(s) owned by unloaded Mod %s",
-                           removedExports,
-                           modIdCopy.c_str());
-        }
-
-        void *rawDllHandle = ownedDllHandle.get();
-        bool dllHandleStillHasMods = false;
-        if (rawDllHandle) {
-            auto mit = m_DllHandleToModsMap.find(rawDllHandle);
-            if (mit != m_DllHandleToModsMap.end()) {
-                auto &mods = mit->second;
-                mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
-                dllHandleStillHasMods = !mods.empty();
-                if (mods.empty())
-                    m_DllHandleToModsMap.erase(mit);
+            if (rawDllHandle) {
+                auto mit = m_DllHandleToModsMap.find(rawDllHandle);
+                if (mit != m_DllHandleToModsMap.end()) {
+                    auto &mods = mit->second;
+                    mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
+                    dllHandleStillHasMods = !mods.empty();
+                    if (mods.empty())
+                        m_DllHandleToModsMap.erase(mit);
+                }
+                if (!dllHandleStillHasMods)
+                    m_DllHandleMap.erase(rawDllHandle);
             }
+        }
 
+        invocationLock.unlock();
+        if (rawDllHandle) {
             // Call BMLExit function safely
             constexpr const char *EXIT_SYMBOL = "BMLExit";
             typedef void (*BMLExitFunc)(IMod *);
@@ -2112,9 +2305,6 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
             } catch (...) {
                 // Continue cleanup even if BMLExit fails
             }
-
-            if (!dllHandleStillHasMods)
-                m_DllHandleMap.erase(rawDllHandle);
         }
 
         return true;

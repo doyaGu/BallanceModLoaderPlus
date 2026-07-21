@@ -3,6 +3,8 @@
 #include <cstring>
 #include <string>
 
+#include "BuiltinInteropApis.h"
+#include "InteropEventSnapshot.h"
 #include "ModContext.h"
 
 static CKBEHAVIORFCT g_ObjectLoad = nullptr;
@@ -64,17 +66,41 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         }
     }
 
+    CKContext *ckContext = modContext->GetCKContext();
+    CaptureBuiltinInteropEventNoexcept(*modContext, [&](BML::InteropEventSnapshot &event) {
+        event.Kind = BML_EVENT_LOAD_OBJECT;
+        event.Filename = callbackName;
+        event.MasterName = mastername;
+        event.IsMap = isMap != FALSE;
+        event.FilterClass = cid;
+        event.AddToScene = addtoscene != FALSE;
+        event.ReuseMeshes = reuseMeshes != FALSE;
+        event.ReuseMaterials = reuseMaterials != FALSE;
+        event.IsDynamic = dynamic != FALSE;
+        event.MasterObject = MakeBuiltinObjectRef(*modContext, masterobject);
+        for (CK_ID *id = oarray->Begin(); id != oarray->End(); ++id) {
+            CKObject *object = ckContext ? ckContext->GetObject(*id) : nullptr;
+            event.ObjectIds.push_back(MakeBuiltinObjectRef(*modContext, object));
+        }
+    });
+
     modContext->BroadcastCallback(&IMod::OnLoadObject,
                                   callbackName.c_str(), isMap, mastername.c_str(), cid,
                                   addtoscene, reuseMeshes, reuseMaterials, dynamic, oarray,
                                   masterobject);
 
-    for (CK_ID *id = oarray->Begin(); id != oarray->End(); id++) {
-        CKObject *obj = modContext->GetCKContext()->GetObject(*id);
+    for (CK_ID *id = oarray->Begin(); ckContext && id != oarray->End(); id++) {
+        CKObject *obj = ckContext->GetObject(*id);
         if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
             auto *behavior = static_cast<CKBehavior *>(obj);
-            if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0)
+            if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
+                CaptureBuiltinInteropEventNoexcept(*modContext, [&](BML::InteropEventSnapshot &event) {
+                    event.Kind = BML_EVENT_LOAD_SCRIPT;
+                    event.Filename = callbackName;
+                    event.Script = MakeBuiltinObjectRef(*modContext, behavior);
+                });
                 modContext->BroadcastCallback(&IMod::OnLoadScript, callbackName.c_str(), behavior);
+            }
         }
     }
 

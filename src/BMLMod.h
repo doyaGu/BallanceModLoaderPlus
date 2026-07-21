@@ -14,6 +14,7 @@
 #include "MessageBoard.h"
 
 class EventHookRegistrar;
+class ModContext;
 
 enum HudTypes {
     HUD_TITLE = 1,
@@ -24,6 +25,10 @@ enum HudTypes {
 class BMLMod : public IMod {
 public:
     explicit BMLMod(IBML *bml) : IMod(bml), m_MapMenu(this) {}
+
+    // Interop providers use the BML mod's bound runtime, never the ambient
+    // BML_GetModContext() singleton.
+    ModContext *GetRuntimeContext() const;
 
     const char *GetID() override { return "BML"; }
     const char *GetVersion() override { return BML_VERSION; }
@@ -204,4 +209,3 @@ private:
 };
 
 #endif // BML_BMLMOD_H
-

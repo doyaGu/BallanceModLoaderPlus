@@ -1,12 +1,16 @@
 #include "Config.h"
 
 #include <cstdio>
+#include <charconv>
 #include <cstring>
+#include <iterator>
 #include <sstream>
+#include <system_error>
 #include <algorithm>
 
 #ifndef BML_TEST
 #include "ModContext.h"
+#include "BuiltinInteropApis.h"
 #endif
 #include "StringUtils.h"
 
@@ -583,9 +587,51 @@ CKKEYBOARD *Property::GetKeyPtr() {
 
 void Property::SetModified() {
     if (m_Config && m_Config->GetMod()) {
+#ifndef BML_TEST
+        ModContext *context = BML_GetModContext();
+        if (context) {
+            CaptureBuiltinInteropEventNoexcept(*context, [&](BML::InteropEventSnapshot &event) {
+                event.Kind = BML_EVENT_CONFIG_MODIFIED;
+                event.ConfigCategory = m_Category;
+                event.ConfigKey = m_Key;
+                event.ConfigType = static_cast<int>(m_Type);
+                event.ConfigValue = GetInteropValueString();
+            });
+        }
+#endif
         m_Config->GetMod()->OnModifyConfig(m_Category.c_str(), m_Key.c_str(), this);
 #ifndef BML_TEST
-        BML_GetModContext()->SaveConfig(m_Config);
+        if (context)
+            context->SaveConfig(m_Config);
 #endif
+    }
+}
+
+std::string Property::GetInteropValueString() const {
+    switch (m_Type) {
+    case STRING:
+        if (const auto *value = std::get_if<std::string>(&m_Value))
+            return *value;
+        return {};
+    case BOOLEAN:
+        if (const auto *value = std::get_if<bool>(&m_Value))
+            return *value ? "true" : "false";
+        return {};
+    case INTEGER:
+    case KEY:
+        if (const auto *value = std::get_if<int>(&m_Value))
+            return std::to_string(*value);
+        return {};
+    case FLOAT:
+        if (const auto *value = std::get_if<float>(&m_Value)) {
+            char buffer[64] = {};
+            const auto [end, error] = std::to_chars(std::begin(buffer), std::end(buffer),
+                                                     *value, std::chars_format::general);
+            return error == std::errc{} ? std::string(buffer, end) : std::string();
+        }
+        return {};
+    case NONE:
+    default:
+        return {};
     }
 }

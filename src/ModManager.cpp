@@ -1,6 +1,7 @@
 #include "ModManager.h"
 
 #include "ModContext.h"
+#include "BuiltinInteropApis.h"
 
 #include "BML/InputHook.h"
 #include "Overlay.h"
@@ -41,6 +42,8 @@ CKERROR ModManager::OnCKPlay() {
 }
 
 CKERROR ModManager::OnCKReset() {
+    if (m_ModContext)
+        InvalidateAllBuiltinObjectRefs(*m_ModContext);
     if (m_Context->GetCurrentLevel() != nullptr && m_RenderContext) {
         Overlay::ImGuiContextScope scope;
         Overlay::ImGuiEndFrame();
@@ -53,6 +56,18 @@ CKERROR ModManager::OnCKReset() {
         m_RenderContext = nullptr;
     }
 
+    return CK_OK;
+}
+
+CKERROR ModManager::PreClearAll() {
+    if (m_ModContext)
+        InvalidateAllBuiltinObjectRefs(*m_ModContext);
+    return CK_OK;
+}
+
+CKERROR ModManager::SequenceToBeDeleted(CK_ID *objids, int count) {
+    if (m_ModContext)
+        InvalidateBuiltinObjectRefs(*m_ModContext, objids, count);
     return CK_OK;
 }
 

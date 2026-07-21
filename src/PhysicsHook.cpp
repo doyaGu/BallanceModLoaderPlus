@@ -1,5 +1,7 @@
 #include "BML/Guids/physics_RT.h"
 
+#include "BuiltinInteropApis.h"
+#include "InteropEventSnapshot.h"
 #include "ModContext.h"
 #include "VTables.h"
 #include "HookUtils.h"
@@ -99,6 +101,9 @@ int Physicalize(const CKBehaviorContext &behcontext) {
     CKBehavior *beh = behcontext.Behavior;
     bool physicalize = beh->IsInputActive(0);
     auto *target = (CK3dEntity *) beh->GetTarget();
+    ModContext *modContext = BML_GetModContext();
+    if (!modContext)
+        return g_Physicalize(behcontext);
 
     if (physicalize) {
         CKBOOL fixed = FALSE;
@@ -168,7 +173,32 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         VxVector shiftMassCenter;
         beh->GetLocalParameterValue(3, &shiftMassCenter);
 
-        BML_GetModContext()->BroadcastCallback(&IMod::OnPhysicalize, target,
+        CaptureBuiltinInteropEventNoexcept(*modContext, [&](BML::InteropEventSnapshot &event) {
+            event.Kind = BML_EVENT_PHYSICALIZE;
+            event.Target = MakeBuiltinObjectRef(*modContext, target);
+            event.Fixed = fixed != FALSE;
+            event.Friction = friction;
+            event.Elasticity = elasticity;
+            event.Mass = mass;
+            event.CollisionGroup = collisionGroup ? collisionGroup : "";
+            event.StartFrozen = startFrozen != FALSE;
+            event.EnableCollision = enableCollision != FALSE;
+            event.AutoCalculateMassCenter = autoCalcMassCenter != FALSE;
+            event.LinearDamp = linearSpeedDampening;
+            event.RotDamp = rotSpeedDampening;
+            event.CollisionSurface = collisionSurface ? collisionSurface : "";
+            event.MassCenter = {shiftMassCenter.x, shiftMassCenter.y, shiftMassCenter.z};
+            for (int i = 0; i < convexCount; ++i)
+                event.ConvexMeshes.push_back(MakeBuiltinObjectRef(*modContext, convexMesh[i]));
+            for (int i = 0; i < ballCount; ++i) {
+                event.BallCenters.push_back({ballCenter[i].x, ballCenter[i].y, ballCenter[i].z});
+                event.BallRadii.push_back(ballRadius[i]);
+            }
+            for (int i = 0; i < concaveCount; ++i)
+                event.ConcaveMeshes.push_back(MakeBuiltinObjectRef(*modContext, concaveMesh[i]));
+        });
+
+        modContext->BroadcastCallback(&IMod::OnPhysicalize, target,
                                                fixed, friction, elasticity, mass,
                                                collisionGroup, startFrozen, enableCollision,
                                                autoCalcMassCenter, linearSpeedDampening,
@@ -181,7 +211,11 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         delete[] ballRadius;
         delete[] concaveMesh;
     } else {
-        BML_GetModContext()->BroadcastCallback(&IMod::OnUnphysicalize, target);
+        CaptureBuiltinInteropEventNoexcept(*modContext, [&](BML::InteropEventSnapshot &event) {
+            event.Kind = BML_EVENT_UNPHYSICALIZE;
+            event.Target = MakeBuiltinObjectRef(*modContext, target);
+        });
+        modContext->BroadcastCallback(&IMod::OnUnphysicalize, target);
     }
 
     return g_Physicalize(behcontext);

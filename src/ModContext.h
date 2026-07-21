@@ -3,7 +3,9 @@
 
 #include <functional>
 #include <memory>
+#include <shared_mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -15,7 +17,9 @@
 #include "DataShare.hpp"
 #include "CommandContext.h"
 #include "HookUtils.h"
-#include "BuiltinCapabilityImports.h"
+#include "InteropSessionService.h"
+#include "InteropRegistry.h"
+#include "ModInvocationGate.h"
 
 typedef enum DirectoryType {
     BML_DIR_WORKING = 0,
@@ -117,7 +121,7 @@ public:
     std::string GetScriptHotReloadStatus() const;
     BML::ScriptDevToolsService *GetScriptDevTools() const { return m_ScriptDevTools.get(); }
     void RenderScriptDevToolsPanel();
-    void PublishScriptDevLogEvent(const char *level, const char *source, const std::string &message);
+    void PublishScriptDevLogEvent(const char *level, const char *endpoint, const std::string &message);
     void PublishScriptDevDiagnostic(BML::ScriptDevEventSeverity severity,
                                     const std::string &code,
                                     const std::string &modId,
@@ -127,7 +131,18 @@ public:
     int GetModCount() override;
     IMod *GetMod(int index) override;
     IMod *FindMod(const char *id) const override;
-
+    std::string GetNativeInteropOwnerId(const void *callerAddress) const;
+    BML::ModInvocationGate::CallLock LockModInvocation() const { return m_ModInvocationGate.LockCall(); }
+    bool IsModInvocationActiveOnCurrentThread() const {
+        return m_ModInvocationGate.IsCallActiveOnCurrentThread();
+    }
+    bool IsMainThread() const { return std::this_thread::get_id() == m_MainThreadId; }
+    // The interop runtime belongs to this loader context.  Hooks publish
+    // snapshots here and providers use the same owner-scoped session table.
+    BML::InteropSessionService &GetInteropSessions() { return m_InteropSessions; }
+    const BML::InteropSessionService &GetInteropSessions() const { return m_InteropSessions; }
+    BML::InteropRegistry &GetInteropRegistry() { return m_InteropRegistry; }
+    const BML::InteropRegistry &GetInteropRegistry() const { return m_InteropRegistry; }
     int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
     int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
     int CheckDependencies(IMod *mod) const override;
@@ -272,6 +287,7 @@ public:
 
     template<typename T, typename... Args>
     std::enable_if_t<std::is_member_function_pointer<T>::value, void> BroadcastCallback(T callback, Args&&... args) {
+        auto invocationLock = LockModInvocation();
         std::vector<IMod *> mods;
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
@@ -394,6 +410,7 @@ private:
 
     void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
+    void PublishInteropEvent(int kind);
 
     int m_Flags = 0;
 #if BML_ENABLE_ANGELSCRIPT
@@ -434,7 +451,8 @@ private:
 
     InputHook *m_InputHook = nullptr;
 
-    BuiltinCapabilityImports m_BuiltinCapabilities;
+    BML::InteropSessionService m_InteropSessions;
+    BML::InteropRegistry m_InteropRegistry;
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
 #if BML_ENABLE_ANGELSCRIPT
@@ -465,6 +483,9 @@ private:
 
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 
+    const std::thread::id m_MainThreadId = std::this_thread::get_id();
+    mutable std::shared_mutex m_ModRegistryMutex;
+    mutable BML::ModInvocationGate m_ModInvocationGate;
     mutable std::mutex m_Mutex;
 };
 

@@ -1,133 +1,49 @@
 #ifndef BML_CORE_H
 #define BML_CORE_H
 
-#include "BML/Import.h"
+#include "BML/UI.h"
 
-namespace BML {
-namespace Core {
-
-namespace Detail {
-static constexpr const char *BuiltinModId = "BML";
-}
-
+/* Legacy convenience spelling for BML's own UI API.  The implementation
+ * is deliberately shallow and header-only; it no longer binds dotted raw
+ * exports or exposes a C++ DLL ABI. */
+namespace BML::Core {
 namespace UI {
 
-inline int SendMessage(const char *message) {
-    static Import<void(const char *)> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.message.add", "void(string)");
-    return import.Invoke(message);
-}
-
-inline int ClearMessages() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.message.clear", "void()");
-    return import.Invoke();
-}
+inline int SendMessage(const char *message) { return BML::UI::AddMessage(message ? message : ""); }
+inline int ClearMessages() { return BML::UI::ClearMessages(); }
 
 } // namespace UI
 
 namespace Menu {
 
-inline int OpenModsMenu() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.menu.mods.open", "void()");
-    return import.Invoke();
-}
-
-inline int CloseModsMenu() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.menu.mods.close", "void()");
-    return import.Invoke();
-}
-
-inline int OpenMapMenu() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.menu.maps.open", "void()");
-    return import.Invoke();
-}
-
-inline int CloseMapMenu() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.menu.maps.close", "void()");
-    return import.Invoke();
-}
+inline int OpenModsMenu() { return BML::UI::OpenModsMenu(); }
+inline int CloseModsMenu() { return BML::UI::CloseModsMenu(); }
+inline int OpenMapMenu() { return BML::UI::OpenMapMenu(); }
+inline int CloseMapMenu() { return BML::UI::CloseMapMenu(); }
 
 } // namespace Menu
 
 namespace HUD {
 
 inline int GetMode(int fallback = 0) {
-    static Import<int()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.get", "int()");
-    return import.InvokeOr(fallback);
+    BML::UI::HUDState state{};
+    return BML::UI::ReadHUDState(state) == BML_OK ? state.Mode : fallback;
 }
 
-inline int SetMode(int mode) {
-    static Import<void(int)> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.set", "void(int)");
-    return import.Invoke(mode);
-}
-
-inline int ShowTitle(bool show) {
-    static Import<void(bool)> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.title.show", "void(bool)");
-    return import.Invoke(show);
-}
-
-inline int ShowFPS(bool show) {
-    static Import<void(bool)> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.fps.show", "void(bool)");
-    return import.Invoke(show);
-}
-
-inline int ShowSRTimer(bool show) {
-    static Import<void(bool)> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.sr.show", "void(bool)");
-    return import.Invoke(show);
-}
-
-inline int StartSRTimer() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.sr.start", "void()");
-    return import.Invoke();
-}
-
-inline int PauseSRTimer() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.sr.pause", "void()");
-    return import.Invoke();
-}
-
-inline int ResetSRTimer() {
-    static Import<void()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.sr.reset", "void()");
-    return import.Invoke();
-}
+inline int SetMode(int mode) { return BML::UI::SetHUDMode(mode); }
+inline int ShowTitle(bool show) { return BML::UI::ShowTitle(show); }
+inline int ShowFPS(bool show) { return BML::UI::ShowFPS(show); }
+inline int ShowSRTimer(bool show) { return BML::UI::ShowSRTimer(show); }
+inline int StartSRTimer() { return BML::UI::StartSRTimer(); }
+inline int PauseSRTimer() { return BML::UI::PauseSRTimer(); }
+inline int ResetSRTimer() { return BML::UI::ResetSRTimer(); }
 
 inline float GetSRTime(float fallback = 0.0f) {
-    static Import<float()> import;
-    if (!import.IsBound())
-        import.Bind(Detail::BuiltinModId, "ui.hud.sr.time", "float()");
-    return import.InvokeOr(fallback);
+    BML::UI::HUDState state{};
+    return BML::UI::ReadHUDState(state) == BML_OK ? state.SRTime : fallback;
 }
 
 } // namespace HUD
-
-} // namespace Core
-} // namespace BML
+} // namespace BML::Core
 
 #endif // BML_CORE_H

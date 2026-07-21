@@ -20,6 +20,8 @@ public:
 
     CKERROR OnCKPlay() override;
     CKERROR OnCKReset() override;
+    CKERROR PreClearAll() override;
+    CKERROR SequenceToBeDeleted(CK_ID *objids, int count) override;
 
     CKERROR PreProcess() override;
     CKERROR PostProcess() override;
@@ -32,6 +34,8 @@ public:
                CKMANAGER_FUNC_OnCKEnd |
                CKMANAGER_FUNC_OnCKPlay |
                CKMANAGER_FUNC_OnCKReset |
+               CKMANAGER_FUNC_PreClearAll |
+               CKMANAGER_FUNC_OnSequenceToBeDeleted |
                CKMANAGER_FUNC_PreProcess |
                CKMANAGER_FUNC_PostProcess |
                CKMANAGER_FUNC_OnPostRender |

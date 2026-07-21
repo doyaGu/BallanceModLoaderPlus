@@ -56,7 +56,12 @@ public:
 
     void SetModified();
 
+#ifdef BML_TEST
+    std::string GetInteropValueStringForTest() const { return GetInteropValueString(); }
+#endif
+
 private:
+    std::string GetInteropValueString() const;
     std::variant<bool, int, float, std::string> m_Value = 0;
     PropertyType m_Type = INTEGER;
     size_t m_Hash = 0;

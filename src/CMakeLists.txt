@@ -26,6 +26,33 @@ add_custom_target(BML_VersionHeader ALL
     COMMENT "Generating Version.h with git metadata"
 )
 
+# .bmlapi files are authoring inputs only.  BML links the generated fixed
+# descriptor tables; this target keeps committed generated output deterministic
+# and prevents a runtime dependency on an IDL parser.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(BML_INTEROP_API_INPUTS
+        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.runtime.bmlapi
+        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.scene.bmlapi
+        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.gameplay.bmlapi
+        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.ui.bmlapi
+        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.events.bmlapi
+)
+add_custom_target(BML_InteropApiGeneration
+        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/interop_codegen.py
+                --check
+                --out-dir ${PROJECT_SOURCE_DIR}/interop/generated
+                --header-out-dir ${BML_INCLUDE_DIR}/BML/Generated
+                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.runtime.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.scene.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.gameplay.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.ui.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.events.bmlapi
+        DEPENDS
+                ${PROJECT_SOURCE_DIR}/tools/interop_codegen.py
+                ${BML_INTEROP_API_INPUTS}
+        COMMENT "Verifying generated Interop API descriptors"
+)
+
 add_subdirectory(Utils)
 
 set(BML_PUBLIC_HEADERS
@@ -40,8 +67,21 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IBML.h
         ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
-        ${BML_INCLUDE_DIR}/BML/Interop.h
-        ${BML_INCLUDE_DIR}/BML/Import.h
+        ${BML_INCLUDE_DIR}/BML/InteropTypes.h
+        ${BML_INCLUDE_DIR}/BML/EventKinds.h
+        ${BML_INCLUDE_DIR}/BML/InteropApi.h
+        ${BML_INCLUDE_DIR}/BML/InteropClient.h
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_runtime_api.h
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_scene_api.h
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_api.h
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_ui_api.h
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_events_api.h
+        ${BML_INCLUDE_DIR}/BML/InteropMath.h
+        ${BML_INCLUDE_DIR}/BML/Runtime.h
+        ${BML_INCLUDE_DIR}/BML/Scene.h
+        ${BML_INCLUDE_DIR}/BML/Gameplay.h
+        ${BML_INCLUDE_DIR}/BML/UI.h
+        ${BML_INCLUDE_DIR}/BML/Events.h
         ${BML_INCLUDE_DIR}/BML/Core.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
@@ -57,7 +97,7 @@ set(BML_PUBLIC_HEADERS
 set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
-        BuiltinCapabilityImports.h
+        BuiltinInteropApis.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -79,9 +119,11 @@ set(BML_PRIVATE_HEADERS
         Overlay.h
 
         RenderHook.h
-        CallFrameInternal.h
-        InteropSignature.h
-        ExportRegistry.h
+        InteropContextInternal.h
+        InteropRegistry.h
+        InteropEventSnapshot.h
+        InteropObjectReferenceRegistry.h
+        InteropSessionService.h
 
         CommandContext.h
         DataShare.hpp
@@ -96,7 +138,7 @@ set(BML_SOURCES
         HookBlock.cpp
         ModManager.cpp
         ModContext.cpp
-        BuiltinCapabilityImports.cpp
+        BuiltinInteropApis.cpp
 
         IMod.cpp
         BMLMod.cpp
@@ -137,11 +179,10 @@ set(BML_SOURCES
         ScriptHelper.cpp
 
         CommandContext.cpp
-        CallFrameInternal.cpp
-        InteropSignature.cpp
+        InteropRegistry.cpp
+        InteropApi.cpp
+        InteropSessionService.cpp
         DataShare.cpp
-        ExportRegistry.cpp
-        Interop.cpp
         Logger.cpp
         Config.cpp
 
@@ -303,6 +344,7 @@ target_link_libraries(BML
 )
 
 add_dependencies(BML BML_VersionHeader)
+add_dependencies(BML BML_InteropApiGeneration)
 
 target_compile_definitions(BML PRIVATE
         BML_EXPORTS IMGUI_EXPORT IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\"
