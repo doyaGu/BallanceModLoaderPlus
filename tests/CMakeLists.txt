@@ -1,6 +1,6 @@
 include(CTest)
 enable_testing()
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -69,6 +69,27 @@ add_test(
                 --source-root "${PROJECT_SOURCE_DIR}"
 )
 set_tests_properties(InteropCodegenTest PROPERTIES LABELS "interop;codegen")
+
+add_test(
+        NAME ImcCmakeIntegrationTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ImcCmakeIntegrationTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+                --cmake "${CMAKE_COMMAND}"
+                --generator "${CMAKE_GENERATOR}"
+                --generator-platform "${CMAKE_GENERATOR_PLATFORM}"
+)
+set_tests_properties(ImcCmakeIntegrationTest PROPERTIES LABELS "interop;codegen;cmake")
+
+add_test(
+        NAME ImcCompatibilityIntegrationTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ImcCompatibilityIntegrationTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+                --cmake "${CMAKE_COMMAND}"
+                --generator "${CMAKE_GENERATOR}"
+                --generator-platform "${CMAKE_GENERATOR_PLATFORM}"
+)
+set_tests_properties(ImcCompatibilityIntegrationTest PROPERTIES
+        LABELS "interop;codegen;compatibility")
 
 add_test(
         NAME InteropPublicSurfaceTest

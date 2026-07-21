@@ -74,9 +74,15 @@ TEST(ScriptApiReferenceTest, InteropApiFacadeIsDocumented) {
 
     ExpectContainsAll(ReadTextFile("docs/bml-script-mod-api.as"), declarations, "docs/bml-script-mod-api.as");
     ExpectContainsAll(ReadTextFile("docs/as.predefined"), declarations, "docs/as.predefined");
-    ExpectContainsAll(ReadTextFile("src/AngelScript/ScriptInteropFacade.cpp"),
-                      {"RegisterScriptInteropFacade", "RegisterRuntime", "RegisterScene", "RegisterGameplay", "RegisterEvents"},
+    const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptInteropFacade.cpp");
+    ExpectContainsAll(builtinFacade,
+                      {"RegisterScriptInteropFacade", "RegisterRuntime", "RegisterScene", "RegisterGameplay", "RegisterEvents",
+                       "ScriptInteropImcClients", "SubscribeAll", "BML_IMC_EXECUTION_GAME_THREAD",
+                       "if (capacity < 0)", "if (capacity == 0)", "capacity = 256;"},
                       "src/AngelScript/ScriptInteropFacade.cpp");
+    ExpectContainsNone(builtinFacade,
+                       {"InteropRegistry", "BML_RecordRef", "BML_StreamRef", "BML_CursorRef"},
+                       "src/AngelScript/ScriptInteropFacade.cpp");
     ExpectContainsAll(ReadTextFile("src/AngelScript/ScriptInteropProviderBridge.cpp"),
                       {"RegisterScriptInteropProviderBridge", "AddCompatibleApiHash", "RegisterProvider"},
                       "src/AngelScript/ScriptInteropProviderBridge.cpp");
@@ -96,4 +102,17 @@ TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
     };
     ExpectContainsNone(ReadTextFile("docs/bml-script-mod-api.as"), removed, "docs/bml-script-mod-api.as");
     ExpectContainsNone(ReadTextFile("docs/as.predefined"), removed, "docs/as.predefined");
+}
+
+TEST(ScriptApiReferenceTest, LegacyEventCompatibilityPathIsSubscriberGated) {
+    const std::string provider = ReadTextFile("src/BuiltinInteropApis.cpp");
+    ASSERT_FALSE(provider.empty());
+    const std::size_t imcPublish = provider.find("PublishImcEvent(event)");
+    const std::size_t legacyGate = provider.find("!registry.HasStreamConsumers(EventsApi::Descriptor.ApiId, \"all\")");
+    const std::size_t legacyRecord = provider.find("registry.CreateStreamRecord");
+    ASSERT_NE(std::string::npos, imcPublish);
+    ASSERT_NE(std::string::npos, legacyGate);
+    ASSERT_NE(std::string::npos, legacyRecord);
+    EXPECT_LT(imcPublish, legacyGate);
+    EXPECT_LT(legacyGate, legacyRecord);
 }
