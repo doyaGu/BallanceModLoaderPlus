@@ -1,0 +1,64 @@
+{
+  "api": "bml.gameplay",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "schemas": [
+    {
+      "id": 1,
+      "name": "level_state",
+      "fields": [
+        { "id": 1, "name": "id", "type": "int" },
+        { "id": 2, "name": "active_ball", "type": "object" },
+        { "id": 3, "name": "reset_matrix", "type": "mat4" },
+        { "id": 4, "name": "points", "type": "int" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "energy_state",
+      "fields": [
+        { "id": 1, "name": "points", "type": "int" },
+        { "id": 2, "name": "lives", "type": "int" },
+        { "id": 3, "name": "start_points", "type": "int" },
+        { "id": 4, "name": "start_lives", "type": "int" },
+        { "id": 5, "name": "time_factor", "type": "float" },
+        { "id": 6, "name": "life_bonus", "type": "int" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "catalog_entry",
+      "fields": [
+        { "id": 1, "name": "file", "type": "string" },
+        { "id": 2, "name": "start_ball", "type": "string" },
+        { "id": 3, "name": "sky", "type": "string" },
+        { "id": 4, "name": "bonus", "type": "int" },
+        { "id": 5, "name": "music", "type": "int" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "checkpoint",
+      "fields": [
+        { "id": 1, "name": "matrix", "type": "mat4" },
+        { "id": 2, "name": "object", "type": "object" }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "resetpoint",
+      "fields": [
+        { "id": 1, "name": "object", "type": "object" }
+      ]
+    }
+  ],
+  "endpoints": [
+    { "name": "catalog", "kind": "collection", "output": 3, "requires_probe": true },
+    { "name": "checkpoints", "kind": "collection", "output": 4, "requires_probe": true },
+    { "name": "energy", "kind": "resource", "output": 2, "requires_probe": true },
+    { "name": "level", "kind": "resource", "output": 1, "requires_probe": true },
+    { "name": "resetpoints", "kind": "collection", "output": 5, "requires_probe": true }
+  ]
+}
