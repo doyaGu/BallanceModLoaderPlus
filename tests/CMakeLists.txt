@@ -1,5 +1,6 @@
 include(CTest)
 enable_testing()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -52,6 +53,49 @@ function(add_bml_test test_name)
     add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
 endfunction()
 
+# Build the public Interop C headers as strict C.  This is deliberately an
+# object target: it verifies source compatibility without introducing a test
+# executable or a C++ link boundary.
+add_library(InteropCAbiCompile OBJECT InteropCAbiCompile.c)
+target_include_directories(InteropCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
+set_target_properties(InteropCAbiCompile PROPERTIES FOLDER "Tests")
+
+# Keep the IDL generator's compatibility rules executable.  This also checks
+# that generated native helpers remain header-only and the script artifact is
+# usable code rather than documentation prose.
+add_test(
+        NAME InteropCodegenTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/InteropCodegenTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+)
+set_tests_properties(InteropCodegenTest PROPERTIES LABELS "interop;codegen")
+
+add_test(
+        NAME InteropPublicSurfaceTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/InteropPublicSurfaceTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+)
+set_tests_properties(InteropPublicSurfaceTest PROPERTIES LABELS "interop;abi")
+
+# The headers above prove C source compatibility.  On MSVC also inspect the
+# linked DLL, where exported C++ helper symbols would otherwise go unnoticed.
+if(MSVC)
+    get_filename_component(BML_TOOL_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
+    set(BML_DUMPBIN "${BML_TOOL_DIRECTORY}/dumpbin.exe")
+    if(EXISTS "${BML_DUMPBIN}")
+        add_test(
+                NAME InteropDllExportAbiTest
+                COMMAND "${CMAKE_COMMAND}"
+                "-DDUMPBIN=${BML_DUMPBIN}"
+                "-DBINARY=$<TARGET_FILE:BML>"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/InteropDllExportAbiTest.cmake"
+        )
+        set_tests_properties(InteropDllExportAbiTest PROPERTIES
+                LABELS "interop;abi"
+        )
+    endif()
+endif()
+
 add_bml_test(TimerTest
         SOURCES TimerTest.cpp
 )
@@ -79,6 +123,11 @@ add_bml_test(ConfigTest
         BMLUtils
         CK2
         VxMath
+)
+
+add_bml_test(InteropObjectReferenceRegistryTest
+        SOURCES
+        InteropObjectReferenceRegistryTest.cpp
 )
 
 add_bml_test(IniFileTest
@@ -286,24 +335,42 @@ add_bml_test(ScriptDevEventsTest
         BML_StringUtils
 )
 
-add_bml_test(InteropCallFrameTest
+add_bml_test(ModInvocationGateTest
         SOURCES
-        InteropCallFrameTest.cpp
-        ${BML_SOURCE_DIR}/CallFrameInternal.cpp
-)
-
-add_bml_test(InteropSignatureTest
-        SOURCES
-        InteropSignatureTest.cpp
-        ${BML_SOURCE_DIR}/InteropSignature.cpp
-        DEPENDENCIES
-        BMLUtils
+        ModInvocationGateTest.cpp
 )
 
 add_bml_test(InteropErrorTest
         SOURCES
         InteropErrorTest.cpp
         ${BML_SOURCE_DIR}/Errors.cpp
+)
+
+add_bml_test(InteropSessionServiceTest
+        SOURCES
+        InteropSessionServiceTest.cpp
+        ${BML_SOURCE_DIR}/InteropSessionService.cpp
+)
+
+add_bml_test(InteropRegistryTest
+        SOURCES
+        InteropRegistryTest.cpp
+        ${BML_SOURCE_DIR}/InteropRegistry.cpp
+        ${BML_SOURCE_DIR}/InteropSessionService.cpp
+        DEPENDENCIES
+        BMLUtils
+)
+
+add_bml_test(InteropHeadersTest
+        SOURCES
+        InteropHeadersTest.cpp
+)
+
+add_bml_test(InteropMathTest
+        SOURCES
+        InteropMathTest.cpp
+        DEPENDENCIES
+        VxMath
 )
 
 add_subdirectory(smoke)

@@ -355,6 +355,23 @@ TEST_F(ConfigTest, PropertyUtilityFunctions) {
     EXPECT_EQ(nullptr, intProp->GetBooleanPtr());
 }
 
+TEST_F(ConfigTest, InteropConfigValueKeepsEveryPropertyType) {
+    auto *property = static_cast<Property *>(config->GetProperty("Interop", "value"));
+
+    property->SetString("text");
+    EXPECT_EQ("text", property->GetInteropValueStringForTest());
+    property->SetBoolean(true);
+    EXPECT_EQ("true", property->GetInteropValueStringForTest());
+    property->SetBoolean(false);
+    EXPECT_EQ("false", property->GetInteropValueStringForTest());
+    property->SetInteger(-42);
+    EXPECT_EQ("-42", property->GetInteropValueStringForTest());
+    property->SetKey(static_cast<CKKEYBOARD>(17));
+    EXPECT_EQ("17", property->GetInteropValueStringForTest());
+    property->SetFloat(3.5f);
+    EXPECT_EQ("3.5", property->GetInteropValueStringForTest());
+}
+
 // Property value copying
 TEST_F(ConfigTest, PropertyCopy) {
     Property *srcProp = static_cast<Property *>(config->GetProperty("SourceCategory", "SourceProp"));
