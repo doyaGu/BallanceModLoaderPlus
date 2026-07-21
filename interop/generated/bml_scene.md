@@ -4,6 +4,8 @@ Compatibility: `1.0`
 
 Descriptor hash: `0x4E6FC19797065751`
 
+IMC wire hash: `0x4E6FC19797065751`
+
 ## Schemas
 
 ### `object_info` (1)

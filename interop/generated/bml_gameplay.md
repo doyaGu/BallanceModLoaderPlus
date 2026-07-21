@@ -4,6 +4,8 @@ Compatibility: `1.0`
 
 Descriptor hash: `0xF6A68405E0438B70`
 
+IMC wire hash: `0xF6A68405E0438B70`
+
 ## Schemas
 
 ### `level_state` (1)

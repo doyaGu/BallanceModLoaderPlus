@@ -4,6 +4,8 @@ Compatibility: `1.0`
 
 Descriptor hash: `0x7467626056A20F28`
 
+IMC wire hash: `0x7467626056A20F28`
+
 ## Schemas
 
 ### `runtime_state` (1)

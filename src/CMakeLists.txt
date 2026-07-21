@@ -29,7 +29,7 @@ add_custom_target(BML_VersionHeader ALL
 # .bmlapi files are authoring inputs only.  BML links the generated fixed
 # descriptor tables; this target keeps committed generated output deterministic
 # and prevents a runtime dependency on an IDL parser.
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 set(BML_INTEROP_API_INPUTS
         ${PROJECT_SOURCE_DIR}/interop/contracts/bml.runtime.bmlapi
         ${PROJECT_SOURCE_DIR}/interop/contracts/bml.scene.bmlapi
@@ -79,6 +79,11 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_api.h
         ${BML_INCLUDE_DIR}/BML/Generated/bml_ui_api.h
         ${BML_INCLUDE_DIR}/BML/Generated/bml_events_api.h
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_runtime_imc.hpp
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_scene_imc.hpp
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_imc.hpp
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_ui_imc.hpp
+        ${BML_INCLUDE_DIR}/BML/Generated/bml_events_imc.hpp
         ${BML_INCLUDE_DIR}/BML/InteropMath.h
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h

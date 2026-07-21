@@ -4,6 +4,8 @@ Compatibility: `1.0`
 
 Descriptor hash: `0xD21CC17B2334E884`
 
+IMC wire hash: `0xD21CC17B2334E884`
+
 ## Schemas
 
 ### `command_result` (1)

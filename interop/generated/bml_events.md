@@ -4,6 +4,8 @@ Compatibility: `1.0`
 
 Descriptor hash: `0x671750F9EA1C375C`
 
+IMC wire hash: `0x671750F9EA1C375C`
+
 ## Schemas
 
 ### `event` (1)
