@@ -1260,12 +1260,18 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 ### Expose A Small Service To Other Mods
 
-Declare an explicit API endpoint instead of marking ordinary methods for
-export. Use a `Resource` for one atomic snapshot, a `Component` for a snapshot
-keyed by `ObjectRef`, a `Collection` for paged snapshots, a `Stream` for
-ordered immutable records, and `Command` only for an already-approved command
-capability. A provider must be registered from `OnLoad`; its source schema and
+Declare an explicit typed capability instead of marking ordinary methods for
+export. The current script `BML::Interop` provider builder remains a
+compatibility surface: use `Resource`, `Component`, `Collection`, `Stream`, and
+`Command` only when maintaining a script-defined provider that already depends
+on it. A provider must be registered from `OnLoad`; its source schema and
 callbacks cannot change until reload.
+
+For a new native or performance-sensitive cross-mod capability, define stable
+payloads and expose generated IMC RPCs or Topics. Keep the script-facing wrapper
+typed and small; do not expose raw message buffers or invent another transport
+endpoint kind. See [Inter-mod communication](imc.md) and
+[Create a typed IMC API](imc-author-guide.md).
 
 ## Diagnostics
 

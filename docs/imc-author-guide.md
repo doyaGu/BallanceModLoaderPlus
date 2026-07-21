@@ -1,9 +1,11 @@
-# Authoring a typed IMC API
+# Create a typed IMC API
 
-This guide is the shortest supported path for a native mod to expose a typed,
-in-process API to another mod. New contracts describe only RPCs and Topics. The
-older six-kind `endpoints` syntax remains accepted for existing contracts, but
-does not create additional transport primitives.
+This guide shows how a native mod can expose a typed, in-process API to another
+mod. Read [Inter-mod communication](imc.md) first for the transport, threading,
+compatibility, and lifetime model.
+
+The examples require an installed BML+ SDK, CMake 3.14 or newer, a C++20
+compiler, and Python 3.10 or newer. New contracts define RPCs and Topics.
 
 ## 1. Write the contract
 
@@ -68,11 +70,8 @@ The native authoring surface maps directly to the runtime:
 
 Model object lookup as an ordinary request schema containing an `object` field.
 Put query/command intent in the RPC name and payload types, not in a transport
-kind. Existing `resource`, `component`, `collection`, `query`, `command`, and
-`stream` entries still generate their established convenience method names.
-Do not mix the old `endpoints` property with `rpcs`/`topics` in one contract.
-One schema can contain at most 64 fields; the generator reports this limit at
-generation time rather than emitting an incomplete codec.
+kind. One schema can contain at most 64 fields; the generator reports this
+limit at generation time rather than emitting an incomplete codec.
 
 Enum, schema, field, enum-value, RPC, and Topic names may use ASCII letters,
 digits, `_`, `-`, and `.` and must contain at least one letter or digit. API IDs
@@ -106,10 +105,8 @@ The IMC field vocabulary is:
 
 Wide numeric arrays support `array<int64>`, `array<uint64>`, and
 `array<double>`. A byte blob uses `bytes`; there is no redundant
-`array<bytes>` shape. The wide numeric and binary types are IMC-only. The CMake
-helper already selects that mode; invoking the generator without `--imc-only`
-reports the exact field and suggests the supported command instead of extending
-the legacy Record/Registry bridge.
+`array<bytes>` shape. The CMake helper selects typed IMC generation
+automatically. A manual generator invocation must pass `--imc-only`.
 
 An enum declaration uses `underlying: "int"`, `"int64"`, or `"uint64"`;
 `int` is the default. Values must have unique names and numbers and fit the
@@ -166,7 +163,7 @@ compatible under the same hash-list rules.
 ## 2. Generate from CMake
 
 The installed BML package includes the generator and
-`bml_target_imc_api()`. The helper runs the IMC-only mode, adds the generated
+`bml_target_imc_api()`. The helper adds the generated
 header to the target, adds its build directory to the include path, and applies
 the required C++20 compile feature. It requires Python 3.10 or newer during
 configuration, matching the installed generator.
@@ -352,3 +349,15 @@ All generated methods return BML status codes. Log both the code and
 Close subscriptions and providers before destroying callback userdata. Close
 clients before unloading the native DLL. Owner cleanup is the final safety net,
 not the normal lifecycle mechanism.
+
+## 7. Release checklist
+
+Before publishing an API:
+
+- verify that the API, schema, field, RPC, Topic, and enum identities are final;
+- run generation with `--check` in CI when generated headers are committed;
+- pass the last released contract through `PREVIOUS` for a compatible minor;
+- use game-thread execution for every callback that touches Virtools or BML UI;
+- choose explicit RPC timeouts and Topic queue/backpressure settings;
+- test provider unload while clients, futures, and subscriptions exist;
+- log and handle BML status codes instead of treating availability as permanent.
