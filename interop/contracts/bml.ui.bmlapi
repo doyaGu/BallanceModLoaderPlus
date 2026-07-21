@@ -1,0 +1,47 @@
+{
+  "api": "bml.ui",
+  "version": { "major": 1, "minor": 0 },
+  "schemas": [
+    { "id": 1, "name": "command_result", "fields": [] },
+    {
+      "id": 2,
+      "name": "message_input",
+      "fields": [ { "id": 1, "name": "message", "type": "string" } ]
+    },
+    {
+      "id": 3,
+      "name": "hud_mode_input",
+      "fields": [ { "id": 1, "name": "mode", "type": "int" } ]
+    },
+    {
+      "id": 4,
+      "name": "visible_input",
+      "fields": [ { "id": 1, "name": "visible", "type": "bool" } ]
+    },
+    { "id": 5, "name": "empty_input", "fields": [] },
+    {
+      "id": 6,
+      "name": "hud_state",
+      "fields": [
+        { "id": 1, "name": "mode", "type": "int" },
+        { "id": 2, "name": "sr_time", "type": "float" }
+      ]
+    }
+  ],
+  "endpoints": [
+    { "name": "hud_fps_show", "kind": "command", "input": 4, "output": 1 },
+    { "name": "hud_set", "kind": "command", "input": 3, "output": 1 },
+    { "name": "hud_sr_pause", "kind": "command", "input": 5, "output": 1 },
+    { "name": "hud_sr_reset", "kind": "command", "input": 5, "output": 1 },
+    { "name": "hud_sr_show", "kind": "command", "input": 4, "output": 1 },
+    { "name": "hud_sr_start", "kind": "command", "input": 5, "output": 1 },
+    { "name": "hud_title_show", "kind": "command", "input": 4, "output": 1 },
+    { "name": "map_menu_close", "kind": "command", "input": 5, "output": 1 },
+    { "name": "map_menu_open", "kind": "command", "input": 5, "output": 1 },
+    { "name": "message_add", "kind": "command", "input": 2, "output": 1 },
+    { "name": "message_clear", "kind": "command", "input": 5, "output": 1 },
+    { "name": "mods_menu_close", "kind": "command", "input": 5, "output": 1 },
+    { "name": "mods_menu_open", "kind": "command", "input": 5, "output": 1 },
+    { "name": "state", "kind": "resource", "output": 6 }
+  ]
+}

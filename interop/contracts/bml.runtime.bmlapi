@@ -1,0 +1,40 @@
+{
+  "api": "bml.runtime",
+  "version": { "major": 1, "minor": 0 },
+  "schemas": [
+    {
+      "id": 1,
+      "name": "runtime_state",
+      "fields": [
+        { "id": 1, "name": "in_game", "type": "bool" },
+        { "id": 2, "name": "in_level", "type": "bool" },
+        { "id": 3, "name": "paused", "type": "bool" },
+        { "id": 4, "name": "playing", "type": "bool" },
+        { "id": 5, "name": "cheat_enabled", "type": "bool" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "clock_state",
+      "fields": [
+        { "id": 1, "name": "time_ms", "type": "float" },
+        { "id": 2, "name": "absolute_ms", "type": "float" },
+        { "id": 3, "name": "delta_ms", "type": "float" },
+        { "id": 4, "name": "frame", "type": "int" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "score_state",
+      "fields": [
+        { "id": 1, "name": "sr", "type": "float" },
+        { "id": 2, "name": "hs", "type": "int" }
+      ]
+    }
+  ],
+  "endpoints": [
+    { "name": "clock", "kind": "resource", "output": 2 },
+    { "name": "score", "kind": "resource", "output": 3 },
+    { "name": "state", "kind": "resource", "output": 1 }
+  ]
+}
