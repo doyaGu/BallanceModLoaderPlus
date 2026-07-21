@@ -155,8 +155,9 @@ void ModContext::PublishInteropEvent(int kind) {
 }
 
 ModContext::ModContext(CKContext *context)
-    : m_InteropRegistry(m_InteropSessions) {
+    : m_ImcRuntime(), m_InteropRegistry(m_InteropSessions) {
     assert(context != nullptr);
+    m_ImcRuntime.SetInvocationGate(&m_ModInvocationGate);
     m_CKContext = context;
     m_DataShare = DataShare::GetInstance("BML");
     if (m_DataShare) m_DataShare->AddRef();
@@ -248,6 +249,8 @@ void ModContext::Shutdown() {
         ShutdownMods();
         UnloadMods();
     }
+
+    m_ImcRuntime.Shutdown();
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_UnregisterAngelScriptBindings(this);
@@ -1201,6 +1204,7 @@ void ModContext::OnProcess() {
         m_ScriptHotReload->Process();
     ProcessScriptModQueuedCallbacks();
 #endif
+    m_ImcRuntime.Pump();
     Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
     BroadcastCallback(&IMod::OnProcess);
 }
@@ -2184,7 +2188,8 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
     return true;
 }
 
-std::string ModContext::GetNativeInteropOwnerId(const void *callerAddress) const {
+std::string ModContext::GetNativeInteropOwnerId(
+    const void *callerAddress, const char *requestedOwnerId) const {
     if (!callerAddress)
         return {};
 
@@ -2198,7 +2203,19 @@ std::string ModContext::GetNativeInteropOwnerId(const void *callerAddress) const
 
     std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
     const auto owners = m_DllHandleToModsMap.find(callerModule);
-    if (owners == m_DllHandleToModsMap.end() || owners->second.size() != 1 || !owners->second.front())
+    if (owners == m_DllHandleToModsMap.end())
+        return {};
+
+    if (requestedOwnerId && *requestedOwnerId) {
+        const auto requested = m_ModMap.find(requestedOwnerId);
+        if (requested == m_ModMap.end() || !requested->second ||
+            std::find(owners->second.begin(), owners->second.end(),
+                      requested->second) == owners->second.end())
+            return {};
+        return requested->first;
+    }
+
+    if (owners->second.size() != 1 || !owners->second.front())
         return {};
 
     IMod *owner = owners->second.front();
@@ -2230,6 +2247,7 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
             return false;
         }
         const std::string modIdCopy = modId;
+        m_ImcRuntime.CleanupOwner(modIdCopy);
         // Providers must be revoked before the native module can disappear;
         // consumer-owned snapshots then become stale with its session below.
         if (m_InteropRegistry.InvalidateOwner(modIdCopy.c_str()) != BML_OK)

@@ -123,6 +123,8 @@ set(BML_PRIVATE_HEADERS
 
         RenderHook.h
         InteropContextInternal.h
+        ImcPrimitives.h
+        ImcRuntime.h
         InteropRegistry.h
         InteropEventSnapshot.h
         InteropObjectReferenceRegistry.h
@@ -182,6 +184,8 @@ set(BML_SOURCES
         ScriptHelper.cpp
 
         CommandContext.cpp
+        ImcApi.cpp
+        ImcRuntime.cpp
         InteropRegistry.cpp
         InteropApi.cpp
         InteropSessionService.cpp
