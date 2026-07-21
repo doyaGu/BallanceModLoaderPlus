@@ -1,73 +1,21 @@
 #ifndef BML_RUNTIME_H
 #define BML_RUNTIME_H
-
 #include "BML/Generated/bml_runtime_api.h"
-#include "BML/InteropClient.h"
-
+#include "BML/Generated/bml_runtime_imc.hpp"
 namespace BML::Runtime {
-
-struct State {
-    bool InGame = false;
-    bool InLevel = false;
-    bool Paused = false;
-    bool Playing = false;
-    bool CheatEnabled = false;
-};
-
-struct Clock {
-    float TimeMs = 0.0f;
-    float AbsoluteMs = 0.0f;
-    float DeltaMs = 0.0f;
-    int Frame = 0;
-};
-
-struct Score {
-    float SR = 0.0f;
-    int HS = 0;
-};
-
-inline int RequireApi() {
-    return Interop::RequireApi(Interop::Generated::Bml::Runtime::Descriptor);
+struct State { bool InGame = false; bool InLevel = false; bool Paused = false; bool Playing = false; bool CheatEnabled = false; };
+struct Clock { float TimeMs = 0.0f; float AbsoluteMs = 0.0f; float DeltaMs = 0.0f; int Frame = 0; };
+struct Score { float SR = 0.0f; int HS = 0; };
+namespace Detail {
+namespace Api = Imc::Generated::Bml::Runtime;
+namespace LegacyApi = Interop::Generated::Bml::Runtime;
+inline Imc::LazyClient<Api::Client> &ClientState() { static Imc::LazyClient<Api::Client> state; return state; }
+inline Api::Client &Client() { return ClientState().Get(); }
+inline int RequireApi() { const int status = LegacyApi::Require(); return status == BML_OK ? ClientState().EnsureOpen() : status; }
 }
-
-inline int ReadState(State &out) {
-    Interop::Record record;
-    int status = RequireApi();
-    if (status == BML_OK) status = Interop::ReadResource(Interop::Generated::Bml::Runtime::ApiId, "state", record);
-    State value{};
-    if (status == BML_OK) status = record.GetBool(Interop::Generated::Bml::Runtime::RuntimeStateField::InGame, value.InGame);
-    if (status == BML_OK) status = record.GetBool(Interop::Generated::Bml::Runtime::RuntimeStateField::InLevel, value.InLevel);
-    if (status == BML_OK) status = record.GetBool(Interop::Generated::Bml::Runtime::RuntimeStateField::Paused, value.Paused);
-    if (status == BML_OK) status = record.GetBool(Interop::Generated::Bml::Runtime::RuntimeStateField::Playing, value.Playing);
-    if (status == BML_OK) status = record.GetBool(Interop::Generated::Bml::Runtime::RuntimeStateField::CheatEnabled, value.CheatEnabled);
-    if (status == BML_OK) out = value;
-    return status;
-}
-
-inline int ReadClock(Clock &out) {
-    Interop::Record record;
-    int status = RequireApi();
-    if (status == BML_OK) status = Interop::ReadResource(Interop::Generated::Bml::Runtime::ApiId, "clock", record);
-    Clock value{};
-    if (status == BML_OK) status = record.GetFloat(Interop::Generated::Bml::Runtime::ClockStateField::TimeMs, value.TimeMs);
-    if (status == BML_OK) status = record.GetFloat(Interop::Generated::Bml::Runtime::ClockStateField::AbsoluteMs, value.AbsoluteMs);
-    if (status == BML_OK) status = record.GetFloat(Interop::Generated::Bml::Runtime::ClockStateField::DeltaMs, value.DeltaMs);
-    if (status == BML_OK) status = record.GetInt(Interop::Generated::Bml::Runtime::ClockStateField::Frame, value.Frame);
-    if (status == BML_OK) out = value;
-    return status;
-}
-
-inline int ReadScore(Score &out) {
-    Interop::Record record;
-    int status = RequireApi();
-    if (status == BML_OK) status = Interop::ReadResource(Interop::Generated::Bml::Runtime::ApiId, "score", record);
-    Score value{};
-    if (status == BML_OK) status = record.GetFloat(Interop::Generated::Bml::Runtime::ScoreStateField::Sr, value.SR);
-    if (status == BML_OK) status = record.GetInt(Interop::Generated::Bml::Runtime::ScoreStateField::Hs, value.HS);
-    if (status == BML_OK) out = value;
-    return status;
-}
-
+inline int RequireApi() { return Detail::RequireApi(); }
+inline int ReadState(State &out) { Imc::Generated::Bml::Runtime::RuntimeStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().ReadState(wire); if (status == BML_OK) out = {wire.InGame, wire.InLevel, wire.Paused, wire.Playing, wire.CheatEnabled}; return status; }
+inline int ReadClock(Clock &out) { Imc::Generated::Bml::Runtime::ClockStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().ReadClock(wire); if (status == BML_OK) out = {wire.TimeMs, wire.AbsoluteMs, wire.DeltaMs, wire.Frame}; return status; }
+inline int ReadScore(Score &out) { Imc::Generated::Bml::Runtime::ScoreStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().ReadScore(wire); if (status == BML_OK) out = {wire.Sr, wire.Hs}; return status; }
 } // namespace BML::Runtime
-
 #endif // BML_RUNTIME_H
