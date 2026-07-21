@@ -1,5 +1,5 @@
 // BML Script Mod API reference stub.
-// This file documents the script-facing contract implemented by BML.
+// This file documents the script-facing API implemented by BML.
 // It is not loaded by Player and should not be included at runtime.
 
 namespace BML {
@@ -117,17 +117,18 @@ const int ERROR_OK;
 const int ERROR_FAIL;
 const int ERROR_NOT_FOUND;
 const int ERROR_INVALID_PARAMETER;
-const int ERROR_INTEROP_TARGET_NOT_FOUND;
-const int ERROR_INTEROP_TARGET_FAILED;
-const int ERROR_INTEROP_EXPORT_NOT_FOUND;
-const int ERROR_INTEROP_EXPORT_AMBIGUOUS;
-const int ERROR_INTEROP_BAD_SIGNATURE;
-const int ERROR_INTEROP_SIGNATURE_MISMATCH;
-const int ERROR_INTEROP_BAD_CALL_FRAME;
-const int ERROR_INTEROP_TYPE_MISMATCH;
-const int ERROR_INTEROP_TARGET_EXECUTION_FAILED;
+const int ERROR_INTEROP_ENDPOINT_NOT_FOUND;
+const int ERROR_INTEROP_VALUE_TYPE_MISMATCH;
 const int ERROR_INTEROP_HANDLE_STALE;
 const int ERROR_INTEROP_UNSUPPORTED;
+const int ERROR_INTEROP_API_INVALID;
+const int ERROR_INTEROP_API_MISMATCH;
+const int ERROR_INTEROP_PROVIDER_UNLOADED;
+const int ERROR_INTEROP_WRONG_THREAD;
+const int ERROR_INTEROP_RECORD_INVALID;
+const int ERROR_INTEROP_CURSOR_STALE;
+const int ERROR_INTEROP_OBJECT_INVALID;
+const int ERROR_INTEROP_SCHEMA_MISMATCH;
 
 enum CommandEventPhase {
   COMMAND_EVENT_PRE = 0,
@@ -173,20 +174,6 @@ enum DataShareValueType {
   DATASHARE_BOOL = 1,
   DATASHARE_INT = 2,
   DATASHARE_FLOAT = 3
-}
-
-enum CallValueType {
-  CALL_VALUE_EMPTY = 0,
-  CALL_VALUE_BOOL = 1,
-  CALL_VALUE_INT = 2,
-  CALL_VALUE_FLOAT = 3,
-  CALL_VALUE_STRING = 4,
-  CALL_VALUE_BOOL_ARRAY = 16,
-  CALL_VALUE_INT_ARRAY = 17,
-  CALL_VALUE_FLOAT_ARRAY = 18,
-  CALL_VALUE_STRING_ARRAY = 19,
-  CALL_VALUE_BUFFER = 20,
-  CALL_VALUE_OBJECT_ID = 21
 }
 
 enum FontType {
@@ -921,50 +908,6 @@ class ModRef {
   int GetDependencyVersionMinor(int index) const;
   int GetDependencyVersionPatch(int index) const;
   bool IsDependencyOptional(int index) const;
-  int GetExportCount() const;
-  string GetExportName(int index) const;
-  string GetExportSignature(int index) const;
-  ExportRef@ GetExport(int index) const;
-  ExportRef@ FindExport(const string &in name, const string &in signature = "") const;
-  int TryFindExport(const string &in name, ExportRef@ &out exportRef, const string &in signature = "") const;
-}
-
-class ExportRef {
-  bool get_IsValid() const;
-  string get_ModId() const;
-  string get_Name() const;
-  string get_Signature() const;
-  int Call(CallFrame@ frame) const;
-  int CallVoid() const;
-  int CallString(const string &in argument, string &out result) const;
-  int CallString(string &out result) const;
-  int CallBool(bool argument, bool &out result) const;
-  int CallBool(bool &out result) const;
-  int CallInt(int argument, int &out result) const;
-  int CallInt(int &out result) const;
-  int CallFloat(float argument, float &out result) const;
-  int CallFloat(float &out result) const;
-}
-
-class ExportResolver {
-  bool get_IsBound() const;
-  int get_LastStatus() const;
-  string get_ModId() const;
-  string get_Name() const;
-  string get_Signature() const;
-  void Clear();
-  int Rebind();
-  int Resolve(ExportRef@ &out exportRef);
-  int Call(CallFrame@ frame);
-  int CallVoid();
-  int CallString(const string &in argument, string &out result);
-  int CallString(string &out result);
-  int CallBool(bool argument, bool &out result);
-  int CallBool(bool &out result);
-  int CallInt(int argument, int &out result);
-  int CallInt(int &out result);
-  int CallFloat(float argument, float &out result);
-  int CallFloat(float &out result);
 }
 
 class StateBag {
@@ -987,60 +930,13 @@ class StateBag {
   string GetString(const string &in key, const string &in defaultValue = "") const;
 }
 
-class CallFrame {
-  bool get_IsValid() const;
-  void Clear();
-  int get_ArgCount() const;
-  int GetArgCount() const;
-  int GetArgType(uint index) const;
-  int ClearArg(uint index);
-  int SetBool(uint index, bool value);
-  int GetBool(uint index, bool &out value) const;
-  int SetInt(uint index, int value);
-  int GetInt(uint index, int &out value) const;
-  int SetFloat(uint index, float value);
-  int GetFloat(uint index, float &out value) const;
-  int SetString(uint index, const string &in value);
-  int GetString(uint index, string &out value) const;
-  int SetArray(uint index, const array<bool> &in values);
-  int GetArray(uint index, array<bool>@ &out values) const;
-  int SetArray(uint index, const array<int> &in values);
-  int GetArray(uint index, array<int>@ &out values) const;
-  int SetArray(uint index, const array<float> &in values);
-  int GetArray(uint index, array<float>@ &out values) const;
-  int SetArray(uint index, const array<string> &in values);
-  int GetArray(uint index, array<string>@ &out values) const;
-  int SetArray(uint index, const array<uint8> &in values);
-  int GetArray(uint index, array<uint8>@ &out values) const;
-  int SetObjectId(uint index, int objectId);
-  int GetObjectId(uint index, int &out objectId) const;
-  int SetObject(uint index, CKObject@ object);
-  int GetObject(uint index, CKObject@ &out object) const;
-  int SetResultBool(bool value);
-  int get_ResultType() const;
-  int GetResultType() const;
-  int ClearResult();
-  int GetResultBool(bool &out value) const;
-  int SetResultInt(int value);
-  int GetResultInt(int &out value) const;
-  int SetResultFloat(float value);
-  int GetResultFloat(float &out value) const;
-  int SetResultString(const string &in value);
-  int GetResultString(string &out value) const;
-  int SetResultArray(const array<bool> &in values);
-  int GetResultArray(array<bool>@ &out values) const;
-  int SetResultArray(const array<int> &in values);
-  int GetResultArray(array<int>@ &out values) const;
-  int SetResultArray(const array<float> &in values);
-  int GetResultArray(array<float>@ &out values) const;
-  int SetResultArray(const array<string> &in values);
-  int GetResultArray(array<string>@ &out values) const;
-  int SetResultArray(const array<uint8> &in values);
-  int GetResultArray(array<uint8>@ &out values) const;
-  int SetResultObjectId(int objectId);
-  int GetResultObjectId(int &out objectId) const;
-  int SetResultObject(CKObject@ object);
-  int GetResultObject(CKObject@ &out object) const;
+class Vec2 { float x; float y; }
+class Vec3 { float x; float y; float z; }
+class Mat4 {
+  float m00; float m01; float m02; float m03;
+  float m10; float m11; float m12; float m13;
+  float m20; float m21; float m22; float m23;
+  float m30; float m31; float m32; float m33;
 }
 
 string GetVersion();
@@ -1062,5 +958,204 @@ float DataShareGetFloat(const string &in key, float defaultValue = 0.0f, const s
 bool DataShareHas(const string &in key, const string &in name = "BML");
 void DataShareRemove(const string &in key, const string &in name = "BML");
 int DataShareSizeOf(const string &in key, const string &in name = "BML");
+
+// Experimental Interop facades.  Each read returns a BML status code and
+// writes the output only on success.  Borrow* methods create a host-owned,
+// non-retained CK handle and therefore are valid only while the object still
+// belongs to the current game scene.
+namespace Runtime {
+class State {
+  bool InGame; bool InLevel; bool Paused; bool Playing; bool CheatEnabled;
+}
+class Clock { float TimeMs; float AbsoluteMs; float DeltaMs; int Frame; }
+class Score { float SR; int HS; }
+int ReadState(State &out state);
+int ReadClock(Clock &out state);
+int ReadScore(Score &out state);
+} // namespace Runtime
+
+namespace Scene {
+class ObjectInfo {
+  int Id; int ClassId; bool Visible; bool Dynamic;
+  string get_Name() const;
+  CKObject@ BorrowObject() const;
+}
+class EntityTransform {
+  ::BML::Vec3 Position; ::BML::Vec3 Scale; int ChildCount;
+  CKObject@ BorrowParent() const;
+}
+int Find(const string &in name, CKObject@ &out object);
+int Find(const string &in name, int classId, CKObject@ &out object);
+int ReadObject(CKObject@ object, ObjectInfo &out info);
+int ReadEntity(CKObject@ object, EntityTransform &out transform);
+} // namespace Scene
+
+namespace Gameplay {
+class LevelState {
+  int Id; ::BML::Mat4 ResetMatrix; int Points;
+  CKObject@ BorrowActiveBall() const;
+}
+class EnergyState {
+  int Points; int Lives; int StartPoints; int StartLives; float TimeFactor; int LifeBonus;
+}
+class CatalogEntry {
+  int Bonus; int Music;
+  string get_File() const; string get_StartBall() const; string get_Sky() const;
+}
+class Checkpoint { ::BML::Mat4 Matrix; CKObject@ BorrowObject() const; }
+class Resetpoint { CKObject@ BorrowObject() const; }
+class CatalogCursor {
+  bool get_IsOpen() const; int Close();
+  int Next(CatalogEntry &out entry, bool &out hasValue, bool &out complete);
+}
+class CheckpointCursor {
+  bool get_IsOpen() const; int Close();
+  int Next(Checkpoint &out entry, bool &out hasValue, bool &out complete);
+}
+class ResetpointCursor {
+  bool get_IsOpen() const; int Close();
+  int Next(Resetpoint &out entry, bool &out hasValue, bool &out complete);
+}
+int ReadLevel(LevelState &out state);
+int ReadEnergy(EnergyState &out state);
+int OpenCatalog(CatalogCursor@ &out cursor);
+int OpenCheckpoints(CheckpointCursor@ &out cursor);
+int OpenResetpoints(ResetpointCursor@ &out cursor);
+} // namespace Gameplay
+
+namespace Events {
+// Event is an immutable stream snapshot.  Category-specific fields are
+// meaningful only when the corresponding Is* flag is true.
+class Event {
+  bool get_IsValid() const; int get_Status() const; int get_Kind() const;
+  uint64 get_Sequence() const; uint64 get_Timestamp() const;
+  bool get_IsLoad() const; bool get_IsPhysics() const; bool get_IsCommand() const;
+  bool get_IsConfig() const; bool get_IsCheat() const;
+  string get_Filename() const; bool get_IsMap() const; string get_MasterName() const;
+  int get_FilterClass() const; bool get_AddToScene() const; bool get_ReuseMeshes() const;
+  bool get_ReuseMaterials() const; bool get_Dynamic() const;
+  CKObject@ BorrowMasterObject() const; CKObject@ BorrowScript() const;
+  int get_ObjectCount() const; CKObject@ BorrowObject(int index) const;
+  CKObject@ BorrowTarget() const;
+  bool get_Fixed() const; float get_Friction() const; float get_Elasticity() const;
+  float get_Mass() const; string get_CollisionGroup() const; bool get_StartFrozen() const;
+  bool get_EnableCollision() const; bool get_AutoCalculateMassCenter() const;
+  float get_LinearDamp() const; float get_RotDamp() const;
+  string get_CollisionSurface() const; ::BML::Vec3 get_MassCenter() const;
+  int get_ConvexMeshCount() const; CKObject@ BorrowConvexMesh(int index) const;
+  int get_BallCount() const; ::BML::Vec3 GetBallCenter(int index) const;
+  float GetBallRadius(int index) const; int get_ConcaveMeshCount() const;
+  CKObject@ BorrowConcaveMesh(int index) const;
+  string get_Command() const; int get_CommandArgumentCount() const;
+  string GetCommandArgument(int index) const; string get_ConfigCategory() const;
+  string get_ConfigKey() const; int get_ConfigType() const; string get_ConfigValue() const;
+  bool get_CheatEnabled() const;
+}
+class Stream {
+  bool get_IsOpen() const; int Close();
+  int GetDroppedCount(int &out count) const;
+  int Poll(Event@ &out event);
+}
+int Open(Stream@ &out stream, int capacity = 256);
+} // namespace Events
+
+// Interop is the advanced API-agnostic transport.  Ordinary mods should
+// include generated .bmlapi bindings, whose typed facades use these records
+// internally.  API builder, provider, request, record, stream, cursor, input,
+// and writers are host-owned reference/value types; none exposes a native C++
+// object across a mod boundary.
+namespace Interop {
+enum FieldType {
+  FIELD_BOOL, FIELD_INT, FIELD_FLOAT, FIELD_STRING, FIELD_OBJECT, FIELD_VEC2, FIELD_VEC3, FIELD_MAT4,
+  FIELD_BOOL_ARRAY, FIELD_INT_ARRAY, FIELD_FLOAT_ARRAY, FIELD_STRING_ARRAY,
+  FIELD_OBJECT_ARRAY, FIELD_VEC2_ARRAY, FIELD_VEC3_ARRAY, FIELD_MAT4_ARRAY
+}
+enum EndpointKind { ENDPOINT_RESOURCE, ENDPOINT_COMPONENT, ENDPOINT_COLLECTION, ENDPOINT_STREAM, ENDPOINT_QUERY, ENDPOINT_COMMAND }
+class ObjectRef { uint Domain; uint Slot; uint Generation; }
+class Record {
+  bool get_IsValid() const; int get_Status() const; uint get_Schema() const;
+  uint64 get_Sequence() const; uint64 get_Timestamp() const;
+  int GetBool(uint field, bool &out value) const; int GetInt(uint field, int &out value) const;
+  int GetFloat(uint field, float &out value) const; int GetString(uint field, string &out value) const;
+  int GetObject(uint field, ObjectRef &out value) const; int GetVec2(uint field, ::BML::Vec2 &out value) const;
+  int GetVec3(uint field, ::BML::Vec3 &out value) const; int GetMat4(uint field, ::BML::Mat4 &out value) const;
+  int GetBoolArray(uint field, array<bool> &out values) const; int GetIntArray(uint field, array<int> &out values) const;
+  int GetFloatArray(uint field, array<float> &out values) const; int GetStringArray(uint field, array<string> &out values) const;
+  int GetObjectArray(uint field, array<ObjectRef> &out values) const; int GetVec2Array(uint field, array<::BML::Vec2> &out values) const;
+  int GetVec3Array(uint field, array<::BML::Vec3> &out values) const; int GetMat4Array(uint field, array<::BML::Mat4> &out values) const;
+}
+class Stream {
+  bool get_IsOpen() const; int Close(); int GetDroppedCount(int &out count) const;
+  int Poll(Record@ &out record);
+}
+class Cursor {
+  bool get_IsOpen() const; int Close();
+  int Next(Record@ &out record, bool &out hasValue, bool &out complete);
+}
+class Input {
+  bool get_IsActive() const;
+  int SetBool(uint field, bool value); int SetInt(uint field, int value); int SetFloat(uint field, float value);
+  int SetString(uint field, const string &in value); int SetObject(uint field, const ObjectRef &in value);
+  int SetVec2(uint field, const ::BML::Vec2 &in value); int SetVec3(uint field, const ::BML::Vec3 &in value);
+  int SetMat4(uint field, const ::BML::Mat4 &in value);
+  int SetBoolArray(uint field, const array<bool> &in values); int SetIntArray(uint field, const array<int> &in values);
+  int SetFloatArray(uint field, const array<float> &in values); int SetStringArray(uint field, const array<string> &in values);
+  int SetObjectArray(uint field, const array<ObjectRef> &in values); int SetVec2Array(uint field, const array<::BML::Vec2> &in values);
+  int SetVec3Array(uint field, const array<::BML::Vec3> &in values); int SetMat4Array(uint field, const array<::BML::Mat4> &in values);
+}
+int RequireApi(const string &in apiId, uint major, uint64 hash);
+int ReadResource(const string &in apiId, const string &in endpoint, Record@ &out record);
+int ReadComponent(const string &in apiId, const string &in endpoint, const ObjectRef &in object, Record@ &out record);
+int OpenStream(const string &in apiId, const string &in endpoint, Stream@ &out stream, int capacity = 256);
+int OpenCollection(const string &in apiId, const string &in endpoint, Cursor@ &out cursor);
+int CreateInput(const string &in apiId, uint schema, Input@ &out input);
+int InvokeQuery(const string &in apiId, const string &in endpoint, Input@ input, Record@ &out record);
+int InvokeCommand(const string &in apiId, const string &in endpoint, Input@ input, Record@ &out record);
+
+// Provider authoring defines an API in a generated .bmlapi binding,
+// configures callbacks in OnLoad, and registers exactly once.
+class ApiBuilder {
+  int AddSchema(uint id, const string &in name);
+  int AddField(uint schemaId, uint id, const string &in name, FieldType type, bool optional = false);
+  int AddEndpoint(const string &in name, EndpointKind kind, uint inputSchema, uint outputSchema, bool requiresProbe = false);
+  int AddCompatibleApiHash(uint64 hash);
+  bool get_IsFrozen() const;
+}
+class Request {
+  bool get_IsActive() const; string get_ApiId() const; string get_Endpoint() const; string get_ConsumerId() const;
+  int get_Kind() const; ObjectRef get_Object() const; uint64 get_Offset() const; uint get_Limit() const;
+  int GetInputBool(uint field, bool &out value) const; int GetInputInt(uint field, int &out value) const;
+  int GetInputFloat(uint field, float &out value) const; int GetInputString(uint field, string &out value) const;
+  int GetInputObject(uint field, ObjectRef &out value) const; int GetInputVec2(uint field, ::BML::Vec2 &out value) const;
+  int GetInputVec3(uint field, ::BML::Vec3 &out value) const; int GetInputMat4(uint field, ::BML::Mat4 &out value) const;
+  int GetInputBoolArray(uint field, array<bool> &out values); int GetInputIntArray(uint field, array<int> &out values);
+  int GetInputFloatArray(uint field, array<float> &out values); int GetInputStringArray(uint field, array<string> &out values);
+  int GetInputObjectArray(uint field, array<ObjectRef> &out values); int GetInputVec2Array(uint field, array<::BML::Vec2> &out values);
+  int GetInputVec3Array(uint field, array<::BML::Vec3> &out values); int GetInputMat4Array(uint field, array<::BML::Mat4> &out values);
+}
+class RecordWriter {
+  bool get_IsActive() const;
+  int SetBool(uint field, bool value); int SetInt(uint field, int value); int SetFloat(uint field, float value);
+  int SetString(uint field, const string &in value); int SetObject(uint field, const ObjectRef &in value);
+  int SetVec2(uint field, const ::BML::Vec2 &in value); int SetVec3(uint field, const ::BML::Vec3 &in value);
+  int SetMat4(uint field, const ::BML::Mat4 &in value); int Publish();
+  int SetBoolArray(uint field, const array<bool> &in values); int SetIntArray(uint field, const array<int> &in values);
+  int SetFloatArray(uint field, const array<float> &in values); int SetStringArray(uint field, const array<string> &in values);
+  int SetObjectArray(uint field, const array<ObjectRef> &in values); int SetVec2Array(uint field, const array<::BML::Vec2> &in values);
+  int SetVec3Array(uint field, const array<::BML::Vec3> &in values); int SetMat4Array(uint field, const array<::BML::Mat4> &in values);
+}
+class PageWriter { bool get_IsActive() const; RecordWriter@ Append(); void SetComplete(bool complete); }
+funcdef int ProbeCallback(const Request &in request);
+funcdef int ReadCallback(const Request &in request, RecordWriter@ writer);
+funcdef int PageCallback(const Request &in request, PageWriter@ page);
+class Provider {
+  int SetProbe(ProbeCallback@+ callback); int SetRead(const string &in endpoint, ReadCallback@+ callback);
+  int SetPage(const string &in endpoint, PageCallback@+ callback); RecordWriter@ BeginStreamRecord(const string &in endpoint);
+  bool get_IsRegistered() const;
+}
+ApiBuilder@ CreateApi(const string &in apiId, uint major, uint minor, uint64 hash);
+Provider@ CreateProvider(); int RegisterProvider(ApiBuilder@ api, Provider@ provider);
+ObjectRef MakeObjectRef(CKObject@ object); CKObject@ BorrowObject(const ObjectRef &in object);
+} // namespace Interop
 
 } // namespace BML

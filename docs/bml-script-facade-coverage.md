@@ -26,11 +26,11 @@ not use it as the upper bound for what a script can do in Virtools.
 
 | Need | Put it here |
 | --- | --- |
-| BML mod identity, dependency ordering, resource paths, logger/config, commands, timers, exports, DataShare, HUD/menu helpers | BML script facade |
+| BML mod identity, dependency ordering, resource paths, logger/config, commands, timers, API Interop, DataShare, HUD/menu helpers | BML script facade |
 | Safe Virtools object lookup, scene membership, object identity across frames | CKAS `Scene` and `ObjectRef@`-derived handles; use BML `Borrow*ByName` only for convenience |
 | Behavior graph search/editing, runtime Building Block spawning/stepping, CK parameter values/sources/operations | CKAS `Behavior`, `BB`, and `Param` |
 | Per-object/per-behavior script logic with editor-configured fields | CKAS `AngelScript Component` |
-| Runtime script/component communication and cooperative frame work | CKAS `Message` and `Async`; use BML exports/DataShare for stable mod-visible contracts |
+| Runtime script/component communication and cooperative frame work | CKAS `Message` and `Async`; use BML APIs/DataShare for stable mod-visible data |
 | Renderer/input/platform hooks, high-frequency patches, or unsafe native lifetime | Native plugin code plus a guarded CKAS engine extension |
 | External library calls or native memory experiments | CKAS `NativePointer`/DynCall as an advanced escape hatch, not a supported substitute for plugin APIs |
 
@@ -57,7 +57,7 @@ not use it as the upper bound for what a script can do in Virtools.
 | Content registration | `ModContext::RegisterBallType`, `RegisterFloorType`, and `RegisterModule` definition objects | Only accepted during script `OnLoad`; late calls return false. |
 | Mod registry | `ModContext::FindMod/GetMod*` | `ModRef` is a resolved facade handle, not a native `IMod*`. |
 | Dependencies | Metadata plus `ModRef` read APIs | Runtime dependency mutation remains native-only. Script dependencies use `[bml.require]` and `[bml.optional]`. |
-| Exports | `ModRef`, `ExportResolver`, `ExportRef`, `CallFrame`, typed scalar `ExportRef::Call*` helpers | Resolved handles are generation-checked and return stale after unload/unregister. `ExportResolver` caches and rebinds export lookups for wrapper libraries. Arrays, `array<uint8>` buffers, and `CKObject@` identity values use explicit `CallFrame` methods. |
+| Cross-mod Interop | Generated shallow consumer facades plus `BML::Interop` provider types | The native boundary is C-only fixed-layout values and `BML_Interop_*` functions. Provider schema/source registration is `OnLoad`-only and freezes after success; snapshots and streams are copied and session-bound. |
 | DataShare | Typed global helpers, `DataShareSizeOf`, `RequestDataShare(key, type, DataShareCallback@+, name)`, `RequestDataShare(BML::DataShareRequest@+)`, `DataShareRequestRef`, `DataShareEvent` | Delegate callbacks cover lightweight one-shot requests; script-owned request objects remain available for stateful requests. BML retains the callback or object until completion/cancel/unload. Raw byte callbacks are not exposed. |
 | BML menus | `BML::Menu` core capability helpers plus compatibility `ModContext::Open*Menu/Close*Menu` | Opens/closes BML-owned menus through Interop-backed built-in capabilities. |
 | Bui menu helpers | `BML::UI` namespace | Stable subset for render-time titles, text, buttons, key capture/formatting, radio choices, paging, navigation, and simple inout inputs. Uses native Bui internally but does not expose `Bui::Window/Page/Menu`, raw draw lists, lambda layout, raw buffers, resources, callbacks, or internal navigation lifecycle. |
@@ -83,5 +83,5 @@ Release validation should cover:
 
 - `tests/smoke/AngelScript/BMLAngelScriptSmoke` for global and `ModContext` parity.
 - Compile/runtime/shutdown smoke directories.
-- Native interop smoke for native-to-script and script-to-native exports.
+- Native and AngelScript API smoke for C ABI registration, shallow reads, streams, and provider lifecycle.
 - Real Ballance Player validation under the `BML_BALLANCE_ROOT` test install.

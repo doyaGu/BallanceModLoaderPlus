@@ -150,7 +150,7 @@ void RestoreState(BML::StateBag@ state) {
 }
 ```
 
-`StateBag` 只保存 `bool`、`int`、`float`、`string`。不要把 CK 句柄、脚本对象、Timer、Command、DataShare、ModRef、ExportRef 放进去。状态迁移方法应只复制/转换纯数据，不注册资源、不执行命令、不修改游戏世界。资源在 `RestoreState` 后的 `OnLoad` 里按当前状态重新创建。
+`StateBag` 只保存 `bool`、`int`、`float`、`string`。不要把 CK 句柄、脚本对象、Timer、Command、DataShare、ModRef、Interop record/stream/cursor 放进去。状态迁移方法应只复制/转换纯数据，不注册资源、不执行命令、不修改游戏世界。资源在 `RestoreState` 后的 `OnLoad` 里按当前状态重新创建。
 
 ## 规则
 
