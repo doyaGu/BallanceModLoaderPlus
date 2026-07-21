@@ -9,15 +9,14 @@
 #include <utility>
 #include <vector>
 
-#include "BML/Interop.h"
 #include "BML/ICommand.h"
 #include "BML/IMod.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"
 #include "ScriptCommandService.h"
 #include "ScriptDataShareService.h"
-#include "ScriptExportDispatcher.h"
 #include "ScriptHookBlockService.h"
+#include "ScriptInteropProviderBridge.h"
 #include "ScriptModEntryScanner.h"
 #include "ScriptModContextView.h"
 #include "ScriptModDefinition.h"
@@ -43,7 +42,6 @@ class ScriptStateBag;
 
 struct ScriptModReloadOptions {
     bool Automatic = false;
-    bool ForceExports = false;
     bool DryRun = false;
     bool CheckStateHooks = false;
     ScriptLibrarySourceCache *LibrarySourceCache = nullptr;
@@ -189,6 +187,7 @@ public:
     const ScriptDiagnostic &GetLastReloadDiagnosticInfo() const { return m_LastReloadDiagnosticInfo; }
     const ScriptModDefinition &GetDefinition() const { return m_Definition; }
     const ScriptModEntry &GetEntry() const { return m_Entry; }
+    ModContext *GetModContext() const { return m_Context; }
     std::string GetRootDirectoryUtf8() const;
     std::string ResolveResourcePathUtf8(const std::string &relativePath) const;
     bool ModFileExistsUtf8(const std::string &relativePath) const;
@@ -288,19 +287,6 @@ public:
                                    float rotDamp);
     bool RegisterScriptTrafo(const std::string &modulName);
     bool RegisterScriptModul(const std::string &modulName);
-    bool HasExport(const std::string &name, const std::string &signature = std::string()) const;
-    const ScriptExportBinding *ResolveExport(const std::string &name, const std::string &signature = std::string()) const;
-    std::string GetExportSignature(const std::string &name) const;
-    void GetExportSignatures(const std::string &name, std::vector<std::string> &out) const;
-    int GetExportCount() const;
-    bool GetExportInfo(int index, std::string &name, std::string &signature) const;
-    int CallVoidExport(const std::string &name, const std::string &signature);
-    int CallStringExport(const std::string &name,
-                         const std::string &signature,
-                         const std::string &argument,
-                         bool hasArgument,
-                         std::string &result);
-    int CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame);
     bool TryAcquireReloadLease(std::string &diagnostic);
     void ReleaseReloadLease();
     std::unique_ptr<ScriptModReloadCandidate> PrepareReloadCandidate(const ScriptModReloadOptions &options,
@@ -326,6 +312,9 @@ public:
     size_t GetActiveCommandCount() const { return m_Commands.GetActiveCount(); }
     size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
     size_t GetActiveHookBlockCount() const { return m_HookBlocks.GetActiveCount(); }
+    size_t GetActiveInteropProviderCount() const { return m_InteropProviders.GetActiveCount(); }
+    ScriptInteropProviderService &GetInteropProviderService() { return m_InteropProviders; }
+    const ScriptModRuntime &GetRuntimeForInterop() const { return m_Runtime; }
     size_t GetQueuedScriptServiceCallbackCount() const;
     size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
     int GetActiveScriptCallCount() const;
@@ -358,6 +347,7 @@ private:
     void Fail(const ScriptDiagnostic &diagnostic);
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
+    bool ReleaseScriptInteropProviders();
     bool ReleaseScriptMethodHandles();
     void ReleaseScriptImGuiInput();
     bool ReleaseRuntime();
@@ -374,7 +364,6 @@ private:
     void TouchReloadAttempt();
     void SetReloadPhase(ScriptModReloadPhase phase);
     bool ValidateReloadDefinition(const ScriptModDefinition &candidate,
-                                  const ScriptExportTable &candidateExports,
                                   const ScriptModReloadOptions &options,
                                   std::string &diagnostic,
                                   std::vector<ScriptModReloadDiagnosticField> *fields) const;
@@ -392,7 +381,7 @@ private:
     ScriptCommandService m_Commands;
     ScriptDataShareService m_DataShareRequests;
     ScriptHookBlockService m_HookBlocks;
-    ScriptExportTable m_Exports;
+    ScriptInteropProviderService m_InteropProviders;
     ScriptModState m_State;
     bool m_InLoadCallback = false;
     mutable std::mutex m_ReloadMutex;

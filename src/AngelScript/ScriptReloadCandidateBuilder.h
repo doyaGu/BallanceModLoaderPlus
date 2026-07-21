@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "ScriptExportDispatcher.h"
 #include "ScriptModEventRouter.h"
 #include "ScriptModReloadCandidateInternal.h"
 
@@ -43,9 +42,7 @@ private:
     ScriptModReloadCandidate::State &m_State;
     const ScriptModReloadOptions &m_Options;
     ScriptModEventRouter m_CandidateEvents;
-    ScriptExportTable m_CandidateExports;
     bool m_EventsBound = false;
-    bool m_ExportsTouched = false;
     bool m_RuntimeOwned = false;
 };
 

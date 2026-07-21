@@ -804,8 +804,7 @@ void ScriptDevToolsService::ExecuteReloadAction(const ScriptDevAction &action) {
                      "",
                      message,
                      {{"dryRun", action.ReloadOptions.DryRun ? "true" : "false"},
-                      {"checkState", action.ReloadOptions.CheckStateHooks ? "true" : "false"},
-                      {"forceExports", action.ReloadOptions.ForceExports ? "true" : "false"}});
+                      {"checkState", action.ReloadOptions.CheckStateHooks ? "true" : "false"}});
     }
 }
 
@@ -822,8 +821,7 @@ void ScriptDevToolsService::ExecuteReloadAllAction(const ScriptDevAction &action
                  action.ReloadOptions.DryRun ? "Queued script reload dry-runs." : "Queued script reloads.",
                  {{"count", std::to_string(count)},
                   {"dryRun", action.ReloadOptions.DryRun ? "true" : "false"},
-                  {"checkState", action.ReloadOptions.CheckStateHooks ? "true" : "false"},
-                  {"forceExports", action.ReloadOptions.ForceExports ? "true" : "false"}});
+                  {"checkState", action.ReloadOptions.CheckStateHooks ? "true" : "false"}});
 }
 
 void ScriptDevToolsService::ClearEvents() {
@@ -960,20 +958,12 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
         snapshot.SourceIncludeEdges.push_back(std::move(item));
     }
 
-    const int exportCount = mod->GetExportCount();
-    for (int i = 0; i < exportCount; ++i) {
-        ScriptExportSnapshot item;
-        if (mod->GetExportInfo(i, item.Name, item.Signature))
-            snapshot.Exports.push_back(std::move(item));
-    }
-
     mod->GetCallbackNames(snapshot.Callbacks);
     snapshot.Resources.Timers = mod->GetActiveTimerCount();
     snapshot.Resources.Commands = mod->GetActiveCommandCount();
     snapshot.Resources.DataShareRequests = mod->GetActiveDataShareRequestCount();
     snapshot.Resources.HostRegistrations = mod->GetHostRegistrationCount();
     snapshot.Resources.Callbacks = snapshot.Callbacks.size();
-    snapshot.Resources.Exports = snapshot.Exports.size();
     snapshot.Resources.ActiveCalls = mod->GetActiveScriptCallCount();
     return snapshot;
 }
@@ -1349,19 +1339,6 @@ std::vector<std::string> ScriptDevToolsService::FormatLibCheck(const std::string
     return lines;
 }
 
-std::vector<std::string> ScriptDevToolsService::FormatExports(const std::string &id) {
-    const ScriptModSnapshot *snapshot = FindSnapshot(id);
-    if (!snapshot)
-        return {"Script mod not found: " + id};
-    std::vector<std::string> lines;
-    lines.push_back("Exports for " + snapshot->Id + ":");
-    for (const auto &item : snapshot->Exports)
-        lines.push_back("  " + item.Name + " : " + item.Signature);
-    if (snapshot->Exports.empty())
-        lines.push_back("  none");
-    return lines;
-}
-
 std::vector<std::string> ScriptDevToolsService::FormatResources(const std::string &id) {
     const ScriptModSnapshot *snapshot = FindSnapshot(id);
     if (!snapshot)
@@ -1373,7 +1350,6 @@ std::vector<std::string> ScriptDevToolsService::FormatResources(const std::strin
             " commands=" + std::to_string(resources.Commands) +
             " datashare=" + std::to_string(resources.DataShareRequests),
         "  callbacks=" + std::to_string(resources.Callbacks) +
-            " exports=" + std::to_string(resources.Exports) +
             " hostRegistrations=" + std::to_string(resources.HostRegistrations),
         "  activeCalls=" + std::to_string(resources.ActiveCalls),
     };
@@ -1419,7 +1395,7 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
                               options.IncludeIncludeGraph,
                               options.Compile);
     }
-    if (command == "info" || command == "diag" || command == "deps" || command == "exports" || command == "resources") {
+    if (command == "info" || command == "diag" || command == "deps" || command == "resources") {
         if (args.size() < 3)
             return {"Usage: script " + command + " <id>"};
         if (command == "info")
@@ -1428,8 +1404,6 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
             return FormatDiag(args[2]);
         if (command == "deps")
             return FormatDeps(args[2]);
-        if (command == "exports")
-            return FormatExports(args[2]);
         return FormatResources(args[2]);
     }
     if (command == "reload") {
@@ -1443,15 +1417,13 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
         for (size_t i = optionStart; i < args.size(); ++i) {
             if (args[i] == "--dry-run")
                 options.DryRun = true;
-            else if (args[i] == "--force-exports")
-                options.ForceExports = true;
             else if (args[i] == "--check-state")
                 options.CheckStateHooks = true;
             else
-                return {"Usage: script reload [id|all] [--dry-run] [--check-state] [--force-exports]"};
+                return {"Usage: script reload [id|all] [--dry-run] [--check-state]"};
         }
         if (options.CheckStateHooks && !options.DryRun)
-            return {"Usage: script reload [id|all] --dry-run --check-state [--force-exports]"};
+            return {"Usage: script reload [id|all] --dry-run --check-state"};
         ScriptDevAction action;
         action.Kind = target == "all" ? ScriptDevActionKind::ReloadAll : ScriptDevActionKind::Reload;
         action.ModId = target == "all" ? "" : target;
@@ -1461,15 +1433,13 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
     }
     if (command == "reload-lib") {
         if (args.size() < 4)
-            return {"Usage: script reload-lib <id> <version> [--dry-run] [--force-exports]"};
+            return {"Usage: script reload-lib <id> <version> [--dry-run]"};
         ScriptModReloadOptions options;
         for (size_t i = 4; i < args.size(); ++i) {
             if (args[i] == "--dry-run")
                 options.DryRun = true;
-            else if (args[i] == "--force-exports")
-                options.ForceExports = true;
             else
-                return {"Usage: script reload-lib <id> <version> [--dry-run] [--force-exports]"};
+                return {"Usage: script reload-lib <id> <version> [--dry-run]"};
         }
         std::string message;
         if (!m_Context || !m_Context->QueueScriptLibraryReload(args[2], args[3], options, message))
@@ -1486,12 +1456,12 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
         return {action.WatchEnabled ? "Queued script watch on." : "Queued script watch off."};
     }
 
-    return {"Usage: script <status|panel|logs|list|libs|lib|info|diag|deps|exports|resources|reload|reload-lib|watch>"};
+    return {"Usage: script <status|panel|logs|list|libs|lib|info|diag|deps|resources|reload|reload-lib|watch>"};
 }
 
 std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vector<std::string> &args) {
     if (args.size() == 2)
-        return {"status", "panel", "logs", "list", "libs", "lib", "info", "diag", "deps", "exports", "resources", "reload", "reload-lib", "watch"};
+        return {"status", "panel", "logs", "list", "libs", "lib", "info", "diag", "deps", "resources", "reload", "reload-lib", "watch"};
     if (args.size() == 3 && (args[1] == "logs" || args[1] == "log"))
         return {"info", "warn", "error", "clear"};
     if (args.size() == 3 && args[1] == "lib")
@@ -1499,11 +1469,11 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
     if (args.size() >= 5 && args[1] == "lib" && args[2] == "check")
         return {"--hashes", "--graph", "--compile"};
     if (args.size() == 3 && (args[1] == "info" || args[1] == "diag" || args[1] == "deps" ||
-                             args[1] == "exports" || args[1] == "resources")) {
+                             args[1] == "resources")) {
         return GetScriptModIds();
     }
     if (args.size() == 3 && args[1] == "reload" && !args[2].empty() && args[2][0] == '-')
-        return {"--dry-run", "--check-state", "--force-exports"};
+        return {"--dry-run", "--check-state"};
     if (args.size() == 3 && args[1] == "reload") {
         std::vector<std::string> ids = {"all"};
         std::vector<std::string> modIds = GetScriptModIds();
@@ -1511,9 +1481,9 @@ std::vector<std::string> ScriptDevToolsService::CompleteCommand(const std::vecto
         return ids;
     }
     if (args.size() >= 4 && args[1] == "reload")
-        return {"--dry-run", "--check-state", "--force-exports"};
+        return {"--dry-run", "--check-state"};
     if (args.size() >= 4 && args[1] == "reload-lib")
-        return {"--dry-run", "--force-exports"};
+        return {"--dry-run"};
     if (args.size() == 3 && (args[1] == "watch" || args[1] == "auto"))
         return {"on", "off"};
     return {};
@@ -1625,10 +1595,6 @@ void ScriptDevToolsService::OnDraw() {
                 }
                 if (ImGui::BeginTabItem("Res")) {
                     DrawResourcesTab(selected);
-                    ImGui::EndTabItem();
-                }
-                if (ImGui::BeginTabItem("Exports")) {
-                    DrawExportsTab(selected);
                     ImGui::EndTabItem();
                 }
                 if (ImGui::BeginTabItem("Deps")) {
@@ -1758,7 +1724,6 @@ void ScriptDevToolsService::DrawResourcesTab(const ScriptModSnapshot *selected) 
         row("commands", resources.Commands);
         row("datashare requests", resources.DataShareRequests);
         row("callbacks", resources.Callbacks);
-        row("exports", resources.Exports);
         row("host registrations", resources.HostRegistrations);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
@@ -1771,26 +1736,6 @@ void ScriptDevToolsService::DrawResourcesTab(const ScriptModSnapshot *selected) 
         ImGui::Separator();
         for (const std::string &callback : selected->Callbacks)
             ImGui::BulletText("%s", callback.c_str());
-    }
-}
-
-void ScriptDevToolsService::DrawExportsTab(const ScriptModSnapshot *selected) {
-    if (!selected) {
-        ImGui::TextUnformatted("No script mod selected.");
-        return;
-    }
-    if (ImGui::BeginTable("script-dev-export-table", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
-        ImGui::TableSetupColumn("name", ImGuiTableColumnFlags_WidthFixed, 180.0f);
-        ImGui::TableSetupColumn("signature", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableHeadersRow();
-        for (const auto &item : selected->Exports) {
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(item.Name.c_str());
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(item.Signature.c_str());
-        }
-        ImGui::EndTable();
     }
 }
 

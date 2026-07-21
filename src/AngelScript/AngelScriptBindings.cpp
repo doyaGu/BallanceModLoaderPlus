@@ -10,9 +10,7 @@
 #include "BML/DataShare.h"
 #include "BML/IConfig.h"
 #include "BML/InputHook.h"
-#include "BML/Interop.h"
 #include "BML/ILogger.h"
-#include "CallFrameInternal.h"
 
 #if BML_ENABLE_ANGELSCRIPT
 
@@ -41,6 +39,9 @@
 #include "ScriptHookBlockService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
+#include "ScriptInteropConsumerBridge.h"
+#include "ScriptInteropFacade.h"
+#include "ScriptInteropProviderBridge.h"
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
@@ -859,6 +860,13 @@ struct BMLAS_VxRect {
     }
 };
 
+// ABI v2 math values are intentionally separate from VxVector/VxMatrix.  The
+// field layout is the public row-major ABI layout, not an SDK implementation
+// detail.
+using BMLAS_Vec2 = BML_Vec2;
+using BMLAS_Vec3 = BML_Vec3;
+using BMLAS_Mat4 = BML_Mat4;
+
 struct BMLAS_ObjectLoadOptions {
     std::string File;
     bool Rename = true;
@@ -987,6 +995,9 @@ using BMLAS_HookBlockEvent = BML::ScriptHookBlockEventView;
     }
 
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_VxRect, VxRect)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_Vec2, Vec2)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_Vec3, Vec3)
+BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_Mat4, Mat4)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_ObjectLoadOptions, ObjectLoadOptions)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_Text2DDefinition, Text2DDefinition)
 BMLAS_DEFINE_VALUE_TYPE_FUNCTIONS(BMLAS_BallTypeDefinition, BallTypeDefinition)
@@ -1868,27 +1879,6 @@ static bool BMLAS_RegisterModul(const std::string &modulName) {
     return owner && owner->RegisterScriptModul(modulName);
 }
 
-class BMLAS_ExportRef;
-class BMLAS_CallFrame;
-
-typedef int (*BMLAS_ModExportStringReader)(const BML_ModExport *, char *, size_t, size_t *);
-
-static std::string BMLAS_ReadModExportString(const BML_ModExport *handle, BMLAS_ModExportStringReader reader) {
-    if (!handle || !reader)
-        return "";
-
-    size_t required = 0;
-    if (reader(handle, nullptr, 0, &required) != BML_OK || required == 0)
-        return "";
-
-    std::string value(required, '\0');
-    if (reader(handle, &value[0], value.size(), &required) != BML_OK)
-        return "";
-    if (!value.empty() && value.back() == '\0')
-        value.pop_back();
-    return value;
-}
-
 class BMLAS_ModRef {
 private:
     struct DependencyInfo {
@@ -1898,12 +1888,6 @@ private:
         int Minor = 0;
         int Patch = 0;
         bool Optional = false;
-    };
-
-    struct ExportInfo {
-        bool Valid = false;
-        std::string Name;
-        std::string Signature;
     };
 
 public:
@@ -1958,18 +1942,33 @@ public:
         return mod ? mod->GetBMLVersion().patch : 0;
     }
 
-    int GetKind() const { return BML_GetModKind(m_Id.c_str()); }
+    int GetKind() const {
+        IMod *mod = Resolve();
+        if (!mod)
+            return 0; // MOD_KIND_UNKNOWN
+        return dynamic_cast<BML::ScriptMod *>(mod) ? 2 : 1; // script : native
+    }
 
-    int GetState() const { return BML_GetModState(m_Id.c_str()); }
+    int GetState() const {
+        IMod *mod = Resolve();
+        if (!mod)
+            return 0; // MOD_STATE_NOT_FOUND
+        if (const auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod)) {
+            if (scriptMod->IsFailed())
+                return 3; // MOD_STATE_FAILED
+            return scriptMod->IsLoaded() ? 2 : 1; // loaded : registered
+        }
+        return 2; // native mods are loaded while registered
+    }
 
     bool IsValid() const { return Resolve() != nullptr; }
 
     bool IsScript() const {
-        return GetKind() == BML_MOD_KIND_SCRIPT;
+        return GetKind() == 2; // MOD_KIND_SCRIPT
     }
 
     bool IsFailed() const {
-        return GetState() == BML_MOD_STATE_FAILED;
+        return GetState() == 3; // MOD_STATE_FAILED
     }
 
     int CheckDependencies() const {
@@ -2018,37 +2017,11 @@ public:
         return info.Valid && info.Optional;
     }
 
-    int GetExportCount() const {
-        const int count = BML_GetModExportCount(m_Id.c_str());
-        return count > 0 ? count : 0;
-    }
-
-    std::string GetExportName(int index) const {
-        ExportInfo info = GetExportInfo(index);
-        return info.Valid ? info.Name : "";
-    }
-
-    std::string GetExportSignature(int index) const {
-        ExportInfo info = GetExportInfo(index);
-        return info.Valid ? info.Signature : "";
-    }
-
-    BMLAS_ExportRef *GetExport(int index) const;
-
     std::string GetDiagnostic() const {
-        size_t required = 0;
-        if (BML_GetModDiagnostic(m_Id.c_str(), nullptr, 0, &required) != BML_OK || required == 0)
-            return "";
-        std::string diagnostic(required, '\0');
-        if (BML_GetModDiagnostic(m_Id.c_str(), &diagnostic[0], diagnostic.size(), &required) != BML_OK)
-            return "";
-        if (!diagnostic.empty() && diagnostic.back() == '\0')
-            diagnostic.pop_back();
-        return diagnostic;
+        if (const auto *scriptMod = dynamic_cast<BML::ScriptMod *>(Resolve()))
+            return scriptMod->GetLastDiagnostic();
+        return {};
     }
-
-    BMLAS_ExportRef *FindExport(const std::string &name, const std::string &signature) const;
-    int TryFindExport(const std::string &name, BMLAS_ExportRef *&outExport, const std::string &signature) const;
 
 private:
     IMod *Resolve() const {
@@ -2096,1200 +2069,9 @@ private:
         return info;
     }
 
-    ExportInfo GetExportInfo(int index) const {
-        ExportInfo info;
-        if (index < 0)
-            return info;
-
-        size_t nameRequired = 0;
-        size_t signatureRequired = 0;
-        int status = BML_GetModExportInfo(m_Id.c_str(),
-                                          static_cast<size_t>(index),
-                                          nullptr,
-                                          0,
-                                          &nameRequired,
-                                          nullptr,
-                                          0,
-                                          &signatureRequired);
-        if (status != BML_OK || nameRequired == 0 || signatureRequired == 0)
-            return info;
-
-        std::string name(nameRequired, '\0');
-        std::string signature(signatureRequired, '\0');
-        status = BML_GetModExportInfo(m_Id.c_str(),
-                                      static_cast<size_t>(index),
-                                      &name[0],
-                                      name.size(),
-                                      &nameRequired,
-                                      &signature[0],
-                                      signature.size(),
-                                      &signatureRequired);
-        if (status != BML_OK)
-            return info;
-
-        if (!name.empty() && name.back() == '\0')
-            name.pop_back();
-        if (!signature.empty() && signature.back() == '\0')
-            signature.pop_back();
-
-        info.Valid = true;
-        info.Name = std::move(name);
-        info.Signature = std::move(signature);
-        return info;
-    }
-
     int m_RefCount = 1;
     std::string m_Id;
 };
-
-class BMLAS_CallFrame {
-public:
-    BMLAS_CallFrame() : m_Frame(BML_CreateCallFrame()) {}
-
-    ~BMLAS_CallFrame() {
-        if (m_Frame)
-            BML_DestroyCallFrame(m_Frame);
-    }
-
-    void AddRef() { ++m_RefCount; }
-
-    void Release() {
-        if (--m_RefCount == 0)
-            delete this;
-    }
-
-    bool IsValid() const { return m_Frame != nullptr; }
-
-    void Clear() {
-        if (m_Frame)
-            BML_CallFrame_Clear(m_Frame);
-    }
-
-    int GetArgCount() const {
-        return m_Frame ? static_cast<int>(BML_CallFrame_GetArgCount(m_Frame)) : 0;
-    }
-
-    int GetArgType(unsigned int index) const {
-        return m_Frame ? BML_CallFrame_GetArgType(m_Frame, index) : BML_CALL_VALUE_EMPTY;
-    }
-
-    int ClearArg(unsigned int index) {
-        return m_Frame ? BML_CallFrame_ClearArg(m_Frame, index) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int SetBool(unsigned int index, bool value) {
-        return m_Frame ? BML_CallFrame_SetBool(m_Frame, index, value ? 1 : 0) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetBool(unsigned int index, bool &value) const {
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        int rawValue = 0;
-        const int status = BML_CallFrame_GetBool(m_Frame, index, &rawValue);
-        if (status == BML_OK)
-            value = rawValue != 0;
-        return status;
-    }
-
-    int SetInt(unsigned int index, int value) {
-        return m_Frame ? BML_CallFrame_SetInt(m_Frame, index, value) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetInt(unsigned int index, int &value) const {
-        return m_Frame ? BML_CallFrame_GetInt(m_Frame, index, &value) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int SetFloat(unsigned int index, float value) {
-        return m_Frame ? BML_CallFrame_SetFloat(m_Frame, index, value) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetFloat(unsigned int index, float &value) const {
-        return m_Frame ? BML_CallFrame_GetFloat(m_Frame, index, &value) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int SetString(unsigned int index, const std::string &value) {
-        return m_Frame ? BML_CallFrame_SetString(m_Frame, index, value.c_str()) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetString(unsigned int index, std::string &value) const {
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-
-        size_t required = 0;
-        int status = BML_CallFrame_GetString(m_Frame, index, nullptr, 0, &required);
-        if (status != BML_OK)
-            return status;
-        value.assign(required, '\0');
-        status = BML_CallFrame_GetString(m_Frame, index, &value[0], value.size(), &required);
-        if (status == BML_OK && !value.empty() && value.back() == '\0')
-            value.pop_back();
-        return status;
-    }
-
-    int SetBoolArray(unsigned int index, void *values) {
-        return SetContiguousArray<BoolArrayTraits>(index, values);
-    }
-
-    int GetBoolArray(unsigned int index, void *&values) const {
-        return GetContiguousArray<BoolArrayTraits>(index, values);
-    }
-
-    int SetIntArray(unsigned int index, void *values) {
-        return SetContiguousArray<IntArrayTraits>(index, values);
-    }
-
-    int GetIntArray(unsigned int index, void *&values) const {
-        return GetContiguousArray<IntArrayTraits>(index, values);
-    }
-
-    int SetFloatArray(unsigned int index, void *values) {
-        return SetContiguousArray<FloatArrayTraits>(index, values);
-    }
-
-    int GetFloatArray(unsigned int index, void *&values) const {
-        return GetContiguousArray<FloatArrayTraits>(index, values);
-    }
-
-    int SetStringArray(unsigned int index, void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<std::string> copy;
-        int status = CopyStringArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        std::vector<const char *> pointers(copy.size());
-        for (size_t i = 0; i < copy.size(); ++i)
-            pointers[i] = copy[i].c_str();
-        return BML_CallFrame_SetValue(m_Frame, index, BML_CALL_VALUE_STRING_ARRAY, pointers.data(), pointers.size());
-    }
-
-    int GetStringArray(unsigned int index, void *&values) const {
-        values = nullptr;
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        const int status = BML_CallFrame_BorrowValue(m_Frame,
-                                                     index,
-                                                     BML_CALL_VALUE_STRING_ARRAY,
-                                                     &data,
-                                                     &count,
-                                                     &elementSize);
-        if (status != BML_OK)
-            return status;
-        if (elementSize != sizeof(const char *))
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        return CreateStringArrayFromPointers(static_cast<const char *const *>(data), count, values);
-    }
-
-    int SetBuffer(unsigned int index, void *values) {
-        return SetContiguousArray<BufferArrayTraits>(index, values);
-    }
-
-    int GetBuffer(unsigned int index, void *&values) const {
-        return GetContiguousArray<BufferArrayTraits>(index, values);
-    }
-
-    int SetObjectId(unsigned int index, int objectId) {
-        return m_Frame ? BML_CallFrame_SetObjectId(m_Frame, index, objectId) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetObjectId(unsigned int index, int &objectId) const {
-        return m_Frame ? BML_CallFrame_GetObjectId(m_Frame, index, &objectId) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int SetObject(unsigned int index, CKObject *object) {
-        return SetObjectId(index, object ? static_cast<int>(object->GetID()) : 0);
-    }
-
-    int GetObject(unsigned int index, CKObject *&object) const {
-        object = nullptr;
-        int objectId = 0;
-        const int status = GetObjectId(index, objectId);
-        if (status != BML_OK)
-            return status;
-        if (objectId == 0)
-            return BML_OK;
-        ModContext *ctx = GetActiveContext();
-        object = ctx && ctx->GetCKContext() ? ctx->GetCKContext()->GetObject(static_cast<CK_ID>(objectId)) : nullptr;
-        return object ? BML_OK : BML_ERROR_INTEROP_HANDLE_STALE;
-    }
-
-    int SetResultBool(bool value) {
-        return m_Frame ? BML_CallFrame_SetResultBool(m_Frame, value ? 1 : 0) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetResultType() const {
-        return m_Frame ? BML_CallFrame_GetResultType(m_Frame) : BML_CALL_VALUE_EMPTY;
-    }
-
-    int ClearResult() {
-        return m_Frame ? BML_CallFrame_ClearResult(m_Frame) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int GetResultBool(bool &value) const {
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        int rawValue = 0;
-        const int status = BML_CallFrame_GetResultBool(m_Frame, &rawValue);
-        if (status == BML_OK)
-            value = rawValue != 0;
-        return status;
-    }
-
-    int SetResultInt(int value) {
-        return m_Frame ? BML_CallFrame_SetResultInt(m_Frame, value) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetResultInt(int &value) const {
-        return m_Frame ? BML_CallFrame_GetResultInt(m_Frame, &value) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int SetResultFloat(float value) {
-        return m_Frame ? BML_CallFrame_SetResultFloat(m_Frame, value) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetResultFloat(float &value) const {
-        return m_Frame ? BML_CallFrame_GetResultFloat(m_Frame, &value) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int SetResultString(const std::string &value) {
-        return m_Frame ? BML_CallFrame_SetResultString(m_Frame, value.c_str()) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetResultString(std::string &value) const {
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-
-        size_t required = 0;
-        int status = BML_CallFrame_GetResultString(m_Frame, nullptr, 0, &required);
-        if (status != BML_OK)
-            return status;
-        value.assign(required, '\0');
-        status = BML_CallFrame_GetResultString(m_Frame, &value[0], value.size(), &required);
-        if (status == BML_OK && !value.empty() && value.back() == '\0')
-            value.pop_back();
-        return status;
-    }
-
-    int SetResultBoolArray(void *values) {
-        return SetResultContiguousArray<BoolArrayTraits>(values);
-    }
-
-    int GetResultBoolArray(void *&values) const {
-        return GetResultContiguousArray<BoolArrayTraits>(values);
-    }
-
-    int SetResultIntArray(void *values) {
-        return SetResultContiguousArray<IntArrayTraits>(values);
-    }
-
-    int GetResultIntArray(void *&values) const {
-        return GetResultContiguousArray<IntArrayTraits>(values);
-    }
-
-    int SetResultFloatArray(void *values) {
-        return SetResultContiguousArray<FloatArrayTraits>(values);
-    }
-
-    int GetResultFloatArray(void *&values) const {
-        return GetResultContiguousArray<FloatArrayTraits>(values);
-    }
-
-    int SetResultStringArray(void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<std::string> copy;
-        int status = CopyStringArrayFromScript(values, copy);
-        if (status != BML_OK)
-            return status;
-        std::vector<const char *> pointers(copy.size());
-        for (size_t i = 0; i < copy.size(); ++i)
-            pointers[i] = copy[i].c_str();
-        return BML_CallFrame_SetResultValue(m_Frame, BML_CALL_VALUE_STRING_ARRAY, pointers.data(), pointers.size());
-    }
-
-    int GetResultStringArray(void *&values) const {
-        values = nullptr;
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        const int status = BML_CallFrame_BorrowResultValue(m_Frame,
-                                                           BML_CALL_VALUE_STRING_ARRAY,
-                                                           &data,
-                                                           &count,
-                                                           &elementSize);
-        if (status != BML_OK)
-            return status;
-        if (elementSize != sizeof(const char *))
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        return CreateStringArrayFromPointers(static_cast<const char *const *>(data), count, values);
-    }
-
-    int SetResultBuffer(void *values) {
-        return SetResultContiguousArray<BufferArrayTraits>(values);
-    }
-
-    int GetResultBuffer(void *&values) const {
-        return GetResultContiguousArray<BufferArrayTraits>(values);
-    }
-
-    int SetResultObjectId(int objectId) {
-        return m_Frame ? BML_CallFrame_SetResultObjectId(m_Frame, objectId) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    int GetResultObjectId(int &objectId) const {
-        return m_Frame ? BML_CallFrame_GetResultObjectId(m_Frame, &objectId) : BML_ERROR_INTEROP_BAD_CALL_FRAME;
-    }
-
-    int SetResultObject(CKObject *object) {
-        return SetResultObjectId(object ? static_cast<int>(object->GetID()) : 0);
-    }
-
-    int GetResultObject(CKObject *&object) const {
-        object = nullptr;
-        int objectId = 0;
-        const int status = GetResultObjectId(objectId);
-        if (status != BML_OK)
-            return status;
-        if (objectId == 0)
-            return BML_OK;
-        ModContext *ctx = GetActiveContext();
-        object = ctx && ctx->GetCKContext() ? ctx->GetCKContext()->GetObject(static_cast<CK_ID>(objectId)) : nullptr;
-        return object ? BML_OK : BML_ERROR_INTEROP_HANDLE_STALE;
-    }
-
-    BML_CallFrame *GetNativeFrame() const { return m_Frame; }
-
-private:
-    struct BoolArrayTraits {
-        using FrameElement = int;
-        using ScriptElement = bool;
-        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_BOOL_ARRAY;
-        static constexpr int ScriptTypeId = asTYPEID_BOOL;
-        static const char *Decl() { return "array<bool>"; }
-        static FrameElement ToFrame(ScriptElement value) { return value ? 1 : 0; }
-        static ScriptElement ToScript(FrameElement value) { return value != 0; }
-    };
-
-    struct IntArrayTraits {
-        using FrameElement = int;
-        using ScriptElement = int;
-        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_INT_ARRAY;
-        static constexpr int ScriptTypeId = asTYPEID_INT32;
-        static const char *Decl() { return "array<int>"; }
-        static FrameElement ToFrame(ScriptElement value) { return value; }
-        static ScriptElement ToScript(FrameElement value) { return value; }
-    };
-
-    struct FloatArrayTraits {
-        using FrameElement = float;
-        using ScriptElement = float;
-        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_FLOAT_ARRAY;
-        static constexpr int ScriptTypeId = asTYPEID_FLOAT;
-        static const char *Decl() { return "array<float>"; }
-        static FrameElement ToFrame(ScriptElement value) { return value; }
-        static ScriptElement ToScript(FrameElement value) { return value; }
-    };
-
-    struct BufferArrayTraits {
-        using FrameElement = std::uint8_t;
-        using ScriptElement = std::uint8_t;
-        static constexpr BML_CALL_VALUE_TYPE FrameType = BML_CALL_VALUE_BUFFER;
-        static constexpr int ScriptTypeId = asTYPEID_UINT8;
-        static const char *Decl() { return "array<uint8>"; }
-        static FrameElement ToFrame(ScriptElement value) { return value; }
-        static ScriptElement ToScript(FrameElement value) { return value; }
-    };
-
-    static int MapArrayStatus(CKAS_STATUS status) {
-        switch (status) {
-        case CKAS_OK:
-            return BML_OK;
-        case CKAS_TYPEMISMATCH:
-            return BML_ERROR_INTEROP_TYPE_MISMATCH;
-        case CKAS_UNSUPPORTED:
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        default:
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        }
-    }
-
-    static const CKAngelScriptAdapter::Api *GetArrayApi(CKAngelScript **angelScript = nullptr) {
-        if (angelScript)
-            *angelScript = nullptr;
-        if (!g_AngelScriptHost.IsAvailable() || !g_AngelScriptHost.GetAngelScript()) {
-            ModContext *context = GetActiveContext();
-            if (context && context->GetCKContext())
-                g_AngelScriptHost.Refresh(context->GetCKContext());
-        }
-        if (!g_AngelScriptHost.IsAvailable() || !g_AngelScriptHost.GetAngelScript())
-            return nullptr;
-        if (angelScript)
-            *angelScript = g_AngelScriptHost.GetAngelScript();
-        return &g_AngelScriptHost.GetApi();
-    }
-
-    static int GetArraySize(void *values, CKDWORD &count) {
-        count = 0;
-        if (!values)
-            return BML_ERROR_INVALID_PARAMETER;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetSize)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        return MapArrayStatus(api->ArrayGetSize(values, &count));
-    }
-
-    static int RequireArrayElementType(void *values, int expectedTypeId) {
-        if (!values)
-            return BML_ERROR_INVALID_PARAMETER;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetElementTypeId)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        int actualTypeId = 0;
-        const int status = MapArrayStatus(api->ArrayGetElementTypeId(values, &actualTypeId));
-        if (status != BML_OK)
-            return status;
-        return actualTypeId == expectedTypeId ? BML_OK : BML_ERROR_INTEROP_TYPE_MISMATCH;
-    }
-
-    static int GetStringTypeId(void *values, int &typeId) {
-        typeId = 0;
-        if (!values)
-            return BML_ERROR_INVALID_PARAMETER;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetArrayType)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        asITypeInfo *arrayType = nullptr;
-        int status = MapArrayStatus(api->ArrayGetArrayType(values, &arrayType));
-        if (status != BML_OK)
-            return status;
-        asIScriptEngine *engine = arrayType ? arrayType->GetEngine() : nullptr;
-        if (!engine)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        typeId = engine->GetTypeIdByDecl("string");
-        return typeId >= 0 ? BML_OK : BML_ERROR_INTEROP_UNSUPPORTED;
-    }
-
-    static int RequireStringArray(void *values) {
-        int stringTypeId = 0;
-        int status = GetStringTypeId(values, stringTypeId);
-        if (status != BML_OK)
-            return status;
-        return RequireArrayElementType(values, stringTypeId);
-    }
-
-    static void ReleaseArray(void *&values) {
-        if (!values)
-            return;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (api && api->ArrayRelease)
-            api->ArrayRelease(values);
-        values = nullptr;
-    }
-
-    static int CreateArray(const char *decl, size_t count, void *&array) {
-        array = nullptr;
-        CKAngelScript *angelScript = nullptr;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi(&angelScript);
-        if (!api || !api->CreateArray || !angelScript)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        return MapArrayStatus(api->CreateArray(angelScript, decl, static_cast<CKDWORD>(count), &array));
-    }
-
-    static int AssignArrayHandle(void *array, void *&values) {
-        values = nullptr;
-        if (!array)
-            return BML_ERROR_INVALID_PARAMETER;
-        CKAngelScript *angelScript = nullptr;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi(&angelScript);
-        if (!api || !api->AssignObjectHandle || !api->ArrayGetArrayType || !angelScript)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-
-        asITypeInfo *arrayType = nullptr;
-        int status = MapArrayStatus(api->ArrayGetArrayType(array, &arrayType));
-        if (status != BML_OK)
-            return status;
-        return MapArrayStatus(api->AssignObjectHandle(&values, array, arrayType));
-    }
-
-    template <typename Traits>
-    static int CopyContiguousArrayFromScript(void *values, std::vector<typename Traits::FrameElement> &copy) {
-        CKDWORD count = 0;
-        int status = GetArraySize(values, count);
-        if (status != BML_OK)
-            return status;
-        status = RequireArrayElementType(values, Traits::ScriptTypeId);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetElementAddress)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        copy.resize(count);
-        for (CKDWORD i = 0; i < count; ++i) {
-            void *address = nullptr;
-            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
-            if (status != BML_OK)
-                return status;
-            const auto *value = static_cast<const typename Traits::ScriptElement *>(address);
-            copy[i] = value ? Traits::ToFrame(*value) : typename Traits::FrameElement();
-        }
-        return BML_OK;
-    }
-
-    template <typename Traits>
-    int SetContiguousArray(unsigned int index, void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<typename Traits::FrameElement> copy;
-        const int status = CopyContiguousArrayFromScript<Traits>(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetValue(m_Frame, index, Traits::FrameType, copy.data(), copy.size());
-    }
-
-    template <typename Traits>
-    int SetResultContiguousArray(void *values) {
-        if (!m_Frame || !values)
-            return BML_ERROR_INVALID_PARAMETER;
-        std::vector<typename Traits::FrameElement> copy;
-        const int status = CopyContiguousArrayFromScript<Traits>(values, copy);
-        if (status != BML_OK)
-            return status;
-        return BML_CallFrame_SetResultValue(m_Frame, Traits::FrameType, copy.data(), copy.size());
-    }
-
-    template <typename Traits>
-    static int CreateContiguousArrayFromData(const void *data, size_t count, size_t elementSize, void *&values) {
-        values = nullptr;
-        if (elementSize != sizeof(typename Traits::FrameElement))
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-
-        void *array = nullptr;
-        int status = CreateArray(Traits::Decl(), count, array);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArraySetElementValue) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        }
-
-        const auto *source = static_cast<const typename Traits::FrameElement *>(data);
-        for (CKDWORD i = 0; i < count; ++i) {
-            const typename Traits::ScriptElement value = source ? Traits::ToScript(source[i])
-                                                                : typename Traits::ScriptElement();
-            status = MapArrayStatus(api->ArraySetElementValue(array, i, &value));
-            if (status != BML_OK) {
-                ReleaseArray(array);
-                return status;
-            }
-        }
-        status = AssignArrayHandle(array, values);
-        ReleaseArray(array);
-        return status;
-    }
-
-    template <typename Traits>
-    int GetContiguousArray(unsigned int index, void *&values) const {
-        values = nullptr;
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        const int status = BML_CallFrame_BorrowValue(m_Frame, index, Traits::FrameType, &data, &count, &elementSize);
-        if (status != BML_OK)
-            return status;
-        return CreateContiguousArrayFromData<Traits>(data, count, elementSize, values);
-    }
-
-    template <typename Traits>
-    int GetResultContiguousArray(void *&values) const {
-        values = nullptr;
-        if (!m_Frame)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        const int status = BML_CallFrame_BorrowResultValue(m_Frame, Traits::FrameType, &data, &count, &elementSize);
-        if (status != BML_OK)
-            return status;
-        return CreateContiguousArrayFromData<Traits>(data, count, elementSize, values);
-    }
-
-    static int CopyStringArrayFromScript(void *values, std::vector<std::string> &copy) {
-        CKDWORD count = 0;
-        int status = GetArraySize(values, count);
-        if (status != BML_OK)
-            return status;
-        status = RequireStringArray(values);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArrayGetElementAddress)
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        asITypeInfo *arrayType = nullptr;
-        status = api->ArrayGetArrayType ? MapArrayStatus(api->ArrayGetArrayType(values, &arrayType))
-                                        : BML_ERROR_INTEROP_UNSUPPORTED;
-        if (status != BML_OK)
-            return status;
-        asIScriptEngine *engine = arrayType ? arrayType->GetEngine() : nullptr;
-        if (!engine)
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        copy.resize(count);
-        for (CKDWORD i = 0; i < count; ++i) {
-            void *address = nullptr;
-            status = MapArrayStatus(api->ArrayGetElementAddress(values, i, &address));
-            if (status != BML_OK)
-                return status;
-            if (!BML::ScriptStringInterop::ReadStringObject(engine, address, copy[i]))
-                return BML_ERROR_INTEROP_TYPE_MISMATCH;
-        }
-        return BML_OK;
-    }
-
-    static int CreateStringArrayFromPointers(const char *const *items, size_t count, void *&values) {
-        void *array = nullptr;
-        int status = CreateArray("array<string>", count, array);
-        if (status != BML_OK)
-            return status;
-        const CKAngelScriptAdapter::Api *api = GetArrayApi();
-        if (!api || !api->ArraySetElementValue || !api->ArrayGetArrayType) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_UNSUPPORTED;
-        }
-        asITypeInfo *arrayType = nullptr;
-        status = MapArrayStatus(api->ArrayGetArrayType(array, &arrayType));
-        if (status != BML_OK) {
-            ReleaseArray(array);
-            return status;
-        }
-        asIScriptEngine *engine = arrayType ? arrayType->GetEngine() : nullptr;
-        if (!engine) {
-            ReleaseArray(array);
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        }
-        for (CKDWORD i = 0; i < count; ++i) {
-            BML::ScriptStringInterop::ScriptStringObject value(engine, items && items[i] ? items[i] : "");
-            if (!value) {
-                ReleaseArray(array);
-                return BML_ERROR_INTEROP_TYPE_MISMATCH;
-            }
-            status = MapArrayStatus(api->ArraySetElementValue(array, i, value.Get()));
-            if (status != BML_OK) {
-                ReleaseArray(array);
-                return status;
-            }
-        }
-        status = AssignArrayHandle(array, values);
-        ReleaseArray(array);
-        return status;
-    }
-
-    int m_RefCount = 1;
-    BML_CallFrame *m_Frame = nullptr;
-};
-
-BMLAS_CallFrame *BMLAS_CreateCallFrame() {
-    BMLAS_CallFrame *frame = new (std::nothrow) BMLAS_CallFrame();
-    if (!frame) {
-        BMLAS_SetActiveContextException("Out of memory creating BML::CallFrame.");
-        return nullptr;
-    }
-    if (!frame->IsValid()) {
-        BMLAS_SetActiveContextException("Out of memory creating BML::CallFrame storage.");
-        frame->Release();
-        return nullptr;
-    }
-    return frame;
-}
-
-class BMLAS_ExportRef {
-public:
-    BMLAS_ExportRef(std::string modId, std::string name, std::string signature, BML_ModExport *handle)
-        : m_ModId(std::move(modId)),
-          m_Name(std::move(name)),
-          m_Signature(std::move(signature)),
-          m_Handle(handle) {}
-
-    ~BMLAS_ExportRef() {
-        if (m_Handle)
-            BML_ReleaseModExport(m_Handle);
-    }
-
-    void AddRef() { ++m_RefCount; }
-
-    void Release() {
-        if (--m_RefCount == 0)
-            delete this;
-    }
-
-    std::string GetModId() const { return m_ModId; }
-    std::string GetName() const { return m_Name; }
-    std::string GetSignature() const { return m_Signature; }
-
-    bool IsValid() const { return m_Handle && BML_IsModExportValid(m_Handle) != 0; }
-
-    int Call(BMLAS_CallFrame *frame) const {
-        if (RejectRestrictedHostCall("ExportRef::Call"))
-            return BML_ERROR_FROZEN;
-        if (!frame || !frame->GetNativeFrame())
-            return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-        return BML_CallModExport(m_Handle, frame->GetNativeFrame());
-    }
-
-    int CallVoid() const {
-        if (RejectRestrictedHostCall("ExportRef::CallVoid"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        return BML_CallModExport(m_Handle, &frame);
-    }
-
-    int CallString(const std::string &argument, std::string &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallString"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallFrame_SetString(&frame, 0, argument.c_str());
-        if (status == BML_OK)
-            status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = ReadFrameResultString(&frame, result);
-        return status;
-    }
-
-    int CallStringNoArgs(std::string &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallString"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = ReadFrameResultString(&frame, result);
-        return status;
-    }
-
-    int CallBool(bool argument, bool &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallBool"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallFrame_SetBool(&frame, 0, argument ? 1 : 0);
-        if (status == BML_OK)
-            status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = ReadFrameResultBool(&frame, result);
-        return status;
-    }
-
-    int CallBoolNoArgs(bool &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallBool"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = ReadFrameResultBool(&frame, result);
-        return status;
-    }
-
-    int CallInt(int argument, int &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallInt"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallFrame_SetInt(&frame, 0, argument);
-        if (status == BML_OK)
-            status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = BML_CallFrame_GetResultInt(&frame, &result);
-        return status;
-    }
-
-    int CallIntNoArgs(int &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallInt"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = BML_CallFrame_GetResultInt(&frame, &result);
-        return status;
-    }
-
-    int CallFloat(float argument, float &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallFloat"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallFrame_SetFloat(&frame, 0, argument);
-        if (status == BML_OK)
-            status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = BML_CallFrame_GetResultFloat(&frame, &result);
-        return status;
-    }
-
-    int CallFloatNoArgs(float &result) const {
-        if (RejectRestrictedHostCall("ExportRef::CallFloat"))
-            return BML_ERROR_FROZEN;
-        BML_CallFrame frame;
-        int status = BML_CallModExport(m_Handle, &frame);
-        if (status == BML_OK)
-            status = BML_CallFrame_GetResultFloat(&frame, &result);
-        return status;
-    }
-
-private:
-    static int ReadFrameResultBool(BML_CallFrame *frame, bool &result) {
-        int value = 0;
-        const int status = BML_CallFrame_GetResultBool(frame, &value);
-        if (status != BML_OK)
-            return status;
-        result = value != 0;
-        return BML_OK;
-    }
-
-    static int ReadFrameResultString(BML_CallFrame *frame, std::string &result) {
-        size_t required = 0;
-        int status = BML_CallFrame_GetResultString(frame, nullptr, 0, &required);
-        if (status != BML_OK)
-            return status;
-
-        std::string value(required, '\0');
-        status = BML_CallFrame_GetResultString(frame, &value[0], value.size(), &required);
-        if (status != BML_OK)
-            return status;
-        if (!value.empty() && value.back() == '\0')
-            value.pop_back();
-        result = std::move(value);
-        return BML_OK;
-    }
-
-    int m_RefCount = 1;
-    std::string m_ModId;
-    std::string m_Name;
-    std::string m_Signature;
-    BML_ModExport *m_Handle = nullptr;
-};
-
-class BMLAS_ExportResolver {
-public:
-    BMLAS_ExportResolver(std::string modId, std::string name, std::string signature)
-        : m_ModId(std::move(modId)),
-          m_Name(std::move(name)),
-          m_RequestedSignature(std::move(signature)) {}
-
-    ~BMLAS_ExportResolver() {
-        ReleaseCached();
-    }
-
-    void AddRef() { ++m_RefCount; }
-
-    void Release() {
-        if (--m_RefCount == 0)
-            delete this;
-    }
-
-    std::string GetModId() const { return m_ModId; }
-    std::string GetName() const { return m_Name; }
-    std::string GetSignature() const {
-        return !m_ResolvedSignature.empty() ? m_ResolvedSignature : m_RequestedSignature;
-    }
-    int GetLastStatus() const { return m_LastStatus; }
-    bool IsBound() const { return m_Cached && m_Cached->IsValid(); }
-
-    void Clear() {
-        ReleaseCached();
-        m_LastStatus = BML_OK;
-    }
-
-    int Rebind() {
-        ReleaseCached();
-        return Bind();
-    }
-
-    int Resolve(BMLAS_ExportRef *&outExport) {
-        outExport = nullptr;
-        int status = EnsureBound();
-        if (status != BML_OK)
-            return status;
-        m_Cached->AddRef();
-        outExport = m_Cached;
-        return BML_OK;
-    }
-
-    int Call(BMLAS_CallFrame *frame) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->Call(frame);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->Call(frame);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallVoid() {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallVoid();
-        status = RetryAfterStale(status, ref, [](BMLAS_ExportRef *fresh) {
-            return fresh->CallVoid();
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallString(const std::string &argument, std::string &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallString(argument, result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallString(argument, result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallStringNoArgs(std::string &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallStringNoArgs(result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallStringNoArgs(result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallBool(bool argument, bool &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallBool(argument, result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallBool(argument, result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallBoolNoArgs(bool &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallBoolNoArgs(result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallBoolNoArgs(result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallInt(int argument, int &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallInt(argument, result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallInt(argument, result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallIntNoArgs(int &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallIntNoArgs(result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallIntNoArgs(result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallFloat(float argument, float &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallFloat(argument, result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallFloat(argument, result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-    int CallFloatNoArgs(float &result) {
-        BMLAS_ExportRef *ref = nullptr;
-        int status = Resolve(ref);
-        if (status == BML_OK)
-            status = ref->CallFloatNoArgs(result);
-        status = RetryAfterStale(status, ref, [&](BMLAS_ExportRef *fresh) {
-            return fresh->CallFloatNoArgs(result);
-        });
-        ReleaseLocal(ref);
-        m_LastStatus = status;
-        return status;
-    }
-
-private:
-    void ReleaseCached() {
-        if (m_Cached) {
-            m_Cached->Release();
-            m_Cached = nullptr;
-        }
-    }
-
-    static void ReleaseLocal(BMLAS_ExportRef *&ref) {
-        if (ref) {
-            ref->Release();
-            ref = nullptr;
-        }
-    }
-
-    std::string LookupSignature() const {
-        return !m_ResolvedSignature.empty() ? m_ResolvedSignature : m_RequestedSignature;
-    }
-
-    int Bind() {
-        BML_ModExport *handle = nullptr;
-        const std::string signature = LookupSignature();
-        const int status = BML_FindModExportEx(m_ModId.c_str(),
-                                               m_Name.c_str(),
-                                               signature.empty() ? nullptr : signature.c_str(),
-                                               &handle);
-        if (status != BML_OK) {
-            m_LastStatus = status;
-            return status;
-        }
-
-        std::string resolvedSignature = BMLAS_ReadModExportString(handle, BML_GetModExportSignature);
-        if (resolvedSignature.empty())
-            resolvedSignature = signature;
-
-        BMLAS_ExportRef *exportRef = new (std::nothrow) BMLAS_ExportRef(m_ModId, m_Name, resolvedSignature, handle);
-        if (!exportRef) {
-            BML_ReleaseModExport(handle);
-            m_LastStatus = BML_ERROR_OUT_OF_MEMORY;
-            return m_LastStatus;
-        }
-
-        m_ResolvedSignature = resolvedSignature;
-        m_Cached = exportRef;
-        m_LastStatus = BML_OK;
-        return BML_OK;
-    }
-
-    int EnsureBound() {
-        if (m_Cached && m_Cached->IsValid()) {
-            m_LastStatus = BML_OK;
-            return BML_OK;
-        }
-        ReleaseCached();
-        return Bind();
-    }
-
-    template <typename Fn>
-    int RetryAfterStale(int status, BMLAS_ExportRef *&ref, Fn callFresh) {
-        if (status != BML_ERROR_INTEROP_HANDLE_STALE)
-            return status;
-
-        ReleaseLocal(ref);
-        status = Rebind();
-        if (status != BML_OK)
-            return status;
-
-        m_Cached->AddRef();
-        ref = m_Cached;
-        return callFresh(ref);
-    }
-
-    int m_RefCount = 1;
-    std::string m_ModId;
-    std::string m_Name;
-    std::string m_RequestedSignature;
-    std::string m_ResolvedSignature;
-    BMLAS_ExportRef *m_Cached = nullptr;
-    int m_LastStatus = BML_OK;
-};
-
-BMLAS_ExportResolver *BMLAS_CreateExportResolver(const std::string &modId,
-                                                 const std::string &name,
-                                                 const std::string &signature) {
-    BMLAS_ExportResolver *resolver = new (std::nothrow) BMLAS_ExportResolver(modId, name, signature);
-    if (!resolver)
-        BMLAS_SetActiveContextException("Out of memory creating BML::ExportResolver.");
-    return resolver;
-}
-
-BMLAS_ExportResolver *BMLAS_CreateExportResolverNoSignature(const std::string &modId,
-                                                            const std::string &name) {
-    return BMLAS_CreateExportResolver(modId, name, std::string());
-}
-
-BMLAS_ExportRef *BMLAS_ModRef::FindExport(const std::string &name, const std::string &signature) const {
-    BMLAS_ExportRef *exportRef = nullptr;
-    const int status = TryFindExport(name, exportRef, signature);
-    if (status == BML_ERROR_OUT_OF_MEMORY)
-        BMLAS_SetActiveContextException("Out of memory creating BML::ExportRef.");
-    return status == BML_OK ? exportRef : nullptr;
-}
-
-int BMLAS_ModRef::TryFindExport(const std::string &name,
-                                BMLAS_ExportRef *&outExport,
-                                const std::string &signature) const {
-    outExport = nullptr;
-
-    BML_ModExport *handle = nullptr;
-    const int status = BML_FindModExportEx(m_Id.c_str(),
-                                           name.c_str(),
-                                           signature.empty() ? nullptr : signature.c_str(),
-                                           &handle);
-    if (status != BML_OK)
-        return status;
-
-    std::string resolvedSignature = BMLAS_ReadModExportString(handle, BML_GetModExportSignature);
-    if (resolvedSignature.empty())
-        resolvedSignature = signature;
-
-    outExport = new (std::nothrow) BMLAS_ExportRef(m_Id, name, resolvedSignature, handle);
-    if (!outExport) {
-        BML_ReleaseModExport(handle);
-        return BML_ERROR_OUT_OF_MEMORY;
-    }
-    return BML_OK;
-}
-
-BMLAS_ExportRef *BMLAS_ModRef::GetExport(int index) const {
-    ExportInfo info = GetExportInfo(index);
-    if (!info.Valid)
-        return nullptr;
-
-    BML_ModExport *handle = BML_FindModExport(m_Id.c_str(), info.Name.c_str(), info.Signature.c_str());
-    if (!handle)
-        return nullptr;
-
-    BMLAS_ExportRef *exportRef = new (std::nothrow) BMLAS_ExportRef(m_Id, info.Name, info.Signature, handle);
-    if (!exportRef) {
-        BML_ReleaseModExport(handle);
-        BMLAS_SetActiveContextException("Out of memory creating BML::ExportRef.");
-    }
-    return exportRef;
-}
 
 BMLAS_ModRef *BMLAS_FindMod(const std::string &id) {
     ModContext *ctx = nullptr;
@@ -3900,6 +2682,9 @@ struct ScriptUiFunctionRegistration {
 static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"ModContext", "class ModContext", 0, asOBJ_REF | asOBJ_SCOPED},
     {"VxRect", "class VxRect", sizeof(BMLAS_VxRect), asOBJ_VALUE | asGetTypeTraits<BMLAS_VxRect>()},
+    {"Vec2", "class Vec2", sizeof(BMLAS_Vec2), asOBJ_VALUE | asGetTypeTraits<BMLAS_Vec2>()},
+    {"Vec3", "class Vec3", sizeof(BMLAS_Vec3), asOBJ_VALUE | asGetTypeTraits<BMLAS_Vec3>()},
+    {"Mat4", "class Mat4", sizeof(BMLAS_Mat4), asOBJ_VALUE | asGetTypeTraits<BMLAS_Mat4>()},
     {"PhysicalizeDefinition", "class PhysicalizeDefinition", sizeof(BMLAS_PhysicalizeDefinition), asOBJ_VALUE | asGetTypeTraits<BMLAS_PhysicalizeDefinition>()},
     {"ObjectLoadOptions", "class ObjectLoadOptions", sizeof(BMLAS_ObjectLoadOptions), asOBJ_VALUE | asGetTypeTraits<BMLAS_ObjectLoadOptions>()},
     {"ObjectLoadResult", "class ObjectLoadResult", 0, asOBJ_REF},
@@ -3932,9 +2717,6 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"PhysicalizeEvent", "class PhysicalizeEvent", sizeof(BML::ScriptPhysicalizeEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptPhysicalizeEventView>()},
     {"ObjectEvent", "class ObjectEvent", sizeof(BML::ScriptObjectEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptObjectEventView>()},
     {"ModRef", "class ModRef", 0, asOBJ_REF},
-    {"ExportRef", "class ExportRef", 0, asOBJ_REF},
-    {"ExportResolver", "class ExportResolver", 0, asOBJ_REF},
-    {"CallFrame", "class CallFrame", 0, asOBJ_REF},
     {"StateBag", "class StateBag", 0, asOBJ_REF},
 };
 
@@ -3967,6 +2749,27 @@ static const ScriptObjectPropertyRegistration kObjectPropertyRegistrations[] = {
     {"VxRect", "float Top", "float VxRect::Top", asOFFSET(BMLAS_VxRect, Top)},
     {"VxRect", "float Right", "float VxRect::Right", asOFFSET(BMLAS_VxRect, Right)},
     {"VxRect", "float Bottom", "float VxRect::Bottom", asOFFSET(BMLAS_VxRect, Bottom)},
+    {"Vec2", "float x", "float Vec2::x", asOFFSET(BMLAS_Vec2, x)},
+    {"Vec2", "float y", "float Vec2::y", asOFFSET(BMLAS_Vec2, y)},
+    {"Vec3", "float x", "float Vec3::x", asOFFSET(BMLAS_Vec3, x)},
+    {"Vec3", "float y", "float Vec3::y", asOFFSET(BMLAS_Vec3, y)},
+    {"Vec3", "float z", "float Vec3::z", asOFFSET(BMLAS_Vec3, z)},
+    {"Mat4", "float m00", "float Mat4::m00", asOFFSET(BMLAS_Mat4, m00)},
+    {"Mat4", "float m01", "float Mat4::m01", asOFFSET(BMLAS_Mat4, m01)},
+    {"Mat4", "float m02", "float Mat4::m02", asOFFSET(BMLAS_Mat4, m02)},
+    {"Mat4", "float m03", "float Mat4::m03", asOFFSET(BMLAS_Mat4, m03)},
+    {"Mat4", "float m10", "float Mat4::m10", asOFFSET(BMLAS_Mat4, m10)},
+    {"Mat4", "float m11", "float Mat4::m11", asOFFSET(BMLAS_Mat4, m11)},
+    {"Mat4", "float m12", "float Mat4::m12", asOFFSET(BMLAS_Mat4, m12)},
+    {"Mat4", "float m13", "float Mat4::m13", asOFFSET(BMLAS_Mat4, m13)},
+    {"Mat4", "float m20", "float Mat4::m20", asOFFSET(BMLAS_Mat4, m20)},
+    {"Mat4", "float m21", "float Mat4::m21", asOFFSET(BMLAS_Mat4, m21)},
+    {"Mat4", "float m22", "float Mat4::m22", asOFFSET(BMLAS_Mat4, m22)},
+    {"Mat4", "float m23", "float Mat4::m23", asOFFSET(BMLAS_Mat4, m23)},
+    {"Mat4", "float m30", "float Mat4::m30", asOFFSET(BMLAS_Mat4, m30)},
+    {"Mat4", "float m31", "float Mat4::m31", asOFFSET(BMLAS_Mat4, m31)},
+    {"Mat4", "float m32", "float Mat4::m32", asOFFSET(BMLAS_Mat4, m32)},
+    {"Mat4", "float m33", "float Mat4::m33", asOFFSET(BMLAS_Mat4, m33)},
     {"PhysicalizeDefinition", "bool Fixed", "bool PhysicalizeDefinition::Fixed", asOFFSET(BMLAS_PhysicalizeDefinition, Fixed)},
     {"PhysicalizeDefinition", "float Friction", "float PhysicalizeDefinition::Friction", asOFFSET(BMLAS_PhysicalizeDefinition, Friction)},
     {"PhysicalizeDefinition", "float Elasticity", "float PhysicalizeDefinition::Elasticity", asOFFSET(BMLAS_PhysicalizeDefinition, Elasticity)},
@@ -4031,6 +2834,15 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"VxRect", asBEHAVE_CONSTRUCT, "void f()", "void VxRect default construct", asFUNCTION(BMLAS_ConstructVxRect), asCALL_CDECL_OBJLAST},
     {"VxRect", asBEHAVE_CONSTRUCT, "void f(const VxRect &in)", "void VxRect copy construct", asFUNCTION(BMLAS_CopyConstructVxRect), asCALL_CDECL_OBJLAST},
     {"VxRect", asBEHAVE_DESTRUCT, "void f()", "void VxRect destruct", asFUNCTION(BMLAS_DestructVxRect), asCALL_CDECL_OBJLAST},
+    {"Vec2", asBEHAVE_CONSTRUCT, "void f()", "void Vec2 default construct", asFUNCTION(BMLAS_ConstructVec2), asCALL_CDECL_OBJLAST},
+    {"Vec2", asBEHAVE_CONSTRUCT, "void f(const Vec2 &in)", "void Vec2 copy construct", asFUNCTION(BMLAS_CopyConstructVec2), asCALL_CDECL_OBJLAST},
+    {"Vec2", asBEHAVE_DESTRUCT, "void f()", "void Vec2 destruct", asFUNCTION(BMLAS_DestructVec2), asCALL_CDECL_OBJLAST},
+    {"Vec3", asBEHAVE_CONSTRUCT, "void f()", "void Vec3 default construct", asFUNCTION(BMLAS_ConstructVec3), asCALL_CDECL_OBJLAST},
+    {"Vec3", asBEHAVE_CONSTRUCT, "void f(const Vec3 &in)", "void Vec3 copy construct", asFUNCTION(BMLAS_CopyConstructVec3), asCALL_CDECL_OBJLAST},
+    {"Vec3", asBEHAVE_DESTRUCT, "void f()", "void Vec3 destruct", asFUNCTION(BMLAS_DestructVec3), asCALL_CDECL_OBJLAST},
+    {"Mat4", asBEHAVE_CONSTRUCT, "void f()", "void Mat4 default construct", asFUNCTION(BMLAS_ConstructMat4), asCALL_CDECL_OBJLAST},
+    {"Mat4", asBEHAVE_CONSTRUCT, "void f(const Mat4 &in)", "void Mat4 copy construct", asFUNCTION(BMLAS_CopyConstructMat4), asCALL_CDECL_OBJLAST},
+    {"Mat4", asBEHAVE_DESTRUCT, "void f()", "void Mat4 destruct", asFUNCTION(BMLAS_DestructMat4), asCALL_CDECL_OBJLAST},
     {"PhysicalizeDefinition", asBEHAVE_CONSTRUCT, "void f()", "void PhysicalizeDefinition default construct", asFUNCTION(BMLAS_ConstructPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
     {"PhysicalizeDefinition", asBEHAVE_CONSTRUCT, "void f(const PhysicalizeDefinition &in)", "void PhysicalizeDefinition copy construct", asFUNCTION(BMLAS_CopyConstructPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
     {"PhysicalizeDefinition", asBEHAVE_DESTRUCT, "void f()", "void PhysicalizeDefinition destruct", asFUNCTION(BMLAS_DestructPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
@@ -4112,20 +2924,11 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"HookBlockRef", asBEHAVE_RELEASE, "void f()", "void HookBlockRef release", asMETHOD(BML::ScriptHookBlockRef, Release), asCALL_THISCALL},
     {"TimerRef", asBEHAVE_ADDREF, "void f()", "void TimerRef addref", asMETHOD(BML::ScriptTimerRef, AddRef), asCALL_THISCALL},
     {"TimerRef", asBEHAVE_RELEASE, "void f()", "void TimerRef release", asMETHOD(BML::ScriptTimerRef, Release), asCALL_THISCALL},
-    {"CallFrame", asBEHAVE_FACTORY, "CallFrame@ f()", "CallFrame@ CallFrame factory", asFUNCTION(BMLAS_CreateCallFrame), asCALL_CDECL},
-    {"CallFrame", asBEHAVE_ADDREF, "void f()", "void CallFrame addref", asMETHOD(BMLAS_CallFrame, AddRef), asCALL_THISCALL},
-    {"CallFrame", asBEHAVE_RELEASE, "void f()", "void CallFrame release", asMETHOD(BMLAS_CallFrame, Release), asCALL_THISCALL},
     {"StateBag", asBEHAVE_FACTORY, "StateBag@ f()", "StateBag@ StateBag factory", asFUNCTION(BMLAS_CreateStateBag), asCALL_CDECL},
     {"StateBag", asBEHAVE_ADDREF, "void f()", "void StateBag addref", asMETHOD(BML::ScriptStateBag, AddRef), asCALL_THISCALL},
     {"StateBag", asBEHAVE_RELEASE, "void f()", "void StateBag release", asMETHOD(BML::ScriptStateBag, Release), asCALL_THISCALL},
     {"ModRef", asBEHAVE_ADDREF, "void f()", "void ModRef addref", asMETHOD(BMLAS_ModRef, AddRef), asCALL_THISCALL},
     {"ModRef", asBEHAVE_RELEASE, "void f()", "void ModRef release", asMETHOD(BMLAS_ModRef, Release), asCALL_THISCALL},
-    {"ExportRef", asBEHAVE_ADDREF, "void f()", "void ExportRef addref", asMETHOD(BMLAS_ExportRef, AddRef), asCALL_THISCALL},
-    {"ExportRef", asBEHAVE_RELEASE, "void f()", "void ExportRef release", asMETHOD(BMLAS_ExportRef, Release), asCALL_THISCALL},
-    {"ExportResolver", asBEHAVE_FACTORY, "ExportResolver@ f(const string &in modId, const string &in name)", "ExportResolver@ ExportResolver factory", BML_AS_GENERIC_FUNCTION(&BMLAS_CreateExportResolverNoSignature), asCALL_GENERIC},
-    {"ExportResolver", asBEHAVE_FACTORY, "ExportResolver@ f(const string &in modId, const string &in name, const string &in signature)", "ExportResolver@ ExportResolver factory with signature", BML_AS_GENERIC_FUNCTION(&BMLAS_CreateExportResolver), asCALL_GENERIC},
-    {"ExportResolver", asBEHAVE_ADDREF, "void f()", "void ExportResolver addref", asMETHOD(BMLAS_ExportResolver, AddRef), asCALL_THISCALL},
-    {"ExportResolver", asBEHAVE_RELEASE, "void f()", "void ExportResolver release", asMETHOD(BMLAS_ExportResolver, Release), asCALL_THISCALL},
 };
 
 static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
@@ -4153,6 +2956,9 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     BML_AS_STRING_FIELD_PROPERTY("CommandDefinition", BMLAS_CommandDefinition, Usage),
     BML_AS_STRING_FIELD_PROPERTY("CommandDefinition", BMLAS_CommandDefinition, Category),
     {"VxRect", "VxRect &opAssign(const VxRect &in)", "VxRect &VxRect::opAssign(const VxRect &in)", asFUNCTION(BMLAS_AssignVxRect), asCALL_CDECL_OBJLAST},
+    {"Vec2", "Vec2 &opAssign(const Vec2 &in)", "Vec2 &Vec2::opAssign(const Vec2 &in)", asFUNCTION(BMLAS_AssignVec2), asCALL_CDECL_OBJLAST},
+    {"Vec3", "Vec3 &opAssign(const Vec3 &in)", "Vec3 &Vec3::opAssign(const Vec3 &in)", asFUNCTION(BMLAS_AssignVec3), asCALL_CDECL_OBJLAST},
+    {"Mat4", "Mat4 &opAssign(const Mat4 &in)", "Mat4 &Mat4::opAssign(const Mat4 &in)", asFUNCTION(BMLAS_AssignMat4), asCALL_CDECL_OBJLAST},
     {"PhysicalizeDefinition", "PhysicalizeDefinition &opAssign(const PhysicalizeDefinition &in)", "PhysicalizeDefinition &PhysicalizeDefinition::opAssign(const PhysicalizeDefinition &in)", asFUNCTION(BMLAS_AssignPhysicalizeDefinition), asCALL_CDECL_OBJLAST},
     {"ObjectLoadOptions", "ObjectLoadOptions &opAssign(const ObjectLoadOptions &in)", "ObjectLoadOptions &ObjectLoadOptions::opAssign(const ObjectLoadOptions &in)", asFUNCTION(BMLAS_AssignObjectLoadOptions), asCALL_CDECL_OBJLAST},
     {"TimerEvent", "TimerEvent &opAssign(const TimerEvent &in)", "TimerEvent &TimerEvent::opAssign(const TimerEvent &in)", asFUNCTION(BMLAS_AssignTimerEvent), asCALL_CDECL_OBJLAST},
@@ -4325,59 +3131,6 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "void CloseModsMenu() const", "void ModContext::CloseModsMenu() const", asMETHOD(BML::ScriptModContextView, CloseModsMenu), asCALL_THISCALL},
     {"ModContext", "void OpenMapMenu() const", "void ModContext::OpenMapMenu() const", asMETHOD(BML::ScriptModContextView, OpenMapMenu), asCALL_THISCALL},
     {"ModContext", "void CloseMapMenu() const", "void ModContext::CloseMapMenu() const", asMETHOD(BML::ScriptModContextView, CloseMapMenu), asCALL_THISCALL},
-    {"CallFrame", "bool get_IsValid() const", "bool CallFrame::get_IsValid() const", asMETHOD(BMLAS_CallFrame, IsValid), asCALL_THISCALL},
-    {"CallFrame", "void Clear()", "void CallFrame::Clear()", asMETHOD(BMLAS_CallFrame, Clear), asCALL_THISCALL},
-    {"CallFrame", "int get_ArgCount() const", "int CallFrame::get_ArgCount() const", asMETHOD(BMLAS_CallFrame, GetArgCount), asCALL_THISCALL},
-    {"CallFrame", "int GetArgCount() const", "int CallFrame::GetArgCount() const", asMETHOD(BMLAS_CallFrame, GetArgCount), asCALL_THISCALL},
-    {"CallFrame", "int GetArgType(uint index) const", "int CallFrame::GetArgType(uint index) const", asMETHOD(BMLAS_CallFrame, GetArgType), asCALL_THISCALL},
-    {"CallFrame", "int ClearArg(uint index)", "int CallFrame::ClearArg(uint index)", asMETHOD(BMLAS_CallFrame, ClearArg), asCALL_THISCALL},
-    {"CallFrame", "int SetBool(uint index, bool value)", "int CallFrame::SetBool(uint index, bool value)", asMETHOD(BMLAS_CallFrame, SetBool), asCALL_THISCALL},
-    {"CallFrame", "int GetBool(uint index, bool &out value) const", "int CallFrame::GetBool(uint index, bool &out value) const", asMETHOD(BMLAS_CallFrame, GetBool), asCALL_THISCALL},
-    {"CallFrame", "int SetInt(uint index, int value)", "int CallFrame::SetInt(uint index, int value)", asMETHOD(BMLAS_CallFrame, SetInt), asCALL_THISCALL},
-    {"CallFrame", "int GetInt(uint index, int &out value) const", "int CallFrame::GetInt(uint index, int &out value) const", asMETHOD(BMLAS_CallFrame, GetInt), asCALL_THISCALL},
-    {"CallFrame", "int SetFloat(uint index, float value)", "int CallFrame::SetFloat(uint index, float value)", asMETHOD(BMLAS_CallFrame, SetFloat), asCALL_THISCALL},
-    {"CallFrame", "int GetFloat(uint index, float &out value) const", "int CallFrame::GetFloat(uint index, float &out value) const", asMETHOD(BMLAS_CallFrame, GetFloat), asCALL_THISCALL},
-    {"CallFrame", "int SetString(uint index, const string &in value)", "int CallFrame::SetString(uint index, const string &in value)", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::SetString), asCALL_GENERIC},
-    {"CallFrame", "int GetString(uint index, string &out value) const", "int CallFrame::GetString(uint index, string &out value) const", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::GetString), asCALL_GENERIC},
-    {"CallFrame", "int SetArray(uint index, const array<bool> &in values)", "int CallFrame::SetArray(uint index, const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int GetArray(uint index, array<bool>@ &out values) const", "int CallFrame::GetArray(uint index, array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int SetArray(uint index, const array<int> &in values)", "int CallFrame::SetArray(uint index, const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetIntArray), asCALL_THISCALL},
-    {"CallFrame", "int GetArray(uint index, array<int>@ &out values) const", "int CallFrame::GetArray(uint index, array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetIntArray), asCALL_THISCALL},
-    {"CallFrame", "int SetArray(uint index, const array<float> &in values)", "int CallFrame::SetArray(uint index, const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int GetArray(uint index, array<float>@ &out values) const", "int CallFrame::GetArray(uint index, array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int SetArray(uint index, const array<string> &in values)", "int CallFrame::SetArray(uint index, const array<string> &in values)", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::SetStringArray), asCALL_GENERIC},
-    {"CallFrame", "int GetArray(uint index, array<string>@ &out values) const", "int CallFrame::GetArray(uint index, array<string>@ &out values) const", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::GetStringArray), asCALL_GENERIC},
-    {"CallFrame", "int SetArray(uint index, const array<uint8> &in values)", "int CallFrame::SetArray(uint index, const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetBuffer), asCALL_THISCALL},
-    {"CallFrame", "int GetArray(uint index, array<uint8>@ &out values) const", "int CallFrame::GetArray(uint index, array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetBuffer), asCALL_THISCALL},
-    {"CallFrame", "int SetObjectId(uint index, int objectId)", "int CallFrame::SetObjectId(uint index, int objectId)", asMETHOD(BMLAS_CallFrame, SetObjectId), asCALL_THISCALL},
-    {"CallFrame", "int GetObjectId(uint index, int &out objectId) const", "int CallFrame::GetObjectId(uint index, int &out objectId) const", asMETHOD(BMLAS_CallFrame, GetObjectId), asCALL_THISCALL},
-    {"CallFrame", "int SetObject(uint index, CKObject@ object)", "int CallFrame::SetObject(uint index, CKObject@ object)", asMETHOD(BMLAS_CallFrame, SetObject), asCALL_THISCALL},
-    {"CallFrame", "int GetObject(uint index, CKObject@ &out object) const", "int CallFrame::GetObject(uint index, CKObject@ &out object) const", asMETHOD(BMLAS_CallFrame, GetObject), asCALL_THISCALL},
-    {"CallFrame", "int SetResultBool(bool value)", "int CallFrame::SetResultBool(bool value)", asMETHOD(BMLAS_CallFrame, SetResultBool), asCALL_THISCALL},
-    {"CallFrame", "int get_ResultType() const", "int CallFrame::get_ResultType() const", asMETHOD(BMLAS_CallFrame, GetResultType), asCALL_THISCALL},
-    {"CallFrame", "int GetResultType() const", "int CallFrame::GetResultType() const", asMETHOD(BMLAS_CallFrame, GetResultType), asCALL_THISCALL},
-    {"CallFrame", "int ClearResult()", "int CallFrame::ClearResult()", asMETHOD(BMLAS_CallFrame, ClearResult), asCALL_THISCALL},
-    {"CallFrame", "int GetResultBool(bool &out value) const", "int CallFrame::GetResultBool(bool &out value) const", asMETHOD(BMLAS_CallFrame, GetResultBool), asCALL_THISCALL},
-    {"CallFrame", "int SetResultInt(int value)", "int CallFrame::SetResultInt(int value)", asMETHOD(BMLAS_CallFrame, SetResultInt), asCALL_THISCALL},
-    {"CallFrame", "int GetResultInt(int &out value) const", "int CallFrame::GetResultInt(int &out value) const", asMETHOD(BMLAS_CallFrame, GetResultInt), asCALL_THISCALL},
-    {"CallFrame", "int SetResultFloat(float value)", "int CallFrame::SetResultFloat(float value)", asMETHOD(BMLAS_CallFrame, SetResultFloat), asCALL_THISCALL},
-    {"CallFrame", "int GetResultFloat(float &out value) const", "int CallFrame::GetResultFloat(float &out value) const", asMETHOD(BMLAS_CallFrame, GetResultFloat), asCALL_THISCALL},
-    {"CallFrame", "int SetResultString(const string &in value)", "int CallFrame::SetResultString(const string &in value)", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::SetResultString), asCALL_GENERIC},
-    {"CallFrame", "int GetResultString(string &out value) const", "int CallFrame::GetResultString(string &out value) const", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::GetResultString), asCALL_GENERIC},
-    {"CallFrame", "int SetResultArray(const array<bool> &in values)", "int CallFrame::SetResultArray(const array<bool> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int GetResultArray(array<bool>@ &out values) const", "int CallFrame::GetResultArray(array<bool>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBoolArray), asCALL_THISCALL},
-    {"CallFrame", "int SetResultArray(const array<int> &in values)", "int CallFrame::SetResultArray(const array<int> &in values)", asMETHOD(BMLAS_CallFrame, SetResultIntArray), asCALL_THISCALL},
-    {"CallFrame", "int GetResultArray(array<int>@ &out values) const", "int CallFrame::GetResultArray(array<int>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultIntArray), asCALL_THISCALL},
-    {"CallFrame", "int SetResultArray(const array<float> &in values)", "int CallFrame::SetResultArray(const array<float> &in values)", asMETHOD(BMLAS_CallFrame, SetResultFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int GetResultArray(array<float>@ &out values) const", "int CallFrame::GetResultArray(array<float>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultFloatArray), asCALL_THISCALL},
-    {"CallFrame", "int SetResultArray(const array<string> &in values)", "int CallFrame::SetResultArray(const array<string> &in values)", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::SetResultStringArray), asCALL_GENERIC},
-    {"CallFrame", "int GetResultArray(array<string>@ &out values) const", "int CallFrame::GetResultArray(array<string>@ &out values) const", BML_AS_GENERIC_METHOD(&BMLAS_CallFrame::GetResultStringArray), asCALL_GENERIC},
-    {"CallFrame", "int SetResultArray(const array<uint8> &in values)", "int CallFrame::SetResultArray(const array<uint8> &in values)", asMETHOD(BMLAS_CallFrame, SetResultBuffer), asCALL_THISCALL},
-    {"CallFrame", "int GetResultArray(array<uint8>@ &out values) const", "int CallFrame::GetResultArray(array<uint8>@ &out values) const", asMETHOD(BMLAS_CallFrame, GetResultBuffer), asCALL_THISCALL},
-    {"CallFrame", "int SetResultObjectId(int objectId)", "int CallFrame::SetResultObjectId(int objectId)", asMETHOD(BMLAS_CallFrame, SetResultObjectId), asCALL_THISCALL},
-    {"CallFrame", "int GetResultObjectId(int &out objectId) const", "int CallFrame::GetResultObjectId(int &out objectId) const", asMETHOD(BMLAS_CallFrame, GetResultObjectId), asCALL_THISCALL},
-    {"CallFrame", "int SetResultObject(CKObject@ object)", "int CallFrame::SetResultObject(CKObject@ object)", asMETHOD(BMLAS_CallFrame, SetResultObject), asCALL_THISCALL},
-    {"CallFrame", "int GetResultObject(CKObject@ &out object) const", "int CallFrame::GetResultObject(CKObject@ &out object) const", asMETHOD(BMLAS_CallFrame, GetResultObject), asCALL_THISCALL},
     {"StateBag", "bool Has(const string &in key) const", "bool StateBag::Has(const string &in) const", BML_AS_GENERIC_METHOD(&BML::ScriptStateBag::Has), asCALL_GENERIC},
     {"StateBag", "bool Remove(const string &in key)", "bool StateBag::Remove(const string &in)", BML_AS_GENERIC_METHOD(&BML::ScriptStateBag::Remove), asCALL_GENERIC},
     {"StateBag", "void Clear()", "void StateBag::Clear()", asMETHOD(BML::ScriptStateBag, Clear), asCALL_THISCALL},
@@ -4517,46 +3270,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModRef", "int GetDependencyVersionMinor(int index) const", "int ModRef::GetDependencyVersionMinor(int index) const", asMETHOD(BMLAS_ModRef, GetDependencyVersionMinor), asCALL_THISCALL},
     {"ModRef", "int GetDependencyVersionPatch(int index) const", "int ModRef::GetDependencyVersionPatch(int index) const", asMETHOD(BMLAS_ModRef, GetDependencyVersionPatch), asCALL_THISCALL},
     {"ModRef", "bool IsDependencyOptional(int index) const", "bool ModRef::IsDependencyOptional(int index) const", asMETHOD(BMLAS_ModRef, IsDependencyOptional), asCALL_THISCALL},
-    {"ModRef", "int GetExportCount() const", "int ModRef::GetExportCount() const", asMETHOD(BMLAS_ModRef, GetExportCount), asCALL_THISCALL},
-    {"ModRef", "string GetExportName(int index) const", "string ModRef::GetExportName(int index) const", BML_AS_GENERIC_METHOD(&BMLAS_ModRef::GetExportName), asCALL_GENERIC},
-    {"ModRef", "string GetExportSignature(int index) const", "string ModRef::GetExportSignature(int index) const", BML_AS_GENERIC_METHOD(&BMLAS_ModRef::GetExportSignature), asCALL_GENERIC},
-    {"ModRef", "ExportRef@ GetExport(int index) const", "ExportRef@ ModRef::GetExport(int index) const", asMETHOD(BMLAS_ModRef, GetExport), asCALL_THISCALL},
     {"ModRef", "string get_Diagnostic() const", "string ModRef::get_Diagnostic() const", BML_AS_GENERIC_METHOD(&BMLAS_ModRef::GetDiagnostic), asCALL_GENERIC},
     {"ModRef", "string GetDiagnostic() const", "string ModRef::GetDiagnostic() const", BML_AS_GENERIC_METHOD(&BMLAS_ModRef::GetDiagnostic), asCALL_GENERIC},
-    {"ModRef", "ExportRef@ FindExport(const string &in name, const string &in signature = \"\") const", "ExportRef@ ModRef::FindExport(const string &in name, const string &in signature = \"\") const", BML_AS_GENERIC_METHOD(&BMLAS_ModRef::FindExport), asCALL_GENERIC},
-    {"ModRef", "int TryFindExport(const string &in name, ExportRef@ &out exportRef, const string &in signature = \"\") const", "int ModRef::TryFindExport(const string &in name, ExportRef@ &out exportRef, const string &in signature = \"\") const", BML_AS_GENERIC_METHOD(&BMLAS_ModRef::TryFindExport), asCALL_GENERIC},
-    {"ExportRef", "string get_ModId() const", "string ExportRef::get_ModId() const", BML_AS_GENERIC_METHOD(&BMLAS_ExportRef::GetModId), asCALL_GENERIC},
-    {"ExportRef", "string get_Name() const", "string ExportRef::get_Name() const", BML_AS_GENERIC_METHOD(&BMLAS_ExportRef::GetName), asCALL_GENERIC},
-    {"ExportRef", "string get_Signature() const", "string ExportRef::get_Signature() const", BML_AS_GENERIC_METHOD(&BMLAS_ExportRef::GetSignature), asCALL_GENERIC},
-    {"ExportRef", "bool get_IsValid() const", "bool ExportRef::get_IsValid() const", asMETHOD(BMLAS_ExportRef, IsValid), asCALL_THISCALL},
-    {"ExportRef", "int Call(CallFrame@ frame) const", "int ExportRef::Call(CallFrame@ frame) const", asMETHOD(BMLAS_ExportRef, Call), asCALL_THISCALL},
-    {"ExportRef", "int CallVoid() const", "int ExportRef::CallVoid() const", asMETHOD(BMLAS_ExportRef, CallVoid), asCALL_THISCALL},
-    {"ExportRef", "int CallString(const string &in argument, string &out result) const", "int ExportRef::CallString(const string &in argument, string &out result) const", BML_AS_GENERIC_METHOD(&BMLAS_ExportRef::CallString), asCALL_GENERIC},
-    {"ExportRef", "int CallString(string &out result) const", "int ExportRef::CallString(string &out result) const", BML_AS_GENERIC_METHOD(&BMLAS_ExportRef::CallStringNoArgs), asCALL_GENERIC},
-    {"ExportRef", "int CallBool(bool argument, bool &out result) const", "int ExportRef::CallBool(bool argument, bool &out result) const", asMETHOD(BMLAS_ExportRef, CallBool), asCALL_THISCALL},
-    {"ExportRef", "int CallBool(bool &out result) const", "int ExportRef::CallBool(bool &out result) const", asMETHOD(BMLAS_ExportRef, CallBoolNoArgs), asCALL_THISCALL},
-    {"ExportRef", "int CallInt(int argument, int &out result) const", "int ExportRef::CallInt(int argument, int &out result) const", asMETHOD(BMLAS_ExportRef, CallInt), asCALL_THISCALL},
-    {"ExportRef", "int CallInt(int &out result) const", "int ExportRef::CallInt(int &out result) const", asMETHOD(BMLAS_ExportRef, CallIntNoArgs), asCALL_THISCALL},
-    {"ExportRef", "int CallFloat(float argument, float &out result) const", "int ExportRef::CallFloat(float argument, float &out result) const", asMETHOD(BMLAS_ExportRef, CallFloat), asCALL_THISCALL},
-    {"ExportRef", "int CallFloat(float &out result) const", "int ExportRef::CallFloat(float &out result) const", asMETHOD(BMLAS_ExportRef, CallFloatNoArgs), asCALL_THISCALL},
-    {"ExportResolver", "string get_ModId() const", "string ExportResolver::get_ModId() const", BML_AS_GENERIC_METHOD(&BMLAS_ExportResolver::GetModId), asCALL_GENERIC},
-    {"ExportResolver", "string get_Name() const", "string ExportResolver::get_Name() const", BML_AS_GENERIC_METHOD(&BMLAS_ExportResolver::GetName), asCALL_GENERIC},
-    {"ExportResolver", "string get_Signature() const", "string ExportResolver::get_Signature() const", BML_AS_GENERIC_METHOD(&BMLAS_ExportResolver::GetSignature), asCALL_GENERIC},
-    {"ExportResolver", "int get_LastStatus() const", "int ExportResolver::get_LastStatus() const", asMETHOD(BMLAS_ExportResolver, GetLastStatus), asCALL_THISCALL},
-    {"ExportResolver", "bool get_IsBound() const", "bool ExportResolver::get_IsBound() const", asMETHOD(BMLAS_ExportResolver, IsBound), asCALL_THISCALL},
-    {"ExportResolver", "void Clear()", "void ExportResolver::Clear()", asMETHOD(BMLAS_ExportResolver, Clear), asCALL_THISCALL},
-    {"ExportResolver", "int Rebind()", "int ExportResolver::Rebind()", asMETHOD(BMLAS_ExportResolver, Rebind), asCALL_THISCALL},
-    {"ExportResolver", "int Resolve(ExportRef@ &out exportRef)", "int ExportResolver::Resolve(ExportRef@ &out exportRef)", asMETHOD(BMLAS_ExportResolver, Resolve), asCALL_THISCALL},
-    {"ExportResolver", "int Call(CallFrame@ frame)", "int ExportResolver::Call(CallFrame@ frame)", asMETHOD(BMLAS_ExportResolver, Call), asCALL_THISCALL},
-    {"ExportResolver", "int CallVoid()", "int ExportResolver::CallVoid()", asMETHOD(BMLAS_ExportResolver, CallVoid), asCALL_THISCALL},
-    {"ExportResolver", "int CallString(const string &in argument, string &out result)", "int ExportResolver::CallString(const string &in argument, string &out result)", BML_AS_GENERIC_METHOD(&BMLAS_ExportResolver::CallString), asCALL_GENERIC},
-    {"ExportResolver", "int CallString(string &out result)", "int ExportResolver::CallString(string &out result)", BML_AS_GENERIC_METHOD(&BMLAS_ExportResolver::CallStringNoArgs), asCALL_GENERIC},
-    {"ExportResolver", "int CallBool(bool argument, bool &out result)", "int ExportResolver::CallBool(bool argument, bool &out result)", asMETHOD(BMLAS_ExportResolver, CallBool), asCALL_THISCALL},
-    {"ExportResolver", "int CallBool(bool &out result)", "int ExportResolver::CallBool(bool &out result)", asMETHOD(BMLAS_ExportResolver, CallBoolNoArgs), asCALL_THISCALL},
-    {"ExportResolver", "int CallInt(int argument, int &out result)", "int ExportResolver::CallInt(int argument, int &out result)", asMETHOD(BMLAS_ExportResolver, CallInt), asCALL_THISCALL},
-    {"ExportResolver", "int CallInt(int &out result)", "int ExportResolver::CallInt(int &out result)", asMETHOD(BMLAS_ExportResolver, CallIntNoArgs), asCALL_THISCALL},
-    {"ExportResolver", "int CallFloat(float argument, float &out result)", "int ExportResolver::CallFloat(float argument, float &out result)", asMETHOD(BMLAS_ExportResolver, CallFloat), asCALL_THISCALL},
-    {"ExportResolver", "int CallFloat(float &out result)", "int ExportResolver::CallFloat(float &out result)", asMETHOD(BMLAS_ExportResolver, CallFloatNoArgs), asCALL_THISCALL},
     {"RenderEvent", "int get_Flags() const", "int RenderEvent::get_Flags() const", asMETHOD(BML::ScriptRenderEventView, GetFlags), asCALL_THISCALL},
     {"RenderEvent", "int GetFlags() const", "int RenderEvent::GetFlags() const", asMETHOD(BML::ScriptRenderEventView, GetFlags), asCALL_THISCALL},
     {"CheatEvent", "bool get_Enabled() const", "bool CheatEvent::get_Enabled() const", asMETHOD(BML::ScriptCheatEventView, GetEnabled), asCALL_THISCALL},
@@ -5155,7 +3870,16 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int globalsResult = RegisterScriptGlobalFunctions(engine, errorMessage);
     if (globalsResult < 0)
         return globalsResult;
-    return RegisterScriptUiFacade(engine, errorMessage);
+    const int uiResult = RegisterScriptUiFacade(engine, errorMessage);
+    if (uiResult < 0)
+        return uiResult;
+    const int interopFacadeResult = RegisterScriptInteropFacade(engine, errorMessage);
+    if (interopFacadeResult < 0)
+        return interopFacadeResult;
+    const int interopProviderResult = BML::RegisterScriptInteropProviderBridge(engine, errorMessage);
+    if (interopProviderResult < 0)
+        return interopProviderResult;
+    return BML::RegisterScriptInteropConsumerBridge(engine, errorMessage);
 }
 
 int RegisterImGuiBindings(asIScriptEngine *engine, const char **errorMessage) {

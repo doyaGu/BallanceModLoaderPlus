@@ -462,13 +462,6 @@ void ScriptReloadCandidateBuilder::ReleasePreparedHandles() {
         m_CandidateEvents.Release(nullptr);
         m_EventsBound = false;
     }
-    if (m_ExportsTouched) {
-        m_CandidateExports.Release(m_Mod.m_Context ? m_Mod.m_Context->GetCKContext() : nullptr,
-                                   m_State.CandidateRuntime,
-                                   nullptr,
-                                   false);
-        m_ExportsTouched = false;
-    }
 }
 
 void ScriptReloadCandidateBuilder::DiscardPreparedCandidate() {
@@ -532,19 +525,9 @@ bool ScriptReloadCandidateBuilder::Build(ScriptModReloadResult &result, Failure 
     if (!m_CandidateEvents.Cache(diagnostic))
         return FailWithDiagnostic(diagnostic, failure);
 
-    m_ExportsTouched = true;
-    if (!m_CandidateExports.Cache(m_Mod.m_Context ? m_Mod.m_Context->GetCKContext() : nullptr,
-                                  m_State.CandidateRuntime,
-                                  m_State.CandidateDefinition.Exports,
-                                  diagnostic,
-                                  false)) {
-        return FailWithDiagnostic(diagnostic, failure);
-    }
-
     std::string validationDiagnostic;
     std::vector<ScriptModReloadDiagnosticField> validationFields;
     if (!m_Mod.ValidateReloadDefinition(m_State.CandidateDefinition,
-                                        m_CandidateExports,
                                         m_Options,
                                         validationDiagnostic,
                                         &validationFields)) {

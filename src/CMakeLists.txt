@@ -210,8 +210,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDevEvents.h
             AngelScript/ScriptDevToolsService.h
             AngelScript/ScriptDiagnostic.h
-            AngelScript/ScriptExportDispatcher.h
-            AngelScript/ScriptExportSignature.h
             AngelScript/ScriptFacadeAccess.h
             AngelScript/ScriptFileWatcherWin32.h
             AngelScript/ScriptHookBlockService.h
@@ -221,6 +219,10 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.h
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
+            AngelScript/ScriptInteropArray.h
+            AngelScript/ScriptInteropConsumerBridge.h
+            AngelScript/ScriptInteropFacade.h
+            AngelScript/ScriptInteropProviderBridge.h
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
             AngelScript/ScriptModEntryScanner.h
@@ -255,8 +257,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptDevEvents.cpp
             AngelScript/ScriptDevToolsService.cpp
             AngelScript/ScriptDiagnostic.cpp
-            AngelScript/ScriptExportDispatcher.cpp
-            AngelScript/ScriptExportSignature.cpp
             AngelScript/ScriptFileWatcherWin32.cpp
             AngelScript/ScriptFunctionSupport.cpp
             AngelScript/ScriptHookBlockService.cpp
@@ -266,6 +266,9 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.cpp
             AngelScript/ScriptMod.cpp
             AngelScript/ScriptModContextView.cpp
+            AngelScript/ScriptInteropConsumerBridge.cpp
+            AngelScript/ScriptInteropFacade.cpp
+            AngelScript/ScriptInteropProviderBridge.cpp
             AngelScript/ScriptModDefinition.cpp
             AngelScript/ScriptModDefinitionBuilder.cpp
             AngelScript/ScriptModEntryScanner.cpp

@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "BML/IConfig.h"
-#include "ExportRegistry.h"
+#include "InteropSessionService.h"
 #include "ImGuiStateRecovery.h"
 #include "ModContext.h"
 #include "ScriptDevToolsService.h"
@@ -252,28 +252,6 @@ private:
     bool m_Entered = false;
 };
 
-static std::string BuildMissingExportDiagnostic(const ScriptModDefinition &definition,
-                                                const ScriptExportTable &exports,
-                                                const std::string &name,
-                                                const std::string &signature) {
-    std::string message = "Missing script export owner='";
-    message += definition.Id;
-    message += "' name='";
-    message += name;
-    message += "' signature='";
-    message += signature.empty() ? "<any>" : signature;
-    message += "'";
-
-    const std::string availableSignature = exports.GetSignature(name);
-    if (!availableSignature.empty()) {
-        message += "; available signature='";
-        message += availableSignature;
-        message += "'";
-    }
-
-    return message;
-}
-
 ScriptMod::ScriptMod(ModContext *context,
                      ScriptModDefinition definition,
                      ScriptModEntry entry,
@@ -361,12 +339,6 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
         cleanupFailedPrepare();
         return false;
     }
-    if (!m_Exports.Cache(m_Context ? m_Context->GetCKContext() : nullptr, m_Runtime, m_Definition.Exports, diagnostic)) {
-        Fail(diagnostic);
-        cleanupFailedPrepare();
-        return false;
-    }
-
     if (!RebindServices()) {
         cleanupFailedPrepare();
         return false;
@@ -992,7 +964,8 @@ bool ScriptMod::RebindServices() {
     if (m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Commands.Bind(m_Context, this, &m_ContextView) &&
         m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
-        m_HookBlocks.Bind(m_Context, this, &m_ContextView)) {
+        m_HookBlocks.Bind(m_Context, this, &m_ContextView) &&
+        m_InteropProviders.Bind(m_Context, this)) {
         return true;
     }
 
@@ -1135,7 +1108,6 @@ bool ScriptMod::NoteHostRegistration(const char *kind, const std::string &key) {
 }
 
 bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
-                                         const ScriptExportTable &candidateExports,
                                          const ScriptModReloadOptions &options,
                                          std::string &diagnostic,
                                          std::vector<ScriptModReloadDiagnosticField> *fields) const {
@@ -1190,32 +1162,7 @@ bool ScriptMod::ValidateReloadDefinition(const ScriptModDefinition &candidate,
     if (!m_Context || !m_Context->ValidateScriptModReloadDependencies(this, candidate, diagnostic, fields))
         return false;
 
-    if (!options.ForceExports) {
-        for (const ScriptModExportDefinition &exportInfo : m_Definition.Exports) {
-            const std::string &name = exportInfo.Name;
-            const std::string &signature = exportInfo.Signature;
-            if (!candidateExports.HasExport(name, signature)) {
-                diagnostic = "Script mod reload removed or changed export '" + name +
-                             "' signature '" + signature + "'. "
-                             "Hot reload keeps existing dependent mods running and does not cascade reload them, "
-                             "so non-forced reload requires every previous export name/signature to remain available. "
-                             "Keep the export, use manual --force-exports only when callers can tolerate it, or restart.";
-                AddReloadBoundary(fields, "export_compatibility", "keep_export_force_exports_or_restart");
-                AddReloadField(fields, "cascade", "false");
-                AddReloadField(fields, "export", name);
-                AddReloadField(fields, "signature", signature);
-                return false;
-            }
-        }
-    }
-
     return true;
-}
-bool ScriptMod::HasExport(const std::string &name, const std::string &signature) const {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return false;
-    return m_Exports.HasExport(name, signature);
 }
 
 ScriptTimerRef *ScriptMod::AddScriptTimer(asIScriptObject *timer) {
@@ -1272,12 +1219,12 @@ ScriptHookBlockRef *ScriptMod::CreateScriptHookBlock(CKBehavior *ownerScript,
 }
 
 ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockAfter(CKBehavior *ownerScript,
-                                                          CKBehavior *source,
+                                                          CKBehavior *endpoint,
                                                           asIScriptFunction *callback,
                                                           const std::string &name,
                                                           int sourceOutput,
                                                           int targetInput) {
-    return m_HookBlocks.InsertAfter(ownerScript, source, callback, name, sourceOutput, targetInput);
+    return m_HookBlocks.InsertAfter(ownerScript, endpoint, callback, name, sourceOutput, targetInput);
 }
 
 ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockBefore(CKBehavior *ownerScript,
@@ -1290,13 +1237,13 @@ ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockBefore(CKBehavior *ownerScri
 }
 
 ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockBetween(CKBehavior *ownerScript,
-                                                            CKBehavior *source,
+                                                            CKBehavior *endpoint,
                                                             CKBehavior *target,
                                                             asIScriptFunction *callback,
                                                             const std::string &name,
                                                             int sourceOutput,
                                                             int targetInput) {
-    return m_HookBlocks.InsertBetween(ownerScript, source, target, callback, name, sourceOutput, targetInput);
+    return m_HookBlocks.InsertBetween(ownerScript, endpoint, target, callback, name, sourceOutput, targetInput);
 }
 
 void ScriptMod::ProcessQueuedScriptServiceCallbacks() {
@@ -1416,139 +1363,6 @@ bool ScriptMod::RegisterScriptModul(const std::string &modulName) {
     return true;
 }
 
-const ScriptExportBinding *ScriptMod::ResolveExport(const std::string &name, const std::string &signature) const {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return nullptr;
-    return m_Exports.Resolve(name, signature);
-}
-
-std::string ScriptMod::GetExportSignature(const std::string &name) const {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return {};
-    return m_Exports.GetSignature(name);
-}
-
-void ScriptMod::GetExportSignatures(const std::string &name, std::vector<std::string> &out) const {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return;
-    m_Exports.GetSignatures(name, out);
-}
-
-int ScriptMod::GetExportCount() const {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return 0;
-    return m_Exports.GetCount();
-}
-
-bool ScriptMod::GetExportInfo(int index, std::string &name, std::string &signature) const {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return false;
-    return m_Exports.GetInfo(index, name, signature);
-}
-
-int ScriptMod::CallVoidExport(const std::string &name, const std::string &signature) {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return BML_ERROR_INTEROP_TARGET_FAILED;
-    const ScriptExportBinding *binding = m_Exports.Resolve(name, signature);
-    if (!binding) {
-        Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
-                                    BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
-        return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
-    }
-    if (!CanDispatchScriptCallback())
-        return BML_ERROR_INTEROP_TARGET_FAILED;
-
-    ScriptDiagnostic diagnostic;
-    const int status = ScriptExportDispatcher::CallVoid(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                        m_Runtime,
-                                                        *binding,
-                                                        diagnostic);
-    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED) {
-        const bool wasLoaded = m_State.IsLoaded();
-        Fail(diagnostic);
-        if (wasLoaded)
-            ScheduleFailureCleanup();
-    } else if (status != BML_OK) {
-        Record(diagnostic);
-    }
-    return status;
-}
-
-int ScriptMod::CallStringExport(const std::string &name,
-                                const std::string &signature,
-                                const std::string &argument,
-                                bool hasArgument,
-    std::string &out) {
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return BML_ERROR_INTEROP_TARGET_FAILED;
-    const ScriptExportBinding *binding = m_Exports.Resolve(name, signature);
-    if (!binding) {
-        Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
-                                    BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
-        return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
-    }
-    if (!CanDispatchScriptCallback())
-        return BML_ERROR_INTEROP_TARGET_FAILED;
-
-    ScriptDiagnostic diagnostic;
-    const int status = ScriptExportDispatcher::CallString(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                          m_Runtime,
-                                                          *binding,
-                                                          argument,
-                                                          hasArgument,
-                                                          out,
-                                                          diagnostic);
-    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED) {
-        const bool wasLoaded = m_State.IsLoaded();
-        Fail(diagnostic);
-        if (wasLoaded)
-            ScheduleFailureCleanup();
-    } else if (status != BML_OK) {
-        Record(diagnostic);
-    }
-    return status;
-}
-
-int ScriptMod::CallExport(const std::string &name, const std::string &signature, BML_CallFrame *frame) {
-    if (!frame)
-        return BML_ERROR_INTEROP_BAD_CALL_FRAME;
-
-    ScriptModCallScope callScope(this);
-    if (!callScope.Entered())
-        return BML_ERROR_INTEROP_TARGET_FAILED;
-    const ScriptExportBinding *binding = m_Exports.Resolve(name, signature);
-    if (!binding) {
-        Record(MakeScriptDiagnostic(ScriptDiagnosticPhase::ExportLookup,
-                                    BuildMissingExportDiagnostic(m_Definition, m_Exports, name, signature)));
-        return BML_ERROR_INTEROP_EXPORT_NOT_FOUND;
-    }
-    if (!CanDispatchScriptCallback())
-        return BML_ERROR_INTEROP_TARGET_FAILED;
-
-    ScriptDiagnostic diagnostic;
-    const int status = ScriptExportDispatcher::CallFrame(m_Context ? m_Context->GetCKContext() : nullptr,
-                                                         m_Runtime,
-                                                         *binding,
-                                                         frame,
-                                                         diagnostic);
-    if (status == BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED) {
-        const bool wasLoaded = m_State.IsLoaded();
-        Fail(diagnostic);
-        if (wasLoaded)
-            ScheduleFailureCleanup();
-    } else if (status != BML_OK) {
-        Record(diagnostic);
-    }
-    return status;
-}
-
 void ScriptMod::CallGameEvent(size_t eventIndex) {
     ScriptModCallScope callScope(this);
     if (!callScope.Entered())
@@ -1650,7 +1464,6 @@ void ScriptMod::ProcessFailureCleanup() {
 
     const ScriptDiagnostic failure = m_State.GetLastDiagnostic();
     m_PendingFailureCleanup.store(false, std::memory_order_release);
-    ExportRegistry::NotifyScriptExportsChanged();
     ReleaseRuntime();
     m_State.Fail(failure);
     TouchModGeneration();
@@ -1667,13 +1480,13 @@ void ScriptMod::ProcessFailureCleanup() {
                                                       {"action", "fix_script_and_reload_or_restart"}},
                                                      GetReloadAttemptId());
     }
-
-    ExportRegistry::NotifyScriptExportsChanged();
     clearGate();
 }
 
 bool ScriptMod::ReleaseRuntime() {
     CKContext *ckContext = m_Context ? m_Context->GetCKContext() : nullptr;
+    if (!ReleaseScriptInteropProviders())
+        return false;
     bool ok = ReleaseScriptServices();
     ok = ReleaseScriptMethodHandles() && ok;
 
@@ -1691,6 +1504,23 @@ bool ScriptMod::ReleaseRuntime() {
         }
     }
     return ok;
+}
+
+bool ScriptMod::ReleaseScriptInteropProviders() {
+    /*
+     * The registry must forget the C callback userdata before AngelScript
+     * releases the function handles retained by the provider bridge.  This
+     * order makes a stale provider fail as provider_unloaded rather than
+     * calling into a torn-down script runtime.
+     */
+    if (m_Context && m_Context->GetInteropRegistry().InvalidateOwner(GetID()) != BML_OK) {
+        if (m_Context->GetLogger()) {
+            m_Context->GetLogger()->Error("Script mod %s Interop teardown was not on the game thread", GetID());
+        }
+        return false;
+    }
+    m_InteropProviders.Release();
+    return true;
 }
 
 void ScriptMod::ReleaseScriptImGuiInput() {
@@ -1728,14 +1558,8 @@ bool ScriptMod::ReleaseScriptServices() {
 }
 
 bool ScriptMod::ReleaseScriptMethodHandles() {
-    CKContext *ckContext = m_Context ? m_Context->GetCKContext() : nullptr;
     ScriptDiagnostic releaseDiagnostic;
     bool ok = true;
-    if (!m_Exports.Release(ckContext, m_Runtime, &releaseDiagnostic)) {
-        Record(releaseDiagnostic);
-        ok = false;
-    }
-    releaseDiagnostic = ScriptDiagnostic();
     if (!m_EventRouter.Release(&releaseDiagnostic)) {
         Record(releaseDiagnostic);
         ok = false;
@@ -1897,6 +1721,7 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
 
     ScriptModReloadCandidate::State &state = *candidate.m_State;
     result.SourcePath = state.Snapshot.CommitEntryPathUtf8;
+    const std::string interopOwnerBeforeReload = GetID() ? GetID() : "";
 
     auto finish = [&](bool success,
                       const std::string &diagnostic,
@@ -1950,8 +1775,18 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
     if (!transaction.PromoteFailedPlaceholder(transactionFailure))
         return finishTransactionFailure(transactionFailure);
 
-    ExportRegistry::NotifyScriptExportsChanged();
     transaction.InstallPreparedRuntimeForCommit();
+    const std::string interopOwnerAfterInstall = GetID() ? GetID() : "";
+    // A reload replaces the script runtime even if the candidate later rolls
+    // back.  Give the replacement runtime a fresh owner session before its
+    // OnLoad hook can create observer resources.
+    if (m_Context) {
+        if (!interopOwnerBeforeReload.empty() && interopOwnerBeforeReload != interopOwnerAfterInstall) {
+            (void)m_Context->GetInteropRegistry().InvalidateOwner(interopOwnerBeforeReload.c_str());
+            m_Context->GetInteropSessions().InvalidateMod(interopOwnerBeforeReload.c_str());
+        }
+        m_Context->GetInteropSessions().RotateMod(interopOwnerAfterInstall.c_str());
+    }
 
     bool liveRuntimeLoaded = false;
     std::vector<ScriptModReloadDiagnosticField> liveRuntimeFailureFields;
@@ -1970,7 +1805,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
             state.Snapshot.KeepStagedRoot();
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
-        ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
         state.Prepared = false;
         state.Committed = true;
@@ -1987,18 +1821,19 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
                                           : m_State.GetLastDiagnosticText();
     ReleaseRuntime();
 
-    if (recoveringPlaceholder) {
-        const std::string candidateId = m_Definition.Id;
-        transaction.RestoreFailedPlaceholderAfterRejectedRecovery(candidateId);
+        if (recoveringPlaceholder) {
+            const std::string candidateId = m_Definition.Id;
+            transaction.RestoreFailedPlaceholderAfterRejectedRecovery(candidateId);
+            m_Context->GetInteropSessions().InvalidateMod(candidateId.c_str());
+            m_Context->GetInteropSessions().RegisterMod(GetID());
 
-        ScriptDiagnostic failure = reloadDiagnostic;
+            ScriptDiagnostic failure = reloadDiagnostic;
         failure.Phase = ScriptDiagnosticPhase::Runtime;
         if (failure.Message.empty())
             failure.Message = "Failed-load recovery did not complete; fixed script was not loaded.";
         if (failure.RawMessage.empty() && failure.CompilerMessages.empty() && failure.StackTrace.empty())
             failure.RawMessage = reloadFailure;
         Fail(failure);
-        ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
         std::vector<ScriptModReloadDiagnosticField> fields = {
             {"boundary", "failed_load_recovery"},
@@ -2023,7 +1858,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
     if (rollbackLoaded) {
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
-        ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
         ScriptDiagnostic failure = reloadDiagnostic;
         failure.Phase = ScriptDiagnosticPhase::Runtime;
@@ -2050,7 +1884,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
                                                                + std::string(ScriptReloadRollbackBoundary()));
     rollbackDiagnostic.RawMessage = reloadFailure + "\n" + rollbackFailure;
     Fail(rollbackDiagnostic);
-    ExportRegistry::NotifyScriptExportsChanged();
     std::vector<ScriptModReloadDiagnosticField> fields = {
         {"boundary", "rollback_scope"},
         {"rollback", "failed"},
@@ -2091,7 +1924,6 @@ ScriptModReloadResult ScriptMod::RollbackCommittedCandidate(ScriptModReloadCandi
     if (rollbackLoaded) {
         if (m_Context)
             m_Context->GetCommandContext().SortCommands();
-        ExportRegistry::NotifyScriptExportsChanged();
         FenceCallbacksForCurrentFrame();
         state.RolledBack = true;
         result.Success = true;
@@ -2109,7 +1941,6 @@ ScriptModReloadResult ScriptMod::RollbackCommittedCandidate(ScriptModReloadCandi
                                                                + std::string(ScriptReloadRollbackBoundary()));
     rollbackDiagnostic.RawMessage = m_State.GetLastDiagnosticText();
     Fail(rollbackDiagnostic);
-    ExportRegistry::NotifyScriptExportsChanged();
     result.Diagnostic = m_State.GetLastDiagnosticText();
     result.Fields = {
         {"boundary", "library_batch_commit"},

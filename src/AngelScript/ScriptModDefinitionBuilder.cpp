@@ -2,11 +2,8 @@
 
 #include <cctype>
 #include <sstream>
-#include <unordered_set>
 #include <vector>
 
-#include "BML/Defines.h"
-#include "ScriptExportSignature.h"
 #include "Utils/StringUtils.h"
 
 namespace BML {
@@ -101,7 +98,6 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
     std::vector<std::string> diagnostics;
     const ScriptMetadataRecord *mainType = nullptr;
     std::vector<ParsedScriptMetadataRecord> bmlMetadata;
-    std::unordered_set<std::string> exportKeys;
     ScriptModDefinition reflected;
     reflected.Entry = entry.EntryFilename;
     reflected.Enabled = true;
@@ -174,41 +170,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
         }
 
         if (tag.Name == "bml.export") {
-            if (record.Target != CKAS_METADATA_TYPE_METHOD) {
-                diagnostics.push_back("bml.export metadata must be attached to a class method.");
-                continue;
-            }
-            if (!mainType) {
-                diagnostics.push_back("bml.export metadata appeared before bml.mod metadata.");
-                continue;
-            }
-            if (record.ParentTypeName != mainType->Name ||
-                record.ParentTypeNamespace != mainType->Namespace) {
-                diagnostics.push_back("bml.export method '" + record.Name + "' is not on the bml.mod class.");
-                continue;
-            }
-
-            ScriptModExportDefinition exportInfo;
-            exportInfo.Method = record.Name;
-            exportInfo.Name = MetadataArg(tag, "name");
-            if (exportInfo.Name.empty())
-                exportInfo.Name = record.Name;
-            exportInfo.Signature = ScriptExportSignature::Canonicalize(record.Declaration,
-                                                                        exportInfo.Name);
-            const int signatureStatus = InteropSignature::Validate(exportInfo.Signature, exportInfo.Name);
-            if (signatureStatus != BML_OK) {
-                diagnostics.push_back("bml.export name '" + exportInfo.Name +
-                                      "' has unsupported interop signature '" +
-                                      exportInfo.Signature + "'.");
-                continue;
-            }
-            const std::string exportKey = exportInfo.Name + "\n" + exportInfo.Signature;
-            if (!exportKeys.insert(exportKey).second) {
-                diagnostics.push_back("duplicate bml.export name '" + exportInfo.Name +
-                                      "' with signature '" + exportInfo.Signature + "'.");
-                continue;
-            }
-            reflected.Exports.push_back(exportInfo);
+            diagnostics.push_back("bml.export was removed with the experimental CallFrame ABI; use a generated Interop API provider instead.");
             continue;
         }
 

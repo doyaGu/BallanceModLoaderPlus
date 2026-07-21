@@ -16,12 +16,6 @@ struct ScriptModDependency {
     bool Optional = false;
 };
 
-struct ScriptModExportDefinition {
-    std::string Name;
-    std::string Signature;
-    std::string Method;
-};
-
 struct ScriptModDefinition {
     std::string Id;
     std::string Name;
@@ -35,7 +29,6 @@ struct ScriptModDefinition {
     bool Enabled = true;
     std::string ReloadPolicy;
     std::vector<ScriptModDependency> Dependencies;
-    std::vector<ScriptModExportDefinition> Exports;
     std::vector<ScriptLibraryUse> SourceLibraries;
     std::vector<ScriptSourceDependency> SourceDependencies;
     std::vector<ScriptSourceIncludeEdge> SourceIncludeEdges;

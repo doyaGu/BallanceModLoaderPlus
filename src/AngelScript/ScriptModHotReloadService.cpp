@@ -119,8 +119,7 @@ std::string MakeLibraryPendingKey(const ScriptModReloadOptions &options) {
     std::ostringstream stream;
     stream << (options.Automatic ? "automatic" : "manual")
            << ":dry=" << (options.DryRun ? '1' : '0')
-           << ":check=" << (options.CheckStateHooks ? '1' : '0')
-           << ":force=" << (options.ForceExports ? '1' : '0');
+           << ":check=" << (options.CheckStateHooks ? '1' : '0');
     return stream.str();
 }
 
@@ -174,35 +173,30 @@ void AppendReloadOptionFields(std::vector<ScriptDevEventField> &fields,
                               const ScriptModReloadOptions &options,
                               const std::string &prefix = std::string(),
                               bool includeAutomatic = true,
-                              bool includeCheckState = true,
-                              bool includeForceExports = true) {
+                              bool includeCheckState = true) {
     const bool prefixed = !prefix.empty();
     if (includeAutomatic)
         fields.push_back({prefixed ? prefix + "Automatic" : "automatic", BoolField(options.Automatic)});
     fields.push_back({prefixed ? prefix + "DryRun" : "dryRun", BoolField(options.DryRun)});
     if (includeCheckState)
         fields.push_back({prefixed ? prefix + "CheckState" : "checkState", BoolField(options.CheckStateHooks)});
-    if (includeForceExports)
-        fields.push_back({prefixed ? prefix + "ForceExports" : "forceExports", BoolField(options.ForceExports)});
 }
 
 void AppendReloadRequestFields(std::vector<ScriptDevEventField> &fields,
                                const std::string &reason,
                                const ScriptModReloadOptions &options,
                                const std::string &prefix = std::string(),
-                               bool includeCheckState = true,
-                               bool includeForceExports = true) {
+                               bool includeCheckState = true) {
     const bool prefixed = !prefix.empty();
     fields.push_back({prefixed ? prefix + "Reason" : "reason", reason});
-    AppendReloadOptionFields(fields, options, prefix, true, includeCheckState, includeForceExports);
+    AppendReloadOptionFields(fields, options, prefix, true, includeCheckState);
 }
 
 std::vector<ScriptDevEventField> BuildReloadRequestFields(const std::string &reason,
                                                           const ScriptModReloadOptions &options,
-                                                          bool includeCheckState = true,
-                                                          bool includeForceExports = true) {
+                                                          bool includeCheckState = true) {
     std::vector<ScriptDevEventField> fields;
-    AppendReloadRequestFields(fields, reason, options, std::string(), includeCheckState, includeForceExports);
+    AppendReloadRequestFields(fields, reason, options, std::string(), includeCheckState);
     return fields;
 }
 
@@ -210,7 +204,7 @@ std::vector<ScriptDevEventField> BuildLibraryBatchRequestFields(const std::strin
                                                                 const ScriptModReloadOptions &options,
                                                                 size_t consumerCount,
                                                                 const std::vector<ScriptLibraryReloadPackage> &packages) {
-    std::vector<ScriptDevEventField> fields = BuildReloadRequestFields(reason, options, false, true);
+    std::vector<ScriptDevEventField> fields = BuildReloadRequestFields(reason, options, false);
     fields.push_back({"consumers", std::to_string(consumerCount)});
     fields.push_back({"libraries", std::to_string(packages.size())});
     fields.push_back({"packages", FormatLibraryPackageList(packages)});
@@ -545,7 +539,7 @@ bool ScriptModHotReloadService::QueueReloadLibrary(const std::string &id,
                                                    const ScriptModReloadOptions &options,
                                                    std::string &message) {
     if (id.empty() || version.empty()) {
-        message = "Usage: script reload-lib <id> <version> [--dry-run] [--force-exports]";
+        message = "Usage: script reload-lib <id> <version> [--dry-run]";
         return false;
     }
     const size_t count = GetLibraryConsumers(id, version, false).size();
@@ -803,7 +797,7 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
         if (m_Context && m_Context->GetScriptDevTools()) {
             std::vector<ScriptDevEventField> fields = {{"reason", reason},
                                                        {"pendingReason", existingIt->second.Reason}};
-            AppendReloadOptionFields(fields, existingIt->second.Options, "pending", false, true, true);
+            AppendReloadOptionFields(fields, existingIt->second.Options, "pending", false, true);
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptReloadAutoCoalesced",
                                                          id,
@@ -874,9 +868,9 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
     if (m_Context && m_Context->GetScriptDevTools()) {
         if (replaced) {
             std::vector<ScriptDevEventField> fields;
-            AppendReloadRequestFields(fields, previous.Reason, previous.Options, "previous", false, false);
+            AppendReloadRequestFields(fields, previous.Reason, previous.Options, "previous", false);
             fields.push_back({"previousPackages", FormatLibraryPackageList(previous.Packages)});
-            AppendReloadRequestFields(fields, pending.Reason, options, std::string(), false, false);
+            AppendReloadRequestFields(fields, pending.Reason, options, std::string(), false);
             fields.push_back({"packages", FormatLibraryPackageList(pending.Packages)});
             const bool merged = packageAdded && previous.Packages.size() != pending.Packages.size();
             m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
@@ -938,7 +932,7 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::vector<Sc
                     std::vector<ScriptDevEventField> fields = {{"reason", reason},
                                                                {"pendingReason", entry.second.Reason},
                                                                {"package", packageKey}};
-                    AppendReloadOptionFields(fields, entry.second.Options, "pending", false, false, true);
+                    AppendReloadOptionFields(fields, entry.second.Options, "pending", false, false);
                     m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
                                                                  "ScriptLibraryReloadAutoCoalesced",
                                                                  packageKey,

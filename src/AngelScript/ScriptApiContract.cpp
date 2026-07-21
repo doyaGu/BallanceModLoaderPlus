@@ -1,6 +1,5 @@
 #include "ScriptApiContract.h"
 
-#include "BML/Interop.h"
 #include "BML/IConfig.h"
 #include "BML/InputHook.h"
 #include "BML/Timer.h"
@@ -32,17 +31,18 @@ static const ScriptIntegerConstantContract kErrorConstants[] = {
     {"const int ERROR_FAIL", BML_ERROR_FAIL},
     {"const int ERROR_NOT_FOUND", BML_ERROR_NOT_FOUND},
     {"const int ERROR_INVALID_PARAMETER", BML_ERROR_INVALID_PARAMETER},
-    {"const int ERROR_INTEROP_TARGET_NOT_FOUND", BML_ERROR_INTEROP_TARGET_NOT_FOUND},
-    {"const int ERROR_INTEROP_TARGET_FAILED", BML_ERROR_INTEROP_TARGET_FAILED},
-    {"const int ERROR_INTEROP_EXPORT_NOT_FOUND", BML_ERROR_INTEROP_EXPORT_NOT_FOUND},
-    {"const int ERROR_INTEROP_EXPORT_AMBIGUOUS", BML_ERROR_INTEROP_EXPORT_AMBIGUOUS},
-    {"const int ERROR_INTEROP_BAD_SIGNATURE", BML_ERROR_INTEROP_BAD_SIGNATURE},
-    {"const int ERROR_INTEROP_SIGNATURE_MISMATCH", BML_ERROR_INTEROP_SIGNATURE_MISMATCH},
-    {"const int ERROR_INTEROP_BAD_CALL_FRAME", BML_ERROR_INTEROP_BAD_CALL_FRAME},
-    {"const int ERROR_INTEROP_TYPE_MISMATCH", BML_ERROR_INTEROP_TYPE_MISMATCH},
-    {"const int ERROR_INTEROP_TARGET_EXECUTION_FAILED", BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED},
+    {"const int ERROR_INTEROP_ENDPOINT_NOT_FOUND", BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND},
+    {"const int ERROR_INTEROP_VALUE_TYPE_MISMATCH", BML_ERROR_INTEROP_VALUE_TYPE_MISMATCH},
     {"const int ERROR_INTEROP_HANDLE_STALE", BML_ERROR_INTEROP_HANDLE_STALE},
     {"const int ERROR_INTEROP_UNSUPPORTED", BML_ERROR_INTEROP_UNSUPPORTED},
+    {"const int ERROR_INTEROP_API_INVALID", BML_ERROR_INTEROP_API_INVALID},
+    {"const int ERROR_INTEROP_API_MISMATCH", BML_ERROR_INTEROP_API_MISMATCH},
+    {"const int ERROR_INTEROP_PROVIDER_UNLOADED", BML_ERROR_INTEROP_PROVIDER_UNLOADED},
+    {"const int ERROR_INTEROP_WRONG_THREAD", BML_ERROR_INTEROP_WRONG_THREAD},
+    {"const int ERROR_INTEROP_RECORD_INVALID", BML_ERROR_INTEROP_RECORD_INVALID},
+    {"const int ERROR_INTEROP_CURSOR_STALE", BML_ERROR_INTEROP_CURSOR_STALE},
+    {"const int ERROR_INTEROP_OBJECT_INVALID", BML_ERROR_INTEROP_OBJECT_INVALID},
+    {"const int ERROR_INTEROP_SCHEMA_MISMATCH", BML_ERROR_INTEROP_SCHEMA_MISMATCH},
 };
 
 static const ScriptEnumValueContract kGameEventValues[] = {
@@ -199,20 +199,6 @@ static const ScriptEnumValueContract kDataShareValueTypeValues[] = {
     {"DATASHARE_FLOAT", 3, "DataShareValueType::DATASHARE_FLOAT"},
 };
 
-static const ScriptEnumValueContract kCallValueTypeValues[] = {
-    {"CALL_VALUE_EMPTY", BML_CALL_VALUE_EMPTY, "CallValueType::CALL_VALUE_EMPTY"},
-    {"CALL_VALUE_BOOL", BML_CALL_VALUE_BOOL, "CallValueType::CALL_VALUE_BOOL"},
-    {"CALL_VALUE_INT", BML_CALL_VALUE_INT, "CallValueType::CALL_VALUE_INT"},
-    {"CALL_VALUE_FLOAT", BML_CALL_VALUE_FLOAT, "CallValueType::CALL_VALUE_FLOAT"},
-    {"CALL_VALUE_STRING", BML_CALL_VALUE_STRING, "CallValueType::CALL_VALUE_STRING"},
-    {"CALL_VALUE_BOOL_ARRAY", BML_CALL_VALUE_BOOL_ARRAY, "CallValueType::CALL_VALUE_BOOL_ARRAY"},
-    {"CALL_VALUE_INT_ARRAY", BML_CALL_VALUE_INT_ARRAY, "CallValueType::CALL_VALUE_INT_ARRAY"},
-    {"CALL_VALUE_FLOAT_ARRAY", BML_CALL_VALUE_FLOAT_ARRAY, "CallValueType::CALL_VALUE_FLOAT_ARRAY"},
-    {"CALL_VALUE_STRING_ARRAY", BML_CALL_VALUE_STRING_ARRAY, "CallValueType::CALL_VALUE_STRING_ARRAY"},
-    {"CALL_VALUE_BUFFER", BML_CALL_VALUE_BUFFER, "CallValueType::CALL_VALUE_BUFFER"},
-    {"CALL_VALUE_OBJECT_ID", BML_CALL_VALUE_OBJECT_ID, "CallValueType::CALL_VALUE_OBJECT_ID"},
-};
-
 static const ScriptEnumValueContract kStateValueTypeValues[] = {
     {"STATE_VALUE_EMPTY", static_cast<int>(ScriptStateValueType::Empty), "StateValueType::STATE_VALUE_EMPTY"},
     {"STATE_VALUE_BOOL", static_cast<int>(ScriptStateValueType::Bool), "StateValueType::STATE_VALUE_BOOL"},
@@ -239,7 +225,6 @@ static const ScriptEnumContract kEnums[] = {
     {"TimerType", "enum TimerType", kTimerTypeValues, sizeof(kTimerTypeValues) / sizeof(kTimerTypeValues[0])},
     {"TimerTimeBase", "enum TimerTimeBase", kTimerTimeBaseValues, sizeof(kTimerTimeBaseValues) / sizeof(kTimerTimeBaseValues[0])},
     {"DataShareValueType", "enum DataShareValueType", kDataShareValueTypeValues, sizeof(kDataShareValueTypeValues) / sizeof(kDataShareValueTypeValues[0])},
-    {"CallValueType", "enum CallValueType", kCallValueTypeValues, sizeof(kCallValueTypeValues) / sizeof(kCallValueTypeValues[0])},
     {"StateValueType", "enum StateValueType", kStateValueTypeValues, sizeof(kStateValueTypeValues) / sizeof(kStateValueTypeValues[0])},
 };
 

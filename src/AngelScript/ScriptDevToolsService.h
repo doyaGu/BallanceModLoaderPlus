@@ -49,18 +49,12 @@ struct ScriptSourceIncludeEdgeSnapshot {
     std::string LibraryVersion;
 };
 
-struct ScriptExportSnapshot {
-    std::string Name;
-    std::string Signature;
-};
-
 struct ScriptResourceSnapshot {
     size_t Timers = 0;
     size_t Commands = 0;
     size_t DataShareRequests = 0;
     size_t HostRegistrations = 0;
     size_t Callbacks = 0;
-    size_t Exports = 0;
     int ActiveCalls = 0;
 };
 
@@ -97,7 +91,6 @@ struct ScriptModSnapshot {
     std::vector<ScriptSourceLibrarySnapshot> SourceLibraries;
     std::vector<ScriptSourceDependencySnapshot> SourceDependencies;
     std::vector<ScriptSourceIncludeEdgeSnapshot> SourceIncludeEdges;
-    std::vector<ScriptExportSnapshot> Exports;
     std::vector<std::string> Callbacks;
     ScriptResourceSnapshot Resources;
     ScriptRuntimeModuleInfo RuntimeModule;
@@ -191,7 +184,6 @@ private:
                                             bool includeHashes,
                                             bool includeGraph,
                                             bool compile);
-    std::vector<std::string> FormatExports(const std::string &id);
     std::vector<std::string> FormatResources(const std::string &id);
     const ScriptModSnapshot *FindSnapshot(const std::string &id);
 
@@ -207,7 +199,6 @@ private:
     void DrawDiagnosticsTab(const ScriptModSnapshot *selected);
     void DrawReloadTab(const ScriptModSnapshot *selected);
     void DrawResourcesTab(const ScriptModSnapshot *selected);
-    void DrawExportsTab(const ScriptModSnapshot *selected);
     void DrawDependenciesTab(const ScriptModSnapshot *selected);
     void DrawLogsTab();
     void DrawLogFilters();
