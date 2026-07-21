@@ -1,35 +1,35 @@
 #include "ScriptInteropFacade.h"
 
 #include <cstddef>
+#include <deque>
 #include <limits>
 #include <new>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <angelscript.h>
 
-#include "BML/Generated/bml_gameplay_api.h"
-#include "BML/Generated/bml_events_api.h"
-#include "BML/Generated/bml_runtime_api.h"
-#include "BML/Generated/bml_scene_api.h"
+#include "BML/Generated/bml_events_imc.hpp"
+#include "BML/Generated/bml_gameplay_imc.hpp"
+#include "BML/Generated/bml_runtime_imc.hpp"
+#include "BML/Generated/bml_scene_imc.hpp"
 #include "BML/EventKinds.h"
-#include "BML/InteropApi.h"
 
 #include "BuiltinInteropApis.h"
-#include "InteropRegistry.h"
-#include "InteropSessionService.h"
 #include "ModContext.h"
 #include "ScriptMod.h"
+#include "ScriptInteropImcClients.h"
 #include "ScriptModRuntime.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptStringInterop.h"
 
 namespace {
 
-namespace RuntimeApi = BML::Interop::Generated::Bml::Runtime;
-namespace SceneApi = BML::Interop::Generated::Bml::Scene;
-namespace GameplayApi = BML::Interop::Generated::Bml::Gameplay;
-namespace EventsApi = BML::Interop::Generated::Bml::Events;
+namespace RuntimeImc = BML::Imc::Generated::Bml::Runtime;
+namespace SceneImc = BML::Imc::Generated::Bml::Scene;
+namespace GameplayImc = BML::Imc::Generated::Bml::Gameplay;
+namespace EventsImc = BML::Imc::Generated::Bml::Events;
 
 struct RuntimeState {
     bool InGame = false;
@@ -219,276 +219,120 @@ bool RegisterValue(asIScriptEngine *engine, const ValueTypeRegistration &registr
                     errorMessage);
 }
 
-struct ActiveCall {
-    ModContext *Context = nullptr;
-    BML_InteropCallContext CallContext{};
-};
-
-int GetActiveCall(ActiveCall &out) {
-    out = {};
+int GetActiveImcClients(BML::ScriptInteropImcClients *&outClients,
+                        ModContext *&outContext) {
+    outClients = nullptr;
+    outContext = nullptr;
     if (BML::RejectScriptRestrictedHostCall("BML::Interop"))
         return BML_ERROR_FROZEN;
     BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
     if (!mod || !mod->GetModContext())
         return BML_ERROR_INTEROP_UNSUPPORTED;
-    out.Context = mod->GetModContext();
-    out.CallContext = out.Context->GetInteropSessions().CreateContextForOwner(mod->GetID());
-    return out.Context->GetInteropSessions().ValidateContext(&out.CallContext, true);
-}
-
-int GetActiveCallForApi(ActiveCall &out, const BML_InteropApiDescriptor &api) {
-    const int status = GetActiveCall(out);
-    return status == BML_OK
-               ? out.Context->GetInteropRegistry().RequireApi(&out.CallContext,
-                                                                      api.ApiId,
-                                                                      api.Major,
-                                                                      api.Hash)
-               : status;
-}
-
-int GetOwnerCall(ModContext *context, const std::string &owner, BML_InteropCallContext &out) {
-    out = {};
-    if (!context || owner.empty())
-        return BML_ERROR_INTEROP_UNSUPPORTED;
-    out = context->GetInteropSessions().CreateContextForOwner(owner);
-    return context->GetInteropSessions().ValidateContext(&out, true);
-}
-
-class RecordLease {
-public:
-    RecordLease() = default;
-    RecordLease(ModContext *context, BML_InteropCallContext callContext, BML_RecordRef record)
-        : m_Context(context), m_CallContext(callContext), m_Record(record) {}
-    ~RecordLease() { Reset(); }
-
-    RecordLease(const RecordLease &) = delete;
-    RecordLease &operator=(const RecordLease &) = delete;
-
-    void Reset() {
-        if (m_Context && m_Record.Value)
-            (void)m_Context->GetInteropRegistry().ReleaseRecord(&m_CallContext, m_Record);
-        m_Record = {};
-    }
-
-private:
-    ModContext *m_Context = nullptr;
-    BML_InteropCallContext m_CallContext{};
-    BML_RecordRef m_Record{};
-};
-
-class BuilderLease {
-public:
-    BuilderLease() = default;
-    BuilderLease(ModContext *context, BML_InteropRecordBuilder *builder) : m_Context(context), m_Builder(builder) {}
-    ~BuilderLease() { Reset(); }
-
-    BuilderLease(const BuilderLease &) = delete;
-    BuilderLease &operator=(const BuilderLease &) = delete;
-
-    void Reset() {
-        if (m_Context && m_Builder)
-            (void)m_Context->GetInteropRegistry().DestroyRecordBuilder(m_Builder);
-        m_Builder = nullptr;
-    }
-
-private:
-    ModContext *m_Context = nullptr;
-    BML_InteropRecordBuilder *m_Builder = nullptr;
-};
-
-int ReadResource(const BML_InteropApiDescriptor &api,
-                 const char *endpoint,
-                 ActiveCall &call,
-                 BML_RecordRef &outRecord) {
-    outRecord = {};
-    const int status = GetActiveCallForApi(call, api);
-    return status == BML_OK
-               ? call.Context->GetInteropRegistry().ReadResource(&call.CallContext,
-                                                                   api.ApiId,
-                                                                   endpoint,
-                                                                   &outRecord)
-               : status;
-}
-
-int ReadComponent(CKObject *object,
-                  const BML_InteropApiDescriptor &api,
-                  const char *endpoint,
-                  ActiveCall &call,
-                  BML_RecordRef &outRecord) {
-    outRecord = {};
-    const int status = GetActiveCallForApi(call, api);
-    if (status != BML_OK)
-        return status;
-    const BML_ObjectRef reference = MakeBuiltinObjectRef(*call.Context, object);
-    if (object && reference.Domain == 0)
-        return BML_ERROR_INTEROP_OBJECT_INVALID;
-    return call.Context->GetInteropRegistry().ReadComponent(&call.CallContext,
-                                                              api.ApiId,
-                                                              endpoint,
-                                                              reference,
-                                                              &outRecord);
-}
-
-int ReadBool(const ActiveCall &call, BML_RecordRef record, uint32_t field, bool &out) {
-    int value = 0;
-    const int status = call.Context->GetInteropRegistry().RecordGetBool(&call.CallContext, record, field, &value);
-    if (status == BML_OK)
-        out = value != 0;
-    return status;
-}
-
-int ReadInt(const ActiveCall &call, BML_RecordRef record, uint32_t field, int &out) {
-    return call.Context->GetInteropRegistry().RecordGetInt(&call.CallContext, record, field, &out);
-}
-
-int ReadFloat(const ActiveCall &call, BML_RecordRef record, uint32_t field, float &out) {
-    return call.Context->GetInteropRegistry().RecordGetFloat(&call.CallContext, record, field, &out);
-}
-
-int ReadObject(const ActiveCall &call, BML_RecordRef record, uint32_t field, BML_ObjectRef &out) {
-    return call.Context->GetInteropRegistry().RecordGetObject(&call.CallContext, record, field, &out);
-}
-
-int ReadVec3(const ActiveCall &call, BML_RecordRef record, uint32_t field, BML_Vec3 &out) {
-    return call.Context->GetInteropRegistry().RecordGetVec3(&call.CallContext, record, field, &out);
-}
-
-int ReadMat4(const ActiveCall &call, BML_RecordRef record, uint32_t field, BML_Mat4 &out) {
-    return call.Context->GetInteropRegistry().RecordGetMat4(&call.CallContext, record, field, &out);
-}
-
-int ReadString(const ActiveCall &call, BML_RecordRef record, uint32_t field, std::string &out) {
-    size_t required = 0;
-    int status = call.Context->GetInteropRegistry().RecordGetString(&call.CallContext,
-                                                                       record,
-                                                                       field,
-                                                                       nullptr,
-                                                                       0,
-                                                                       &required);
-    if (status != BML_OK)
-        return status;
-    std::string storage(required ? required : 1, '\0');
-    status = call.Context->GetInteropRegistry().RecordGetString(&call.CallContext,
-                                                                   record,
-                                                                   field,
-                                                                   storage.data(),
-                                                                   storage.size(),
-                                                                   &required);
-    if (status == BML_OK)
-        out.assign(storage.data(), required > 0 ? required - 1 : 0);
-    return status;
+    BML::ScriptModRuntime *runtime = BML::ScriptModRuntime::GetCurrentScriptModRuntime();
+    if (!runtime)
+        runtime = const_cast<BML::ScriptModRuntime *>(&mod->GetRuntimeForInterop());
+    outClients = runtime->GetInteropImcClients();
+    if (!outClients)
+        return BML_ERROR_OUT_OF_MEMORY;
+    outContext = mod->GetModContext();
+    return BML_OK;
 }
 
 int ReadRuntime(RuntimeState &out) {
-    ActiveCall call;
-    BML_RecordRef record{};
-    int status = ReadResource(RuntimeApi::Descriptor, "state", call, record);
-    RecordLease lease(call.Context, call.CallContext, record);
-    RuntimeState value{};
-    if (status == BML_OK) status = ReadBool(call, record, RuntimeApi::RuntimeStateField::InGame, value.InGame);
-    if (status == BML_OK) status = ReadBool(call, record, RuntimeApi::RuntimeStateField::InLevel, value.InLevel);
-    if (status == BML_OK) status = ReadBool(call, record, RuntimeApi::RuntimeStateField::Paused, value.Paused);
-    if (status == BML_OK) status = ReadBool(call, record, RuntimeApi::RuntimeStateField::Playing, value.Playing);
-    if (status == BML_OK) status = ReadBool(call, record, RuntimeApi::RuntimeStateField::CheatEnabled, value.CheatEnabled);
-    if (status == BML_OK) out = value;
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    RuntimeImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Runtime(client);
+    RuntimeImc::RuntimeStateValue value{};
+    if (status == BML_OK) status = client->ReadState(value);
+    if (status == BML_OK) {
+        out = {value.InGame, value.InLevel, value.Paused, value.Playing, value.CheatEnabled};
+    }
     return status;
 }
 
 int ReadClock(ClockState &out) {
-    ActiveCall call;
-    BML_RecordRef record{};
-    int status = ReadResource(RuntimeApi::Descriptor, "clock", call, record);
-    RecordLease lease(call.Context, call.CallContext, record);
-    ClockState value{};
-    if (status == BML_OK) status = ReadFloat(call, record, RuntimeApi::ClockStateField::TimeMs, value.TimeMs);
-    if (status == BML_OK) status = ReadFloat(call, record, RuntimeApi::ClockStateField::AbsoluteMs, value.AbsoluteMs);
-    if (status == BML_OK) status = ReadFloat(call, record, RuntimeApi::ClockStateField::DeltaMs, value.DeltaMs);
-    if (status == BML_OK) status = ReadInt(call, record, RuntimeApi::ClockStateField::Frame, value.Frame);
-    if (status == BML_OK) out = value;
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    RuntimeImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Runtime(client);
+    RuntimeImc::ClockStateValue value{};
+    if (status == BML_OK) status = client->ReadClock(value);
+    if (status == BML_OK)
+        out = {value.TimeMs, value.AbsoluteMs, value.DeltaMs, value.Frame};
     return status;
 }
 
 int ReadScore(ScoreState &out) {
-    ActiveCall call;
-    BML_RecordRef record{};
-    int status = ReadResource(RuntimeApi::Descriptor, "score", call, record);
-    RecordLease lease(call.Context, call.CallContext, record);
-    ScoreState value{};
-    if (status == BML_OK) status = ReadFloat(call, record, RuntimeApi::ScoreStateField::Sr, value.SR);
-    if (status == BML_OK) status = ReadInt(call, record, RuntimeApi::ScoreStateField::Hs, value.HS);
-    if (status == BML_OK) out = value;
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    RuntimeImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Runtime(client);
+    RuntimeImc::ScoreStateValue value{};
+    if (status == BML_OK) status = client->ReadScore(value);
+    if (status == BML_OK)
+        out = {value.Sr, value.Hs};
     return status;
 }
 
 int ReadObjectInfo(CKObject *object, ObjectInfo &out) {
-    ActiveCall call;
-    BML_RecordRef record{};
-    int status = ReadComponent(object, SceneApi::Descriptor, "object", call, record);
-    RecordLease lease(call.Context, call.CallContext, record);
-    ObjectInfo value{};
-    if (status == BML_OK) value.Object = MakeBuiltinObjectRef(*call.Context, object);
-    if (status == BML_OK) status = ReadInt(call, record, SceneApi::ObjectInfoField::Id, value.Id);
-    if (status == BML_OK) status = ReadString(call, record, SceneApi::ObjectInfoField::Name, value.Name);
-    if (status == BML_OK) status = ReadInt(call, record, SceneApi::ObjectInfoField::ClassId, value.ClassId);
-    if (status == BML_OK) status = ReadBool(call, record, SceneApi::ObjectInfoField::Visible, value.Visible);
-    if (status == BML_OK) status = ReadBool(call, record, SceneApi::ObjectInfoField::Dynamic, value.Dynamic);
-    if (status == BML_OK) out = std::move(value);
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    SceneImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Scene(client);
+    const BML_ObjectRef reference = context ? MakeBuiltinObjectRef(*context, object) : BML_ObjectRef{};
+    if (status == BML_OK && object && reference.Domain == 0)
+        status = BML_ERROR_INTEROP_OBJECT_INVALID;
+    SceneImc::ObjectInfoValue value{};
+    if (status == BML_OK) status = client->ReadObject(reference, value);
+    if (status == BML_OK) {
+        out.Object = reference;
+        out.Id = value.Id;
+        out.Name = std::move(value.Name);
+        out.ClassId = value.ClassId;
+        out.Visible = value.Visible;
+        out.Dynamic = value.Dynamic;
+    }
     return status;
 }
 
 int ReadEntity(CKObject *object, EntityTransform &out) {
-    ActiveCall call;
-    BML_RecordRef record{};
-    int status = ReadComponent(object, SceneApi::Descriptor, "entity", call, record);
-    RecordLease lease(call.Context, call.CallContext, record);
-    EntityTransform value{};
-    if (status == BML_OK) status = ReadVec3(call, record, SceneApi::EntityTransformField::Position, value.Position);
-    if (status == BML_OK) status = ReadVec3(call, record, SceneApi::EntityTransformField::Scale, value.Scale);
-    if (status == BML_OK) status = ReadObject(call, record, SceneApi::EntityTransformField::Parent, value.Parent);
-    if (status == BML_OK) status = ReadInt(call, record, SceneApi::EntityTransformField::ChildCount, value.ChildCount);
-    if (status == BML_OK) out = value;
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    SceneImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Scene(client);
+    const BML_ObjectRef reference = context ? MakeBuiltinObjectRef(*context, object) : BML_ObjectRef{};
+    if (status == BML_OK && object && reference.Domain == 0)
+        status = BML_ERROR_INTEROP_OBJECT_INVALID;
+    SceneImc::EntityTransformValue value{};
+    if (status == BML_OK) status = client->ReadEntity(reference, value);
+    if (status == BML_OK)
+        out = {value.Position, value.Scale, value.Parent, value.ChildCount};
     return status;
 }
 
 int FindObject(const std::string &name, int classId, bool filterClass, CKObject *&out) {
     out = nullptr;
-    ActiveCall call;
-    int status = GetActiveCallForApi(call, SceneApi::Descriptor);
-    if (status != BML_OK)
-        return status;
-
-    const uint32_t schema = filterClass ? SceneApi::FindNameClassRequest.Id : SceneApi::FindNameRequest.Id;
-    const char *endpoint = filterClass ? "find_name_class" : "find_name";
-    BML_InteropRecordBuilder *builder = nullptr;
-    status = call.Context->GetInteropRegistry().CreateInputRecord(&call.CallContext, SceneApi::ApiId, schema, &builder);
-    BuilderLease builderLease(call.Context, builder);
-    if (status == BML_OK)
-        status = call.Context->GetInteropRegistry().BuilderSetValue(builder,
-                                                                       SceneApi::FindNameRequestField::Name,
-                                                                       BML_INTEROP_FIELD_STRING,
-                                                                       name.data(),
-                                                                       name.size());
-    if (status == BML_OK && filterClass)
-        status = call.Context->GetInteropRegistry().BuilderSetValue(builder,
-                                                                       SceneApi::FindNameClassRequestField::ClassId,
-                                                                       BML_INTEROP_FIELD_INT,
-                                                                       &classId,
-                                                                       1);
-
-    BML_RecordRef record{};
-    if (status == BML_OK)
-        status = call.Context->GetInteropRegistry().Invoke(&call.CallContext,
-                                                              SceneApi::ApiId,
-                                                              endpoint,
-                                                              BML_INTEROP_ENDPOINT_QUERY,
-                                                              builder,
-                                                              &record);
-    RecordLease recordLease(call.Context, call.CallContext, record);
-    BML_ObjectRef reference{};
-    if (status == BML_OK)
-        status = ReadObject(call, record, SceneApi::FindResultField::Object, reference);
-    if (status == BML_OK && reference.Domain != 0) {
-        out = ResolveBuiltinObjectRef(*call.Context, reference);
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    SceneImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Scene(client);
+    SceneImc::FindResultValue result{};
+    if (status == BML_OK && filterClass) {
+        SceneImc::FindNameClassRequestValue request{name, classId};
+        status = client->QueryFindNameClass(request, result);
+    } else if (status == BML_OK) {
+        SceneImc::FindNameRequestValue request{name};
+        status = client->QueryFindName(request, result);
+    }
+    if (status == BML_OK && result.Object.Domain != 0) {
+        out = ResolveBuiltinObjectRef(*context, result.Object);
         if (!out)
             status = BML_ERROR_INTEROP_OBJECT_INVALID;
     }
@@ -504,68 +348,65 @@ int FindByNameAndClass(const std::string &name, int classId, CKObject *&out) {
 }
 
 int ReadLevel(LevelState &out) {
-    ActiveCall call;
-    BML_RecordRef record{};
-    int status = ReadResource(GameplayApi::Descriptor, "level", call, record);
-    RecordLease lease(call.Context, call.CallContext, record);
-    LevelState value{};
-    if (status == BML_OK) status = ReadInt(call, record, GameplayApi::LevelStateField::Id, value.Id);
-    if (status == BML_OK) status = ReadObject(call, record, GameplayApi::LevelStateField::ActiveBall, value.ActiveBall);
-    if (status == BML_OK) status = ReadMat4(call, record, GameplayApi::LevelStateField::ResetMatrix, value.ResetMatrix);
-    if (status == BML_OK) status = ReadInt(call, record, GameplayApi::LevelStateField::Points, value.Points);
-    if (status == BML_OK) out = value;
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    GameplayImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Gameplay(client);
+    GameplayImc::LevelStateValue value{};
+    if (status == BML_OK) status = client->ReadLevel(value);
+    if (status == BML_OK)
+        out = {value.Id, value.ActiveBall, value.ResetMatrix, value.Points};
     return status;
 }
 
 int ReadEnergy(EnergyState &out) {
-    ActiveCall call;
-    BML_RecordRef record{};
-    int status = ReadResource(GameplayApi::Descriptor, "energy", call, record);
-    RecordLease lease(call.Context, call.CallContext, record);
-    EnergyState value{};
-    if (status == BML_OK) status = ReadInt(call, record, GameplayApi::EnergyStateField::Points, value.Points);
-    if (status == BML_OK) status = ReadInt(call, record, GameplayApi::EnergyStateField::Lives, value.Lives);
-    if (status == BML_OK) status = ReadInt(call, record, GameplayApi::EnergyStateField::StartPoints, value.StartPoints);
-    if (status == BML_OK) status = ReadInt(call, record, GameplayApi::EnergyStateField::StartLives, value.StartLives);
-    if (status == BML_OK) status = ReadFloat(call, record, GameplayApi::EnergyStateField::TimeFactor, value.TimeFactor);
-    if (status == BML_OK) status = ReadInt(call, record, GameplayApi::EnergyStateField::LifeBonus, value.LifeBonus);
-    if (status == BML_OK) out = value;
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    GameplayImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Gameplay(client);
+    GameplayImc::EnergyStateValue value{};
+    if (status == BML_OK) status = client->ReadEnergy(value);
+    if (status == BML_OK) {
+        out = {value.Points, value.Lives, value.StartPoints, value.StartLives,
+               value.TimeFactor, value.LifeBonus};
+    }
     return status;
 }
 
-CKObject *BorrowObject(const ObjectInfo *value) {
-    ActiveCall call;
-    return value && GetActiveCall(call) == BML_OK
-               ? ResolveBuiltinObjectRef(*call.Context, value->Object)
+ModContext *GetActiveScriptContext() {
+    if (BML::RejectScriptRestrictedHostCall("BML::Interop"))
+        return nullptr;
+    BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
+    return mod ? mod->GetModContext() : nullptr;
+}
+
+CKObject *ResolveScriptObject(const BML_ObjectRef &reference) {
+    ModContext *context = GetActiveScriptContext();
+    return context && reference.Domain != 0
+               ? ResolveBuiltinObjectRef(*context, reference)
                : nullptr;
+}
+
+CKObject *BorrowObject(const ObjectInfo *value) {
+    return value ? ResolveScriptObject(value->Object) : nullptr;
 }
 
 CKObject *BorrowParent(const EntityTransform *value) {
-    ActiveCall call;
-    return value && GetActiveCall(call) == BML_OK
-               ? ResolveBuiltinObjectRef(*call.Context, value->Parent)
-               : nullptr;
+    return value ? ResolveScriptObject(value->Parent) : nullptr;
 }
 
 CKObject *BorrowActiveBall(const LevelState *value) {
-    ActiveCall call;
-    return value && GetActiveCall(call) == BML_OK
-               ? ResolveBuiltinObjectRef(*call.Context, value->ActiveBall)
-               : nullptr;
+    return value ? ResolveScriptObject(value->ActiveBall) : nullptr;
 }
 
 CKObject *BorrowCheckpointObject(const Checkpoint *value) {
-    ActiveCall call;
-    return value && GetActiveCall(call) == BML_OK
-               ? ResolveBuiltinObjectRef(*call.Context, value->Object)
-               : nullptr;
+    return value ? ResolveScriptObject(value->Object) : nullptr;
 }
 
 CKObject *BorrowResetpointObject(const Resetpoint *value) {
-    ActiveCall call;
-    return value && GetActiveCall(call) == BML_OK
-               ? ResolveBuiltinObjectRef(*call.Context, value->Object)
-               : nullptr;
+    return value ? ResolveScriptObject(value->Object) : nullptr;
 }
 
 class CollectionCursor {
@@ -575,151 +416,130 @@ public:
         if (--m_RefCount == 0)
             delete this;
     }
-    bool IsOpen() const { return m_Cursor.Value != 0; }
+    bool IsOpen() const { return m_Open; }
     int Close() {
-        if (m_Cursor.Value == 0)
-            return BML_OK;
-        BML_InteropCallContext call{};
-        const int contextStatus = GetOwnerCall(m_Context, m_Owner, call);
-        const int status = contextStatus == BML_OK
-                               ? m_Context->GetInteropRegistry().CloseCollection(&call, m_Cursor)
-                               : contextStatus;
-        m_Cursor = {};
-        return status;
+        m_Open = false;
+        return BML_OK;
     }
 
 protected:
-    CollectionCursor(ModContext *context, std::string owner, BML_CursorRef cursor)
-        : m_Context(context), m_Owner(std::move(owner)), m_Cursor(cursor) {}
-    virtual ~CollectionCursor() { (void)Close(); }
-
-    ModContext *Context() const { return m_Context; }
-
-    int ReadOne(BML_InteropCallContext &call,
-                BML_RecordRef &outRecord,
-                bool &outHasValue,
-                bool &outComplete) {
-        outRecord = {};
-        outHasValue = false;
-        outComplete = false;
-        const int contextStatus = GetOwnerCall(m_Context, m_Owner, call);
-        if (contextStatus != BML_OK)
-            return contextStatus;
-        size_t count = 0;
-        int complete = 0;
-        int status = m_Context->GetInteropRegistry().ReadCollectionPage(&call,
-                                                                           m_Cursor,
-                                                                           &outRecord,
-                                                                           1,
-                                                                           &count,
-                                                                           &complete);
-        if (status == BML_OK) {
-            outHasValue = count != 0;
-            outComplete = complete != 0;
-        }
-        return status;
+    virtual ~CollectionCursor() = default;
+    int BeginNext(std::size_t count, bool &hasValue, bool &complete) const {
+        hasValue = false;
+        complete = false;
+        if (!m_Open)
+            return BML_ERROR_INVALID_HANDLE;
+        hasValue = m_Index < count;
+        complete = !hasValue || m_Index + 1 >= count;
+        return BML_OK;
     }
+    void Advance() { ++m_Index; }
+    std::size_t Index() const { return m_Index; }
 
 private:
     int m_RefCount = 1;
-    ModContext *m_Context = nullptr;
-    std::string m_Owner;
-    BML_CursorRef m_Cursor{};
+    bool m_Open = true;
+    std::size_t m_Index = 0;
 };
 
 class CatalogCursor final : public CollectionCursor {
 public:
-    CatalogCursor(ModContext *context, std::string owner, BML_CursorRef cursor)
-        : CollectionCursor(context, std::move(owner), cursor) {}
+    explicit CatalogCursor(std::vector<GameplayImc::CatalogEntryValue> values)
+        : m_Values(std::move(values)) {}
     int Next(CatalogEntry &out, bool &hasValue, bool &complete) {
-        BML_InteropCallContext call{};
-        BML_RecordRef record{};
-        int status = ReadOne(call, record, hasValue, complete);
-        RecordLease lease(Context(), call, record);
-        CatalogEntry value{};
-        if (status == BML_OK && hasValue) {
-            if (status == BML_OK) status = ReadString({Context(), call}, record, GameplayApi::CatalogEntryField::File, value.File);
-            if (status == BML_OK) status = ReadString({Context(), call}, record, GameplayApi::CatalogEntryField::StartBall, value.StartBall);
-            if (status == BML_OK) status = ReadString({Context(), call}, record, GameplayApi::CatalogEntryField::Sky, value.Sky);
-            if (status == BML_OK) status = ReadInt({Context(), call}, record, GameplayApi::CatalogEntryField::Bonus, value.Bonus);
-            if (status == BML_OK) status = ReadInt({Context(), call}, record, GameplayApi::CatalogEntryField::Music, value.Music);
-        }
-        if (status == BML_OK && hasValue) out = std::move(value);
-        return status;
+        const int status = BeginNext(m_Values.size(), hasValue, complete);
+        if (status != BML_OK || !hasValue)
+            return status;
+        auto &value = m_Values[Index()];
+        out = {std::move(value.File), std::move(value.StartBall), std::move(value.Sky),
+               value.Bonus, value.Music};
+        Advance();
+        return BML_OK;
     }
+private:
+    std::vector<GameplayImc::CatalogEntryValue> m_Values;
 };
 
 class CheckpointCursor final : public CollectionCursor {
 public:
-    CheckpointCursor(ModContext *context, std::string owner, BML_CursorRef cursor)
-        : CollectionCursor(context, std::move(owner), cursor) {}
+    explicit CheckpointCursor(std::vector<GameplayImc::CheckpointValue> values)
+        : m_Values(std::move(values)) {}
     int Next(Checkpoint &out, bool &hasValue, bool &complete) {
-        BML_InteropCallContext call{};
-        BML_RecordRef record{};
-        int status = ReadOne(call, record, hasValue, complete);
-        RecordLease lease(Context(), call, record);
-        Checkpoint value{};
-        if (status == BML_OK && hasValue) {
-            if (status == BML_OK) status = ReadMat4({Context(), call}, record, GameplayApi::CheckpointField::Matrix, value.Matrix);
-            if (status == BML_OK) status = ReadObject({Context(), call}, record, GameplayApi::CheckpointField::Object, value.Object);
-        }
-        if (status == BML_OK && hasValue) out = value;
-        return status;
+        const int status = BeginNext(m_Values.size(), hasValue, complete);
+        if (status != BML_OK || !hasValue)
+            return status;
+        const auto &value = m_Values[Index()];
+        out = {value.Matrix, value.Object};
+        Advance();
+        return BML_OK;
     }
+private:
+    std::vector<GameplayImc::CheckpointValue> m_Values;
 };
 
 class ResetpointCursor final : public CollectionCursor {
 public:
-    ResetpointCursor(ModContext *context, std::string owner, BML_CursorRef cursor)
-        : CollectionCursor(context, std::move(owner), cursor) {}
+    explicit ResetpointCursor(std::vector<GameplayImc::ResetpointValue> values)
+        : m_Values(std::move(values)) {}
     int Next(Resetpoint &out, bool &hasValue, bool &complete) {
-        BML_InteropCallContext call{};
-        BML_RecordRef record{};
-        int status = ReadOne(call, record, hasValue, complete);
-        RecordLease lease(Context(), call, record);
-        Resetpoint value{};
-        if (status == BML_OK && hasValue)
-            status = ReadObject({Context(), call}, record, GameplayApi::ResetpointField::Object, value.Object);
-        if (status == BML_OK && hasValue) out = value;
-        return status;
+        const int status = BeginNext(m_Values.size(), hasValue, complete);
+        if (status != BML_OK || !hasValue)
+            return status;
+        out = {m_Values[Index()].Object};
+        Advance();
+        return BML_OK;
     }
+private:
+    std::vector<GameplayImc::ResetpointValue> m_Values;
 };
 
-template <typename T>
-int OpenCollection(const char *endpoint, T *&out) {
+template <typename Cursor, typename Value, typename Reader>
+int OpenCollection(Cursor *&out, Reader reader) {
     out = nullptr;
-    ActiveCall call;
-    const int status = GetActiveCallForApi(call, GameplayApi::Descriptor);
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    GameplayImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Gameplay(client);
+    std::vector<Value> values;
+    if (status == BML_OK) status = reader(*client, values);
     if (status != BML_OK)
         return status;
-    BML_CursorRef cursor{};
-    const int openStatus = call.Context->GetInteropRegistry().OpenCollection(&call.CallContext,
-                                                                                GameplayApi::ApiId,
-                                                                                endpoint,
-                                                                                &cursor);
-    if (openStatus != BML_OK)
-        return openStatus;
-    T *result = new (std::nothrow) T(call.Context, BML::ScriptModRuntime::GetCurrentScriptMod()->GetID(), cursor);
-    if (!result) {
-        (void)call.Context->GetInteropRegistry().CloseCollection(&call.CallContext, cursor);
+    Cursor *result = new (std::nothrow) Cursor(std::move(values));
+    if (!result)
         return BML_ERROR_OUT_OF_MEMORY;
-    }
     out = result;
     return BML_OK;
 }
 
-int OpenCatalog(CatalogCursor *&out) { return OpenCollection("catalog", out); }
-int OpenCheckpoints(CheckpointCursor *&out) { return OpenCollection("checkpoints", out); }
-int OpenResetpoints(ResetpointCursor *&out) { return OpenCollection("resetpoints", out); }
+int OpenCatalog(CatalogCursor *&out) {
+    return OpenCollection<CatalogCursor, GameplayImc::CatalogEntryValue>(
+        out, [](GameplayImc::Client &client, auto &values) {
+            return client.ReadCatalog(values);
+        });
+}
 
-/* A script Event owns the immutable record received from bml.events.  It does
- * not keep a CK pointer: object values are re-resolved only by Borrow* calls
- * and become null after the underlying object or session goes stale. */
+int OpenCheckpoints(CheckpointCursor *&out) {
+    return OpenCollection<CheckpointCursor, GameplayImc::CheckpointValue>(
+        out, [](GameplayImc::Client &client, auto &values) {
+            return client.ReadCheckpoints(values);
+        });
+}
+
+int OpenResetpoints(ResetpointCursor *&out) {
+    return OpenCollection<ResetpointCursor, GameplayImc::ResetpointValue>(
+        out, [](GameplayImc::Client &client, auto &values) {
+            return client.ReadResetpoints(values);
+        });
+}
+/* Script events own decoded IMC values, never CK pointers. Object references are
+ * resolved only by Borrow* calls, so destroyed Virtools objects remain safe. */
 class ScriptEvent {
 public:
-    ScriptEvent(ModContext *context, std::string owner, BML_RecordRef record)
-        : m_Context(context), m_Owner(std::move(owner)), m_Record(record) {}
-    ~ScriptEvent() { ReleaseNative(); }
+    ScriptEvent(ModContext *context, EventsImc::EventValue value,
+                std::uint64_t sequence, std::uint64_t timestamp)
+        : m_Context(context), m_Value(std::move(value)),
+          m_Sequence(sequence), m_Timestamp(timestamp) {}
 
     void AddRef() { ++m_RefCount; }
     void Release() {
@@ -727,339 +547,220 @@ public:
             delete this;
     }
 
-    bool IsValid() const { return Status() == BML_OK; }
-    int Status() const {
-        BML_InteropCallContext call{};
-        const int contextStatus = GetOwnerCall(m_Context, m_Owner, call);
-        if (contextStatus != BML_OK)
-            return contextStatus;
-        uint32_t schema = 0;
-        return m_Context->GetInteropRegistry().RecordSchema(&call, m_Record, &schema);
-    }
-
-    int GetKind() const { return Int(EventsApi::EventField::Kind); }
-    uint64_t GetSequence() const {
-        BML_InteropCallContext call{};
-        uint64_t value = 0;
-        return GetOwnerCall(m_Context, m_Owner, call) == BML_OK &&
-                       m_Context->GetInteropRegistry().RecordSequence(&call, m_Record, &value) == BML_OK
-                   ? value
-                   : 0;
-    }
-    uint64_t GetTimestamp() const {
-        BML_InteropCallContext call{};
-        uint64_t value = 0;
-        return GetOwnerCall(m_Context, m_Owner, call) == BML_OK &&
-                       m_Context->GetInteropRegistry().RecordTimestamp(&call, m_Record, &value) == BML_OK
-                   ? value
-                   : 0;
-    }
+    bool IsValid() const { return m_Context != nullptr; }
+    int Status() const { return IsValid() ? BML_OK : BML_ERROR_INTEROP_HANDLE_STALE; }
+    int GetKind() const { return m_Value.Kind; }
+    std::uint64_t GetSequence() const { return m_Sequence; }
+    std::uint64_t GetTimestamp() const { return m_Timestamp; }
 
     bool IsLoad() const {
-        const int kind = GetKind();
-        return kind == BML_EVENT_LOAD_OBJECT || kind == BML_EVENT_LOAD_SCRIPT;
+        return m_Value.Kind == BML_EVENT_LOAD_OBJECT || m_Value.Kind == BML_EVENT_LOAD_SCRIPT;
     }
     bool IsPhysics() const {
-        const int kind = GetKind();
-        return kind == BML_EVENT_PHYSICALIZE || kind == BML_EVENT_UNPHYSICALIZE;
+        return m_Value.Kind == BML_EVENT_PHYSICALIZE || m_Value.Kind == BML_EVENT_UNPHYSICALIZE;
     }
     bool IsCommand() const {
-        const int kind = GetKind();
-        return kind == BML_EVENT_COMMAND_PRE || kind == BML_EVENT_COMMAND_POST;
+        return m_Value.Kind == BML_EVENT_COMMAND_PRE || m_Value.Kind == BML_EVENT_COMMAND_POST;
     }
-    bool IsConfig() const { return GetKind() == BML_EVENT_CONFIG_MODIFIED; }
-    bool IsCheat() const { return GetKind() == BML_EVENT_CHEAT_CHANGED; }
+    bool IsConfig() const { return m_Value.Kind == BML_EVENT_CONFIG_MODIFIED; }
+    bool IsCheat() const { return m_Value.Kind == BML_EVENT_CHEAT_CHANGED; }
 
-    std::string GetFilename() const { return String(EventsApi::EventField::Filename); }
-    bool GetIsMap() const { return Bool(EventsApi::EventField::IsMap); }
-    std::string GetMasterName() const { return String(EventsApi::EventField::MasterName); }
-    int GetFilterClass() const { return Int(EventsApi::EventField::FilterClass); }
-    bool GetAddToScene() const { return Bool(EventsApi::EventField::AddToScene); }
-    bool GetReuseMeshes() const { return Bool(EventsApi::EventField::ReuseMeshes); }
-    bool GetReuseMaterials() const { return Bool(EventsApi::EventField::ReuseMaterials); }
-    bool GetDynamic() const { return Bool(EventsApi::EventField::Dynamic); }
-    CKObject *BorrowMasterObject() const { return Object(EventsApi::EventField::MasterObject); }
-    CKObject *BorrowScript() const { return Object(EventsApi::EventField::Script); }
-    int GetObjectCount() const { return ArrayCount(EventsApi::EventField::ObjectIds, BML_INTEROP_FIELD_OBJECT_ARRAY); }
-    CKObject *BorrowObject(int index) const { return ArrayObject(EventsApi::EventField::ObjectIds, index); }
+    std::string GetFilename() const { return m_Value.Filename; }
+    bool GetIsMap() const { return m_Value.IsMap; }
+    std::string GetMasterName() const { return m_Value.MasterName; }
+    int GetFilterClass() const { return m_Value.FilterClass; }
+    bool GetAddToScene() const { return m_Value.AddToScene; }
+    bool GetReuseMeshes() const { return m_Value.ReuseMeshes; }
+    bool GetReuseMaterials() const { return m_Value.ReuseMaterials; }
+    bool GetDynamic() const { return m_Value.Dynamic; }
+    CKObject *BorrowMasterObject() const { return Resolve(m_Value.MasterObject); }
+    CKObject *BorrowScript() const { return Resolve(m_Value.Script); }
+    int GetObjectCount() const { return Count(m_Value.ObjectIds.size()); }
+    CKObject *BorrowObject(int index) const { return ResolveAt(m_Value.ObjectIds, index); }
 
-    CKObject *BorrowTarget() const { return Object(EventsApi::EventField::Target); }
-    bool GetFixed() const { return Bool(EventsApi::EventField::Fixed); }
-    float GetFriction() const { return Float(EventsApi::EventField::Friction); }
-    float GetElasticity() const { return Float(EventsApi::EventField::Elasticity); }
-    float GetMass() const { return Float(EventsApi::EventField::Mass); }
-    std::string GetCollisionGroup() const { return String(EventsApi::EventField::CollisionGroup); }
-    bool GetStartFrozen() const { return Bool(EventsApi::EventField::StartFrozen); }
-    bool GetEnableCollision() const { return Bool(EventsApi::EventField::EnableCollision); }
-    bool GetAutoCalculateMassCenter() const { return Bool(EventsApi::EventField::AutoCalculateMassCenter); }
-    float GetLinearDamp() const { return Float(EventsApi::EventField::LinearDamp); }
-    float GetRotDamp() const { return Float(EventsApi::EventField::RotDamp); }
-    std::string GetCollisionSurface() const { return String(EventsApi::EventField::CollisionSurface); }
-    BML_Vec3 GetMassCenter() const { return Vec3(EventsApi::EventField::MassCenter); }
-    int GetConvexMeshCount() const { return ArrayCount(EventsApi::EventField::ConvexMeshes, BML_INTEROP_FIELD_OBJECT_ARRAY); }
-    CKObject *BorrowConvexMesh(int index) const { return ArrayObject(EventsApi::EventField::ConvexMeshes, index); }
-    int GetBallCount() const { return ArrayCount(EventsApi::EventField::BallCenters, BML_INTEROP_FIELD_VEC3_ARRAY); }
-    BML_Vec3 GetBallCenter(int index) const { return ArrayVec3(EventsApi::EventField::BallCenters, index); }
-    float GetBallRadius(int index) const { return ArrayFloat(EventsApi::EventField::BallRadii, index); }
-    int GetConcaveMeshCount() const { return ArrayCount(EventsApi::EventField::ConcaveMeshes, BML_INTEROP_FIELD_OBJECT_ARRAY); }
-    CKObject *BorrowConcaveMesh(int index) const { return ArrayObject(EventsApi::EventField::ConcaveMeshes, index); }
+    CKObject *BorrowTarget() const { return Resolve(m_Value.Target); }
+    bool GetFixed() const { return m_Value.Fixed; }
+    float GetFriction() const { return m_Value.Friction; }
+    float GetElasticity() const { return m_Value.Elasticity; }
+    float GetMass() const { return m_Value.Mass; }
+    std::string GetCollisionGroup() const { return m_Value.CollisionGroup; }
+    bool GetStartFrozen() const { return m_Value.StartFrozen; }
+    bool GetEnableCollision() const { return m_Value.EnableCollision; }
+    bool GetAutoCalculateMassCenter() const { return m_Value.AutoCalculateMassCenter; }
+    float GetLinearDamp() const { return m_Value.LinearDamp; }
+    float GetRotDamp() const { return m_Value.RotDamp; }
+    std::string GetCollisionSurface() const { return m_Value.CollisionSurface; }
+    BML_Vec3 GetMassCenter() const { return m_Value.MassCenter; }
+    int GetConvexMeshCount() const { return Count(m_Value.ConvexMeshes.size()); }
+    CKObject *BorrowConvexMesh(int index) const { return ResolveAt(m_Value.ConvexMeshes, index); }
+    int GetBallCount() const { return Count(m_Value.BallCenters.size()); }
+    BML_Vec3 GetBallCenter(int index) const { return At(m_Value.BallCenters, index); }
+    float GetBallRadius(int index) const { return At(m_Value.BallRadii, index); }
+    int GetConcaveMeshCount() const { return Count(m_Value.ConcaveMeshes.size()); }
+    CKObject *BorrowConcaveMesh(int index) const { return ResolveAt(m_Value.ConcaveMeshes, index); }
 
-    std::string GetCommand() const { return String(EventsApi::EventField::Command); }
-    int GetCommandArgumentCount() const { return StringArrayCount(EventsApi::EventField::CommandArgs); }
-    std::string GetCommandArgument(int index) const { return StringArrayItem(EventsApi::EventField::CommandArgs, index); }
-
-    std::string GetConfigCategory() const { return String(EventsApi::EventField::ConfigCategory); }
-    std::string GetConfigKey() const { return String(EventsApi::EventField::ConfigKey); }
-    int GetConfigType() const { return Int(EventsApi::EventField::ConfigType); }
-    std::string GetConfigValue() const { return String(EventsApi::EventField::ConfigValue); }
-    bool GetCheatEnabled() const { return Bool(EventsApi::EventField::CheatEnabled); }
+    std::string GetCommand() const { return m_Value.Command; }
+    int GetCommandArgumentCount() const { return Count(m_Value.CommandArgs.size()); }
+    std::string GetCommandArgument(int index) const { return At(m_Value.CommandArgs, index); }
+    std::string GetConfigCategory() const { return m_Value.ConfigCategory; }
+    std::string GetConfigKey() const { return m_Value.ConfigKey; }
+    int GetConfigType() const { return m_Value.ConfigType; }
+    std::string GetConfigValue() const { return m_Value.ConfigValue; }
+    bool GetCheatEnabled() const { return m_Value.CheatEnabled; }
 
 private:
-    int Call(BML_InteropCallContext &out) const {
-        return GetOwnerCall(m_Context, m_Owner, out);
+    static int Count(std::size_t count) {
+        const auto limit = static_cast<std::size_t>((std::numeric_limits<int>::max)());
+        return count > limit ? (std::numeric_limits<int>::max)()
+                             : static_cast<int>(count);
     }
-    int Int(uint32_t field) const {
-        BML_InteropCallContext call{};
-        int value = 0;
-        return Call(call) == BML_OK &&
-                       m_Context->GetInteropRegistry().RecordGetInt(&call, m_Record, field, &value) == BML_OK
-                   ? value
-                   : 0;
+
+    template <typename T>
+    static T At(const std::vector<T> &values, int index) {
+        return index >= 0 && static_cast<std::size_t>(index) < values.size()
+                   ? values[static_cast<std::size_t>(index)]
+                   : T{};
     }
-    bool Bool(uint32_t field) const {
-        BML_InteropCallContext call{};
-        int value = 0;
-        return Call(call) == BML_OK &&
-               m_Context->GetInteropRegistry().RecordGetBool(&call, m_Record, field, &value) == BML_OK && value != 0;
-    }
-    float Float(uint32_t field) const {
-        BML_InteropCallContext call{};
-        float value = 0.0f;
-        return Call(call) == BML_OK &&
-                       m_Context->GetInteropRegistry().RecordGetFloat(&call, m_Record, field, &value) == BML_OK
-                   ? value
-                   : 0.0f;
-    }
-    std::string String(uint32_t field) const {
-        BML_InteropCallContext call{};
-        if (Call(call) != BML_OK)
-            return {};
-        size_t required = 0;
-        if (m_Context->GetInteropRegistry().RecordGetString(&call, m_Record, field, nullptr, 0, &required) != BML_OK)
-            return {};
-        std::string result(required ? required : 1, '\0');
-        if (m_Context->GetInteropRegistry().RecordGetString(&call, m_Record, field,
-                                                              result.data(), result.size(), &required) != BML_OK)
-            return {};
-        result.resize(result.empty() ? 0 : result.size() - 1);
-        return result;
-    }
-    BML_Vec3 Vec3(uint32_t field) const {
-        BML_InteropCallContext call{};
-        BML_Vec3 value{};
-        return Call(call) == BML_OK &&
-                       m_Context->GetInteropRegistry().RecordGetVec3(&call, m_Record, field, &value) == BML_OK
-                   ? value
-                   : BML_Vec3{};
-    }
-    CKObject *Object(uint32_t field) const {
-        BML_InteropCallContext call{};
-        BML_ObjectRef value{};
-        return Call(call) == BML_OK &&
-                       m_Context->GetInteropRegistry().RecordGetObject(&call, m_Record, field, &value) == BML_OK
-                   ? ResolveBuiltinObjectRef(*m_Context, value)
+
+    CKObject *Resolve(const BML_ObjectRef &reference) const {
+        return m_Context && reference.Domain != 0
+                   ? ResolveBuiltinObjectRef(*m_Context, reference)
                    : nullptr;
     }
-    int ArrayCount(uint32_t field, BML_INTEROP_FIELD_TYPE type) const {
-        BML_InteropCallContext call{};
-        if (Call(call) != BML_OK)
-            return 0;
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        if (m_Context->GetInteropRegistry().RecordBorrowValue(&call, m_Record, field, type,
-                                                                 &data, &count, &elementSize) != BML_OK ||
-            count > static_cast<size_t>((std::numeric_limits<int>::max)())) {
-            return 0;
-        }
-        return static_cast<int>(count);
-    }
-    CKObject *ArrayObject(uint32_t field, int index) const {
-        if (index < 0)
-            return nullptr;
-        BML_InteropCallContext call{};
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        if (Call(call) != BML_OK ||
-            m_Context->GetInteropRegistry().RecordBorrowValue(&call, m_Record, field,
-                                                                 BML_INTEROP_FIELD_OBJECT_ARRAY,
-                                                                 &data, &count, &elementSize) != BML_OK ||
-            elementSize != sizeof(BML_ObjectRef) || static_cast<size_t>(index) >= count || !data) {
-            return nullptr;
-        }
-        return ResolveBuiltinObjectRef(*m_Context, static_cast<const BML_ObjectRef *>(data)[index]);
-    }
-    BML_Vec3 ArrayVec3(uint32_t field, int index) const {
-        if (index < 0)
-            return {};
-        BML_InteropCallContext call{};
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        if (Call(call) != BML_OK ||
-            m_Context->GetInteropRegistry().RecordBorrowValue(&call, m_Record, field,
-                                                                 BML_INTEROP_FIELD_VEC3_ARRAY,
-                                                                 &data, &count, &elementSize) != BML_OK ||
-            elementSize != sizeof(BML_Vec3) || static_cast<size_t>(index) >= count || !data) {
-            return {};
-        }
-        return static_cast<const BML_Vec3 *>(data)[index];
-    }
-    float ArrayFloat(uint32_t field, int index) const {
-        if (index < 0)
-            return 0.0f;
-        BML_InteropCallContext call{};
-        const void *data = nullptr;
-        size_t count = 0;
-        size_t elementSize = 0;
-        if (Call(call) != BML_OK ||
-            m_Context->GetInteropRegistry().RecordBorrowValue(&call, m_Record, field,
-                                                                 BML_INTEROP_FIELD_FLOAT_ARRAY,
-                                                                 &data, &count, &elementSize) != BML_OK ||
-            elementSize != sizeof(float) || static_cast<size_t>(index) >= count || !data) {
-            return 0.0f;
-        }
-        return static_cast<const float *>(data)[index];
-    }
-    int StringArrayCount(uint32_t field) const {
-        BML_InteropCallContext call{};
-        size_t count = 0;
-        return Call(call) == BML_OK &&
-                       m_Context->GetInteropRegistry().RecordGetStringArrayCount(&call, m_Record, field, &count) == BML_OK &&
-                       count <= static_cast<size_t>((std::numeric_limits<int>::max)())
-                   ? static_cast<int>(count)
-                   : 0;
-    }
-    std::string StringArrayItem(uint32_t field, int index) const {
-        if (index < 0)
-            return {};
-        BML_InteropCallContext call{};
-        if (Call(call) != BML_OK)
-            return {};
-        size_t required = 0;
-        if (m_Context->GetInteropRegistry().RecordGetStringArrayItem(&call, m_Record, field,
-                                                                        static_cast<size_t>(index),
-                                                                        nullptr, 0, &required) != BML_OK) {
-            return {};
-        }
-        std::string result(required ? required : 1, '\0');
-        if (m_Context->GetInteropRegistry().RecordGetStringArrayItem(&call, m_Record, field,
-                                                                        static_cast<size_t>(index),
-                                                                        result.data(), result.size(), &required) != BML_OK) {
-            return {};
-        }
-        result.resize(result.empty() ? 0 : result.size() - 1);
-        return result;
-    }
-    void ReleaseNative() {
-        if (m_Record.Value == 0)
-            return;
-        BML_InteropCallContext call{};
-        if (GetOwnerCall(m_Context, m_Owner, call) == BML_OK)
-            (void)m_Context->GetInteropRegistry().ReleaseRecord(&call, m_Record);
-        m_Record = {};
+
+    CKObject *ResolveAt(const std::vector<BML_ObjectRef> &values, int index) const {
+        return Resolve(At(values, index));
     }
 
     int m_RefCount = 1;
     ModContext *m_Context = nullptr;
-    std::string m_Owner;
-    BML_RecordRef m_Record{};
+    EventsImc::EventValue m_Value;
+    std::uint64_t m_Sequence = 0;
+    std::uint64_t m_Timestamp = 0;
 };
 
 class EventStream {
 public:
-    EventStream(ModContext *context, std::string owner, BML_StreamRef stream)
-        : m_Context(context), m_Owner(std::move(owner)), m_Stream(stream) {}
-    ~EventStream() { CloseNative(); }
+    EventStream(ModContext *context, std::size_t capacity)
+        : m_Context(context), m_Capacity(capacity) {}
+    ~EventStream() { (void)Close(); }
 
     void AddRef() { ++m_RefCount; }
     void Release() {
         if (--m_RefCount == 0)
             delete this;
     }
-    bool IsOpen() const { return m_Stream.Value != 0; }
+
+    int Open(EventsImc::Client &client) {
+        return client.SubscribeAll(m_Subscription, &OnEvent, this,
+                                   static_cast<std::uint32_t>(m_Capacity),
+                                   BML_IMC_BACKPRESSURE_DROP_OLDEST,
+                                   BML_IMC_EXECUTION_GAME_THREAD);
+    }
+
+    bool IsOpen() const { return m_Subscription.IsOpen(); }
+
     int Close() {
-        if (m_Stream.Value == 0)
-            return BML_OK;
-        BML_InteropCallContext call{};
-        const int status = GetOwnerCall(m_Context, m_Owner, call) == BML_OK
-                               ? m_Context->GetInteropRegistry().CloseStream(&call, m_Stream)
-                               : BML_ERROR_INTEROP_HANDLE_STALE;
-        m_Stream = {};
+        const int status = m_Subscription.Close();
+        if (!m_Subscription.IsOpen()) {
+            m_Queue.clear();
+            m_LocalDrops = 0;
+        }
         return status;
     }
+
     int GetDroppedCount(int &out) const {
         out = 0;
-        BML_InteropCallContext call{};
-        const int status = GetOwnerCall(m_Context, m_Owner, call);
-        return status == BML_OK
-                   ? m_Context->GetInteropRegistry().DroppedStreamCount(&call, m_Stream, &out)
-                   : status;
+        if (!m_Subscription.IsOpen())
+            return BML_ERROR_INVALID_HANDLE;
+        std::uint64_t runtimeDrops = 0;
+        const int status = m_Subscription.DroppedCount(runtimeDrops);
+        if (status != BML_OK)
+            return status;
+        const std::uint64_t total = runtimeDrops + m_LocalDrops;
+        out = total > static_cast<std::uint64_t>((std::numeric_limits<int>::max)())
+                  ? (std::numeric_limits<int>::max)()
+                  : static_cast<int>(total);
+        return BML_OK;
     }
+
     int Poll(ScriptEvent *&out) {
         out = nullptr;
-        BML_InteropCallContext call{};
-        const int contextStatus = GetOwnerCall(m_Context, m_Owner, call);
-        if (contextStatus != BML_OK)
-            return contextStatus;
-        BML_RecordRef record{};
-        const int status = m_Context->GetInteropRegistry().PollStream(&call, m_Stream, &record);
-        if (status != BML_OK || record.Value == 0)
-            return status;
-        ScriptEvent *event = new (std::nothrow) ScriptEvent(m_Context, m_Owner, record);
-        if (!event) {
-            (void)m_Context->GetInteropRegistry().ReleaseRecord(&call, record);
+        if (!m_Subscription.IsOpen())
+            return BML_ERROR_INVALID_HANDLE;
+        if (m_Queue.empty())
+            return BML_ERROR_NOT_FOUND;
+        QueuedEvent queued = std::move(m_Queue.front());
+        m_Queue.pop_front();
+        ScriptEvent *event = new (std::nothrow) ScriptEvent(
+            m_Context, std::move(queued.Value), queued.Sequence, queued.Timestamp);
+        if (!event)
             return BML_ERROR_OUT_OF_MEMORY;
-        }
         out = event;
         return BML_OK;
     }
 
 private:
-    void CloseNative() { (void)Close(); }
+    struct QueuedEvent {
+        EventsImc::EventValue Value;
+        std::uint64_t Sequence = 0;
+        std::uint64_t Timestamp = 0;
+    };
+
+    static void OnEvent(int status, EventsImc::EventValue *value,
+                        const BML_ImcMessage *message, void *userdata) noexcept {
+        auto *self = static_cast<EventStream *>(userdata);
+        if (!self)
+            return;
+        if (status != BML_OK || !value || !message) {
+            ++self->m_LocalDrops;
+            return;
+        }
+        try {
+            if (self->m_Queue.size() >= self->m_Capacity) {
+                self->m_Queue.pop_front();
+                ++self->m_LocalDrops;
+            }
+            self->m_Queue.push_back(
+                {std::move(*value), message->MessageId, message->TimestampNs});
+        } catch (...) {
+            ++self->m_LocalDrops;
+        }
+    }
 
     int m_RefCount = 1;
     ModContext *m_Context = nullptr;
-    std::string m_Owner;
-    BML_StreamRef m_Stream{};
+    std::size_t m_Capacity = 0;
+    std::uint64_t m_LocalDrops = 0;
+    EventsImc::AllSubscription m_Subscription;
+    std::deque<QueuedEvent> m_Queue;
 };
 
 int OpenEvents(EventStream *&out, int capacity) {
     out = nullptr;
-    ActiveCall call;
-    const int contextStatus = GetActiveCallForApi(call, EventsApi::Descriptor);
-    if (contextStatus != BML_OK)
-        return contextStatus;
-    BML_StreamRef stream{};
-    const int status = call.Context->GetInteropRegistry().OpenStream(&call.CallContext,
-                                                                        EventsApi::ApiId,
-                                                                        "all",
-                                                                        capacity,
-                                                                        &stream);
+    if (capacity < 0)
+        return BML_ERROR_INVALID_PARAMETER;
+    if (capacity == 0)
+        capacity = 256;
+    BML::ScriptInteropImcClients *clients = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveImcClients(clients, context);
+    EventsImc::Client *client = nullptr;
+    if (status == BML_OK) status = clients->Events(client);
     if (status != BML_OK)
         return status;
-    EventStream *result = new (std::nothrow) EventStream(call.Context,
-                                                           BML::ScriptModRuntime::GetCurrentScriptMod()->GetID(),
-                                                           stream);
-    if (!result) {
-        (void)call.Context->GetInteropRegistry().CloseStream(&call.CallContext, stream);
+    EventStream *result = new (std::nothrow) EventStream(
+        context, static_cast<std::size_t>(capacity));
+    if (!result)
         return BML_ERROR_OUT_OF_MEMORY;
+    status = result->Open(*client);
+    if (status != BML_OK) {
+        result->Release();
+        return status;
     }
     out = result;
     return BML_OK;
 }
-
 bool RegisterEvents(asIScriptEngine *engine, const char **errorMessage) {
     if (!Register(engine, engine->SetDefaultNamespace("BML::Events"), "namespace BML::Events", errorMessage) ||
         !Register(engine, engine->RegisterObjectType("Event", 0, asOBJ_REF), "Event", errorMessage) ||
