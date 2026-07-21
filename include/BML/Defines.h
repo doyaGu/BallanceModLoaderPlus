@@ -132,18 +132,21 @@
 #define BML_ERROR_CONFIG_WRITE              (-602) /**< Failed to write configuration */
 #define BML_ERROR_CONFIG_FORMAT             (-603) /**< Invalid configuration format */
 
-/* Interop-specific error codes */
-#define BML_ERROR_INTEROP_TARGET_NOT_FOUND       (-700) /**< Target mod was not found */
-#define BML_ERROR_INTEROP_TARGET_FAILED          (-701) /**< Target mod is failed or unavailable */
-#define BML_ERROR_INTEROP_EXPORT_NOT_FOUND       (-702) /**< Requested export was not found */
-#define BML_ERROR_INTEROP_EXPORT_AMBIGUOUS       (-703) /**< Export name matches more than one signature */
-#define BML_ERROR_INTEROP_BAD_SIGNATURE          (-704) /**< Export signature is malformed or unsupported */
-#define BML_ERROR_INTEROP_SIGNATURE_MISMATCH     (-705) /**< Export name exists but signature does not match */
-#define BML_ERROR_INTEROP_BAD_CALL_FRAME         (-706) /**< Call frame is invalid for the requested operation */
-#define BML_ERROR_INTEROP_TYPE_MISMATCH          (-707) /**< Call frame value type does not match the requested type */
-#define BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED (-708) /**< Target export failed during execution */
-#define BML_ERROR_INTEROP_HANDLE_STALE           (-709) /**< Export handle no longer resolves to a live export */
+/* Interop-specific error codes.  These describe the generic API ABI;
+ * no code path exposes legacy mod exports, signatures, or CallFrame values. */
+#define BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND       (-702) /**< Requested API endpoint was not found */
+#define BML_ERROR_INTEROP_VALUE_TYPE_MISMATCH    (-707) /**< Record value type does not match the requested type */
+#define BML_ERROR_INTEROP_HANDLE_STALE           (-709) /**< Session-bound Interop handle is stale */
 #define BML_ERROR_INTEROP_UNSUPPORTED            (-710) /**< Interop operation requires an unavailable runtime feature */
+#define BML_ERROR_INTEROP_API_INVALID              (-711) /**< Interop API descriptor is invalid */
+#define BML_ERROR_INTEROP_API_MISMATCH             (-712) /**< Interop API is incompatible with the requested API */
+#define BML_ERROR_INTEROP_PROVIDER_UNLOADED      (-713) /**< Interop provider was unloaded while the operation was active */
+#define BML_ERROR_INTEROP_WRONG_THREAD           (-714) /**< Interop provider requires the game thread */
+#define BML_ERROR_INTEROP_RECORD_INVALID         (-715) /**< Interop record is invalid for the requested operation */
+#define BML_ERROR_INTEROP_CURSOR_STALE           (-716) /**< Interop collection cursor is stale */
+#define BML_ERROR_INTEROP_OBJECT_INVALID          (-717) /**< Interop object reference is invalid or expired */
+#define BML_ERROR_INTEROP_SCHEMA_MISMATCH         (-718) /**< Interop record schema does not match the API endpoint */
+#define BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED (-719) /**< Interop provider callback threw or failed to execute */
 
 BML_BEGIN_CDECLS
 

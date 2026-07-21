@@ -90,28 +90,32 @@ const char *BML_GetErrorString(int errorCode) {
             return "Invalid configuration format";
 
         /* Interop-specific error codes */
-        case BML_ERROR_INTEROP_TARGET_NOT_FOUND:
-            return "Interop target mod not found";
-        case BML_ERROR_INTEROP_TARGET_FAILED:
-            return "Interop target mod failed or unavailable";
-        case BML_ERROR_INTEROP_EXPORT_NOT_FOUND:
-            return "Interop export not found";
-        case BML_ERROR_INTEROP_EXPORT_AMBIGUOUS:
-            return "Interop export name is ambiguous";
-        case BML_ERROR_INTEROP_BAD_SIGNATURE:
-            return "Interop export signature is malformed or unsupported";
-        case BML_ERROR_INTEROP_SIGNATURE_MISMATCH:
-            return "Interop export signature mismatch";
-        case BML_ERROR_INTEROP_BAD_CALL_FRAME:
-            return "Interop call frame is invalid";
-        case BML_ERROR_INTEROP_TYPE_MISMATCH:
-            return "Interop call frame value type mismatch";
-        case BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED:
-            return "Interop target export execution failed";
+        case BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND:
+            return "Interop API endpoint not found";
+        case BML_ERROR_INTEROP_VALUE_TYPE_MISMATCH:
+            return "Interop record value type mismatch";
         case BML_ERROR_INTEROP_HANDLE_STALE:
-            return "Interop export handle is stale";
+            return "Interop handle is stale";
         case BML_ERROR_INTEROP_UNSUPPORTED:
             return "Interop operation is unsupported by the current runtime";
+        case BML_ERROR_INTEROP_API_INVALID:
+            return "Interop API descriptor is invalid";
+        case BML_ERROR_INTEROP_API_MISMATCH:
+            return "Interop API is incompatible with the requested API";
+        case BML_ERROR_INTEROP_PROVIDER_UNLOADED:
+            return "Interop provider was unloaded";
+        case BML_ERROR_INTEROP_WRONG_THREAD:
+            return "Interop provider requires the game thread";
+        case BML_ERROR_INTEROP_RECORD_INVALID:
+            return "Interop record is invalid";
+        case BML_ERROR_INTEROP_CURSOR_STALE:
+            return "Interop collection cursor is stale";
+        case BML_ERROR_INTEROP_OBJECT_INVALID:
+            return "Interop object reference is invalid or expired";
+        case BML_ERROR_INTEROP_SCHEMA_MISMATCH:
+            return "Interop record schema does not match the API endpoint";
+        case BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED:
+            return "Interop provider callback execution failed";
 
         /* Unknown error code */
         default:
