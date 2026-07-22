@@ -3,6 +3,7 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
+#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -12,8 +13,8 @@ namespace BML::Imc::Generated::Bml::Scene {
 inline constexpr const char ApiId[] = "bml.scene";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0x4E6FC19797065751ULL;
-inline constexpr std::uint64_t WireHash = 0x4E6FC19797065751ULL;
+inline constexpr std::uint64_t Hash = 0xBCB4BA39AD9D839FULL;
+inline constexpr std::uint64_t WireHash = 0xBCB4BA39AD9D839FULL;
 inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
 struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
@@ -384,20 +385,76 @@ inline int DecodeFindResult(const BML_ImcMessage &message, FindResultValue &out)
     return BML_OK;
 }
 
+inline constexpr std::uint32_t ObjectRequestSchema = 6u;
+inline constexpr const char ObjectRequestPayload[] = "bml.scene/v1/payload/object_request";
+namespace ObjectRequestField {
+inline constexpr std::uint32_t Object = 1u;
+}
+struct ObjectRequestValue {
+    BML_ObjectRef Object{};
+};
+
+inline std::uint32_t ObjectRequestFieldCount(const ObjectRequestValue &value) noexcept {
+    std::uint32_t count = 1u;
+    return count;
+}
+
+inline std::size_t EncodedObjectRequestSize(const ObjectRequestValue &value) noexcept {
+    std::size_t size = ::BML::Imc::Wire::HeaderSize;
+    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
+    return size;
+}
+
+inline int EncodeObjectRequest(const ObjectRequestValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedObjectRequestSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin(ObjectRequestSchema, WireHash, ObjectRequestFieldCount(value));
+    if (status == BML_OK) status = writer.WriteObject(ObjectRequestField::Object, value.Object);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeObjectRequest(const BML_ImcMessage &message, ObjectRequestValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin(ObjectRequestSchema);
+    if (status != BML_OK) return status;
+    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
+    ObjectRequestValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case ObjectRequestField::Object:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Object);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
 inline constexpr SchemaMetadata Schemas[] = {
     {1u, "object_info", ObjectInfoPayload},
     {2u, "entity_transform", EntityTransformPayload},
     {3u, "find_name_request", FindNameRequestPayload},
     {4u, "find_name_class_request", FindNameClassRequestPayload},
     {5u, "find_result", FindResultPayload},
+    {6u, "object_request", ObjectRequestPayload},
 };
 
 inline constexpr const char EntityRoute[] = "bml.scene/v1/rpc/entity";
-inline constexpr const char EntityRequestPayload[] = "bml.scene/v1/payload/entity.request";
 inline constexpr const char FindNameRoute[] = "bml.scene/v1/rpc/find_name";
 inline constexpr const char FindNameClassRoute[] = "bml.scene/v1/rpc/find_name_class";
 inline constexpr const char ObjectRoute[] = "bml.scene/v1/rpc/object";
-inline constexpr const char ObjectRequestPayload[] = "bml.scene/v1/payload/object.request";
 
 class Client {
 public:
@@ -427,11 +484,10 @@ public:
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, FindNameRequestPayload, &m_FindNameRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, FindNameClassRequestPayload, &m_FindNameClassRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, FindResultPayload, &m_FindResultPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, EntityRequestPayload, &m_EntityRequestPayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ObjectRequestPayload, &m_ObjectRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, EntityRoute, &m_EntityRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, FindNameRoute, &m_FindNameRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, FindNameClassRoute, &m_FindNameClassRpc);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ObjectRequestPayload, &m_ObjectRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, ObjectRoute, &m_ObjectRpc);
         if (status != BML_OK) (void)Close();
         return status;
@@ -449,8 +505,8 @@ public:
     BML_ImcPayloadTypeId FindNameRequestPayloadType() const noexcept { return m_FindNameRequestPayload; }
     BML_ImcPayloadTypeId FindNameClassRequestPayloadType() const noexcept { return m_FindNameClassRequestPayload; }
     BML_ImcPayloadTypeId FindResultPayloadType() const noexcept { return m_FindResultPayload; }
+    BML_ImcPayloadTypeId ObjectRequestPayloadType() const noexcept { return m_ObjectRequestPayload; }
     BML_ImcRpcId EntityRpcId() const noexcept { return m_EntityRpc; }
-    BML_ImcPayloadTypeId EntityRequestPayloadType() const noexcept { return m_EntityRequestPayload; }
     int IsEntityAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_EntityRpc, &available);
@@ -472,7 +528,6 @@ public:
         return status;
     }
     BML_ImcRpcId ObjectRpcId() const noexcept { return m_ObjectRpc; }
-    BML_ImcPayloadTypeId ObjectRequestPayloadType() const noexcept { return m_ObjectRequestPayload; }
     int IsObjectAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_ObjectRpc, &available);
@@ -480,40 +535,40 @@ public:
         return status;
     }
 
-    int BeginReadEntity(const BML_ObjectRef &object, EntityFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallEntity(const ObjectRequestValue &input, EntityFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeObjectRequest(object, m_EntityRequestPayload, WireHash, buffer, request);
+        int status = ::BML::Imc::EncodeMessage(input, m_ObjectRequestPayload, buffer, request, EncodedObjectRequestSize, EncodeObjectRequest);
         return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_EntityRpc, &request, m_EntityTransformPayload, out, DecodeEntityTransform, timeoutMs) : status;
     }
-    int ReadEntity(const BML_ObjectRef &object, EntityTransformValue &out, std::uint32_t timeoutMs = 5000u) {
-        EntityFuture future; int status = BeginReadEntity(object, future, timeoutMs);
+    int CallEntity(const ObjectRequestValue &input, EntityTransformValue &out, std::uint32_t timeoutMs = 5000u) {
+        EntityFuture future; int status = BeginCallEntity(input, future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginQueryFindName(const FindNameRequestValue &input, FindNameFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallFindName(const FindNameRequestValue &input, FindNameFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_FindNameRequestPayload, buffer, request, EncodedFindNameRequestSize, EncodeFindNameRequest);
         return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_FindNameRpc, &request, m_FindResultPayload, out, DecodeFindResult, timeoutMs) : status;
     }
-    int QueryFindName(const FindNameRequestValue &input, FindResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        FindNameFuture future; int status = BeginQueryFindName(input, future, timeoutMs);
+    int CallFindName(const FindNameRequestValue &input, FindResultValue &out, std::uint32_t timeoutMs = 5000u) {
+        FindNameFuture future; int status = BeginCallFindName(input, future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginQueryFindNameClass(const FindNameClassRequestValue &input, FindNameClassFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallFindNameClass(const FindNameClassRequestValue &input, FindNameClassFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_FindNameClassRequestPayload, buffer, request, EncodedFindNameClassRequestSize, EncodeFindNameClassRequest);
         return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_FindNameClassRpc, &request, m_FindResultPayload, out, DecodeFindResult, timeoutMs) : status;
     }
-    int QueryFindNameClass(const FindNameClassRequestValue &input, FindResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        FindNameClassFuture future; int status = BeginQueryFindNameClass(input, future, timeoutMs);
+    int CallFindNameClass(const FindNameClassRequestValue &input, FindResultValue &out, std::uint32_t timeoutMs = 5000u) {
+        FindNameClassFuture future; int status = BeginCallFindNameClass(input, future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginReadObject(const BML_ObjectRef &object, ObjectFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallObject(const ObjectRequestValue &input, ObjectFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeObjectRequest(object, m_ObjectRequestPayload, WireHash, buffer, request);
+        int status = ::BML::Imc::EncodeMessage(input, m_ObjectRequestPayload, buffer, request, EncodedObjectRequestSize, EncodeObjectRequest);
         return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_ObjectRpc, &request, m_ObjectInfoPayload, out, DecodeObjectInfo, timeoutMs) : status;
     }
-    int ReadObject(const BML_ObjectRef &object, ObjectInfoValue &out, std::uint32_t timeoutMs = 5000u) {
-        ObjectFuture future; int status = BeginReadObject(object, future, timeoutMs);
+    int CallObject(const ObjectRequestValue &input, ObjectInfoValue &out, std::uint32_t timeoutMs = 5000u) {
+        ObjectFuture future; int status = BeginCallObject(input, future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
 private:
@@ -523,12 +578,11 @@ private:
         m_FindNameRequestPayload = BML_IMC_INVALID_ID;
         m_FindNameClassRequestPayload = BML_IMC_INVALID_ID;
         m_FindResultPayload = BML_IMC_INVALID_ID;
+        m_ObjectRequestPayload = BML_IMC_INVALID_ID;
         m_EntityRpc = BML_IMC_INVALID_ID;
-        m_EntityRequestPayload = BML_IMC_INVALID_ID;
         m_FindNameRpc = BML_IMC_INVALID_ID;
         m_FindNameClassRpc = BML_IMC_INVALID_ID;
         m_ObjectRpc = BML_IMC_INVALID_ID;
-        m_ObjectRequestPayload = BML_IMC_INVALID_ID;
     }
     BML_ImcClient m_Client = nullptr;
     BML_ImcPayloadTypeId m_ObjectInfoPayload = BML_IMC_INVALID_ID;
@@ -536,12 +590,11 @@ private:
     BML_ImcPayloadTypeId m_FindNameRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_FindNameClassRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_FindResultPayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_ObjectRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_EntityRpc = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_EntityRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_FindNameRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_FindNameClassRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_ObjectRpc = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_ObjectRequestPayload = BML_IMC_INVALID_ID;
 };
 
 class Provider {
@@ -555,7 +608,7 @@ public:
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using EntityHandler = int (*)(const BML_ObjectRef &, EntityTransformValue &, void *);
+    using EntityHandler = int (*)(const ObjectRequestValue &, EntityTransformValue &, void *);
     int RegisterEntity(EntityHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Entity.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -606,7 +659,7 @@ public:
         return status;
     }
 
-    using ObjectHandler = int (*)(const BML_ObjectRef &, ObjectInfoValue &, void *);
+    using ObjectHandler = int (*)(const ObjectRequestValue &, ObjectInfoValue &, void *);
     int RegisterObject(ObjectHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Object.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -629,12 +682,11 @@ private:
         auto *slot = static_cast<EntitySlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request) return BML_ERROR_MALFORMED_MESSAGE;
-            BML_ObjectRef object{}; std::uint64_t hash = 0;
-            int status = ::BML::Imc::DecodeObjectRequest(*request, slot->Owner->m_Transport.EntityRequestPayloadType(), object, hash);
+            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
+            if (request->PayloadType != slot->Owner->m_Transport.ObjectRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            ObjectRequestValue input{}; int status = DecodeObjectRequest(*request, input);
             if (status != BML_OK) return status;
-            if (!IsCompatibleHash(hash)) return BML_ERROR_IMC_API_MISMATCH;
-            EntityTransformValue output{}; status = slot->Function(object, output, slot->Userdata);
+            EntityTransformValue output{}; status = slot->Function(input, output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.EntityTransformPayloadType(), output, EncodedEntityTransformSize, EncodeEntityTransform);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -672,12 +724,11 @@ private:
         auto *slot = static_cast<ObjectSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request) return BML_ERROR_MALFORMED_MESSAGE;
-            BML_ObjectRef object{}; std::uint64_t hash = 0;
-            int status = ::BML::Imc::DecodeObjectRequest(*request, slot->Owner->m_Transport.ObjectRequestPayloadType(), object, hash);
+            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
+            if (request->PayloadType != slot->Owner->m_Transport.ObjectRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            ObjectRequestValue input{}; int status = DecodeObjectRequest(*request, input);
             if (status != BML_OK) return status;
-            if (!IsCompatibleHash(hash)) return BML_ERROR_IMC_API_MISMATCH;
-            ObjectInfoValue output{}; status = slot->Function(object, output, slot->Userdata);
+            ObjectInfoValue output{}; status = slot->Function(input, output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ObjectInfoPayloadType(), output, EncodedObjectInfoSize, EncodeObjectInfo);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -696,10 +747,10 @@ private:
 };
 
 inline constexpr EndpointMetadata Endpoints[] = {
-    {"entity", EntityRoute, false, 0u, 2u},
+    {"entity", EntityRoute, false, 6u, 2u},
     {"find_name", FindNameRoute, false, 3u, 5u},
     {"find_name_class", FindNameClassRoute, false, 4u, 5u},
-    {"object", ObjectRoute, false, 0u, 1u},
+    {"object", ObjectRoute, false, 6u, 1u},
 };
 
 } // namespace BML::Imc::Generated::Bml::Scene

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic typed IMC bindings from .bmlapi JSON.
+"""Generate deterministic typed IMC bindings from the compact .bmlapi IDL.
 
 The loader never reads .bmlapi files at runtime. This tool validates the
 authoring representation, enforces append-only compatible evolution, and emits
@@ -32,11 +32,6 @@ ENUM_UNDERLYING_RANGES = {
     "uint64": (0, (1 << 64) - 1),
 }
 
-ENDPOINT_KINDS = frozenset({
-    "resource", "component", "collection", "stream", "query", "command",
-    "rpc", "topic",
-})
-TOPIC_ENDPOINT_KINDS = frozenset({"stream", "topic"})
 KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 KEY_ALNUM_RE = re.compile(r"[A-Za-z0-9]")
 API_ID_RE = re.compile(r"^[a-z0-9]+(?:\.[a-z0-9]+)*$")
@@ -47,13 +42,67 @@ class ApiDefinitionError(ValueError):
     pass
 
 
-def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for name, value in pairs:
-        if name in result:
-            raise ApiDefinitionError(f"duplicate JSON property {name!r}")
-        result[name] = value
-    return result
+@dataclass(frozen=True)
+class IdlToken:
+    value: str
+    line: int
+    column: int
+
+
+def tokenize_bmlapi(text: str) -> list[IdlToken]:
+    """Tokenize the deliberately small, dependency-free .bmlapi language."""
+    tokens: list[IdlToken] = []
+    index = 0
+    line = 1
+    column = 1
+    length = len(text)
+
+    def advance() -> str:
+        nonlocal index, line, column
+        character = text[index]
+        index += 1
+        if character == "\n":
+            line += 1
+            column = 1
+        else:
+            column += 1
+        return character
+
+    while index < length:
+        character = text[index]
+        if character.isspace() or (index == 0 and character == "\ufeff"):
+            advance()
+            continue
+        if character == "#" or text.startswith("//", index):
+            while index < length and text[index] != "\n":
+                advance()
+            continue
+
+        token_line, token_column = line, column
+        if text.startswith("->", index):
+            advance()
+            advance()
+            tokens.append(IdlToken("->", token_line, token_column))
+            continue
+        if character in "{}():=,;":
+            tokens.append(IdlToken(advance(), token_line, token_column))
+            continue
+
+        start = index
+        while index < length:
+            character = text[index]
+            if (character.isspace() or character in "{}():=,;#"
+                    or text.startswith("//", index) or text.startswith("->", index)):
+                break
+            advance()
+        if start == index:
+            raise ApiDefinitionError(
+                f"line {line} column {column}: unexpected character {text[index]!r}"
+            )
+        tokens.append(IdlToken(text[start:index], token_line, token_column))
+
+    tokens.append(IdlToken("<eof>", line, column))
+    return tokens
 
 
 def parse_hash64(value: Any, what: str) -> int:
@@ -190,25 +239,12 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
         endpoint_name = camel(endpoint.name)
         source = f"endpoint {endpoint.name}"
         add(imc_top_level, f"{endpoint_name}Route", source)
-        if endpoint.kind == "component":
-            add(imc_top_level, f"{endpoint_name}RequestPayload", source)
-        elif endpoint.kind == "collection":
-            add(imc_top_level, f"{endpoint_name}CollectionPayload", source)
-        if endpoint.kind in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind == "topic":
             add(imc_top_level, f"{endpoint_name}Subscription", source)
-        prefix = {
-            "resource": "Read",
-            "component": "Read",
-            "collection": "Open",
-            "stream": "Open",
-            "query": "Query",
-            "command": "Command",
-            "rpc": "Call",
-            "topic": "Open",
-        }[endpoint.kind]
+        prefix = "Call" if endpoint.kind == "rpc" else "Open"
         generated_method = f"{prefix}{endpoint_name}"
         add(imc_client_symbols, generated_method, source)
-        if endpoint.kind not in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind == "rpc":
             add(imc_client_symbols, f"Is{endpoint_name}Available", source)
 
 
@@ -246,7 +282,6 @@ class Endpoint:
     kind: str
     input_schema: int
     output_schema: int
-    requires_probe: bool
 
 
 @dataclass(frozen=True)
@@ -257,14 +292,18 @@ class ApiDefinition:
     enums: tuple[EnumDefinition, ...]
     schemas: tuple[Record, ...]
     endpoints: tuple[Endpoint, ...]
-    compatible_hashes: tuple[int, ...]
+    wire_hash_override: int | None
+    accepted_hashes: tuple[int, ...]
     canonical: str
     hash64: int
 
     @property
     def wire_hash(self) -> int:
         """Stable IMC hash written by every compatible minor in this major."""
-        return self.compatible_hashes[0] if self.compatible_hashes else self.hash64
+        return self.wire_hash_override if self.wire_hash_override is not None else self.hash64
+
+    def accepts_hash(self, value: int) -> bool:
+        return value == self.hash64 or value == self.wire_hash or value in self.accepted_hashes
 
 
 def parse_api_definition(raw: Any) -> ApiDefinition:
@@ -272,8 +311,7 @@ def parse_api_definition(raw: Any) -> ApiDefinition:
         raise ApiDefinitionError("top-level value must be an object")
     reject_unknown_properties(
         raw,
-        ("api", "version", "enums", "schemas", "endpoints", "rpcs", "topics",
-         "compatible_hashes"),
+        ("api", "version", "enums", "schemas", "rpcs", "topics", "wire_hash", "accepted_hashes"),
         "top-level object",
     )
     api_id = api_key(raw.get("api"), "api")
@@ -335,9 +373,9 @@ def parse_api_definition(raw: Any) -> ApiDefinition:
             enum_name, underlying, tuple(sorted(values, key=lambda item: (item.value, item.name)))
         ))
 
-    raw_schemas = raw.get("schemas")
-    if not isinstance(raw_schemas, list) or not raw_schemas:
-        raise ApiDefinitionError("schemas must be a non-empty array")
+    raw_schemas = raw.get("schemas", [])
+    if not isinstance(raw_schemas, list):
+        raise ApiDefinitionError("schemas must be an array")
     schemas: list[Record] = []
     record_ids: set[int] = set()
     record_names: set[str] = set()
@@ -393,92 +431,63 @@ def parse_api_definition(raw: Any) -> ApiDefinition:
     endpoint_names: set[str] = set()
 
     def add_endpoint(endpoint_name: str, kind: str, input_schema: int,
-                     output_schema: int, requires_probe: bool) -> None:
+                     output_schema: int) -> None:
         if input_schema and input_schema not in known_schema_ids:
             raise ApiDefinitionError(f"endpoint {endpoint_name} references unknown input schema {input_schema}")
-        if output_schema not in known_schema_ids:
+        if output_schema and output_schema not in known_schema_ids:
             raise ApiDefinitionError(f"endpoint {endpoint_name} references unknown output schema {output_schema}")
         if endpoint_name in endpoint_names:
             raise ApiDefinitionError(f"duplicate endpoint name {endpoint_name}")
         endpoint_names.add(endpoint_name)
-        endpoints.append(Endpoint(endpoint_name, kind, input_schema, output_schema, requires_probe))
+        endpoints.append(Endpoint(endpoint_name, kind, input_schema, output_schema))
 
-    has_typed_endpoints = "endpoints" in raw
-    has_imc_endpoints = "rpcs" in raw or "topics" in raw
-    if has_typed_endpoints and has_imc_endpoints:
-        raise ApiDefinitionError("use either typed endpoints or rpcs/topics, not both")
-    if has_typed_endpoints:
-        raw_endpoints = raw.get("endpoints")
-        if not isinstance(raw_endpoints, list) or not raw_endpoints:
-            raise ApiDefinitionError("endpoints must be a non-empty array")
-        for index, raw_source in enumerate(raw_endpoints):
-            if not isinstance(raw_source, dict):
-                raise ApiDefinitionError(f"endpoints[{index}] must be an object")
-            reject_unknown_properties(
-                raw_source, ("name", "kind", "input", "output", "requires_probe"),
-                f"endpoints[{index}]",
-            )
-            endpoint_name = key(raw_source.get("name"), f"endpoints[{index}].name")
-            kind = raw_source.get("kind")
-            if kind not in ENDPOINT_KINDS:
-                raise ApiDefinitionError(f"unsupported endpoint kind {kind!r} for {endpoint_name}")
-            input_schema = uint32(raw_source.get("input", 0), f"endpoints[{index}].input", allow_zero=True)
-            output_schema = uint32(raw_source.get("output"), f"endpoints[{index}].output")
-            requires_probe = raw_source.get("requires_probe", False)
-            if not isinstance(requires_probe, bool):
-                raise ApiDefinitionError(f"endpoints[{index}].requires_probe must be boolean")
-            accepts_input = kind in {"query", "command"}
-            if accepts_input != (input_schema != 0):
-                raise ApiDefinitionError(f"{kind} endpoint {endpoint_name} must {'have' if accepts_input else 'not have'} input")
-            add_endpoint(endpoint_name, kind, input_schema, output_schema, requires_probe)
-    elif has_imc_endpoints:
-        raw_rpcs = raw.get("rpcs", [])
-        raw_topics = raw.get("topics", [])
-        if not isinstance(raw_rpcs, list):
-            raise ApiDefinitionError("rpcs must be an array when present")
-        if not isinstance(raw_topics, list):
-            raise ApiDefinitionError("topics must be an array when present")
-        if not raw_rpcs and not raw_topics:
-            raise ApiDefinitionError("rpcs/topics must contain at least one entry")
-        for index, raw_rpc in enumerate(raw_rpcs):
-            if not isinstance(raw_rpc, dict):
-                raise ApiDefinitionError(f"rpcs[{index}] must be an object")
-            reject_unknown_properties(
-                raw_rpc, ("name", "request", "response"), f"rpcs[{index}]"
-            )
-            endpoint_name = key(raw_rpc.get("name"), f"rpcs[{index}].name")
-            input_schema = uint32(raw_rpc.get("request", 0), f"rpcs[{index}].request", allow_zero=True)
-            output_schema = uint32(raw_rpc.get("response"), f"rpcs[{index}].response")
-            add_endpoint(endpoint_name, "rpc", input_schema, output_schema, False)
-        for index, raw_topic in enumerate(raw_topics):
-            if not isinstance(raw_topic, dict):
-                raise ApiDefinitionError(f"topics[{index}] must be an object")
-            reject_unknown_properties(
-                raw_topic, ("name", "message"), f"topics[{index}]"
-            )
-            endpoint_name = key(raw_topic.get("name"), f"topics[{index}].name")
-            message_schema = uint32(raw_topic.get("message"), f"topics[{index}].message")
-            add_endpoint(endpoint_name, "topic", 0, message_schema, False)
-    else:
-        raise ApiDefinitionError("define typed endpoints or rpcs/topics")
+    raw_rpcs = raw.get("rpcs", [])
+    raw_topics = raw.get("topics", [])
+    if not isinstance(raw_rpcs, list):
+        raise ApiDefinitionError("rpcs must be an array when present")
+    if not isinstance(raw_topics, list):
+        raise ApiDefinitionError("topics must be an array when present")
+    if not raw_rpcs and not raw_topics:
+        raise ApiDefinitionError("rpcs/topics must contain at least one entry")
+    for index, raw_rpc in enumerate(raw_rpcs):
+        if not isinstance(raw_rpc, dict):
+            raise ApiDefinitionError(f"rpcs[{index}] must be an object")
+        reject_unknown_properties(
+            raw_rpc, ("name", "request", "response"), f"rpcs[{index}]"
+        )
+        endpoint_name = key(raw_rpc.get("name"), f"rpcs[{index}].name")
+        input_schema = uint32(raw_rpc.get("request", 0), f"rpcs[{index}].request", allow_zero=True)
+        output_schema = uint32(raw_rpc.get("response", 0), f"rpcs[{index}].response", allow_zero=True)
+        add_endpoint(endpoint_name, "rpc", input_schema, output_schema)
+    for index, raw_topic in enumerate(raw_topics):
+        if not isinstance(raw_topic, dict):
+            raise ApiDefinitionError(f"topics[{index}] must be an object")
+        reject_unknown_properties(
+            raw_topic, ("name", "message"), f"topics[{index}]"
+        )
+        endpoint_name = key(raw_topic.get("name"), f"topics[{index}].name")
+        message_schema = uint32(raw_topic.get("message"), f"topics[{index}].message")
+        add_endpoint(endpoint_name, "topic", 0, message_schema)
 
     validate_generated_identifiers(enums, schemas, endpoints)
 
-    raw_compatible_hashes = raw.get("compatible_hashes", [])
-    if not isinstance(raw_compatible_hashes, list):
-        raise ApiDefinitionError("compatible_hashes must be an array when present")
-    compatible_hashes = tuple(
-        parse_hash64(value, f"compatible_hashes[{index}]")
-        for index, value in enumerate(raw_compatible_hashes)
+    raw_wire_hash = raw.get("wire_hash")
+    wire_hash_override = (
+        parse_hash64(raw_wire_hash, "wire hash") if raw_wire_hash is not None else None
     )
-    if len(set(compatible_hashes)) != len(compatible_hashes):
-        raise ApiDefinitionError("compatible_hashes must not contain duplicates")
+    raw_accepted_hashes = raw.get("accepted_hashes", [])
+    if not isinstance(raw_accepted_hashes, list):
+        raise ApiDefinitionError("accepted hashes must be an array")
+    accepted_hashes = tuple(
+        parse_hash64(value, f"accept directive {index + 1}")
+        for index, value in enumerate(raw_accepted_hashes)
+    )
+    declared_hashes = (() if wire_hash_override is None else (wire_hash_override,)) + accepted_hashes
+    if len(set(declared_hashes)) != len(declared_hashes):
+        raise ApiDefinitionError("wire/accept directives must not contain duplicate hashes")
 
-    # Compatibility permits older descriptor hashes to be accepted at runtime.
-    # Order is preserved because the first entry is also the stable IMC wire
-    # hash for a compatible major-version family.  The list intentionally does
-    # not participate in the structural descriptor hash: it changes rollout
-    # policy, not API semantics.
+    # Compatibility policy intentionally does not participate in the structural
+    # descriptor hash: it changes rollout policy, not API semantics.
     canonical_object = {
         "api": api_id,
         "version": {"major": major, "minor": minor},
@@ -493,15 +502,19 @@ def parse_api_definition(raw: Any) -> ApiDefinition:
             }
             for record in sorted(schemas, key=lambda item: item.id)
         ],
-        "endpoints": [
+        "rpcs": [
             {
                 "name": endpoint.name,
-                "kind": endpoint.kind,
-                "input": endpoint.input_schema,
-                "output": endpoint.output_schema,
-                "requires_probe": endpoint.requires_probe,
+                "request": endpoint.input_schema,
+                "response": endpoint.output_schema,
             }
             for endpoint in sorted(endpoints, key=lambda item: item.name)
+            if endpoint.kind == "rpc"
+        ],
+        "topics": [
+            {"name": endpoint.name, "message": endpoint.output_schema}
+            for endpoint in sorted(endpoints, key=lambda item: item.name)
+            if endpoint.kind == "topic"
         ],
     }
     # Keep the canonical form (and therefore every existing descriptor hash)
@@ -520,11 +533,207 @@ def parse_api_definition(raw: Any) -> ApiDefinition:
         ]
     canonical = json.dumps(canonical_object, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     descriptor_hash = int.from_bytes(hashlib.sha256(canonical.encode("utf-8")).digest()[:8], "big")
-    if descriptor_hash in compatible_hashes:
-        raise ApiDefinitionError("compatible_hashes must not repeat the current descriptor hash")
+    if descriptor_hash in declared_hashes:
+        raise ApiDefinitionError("wire/accept directives must not repeat the current descriptor hash")
     return ApiDefinition(api_id, major, minor, tuple(sorted(enums, key=lambda item: item.name)),
                     tuple(sorted(schemas, key=lambda item: item.id)),
-                    tuple(sorted(endpoints, key=lambda item: item.name)), compatible_hashes, canonical, descriptor_hash)
+                    tuple(sorted(endpoints, key=lambda item: item.name)), wire_hash_override,
+                    accepted_hashes, canonical, descriptor_hash)
+
+
+class BmlApiParser:
+    """Recursive-descent parser for the small declaration-oriented IDL."""
+
+    def __init__(self, text: str):
+        self._tokens = tokenize_bmlapi(text)
+        self._index = 0
+
+    def _current(self) -> IdlToken:
+        return self._tokens[self._index]
+
+    def _error(self, message: str, token: IdlToken | None = None) -> ApiDefinitionError:
+        location = token or self._current()
+        return ApiDefinitionError(
+            f"line {location.line} column {location.column}: {message}"
+        )
+
+    def _accept(self, value: str) -> bool:
+        if self._current().value != value:
+            return False
+        self._index += 1
+        return True
+
+    def _expect(self, value: str) -> IdlToken:
+        token = self._current()
+        if token.value != value:
+            raise self._error(f"expected {value!r}, found {token.value!r}", token)
+        self._index += 1
+        return token
+
+    def _atom(self, what: str) -> IdlToken:
+        token = self._current()
+        if token.value in {"<eof>", "{", "}", "(", ")", ":", "=", ",", ";", "->"}:
+            raise self._error(f"expected {what}, found {token.value!r}", token)
+        self._index += 1
+        return token
+
+    def _skip_separators(self) -> None:
+        while self._current().value in {",", ";"}:
+            self._index += 1
+
+    def _integer(self, what: str) -> int:
+        token = self._atom(what)
+        try:
+            return int(token.value, 10)
+        except ValueError as error:
+            raise self._error(f"{what} must be a decimal integer", token) from error
+
+    def parse(self) -> ApiDefinition:
+        if self._current().value == "{":
+            raise self._error(
+                "JSON is not a .bmlapi contract; start with 'api <id> <major>.<minor>'"
+            )
+        self._expect("api")
+        api_id = self._atom("API ID").value
+        version_token = self._atom("version")
+        version_match = re.fullmatch(r"([0-9]+)\.([0-9]+)", version_token.value)
+        if not version_match:
+            raise self._error("version must use <major>.<minor>", version_token)
+        self._skip_separators()
+
+        enums: list[dict[str, Any]] = []
+        schemas: list[dict[str, Any]] = []
+        rpc_declarations: list[tuple[IdlToken, IdlToken | None, IdlToken | None]] = []
+        topic_declarations: list[tuple[IdlToken, IdlToken]] = []
+        wire_hash: IdlToken | None = None
+        accepted_hashes: list[IdlToken] = []
+
+        while self._current().value != "<eof>":
+            declaration = self._atom("declaration").value
+            if declaration == "wire":
+                if wire_hash is not None:
+                    raise self._error("wire hash may only be declared once")
+                wire_hash = self._atom("wire hash")
+            elif declaration == "accept":
+                accepted_hashes.append(self._atom("accepted descriptor hash"))
+            elif declaration == "enum":
+                enums.append(self._parse_enum())
+            elif declaration == "schema":
+                schemas.append(self._parse_schema())
+            elif declaration == "rpc":
+                rpc_declarations.append(self._parse_rpc())
+            elif declaration == "topic":
+                topic_declarations.append(self._parse_topic())
+            else:
+                raise self._error(
+                    f"unknown declaration {declaration!r}; expected wire, accept, enum, schema, rpc, or topic",
+                    self._tokens[self._index - 1],
+                )
+            self._skip_separators()
+
+        schema_ids: dict[str, int] = {}
+        for schema in schemas:
+            name = schema["name"]
+            if name not in schema_ids:
+                schema_ids[name] = schema["id"]
+
+        def schema_id(token: IdlToken, role: str) -> int:
+            result = schema_ids.get(token.value)
+            if result is None:
+                raise self._error(f"unknown {role} schema {token.value!r}", token)
+            return result
+
+        rpcs = []
+        for name, request, response in rpc_declarations:
+            rpc = {
+                "name": name.value,
+                "response": schema_id(response, "response") if response is not None else 0,
+            }
+            if request is not None:
+                rpc["request"] = schema_id(request, "request")
+            rpcs.append(rpc)
+        topics = [
+            {"name": name.value, "message": schema_id(message, "message")}
+            for name, message in topic_declarations
+        ]
+        raw: dict[str, Any] = {
+            "api": api_id,
+            "version": {
+                "major": int(version_match.group(1)),
+                "minor": int(version_match.group(2)),
+            },
+            "enums": enums,
+            "schemas": schemas,
+            "rpcs": rpcs,
+            "topics": topics,
+        }
+        if accepted_hashes and wire_hash is None:
+            raise self._error("accept requires a wire hash declaration", accepted_hashes[0])
+        if wire_hash is not None:
+            raw["wire_hash"] = wire_hash.value
+        if accepted_hashes:
+            raw["accepted_hashes"] = [token.value for token in accepted_hashes]
+        return parse_api_definition(raw)
+
+    def _parse_enum(self) -> dict[str, Any]:
+        name = self._atom("enum name").value
+        underlying = "int"
+        if self._accept(":"):
+            underlying = self._atom("enum underlying type").value
+        self._expect("{")
+        values = []
+        self._skip_separators()
+        while not self._accept("}"):
+            if self._current().value == "<eof>":
+                raise self._error(f"unterminated enum {name!r}; expected '}}'")
+            value_name = self._atom("enum value name").value
+            self._expect("=")
+            values.append({"name": value_name, "value": self._integer("enum value")})
+            self._skip_separators()
+        return {"name": name, "underlying": underlying, "values": values}
+
+    def _parse_schema(self) -> dict[str, Any]:
+        name = self._atom("schema name").value
+        self._expect("=")
+        schema_id = self._integer("schema ID")
+        self._expect("{")
+        fields = []
+        self._skip_separators()
+        while not self._accept("}"):
+            if self._current().value == "<eof>":
+                raise self._error(f"unterminated schema {name!r}; expected '}}'")
+            optional = self._accept("optional")
+            field_type = self._atom("field type").value
+            field_name = self._atom("field name").value
+            self._expect("=")
+            field_id = self._integer("field ID")
+            fields.append({
+                "id": field_id,
+                "name": field_name,
+                "type": field_type,
+                "optional": optional,
+            })
+            self._skip_separators()
+        return {"id": schema_id, "name": name, "fields": fields}
+
+    def _parse_rpc(self) -> tuple[IdlToken, IdlToken | None, IdlToken | None]:
+        name = self._atom("RPC name")
+        self._expect("(")
+        request = None if self._current().value == ")" else self._atom("request schema")
+        self._expect(")")
+        response = self._atom("response schema") if self._accept("->") else None
+        return name, request, response
+
+    def _parse_topic(self) -> tuple[IdlToken, IdlToken]:
+        name = self._atom("Topic name")
+        self._expect("(")
+        message = self._atom("message schema")
+        self._expect(")")
+        return name, message
+
+
+def parse_bmlapi(text: str) -> ApiDefinition:
+    return BmlApiParser(text).parse()
 
 
 def value_name(record: Record) -> str:
@@ -597,16 +806,16 @@ def validate_compatible(previous: ApiDefinition, current: ApiDefinition) -> None
         raise ApiDefinitionError(
             f"{current.api_id} changed within major {current.major} without increasing its minor version"
         )
-    if previous.canonical != current.canonical and previous.hash64 not in current.compatible_hashes:
+    if previous.canonical != current.canonical and not current.accepts_hash(previous.hash64):
         raise ApiDefinitionError(
             f"{current.api_id} compatible minor must list predecessor hash "
-            f"0x{previous.hash64:016X} in compatible_hashes"
+            f"0x{previous.hash64:016X} using wire or accept"
         )
     if current.wire_hash != previous.wire_hash:
         raise ApiDefinitionError(
             f"{current.api_id} compatible minor must keep IMC wire hash "
-            f"0x{previous.wire_hash:016X}; put it first in compatible_hashes and "
-            f"retain predecessor hash 0x{previous.hash64:016X} in the list"
+            f"0x{previous.wire_hash:016X}; declare that value with wire and "
+            f"retain predecessor hash 0x{previous.hash64:016X} with accept"
         )
 
 
@@ -805,7 +1014,7 @@ def append_imc_codec(lines: list[str], api: ApiDefinition, record: Record) -> No
 def append_imc_subscriptions(lines: list[str], api: ApiDefinition) -> None:
     schemas = {record.id: record for record in api.schemas}
     for endpoint in api.endpoints:
-        if endpoint.kind not in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind != "topic":
             continue
         name = camel(endpoint.name)
         output = schemas[endpoint.output_schema]
@@ -857,13 +1066,14 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
         "    Client(const Client &) = delete;", "    Client &operator=(const Client &) = delete;", "",
     ])
     for endpoint in api.endpoints:
-        if endpoint.kind in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind == "topic":
             continue
         name = camel(endpoint.name)
-        output_value = value_name(schemas[endpoint.output_schema])
-        if endpoint.kind == "collection":
-            output_value = f"std::vector<{output_value}>"
-        lines.append(f"    using {name}Future = ::BML::Imc::RpcFuture<{output_value}>;")
+        if endpoint.output_schema:
+            output_value = value_name(schemas[endpoint.output_schema])
+            lines.append(f"    using {name}Future = ::BML::Imc::RpcFuture<{output_value}>;")
+        else:
+            lines.append(f"    using {name}Future = ::BML::Imc::RpcFuture<void>;")
     lines.extend([
         "",
         "    int Open(const char *ownerId = nullptr) noexcept {",
@@ -881,11 +1091,7 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
         lines.append(f"        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, {name}Payload, &m_{name}Payload);")
     for endpoint in api.endpoints:
         name = camel(endpoint.name)
-        if endpoint.kind == "component":
-            lines.append(f"        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, {name}RequestPayload, &m_{name}RequestPayload);")
-        elif endpoint.kind == "collection":
-            lines.append(f"        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, {name}CollectionPayload, &m_{name}CollectionPayload);")
-        if endpoint.kind in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind == "topic":
             lines.append(f"        if (status == BML_OK) status = BML_Imc_GetTopicId(m_Client, {name}Route, &m_{name}Topic);")
         else:
             lines.append(f"        if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, {name}Route, &m_{name}Rpc);")
@@ -903,15 +1109,11 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
         lines.append(f"    BML_ImcPayloadTypeId {name}PayloadType() const noexcept {{ return m_{name}Payload; }}")
     for endpoint in api.endpoints:
         name = camel(endpoint.name)
-        if endpoint.kind in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind == "topic":
             lines.append(f"    BML_ImcTopicId {name}TopicId() const noexcept {{ return m_{name}Topic; }}")
         else:
             lines.append(f"    BML_ImcRpcId {name}RpcId() const noexcept {{ return m_{name}Rpc; }}")
-        if endpoint.kind == "component":
-            lines.append(f"    BML_ImcPayloadTypeId {name}RequestPayloadType() const noexcept {{ return m_{name}RequestPayload; }}")
-        elif endpoint.kind == "collection":
-            lines.append(f"    BML_ImcPayloadTypeId {name}CollectionPayloadType() const noexcept {{ return m_{name}CollectionPayload; }}")
-        if endpoint.kind not in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind == "rpc":
             lines.extend([
                 f"    int Is{name}Available(bool &out) const noexcept {{",
                 "        int available = 0;",
@@ -922,10 +1124,10 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
     lines.append("")
     for endpoint in api.endpoints:
         name = camel(endpoint.name)
-        output = schemas[endpoint.output_schema]
-        output_name = camel(output.name)
-        output_value = value_name(output)
         if endpoint.kind == "rpc":
+            output = schemas[endpoint.output_schema] if endpoint.output_schema else None
+            output_name = camel(output.name) if output else ""
+            output_value = value_name(output) if output else ""
             if endpoint.input_schema:
                 input_record = schemas[endpoint.input_schema]
                 input_name = camel(input_record.name)
@@ -934,63 +1136,41 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
                     f"    int BeginCall{name}(const {input_value} &input, {name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
                     "        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};",
                     f"        int status = ::BML::Imc::EncodeMessage(input, m_{input_name}Payload, buffer, request, Encoded{input_name}Size, Encode{input_name});",
-                    f"        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, &request, m_{output_name}Payload, out, Decode{output_name}, timeoutMs) : status;", "    }",
-                    f"    int Call{name}(const {input_value} &input, {output_value} &out, std::uint32_t timeoutMs = 5000u) {{",
+                ])
+                if output:
+                    lines.append(f"        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, &request, m_{output_name}Payload, out, Decode{output_name}, timeoutMs) : status;")
+                    call_signature = f"const {input_value} &input, {output_value} &out, std::uint32_t timeoutMs = 5000u"
+                    await_expression = "future.AwaitResult(out, timeoutMs)"
+                else:
+                    lines.append(f"        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, &request, out, timeoutMs) : status;")
+                    call_signature = f"const {input_value} &input, std::uint32_t timeoutMs = 5000u"
+                    await_expression = "future.AwaitResult(timeoutMs)"
+                lines.extend([
+                    "    }",
+                    f"    int Call{name}({call_signature}) {{",
                     f"        {name}Future future; int status = BeginCall{name}(input, future, timeoutMs);",
-                    "        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;", "    }",
+                    f"        return status == BML_OK ? {await_expression} : status;", "    }",
                 ])
             else:
+                if output:
+                    begin_expression = f"::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, nullptr, m_{output_name}Payload, out, Decode{output_name}, timeoutMs)"
+                    call_signature = f"{output_value} &out, std::uint32_t timeoutMs = 5000u"
+                    await_expression = "future.AwaitResult(out, timeoutMs)"
+                else:
+                    begin_expression = f"::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, nullptr, out, timeoutMs)"
+                    call_signature = "std::uint32_t timeoutMs = 5000u"
+                    await_expression = "future.AwaitResult(timeoutMs)"
                 lines.extend([
                     f"    int BeginCall{name}({name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
-                    f"        return ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, nullptr, m_{output_name}Payload, out, Decode{output_name}, timeoutMs);", "    }",
-                    f"    int Call{name}({output_value} &out, std::uint32_t timeoutMs = 5000u) {{",
+                    f"        return {begin_expression};", "    }",
+                    f"    int Call{name}({call_signature}) {{",
                     f"        {name}Future future; int status = BeginCall{name}(future, timeoutMs);",
-                    "        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;", "    }",
+                    f"        return status == BML_OK ? {await_expression} : status;", "    }",
                 ])
-        elif endpoint.kind == "resource":
-            lines.extend([
-                f"    int BeginRead{name}({name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
-                f"        return ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, nullptr, m_{output_name}Payload, out, Decode{output_name}, timeoutMs);", "    }",
-                f"    int Read{name}({output_value} &out, std::uint32_t timeoutMs = 5000u) {{",
-                f"        {name}Future future; int status = BeginRead{name}(future, timeoutMs);",
-                "        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;", "    }",
-            ])
-        elif endpoint.kind in {"query", "command"}:
-            input_record = schemas[endpoint.input_schema]
-            input_name = camel(input_record.name)
-            input_value = value_name(input_record)
-            verb = "Query" if endpoint.kind == "query" else "Command"
-            lines.extend([
-                f"    int Begin{verb}{name}(const {input_value} &input, {name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
-                "        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};",
-                f"        int status = ::BML::Imc::EncodeMessage(input, m_{input_name}Payload, buffer, request, Encoded{input_name}Size, Encode{input_name});",
-                f"        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, &request, m_{output_name}Payload, out, Decode{output_name}, timeoutMs) : status;", "    }",
-                f"    int {verb}{name}(const {input_value} &input, {output_value} &out, std::uint32_t timeoutMs = 5000u) {{",
-                f"        {name}Future future; int status = Begin{verb}{name}(input, future, timeoutMs);",
-                "        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;", "    }",
-            ])
-        elif endpoint.kind == "component":
-            lines.extend([
-                f"    int BeginRead{name}(const BML_ObjectRef &object, {name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
-                "        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};",
-                f"        int status = ::BML::Imc::EncodeObjectRequest(object, m_{name}RequestPayload, WireHash, buffer, request);",
-                f"        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, &request, m_{output_name}Payload, out, Decode{output_name}, timeoutMs) : status;", "    }",
-                f"    int Read{name}(const BML_ObjectRef &object, {output_value} &out, std::uint32_t timeoutMs = 5000u) {{",
-                f"        {name}Future future; int status = BeginRead{name}(object, future, timeoutMs);",
-                "        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;", "    }",
-            ])
-        elif endpoint.kind == "collection":
-            lines.extend([
-                f"    int BeginRead{name}({name}Future &out, std::uint32_t timeoutMs = 5000u) {{",
-                f"        auto decode = [](const BML_ImcMessage &message, std::vector<{output_value}> &values) {{",
-                f"            std::uint64_t hash = 0; int status = ::BML::Imc::DecodeCollection(message, values, hash, Decode{output_name});",
-                "            return status == BML_OK && !IsCompatibleHash(hash) ? BML_ERROR_IMC_API_MISMATCH : status;", "        };",
-                f"        return ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, nullptr, m_{name}CollectionPayload, out, decode, timeoutMs);", "    }",
-                f"    int Read{name}(std::vector<{output_value}> &out, std::uint32_t timeoutMs = 5000u) {{",
-                f"        {name}Future future; int status = BeginRead{name}(future, timeoutMs);",
-                "        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;", "    }",
-            ])
-        elif endpoint.kind in TOPIC_ENDPOINT_KINDS:
+        elif endpoint.kind == "topic":
+            output = schemas[endpoint.output_schema]
+            output_name = camel(output.name)
+            output_value = value_name(output)
             lines.extend([
                 f"    int Publish{name}(const {output_value} &value, std::size_t *outDelivered = nullptr) noexcept {{",
                 f"        return ::BML::Imc::Publish(m_Client, m_{name}Topic, m_{output_name}Payload, value, Encoded{output_name}Size, Encode{output_name}, outDelivered);", "    }",
@@ -1005,30 +1185,22 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
         lines.append(f"        m_{camel(record.name)}Payload = BML_IMC_INVALID_ID;")
     for endpoint in api.endpoints:
         name = camel(endpoint.name)
-        lines.append(f"        m_{name}{'Topic' if endpoint.kind in TOPIC_ENDPOINT_KINDS else 'Rpc'} = BML_IMC_INVALID_ID;")
-        if endpoint.kind == "component":
-            lines.append(f"        m_{name}RequestPayload = BML_IMC_INVALID_ID;")
-        elif endpoint.kind == "collection":
-            lines.append(f"        m_{name}CollectionPayload = BML_IMC_INVALID_ID;")
+        lines.append(f"        m_{name}{'Topic' if endpoint.kind == 'topic' else 'Rpc'} = BML_IMC_INVALID_ID;")
     lines.extend(["    }", "    BML_ImcClient m_Client = nullptr;"])
     for record in api.schemas:
         lines.append(f"    BML_ImcPayloadTypeId m_{camel(record.name)}Payload = BML_IMC_INVALID_ID;")
     for endpoint in api.endpoints:
         name = camel(endpoint.name)
-        if endpoint.kind in TOPIC_ENDPOINT_KINDS:
+        if endpoint.kind == "topic":
             lines.append(f"    BML_ImcTopicId m_{name}Topic = BML_IMC_INVALID_ID;")
         else:
             lines.append(f"    BML_ImcRpcId m_{name}Rpc = BML_IMC_INVALID_ID;")
-        if endpoint.kind == "component":
-            lines.append(f"    BML_ImcPayloadTypeId m_{name}RequestPayload = BML_IMC_INVALID_ID;")
-        elif endpoint.kind == "collection":
-            lines.append(f"    BML_ImcPayloadTypeId m_{name}CollectionPayload = BML_IMC_INVALID_ID;")
     lines.extend(["};", ""])
 
 
 def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
     schemas = {record.id: record for record in api.schemas}
-    rpc_endpoints = [endpoint for endpoint in api.endpoints if endpoint.kind not in TOPIC_ENDPOINT_KINDS]
+    rpc_endpoints = [endpoint for endpoint in api.endpoints if endpoint.kind == "rpc"]
     if not rpc_endpoints:
         return
     lines.extend([
@@ -1041,15 +1213,16 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
     ])
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
-        output_value = value_name(schemas[endpoint.output_schema])
-        if endpoint.kind == "resource" or (endpoint.kind == "rpc" and not endpoint.input_schema):
+        output_value = value_name(schemas[endpoint.output_schema]) if endpoint.output_schema else ""
+        input_value = value_name(schemas[endpoint.input_schema]) if endpoint.input_schema else ""
+        if input_value and output_value:
+            signature = f"int (*)(const {input_value} &, {output_value} &, void *)"
+        elif input_value:
+            signature = f"int (*)(const {input_value} &, void *)"
+        elif output_value:
             signature = f"int (*)({output_value} &, void *)"
-        elif endpoint.kind in {"query", "command", "rpc"}:
-            signature = f"int (*)(const {value_name(schemas[endpoint.input_schema])} &, {output_value} &, void *)"
-        elif endpoint.kind == "component":
-            signature = f"int (*)(const BML_ObjectRef &, {output_value} &, void *)"
         else:
-            signature = f"int (*)(std::vector<{output_value}> &, void *)"
+            signature = "int (*)(void *)"
         lines.append(f"    using {name}Handler = {signature};")
         lines.extend([
             f"    int Register{name}({name}Handler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {{",
@@ -1066,21 +1239,16 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
     lines.append("private:")
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
-        output = schemas[endpoint.output_schema]
-        output_name = camel(output.name)
-        output_value = value_name(output)
+        output = schemas[endpoint.output_schema] if endpoint.output_schema else None
+        output_name = camel(output.name) if output else ""
+        output_value = value_name(output) if output else ""
         lines.append(f"    struct {name}Slot {{ Provider *Owner = nullptr; {name}Handler Function = nullptr; void *Userdata = nullptr; bool Registered = false; }};")
         lines.extend([
-            f"    static int {name}Thunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {{",
+            f"    static int {name}Thunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *{'response' if output else ''}, void *userdata) noexcept {{",
             f"        auto *slot = static_cast<{name}Slot *>(userdata);",
             "        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;", "        try {",
         ])
-        if endpoint.kind == "resource" or (endpoint.kind == "rpc" and not endpoint.input_schema):
-            lines.extend([
-                "            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;",
-                f"            {output_value} output{{}};", "            const int status = slot->Function(output, slot->Userdata);",
-            ])
-        elif endpoint.kind in {"query", "command", "rpc"}:
+        if endpoint.input_schema:
             input_record = schemas[endpoint.input_schema]
             input_name = camel(input_record.name)
             input_value = value_name(input_record)
@@ -1088,27 +1256,25 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
                 "            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;",
                 f"            if (request->PayloadType != slot->Owner->m_Transport.{input_name}PayloadType()) return BML_ERROR_TYPE_MISMATCH;",
                 f"            {input_value} input{{}}; int status = Decode{input_name}(*request, input);",
-                "            if (status != BML_OK) return status;", f"            {output_value} output{{}}; status = slot->Function(input, output, slot->Userdata);",
-            ])
-        elif endpoint.kind == "component":
-            lines.extend([
-                "            if (!request) return BML_ERROR_MALFORMED_MESSAGE;",
-                "            BML_ObjectRef object{}; std::uint64_t hash = 0;",
-                f"            int status = ::BML::Imc::DecodeObjectRequest(*request, slot->Owner->m_Transport.{name}RequestPayloadType(), object, hash);",
                 "            if (status != BML_OK) return status;",
-                "            if (!IsCompatibleHash(hash)) return BML_ERROR_IMC_API_MISMATCH;",
-                f"            {output_value} output{{}}; status = slot->Function(object, output, slot->Userdata);",
             ])
+            if output:
+                lines.append(f"            {output_value} output{{}}; status = slot->Function(input, output, slot->Userdata);")
+            else:
+                lines.append("            status = slot->Function(input, slot->Userdata);")
         else:
             lines.extend([
                 "            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;",
-                f"            std::vector<{output_value}> output;", "            const int status = slot->Function(output, slot->Userdata);",
             ])
+            if output:
+                lines.append(f"            {output_value} output{{}}; const int status = slot->Function(output, slot->Userdata);")
+            else:
+                lines.append("            const int status = slot->Function(slot->Userdata);")
         lines.append("            if (status != BML_OK) return status;")
-        if endpoint.kind == "collection":
-            lines.append(f"            return ::BML::Imc::WriteCollectionResponse(response, slot->Owner->m_Transport.{name}CollectionPayloadType(), output, WireHash, Encoded{output_name}Size, Encode{output_name});")
-        else:
+        if output:
             lines.append(f"            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.{output_name}PayloadType(), output, Encoded{output_name}Size, Encode{output_name});")
+        else:
+            lines.append("            return BML_OK;")
         lines.extend(["        } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }", "    }"])
     lines.extend(["    void ResetSlots() noexcept {"])
     for endpoint in rpc_endpoints:
@@ -1122,15 +1288,18 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
 def emit_imc_header(api: ApiDefinition) -> str:
     """Emit typed values and stable IMC routes without a dynamic record API."""
     namespace = "::".join(camel(part) for part in api.api_id.split("."))
-    compatible_hashes = " || ".join(["value == Hash"] + [
-        f"value == 0x{value:016X}ULL" for value in api.compatible_hashes
-    ])
+    compatible_expression = " || ".join(
+        ["value == Hash"]
+        + ([] if api.wire_hash == api.hash64 else ["value == WireHash"])
+        + [f"value == 0x{value:016X}ULL" for value in api.accepted_hashes]
+    )
     lines = [
         "// Generated by tools/imc_codegen.py. Do not edit by hand.",
         "#pragma once",
         "",
         '#include "BML/ImcCpp.hpp"',
         '#include "BML/ImcWire.hpp"',
+        "#include <array>",
         "#include <cstdint>",
         "#include <string>",
         "#include <utility>",
@@ -1142,7 +1311,7 @@ def emit_imc_header(api: ApiDefinition) -> str:
         f"inline constexpr unsigned int Minor = {api.minor};",
         f"inline constexpr std::uint64_t Hash = 0x{api.hash64:016X}ULL;",
         f"inline constexpr std::uint64_t WireHash = 0x{api.wire_hash:016X}ULL;",
-        f"inline bool IsCompatibleHash(std::uint64_t value) noexcept {{ return {compatible_hashes}; }}",
+        f"inline bool IsCompatibleHash(std::uint64_t value) noexcept {{ return {compatible_expression}; }}",
         "",
         "struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };",
         "struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };",
@@ -1180,36 +1349,29 @@ def emit_imc_header(api: ApiDefinition) -> str:
         lines.extend(["};", ""])
         append_imc_codec(lines, api, record)
 
-    lines.append("inline constexpr SchemaMetadata Schemas[] = {")
-    for record in api.schemas:
-        record_name = camel(record.name)
-        lines.append(f'    {{{record.id}u, "{record.name}", {record_name}Payload}},')
-    lines.extend(["};", ""])
+    if api.schemas:
+        lines.append("inline constexpr SchemaMetadata Schemas[] = {")
+        for record in api.schemas:
+            record_name = camel(record.name)
+            lines.append(f'    {{{record.id}u, "{record.name}", {record_name}Payload}},')
+        lines.extend(["};", ""])
+    else:
+        lines.extend(["inline constexpr std::array<SchemaMetadata, 0> Schemas{};", ""])
 
     for endpoint in api.endpoints:
         endpoint_name = camel(endpoint.name)
-        route_kind = "topic" if endpoint.kind in TOPIC_ENDPOINT_KINDS else "rpc"
+        route_kind = endpoint.kind
         lines.append(
             f'inline constexpr const char {endpoint_name}Route[] = '
             f'"{api.api_id}/v{api.major}/{route_kind}/{endpoint.name}";'
         )
-        if endpoint.kind == "component":
-            lines.append(
-                f'inline constexpr const char {endpoint_name}RequestPayload[] = '
-                f'"{api.api_id}/v{api.major}/payload/{endpoint.name}.request";'
-            )
-        elif endpoint.kind == "collection":
-            lines.append(
-                f'inline constexpr const char {endpoint_name}CollectionPayload[] = '
-                f'"{api.api_id}/v{api.major}/payload/{endpoint.name}.collection";'
-            )
     lines.append("")
     append_imc_client(lines, api)
     append_imc_provider(lines, api)
     lines.append("inline constexpr EndpointMetadata Endpoints[] = {")
     for endpoint in api.endpoints:
         endpoint_name = camel(endpoint.name)
-        topic = "true" if endpoint.kind in TOPIC_ENDPOINT_KINDS else "false"
+        topic = "true" if endpoint.kind == "topic" else "false"
         lines.append(
             f'    {{"{endpoint.name}", {endpoint_name}Route, {topic}, '
             f'{endpoint.input_schema}u, {endpoint.output_schema}u}},'
@@ -1231,18 +1393,14 @@ def write_if_changed(path: Path, text: str, check: bool) -> bool:
 
 def load_api_definition(path: Path, role: str) -> ApiDefinition:
     try:
-        raw = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=unique_json_object,
-        )
-        return parse_api_definition(raw)
-    except (OSError, json.JSONDecodeError, ApiDefinitionError) as error:
+        return parse_bmlapi(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ApiDefinitionError) as error:
         raise ApiDefinitionError(f"{role} {path}: {error}") from error
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", action="append", type=Path, required=True, help=".bmlapi JSON input")
+    parser.add_argument("--input", action="append", type=Path, required=True, help=".bmlapi IDL input")
     parser.add_argument("--out-dir", type=Path, required=True,
                         help="directory for generated *_imc.hpp headers")
     parser.add_argument("--previous", action="append", type=Path,
@@ -1295,7 +1453,7 @@ def main(argv: list[str]) -> int:
             validate_compatible(previous, current)
         for api, stem in planned_apis:
             write_if_changed(args.out_dir / f"{stem}_imc.hpp", emit_imc_header(api), args.check)
-    except (OSError, json.JSONDecodeError, ApiDefinitionError) as error:
+    except (OSError, UnicodeError, ApiDefinitionError) as error:
         print(f"imc_codegen: {error}", file=sys.stderr)
         return 1
     return 0

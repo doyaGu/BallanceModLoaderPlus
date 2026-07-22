@@ -3,6 +3,7 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
+#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -12,58 +13,14 @@ namespace BML::Imc::Generated::Bml::Ui {
 inline constexpr const char ApiId[] = "bml.ui";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0xD21CC17B2334E884ULL;
-inline constexpr std::uint64_t WireHash = 0xD21CC17B2334E884ULL;
+inline constexpr std::uint64_t Hash = 0x6A51EFD53A181B73ULL;
+inline constexpr std::uint64_t WireHash = 0x6A51EFD53A181B73ULL;
 inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
 struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
 struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };
 
-inline constexpr std::uint32_t CommandResultSchema = 1u;
-inline constexpr const char CommandResultPayload[] = "bml.ui/v1/payload/command_result";
-namespace CommandResultField {
-}
-struct CommandResultValue {
-};
-
-inline std::uint32_t CommandResultFieldCount(const CommandResultValue &value) noexcept {
-    std::uint32_t count = 0u;
-    return count;
-}
-
-inline std::size_t EncodedCommandResultSize(const CommandResultValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    return size;
-}
-
-inline int EncodeCommandResult(const CommandResultValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedCommandResultSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(CommandResultSchema, WireHash, CommandResultFieldCount(value));
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeCommandResult(const BML_ImcMessage &message, CommandResultValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(CommandResultSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    CommandResultValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        (void)field;
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x0)) != UINT64_C(0x0)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t MessageInputSchema = 2u;
+inline constexpr std::uint32_t MessageInputSchema = 1u;
 inline constexpr const char MessageInputPayload[] = "bml.ui/v1/payload/message_input";
 namespace MessageInputField {
 inline constexpr std::uint32_t Message = 1u;
@@ -120,7 +77,7 @@ inline int DecodeMessageInput(const BML_ImcMessage &message, MessageInputValue &
     return BML_OK;
 }
 
-inline constexpr std::uint32_t HudModeInputSchema = 3u;
+inline constexpr std::uint32_t HudModeInputSchema = 2u;
 inline constexpr const char HudModeInputPayload[] = "bml.ui/v1/payload/hud_mode_input";
 namespace HudModeInputField {
 inline constexpr std::uint32_t Mode = 1u;
@@ -177,7 +134,7 @@ inline int DecodeHudModeInput(const BML_ImcMessage &message, HudModeInputValue &
     return BML_OK;
 }
 
-inline constexpr std::uint32_t VisibleInputSchema = 4u;
+inline constexpr std::uint32_t VisibleInputSchema = 3u;
 inline constexpr const char VisibleInputPayload[] = "bml.ui/v1/payload/visible_input";
 namespace VisibleInputField {
 inline constexpr std::uint32_t Visible = 1u;
@@ -234,51 +191,7 @@ inline int DecodeVisibleInput(const BML_ImcMessage &message, VisibleInputValue &
     return BML_OK;
 }
 
-inline constexpr std::uint32_t EmptyInputSchema = 5u;
-inline constexpr const char EmptyInputPayload[] = "bml.ui/v1/payload/empty_input";
-namespace EmptyInputField {
-}
-struct EmptyInputValue {
-};
-
-inline std::uint32_t EmptyInputFieldCount(const EmptyInputValue &value) noexcept {
-    std::uint32_t count = 0u;
-    return count;
-}
-
-inline std::size_t EncodedEmptyInputSize(const EmptyInputValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    return size;
-}
-
-inline int EncodeEmptyInput(const EmptyInputValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedEmptyInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(EmptyInputSchema, WireHash, EmptyInputFieldCount(value));
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeEmptyInput(const BML_ImcMessage &message, EmptyInputValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(EmptyInputSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    EmptyInputValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        (void)field;
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x0)) != UINT64_C(0x0)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t HudStateSchema = 6u;
+inline constexpr std::uint32_t HudStateSchema = 4u;
 inline constexpr const char HudStatePayload[] = "bml.ui/v1/payload/hud_state";
 namespace HudStateField {
 inline constexpr std::uint32_t Mode = 1u;
@@ -346,12 +259,10 @@ inline int DecodeHudState(const BML_ImcMessage &message, HudStateValue &out) {
 }
 
 inline constexpr SchemaMetadata Schemas[] = {
-    {1u, "command_result", CommandResultPayload},
-    {2u, "message_input", MessageInputPayload},
-    {3u, "hud_mode_input", HudModeInputPayload},
-    {4u, "visible_input", VisibleInputPayload},
-    {5u, "empty_input", EmptyInputPayload},
-    {6u, "hud_state", HudStatePayload},
+    {1u, "message_input", MessageInputPayload},
+    {2u, "hud_mode_input", HudModeInputPayload},
+    {3u, "visible_input", VisibleInputPayload},
+    {4u, "hud_state", HudStatePayload},
 };
 
 inline constexpr const char HudFpsShowRoute[] = "bml.ui/v1/rpc/hud_fps_show";
@@ -376,19 +287,19 @@ public:
     Client(const Client &) = delete;
     Client &operator=(const Client &) = delete;
 
-    using HudFpsShowFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using HudSetFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using HudSrPauseFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using HudSrResetFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using HudSrShowFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using HudSrStartFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using HudTitleShowFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using MapMenuCloseFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using MapMenuOpenFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using MessageAddFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using MessageClearFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using ModsMenuCloseFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
-    using ModsMenuOpenFuture = ::BML::Imc::RpcFuture<CommandResultValue>;
+    using HudFpsShowFuture = ::BML::Imc::RpcFuture<void>;
+    using HudSetFuture = ::BML::Imc::RpcFuture<void>;
+    using HudSrPauseFuture = ::BML::Imc::RpcFuture<void>;
+    using HudSrResetFuture = ::BML::Imc::RpcFuture<void>;
+    using HudSrShowFuture = ::BML::Imc::RpcFuture<void>;
+    using HudSrStartFuture = ::BML::Imc::RpcFuture<void>;
+    using HudTitleShowFuture = ::BML::Imc::RpcFuture<void>;
+    using MapMenuCloseFuture = ::BML::Imc::RpcFuture<void>;
+    using MapMenuOpenFuture = ::BML::Imc::RpcFuture<void>;
+    using MessageAddFuture = ::BML::Imc::RpcFuture<void>;
+    using MessageClearFuture = ::BML::Imc::RpcFuture<void>;
+    using ModsMenuCloseFuture = ::BML::Imc::RpcFuture<void>;
+    using ModsMenuOpenFuture = ::BML::Imc::RpcFuture<void>;
     using StateFuture = ::BML::Imc::RpcFuture<HudStateValue>;
 
     int Open(const char *ownerId = nullptr) noexcept {
@@ -402,11 +313,9 @@ public:
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
         int status = BML_OK;
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CommandResultPayload, &m_CommandResultPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, MessageInputPayload, &m_MessageInputPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, HudModeInputPayload, &m_HudModeInputPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, VisibleInputPayload, &m_VisibleInputPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, EmptyInputPayload, &m_EmptyInputPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, HudStatePayload, &m_HudStatePayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, HudFpsShowRoute, &m_HudFpsShowRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, HudSetRoute, &m_HudSetRpc);
@@ -433,11 +342,9 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
-    BML_ImcPayloadTypeId CommandResultPayloadType() const noexcept { return m_CommandResultPayload; }
     BML_ImcPayloadTypeId MessageInputPayloadType() const noexcept { return m_MessageInputPayload; }
     BML_ImcPayloadTypeId HudModeInputPayloadType() const noexcept { return m_HudModeInputPayload; }
     BML_ImcPayloadTypeId VisibleInputPayloadType() const noexcept { return m_VisibleInputPayload; }
-    BML_ImcPayloadTypeId EmptyInputPayloadType() const noexcept { return m_EmptyInputPayload; }
     BML_ImcPayloadTypeId HudStatePayloadType() const noexcept { return m_HudStatePayload; }
     BML_ImcRpcId HudFpsShowRpcId() const noexcept { return m_HudFpsShowRpc; }
     int IsHudFpsShowAvailable(bool &out) const noexcept {
@@ -538,137 +445,119 @@ public:
         return status;
     }
 
-    int BeginCommandHudFpsShow(const VisibleInputValue &input, HudFpsShowFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallHudFpsShow(const VisibleInputValue &input, HudFpsShowFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_VisibleInputPayload, buffer, request, EncodedVisibleInputSize, EncodeVisibleInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudFpsShowRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudFpsShowRpc, &request, out, timeoutMs) : status;
     }
-    int CommandHudFpsShow(const VisibleInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        HudFpsShowFuture future; int status = BeginCommandHudFpsShow(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallHudFpsShow(const VisibleInputValue &input, std::uint32_t timeoutMs = 5000u) {
+        HudFpsShowFuture future; int status = BeginCallHudFpsShow(input, future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandHudSet(const HudModeInputValue &input, HudSetFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallHudSet(const HudModeInputValue &input, HudSetFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_HudModeInputPayload, buffer, request, EncodedHudModeInputSize, EncodeHudModeInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudSetRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudSetRpc, &request, out, timeoutMs) : status;
     }
-    int CommandHudSet(const HudModeInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        HudSetFuture future; int status = BeginCommandHudSet(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallHudSet(const HudModeInputValue &input, std::uint32_t timeoutMs = 5000u) {
+        HudSetFuture future; int status = BeginCallHudSet(input, future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandHudSrPause(const EmptyInputValue &input, HudSrPauseFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudSrPauseRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallHudSrPause(HudSrPauseFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_HudSrPauseRpc, nullptr, out, timeoutMs);
     }
-    int CommandHudSrPause(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        HudSrPauseFuture future; int status = BeginCommandHudSrPause(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallHudSrPause(std::uint32_t timeoutMs = 5000u) {
+        HudSrPauseFuture future; int status = BeginCallHudSrPause(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandHudSrReset(const EmptyInputValue &input, HudSrResetFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudSrResetRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallHudSrReset(HudSrResetFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_HudSrResetRpc, nullptr, out, timeoutMs);
     }
-    int CommandHudSrReset(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        HudSrResetFuture future; int status = BeginCommandHudSrReset(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallHudSrReset(std::uint32_t timeoutMs = 5000u) {
+        HudSrResetFuture future; int status = BeginCallHudSrReset(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandHudSrShow(const VisibleInputValue &input, HudSrShowFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallHudSrShow(const VisibleInputValue &input, HudSrShowFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_VisibleInputPayload, buffer, request, EncodedVisibleInputSize, EncodeVisibleInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudSrShowRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudSrShowRpc, &request, out, timeoutMs) : status;
     }
-    int CommandHudSrShow(const VisibleInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        HudSrShowFuture future; int status = BeginCommandHudSrShow(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallHudSrShow(const VisibleInputValue &input, std::uint32_t timeoutMs = 5000u) {
+        HudSrShowFuture future; int status = BeginCallHudSrShow(input, future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandHudSrStart(const EmptyInputValue &input, HudSrStartFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudSrStartRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallHudSrStart(HudSrStartFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_HudSrStartRpc, nullptr, out, timeoutMs);
     }
-    int CommandHudSrStart(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        HudSrStartFuture future; int status = BeginCommandHudSrStart(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallHudSrStart(std::uint32_t timeoutMs = 5000u) {
+        HudSrStartFuture future; int status = BeginCallHudSrStart(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandHudTitleShow(const VisibleInputValue &input, HudTitleShowFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallHudTitleShow(const VisibleInputValue &input, HudTitleShowFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_VisibleInputPayload, buffer, request, EncodedVisibleInputSize, EncodeVisibleInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudTitleShowRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_HudTitleShowRpc, &request, out, timeoutMs) : status;
     }
-    int CommandHudTitleShow(const VisibleInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        HudTitleShowFuture future; int status = BeginCommandHudTitleShow(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallHudTitleShow(const VisibleInputValue &input, std::uint32_t timeoutMs = 5000u) {
+        HudTitleShowFuture future; int status = BeginCallHudTitleShow(input, future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandMapMenuClose(const EmptyInputValue &input, MapMenuCloseFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_MapMenuCloseRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallMapMenuClose(MapMenuCloseFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_MapMenuCloseRpc, nullptr, out, timeoutMs);
     }
-    int CommandMapMenuClose(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        MapMenuCloseFuture future; int status = BeginCommandMapMenuClose(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallMapMenuClose(std::uint32_t timeoutMs = 5000u) {
+        MapMenuCloseFuture future; int status = BeginCallMapMenuClose(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandMapMenuOpen(const EmptyInputValue &input, MapMenuOpenFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_MapMenuOpenRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallMapMenuOpen(MapMenuOpenFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_MapMenuOpenRpc, nullptr, out, timeoutMs);
     }
-    int CommandMapMenuOpen(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        MapMenuOpenFuture future; int status = BeginCommandMapMenuOpen(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallMapMenuOpen(std::uint32_t timeoutMs = 5000u) {
+        MapMenuOpenFuture future; int status = BeginCallMapMenuOpen(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandMessageAdd(const MessageInputValue &input, MessageAddFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallMessageAdd(const MessageInputValue &input, MessageAddFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_MessageInputPayload, buffer, request, EncodedMessageInputSize, EncodeMessageInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_MessageAddRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_MessageAddRpc, &request, out, timeoutMs) : status;
     }
-    int CommandMessageAdd(const MessageInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        MessageAddFuture future; int status = BeginCommandMessageAdd(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallMessageAdd(const MessageInputValue &input, std::uint32_t timeoutMs = 5000u) {
+        MessageAddFuture future; int status = BeginCallMessageAdd(input, future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandMessageClear(const EmptyInputValue &input, MessageClearFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_MessageClearRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallMessageClear(MessageClearFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_MessageClearRpc, nullptr, out, timeoutMs);
     }
-    int CommandMessageClear(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        MessageClearFuture future; int status = BeginCommandMessageClear(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallMessageClear(std::uint32_t timeoutMs = 5000u) {
+        MessageClearFuture future; int status = BeginCallMessageClear(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandModsMenuClose(const EmptyInputValue &input, ModsMenuCloseFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_ModsMenuCloseRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallModsMenuClose(ModsMenuCloseFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_ModsMenuCloseRpc, nullptr, out, timeoutMs);
     }
-    int CommandModsMenuClose(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        ModsMenuCloseFuture future; int status = BeginCommandModsMenuClose(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallModsMenuClose(std::uint32_t timeoutMs = 5000u) {
+        ModsMenuCloseFuture future; int status = BeginCallModsMenuClose(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCommandModsMenuOpen(const EmptyInputValue &input, ModsMenuOpenFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_EmptyInputPayload, buffer, request, EncodedEmptyInputSize, EncodeEmptyInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_ModsMenuOpenRpc, &request, m_CommandResultPayload, out, DecodeCommandResult, timeoutMs) : status;
+    int BeginCallModsMenuOpen(ModsMenuOpenFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_ModsMenuOpenRpc, nullptr, out, timeoutMs);
     }
-    int CommandModsMenuOpen(const EmptyInputValue &input, CommandResultValue &out, std::uint32_t timeoutMs = 5000u) {
-        ModsMenuOpenFuture future; int status = BeginCommandModsMenuOpen(input, future, timeoutMs);
-        return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
+    int CallModsMenuOpen(std::uint32_t timeoutMs = 5000u) {
+        ModsMenuOpenFuture future; int status = BeginCallModsMenuOpen(future, timeoutMs);
+        return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginReadState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_StateRpc, nullptr, m_HudStatePayload, out, DecodeHudState, timeoutMs);
     }
-    int ReadState(HudStateValue &out, std::uint32_t timeoutMs = 5000u) {
-        StateFuture future; int status = BeginReadState(future, timeoutMs);
+    int CallState(HudStateValue &out, std::uint32_t timeoutMs = 5000u) {
+        StateFuture future; int status = BeginCallState(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
 private:
     void ResetIds() noexcept {
-        m_CommandResultPayload = BML_IMC_INVALID_ID;
         m_MessageInputPayload = BML_IMC_INVALID_ID;
         m_HudModeInputPayload = BML_IMC_INVALID_ID;
         m_VisibleInputPayload = BML_IMC_INVALID_ID;
-        m_EmptyInputPayload = BML_IMC_INVALID_ID;
         m_HudStatePayload = BML_IMC_INVALID_ID;
         m_HudFpsShowRpc = BML_IMC_INVALID_ID;
         m_HudSetRpc = BML_IMC_INVALID_ID;
@@ -686,11 +575,9 @@ private:
         m_StateRpc = BML_IMC_INVALID_ID;
     }
     BML_ImcClient m_Client = nullptr;
-    BML_ImcPayloadTypeId m_CommandResultPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_MessageInputPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_HudModeInputPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_VisibleInputPayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_EmptyInputPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_HudStatePayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_HudFpsShowRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_HudSetRpc = BML_IMC_INVALID_ID;
@@ -719,7 +606,7 @@ public:
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using HudFpsShowHandler = int (*)(const VisibleInputValue &, CommandResultValue &, void *);
+    using HudFpsShowHandler = int (*)(const VisibleInputValue &, void *);
     int RegisterHudFpsShow(HudFpsShowHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudFpsShow.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -736,7 +623,7 @@ public:
         return status;
     }
 
-    using HudSetHandler = int (*)(const HudModeInputValue &, CommandResultValue &, void *);
+    using HudSetHandler = int (*)(const HudModeInputValue &, void *);
     int RegisterHudSet(HudSetHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudSet.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -753,7 +640,7 @@ public:
         return status;
     }
 
-    using HudSrPauseHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using HudSrPauseHandler = int (*)(void *);
     int RegisterHudSrPause(HudSrPauseHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudSrPause.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -770,7 +657,7 @@ public:
         return status;
     }
 
-    using HudSrResetHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using HudSrResetHandler = int (*)(void *);
     int RegisterHudSrReset(HudSrResetHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudSrReset.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -787,7 +674,7 @@ public:
         return status;
     }
 
-    using HudSrShowHandler = int (*)(const VisibleInputValue &, CommandResultValue &, void *);
+    using HudSrShowHandler = int (*)(const VisibleInputValue &, void *);
     int RegisterHudSrShow(HudSrShowHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudSrShow.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -804,7 +691,7 @@ public:
         return status;
     }
 
-    using HudSrStartHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using HudSrStartHandler = int (*)(void *);
     int RegisterHudSrStart(HudSrStartHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudSrStart.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -821,7 +708,7 @@ public:
         return status;
     }
 
-    using HudTitleShowHandler = int (*)(const VisibleInputValue &, CommandResultValue &, void *);
+    using HudTitleShowHandler = int (*)(const VisibleInputValue &, void *);
     int RegisterHudTitleShow(HudTitleShowHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudTitleShow.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -838,7 +725,7 @@ public:
         return status;
     }
 
-    using MapMenuCloseHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using MapMenuCloseHandler = int (*)(void *);
     int RegisterMapMenuClose(MapMenuCloseHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MapMenuClose.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -855,7 +742,7 @@ public:
         return status;
     }
 
-    using MapMenuOpenHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using MapMenuOpenHandler = int (*)(void *);
     int RegisterMapMenuOpen(MapMenuOpenHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MapMenuOpen.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -872,7 +759,7 @@ public:
         return status;
     }
 
-    using MessageAddHandler = int (*)(const MessageInputValue &, CommandResultValue &, void *);
+    using MessageAddHandler = int (*)(const MessageInputValue &, void *);
     int RegisterMessageAdd(MessageAddHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MessageAdd.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -889,7 +776,7 @@ public:
         return status;
     }
 
-    using MessageClearHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using MessageClearHandler = int (*)(void *);
     int RegisterMessageClear(MessageClearHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MessageClear.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -906,7 +793,7 @@ public:
         return status;
     }
 
-    using ModsMenuCloseHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using ModsMenuCloseHandler = int (*)(void *);
     int RegisterModsMenuClose(ModsMenuCloseHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_ModsMenuClose.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -923,7 +810,7 @@ public:
         return status;
     }
 
-    using ModsMenuOpenHandler = int (*)(const EmptyInputValue &, CommandResultValue &, void *);
+    using ModsMenuOpenHandler = int (*)(void *);
     int RegisterModsMenuOpen(ModsMenuOpenHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_ModsMenuOpen.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -959,7 +846,7 @@ public:
 
 private:
     struct HudFpsShowSlot { Provider *Owner = nullptr; HudFpsShowHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int HudFpsShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int HudFpsShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudFpsShowSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
@@ -967,13 +854,13 @@ private:
             if (request->PayloadType != slot->Owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             VisibleInputValue input{}; int status = DecodeVisibleInput(*request, input);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
+            status = slot->Function(input, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct HudSetSlot { Provider *Owner = nullptr; HudSetHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int HudSetThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int HudSetThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudSetSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
@@ -981,41 +868,35 @@ private:
             if (request->PayloadType != slot->Owner->m_Transport.HudModeInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             HudModeInputValue input{}; int status = DecodeHudModeInput(*request, input);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
+            status = slot->Function(input, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct HudSrPauseSlot { Provider *Owner = nullptr; HudSrPauseHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int HudSrPauseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int HudSrPauseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudSrPauseSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct HudSrResetSlot { Provider *Owner = nullptr; HudSrResetHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int HudSrResetThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int HudSrResetThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudSrResetSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct HudSrShowSlot { Provider *Owner = nullptr; HudSrShowHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int HudSrShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int HudSrShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudSrShowSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
@@ -1023,27 +904,24 @@ private:
             if (request->PayloadType != slot->Owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             VisibleInputValue input{}; int status = DecodeVisibleInput(*request, input);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
+            status = slot->Function(input, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct HudSrStartSlot { Provider *Owner = nullptr; HudSrStartHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int HudSrStartThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int HudSrStartThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudSrStartSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct HudTitleShowSlot { Provider *Owner = nullptr; HudTitleShowHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int HudTitleShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int HudTitleShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudTitleShowSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
@@ -1051,41 +929,35 @@ private:
             if (request->PayloadType != slot->Owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             VisibleInputValue input{}; int status = DecodeVisibleInput(*request, input);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
+            status = slot->Function(input, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct MapMenuCloseSlot { Provider *Owner = nullptr; MapMenuCloseHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int MapMenuCloseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int MapMenuCloseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MapMenuCloseSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct MapMenuOpenSlot { Provider *Owner = nullptr; MapMenuOpenHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int MapMenuOpenThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int MapMenuOpenThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MapMenuOpenSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct MessageAddSlot { Provider *Owner = nullptr; MessageAddHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int MessageAddThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int MessageAddThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MessageAddSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
@@ -1093,51 +965,42 @@ private:
             if (request->PayloadType != slot->Owner->m_Transport.MessageInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             MessageInputValue input{}; int status = DecodeMessageInput(*request, input);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
+            status = slot->Function(input, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct MessageClearSlot { Provider *Owner = nullptr; MessageClearHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int MessageClearThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int MessageClearThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MessageClearSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ModsMenuCloseSlot { Provider *Owner = nullptr; ModsMenuCloseHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int ModsMenuCloseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int ModsMenuCloseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<ModsMenuCloseSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ModsMenuOpenSlot { Provider *Owner = nullptr; ModsMenuOpenHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int ModsMenuOpenThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    static int ModsMenuOpenThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<ModsMenuOpenSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.EmptyInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            EmptyInputValue input{}; int status = DecodeEmptyInput(*request, input);
+            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            const int status = slot->Function(slot->Userdata);
             if (status != BML_OK) return status;
-            CommandResultValue output{}; status = slot->Function(input, output, slot->Userdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CommandResultPayloadType(), output, EncodedCommandResultSize, EncodeCommandResult);
+            return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct StateSlot { Provider *Owner = nullptr; StateHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
@@ -1146,8 +1009,7 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            HudStateValue output{};
-            const int status = slot->Function(output, slot->Userdata);
+            HudStateValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.HudStatePayloadType(), output, EncodedHudStateSize, EncodeHudState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -1186,20 +1048,20 @@ private:
 };
 
 inline constexpr EndpointMetadata Endpoints[] = {
-    {"hud_fps_show", HudFpsShowRoute, false, 4u, 1u},
-    {"hud_set", HudSetRoute, false, 3u, 1u},
-    {"hud_sr_pause", HudSrPauseRoute, false, 5u, 1u},
-    {"hud_sr_reset", HudSrResetRoute, false, 5u, 1u},
-    {"hud_sr_show", HudSrShowRoute, false, 4u, 1u},
-    {"hud_sr_start", HudSrStartRoute, false, 5u, 1u},
-    {"hud_title_show", HudTitleShowRoute, false, 4u, 1u},
-    {"map_menu_close", MapMenuCloseRoute, false, 5u, 1u},
-    {"map_menu_open", MapMenuOpenRoute, false, 5u, 1u},
-    {"message_add", MessageAddRoute, false, 2u, 1u},
-    {"message_clear", MessageClearRoute, false, 5u, 1u},
-    {"mods_menu_close", ModsMenuCloseRoute, false, 5u, 1u},
-    {"mods_menu_open", ModsMenuOpenRoute, false, 5u, 1u},
-    {"state", StateRoute, false, 0u, 6u},
+    {"hud_fps_show", HudFpsShowRoute, false, 3u, 0u},
+    {"hud_set", HudSetRoute, false, 2u, 0u},
+    {"hud_sr_pause", HudSrPauseRoute, false, 0u, 0u},
+    {"hud_sr_reset", HudSrResetRoute, false, 0u, 0u},
+    {"hud_sr_show", HudSrShowRoute, false, 3u, 0u},
+    {"hud_sr_start", HudSrStartRoute, false, 0u, 0u},
+    {"hud_title_show", HudTitleShowRoute, false, 3u, 0u},
+    {"map_menu_close", MapMenuCloseRoute, false, 0u, 0u},
+    {"map_menu_open", MapMenuOpenRoute, false, 0u, 0u},
+    {"message_add", MessageAddRoute, false, 1u, 0u},
+    {"message_clear", MessageClearRoute, false, 0u, 0u},
+    {"mods_menu_close", ModsMenuCloseRoute, false, 0u, 0u},
+    {"mods_menu_open", ModsMenuOpenRoute, false, 0u, 0u},
+    {"state", StateRoute, false, 0u, 4u},
 };
 
 } // namespace BML::Imc::Generated::Bml::Ui

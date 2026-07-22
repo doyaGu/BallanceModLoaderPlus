@@ -3,6 +3,7 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
+#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -12,8 +13,8 @@ namespace BML::Imc::Generated::Bml::Events {
 inline constexpr const char ApiId[] = "bml.events";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0x671750F9EA1C375CULL;
-inline constexpr std::uint64_t WireHash = 0x671750F9EA1C375CULL;
+inline constexpr std::uint64_t Hash = 0xDB0CDD6981EC98EEULL;
+inline constexpr std::uint64_t WireHash = 0xDB0CDD6981EC98EEULL;
 inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
 struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };

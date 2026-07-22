@@ -3,6 +3,7 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
+#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -12,8 +13,8 @@ namespace BML::Imc::Generated::Bml::Gameplay {
 inline constexpr const char ApiId[] = "bml.gameplay";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0xF6A68405E0438B70ULL;
-inline constexpr std::uint64_t WireHash = 0xF6A68405E0438B70ULL;
+inline constexpr std::uint64_t Hash = 0x06524204E62D40D3ULL;
+inline constexpr std::uint64_t WireHash = 0x06524204E62D40D3ULL;
 inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
 struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
@@ -213,88 +214,88 @@ inline int DecodeEnergyState(const BML_ImcMessage &message, EnergyStateValue &ou
     return BML_OK;
 }
 
-inline constexpr std::uint32_t CatalogEntrySchema = 3u;
-inline constexpr const char CatalogEntryPayload[] = "bml.gameplay/v1/payload/catalog_entry";
-namespace CatalogEntryField {
-inline constexpr std::uint32_t File = 1u;
-inline constexpr std::uint32_t StartBall = 2u;
-inline constexpr std::uint32_t Sky = 3u;
-inline constexpr std::uint32_t Bonus = 4u;
+inline constexpr std::uint32_t CatalogResponseSchema = 3u;
+inline constexpr const char CatalogResponsePayload[] = "bml.gameplay/v1/payload/catalog_response";
+namespace CatalogResponseField {
+inline constexpr std::uint32_t Files = 1u;
+inline constexpr std::uint32_t StartBalls = 2u;
+inline constexpr std::uint32_t Skies = 3u;
+inline constexpr std::uint32_t Bonuses = 4u;
 inline constexpr std::uint32_t Music = 5u;
 }
-struct CatalogEntryValue {
-    std::string File{};
-    std::string StartBall{};
-    std::string Sky{};
-    int Bonus{};
-    int Music{};
+struct CatalogResponseValue {
+    std::vector<std::string> Files{};
+    std::vector<std::string> StartBalls{};
+    std::vector<std::string> Skies{};
+    std::vector<int> Bonuses{};
+    std::vector<int> Music{};
 };
 
-inline std::uint32_t CatalogEntryFieldCount(const CatalogEntryValue &value) noexcept {
+inline std::uint32_t CatalogResponseFieldCount(const CatalogResponseValue &value) noexcept {
     std::uint32_t count = 5u;
     return count;
 }
 
-inline std::size_t EncodedCatalogEntrySize(const CatalogEntryValue &value) noexcept {
+inline std::size_t EncodedCatalogResponseSize(const CatalogResponseValue &value) noexcept {
     std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, value.File.size())) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, value.StartBall.size())) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, value.Sky.size())) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
+    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, value.Files)) return 0;
+    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, value.StartBalls)) return 0;
+    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, value.Skies)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Bonuses.size(), 4)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Music.size(), 4)) return 0;
     return size;
 }
 
-inline int EncodeCatalogEntry(const CatalogEntryValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedCatalogEntrySize(value)) return BML_ERROR_INVALID_PARAMETER;
+inline int EncodeCatalogResponse(const CatalogResponseValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedCatalogResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(CatalogEntrySchema, WireHash, CatalogEntryFieldCount(value));
-    if (status == BML_OK) status = writer.WriteString(CatalogEntryField::File, value.File);
-    if (status == BML_OK) status = writer.WriteString(CatalogEntryField::StartBall, value.StartBall);
-    if (status == BML_OK) status = writer.WriteString(CatalogEntryField::Sky, value.Sky);
-    if (status == BML_OK) status = writer.WriteInt(CatalogEntryField::Bonus, value.Bonus);
-    if (status == BML_OK) status = writer.WriteInt(CatalogEntryField::Music, value.Music);
+    int status = writer.Begin(CatalogResponseSchema, WireHash, CatalogResponseFieldCount(value));
+    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::Files, value.Files);
+    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::StartBalls, value.StartBalls);
+    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::Skies, value.Skies);
+    if (status == BML_OK) status = writer.WriteIntArray(CatalogResponseField::Bonuses, value.Bonuses);
+    if (status == BML_OK) status = writer.WriteIntArray(CatalogResponseField::Music, value.Music);
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeCatalogEntry(const BML_ImcMessage &message, CatalogEntryValue &out) {
+inline int DecodeCatalogResponse(const BML_ImcMessage &message, CatalogResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(CatalogEntrySchema);
+    int status = reader.Begin(CatalogResponseSchema);
     if (status != BML_OK) return status;
     if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    CatalogEntryValue decoded{};
+    CatalogResponseValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
     while ((status = reader.Next(field)) == BML_OK) {
         switch (field.Id) {
-        case CatalogEntryField::File:
+        case CatalogResponseField::Files:
             if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.File);
+            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Files);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 0;
             break;
-        case CatalogEntryField::StartBall:
+        case CatalogResponseField::StartBalls:
             if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.StartBall);
+            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.StartBalls);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 1;
             break;
-        case CatalogEntryField::Sky:
+        case CatalogResponseField::Skies:
             if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Sky);
+            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Skies);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 2;
             break;
-        case CatalogEntryField::Bonus:
+        case CatalogResponseField::Bonuses:
             if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Bonus);
+            status = ::BML::Imc::Wire::Reader::ReadIntArray(field, decoded.Bonuses);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 3;
             break;
-        case CatalogEntryField::Music:
+        case CatalogResponseField::Music:
             if (seen & (UINT64_C(1) << 4)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Music);
+            status = ::BML::Imc::Wire::Reader::ReadIntArray(field, decoded.Music);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 4;
             break;
@@ -310,58 +311,58 @@ inline int DecodeCatalogEntry(const BML_ImcMessage &message, CatalogEntryValue &
     return BML_OK;
 }
 
-inline constexpr std::uint32_t CheckpointSchema = 4u;
-inline constexpr const char CheckpointPayload[] = "bml.gameplay/v1/payload/checkpoint";
-namespace CheckpointField {
-inline constexpr std::uint32_t Matrix = 1u;
-inline constexpr std::uint32_t Object = 2u;
+inline constexpr std::uint32_t CheckpointsResponseSchema = 4u;
+inline constexpr const char CheckpointsResponsePayload[] = "bml.gameplay/v1/payload/checkpoints_response";
+namespace CheckpointsResponseField {
+inline constexpr std::uint32_t Matrices = 1u;
+inline constexpr std::uint32_t Objects = 2u;
 }
-struct CheckpointValue {
-    BML_Mat4 Matrix{};
-    BML_ObjectRef Object{};
+struct CheckpointsResponseValue {
+    std::vector<BML_Mat4> Matrices{};
+    std::vector<BML_ObjectRef> Objects{};
 };
 
-inline std::uint32_t CheckpointFieldCount(const CheckpointValue &value) noexcept {
+inline std::uint32_t CheckpointsResponseFieldCount(const CheckpointsResponseValue &value) noexcept {
     std::uint32_t count = 2u;
     return count;
 }
 
-inline std::size_t EncodedCheckpointSize(const CheckpointValue &value) noexcept {
+inline std::size_t EncodedCheckpointsResponseSize(const CheckpointsResponseValue &value) noexcept {
     std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 64)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Matrices.size(), 64)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Objects.size(), 12)) return 0;
     return size;
 }
 
-inline int EncodeCheckpoint(const CheckpointValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedCheckpointSize(value)) return BML_ERROR_INVALID_PARAMETER;
+inline int EncodeCheckpointsResponse(const CheckpointsResponseValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedCheckpointsResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(CheckpointSchema, WireHash, CheckpointFieldCount(value));
-    if (status == BML_OK) status = writer.WriteMat4(CheckpointField::Matrix, value.Matrix);
-    if (status == BML_OK) status = writer.WriteObject(CheckpointField::Object, value.Object);
+    int status = writer.Begin(CheckpointsResponseSchema, WireHash, CheckpointsResponseFieldCount(value));
+    if (status == BML_OK) status = writer.WriteMat4Array(CheckpointsResponseField::Matrices, value.Matrices);
+    if (status == BML_OK) status = writer.WriteObjectArray(CheckpointsResponseField::Objects, value.Objects);
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeCheckpoint(const BML_ImcMessage &message, CheckpointValue &out) {
+inline int DecodeCheckpointsResponse(const BML_ImcMessage &message, CheckpointsResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(CheckpointSchema);
+    int status = reader.Begin(CheckpointsResponseSchema);
     if (status != BML_OK) return status;
     if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    CheckpointValue decoded{};
+    CheckpointsResponseValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
     while ((status = reader.Next(field)) == BML_OK) {
         switch (field.Id) {
-        case CheckpointField::Matrix:
+        case CheckpointsResponseField::Matrices:
             if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadMat4(field, decoded.Matrix);
+            status = ::BML::Imc::Wire::Reader::ReadMat4Array(field, decoded.Matrices);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 0;
             break;
-        case CheckpointField::Object:
+        case CheckpointsResponseField::Objects:
             if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Object);
+            status = ::BML::Imc::Wire::Reader::ReadObjectArray(field, decoded.Objects);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 1;
             break;
@@ -377,48 +378,48 @@ inline int DecodeCheckpoint(const BML_ImcMessage &message, CheckpointValue &out)
     return BML_OK;
 }
 
-inline constexpr std::uint32_t ResetpointSchema = 5u;
-inline constexpr const char ResetpointPayload[] = "bml.gameplay/v1/payload/resetpoint";
-namespace ResetpointField {
-inline constexpr std::uint32_t Object = 1u;
+inline constexpr std::uint32_t ResetpointsResponseSchema = 5u;
+inline constexpr const char ResetpointsResponsePayload[] = "bml.gameplay/v1/payload/resetpoints_response";
+namespace ResetpointsResponseField {
+inline constexpr std::uint32_t Objects = 1u;
 }
-struct ResetpointValue {
-    BML_ObjectRef Object{};
+struct ResetpointsResponseValue {
+    std::vector<BML_ObjectRef> Objects{};
 };
 
-inline std::uint32_t ResetpointFieldCount(const ResetpointValue &value) noexcept {
+inline std::uint32_t ResetpointsResponseFieldCount(const ResetpointsResponseValue &value) noexcept {
     std::uint32_t count = 1u;
     return count;
 }
 
-inline std::size_t EncodedResetpointSize(const ResetpointValue &value) noexcept {
+inline std::size_t EncodedResetpointsResponseSize(const ResetpointsResponseValue &value) noexcept {
     std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Objects.size(), 12)) return 0;
     return size;
 }
 
-inline int EncodeResetpoint(const ResetpointValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedResetpointSize(value)) return BML_ERROR_INVALID_PARAMETER;
+inline int EncodeResetpointsResponse(const ResetpointsResponseValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedResetpointsResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(ResetpointSchema, WireHash, ResetpointFieldCount(value));
-    if (status == BML_OK) status = writer.WriteObject(ResetpointField::Object, value.Object);
+    int status = writer.Begin(ResetpointsResponseSchema, WireHash, ResetpointsResponseFieldCount(value));
+    if (status == BML_OK) status = writer.WriteObjectArray(ResetpointsResponseField::Objects, value.Objects);
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeResetpoint(const BML_ImcMessage &message, ResetpointValue &out) {
+inline int DecodeResetpointsResponse(const BML_ImcMessage &message, ResetpointsResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(ResetpointSchema);
+    int status = reader.Begin(ResetpointsResponseSchema);
     if (status != BML_OK) return status;
     if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    ResetpointValue decoded{};
+    ResetpointsResponseValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
     while ((status = reader.Next(field)) == BML_OK) {
         switch (field.Id) {
-        case ResetpointField::Object:
+        case ResetpointsResponseField::Objects:
             if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Object);
+            status = ::BML::Imc::Wire::Reader::ReadObjectArray(field, decoded.Objects);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 0;
             break;
@@ -437,19 +438,16 @@ inline int DecodeResetpoint(const BML_ImcMessage &message, ResetpointValue &out)
 inline constexpr SchemaMetadata Schemas[] = {
     {1u, "level_state", LevelStatePayload},
     {2u, "energy_state", EnergyStatePayload},
-    {3u, "catalog_entry", CatalogEntryPayload},
-    {4u, "checkpoint", CheckpointPayload},
-    {5u, "resetpoint", ResetpointPayload},
+    {3u, "catalog_response", CatalogResponsePayload},
+    {4u, "checkpoints_response", CheckpointsResponsePayload},
+    {5u, "resetpoints_response", ResetpointsResponsePayload},
 };
 
 inline constexpr const char CatalogRoute[] = "bml.gameplay/v1/rpc/catalog";
-inline constexpr const char CatalogCollectionPayload[] = "bml.gameplay/v1/payload/catalog.collection";
 inline constexpr const char CheckpointsRoute[] = "bml.gameplay/v1/rpc/checkpoints";
-inline constexpr const char CheckpointsCollectionPayload[] = "bml.gameplay/v1/payload/checkpoints.collection";
 inline constexpr const char EnergyRoute[] = "bml.gameplay/v1/rpc/energy";
 inline constexpr const char LevelRoute[] = "bml.gameplay/v1/rpc/level";
 inline constexpr const char ResetpointsRoute[] = "bml.gameplay/v1/rpc/resetpoints";
-inline constexpr const char ResetpointsCollectionPayload[] = "bml.gameplay/v1/payload/resetpoints.collection";
 
 class Client {
 public:
@@ -458,11 +456,11 @@ public:
     Client(const Client &) = delete;
     Client &operator=(const Client &) = delete;
 
-    using CatalogFuture = ::BML::Imc::RpcFuture<std::vector<CatalogEntryValue>>;
-    using CheckpointsFuture = ::BML::Imc::RpcFuture<std::vector<CheckpointValue>>;
+    using CatalogFuture = ::BML::Imc::RpcFuture<CatalogResponseValue>;
+    using CheckpointsFuture = ::BML::Imc::RpcFuture<CheckpointsResponseValue>;
     using EnergyFuture = ::BML::Imc::RpcFuture<EnergyStateValue>;
     using LevelFuture = ::BML::Imc::RpcFuture<LevelStateValue>;
-    using ResetpointsFuture = ::BML::Imc::RpcFuture<std::vector<ResetpointValue>>;
+    using ResetpointsFuture = ::BML::Imc::RpcFuture<ResetpointsResponseValue>;
 
     int Open(const char *ownerId = nullptr) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
@@ -477,16 +475,13 @@ public:
         int status = BML_OK;
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, LevelStatePayload, &m_LevelStatePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, EnergyStatePayload, &m_EnergyStatePayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CatalogEntryPayload, &m_CatalogEntryPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CheckpointPayload, &m_CheckpointPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ResetpointPayload, &m_ResetpointPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CatalogCollectionPayload, &m_CatalogCollectionPayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CatalogResponsePayload, &m_CatalogResponsePayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CheckpointsResponsePayload, &m_CheckpointsResponsePayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ResetpointsResponsePayload, &m_ResetpointsResponsePayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, CatalogRoute, &m_CatalogRpc);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CheckpointsCollectionPayload, &m_CheckpointsCollectionPayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, CheckpointsRoute, &m_CheckpointsRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, EnergyRoute, &m_EnergyRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, LevelRoute, &m_LevelRpc);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ResetpointsCollectionPayload, &m_ResetpointsCollectionPayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, ResetpointsRoute, &m_ResetpointsRpc);
         if (status != BML_OK) (void)Close();
         return status;
@@ -501,11 +496,10 @@ public:
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId LevelStatePayloadType() const noexcept { return m_LevelStatePayload; }
     BML_ImcPayloadTypeId EnergyStatePayloadType() const noexcept { return m_EnergyStatePayload; }
-    BML_ImcPayloadTypeId CatalogEntryPayloadType() const noexcept { return m_CatalogEntryPayload; }
-    BML_ImcPayloadTypeId CheckpointPayloadType() const noexcept { return m_CheckpointPayload; }
-    BML_ImcPayloadTypeId ResetpointPayloadType() const noexcept { return m_ResetpointPayload; }
+    BML_ImcPayloadTypeId CatalogResponsePayloadType() const noexcept { return m_CatalogResponsePayload; }
+    BML_ImcPayloadTypeId CheckpointsResponsePayloadType() const noexcept { return m_CheckpointsResponsePayload; }
+    BML_ImcPayloadTypeId ResetpointsResponsePayloadType() const noexcept { return m_ResetpointsResponsePayload; }
     BML_ImcRpcId CatalogRpcId() const noexcept { return m_CatalogRpc; }
-    BML_ImcPayloadTypeId CatalogCollectionPayloadType() const noexcept { return m_CatalogCollectionPayload; }
     int IsCatalogAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_CatalogRpc, &available);
@@ -513,7 +507,6 @@ public:
         return status;
     }
     BML_ImcRpcId CheckpointsRpcId() const noexcept { return m_CheckpointsRpc; }
-    BML_ImcPayloadTypeId CheckpointsCollectionPayloadType() const noexcept { return m_CheckpointsCollectionPayload; }
     int IsCheckpointsAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_CheckpointsRpc, &available);
@@ -535,7 +528,6 @@ public:
         return status;
     }
     BML_ImcRpcId ResetpointsRpcId() const noexcept { return m_ResetpointsRpc; }
-    BML_ImcPayloadTypeId ResetpointsCollectionPayloadType() const noexcept { return m_ResetpointsCollectionPayload; }
     int IsResetpointsAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_ResetpointsRpc, &available);
@@ -543,83 +535,65 @@ public:
         return status;
     }
 
-    int BeginReadCatalog(CatalogFuture &out, std::uint32_t timeoutMs = 5000u) {
-        auto decode = [](const BML_ImcMessage &message, std::vector<CatalogEntryValue> &values) {
-            std::uint64_t hash = 0; int status = ::BML::Imc::DecodeCollection(message, values, hash, DecodeCatalogEntry);
-            return status == BML_OK && !IsCompatibleHash(hash) ? BML_ERROR_IMC_API_MISMATCH : status;
-        };
-        return ::BML::Imc::BeginRpc(m_Client, m_CatalogRpc, nullptr, m_CatalogCollectionPayload, out, decode, timeoutMs);
+    int BeginCallCatalog(CatalogFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_CatalogRpc, nullptr, m_CatalogResponsePayload, out, DecodeCatalogResponse, timeoutMs);
     }
-    int ReadCatalog(std::vector<CatalogEntryValue> &out, std::uint32_t timeoutMs = 5000u) {
-        CatalogFuture future; int status = BeginReadCatalog(future, timeoutMs);
+    int CallCatalog(CatalogResponseValue &out, std::uint32_t timeoutMs = 5000u) {
+        CatalogFuture future; int status = BeginCallCatalog(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginReadCheckpoints(CheckpointsFuture &out, std::uint32_t timeoutMs = 5000u) {
-        auto decode = [](const BML_ImcMessage &message, std::vector<CheckpointValue> &values) {
-            std::uint64_t hash = 0; int status = ::BML::Imc::DecodeCollection(message, values, hash, DecodeCheckpoint);
-            return status == BML_OK && !IsCompatibleHash(hash) ? BML_ERROR_IMC_API_MISMATCH : status;
-        };
-        return ::BML::Imc::BeginRpc(m_Client, m_CheckpointsRpc, nullptr, m_CheckpointsCollectionPayload, out, decode, timeoutMs);
+    int BeginCallCheckpoints(CheckpointsFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_CheckpointsRpc, nullptr, m_CheckpointsResponsePayload, out, DecodeCheckpointsResponse, timeoutMs);
     }
-    int ReadCheckpoints(std::vector<CheckpointValue> &out, std::uint32_t timeoutMs = 5000u) {
-        CheckpointsFuture future; int status = BeginReadCheckpoints(future, timeoutMs);
+    int CallCheckpoints(CheckpointsResponseValue &out, std::uint32_t timeoutMs = 5000u) {
+        CheckpointsFuture future; int status = BeginCallCheckpoints(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginReadEnergy(EnergyFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallEnergy(EnergyFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_EnergyRpc, nullptr, m_EnergyStatePayload, out, DecodeEnergyState, timeoutMs);
     }
-    int ReadEnergy(EnergyStateValue &out, std::uint32_t timeoutMs = 5000u) {
-        EnergyFuture future; int status = BeginReadEnergy(future, timeoutMs);
+    int CallEnergy(EnergyStateValue &out, std::uint32_t timeoutMs = 5000u) {
+        EnergyFuture future; int status = BeginCallEnergy(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginReadLevel(LevelFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallLevel(LevelFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_LevelRpc, nullptr, m_LevelStatePayload, out, DecodeLevelState, timeoutMs);
     }
-    int ReadLevel(LevelStateValue &out, std::uint32_t timeoutMs = 5000u) {
-        LevelFuture future; int status = BeginReadLevel(future, timeoutMs);
+    int CallLevel(LevelStateValue &out, std::uint32_t timeoutMs = 5000u) {
+        LevelFuture future; int status = BeginCallLevel(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginReadResetpoints(ResetpointsFuture &out, std::uint32_t timeoutMs = 5000u) {
-        auto decode = [](const BML_ImcMessage &message, std::vector<ResetpointValue> &values) {
-            std::uint64_t hash = 0; int status = ::BML::Imc::DecodeCollection(message, values, hash, DecodeResetpoint);
-            return status == BML_OK && !IsCompatibleHash(hash) ? BML_ERROR_IMC_API_MISMATCH : status;
-        };
-        return ::BML::Imc::BeginRpc(m_Client, m_ResetpointsRpc, nullptr, m_ResetpointsCollectionPayload, out, decode, timeoutMs);
+    int BeginCallResetpoints(ResetpointsFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+        return ::BML::Imc::BeginRpc(m_Client, m_ResetpointsRpc, nullptr, m_ResetpointsResponsePayload, out, DecodeResetpointsResponse, timeoutMs);
     }
-    int ReadResetpoints(std::vector<ResetpointValue> &out, std::uint32_t timeoutMs = 5000u) {
-        ResetpointsFuture future; int status = BeginReadResetpoints(future, timeoutMs);
+    int CallResetpoints(ResetpointsResponseValue &out, std::uint32_t timeoutMs = 5000u) {
+        ResetpointsFuture future; int status = BeginCallResetpoints(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
 private:
     void ResetIds() noexcept {
         m_LevelStatePayload = BML_IMC_INVALID_ID;
         m_EnergyStatePayload = BML_IMC_INVALID_ID;
-        m_CatalogEntryPayload = BML_IMC_INVALID_ID;
-        m_CheckpointPayload = BML_IMC_INVALID_ID;
-        m_ResetpointPayload = BML_IMC_INVALID_ID;
+        m_CatalogResponsePayload = BML_IMC_INVALID_ID;
+        m_CheckpointsResponsePayload = BML_IMC_INVALID_ID;
+        m_ResetpointsResponsePayload = BML_IMC_INVALID_ID;
         m_CatalogRpc = BML_IMC_INVALID_ID;
-        m_CatalogCollectionPayload = BML_IMC_INVALID_ID;
         m_CheckpointsRpc = BML_IMC_INVALID_ID;
-        m_CheckpointsCollectionPayload = BML_IMC_INVALID_ID;
         m_EnergyRpc = BML_IMC_INVALID_ID;
         m_LevelRpc = BML_IMC_INVALID_ID;
         m_ResetpointsRpc = BML_IMC_INVALID_ID;
-        m_ResetpointsCollectionPayload = BML_IMC_INVALID_ID;
     }
     BML_ImcClient m_Client = nullptr;
     BML_ImcPayloadTypeId m_LevelStatePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_EnergyStatePayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_CatalogEntryPayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_CheckpointPayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_ResetpointPayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_CatalogResponsePayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_CheckpointsResponsePayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_ResetpointsResponsePayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_CatalogRpc = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_CatalogCollectionPayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_CheckpointsRpc = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_CheckpointsCollectionPayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_EnergyRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_LevelRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_ResetpointsRpc = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_ResetpointsCollectionPayload = BML_IMC_INVALID_ID;
 };
 
 class Provider {
@@ -633,7 +607,7 @@ public:
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using CatalogHandler = int (*)(std::vector<CatalogEntryValue> &, void *);
+    using CatalogHandler = int (*)(CatalogResponseValue &, void *);
     int RegisterCatalog(CatalogHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Catalog.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -650,7 +624,7 @@ public:
         return status;
     }
 
-    using CheckpointsHandler = int (*)(std::vector<CheckpointValue> &, void *);
+    using CheckpointsHandler = int (*)(CheckpointsResponseValue &, void *);
     int RegisterCheckpoints(CheckpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Checkpoints.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -701,7 +675,7 @@ public:
         return status;
     }
 
-    using ResetpointsHandler = int (*)(std::vector<ResetpointValue> &, void *);
+    using ResetpointsHandler = int (*)(ResetpointsResponseValue &, void *);
     int RegisterResetpoints(ResetpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Resetpoints.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -725,10 +699,9 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            std::vector<CatalogEntryValue> output;
-            const int status = slot->Function(output, slot->Userdata);
+            CatalogResponseValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteCollectionResponse(response, slot->Owner->m_Transport.CatalogCollectionPayloadType(), output, WireHash, EncodedCatalogEntrySize, EncodeCatalogEntry);
+            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CatalogResponsePayloadType(), output, EncodedCatalogResponseSize, EncodeCatalogResponse);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct CheckpointsSlot { Provider *Owner = nullptr; CheckpointsHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
@@ -737,10 +710,9 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            std::vector<CheckpointValue> output;
-            const int status = slot->Function(output, slot->Userdata);
+            CheckpointsResponseValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteCollectionResponse(response, slot->Owner->m_Transport.CheckpointsCollectionPayloadType(), output, WireHash, EncodedCheckpointSize, EncodeCheckpoint);
+            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CheckpointsResponsePayloadType(), output, EncodedCheckpointsResponseSize, EncodeCheckpointsResponse);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct EnergySlot { Provider *Owner = nullptr; EnergyHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
@@ -749,8 +721,7 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            EnergyStateValue output{};
-            const int status = slot->Function(output, slot->Userdata);
+            EnergyStateValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.EnergyStatePayloadType(), output, EncodedEnergyStateSize, EncodeEnergyState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -761,8 +732,7 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            LevelStateValue output{};
-            const int status = slot->Function(output, slot->Userdata);
+            LevelStateValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.LevelStatePayloadType(), output, EncodedLevelStateSize, EncodeLevelState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -773,10 +743,9 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            std::vector<ResetpointValue> output;
-            const int status = slot->Function(output, slot->Userdata);
+            ResetpointsResponseValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteCollectionResponse(response, slot->Owner->m_Transport.ResetpointsCollectionPayloadType(), output, WireHash, EncodedResetpointSize, EncodeResetpoint);
+            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ResetpointsResponsePayloadType(), output, EncodedResetpointsResponseSize, EncodeResetpointsResponse);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     void ResetSlots() noexcept {

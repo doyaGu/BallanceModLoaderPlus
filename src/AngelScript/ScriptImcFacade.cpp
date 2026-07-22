@@ -123,7 +123,7 @@ T &AssignValue(const T &other, T *self) {
     return *self;
 }
 
-#define BML_AS_DEFINE_INTEROP_VALUE(Type, Suffix)                                 \
+#define BML_AS_DEFINE_IMC_VALUE(Type, Suffix)                                     \
     static void Construct##Suffix(Type *self) { ConstructValue(self); }            \
     static void CopyConstruct##Suffix(const Type &other, Type *self) {              \
         CopyConstructValue(other, self);                                            \
@@ -133,18 +133,18 @@ T &AssignValue(const T &other, T *self) {
         return AssignValue(other, self);                                            \
     }
 
-BML_AS_DEFINE_INTEROP_VALUE(RuntimeState, RuntimeState)
-BML_AS_DEFINE_INTEROP_VALUE(ClockState, ClockState)
-BML_AS_DEFINE_INTEROP_VALUE(ScoreState, ScoreState)
-BML_AS_DEFINE_INTEROP_VALUE(ObjectInfo, ObjectInfo)
-BML_AS_DEFINE_INTEROP_VALUE(EntityTransform, EntityTransform)
-BML_AS_DEFINE_INTEROP_VALUE(LevelState, LevelState)
-BML_AS_DEFINE_INTEROP_VALUE(EnergyState, EnergyState)
-BML_AS_DEFINE_INTEROP_VALUE(CatalogEntry, CatalogEntry)
-BML_AS_DEFINE_INTEROP_VALUE(Checkpoint, Checkpoint)
-BML_AS_DEFINE_INTEROP_VALUE(Resetpoint, Resetpoint)
+BML_AS_DEFINE_IMC_VALUE(RuntimeState, RuntimeState)
+BML_AS_DEFINE_IMC_VALUE(ClockState, ClockState)
+BML_AS_DEFINE_IMC_VALUE(ScoreState, ScoreState)
+BML_AS_DEFINE_IMC_VALUE(ObjectInfo, ObjectInfo)
+BML_AS_DEFINE_IMC_VALUE(EntityTransform, EntityTransform)
+BML_AS_DEFINE_IMC_VALUE(LevelState, LevelState)
+BML_AS_DEFINE_IMC_VALUE(EnergyState, EnergyState)
+BML_AS_DEFINE_IMC_VALUE(CatalogEntry, CatalogEntry)
+BML_AS_DEFINE_IMC_VALUE(Checkpoint, Checkpoint)
+BML_AS_DEFINE_IMC_VALUE(Resetpoint, Resetpoint)
 
-#undef BML_AS_DEFINE_INTEROP_VALUE
+#undef BML_AS_DEFINE_IMC_VALUE
 
 struct ValueTypeRegistration {
     const char *Name;
@@ -245,7 +245,7 @@ int ReadRuntime(RuntimeState &out) {
     RuntimeImc::Client *client = nullptr;
     if (status == BML_OK) status = clients->Runtime(client);
     RuntimeImc::RuntimeStateValue value{};
-    if (status == BML_OK) status = client->ReadState(value);
+    if (status == BML_OK) status = client->CallState(value);
     if (status == BML_OK) {
         out = {value.InGame, value.InLevel, value.Paused, value.Playing, value.CheatEnabled};
     }
@@ -259,7 +259,7 @@ int ReadClock(ClockState &out) {
     RuntimeImc::Client *client = nullptr;
     if (status == BML_OK) status = clients->Runtime(client);
     RuntimeImc::ClockStateValue value{};
-    if (status == BML_OK) status = client->ReadClock(value);
+    if (status == BML_OK) status = client->CallClock(value);
     if (status == BML_OK)
         out = {value.TimeMs, value.AbsoluteMs, value.DeltaMs, value.Frame};
     return status;
@@ -272,7 +272,7 @@ int ReadScore(ScoreState &out) {
     RuntimeImc::Client *client = nullptr;
     if (status == BML_OK) status = clients->Runtime(client);
     RuntimeImc::ScoreStateValue value{};
-    if (status == BML_OK) status = client->ReadScore(value);
+    if (status == BML_OK) status = client->CallScore(value);
     if (status == BML_OK)
         out = {value.Sr, value.Hs};
     return status;
@@ -287,8 +287,10 @@ int ReadObjectInfo(CKObject *object, ObjectInfo &out) {
     const BML_ObjectRef reference = context ? MakeBuiltinObjectRef(*context, object) : BML_ObjectRef{};
     if (status == BML_OK && object && reference.Domain == 0)
         status = BML_ERROR_IMC_OBJECT_INVALID;
+    SceneImc::ObjectRequestValue input{};
+    input.Object = reference;
     SceneImc::ObjectInfoValue value{};
-    if (status == BML_OK) status = client->ReadObject(reference, value);
+    if (status == BML_OK) status = client->CallObject(input, value);
     if (status == BML_OK) {
         out.Object = reference;
         out.Id = value.Id;
@@ -309,8 +311,10 @@ int ReadEntity(CKObject *object, EntityTransform &out) {
     const BML_ObjectRef reference = context ? MakeBuiltinObjectRef(*context, object) : BML_ObjectRef{};
     if (status == BML_OK && object && reference.Domain == 0)
         status = BML_ERROR_IMC_OBJECT_INVALID;
+    SceneImc::ObjectRequestValue input{};
+    input.Object = reference;
     SceneImc::EntityTransformValue value{};
-    if (status == BML_OK) status = client->ReadEntity(reference, value);
+    if (status == BML_OK) status = client->CallEntity(input, value);
     if (status == BML_OK)
         out = {value.Position, value.Scale, value.Parent, value.ChildCount};
     return status;
@@ -326,10 +330,10 @@ int FindObject(const std::string &name, int classId, bool filterClass, CKObject 
     SceneImc::FindResultValue result{};
     if (status == BML_OK && filterClass) {
         SceneImc::FindNameClassRequestValue request{name, classId};
-        status = client->QueryFindNameClass(request, result);
+        status = client->CallFindNameClass(request, result);
     } else if (status == BML_OK) {
         SceneImc::FindNameRequestValue request{name};
-        status = client->QueryFindName(request, result);
+        status = client->CallFindName(request, result);
     }
     if (status == BML_OK && result.Object.Domain != 0) {
         out = ResolveBuiltinObjectRef(*context, result.Object);
@@ -354,7 +358,7 @@ int ReadLevel(LevelState &out) {
     GameplayImc::Client *client = nullptr;
     if (status == BML_OK) status = clients->Gameplay(client);
     GameplayImc::LevelStateValue value{};
-    if (status == BML_OK) status = client->ReadLevel(value);
+    if (status == BML_OK) status = client->CallLevel(value);
     if (status == BML_OK)
         out = {value.Id, value.ActiveBall, value.ResetMatrix, value.Points};
     return status;
@@ -367,7 +371,7 @@ int ReadEnergy(EnergyState &out) {
     GameplayImc::Client *client = nullptr;
     if (status == BML_OK) status = clients->Gameplay(client);
     GameplayImc::EnergyStateValue value{};
-    if (status == BML_OK) status = client->ReadEnergy(value);
+    if (status == BML_OK) status = client->CallEnergy(value);
     if (status == BML_OK) {
         out = {value.Points, value.Lives, value.StartPoints, value.StartLives,
                value.TimeFactor, value.LifeBonus};
@@ -444,53 +448,50 @@ private:
 
 class CatalogCursor final : public CollectionCursor {
 public:
-    explicit CatalogCursor(std::vector<GameplayImc::CatalogEntryValue> values)
+    explicit CatalogCursor(std::vector<CatalogEntry> values)
         : m_Values(std::move(values)) {}
     int Next(CatalogEntry &out, bool &hasValue, bool &complete) {
         const int status = BeginNext(m_Values.size(), hasValue, complete);
         if (status != BML_OK || !hasValue)
             return status;
-        auto &value = m_Values[Index()];
-        out = {std::move(value.File), std::move(value.StartBall), std::move(value.Sky),
-               value.Bonus, value.Music};
+        out = std::move(m_Values[Index()]);
         Advance();
         return BML_OK;
     }
 private:
-    std::vector<GameplayImc::CatalogEntryValue> m_Values;
+    std::vector<CatalogEntry> m_Values;
 };
 
 class CheckpointCursor final : public CollectionCursor {
 public:
-    explicit CheckpointCursor(std::vector<GameplayImc::CheckpointValue> values)
+    explicit CheckpointCursor(std::vector<Checkpoint> values)
         : m_Values(std::move(values)) {}
     int Next(Checkpoint &out, bool &hasValue, bool &complete) {
         const int status = BeginNext(m_Values.size(), hasValue, complete);
         if (status != BML_OK || !hasValue)
             return status;
-        const auto &value = m_Values[Index()];
-        out = {value.Matrix, value.Object};
+        out = m_Values[Index()];
         Advance();
         return BML_OK;
     }
 private:
-    std::vector<GameplayImc::CheckpointValue> m_Values;
+    std::vector<Checkpoint> m_Values;
 };
 
 class ResetpointCursor final : public CollectionCursor {
 public:
-    explicit ResetpointCursor(std::vector<GameplayImc::ResetpointValue> values)
+    explicit ResetpointCursor(std::vector<Resetpoint> values)
         : m_Values(std::move(values)) {}
     int Next(Resetpoint &out, bool &hasValue, bool &complete) {
         const int status = BeginNext(m_Values.size(), hasValue, complete);
         if (status != BML_OK || !hasValue)
             return status;
-        out = {m_Values[Index()].Object};
+        out = m_Values[Index()];
         Advance();
         return BML_OK;
     }
 private:
-    std::vector<GameplayImc::ResetpointValue> m_Values;
+    std::vector<Resetpoint> m_Values;
 };
 
 template <typename Cursor, typename Value, typename Reader>
@@ -513,23 +514,68 @@ int OpenCollection(Cursor *&out, Reader reader) {
 }
 
 int OpenCatalog(CatalogCursor *&out) {
-    return OpenCollection<CatalogCursor, GameplayImc::CatalogEntryValue>(
+    return OpenCollection<CatalogCursor, CatalogEntry>(
         out, [](GameplayImc::Client &client, auto &values) {
-            return client.ReadCatalog(values);
+            GameplayImc::CatalogResponseValue response{};
+            int status = client.CallCatalog(response);
+            const std::size_t count = response.Files.size();
+            if (status == BML_OK && (response.StartBalls.size() != count ||
+                                     response.Skies.size() != count ||
+                                     response.Bonuses.size() != count ||
+                                     response.Music.size() != count))
+                status = BML_ERROR_MALFORMED_MESSAGE;
+            if (status != BML_OK)
+                return status;
+            try {
+                values.reserve(count);
+                for (std::size_t i = 0; i < count; ++i) {
+                    values.push_back({std::move(response.Files[i]),
+                                      std::move(response.StartBalls[i]),
+                                      std::move(response.Skies[i]),
+                                      response.Bonuses[i], response.Music[i]});
+                }
+            } catch (const std::bad_alloc &) {
+                return BML_ERROR_OUT_OF_MEMORY;
+            }
+            return BML_OK;
         });
 }
 
 int OpenCheckpoints(CheckpointCursor *&out) {
-    return OpenCollection<CheckpointCursor, GameplayImc::CheckpointValue>(
+    return OpenCollection<CheckpointCursor, Checkpoint>(
         out, [](GameplayImc::Client &client, auto &values) {
-            return client.ReadCheckpoints(values);
+            GameplayImc::CheckpointsResponseValue response{};
+            int status = client.CallCheckpoints(response);
+            if (status == BML_OK && response.Matrices.size() != response.Objects.size())
+                status = BML_ERROR_MALFORMED_MESSAGE;
+            if (status != BML_OK)
+                return status;
+            try {
+                values.reserve(response.Matrices.size());
+                for (std::size_t i = 0; i < response.Matrices.size(); ++i)
+                    values.push_back({response.Matrices[i], response.Objects[i]});
+            } catch (const std::bad_alloc &) {
+                return BML_ERROR_OUT_OF_MEMORY;
+            }
+            return BML_OK;
         });
 }
 
 int OpenResetpoints(ResetpointCursor *&out) {
-    return OpenCollection<ResetpointCursor, GameplayImc::ResetpointValue>(
+    return OpenCollection<ResetpointCursor, Resetpoint>(
         out, [](GameplayImc::Client &client, auto &values) {
-            return client.ReadResetpoints(values);
+            GameplayImc::ResetpointsResponseValue response{};
+            const int status = client.CallResetpoints(response);
+            if (status != BML_OK)
+                return status;
+            try {
+                values.reserve(response.Objects.size());
+                for (const BML_ObjectRef &object : response.Objects)
+                    values.push_back({object});
+            } catch (const std::bad_alloc &) {
+                return BML_ERROR_OUT_OF_MEMORY;
+            }
+            return BML_OK;
         });
 }
 /* Script events own decoded IMC values, never CK pointers. Object references are

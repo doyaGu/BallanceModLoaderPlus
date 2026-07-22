@@ -3,6 +3,7 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
+#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -12,8 +13,8 @@ namespace BML::Imc::Generated::Bml::Runtime {
 inline constexpr const char ApiId[] = "bml.runtime";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0x7467626056A20F28ULL;
-inline constexpr std::uint64_t WireHash = 0x7467626056A20F28ULL;
+inline constexpr std::uint64_t Hash = 0xFC316AFA36C257F2ULL;
+inline constexpr std::uint64_t WireHash = 0xFC316AFA36C257F2ULL;
 inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
 struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
@@ -344,25 +345,25 @@ public:
         return status;
     }
 
-    int BeginReadClock(ClockFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallClock(ClockFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_ClockRpc, nullptr, m_ClockStatePayload, out, DecodeClockState, timeoutMs);
     }
-    int ReadClock(ClockStateValue &out, std::uint32_t timeoutMs = 5000u) {
-        ClockFuture future; int status = BeginReadClock(future, timeoutMs);
+    int CallClock(ClockStateValue &out, std::uint32_t timeoutMs = 5000u) {
+        ClockFuture future; int status = BeginCallClock(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginReadScore(ScoreFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallScore(ScoreFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_ScoreRpc, nullptr, m_ScoreStatePayload, out, DecodeScoreState, timeoutMs);
     }
-    int ReadScore(ScoreStateValue &out, std::uint32_t timeoutMs = 5000u) {
-        ScoreFuture future; int status = BeginReadScore(future, timeoutMs);
+    int CallScore(ScoreStateValue &out, std::uint32_t timeoutMs = 5000u) {
+        ScoreFuture future; int status = BeginCallScore(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginReadState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    int BeginCallState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_StateRpc, nullptr, m_RuntimeStatePayload, out, DecodeRuntimeState, timeoutMs);
     }
-    int ReadState(RuntimeStateValue &out, std::uint32_t timeoutMs = 5000u) {
-        StateFuture future; int status = BeginReadState(future, timeoutMs);
+    int CallState(RuntimeStateValue &out, std::uint32_t timeoutMs = 5000u) {
+        StateFuture future; int status = BeginCallState(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
 private:
@@ -452,8 +453,7 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            ClockStateValue output{};
-            const int status = slot->Function(output, slot->Userdata);
+            ClockStateValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ClockStatePayloadType(), output, EncodedClockStateSize, EncodeClockState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -464,8 +464,7 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            ScoreStateValue output{};
-            const int status = slot->Function(output, slot->Userdata);
+            ScoreStateValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ScoreStatePayloadType(), output, EncodedScoreStateSize, EncodeScoreState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -476,8 +475,7 @@ private:
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            RuntimeStateValue output{};
-            const int status = slot->Function(output, slot->Userdata);
+            RuntimeStateValue output{}; const int status = slot->Function(output, slot->Userdata);
             if (status != BML_OK) return status;
             return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.RuntimeStatePayloadType(), output, EncodedRuntimeStateSize, EncodeRuntimeState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }

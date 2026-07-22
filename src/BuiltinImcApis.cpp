@@ -217,18 +217,20 @@ private:
         (void)m_ImcEvents.PublishAll(value);
     }
 
-    static int ReadImcSceneObject(const BML_ObjectRef &reference, ImcSceneApi::ObjectInfoValue &out, void *userdata) {
+    static int ReadImcSceneObject(const ImcSceneApi::ObjectRequestValue &input,
+                                  ImcSceneApi::ObjectInfoValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), reference) : nullptr;
+        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), input.Object) : nullptr;
         if (!object) return BML_ERROR_IMC_OBJECT_INVALID;
         out.Id = static_cast<int>(object->GetID()); out.Name = object->GetName() ? object->GetName() : "";
         out.ClassId = static_cast<int>(object->GetClassID()); out.Visible = object->IsVisible() != FALSE;
         out.Dynamic = object->IsDynamic() != FALSE; return BML_OK;
     }
 
-    static int ReadImcSceneEntity(const BML_ObjectRef &reference, ImcSceneApi::EntityTransformValue &out, void *userdata) {
+    static int ReadImcSceneEntity(const ImcSceneApi::ObjectRequestValue &input,
+                                  ImcSceneApi::EntityTransformValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), reference) : nullptr;
+        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), input.Object) : nullptr;
         CK3dEntity *entity = dynamic_cast<CK3dEntity *>(object);
         if (!entity) return BML_ERROR_IMC_OBJECT_INVALID;
         VxVector position, scale; entity->GetPosition(&position); entity->GetScale(&scale);
@@ -280,43 +282,48 @@ private:
         return BML_OK;
     }
 
-    static int ReadImcGameplayCatalog(std::vector<ImcGameplayApi::CatalogEntryValue> &out, void *userdata) {
+    static int ReadImcGameplayCatalog(ImcGameplayApi::CatalogResponseValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
         ModContext *context = provider ? provider->GetContext() : nullptr;
         if (!context || !provider->ProbeGameplaySource("catalog")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("AllLevel"); out.clear(); out.reserve(array->GetRowCount());
+        CKDataArray *array = context->GetArrayByName("AllLevel");
+        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
+        out.Files.reserve(count); out.StartBalls.reserve(count); out.Skies.reserve(count);
+        out.Bonuses.reserve(count); out.Music.reserve(count);
         for (int row = 0; row < array->GetRowCount(); ++row) {
-            ImcGameplayApi::CatalogEntryValue value{};
-            if (!ReadString(array, row, 0, value.File) || !ReadString(array, row, 1, value.StartBall) ||
-                !ReadString(array, row, 2, value.Sky) || !ReadValue(array, row, 3, value.Bonus) ||
-                !ReadValue(array, row, 4, value.Music)) return BML_ERROR_IMC_UNSUPPORTED;
-            out.push_back(std::move(value));
+            std::string file, startBall, sky; int bonus = 0, music = 0;
+            if (!ReadString(array, row, 0, file) || !ReadString(array, row, 1, startBall) ||
+                !ReadString(array, row, 2, sky) || !ReadValue(array, row, 3, bonus) ||
+                !ReadValue(array, row, 4, music)) return BML_ERROR_IMC_UNSUPPORTED;
+            out.Files.push_back(std::move(file)); out.StartBalls.push_back(std::move(startBall));
+            out.Skies.push_back(std::move(sky)); out.Bonuses.push_back(bonus); out.Music.push_back(music);
         }
         return BML_OK;
     }
 
-    static int ReadImcGameplayCheckpoints(std::vector<ImcGameplayApi::CheckpointValue> &out, void *userdata) {
+    static int ReadImcGameplayCheckpoints(ImcGameplayApi::CheckpointsResponseValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
         ModContext *context = provider ? provider->GetContext() : nullptr;
         if (!context || !provider->ProbeGameplaySource("checkpoints")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("Checkpoints"); out.clear(); out.reserve(array->GetRowCount());
+        CKDataArray *array = context->GetArrayByName("Checkpoints");
+        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
+        out.Matrices.reserve(count); out.Objects.reserve(count);
         for (int row = 0; row < array->GetRowCount(); ++row) {
             VxMatrix matrix; if (!ReadMatrix(array, row, 0, matrix)) return BML_ERROR_IMC_UNSUPPORTED;
-            ImcGameplayApi::CheckpointValue value{}; value.Matrix = BML::Imc::ToMat4(matrix);
-            value.Object = provider->m_ObjectReferences.Make(ReadObject(array, row, 1)); out.push_back(value);
+            out.Matrices.push_back(BML::Imc::ToMat4(matrix));
+            out.Objects.push_back(provider->m_ObjectReferences.Make(ReadObject(array, row, 1)));
         }
         return BML_OK;
     }
 
-    static int ReadImcGameplayResetpoints(std::vector<ImcGameplayApi::ResetpointValue> &out, void *userdata) {
+    static int ReadImcGameplayResetpoints(ImcGameplayApi::ResetpointsResponseValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
         ModContext *context = provider ? provider->GetContext() : nullptr;
         if (!context || !provider->ProbeGameplaySource("resetpoints")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("ResetPoints"); out.clear(); out.reserve(array->GetRowCount());
-        for (int row = 0; row < array->GetRowCount(); ++row) {
-            ImcGameplayApi::ResetpointValue value{};
-            value.Object = provider->m_ObjectReferences.Make(ReadObject(array, row, 0)); out.push_back(value);
-        }
+        CKDataArray *array = context->GetArrayByName("ResetPoints");
+        out.Objects.reserve(static_cast<std::size_t>(array->GetRowCount()));
+        for (int row = 0; row < array->GetRowCount(); ++row)
+            out.Objects.push_back(provider->m_ObjectReferences.Make(ReadObject(array, row, 0)));
         return BML_OK;
     }
     int RegisterImcUi() {
@@ -341,56 +348,55 @@ private:
         return static_cast<BuiltinImcProvider *>(userdata);
     }
 
-    static int ImcUiMessageAdd(const ImcUiApi::MessageInputValue &input,
-                               ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiMessageAdd(const ImcUiApi::MessageInputValue &input, void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.AddIngameMessage(input.Message.c_str()); return BML_OK;
     }
-    static int ImcUiMessageClear(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiMessageClear(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.ClearIngameMessages(); return BML_OK;
     }
-    static int ImcUiModsMenuOpen(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiModsMenuOpen(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.OpenModsMenu(); return BML_OK;
     }
-    static int ImcUiModsMenuClose(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiModsMenuClose(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.CloseModsMenu(); return BML_OK;
     }
-    static int ImcUiMapMenuOpen(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiMapMenuOpen(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.OpenMapMenu(); return BML_OK;
     }
-    static int ImcUiMapMenuClose(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiMapMenuClose(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.CloseMapMenu(); return BML_OK;
     }
-    static int ImcUiHudSet(const ImcUiApi::HudModeInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiHudSet(const ImcUiApi::HudModeInputValue &input, void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.SetHUD(input.Mode); return BML_OK;
     }
-    static int ImcUiHudTitleShow(const ImcUiApi::VisibleInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiHudTitleShow(const ImcUiApi::VisibleInputValue &input, void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.ShowTitle(input.Visible); return BML_OK;
     }
-    static int ImcUiHudFpsShow(const ImcUiApi::VisibleInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiHudFpsShow(const ImcUiApi::VisibleInputValue &input, void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.ShowFPS(input.Visible); return BML_OK;
     }
-    static int ImcUiHudSrShow(const ImcUiApi::VisibleInputValue &input, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiHudSrShow(const ImcUiApi::VisibleInputValue &input, void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.ShowSRTimer(input.Visible); return BML_OK;
     }
-    static int ImcUiHudSrStart(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiHudSrStart(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.StartSRTimer(); return BML_OK;
     }
-    static int ImcUiHudSrPause(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiHudSrPause(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.PauseSRTimer(); return BML_OK;
     }
-    static int ImcUiHudSrReset(const ImcUiApi::EmptyInputValue &, ImcUiApi::CommandResultValue &, void *userdata) {
+    static int ImcUiHudSrReset(void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.ResetSRTimer(); return BML_OK;
     }

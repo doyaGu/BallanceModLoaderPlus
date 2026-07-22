@@ -1,43 +1,25 @@
-{
-  "api": "bml.runtime",
-  "version": {
-    "major": 1,
-    "minor": 0
-  },
-  "schemas": [
-    {
-      "id": 1,
-      "name": "runtime_state",
-      "fields": [
-        { "id": 1, "name": "in_game", "type": "bool" },
-        { "id": 2, "name": "in_level", "type": "bool" },
-        { "id": 3, "name": "paused", "type": "bool" },
-        { "id": 4, "name": "playing", "type": "bool" },
-        { "id": 5, "name": "cheat_enabled", "type": "bool" }
-      ]
-    },
-    {
-      "id": 2,
-      "name": "clock_state",
-      "fields": [
-        { "id": 1, "name": "time_ms", "type": "float" },
-        { "id": 2, "name": "absolute_ms", "type": "float" },
-        { "id": 3, "name": "delta_ms", "type": "float" },
-        { "id": 4, "name": "frame", "type": "int" }
-      ]
-    },
-    {
-      "id": 3,
-      "name": "score_state",
-      "fields": [
-        { "id": 1, "name": "sr", "type": "float" },
-        { "id": 2, "name": "hs", "type": "int" }
-      ]
-    }
-  ],
-  "endpoints": [
-    { "name": "clock", "kind": "resource", "output": 2 },
-    { "name": "score", "kind": "resource", "output": 3 },
-    { "name": "state", "kind": "resource", "output": 1 }
-  ]
+api bml.runtime 1.0
+
+schema runtime_state = 1 {
+    bool in_game = 1
+    bool in_level = 2
+    bool paused = 3
+    bool playing = 4
+    bool cheat_enabled = 5
 }
+
+schema clock_state = 2 {
+    float time_ms = 1
+    float absolute_ms = 2
+    float delta_ms = 3
+    int frame = 4
+}
+
+schema score_state = 3 {
+    float sr = 1
+    int hs = 2
+}
+
+rpc clock() -> clock_state
+rpc score() -> score_state
+rpc state() -> runtime_state
