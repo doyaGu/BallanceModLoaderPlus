@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
@@ -80,8 +81,48 @@ def main() -> int:
             raise AssertionError(f"{relative} introduces an exported C++ IMC helper")
 
     for header in (root / "include/BML/Generated").glob("*_imc.hpp"):
-        if "BML_EXPORT" in header.read_text(encoding="utf-8"):
+        generated = header.read_text(encoding="utf-8")
+        if "BML_EXPORT" in generated:
             raise AssertionError(f"{header} introduces an exported generated C++ helper")
+        if "WireHash" in generated or "IsCompatibleHash" in generated:
+            raise AssertionError(f"{header} reintroduces payload hash negotiation")
+
+    field_number = re.compile(
+        r"^\s*(?:optional\s+)?(?:bool|int|float|int64|uint64|double|string|bytes|"
+        r"object|vec2|vec3|mat4|array<[^>]+>|enum<[^>]+>)\s+[^\s=]+\s*=",
+        re.MULTILINE,
+    )
+    interface_dir = root / "imc/interfaces"
+    legacy_interfaces = list(interface_dir.glob("*.bmlapi"))
+    legacy_interfaces += list(interface_dir.glob("*.bmlabi"))
+    if legacy_interfaces:
+        raise AssertionError(f"legacy interface filenames remain: {legacy_interfaces}")
+
+    for interface in interface_dir.glob("*.imc"):
+        source = interface.read_text(encoding="utf-8")
+        if re.search(r"^\s*(?:schema|wire|accept)\b", source, re.MULTILINE):
+            raise AssertionError(f"{interface} uses legacy transport declarations")
+        if field_number.search(source):
+            raise AssertionError(f"{interface} exposes handwritten field numbers")
+
+        lock_path = interface.with_suffix(".imc.lock")
+        if not lock_path.is_file():
+            raise AssertionError(f"{interface} has no adjacent interface lock")
+        snapshot = json.loads(lock_path.read_text(encoding="utf-8"))
+        if snapshot.get("format") != 1:
+            raise AssertionError(f"{lock_path} has an unsupported lock format")
+        for record in snapshot.get("schemas", []):
+            if "id" in record:
+                raise AssertionError(f"{lock_path} freezes an unused numeric record ID")
+            field_ids = [field["id"] for field in record.get("fields", [])]
+            if len(field_ids) != len(set(field_ids)):
+                raise AssertionError(
+                    f"{lock_path} contains duplicate field IDs in {record['name']}"
+                )
+
+    wire = read(root, "include/BML/ImcWire.hpp")
+    if "DescriptorHash" in wire or "SchemaId" in wire:
+        raise AssertionError("ImcWire.hpp duplicates payload identity inside the payload")
 
     implementation = read(root, "src/ImcApi.cpp")
     open_client = implementation.find("BML_EXPORT int BML_Imc_OpenClient")

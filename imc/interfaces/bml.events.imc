@@ -1,0 +1,42 @@
+api bml.events 1.0
+
+record event {
+    int kind
+    optional string filename
+    optional bool is_map
+    optional string master_name
+    optional int filter_class
+    optional bool add_to_scene
+    optional bool reuse_meshes
+    optional bool reuse_materials
+    optional bool dynamic
+    optional array<object> object_ids
+    optional object master_object
+    optional object script
+    optional object target
+    optional bool fixed
+    optional float friction
+    optional float elasticity
+    optional float mass
+    optional string collision_group
+    optional bool start_frozen
+    optional bool enable_collision
+    optional bool auto_calculate_mass_center
+    optional float linear_damp
+    optional float rot_damp
+    optional string collision_surface
+    optional vec3 mass_center
+    optional array<object> convex_meshes
+    optional array<vec3> ball_centers
+    optional array<float> ball_radii
+    optional array<object> concave_meshes
+    optional string command
+    optional array<string> command_args
+    optional string config_category
+    optional string config_key
+    optional int config_type
+    optional string config_value
+    optional bool cheat_enabled
+}
+
+topic all(event)

@@ -5,7 +5,7 @@ function(bml_target_imc_api target)
         message(FATAL_ERROR "bml_target_imc_api: target '${target}' does not exist")
     endif()
 
-    cmake_parse_arguments(IMC "" "INPUT;API_ID;OUTPUT_DIR" "PREVIOUS" ${ARGN})
+    cmake_parse_arguments(IMC "" "INPUT;API_ID;OUTPUT_DIR" "" ${ARGN})
     if(IMC_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
                 "bml_target_imc_api: unexpected arguments: ${IMC_UNPARSED_ARGUMENTS}")
@@ -26,9 +26,15 @@ function(bml_target_imc_api target)
         message(FATAL_ERROR "bml_target_imc_api: INPUT does not exist: ${input}")
     endif()
     get_filename_component(input_name "${input}" NAME)
-    if(NOT input_name MATCHES "\\.bmlapi$")
+    if(NOT input_name MATCHES "\\.imc$")
         message(FATAL_ERROR
-                "bml_target_imc_api: INPUT must use the .bmlapi extension: ${input}")
+                "bml_target_imc_api: INPUT must use the .imc extension: ${input}")
+    endif()
+    set(interface_lock "${input}.lock")
+    if(NOT EXISTS "${interface_lock}")
+        message(FATAL_ERROR
+                "bml_target_imc_api: interface lock does not exist: ${interface_lock}; "
+                "run imc_codegen.py with --update-lock once")
     endif()
 
     if(IMC_OUTPUT_DIR)
@@ -42,7 +48,7 @@ function(bml_target_imc_api target)
         set(expected_api_id "${IMC_API_ID}")
         set(api_id_source "API_ID '${IMC_API_ID}'")
     else()
-        string(REGEX REPLACE "\\.bmlapi$" "" expected_api_id "${input_name}")
+        string(REGEX REPLACE "\\.imc$" "" expected_api_id "${input_name}")
         set(api_id_source "API ID '${expected_api_id}' derived from '${input_name}'")
     endif()
     set(api_id_pattern
@@ -60,17 +66,7 @@ function(bml_target_imc_api target)
             --input "${input}"
             --expected-api-id "${expected_api_id}"
     )
-    set(dependencies "${BML_IMC_CODEGEN}" "${input}")
-    foreach(previous IN LISTS IMC_PREVIOUS)
-        get_filename_component(previous "${previous}" ABSOLUTE
-                               BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-        if(NOT EXISTS "${previous}")
-            message(FATAL_ERROR
-                    "bml_target_imc_api: PREVIOUS does not exist: ${previous}")
-        endif()
-        list(APPEND arguments --previous "${previous}")
-        list(APPEND dependencies "${previous}")
-    endforeach()
+    set(dependencies "${BML_IMC_CODEGEN}" "${input}" "${interface_lock}")
 
     add_custom_command(
             OUTPUT "${output}"

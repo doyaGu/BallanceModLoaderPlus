@@ -14,7 +14,7 @@ def quote_cmake(path: Path) -> str:
     return path.resolve().as_posix().replace('"', '\\"')
 
 
-def render_bmlapi(value: dict) -> str:
+def render_imc(value: dict) -> str:
     version = value["version"]
     lines = [f"api {value['api']} {version['major']}.{version.get('minor', 0)}", ""]
     for enum in value.get("enums", []):
@@ -28,10 +28,10 @@ def render_bmlapi(value: dict) -> str:
         lines.extend(["}", ""])
     schema_names = {schema["id"]: schema["name"] for schema in value["schemas"]}
     for schema in value["schemas"]:
-        lines.append(f"schema {schema['name']} = {schema['id']} {{")
+        lines.append(f"record {schema['name']} {{")
         for field in schema["fields"]:
             optional = "optional " if field.get("optional", False) else ""
-            lines.append(f"    {optional}{field['type']} {field['name']} = {field['id']}")
+            lines.append(f"    {optional}{field['type']} {field['name']}")
         lines.extend(["}", ""])
     for rpc in value.get("rpcs", []):
         request = schema_names[rpc["request"]] if rpc.get("request") else ""
@@ -67,7 +67,7 @@ def main() -> int:
         source = root / "source"
         build = root / "build"
         source.mkdir()
-        contract = {
+        interface = {
             "api": "example.echo",
             "version": {"major": 1, "minor": 0},
             "enums": [
@@ -108,11 +108,11 @@ def main() -> int:
                 {"name": "changed", "message": 2}
             ],
         }
-        contract_path = source / "echo-contract.bmlapi"
-        contract_path.write_text(
-            render_bmlapi(contract), encoding="utf-8"
+        interface_path = source / "echo-interface.imc"
+        interface_path.write_text(
+            render_imc(interface), encoding="utf-8"
         )
-        numeric_contract = {
+        numeric_interface = {
             "api": "0",
             "version": {"major": 1, "minor": 0},
             "schemas": [
@@ -122,14 +122,21 @@ def main() -> int:
             ],
             "rpcs": [{"name": "1status", "response": 1}],
         }
-        numeric_contract_path = source / "numeric-contract.bmlapi"
-        numeric_contract_path.write_text(
-            render_bmlapi(numeric_contract), encoding="utf-8"
+        numeric_interface_path = source / "numeric-interface.imc"
+        numeric_interface_path.write_text(
+            render_imc(numeric_interface), encoding="utf-8"
         )
-        ping_contract_path = source / "ping-contract.bmlapi"
-        ping_contract_path.write_text(
+        ping_interface_path = source / "ping-interface.imc"
+        ping_interface_path.write_text(
             "api example.ping 1.0\n\nrpc ping()\n", encoding="utf-8"
         )
+        run([
+            sys.executable, str(source_root / "tools" / "imc_codegen.py"),
+            "--update-lock", "--out-dir", str(root / "bootstrap"),
+            "--input", str(interface_path),
+            "--input", str(numeric_interface_path),
+            "--input", str(ping_interface_path),
+        ])
         (source / "consumer.cpp").write_text(
             '#include "example_echo_imc.hpp"\n'
             'int consume(BML::Imc::Generated::Example::Echo::Client &client) {\n'
@@ -178,13 +185,13 @@ def main() -> int:
             f'include("{quote_cmake(source_root / "cmake" / "BMLImc.cmake")}")\n'
             "add_library(consumer STATIC consumer.cpp)\n"
             f'target_include_directories(consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
-            "bml_target_imc_api(consumer INPUT echo-contract.bmlapi API_ID example.echo)\n"
+            "bml_target_imc_api(consumer INPUT echo-interface.imc API_ID example.echo)\n"
             "add_library(numeric_consumer STATIC numeric_consumer.cpp)\n"
             f'target_include_directories(numeric_consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
-            "bml_target_imc_api(numeric_consumer INPUT numeric-contract.bmlapi API_ID 0)\n"
+            "bml_target_imc_api(numeric_consumer INPUT numeric-interface.imc API_ID 0)\n"
             "add_library(ping_consumer STATIC ping_consumer.cpp)\n"
             f'target_include_directories(ping_consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
-            "bml_target_imc_api(ping_consumer INPUT ping-contract.bmlapi API_ID example.ping)\n",
+            "bml_target_imc_api(ping_consumer INPUT ping-interface.imc API_ID example.ping)\n",
             encoding="utf-8",
         )
 
@@ -205,24 +212,25 @@ def main() -> int:
         numeric_generated = build / "bml-imc" / "0_imc.hpp"
         if not numeric_generated.exists():
             raise AssertionError(
-                "CMake helper did not compile a contract with leading-digit names"
+                "CMake helper did not compile a interface with leading-digit names"
             )
         ping_generated = build / "bml-imc" / "example_ping_imc.hpp"
         if not ping_generated.exists():
-            raise AssertionError("CMake helper did not compile a schema-less RPC contract")
+            raise AssertionError("CMake helper did not compile a schema-less RPC interface")
 
-        missing_source = root / "missing-previous-source"
-        missing_build = root / "missing-previous-build"
+        missing_source = root / "missing-abi-source"
+        missing_build = root / "missing-abi-build"
         missing_source.mkdir()
         (missing_source / "consumer.cpp").write_text("int value = 0;\n", encoding="utf-8")
+        missing_interface = missing_source / "missing.imc"
+        missing_interface.write_text("api example.missing 1.0\n\nrpc ping()\n", encoding="utf-8")
         (missing_source / "CMakeLists.txt").write_text(
             "cmake_minimum_required(VERSION 3.14)\n"
             "project(ImcMissingPrevious LANGUAGES CXX)\n"
             f'set(BML_IMC_CODEGEN "{quote_cmake(source_root / "tools" / "imc_codegen.py")}")\n'
             f'include("{quote_cmake(source_root / "cmake" / "BMLImc.cmake")}")\n'
             "add_library(consumer STATIC consumer.cpp)\n"
-            f'bml_target_imc_api(consumer INPUT "{quote_cmake(contract_path)}" '
-            "API_ID example.echo PREVIOUS does-not-exist.bmlapi)\n",
+            "bml_target_imc_api(consumer INPUT missing.imc API_ID example.missing)\n",
             encoding="utf-8",
         )
         missing_configure = [
@@ -232,8 +240,8 @@ def main() -> int:
         if args.generator_platform:
             missing_configure.extend(["-A", args.generator_platform])
         missing_result = run(missing_configure, expect_success=False)
-        if "PREVIOUS does not exist" not in missing_result.stdout:
-            raise AssertionError("missing PREVIOUS did not fail during CMake configuration")
+        if "interface lock does not exist" not in missing_result.stdout:
+            raise AssertionError("missing interface lock did not fail during CMake configuration")
 
         invalid_id_source = root / "invalid-id-source"
         invalid_id_build = root / "invalid-id-build"
@@ -245,7 +253,7 @@ def main() -> int:
             f'set(BML_IMC_CODEGEN "{quote_cmake(source_root / "tools" / "imc_codegen.py")}")\n'
             f'include("{quote_cmake(source_root / "cmake" / "BMLImc.cmake")}")\n'
             "add_library(consumer STATIC consumer.cpp)\n"
-            f'bml_target_imc_api(consumer INPUT "{quote_cmake(contract_path)}" '
+            f'bml_target_imc_api(consumer INPUT "{quote_cmake(interface_path)}" '
             "API_ID example_echo)\n",
             encoding="utf-8",
         )
@@ -264,14 +272,20 @@ def main() -> int:
                 f"diagnostic:\n{invalid_id_result.stdout}"
             )
 
-        contract["api"] = "example.mismatch"
-        contract_path.write_text(render_bmlapi(contract), encoding="utf-8")
+        interface["api"] = "example.mismatch"
+        interface_path.write_text(render_imc(interface), encoding="utf-8")
+        interface_path.with_suffix(".imc.lock").unlink()
+        run([
+            sys.executable, str(source_root / "tools" / "imc_codegen.py"),
+            "--update-lock", "--out-dir", str(root / "mismatch-bootstrap"),
+            "--input", str(interface_path),
+        ])
         mismatch = run([str(args.cmake), "--build", str(build), "--config", "Release"],
                        expect_success=False)
         expected_diagnostic = (
-            "contract API ID 'example.mismatch' does not match expected API ID 'example.echo'"
+            "interface API ID 'example.mismatch' does not match expected API ID 'example.echo'"
         )
-        if expected_diagnostic not in mismatch.stdout or contract_path.name not in mismatch.stdout:
+        if expected_diagnostic not in mismatch.stdout or interface_path.name not in mismatch.stdout:
             raise AssertionError("CMake API_ID mismatch did not produce an actionable diagnostic")
     return 0
 

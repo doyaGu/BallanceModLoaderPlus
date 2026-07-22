@@ -3,7 +3,6 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
-#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -13,71 +12,7 @@ namespace BML::Imc::Generated::Bml::Ui {
 inline constexpr const char ApiId[] = "bml.ui";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0x6A51EFD53A181B73ULL;
-inline constexpr std::uint64_t WireHash = 0x6A51EFD53A181B73ULL;
-inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
-struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
-struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };
-
-inline constexpr std::uint32_t MessageInputSchema = 1u;
-inline constexpr const char MessageInputPayload[] = "bml.ui/v1/payload/message_input";
-namespace MessageInputField {
-inline constexpr std::uint32_t Message = 1u;
-}
-struct MessageInputValue {
-    std::string Message{};
-};
-
-inline std::uint32_t MessageInputFieldCount(const MessageInputValue &value) noexcept {
-    std::uint32_t count = 1u;
-    return count;
-}
-
-inline std::size_t EncodedMessageInputSize(const MessageInputValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, value.Message.size())) return 0;
-    return size;
-}
-
-inline int EncodeMessageInput(const MessageInputValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedMessageInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(MessageInputSchema, WireHash, MessageInputFieldCount(value));
-    if (status == BML_OK) status = writer.WriteString(MessageInputField::Message, value.Message);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeMessageInput(const BML_ImcMessage &message, MessageInputValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(MessageInputSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    MessageInputValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case MessageInputField::Message:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Message);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t HudModeInputSchema = 2u;
 inline constexpr const char HudModeInputPayload[] = "bml.ui/v1/payload/hud_mode_input";
 namespace HudModeInputField {
 inline constexpr std::uint32_t Mode = 1u;
@@ -86,21 +21,16 @@ struct HudModeInputValue {
     int Mode{};
 };
 
-inline std::uint32_t HudModeInputFieldCount(const HudModeInputValue &value) noexcept {
-    std::uint32_t count = 1u;
-    return count;
-}
-
 inline std::size_t EncodedHudModeInputSize(const HudModeInputValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, HudModeInputField::Mode)) return 0;
     return size;
 }
 
 inline int EncodeHudModeInput(const HudModeInputValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedHudModeInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(HudModeInputSchema, WireHash, HudModeInputFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteInt(HudModeInputField::Mode, value.Mode);
     return status == BML_OK ? writer.Finish() : status;
 }
@@ -108,9 +38,8 @@ inline int EncodeHudModeInput(const HudModeInputValue &value, void *data, std::s
 inline int DecodeHudModeInput(const BML_ImcMessage &message, HudModeInputValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(HudModeInputSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     HudModeInputValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -134,64 +63,6 @@ inline int DecodeHudModeInput(const BML_ImcMessage &message, HudModeInputValue &
     return BML_OK;
 }
 
-inline constexpr std::uint32_t VisibleInputSchema = 3u;
-inline constexpr const char VisibleInputPayload[] = "bml.ui/v1/payload/visible_input";
-namespace VisibleInputField {
-inline constexpr std::uint32_t Visible = 1u;
-}
-struct VisibleInputValue {
-    bool Visible{};
-};
-
-inline std::uint32_t VisibleInputFieldCount(const VisibleInputValue &value) noexcept {
-    std::uint32_t count = 1u;
-    return count;
-}
-
-inline std::size_t EncodedVisibleInputSize(const VisibleInputValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    return size;
-}
-
-inline int EncodeVisibleInput(const VisibleInputValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedVisibleInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(VisibleInputSchema, WireHash, VisibleInputFieldCount(value));
-    if (status == BML_OK) status = writer.WriteBool(VisibleInputField::Visible, value.Visible);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeVisibleInput(const BML_ImcMessage &message, VisibleInputValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(VisibleInputSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    VisibleInputValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case VisibleInputField::Visible:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadBool(field, decoded.Visible);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t HudStateSchema = 4u;
 inline constexpr const char HudStatePayload[] = "bml.ui/v1/payload/hud_state";
 namespace HudStateField {
 inline constexpr std::uint32_t Mode = 1u;
@@ -202,22 +73,17 @@ struct HudStateValue {
     float SrTime{};
 };
 
-inline std::uint32_t HudStateFieldCount(const HudStateValue &value) noexcept {
-    std::uint32_t count = 2u;
-    return count;
-}
-
 inline std::size_t EncodedHudStateSize(const HudStateValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, HudStateField::Mode)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, HudStateField::SrTime)) return 0;
     return size;
 }
 
 inline int EncodeHudState(const HudStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedHudStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(HudStateSchema, WireHash, HudStateFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteInt(HudStateField::Mode, value.Mode);
     if (status == BML_OK) status = writer.WriteFloat(HudStateField::SrTime, value.SrTime);
     return status == BML_OK ? writer.Finish() : status;
@@ -226,9 +92,8 @@ inline int EncodeHudState(const HudStateValue &value, void *data, std::size_t si
 inline int DecodeHudState(const BML_ImcMessage &message, HudStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(HudStateSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     HudStateValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -258,12 +123,105 @@ inline int DecodeHudState(const BML_ImcMessage &message, HudStateValue &out) {
     return BML_OK;
 }
 
-inline constexpr SchemaMetadata Schemas[] = {
-    {1u, "message_input", MessageInputPayload},
-    {2u, "hud_mode_input", HudModeInputPayload},
-    {3u, "visible_input", VisibleInputPayload},
-    {4u, "hud_state", HudStatePayload},
+inline constexpr const char MessageInputPayload[] = "bml.ui/v1/payload/message_input";
+namespace MessageInputField {
+inline constexpr std::uint32_t Message = 1u;
+}
+struct MessageInputValue {
+    std::string Message{};
 };
+
+inline std::size_t EncodedMessageInputSize(const MessageInputValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, MessageInputField::Message, value.Message.size())) return 0;
+    return size;
+}
+
+inline int EncodeMessageInput(const MessageInputValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedMessageInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteString(MessageInputField::Message, value.Message);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeMessageInput(const BML_ImcMessage &message, MessageInputValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    MessageInputValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case MessageInputField::Message:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Message);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
+inline constexpr const char VisibleInputPayload[] = "bml.ui/v1/payload/visible_input";
+namespace VisibleInputField {
+inline constexpr std::uint32_t Visible = 1u;
+}
+struct VisibleInputValue {
+    bool Visible{};
+};
+
+inline std::size_t EncodedVisibleInputSize(const VisibleInputValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, VisibleInputField::Visible)) return 0;
+    return size;
+}
+
+inline int EncodeVisibleInput(const VisibleInputValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedVisibleInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteBool(VisibleInputField::Visible, value.Visible);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeVisibleInput(const BML_ImcMessage &message, VisibleInputValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    VisibleInputValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case VisibleInputField::Visible:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadBool(field, decoded.Visible);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
 
 inline constexpr const char HudFpsShowRoute[] = "bml.ui/v1/rpc/hud_fps_show";
 inline constexpr const char HudSetRoute[] = "bml.ui/v1/rpc/hud_set";
@@ -313,10 +271,10 @@ public:
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
         int status = BML_OK;
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, MessageInputPayload, &m_MessageInputPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, HudModeInputPayload, &m_HudModeInputPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, VisibleInputPayload, &m_VisibleInputPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, HudStatePayload, &m_HudStatePayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, MessageInputPayload, &m_MessageInputPayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, VisibleInputPayload, &m_VisibleInputPayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, HudFpsShowRoute, &m_HudFpsShowRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, HudSetRoute, &m_HudSetRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, HudSrPauseRoute, &m_HudSrPauseRpc);
@@ -342,10 +300,10 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
-    BML_ImcPayloadTypeId MessageInputPayloadType() const noexcept { return m_MessageInputPayload; }
     BML_ImcPayloadTypeId HudModeInputPayloadType() const noexcept { return m_HudModeInputPayload; }
-    BML_ImcPayloadTypeId VisibleInputPayloadType() const noexcept { return m_VisibleInputPayload; }
     BML_ImcPayloadTypeId HudStatePayloadType() const noexcept { return m_HudStatePayload; }
+    BML_ImcPayloadTypeId MessageInputPayloadType() const noexcept { return m_MessageInputPayload; }
+    BML_ImcPayloadTypeId VisibleInputPayloadType() const noexcept { return m_VisibleInputPayload; }
     BML_ImcRpcId HudFpsShowRpcId() const noexcept { return m_HudFpsShowRpc; }
     int IsHudFpsShowAvailable(bool &out) const noexcept {
         int available = 0;
@@ -555,10 +513,10 @@ public:
     }
 private:
     void ResetIds() noexcept {
-        m_MessageInputPayload = BML_IMC_INVALID_ID;
         m_HudModeInputPayload = BML_IMC_INVALID_ID;
-        m_VisibleInputPayload = BML_IMC_INVALID_ID;
         m_HudStatePayload = BML_IMC_INVALID_ID;
+        m_MessageInputPayload = BML_IMC_INVALID_ID;
+        m_VisibleInputPayload = BML_IMC_INVALID_ID;
         m_HudFpsShowRpc = BML_IMC_INVALID_ID;
         m_HudSetRpc = BML_IMC_INVALID_ID;
         m_HudSrPauseRpc = BML_IMC_INVALID_ID;
@@ -575,10 +533,10 @@ private:
         m_StateRpc = BML_IMC_INVALID_ID;
     }
     BML_ImcClient m_Client = nullptr;
-    BML_ImcPayloadTypeId m_MessageInputPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_HudModeInputPayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_VisibleInputPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_HudStatePayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_MessageInputPayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_VisibleInputPayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_HudFpsShowRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_HudSetRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_HudSrPauseRpc = BML_IMC_INVALID_ID;
@@ -1045,23 +1003,6 @@ private:
     ModsMenuCloseSlot m_ModsMenuClose{};
     ModsMenuOpenSlot m_ModsMenuOpen{};
     StateSlot m_State{};
-};
-
-inline constexpr EndpointMetadata Endpoints[] = {
-    {"hud_fps_show", HudFpsShowRoute, false, 3u, 0u},
-    {"hud_set", HudSetRoute, false, 2u, 0u},
-    {"hud_sr_pause", HudSrPauseRoute, false, 0u, 0u},
-    {"hud_sr_reset", HudSrResetRoute, false, 0u, 0u},
-    {"hud_sr_show", HudSrShowRoute, false, 3u, 0u},
-    {"hud_sr_start", HudSrStartRoute, false, 0u, 0u},
-    {"hud_title_show", HudTitleShowRoute, false, 3u, 0u},
-    {"map_menu_close", MapMenuCloseRoute, false, 0u, 0u},
-    {"map_menu_open", MapMenuOpenRoute, false, 0u, 0u},
-    {"message_add", MessageAddRoute, false, 1u, 0u},
-    {"message_clear", MessageClearRoute, false, 0u, 0u},
-    {"mods_menu_close", ModsMenuCloseRoute, false, 0u, 0u},
-    {"mods_menu_open", ModsMenuOpenRoute, false, 0u, 0u},
-    {"state", StateRoute, false, 0u, 4u},
 };
 
 } // namespace BML::Imc::Generated::Bml::Ui

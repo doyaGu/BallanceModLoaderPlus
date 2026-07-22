@@ -3,7 +3,6 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
-#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -13,87 +12,84 @@ namespace BML::Imc::Generated::Bml::Gameplay {
 inline constexpr const char ApiId[] = "bml.gameplay";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0x06524204E62D40D3ULL;
-inline constexpr std::uint64_t WireHash = 0x06524204E62D40D3ULL;
-inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
-struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
-struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };
-
-inline constexpr std::uint32_t LevelStateSchema = 1u;
-inline constexpr const char LevelStatePayload[] = "bml.gameplay/v1/payload/level_state";
-namespace LevelStateField {
-inline constexpr std::uint32_t Id = 1u;
-inline constexpr std::uint32_t ActiveBall = 2u;
-inline constexpr std::uint32_t ResetMatrix = 3u;
-inline constexpr std::uint32_t Points = 4u;
+inline constexpr const char CatalogResponsePayload[] = "bml.gameplay/v1/payload/catalog_response";
+namespace CatalogResponseField {
+inline constexpr std::uint32_t Files = 1u;
+inline constexpr std::uint32_t StartBalls = 2u;
+inline constexpr std::uint32_t Skies = 3u;
+inline constexpr std::uint32_t Bonuses = 4u;
+inline constexpr std::uint32_t Music = 5u;
 }
-struct LevelStateValue {
-    int Id{};
-    BML_ObjectRef ActiveBall{};
-    BML_Mat4 ResetMatrix{};
-    int Points{};
+struct CatalogResponseValue {
+    std::vector<std::string> Files{};
+    std::vector<std::string> StartBalls{};
+    std::vector<std::string> Skies{};
+    std::vector<int> Bonuses{};
+    std::vector<int> Music{};
 };
 
-inline std::uint32_t LevelStateFieldCount(const LevelStateValue &value) noexcept {
-    std::uint32_t count = 4u;
-    return count;
-}
-
-inline std::size_t EncodedLevelStateSize(const LevelStateValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 64)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
+inline std::size_t EncodedCatalogResponseSize(const CatalogResponseValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, CatalogResponseField::Files, value.Files)) return 0;
+    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, CatalogResponseField::StartBalls, value.StartBalls)) return 0;
+    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, CatalogResponseField::Skies, value.Skies)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, CatalogResponseField::Bonuses, value.Bonuses.size(), 4)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, CatalogResponseField::Music, value.Music.size(), 4)) return 0;
     return size;
 }
 
-inline int EncodeLevelState(const LevelStateValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedLevelStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
+inline int EncodeCatalogResponse(const CatalogResponseValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedCatalogResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(LevelStateSchema, WireHash, LevelStateFieldCount(value));
-    if (status == BML_OK) status = writer.WriteInt(LevelStateField::Id, value.Id);
-    if (status == BML_OK) status = writer.WriteObject(LevelStateField::ActiveBall, value.ActiveBall);
-    if (status == BML_OK) status = writer.WriteMat4(LevelStateField::ResetMatrix, value.ResetMatrix);
-    if (status == BML_OK) status = writer.WriteInt(LevelStateField::Points, value.Points);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::Files, value.Files);
+    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::StartBalls, value.StartBalls);
+    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::Skies, value.Skies);
+    if (status == BML_OK) status = writer.WriteIntArray(CatalogResponseField::Bonuses, value.Bonuses);
+    if (status == BML_OK) status = writer.WriteIntArray(CatalogResponseField::Music, value.Music);
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeLevelState(const BML_ImcMessage &message, LevelStateValue &out) {
+inline int DecodeCatalogResponse(const BML_ImcMessage &message, CatalogResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(LevelStateSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    LevelStateValue decoded{};
+    CatalogResponseValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
     while ((status = reader.Next(field)) == BML_OK) {
         switch (field.Id) {
-        case LevelStateField::Id:
+        case CatalogResponseField::Files:
             if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Id);
+            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Files);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 0;
             break;
-        case LevelStateField::ActiveBall:
+        case CatalogResponseField::StartBalls:
             if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.ActiveBall);
+            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.StartBalls);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 1;
             break;
-        case LevelStateField::ResetMatrix:
+        case CatalogResponseField::Skies:
             if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadMat4(field, decoded.ResetMatrix);
+            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Skies);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 2;
             break;
-        case LevelStateField::Points:
+        case CatalogResponseField::Bonuses:
             if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Points);
+            status = ::BML::Imc::Wire::Reader::ReadIntArray(field, decoded.Bonuses);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 3;
+            break;
+        case CatalogResponseField::Music:
+            if (seen & (UINT64_C(1) << 4)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadIntArray(field, decoded.Music);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 4;
             break;
         default:
             break;
@@ -102,12 +98,71 @@ inline int DecodeLevelState(const BML_ImcMessage &message, LevelStateValue &out)
     if (status != BML_ERROR_NOT_FOUND) return status;
     status = reader.Finish();
     if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0xF)) != UINT64_C(0xF)) return BML_ERROR_MALFORMED_MESSAGE;
+    if ((seen & UINT64_C(0x1F)) != UINT64_C(0x1F)) return BML_ERROR_MALFORMED_MESSAGE;
     out = std::move(decoded);
     return BML_OK;
 }
 
-inline constexpr std::uint32_t EnergyStateSchema = 2u;
+inline constexpr const char CheckpointsResponsePayload[] = "bml.gameplay/v1/payload/checkpoints_response";
+namespace CheckpointsResponseField {
+inline constexpr std::uint32_t Matrices = 1u;
+inline constexpr std::uint32_t Objects = 2u;
+}
+struct CheckpointsResponseValue {
+    std::vector<BML_Mat4> Matrices{};
+    std::vector<BML_ObjectRef> Objects{};
+};
+
+inline std::size_t EncodedCheckpointsResponseSize(const CheckpointsResponseValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, CheckpointsResponseField::Matrices, value.Matrices.size(), 64)) return 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, CheckpointsResponseField::Objects, value.Objects.size(), 12)) return 0;
+    return size;
+}
+
+inline int EncodeCheckpointsResponse(const CheckpointsResponseValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedCheckpointsResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteMat4Array(CheckpointsResponseField::Matrices, value.Matrices);
+    if (status == BML_OK) status = writer.WriteObjectArray(CheckpointsResponseField::Objects, value.Objects);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeCheckpointsResponse(const BML_ImcMessage &message, CheckpointsResponseValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    CheckpointsResponseValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case CheckpointsResponseField::Matrices:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadMat4Array(field, decoded.Matrices);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        case CheckpointsResponseField::Objects:
+            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadObjectArray(field, decoded.Objects);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 1;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x3)) != UINT64_C(0x3)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
 inline constexpr const char EnergyStatePayload[] = "bml.gameplay/v1/payload/energy_state";
 namespace EnergyStateField {
 inline constexpr std::uint32_t Points = 1u;
@@ -126,26 +181,21 @@ struct EnergyStateValue {
     int LifeBonus{};
 };
 
-inline std::uint32_t EnergyStateFieldCount(const EnergyStateValue &value) noexcept {
-    std::uint32_t count = 6u;
-    return count;
-}
-
 inline std::size_t EncodedEnergyStateSize(const EnergyStateValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EnergyStateField::Points)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EnergyStateField::Lives)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EnergyStateField::StartPoints)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EnergyStateField::StartLives)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EnergyStateField::TimeFactor)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EnergyStateField::LifeBonus)) return 0;
     return size;
 }
 
 inline int EncodeEnergyState(const EnergyStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedEnergyStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(EnergyStateSchema, WireHash, EnergyStateFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteInt(EnergyStateField::Points, value.Points);
     if (status == BML_OK) status = writer.WriteInt(EnergyStateField::Lives, value.Lives);
     if (status == BML_OK) status = writer.WriteInt(EnergyStateField::StartPoints, value.StartPoints);
@@ -158,9 +208,8 @@ inline int EncodeEnergyState(const EnergyStateValue &value, void *data, std::siz
 inline int DecodeEnergyState(const BML_ImcMessage &message, EnergyStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(EnergyStateSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     EnergyStateValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -214,91 +263,74 @@ inline int DecodeEnergyState(const BML_ImcMessage &message, EnergyStateValue &ou
     return BML_OK;
 }
 
-inline constexpr std::uint32_t CatalogResponseSchema = 3u;
-inline constexpr const char CatalogResponsePayload[] = "bml.gameplay/v1/payload/catalog_response";
-namespace CatalogResponseField {
-inline constexpr std::uint32_t Files = 1u;
-inline constexpr std::uint32_t StartBalls = 2u;
-inline constexpr std::uint32_t Skies = 3u;
-inline constexpr std::uint32_t Bonuses = 4u;
-inline constexpr std::uint32_t Music = 5u;
+inline constexpr const char LevelStatePayload[] = "bml.gameplay/v1/payload/level_state";
+namespace LevelStateField {
+inline constexpr std::uint32_t Id = 1u;
+inline constexpr std::uint32_t ActiveBall = 2u;
+inline constexpr std::uint32_t ResetMatrix = 3u;
+inline constexpr std::uint32_t Points = 4u;
 }
-struct CatalogResponseValue {
-    std::vector<std::string> Files{};
-    std::vector<std::string> StartBalls{};
-    std::vector<std::string> Skies{};
-    std::vector<int> Bonuses{};
-    std::vector<int> Music{};
+struct LevelStateValue {
+    int Id{};
+    BML_ObjectRef ActiveBall{};
+    BML_Mat4 ResetMatrix{};
+    int Points{};
 };
 
-inline std::uint32_t CatalogResponseFieldCount(const CatalogResponseValue &value) noexcept {
-    std::uint32_t count = 5u;
-    return count;
-}
-
-inline std::size_t EncodedCatalogResponseSize(const CatalogResponseValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, value.Files)) return 0;
-    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, value.StartBalls)) return 0;
-    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, value.Skies)) return 0;
-    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Bonuses.size(), 4)) return 0;
-    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Music.size(), 4)) return 0;
+inline std::size_t EncodedLevelStateSize(const LevelStateValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, LevelStateField::Id)) return 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, LevelStateField::ActiveBall, 12)) return 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, LevelStateField::ResetMatrix, 64)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, LevelStateField::Points)) return 0;
     return size;
 }
 
-inline int EncodeCatalogResponse(const CatalogResponseValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedCatalogResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
+inline int EncodeLevelState(const LevelStateValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedLevelStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(CatalogResponseSchema, WireHash, CatalogResponseFieldCount(value));
-    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::Files, value.Files);
-    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::StartBalls, value.StartBalls);
-    if (status == BML_OK) status = writer.WriteStringArray(CatalogResponseField::Skies, value.Skies);
-    if (status == BML_OK) status = writer.WriteIntArray(CatalogResponseField::Bonuses, value.Bonuses);
-    if (status == BML_OK) status = writer.WriteIntArray(CatalogResponseField::Music, value.Music);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteInt(LevelStateField::Id, value.Id);
+    if (status == BML_OK) status = writer.WriteObject(LevelStateField::ActiveBall, value.ActiveBall);
+    if (status == BML_OK) status = writer.WriteMat4(LevelStateField::ResetMatrix, value.ResetMatrix);
+    if (status == BML_OK) status = writer.WriteInt(LevelStateField::Points, value.Points);
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeCatalogResponse(const BML_ImcMessage &message, CatalogResponseValue &out) {
+inline int DecodeLevelState(const BML_ImcMessage &message, LevelStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(CatalogResponseSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    CatalogResponseValue decoded{};
+    LevelStateValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
     while ((status = reader.Next(field)) == BML_OK) {
         switch (field.Id) {
-        case CatalogResponseField::Files:
+        case LevelStateField::Id:
             if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Files);
+            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Id);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 0;
             break;
-        case CatalogResponseField::StartBalls:
+        case LevelStateField::ActiveBall:
             if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.StartBalls);
+            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.ActiveBall);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 1;
             break;
-        case CatalogResponseField::Skies:
+        case LevelStateField::ResetMatrix:
             if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Skies);
+            status = ::BML::Imc::Wire::Reader::ReadMat4(field, decoded.ResetMatrix);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 2;
             break;
-        case CatalogResponseField::Bonuses:
+        case LevelStateField::Points:
             if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadIntArray(field, decoded.Bonuses);
+            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Points);
             if (status != BML_OK) return status;
             seen |= UINT64_C(1) << 3;
             break;
-        case CatalogResponseField::Music:
-            if (seen & (UINT64_C(1) << 4)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadIntArray(field, decoded.Music);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 4;
-            break;
         default:
             break;
         }
@@ -306,79 +338,11 @@ inline int DecodeCatalogResponse(const BML_ImcMessage &message, CatalogResponseV
     if (status != BML_ERROR_NOT_FOUND) return status;
     status = reader.Finish();
     if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1F)) != UINT64_C(0x1F)) return BML_ERROR_MALFORMED_MESSAGE;
+    if ((seen & UINT64_C(0xF)) != UINT64_C(0xF)) return BML_ERROR_MALFORMED_MESSAGE;
     out = std::move(decoded);
     return BML_OK;
 }
 
-inline constexpr std::uint32_t CheckpointsResponseSchema = 4u;
-inline constexpr const char CheckpointsResponsePayload[] = "bml.gameplay/v1/payload/checkpoints_response";
-namespace CheckpointsResponseField {
-inline constexpr std::uint32_t Matrices = 1u;
-inline constexpr std::uint32_t Objects = 2u;
-}
-struct CheckpointsResponseValue {
-    std::vector<BML_Mat4> Matrices{};
-    std::vector<BML_ObjectRef> Objects{};
-};
-
-inline std::uint32_t CheckpointsResponseFieldCount(const CheckpointsResponseValue &value) noexcept {
-    std::uint32_t count = 2u;
-    return count;
-}
-
-inline std::size_t EncodedCheckpointsResponseSize(const CheckpointsResponseValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Matrices.size(), 64)) return 0;
-    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Objects.size(), 12)) return 0;
-    return size;
-}
-
-inline int EncodeCheckpointsResponse(const CheckpointsResponseValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedCheckpointsResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(CheckpointsResponseSchema, WireHash, CheckpointsResponseFieldCount(value));
-    if (status == BML_OK) status = writer.WriteMat4Array(CheckpointsResponseField::Matrices, value.Matrices);
-    if (status == BML_OK) status = writer.WriteObjectArray(CheckpointsResponseField::Objects, value.Objects);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeCheckpointsResponse(const BML_ImcMessage &message, CheckpointsResponseValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(CheckpointsResponseSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    CheckpointsResponseValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case CheckpointsResponseField::Matrices:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadMat4Array(field, decoded.Matrices);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case CheckpointsResponseField::Objects:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObjectArray(field, decoded.Objects);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x3)) != UINT64_C(0x3)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t ResetpointsResponseSchema = 5u;
 inline constexpr const char ResetpointsResponsePayload[] = "bml.gameplay/v1/payload/resetpoints_response";
 namespace ResetpointsResponseField {
 inline constexpr std::uint32_t Objects = 1u;
@@ -387,21 +351,16 @@ struct ResetpointsResponseValue {
     std::vector<BML_ObjectRef> Objects{};
 };
 
-inline std::uint32_t ResetpointsResponseFieldCount(const ResetpointsResponseValue &value) noexcept {
-    std::uint32_t count = 1u;
-    return count;
-}
-
 inline std::size_t EncodedResetpointsResponseSize(const ResetpointsResponseValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.Objects.size(), 12)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, ResetpointsResponseField::Objects, value.Objects.size(), 12)) return 0;
     return size;
 }
 
 inline int EncodeResetpointsResponse(const ResetpointsResponseValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedResetpointsResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(ResetpointsResponseSchema, WireHash, ResetpointsResponseFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteObjectArray(ResetpointsResponseField::Objects, value.Objects);
     return status == BML_OK ? writer.Finish() : status;
 }
@@ -409,9 +368,8 @@ inline int EncodeResetpointsResponse(const ResetpointsResponseValue &value, void
 inline int DecodeResetpointsResponse(const BML_ImcMessage &message, ResetpointsResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(ResetpointsResponseSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     ResetpointsResponseValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -434,14 +392,6 @@ inline int DecodeResetpointsResponse(const BML_ImcMessage &message, ResetpointsR
     out = std::move(decoded);
     return BML_OK;
 }
-
-inline constexpr SchemaMetadata Schemas[] = {
-    {1u, "level_state", LevelStatePayload},
-    {2u, "energy_state", EnergyStatePayload},
-    {3u, "catalog_response", CatalogResponsePayload},
-    {4u, "checkpoints_response", CheckpointsResponsePayload},
-    {5u, "resetpoints_response", ResetpointsResponsePayload},
-};
 
 inline constexpr const char CatalogRoute[] = "bml.gameplay/v1/rpc/catalog";
 inline constexpr const char CheckpointsRoute[] = "bml.gameplay/v1/rpc/checkpoints";
@@ -473,10 +423,10 @@ public:
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
         int status = BML_OK;
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, LevelStatePayload, &m_LevelStatePayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, EnergyStatePayload, &m_EnergyStatePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CatalogResponsePayload, &m_CatalogResponsePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, CheckpointsResponsePayload, &m_CheckpointsResponsePayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, EnergyStatePayload, &m_EnergyStatePayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, LevelStatePayload, &m_LevelStatePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ResetpointsResponsePayload, &m_ResetpointsResponsePayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, CatalogRoute, &m_CatalogRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, CheckpointsRoute, &m_CheckpointsRpc);
@@ -494,10 +444,10 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
-    BML_ImcPayloadTypeId LevelStatePayloadType() const noexcept { return m_LevelStatePayload; }
-    BML_ImcPayloadTypeId EnergyStatePayloadType() const noexcept { return m_EnergyStatePayload; }
     BML_ImcPayloadTypeId CatalogResponsePayloadType() const noexcept { return m_CatalogResponsePayload; }
     BML_ImcPayloadTypeId CheckpointsResponsePayloadType() const noexcept { return m_CheckpointsResponsePayload; }
+    BML_ImcPayloadTypeId EnergyStatePayloadType() const noexcept { return m_EnergyStatePayload; }
+    BML_ImcPayloadTypeId LevelStatePayloadType() const noexcept { return m_LevelStatePayload; }
     BML_ImcPayloadTypeId ResetpointsResponsePayloadType() const noexcept { return m_ResetpointsResponsePayload; }
     BML_ImcRpcId CatalogRpcId() const noexcept { return m_CatalogRpc; }
     int IsCatalogAvailable(bool &out) const noexcept {
@@ -572,10 +522,10 @@ public:
     }
 private:
     void ResetIds() noexcept {
-        m_LevelStatePayload = BML_IMC_INVALID_ID;
-        m_EnergyStatePayload = BML_IMC_INVALID_ID;
         m_CatalogResponsePayload = BML_IMC_INVALID_ID;
         m_CheckpointsResponsePayload = BML_IMC_INVALID_ID;
+        m_EnergyStatePayload = BML_IMC_INVALID_ID;
+        m_LevelStatePayload = BML_IMC_INVALID_ID;
         m_ResetpointsResponsePayload = BML_IMC_INVALID_ID;
         m_CatalogRpc = BML_IMC_INVALID_ID;
         m_CheckpointsRpc = BML_IMC_INVALID_ID;
@@ -584,10 +534,10 @@ private:
         m_ResetpointsRpc = BML_IMC_INVALID_ID;
     }
     BML_ImcClient m_Client = nullptr;
-    BML_ImcPayloadTypeId m_LevelStatePayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_EnergyStatePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_CatalogResponsePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_CheckpointsResponsePayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_EnergyStatePayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_LevelStatePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_ResetpointsResponsePayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_CatalogRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_CheckpointsRpc = BML_IMC_INVALID_ID;
@@ -761,14 +711,6 @@ private:
     EnergySlot m_Energy{};
     LevelSlot m_Level{};
     ResetpointsSlot m_Resetpoints{};
-};
-
-inline constexpr EndpointMetadata Endpoints[] = {
-    {"catalog", CatalogRoute, false, 0u, 3u},
-    {"checkpoints", CheckpointsRoute, false, 0u, 4u},
-    {"energy", EnergyRoute, false, 0u, 2u},
-    {"level", LevelRoute, false, 0u, 1u},
-    {"resetpoints", ResetpointsRoute, false, 0u, 5u},
 };
 
 } // namespace BML::Imc::Generated::Bml::Gameplay

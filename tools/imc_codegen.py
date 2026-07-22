@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Generate deterministic typed IMC bindings from the compact .bmlapi IDL.
+"""Generate deterministic typed IMC bindings from compact .imc interfaces.
 
-The loader never reads .bmlapi files at runtime. This tool validates the
-authoring representation, enforces append-only compatible evolution, and emits
-one typed C++ IMC binding per API.
+The loader never reads .imc or .imc.lock files at runtime. Authors edit the
+small declaration-oriented .imc file; this tool owns the adjacent .imc.lock
+snapshot that assigns permanent wire identities and records compatibility.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -49,8 +48,8 @@ class IdlToken:
     column: int
 
 
-def tokenize_bmlapi(text: str) -> list[IdlToken]:
-    """Tokenize the deliberately small, dependency-free .bmlapi language."""
+def tokenize_imc(text: str) -> list[IdlToken]:
+    """Tokenize the deliberately small, dependency-free .imc language."""
     tokens: list[IdlToken] = []
     index = 0
     line = 1
@@ -103,21 +102,6 @@ def tokenize_bmlapi(text: str) -> list[IdlToken]:
 
     tokens.append(IdlToken("<eof>", line, column))
     return tokens
-
-
-def parse_hash64(value: Any, what: str) -> int:
-    if isinstance(value, int) and not isinstance(value, bool):
-        result = value
-    elif isinstance(value, str) and value.startswith(("0x", "0X")):
-        try:
-            result = int(value, 16)
-        except ValueError as error:
-            raise ApiDefinitionError(f"{what} must be a 64-bit hash") from error
-    else:
-        raise ApiDefinitionError(f"{what} must be an integer or 0x-prefixed hexadecimal string")
-    if not 0 < result <= 0xFFFFFFFFFFFFFFFF:
-        raise ApiDefinitionError(f"{what} must be a non-zero 64-bit hash")
-    return result
 
 
 def key(value: Any, what: str) -> str:
@@ -189,9 +173,7 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
                                    endpoints: list[Endpoint]) -> None:
     imc_top_level: dict[str, str] = {
         name: "generated IMC helper"
-        for name in ("ApiId", "Major", "Minor", "Hash", "WireHash", "Schemas", "Endpoints",
-                     "IsCompatibleHash", "SchemaMetadata", "EndpointMetadata", "Client",
-                     "Provider")
+        for name in ("ApiId", "Major", "Minor", "Client", "Provider")
     }
 
     def add(symbols: dict[str, str], symbol: str, source: str) -> None:
@@ -213,12 +195,10 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
 
     for record in schemas:
         record_name = camel(record.name)
-        source = f"schema {record.name}"
+        source = f"record {record.name}"
         imc_names = [
             f"{record_name}Field",
-            f"{record_name}Schema",
             f"{record_name}Payload",
-            f"{record_name}FieldCount",
             f"Encoded{record_name}Size",
             f"Encode{record_name}",
             f"Decode{record_name}",
@@ -292,18 +272,6 @@ class ApiDefinition:
     enums: tuple[EnumDefinition, ...]
     schemas: tuple[Record, ...]
     endpoints: tuple[Endpoint, ...]
-    wire_hash_override: int | None
-    accepted_hashes: tuple[int, ...]
-    canonical: str
-    hash64: int
-
-    @property
-    def wire_hash(self) -> int:
-        """Stable IMC hash written by every compatible minor in this major."""
-        return self.wire_hash_override if self.wire_hash_override is not None else self.hash64
-
-    def accepts_hash(self, value: int) -> bool:
-        return value == self.hash64 or value == self.wire_hash or value in self.accepted_hashes
 
 
 def parse_api_definition(raw: Any) -> ApiDefinition:
@@ -311,7 +279,7 @@ def parse_api_definition(raw: Any) -> ApiDefinition:
         raise ApiDefinitionError("top-level value must be an object")
     reject_unknown_properties(
         raw,
-        ("api", "version", "enums", "schemas", "rpcs", "topics", "wire_hash", "accepted_hashes"),
+        ("api", "version", "enums", "schemas", "rpcs", "topics"),
         "top-level object",
     )
     api_id = api_key(raw.get("api"), "api")
@@ -471,81 +439,16 @@ def parse_api_definition(raw: Any) -> ApiDefinition:
 
     validate_generated_identifiers(enums, schemas, endpoints)
 
-    raw_wire_hash = raw.get("wire_hash")
-    wire_hash_override = (
-        parse_hash64(raw_wire_hash, "wire hash") if raw_wire_hash is not None else None
-    )
-    raw_accepted_hashes = raw.get("accepted_hashes", [])
-    if not isinstance(raw_accepted_hashes, list):
-        raise ApiDefinitionError("accepted hashes must be an array")
-    accepted_hashes = tuple(
-        parse_hash64(value, f"accept directive {index + 1}")
-        for index, value in enumerate(raw_accepted_hashes)
-    )
-    declared_hashes = (() if wire_hash_override is None else (wire_hash_override,)) + accepted_hashes
-    if len(set(declared_hashes)) != len(declared_hashes):
-        raise ApiDefinitionError("wire/accept directives must not contain duplicate hashes")
-
-    # Compatibility policy intentionally does not participate in the structural
-    # descriptor hash: it changes rollout policy, not API semantics.
-    canonical_object = {
-        "api": api_id,
-        "version": {"major": major, "minor": minor},
-        "schemas": [
-            {
-                "id": record.id,
-                "name": record.name,
-                "fields": [
-                    {"id": field.id, "name": field.name, "type": field.type, "optional": field.optional}
-                    for field in record.fields
-                ],
-            }
-            for record in sorted(schemas, key=lambda item: item.id)
-        ],
-        "rpcs": [
-            {
-                "name": endpoint.name,
-                "request": endpoint.input_schema,
-                "response": endpoint.output_schema,
-            }
-            for endpoint in sorted(endpoints, key=lambda item: item.name)
-            if endpoint.kind == "rpc"
-        ],
-        "topics": [
-            {"name": endpoint.name, "message": endpoint.output_schema}
-            for endpoint in sorted(endpoints, key=lambda item: item.name)
-            if endpoint.kind == "topic"
-        ],
-    }
-    # Keep the canonical form (and therefore every existing descriptor hash)
-    # byte-for-byte stable for contracts that predate named enums.
-    if enums:
-        canonical_object["enums"] = [
-            {
-                "name": enum.name,
-                "underlying": enum.underlying,
-                "values": [
-                    {"name": value.name, "value": value.value}
-                    for value in enum.values
-                ],
-            }
-            for enum in sorted(enums, key=lambda item: item.name)
-        ]
-    canonical = json.dumps(canonical_object, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    descriptor_hash = int.from_bytes(hashlib.sha256(canonical.encode("utf-8")).digest()[:8], "big")
-    if descriptor_hash in declared_hashes:
-        raise ApiDefinitionError("wire/accept directives must not repeat the current descriptor hash")
     return ApiDefinition(api_id, major, minor, tuple(sorted(enums, key=lambda item: item.name)),
                     tuple(sorted(schemas, key=lambda item: item.id)),
-                    tuple(sorted(endpoints, key=lambda item: item.name)), wire_hash_override,
-                    accepted_hashes, canonical, descriptor_hash)
+                    tuple(sorted(endpoints, key=lambda item: item.name)))
 
 
-class BmlApiParser:
+class ImcParser:
     """Recursive-descent parser for the small declaration-oriented IDL."""
 
     def __init__(self, text: str):
-        self._tokens = tokenize_bmlapi(text)
+        self._tokens = tokenize_imc(text)
         self._index = 0
 
     def _current(self) -> IdlToken:
@@ -588,10 +491,10 @@ class BmlApiParser:
         except ValueError as error:
             raise self._error(f"{what} must be a decimal integer", token) from error
 
-    def parse(self) -> ApiDefinition:
+    def parse(self) -> dict[str, Any]:
         if self._current().value == "{":
             raise self._error(
-                "JSON is not a .bmlapi contract; start with 'api <id> <major>.<minor>'"
+                "JSON is not an .imc interface; start with 'api <id> <major>.<minor>'"
             )
         self._expect("api")
         api_id = self._atom("API ID").value
@@ -603,60 +506,36 @@ class BmlApiParser:
 
         enums: list[dict[str, Any]] = []
         schemas: list[dict[str, Any]] = []
-        rpc_declarations: list[tuple[IdlToken, IdlToken | None, IdlToken | None]] = []
-        topic_declarations: list[tuple[IdlToken, IdlToken]] = []
-        wire_hash: IdlToken | None = None
-        accepted_hashes: list[IdlToken] = []
+        rpcs: list[dict[str, Any]] = []
+        topics: list[dict[str, Any]] = []
 
         while self._current().value != "<eof>":
             declaration = self._atom("declaration").value
-            if declaration == "wire":
-                if wire_hash is not None:
-                    raise self._error("wire hash may only be declared once")
-                wire_hash = self._atom("wire hash")
-            elif declaration == "accept":
-                accepted_hashes.append(self._atom("accepted descriptor hash"))
-            elif declaration == "enum":
+            if declaration == "enum":
                 enums.append(self._parse_enum())
+            elif declaration == "record":
+                schemas.append(self._parse_record())
             elif declaration == "schema":
-                schemas.append(self._parse_schema())
+                raise self._error(
+                    "schema wire IDs are no longer authored here; use 'record <name> { ... }'",
+                    self._tokens[self._index - 1],
+                )
             elif declaration == "rpc":
-                rpc_declarations.append(self._parse_rpc())
+                rpc, inline = self._parse_rpc()
+                rpcs.append(rpc)
+                schemas.extend(inline)
             elif declaration == "topic":
-                topic_declarations.append(self._parse_topic())
+                topic, inline = self._parse_topic()
+                topics.append(topic)
+                schemas.extend(inline)
             else:
                 raise self._error(
-                    f"unknown declaration {declaration!r}; expected wire, accept, enum, schema, rpc, or topic",
+                    f"unknown declaration {declaration!r}; expected enum, record, rpc, or topic",
                     self._tokens[self._index - 1],
                 )
             self._skip_separators()
 
-        schema_ids: dict[str, int] = {}
-        for schema in schemas:
-            name = schema["name"]
-            if name not in schema_ids:
-                schema_ids[name] = schema["id"]
-
-        def schema_id(token: IdlToken, role: str) -> int:
-            result = schema_ids.get(token.value)
-            if result is None:
-                raise self._error(f"unknown {role} schema {token.value!r}", token)
-            return result
-
-        rpcs = []
-        for name, request, response in rpc_declarations:
-            rpc = {
-                "name": name.value,
-                "response": schema_id(response, "response") if response is not None else 0,
-            }
-            if request is not None:
-                rpc["request"] = schema_id(request, "request")
-            rpcs.append(rpc)
-        topics = [
-            {"name": name.value, "message": schema_id(message, "message")}
-            for name, message in topic_declarations
-        ]
-        raw: dict[str, Any] = {
+        return {
             "api": api_id,
             "version": {
                 "major": int(version_match.group(1)),
@@ -667,13 +546,6 @@ class BmlApiParser:
             "rpcs": rpcs,
             "topics": topics,
         }
-        if accepted_hashes and wire_hash is None:
-            raise self._error("accept requires a wire hash declaration", accepted_hashes[0])
-        if wire_hash is not None:
-            raw["wire_hash"] = wire_hash.value
-        if accepted_hashes:
-            raw["accepted_hashes"] = [token.value for token in accepted_hashes]
-        return parse_api_definition(raw)
 
     def _parse_enum(self) -> dict[str, Any]:
         name = self._atom("enum name").value
@@ -692,131 +564,391 @@ class BmlApiParser:
             self._skip_separators()
         return {"name": name, "underlying": underlying, "values": values}
 
-    def _parse_schema(self) -> dict[str, Any]:
-        name = self._atom("schema name").value
-        self._expect("=")
-        schema_id = self._integer("schema ID")
+    def _parse_record(self) -> dict[str, Any]:
+        name = self._atom("record name").value
         self._expect("{")
-        fields = []
+        fields = self._parse_fields("record", name, "}")
+        return {"name": name, "fields": fields}
+
+    def _parse_fields(self, owner_kind: str, owner_name: str,
+                      terminator: str) -> list[dict[str, Any]]:
+        fields: list[dict[str, Any]] = []
         self._skip_separators()
-        while not self._accept("}"):
+        while not self._accept(terminator):
             if self._current().value == "<eof>":
-                raise self._error(f"unterminated schema {name!r}; expected '}}'")
+                raise self._error(
+                    f"unterminated {owner_kind} {owner_name!r}; expected {terminator!r}"
+                )
             optional = self._accept("optional")
             field_type = self._atom("field type").value
             field_name = self._atom("field name").value
-            self._expect("=")
-            field_id = self._integer("field ID")
             fields.append({
-                "id": field_id,
                 "name": field_name,
                 "type": field_type,
                 "optional": optional,
             })
             self._skip_separators()
-        return {"id": schema_id, "name": name, "fields": fields}
+        return fields
 
-    def _parse_rpc(self) -> tuple[IdlToken, IdlToken | None, IdlToken | None]:
-        name = self._atom("RPC name")
+    def _parse_payload(self, owner_kind: str, owner_name: str,
+                       synthesized_name: str, *, allow_empty: bool) -> tuple[str | None, dict[str, Any] | None]:
         self._expect("(")
-        request = None if self._current().value == ")" else self._atom("request schema")
-        self._expect(")")
-        response = self._atom("response schema") if self._accept("->") else None
-        return name, request, response
+        if self._accept(")"):
+            if allow_empty:
+                return None, None
+            raise self._error(f"{owner_kind} {owner_name!r} requires a payload")
+        first = self._current()
+        next_value = self._tokens[self._index + 1].value
+        if first.value != "optional" and next_value == ")":
+            reference = self._atom("payload record").value
+            self._expect(")")
+            return reference, None
+        fields = self._parse_fields(owner_kind, owner_name, ")")
+        return synthesized_name, {"name": synthesized_name, "fields": fields}
 
-    def _parse_topic(self) -> tuple[IdlToken, IdlToken]:
-        name = self._atom("Topic name")
-        self._expect("(")
-        message = self._atom("message schema")
-        self._expect(")")
-        return name, message
+    def _parse_rpc(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        name = self._atom("RPC name").value
+        request, request_record = self._parse_payload(
+            "RPC", name, f"{name}_request", allow_empty=True
+        )
+        response: str | None = None
+        response_record: dict[str, Any] | None = None
+        if self._accept("->"):
+            if self._current().value == "(":
+                response, response_record = self._parse_payload(
+                    "RPC response", name, f"{name}_reply", allow_empty=False
+                )
+            else:
+                response = self._atom("response record").value
+        rpc: dict[str, Any] = {"name": name}
+        if request is not None:
+            rpc["request"] = request
+        if response is not None:
+            rpc["response"] = response
+        return rpc, [record for record in (request_record, response_record) if record is not None]
+
+    def _parse_topic(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        name = self._atom("Topic name").value
+        message, message_record = self._parse_payload(
+            "Topic", name, f"{name}_event", allow_empty=False
+        )
+        assert message is not None
+        return {"name": name, "message": message}, ([] if message_record is None else [message_record])
 
 
-def parse_bmlapi(text: str) -> ApiDefinition:
-    return BmlApiParser(text).parse()
+def parse_imc(text: str) -> dict[str, Any]:
+    return ImcParser(text).parse()
 
 
 def value_name(record: Record) -> str:
-    """A snapshot value must not collide with its descriptor constant."""
+    """A generated value must not collide with its payload constant."""
     return f"{camel(record.name)}Value"
 
 
-def validate_compatible(previous: ApiDefinition, current: ApiDefinition) -> None:
-    """Enforce the only legal same-major evolution: optional append-only."""
-    if previous.api_id != current.api_id:
-        raise ApiDefinitionError(
-            f"compatibility input API ID {previous.api_id} does not match {current.api_id}"
-        )
-    if current.major < previous.major:
-        raise ApiDefinitionError(
-            f"{current.api_id} major version cannot decrease ({previous.major} -> {current.major})"
-        )
-    if current.major != previous.major:
-        return
-    if current.minor < previous.minor:
-        raise ApiDefinitionError(
-            f"{current.api_id} minor version cannot decrease within major {current.major}"
-        )
+LOCK_FORMAT = 1
 
-    previous_enums = {enum.name: enum for enum in previous.enums}
-    current_enums = {enum.name: enum for enum in current.enums}
-    for enum_name, old_enum in previous_enums.items():
-        new_enum = current_enums.get(enum_name)
+
+def _unique_by_name(values: list[dict[str, Any]], what: str) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for value in values:
+        name = key(value.get("name"), f"{what} name")
+        if name in result:
+            raise ApiDefinitionError(f"duplicate {what} name: {name}")
+        result[name] = value
+    return result
+
+
+def _canonical_source(source: dict[str, Any]) -> dict[str, Any]:
+    """Remove declaration-order noise before comparing interface definitions."""
+    return {
+        "api": source["api"],
+        "version": source["version"],
+        "enums": [
+            {
+                **enum,
+                "values": sorted(
+                    enum.get("values", []),
+                    key=lambda value: (value["value"], value["name"]),
+                ),
+            }
+            for enum in sorted(source.get("enums", []), key=lambda enum: enum["name"])
+        ],
+        "schemas": [
+            {
+                **record,
+                "fields": sorted(
+                    record.get("fields", []), key=lambda field: field["name"]
+                ),
+            }
+            for record in sorted(
+                source.get("schemas", []), key=lambda record: record["name"]
+            )
+        ],
+        "rpcs": sorted(source.get("rpcs", []), key=lambda endpoint: endpoint["name"]),
+        "topics": sorted(
+            source.get("topics", []), key=lambda endpoint: endpoint["name"]
+        ),
+    }
+
+
+def _source_signature(source: dict[str, Any]) -> str:
+    return json.dumps(
+        _canonical_source(source),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _active_source_from_lock(snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "api": snapshot["api"],
+        "version": snapshot["version"],
+        "enums": snapshot.get("enums", []),
+        "schemas": [
+            {
+                "name": record["name"],
+                "fields": [
+                    {name: field[name] for name in ("name", "type", "optional")}
+                    for field in record.get("fields", []) if not field.get("reserved", False)
+                ],
+            }
+            for record in snapshot.get("schemas", [])
+        ],
+        "rpcs": snapshot.get("rpcs", []),
+        "topics": snapshot.get("topics", []),
+    }
+
+
+def _validate_enum_evolution(previous: list[dict[str, Any]], current: list[dict[str, Any]]) -> None:
+    old_enums = _unique_by_name(previous, "enum")
+    new_enums = _unique_by_name(current, "enum")
+    for enum_name, old_enum in old_enums.items():
+        new_enum = new_enums.get(enum_name)
         if new_enum is None:
             raise ApiDefinitionError(f"enum {enum_name} was removed or renamed")
-        if new_enum.underlying != old_enum.underlying:
+        if new_enum.get("underlying", "int") != old_enum.get("underlying", "int"):
+            raise ApiDefinitionError(f"enum {enum_name} underlying type changed incompatibly")
+        old_values = {value["name"]: value["value"] for value in old_enum["values"]}
+        new_values = {value["name"]: value["value"] for value in new_enum["values"]}
+        for value_name, value in old_values.items():
+            if new_values.get(value_name) != value:
+                raise ApiDefinitionError(
+                    f"enum value {enum_name}.{value_name} was removed, renamed, or renumbered"
+                )
+
+
+def build_interface_lock(source: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    """Assign permanent IDs and validate evolution against the interface lock."""
+    api_id = api_key(source.get("api"), "api")
+    version = source.get("version")
+    if not isinstance(version, dict):
+        raise ApiDefinitionError("version must be an object")
+    major = uint32(version.get("major"), "version.major")
+    minor = uint32(version.get("minor", 0), "version.minor", allow_zero=True)
+    source_records = source.get("schemas", [])
+    source_rpcs = source.get("rpcs", [])
+    source_topics = source.get("topics", [])
+    source_enums = source.get("enums", [])
+    _unique_by_name(source_records, "record")
+    _unique_by_name(source_rpcs + source_topics, "endpoint")
+
+    if previous is not None:
+        reject_unknown_properties(
+            previous,
+            ("format", "api", "version", "enums", "schemas", "rpcs", "topics"),
+            "interface lock",
+        )
+        if previous.get("format") != LOCK_FORMAT:
             raise ApiDefinitionError(
-                f"enum {enum_name} underlying type changed incompatibly "
-                f"({old_enum.underlying} -> {new_enum.underlying})"
+                f"interface lock format must be {LOCK_FORMAT}, found {previous.get('format')!r}"
             )
-        new_values = {value.name: value.value for value in new_enum.values}
-        for old_value in old_enum.values:
-            if new_values.get(old_value.name) != old_value.value:
-                raise ApiDefinitionError(
-                    f"enum value {enum_name}.{old_value.name} was removed, renamed, or renumbered"
-                )
-
-    previous_schemas = {record.id: record for record in previous.schemas}
-    current_schemas = {record.id: record for record in current.schemas}
-    for record_id, old_record in previous_schemas.items():
-        new_record = current_schemas.get(record_id)
-        if not new_record or new_record.name != old_record.name:
-            raise ApiDefinitionError(f"record {old_record.name} ({record_id}) was removed or renamed")
-        old_fields = {field.id: field for field in old_record.fields}
-        new_fields = {field.id: field for field in new_record.fields}
-        for field_id, old_field in old_fields.items():
-            new_field = new_fields.get(field_id)
-            if new_field != old_field:
-                raise ApiDefinitionError(
-                    f"field {old_record.name}.{old_field.name} ({field_id}) changed incompatibly"
-                )
-        for field_id, new_field in new_fields.items():
-            if field_id not in old_fields and not new_field.optional:
-                raise ApiDefinitionError(
-                    f"new field {new_record.name}.{new_field.name} must be optional in a compatible minor"
-                )
-
-    previous_endpoints = {endpoint.name: endpoint for endpoint in previous.endpoints}
-    current_endpoints = {endpoint.name: endpoint for endpoint in current.endpoints}
-    for name, old_endpoint in previous_endpoints.items():
-        if current_endpoints.get(name) != old_endpoint:
-            raise ApiDefinitionError(f"endpoint {name} was removed or changed incompatibly")
-
-    if previous.canonical != current.canonical and current.minor == previous.minor:
-        raise ApiDefinitionError(
-            f"{current.api_id} changed within major {current.major} without increasing its minor version"
+        previous_api = api_key(previous.get("api"), "interface lock api")
+        if previous_api != api_id:
+            raise ApiDefinitionError(
+                f"interface lock API ID {previous_api!r} does not match {api_id!r}"
+            )
+        previous_version = previous.get("version", {})
+        previous_major = uint32(previous_version.get("major"), "interface lock version.major")
+        previous_minor = uint32(
+            previous_version.get("minor", 0), "interface lock version.minor", allow_zero=True
         )
-    if previous.canonical != current.canonical and not current.accepts_hash(previous.hash64):
-        raise ApiDefinitionError(
-            f"{current.api_id} compatible minor must list predecessor hash "
-            f"0x{previous.hash64:016X} using wire or accept"
-        )
-    if current.wire_hash != previous.wire_hash:
-        raise ApiDefinitionError(
-            f"{current.api_id} compatible minor must keep IMC wire hash "
-            f"0x{previous.wire_hash:016X}; declare that value with wire and "
-            f"retain predecessor hash 0x{previous.hash64:016X} with accept"
-        )
+        if major < previous_major:
+            raise ApiDefinitionError(
+                f"{api_id} major version cannot decrease ({previous_major} -> {major})"
+            )
+        if major > previous_major:
+            previous = None
+        elif minor < previous_minor:
+            raise ApiDefinitionError(
+                f"{api_id} minor version cannot decrease within major {major}"
+            )
+
+    if previous is None:
+        schemas = []
+        for record in source_records:
+            schemas.append({
+                "name": record["name"],
+                "fields": [
+                    {"id": field_id, **field, "reserved": False}
+                    for field_id, field in enumerate(record.get("fields", []), 1)
+                ],
+            })
+    else:
+        _validate_enum_evolution(previous.get("enums", []), source_enums)
+        old_records = _unique_by_name(previous.get("schemas", []), "ABI record")
+        new_record_names = {record["name"] for record in source_records}
+        missing_records = sorted(set(old_records).difference(new_record_names))
+        if missing_records:
+            raise ApiDefinitionError(
+                f"record {missing_records[0]} was removed or renamed; bump the API major version"
+            )
+        schemas = []
+        for source_record in source_records:
+            record_name = source_record["name"]
+            old_record = old_records.get(record_name)
+            if old_record is None:
+                fields = [
+                    {"id": field_id, **field, "reserved": False}
+                    for field_id, field in enumerate(source_record.get("fields", []), 1)
+                ]
+                schemas.append({"name": record_name, "fields": fields})
+                continue
+
+            old_fields = _unique_by_name(old_record.get("fields", []), f"field in {record_name}")
+            source_fields = _unique_by_name(
+                source_record.get("fields", []), f"field in {record_name}"
+            )
+            next_field_id = max((uint32(field.get("id"), f"field {record_name} ID")
+                                 for field in old_record.get("fields", [])), default=0) + 1
+            fields = []
+            for source_field in source_record.get("fields", []):
+                field_name = source_field["name"]
+                old_field = old_fields.get(field_name)
+                if old_field is not None:
+                    if old_field.get("reserved", False):
+                        raise ApiDefinitionError(
+                            f"field {record_name}.{field_name} is reserved and cannot be reused"
+                        )
+                    for property_name in ("type", "optional"):
+                        if source_field.get(property_name) != old_field.get(property_name):
+                            raise ApiDefinitionError(
+                                f"field {record_name}.{field_name} changed {property_name} incompatibly"
+                            )
+                    fields.append({
+                        "id": uint32(old_field.get("id"), f"field {record_name}.{field_name} ID"),
+                        **source_field,
+                        "reserved": False,
+                    })
+                else:
+                    if not source_field.get("optional", False):
+                        raise ApiDefinitionError(
+                            f"new field {record_name}.{field_name} must be optional in major {major}"
+                        )
+                    fields.append({"id": next_field_id, **source_field, "reserved": False})
+                    next_field_id += 1
+            for old_field in old_record.get("fields", []):
+                if old_field["name"] in source_fields:
+                    continue
+                if not old_field.get("reserved", False) and not old_field.get("optional", False):
+                    raise ApiDefinitionError(
+                        f"required field {record_name}.{old_field['name']} cannot be removed"
+                    )
+                fields.append({**old_field, "reserved": True})
+            if len(fields) > 64:
+                raise ApiDefinitionError(
+                    f"record {record_name} has exhausted its 64 permanent field IDs"
+                )
+            schemas.append({
+                "name": record_name,
+                "fields": sorted(fields, key=lambda field: field["id"]),
+            })
+
+        for kind in ("rpcs", "topics"):
+            old_endpoints = _unique_by_name(previous.get(kind, []), kind[:-1])
+            new_endpoints = _unique_by_name(source.get(kind, []), kind[:-1])
+            for endpoint_name, old_endpoint in old_endpoints.items():
+                if new_endpoints.get(endpoint_name) != old_endpoint:
+                    raise ApiDefinitionError(
+                        f"{kind[:-1]} {endpoint_name} was removed or changed incompatibly"
+                    )
+
+    snapshot = {
+        "format": LOCK_FORMAT,
+        "api": api_id,
+        "version": {"major": major, "minor": minor},
+        "enums": [
+            {
+                **enum,
+                "values": sorted(
+                    enum.get("values", []),
+                    key=lambda value: (value["value"], value["name"]),
+                ),
+            }
+            for enum in sorted(source_enums, key=lambda enum: enum["name"])
+        ],
+        "schemas": sorted(schemas, key=lambda record: record["name"]),
+        "rpcs": sorted(source_rpcs, key=lambda endpoint: endpoint["name"]),
+        "topics": sorted(source_topics, key=lambda endpoint: endpoint["name"]),
+    }
+    if previous is not None:
+        old_source = _active_source_from_lock(previous)
+        new_source = _active_source_from_lock(snapshot)
+        if (_source_signature(old_source) != _source_signature(new_source)
+                and minor == previous["version"].get("minor", 0)):
+            raise ApiDefinitionError(
+                f"{api_id} changed within major {major} without increasing its minor version"
+            )
+    return snapshot
+
+
+def resolved_definition(snapshot: dict[str, Any]) -> ApiDefinition:
+    schema_ids = {
+        record["name"]: record_id
+        for record_id, record in enumerate(snapshot["schemas"], 1)
+    }
+
+    def schema_id(name: str | None, role: str) -> int:
+        if name is None:
+            return 0
+        result = schema_ids.get(name)
+        if result is None:
+            raise ApiDefinitionError(f"unknown {role} record {name!r}")
+        return result
+
+    raw = {
+        "api": snapshot["api"],
+        "version": snapshot["version"],
+        "enums": snapshot.get("enums", []),
+        "schemas": [
+            {
+                "id": record_id,
+                "name": record["name"],
+                "fields": [
+                    {name: field[name] for name in ("id", "name", "type", "optional")}
+                    for field in record.get("fields", []) if not field.get("reserved", False)
+                ],
+            }
+            for record_id, record in enumerate(snapshot["schemas"], 1)
+        ],
+        "rpcs": [
+            {
+                "name": rpc["name"],
+                "request": schema_id(rpc.get("request"), "request"),
+                "response": schema_id(rpc.get("response"), "response"),
+            }
+            for rpc in snapshot.get("rpcs", [])
+        ],
+        "topics": [
+            {"name": topic["name"], "message": schema_id(topic.get("message"), "message")}
+            for topic in snapshot.get("topics", [])
+        ],
+    }
+    return parse_api_definition(raw)
+
+
+def emit_interface_lock(snapshot: dict[str, Any]) -> str:
+    return json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n"
 
 
 IMC_CPP_TYPES = {
@@ -869,9 +1001,8 @@ IMC_READERS = {
     "array<vec2>": "ReadVec2Array", "array<vec3>": "ReadVec3Array",
     "array<mat4>": "ReadMat4Array",
 }
-IMC_FIXED_PAYLOAD_SIZES = {
-    "bool": 1, "int": 4, "float": 4, "int64": 8, "uint64": 8,
-    "double": 8, "object": 12,
+IMC_LENGTH_DELIMITED_PAYLOAD_SIZES = {
+    "object": 12,
     "vec2": 8, "vec3": 12, "mat4": 64,
 }
 IMC_ARRAY_ELEMENT_SIZES = {
@@ -926,36 +1057,36 @@ def append_imc_codec(lines: list[str], api: ApiDefinition, record: Record) -> No
     name = camel(record.name)
     value = value_name(record)
     required_mask = sum(1 << index for index, field in enumerate(record.fields) if not field.optional)
-    required_count = sum(1 for field in record.fields if not field.optional)
-    lines.append(f"inline std::uint32_t {name}FieldCount(const {value} &value) noexcept {{")
-    lines.append(f"    std::uint32_t count = {required_count}u;")
-    for field in record.fields:
-        if field.optional:
-            lines.append(f"    if (value.Has{camel(field.name)}) ++count;")
-    lines.extend(["    return count;", "}", ""])
     lines.append(f"inline std::size_t Encoded{name}Size(const {value} &value) noexcept {{")
-    lines.append("    std::size_t size = ::BML::Imc::Wire::HeaderSize;")
+    lines.append("    std::size_t size = 0;")
     for field in record.fields:
         member = camel(field.name)
+        field_id = f"{name}Field::{member}"
         wire_type = imc_field_wire_type(api, field.type)
         if wire_type == "array<string>":
-            add_size = f"::BML::Imc::Wire::AddStringArrayFieldSize(size, value.{member})"
+            add_size = f"::BML::Imc::Wire::AddStringArrayFieldSize(size, {field_id}, value.{member})"
         elif wire_type in IMC_ARRAY_ELEMENT_SIZES:
             add_size = (
-                f"::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.{member}.size(), "
+                f"::BML::Imc::Wire::AddFixedArrayFieldSize(size, {field_id}, value.{member}.size(), "
                 f"{IMC_ARRAY_ELEMENT_SIZES[wire_type]})"
             )
+        elif wire_type == "bool":
+            add_size = f"::BML::Imc::Wire::AddBoolFieldSize(size, {field_id})"
+        elif wire_type in {"int", "float"}:
+            add_size = f"::BML::Imc::Wire::AddFixed32FieldSize(size, {field_id})"
+        elif wire_type in {"int64", "uint64", "double"}:
+            add_size = f"::BML::Imc::Wire::AddFixed64FieldSize(size, {field_id})"
         else:
             payload = (f"value.{member}.size()" if wire_type in {"string", "bytes"}
-                       else str(IMC_FIXED_PAYLOAD_SIZES[wire_type]))
-            add_size = f"::BML::Imc::Wire::AddFieldSize(size, {payload})"
+                       else str(IMC_LENGTH_DELIMITED_PAYLOAD_SIZES[wire_type]))
+            add_size = f"::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, {field_id}, {payload})"
         condition = f"value.Has{member} && " if field.optional else ""
         lines.append(f"    if ({condition}!{add_size}) return 0;")
     lines.extend(["    return size;", "}", ""])
     lines.append(f"inline int Encode{name}(const {value} &value, void *data, std::size_t size) noexcept {{")
     lines.append(f"    if (size != Encoded{name}Size(value)) return BML_ERROR_INVALID_PARAMETER;")
     lines.append("    ::BML::Imc::Wire::Writer writer(data, size);")
-    lines.append(f"    int status = writer.Begin({name}Schema, WireHash, {name}FieldCount(value));")
+    lines.append("    int status = writer.Begin();")
     for field in record.fields:
         member = camel(field.name)
         enum = enum_definition(api, field.type)
@@ -969,9 +1100,8 @@ def append_imc_codec(lines: list[str], api: ApiDefinition, record: Record) -> No
     lines.append(f"inline int Decode{name}(const BML_ImcMessage &message, {value} &out) {{")
     lines.append("    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;")
     lines.append("    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);")
-    lines.append(f"    int status = reader.Begin({name}Schema);")
+    lines.append("    int status = reader.Begin();")
     lines.append("    if (status != BML_OK) return status;")
-    lines.append("    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;")
 
     lines.extend([f"    {value} decoded{{}};", "    std::uint64_t seen = 0;", "    ::BML::Imc::Wire::FieldView field;"])
     lines.append("    while ((status = reader.Next(field)) == BML_OK) {")
@@ -1288,18 +1418,12 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
 def emit_imc_header(api: ApiDefinition) -> str:
     """Emit typed values and stable IMC routes without a dynamic record API."""
     namespace = "::".join(camel(part) for part in api.api_id.split("."))
-    compatible_expression = " || ".join(
-        ["value == Hash"]
-        + ([] if api.wire_hash == api.hash64 else ["value == WireHash"])
-        + [f"value == 0x{value:016X}ULL" for value in api.accepted_hashes]
-    )
     lines = [
         "// Generated by tools/imc_codegen.py. Do not edit by hand.",
         "#pragma once",
         "",
         '#include "BML/ImcCpp.hpp"',
         '#include "BML/ImcWire.hpp"',
-        "#include <array>",
         "#include <cstdint>",
         "#include <string>",
         "#include <utility>",
@@ -1309,12 +1433,6 @@ def emit_imc_header(api: ApiDefinition) -> str:
         f'inline constexpr const char ApiId[] = "{api.api_id}";',
         f"inline constexpr unsigned int Major = {api.major};",
         f"inline constexpr unsigned int Minor = {api.minor};",
-        f"inline constexpr std::uint64_t Hash = 0x{api.hash64:016X}ULL;",
-        f"inline constexpr std::uint64_t WireHash = 0x{api.wire_hash:016X}ULL;",
-        f"inline bool IsCompatibleHash(std::uint64_t value) noexcept {{ return {compatible_expression}; }}",
-        "",
-        "struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };",
-        "struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };",
         "",
     ]
     for enum in api.enums:
@@ -1331,7 +1449,6 @@ def emit_imc_header(api: ApiDefinition) -> str:
 
     for record in api.schemas:
         record_name = camel(record.name)
-        lines.append(f"inline constexpr std::uint32_t {record_name}Schema = {record.id}u;")
         lines.append(
             f'inline constexpr const char {record_name}Payload[] = '
             f'"{api.api_id}/v{api.major}/payload/{record.name}";'
@@ -1349,15 +1466,6 @@ def emit_imc_header(api: ApiDefinition) -> str:
         lines.extend(["};", ""])
         append_imc_codec(lines, api, record)
 
-    if api.schemas:
-        lines.append("inline constexpr SchemaMetadata Schemas[] = {")
-        for record in api.schemas:
-            record_name = camel(record.name)
-            lines.append(f'    {{{record.id}u, "{record.name}", {record_name}Payload}},')
-        lines.extend(["};", ""])
-    else:
-        lines.extend(["inline constexpr std::array<SchemaMetadata, 0> Schemas{};", ""])
-
     for endpoint in api.endpoints:
         endpoint_name = camel(endpoint.name)
         route_kind = endpoint.kind
@@ -1368,15 +1476,7 @@ def emit_imc_header(api: ApiDefinition) -> str:
     lines.append("")
     append_imc_client(lines, api)
     append_imc_provider(lines, api)
-    lines.append("inline constexpr EndpointMetadata Endpoints[] = {")
-    for endpoint in api.endpoints:
-        endpoint_name = camel(endpoint.name)
-        topic = "true" if endpoint.kind == "topic" else "false"
-        lines.append(
-            f'    {{"{endpoint.name}", {endpoint_name}Route, {topic}, '
-            f'{endpoint.input_schema}u, {endpoint.output_schema}u}},'
-        )
-    lines.extend(["};", "", f"}} // namespace BML::Imc::Generated::{namespace}", ""])
+    lines.extend([f"}} // namespace BML::Imc::Generated::{namespace}", ""])
     return "\n".join(lines)
 
 
@@ -1391,30 +1491,68 @@ def write_if_changed(path: Path, text: str, check: bool) -> bool:
     return True
 
 
-def load_api_definition(path: Path, role: str) -> ApiDefinition:
+def load_imc_source(path: Path, role: str) -> dict[str, Any]:
     try:
-        return parse_bmlapi(path.read_text(encoding="utf-8"))
+        return parse_imc(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ApiDefinitionError) as error:
         raise ApiDefinitionError(f"{role} {path}: {error}") from error
 
 
+def load_interface_lock(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise ApiDefinitionError(
+            f"interface lock {path} does not exist; run with --update-lock once"
+        ) from error
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ApiDefinitionError(f"interface lock {path}: {error}") from error
+    if not isinstance(value, dict):
+        raise ApiDefinitionError(f"interface lock {path}: top-level value must be an object")
+    return value
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", action="append", type=Path, required=True, help=".bmlapi IDL input")
+    parser.add_argument("--input", action="append", type=Path, required=True,
+                        help=".imc interface input")
     parser.add_argument("--out-dir", type=Path, required=True,
                         help="directory for generated *_imc.hpp headers")
-    parser.add_argument("--previous", action="append", type=Path,
-                        help="previous .bmlapi to validate as an append-only compatible predecessor")
+    parser.add_argument(
+        "--update-lock", action="store_true",
+        help="create or update each adjacent .imc.lock snapshot before generation",
+    )
     parser.add_argument("--expected-api-id",
                         help="require a single input to declare this API ID (used by CMake output tracking)")
     parser.add_argument("--check", action="store_true", help="fail instead of rewriting stale output")
     args = parser.parse_args(argv)
     try:
-        api_definitions = [load_api_definition(path, "input") for path in args.input]
-        previous_apis = [
-            load_api_definition(path, "previous input")
-            for path in (args.previous or [])
-        ]
+        if args.update_lock and args.check:
+            raise ApiDefinitionError("--update-lock and --check cannot be used together")
+        api_definitions: list[ApiDefinition] = []
+        lock_outputs: list[tuple[Path, str]] = []
+        for input_path in args.input:
+            if input_path.suffix != ".imc":
+                raise ApiDefinitionError(f"input must use the .imc extension: {input_path}")
+            source = load_imc_source(input_path, "input")
+            lock_path = input_path.with_suffix(".imc.lock")
+            previous = None
+            if lock_path.exists():
+                previous = load_interface_lock(lock_path)
+            elif not args.update_lock:
+                raise ApiDefinitionError(
+                    f"interface lock {lock_path} does not exist; run with --update-lock once"
+                )
+            snapshot = build_interface_lock(source, previous)
+            snapshot_text = emit_interface_lock(snapshot)
+            if not args.update_lock and (
+                previous is None or emit_interface_lock(previous) != snapshot_text
+            ):
+                raise ApiDefinitionError(
+                    f"interface lock is stale: {lock_path}; review the change and run with --update-lock"
+                )
+            api_definitions.append(resolved_definition(snapshot))
+            lock_outputs.append((lock_path, snapshot_text))
         if args.expected_api_id is not None:
             expected_api_id = api_key(args.expected_api_id, "--expected-api-id")
             if len(api_definitions) != 1:
@@ -1422,37 +1560,35 @@ def main(argv: list[str]) -> int:
             actual_api_id = api_definitions[0].api_id
             if actual_api_id != expected_api_id:
                 raise ApiDefinitionError(
-                    f"input {args.input[0]}: contract API ID {actual_api_id!r} does not match "
+                    f"input {args.input[0]}: interface API ID {actual_api_id!r} does not match "
                     f"expected API ID {expected_api_id!r}"
                 )
         seen_api_ids: set[str] = set()
         seen_output_paths: dict[str, str] = {}
-        planned_apis: list[tuple[ApiDefinition, str]] = []
+        planned_outputs: list[tuple[Path, str]] = []
         for api in api_definitions:
             if api.api_id in seen_api_ids:
                 raise ApiDefinitionError(f"duplicate API ID input: {api.api_id}")
             seen_api_ids.add(api.api_id)
             stem = api.api_id.replace(".", "_")
-            output_paths = [args.out_dir / f"{stem}_imc.hpp"]
-            for output_path in output_paths:
-                path_key = str(output_path.resolve()).casefold()
-                previous_api_id = seen_output_paths.get(path_key)
-                if previous_api_id is not None:
-                    raise ApiDefinitionError(
-                        f"generated output path collision: API IDs {previous_api_id!r} "
-                        f"and {api.api_id!r} both map to {output_path}"
-                    )
-                seen_output_paths[path_key] = api.api_id
-            planned_apis.append((api, stem))
+            output_path = args.out_dir / f"{stem}_imc.hpp"
+            path_key = str(output_path.resolve()).casefold()
+            previous_api_id = seen_output_paths.get(path_key)
+            if previous_api_id is not None:
+                raise ApiDefinitionError(
+                    f"generated output path collision: API IDs {previous_api_id!r} "
+                    f"and {api.api_id!r} both map to {output_path}"
+                )
+            seen_output_paths[path_key] = api.api_id
+            planned_outputs.append((output_path, emit_imc_header(api)))
 
-        by_api_id = {api.api_id: api for api in api_definitions}
-        for previous in previous_apis:
-            current = by_api_id.get(previous.api_id)
-            if not current:
-                raise ApiDefinitionError(f"no current input supplied for API ID {previous.api_id}")
-            validate_compatible(previous, current)
-        for api, stem in planned_apis:
-            write_if_changed(args.out_dir / f"{stem}_imc.hpp", emit_imc_header(api), args.check)
+        # No author-owned interface state changes until every input and generated
+        # output has validated successfully.
+        if args.update_lock:
+            for lock_path, snapshot_text in lock_outputs:
+                write_if_changed(lock_path, snapshot_text, False)
+        for output_path, output_text in planned_outputs:
+            write_if_changed(output_path, output_text, args.check)
     except (OSError, UnicodeError, ApiDefinitionError) as error:
         print(f"imc_codegen: {error}", file=sys.stderr)
         return 1

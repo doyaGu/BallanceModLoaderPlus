@@ -3,7 +3,6 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
-#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -13,14 +12,7 @@ namespace BML::Imc::Generated::Bml::Events {
 inline constexpr const char ApiId[] = "bml.events";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0xDB0CDD6981EC98EEULL;
-inline constexpr std::uint64_t WireHash = 0xDB0CDD6981EC98EEULL;
-inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
-struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
-struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };
-
-inline constexpr std::uint32_t EventSchema = 1u;
 inline constexpr const char EventPayload[] = "bml.events/v1/payload/event";
 namespace EventField {
 inline constexpr std::uint32_t Kind = 1u;
@@ -134,91 +126,51 @@ struct EventValue {
     bool CheatEnabled{};
 };
 
-inline std::uint32_t EventFieldCount(const EventValue &value) noexcept {
-    std::uint32_t count = 1u;
-    if (value.HasFilename) ++count;
-    if (value.HasIsMap) ++count;
-    if (value.HasMasterName) ++count;
-    if (value.HasFilterClass) ++count;
-    if (value.HasAddToScene) ++count;
-    if (value.HasReuseMeshes) ++count;
-    if (value.HasReuseMaterials) ++count;
-    if (value.HasDynamic) ++count;
-    if (value.HasObjectIds) ++count;
-    if (value.HasMasterObject) ++count;
-    if (value.HasScript) ++count;
-    if (value.HasTarget) ++count;
-    if (value.HasFixed) ++count;
-    if (value.HasFriction) ++count;
-    if (value.HasElasticity) ++count;
-    if (value.HasMass) ++count;
-    if (value.HasCollisionGroup) ++count;
-    if (value.HasStartFrozen) ++count;
-    if (value.HasEnableCollision) ++count;
-    if (value.HasAutoCalculateMassCenter) ++count;
-    if (value.HasLinearDamp) ++count;
-    if (value.HasRotDamp) ++count;
-    if (value.HasCollisionSurface) ++count;
-    if (value.HasMassCenter) ++count;
-    if (value.HasConvexMeshes) ++count;
-    if (value.HasBallCenters) ++count;
-    if (value.HasBallRadii) ++count;
-    if (value.HasConcaveMeshes) ++count;
-    if (value.HasCommand) ++count;
-    if (value.HasCommandArgs) ++count;
-    if (value.HasConfigCategory) ++count;
-    if (value.HasConfigKey) ++count;
-    if (value.HasConfigType) ++count;
-    if (value.HasConfigValue) ++count;
-    if (value.HasCheatEnabled) ++count;
-    return count;
-}
-
 inline std::size_t EncodedEventSize(const EventValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasFilename && !::BML::Imc::Wire::AddFieldSize(size, value.Filename.size())) return 0;
-    if (value.HasIsMap && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasMasterName && !::BML::Imc::Wire::AddFieldSize(size, value.MasterName.size())) return 0;
-    if (value.HasFilterClass && !::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasAddToScene && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasReuseMeshes && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasReuseMaterials && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasDynamic && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasObjectIds && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.ObjectIds.size(), 12)) return 0;
-    if (value.HasMasterObject && !::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (value.HasScript && !::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (value.HasTarget && !::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (value.HasFixed && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasFriction && !::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasElasticity && !::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasMass && !::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasCollisionGroup && !::BML::Imc::Wire::AddFieldSize(size, value.CollisionGroup.size())) return 0;
-    if (value.HasStartFrozen && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasEnableCollision && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasAutoCalculateMassCenter && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (value.HasLinearDamp && !::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasRotDamp && !::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasCollisionSurface && !::BML::Imc::Wire::AddFieldSize(size, value.CollisionSurface.size())) return 0;
-    if (value.HasMassCenter && !::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (value.HasConvexMeshes && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.ConvexMeshes.size(), 12)) return 0;
-    if (value.HasBallCenters && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.BallCenters.size(), 12)) return 0;
-    if (value.HasBallRadii && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.BallRadii.size(), 4)) return 0;
-    if (value.HasConcaveMeshes && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, value.ConcaveMeshes.size(), 12)) return 0;
-    if (value.HasCommand && !::BML::Imc::Wire::AddFieldSize(size, value.Command.size())) return 0;
-    if (value.HasCommandArgs && !::BML::Imc::Wire::AddStringArrayFieldSize(size, value.CommandArgs)) return 0;
-    if (value.HasConfigCategory && !::BML::Imc::Wire::AddFieldSize(size, value.ConfigCategory.size())) return 0;
-    if (value.HasConfigKey && !::BML::Imc::Wire::AddFieldSize(size, value.ConfigKey.size())) return 0;
-    if (value.HasConfigType && !::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (value.HasConfigValue && !::BML::Imc::Wire::AddFieldSize(size, value.ConfigValue.size())) return 0;
-    if (value.HasCheatEnabled && !::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::Kind)) return 0;
+    if (value.HasFilename && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::Filename, value.Filename.size())) return 0;
+    if (value.HasIsMap && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::IsMap)) return 0;
+    if (value.HasMasterName && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::MasterName, value.MasterName.size())) return 0;
+    if (value.HasFilterClass && !::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::FilterClass)) return 0;
+    if (value.HasAddToScene && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::AddToScene)) return 0;
+    if (value.HasReuseMeshes && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::ReuseMeshes)) return 0;
+    if (value.HasReuseMaterials && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::ReuseMaterials)) return 0;
+    if (value.HasDynamic && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::Dynamic)) return 0;
+    if (value.HasObjectIds && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, EventField::ObjectIds, value.ObjectIds.size(), 12)) return 0;
+    if (value.HasMasterObject && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::MasterObject, 12)) return 0;
+    if (value.HasScript && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::Script, 12)) return 0;
+    if (value.HasTarget && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::Target, 12)) return 0;
+    if (value.HasFixed && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::Fixed)) return 0;
+    if (value.HasFriction && !::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::Friction)) return 0;
+    if (value.HasElasticity && !::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::Elasticity)) return 0;
+    if (value.HasMass && !::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::Mass)) return 0;
+    if (value.HasCollisionGroup && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::CollisionGroup, value.CollisionGroup.size())) return 0;
+    if (value.HasStartFrozen && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::StartFrozen)) return 0;
+    if (value.HasEnableCollision && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::EnableCollision)) return 0;
+    if (value.HasAutoCalculateMassCenter && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::AutoCalculateMassCenter)) return 0;
+    if (value.HasLinearDamp && !::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::LinearDamp)) return 0;
+    if (value.HasRotDamp && !::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::RotDamp)) return 0;
+    if (value.HasCollisionSurface && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::CollisionSurface, value.CollisionSurface.size())) return 0;
+    if (value.HasMassCenter && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::MassCenter, 12)) return 0;
+    if (value.HasConvexMeshes && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, EventField::ConvexMeshes, value.ConvexMeshes.size(), 12)) return 0;
+    if (value.HasBallCenters && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, EventField::BallCenters, value.BallCenters.size(), 12)) return 0;
+    if (value.HasBallRadii && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, EventField::BallRadii, value.BallRadii.size(), 4)) return 0;
+    if (value.HasConcaveMeshes && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, EventField::ConcaveMeshes, value.ConcaveMeshes.size(), 12)) return 0;
+    if (value.HasCommand && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::Command, value.Command.size())) return 0;
+    if (value.HasCommandArgs && !::BML::Imc::Wire::AddStringArrayFieldSize(size, EventField::CommandArgs, value.CommandArgs)) return 0;
+    if (value.HasConfigCategory && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::ConfigCategory, value.ConfigCategory.size())) return 0;
+    if (value.HasConfigKey && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::ConfigKey, value.ConfigKey.size())) return 0;
+    if (value.HasConfigType && !::BML::Imc::Wire::AddFixed32FieldSize(size, EventField::ConfigType)) return 0;
+    if (value.HasConfigValue && !::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EventField::ConfigValue, value.ConfigValue.size())) return 0;
+    if (value.HasCheatEnabled && !::BML::Imc::Wire::AddBoolFieldSize(size, EventField::CheatEnabled)) return 0;
     return size;
 }
 
 inline int EncodeEvent(const EventValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedEventSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(EventSchema, WireHash, EventFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteInt(EventField::Kind, value.Kind);
     if (status == BML_OK && value.HasFilename) status = writer.WriteString(EventField::Filename, value.Filename);
     if (status == BML_OK && value.HasIsMap) status = writer.WriteBool(EventField::IsMap, value.IsMap);
@@ -261,9 +213,8 @@ inline int EncodeEvent(const EventValue &value, void *data, std::size_t size) no
 inline int DecodeEvent(const BML_ImcMessage &message, EventValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(EventSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     EventValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -532,10 +483,6 @@ inline int DecodeEvent(const BML_ImcMessage &message, EventValue &out) {
     return BML_OK;
 }
 
-inline constexpr SchemaMetadata Schemas[] = {
-    {1u, "event", EventPayload},
-};
-
 inline constexpr const char AllRoute[] = "bml.events/v1/topic/all";
 
 class AllSubscription {
@@ -633,10 +580,6 @@ private:
     BML_ImcClient m_Client = nullptr;
     BML_ImcPayloadTypeId m_EventPayload = BML_IMC_INVALID_ID;
     BML_ImcTopicId m_AllTopic = BML_IMC_INVALID_ID;
-};
-
-inline constexpr EndpointMetadata Endpoints[] = {
-    {"all", AllRoute, true, 0u, 1u},
 };
 
 } // namespace BML::Imc::Generated::Bml::Events

@@ -1,0 +1,117 @@
+{
+  "format": 1,
+  "api": "bml.ui",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "enums": [],
+  "schemas": [
+    {
+      "name": "hud_mode_input",
+      "fields": [
+        {
+          "id": 1,
+          "name": "mode",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "hud_state",
+      "fields": [
+        {
+          "id": 1,
+          "name": "mode",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "sr_time",
+          "type": "float",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "message_input",
+      "fields": [
+        {
+          "id": 1,
+          "name": "message",
+          "type": "string",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "visible_input",
+      "fields": [
+        {
+          "id": 1,
+          "name": "visible",
+          "type": "bool",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    }
+  ],
+  "rpcs": [
+    {
+      "name": "hud_fps_show",
+      "request": "visible_input"
+    },
+    {
+      "name": "hud_set",
+      "request": "hud_mode_input"
+    },
+    {
+      "name": "hud_sr_pause"
+    },
+    {
+      "name": "hud_sr_reset"
+    },
+    {
+      "name": "hud_sr_show",
+      "request": "visible_input"
+    },
+    {
+      "name": "hud_sr_start"
+    },
+    {
+      "name": "hud_title_show",
+      "request": "visible_input"
+    },
+    {
+      "name": "map_menu_close"
+    },
+    {
+      "name": "map_menu_open"
+    },
+    {
+      "name": "message_add",
+      "request": "message_input"
+    },
+    {
+      "name": "message_clear"
+    },
+    {
+      "name": "mods_menu_close"
+    },
+    {
+      "name": "mods_menu_open"
+    },
+    {
+      "name": "state",
+      "response": "hud_state"
+    }
+  ],
+  "topics": []
+}

@@ -1,20 +1,20 @@
 api bml.ui 1.0
 
-schema message_input = 1 {
-    string message = 1
+record message_input {
+    string message
 }
 
-schema hud_mode_input = 2 {
-    int mode = 1
+record hud_mode_input {
+    int mode
 }
 
-schema visible_input = 3 {
-    bool visible = 1
+record visible_input {
+    bool visible
 }
 
-schema hud_state = 4 {
-    int mode = 1
-    float sr_time = 2
+record hud_state {
+    int mode
+    float sr_time
 }
 
 rpc hud_fps_show(visible_input)

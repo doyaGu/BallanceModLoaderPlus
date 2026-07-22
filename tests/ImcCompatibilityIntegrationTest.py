@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import subprocess
 import sys
 import tempfile
@@ -22,14 +21,8 @@ def run(command: list[str], *, expect_success: bool = True) -> subprocess.Comple
     return result
 
 
-def write_contract(path: Path, *, minor: int,
-                   compatible_hashes: list[str] | None = None) -> None:
+def write_interface(path: Path, *, minor: int) -> None:
     lines = [f"api test.compatibility 1.{minor}", ""]
-    if compatible_hashes:
-        lines.append(f"wire {compatible_hashes[0]}")
-        for hash_value in compatible_hashes[1:]:
-            lines.append(f"accept {hash_value}")
-        lines.append("")
     lines.extend([
         "enum mode {",
         "    off = 0",
@@ -40,12 +33,12 @@ def write_contract(path: Path, *, minor: int,
     lines.extend([
         "}",
         "",
-        "schema sample = 1 {",
-        "    int value = 1",
-        "    enum<mode> mode = 2",
+        "record sample {",
+        "    int value",
+        "    enum<mode> mode",
     ])
     if minor:
-        lines.append("    optional string label = 3")
+        lines.append("    optional string label")
     lines.extend(["}", "", "rpc state() -> sample", ""])
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -66,24 +59,25 @@ def main() -> int:
     generator = source_root / "tools" / "imc_codegen.py"
     with tempfile.TemporaryDirectory(prefix="bml-imc-compat-") as temporary:
         root = Path(temporary)
-        old_contract = root / "old.bmlapi"
-        new_contract = root / "new.bmlapi"
+        old_interface = root / "old.imc"
+        new_interface = root / "new.imc"
         old_headers = root / "old"
         new_headers = root / "new"
-        write_contract(old_contract, minor=0)
+        write_interface(old_interface, minor=0)
         run([
-            sys.executable, str(generator), "--input", str(old_contract),
-            "--out-dir", str(old_headers),
+            sys.executable, str(generator), "--input", str(old_interface),
+            "--out-dir", str(old_headers), "--update-lock",
         ])
         old_header = old_headers / "test_compatibility_imc.hpp"
-        match = re.search(r"Hash = 0x([0-9A-F]+)ULL", old_header.read_text(encoding="utf-8"))
-        if not match:
-            raise AssertionError("old generated binding did not expose its descriptor hash")
 
-        write_contract(new_contract, minor=1, compatible_hashes=["0x" + match.group(1)])
+        write_interface(new_interface, minor=1)
+        new_interface.with_suffix(".imc.lock").write_text(
+            old_interface.with_suffix(".imc.lock").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
         run([
-            sys.executable, str(generator), "--input", str(new_contract),
-            "--previous", str(old_contract), "--out-dir", str(new_headers),
+            sys.executable, str(generator), "--input", str(new_interface),
+            "--out-dir", str(new_headers), "--update-lock",
         ])
         new_header = new_headers / "test_compatibility_imc.hpp"
 

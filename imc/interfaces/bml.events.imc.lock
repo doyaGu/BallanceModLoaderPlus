@@ -1,0 +1,275 @@
+{
+  "format": 1,
+  "api": "bml.events",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "enums": [],
+  "schemas": [
+    {
+      "name": "event",
+      "fields": [
+        {
+          "id": 1,
+          "name": "kind",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "filename",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 3,
+          "name": "is_map",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 4,
+          "name": "master_name",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 5,
+          "name": "filter_class",
+          "type": "int",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 6,
+          "name": "add_to_scene",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 7,
+          "name": "reuse_meshes",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 8,
+          "name": "reuse_materials",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 9,
+          "name": "dynamic",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 10,
+          "name": "object_ids",
+          "type": "array<object>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 11,
+          "name": "master_object",
+          "type": "object",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 12,
+          "name": "script",
+          "type": "object",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 13,
+          "name": "target",
+          "type": "object",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 14,
+          "name": "fixed",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 15,
+          "name": "friction",
+          "type": "float",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 16,
+          "name": "elasticity",
+          "type": "float",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 17,
+          "name": "mass",
+          "type": "float",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 18,
+          "name": "collision_group",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 19,
+          "name": "start_frozen",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 20,
+          "name": "enable_collision",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 21,
+          "name": "auto_calculate_mass_center",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 22,
+          "name": "linear_damp",
+          "type": "float",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 23,
+          "name": "rot_damp",
+          "type": "float",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 24,
+          "name": "collision_surface",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 25,
+          "name": "mass_center",
+          "type": "vec3",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 26,
+          "name": "convex_meshes",
+          "type": "array<object>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 27,
+          "name": "ball_centers",
+          "type": "array<vec3>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 28,
+          "name": "ball_radii",
+          "type": "array<float>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 29,
+          "name": "concave_meshes",
+          "type": "array<object>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 30,
+          "name": "command",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 31,
+          "name": "command_args",
+          "type": "array<string>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 32,
+          "name": "config_category",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 33,
+          "name": "config_key",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 34,
+          "name": "config_type",
+          "type": "int",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 35,
+          "name": "config_value",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 36,
+          "name": "cheat_enabled",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        }
+      ]
+    }
+  ],
+  "rpcs": [],
+  "topics": [
+    {
+      "name": "all",
+      "message": "event"
+    }
+  ]
+}

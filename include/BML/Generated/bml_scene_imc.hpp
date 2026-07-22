@@ -3,7 +3,6 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
-#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -13,14 +12,247 @@ namespace BML::Imc::Generated::Bml::Scene {
 inline constexpr const char ApiId[] = "bml.scene";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0xBCB4BA39AD9D839FULL;
-inline constexpr std::uint64_t WireHash = 0xBCB4BA39AD9D839FULL;
-inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
-struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
-struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };
+inline constexpr const char EntityTransformPayload[] = "bml.scene/v1/payload/entity_transform";
+namespace EntityTransformField {
+inline constexpr std::uint32_t Position = 1u;
+inline constexpr std::uint32_t Scale = 2u;
+inline constexpr std::uint32_t Parent = 3u;
+inline constexpr std::uint32_t ChildCount = 4u;
+}
+struct EntityTransformValue {
+    BML_Vec3 Position{};
+    BML_Vec3 Scale{};
+    BML_ObjectRef Parent{};
+    int ChildCount{};
+};
 
-inline constexpr std::uint32_t ObjectInfoSchema = 1u;
+inline std::size_t EncodedEntityTransformSize(const EntityTransformValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EntityTransformField::Position, 12)) return 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EntityTransformField::Scale, 12)) return 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, EntityTransformField::Parent, 12)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, EntityTransformField::ChildCount)) return 0;
+    return size;
+}
+
+inline int EncodeEntityTransform(const EntityTransformValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedEntityTransformSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteVec3(EntityTransformField::Position, value.Position);
+    if (status == BML_OK) status = writer.WriteVec3(EntityTransformField::Scale, value.Scale);
+    if (status == BML_OK) status = writer.WriteObject(EntityTransformField::Parent, value.Parent);
+    if (status == BML_OK) status = writer.WriteInt(EntityTransformField::ChildCount, value.ChildCount);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeEntityTransform(const BML_ImcMessage &message, EntityTransformValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    EntityTransformValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case EntityTransformField::Position:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadVec3(field, decoded.Position);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        case EntityTransformField::Scale:
+            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadVec3(field, decoded.Scale);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 1;
+            break;
+        case EntityTransformField::Parent:
+            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Parent);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 2;
+            break;
+        case EntityTransformField::ChildCount:
+            if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.ChildCount);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 3;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0xF)) != UINT64_C(0xF)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
+inline constexpr const char FindNameClassRequestPayload[] = "bml.scene/v1/payload/find_name_class_request";
+namespace FindNameClassRequestField {
+inline constexpr std::uint32_t Name = 1u;
+inline constexpr std::uint32_t ClassId = 2u;
+}
+struct FindNameClassRequestValue {
+    std::string Name{};
+    int ClassId{};
+};
+
+inline std::size_t EncodedFindNameClassRequestSize(const FindNameClassRequestValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, FindNameClassRequestField::Name, value.Name.size())) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, FindNameClassRequestField::ClassId)) return 0;
+    return size;
+}
+
+inline int EncodeFindNameClassRequest(const FindNameClassRequestValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedFindNameClassRequestSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteString(FindNameClassRequestField::Name, value.Name);
+    if (status == BML_OK) status = writer.WriteInt(FindNameClassRequestField::ClassId, value.ClassId);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeFindNameClassRequest(const BML_ImcMessage &message, FindNameClassRequestValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    FindNameClassRequestValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case FindNameClassRequestField::Name:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Name);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        case FindNameClassRequestField::ClassId:
+            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.ClassId);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 1;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x3)) != UINT64_C(0x3)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
+inline constexpr const char FindNameRequestPayload[] = "bml.scene/v1/payload/find_name_request";
+namespace FindNameRequestField {
+inline constexpr std::uint32_t Name = 1u;
+}
+struct FindNameRequestValue {
+    std::string Name{};
+};
+
+inline std::size_t EncodedFindNameRequestSize(const FindNameRequestValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, FindNameRequestField::Name, value.Name.size())) return 0;
+    return size;
+}
+
+inline int EncodeFindNameRequest(const FindNameRequestValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedFindNameRequestSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteString(FindNameRequestField::Name, value.Name);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeFindNameRequest(const BML_ImcMessage &message, FindNameRequestValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    FindNameRequestValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case FindNameRequestField::Name:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Name);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
+inline constexpr const char FindResultPayload[] = "bml.scene/v1/payload/find_result";
+namespace FindResultField {
+inline constexpr std::uint32_t Object = 1u;
+}
+struct FindResultValue {
+    BML_ObjectRef Object{};
+};
+
+inline std::size_t EncodedFindResultSize(const FindResultValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, FindResultField::Object, 12)) return 0;
+    return size;
+}
+
+inline int EncodeFindResult(const FindResultValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedFindResultSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteObject(FindResultField::Object, value.Object);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeFindResult(const BML_ImcMessage &message, FindResultValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    FindResultValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case FindResultField::Object:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Object);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
 inline constexpr const char ObjectInfoPayload[] = "bml.scene/v1/payload/object_info";
 namespace ObjectInfoField {
 inline constexpr std::uint32_t Id = 1u;
@@ -37,25 +269,20 @@ struct ObjectInfoValue {
     bool Dynamic{};
 };
 
-inline std::uint32_t ObjectInfoFieldCount(const ObjectInfoValue &value) noexcept {
-    std::uint32_t count = 5u;
-    return count;
-}
-
 inline std::size_t EncodedObjectInfoSize(const ObjectInfoValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, value.Name.size())) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ObjectInfoField::Id)) return 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, ObjectInfoField::Name, value.Name.size())) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ObjectInfoField::ClassId)) return 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, ObjectInfoField::Visible)) return 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, ObjectInfoField::Dynamic)) return 0;
     return size;
 }
 
 inline int EncodeObjectInfo(const ObjectInfoValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedObjectInfoSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(ObjectInfoSchema, WireHash, ObjectInfoFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteInt(ObjectInfoField::Id, value.Id);
     if (status == BML_OK) status = writer.WriteString(ObjectInfoField::Name, value.Name);
     if (status == BML_OK) status = writer.WriteInt(ObjectInfoField::ClassId, value.ClassId);
@@ -67,9 +294,8 @@ inline int EncodeObjectInfo(const ObjectInfoValue &value, void *data, std::size_
 inline int DecodeObjectInfo(const BML_ImcMessage &message, ObjectInfoValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(ObjectInfoSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     ObjectInfoValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -117,275 +343,6 @@ inline int DecodeObjectInfo(const BML_ImcMessage &message, ObjectInfoValue &out)
     return BML_OK;
 }
 
-inline constexpr std::uint32_t EntityTransformSchema = 2u;
-inline constexpr const char EntityTransformPayload[] = "bml.scene/v1/payload/entity_transform";
-namespace EntityTransformField {
-inline constexpr std::uint32_t Position = 1u;
-inline constexpr std::uint32_t Scale = 2u;
-inline constexpr std::uint32_t Parent = 3u;
-inline constexpr std::uint32_t ChildCount = 4u;
-}
-struct EntityTransformValue {
-    BML_Vec3 Position{};
-    BML_Vec3 Scale{};
-    BML_ObjectRef Parent{};
-    int ChildCount{};
-};
-
-inline std::uint32_t EntityTransformFieldCount(const EntityTransformValue &value) noexcept {
-    std::uint32_t count = 4u;
-    return count;
-}
-
-inline std::size_t EncodedEntityTransformSize(const EntityTransformValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    return size;
-}
-
-inline int EncodeEntityTransform(const EntityTransformValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedEntityTransformSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(EntityTransformSchema, WireHash, EntityTransformFieldCount(value));
-    if (status == BML_OK) status = writer.WriteVec3(EntityTransformField::Position, value.Position);
-    if (status == BML_OK) status = writer.WriteVec3(EntityTransformField::Scale, value.Scale);
-    if (status == BML_OK) status = writer.WriteObject(EntityTransformField::Parent, value.Parent);
-    if (status == BML_OK) status = writer.WriteInt(EntityTransformField::ChildCount, value.ChildCount);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeEntityTransform(const BML_ImcMessage &message, EntityTransformValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(EntityTransformSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    EntityTransformValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case EntityTransformField::Position:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadVec3(field, decoded.Position);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case EntityTransformField::Scale:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadVec3(field, decoded.Scale);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            break;
-        case EntityTransformField::Parent:
-            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Parent);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 2;
-            break;
-        case EntityTransformField::ChildCount:
-            if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.ChildCount);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 3;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0xF)) != UINT64_C(0xF)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t FindNameRequestSchema = 3u;
-inline constexpr const char FindNameRequestPayload[] = "bml.scene/v1/payload/find_name_request";
-namespace FindNameRequestField {
-inline constexpr std::uint32_t Name = 1u;
-}
-struct FindNameRequestValue {
-    std::string Name{};
-};
-
-inline std::uint32_t FindNameRequestFieldCount(const FindNameRequestValue &value) noexcept {
-    std::uint32_t count = 1u;
-    return count;
-}
-
-inline std::size_t EncodedFindNameRequestSize(const FindNameRequestValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, value.Name.size())) return 0;
-    return size;
-}
-
-inline int EncodeFindNameRequest(const FindNameRequestValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedFindNameRequestSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(FindNameRequestSchema, WireHash, FindNameRequestFieldCount(value));
-    if (status == BML_OK) status = writer.WriteString(FindNameRequestField::Name, value.Name);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeFindNameRequest(const BML_ImcMessage &message, FindNameRequestValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(FindNameRequestSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    FindNameRequestValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case FindNameRequestField::Name:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Name);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t FindNameClassRequestSchema = 4u;
-inline constexpr const char FindNameClassRequestPayload[] = "bml.scene/v1/payload/find_name_class_request";
-namespace FindNameClassRequestField {
-inline constexpr std::uint32_t Name = 1u;
-inline constexpr std::uint32_t ClassId = 2u;
-}
-struct FindNameClassRequestValue {
-    std::string Name{};
-    int ClassId{};
-};
-
-inline std::uint32_t FindNameClassRequestFieldCount(const FindNameClassRequestValue &value) noexcept {
-    std::uint32_t count = 2u;
-    return count;
-}
-
-inline std::size_t EncodedFindNameClassRequestSize(const FindNameClassRequestValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, value.Name.size())) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    return size;
-}
-
-inline int EncodeFindNameClassRequest(const FindNameClassRequestValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedFindNameClassRequestSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(FindNameClassRequestSchema, WireHash, FindNameClassRequestFieldCount(value));
-    if (status == BML_OK) status = writer.WriteString(FindNameClassRequestField::Name, value.Name);
-    if (status == BML_OK) status = writer.WriteInt(FindNameClassRequestField::ClassId, value.ClassId);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeFindNameClassRequest(const BML_ImcMessage &message, FindNameClassRequestValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(FindNameClassRequestSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    FindNameClassRequestValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case FindNameClassRequestField::Name:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Name);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case FindNameClassRequestField::ClassId:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.ClassId);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x3)) != UINT64_C(0x3)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t FindResultSchema = 5u;
-inline constexpr const char FindResultPayload[] = "bml.scene/v1/payload/find_result";
-namespace FindResultField {
-inline constexpr std::uint32_t Object = 1u;
-}
-struct FindResultValue {
-    BML_ObjectRef Object{};
-};
-
-inline std::uint32_t FindResultFieldCount(const FindResultValue &value) noexcept {
-    std::uint32_t count = 1u;
-    return count;
-}
-
-inline std::size_t EncodedFindResultSize(const FindResultValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
-    return size;
-}
-
-inline int EncodeFindResult(const FindResultValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedFindResultSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(FindResultSchema, WireHash, FindResultFieldCount(value));
-    if (status == BML_OK) status = writer.WriteObject(FindResultField::Object, value.Object);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeFindResult(const BML_ImcMessage &message, FindResultValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(FindResultSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    FindResultValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case FindResultField::Object:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Object);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t ObjectRequestSchema = 6u;
 inline constexpr const char ObjectRequestPayload[] = "bml.scene/v1/payload/object_request";
 namespace ObjectRequestField {
 inline constexpr std::uint32_t Object = 1u;
@@ -394,21 +351,16 @@ struct ObjectRequestValue {
     BML_ObjectRef Object{};
 };
 
-inline std::uint32_t ObjectRequestFieldCount(const ObjectRequestValue &value) noexcept {
-    std::uint32_t count = 1u;
-    return count;
-}
-
 inline std::size_t EncodedObjectRequestSize(const ObjectRequestValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 12)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, ObjectRequestField::Object, 12)) return 0;
     return size;
 }
 
 inline int EncodeObjectRequest(const ObjectRequestValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedObjectRequestSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(ObjectRequestSchema, WireHash, ObjectRequestFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteObject(ObjectRequestField::Object, value.Object);
     return status == BML_OK ? writer.Finish() : status;
 }
@@ -416,9 +368,8 @@ inline int EncodeObjectRequest(const ObjectRequestValue &value, void *data, std:
 inline int DecodeObjectRequest(const BML_ImcMessage &message, ObjectRequestValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(ObjectRequestSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     ObjectRequestValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -441,15 +392,6 @@ inline int DecodeObjectRequest(const BML_ImcMessage &message, ObjectRequestValue
     out = std::move(decoded);
     return BML_OK;
 }
-
-inline constexpr SchemaMetadata Schemas[] = {
-    {1u, "object_info", ObjectInfoPayload},
-    {2u, "entity_transform", EntityTransformPayload},
-    {3u, "find_name_request", FindNameRequestPayload},
-    {4u, "find_name_class_request", FindNameClassRequestPayload},
-    {5u, "find_result", FindResultPayload},
-    {6u, "object_request", ObjectRequestPayload},
-};
 
 inline constexpr const char EntityRoute[] = "bml.scene/v1/rpc/entity";
 inline constexpr const char FindNameRoute[] = "bml.scene/v1/rpc/find_name";
@@ -479,11 +421,11 @@ public:
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
         int status = BML_OK;
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ObjectInfoPayload, &m_ObjectInfoPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, EntityTransformPayload, &m_EntityTransformPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, FindNameRequestPayload, &m_FindNameRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, FindNameClassRequestPayload, &m_FindNameClassRequestPayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, FindNameRequestPayload, &m_FindNameRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, FindResultPayload, &m_FindResultPayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ObjectInfoPayload, &m_ObjectInfoPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ObjectRequestPayload, &m_ObjectRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, EntityRoute, &m_EntityRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, FindNameRoute, &m_FindNameRpc);
@@ -500,11 +442,11 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
-    BML_ImcPayloadTypeId ObjectInfoPayloadType() const noexcept { return m_ObjectInfoPayload; }
     BML_ImcPayloadTypeId EntityTransformPayloadType() const noexcept { return m_EntityTransformPayload; }
-    BML_ImcPayloadTypeId FindNameRequestPayloadType() const noexcept { return m_FindNameRequestPayload; }
     BML_ImcPayloadTypeId FindNameClassRequestPayloadType() const noexcept { return m_FindNameClassRequestPayload; }
+    BML_ImcPayloadTypeId FindNameRequestPayloadType() const noexcept { return m_FindNameRequestPayload; }
     BML_ImcPayloadTypeId FindResultPayloadType() const noexcept { return m_FindResultPayload; }
+    BML_ImcPayloadTypeId ObjectInfoPayloadType() const noexcept { return m_ObjectInfoPayload; }
     BML_ImcPayloadTypeId ObjectRequestPayloadType() const noexcept { return m_ObjectRequestPayload; }
     BML_ImcRpcId EntityRpcId() const noexcept { return m_EntityRpc; }
     int IsEntityAvailable(bool &out) const noexcept {
@@ -573,11 +515,11 @@ public:
     }
 private:
     void ResetIds() noexcept {
-        m_ObjectInfoPayload = BML_IMC_INVALID_ID;
         m_EntityTransformPayload = BML_IMC_INVALID_ID;
-        m_FindNameRequestPayload = BML_IMC_INVALID_ID;
         m_FindNameClassRequestPayload = BML_IMC_INVALID_ID;
+        m_FindNameRequestPayload = BML_IMC_INVALID_ID;
         m_FindResultPayload = BML_IMC_INVALID_ID;
+        m_ObjectInfoPayload = BML_IMC_INVALID_ID;
         m_ObjectRequestPayload = BML_IMC_INVALID_ID;
         m_EntityRpc = BML_IMC_INVALID_ID;
         m_FindNameRpc = BML_IMC_INVALID_ID;
@@ -585,11 +527,11 @@ private:
         m_ObjectRpc = BML_IMC_INVALID_ID;
     }
     BML_ImcClient m_Client = nullptr;
-    BML_ImcPayloadTypeId m_ObjectInfoPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_EntityTransformPayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_FindNameRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_FindNameClassRequestPayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_FindNameRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_FindResultPayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_ObjectInfoPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_ObjectRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_EntityRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_FindNameRpc = BML_IMC_INVALID_ID;
@@ -744,13 +686,6 @@ private:
     FindNameSlot m_FindName{};
     FindNameClassSlot m_FindNameClass{};
     ObjectSlot m_Object{};
-};
-
-inline constexpr EndpointMetadata Endpoints[] = {
-    {"entity", EntityRoute, false, 6u, 2u},
-    {"find_name", FindNameRoute, false, 3u, 5u},
-    {"find_name_class", FindNameClassRoute, false, 4u, 5u},
-    {"object", ObjectRoute, false, 6u, 1u},
 };
 
 } // namespace BML::Imc::Generated::Bml::Scene

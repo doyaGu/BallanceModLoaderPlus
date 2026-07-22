@@ -1,0 +1,25 @@
+api bml.runtime 1.0
+
+record runtime_state {
+    bool in_game
+    bool in_level
+    bool paused
+    bool playing
+    bool cheat_enabled
+}
+
+record clock_state {
+    float time_ms
+    float absolute_ms
+    float delta_ms
+    int frame
+}
+
+record score_state {
+    float sr
+    int hs
+}
+
+rpc clock() -> clock_state
+rpc score() -> score_state
+rpc state() -> runtime_state

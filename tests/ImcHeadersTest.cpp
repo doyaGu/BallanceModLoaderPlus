@@ -32,6 +32,7 @@ TEST(ImcHeadersTest, GeneratedImcCodecRoundTripsTypedValues) {
     input.InLevel = true;
     input.Playing = true;
     const std::size_t size = Runtime::EncodedRuntimeStateSize(input);
+    ASSERT_EQ(size, 10u);
     ASSERT_LE(size, BML_IMC_INLINE_PAYLOAD_SIZE);
     std::array<std::uint8_t, BML_IMC_INLINE_PAYLOAD_SIZE> storage{};
     ASSERT_EQ(Runtime::EncodeRuntimeState(input, storage.data(), size), BML_OK);

@@ -26,28 +26,36 @@ add_custom_target(BML_VersionHeader ALL
     COMMENT "Generating Version.h with git metadata"
 )
 
-# .bmlapi files are authoring inputs only. This target verifies the committed
+# .imc files are authoring inputs only. This target verifies the committed
 # typed IMC headers and prevents a runtime dependency on an IDL parser.
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 set(BML_IMC_API_INPUTS
-        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.runtime.bmlapi
-        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.scene.bmlapi
-        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.gameplay.bmlapi
-        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.ui.bmlapi
-        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.events.bmlapi
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.runtime.imc
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
+)
+set(BML_IMC_LOCK_INPUTS
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.runtime.imc.lock
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc.lock
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc.lock
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc.lock
+        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc.lock
 )
 add_custom_target(BML_ImcApiGeneration
         COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
                 --check
                 --out-dir ${BML_INCLUDE_DIR}/BML/Generated
-                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.runtime.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.scene.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.gameplay.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.ui.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.events.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.runtime.imc
+                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
+                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
+                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc
+                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
         DEPENDS
                 ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
                 ${BML_IMC_API_INPUTS}
+                ${BML_IMC_LOCK_INPUTS}
         COMMENT "Verifying generated IMC API bindings"
 )
 

@@ -3,7 +3,6 @@
 
 #include "BML/ImcCpp.hpp"
 #include "BML/ImcWire.hpp"
-#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -13,14 +12,87 @@ namespace BML::Imc::Generated::Bml::Runtime {
 inline constexpr const char ApiId[] = "bml.runtime";
 inline constexpr unsigned int Major = 1;
 inline constexpr unsigned int Minor = 0;
-inline constexpr std::uint64_t Hash = 0xFC316AFA36C257F2ULL;
-inline constexpr std::uint64_t WireHash = 0xFC316AFA36C257F2ULL;
-inline bool IsCompatibleHash(std::uint64_t value) noexcept { return value == Hash; }
 
-struct SchemaMetadata { std::uint32_t Id; const char *Name; const char *Payload; };
-struct EndpointMetadata { const char *Name; const char *Route; bool Topic; std::uint32_t Input; std::uint32_t Output; };
+inline constexpr const char ClockStatePayload[] = "bml.runtime/v1/payload/clock_state";
+namespace ClockStateField {
+inline constexpr std::uint32_t TimeMs = 1u;
+inline constexpr std::uint32_t AbsoluteMs = 2u;
+inline constexpr std::uint32_t DeltaMs = 3u;
+inline constexpr std::uint32_t Frame = 4u;
+}
+struct ClockStateValue {
+    float TimeMs{};
+    float AbsoluteMs{};
+    float DeltaMs{};
+    int Frame{};
+};
 
-inline constexpr std::uint32_t RuntimeStateSchema = 1u;
+inline std::size_t EncodedClockStateSize(const ClockStateValue &value) noexcept {
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ClockStateField::TimeMs)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ClockStateField::AbsoluteMs)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ClockStateField::DeltaMs)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ClockStateField::Frame)) return 0;
+    return size;
+}
+
+inline int EncodeClockState(const ClockStateValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedClockStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK) status = writer.WriteFloat(ClockStateField::TimeMs, value.TimeMs);
+    if (status == BML_OK) status = writer.WriteFloat(ClockStateField::AbsoluteMs, value.AbsoluteMs);
+    if (status == BML_OK) status = writer.WriteFloat(ClockStateField::DeltaMs, value.DeltaMs);
+    if (status == BML_OK) status = writer.WriteInt(ClockStateField::Frame, value.Frame);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+inline int DecodeClockState(const BML_ImcMessage &message, ClockStateValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    ClockStateValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case ClockStateField::TimeMs:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadFloat(field, decoded.TimeMs);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            break;
+        case ClockStateField::AbsoluteMs:
+            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadFloat(field, decoded.AbsoluteMs);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 1;
+            break;
+        case ClockStateField::DeltaMs:
+            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadFloat(field, decoded.DeltaMs);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 2;
+            break;
+        case ClockStateField::Frame:
+            if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Frame);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 3;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0xF)) != UINT64_C(0xF)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
 inline constexpr const char RuntimeStatePayload[] = "bml.runtime/v1/payload/runtime_state";
 namespace RuntimeStateField {
 inline constexpr std::uint32_t InGame = 1u;
@@ -37,25 +109,20 @@ struct RuntimeStateValue {
     bool CheatEnabled{};
 };
 
-inline std::uint32_t RuntimeStateFieldCount(const RuntimeStateValue &value) noexcept {
-    std::uint32_t count = 5u;
-    return count;
-}
-
 inline std::size_t EncodedRuntimeStateSize(const RuntimeStateValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 1)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, RuntimeStateField::InGame)) return 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, RuntimeStateField::InLevel)) return 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, RuntimeStateField::Paused)) return 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, RuntimeStateField::Playing)) return 0;
+    if (!::BML::Imc::Wire::AddBoolFieldSize(size, RuntimeStateField::CheatEnabled)) return 0;
     return size;
 }
 
 inline int EncodeRuntimeState(const RuntimeStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedRuntimeStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(RuntimeStateSchema, WireHash, RuntimeStateFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteBool(RuntimeStateField::InGame, value.InGame);
     if (status == BML_OK) status = writer.WriteBool(RuntimeStateField::InLevel, value.InLevel);
     if (status == BML_OK) status = writer.WriteBool(RuntimeStateField::Paused, value.Paused);
@@ -67,9 +134,8 @@ inline int EncodeRuntimeState(const RuntimeStateValue &value, void *data, std::s
 inline int DecodeRuntimeState(const BML_ImcMessage &message, RuntimeStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(RuntimeStateSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     RuntimeStateValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -117,94 +183,6 @@ inline int DecodeRuntimeState(const BML_ImcMessage &message, RuntimeStateValue &
     return BML_OK;
 }
 
-inline constexpr std::uint32_t ClockStateSchema = 2u;
-inline constexpr const char ClockStatePayload[] = "bml.runtime/v1/payload/clock_state";
-namespace ClockStateField {
-inline constexpr std::uint32_t TimeMs = 1u;
-inline constexpr std::uint32_t AbsoluteMs = 2u;
-inline constexpr std::uint32_t DeltaMs = 3u;
-inline constexpr std::uint32_t Frame = 4u;
-}
-struct ClockStateValue {
-    float TimeMs{};
-    float AbsoluteMs{};
-    float DeltaMs{};
-    int Frame{};
-};
-
-inline std::uint32_t ClockStateFieldCount(const ClockStateValue &value) noexcept {
-    std::uint32_t count = 4u;
-    return count;
-}
-
-inline std::size_t EncodedClockStateSize(const ClockStateValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    return size;
-}
-
-inline int EncodeClockState(const ClockStateValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedClockStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(ClockStateSchema, WireHash, ClockStateFieldCount(value));
-    if (status == BML_OK) status = writer.WriteFloat(ClockStateField::TimeMs, value.TimeMs);
-    if (status == BML_OK) status = writer.WriteFloat(ClockStateField::AbsoluteMs, value.AbsoluteMs);
-    if (status == BML_OK) status = writer.WriteFloat(ClockStateField::DeltaMs, value.DeltaMs);
-    if (status == BML_OK) status = writer.WriteInt(ClockStateField::Frame, value.Frame);
-    return status == BML_OK ? writer.Finish() : status;
-}
-
-inline int DecodeClockState(const BML_ImcMessage &message, ClockStateValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(ClockStateSchema);
-    if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
-    ClockStateValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case ClockStateField::TimeMs:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadFloat(field, decoded.TimeMs);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case ClockStateField::AbsoluteMs:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadFloat(field, decoded.AbsoluteMs);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            break;
-        case ClockStateField::DeltaMs:
-            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadFloat(field, decoded.DeltaMs);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 2;
-            break;
-        case ClockStateField::Frame:
-            if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Frame);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 3;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0xF)) != UINT64_C(0xF)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
-}
-
-inline constexpr std::uint32_t ScoreStateSchema = 3u;
 inline constexpr const char ScoreStatePayload[] = "bml.runtime/v1/payload/score_state";
 namespace ScoreStateField {
 inline constexpr std::uint32_t Sr = 1u;
@@ -215,22 +193,17 @@ struct ScoreStateValue {
     int Hs{};
 };
 
-inline std::uint32_t ScoreStateFieldCount(const ScoreStateValue &value) noexcept {
-    std::uint32_t count = 2u;
-    return count;
-}
-
 inline std::size_t EncodedScoreStateSize(const ScoreStateValue &value) noexcept {
-    std::size_t size = ::BML::Imc::Wire::HeaderSize;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
-    if (!::BML::Imc::Wire::AddFieldSize(size, 4)) return 0;
+    std::size_t size = 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ScoreStateField::Sr)) return 0;
+    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ScoreStateField::Hs)) return 0;
     return size;
 }
 
 inline int EncodeScoreState(const ScoreStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedScoreStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin(ScoreStateSchema, WireHash, ScoreStateFieldCount(value));
+    int status = writer.Begin();
     if (status == BML_OK) status = writer.WriteFloat(ScoreStateField::Sr, value.Sr);
     if (status == BML_OK) status = writer.WriteInt(ScoreStateField::Hs, value.Hs);
     return status == BML_OK ? writer.Finish() : status;
@@ -239,9 +212,8 @@ inline int EncodeScoreState(const ScoreStateValue &value, void *data, std::size_
 inline int DecodeScoreState(const BML_ImcMessage &message, ScoreStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin(ScoreStateSchema);
+    int status = reader.Begin();
     if (status != BML_OK) return status;
-    if (!IsCompatibleHash(reader.DescriptorHash())) return BML_ERROR_IMC_API_MISMATCH;
     ScoreStateValue decoded{};
     std::uint64_t seen = 0;
     ::BML::Imc::Wire::FieldView field;
@@ -271,12 +243,6 @@ inline int DecodeScoreState(const BML_ImcMessage &message, ScoreStateValue &out)
     return BML_OK;
 }
 
-inline constexpr SchemaMetadata Schemas[] = {
-    {1u, "runtime_state", RuntimeStatePayload},
-    {2u, "clock_state", ClockStatePayload},
-    {3u, "score_state", ScoreStatePayload},
-};
-
 inline constexpr const char ClockRoute[] = "bml.runtime/v1/rpc/clock";
 inline constexpr const char ScoreRoute[] = "bml.runtime/v1/rpc/score";
 inline constexpr const char StateRoute[] = "bml.runtime/v1/rpc/state";
@@ -303,8 +269,8 @@ public:
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
         int status = BML_OK;
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, RuntimeStatePayload, &m_RuntimeStatePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ClockStatePayload, &m_ClockStatePayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, RuntimeStatePayload, &m_RuntimeStatePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ScoreStatePayload, &m_ScoreStatePayload);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, ClockRoute, &m_ClockRpc);
         if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, ScoreRoute, &m_ScoreRpc);
@@ -320,8 +286,8 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
-    BML_ImcPayloadTypeId RuntimeStatePayloadType() const noexcept { return m_RuntimeStatePayload; }
     BML_ImcPayloadTypeId ClockStatePayloadType() const noexcept { return m_ClockStatePayload; }
+    BML_ImcPayloadTypeId RuntimeStatePayloadType() const noexcept { return m_RuntimeStatePayload; }
     BML_ImcPayloadTypeId ScoreStatePayloadType() const noexcept { return m_ScoreStatePayload; }
     BML_ImcRpcId ClockRpcId() const noexcept { return m_ClockRpc; }
     int IsClockAvailable(bool &out) const noexcept {
@@ -368,16 +334,16 @@ public:
     }
 private:
     void ResetIds() noexcept {
-        m_RuntimeStatePayload = BML_IMC_INVALID_ID;
         m_ClockStatePayload = BML_IMC_INVALID_ID;
+        m_RuntimeStatePayload = BML_IMC_INVALID_ID;
         m_ScoreStatePayload = BML_IMC_INVALID_ID;
         m_ClockRpc = BML_IMC_INVALID_ID;
         m_ScoreRpc = BML_IMC_INVALID_ID;
         m_StateRpc = BML_IMC_INVALID_ID;
     }
     BML_ImcClient m_Client = nullptr;
-    BML_ImcPayloadTypeId m_RuntimeStatePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_ClockStatePayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_RuntimeStatePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_ScoreStatePayload = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_ClockRpc = BML_IMC_INVALID_ID;
     BML_ImcRpcId m_ScoreRpc = BML_IMC_INVALID_ID;
@@ -489,12 +455,6 @@ private:
     ClockSlot m_Clock{};
     ScoreSlot m_Score{};
     StateSlot m_State{};
-};
-
-inline constexpr EndpointMetadata Endpoints[] = {
-    {"clock", ClockRoute, false, 0u, 2u},
-    {"score", ScoreRoute, false, 0u, 3u},
-    {"state", StateRoute, false, 0u, 1u},
 };
 
 } // namespace BML::Imc::Generated::Bml::Runtime

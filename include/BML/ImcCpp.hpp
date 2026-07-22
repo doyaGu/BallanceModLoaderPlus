@@ -213,7 +213,6 @@ int EncodeMessage(const Value &value, BML_ImcPayloadTypeId payloadType,
                   MessageBuffer &buffer, BML_ImcMessage &message,
                   SizeFunction sizeFunction, EncodeFunction encodeFunction) noexcept {
     const std::size_t size = sizeFunction(value);
-    if (size == 0) return BML_ERROR_INVALID_PARAMETER;
     int status = buffer.Resize(size);
     if (status != BML_OK) return status;
     status = encodeFunction(value, buffer.Data(), size);
@@ -284,7 +283,6 @@ int WriteResponse(BML_ImcResponse *response, BML_ImcPayloadTypeId payloadType,
                   EncodeFunction encodeFunction) noexcept {
     if (!response || payloadType == BML_IMC_INVALID_ID) return BML_ERROR_INVALID_PARAMETER;
     const std::size_t size = sizeFunction(value);
-    if (size == 0) return BML_ERROR_INVALID_PARAMETER;
     void *data = nullptr;
     int status = BML_Imc_ResponseReserve(response, size, &data);
     if (status != BML_OK) return status;
