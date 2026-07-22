@@ -53,22 +53,19 @@ function(add_bml_test test_name)
     add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
 endfunction()
 
-# Build the public Interop C headers as strict C.  This is deliberately an
-# object target: it verifies source compatibility without introducing a test
-# executable or a C++ link boundary.
-add_library(InteropCAbiCompile OBJECT InteropCAbiCompile.c)
-target_include_directories(InteropCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
-set_target_properties(InteropCAbiCompile PROPERTIES FOLDER "Tests")
+# Build the public IMC headers as strict C. This object target verifies source
+# compatibility without introducing a C++ link boundary.
+add_library(ImcCAbiCompile OBJECT ImcCAbiCompile.c)
+target_include_directories(ImcCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
+set_target_properties(ImcCAbiCompile PROPERTIES FOLDER "Tests")
 
-# Keep the IDL generator's compatibility rules executable.  This also checks
-# that generated native helpers remain header-only and the script artifact is
-# usable code rather than documentation prose.
+# Keep the IMC generator and its compatibility rules executable.
 add_test(
-        NAME InteropCodegenTest
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/InteropCodegenTest.py"
+        NAME ImcCodegenTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ImcCodegenTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
 )
-set_tests_properties(InteropCodegenTest PROPERTIES LABELS "interop;codegen")
+set_tests_properties(ImcCodegenTest PROPERTIES LABELS "imc;codegen")
 
 add_test(
         NAME ImcCmakeIntegrationTest
@@ -78,7 +75,7 @@ add_test(
                 --generator "${CMAKE_GENERATOR}"
                 --generator-platform "${CMAKE_GENERATOR_PLATFORM}"
 )
-set_tests_properties(ImcCmakeIntegrationTest PROPERTIES LABELS "interop;codegen;cmake")
+set_tests_properties(ImcCmakeIntegrationTest PROPERTIES LABELS "imc;codegen;cmake")
 
 add_test(
         NAME ImcCompatibilityIntegrationTest
@@ -89,31 +86,27 @@ add_test(
                 --generator-platform "${CMAKE_GENERATOR_PLATFORM}"
 )
 set_tests_properties(ImcCompatibilityIntegrationTest PROPERTIES
-        LABELS "interop;codegen;compatibility")
+        LABELS "imc;codegen;compatibility")
 
 add_test(
-        NAME InteropPublicSurfaceTest
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/InteropPublicSurfaceTest.py"
+        NAME ImcPublicSurfaceTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ImcPublicSurfaceTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
 )
-set_tests_properties(InteropPublicSurfaceTest PROPERTIES LABELS "interop;abi")
+set_tests_properties(ImcPublicSurfaceTest PROPERTIES LABELS "imc;abi")
 
-# The headers above prove C source compatibility.  On MSVC also inspect the
-# linked DLL, where exported C++ helper symbols would otherwise go unnoticed.
 if(MSVC)
     get_filename_component(BML_TOOL_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
     set(BML_DUMPBIN "${BML_TOOL_DIRECTORY}/dumpbin.exe")
     if(EXISTS "${BML_DUMPBIN}")
         add_test(
-                NAME InteropDllExportAbiTest
+                NAME ImcDllExportAbiTest
                 COMMAND "${CMAKE_COMMAND}"
                 "-DDUMPBIN=${BML_DUMPBIN}"
                 "-DBINARY=$<TARGET_FILE:BML>"
-                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/InteropDllExportAbiTest.cmake"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/ImcDllExportAbiTest.cmake"
         )
-        set_tests_properties(InteropDllExportAbiTest PROPERTIES
-                LABELS "interop;abi"
-        )
+        set_tests_properties(ImcDllExportAbiTest PROPERTIES LABELS "imc;abi")
     endif()
 endif()
 
@@ -146,9 +139,9 @@ add_bml_test(ConfigTest
         VxMath
 )
 
-add_bml_test(InteropObjectReferenceRegistryTest
+add_bml_test(ImcObjectReferenceRegistryTest
         SOURCES
-        InteropObjectReferenceRegistryTest.cpp
+        ImcObjectReferenceRegistryTest.cpp
 )
 
 add_bml_test(IniFileTest
@@ -361,37 +354,19 @@ add_bml_test(ModInvocationGateTest
         ModInvocationGateTest.cpp
 )
 
-add_bml_test(InteropErrorTest
+add_bml_test(ImcErrorTest
         SOURCES
-        InteropErrorTest.cpp
+        ImcErrorTest.cpp
         ${BML_SOURCE_DIR}/Errors.cpp
 )
 
-add_bml_test(InteropSessionServiceTest
-        SOURCES
-        InteropSessionServiceTest.cpp
-        ${BML_SOURCE_DIR}/InteropSessionService.cpp
+add_bml_test(ImcHeadersTest
+        SOURCES ImcHeadersTest.cpp
 )
 
-add_bml_test(InteropRegistryTest
-        SOURCES
-        InteropRegistryTest.cpp
-        ${BML_SOURCE_DIR}/InteropRegistry.cpp
-        ${BML_SOURCE_DIR}/InteropSessionService.cpp
-        DEPENDENCIES
-        BMLUtils
-)
-
-add_bml_test(InteropHeadersTest
-        SOURCES
-        InteropHeadersTest.cpp
-)
-
-add_bml_test(InteropMathTest
-        SOURCES
-        InteropMathTest.cpp
-        DEPENDENCIES
-        VxMath
+add_bml_test(ImcMathTest
+        SOURCES ImcMathTest.cpp
+        DEPENDENCIES VxMath
 )
 
 add_bml_test(ImcRuntimeTest

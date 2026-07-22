@@ -355,21 +355,21 @@ TEST_F(ConfigTest, PropertyUtilityFunctions) {
     EXPECT_EQ(nullptr, intProp->GetBooleanPtr());
 }
 
-TEST_F(ConfigTest, InteropConfigValueKeepsEveryPropertyType) {
-    auto *property = static_cast<Property *>(config->GetProperty("Interop", "value"));
+TEST_F(ConfigTest, ImcConfigValueKeepsEveryPropertyType) {
+    auto *property = static_cast<Property *>(config->GetProperty("Imc", "value"));
 
     property->SetString("text");
-    EXPECT_EQ("text", property->GetInteropValueStringForTest());
+    EXPECT_EQ("text", property->GetImcValueStringForTest());
     property->SetBoolean(true);
-    EXPECT_EQ("true", property->GetInteropValueStringForTest());
+    EXPECT_EQ("true", property->GetImcValueStringForTest());
     property->SetBoolean(false);
-    EXPECT_EQ("false", property->GetInteropValueStringForTest());
+    EXPECT_EQ("false", property->GetImcValueStringForTest());
     property->SetInteger(-42);
-    EXPECT_EQ("-42", property->GetInteropValueStringForTest());
+    EXPECT_EQ("-42", property->GetImcValueStringForTest());
     property->SetKey(static_cast<CKKEYBOARD>(17));
-    EXPECT_EQ("17", property->GetInteropValueStringForTest());
+    EXPECT_EQ("17", property->GetImcValueStringForTest());
     property->SetFloat(3.5f);
-    EXPECT_EQ("3.5", property->GetInteropValueStringForTest());
+    EXPECT_EQ("3.5", property->GetImcValueStringForTest());
 }
 
 // Property value copying

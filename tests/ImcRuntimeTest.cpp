@@ -565,7 +565,7 @@ TEST_F(ImcRuntimeTest, CallerThreadTopicReportsHandlerFailureAccurately) {
     message.DataSize = sizeof(byte);
     std::size_t delivered = 99;
     EXPECT_EQ(m_Runtime.Publish(m_Provider, topic, &message, &delivered),
-              BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED);
+              BML_ERROR_IMC_TARGET_EXECUTION_FAILED);
     EXPECT_EQ(delivered, 0u);
     std::uint64_t dropped = 0;
     ASSERT_EQ(m_Runtime.GetSubscriptionDroppedCount(m_Consumer, subscription,
@@ -830,7 +830,7 @@ TEST_F(ImcRuntimeTest, CleanupOwnerRevokesProvidersBeforeDispatch) {
 
     BML_ImcFuture future = nullptr;
     EXPECT_EQ(m_Runtime.CallRpc(m_Consumer, rpc, nullptr, nullptr, &future),
-              BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND);
+              BML_ERROR_IMC_ENDPOINT_NOT_FOUND);
     EXPECT_EQ(future, nullptr);
     EXPECT_EQ(calls.load(std::memory_order_relaxed), 0);
 }

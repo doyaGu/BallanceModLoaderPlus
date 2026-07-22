@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import subprocess
 import sys
@@ -25,30 +24,30 @@ def run(command: list[str], *, expect_success: bool = True) -> subprocess.Comple
 
 def write_contract(path: Path, *, minor: int,
                    compatible_hashes: list[str] | None = None) -> None:
-    fields = [
-        {"id": 1, "name": "value", "type": "int", "optional": False},
-        {"id": 2, "name": "mode", "type": "enum<mode>", "optional": False},
-    ]
-    if minor:
-        fields.append(
-            {"id": 3, "name": "label", "type": "string", "optional": True}
-        )
-    enum_values = [
-        {"name": "off", "value": 0},
-        {"name": "on", "value": 1},
-    ]
-    if minor:
-        enum_values.append({"name": "auto", "value": 2})
-    contract: dict[str, object] = {
-        "api": "test.compatibility",
-        "version": {"major": 1, "minor": minor},
-        "enums": [{"name": "mode", "values": enum_values}],
-        "schemas": [{"id": 1, "name": "sample", "fields": fields}],
-        "endpoints": [{"name": "state", "kind": "resource", "output": 1}],
-    }
+    lines = [f"api test.compatibility 1.{minor}", ""]
     if compatible_hashes:
-        contract["compatible_hashes"] = compatible_hashes
-    path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        lines.append(f"wire {compatible_hashes[0]}")
+        for hash_value in compatible_hashes[1:]:
+            lines.append(f"accept {hash_value}")
+        lines.append("")
+    lines.extend([
+        "enum mode {",
+        "    off = 0",
+        "    on = 1",
+    ])
+    if minor:
+        lines.append("    auto = 2")
+    lines.extend([
+        "}",
+        "",
+        "schema sample = 1 {",
+        "    int value = 1",
+        "    enum<mode> mode = 2",
+    ])
+    if minor:
+        lines.append("    optional string label = 3")
+    lines.extend(["}", "", "rpc state() -> sample", ""])
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def cmake_path(path: Path) -> str:
@@ -64,7 +63,7 @@ def main() -> int:
     args = parser.parse_args()
 
     source_root = args.source_root.resolve()
-    generator = source_root / "tools" / "interop_codegen.py"
+    generator = source_root / "tools" / "imc_codegen.py"
     with tempfile.TemporaryDirectory(prefix="bml-imc-compat-") as temporary:
         root = Path(temporary)
         old_contract = root / "old.bmlapi"
@@ -73,7 +72,7 @@ def main() -> int:
         new_headers = root / "new"
         write_contract(old_contract, minor=0)
         run([
-            sys.executable, str(generator), "--imc-only", "--input", str(old_contract),
+            sys.executable, str(generator), "--input", str(old_contract),
             "--out-dir", str(old_headers),
         ])
         old_header = old_headers / "test_compatibility_imc.hpp"
@@ -83,7 +82,7 @@ def main() -> int:
 
         write_contract(new_contract, minor=1, compatible_hashes=["0x" + match.group(1)])
         run([
-            sys.executable, str(generator), "--imc-only", "--input", str(new_contract),
+            sys.executable, str(generator), "--input", str(new_contract),
             "--previous", str(old_contract), "--out-dir", str(new_headers),
         ])
         new_header = new_headers / "test_compatibility_imc.hpp"
@@ -132,7 +131,7 @@ def main() -> int:
             '    const int oldStatus = OldApi::DecodeSample(newMessage, decodedOld);\n'
             '    if (oldStatus != BML_OK || decodedOld.Value != 29 ||\n'
             '        static_cast<int>(decodedOld.Mode) != 2 || OldApi::IsKnownMode(decodedOld.Mode))\n'
-            '        return oldStatus == BML_ERROR_INTEROP_API_MISMATCH ? 2 : 3;\n'
+            '        return oldStatus == BML_ERROR_IMC_API_MISMATCH ? 2 : 3;\n'
             '    return 0;\n'
             '}\n',
             encoding="utf-8",

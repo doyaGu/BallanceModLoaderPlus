@@ -26,7 +26,7 @@ not use it as the upper bound for what a script can do in Virtools.
 
 | Need | Put it here |
 | --- | --- |
-| BML mod identity, dependency ordering, resource paths, logger/config, commands, timers, API Interop, DataShare, HUD/menu helpers | BML script facade |
+| BML mod identity, dependency ordering, resource paths, logger/config, commands, timers, typed IMC-backed facades, DataShare, HUD/menu helpers | BML script facade |
 | Safe Virtools object lookup, scene membership, object identity across frames | CKAS `Scene` and `ObjectRef@`-derived handles; use BML `Borrow*ByName` only for convenience |
 | Behavior graph search/editing, runtime Building Block spawning/stepping, CK parameter values/sources/operations | CKAS `Behavior`, `BB`, and `Param` |
 | Per-object/per-behavior script logic with editor-configured fields | CKAS `AngelScript Component` |
@@ -45,7 +45,7 @@ not use it as the upper bound for what a script can do in Virtools.
 | Native timer callbacks | `ModContext::SetTimeout/SetInterval` funcdef callbacks, `ModContext::AddTimer(BML::Timer@+)`, `TimerRef`, `TimerEvent` | Callback timers cover lightweight one-shot/repeating work. Script-owned `BML::Timer` objects remain available for stateful timers and extended scheduling control. BML retains the callback or object until cancel/unload; raw native callback payloads are not exposed. |
 | `ILogger`, `IConfig`, `IProperty` | `ModContext::BorrowLogger`, `ModContext::BorrowConfig`, `Logger`, `Config`, `ConfigProperty` | Script handles are ref-counted wrappers that re-resolve the owning script mod. `Config.GetProperty(category, key)` mirrors native property creation. |
 | Cheat and state | `ModContext` methods/properties | State reads are safe outside a level; mutating cheat state is guarded by BML runtime availability. |
-| In-game message and command execution | `BML::UI::SendMessage`, `BML::UI::ClearMessages`, compatibility `ModContext::SendIngameMessage`, `ModContext::ExecuteCommand` | UI message helpers are core Interop capabilities from the built-in `BML` mod. Script command objects unregister on mod unload. |
+| In-game message and command execution | `BML::UI::SendMessage`, `BML::UI::ClearMessages`, compatibility `ModContext::SendIngameMessage`, `ModContext::ExecuteCommand` | UI message helpers use the built-in `bml.ui` IMC API. Script command objects unregister on mod unload. |
 | Command registration | `ModContext::RegisterCommand(CommandDefinition, CommandCallback@+, CommandCompletionCallback@+)`, `ModContext::RegisterCommand(BML::Command@+)`, `CommandRef`, `CommandCompletion` | Delegate callbacks cover lightweight commands; script-owned command objects remain available for stateful commands and extended metadata. BML retains the callback or object until unregister/unload. Duplicate names or aliases fail without replacing existing commands. |
 | `SetIC`, `RestoreIC`, `Show` | `BML::CK` helpers | Borrowed CK object input. Null object is a no-op. |
 | Game state queries | `BML::HUD` core capability helpers plus compatibility `ModContext` methods/properties | Includes score, HUD, SR timer, pause/play/level flags, and time helpers. Input state is on `InputHook`. |
@@ -57,9 +57,9 @@ not use it as the upper bound for what a script can do in Virtools.
 | Content registration | `ModContext::RegisterBallType`, `RegisterFloorType`, and `RegisterModule` definition objects | Only accepted during script `OnLoad`; late calls return false. |
 | Mod registry | `ModContext::FindMod/GetMod*` | `ModRef` is a resolved facade handle, not a native `IMod*`. |
 | Dependencies | Metadata plus `ModRef` read APIs | Runtime dependency mutation remains native-only. Script dependencies use `[bml.require]` and `[bml.optional]`. |
-| Cross-mod Interop | Generated shallow built-in facades over IMC; compatibility `BML::Interop` script-provider types | New/common native transport uses fixed wire payloads, `BML_Imc_*` RPC, and Topic. The older Record/Registry script provider surface remains `OnLoad`-only and frozen after registration for compatibility. |
+| Cross-mod communication | Generated shallow built-in facades over IMC | Native mods define fixed wire payloads and use generated `BML_Imc_*` RPC and Topic bindings. Script-only mods do not expose custom IMC providers; use DataShare for simple shared state. |
 | DataShare | Typed global helpers, `DataShareSizeOf`, `RequestDataShare(key, type, DataShareCallback@+, name)`, `RequestDataShare(BML::DataShareRequest@+)`, `DataShareRequestRef`, `DataShareEvent` | Delegate callbacks cover lightweight one-shot requests; script-owned request objects remain available for stateful requests. BML retains the callback or object until completion/cancel/unload. Raw byte callbacks are not exposed. |
-| BML menus | `BML::Menu` core capability helpers plus compatibility `ModContext::Open*Menu/Close*Menu` | Opens/closes BML-owned menus through Interop-backed built-in capabilities. |
+| BML menus | `BML::Menu` core capability helpers plus compatibility `ModContext::Open*Menu/Close*Menu` | Opens/closes BML-owned menus through the built-in `bml.ui` IMC API. |
 | Bui menu helpers | `BML::UI` namespace | Stable subset for render-time titles, text, buttons, key capture/formatting, radio choices, paging, navigation, and simple inout inputs. Uses native Bui internally but does not expose `Bui::Window/Page/Menu`, raw draw lists, lambda layout, raw buffers, resources, callbacks, or internal navigation lifecycle. |
 | Dear ImGui | Generated `ImGui` namespace plus `docs/bml-imgui-api.as` | Advanced frame-scope API for custom UI. Checked-in generated bindings include script-friendly string/list/image/drawlist wrappers. Omits context/platform lifecycle, allocators, raw callbacks, raw `void*`, internal debug helpers, and native resource lifecycle. |
 
@@ -68,7 +68,7 @@ not use it as the upper bound for what a script can do in Virtools.
 - Raw CKAngelScript engine/context/module/function handles.
 - Native FFI as a supported substitute for plugin-owned script APIs
   (`NativePointer`, `DynCall`, or writable native memory should remain an
-  advanced escape hatch, not the normal interop story).
+  advanced escape hatch, not the normal cross-mod API design).
 - Native timer callback and command/DataShare callback pointers.
 - `RegisterDependency`, `RegisterOptionalDependency`, and `ClearDependencies`.
 - Raw `DataShareRequest` callback/userData, method-name callbacks, and untyped byte payloads.

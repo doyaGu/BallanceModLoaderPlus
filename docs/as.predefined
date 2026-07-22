@@ -14882,18 +14882,14 @@ const int ERROR_OK;
 const int ERROR_FAIL;
 const int ERROR_NOT_FOUND;
 const int ERROR_INVALID_PARAMETER;
-const int ERROR_INTEROP_ENDPOINT_NOT_FOUND;
-const int ERROR_INTEROP_VALUE_TYPE_MISMATCH;
-const int ERROR_INTEROP_HANDLE_STALE;
-const int ERROR_INTEROP_UNSUPPORTED;
-const int ERROR_INTEROP_API_INVALID;
-const int ERROR_INTEROP_API_MISMATCH;
-const int ERROR_INTEROP_PROVIDER_UNLOADED;
-const int ERROR_INTEROP_WRONG_THREAD;
-const int ERROR_INTEROP_RECORD_INVALID;
-const int ERROR_INTEROP_CURSOR_STALE;
-const int ERROR_INTEROP_OBJECT_INVALID;
-const int ERROR_INTEROP_SCHEMA_MISMATCH;
+const int ERROR_IMC_ENDPOINT_NOT_FOUND;
+const int ERROR_IMC_HANDLE_STALE;
+const int ERROR_IMC_UNSUPPORTED;
+const int ERROR_IMC_API_MISMATCH;
+const int ERROR_IMC_PROVIDER_UNLOADED;
+const int ERROR_IMC_OBJECT_INVALID;
+const int ERROR_IMC_SCHEMA_MISMATCH;
+const int ERROR_IMC_TARGET_EXECUTION_FAILED;
 
 enum CommandEventPhase {
   COMMAND_EVENT_PRE = 0,
@@ -15724,7 +15720,7 @@ bool DataShareHas(const string &in key, const string &in name = "BML");
 void DataShareRemove(const string &in key, const string &in name = "BML");
 int DataShareSizeOf(const string &in key, const string &in name = "BML");
 
-// Experimental Interop facades.  Each read returns a BML status code and
+// Typed IMC-backed facades. Each read returns a BML status code and
 // writes the output only on success.  Borrow* methods create a host-owned,
 // non-retained CK handle and therefore are valid only while the object still
 // belongs to the current game scene.
@@ -15823,105 +15819,6 @@ class Stream {
 }
 int Open(Stream@ &out stream, int capacity = 256);
 } // namespace Events
-
-// Interop is the advanced API-agnostic transport.  Ordinary mods should
-// include generated .bmlapi bindings, whose typed facades use these records
-// internally.  API builder, provider, request, record, stream, cursor, input,
-// and writers are host-owned reference/value types; none exposes a native C++
-// object across a mod boundary.
-namespace Interop {
-enum FieldType {
-  FIELD_BOOL, FIELD_INT, FIELD_FLOAT, FIELD_STRING, FIELD_OBJECT, FIELD_VEC2, FIELD_VEC3, FIELD_MAT4,
-  FIELD_BOOL_ARRAY, FIELD_INT_ARRAY, FIELD_FLOAT_ARRAY, FIELD_STRING_ARRAY,
-  FIELD_OBJECT_ARRAY, FIELD_VEC2_ARRAY, FIELD_VEC3_ARRAY, FIELD_MAT4_ARRAY
-}
-enum EndpointKind { ENDPOINT_RESOURCE, ENDPOINT_COMPONENT, ENDPOINT_COLLECTION, ENDPOINT_STREAM, ENDPOINT_QUERY, ENDPOINT_COMMAND }
-class ObjectRef { uint Domain; uint Slot; uint Generation; }
-class Record {
-  bool get_IsValid() const; int get_Status() const; uint get_Schema() const;
-  uint64 get_Sequence() const; uint64 get_Timestamp() const;
-  int GetBool(uint field, bool &out value) const; int GetInt(uint field, int &out value) const;
-  int GetFloat(uint field, float &out value) const; int GetString(uint field, string &out value) const;
-  int GetObject(uint field, ObjectRef &out value) const; int GetVec2(uint field, ::BML::Vec2 &out value) const;
-  int GetVec3(uint field, ::BML::Vec3 &out value) const; int GetMat4(uint field, ::BML::Mat4 &out value) const;
-  int GetBoolArray(uint field, array<bool> &out values) const; int GetIntArray(uint field, array<int> &out values) const;
-  int GetFloatArray(uint field, array<float> &out values) const; int GetStringArray(uint field, array<string> &out values) const;
-  int GetObjectArray(uint field, array<ObjectRef> &out values) const; int GetVec2Array(uint field, array<::BML::Vec2> &out values) const;
-  int GetVec3Array(uint field, array<::BML::Vec3> &out values) const; int GetMat4Array(uint field, array<::BML::Mat4> &out values) const;
-}
-class Stream {
-  bool get_IsOpen() const; int Close(); int GetDroppedCount(int &out count) const;
-  int Poll(Record@ &out record);
-}
-class Cursor {
-  bool get_IsOpen() const; int Close();
-  int Next(Record@ &out record, bool &out hasValue, bool &out complete);
-}
-class Input {
-  bool get_IsActive() const;
-  int SetBool(uint field, bool value); int SetInt(uint field, int value); int SetFloat(uint field, float value);
-  int SetString(uint field, const string &in value); int SetObject(uint field, const ObjectRef &in value);
-  int SetVec2(uint field, const ::BML::Vec2 &in value); int SetVec3(uint field, const ::BML::Vec3 &in value);
-  int SetMat4(uint field, const ::BML::Mat4 &in value);
-  int SetBoolArray(uint field, const array<bool> &in values); int SetIntArray(uint field, const array<int> &in values);
-  int SetFloatArray(uint field, const array<float> &in values); int SetStringArray(uint field, const array<string> &in values);
-  int SetObjectArray(uint field, const array<ObjectRef> &in values); int SetVec2Array(uint field, const array<::BML::Vec2> &in values);
-  int SetVec3Array(uint field, const array<::BML::Vec3> &in values); int SetMat4Array(uint field, const array<::BML::Mat4> &in values);
-}
-int RequireApi(const string &in apiId, uint major, uint64 hash);
-int ReadResource(const string &in apiId, const string &in endpoint, Record@ &out record);
-int ReadComponent(const string &in apiId, const string &in endpoint, const ObjectRef &in object, Record@ &out record);
-int OpenStream(const string &in apiId, const string &in endpoint, Stream@ &out stream, int capacity = 256);
-int OpenCollection(const string &in apiId, const string &in endpoint, Cursor@ &out cursor);
-int CreateInput(const string &in apiId, uint schema, Input@ &out input);
-int InvokeQuery(const string &in apiId, const string &in endpoint, Input@ input, Record@ &out record);
-int InvokeCommand(const string &in apiId, const string &in endpoint, Input@ input, Record@ &out record);
-
-// Provider authoring defines an API in a generated .bmlapi binding,
-// configures callbacks in OnLoad, and registers exactly once.
-class ApiBuilder {
-  int AddSchema(uint id, const string &in name);
-  int AddField(uint schemaId, uint id, const string &in name, FieldType type, bool optional = false);
-  int AddEndpoint(const string &in name, EndpointKind kind, uint inputSchema, uint outputSchema, bool requiresProbe = false);
-  int AddCompatibleApiHash(uint64 hash);
-  bool get_IsFrozen() const;
-}
-class Request {
-  bool get_IsActive() const; string get_ApiId() const; string get_Endpoint() const; string get_ConsumerId() const;
-  int get_Kind() const; ObjectRef get_Object() const; uint64 get_Offset() const; uint get_Limit() const;
-  int GetInputBool(uint field, bool &out value) const; int GetInputInt(uint field, int &out value) const;
-  int GetInputFloat(uint field, float &out value) const; int GetInputString(uint field, string &out value) const;
-  int GetInputObject(uint field, ObjectRef &out value) const; int GetInputVec2(uint field, ::BML::Vec2 &out value) const;
-  int GetInputVec3(uint field, ::BML::Vec3 &out value) const; int GetInputMat4(uint field, ::BML::Mat4 &out value) const;
-  int GetInputBoolArray(uint field, array<bool> &out values); int GetInputIntArray(uint field, array<int> &out values);
-  int GetInputFloatArray(uint field, array<float> &out values); int GetInputStringArray(uint field, array<string> &out values);
-  int GetInputObjectArray(uint field, array<ObjectRef> &out values); int GetInputVec2Array(uint field, array<::BML::Vec2> &out values);
-  int GetInputVec3Array(uint field, array<::BML::Vec3> &out values); int GetInputMat4Array(uint field, array<::BML::Mat4> &out values);
-}
-class RecordWriter {
-  bool get_IsActive() const;
-  int SetBool(uint field, bool value); int SetInt(uint field, int value); int SetFloat(uint field, float value);
-  int SetString(uint field, const string &in value); int SetObject(uint field, const ObjectRef &in value);
-  int SetVec2(uint field, const ::BML::Vec2 &in value); int SetVec3(uint field, const ::BML::Vec3 &in value);
-  int SetMat4(uint field, const ::BML::Mat4 &in value); int Publish();
-  int SetBoolArray(uint field, const array<bool> &in values); int SetIntArray(uint field, const array<int> &in values);
-  int SetFloatArray(uint field, const array<float> &in values); int SetStringArray(uint field, const array<string> &in values);
-  int SetObjectArray(uint field, const array<ObjectRef> &in values); int SetVec2Array(uint field, const array<::BML::Vec2> &in values);
-  int SetVec3Array(uint field, const array<::BML::Vec3> &in values); int SetMat4Array(uint field, const array<::BML::Mat4> &in values);
-}
-class PageWriter { bool get_IsActive() const; RecordWriter@ Append(); void SetComplete(bool complete); }
-funcdef int ProbeCallback(const Request &in request);
-funcdef int ReadCallback(const Request &in request, RecordWriter@ writer);
-funcdef int PageCallback(const Request &in request, PageWriter@ page);
-class Provider {
-  int SetProbe(ProbeCallback@+ callback); int SetRead(const string &in endpoint, ReadCallback@+ callback);
-  int SetPage(const string &in endpoint, PageCallback@+ callback); RecordWriter@ BeginStreamRecord(const string &in endpoint);
-  bool get_IsRegistered() const;
-}
-ApiBuilder@ CreateApi(const string &in apiId, uint major, uint minor, uint64 hash);
-Provider@ CreateProvider(); int RegisterProvider(ApiBuilder@ api, Provider@ provider);
-ObjectRef MakeObjectRef(CKObject@ object); CKObject@ BorrowObject(const ObjectRef &in object);
-} // namespace Interop
 
 } // namespace BML
 

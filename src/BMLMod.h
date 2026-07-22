@@ -26,7 +26,7 @@ class BMLMod : public IMod {
 public:
     explicit BMLMod(IBML *bml) : IMod(bml), m_MapMenu(this) {}
 
-    // Interop providers use the BML mod's bound runtime, never the ambient
+    // IMC providers use the BML mod's bound runtime, never the ambient
     // BML_GetModContext() singleton.
     ModContext *GetRuntimeContext() const;
 
@@ -109,8 +109,8 @@ private:
     void InitConfigs();
     void InitGUI();
     void RegisterCommands();
-    void RegisterCoreCapabilityExports();
-    void UnregisterCoreCapabilityExports();
+    void RegisterCoreImcApis();
+    void UnregisterCoreImcApis();
 
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);

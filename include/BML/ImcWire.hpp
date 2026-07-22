@@ -2,7 +2,7 @@
 #define BML_IMCWIRE_HPP
 
 #include "BML/Imc.h"
-#include "BML/InteropTypes.h"
+#include "BML/ImcTypes.h"
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -203,7 +203,7 @@ public:
     int Begin(std::uint32_t expectedSchema) noexcept {
         if (!m_Data || m_Size < HeaderSize || Detail::Load32(m_Data) != Magic || Detail::Load16(m_Data + 4) != Version) return BML_ERROR_MALFORMED_MESSAGE;
         m_Flags = Detail::Load16(m_Data + 6); m_Schema = Detail::Load32(m_Data + 8); m_Fields = Detail::Load32(m_Data + 12); m_Hash = Detail::Load64(m_Data + 16);
-        if (expectedSchema && m_Schema != expectedSchema) return BML_ERROR_INTEROP_SCHEMA_MISMATCH;
+        if (expectedSchema && m_Schema != expectedSchema) return BML_ERROR_IMC_SCHEMA_MISMATCH;
         m_Cursor = HeaderSize; m_Read = 0; m_Started = true; return BML_OK;
     }
     int Next(FieldView &out) noexcept {

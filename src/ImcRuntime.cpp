@@ -490,9 +490,9 @@ struct ImcRuntime::State {
             const auto found = RpcHandlers.find(rpcId);
             if (found == RpcHandlers.end()) {
                 Complete(future, BML_IMC_FUTURE_FAILED,
-                         BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND);
+                         BML_ERROR_IMC_ENDPOINT_NOT_FOUND);
                 RpcFailed.fetch_add(1, std::memory_order_relaxed);
-                return BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND;
+                return BML_ERROR_IMC_ENDPOINT_NOT_FOUND;
             }
             entry = found->second;
             AddClientRef(entry.Owner);
@@ -501,20 +501,20 @@ struct ImcRuntime::State {
         if (!entry.Owner->Active.load(std::memory_order_acquire)) {
             ReleaseClientRef(entry.Owner);
             Complete(future, BML_IMC_FUTURE_FAILED,
-                     BML_ERROR_INTEROP_PROVIDER_UNLOADED);
+                     BML_ERROR_IMC_PROVIDER_UNLOADED);
             RpcFailed.fetch_add(1, std::memory_order_relaxed);
-            return BML_ERROR_INTEROP_PROVIDER_UNLOADED;
+            return BML_ERROR_IMC_PROVIDER_UNLOADED;
         }
 
         BML_ImcResponse response{};
         response.Storage = &future->Result;
-        int status = BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED;
+        int status = BML_ERROR_IMC_TARGET_EXECUTION_FAILED;
         try {
             status = entry.Handler(rpcId, &request, &response, entry.Userdata);
         } catch (const std::bad_alloc &) {
             status = BML_ERROR_OUT_OF_MEMORY;
         } catch (...) {
-            status = BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED;
+            status = BML_ERROR_IMC_TARGET_EXECUTION_FAILED;
         }
         ReleaseClientRef(entry.Owner);
 
@@ -763,7 +763,7 @@ int ImcRuntime::CallRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
         const auto handler = m_State->RpcHandlers.find(rpcId);
         if (handler == m_State->RpcHandlers.end()) {
             m_State->ReleaseClientRef(owned);
-            return BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND;
+            return BML_ERROR_IMC_ENDPOINT_NOT_FOUND;
         }
         execution = handler->second.Execution;
     }
@@ -1207,7 +1207,7 @@ int ImcRuntime::Publish(BML_ImcClient client, BML_ImcTopicId topicId,
                 m_State->MessagesDropped.fetch_add(1, std::memory_order_relaxed);
             } catch (...) {
                 if (failure == BML_OK)
-                    failure = BML_ERROR_INTEROP_TARGET_EXECUTION_FAILED;
+                    failure = BML_ERROR_IMC_TARGET_EXECUTION_FAILED;
                 subscription->Dropped.fetch_add(1, std::memory_order_relaxed);
                 m_State->MessagesDropped.fetch_add(1, std::memory_order_relaxed);
             }

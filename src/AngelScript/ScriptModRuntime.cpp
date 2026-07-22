@@ -5,7 +5,7 @@
 #include "AngelScriptImGuiBindings.h"
 #include "ScriptMod.h"
 #ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
-#include "ScriptInteropImcClients.h"
+#include "ScriptImcClients.h"
 #endif
 
 namespace BML {
@@ -238,7 +238,7 @@ ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
       m_Loaded(other.m_Loaded),
       m_Owner(other.m_Owner) {
 #ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
-    m_InteropImcClients = std::move(other.m_InteropImcClients);
+    m_ImcClients = std::move(other.m_ImcClients);
 #endif
     RebindCachedPointersAfterMove();
     other.ResetMovedFrom();
@@ -249,7 +249,7 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
         return *this;
 
 #ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
-    if (m_InteropImcClients || m_Object || (m_ModuleLoaded && !m_ModuleName.empty()))
+    if (m_ImcClients || m_Object || (m_ModuleLoaded && !m_ModuleName.empty()))
 #else
     if (m_Object || (m_ModuleLoaded && !m_ModuleName.empty()))
 #endif
@@ -264,7 +264,7 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
     m_Loaded = other.m_Loaded;
     m_Owner = other.m_Owner;
 #ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
-    m_InteropImcClients = std::move(other.m_InteropImcClients);
+    m_ImcClients = std::move(other.m_ImcClients);
 #endif
 
     RebindCachedPointersAfterMove();
@@ -284,7 +284,7 @@ void ScriptModRuntime::ResetMovedFrom() noexcept {
     m_Loaded = false;
     m_Owner = nullptr;
 #ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
-    m_InteropImcClients.reset();
+    m_ImcClients.reset();
 #endif
 }
 
@@ -296,21 +296,21 @@ ScriptModRuntime *ScriptModRuntime::GetCurrentScriptModRuntime() {
     return g_CurrentScriptModRuntime;
 }
 
-ScriptInteropImcClients *ScriptModRuntime::GetInteropImcClients() noexcept {
+ScriptImcClients *ScriptModRuntime::GetImcClients() noexcept {
 #ifdef BML_SCRIPT_RUNTIME_TEST_ACCESS
     return nullptr;
 #else
-    if (m_InteropImcClients)
-        return m_InteropImcClients.get();
+    if (m_ImcClients)
+        return m_ImcClients.get();
     if (!m_Owner || !m_Owner->GetModContext())
         return nullptr;
     try {
-        m_InteropImcClients = std::make_unique<ScriptInteropImcClients>(
+        m_ImcClients = std::make_unique<ScriptImcClients>(
             m_Owner->GetModContext(), m_Owner->GetID());
     } catch (...) {
         return nullptr;
     }
-    return m_InteropImcClients.get();
+    return m_ImcClients.get();
 #endif
 }
 
@@ -820,7 +820,7 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
 
 bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic) {
 #ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
-    m_InteropImcClients.reset();
+    m_ImcClients.reset();
 #endif
     if (!m_Object && (!m_ModuleLoaded || m_ModuleName.empty())) {
         m_ModuleLoaded = false;

@@ -16,7 +16,6 @@
 #include "ScriptCommandService.h"
 #include "ScriptDataShareService.h"
 #include "ScriptHookBlockService.h"
-#include "ScriptInteropProviderBridge.h"
 #include "ScriptModEntryScanner.h"
 #include "ScriptModContextView.h"
 #include "ScriptModDefinition.h"
@@ -312,9 +311,7 @@ public:
     size_t GetActiveCommandCount() const { return m_Commands.GetActiveCount(); }
     size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
     size_t GetActiveHookBlockCount() const { return m_HookBlocks.GetActiveCount(); }
-    size_t GetActiveInteropProviderCount() const { return m_InteropProviders.GetActiveCount(); }
-    ScriptInteropProviderService &GetInteropProviderService() { return m_InteropProviders; }
-    const ScriptModRuntime &GetRuntimeForInterop() const { return m_Runtime; }
+    const ScriptModRuntime &GetRuntimeForImc() const { return m_Runtime; }
     size_t GetQueuedScriptServiceCallbackCount() const;
     size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
     int GetActiveScriptCallCount() const;
@@ -347,7 +344,6 @@ private:
     void Fail(const ScriptDiagnostic &diagnostic);
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
-    bool ReleaseScriptInteropProviders();
     bool ReleaseScriptMethodHandles();
     void ReleaseScriptImGuiInput();
     bool ReleaseRuntime();
@@ -381,7 +377,6 @@ private:
     ScriptCommandService m_Commands;
     ScriptDataShareService m_DataShareRequests;
     ScriptHookBlockService m_HookBlocks;
-    ScriptInteropProviderService m_InteropProviders;
     ScriptModState m_State;
     bool m_InLoadCallback = false;
     mutable std::mutex m_ReloadMutex;

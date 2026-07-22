@@ -104,7 +104,7 @@ zero-time wait is a safe poll and returns `BML_ERROR_BUSY` while the operation
 is still pending.
 
 An RPC name has at most one live provider. Calls must handle
-`BML_ERROR_INTEROP_ENDPOINT_NOT_FOUND` because a provider can unload after an
+`BML_ERROR_IMC_ENDPOINT_NOT_FOUND` because a provider can unload after an
 availability check.
 
 ## Topic delivery and backpressure
@@ -169,12 +169,14 @@ clear execution mode, queues still need a backpressure policy, and payloads
 still need stable schemas. Release tests enforce latency and throughput floors
 for direct RPC and caller-thread Topic delivery.
 
-## Compatibility APIs
+## Clean-break boundary
 
-The older `BML::Interop` Record/Registry surface remains available for existing
-script-defined providers. It is a compatibility API and is not the recommended
-starting point for new native services. New native cross-mod APIs should use a
-typed IMC contract.
+IMC is the only public cross-mod RPC and Topic transport. The experimental
+Record/Registry API and its `BML::Interop` AngelScript namespace are not part of
+the SDK. There is no compatibility adapter, dual registration, or fallback
+lookup. Existing code that used that surface must move to generated native IMC
+bindings; script-only mods can consume BML's typed facades and use DataShare for
+simple shared state.
 
 ## Reference
 

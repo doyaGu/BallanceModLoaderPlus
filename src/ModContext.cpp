@@ -14,10 +14,8 @@
 
 #include "BML/BML.h"
 #include "BML/Timer.h"
-#include "InteropSessionService.h"
-#include "InteropRegistry.h"
-#include "InteropEventSnapshot.h"
-#include "BuiltinInteropApis.h"
+#include "ImcEventSnapshot.h"
+#include "BuiltinImcApis.h"
 
 #include "RenderHook.h"
 #include "Overlay.h"
@@ -148,14 +146,13 @@ CKRenderContext *BML_GetRenderContext() {
     return g_ModContext ? g_ModContext->GetRenderContext() : nullptr;
 }
 
-void ModContext::PublishInteropEvent(int kind) {
-    CaptureBuiltinInteropEventNoexcept(*this, [kind](BML::InteropEventSnapshot &snapshot) {
+void ModContext::PublishImcEvent(int kind) {
+    CaptureBuiltinImcEventNoexcept(*this, [kind](BML::ImcEventSnapshot &snapshot) {
         snapshot.Kind = kind;
     });
 }
 
-ModContext::ModContext(CKContext *context)
-    : m_ImcRuntime(), m_InteropRegistry(m_InteropSessions) {
+ModContext::ModContext(CKContext *context) {
     assert(context != nullptr);
     m_ImcRuntime.SetInvocationGate(&m_ModInvocationGate);
     m_CKContext = context;
@@ -816,14 +813,14 @@ void ModContext::ExecuteCommand(const char *cmd) {
     m_Logger->Info("Execute Command: %s", cmd);
 
     try {
-        CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+        CaptureBuiltinImcEventNoexcept(*this, [&](BML::ImcEventSnapshot &event) {
             event.Kind = BML_EVENT_COMMAND_PRE;
             event.Command = args[0];
             event.CommandArgs = args;
         });
         BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
         command->Execute(this, args);
-        CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+        CaptureBuiltinImcEventNoexcept(*this, [&](BML::ImcEventSnapshot &event) {
             event.Kind = BML_EVENT_COMMAND_POST;
             event.Command = args[0];
             event.CommandArgs = args;
@@ -1083,7 +1080,7 @@ void ModContext::CloseMapMenu() {
 void ModContext::EnableCheat(bool enable) {
     if (AreFlagsSet(BML_CHEAT) != enable) {
         SetFlags(BML_CHEAT, enable);
-        CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+        CaptureBuiltinImcEventNoexcept(*this, [&](BML::ImcEventSnapshot &event) {
             event.Kind = BML_EVENT_CHEAT_CHANGED;
             event.CheatEnabled = enable;
         });
@@ -1217,7 +1214,7 @@ void ModContext::OnRender(CKRenderContext *dev) {
 }
 
 void ModContext::OnLoadGame() {
-    CaptureBuiltinInteropEventNoexcept(*this, [](BML::InteropEventSnapshot &event) {
+    CaptureBuiltinImcEventNoexcept(*this, [](BML::ImcEventSnapshot &event) {
         event.Kind = BML_EVENT_LOAD_OBJECT;
         event.Filename = "base.cmo";
         event.AddToScene = true;
@@ -1233,7 +1230,7 @@ void ModContext::OnLoadGame() {
     for (int i = 0; i < scriptCnt; i++) {
         auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
         if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-            CaptureBuiltinInteropEventNoexcept(*this, [&](BML::InteropEventSnapshot &event) {
+            CaptureBuiltinImcEventNoexcept(*this, [&](BML::ImcEventSnapshot &event) {
                 event.Kind = BML_EVENT_LOAD_SCRIPT;
                 event.Filename = "base.cmo";
                 event.Script = MakeBuiltinObjectRef(*this, behavior);
@@ -1244,176 +1241,176 @@ void ModContext::OnLoadGame() {
 }
 
 void ModContext::OnPreStartMenu() {
-    PublishInteropEvent(BML_EVENT_PRE_START_MENU);
+    PublishImcEvent(BML_EVENT_PRE_START_MENU);
     BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
 }
 
 void ModContext::OnPostStartMenu() {
-    PublishInteropEvent(BML_EVENT_POST_START_MENU);
+    PublishImcEvent(BML_EVENT_POST_START_MENU);
     BroadcastMessage("PostStartMenu", &IMod::OnPostStartMenu);
 }
 
 void ModContext::OnExitGame() {
-    PublishInteropEvent(BML_EVENT_EXIT_GAME);
+    PublishImcEvent(BML_EVENT_EXIT_GAME);
     BroadcastMessage("ExitGame", &IMod::OnExitGame);
 }
 
 void ModContext::OnPreLoadLevel() {
-    PublishInteropEvent(BML_EVENT_PRE_LOAD_LEVEL);
+    PublishImcEvent(BML_EVENT_PRE_LOAD_LEVEL);
     BroadcastMessage("PreLoadLevel", &IMod::OnPreLoadLevel);
 }
 
 void ModContext::OnPostLoadLevel() {
-    PublishInteropEvent(BML_EVENT_POST_LOAD_LEVEL);
+    PublishImcEvent(BML_EVENT_POST_LOAD_LEVEL);
     BroadcastMessage("PostLoadLevel", &IMod::OnPostLoadLevel);
 }
 
 void ModContext::OnStartLevel() {
-    PublishInteropEvent(BML_EVENT_START_LEVEL);
+    PublishImcEvent(BML_EVENT_START_LEVEL);
     BroadcastMessage("StartLevel", &IMod::OnStartLevel);
     ModifyFlags(BML_INGAME | BML_INLEVEL, BML_PAUSED);
 }
 
 void ModContext::OnPreResetLevel() {
-    PublishInteropEvent(BML_EVENT_PRE_RESET_LEVEL);
+    PublishImcEvent(BML_EVENT_PRE_RESET_LEVEL);
     BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
     ClearFlags(BML_INLEVEL);
 }
 
 void ModContext::OnPostResetLevel() {
-    PublishInteropEvent(BML_EVENT_POST_RESET_LEVEL);
+    PublishImcEvent(BML_EVENT_POST_RESET_LEVEL);
     BroadcastMessage("PostResetLevel", &IMod::OnPostResetLevel);
 }
 
 void ModContext::OnPauseLevel() {
-    PublishInteropEvent(BML_EVENT_PAUSE_LEVEL);
+    PublishImcEvent(BML_EVENT_PAUSE_LEVEL);
     BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
     SetFlags(BML_PAUSED);
 }
 
 void ModContext::OnUnpauseLevel() {
-    PublishInteropEvent(BML_EVENT_UNPAUSE_LEVEL);
+    PublishImcEvent(BML_EVENT_UNPAUSE_LEVEL);
     BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
     ClearFlags(BML_PAUSED);
 }
 
 void ModContext::OnPreExitLevel() {
-    PublishInteropEvent(BML_EVENT_PRE_EXIT_LEVEL);
+    PublishImcEvent(BML_EVENT_PRE_EXIT_LEVEL);
     BroadcastMessage("PreExitLevel", &IMod::OnPreExitLevel);
 }
 
 void ModContext::OnPostExitLevel() {
-    PublishInteropEvent(BML_EVENT_POST_EXIT_LEVEL);
+    PublishImcEvent(BML_EVENT_POST_EXIT_LEVEL);
     BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
     ClearFlags(BML_INGAME | BML_INLEVEL);
 }
 
 void ModContext::OnPreNextLevel() {
-    PublishInteropEvent(BML_EVENT_PRE_NEXT_LEVEL);
+    PublishImcEvent(BML_EVENT_PRE_NEXT_LEVEL);
     BroadcastMessage("PreNextLevel", &IMod::OnPreNextLevel);
 }
 
 void ModContext::OnPostNextLevel() {
-    PublishInteropEvent(BML_EVENT_POST_NEXT_LEVEL);
+    PublishImcEvent(BML_EVENT_POST_NEXT_LEVEL);
     BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
     ClearFlags(BML_INLEVEL);
 }
 
 void ModContext::OnDead() {
-    PublishInteropEvent(BML_EVENT_DEAD);
+    PublishImcEvent(BML_EVENT_DEAD);
     BroadcastMessage("Dead", &IMod::OnDead);
     ClearFlags(BML_INGAME | BML_INLEVEL);
 }
 
 void ModContext::OnPreEndLevel() {
-    PublishInteropEvent(BML_EVENT_PRE_END_LEVEL);
+    PublishImcEvent(BML_EVENT_PRE_END_LEVEL);
     BroadcastMessage("PreEndLevel", &IMod::OnPreEndLevel);
 }
 
 void ModContext::OnPostEndLevel() {
-    PublishInteropEvent(BML_EVENT_POST_END_LEVEL);
+    PublishImcEvent(BML_EVENT_POST_END_LEVEL);
     BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
     ClearFlags(BML_INGAME | BML_INLEVEL);
 }
 
 void ModContext::OnCounterActive() {
-    PublishInteropEvent(BML_EVENT_COUNTER_ACTIVE);
+    PublishImcEvent(BML_EVENT_COUNTER_ACTIVE);
     BroadcastMessage("CounterActive", &IMod::OnCounterActive);
 }
 
 void ModContext::OnCounterInactive() {
-    PublishInteropEvent(BML_EVENT_COUNTER_INACTIVE);
+    PublishImcEvent(BML_EVENT_COUNTER_INACTIVE);
     BroadcastMessage("CounterInactive", &IMod::OnCounterInactive);
 }
 
 void ModContext::OnBallNavActive() {
-    PublishInteropEvent(BML_EVENT_BALL_NAV_ACTIVE);
+    PublishImcEvent(BML_EVENT_BALL_NAV_ACTIVE);
     BroadcastMessage("BallNavActive", &IMod::OnBallNavActive);
 }
 
 void ModContext::OnBallNavInactive() {
-    PublishInteropEvent(BML_EVENT_BALL_NAV_INACTIVE);
+    PublishImcEvent(BML_EVENT_BALL_NAV_INACTIVE);
     BroadcastMessage("BallNavInactive", &IMod::OnBallNavInactive);
 }
 
 void ModContext::OnCamNavActive() {
-    PublishInteropEvent(BML_EVENT_CAM_NAV_ACTIVE);
+    PublishImcEvent(BML_EVENT_CAM_NAV_ACTIVE);
     BroadcastMessage("CamNavActive", &IMod::OnCamNavActive);
 }
 
 void ModContext::OnCamNavInactive() {
-    PublishInteropEvent(BML_EVENT_CAM_NAV_INACTIVE);
+    PublishImcEvent(BML_EVENT_CAM_NAV_INACTIVE);
     BroadcastMessage("CamNavInactive", &IMod::OnCamNavInactive);
 }
 
 void ModContext::OnBallOff() {
-    PublishInteropEvent(BML_EVENT_BALL_OFF);
+    PublishImcEvent(BML_EVENT_BALL_OFF);
     BroadcastMessage("BallOff", &IMod::OnBallOff);
 }
 
 void ModContext::OnPreCheckpointReached() {
-    PublishInteropEvent(BML_EVENT_PRE_CHECKPOINT_REACHED);
+    PublishImcEvent(BML_EVENT_PRE_CHECKPOINT_REACHED);
     BroadcastMessage("PreCheckpoint", &IMod::OnPreCheckpointReached);
 }
 
 void ModContext::OnPostCheckpointReached() {
-    PublishInteropEvent(BML_EVENT_POST_CHECKPOINT_REACHED);
+    PublishImcEvent(BML_EVENT_POST_CHECKPOINT_REACHED);
     BroadcastMessage("PostCheckpoint", &IMod::OnPostCheckpointReached);
 }
 
 void ModContext::OnLevelFinish() {
-    PublishInteropEvent(BML_EVENT_LEVEL_FINISH);
+    PublishImcEvent(BML_EVENT_LEVEL_FINISH);
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
     ClearFlags(BML_INLEVEL);
 }
 
 void ModContext::OnGameOver() {
-    PublishInteropEvent(BML_EVENT_GAME_OVER);
+    PublishImcEvent(BML_EVENT_GAME_OVER);
     BroadcastMessage("GameOver", &IMod::OnGameOver);
 }
 
 void ModContext::OnExtraPoint() {
-    PublishInteropEvent(BML_EVENT_EXTRA_POINT);
+    PublishImcEvent(BML_EVENT_EXTRA_POINT);
     BroadcastMessage("ExtraPoint", &IMod::OnExtraPoint);
 }
 
 void ModContext::OnPreSubLife() {
-    PublishInteropEvent(BML_EVENT_PRE_SUB_LIFE);
+    PublishImcEvent(BML_EVENT_PRE_SUB_LIFE);
     BroadcastMessage("PreSubLife", &IMod::OnPreSubLife);
 }
 
 void ModContext::OnPostSubLife() {
-    PublishInteropEvent(BML_EVENT_POST_SUB_LIFE);
+    PublishImcEvent(BML_EVENT_POST_SUB_LIFE);
     BroadcastMessage("PostSubLife", &IMod::OnPostSubLife);
 }
 
 void ModContext::OnPreLifeUp() {
-    PublishInteropEvent(BML_EVENT_PRE_LIFE_UP);
+    PublishImcEvent(BML_EVENT_PRE_LIFE_UP);
     BroadcastMessage("PreLifeUp", &IMod::OnPreLifeUp);
 }
 
 void ModContext::OnPostLifeUp() {
-    PublishInteropEvent(BML_EVENT_POST_LIFE_UP);
+    PublishImcEvent(BML_EVENT_POST_LIFE_UP);
     BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
 }
 
@@ -2183,12 +2180,10 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         m_DllHandleMap[raw] = dllHandle;
     }
 
-    m_InteropSessions.RegisterMod(modId);
-
     return true;
 }
 
-std::string ModContext::GetNativeInteropOwnerId(
+std::string ModContext::GetNativeImcOwnerId(
     const void *callerAddress, const char *requestedOwnerId) const {
     if (!callerAddress)
         return {};
@@ -2248,11 +2243,6 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
         }
         const std::string modIdCopy = modId;
         m_ImcRuntime.CleanupOwner(modIdCopy);
-        // Providers must be revoked before the native module can disappear;
-        // consumer-owned snapshots then become stale with its session below.
-        if (m_InteropRegistry.InvalidateOwner(modIdCopy.c_str()) != BML_OK)
-            return false;
-        m_InteropSessions.InvalidateMod(modIdCopy.c_str());
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
             if (auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod))

@@ -1,0 +1,25 @@
+api bml.runtime 1.0
+
+schema runtime_state = 1 {
+    bool in_game = 1
+    bool in_level = 2
+    bool paused = 3
+    bool playing = 4
+    bool cheat_enabled = 5
+}
+
+schema clock_state = 2 {
+    float time_ms = 1
+    float absolute_ms = 2
+    float delta_ms = 3
+    int frame = 4
+}
+
+schema score_state = 3 {
+    float sr = 1
+    int hs = 2
+}
+
+rpc clock() -> clock_state
+rpc score() -> score_state
+rpc state() -> runtime_state

@@ -18,8 +18,6 @@
 #include "CommandContext.h"
 #include "HookUtils.h"
 #include "ImcRuntime.h"
-#include "InteropSessionService.h"
-#include "InteropRegistry.h"
 #include "ModInvocationGate.h"
 
 typedef enum DirectoryType {
@@ -132,7 +130,7 @@ public:
     int GetModCount() override;
     IMod *GetMod(int index) override;
     IMod *FindMod(const char *id) const override;
-    std::string GetNativeInteropOwnerId(
+    std::string GetNativeImcOwnerId(
         const void *callerAddress,
         const char *requestedOwnerId = nullptr) const;
     BML::ModInvocationGate::CallLock LockModInvocation() const { return m_ModInvocationGate.LockCall(); }
@@ -142,12 +140,6 @@ public:
     bool IsMainThread() const { return std::this_thread::get_id() == m_MainThreadId; }
     BML::ImcRuntime &GetImcRuntime() { return m_ImcRuntime; }
     const BML::ImcRuntime &GetImcRuntime() const { return m_ImcRuntime; }
-    // The interop runtime belongs to this loader context.  Hooks publish
-    // snapshots here and providers use the same owner-scoped session table.
-    BML::InteropSessionService &GetInteropSessions() { return m_InteropSessions; }
-    const BML::InteropSessionService &GetInteropSessions() const { return m_InteropSessions; }
-    BML::InteropRegistry &GetInteropRegistry() { return m_InteropRegistry; }
-    const BML::InteropRegistry &GetInteropRegistry() const { return m_InteropRegistry; }
     int RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
     int RegisterOptionalDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) override;
     int CheckDependencies(IMod *mod) const override;
@@ -415,7 +407,7 @@ private:
 
     void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
-    void PublishInteropEvent(int kind);
+    void PublishImcEvent(int kind);
 
     int m_Flags = 0;
 #if BML_ENABLE_ANGELSCRIPT
@@ -457,8 +449,6 @@ private:
     InputHook *m_InputHook = nullptr;
 
     BML::ImcRuntime m_ImcRuntime;
-    BML::InteropSessionService m_InteropSessions;
-    BML::InteropRegistry m_InteropRegistry;
     BMLMod *m_BMLMod = nullptr;
     NewBallTypeMod *m_BallTypeMod = nullptr;
 #if BML_ENABLE_ANGELSCRIPT

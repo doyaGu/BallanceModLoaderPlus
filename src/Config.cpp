@@ -10,7 +10,7 @@
 
 #ifndef BML_TEST
 #include "ModContext.h"
-#include "BuiltinInteropApis.h"
+#include "BuiltinImcApis.h"
 #endif
 #include "StringUtils.h"
 
@@ -590,12 +590,12 @@ void Property::SetModified() {
 #ifndef BML_TEST
         ModContext *context = BML_GetModContext();
         if (context) {
-            CaptureBuiltinInteropEventNoexcept(*context, [&](BML::InteropEventSnapshot &event) {
+            CaptureBuiltinImcEventNoexcept(*context, [&](BML::ImcEventSnapshot &event) {
                 event.Kind = BML_EVENT_CONFIG_MODIFIED;
                 event.ConfigCategory = m_Category;
                 event.ConfigKey = m_Key;
                 event.ConfigType = static_cast<int>(m_Type);
-                event.ConfigValue = GetInteropValueString();
+                event.ConfigValue = GetImcValueString();
             });
         }
 #endif
@@ -607,7 +607,7 @@ void Property::SetModified() {
     }
 }
 
-std::string Property::GetInteropValueString() const {
+std::string Property::GetImcValueString() const {
     switch (m_Type) {
     case STRING:
         if (const auto *value = std::get_if<std::string>(&m_Value))

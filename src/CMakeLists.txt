@@ -26,31 +26,29 @@ add_custom_target(BML_VersionHeader ALL
     COMMENT "Generating Version.h with git metadata"
 )
 
-# .bmlapi files are authoring inputs only.  BML links the generated fixed
-# descriptor tables; this target keeps committed generated output deterministic
-# and prevents a runtime dependency on an IDL parser.
+# .bmlapi files are authoring inputs only. This target verifies the committed
+# typed IMC headers and prevents a runtime dependency on an IDL parser.
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
-set(BML_INTEROP_API_INPUTS
-        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.runtime.bmlapi
-        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.scene.bmlapi
-        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.gameplay.bmlapi
-        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.ui.bmlapi
-        ${PROJECT_SOURCE_DIR}/interop/contracts/bml.events.bmlapi
+set(BML_IMC_API_INPUTS
+        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.runtime.bmlapi
+        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.scene.bmlapi
+        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.gameplay.bmlapi
+        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.ui.bmlapi
+        ${PROJECT_SOURCE_DIR}/imc/contracts/bml.events.bmlapi
 )
-add_custom_target(BML_InteropApiGeneration
-        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/interop_codegen.py
+add_custom_target(BML_ImcApiGeneration
+        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
                 --check
-                --out-dir ${PROJECT_SOURCE_DIR}/interop/generated
-                --header-out-dir ${BML_INCLUDE_DIR}/BML/Generated
-                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.runtime.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.scene.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.gameplay.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.ui.bmlapi
-                --input ${PROJECT_SOURCE_DIR}/interop/contracts/bml.events.bmlapi
+                --out-dir ${BML_INCLUDE_DIR}/BML/Generated
+                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.runtime.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.scene.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.gameplay.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.ui.bmlapi
+                --input ${PROJECT_SOURCE_DIR}/imc/contracts/bml.events.bmlapi
         DEPENDS
-                ${PROJECT_SOURCE_DIR}/tools/interop_codegen.py
-                ${BML_INTEROP_API_INPUTS}
-        COMMENT "Verifying generated Interop API descriptors"
+                ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
+                ${BML_IMC_API_INPUTS}
+        COMMENT "Verifying generated IMC API bindings"
 )
 
 add_subdirectory(Utils)
@@ -68,29 +66,21 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
         ${BML_INCLUDE_DIR}/BML/Imc.h
+        ${BML_INCLUDE_DIR}/BML/ImcTypes.h
         ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
         ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
-        ${BML_INCLUDE_DIR}/BML/InteropTypes.h
+        ${BML_INCLUDE_DIR}/BML/ImcMath.h
         ${BML_INCLUDE_DIR}/BML/EventKinds.h
-        ${BML_INCLUDE_DIR}/BML/InteropApi.h
-        ${BML_INCLUDE_DIR}/BML/InteropClient.h
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_runtime_api.h
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_scene_api.h
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_api.h
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_ui_api.h
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_events_api.h
         ${BML_INCLUDE_DIR}/BML/Generated/bml_runtime_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_scene_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_ui_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_events_imc.hpp
-        ${BML_INCLUDE_DIR}/BML/InteropMath.h
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h
         ${BML_INCLUDE_DIR}/BML/Gameplay.h
         ${BML_INCLUDE_DIR}/BML/UI.h
         ${BML_INCLUDE_DIR}/BML/Events.h
-        ${BML_INCLUDE_DIR}/BML/Core.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
@@ -105,7 +95,7 @@ set(BML_PUBLIC_HEADERS
 set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
-        BuiltinInteropApis.h
+        BuiltinImcApis.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -127,13 +117,10 @@ set(BML_PRIVATE_HEADERS
         Overlay.h
 
         RenderHook.h
-        InteropContextInternal.h
         ImcPrimitives.h
         ImcRuntime.h
-        InteropRegistry.h
-        InteropEventSnapshot.h
-        InteropObjectReferenceRegistry.h
-        InteropSessionService.h
+        ImcEventSnapshot.h
+        ImcObjectReferenceRegistry.h
 
         CommandContext.h
         DataShare.hpp
@@ -148,7 +135,7 @@ set(BML_SOURCES
         HookBlock.cpp
         ModManager.cpp
         ModContext.cpp
-        BuiltinInteropApis.cpp
+        BuiltinImcApis.cpp
 
         IMod.cpp
         BMLMod.cpp
@@ -191,9 +178,6 @@ set(BML_SOURCES
         CommandContext.cpp
         ImcApi.cpp
         ImcRuntime.cpp
-        InteropRegistry.cpp
-        InteropApi.cpp
-        InteropSessionService.cpp
         DataShare.cpp
         Logger.cpp
         Config.cpp
@@ -231,11 +215,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.h
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
-            AngelScript/ScriptInteropArray.h
-            AngelScript/ScriptInteropConsumerBridge.h
-            AngelScript/ScriptInteropFacade.h
-            AngelScript/ScriptInteropImcClients.h
-            AngelScript/ScriptInteropProviderBridge.h
+            AngelScript/ScriptImcFacade.h
+            AngelScript/ScriptImcClients.h
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
             AngelScript/ScriptModEntryScanner.h
@@ -279,10 +260,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.cpp
             AngelScript/ScriptMod.cpp
             AngelScript/ScriptModContextView.cpp
-            AngelScript/ScriptInteropConsumerBridge.cpp
-            AngelScript/ScriptInteropFacade.cpp
-            AngelScript/ScriptInteropImcClients.cpp
-            AngelScript/ScriptInteropProviderBridge.cpp
+            AngelScript/ScriptImcFacade.cpp
+            AngelScript/ScriptImcClients.cpp
             AngelScript/ScriptModDefinition.cpp
             AngelScript/ScriptModDefinitionBuilder.cpp
             AngelScript/ScriptModEntryScanner.cpp
@@ -363,7 +342,7 @@ target_link_libraries(BML
 )
 
 add_dependencies(BML BML_VersionHeader)
-add_dependencies(BML BML_InteropApiGeneration)
+add_dependencies(BML BML_ImcApiGeneration)
 
 target_compile_definitions(BML PRIVATE
         BML_EXPORTS IMGUI_EXPORT IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\"
@@ -424,7 +403,7 @@ install(FILES
 )
 
 install(FILES
-        "${PROJECT_SOURCE_DIR}/tools/interop_codegen.py"
+        "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/tools"
 )
 

@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "BML/IConfig.h"
-#include "InteropSessionService.h"
 #include "ImGuiStateRecovery.h"
 #include "ModContext.h"
 #include "ScriptDevToolsService.h"
@@ -964,8 +963,7 @@ bool ScriptMod::RebindServices() {
     if (m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Commands.Bind(m_Context, this, &m_ContextView) &&
         m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
-        m_HookBlocks.Bind(m_Context, this, &m_ContextView) &&
-        m_InteropProviders.Bind(m_Context, this)) {
+        m_HookBlocks.Bind(m_Context, this, &m_ContextView)) {
         return true;
     }
 
@@ -1485,8 +1483,6 @@ void ScriptMod::ProcessFailureCleanup() {
 
 bool ScriptMod::ReleaseRuntime() {
     CKContext *ckContext = m_Context ? m_Context->GetCKContext() : nullptr;
-    if (!ReleaseScriptInteropProviders())
-        return false;
     bool ok = ReleaseScriptServices();
     ok = ReleaseScriptMethodHandles() && ok;
 
@@ -1504,23 +1500,6 @@ bool ScriptMod::ReleaseRuntime() {
         }
     }
     return ok;
-}
-
-bool ScriptMod::ReleaseScriptInteropProviders() {
-    /*
-     * The registry must forget the C callback userdata before AngelScript
-     * releases the function handles retained by the provider bridge.  This
-     * order makes a stale provider fail as provider_unloaded rather than
-     * calling into a torn-down script runtime.
-     */
-    if (m_Context && m_Context->GetInteropRegistry().InvalidateOwner(GetID()) != BML_OK) {
-        if (m_Context->GetLogger()) {
-            m_Context->GetLogger()->Error("Script mod %s Interop teardown was not on the game thread", GetID());
-        }
-        return false;
-    }
-    m_InteropProviders.Release();
-    return true;
 }
 
 void ScriptMod::ReleaseScriptImGuiInput() {
@@ -1721,7 +1700,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
 
     ScriptModReloadCandidate::State &state = *candidate.m_State;
     result.SourcePath = state.Snapshot.CommitEntryPathUtf8;
-    const std::string interopOwnerBeforeReload = GetID() ? GetID() : "";
 
     auto finish = [&](bool success,
                       const std::string &diagnostic,
@@ -1776,18 +1754,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
         return finishTransactionFailure(transactionFailure);
 
     transaction.InstallPreparedRuntimeForCommit();
-    const std::string interopOwnerAfterInstall = GetID() ? GetID() : "";
-    // A reload replaces the script runtime even if the candidate later rolls
-    // back.  Give the replacement runtime a fresh owner session before its
-    // OnLoad hook can create observer resources.
-    if (m_Context) {
-        if (!interopOwnerBeforeReload.empty() && interopOwnerBeforeReload != interopOwnerAfterInstall) {
-            (void)m_Context->GetInteropRegistry().InvalidateOwner(interopOwnerBeforeReload.c_str());
-            m_Context->GetInteropSessions().InvalidateMod(interopOwnerBeforeReload.c_str());
-        }
-        m_Context->GetInteropSessions().RotateMod(interopOwnerAfterInstall.c_str());
-    }
-
     bool liveRuntimeLoaded = false;
     std::vector<ScriptModReloadDiagnosticField> liveRuntimeFailureFields;
     const ScriptModReloadPhase loadPhase = recoveringPlaceholder
@@ -1824,9 +1790,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
         if (recoveringPlaceholder) {
             const std::string candidateId = m_Definition.Id;
             transaction.RestoreFailedPlaceholderAfterRejectedRecovery(candidateId);
-            m_Context->GetInteropSessions().InvalidateMod(candidateId.c_str());
-            m_Context->GetInteropSessions().RegisterMod(GetID());
-
             ScriptDiagnostic failure = reloadDiagnostic;
         failure.Phase = ScriptDiagnosticPhase::Runtime;
         if (failure.Message.empty())

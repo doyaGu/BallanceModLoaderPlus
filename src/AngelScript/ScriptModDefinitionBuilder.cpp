@@ -170,7 +170,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
         }
 
         if (tag.Name == "bml.export") {
-            diagnostics.push_back("bml.export was removed with the experimental CallFrame ABI; use a generated Interop API provider instead.");
+            diagnostics.push_back("bml.export was removed with the experimental CallFrame ABI; expose a native generated IMC provider or use DataShare instead.");
             continue;
         }
 

@@ -13,9 +13,9 @@ function(bml_target_imc_api target)
     if(NOT IMC_INPUT)
         message(FATAL_ERROR "bml_target_imc_api: INPUT is required")
     endif()
-    if(NOT BML_INTEROP_CODEGEN OR NOT EXISTS "${BML_INTEROP_CODEGEN}")
+    if(NOT BML_IMC_CODEGEN OR NOT EXISTS "${BML_IMC_CODEGEN}")
         message(FATAL_ERROR
-                "bml_target_imc_api: BML_INTEROP_CODEGEN does not name interop_codegen.py")
+                "bml_target_imc_api: BML_IMC_CODEGEN does not name imc_codegen.py")
     endif()
 
     find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
@@ -56,13 +56,11 @@ function(bml_target_imc_api target)
     string(REPLACE "." "_" stem "${stem}")
     set(output "${output_dir}/${stem}_imc.hpp")
     set(arguments
-            --imc-only
             --out-dir "${output_dir}"
-            --header-out-dir "${output_dir}"
             --input "${input}"
             --expected-api-id "${expected_api_id}"
     )
-    set(dependencies "${BML_INTEROP_CODEGEN}" "${input}")
+    set(dependencies "${BML_IMC_CODEGEN}" "${input}")
     foreach(previous IN LISTS IMC_PREVIOUS)
         get_filename_component(previous "${previous}" ABSOLUTE
                                BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -77,7 +75,7 @@ function(bml_target_imc_api target)
     add_custom_command(
             OUTPUT "${output}"
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${output_dir}"
-            COMMAND "${Python3_EXECUTABLE}" "${BML_INTEROP_CODEGEN}" ${arguments}
+            COMMAND "${Python3_EXECUTABLE}" "${BML_IMC_CODEGEN}" ${arguments}
             DEPENDS ${dependencies}
             COMMENT "Generating typed IMC binding ${stem}_imc.hpp"
             VERBATIM

@@ -6,7 +6,7 @@
 
 #include "BML/BML.h"
 #include "BML/Bui.h"
-#include "BML/Core.h"
+#include "BML/UI.h"
 #include "BML/DataShare.h"
 #include "BML/IConfig.h"
 #include "BML/InputHook.h"
@@ -39,9 +39,7 @@
 #include "ScriptHookBlockService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
-#include "ScriptInteropConsumerBridge.h"
-#include "ScriptInteropFacade.h"
-#include "ScriptInteropProviderBridge.h"
+#include "ScriptImcFacade.h"
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
@@ -271,90 +269,92 @@ float BMLAS_GetSRTime() {
     return RequireLoadedContext(ctx) ? ctx->GetSRTime() : 0.0f;
 }
 
-void BMLAS_CoreUI_SendMessage(const std::string &message) {
-    if (RejectRestrictedHostCall("BML::Core::UI::SendMessage"))
+void BMLAS_UI_SendMessage(const std::string &message) {
+    if (RejectRestrictedHostCall("BML::UI::SendMessage"))
         return;
-    BML::Core::UI::SendMessage(message.c_str());
+    BML::UI::AddMessage(message);
 }
 
-void BMLAS_CoreUI_ClearMessages() {
-    if (RejectRestrictedHostCall("BML::Core::UI::ClearMessages"))
+void BMLAS_UI_ClearMessages() {
+    if (RejectRestrictedHostCall("BML::UI::ClearMessages"))
         return;
-    BML::Core::UI::ClearMessages();
+    BML::UI::ClearMessages();
 }
 
-void BMLAS_CoreMenu_OpenModsMenu() {
-    if (RejectRestrictedHostCall("BML::Core::Menu::OpenModsMenu"))
+void BMLAS_Menu_OpenModsMenu() {
+    if (RejectRestrictedHostCall("BML::Menu::OpenModsMenu"))
         return;
-    BML::Core::Menu::OpenModsMenu();
+    BML::UI::OpenModsMenu();
 }
 
-void BMLAS_CoreMenu_CloseModsMenu() {
-    if (RejectRestrictedHostCall("BML::Core::Menu::CloseModsMenu"))
+void BMLAS_Menu_CloseModsMenu() {
+    if (RejectRestrictedHostCall("BML::Menu::CloseModsMenu"))
         return;
-    BML::Core::Menu::CloseModsMenu();
+    BML::UI::CloseModsMenu();
 }
 
-void BMLAS_CoreMenu_OpenMapMenu() {
-    if (RejectRestrictedHostCall("BML::Core::Menu::OpenMapMenu"))
+void BMLAS_Menu_OpenMapMenu() {
+    if (RejectRestrictedHostCall("BML::Menu::OpenMapMenu"))
         return;
-    BML::Core::Menu::OpenMapMenu();
+    BML::UI::OpenMapMenu();
 }
 
-void BMLAS_CoreMenu_CloseMapMenu() {
-    if (RejectRestrictedHostCall("BML::Core::Menu::CloseMapMenu"))
+void BMLAS_Menu_CloseMapMenu() {
+    if (RejectRestrictedHostCall("BML::Menu::CloseMapMenu"))
         return;
-    BML::Core::Menu::CloseMapMenu();
+    BML::UI::CloseMapMenu();
 }
 
-int BMLAS_CoreHUD_GetMode() {
-    return BML::Core::HUD::GetMode();
+int BMLAS_HUD_GetMode() {
+    BML::UI::HUDState state{};
+    return BML::UI::ReadHUDState(state) == BML_OK ? state.Mode : 0;
 }
 
-void BMLAS_CoreHUD_SetMode(int mode) {
-    if (RejectRestrictedHostCall("BML::Core::HUD::SetMode"))
+void BMLAS_HUD_SetMode(int mode) {
+    if (RejectRestrictedHostCall("BML::HUD::SetMode"))
         return;
-    BML::Core::HUD::SetMode(mode);
+    BML::UI::SetHUDMode(mode);
 }
 
-void BMLAS_CoreHUD_ShowTitle(bool show) {
-    if (RejectRestrictedHostCall("BML::Core::HUD::ShowTitle"))
+void BMLAS_HUD_ShowTitle(bool show) {
+    if (RejectRestrictedHostCall("BML::HUD::ShowTitle"))
         return;
-    BML::Core::HUD::ShowTitle(show);
+    BML::UI::ShowTitle(show);
 }
 
-void BMLAS_CoreHUD_ShowFPS(bool show) {
-    if (RejectRestrictedHostCall("BML::Core::HUD::ShowFPS"))
+void BMLAS_HUD_ShowFPS(bool show) {
+    if (RejectRestrictedHostCall("BML::HUD::ShowFPS"))
         return;
-    BML::Core::HUD::ShowFPS(show);
+    BML::UI::ShowFPS(show);
 }
 
-void BMLAS_CoreHUD_ShowSRTimer(bool show) {
-    if (RejectRestrictedHostCall("BML::Core::HUD::ShowSRTimer"))
+void BMLAS_HUD_ShowSRTimer(bool show) {
+    if (RejectRestrictedHostCall("BML::HUD::ShowSRTimer"))
         return;
-    BML::Core::HUD::ShowSRTimer(show);
+    BML::UI::ShowSRTimer(show);
 }
 
-void BMLAS_CoreHUD_StartSRTimer() {
-    if (RejectRestrictedHostCall("BML::Core::HUD::StartSRTimer"))
+void BMLAS_HUD_StartSRTimer() {
+    if (RejectRestrictedHostCall("BML::HUD::StartSRTimer"))
         return;
-    BML::Core::HUD::StartSRTimer();
+    BML::UI::StartSRTimer();
 }
 
-void BMLAS_CoreHUD_PauseSRTimer() {
-    if (RejectRestrictedHostCall("BML::Core::HUD::PauseSRTimer"))
+void BMLAS_HUD_PauseSRTimer() {
+    if (RejectRestrictedHostCall("BML::HUD::PauseSRTimer"))
         return;
-    BML::Core::HUD::PauseSRTimer();
+    BML::UI::PauseSRTimer();
 }
 
-void BMLAS_CoreHUD_ResetSRTimer() {
-    if (RejectRestrictedHostCall("BML::Core::HUD::ResetSRTimer"))
+void BMLAS_HUD_ResetSRTimer() {
+    if (RejectRestrictedHostCall("BML::HUD::ResetSRTimer"))
         return;
-    BML::Core::HUD::ResetSRTimer();
+    BML::UI::ResetSRTimer();
 }
 
-float BMLAS_CoreHUD_GetSRTime() {
-    return BML::Core::HUD::GetSRTime();
+float BMLAS_HUD_GetSRTime() {
+    BML::UI::HUDState state{};
+    return BML::UI::ReadHUDState(state) == BML_OK ? state.SRTime : 0.0f;
 }
 
 void BMLAS_SkipRenderForNextTick() {
@@ -3372,8 +3372,8 @@ static const ScriptUiEnumValueRegistration kFontTypeRegistrations[] = {
 };
 
 static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
-    {"void SendMessage(const string &in message)", "BML::UI::SendMessage", BML_AS_GENERIC_FUNCTION(&BMLAS_CoreUI_SendMessage), asCALL_GENERIC},
-    {"void ClearMessages()", "BML::UI::ClearMessages", asFUNCTION(BMLAS_CoreUI_ClearMessages), asCALL_CDECL},
+    {"void SendMessage(const string &in message)", "BML::UI::SendMessage", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_SendMessage), asCALL_GENERIC},
+    {"void ClearMessages()", "BML::UI::ClearMessages", asFUNCTION(BMLAS_UI_ClearMessages), asCALL_CDECL},
     {"void SetCursorCoord(float x, float y)", "BML::UI::SetCursorCoord", asFUNCTION(BMLAS_UI_SetCursorCoord), asCALL_CDECL},
     {"float CoordToPixelX(float x)", "BML::UI::CoordToPixelX", asFUNCTION(BMLAS_UI_CoordToPixelX), asCALL_CDECL},
     {"float CoordToPixelY(float y)", "BML::UI::CoordToPixelY", asFUNCTION(BMLAS_UI_CoordToPixelY), asCALL_CDECL},
@@ -3457,22 +3457,22 @@ static const ScriptGlobalFunctionRegistration kPathFunctionRegistrations[] = {
 };
 
 static const ScriptGlobalFunctionRegistration kMenuFunctionRegistrations[] = {
-    {"void OpenModsMenu()", "BML::Menu::OpenModsMenu", asFUNCTION(BMLAS_CoreMenu_OpenModsMenu), asCALL_CDECL},
-    {"void CloseModsMenu()", "BML::Menu::CloseModsMenu", asFUNCTION(BMLAS_CoreMenu_CloseModsMenu), asCALL_CDECL},
-    {"void OpenMapMenu()", "BML::Menu::OpenMapMenu", asFUNCTION(BMLAS_CoreMenu_OpenMapMenu), asCALL_CDECL},
-    {"void CloseMapMenu()", "BML::Menu::CloseMapMenu", asFUNCTION(BMLAS_CoreMenu_CloseMapMenu), asCALL_CDECL},
+    {"void OpenModsMenu()", "BML::Menu::OpenModsMenu", asFUNCTION(BMLAS_Menu_OpenModsMenu), asCALL_CDECL},
+    {"void CloseModsMenu()", "BML::Menu::CloseModsMenu", asFUNCTION(BMLAS_Menu_CloseModsMenu), asCALL_CDECL},
+    {"void OpenMapMenu()", "BML::Menu::OpenMapMenu", asFUNCTION(BMLAS_Menu_OpenMapMenu), asCALL_CDECL},
+    {"void CloseMapMenu()", "BML::Menu::CloseMapMenu", asFUNCTION(BMLAS_Menu_CloseMapMenu), asCALL_CDECL},
 };
 
 static const ScriptGlobalFunctionRegistration kHudFunctionRegistrations[] = {
-    {"int GetMode()", "BML::HUD::GetMode", asFUNCTION(BMLAS_CoreHUD_GetMode), asCALL_CDECL},
-    {"void SetMode(int mode)", "BML::HUD::SetMode", asFUNCTION(BMLAS_CoreHUD_SetMode), asCALL_CDECL},
-    {"void ShowTitle(bool show)", "BML::HUD::ShowTitle", asFUNCTION(BMLAS_CoreHUD_ShowTitle), asCALL_CDECL},
-    {"void ShowFPS(bool show)", "BML::HUD::ShowFPS", asFUNCTION(BMLAS_CoreHUD_ShowFPS), asCALL_CDECL},
-    {"void ShowSRTimer(bool show)", "BML::HUD::ShowSRTimer", asFUNCTION(BMLAS_CoreHUD_ShowSRTimer), asCALL_CDECL},
-    {"void StartSRTimer()", "BML::HUD::StartSRTimer", asFUNCTION(BMLAS_CoreHUD_StartSRTimer), asCALL_CDECL},
-    {"void PauseSRTimer()", "BML::HUD::PauseSRTimer", asFUNCTION(BMLAS_CoreHUD_PauseSRTimer), asCALL_CDECL},
-    {"void ResetSRTimer()", "BML::HUD::ResetSRTimer", asFUNCTION(BMLAS_CoreHUD_ResetSRTimer), asCALL_CDECL},
-    {"float GetSRTime()", "BML::HUD::GetSRTime", asFUNCTION(BMLAS_CoreHUD_GetSRTime), asCALL_CDECL},
+    {"int GetMode()", "BML::HUD::GetMode", asFUNCTION(BMLAS_HUD_GetMode), asCALL_CDECL},
+    {"void SetMode(int mode)", "BML::HUD::SetMode", asFUNCTION(BMLAS_HUD_SetMode), asCALL_CDECL},
+    {"void ShowTitle(bool show)", "BML::HUD::ShowTitle", asFUNCTION(BMLAS_HUD_ShowTitle), asCALL_CDECL},
+    {"void ShowFPS(bool show)", "BML::HUD::ShowFPS", asFUNCTION(BMLAS_HUD_ShowFPS), asCALL_CDECL},
+    {"void ShowSRTimer(bool show)", "BML::HUD::ShowSRTimer", asFUNCTION(BMLAS_HUD_ShowSRTimer), asCALL_CDECL},
+    {"void StartSRTimer()", "BML::HUD::StartSRTimer", asFUNCTION(BMLAS_HUD_StartSRTimer), asCALL_CDECL},
+    {"void PauseSRTimer()", "BML::HUD::PauseSRTimer", asFUNCTION(BMLAS_HUD_PauseSRTimer), asCALL_CDECL},
+    {"void ResetSRTimer()", "BML::HUD::ResetSRTimer", asFUNCTION(BMLAS_HUD_ResetSRTimer), asCALL_CDECL},
+    {"float GetSRTime()", "BML::HUD::GetSRTime", asFUNCTION(BMLAS_HUD_GetSRTime), asCALL_CDECL},
 };
 
 static const ScriptGlobalFunctionRegistration kCkFunctionRegistrations[] = {
@@ -3873,13 +3873,7 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int uiResult = RegisterScriptUiFacade(engine, errorMessage);
     if (uiResult < 0)
         return uiResult;
-    const int interopFacadeResult = RegisterScriptInteropFacade(engine, errorMessage);
-    if (interopFacadeResult < 0)
-        return interopFacadeResult;
-    const int interopProviderResult = BML::RegisterScriptInteropProviderBridge(engine, errorMessage);
-    if (interopProviderResult < 0)
-        return interopProviderResult;
-    return BML::RegisterScriptInteropConsumerBridge(engine, errorMessage);
+    return RegisterScriptImcFacade(engine, errorMessage);
 }
 
 int RegisterImGuiBindings(asIScriptEngine *engine, const char **errorMessage) {
