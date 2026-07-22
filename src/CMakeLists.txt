@@ -81,7 +81,6 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Gameplay.h
         ${BML_INCLUDE_DIR}/BML/UI.h
         ${BML_INCLUDE_DIR}/BML/Events.h
-        ${BML_INCLUDE_DIR}/BML/Core.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h

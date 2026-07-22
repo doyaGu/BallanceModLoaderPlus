@@ -21,7 +21,6 @@
 #include "BML/Gameplay.h"
 #include "BML/UI.h"
 #include "BML/Events.h"
-#include "BML/Core.h"
 
 #include "BML/Gui.h"
 #include "BML/InputHook.h"

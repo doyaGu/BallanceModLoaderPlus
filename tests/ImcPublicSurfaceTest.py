@@ -23,6 +23,7 @@ def main() -> int:
         "include/BML/InteropClient.h",
         "include/BML/InteropMath.h",
         "include/BML/InteropTypes.h",
+        "include/BML/Core.h",
         "tools/interop_codegen.py",
         "interop",
     )
@@ -53,7 +54,7 @@ def main() -> int:
     public_headers = list((root / "include/BML").glob("*.h"))
     public_headers += list((root / "include/BML").glob("*.hpp"))
     public_headers += list((root / "include/BML/Generated").glob("*.hpp"))
-    forbidden_legacy = ("BML::Interop", "BML_Interop", "BML_INTEROP", "BML_ERROR_INTEROP")
+    forbidden_legacy = ("BML::Interop", "BML_Interop", "BML_INTEROP", "BML_ERROR_INTEROP", "BML::Core")
     for header in public_headers:
         text = header.read_text(encoding="utf-8")
         for token in forbidden_legacy:
@@ -73,7 +74,6 @@ def main() -> int:
         "include/BML/Gameplay.h",
         "include/BML/Events.h",
         "include/BML/UI.h",
-        "include/BML/Core.h",
     )
     for relative in header_only:
         if "BML_EXPORT" in read(root, relative):
