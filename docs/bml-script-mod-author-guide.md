@@ -185,7 +185,7 @@ resource root, not arbitrary global include paths.
 | `BML::ModContext` | The per-mod service object passed into callbacks. Start here for logging, config, commands, resources, timers, DataShare, and BML UI. |
 | Borrowed handle | A handle returned for immediate use, usually to CK/Virtools state. Do not keep it as long-term identity unless that section says it is safe. |
 | CKAS ref | A CKAngelScript reference object such as an `ObjectRef@`-derived handle. Prefer this for long-lived CK object identity. |
-| IMC provider | A native mod implementation of a generated `.bmlapi` contract. The schema, not an arbitrary C++ method signature, is the public boundary. |
+| IMC provider | A native mod implementation of a generated `.imc` interface. The interface definition, not an arbitrary C++ method signature, is the public boundary. |
 
 ## Entry Rules
 
@@ -197,7 +197,7 @@ resource root, not arbitrary global include paths.
   manifest DSL.
 - BML does not use a source lexer/parser to infer namespace or class name.
   Those facts come from CKAngelScript metadata reflection. Native IMC APIs are
-  declared separately in `.bmlapi` files and compiled before runtime.
+  declared separately in `.imc` files and compiled before runtime.
 - The `[bml.mod]` class may live in any AngelScript namespace. BML records the
   namespace and class name reported by CKAS metadata reflection.
 
@@ -339,7 +339,7 @@ does not replace CKAngelScript `[script.depends]`; that belongs to CKAS runtime
 scripts.
 
 `bml.export` was removed with the experimental dynamic-call ABI. Native
-cross-mod capabilities use a versioned `.bmlapi` contract and generated IMC
+cross-mod capabilities use a versioned `.imc` interface and generated IMC
 bindings. Script mods use typed facades or DataShare; they do not register raw
 RPC/Topic providers.
 
@@ -985,7 +985,7 @@ RPC or Topic providers. This keeps the script surface typed and avoids a second
 dynamic schema/record system beside IMC.
 
 For a reusable or performance-sensitive service, implement a native mod: write
-one versioned `.bmlapi` contract, generate its C++ binding, and register the
+one versioned `.imc` interface, generate its C++ binding, and register the
 generated provider. Expose a small AngelScript facade only if scripts also need
 the service. See [Inter-mod communication](imc.md) and
 [Create a typed IMC API](imc-author-guide.md).

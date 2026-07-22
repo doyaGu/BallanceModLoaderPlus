@@ -17,7 +17,7 @@ The supported native cross-mod model is documented in
 - generated AngelScript facades provide ordinary consumers with shallow
   `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events`, and `BML::UI`
   APIs;
-- authoring a native provider uses a versioned `.bmlapi` contract and generated
+- authoring a native provider uses a versioned `.imc` interface and generated
   IMC bindings;
 - script-only mods consume the typed built-in facades and use DataShare for
   simple shared state; custom generated IMC providers are native-only;

@@ -35,7 +35,7 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 - 需要显式选择 caller thread 或 game thread；
 - 需要稳定的跨 DLL ABI，供多个独立 Mod 使用。
 
-原生实现流程是：编写版本化 `.bmlapi` 合约，用 `imc_codegen.py` 或
+原生实现流程是：编写版本化 `.imc` 接口定义，用 `imc_codegen.py` 或
 `bml_target_imc_api()` 生成 C++ 绑定，实现生成的 provider，并让消费者
 使用生成的 client。不要手写字段编码，也不要跨 DLL 传递 C++ 对象、STL
 容器、allocator 所有权或 `CKObject*`。
