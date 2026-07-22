@@ -15,6 +15,7 @@
 #include <cstring>
 #include <mutex>
 #include <new>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <unordered_set>
@@ -53,6 +54,7 @@ std::vector<std::uint8_t> g_LastRequest;
 BML_ImcPayloadTypeId g_LastRequestPayload = 0;
 std::vector<std::uint8_t> g_LastPublish;
 BML_ImcPayloadTypeId g_LastPublishPayload = 0;
+std::string g_ProvidedMessage;
 BML_ImcRpcHandler g_RegisteredHandler = nullptr;
 void *g_RegisteredUserdata = nullptr;
 BML_ImcRpcId g_RegisteredRpc = BML_IMC_INVALID_ID;
@@ -66,6 +68,7 @@ void ResetMock() {
     g_LastSubscribeCapacity = 0;
     g_LastRequest.clear(); g_LastRequestPayload = 0;
     g_LastPublish.clear(); g_LastPublishPayload = 0;
+    g_ProvidedMessage.clear();
     g_RegisteredHandler = nullptr; g_RegisteredUserdata = nullptr; g_RegisteredRpc = BML_IMC_INVALID_ID;
     g_TopicHandler = nullptr; g_TopicUserdata = nullptr;
 }
@@ -85,19 +88,6 @@ int EncodeRuntimeResult(BML_ImcFuture_T &future) {
     return status;
 }
 
-int EncodeCommandResult(BML_ImcFuture_T &future) {
-    namespace Ui = BML::Imc::Generated::Bml::Ui;
-    Ui::CommandResultValue value{};
-    future.Data.resize(Ui::EncodedCommandResultSize(value));
-    const int status = Ui::EncodeCommandResult(value, future.Data.data(), future.Data.size());
-    future.Result = {};
-    future.Result.Size = sizeof(BML_ImcMessage);
-    future.Result.Data = future.Data.data();
-    future.Result.DataSize = future.Data.size();
-    future.Result.PayloadType = StableId(Ui::CommandResultPayload);
-    return status;
-}
-
 int EncodeEntityResult(BML_ImcFuture_T &future) {
     namespace Scene = BML::Imc::Generated::Bml::Scene;
     Scene::EntityTransformValue value{};
@@ -112,18 +102,24 @@ int EncodeEntityResult(BML_ImcFuture_T &future) {
 
 int EncodeCatalogResult(BML_ImcFuture_T &future) {
     namespace Gameplay = BML::Imc::Generated::Bml::Gameplay;
-    std::vector<Gameplay::CatalogEntryValue> values(2);
-    values[0].File = "alpha.nmo"; values[0].StartBall = "A"; values[0].Sky = "S"; values[0].Bonus = 1; values[0].Music = 2;
-    values[1].File = "beta.nmo"; values[1].StartBall = "B"; values[1].Sky = "T"; values[1].Bonus = 3; values[1].Music = 4;
-    future.Data.resize(BML::Imc::EncodedCollectionSize(values, Gameplay::EncodedCatalogEntrySize));
-    const int status = BML::Imc::EncodeCollection(values, future.Data.data(), future.Data.size(), Gameplay::Hash,
-                                                   Gameplay::EncodedCatalogEntrySize, Gameplay::EncodeCatalogEntry);
+    Gameplay::CatalogResponseValue value{};
+    value.Files = {"alpha.nmo", "beta.nmo"}; value.StartBalls = {"A", "B"};
+    value.Skies = {"S", "T"}; value.Bonuses = {1, 3}; value.Music = {2, 4};
+    future.Data.resize(Gameplay::EncodedCatalogResponseSize(value));
+    const int status = Gameplay::EncodeCatalogResponse(value, future.Data.data(), future.Data.size());
     future.Result = {}; future.Result.Size = sizeof(BML_ImcMessage);
     future.Result.Data = future.Data.data(); future.Result.DataSize = future.Data.size();
-    future.Result.PayloadType = StableId(Gameplay::CatalogCollectionPayload); return status;
-}int ProvideRuntimeState(BML::Imc::Generated::Bml::Runtime::RuntimeStateValue &out, void *) {
+    future.Result.PayloadType = StableId(Gameplay::CatalogResponsePayload); return status;
+}
+
+int ProvideRuntimeState(BML::Imc::Generated::Bml::Runtime::RuntimeStateValue &out, void *) {
     out.InGame = true; out.InLevel = false; out.Paused = true;
     out.Playing = false; out.CheatEnabled = true;
+    return BML_OK;
+}
+
+int ProvideUiMessage(const BML::Imc::Generated::Bml::Ui::MessageInputValue &input, void *) {
+    g_ProvidedMessage = input.Message;
     return BML_OK;
 }
 } // namespace
@@ -199,7 +195,7 @@ int BML_Imc_ResponseCommit(BML_ImcResponse *response, std::size_t size, BML_ImcP
     if (!future) return BML_ERROR_OUT_OF_MEMORY;
     int status = BML_ERROR_NOT_FOUND;
     if (rpcId == StableId(BML::Imc::Generated::Bml::Runtime::StateRoute)) status = EncodeRuntimeResult(*future);
-    if (rpcId == StableId(BML::Imc::Generated::Bml::Ui::MessageAddRoute)) status = EncodeCommandResult(*future);
+    if (rpcId == StableId(BML::Imc::Generated::Bml::Ui::MessageAddRoute)) status = BML_OK;
     if (rpcId == StableId(BML::Imc::Generated::Bml::Scene::EntityRoute)) status = EncodeEntityResult(*future);
     if (rpcId == StableId(BML::Imc::Generated::Bml::Gameplay::CatalogRoute)) status = EncodeCatalogResult(*future);
     if (status != BML_OK) { delete future; return status; }
@@ -354,7 +350,7 @@ TEST(ImcGeneratedClientTest, ResolvesIdsOnceAndReleasesEveryRpcFuture) {
     EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 3);
     EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 3);
     Runtime::RuntimeStateValue state{};
-    ASSERT_EQ(client.ReadState(state), BML_OK);
+    ASSERT_EQ(client.CallState(state), BML_OK);
     EXPECT_TRUE(state.InGame);
     EXPECT_TRUE(state.Playing);
     EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 3);
@@ -370,7 +366,7 @@ TEST(ImcGeneratedClientTest, TypedAsyncRpcOwnsAndDecodesFutureWithoutRawCPlumbin
 
     Runtime::Client::StateFuture future;
     EXPECT_FALSE(future.IsValid());
-    ASSERT_EQ(client.BeginReadState(future), BML_OK);
+    ASSERT_EQ(client.BeginCallState(future), BML_OK);
     EXPECT_TRUE(future.IsValid());
     EXPECT_EQ(g_FutureReleases, 0);
 
@@ -379,21 +375,20 @@ TEST(ImcGeneratedClientTest, TypedAsyncRpcOwnsAndDecodesFutureWithoutRawCPlumbin
     EXPECT_TRUE(state.InGame);
     EXPECT_TRUE(state.Playing);
 
-    EXPECT_EQ(client.BeginReadState(future), BML_ERROR_BUSY);
+    EXPECT_EQ(client.BeginCallState(future), BML_ERROR_BUSY);
     EXPECT_EQ(g_FutureReleases, 0);
     EXPECT_EQ(future.Release(), BML_OK);
     EXPECT_FALSE(future.IsValid());
     EXPECT_EQ(g_FutureReleases, 1);
 }
 
-TEST(ImcGeneratedClientTest, EncodesTypedCommandRequestAndDecodesResponse) {
+TEST(ImcGeneratedClientTest, EncodesTypedRequestForResponseLessRpc) {
     ResetMock();
     namespace Ui = BML::Imc::Generated::Bml::Ui;
     Ui::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
     Ui::MessageInputValue input{}; input.Message = "hello IMC";
-    Ui::CommandResultValue result{};
-    ASSERT_EQ(client.CommandMessageAdd(input, result), BML_OK);
+    ASSERT_EQ(client.CallMessageAdd(input), BML_OK);
     ASSERT_FALSE(g_LastRequest.empty());
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
     request.Data = g_LastRequest.data(); request.DataSize = g_LastRequest.size();
@@ -443,36 +438,59 @@ TEST(ImcGeneratedClientTest, ProviderTrampolineEncodesTypedResponseDirectly) {
     EXPECT_TRUE(decoded.CheatEnabled);
     EXPECT_EQ(response.PayloadType, StableId(Runtime::RuntimeStatePayload));
 }
-TEST(ImcGeneratedClientTest, ComponentUsesTypedObjectRequestRpc) {
+
+TEST(ImcGeneratedClientTest, ResponseLessProviderDoesNotRequireOrWriteResponse) {
+    ResetMock();
+    namespace Ui = BML::Imc::Generated::Bml::Ui;
+    Ui::Provider provider;
+    ASSERT_EQ(provider.Open("test.provider"), BML_OK);
+    ASSERT_EQ(provider.RegisterMessageAdd(
+        &ProvideUiMessage, nullptr, BML_IMC_EXECUTION_CALLER_THREAD), BML_OK);
+
+    Ui::MessageInputValue input{};
+    input.Message = "provider call";
+    std::vector<std::uint8_t> bytes(Ui::EncodedMessageInputSize(input));
+    ASSERT_EQ(Ui::EncodeMessageInput(input, bytes.data(), bytes.size()), BML_OK);
+    BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
+    request.Data = bytes.data();
+    request.DataSize = bytes.size();
+    request.PayloadType = StableId(Ui::MessageInputPayload);
+
+    ASSERT_EQ(g_RegisteredHandler(
+        g_RegisteredRpc, &request, nullptr, g_RegisteredUserdata), BML_OK);
+    EXPECT_EQ(g_ProvidedMessage, input.Message);
+}
+TEST(ImcGeneratedClientTest, RpcUsesTypedObjectRequestSchema) {
     ResetMock();
     namespace Scene = BML::Imc::Generated::Bml::Scene;
     Scene::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
     const BML_ObjectRef object{3, 20, 9};
+    Scene::ObjectRequestValue input{}; input.Object = object;
     Scene::EntityTransformValue transform{};
-    ASSERT_EQ(client.ReadEntity(object, transform), BML_OK);
+    ASSERT_EQ(client.CallEntity(input, transform), BML_OK);
     EXPECT_FLOAT_EQ(transform.Position.y, 2.0f);
     EXPECT_EQ(transform.ChildCount, 4);
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
     request.Data = g_LastRequest.data(); request.DataSize = g_LastRequest.size(); request.PayloadType = g_LastRequestPayload;
-    BML_ObjectRef decoded{}; std::uint64_t hash = 0;
-    ASSERT_EQ(BML::Imc::DecodeObjectRequest(request, StableId(Scene::EntityRequestPayload), decoded, hash), BML_OK);
-    EXPECT_EQ(decoded.Domain, object.Domain);
-    EXPECT_EQ(decoded.Slot, object.Slot);
-    EXPECT_EQ(decoded.Generation, object.Generation);
-    EXPECT_EQ(hash, Scene::Hash);
+    Scene::ObjectRequestValue decoded{};
+    ASSERT_EQ(Scene::DecodeObjectRequest(request, decoded), BML_OK);
+    EXPECT_EQ(decoded.Object.Domain, object.Domain);
+    EXPECT_EQ(decoded.Object.Slot, object.Slot);
+    EXPECT_EQ(decoded.Object.Generation, object.Generation);
+    EXPECT_EQ(request.PayloadType, StableId(Scene::ObjectRequestPayload));
 }
 
-TEST(ImcGeneratedClientTest, CollectionUsesSingleTypedListRpcWithoutCursorState) {
+TEST(ImcGeneratedClientTest, RpcResponseCarriesCountedArrays) {
     ResetMock();
     namespace Gameplay = BML::Imc::Generated::Bml::Gameplay;
     Gameplay::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
-    std::vector<Gameplay::CatalogEntryValue> catalog;
-    ASSERT_EQ(client.ReadCatalog(catalog), BML_OK);
-    ASSERT_EQ(catalog.size(), 2u);
-    EXPECT_EQ(catalog[0].File, "alpha.nmo");
-    EXPECT_EQ(catalog[1].Music, 4);
+    Gameplay::CatalogResponseValue catalog{};
+    ASSERT_EQ(client.CallCatalog(catalog), BML_OK);
+    ASSERT_EQ(catalog.Files.size(), 2u);
+    EXPECT_EQ(catalog.Files[0], "alpha.nmo");
+    EXPECT_EQ(catalog.Music[1], 4);
     EXPECT_TRUE(g_LastRequest.empty());
     EXPECT_EQ(g_FutureReleases, 1);
 }

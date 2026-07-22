@@ -23,17 +23,52 @@ def api_definition(*, minor: int = 0, extra_field: dict | None = None) -> dict:
             {"id": 1, "name": "sample", "fields": fields},
             {"id": 2, "name": "request", "fields": [{"id": 1, "name": "name", "type": "string", "optional": False}]},
         ],
-        "endpoints": [
-            {"name": "state", "kind": "resource", "output": 1},
-            {"name": "lookup", "kind": "query", "input": 2, "output": 1},
-            {"name": "entity", "kind": "component", "output": 1},
-            {"name": "items", "kind": "collection", "output": 1},
+        "rpcs": [
+            {"name": "state", "response": 1},
+            {"name": "lookup", "request": 2, "response": 1},
+            {"name": "notify", "request": 2},
+            {"name": "flush"},
         ],
+        "topics": [{"name": "changed", "message": 1}],
     }
 
 
+def render_bmlapi(value: dict) -> str:
+    version = value["version"]
+    lines = [f"api {value['api']} {version['major']}.{version.get('minor', 0)}", ""]
+    compatible_hashes = value.get("compatible_hashes", [])
+    if compatible_hashes:
+        lines.append(f"wire {compatible_hashes[0]}")
+        for hash_value in compatible_hashes[1:]:
+            lines.append(f"accept {hash_value}")
+        lines.append("")
+    for enum in value.get("enums", []):
+        underlying = enum.get("underlying", "int")
+        suffix = "" if underlying == "int" else f" : {underlying}"
+        lines.append(f"enum {enum['name']}{suffix} {{")
+        for enum_value in enum["values"]:
+            lines.append(f"    {enum_value['name']} = {enum_value['value']}")
+        lines.extend(["}", ""])
+    schema_names = {schema["id"]: schema["name"] for schema in value["schemas"]}
+    for schema in value["schemas"]:
+        lines.append(f"schema {schema['name']} = {schema['id']} {{")
+        for field in schema.get("fields", []):
+            optional = "optional " if field.get("optional", False) else ""
+            lines.append(
+                f"    {optional}{field['type']} {field['name']} = {field['id']}"
+            )
+        lines.extend(["}", ""])
+    for rpc in value.get("rpcs", []):
+        request = schema_names[rpc["request"]] if rpc.get("request") else ""
+        response = f" -> {schema_names[rpc['response']]}" if rpc.get("response") else ""
+        lines.append(f"rpc {rpc['name']}({request}){response}")
+    for topic in value.get("topics", []):
+        lines.append(f"topic {topic['name']}({schema_names[topic['message']]})")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def write(path: Path, value: dict) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    path.write_text(render_bmlapi(value), encoding="utf-8")
 
 
 def run(generator: Path, *arguments: str, expect_success: bool = True) -> subprocess.CompletedProcess[str]:
@@ -82,34 +117,33 @@ def main() -> int:
             raise AssertionError("expected API ID mismatch did not identify the contract and both IDs")
 
         malformed = root / "malformed.bmlapi"
-        malformed.write_text("{\n", encoding="utf-8")
+        malformed.write_text("api test.malformed 1.0\nschema value = {\n", encoding="utf-8")
         malformed_result = run(
             generator, "--out-dir", str(root / "malformed"),
             "--input", str(malformed), expect_success=False,
         )
-        if malformed.name not in malformed_result.stderr or "line 2 column 1" not in malformed_result.stderr:
-            raise AssertionError("malformed JSON diagnostic did not include its input path and location")
+        if (malformed.name not in malformed_result.stderr
+                or "line 2 column 16" not in malformed_result.stderr):
+            raise AssertionError("malformed IDL diagnostic did not include its input path and location")
 
-        duplicate_property = root / "duplicate-property.bmlapi"
-        duplicate_property.write_text(
-            """{
-  "api": "test.duplicate",
-  "version": {"major": 1, "minor": 0},
-  "schemas": [{"id": 1, "name": "sample", "fields": [
-    {"id": 1, "name": "value", "type": "int", "optional": true, "optional": false}
-  ]}],
-  "rpcs": [{"name": "get", "response": 1}]
+        duplicate_field = root / "duplicate-field.bmlapi"
+        duplicate_field.write_text(
+            """api test.duplicate 1.0
+schema sample = 1 {
+    int value = 1
+    optional string value = 2
 }
+rpc get() -> sample
 """,
             encoding="utf-8",
         )
-        duplicate_property_result = run(
-            generator, "--out-dir", str(root / "duplicate-property"),
-            "--input", str(duplicate_property), expect_success=False,
+        duplicate_field_result = run(
+            generator, "--out-dir", str(root / "duplicate-field"),
+            "--input", str(duplicate_field), expect_success=False,
         )
-        if (duplicate_property.name not in duplicate_property_result.stderr
-                or "duplicate JSON property 'optional'" not in duplicate_property_result.stderr):
-            raise AssertionError("duplicate JSON property was not rejected clearly")
+        if (duplicate_field.name not in duplicate_field_result.stderr
+                or "duplicate field id or name in sample: value" not in duplicate_field_result.stderr):
+            raise AssertionError("duplicate IDL field was not rejected clearly")
 
         leading_digit = api_definition()
         leading_digit["api"] = "1test.2codegen"
@@ -121,7 +155,7 @@ def main() -> int:
         leading_digit["schemas"][0]["fields"][0] = {
             "id": 1, "name": "1value", "type": "enum<1mode>", "optional": False,
         }
-        leading_digit["endpoints"][0]["name"] = "1state"
+        leading_digit["rpcs"][0]["name"] = "1state"
         leading_digit_contract = root / "leading-digit.bmlapi"
         leading_digit_output = root / "leading-digit"
         write(leading_digit_contract, leading_digit)
@@ -136,7 +170,7 @@ def main() -> int:
         for snippet in (
             "namespace BML::Imc::Generated::_1test::_2codegen",
             "enum class _1mode", "_1off = 0", "struct _1sampleValue",
-            "_1mode _1value{}", "_1stateRoute", "Read_1state",
+            "_1mode _1value{}", "_1stateRoute", "Call_1state",
         ):
             if snippet not in leading_digit_header:
                 raise AssertionError(
@@ -204,76 +238,43 @@ def main() -> int:
         if duplicate_api_sentinel.read_text(encoding="utf-8") != "sentinel\n":
             raise AssertionError("failed duplicate-input generation modified an output")
 
-        unknown_property_cases: list[tuple[str, dict, str]] = []
+        unknown_declaration = root / "unknown-declaration.bmlapi"
+        unknown_declaration.write_text(
+            render_bmlapi(api_definition()) + "endpoint old_kind\n", encoding="utf-8"
+        )
+        unknown_result = run(
+            generator, "--out-dir", str(root / "unknown-declaration"),
+            "--input", str(unknown_declaration), expect_success=False,
+        )
+        if (unknown_declaration.name not in unknown_result.stderr
+                or "unknown declaration 'endpoint'" not in unknown_result.stderr):
+            raise AssertionError("unknown IDL declaration was not rejected clearly")
 
-        def add_unknown_property_case(label: str, contract_value: dict,
-                                      target: dict, context: str) -> None:
-            target["typo_property"] = True
-            unknown_property_cases.append((label, contract_value, context))
+        commented_contract = root / "comments.bmlapi"
+        commented_contract.write_text(
+            """# Both comment styles and optional separators are accepted.
+api test.comments 1.0;
+schema value = 1 { int number = 1; } // response payload
+rpc get() -> value;
+""",
+            encoding="utf-8",
+        )
+        run(generator, "--out-dir", str(root / "comments"),
+            "--input", str(commented_contract))
 
-        unknown_top_level = api_definition()
-        add_unknown_property_case(
-            "top-level", unknown_top_level, unknown_top_level, "top-level object"
+        accept_without_wire = root / "accept-without-wire.bmlapi"
+        accept_without_wire.write_text(
+            render_bmlapi(api_definition()).replace(
+                "api test.codegen 1.0", "api test.codegen 1.1\naccept 0x0123456789ABCDEF"
+            ),
+            encoding="utf-8",
         )
-        unknown_version = api_definition()
-        add_unknown_property_case(
-            "version", unknown_version, unknown_version["version"], "version"
+        accept_result = run(
+            generator, "--out-dir", str(root / "accept-without-wire"),
+            "--input", str(accept_without_wire), expect_success=False,
         )
-        unknown_enum = api_definition()
-        unknown_enum["enums"] = [{
-            "name": "mode", "values": [{"name": "off", "value": 0}],
-        }]
-        add_unknown_property_case(
-            "enum", unknown_enum, unknown_enum["enums"][0], "enums[0]"
-        )
-        unknown_enum_value = api_definition()
-        unknown_enum_value["enums"] = [{
-            "name": "mode", "values": [{"name": "off", "value": 0}],
-        }]
-        add_unknown_property_case(
-            "enum-value", unknown_enum_value,
-            unknown_enum_value["enums"][0]["values"][0], "enums[0].values[0]",
-        )
-        unknown_schema = api_definition()
-        add_unknown_property_case(
-            "schema", unknown_schema, unknown_schema["schemas"][0], "schemas[0]"
-        )
-        unknown_field = api_definition()
-        add_unknown_property_case(
-            "field", unknown_field, unknown_field["schemas"][0]["fields"][0],
-            "schemas[0].fields[0]",
-        )
-        unknown_endpoint = api_definition()
-        add_unknown_property_case(
-            "endpoint", unknown_endpoint, unknown_endpoint["endpoints"][0],
-            "endpoints[0]",
-        )
-        unknown_rpc = api_definition()
-        unknown_rpc.pop("endpoints")
-        unknown_rpc["rpcs"] = [{"name": "state", "response": 1}]
-        add_unknown_property_case(
-            "rpc", unknown_rpc, unknown_rpc["rpcs"][0], "rpcs[0]"
-        )
-        unknown_topic = api_definition()
-        unknown_topic.pop("endpoints")
-        unknown_topic["topics"] = [{"name": "changed", "message": 1}]
-        add_unknown_property_case(
-            "topic", unknown_topic, unknown_topic["topics"][0], "topics[0]"
-        )
-
-        for label, contract_value, context in unknown_property_cases:
-            unknown_contract = root / f"unknown-{label}.bmlapi"
-            write(unknown_contract, contract_value)
-            unknown_result = run(
-                generator, "--out-dir", str(root / f"unknown-{label}"),
-                "--input", str(unknown_contract), expect_success=False,
-            )
-            expected = f"{context} has unknown property: 'typo_property'"
-            if (unknown_contract.name not in unknown_result.stderr
-                    or expected not in unknown_result.stderr):
-                raise AssertionError(
-                    f"unknown property in {context} was not rejected clearly"
-                )
+        if "accept requires a wire hash declaration" not in accept_result.stderr:
+            raise AssertionError("accept without an explicit wire hash was not rejected")
 
         imc_header = generated / "test_codegen_imc.hpp"
         if not imc_header.exists():
@@ -282,10 +283,11 @@ def main() -> int:
         if '#include "BML/ImcWire.hpp"' not in imc_header_text:
             raise AssertionError("IMC binding does not use the fixed wire codec")
         for symbol in ("EncodedSampleSize", "EncodeSample", "DecodeSample", "switch (field.Id)",
-                       "class Client", "Adopt", "class Provider", "BML_Imc_GetRpcId", "ReadState",
-                       "QueryLookup", "StateFuture", "BeginReadState", "LookupFuture",
-                       "BeginQueryLookup", "IsStateAvailable", "IsLookupAvailable",
-                       "RegisterState", "RegisterLookup"):
+                       "class Client", "Adopt", "class Provider", "BML_Imc_GetRpcId", "CallState",
+                       "CallLookup", "StateFuture", "BeginCallState", "LookupFuture",
+                       "BeginCallLookup", "IsStateAvailable", "IsLookupAvailable",
+                       "CallNotify", "CallFlush", "RpcFuture<void>",
+                       "RegisterState", "RegisterLookup", "class ChangedSubscription"):
             if symbol not in imc_header_text:
                 raise AssertionError(f"IMC binding is missing generated codec element: {symbol}")
         if 'test.codegen/v1/rpc/state' not in imc_header_text or 'test.codegen/v1/rpc/lookup' not in imc_header_text:
@@ -294,11 +296,7 @@ def main() -> int:
         wire_match = re.search(r"\bWireHash = 0x([0-9A-F]+)ULL", imc_header_text)
         if not descriptor_match or not wire_match or descriptor_match.group(1) != wire_match.group(1):
             raise AssertionError("base IMC binding did not default its wire hash to the descriptor hash")
-        for snippet in (
-            "writer.Begin(SampleSchema, WireHash",
-            ", WireHash, buffer, request)",
-            ", output, WireHash, EncodedSampleSize, EncodeSample)",
-        ):
+        for snippet in ("writer.Begin(SampleSchema, WireHash", "WriteResponse("):
             if snippet not in imc_header_text:
                 raise AssertionError(f"IMC wire encoder bypasses the stable wire hash: {snippet}")
         if "RecordBuilder" in imc_header_text or "InteropApi.h" in imc_header_text:
@@ -352,7 +350,7 @@ def main() -> int:
         write(wrong_wire, second_minor)
         wrong_result = run(generator, *common, "--input", str(wrong_wire),
                            "--previous", str(current), expect_success=False)
-        if "put it first in compatible_hashes" not in wrong_result.stderr:
+        if "declare that value with wire" not in wrong_result.stderr:
             raise AssertionError("wire-hash drift did not produce an actionable diagnostic")
         run(generator, *common, "--input", str(incompatible), "--previous", str(base), expect_success=False)
 
@@ -480,12 +478,6 @@ def main() -> int:
             raise AssertionError("out-of-range enum values were not rejected clearly")
 
         native_api = api_definition()
-        native_api.pop("endpoints")
-        native_api["rpcs"] = [
-            {"name": "state", "response": 1},
-            {"name": "lookup", "request": 2, "response": 1},
-        ]
-        native_api["topics"] = [{"name": "changed", "message": 1}]
         native_contract = root / "native-imc.bmlapi"
         native_output = root / "native-imc"
         write(native_contract, native_api)
@@ -494,23 +486,41 @@ def main() -> int:
         native_header = (native_output / "test_codegen_imc.hpp").read_text(encoding="utf-8")
         for snippet in (
             "BeginCallState(", "CallState(", "BeginCallLookup(", "CallLookup(",
+            "BeginCallNotify(", "CallNotify(", "BeginCallFlush(", "CallFlush(",
             "RegisterState(", "RegisterLookup(", "class ChangedSubscription",
             "PublishChanged(", "test.codegen/v1/rpc/state",
             "test.codegen/v1/topic/changed",
         ):
             if snippet not in native_header:
                 raise AssertionError(f"IMC-native rpcs/topics binding is missing: {snippet}")
-        mixed_api = api_definition()
-        mixed_api["rpcs"] = [{"name": "extra", "response": 1}]
-        mixed_contract = root / "mixed-endpoints.bmlapi"
-        write(mixed_contract, mixed_api)
-        mixed_result = run(generator, "--out-dir", str(root / "mixed"),
-                           "--input", str(mixed_contract), expect_success=False)
-        if "not both" not in mixed_result.stderr:
-            raise AssertionError("mixed typed/native endpoint syntax was not rejected clearly")
+        schema_less_contract = root / "schema-less.bmlapi"
+        schema_less_contract.write_text(
+            "api test.ping 1.0\n\nrpc ping()\n", encoding="utf-8"
+        )
+        schema_less_output = root / "schema-less"
+        run(generator, "--out-dir", str(schema_less_output),
+            "--input", str(schema_less_contract))
+        schema_less_header = (schema_less_output / "test_ping_imc.hpp").read_text(encoding="utf-8")
+        for snippet in (
+            "std::array<SchemaMetadata, 0> Schemas{}",
+            "using PingFuture = ::BML::Imc::RpcFuture<void>",
+            "int CallPing(std::uint32_t timeoutMs = 5000u)",
+            "using PingHandler = int (*)(void *)",
+        ):
+            if snippet not in schema_less_header:
+                raise AssertionError(f"schema-less RPC binding is missing: {snippet}")
+        json_contract = root / "json-contract.bmlapi"
+        json_contract.write_text(json.dumps(api_definition()), encoding="utf-8")
+        json_result = run(generator, "--out-dir", str(root / "json"),
+                          "--input", str(json_contract), expect_success=False)
+        if "JSON is not a .bmlapi contract" not in json_result.stderr:
+            raise AssertionError("legacy JSON contract syntax was not rejected clearly")
 
         overflow = api_definition()
         overflow["schemas"][0]["id"] = 0x1_0000_0000
+        overflow["rpcs"][0]["response"] = 0x1_0000_0000
+        overflow["rpcs"][1]["response"] = 0x1_0000_0000
+        overflow["topics"][0]["message"] = 0x1_0000_0000
         write(root / "overflow.bmlapi", overflow)
         run(generator, *common, "--input", str(root / "overflow.bmlapi"), expect_success=False)
 

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
 import tempfile
@@ -13,6 +12,34 @@ from pathlib import Path
 
 def quote_cmake(path: Path) -> str:
     return path.resolve().as_posix().replace('"', '\\"')
+
+
+def render_bmlapi(value: dict) -> str:
+    version = value["version"]
+    lines = [f"api {value['api']} {version['major']}.{version.get('minor', 0)}", ""]
+    for enum in value.get("enums", []):
+        underlying = enum.get("underlying", "int")
+        suffix = "" if underlying == "int" else f" : {underlying}"
+        lines.append(f"enum {enum['name']}{suffix} {{")
+        lines.extend(
+            f"    {enum_value['name']} = {enum_value['value']}"
+            for enum_value in enum["values"]
+        )
+        lines.extend(["}", ""])
+    schema_names = {schema["id"]: schema["name"] for schema in value["schemas"]}
+    for schema in value["schemas"]:
+        lines.append(f"schema {schema['name']} = {schema['id']} {{")
+        for field in schema["fields"]:
+            optional = "optional " if field.get("optional", False) else ""
+            lines.append(f"    {optional}{field['type']} {field['name']} = {field['id']}")
+        lines.extend(["}", ""])
+    for rpc in value.get("rpcs", []):
+        request = schema_names[rpc["request"]] if rpc.get("request") else ""
+        response = f" -> {schema_names[rpc['response']]}" if rpc.get("response") else ""
+        lines.append(f"rpc {rpc['name']}({request}){response}")
+    for topic in value.get("topics", []):
+        lines.append(f"topic {topic['name']}({schema_names[topic['message']]})")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def run(command: list[str], *, expect_success: bool = True) -> subprocess.CompletedProcess[str]:
@@ -83,7 +110,7 @@ def main() -> int:
         }
         contract_path = source / "echo-contract.bmlapi"
         contract_path.write_text(
-            json.dumps(contract, indent=2) + "\n", encoding="utf-8"
+            render_bmlapi(contract), encoding="utf-8"
         )
         numeric_contract = {
             "api": "0",
@@ -97,7 +124,11 @@ def main() -> int:
         }
         numeric_contract_path = source / "numeric-contract.bmlapi"
         numeric_contract_path.write_text(
-            json.dumps(numeric_contract, indent=2) + "\n", encoding="utf-8"
+            render_bmlapi(numeric_contract), encoding="utf-8"
+        )
+        ping_contract_path = source / "ping-contract.bmlapi"
+        ping_contract_path.write_text(
+            "api example.ping 1.0\n\nrpc ping()\n", encoding="utf-8"
         )
         (source / "consumer.cpp").write_text(
             '#include "example_echo_imc.hpp"\n'
@@ -134,6 +165,12 @@ def main() -> int:
             '}\n',
             encoding="utf-8",
         )
+        (source / "ping_consumer.cpp").write_text(
+            '#include "example_ping_imc.hpp"\n'
+            'namespace Ping = BML::Imc::Generated::Example::Ping;\n'
+            'int consume_ping(Ping::Client &client) { return client.CallPing(0); }\n',
+            encoding="utf-8",
+        )
         (source / "CMakeLists.txt").write_text(
             "cmake_minimum_required(VERSION 3.14)\n"
             "project(ImcConsumer LANGUAGES CXX)\n"
@@ -144,7 +181,10 @@ def main() -> int:
             "bml_target_imc_api(consumer INPUT echo-contract.bmlapi API_ID example.echo)\n"
             "add_library(numeric_consumer STATIC numeric_consumer.cpp)\n"
             f'target_include_directories(numeric_consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
-            "bml_target_imc_api(numeric_consumer INPUT numeric-contract.bmlapi API_ID 0)\n",
+            "bml_target_imc_api(numeric_consumer INPUT numeric-contract.bmlapi API_ID 0)\n"
+            "add_library(ping_consumer STATIC ping_consumer.cpp)\n"
+            f'target_include_directories(ping_consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
+            "bml_target_imc_api(ping_consumer INPUT ping-contract.bmlapi API_ID example.ping)\n",
             encoding="utf-8",
         )
 
@@ -167,6 +207,9 @@ def main() -> int:
             raise AssertionError(
                 "CMake helper did not compile a contract with leading-digit names"
             )
+        ping_generated = build / "bml-imc" / "example_ping_imc.hpp"
+        if not ping_generated.exists():
+            raise AssertionError("CMake helper did not compile a schema-less RPC contract")
 
         missing_source = root / "missing-previous-source"
         missing_build = root / "missing-previous-build"
@@ -222,7 +265,7 @@ def main() -> int:
             )
 
         contract["api"] = "example.mismatch"
-        contract_path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        contract_path.write_text(render_bmlapi(contract), encoding="utf-8")
         mismatch = run([str(args.cmake), "--build", str(build), "--config", "Release"],
                        expect_success=False)
         expected_diagnostic = (
