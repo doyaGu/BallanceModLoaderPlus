@@ -12,61 +12,51 @@ compiler, and Python 3.10 or newer. New contracts define RPCs and Topics.
 Name the file after the API ID so the default generated filename is obvious:
 `api/example.echo.bmlapi`.
 
-```json
-{
-  "api": "example.echo",
-  "version": { "major": 1, "minor": 0 },
-  "enums": [
-    {
-      "name": "echo_mode",
-      "underlying": "int",
-      "values": [
-        { "name": "normal", "value": 0 },
-        { "name": "uppercase", "value": 1 }
-      ]
-    }
-  ],
-  "schemas": [
-    {
-      "id": 1,
-      "name": "echo_request",
-      "fields": [
-        { "id": 1, "name": "text", "type": "string", "optional": false },
-        { "id": 2, "name": "mode", "type": "enum<echo_mode>", "optional": false }
-      ]
-    },
-    {
-      "id": 2,
-      "name": "echo_reply",
-      "fields": [
-        { "id": 1, "name": "text", "type": "string", "optional": false }
-      ]
-    },
-    {
-      "id": 3,
-      "name": "changed_event",
-      "fields": [
-        { "id": 1, "name": "sequence", "type": "int", "optional": false },
-        { "id": 2, "name": "text", "type": "string", "optional": false }
-      ]
-    }
-  ],
-  "rpcs": [
-    { "name": "echo", "request": 1, "response": 2 }
-  ],
-  "topics": [
-    { "name": "changed", "message": 3 }
-  ]
+```text
+api example.echo 1.0
+
+enum echo_mode {
+    normal = 0
+    uppercase = 1
 }
+
+schema echo_request = 1 {
+    string text = 1
+    enum<echo_mode> mode = 2
+}
+
+schema echo_reply = 2 {
+    string text = 1
+}
+
+schema changed_event = 3 {
+    int sequence = 1
+    string text = 2
+}
+
+rpc echo(echo_request) -> echo_reply
+topic changed(changed_event)
 ```
+
+The file is a small IDL, not JSON. Whitespace separates declarations; commas
+and semicolons are optional. Both `# comment` and `// comment` are accepted.
+The numeric values after `=` are stable wire IDs, while RPCs and Topics refer
+to schemas by name. A zero-input RPC uses empty parentheses:
+`rpc state() -> runtime_state`. Add `optional` before a field type when evolving
+an existing schema: `optional string label = 3`.
+
+Omit `-> response` when the RPC only reports success or failure:
+`rpc clear_cache()`. The generated client returns the RPC status directly and
+does not allocate, register, encode, or decode an empty response payload.
 
 The native authoring surface maps directly to the runtime:
 
 | `.bmlapi` entry | Generated IMC surface |
 | --- | --- |
-| `rpcs[]` with `response` | zero-input `Call*` RPC |
-| `rpcs[]` with `request` and `response` | request/response `Call*` RPC |
-| `topics[]` with `message` | `Publish*`/`Subscribe*` Topic |
+| `rpc name() -> response` | zero-input `Call*` RPC |
+| `rpc name(request) -> response` | request/response `Call*` RPC |
+| `rpc name(request)` | response-less `Call*` RPC |
+| `topic name(message)` | `Publish*`/`Subscribe*` Topic |
 
 Model object lookup as an ordinary request schema containing an `object` field.
 Put query/command intent in the RPC name and payload types, not in a transport
@@ -85,12 +75,9 @@ unchanged. Codegen rejects punctuation-only names, empty API segments,
 non-canonical API IDs, and two names that collapse to the same generated
 identifier before the C++ compiler is invoked.
 
-Each JSON object also has a closed set of properties. Unknown or duplicate
-properties fail generation with the input path. This is intentional: a typo
-such as `optonal`, or two conflicting `optional` properties, must not silently
-turn an optional field into a required one. Keep prose or project-specific
-metadata outside the `.bmlapi` file unless the contract format explicitly adds
-a property for it.
+The grammar is closed: unknown declarations and malformed fields fail with the
+input path, line, and column. Keep prose or project-specific metadata in
+comments or outside the `.bmlapi` file.
 
 The IMC field vocabulary is:
 
@@ -108,8 +95,8 @@ Wide numeric arrays support `array<int64>`, `array<uint64>`, and
 `array<bytes>` shape. The CMake helper selects typed IMC generation
 automatically. Manual generation uses the same IMC-only generator.
 
-An enum declaration uses `underlying: "int"`, `"int64"`, or `"uint64"`;
-`int` is the default. Values must have unique names and numbers and fit the
+An enum may specify `: int`, `: int64`, or `: uint64`; `int` is the default.
+Values must have unique names and numbers and fit the
 selected width. A schema refers to it as `enum<echo_mode>`. Codegen emits
 `enum class EchoMode` and `IsKnownEchoMode()` but reuses the corresponding
 integer wire codec, so this adds no runtime registry, reflection, or wire tag.
@@ -126,39 +113,37 @@ fallback.
 
 ### Evolve a compatible minor
 
-For a same-major update, keep existing schemas, fields, and endpoints unchanged.
+For a same-major update, keep existing schemas, fields, RPCs, and Topics unchanged.
 New fields must be optional. Add the previous contract to `PREVIOUS`, increase
-the minor version, and list its generated `Hash` in `compatible_hashes`.
+the minor version, and declare the stable base hash with `wire`.
 
 The first compatible update needs only the base hash:
 
-```json
-{
-  "version": { "major": 1, "minor": 1 },
-  "compatible_hashes": ["0x0123456789ABCDEF"]
-}
+```text
+api example.echo 1.1
+wire 0x0123456789ABCDEF
+
+# enum/schema/rpc/topic declarations follow
 ```
 
-For later minors, keep that original hash first and append each supported
-descriptor hash, including the immediate predecessor:
+For later minors, keep the same `wire` hash and add each other supported
+descriptor hash with `accept`, including the immediate predecessor:
 
-```json
-{
-  "version": { "major": 1, "minor": 2 },
-  "compatible_hashes": [
-    "0x0123456789ABCDEF",
-    "0x89ABCDEF01234567"
-  ]
-}
+```text
+api example.echo 1.2
+wire 0x0123456789ABCDEF
+accept 0x89ABCDEF01234567
+
+# enum/schema/rpc/topic declarations follow
 ```
 
 Generated bindings expose both `Hash` (this exact contract) and `WireHash` (the
-stable hash written by compatible payloads). Keeping the base hash first lets
-old bindings read payloads from additive new providers, while new bindings still
-accept every listed predecessor. `--previous` rejects a missing predecessor,
-required new field, changed old field/endpoint/enum value, or a drifting first
+stable hash written by compatible payloads). `wire` states the hash written by
+the compatible family; each `accept` adds another descriptor hash that the new
+binding can read. `--previous` rejects a missing predecessor,
+required new field, changed old field/endpoint/enum value, or a drifting wire
 hash before C++ compilation. Adding a new enum value is append-only and remains
-compatible under the same hash-list rules.
+compatible under the same `wire`/`accept` rules.
 
 ## 2. Generate from CMake
 
@@ -236,6 +221,11 @@ void StopEchoProvider() {
     (void)g_EchoProvider.Close();
 }
 ```
+
+For a response-less declaration such as `rpc clear_cache()`, the handler is
+simply `int ClearCache(void *userdata)` and the client call is
+`client.CallClearCache()`. With a request, the handler receives
+`const RequestValue &` before `userdata`; neither form receives a dummy output.
 
 Use caller-thread execution only for short, thread-safe code. A handler that
 touches Virtools, BML UI, or other game-thread state must use
