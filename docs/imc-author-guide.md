@@ -5,12 +5,12 @@ mod. Read [Inter-mod communication](imc.md) first for the transport, threading,
 compatibility, and lifetime model.
 
 The examples require an installed BML+ SDK, CMake 3.14 or newer, a C++20
-compiler, and Python 3.10 or newer. New contracts define RPCs and Topics.
+compiler, and Python 3.10 or newer. New interfaces define RPCs and Topics.
 
-## 1. Write the contract
+## 1. Write the interface
 
 Name the file after the API ID so the default generated filename is obvious:
-`api/example.echo.bmlapi`.
+`api/example.echo.imc`.
 
 ```text
 api example.echo 1.0
@@ -20,30 +20,33 @@ enum echo_mode {
     uppercase = 1
 }
 
-schema echo_request = 1 {
-    string text = 1
-    enum<echo_mode> mode = 2
-}
-
-schema echo_reply = 2 {
-    string text = 1
-}
-
-schema changed_event = 3 {
-    int sequence = 1
-    string text = 2
-}
-
-rpc echo(echo_request) -> echo_reply
-topic changed(changed_event)
+rpc echo(string text, enum<echo_mode> mode) -> (string text)
+topic changed(int sequence, string text)
 ```
 
 The file is a small IDL, not JSON. Whitespace separates declarations; commas
 and semicolons are optional. Both `# comment` and `// comment` are accepted.
-The numeric values after `=` are stable wire IDs, while RPCs and Topics refer
-to schemas by name. A zero-input RPC uses empty parentheses:
-`rpc state() -> runtime_state`. Add `optional` before a field type when evolving
-an existing schema: `optional string label = 3`.
+Only enum values need explicit numbers. Field IDs are assigned by
+the generator and frozen in the adjacent `example.echo.imc.lock`. Do not
+write transport bookkeeping in the source interface.
+
+Inline request, response, and Topic payloads are preferred when used by one
+endpoint. The generator names the corresponding value types `EchoRequestValue`,
+`EchoReplyValue`, and `ChangedEventValue`. Use a named record when several
+endpoints share a payload:
+
+```text
+record object_query {
+    object target
+    optional string label
+}
+
+rpc inspect(object_query) -> (string description)
+```
+
+A zero-input RPC uses empty parentheses: `rpc state() -> runtime_state`.
+Add `optional` before a field type when evolving an existing record:
+`optional string label`.
 
 Omit `-> response` when the RPC only reports success or failure:
 `rpc clear_cache()`. The generated client returns the RPC status directly and
@@ -51,37 +54,37 @@ does not allocate, register, encode, or decode an empty response payload.
 
 The native authoring surface maps directly to the runtime:
 
-| `.bmlapi` entry | Generated IMC surface |
+| `.imc` entry | Generated IMC surface |
 | --- | --- |
 | `rpc name() -> response` | zero-input `Call*` RPC |
 | `rpc name(request) -> response` | request/response `Call*` RPC |
 | `rpc name(request)` | response-less `Call*` RPC |
 | `topic name(message)` | `Publish*`/`Subscribe*` Topic |
 
-Model object lookup as an ordinary request schema containing an `object` field.
+Model object lookup as an ordinary request record containing an `object` field.
 Put query/command intent in the RPC name and payload types, not in a transport
-kind. One schema can contain at most 64 fields; the generator reports this
-limit at generation time rather than emitting an incomplete codec.
+kind. One record can consume at most 64 permanent field IDs; the generator
+reports this limit at generation time rather than emitting an incomplete codec.
 
-Enum, schema, field, enum-value, RPC, and Topic names may use ASCII letters,
+Enum, record, field, enum-value, RPC, and Topic names may use ASCII letters,
 digits, `_`, `-`, and `.` and must contain at least one letter or digit. API IDs
 use a stricter canonical form: non-empty dot-separated segments containing only
 lowercase ASCII letters and digits. This makes both the generated filename and
 C++ namespace unambiguous across independently generated APIs.
 
 Names beginning with a digit are supported: generated C++ identifiers receive
-a leading `_`, while the original contract name, route, and descriptor hash are
-unchanged. Codegen rejects punctuation-only names, empty API segments,
+a leading `_`, while the original interface name and route are unchanged.
+Codegen rejects punctuation-only names, empty API segments,
 non-canonical API IDs, and two names that collapse to the same generated
 identifier before the C++ compiler is invoked.
 
 The grammar is closed: unknown declarations and malformed fields fail with the
 input path, line, and column. Keep prose or project-specific metadata in
-comments or outside the `.bmlapi` file.
+comments or outside the `.imc` file.
 
 The IMC field vocabulary is:
 
-| Contract type | Generated C++ type |
+| Interface type | Generated C++ type |
 | --- | --- |
 | `bool`, `int`, `float` | `bool`, 32-bit `int`, `float` |
 | `int64`, `uint64`, `double` | `std::int64_t`, `std::uint64_t`, `double` |
@@ -97,53 +100,43 @@ automatically. Manual generation uses the same IMC-only generator.
 
 An enum may specify `: int`, `: int64`, or `: uint64`; `int` is the default.
 Values must have unique names and numbers and fit the
-selected width. A schema refers to it as `enum<echo_mode>`. Codegen emits
+selected width. A record refers to it as `enum<echo_mode>`. Codegen emits
 `enum class EchoMode` and `IsKnownEchoMode()` but reuses the corresponding
 integer wire codec, so this adds no runtime registry, reflection, or wire tag.
 Only scalar enum fields are supported; use a numeric array with an API-owned
-conversion helper if a concrete contract needs repeated enum values.
+conversion helper if a concrete interface needs repeated enum values.
 
 Decoding deliberately preserves an unrecognized underlying number instead of
 failing the message. Check `IsKnownEchoMode(value)` before switching when the
 sender may be newer. A compatible minor may add named values. It may not remove,
 rename, or renumber an existing value, change the underlying type, or introduce
-a numeric alias; `--previous` validates these rules. This lets an older binding
-receive a newly added value, retain its number, and choose an API-specific
-fallback.
+a numeric alias. The interface lock validates these rules. This lets an older
+binding receive a newly added value, retain its number, and choose an
+API-specific fallback.
 
 ### Evolve a compatible minor
 
-For a same-major update, keep existing schemas, fields, RPCs, and Topics unchanged.
-New fields must be optional. Add the previous contract to `PREVIOUS`, increase
-the minor version, and declare the stable base hash with `wire`.
-
-The first compatible update needs only the base hash:
+For a same-major update, keep existing records, fields, RPCs, and Topics
+unchanged. New fields must be optional. Increase the minor version, edit the
+source, then explicitly update the interface lock:
 
 ```text
-api example.echo 1.1
-wire 0x0123456789ABCDEF
-
-# enum/schema/rpc/topic declarations follow
+python imc_codegen.py --update-lock \
+  --input api/example.echo.imc \
+  --out-dir generated
 ```
 
-For later minors, keep the same `wire` hash and add each other supported
-descriptor hash with `accept`, including the immediate predecessor:
+The adjacent `.imc.lock` file owns permanent field IDs. It also keeps tombstones
+for removed optional fields, so an old ID can never be reused by
+accident. Declaration reordering does not change those IDs. The update rejects
+a required new field, changed old field or endpoint, removed required field,
+changed enum value, or a structural edit without a minor-version increase.
 
-```text
-api example.echo 1.2
-wire 0x0123456789ABCDEF
-accept 0x89ABCDEF01234567
-
-# enum/schema/rpc/topic declarations follow
-```
-
-Generated bindings expose both `Hash` (this exact contract) and `WireHash` (the
-stable hash written by compatible payloads). `wire` states the hash written by
-the compatible family; each `accept` adds another descriptor hash that the new
-binding can read. `--previous` rejects a missing predecessor,
-required new field, changed old field/endpoint/enum value, or a drifting wire
-hash before C++ compilation. Adding a new enum value is append-only and remains
-compatible under the same `wire`/`accept` rules.
+Commit `.imc` and `.imc.lock` together. Treat `.imc.lock` like a lock file:
+review its diff, but do not edit it by hand. Ordinary generation and `--check`
+never modify the lock; they fail with an actionable command when it is
+missing or stale. Increase the major version for an intentional clean break;
+that starts a new ID space.
 
 ## 2. Generate from CMake
 
@@ -151,7 +144,8 @@ The installed BML package includes the generator and
 `bml_target_imc_api()`. The helper adds the generated
 header to the target, adds its build directory to the include path, and applies
 the required C++20 compile feature. It requires Python 3.10 or newer during
-configuration, matching the installed generator.
+configuration, matching the installed generator. The source interface must have
+an adjacent, committed `.imc.lock`.
 
 ```cmake
 find_package(BML REQUIRED)
@@ -160,33 +154,32 @@ add_library(EchoMod SHARED EchoMod.cpp)
 target_link_libraries(EchoMod PRIVATE BML)
 
 bml_target_imc_api(EchoMod
-    INPUT "${CMAKE_CURRENT_SOURCE_DIR}/api/example.echo.bmlapi"
+    INPUT "${CMAKE_CURRENT_SOURCE_DIR}/api/example.echo.imc"
 )
 ```
 
 The default output is
 `${CMAKE_CURRENT_BINARY_DIR}/bml-imc/example_echo_imc.hpp`. By default the
-`.bmlapi` filename must equal the contract's `api`; when it does not, pass
+`.imc` filename must equal the interface's `api`; when it does not, pass
 `API_ID example.echo`. The helper passes that expected identity to codegen, so
 a typo now reports both IDs and the input path instead of surfacing later as a
 missing generated header. `OUTPUT_DIR` can override the generated directory.
-`PREVIOUS old.bmlapi` enables append-only compatibility and stable-wire-hash
-checks; a missing predecessor fails during CMake configuration.
 
 For a manual or committed-output workflow, the package exposes the
 `BML_IMC_CODEGEN` path:
 
 ```text
 python imc_codegen.py \
-  --input api/example.echo.bmlapi \
+  --input api/example.echo.imc \
   --expected-api-id example.echo \
   --out-dir generated
 ```
 
 `--expected-api-id` is optional outside the CMake helper but useful in scripts
 that predict the output filename. Add `--check` in CI to fail when a committed
-generated header is stale. Parse and validation errors include the responsible
-input path, including when several contracts are generated together.
+generated header or interface lock is stale. Use `--update-lock` only in the
+author-controlled interface update step. Parse and validation errors include the
+responsible input path, including when several interfaces are generated together.
 
 ## 3. Implement the provider
 
@@ -329,7 +322,8 @@ All generated methods return BML status codes. Log both the code and
 `BML_GetErrorString(status)`. The common integration failures are:
 
 - `BML_ERROR_IMC_ENDPOINT_NOT_FOUND`: no provider registered that RPC route;
-- `BML_ERROR_IMC_API_MISMATCH`: payload descriptor is incompatible;
+- `BML_ERROR_IMC_API_MISMATCH`: the received payload type does not match the
+  generated endpoint;
 - `BML_ERROR_WRONG_THREAD`: a pending future was synchronously waited on the
   game thread;
 - `BML_ERROR_WOULD_BLOCK`: a bounded queue using FAIL backpressure is full;
@@ -344,9 +338,10 @@ not the normal lifecycle mechanism.
 
 Before publishing an API:
 
-- verify that the API, schema, field, RPC, Topic, and enum identities are final;
+- verify that the API, record, field, RPC, Topic, and enum identities are final;
+- commit the generated `.imc.lock` beside its `.imc` source;
 - run generation with `--check` in CI when generated headers are committed;
-- pass the last released contract through `PREVIOUS` for a compatible minor;
+- inspect the interface-lock diff for a compatible minor;
 - use game-thread execution for every callback that touches Virtools or BML UI;
 - choose explicit RPC timeouts and Topic queue/backpressure settings;
 - test provider unload while clients, futures, and subscriptions exist;

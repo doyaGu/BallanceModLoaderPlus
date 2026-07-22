@@ -9,7 +9,7 @@ loader-provided services. It provides two operations:
 Use IMC when two independently built native modules need a stable API without
 sharing C++ objects, STL containers, allocators, or Virtools pointers.
 
-For a complete contract, provider, client, and Topic example, see
+For a complete interface, provider, client, and Topic example, see
 [Create a typed IMC API](imc-author-guide.md).
 
 ## Programming model
@@ -31,11 +31,12 @@ lifetime, and failure handling consistent across APIs.
 
 ## Recommended workflow
 
-1. Define schemas, RPCs, and Topics in a versioned `.bmlapi` contract.
-2. Add the contract to a CMake target with `bml_target_imc_api()`.
-3. Implement the generated `Provider` callbacks.
-4. Call the API through the generated `Client`.
-5. Keep providers, clients, subscriptions, futures, and callback data alive
+1. Define records, RPCs, and Topics in a versioned `.imc` interface.
+2. Generate and commit its adjacent `.imc.lock` once with `--update-lock`.
+3. Add the interface to a CMake target with `bml_target_imc_api()`.
+4. Implement the generated `Provider` callbacks.
+5. Call the API through the generated `Client`.
+6. Keep providers, clients, subscriptions, futures, and callback data alive
    until their corresponding close or release operation succeeds.
 
 Generated bindings are the normal API surface. They encode and validate
@@ -59,32 +60,38 @@ RTTI objects, and allocator-owned values never cross the module boundary.
 `BML/ImcWire.hpp` defines the little-endian field encoding used by generated
 bindings. A callback may borrow the bytes in a `BML_ImcMessage` only for the
 duration of that callback. Generated decoders copy strings, arrays, and blobs
-into their typed result values.
+into their typed result values. The message already carries its payload type,
+so the payload does not repeat a schema ID or descriptor hash. Each field uses
+a Protobuf-style varint tag that combines its permanent ID and physical wire
+kind. Fixed-width scalars carry no redundant length; only strings, composite
+values, and packed arrays are length-delimited.
 
-## Contract identity and compatibility
+## Interface identity and compatibility
 
 An API ID uses lowercase alphanumeric dot-separated segments, such as
 `example.echo`. The generated header for that ID is
 `example_echo_imc.hpp`, and its C++ namespace is
 `BML::Imc::Generated::Example::Echo`.
 
-Schema IDs and field IDs are part of the wire contract. Once released:
+Authors do not write field numbers in `.imc`. The generator assigns permanent
+field IDs in the adjacent `.imc.lock`, which is committed beside the
+source interface. Once released:
 
-- do not reuse or renumber an existing schema or field ID;
 - do not change an existing field's type or required/optional status;
 - add new fields as optional fields;
-- preserve existing RPC and Topic names and payload schemas;
+- preserve existing RPC and Topic names and payload records;
 - preserve existing enum names, numeric values, and underlying types.
 
-For a compatible minor release, pass the previous contract with `PREVIOUS`.
-The generator checks append-only evolution and the compatible hash chain before
-compilation. Unknown fields are skipped, and unknown enum numbers are preserved
-so API-specific code can choose a fallback.
+For a compatible minor release, increase the interface minor version and run the
+generator once with `--update-lock`. It checks evolution against the lock,
+preserves assigned IDs, and reserves IDs of removed optional fields. Normal
+builds only verify the lock. Unknown fields are skipped, and unknown enum
+numbers are preserved so API-specific code can choose a fallback.
 
-Increase the contract's major version when a change cannot follow those rules.
+Increase the interface's major version when a change cannot follow those rules.
 Do not rely on runtime route IDs for compatibility: route IDs are process-local
-cache keys, while the contract and payload descriptor hashes define
-compatibility.
+cache keys. The API ID, major version, endpoint payload kind, and frozen field
+layout define the interoperable interface.
 
 ## RPC execution and waiting
 
@@ -155,7 +162,7 @@ BML+'s public typed facades use IMC internally:
 | `BML::Events` | Typed event Topic |
 
 Use those facades directly when they already cover the required operation.
-Create a new contract only for a capability owned by your mod.
+Create a new interface only for a capability owned by your mod.
 
 ## Performance characteristics
 
@@ -166,7 +173,7 @@ has a zero-subscriber fast path.
 
 These optimizations do not relax the public rules: callback code still needs a
 clear execution mode, queues still need a backpressure policy, and payloads
-still need stable schemas. Release tests enforce latency and throughput floors
+still need stable records. Release tests enforce latency and throughput floors
 for direct RPC and caller-thread Topic delivery.
 
 ## Clean-break boundary
