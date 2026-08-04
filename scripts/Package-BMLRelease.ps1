@@ -51,18 +51,6 @@ function Copy-RequiredFile {
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
-function Copy-DocumentationFiles {
-    param(
-        [string]$DestinationDir,
-        [string[]]$Files
-    )
-
-    New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
-    foreach ($file in $Files) {
-        Copy-RequiredFile -Source (Join-Path $layout.DocsRoot $file) -Destination (Join-Path $DestinationDir $file)
-    }
-}
-
 function Write-RequiredAngelScriptReadme {
     param([string]$DestinationDir)
 
@@ -146,8 +134,12 @@ function Assert-BMLSdkStage {
         'lib\cmake\BML\BMLImc.cmake',
         'lib\cmake\BML\FindVirtoolsSDK.cmake',
         'share\BML\tools\imc_codegen.py',
-        'share\BML\docs\native-mod-api.md',
-        'share\BML\docs\imc.md',
+        'share\BML\docs\en\native-mod-api.md',
+        'share\BML\docs\en\imc-author-guide.md',
+        'share\BML\docs\en\imc.md',
+        'share\BML\docs\zh-CN\native-mod-api.md',
+        'share\BML\docs\zh-CN\imc-author-guide.md',
+        'share\BML\docs\zh-CN\imc.md',
         'templates\native-mod-template\CMakeLists.txt'
     )) {
         Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
@@ -158,7 +150,9 @@ function Assert-BMLSdkStage {
             'include\CKAngelScript.h',
             'include\angelscript.h',
             'templates\script-mod-template\HelloScript.mod.as',
-            'scripts\Pack-BMLScriptMod.ps1'
+            'scripts\Pack-BMLScriptMod.ps1',
+            'docs\en\scripting\bml-script-mod-author-guide.md',
+            'docs\en\scripting\bml-script-mod-api.as'
         )) {
             Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
         }
@@ -434,11 +428,8 @@ if ($IncludeAngelScript -and -not $ckasRuntime) {
     throw '-IncludeAngelScript requires -CKAngelScriptRuntimeDir.'
 }
 
-$scriptDocs = @(
-    'bml-script-mod-author-guide.md',
-    'bml-script-mod-api.as'
-)
-$scriptSdkDocs = $scriptDocs
+$scriptAuthorGuide = Join-Path $layout.DocsRoot 'bml-script-mod-author-guide.md'
+$scriptApiStub = Join-Path $layout.DocsRoot 'zh-CN\bml-script-mod-api.as'
 $nativeTemplate = Join-Path $layout.TemplatesRoot 'native-mod-template'
 $scriptTemplate = Join-Path $layout.TemplatesRoot 'script-mod-template'
 
@@ -489,8 +480,8 @@ Assert-BMLBinaryVersionMatchesHeader `
 
 if ($IncludeAngelScript) {
     Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Type Leaf
-    foreach ($doc in $scriptSdkDocs) {
-        Assert-BMLPath -Path (Join-Path $layout.DocsRoot $doc) -Type Leaf
+    foreach ($doc in @($scriptAuthorGuide, $scriptApiStub)) {
+        Assert-BMLPath -Path $doc -Type Leaf
     }
     Assert-BMLPath -Path $scriptTemplate -Type Container
     if ($ckasRuntime) {
@@ -556,7 +547,8 @@ Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path 
 if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
     Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\script-mod-template')
-    Copy-DocumentationFiles -DestinationDir (Join-Path $releaseSdkStage 'docs\scripting') -Files $scriptSdkDocs
+    Copy-RequiredFile -Source $scriptAuthorGuide -Destination (Join-Path $releaseSdkStage 'docs\en\scripting\bml-script-mod-author-guide.md')
+    Copy-RequiredFile -Source $scriptApiStub -Destination (Join-Path $releaseSdkStage 'docs\en\scripting\bml-script-mod-api.as')
     Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\Pack-BMLScriptMod.ps1')
     Copy-BMLDirectoryContents -SourceDir (Join-Path $layout.ScriptsRoot 'lib') -DestinationDir (Join-Path $releaseSdkStage 'scripts\lib')
 }

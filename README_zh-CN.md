@@ -232,7 +232,7 @@ bml_add_mod(MyMod MyMod.cpp)
 `bml_add_mod` 会链接 `BML::BML`、启用 C++20，并直接生成 `MyMod.bmodp`。
 开箱即用模板：见 [templates/native-mod-template](templates/native-mod-template)（包含 CMake、BMLEntry/BMLExit 与示例命令）。
 
-类型化跨 Mod RPC/Topic 请从 [IMC 概览](docs/imc.md) 和 [接口编写指南](docs/imc-author-guide.md) 开始；[原生 API 总览](docs/native-mod-api.md) 说明已安装头文件的用途与三种 UI 接口的区别。
+类型化跨 Mod RPC/Topic 请从 [IMC 概览](docs/zh-CN/imc.md) 和 [接口编写指南](docs/zh-CN/imc-author-guide.md) 开始；[原生 API 总览](docs/zh-CN/native-mod-api.md) 说明已安装头文件的用途与三种 UI 接口的区别。
 
 ## API 参考
 
@@ -257,7 +257,7 @@ bml_add_mod(MyMod MyMod.cpp)
 
 原生 Mod 通过重写 `IMod` 和 `IMessageReceiver` 接收生命周期与玩法回调，包括菜单与关卡切换、死亡/检查点/生命事件、对象与脚本加载、物理化/反物理化、配置修改、命令执行前后、作弊状态、逐 Tick 处理，以及单个 `OnRender(CK_RENDER_FLAGS)` 回调。不需要继承 `IMod` 的消费者可以订阅内置 `BML::Events::Stream` IMC Topic。
 
-详细的 API 文档请参见[原生 API 总览](docs/native-mod-api.md)和 BML SDK 安装的头文件。
+详细的 API 文档请参见[原生 API 总览](docs/zh-CN/native-mod-api.md)和 BML SDK 安装的头文件。
 
 ## 故障排除
 

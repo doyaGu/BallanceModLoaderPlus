@@ -461,9 +461,16 @@ install(FILES
         DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/tools"
 )
 
-install(FILES
-        "${PROJECT_SOURCE_DIR}/docs/native-mod-api.md"
-        "${PROJECT_SOURCE_DIR}/docs/imc-author-guide.md"
-        "${PROJECT_SOURCE_DIR}/docs/imc.md"
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs"
-)
+  install(FILES
+          "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
+          "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
+          "${PROJECT_SOURCE_DIR}/docs/en/imc.md"
+          DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/en"
+  )
+
+  install(FILES
+          "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-mod-api.md"
+          "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc-author-guide.md"
+          "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc.md"
+          DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/zh-CN"
+  )

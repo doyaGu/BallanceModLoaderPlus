@@ -225,10 +225,10 @@ Quick start template: see [templates/native-mod-template](templates/native-mod-t
 
 For a typed cross-mod RPC or Topic, the installed SDK also provides
 `bml_target_imc_api()` and the IMC code generator. Start with the
-[IMC overview](docs/imc.md), then follow the
-[API authoring guide](docs/imc-author-guide.md) for a complete interface
+[IMC overview](docs/en/imc.md), then follow the
+[API authoring guide](docs/en/imc-author-guide.md) for a complete interface
 definition, provider, client, and Topic example.
-The [native API overview](docs/native-mod-api.md) maps the installed headers to
+The [native API overview](docs/en/native-mod-api.md) maps the installed headers to
 their intended use and explains the three UI surfaces.
 
 ## API Reference
@@ -259,7 +259,7 @@ changes, command pre/post hooks, cheat changes, per-tick processing, and one
 `OnRender(CK_RENDER_FLAGS)` callback. Consumers that do not need to inherit
 `IMod` can subscribe to the built-in `BML::Events::Stream` IMC Topic.
 
-For detailed API documentation, see the [native API overview](docs/native-mod-api.md)
+For detailed API documentation, see the [native API overview](docs/en/native-mod-api.md)
 and the headers installed by the BML SDK.
 
 ## Troubleshooting
