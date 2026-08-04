@@ -148,7 +148,7 @@ configuration, matching the installed generator. The source interface must have
 an adjacent, committed `.imc.lock`.
 
 ```cmake
-find_package(BML REQUIRED)
+find_package(BML CONFIG REQUIRED)
 
 bml_add_mod(EchoMod EchoMod.cpp)
 
