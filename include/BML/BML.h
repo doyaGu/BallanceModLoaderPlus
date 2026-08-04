@@ -18,6 +18,7 @@ BML_EXPORT void BML_Free(void *ptr);
 BML_EXPORT void BML_FreeString(char *str);
 BML_EXPORT void BML_FreeWString(wchar_t *wstr);
 BML_EXPORT void BML_FreeStringArray(char **strings, size_t count);
+BML_EXPORT void BML_FreeWStringArray(wchar_t **strings, size_t count);
 
 BML_EXPORT char *BML_Strdup(const char *str);
 

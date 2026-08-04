@@ -169,6 +169,14 @@ void BML_FreeStringArray(char **strings, size_t count) {
     free(strings);
 }
 
+void BML_FreeWStringArray(wchar_t **strings, size_t count) {
+    if (!strings) return;
+    for (size_t i = 0; i < count; ++i) {
+        free(strings[i]);
+    }
+    free(strings);
+}
+
 char *BML_Strdup(const char *str) {
     if (!str)
         return nullptr;

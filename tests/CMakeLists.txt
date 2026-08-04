@@ -59,6 +59,10 @@ add_library(ImcCAbiCompile OBJECT ImcCAbiCompile.c)
 target_include_directories(ImcCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(ImcCAbiCompile PROPERTIES FOLDER "Tests")
 
+add_library(BmlCAbiCompile OBJECT BmlCAbiCompile.c)
+target_include_directories(BmlCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
+set_target_properties(BmlCAbiCompile PROPERTIES FOLDER "Tests")
+
 # Keep the IMC generator and its compatibility rules executable.
 add_test(
         NAME ImcCodegenTest
