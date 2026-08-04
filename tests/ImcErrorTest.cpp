@@ -8,7 +8,7 @@ TEST(ImcErrorTest, ReturnsImcErrorStrings) {
     EXPECT_STREQ(BML_GetErrorString(BML_ERROR_IMC_UNSUPPORTED),
                  "IMC operation is unsupported by the current runtime");
     EXPECT_STREQ(BML_GetErrorString(BML_ERROR_IMC_API_MISMATCH),
-                 "IMC payload contract is incompatible");
+                 "IMC payload type or layout is incompatible");
     EXPECT_STREQ(BML_GetErrorString(BML_ERROR_IMC_PROVIDER_UNLOADED), "IMC provider was unloaded");
     EXPECT_STREQ(BML_GetErrorString(BML_ERROR_IMC_OBJECT_INVALID),
                  "IMC object reference is invalid or expired");

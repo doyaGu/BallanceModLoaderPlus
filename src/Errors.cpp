@@ -109,7 +109,7 @@ const char *BML_GetErrorString(int errorCode) {
         case BML_ERROR_IMC_UNSUPPORTED:
             return "IMC operation is unsupported by the current runtime";
         case BML_ERROR_IMC_API_MISMATCH:
-            return "IMC payload contract is incompatible";
+            return "IMC payload type or layout is incompatible";
         case BML_ERROR_IMC_PROVIDER_UNLOADED:
             return "IMC provider was unloaded";
         case BML_ERROR_IMC_OBJECT_INVALID:

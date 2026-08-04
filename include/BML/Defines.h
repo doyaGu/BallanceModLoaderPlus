@@ -142,7 +142,7 @@
 #define BML_ERROR_IMC_ENDPOINT_NOT_FOUND       (-702) /**< Requested IMC route was not found */
 #define BML_ERROR_IMC_HANDLE_STALE             (-709) /**< IMC-owned handle is stale */
 #define BML_ERROR_IMC_UNSUPPORTED              (-710) /**< Operation requires an unavailable IMC feature */
-#define BML_ERROR_IMC_API_MISMATCH             (-712) /**< IMC payload contract is incompatible */
+#define BML_ERROR_IMC_API_MISMATCH             (-712) /**< IMC payload type or layout is incompatible */
 #define BML_ERROR_IMC_PROVIDER_UNLOADED        (-713) /**< IMC provider was unloaded during an operation */
 #define BML_ERROR_IMC_OBJECT_INVALID           (-717) /**< IMC object reference is invalid or expired */
 #define BML_ERROR_IMC_SCHEMA_MISMATCH          (-718) /**< IMC payload schema does not match the route */
