@@ -1,13 +1,16 @@
 #ifndef BMLALL_H
 #define BMLALL_H
 
+#include "BML/Version.h"
 #include "BML/Defines.h"
+#include "BML/BML.h"
 #include "BML/Guids.h"
 
 #include "BML/IBML.h"
 #include "BML/ILogger.h"
 #include "BML/ICommand.h"
 #include "BML/IConfig.h"
+#include "BML/IMessageReceiver.h"
 #include "BML/IMod.h"
 #include "BML/DataShare.h"
 #include "BML/Imc.h"
@@ -22,6 +25,7 @@
 #include "BML/UI.h"
 #include "BML/Events.h"
 
+#include "BML/Bui.h"
 #include "BML/Gui.h"
 #include "BML/InputHook.h"
 #include "BML/ExecuteBB.h"

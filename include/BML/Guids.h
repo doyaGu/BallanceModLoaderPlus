@@ -7,6 +7,7 @@
 #include "BML/Guids/Collisions.h"
 #include "BML/Guids/Controllers.h"
 #include "BML/Guids/Grids.h"
+#include "BML/Guids/Hooks.h"
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/Lights.h"
 #include "BML/Guids/Logics.h"

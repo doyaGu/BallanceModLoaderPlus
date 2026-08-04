@@ -61,6 +61,43 @@ add_custom_target(BML_ImcApiGeneration
 
 add_subdirectory(Utils)
 
+set(BML_PUBLIC_GUI_HEADERS
+        ${BML_INCLUDE_DIR}/BML/Gui/Element.h
+        ${BML_INCLUDE_DIR}/BML/Gui/Text.h
+        ${BML_INCLUDE_DIR}/BML/Gui/Panel.h
+        ${BML_INCLUDE_DIR}/BML/Gui/Label.h
+        ${BML_INCLUDE_DIR}/BML/Gui/Button.h
+        ${BML_INCLUDE_DIR}/BML/Gui/Input.h
+        ${BML_INCLUDE_DIR}/BML/Gui/KeyInput.h
+        ${BML_INCLUDE_DIR}/BML/Gui/Gui.h
+)
+
+set(BML_PUBLIC_GUID_HEADERS
+        ${BML_INCLUDE_DIR}/BML/Guids/3DTransfo.h
+        ${BML_INCLUDE_DIR}/BML/Guids/BuildingBlocksAddons1.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Cameras.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Collisions.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Controllers.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Grids.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Hooks.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Interface.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Lights.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Logics.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Materials.h
+        ${BML_INCLUDE_DIR}/BML/Guids/MeshModifiers.h
+        ${BML_INCLUDE_DIR}/BML/Guids/MidiManager.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Narratives.h
+        ${BML_INCLUDE_DIR}/BML/Guids/physics_RT.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Sounds.h
+        ${BML_INCLUDE_DIR}/BML/Guids/TT_DatabaseManager_RT.h
+        ${BML_INCLUDE_DIR}/BML/Guids/TT_Gravity_RT.h
+        ${BML_INCLUDE_DIR}/BML/Guids/TT_InterfaceManager_RT.h
+        ${BML_INCLUDE_DIR}/BML/Guids/TT_ParticleSystems_RT.h
+        ${BML_INCLUDE_DIR}/BML/Guids/TT_Toolbox_RT.h
+        ${BML_INCLUDE_DIR}/BML/Guids/Visuals.h
+        ${BML_INCLUDE_DIR}/BML/Guids/WorldEnvironments.h
+)
+
 set(BML_PUBLIC_HEADERS
         ${BML_VERSION_HEADER}
         ${BML_INCLUDE_DIR}/BML/Defines.h
@@ -92,10 +129,13 @@ set(BML_PUBLIC_HEADERS
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
+        ${BML_PUBLIC_GUI_HEADERS}
         ${BML_INCLUDE_DIR}/BML/InputHook.h
 
         ${BML_INCLUDE_DIR}/BML/ExecuteBB.h
         ${BML_INCLUDE_DIR}/BML/ScriptHelper.h
+        ${BML_INCLUDE_DIR}/BML/Guids.h
+        ${BML_PUBLIC_GUID_HEADERS}
 
         ${BML_INCLUDE_DIR}/BML/BMLAll.h
 )
@@ -369,12 +409,15 @@ install(TARGETS BML
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-        FILE_SET HEADERS DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
 
-install(DIRECTORY "${BML_INCLUDE_DIR}/BML"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-)
+foreach (BML_PUBLIC_HEADER IN LISTS BML_PUBLIC_HEADERS)
+    file(RELATIVE_PATH BML_PUBLIC_HEADER_RELATIVE "${BML_INCLUDE_DIR}" "${BML_PUBLIC_HEADER}")
+    get_filename_component(BML_PUBLIC_HEADER_DIRECTORY "${BML_PUBLIC_HEADER_RELATIVE}" DIRECTORY)
+    install(FILES "${BML_PUBLIC_HEADER}"
+            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${BML_PUBLIC_HEADER_DIRECTORY}"
+    )
+endforeach ()
 
 install(FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/imconfig.h"
