@@ -560,7 +560,7 @@ $debugStage = Join-Path $stageRoot 'sdk-debug'
 New-BMLCleanDirectory $debugStage
 Copy-BMLDirectoryContents -SourceDir $debugInstall -DestinationDir $debugStage
 Copy-RequiredFile -Source (Join-Path $debugBin 'BMLPlus.pdb') -Destination (Join-Path $debugStage 'bin\BMLPlus.pdb')
-foreach ($directory in @('docs', 'tools', 'examples', 'templates')) {
+foreach ($directory in @('docs', 'tools', 'examples', 'templates', 'scripts')) {
     $source = Join-Path $releaseSdkStage $directory
     if (Test-Path -LiteralPath $source) {
         Copy-BMLDirectoryContents -SourceDir $source -DestinationDir (Join-Path $debugStage $directory)
