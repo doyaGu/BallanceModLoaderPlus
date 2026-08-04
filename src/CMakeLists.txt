@@ -431,6 +431,7 @@ install(FILES
 )
 
 install(EXPORT BMLTargets
+        NAMESPACE BML::
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )
 
@@ -449,7 +450,9 @@ write_basic_package_version_file(
 install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/FindVirtoolsSDK.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
 )
 

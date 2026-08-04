@@ -150,8 +150,7 @@ an adjacent, committed `.imc.lock`.
 ```cmake
 find_package(BML REQUIRED)
 
-add_library(EchoMod SHARED EchoMod.cpp)
-target_link_libraries(EchoMod PRIVATE BML)
+bml_add_mod(EchoMod EchoMod.cpp)
 
 bml_target_imc_api(EchoMod
     INPUT "${CMAKE_CURRENT_SOURCE_DIR}/api/example.echo.imc"

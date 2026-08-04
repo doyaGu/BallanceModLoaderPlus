@@ -1,9 +1,14 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
+set(_BML_SAVED_CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}")
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR};${CMAKE_MODULE_PATH}")
 find_dependency(VirtoolsSDK)
+set(CMAKE_MODULE_PATH "${_BML_SAVED_CMAKE_MODULE_PATH}")
+unset(_BML_SAVED_CMAKE_MODULE_PATH)
 
 include("${CMAKE_CURRENT_LIST_DIR}/BMLTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/BMLMod.cmake")
 
 set_and_check(BML_IMC_CODEGEN
               "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/BML/tools/imc_codegen.py")
