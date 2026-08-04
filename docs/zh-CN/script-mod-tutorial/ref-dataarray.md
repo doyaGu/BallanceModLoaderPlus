@@ -22,7 +22,7 @@ bool BML::CK::SetFloat(CKDataArray@ table, int row, int col, float value);
 bool BML::CK::SetBool(CKDataArray@ table, int row, int col, bool value);
 ```
 
-Returns true on success. Fails if: table null, row/col out of range, type mismatch.
+成功时返回 `true`。表为空、行列越界或类型不匹配时返回失败。
 
 ## 安全读取模板
 

@@ -42,5 +42,5 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 
 完整示例与兼容演进规则见：
 
-- [Inter-mod communication](../imc.md)
-- [Create a typed IMC API](../imc-author-guide.md)
+- [跨 Mod 通信](../imc.md)
+- [创建类型化 IMC API](../imc-author-guide.md)

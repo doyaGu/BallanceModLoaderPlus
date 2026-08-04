@@ -1,7 +1,8 @@
-# Scripting Documentation Release Process
+# Bilingual Documentation Release Process
 
-This document records how the scripting tutorial is published. It is a
-maintenance note and must not be included in the public MkDocs navigation.
+This document records how the English and Simplified Chinese sites are built
+and published. It is a maintenance note and must not be included in either
+public MkDocs navigation.
 
 ## Published Site
 
@@ -17,17 +18,23 @@ must be preserved during documentation deployment.
 
 ## Source Files
 
-Public documentation source:
+Public documentation source is separated by language:
 
 ```text
-docs/index.md
-docs/api.md
-docs/script-mod-tutorial/
+docs/en/
+docs/zh-CN/
 docs/hooks/pygments_angelscript.py
 mkdocs.yml
+mkdocs.zh-CN.yml
 requirements-docs.txt
 .github/workflows/docs.yml
 ```
+
+`docs/en/` contains English prose only. `docs/zh-CN/` contains Simplified
+Chinese prose only. Identifiers, code, file names, and quoted diagnostics keep
+their original language. A page that is unavailable in one language must be
+linked as an explicitly labelled external-language resource; do not place the
+other language's prose inside the local documentation tree.
 
 Do not publish draft or private material:
 
@@ -53,16 +60,21 @@ Install documentation dependencies:
 python -m pip install -r requirements-docs.txt
 ```
 
-Build strictly:
+Build both sites strictly, in this order:
 
 ```powershell
-mkdocs build --strict
+mkdocs build --strict --config-file mkdocs.yml
+mkdocs build --strict --config-file mkdocs.zh-CN.yml
 ```
 
-Local preview:
+The English build owns `site/` and cleans it first. The Chinese build writes
+only `site/zh-CN/`, so reversing the order would delete the Chinese output.
+
+Preview one language at a time:
 
 ```powershell
-mkdocs serve -a 127.0.0.1:8000
+mkdocs serve --config-file mkdocs.yml -a 127.0.0.1:8000
+mkdocs serve --config-file mkdocs.zh-CN.yml -a 127.0.0.1:8001
 ```
 
 ## Pre-Commit Checks
@@ -102,7 +114,7 @@ $patterns = @(
   $maintenanceText
 ) -join '|'
 
-rg --no-ignore -n $patterns docs .github mkdocs.yml requirements-docs.txt .gitignore
+rg --no-ignore -n $patterns docs .github mkdocs.yml mkdocs.zh-CN.yml requirements-docs.txt .gitignore
 ```
 
 Scan the generated site:
@@ -144,12 +156,14 @@ git push origin main
 The `Docs` GitHub Actions workflow then:
 
 1. Installs MkDocs dependencies.
-2. Runs `mkdocs build --strict`.
-3. Checks out `gh-pages`.
-4. Deletes the old Pages root contents except `.git`, `.nojekyll`, and
+2. Builds the English site with `mkdocs.yml`.
+3. Builds the Simplified Chinese site with `mkdocs.zh-CN.yml` into
+   `site/zh-CN/`.
+4. Checks out `gh-pages`.
+5. Deletes the old Pages root contents except `.git`, `.nojekyll`, and
    `updates/`.
-5. Copies `site/` into the `gh-pages` root.
-6. Commits and pushes only when generated content changed.
+6. Copies `site/` into the `gh-pages` root.
+7. Commits and pushes only when generated content changed.
 
 ## Manual Pages Deployment
 
@@ -158,7 +172,8 @@ Use this only when the public site must be updated before Actions finishes.
 Build first:
 
 ```powershell
-mkdocs build --strict
+mkdocs build --strict --config-file mkdocs.yml
+mkdocs build --strict --config-file mkdocs.zh-CN.yml
 ```
 
 Then deploy from a temporary `gh-pages` worktree. Preserve `.git`, `.nojekyll`,
@@ -180,8 +195,10 @@ Check the public site:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/"
-Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/script-mod-tutorial/tutorial-01-setup/"
-Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/api/"
+Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/imc/"
+Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/"
+Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/tutorial-01-setup/"
+Invoke-WebRequest -UseBasicParsing "https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/api/"
 ```
 
 Removed paths should return 404. Use placeholders instead of recording removed
@@ -195,12 +212,14 @@ Invoke-WebRequest -UseBasicParsing "<removed-tutorial-example-url>"
 Also verify raw `main` when source visibility matters:
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/doyaGu/BallanceModLoaderPlus/main/docs/script-mod-tutorial/tutorial-01-setup.md"
+Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/doyaGu/BallanceModLoaderPlus/main/docs/zh-CN/script-mod-tutorial/tutorial-01-setup.md"
 ```
 
 ## Rules
 
 - Keep the tutorial source in `main` synchronized with the published site.
+- Keep English and Simplified Chinese prose in their respective source trees.
+- Build English before Simplified Chinese so `site/zh-CN/` is preserved.
 - Keep old drafts and private materials out of both MkDocs output and staged
   commits.
 - Keep `updates/` on `gh-pages`.

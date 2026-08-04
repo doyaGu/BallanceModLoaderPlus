@@ -2,7 +2,7 @@
 
 This guide is for people who want to publish a mod that BML+ loads from an
 AngelScript file. It starts with the authoring workflow, then moves into the
-API reference. `docs/bml-script-mod-api.as` is only an editor/static-checking
+API reference. `bml-script-mod-api.as` is only an editor/static-checking
 stub; do not package it as runtime script code.
 
 ## Who This Is For
@@ -83,7 +83,7 @@ You need:
   build supports script mods.
 - The matching `AngelScript.dll` next to `BMLPlus.dll` in `BuildingBlocks` when
   distributing a script-capable release.
-- `docs/bml-script-mod-api.as` in your editor for completion and static checks.
+- `bml-script-mod-api.as` in your editor for completion and static checks.
   Do not include this stub from the script at runtime.
 - CKAngelScript API docs when the mod touches Virtools objects, behavior
   graphs, components, messages, async work, or raw CK/Vx SDK bindings. Start
@@ -987,8 +987,8 @@ dynamic schema/record system beside IMC.
 For a reusable or performance-sensitive service, implement a native mod: write
 one versioned `.imc` interface, generate its C++ binding, and register the
 generated provider. Expose a small AngelScript facade only if scripts also need
-the service. See [Inter-mod communication](imc.md) and
-[Create a typed IMC API](imc-author-guide.md).
+the service. See [Inter-mod communication](en/imc.md) and
+[Create a typed IMC API](en/imc-author-guide.md).
 
 ## Timer
 
@@ -1240,8 +1240,8 @@ Use DataShare when a script mod only needs to publish or request a small typed
 value. Script-defined RPC/Topic providers are not supported. When the service
 needs requests, streaming events, explicit threading, or high throughput,
 implement a native generated IMC provider and keep any script-facing wrapper
-typed and small. See [Inter-mod communication](imc.md) and
-[Create a typed IMC API](imc-author-guide.md).
+typed and small. See [Inter-mod communication](en/imc.md) and
+[Create a typed IMC API](en/imc-author-guide.md).
 
 ## Diagnostics
 
@@ -1333,7 +1333,7 @@ with the same CKAngelScript runtime that will ship with the mod.
 - Keep exactly one `*.mod.as` entry per directory or zip package. Helper files
   are fine only when the CKAngelScript build process includes them as part of
   the entry module.
-- Do not package `docs/bml-script-mod-api.as` with the mod as runtime code; it
+- Do not package `bml-script-mod-api.as` with the mod as runtime code; it
   is an editor/reference stub.
 - Declare BML mod dependencies with `[bml.require]` and `[bml.optional]`.
   Mention CKAngelScript/runtime-script requirements in your README because they

@@ -19,7 +19,8 @@ if (input is null) return;
 
 ## 常用键名
 
-CKKEY_F9, CKKEY_F10, CKKEY_J, CKKEY_K, CKKEY_U, CKKEY_F, CKKEY_SPACE, etc.
+常用值包括 `CKKEY_F9`、`CKKEY_F10`、`CKKEY_J`、`CKKEY_K`、
+`CKKEY_U`、`CKKEY_F` 和 `CKKEY_SPACE` 等。
 
 ## ImGui 窗口模板
 
