@@ -383,7 +383,7 @@ endif ()
 
 target_link_libraries(BML
         PUBLIC
-        CK2 VxMath
+        VirtoolsSDK::CK2 VirtoolsSDK::VxMath
         PRIVATE
         BMLUtils
         minhook onig
