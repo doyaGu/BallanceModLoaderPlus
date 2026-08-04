@@ -140,8 +140,8 @@ add_bml_test(ConfigTest
         ${BML_SOURCE_DIR}/Config.h
         DEPENDENCIES
         BMLUtils
-        CK2
-        VxMath
+        VirtoolsSDK::CK2
+        VirtoolsSDK::VxMath
 )
 
 add_bml_test(ImcObjectReferenceRegistryTest
@@ -371,7 +371,7 @@ add_bml_test(ImcHeadersTest
 
 add_bml_test(ImcMathTest
         SOURCES ImcMathTest.cpp
-        DEPENDENCIES VxMath
+        DEPENDENCIES VirtoolsSDK::VxMath
 )
 
 add_bml_test(ImcRuntimeTest
