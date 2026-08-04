@@ -46,6 +46,8 @@ extra:
 nav:
   - Home: index.md
   - Native mod API: native-mod-api.md
+  - Script mods:
+      - Author guide: script-mod/author-guide.md
   - Inter-mod communication:
       - Overview: imc.md
       - Authoring guide: imc-author-guide.md

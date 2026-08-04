@@ -940,7 +940,7 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
 
 `ImGui` is the lower-level frame-scope API for scripts that need custom debug
 or tooling UI. The checked-in generated binding surface is documented in
-`docs/bml-imgui-api.as`; the generation report is
+`bml-imgui-api.as` in the SDK; the generation report is
 `src/AngelScript/generated/BMLImGuiAngelScriptBindings.report.md`.
 
 Use it only from `OnRender`. BML guards calls outside an active ImGui frame so
@@ -987,8 +987,8 @@ dynamic schema/record system beside IMC.
 For a reusable or performance-sensitive service, implement a native mod: write
 one versioned `.imc` interface, generate its C++ binding, and register the
 generated provider. Expose a small AngelScript facade only if scripts also need
-the service. See [Inter-mod communication](en/imc.md) and
-[Create a typed IMC API](en/imc-author-guide.md).
+the service. See [Inter-mod communication](../imc.md) and
+[Create a typed IMC API](../imc-author-guide.md).
 
 ## Timer
 
@@ -1240,8 +1240,8 @@ Use DataShare when a script mod only needs to publish or request a small typed
 value. Script-defined RPC/Topic providers are not supported. When the service
 needs requests, streaming events, explicit threading, or high throughput,
 implement a native generated IMC provider and keep any script-facing wrapper
-typed and small. See [Inter-mod communication](en/imc.md) and
-[Create a typed IMC API](en/imc-author-guide.md).
+typed and small. See [Inter-mod communication](../imc.md) and
+[Create a typed IMC API](../imc-author-guide.md).
 
 ## Diagnostics
 
