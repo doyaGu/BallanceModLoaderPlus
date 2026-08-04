@@ -154,7 +154,7 @@ ANSI palette is controlled by `ModLoader/palette.ini` and `ModLoader/Themes/`. S
 Requirements:
 - Windows only, Visual Studio 2019+ (C++20)
 - CMake 3.14+
-- Python 3.10+ (contract/code generation)
+- Python 3.10+ (interface binding generation)
 - Virtools SDK installed (`VIRTOOLS_SDK_PATH` or CMake cache)
 
 Build:
@@ -228,8 +228,8 @@ Quick start template: see templates/mod-template for a ready-to-build example wi
 For a typed cross-mod RPC or Topic, the installed SDK also provides
 `bml_target_imc_api()` and the IMC code generator. Start with the
 [IMC overview](docs/imc.md), then follow the
-[API authoring guide](docs/imc-author-guide.md) for a complete contract,
-provider, client, and Topic example.
+[API authoring guide](docs/imc-author-guide.md) for a complete interface
+definition, provider, client, and Topic example.
 
 ## API Reference
 
