@@ -30,6 +30,9 @@ requirements-docs.txt
 .github/workflows/docs.yml
 ```
 
+Repository maintenance notes live under `docs/internal/`. They are tracked for
+maintainers but are not inputs to either MkDocs site or the SDK package.
+
 `docs/en/` contains English prose only. `docs/zh-CN/` contains Simplified
 Chinese prose only. Identifiers, code, file names, and quoted diagnostics keep
 their original language. A page that is unavailable in one language must be
@@ -121,12 +124,11 @@ Scan the generated site:
 
 ```powershell
 $internalDocPatterns = @(
-  'bml-script-mod-author-guide',
-  'bml-script-mod-validation',
-  'bml-script-facade-coverage',
+  'internal/scripting/validation',
+  'internal/scripting/facade-coverage',
   'bml-script-api-redesign-plan',
-  'bml-release-packaging-process',
-  'bml-updater-design',
+  'internal/release/packaging-process',
+  'internal/release/updater-design',
   'script-mod-tutorial-materials'
 ) -join '|'
 

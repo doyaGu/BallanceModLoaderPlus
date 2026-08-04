@@ -61,7 +61,7 @@ not use it as the upper bound for what a script can do in Virtools.
 | DataShare | Typed global helpers, `DataShareSizeOf`, `RequestDataShare(key, type, DataShareCallback@+, name)`, `RequestDataShare(BML::DataShareRequest@+)`, `DataShareRequestRef`, `DataShareEvent` | Delegate callbacks cover lightweight one-shot requests; script-owned request objects remain available for stateful requests. BML retains the callback or object until completion/cancel/unload. Raw byte callbacks are not exposed. |
 | BML menus | `BML::Menu` core capability helpers plus compatibility `ModContext::Open*Menu/Close*Menu` | Opens/closes BML-owned menus through the built-in `bml.ui` IMC API. |
 | Bui menu helpers | `BML::UI` namespace | Stable subset for render-time titles, text, buttons, key capture/formatting, radio choices, paging, navigation, and simple inout inputs. Uses native Bui internally but does not expose `Bui::Window/Page/Menu`, raw draw lists, lambda layout, raw buffers, resources, callbacks, or internal navigation lifecycle. |
-| Dear ImGui | Generated `ImGui` namespace plus `docs/bml-imgui-api.as` | Advanced frame-scope API for custom UI. Checked-in generated bindings include script-friendly string/list/image/drawlist wrappers. Omits context/platform lifecycle, allocators, raw callbacks, raw `void*`, internal debug helpers, and native resource lifecycle. |
+| Dear ImGui | Generated `ImGui` namespace plus `docs/zh-CN/bml-imgui-api.as` | Advanced frame-scope API for custom UI. Checked-in generated bindings include script-friendly string/list/image/drawlist wrappers. Omits context/platform lifecycle, allocators, raw callbacks, raw `void*`, internal debug helpers, and native resource lifecycle. |
 
 ## Deliberately Omitted
 
@@ -75,7 +75,7 @@ not use it as the upper bound for what a script can do in Virtools.
 - Raw Bui `Window/Page/Menu`, raw text buffer callbacks, resource initialization, and internal script/menu transition helpers.
 - Raw Dear ImGui context/platform lifecycle, allocator hooks, callback/userData APIs, raw `void*`, internal debug helpers, and native viewport lifecycle.
 - Raw Building Block, behavior slot, behavior prototype, and config internals.
-- Generated ImGui coverage is tracked by `src/AngelScript/generated/BMLImGuiAngelScriptBindings.report.md`; the generated script stub is `docs/bml-imgui-api.as`.
+- Generated ImGui coverage is tracked by `src/AngelScript/generated/BMLImGuiAngelScriptBindings.report.md`; the generated script stub is `docs/zh-CN/bml-imgui-api.as`.
 
 ## Validation
 
