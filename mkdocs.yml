@@ -49,6 +49,10 @@ exclude_docs: |
 
 nav:
   - 首页: index.md
+  - BML 原生 Mod API: native-mod-api.md
+  - IMC 跨 Mod 通信:
+      - 概览: imc.md
+      - 接口编写指南: imc-author-guide.md
   - 脚本 Mod 教程:
       - 导读: script-mod-tutorial/README.md
       - 教程:

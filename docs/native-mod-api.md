@@ -1,0 +1,150 @@
+# BML 原生 Mod API 总览
+
+本文按用途说明 BML SDK 安装后提供的公开头文件。公开接口以安装目录中的
+`include/BML` 为准；源码树中未被安装的头文件属于 Loader 实现细节。
+
+## 最小入口
+
+原生 Mod 是导出 `BMLEntry` 的动态库，通常使用 `.bmodp` 扩展名：
+
+```cpp
+#include <BML/IMod.h>
+
+class MyMod final : public IMod {
+public:
+    explicit MyMod(IBML *bml) : IMod(bml) {}
+
+    const char *GetID() override { return "MyMod"; }
+    const char *GetVersion() override { return "1.0.0"; }
+    const char *GetName() override { return "My Mod"; }
+    const char *GetAuthor() override { return "Author"; }
+    const char *GetDescription() override { return "Example"; }
+    DECLARE_BML_VERSION;
+};
+
+MOD_EXPORT IMod *BMLEntry(IBML *bml) { return new MyMod(bml); }
+MOD_EXPORT void BMLExit(IMod *mod) { delete mod; }
+```
+
+推荐通过安装包提供的 CMake 函数创建目标：
+
+```cmake
+find_package(BML CONFIG REQUIRED)
+bml_add_mod(MyMod MyMod.cpp)
+```
+
+`bml_add_mod` 链接 `BML::BML`、启用 C++20、关闭编译器扩展，并直接生成
+`MyMod.bmodp`。需要安装规则时使用 `bml_install_mod(MyMod)`。
+
+## 公开头文件
+
+| 头文件 | 用途 |
+| --- | --- |
+| `Version.h`, `Defines.h` | 版本宏、导出宏、状态码和基础定义 |
+| `BML.h` | C ABI：版本、内存、字符串/编码、路径、文件与 Zip 工具 |
+| `BMLAll.h` | 一次包含全部原生 SDK 接口的便捷聚合头 |
+| `IMod.h`, `IMessageReceiver.h` | Mod 元数据、生命周期、玩法和引擎回调 |
+| `IBML.h` | Loader 服务、CK 管理器、对象查找、命令、定时器和依赖管理 |
+| `ICommand.h` | 命令执行、补全和基础参数解析 |
+| `IConfig.h` | 类型化配置属性 |
+| `ILogger.h` | Info、Warn、Error 日志 |
+| `DataShare.h` | 低层、同进程的命名字节数据共享 |
+| `Imc.h`, `ImcTypes.h`, `ImcWire.hpp`, `ImcCpp.hpp`, `ImcMath.h` | IMC C/C++ 运行时、线格式与基础类型 |
+| `Generated/*.hpp` | 从 `.imc` 生成的内置接口绑定；不要手工修改 |
+| `Runtime.h`, `Scene.h`, `Gameplay.h`, `UI.h`, `Events.h`, `EventKinds.h` | 内置 IMC 的易用 C++ 门面 |
+| `Bui.h` | Ballance 风格 ImGui 控件 |
+| `Gui.h`, `Gui/*.h` | `BGui` 旧式 Virtools 实体/行为 UI 封装 |
+| `InputHook.h` | 键盘、鼠标、手柄状态与可配对的输入屏蔽令牌 |
+| `ExecuteBB.h` | 执行或创建常用 Building Block |
+| `ScriptHelper.h` | 查找、连接、插入和删除行为图节点与参数 |
+| `Guids.h`, `Guids/*.h` | Virtools 与 Ballance Building Block GUID 集合 |
+
+## Mod 生命周期与事件
+
+`IMod` 继承 `IMessageReceiver`。实现类必须提供 ID、版本、名称、作者、说明和
+BML 版本要求，并可按需重写以下回调：
+
+- 生命周期：`OnLoad`、`OnUnload`、`OnProcess`、`OnRender`。
+- 配置和命令：`OnModifyConfig`、`OnPreCommandExecute`、
+  `OnPostCommandExecute`、`OnCheatEnabled`。
+- 引擎对象：`OnLoadObject`、`OnLoadScript`、`OnPhysicalize`、
+  `OnUnphysicalize`。
+- 游戏流程：菜单、加载/开始/重置/暂停/退出/下一关、死亡、结算、检查点、
+  生命和导航状态等 `IMessageReceiver` 回调。
+
+`OnRender` 每次收到一个 `CK_RENDER_FLAGS`；原生 API 没有分别命名的
+“渲染前/渲染后”回调。需要解耦的事件消费方可以使用
+`BML::Events::Stream`，它覆盖游戏流程、对象/脚本加载、物理、命令、配置和
+作弊状态事件。
+
+## `IBML` 服务
+
+`IBML` 是 Loader 传给 Mod 的主服务入口，功能分为：
+
+- CK 上下文和 Attribute、Behavior、Collision、Input、Message、Path、
+  Parameter、Render、Sound、Time 等管理器访问。
+- `AddTimer` / `AddTimerLoop`：按 Tick 数或时间值安排回调。
+- 游戏状态、作弊开关、游戏内消息、命令注册/查找/执行。
+- 按名称查找 DataArray、Group、Material、Mesh、2D/3D Entity、Camera、
+  Light、Sound、Texture 和 Behavior。
+- 设置 Initial Condition、显示状态和跳过下一 Tick 渲染。
+- 注册球体、地面、模块和变换类型，读取 SR/HS 分数。
+- 枚举/查找 Mod，并注册、检查、读取或清空依赖。
+
+定时器必须通过 `IBML` 创建。SDK 不发布独立 `Timer.h`；Loader 负责调度和
+处理这些回调，Mod 不应维护另一套隐式的静态定时器状态。
+
+## 配置、命令与日志
+
+`IConfig` 按 Category/Key 获取 `IProperty`。属性类型为 String、Boolean、
+Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和 Category
+注释。它没有 UTF-16 专用属性接口；需要编码转换时使用 `BML.h` 中的显式
+转换函数。
+
+`ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
+Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。
+
+## 跨 Mod 通信
+
+新接口优先使用 IMC：
+
+- `.imc` 文件只描述接口；字段编号是稳定的线格式标识，不是数组下标。
+- `bml_target_imc_api` 在构建时生成 C++ 绑定并加入目标。
+- RPC 支持同步调用、Future、取消、超时和完成回调。
+- Topic 支持有界订阅队列、退订和丢弃计数。
+- 热路径使用已生成的类型与缓存的 ID，不在每次调用时解析文本描述。
+
+内置门面提供：
+
+- `BML::Runtime`：运行状态、时钟和分数。
+- `BML::Scene`：对象信息、实体变换和按名查找。
+- `BML::Gameplay`：关卡、能量、目录、检查点和重置点。
+- `BML::UI`：消息板、Mod/地图菜单和 HUD/SR Timer 控制。
+- `BML::Events`：带类型化附加数据的事件流。
+
+`DataShare` 适合共享少量命名字节数据，调用方必须遵守引用计数和借用指针
+有效期。需要演进、跨语言绑定或 RPC/Topic 语义时使用 IMC。
+
+## 三种 UI 接口
+
+- `Bui` 直接绘制 Ballance 风格的 ImGui 控件，适合原生覆盖层界面。
+- `BGui` 创建和操作 Virtools 2D Entity/Behavior 组成的旧式游戏内 UI。
+- `BML::UI` 不绘制控件，而是通过 IMC 控制 Loader 已有的消息、菜单和 HUD。
+
+三者解决的问题不同，不应互相替代或混用命名。
+
+## C API 的所有权
+
+`BML.h` 和 `DataShare.h` 可由 C ABI 调用。凡是 BML 返回的新分配字符串、宽
+字符串、字符串数组、宽字符串数组或二进制缓冲区，都应使用对应的
+`BML_Free*` 函数释放，
+不要跨 DLL 直接调用 CRT `free`。`BML_DataShare_Get` 返回借用指针；同一键
+再次 Set/Remove 或实例销毁后立即失效，需要稳定副本时使用
+`BML_DataShare_CopyEx`。
+
+## 延伸阅读
+
+- [IMC 概览](imc.md)
+- [IMC 接口编写指南](imc-author-guide.md)
+- [原生 Mod 模板](https://github.com/doyaGu/BallanceModLoaderPlus/tree/main/templates/native-mod-template)
+- [脚本 Mod 教程](script-mod-tutorial/README.md)

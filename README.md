@@ -5,7 +5,6 @@ English | [简体中文](README_zh-CN.md)
 Current version: v0.3.13
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
 
@@ -49,9 +48,7 @@ This repository contains the core runtime (`BMLPlus.dll`), public headers (`incl
   - [License \& Acknowledgments](#license--acknowledgments)
   - [Related](#related)
   - [Support and Community](#support-and-community)
-  - [Roadmap](#roadmap)
-    - [Planned Features](#planned-features)
-    - [Current Limitations](#current-limitations)
+  - [Current Limitations](#current-limitations)
   - [Performance Notes](#performance-notes)
 
 ## Highlights
@@ -60,9 +57,9 @@ This repository contains the core runtime (`BMLPlus.dll`), public headers (`incl
 
 **Deep engine integration**: Hooks into Virtools CK2 for render, physics and object loading; full event broadcast and behavior‑graph instrumentation (Hook Block).
 
-**Complete mod ecosystem**: Unified mod lifecycle and dependency management with version checks; stable headers/ABI.
+**Complete mod ecosystem**: Unified mod lifecycle and dependency management with version checks and an explicit installed SDK surface.
 
-**Developer tools**: Command system (tab completion/history/colored output), timers/scheduling, logging and configuration (UTF‑8/UTF‑16).
+**Developer tools**: Command system (tab completion/history/colored output), timers/scheduling, logging, typed configuration properties, and optional AngelScript script mods.
 
 **Visual/gameplay tweaks**: Unlock framerate, max framerate limit, widescreen FOV fix, lantern material tweaks, and respawn/spawn delay removal (Overclock).
 
@@ -96,9 +93,11 @@ This repository contains the core runtime (`BMLPlus.dll`), public headers (`incl
   - `IMod`/`IBML`: lifecycle, managers access, messaging, deps, registration.
   - `ICommand`: command interface with helpers for parsing/completion.
   - `InputHook`: unified input access with blocking/original state helpers.
-  - `Timer`: Once/Loop/Repeat/Interval/Debounce/Throttle with fluent builder and chaining.
+  - `IBML::AddTimer*`: loader-owned one-shot and loop scheduling.
   - `DataShare API (BML_DataShare_*)`: inter‑mod data sharing and subscriptions.
-  - Utilities: path/string/memory/zip/ANSI palette tools.
+  - IMC: typed cross-mod RPC/Topic transport plus built-in Runtime, Scene, Gameplay, UI, and Events facades.
+  - UI: Ballance-styled ImGui helpers (`Bui`), legacy Virtools UI wrappers (`BGui`), and the `BML::UI` IMC service.
+  - `BML.h`: C-callable version, memory, string, path, file, and zip helpers.
 
 ## Runtime Layout
 
@@ -156,6 +155,7 @@ Requirements:
 - CMake 3.14+
 - Python 3.10+ (interface binding generation)
 - Virtools SDK installed (`VIRTOOLS_SDK_PATH` or CMake cache)
+- CKAngelScript API 6+ only when configuring with `-DBML_ENABLE_ANGELSCRIPT=ON`
 
 Build:
 ```bash
@@ -207,8 +207,8 @@ Key APIs:
 - `IBML`: managers, in‑game message, commands, timers, cheat, ball/floor/module registration, dependency APIs.
 - `ICommand`: create custom commands.
 - `InputHook`: read/block inputs.
-- `Timer`: advanced timing and debounce/throttle helpers.
 - `DataShare API (BML_DataShare_*)`: cross‑mod data sharing.
+- IMC (`BML::Imc` and generated bindings): typed cross-mod RPC and Topics.
 
 Declaring deps:
 - Call `AddDependency("OtherMod", {major,minor,patch})` or `AddOptionalDependency(...)` during construction/`OnLoad`.
@@ -216,20 +216,20 @@ Declaring deps:
 
 Optional CMake integration (after installing BML):
 ```cmake
-find_package(BML REQUIRED)
-add_library(MyMod SHARED MyMod.cpp)
-target_include_directories(MyMod PRIVATE ${BML_INCLUDE_DIRS})
-target_link_libraries(MyMod PRIVATE BML)
-set_target_properties(MyMod PROPERTIES OUTPUT_NAME "MyMod")
+find_package(BML CONFIG REQUIRED)
+bml_add_mod(MyMod MyMod.cpp)
 ```
 
-Quick start template: see templates/mod-template for a ready-to-build example with CMake, BMLEntry/BMLExit and a sample command.
+`bml_add_mod` links `BML::BML`, enables C++20, and emits `MyMod.bmodp` directly.
+Quick start template: see [templates/native-mod-template](templates/native-mod-template) for a ready-to-build example with CMake, BMLEntry/BMLExit and a sample command.
 
 For a typed cross-mod RPC or Topic, the installed SDK also provides
 `bml_target_imc_api()` and the IMC code generator. Start with the
 [IMC overview](docs/imc.md), then follow the
 [API authoring guide](docs/imc-author-guide.md) for a complete interface
 definition, provider, client, and Topic example.
+The [native API overview](docs/native-mod-api.md) maps the installed headers to
+their intended use and explains the three UI surfaces.
 
 ## API Reference
 
@@ -238,27 +238,29 @@ definition, provider, client, and Topic example.
 - **IBML**: Main interface providing access to CK managers (render, input, time, etc.), timer management, cheat controls, object lookup, ball/floor/module registration, and mod dependency system
 - **IMod**: Base class for all mods with lifecycle methods (OnLoad, OnUnload, OnProcess, etc.)
 - **ICommand**: Interface for creating custom commands with tab completion support
-- **IConfig**: Configuration management with UTF-8/UTF-16 support
-- **ILogger**: Logging system with multiple levels and ANSI color support
+- **IConfig / IProperty**: Typed string, boolean, integer, float, and keyboard-key configuration properties
+- **ILogger**: Info, warning, and error logging
 
 ### Utility APIs
 
 - **InputHook**: Comprehensive input handling with keyboard, mouse, joystick support, input blocking, and original state access
-- **Timer**: Advanced timing system with multiple types (Once, Loop, Repeat, Interval, Debounce, Throttle), fluent builder pattern, and chaining support
+- **IBML::AddTimer / AddTimerLoop**: Loader-owned scheduling by tick delay or time delay
 - **DataShare**: C-style API for cross-mod data sharing with reference counting and callback subscriptions
-- **StringUtils**: Unicode string processing and conversion utilities
-- **PathUtils**: File system operations and path manipulation
+- **IMC**: Typed RPC and Topic bindings generated from `.imc` interface files
+- **BML.h**: C-callable string, encoding, path, file, memory, and zip helpers
+- **Bui / BGui / BML::UI**: ImGui widgets, Virtools UI wrappers, and remote UI control respectively
 
 ### Event System
 
-Mods can register for various game events:
-- Level start/end events
-- Player spawn/death events
-- Physics events (object physicalization)
-- Render events (pre/post render)
-- Custom mod events
+Native mods receive lifecycle and gameplay callbacks by overriding `IMod` and
+`IMessageReceiver`. These include menu and level transitions, death/checkpoint/
+life events, object and script loading, physicalize/unphysicalize, configuration
+changes, command pre/post hooks, cheat changes, per-tick processing, and one
+`OnRender(CK_RENDER_FLAGS)` callback. Consumers that do not need to inherit
+`IMod` can subscribe to the built-in `BML::Events::Stream` IMC Topic.
 
-For detailed API documentation, see the headers in `include/BML/`.
+For detailed API documentation, see the [native API overview](docs/native-mod-api.md)
+and the headers installed by the BML SDK.
 
 ## Troubleshooting
 
@@ -330,7 +332,7 @@ We welcome contributions to BML+! Here's how you can help:
 
 ## Testing & Quality
 
-- Uses GoogleTest (`tests/`). Core utilities (Timer/PathUtils/StringUtils/Config/AnsiPalette) are covered.
+- Uses GoogleTest and Python integration tests (`tests/`) for runtime utilities, IMC generation/runtime behavior, scripting services, configuration, and input handling.
 - Enable with `-DBML_BUILD_TESTS=ON`, then run `ctest`.
 
 ## FAQ
@@ -360,18 +362,7 @@ We welcome contributions to BML+! Here's how you can help:
 - **Documentation**: See `include/BML/` headers and this README
 - **Community Mods**: Check the releases page for community-contributed mods
 
-## Roadmap
-
-### Planned Features
-
-- [ ] Hot-reload support for mods during development
-- [ ] Enhanced scripting support with AngelScript integration
-- [ ] Built-in mod browser and automatic updates
-- [ ] Extended physics simulation hooks
-- [ ] Network multiplayer support framework
-- [ ] Advanced debugging tools and profiler
-
-### Current Limitations
+## Current Limitations
 
 - Windows-only (due to Virtools CK2 dependency)
 - Requires New Player (BallancePlayer)
@@ -380,16 +371,16 @@ We welcome contributions to BML+! Here's how you can help:
 
 ## Performance Notes
 
-BML+ is designed for minimal performance impact:
-- Rendering hooks add <1ms per frame
-- Memory overhead is typically <10MB
-- Mod loading is optimized with lazy initialization
-- Background operations use separate threads when possible
+BML callbacks and synchronous IMC RPC execute on the game thread. Keep hot-path
+work bounded and move expensive preparation outside `OnProcess`, `OnRender`, and
+event callbacks. Topics use bounded queues and expose dropped-message counts, so
+consumers should drain them regularly.
 
-For best performance:
+For production mods:
 - Use Release builds for production
-- Limit the number of active timers
-- Optimize mod update frequencies
-- Use the DataShare API efficiently
+- Keep timer and per-frame callbacks short
+- Cache object lookups that are stable across a level
+- Prefer generated IMC bindings over hand-written payload handling
+- Choose bounded Topic capacities and monitor `DroppedCount`
 
 Issues and suggestions: https://github.com/doyaGu/BallanceModLoaderPlus/issues

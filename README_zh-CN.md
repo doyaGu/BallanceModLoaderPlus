@@ -5,7 +5,6 @@
 当前版本：v0.3.13
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)]()
 
@@ -49,9 +48,7 @@
   - [许可与致谢](#许可与致谢)
   - [关联项目](#关联项目)
   - [支持与社区](#支持与社区)
-  - [路线图](#路线图)
-    - [计划功能](#计划功能)
-    - [当前限制](#当前限制)
+  - [当前限制](#当前限制)
   - [性能说明](#性能说明)
 
 ## 功能亮点
@@ -60,9 +57,9 @@
 
 **深度引擎集成**：基于 Virtools CK2，引入渲染引擎钩子、物理钩子与对象加载拦截，支持全流程事件广播与行为树插桩（Hook Block）。
 
-**完整 Mod 生态**：统一 Mod 生命周期与依赖管理，版本校验，稳定的 ABI/头文件。
+**完整 Mod 生态**：统一 Mod 生命周期与依赖管理、版本校验，以及边界明确的已安装 SDK 接口面。
 
-**开发者工具**：命令系统（自动补全/历史/彩色输出）、定时器/调度、日志与配置系统（UTF-8/UTF-16）。
+**开发者工具**：命令系统（自动补全/历史/彩色输出）、定时器/调度、日志、类型化配置属性，以及可选的 AngelScript 脚本 Mod。
 
 **画面与玩法增强**：可选解锁帧率、设置帧率上限、宽高比修正（Widescreen Fix）、灯笼材质优化、出生/重生延迟移除（Overclock）。
 
@@ -96,9 +93,11 @@
   - `IMod`/`IBML`：Mod 生命周期、管理器访问、消息广播、依赖、注册能力。
   - `ICommand`：命令系统接口，带补全/解析工具。
   - `InputHook`：统一键鼠/手柄输入封装，可屏蔽输入并拿到原始状态。
-  - `Timer`：多类型定时器（Once/Loop/Repeat/Interval/Debounce/Throttle）与链式构建器。
+  - `IBML::AddTimer*`：由 Loader 管理的一次性与循环调度。
   - `DataShare API (BML_DataShare_*)`：跨 Mod 数据共享与订阅。
-  - 工具：路径/字符串/内存/Zip/ANSI 调色板 等。
+  - IMC：类型化的跨 Mod RPC/Topic，以及内置 Runtime、Scene、Gameplay、UI、Events 门面。
+  - UI：Ballance 风格 ImGui 控件（`Bui`）、旧式 Virtools UI 封装（`BGui`）和 `BML::UI` IMC 服务。
+  - `BML.h`：C 可调用的版本、内存、字符串、路径、文件与 Zip 工具。
 
 ## 运行时目录结构
 
@@ -156,7 +155,9 @@ ANSI 调色板：使用 `ModLoader/palette.ini` 与 `ModLoader/Themes/` 自定�
 - Windows（仅支持）
 - Visual Studio 2019+（C++20）
 - CMake 3.14+
+- Python 3.10+（接口绑定生成）
 - 已安装 Virtools SDK（设置 `VIRTOOLS_SDK_PATH` 或 CMake 变量）
+- 仅在使用 `-DBML_ENABLE_ANGELSCRIPT=ON` 时需要 CKAngelScript API 6+
 
 拉取与编译：
 ```bash
@@ -215,8 +216,8 @@ extern "C" __declspec(dllexport) void BMLExit(IMod* mod) {
 - `IBML`：获取 CK 管理器、发送游戏内消息、注册命令、添加定时器、设置作弊、注册球体/地面/模块、依赖管理等（见 `include/BML/IBML.h`）。
 - `ICommand`：实现自定义命令（见 `include/BML/ICommand.h`）。
 - `InputHook`：读取/屏蔽输入（见 `include/BML/InputHook.h`）。
-- `Timer`：高级计时与节流/防抖（见 `include/BML/Timer.h`）。
-- `DataShare API (BML_DataShare_*)`：跨 Mod 数据共享（见 `include/BML/DataShare.h` 与 `src/DataShare.*`）。
+- `DataShare API (BML_DataShare_*)`：跨 Mod 数据共享（见 `include/BML/DataShare.h`）。
+- IMC（`BML::Imc` 与生成绑定）：类型化跨 Mod RPC 与 Topic。
 
 依赖声明：
 - 在 Mod 构造或 `OnLoad` 阶段通过 `AddDependency("OtherMod", {1,2,3})` 与 `AddOptionalDependency(...)` 注册。
@@ -224,14 +225,14 @@ extern "C" __declspec(dllexport) void BMLExit(IMod* mod) {
 
 CMake 集成示例（可选安装 BML 后）：
 ```cmake
-find_package(BML REQUIRED)
-add_library(MyMod SHARED MyMod.cpp)
-target_include_directories(MyMod PRIVATE ${BML_INCLUDE_DIRS})
-target_link_libraries(MyMod PRIVATE BML)
-set_target_properties(MyMod PROPERTIES OUTPUT_NAME "MyMod")
+find_package(BML CONFIG REQUIRED)
+bml_add_mod(MyMod MyMod.cpp)
 ```
 
-开箱即用模板：见 templates/mod-template（包含 CMake、BMLEntry/BMLExit 与示例命令）。
+`bml_add_mod` 会链接 `BML::BML`、启用 C++20，并直接生成 `MyMod.bmodp`。
+开箱即用模板：见 [templates/native-mod-template](templates/native-mod-template)（包含 CMake、BMLEntry/BMLExit 与示例命令）。
+
+类型化跨 Mod RPC/Topic 请从 [IMC 概览](docs/imc.md) 和 [接口编写指南](docs/imc-author-guide.md) 开始；[原生 API 总览](docs/native-mod-api.md) 说明已安装头文件的用途与三种 UI 接口的区别。
 
 ## API 参考
 
@@ -240,27 +241,23 @@ set_target_properties(MyMod PROPERTIES OUTPUT_NAME "MyMod")
 - **IBML**：主要接口，提供 CK 管理器访问（渲染、输入、时间等）、定时器管理、作弊控制、对象查找、球体/地面/模块注册和 Mod 依赖系统
 - **IMod**：所有 Mod 的基类，包含生命周期方法（OnLoad、OnUnload、OnProcess 等）
 - **ICommand**：创建自定义命令的接口，支持 Tab 自动补全
-- **IConfig**：配置管理，支持 UTF-8/UTF-16
-- **ILogger**：日志系统，支持多级别和 ANSI 彩色输出
+- **IConfig / IProperty**：字符串、布尔、整数、浮点数和键盘按键类型的配置属性
+- **ILogger**：信息、警告和错误日志
 
 ### 实用工具 API
 
 - **InputHook**：全面的输入处理，支持键盘、鼠标、手柄输入，输入屏蔽和原始状态访问
-- **Timer**：高级定时系统，支持多种类型（Once、Loop、Repeat、Interval、Debounce、Throttle）、流式构建器模式和链式调用
+- **IBML::AddTimer / AddTimerLoop**：按 Tick 或时间延迟、由 Loader 管理的调度
 - **DataShare**：C 风格的跨 Mod 数据共享 API，支持引用计数和回调订阅
-- **StringUtils**：Unicode 字符串处理和转换工具
-- **PathUtils**：文件系统操作和路径处理
+- **IMC**：从 `.imc` 接口文件生成的类型化 RPC 与 Topic 绑定
+- **BML.h**：C 可调用的字符串、编码、路径、文件、内存与 Zip 工具
+- **Bui / BGui / BML::UI**：分别用于 ImGui 控件、Virtools UI 封装和远程 UI 控制
 
 ### 事件系统
 
-Mod 可以注册各种游戏事件：
-- 关卡开始/结束事件
-- 玩家出生/死亡事件
-- 物理事件（对象物理化）
-- 渲染事件（渲染前/后）
-- 自定义 Mod 事件
+原生 Mod 通过重写 `IMod` 和 `IMessageReceiver` 接收生命周期与玩法回调，包括菜单与关卡切换、死亡/检查点/生命事件、对象与脚本加载、物理化/反物理化、配置修改、命令执行前后、作弊状态、逐 Tick 处理，以及单个 `OnRender(CK_RENDER_FLAGS)` 回调。不需要继承 `IMod` 的消费者可以订阅内置 `BML::Events::Stream` IMC Topic。
 
-详细的 API 文档请参见 `include/BML/` 中的头文件。
+详细的 API 文档请参见[原生 API 总览](docs/native-mod-api.md)和 BML SDK 安装的头文件。
 
 ## 故障排除
 
@@ -332,7 +329,7 @@ Mod 可以注册各种游戏事件：
 
 ## 测试与质量
 
-- 测试框架：GoogleTest（`tests/`）。核心工具类（Timer/PathUtils/StringUtils/Config/AnsiPalette）均有单元测试。
+- 使用 GoogleTest 与 Python 集成测试（`tests/`）覆盖运行时工具、IMC 生成和运行行为、脚本服务、配置与输入处理。
 - 启用：`-DBML_BUILD_TESTS=ON` 并在构建后运行 `ctest`。
 
 ## 常见问题（FAQ）
@@ -362,18 +359,7 @@ Mod 可以注册各种游戏事件：
 - **文档**：查看 `include/BML/` 头文件和本 README
 - **社区 Mod**：查看 releases 页面获取社区贡献的 Mod
 
-## 路线图
-
-### 计划功能
-
-- [ ] 开发期间 Mod 热重载支持
-- [ ] 增强脚本支持与 AngelScript 集成
-- [ ] 内置 Mod 浏览器和自动更新
-- [ ] 扩展物理模拟钩子
-- [ ] 网络多人游戏支持框架
-- [ ] 高级调试工具和性能分析器
-
-### 当前限制
+## 当前限制
 
 - 仅支持 Windows（由于 Virtools CK2 依赖）
 - 需要新版 Player（BallancePlayer）
@@ -382,16 +368,13 @@ Mod 可以注册各种游戏事件：
 
 ## 性能说明
 
-BML+ 设计为最小性能影响：
-- 渲染钩子每帧增加 <1ms
-- 内存开销通常 <10MB
-- Mod 加载通过延迟初始化优化
-- 后台操作尽可能使用独立线程
+BML 回调与同步 IMC RPC 在游戏线程执行。应限制 `OnProcess`、`OnRender` 和事件回调中的工作量，把昂贵的准备工作移出热路径。Topic 使用有界队列并报告丢弃数量，消费者应定期清空队列。
 
-最佳性能建议：
+生产 Mod 建议：
 - 生产环境使用 Release 构建
-- 限制活动定时器数量
-- 优化 Mod 更新频率
-- 高效使用 DataShare API
+- 保持定时器和逐帧回调短小
+- 缓存关卡内稳定的对象查找结果
+- 使用生成的 IMC 绑定，不手写消息载荷处理
+- 为 Topic 选择有界容量并监控 `DroppedCount`
 
 遇到问题或建议，欢迎提交 Issue：https://github.com/doyaGu/BallanceModLoaderPlus/issues

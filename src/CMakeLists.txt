@@ -462,6 +462,7 @@ install(FILES
 )
 
 install(FILES
+        "${PROJECT_SOURCE_DIR}/docs/native-mod-api.md"
         "${PROJECT_SOURCE_DIR}/docs/imc-author-guide.md"
         "${PROJECT_SOURCE_DIR}/docs/imc.md"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs"
