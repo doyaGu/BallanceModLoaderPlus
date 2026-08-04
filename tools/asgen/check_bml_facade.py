@@ -95,13 +95,13 @@ def _check_forbidden(label: str, text: str, errors: list[str]) -> None:
 def _check_registration_sources(root: Path, errors: list[str]) -> None:
     for relative in [
         Path("src/AngelScript/AngelScriptBindings.cpp"),
-        Path("src/AngelScript/ScriptApiContract.cpp"),
+        Path("src/AngelScript/ScriptApiSurface.cpp"),
     ]:
         path = root / relative
         source = _read(path)
         blocks = _extract_static_array_blocks(source)
         if not blocks:
-            errors.append(f"{relative}: no static registration/contract arrays found")
+            errors.append(f"{relative}: no static registration descriptor arrays found")
             continue
         for block_name, block in blocks:
             for literal in _extract_string_literals(block):

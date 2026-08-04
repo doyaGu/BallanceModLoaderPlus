@@ -4,8 +4,8 @@ namespace BML {
 
 namespace {
 
-static const ScriptCallbackContract &Descriptor(ScriptCallbackId id) {
-    return ScriptApiContract::Callbacks().Data[static_cast<size_t>(id)];
+static const ScriptCallbackDescriptor &Descriptor(ScriptCallbackId id) {
+    return ScriptApiSurface::Callbacks().Data[static_cast<size_t>(id)];
 }
 
 struct ContextOnlyCallArgs {
@@ -65,7 +65,7 @@ bool ScriptCallbackDispatcher::CacheAll(CKContext *context, ScriptModRuntime &ru
         break;
     }
 
-    for (const ScriptCallbackContract &descriptor : ScriptApiContract::Callbacks()) {
+    for (const ScriptCallbackDescriptor &descriptor : ScriptApiSurface::Callbacks()) {
         m_Methods[descriptor.Id] = runtime.FindMethod(context, descriptor.Declaration, diagnostic);
         if (!m_Methods[descriptor.Id] && diagnostic.Status != CKAS_OK && !diagnostic.Message.empty()) {
             diagnostic.Phase = ScriptDiagnosticPhase::MethodLookup;
@@ -107,7 +107,7 @@ bool ScriptCallbackDispatcher::CallContextOnly(CKContext *context,
         return true;
 
     ContextOnlyCallArgs args = {&contextView, &runtime.GetApi()};
-    const ScriptCallbackContract &descriptor = Descriptor(id);
+    const ScriptCallbackDescriptor &descriptor = Descriptor(id);
     ScriptMethodCall call;
     call.Method = method;
     call.WriteArgs = WriteContextOnlyArgs;
@@ -128,7 +128,7 @@ bool ScriptCallbackDispatcher::CallWithEvent(CKContext *context,
         return true;
 
     EventCallArgs args = {&contextView, eventView, &runtime.GetApi()};
-    const ScriptCallbackContract &descriptor = Descriptor(id);
+    const ScriptCallbackDescriptor &descriptor = Descriptor(id);
     ScriptMethodCall call;
     call.Method = method;
     call.WriteArgs = descriptor.PayloadKind == ScriptCallbackPayloadKind::GameEventInt ? WriteGameEventArgs : WriteEventObjectArgs;

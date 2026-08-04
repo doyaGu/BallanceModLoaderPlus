@@ -31,7 +31,7 @@
 #include "BML/ExecuteBB.h"
 #include "BMLMod.h"
 #include "CKAngelScriptAdapter.h"
-#include "ScriptApiContract.h"
+#include "ScriptApiSurface.h"
 #include "ScriptAvailabilityLogLimiter.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptFacadeAccess.h"
@@ -3533,8 +3533,8 @@ static const ScriptGlobalFunctionRegistration kHookFunctionRegistrations[] = {
     {"HookBlockRef@ InsertBetween(CKBehavior@ ownerScript, CKBehavior@ source, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = 0, int targetInput = 0)", "BML::Hook::InsertBetween", BML_AS_GENERIC_FUNCTION(&BMLAS_Hook_InsertBetween), asCALL_GENERIC},
 };
 
-bool CheckScriptApiContractRegistrationSurface() {
-    for (const BML::ScriptCallbackContract &callback : BML::ScriptApiContract::Callbacks()) {
+bool CheckScriptApiRegistrationSurface() {
+    for (const BML::ScriptCallbackDescriptor &callback : BML::ScriptApiSurface::Callbacks()) {
         if (!CheckRegistrationSurfaceText("callback name", nullptr, callback.Name) ||
             !CheckRegistrationSurfaceText("callback declaration", callback.Name, callback.Declaration) ||
             !CheckRegistrationSurfaceText("callback diagnostic", callback.Name, callback.FailurePrefix)) {
@@ -3542,7 +3542,7 @@ bool CheckScriptApiContractRegistrationSurface() {
         }
     }
 
-    for (const BML::ScriptTypedefContract &type : BML::ScriptApiContract::Typedefs()) {
+    for (const BML::ScriptTypedefDescriptor &type : BML::ScriptApiSurface::Typedefs()) {
         if (!CheckRegistrationSurfaceText("typedef name", nullptr, type.Name) ||
             !CheckRegistrationSurfaceText("typedef target", type.Name, type.TargetType) ||
             !CheckRegistrationSurfaceText("typedef declaration", type.Name, type.Declaration)) {
@@ -3550,17 +3550,17 @@ bool CheckScriptApiContractRegistrationSurface() {
         }
     }
 
-    for (const BML::ScriptIntegerConstantContract &constant : BML::ScriptApiContract::GameEventConstants()) {
+    for (const BML::ScriptIntegerConstantDescriptor &constant : BML::ScriptApiSurface::GameEventConstants()) {
         if (!CheckRegistrationSurfaceText("integer constant", nullptr, constant.Declaration))
             return false;
     }
 
-    for (const BML::ScriptEnumContract &enumInfo : BML::ScriptApiContract::Enums()) {
+    for (const BML::ScriptEnumDescriptor &enumInfo : BML::ScriptApiSurface::Enums()) {
         if (!CheckRegistrationSurfaceText("enum name", nullptr, enumInfo.Name) ||
             !CheckRegistrationSurfaceText("enum declaration", enumInfo.Name, enumInfo.Declaration)) {
             return false;
         }
-        for (const BML::ScriptEnumValueContract &value : BML::ScriptContractSpan<BML::ScriptEnumValueContract>{enumInfo.Values, enumInfo.ValueCount}) {
+        for (const BML::ScriptEnumValueDescriptor &value : BML::ScriptDescriptorSpan<BML::ScriptEnumValueDescriptor>{enumInfo.Values, enumInfo.ValueCount}) {
             if (!CheckRegistrationSurfaceText("enum value", enumInfo.Name, value.Name) ||
                 !CheckRegistrationSurfaceText("enum value diagnostic", enumInfo.Name, value.DiagnosticName)) {
                 return false;
@@ -3568,12 +3568,12 @@ bool CheckScriptApiContractRegistrationSurface() {
         }
     }
 
-    for (const BML::ScriptEventTypeContract &eventType : BML::ScriptApiContract::EventTypes()) {
+    for (const BML::ScriptEventTypeDescriptor &eventType : BML::ScriptApiSurface::EventTypes()) {
         if (!CheckRegistrationSurfaceText("event type name", nullptr, eventType.Name) ||
             !CheckRegistrationSurfaceText("event type declaration", eventType.Name, eventType.Declaration)) {
             return false;
         }
-        for (const BML::ScriptEventMemberContract &member : BML::ScriptContractSpan<BML::ScriptEventMemberContract>{eventType.Members, eventType.MemberCount}) {
+        for (const BML::ScriptEventMemberDescriptor &member : BML::ScriptDescriptorSpan<BML::ScriptEventMemberDescriptor>{eventType.Members, eventType.MemberCount}) {
             if (!CheckRegistrationSurfaceText("event member declaration", eventType.Name, member.Declaration) ||
                 !CheckRegistrationSurfaceText("event member diagnostic", eventType.Name, member.DiagnosticName)) {
                 return false;
@@ -3585,7 +3585,7 @@ bool CheckScriptApiContractRegistrationSurface() {
 }
 
 bool CheckScriptFacadeRegistrationSurface() {
-    if (!CheckScriptApiContractRegistrationSurface())
+    if (!CheckScriptApiRegistrationSurface())
         return false;
 
     for (const ScriptObjectTypeRegistration &registration : kObjectTypeRegistrations) {
@@ -3695,18 +3695,18 @@ bool CheckScriptFacadeRegistrationSurface() {
 }
 
 int RegisterScriptEnumsAndConstants(asIScriptEngine *engine, const char **errorMessage) {
-    for (const BML::ScriptTypedefContract &type : BML::ScriptApiContract::Typedefs()) {
+    for (const BML::ScriptTypedefDescriptor &type : BML::ScriptApiSurface::Typedefs()) {
         BML_AS_REGISTER(engine->RegisterTypedef(type.Name, type.TargetType), type.Declaration);
     }
-    for (const BML::ScriptIntegerConstantContract &constant : BML::ScriptApiContract::GameEventConstants()) {
+    for (const BML::ScriptIntegerConstantDescriptor &constant : BML::ScriptApiSurface::GameEventConstants()) {
         BML_AS_REGISTER(engine->RegisterGlobalProperty(constant.Declaration, const_cast<int *>(&constant.Value)), constant.Declaration);
     }
-    for (const BML::ScriptIntegerConstantContract &constant : BML::ScriptApiContract::ErrorConstants()) {
+    for (const BML::ScriptIntegerConstantDescriptor &constant : BML::ScriptApiSurface::ErrorConstants()) {
         BML_AS_REGISTER(engine->RegisterGlobalProperty(constant.Declaration, const_cast<int *>(&constant.Value)), constant.Declaration);
     }
-    for (const BML::ScriptEnumContract &enumInfo : BML::ScriptApiContract::Enums()) {
+    for (const BML::ScriptEnumDescriptor &enumInfo : BML::ScriptApiSurface::Enums()) {
         BML_AS_REGISTER(engine->RegisterEnum(enumInfo.Name), enumInfo.Declaration);
-        for (const BML::ScriptEnumValueContract &value : BML::ScriptContractSpan<BML::ScriptEnumValueContract>{enumInfo.Values, enumInfo.ValueCount}) {
+        for (const BML::ScriptEnumValueDescriptor &value : BML::ScriptDescriptorSpan<BML::ScriptEnumValueDescriptor>{enumInfo.Values, enumInfo.ValueCount}) {
             BML_AS_REGISTER(engine->RegisterEnumValue(enumInfo.Name, value.Name, value.Value), value.DiagnosticName);
         }
     }

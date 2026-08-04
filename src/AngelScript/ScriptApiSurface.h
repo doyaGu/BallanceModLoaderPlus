@@ -1,5 +1,5 @@
-#ifndef BML_SCRIPTAPICONTRACT_H
-#define BML_SCRIPTAPICONTRACT_H
+#ifndef BML_SCRIPT_API_SURFACE_H
+#define BML_SCRIPT_API_SURFACE_H
 
 #include <cstddef>
 
@@ -27,7 +27,7 @@ enum class ScriptCallbackPayloadKind {
     EventObject
 };
 
-struct ScriptCallbackContract {
+struct ScriptCallbackDescriptor {
     ScriptCallbackId Id;
     const char *Name;
     const char *Declaration;
@@ -35,45 +35,45 @@ struct ScriptCallbackContract {
     ScriptCallbackPayloadKind PayloadKind;
 };
 
-struct ScriptTypedefContract {
+struct ScriptTypedefDescriptor {
     const char *Name;
     const char *TargetType;
     const char *Declaration;
 };
 
-struct ScriptIntegerConstantContract {
+struct ScriptIntegerConstantDescriptor {
     const char *Declaration;
     int Value;
 };
 
-struct ScriptEnumValueContract {
+struct ScriptEnumValueDescriptor {
     const char *Name;
     int Value;
     const char *DiagnosticName;
 };
 
-struct ScriptEnumContract {
+struct ScriptEnumDescriptor {
     const char *Name;
     const char *Declaration;
-    const ScriptEnumValueContract *Values;
+    const ScriptEnumValueDescriptor *Values;
     size_t ValueCount;
 };
 
 
-struct ScriptEventMemberContract {
+struct ScriptEventMemberDescriptor {
     const char *Declaration;
     const char *DiagnosticName;
 };
 
-struct ScriptEventTypeContract {
+struct ScriptEventTypeDescriptor {
     const char *Name;
     const char *Declaration;
-    const ScriptEventMemberContract *Members;
+    const ScriptEventMemberDescriptor *Members;
     size_t MemberCount;
 };
 
 template <typename T>
-struct ScriptContractSpan {
+struct ScriptDescriptorSpan {
     const T *Data;
     size_t Count;
 
@@ -81,17 +81,17 @@ struct ScriptContractSpan {
     const T *end() const { return Data ? Data + Count : Data; }
 };
 
-namespace ScriptApiContract {
+namespace ScriptApiSurface {
 
-ScriptContractSpan<ScriptCallbackContract> Callbacks();
-ScriptContractSpan<ScriptTypedefContract> Typedefs();
-ScriptContractSpan<ScriptIntegerConstantContract> GameEventConstants();
-ScriptContractSpan<ScriptIntegerConstantContract> ErrorConstants();
-ScriptContractSpan<ScriptEnumContract> Enums();
-ScriptContractSpan<ScriptEventTypeContract> EventTypes();
+ScriptDescriptorSpan<ScriptCallbackDescriptor> Callbacks();
+ScriptDescriptorSpan<ScriptTypedefDescriptor> Typedefs();
+ScriptDescriptorSpan<ScriptIntegerConstantDescriptor> GameEventConstants();
+ScriptDescriptorSpan<ScriptIntegerConstantDescriptor> ErrorConstants();
+ScriptDescriptorSpan<ScriptEnumDescriptor> Enums();
+ScriptDescriptorSpan<ScriptEventTypeDescriptor> EventTypes();
 
-} // namespace ScriptApiContract
+} // namespace ScriptApiSurface
 
 } // namespace BML
 
-#endif
+#endif // BML_SCRIPT_API_SURFACE_H

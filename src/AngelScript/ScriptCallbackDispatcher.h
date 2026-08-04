@@ -6,7 +6,7 @@
 
 #include "BML/ICommand.h"
 #include "BML/IMod.h"
-#include "ScriptApiContract.h"
+#include "ScriptApiSurface.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"
 #include "ScriptModContextView.h"

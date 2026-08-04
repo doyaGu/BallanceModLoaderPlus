@@ -1,6 +1,6 @@
 #include "ScriptModEventRouter.h"
 
-#include "ScriptApiContract.h"
+#include "ScriptApiSurface.h"
 #include "ScriptModContextView.h"
 #include "ScriptModRuntime.h"
 
@@ -31,7 +31,7 @@ bool ScriptModEventRouter::HasCallback(ScriptCallbackId id) const {
 }
 
 void ScriptModEventRouter::GetCallbackNames(std::vector<std::string> &out) const {
-    for (const ScriptCallbackContract &descriptor : ScriptApiContract::Callbacks()) {
+    for (const ScriptCallbackDescriptor &descriptor : ScriptApiSurface::Callbacks()) {
         if (HasCallback(descriptor.Id) && descriptor.Name)
             out.emplace_back(descriptor.Name);
     }

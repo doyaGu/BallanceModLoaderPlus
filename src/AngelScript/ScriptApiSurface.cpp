@@ -1,4 +1,4 @@
-#include "ScriptApiContract.h"
+#include "ScriptApiSurface.h"
 
 #include "BML/IConfig.h"
 #include "BML/InputHook.h"
@@ -11,7 +11,7 @@ namespace BML {
 
 namespace {
 
-static const ScriptCallbackContract kCallbacks[] = {
+static const ScriptCallbackDescriptor kCallbacks[] = {
     {ScriptCallbackOnLoad, "OnLoad", "void OnLoad(const BML::ModContext &in)", "OnLoad failed", ScriptCallbackPayloadKind::None},
     {ScriptCallbackOnUnload, "OnUnload", "void OnUnload(const BML::ModContext &in)", "OnUnload failed", ScriptCallbackPayloadKind::None},
     {ScriptCallbackOnProcess, "OnProcess", "void OnProcess(const BML::ModContext &in)", "OnProcess failed", ScriptCallbackPayloadKind::None},
@@ -26,7 +26,7 @@ static const ScriptCallbackContract kCallbacks[] = {
     {ScriptCallbackOnUnphysicalize, "OnUnphysicalize", "void OnUnphysicalize(const BML::ModContext &in, const BML::ObjectEvent &in)", "OnUnphysicalize failed", ScriptCallbackPayloadKind::EventObject},
 };
 
-static const ScriptIntegerConstantContract kErrorConstants[] = {
+static const ScriptIntegerConstantDescriptor kErrorConstants[] = {
     {"const int ERROR_OK", BML_OK},
     {"const int ERROR_FAIL", BML_ERROR_FAIL},
     {"const int ERROR_NOT_FOUND", BML_ERROR_NOT_FOUND},
@@ -41,7 +41,7 @@ static const ScriptIntegerConstantContract kErrorConstants[] = {
     {"const int ERROR_IMC_TARGET_EXECUTION_FAILED", BML_ERROR_IMC_TARGET_EXECUTION_FAILED},
 };
 
-static const ScriptEnumValueContract kGameEventValues[] = {
+static const ScriptEnumValueDescriptor kGameEventValues[] = {
     {"GAME_EVENT_PRE_START_MENU", ScriptGameEventPreStartMenu, "GameEvent::GAME_EVENT_PRE_START_MENU"},
     {"GAME_EVENT_POST_START_MENU", ScriptGameEventPostStartMenu, "GameEvent::GAME_EVENT_POST_START_MENU"},
     {"GAME_EVENT_EXIT_GAME", ScriptGameEventExitGame, "GameEvent::GAME_EVENT_EXIT_GAME"},
@@ -77,7 +77,7 @@ static const ScriptEnumValueContract kGameEventValues[] = {
     {"GAME_EVENT_POST_LIFE_UP", ScriptGameEventPostLifeUp, "GameEvent::GAME_EVENT_POST_LIFE_UP"},
 };
 
-static const ScriptEnumValueContract kDirectoryTypeValues[] = {
+static const ScriptEnumValueDescriptor kDirectoryTypeValues[] = {
     {"DIR_WORKING", 0, "DirectoryType::DIR_WORKING"},
     {"DIR_TEMP", 1, "DirectoryType::DIR_TEMP"},
     {"DIR_GAME", 2, "DirectoryType::DIR_GAME"},
@@ -85,20 +85,20 @@ static const ScriptEnumValueContract kDirectoryTypeValues[] = {
     {"DIR_CONFIG", 4, "DirectoryType::DIR_CONFIG"},
 };
 
-static const ScriptEnumValueContract kModKindValues[] = {
+static const ScriptEnumValueDescriptor kModKindValues[] = {
     {"MOD_KIND_UNKNOWN", 0, "ModKind::MOD_KIND_UNKNOWN"},
     {"MOD_KIND_NATIVE", 1, "ModKind::MOD_KIND_NATIVE"},
     {"MOD_KIND_SCRIPT", 2, "ModKind::MOD_KIND_SCRIPT"},
 };
 
-static const ScriptEnumValueContract kModStateValues[] = {
+static const ScriptEnumValueDescriptor kModStateValues[] = {
     {"MOD_STATE_NOT_FOUND", 0, "ModState::MOD_STATE_NOT_FOUND"},
     {"MOD_STATE_REGISTERED", 1, "ModState::MOD_STATE_REGISTERED"},
     {"MOD_STATE_LOADED", 2, "ModState::MOD_STATE_LOADED"},
     {"MOD_STATE_FAILED", 3, "ModState::MOD_STATE_FAILED"},
 };
 
-static const ScriptEnumValueContract kReloadPhaseValues[] = {
+static const ScriptEnumValueDescriptor kReloadPhaseValues[] = {
     {"RELOAD_NONE", static_cast<int>(ScriptModReloadPhase::None), "ReloadPhase::RELOAD_NONE"},
     {"RELOAD_UNLOAD", static_cast<int>(ScriptModReloadPhase::Unload), "ReloadPhase::RELOAD_UNLOAD"},
     {"RELOAD_LOAD", static_cast<int>(ScriptModReloadPhase::Load), "ReloadPhase::RELOAD_LOAD"},
@@ -110,53 +110,53 @@ static const ScriptEnumValueContract kReloadPhaseValues[] = {
     {"RELOAD_RESTORE_STATE", static_cast<int>(ScriptModReloadPhase::RestoreState), "ReloadPhase::RELOAD_RESTORE_STATE"},
 };
 
-static const ScriptEnumValueContract kHudFlagValues[] = {
+static const ScriptEnumValueDescriptor kHudFlagValues[] = {
     {"HUD_TITLE", 1, "HudFlag::HUD_TITLE"},
     {"HUD_FPS", 2, "HudFlag::HUD_FPS"},
     {"HUD_SR", 4, "HudFlag::HUD_SR"},
 };
 
-static const ScriptEnumValueContract kInputDeviceValues[] = {
+static const ScriptEnumValueDescriptor kInputDeviceValues[] = {
     {"INPUT_DEVICE_KEYBOARD", CK_INPUT_DEVICE_KEYBOARD, "InputDevice::INPUT_DEVICE_KEYBOARD"},
     {"INPUT_DEVICE_MOUSE", CK_INPUT_DEVICE_MOUSE, "InputDevice::INPUT_DEVICE_MOUSE"},
     {"INPUT_DEVICE_JOYSTICK", CK_INPUT_DEVICE_JOYSTICK, "InputDevice::INPUT_DEVICE_JOYSTICK"},
     {"INPUT_DEVICE_COUNT", CK_INPUT_DEVICE_COUNT, "InputDevice::INPUT_DEVICE_COUNT"},
 };
 
-static const ScriptEnumValueContract kInputBlockMaskValues[] = {
+static const ScriptEnumValueDescriptor kInputBlockMaskValues[] = {
     {"INPUT_BLOCK_KEYBOARD", InputHook::INPUT_BLOCK_KEYBOARD, "InputBlockMask::INPUT_BLOCK_KEYBOARD"},
     {"INPUT_BLOCK_MOUSE", InputHook::INPUT_BLOCK_MOUSE, "InputBlockMask::INPUT_BLOCK_MOUSE"},
     {"INPUT_BLOCK_JOYSTICK", InputHook::INPUT_BLOCK_JOYSTICK, "InputBlockMask::INPUT_BLOCK_JOYSTICK"},
     {"INPUT_BLOCK_ALL", InputHook::INPUT_BLOCK_ALL, "InputBlockMask::INPUT_BLOCK_ALL"},
 };
 
-static const ScriptEnumValueContract kInputKeyEventValues[] = {
+static const ScriptEnumValueDescriptor kInputKeyEventValues[] = {
     {"INPUT_KEY_NONE", NO_KEY, "InputKeyEvent::INPUT_KEY_NONE"},
     {"INPUT_KEY_PRESSED", KEY_PRESSED, "InputKeyEvent::INPUT_KEY_PRESSED"},
     {"INPUT_KEY_RELEASED", KEY_RELEASED, "InputKeyEvent::INPUT_KEY_RELEASED"},
 };
 
-static const ScriptEnumValueContract kInputButtonStateValues[] = {
+static const ScriptEnumValueDescriptor kInputButtonStateValues[] = {
     {"INPUT_BUTTON_IDLE", KS_IDLE, "InputButtonState::INPUT_BUTTON_IDLE"},
     {"INPUT_BUTTON_PRESSED", KS_PRESSED, "InputButtonState::INPUT_BUTTON_PRESSED"},
     {"INPUT_BUTTON_RELEASED", KS_RELEASED, "InputButtonState::INPUT_BUTTON_RELEASED"},
 };
 
-static const ScriptEnumValueContract kCursorPointerValues[] = {
+static const ScriptEnumValueDescriptor kCursorPointerValues[] = {
     {"CURSOR_NORMALSELECT", VXCURSOR_NORMALSELECT, "CursorPointer::CURSOR_NORMALSELECT"},
     {"CURSOR_BUSY", VXCURSOR_BUSY, "CursorPointer::CURSOR_BUSY"},
     {"CURSOR_MOVE", VXCURSOR_MOVE, "CursorPointer::CURSOR_MOVE"},
     {"CURSOR_LINKSELECT", VXCURSOR_LINKSELECT, "CursorPointer::CURSOR_LINKSELECT"},
 };
 
-static const ScriptEnumValueContract kCommandEventPhaseValues[] = {
+static const ScriptEnumValueDescriptor kCommandEventPhaseValues[] = {
     {"COMMAND_EVENT_PRE", ScriptCommandEventPre, "CommandEventPhase::COMMAND_EVENT_PRE"},
     {"COMMAND_EVENT_POST", ScriptCommandEventPost, "CommandEventPhase::COMMAND_EVENT_POST"},
     {"COMMAND_EVENT_EXECUTE", ScriptCommandEventExecute, "CommandEventPhase::COMMAND_EVENT_EXECUTE"},
     {"COMMAND_EVENT_COMPLETE", ScriptCommandEventComplete, "CommandEventPhase::COMMAND_EVENT_COMPLETE"},
 };
 
-static const ScriptEnumValueContract kConfigPropertyTypeValues[] = {
+static const ScriptEnumValueDescriptor kConfigPropertyTypeValues[] = {
     {"CONFIG_PROPERTY_STRING", IProperty::STRING, "ConfigPropertyType::CONFIG_PROPERTY_STRING"},
     {"CONFIG_PROPERTY_BOOLEAN", IProperty::BOOLEAN, "ConfigPropertyType::CONFIG_PROPERTY_BOOLEAN"},
     {"CONFIG_PROPERTY_INTEGER", IProperty::INTEGER, "ConfigPropertyType::CONFIG_PROPERTY_INTEGER"},
@@ -165,7 +165,7 @@ static const ScriptEnumValueContract kConfigPropertyTypeValues[] = {
     {"CONFIG_PROPERTY_NONE", IProperty::NONE, "ConfigPropertyType::CONFIG_PROPERTY_NONE"},
 };
 
-static const ScriptEnumValueContract kTimerStateValues[] = {
+static const ScriptEnumValueDescriptor kTimerStateValues[] = {
     {"TIMER_IDLE", Timer::IDLE, "TimerState::TIMER_IDLE"},
     {"TIMER_RUNNING", Timer::RUNNING, "TimerState::TIMER_RUNNING"},
     {"TIMER_PAUSED", Timer::PAUSED, "TimerState::TIMER_PAUSED"},
@@ -173,7 +173,7 @@ static const ScriptEnumValueContract kTimerStateValues[] = {
     {"TIMER_CANCELLED", Timer::CANCELLED, "TimerState::TIMER_CANCELLED"},
 };
 
-static const ScriptEnumValueContract kTimerTypeValues[] = {
+static const ScriptEnumValueDescriptor kTimerTypeValues[] = {
     {"TIMER_ONCE", Timer::ONCE, "TimerType::TIMER_ONCE"},
     {"TIMER_LOOP", Timer::LOOP, "TimerType::TIMER_LOOP"},
     {"TIMER_REPEAT", Timer::REPEAT, "TimerType::TIMER_REPEAT"},
@@ -182,20 +182,20 @@ static const ScriptEnumValueContract kTimerTypeValues[] = {
     {"TIMER_THROTTLE", Timer::THROTTLE, "TimerType::TIMER_THROTTLE"},
 };
 
-static const ScriptEnumValueContract kTimerTimeBaseValues[] = {
+static const ScriptEnumValueDescriptor kTimerTimeBaseValues[] = {
     {"TIMER_TIMEBASE_TICK", Timer::TICK, "TimerTimeBase::TIMER_TIMEBASE_TICK"},
     {"TIMER_TIMEBASE_TIME", Timer::TIME, "TimerTimeBase::TIMER_TIMEBASE_TIME"},
     {"TIMER_TIMEBASE_REALTIME", Timer::REALTIME, "TimerTimeBase::TIMER_TIMEBASE_REALTIME"},
 };
 
-static const ScriptEnumValueContract kDataShareValueTypeValues[] = {
+static const ScriptEnumValueDescriptor kDataShareValueTypeValues[] = {
     {"DATASHARE_STRING", 0, "DataShareValueType::DATASHARE_STRING"},
     {"DATASHARE_BOOL", 1, "DataShareValueType::DATASHARE_BOOL"},
     {"DATASHARE_INT", 2, "DataShareValueType::DATASHARE_INT"},
     {"DATASHARE_FLOAT", 3, "DataShareValueType::DATASHARE_FLOAT"},
 };
 
-static const ScriptEnumValueContract kStateValueTypeValues[] = {
+static const ScriptEnumValueDescriptor kStateValueTypeValues[] = {
     {"STATE_VALUE_EMPTY", static_cast<int>(ScriptStateValueType::Empty), "StateValueType::STATE_VALUE_EMPTY"},
     {"STATE_VALUE_BOOL", static_cast<int>(ScriptStateValueType::Bool), "StateValueType::STATE_VALUE_BOOL"},
     {"STATE_VALUE_INT", static_cast<int>(ScriptStateValueType::Int), "StateValueType::STATE_VALUE_INT"},
@@ -203,7 +203,7 @@ static const ScriptEnumValueContract kStateValueTypeValues[] = {
     {"STATE_VALUE_STRING", static_cast<int>(ScriptStateValueType::String), "StateValueType::STATE_VALUE_STRING"},
 };
 
-static const ScriptEnumContract kEnums[] = {
+static const ScriptEnumDescriptor kEnums[] = {
     {"GameEvent", "enum GameEvent", kGameEventValues, sizeof(kGameEventValues) / sizeof(kGameEventValues[0])},
     {"DirectoryType", "enum DirectoryType", kDirectoryTypeValues, sizeof(kDirectoryTypeValues) / sizeof(kDirectoryTypeValues[0])},
     {"ModKind", "enum ModKind", kModKindValues, sizeof(kModKindValues) / sizeof(kModKindValues[0])},
@@ -224,17 +224,17 @@ static const ScriptEnumContract kEnums[] = {
     {"StateValueType", "enum StateValueType", kStateValueTypeValues, sizeof(kStateValueTypeValues) / sizeof(kStateValueTypeValues[0])},
 };
 
-static const ScriptEventMemberContract kRenderEventMembers[] = {
+static const ScriptEventMemberDescriptor kRenderEventMembers[] = {
     {"int get_Flags() const", "int RenderEvent::get_Flags() const"},
     {"int GetFlags() const", "int RenderEvent::GetFlags() const"},
 };
 
-static const ScriptEventMemberContract kCheatEventMembers[] = {
+static const ScriptEventMemberDescriptor kCheatEventMembers[] = {
     {"bool get_Enabled() const", "bool CheatEvent::get_Enabled() const"},
     {"bool IsEnabled() const", "bool CheatEvent::IsEnabled() const"},
 };
 
-static const ScriptEventMemberContract kLoadObjectEventMembers[] = {
+static const ScriptEventMemberDescriptor kLoadObjectEventMembers[] = {
     {"string get_Filename() const", "string LoadObjectEvent::get_Filename() const"},
     {"bool get_IsMap() const", "bool LoadObjectEvent::get_IsMap() const"},
     {"string get_MasterName() const", "string LoadObjectEvent::get_MasterName() const"},
@@ -249,13 +249,13 @@ static const ScriptEventMemberContract kLoadObjectEventMembers[] = {
     {"CKObject@ BorrowMasterObject() const", "CKObject@ LoadObjectEvent::BorrowMasterObject() const"},
 };
 
-static const ScriptEventMemberContract kLoadScriptEventMembers[] = {
+static const ScriptEventMemberDescriptor kLoadScriptEventMembers[] = {
     {"string get_Filename() const", "string LoadScriptEvent::get_Filename() const"},
     {"int get_ScriptId() const", "int LoadScriptEvent::get_ScriptId() const"},
     {"CKBehavior@ BorrowScript() const", "CKBehavior@ LoadScriptEvent::BorrowScript() const"},
 };
 
-static const ScriptEventMemberContract kCommandEventMembers[] = {
+static const ScriptEventMemberDescriptor kCommandEventMembers[] = {
     {"CommandEventPhase get_Phase() const", "CommandEventPhase CommandEvent::get_Phase() const"},
     {"bool get_IsPre() const", "bool CommandEvent::get_IsPre() const"},
     {"bool get_IsPost() const", "bool CommandEvent::get_IsPost() const"},
@@ -268,7 +268,7 @@ static const ScriptEventMemberContract kCommandEventMembers[] = {
     {"bool get_IsCheat() const", "bool CommandEvent::get_IsCheat() const"},
 };
 
-static const ScriptEventMemberContract kConfigEventMembers[] = {
+static const ScriptEventMemberDescriptor kConfigEventMembers[] = {
     {"string get_ModId() const", "string ConfigEvent::get_ModId() const"},
     {"string get_Category() const", "string ConfigEvent::get_Category() const"},
     {"string get_Key() const", "string ConfigEvent::get_Key() const"},
@@ -277,7 +277,7 @@ static const ScriptEventMemberContract kConfigEventMembers[] = {
     {"ConfigProperty@ BorrowProperty() const", "ConfigProperty@ ConfigEvent::BorrowProperty() const"},
 };
 
-static const ScriptEventMemberContract kTimerEventMembers[] = {
+static const ScriptEventMemberDescriptor kTimerEventMembers[] = {
     {"bool get_IsValid() const", "bool TimerEvent::get_IsValid() const"},
     {"int get_Id() const", "int TimerEvent::get_Id() const"},
     {"string get_Name() const", "string TimerEvent::get_Name() const"},
@@ -289,7 +289,7 @@ static const ScriptEventMemberContract kTimerEventMembers[] = {
     {"float get_Progress() const", "float TimerEvent::get_Progress() const"},
 };
 
-static const ScriptEventMemberContract kDataShareEventMembers[] = {
+static const ScriptEventMemberDescriptor kDataShareEventMembers[] = {
     {"bool get_Exists() const", "bool DataShareEvent::get_Exists() const"},
     {"string get_Key() const", "string DataShareEvent::get_Key() const"},
     {"int get_Type() const", "int DataShareEvent::get_Type() const"},
@@ -299,7 +299,7 @@ static const ScriptEventMemberContract kDataShareEventMembers[] = {
     {"float get_FloatValue() const", "float DataShareEvent::get_FloatValue() const"},
 };
 
-static const ScriptEventMemberContract kPhysicalizeEventMembers[] = {
+static const ScriptEventMemberDescriptor kPhysicalizeEventMembers[] = {
     {"int get_TargetId() const", "int PhysicalizeEvent::get_TargetId() const"},
     {"string get_TargetName() const", "string PhysicalizeEvent::get_TargetName() const"},
     {"CK3dEntity@ BorrowTarget() const", "CK3dEntity@ PhysicalizeEvent::BorrowTarget() const"},
@@ -327,13 +327,13 @@ static const ScriptEventMemberContract kPhysicalizeEventMembers[] = {
     {"CKMesh@ BorrowConcaveMesh(int index) const", "CKMesh@ PhysicalizeEvent::BorrowConcaveMesh(int index) const"},
 };
 
-static const ScriptEventMemberContract kObjectEventMembers[] = {
+static const ScriptEventMemberDescriptor kObjectEventMembers[] = {
     {"int get_TargetId() const", "int ObjectEvent::get_TargetId() const"},
     {"string get_TargetName() const", "string ObjectEvent::get_TargetName() const"},
     {"CK3dEntity@ BorrowTarget() const", "CK3dEntity@ ObjectEvent::BorrowTarget() const"},
 };
 
-static const ScriptEventTypeContract kEventTypes[] = {
+static const ScriptEventTypeDescriptor kEventTypes[] = {
     {"RenderEvent", "class RenderEvent", kRenderEventMembers, sizeof(kRenderEventMembers) / sizeof(kRenderEventMembers[0])},
     {"CheatEvent", "class CheatEvent", kCheatEventMembers, sizeof(kCheatEventMembers) / sizeof(kCheatEventMembers[0])},
     {"LoadObjectEvent", "class LoadObjectEvent", kLoadObjectEventMembers, sizeof(kLoadObjectEventMembers) / sizeof(kLoadObjectEventMembers[0])},
@@ -348,27 +348,27 @@ static const ScriptEventTypeContract kEventTypes[] = {
 
 } // namespace
 
-ScriptContractSpan<ScriptCallbackContract> ScriptApiContract::Callbacks() {
+ScriptDescriptorSpan<ScriptCallbackDescriptor> ScriptApiSurface::Callbacks() {
     return {kCallbacks, sizeof(kCallbacks) / sizeof(kCallbacks[0])};
 }
 
-ScriptContractSpan<ScriptTypedefContract> ScriptApiContract::Typedefs() {
+ScriptDescriptorSpan<ScriptTypedefDescriptor> ScriptApiSurface::Typedefs() {
     return {nullptr, 0};
 }
 
-ScriptContractSpan<ScriptIntegerConstantContract> ScriptApiContract::GameEventConstants() {
+ScriptDescriptorSpan<ScriptIntegerConstantDescriptor> ScriptApiSurface::GameEventConstants() {
     return {nullptr, 0};
 }
 
-ScriptContractSpan<ScriptIntegerConstantContract> ScriptApiContract::ErrorConstants() {
+ScriptDescriptorSpan<ScriptIntegerConstantDescriptor> ScriptApiSurface::ErrorConstants() {
     return {kErrorConstants, sizeof(kErrorConstants) / sizeof(kErrorConstants[0])};
 }
 
-ScriptContractSpan<ScriptEnumContract> ScriptApiContract::Enums() {
+ScriptDescriptorSpan<ScriptEnumDescriptor> ScriptApiSurface::Enums() {
     return {kEnums, sizeof(kEnums) / sizeof(kEnums[0])};
 }
 
-ScriptContractSpan<ScriptEventTypeContract> ScriptApiContract::EventTypes() {
+ScriptDescriptorSpan<ScriptEventTypeDescriptor> ScriptApiSurface::EventTypes() {
     return {kEventTypes, sizeof(kEventTypes) / sizeof(kEventTypes[0])};
 }
 

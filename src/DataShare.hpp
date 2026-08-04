@@ -62,7 +62,7 @@ namespace BML {
         static void DestroyAllInstances();
 
     private:
-        // Contract: must be called while holding m_Mutex
+        // Precondition: m_Mutex is held by the caller.
         void AddCallbackLocked(const char *key, BML_DataShareCallback cb, BML_DataShareCleanupCallback cleanup, void *ud) const;
         void TriggerCallbacksUnlocked(const char *key, const void *data, size_t size) const;
         void CancelPendingCallbacks() const noexcept;

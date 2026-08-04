@@ -204,7 +204,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/CKAngelScriptAdapter.h
             AngelScript/AngelScriptBindings.h
             AngelScript/AngelScriptImGuiBindings.h
-            AngelScript/ScriptApiContract.h
+            AngelScript/ScriptApiSurface.h
             AngelScript/ScriptAngelScriptHandle.h
             AngelScript/ScriptAvailabilityLogLimiter.h
             AngelScript/ScriptCallbackDispatcher.h
@@ -251,7 +251,7 @@ if (BML_WITH_ANGELSCRIPT)
     set(BML_ANGELSCRIPT_SOURCES
             AngelScript/AngelScriptBindings.cpp
             AngelScript/CKAngelScriptAdapter.cpp
-            AngelScript/ScriptApiContract.cpp
+            AngelScript/ScriptApiSurface.cpp
             AngelScript/ScriptCallbackDispatcher.cpp
             AngelScript/ScriptCallbackEvents.cpp
             AngelScript/ScriptCommandService.cpp
