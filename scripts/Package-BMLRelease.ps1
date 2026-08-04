@@ -428,8 +428,7 @@ if ($IncludeAngelScript -and -not $ckasRuntime) {
 
 $scriptDocs = @(
     'bml-script-mod-author-guide.md',
-    'bml-script-mod-api.as',
-    'bml-script-facade-coverage.md'
+    'bml-script-mod-api.as'
 )
 $scriptSdkDocs = $scriptDocs
 $nativeTemplate = Join-Path $layout.TemplatesRoot 'native-mod-template'
