@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$Source,
@@ -57,6 +57,10 @@ try {
         }
 
         $relative = $file.FullName.Substring($sourcePrefix.Length)
+        $segments = $relative -split '[\\/]'
+        if ($segments -contains '__pycache__' -or $file.Extension -in @('.pyc', '.pyo')) {
+            continue
+        }
         $entryName = $relative.Replace('\', '/')
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
             $zip,

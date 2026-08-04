@@ -112,7 +112,19 @@ function Copy-BMLDirectoryContents {
 
     Assert-BMLPath -Path $SourceDir -Type Container
     New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
-    Copy-Item -Path (Join-Path $SourceDir '*') -Destination $DestinationDir -Recurse
+
+    $sourceRoot = [System.IO.Path]::GetFullPath($SourceDir).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    foreach ($file in Get-ChildItem -LiteralPath $SourceDir -File -Recurse -Force) {
+        $relative = $file.FullName.Substring($sourceRoot.Length)
+        $segments = $relative -split '[\\/]'
+        if ($segments -contains '__pycache__' -or $file.Extension -in @('.pyc', '.pyo')) {
+            continue
+        }
+
+        $destination = Join-Path $DestinationDir $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
+    }
 }
 
 function Copy-BMLDirectoryFresh {
@@ -145,7 +157,12 @@ function New-BMLZipFromDirectory {
         Remove-Item -LiteralPath $ZipPath -Force
     }
 
-    $files = @(Get-ChildItem -LiteralPath $SourceDir -File -Recurse -Force)
+    $sourceFull = [System.IO.Path]::GetFullPath($SourceDir).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $files = @(Get-ChildItem -LiteralPath $SourceDir -File -Recurse -Force | Where-Object {
+        $relative = $_.FullName.Substring($sourceFull.Length)
+        $segments = $relative -split '[\\/]'
+        $segments -notcontains '__pycache__' -and $_.Extension -notin @('.pyc', '.pyo')
+    })
     if (-not $files) {
         throw "Cannot package empty directory: $SourceDir"
     }
@@ -154,7 +171,6 @@ function New-BMLZipFromDirectory {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
     New-Item -ItemType Directory -Path (Split-Path -Parent $ZipPath) -Force | Out-Null
-    $sourceFull = [System.IO.Path]::GetFullPath($SourceDir).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
     $zip = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
         foreach ($file in $files) {

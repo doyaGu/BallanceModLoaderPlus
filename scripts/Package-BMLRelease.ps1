@@ -124,6 +124,73 @@ function Get-BMLVersionHeaderFullVersion {
     return $match.Matches[0].Groups[1].Value
 }
 
+function Assert-BMLSdkStage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$StageDir,
+
+        [switch]$RequireAngelScript
+    )
+
+    foreach ($relative in @(
+        'include\BML\BMLAll.h',
+        'include\BML\Imc.h',
+        'include\BML\Generated\bml_runtime_imc.hpp',
+        'include\BML\Runtime.h',
+        'include\BML\Bui.h',
+        'include\BML\Gui\Gui.h',
+        'include\BML\Guids\Hooks.h',
+        'lib\cmake\BML\BMLConfig.cmake',
+        'lib\cmake\BML\BMLMod.cmake',
+        'lib\cmake\BML\BMLImc.cmake',
+        'lib\cmake\BML\FindVirtoolsSDK.cmake',
+        'share\BML\tools\imc_codegen.py',
+        'share\BML\docs\native-mod-api.md',
+        'share\BML\docs\imc.md',
+        'templates\native-mod-template\CMakeLists.txt'
+    )) {
+        Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
+    }
+
+    if ($RequireAngelScript) {
+        foreach ($relative in @(
+            'include\CKAngelScript.h',
+            'include\angelscript.h',
+            'templates\script-mod-template\HelloScript.mod.as',
+            'scripts\Pack-BMLScriptMod.ps1'
+        )) {
+            Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
+        }
+    }
+
+    foreach ($relative in @(
+        'include\BML\Core.h',
+        'include\BML\Import.h',
+        'include\BML\Interop.h',
+        'include\BML\DataBox.h',
+        'include\BML\RefCount.h',
+        'include\BML\Timer.h'
+    )) {
+        $forbidden = Join-Path $StageDir $relative
+        if (Test-Path -LiteralPath $forbidden) {
+            throw "SDK stage contains a removed or internal header: $relative"
+        }
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath $StageDir -File -Recurse -Force) {
+        $relative = (Get-RelativeZipPath -BaseDir $StageDir -Path $file.FullName).ToLowerInvariant()
+        if ($relative -match '(^|/)__pycache__(/|$)' -or $relative -match '\.py[co]$') {
+            throw "SDK stage contains a Python cache file: $relative"
+        }
+        if ($relative -match '^include/(gtest|gmock)/' -or
+            $relative -match '^lib/(gtest|gmock)(_main)?\.(lib|a)$' -or
+            $relative -match '^lib/cmake/gtest/' -or
+            $relative -match '^lib/pkgconfig/(gtest|gmock)') {
+            throw "SDK stage contains GoogleTest development files: $relative"
+        }
+    }
+}
+
 function Assert-BMLBinaryVersionMatchesHeader {
     param(
         [string]$BinaryPath,
@@ -432,7 +499,7 @@ New-BMLCleanDirectory $stageRoot
 
 $runtimeStage = Join-Path $stageRoot 'runtime'
 New-BMLCleanDirectory $runtimeStage
-Copy-Item -Path (Join-Path $runtimeSource '*') -Destination $runtimeStage -Recurse
+Copy-BMLDirectoryContents -SourceDir $runtimeSource -DestinationDir $runtimeStage
 Copy-RequiredFile -Source (Join-Path $releaseBin 'BMLPlus.dll') -Destination (Join-Path $runtimeStage 'BuildingBlocks\BMLPlus.dll')
 Copy-RequiredFile -Source (Join-Path $releaseBin 'Updater.exe') -Destination (Join-Path $runtimeStage 'Bin\Updater.exe')
 Write-UpdaterBootstrapReadme -DestinationDir (Join-Path $runtimeStage 'Bin') -Version $Version
@@ -487,13 +554,14 @@ if ($IncludeAngelScript) {
     Copy-BMLDirectoryContents -SourceDir (Join-Path $layout.ScriptsRoot 'lib') -DestinationDir (Join-Path $releaseSdkStage 'scripts\lib')
 }
 
+Assert-BMLSdkStage -StageDir $releaseSdkStage -RequireAngelScript:$IncludeAngelScript
 New-BMLZipFromDirectory -SourceDir $releaseSdkStage -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Release.zip")
 
 $debugStage = Join-Path $stageRoot 'sdk-debug'
 New-BMLCleanDirectory $debugStage
 Copy-BMLDirectoryContents -SourceDir $debugInstall -DestinationDir $debugStage
 Copy-RequiredFile -Source (Join-Path $debugBin 'BMLPlus.pdb') -Destination (Join-Path $debugStage 'bin\BMLPlus.pdb')
-foreach ($directory in @('docs', 'tools', 'examples')) {
+foreach ($directory in @('docs', 'tools', 'examples', 'templates')) {
     $source = Join-Path $releaseSdkStage $directory
     if (Test-Path -LiteralPath $source) {
         Copy-BMLDirectoryContents -SourceDir $source -DestinationDir (Join-Path $debugStage $directory)
@@ -503,6 +571,7 @@ if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $debugStage 'include')
 }
 
+Assert-BMLSdkStage -StageDir $debugStage -RequireAngelScript:$IncludeAngelScript
 New-BMLZipFromDirectory -SourceDir $debugStage -ZipPath (Join-Path $output "BMLPlus-SDK-$Version-Debug.zip")
 
 Remove-Item -LiteralPath $stageRoot -Recurse -Force
