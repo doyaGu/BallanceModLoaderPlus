@@ -3950,10 +3950,10 @@ int RegisterBMLAngelScript(asIScriptEngine *engine,
 
     BML_AS_REGISTER(engine->SetDefaultNamespace("BML"), "namespace BML");
 
-    const int contractResult = RegisterScriptFacade(engine, errorMessage);
-    if (contractResult < 0) {
+    const int facadeResult = RegisterScriptFacade(engine, errorMessage);
+    if (facadeResult < 0) {
         engine->SetDefaultNamespace("");
-        return contractResult;
+        return facadeResult;
     }
 
     const int imguiResult = RegisterImGuiBindings(engine, errorMessage);
