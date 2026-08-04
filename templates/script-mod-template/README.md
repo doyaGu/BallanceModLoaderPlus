@@ -1,12 +1,12 @@
 ﻿# BML+ Script Mod Template
 
-Minimal BML+ script mod template using the v1 contract:
+Minimal BML+ script mod template using the current script API:
 
 - one arbitrary `*.mod.as` entry file
 - AngelScript metadata declarations
 - fixed callback signatures
 - script-owned Timer and Command objects
-- typed export registry
+- typed BML service facades
 
 ## Install For Testing
 

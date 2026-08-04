@@ -361,7 +361,6 @@ if ($IncludeAngelScript -and -not $ckasRuntime) {
 
 $scriptDocs = @(
     'bml-script-mod-author-guide.md',
-    'bml-script-v1-contract.md',
     'bml-script-mod-api.as',
     'bml-script-facade-coverage.md'
 )

@@ -110,7 +110,6 @@ Scan the generated site:
 ```powershell
 $internalDocPatterns = @(
   'bml-script-mod-author-guide',
-  'bml-script-v1-contract',
   'bml-script-mod-validation',
   'bml-script-facade-coverage',
   'bml-script-api-redesign-plan',

@@ -487,7 +487,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 ## Callbacks
 
-Old `OnPre*` / `OnPost*` overload families are not part of the v1 contract.
+Old `OnPre*` / `OnPost*` overload families are not part of the script API.
 Only these fixed signatures are recognized:
 
 ```angelscript
@@ -1061,7 +1061,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 `CompletedIterations`, `RemainingIterations`, and `Progress`.
 
 The API stub shows `Timer@+`, command/DataShare callback `@+`, `Command@+`,
-and `DataShareRequest@+`. That is an AngelScript/native ownership contract:
+and `DataShareRequest@+`. That is an AngelScript/native ownership rule:
 BML retains the object or delegate when registration succeeds and releases it on
 unregister, completion, cancellation, or mod unload. Script authors still pass
 normal script objects, including temporaries such as `ctx.AddTimer(HeartbeatTimer())`.

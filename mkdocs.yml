@@ -38,7 +38,6 @@ exclude_docs: |
   bml-script-facade-coverage.md
   bml-script-mod-author-guide.md
   bml-script-mod-validation.md
-  bml-script-v1-contract.md
   bml-updater-design.md
   script-mod-tutorial/archive/**
   script-mod-tutorial/libs/**

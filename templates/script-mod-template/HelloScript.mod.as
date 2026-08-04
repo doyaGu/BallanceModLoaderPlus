@@ -46,10 +46,6 @@ class HelloScript {
         BML::UI::SearchBar(search);
     }
 
-    [bml.export(name: "Greeting", signature: "string(string)")]
-    string Greeting(const string &in name) {
-        return "Hello, " + name + "!";
-    }
 }
 
 class HeartbeatTimer : BML::Timer {
