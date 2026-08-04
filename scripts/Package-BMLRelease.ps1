@@ -141,6 +141,7 @@ function Assert-BMLSdkStage {
         'include\BML\Gui\Gui.h',
         'include\BML\Guids\Hooks.h',
         'lib\cmake\BML\BMLConfig.cmake',
+        'lib\cmake\BML\BMLTargets.cmake',
         'lib\cmake\BML\BMLMod.cmake',
         'lib\cmake\BML\BMLImc.cmake',
         'lib\cmake\BML\FindVirtoolsSDK.cmake',
@@ -174,6 +175,13 @@ function Assert-BMLSdkStage {
         $forbidden = Join-Path $StageDir $relative
         if (Test-Path -LiteralPath $forbidden) {
             throw "SDK stage contains a removed or internal header: $relative"
+        }
+    }
+
+    $bmlTargets = Get-Content -LiteralPath (Join-Path $StageDir 'lib\cmake\BML\BMLTargets.cmake') -Raw
+    foreach ($dependency in @('VirtoolsSDK::CK2', 'VirtoolsSDK::VxMath')) {
+        if (-not $bmlTargets.Contains($dependency)) {
+            throw "SDK target export does not use the required namespaced dependency: $dependency"
         }
     }
 
