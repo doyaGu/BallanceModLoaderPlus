@@ -45,6 +45,8 @@ void ExpectContainsNone(const std::string &text,
 } // namespace
 
 TEST(ScriptApiReferenceTest, ImcBackedFacadesAreDocumented) {
+    constexpr const char *kScriptApiStub = "docs/zh-CN/bml-script-mod-api.as";
+    constexpr const char *kPredefinedApi = "docs/zh-CN/as.predefined";
     const std::vector<std::string> declarations = {
         "namespace Runtime",
         "class State",
@@ -62,8 +64,8 @@ TEST(ScriptApiReferenceTest, ImcBackedFacadesAreDocumented) {
         "const int ERROR_IMC_TARGET_EXECUTION_FAILED",
     };
 
-    ExpectContainsAll(ReadTextFile("docs/bml-script-mod-api.as"), declarations, "docs/bml-script-mod-api.as");
-    ExpectContainsAll(ReadTextFile("docs/as.predefined"), declarations, "docs/as.predefined");
+    ExpectContainsAll(ReadTextFile(kScriptApiStub), declarations, kScriptApiStub);
+    ExpectContainsAll(ReadTextFile(kPredefinedApi), declarations, kPredefinedApi);
     const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptImcFacade.cpp");
     ExpectContainsAll(builtinFacade,
                       {"RegisterScriptImcFacade", "RegisterRuntime", "RegisterScene", "RegisterGameplay", "RegisterEvents",
@@ -76,6 +78,8 @@ TEST(ScriptApiReferenceTest, ImcBackedFacadesAreDocumented) {
 }
 
 TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
+    constexpr const char *kScriptApiStub = "docs/zh-CN/bml-script-mod-api.as";
+    constexpr const char *kPredefinedApi = "docs/zh-CN/as.predefined";
     const std::vector<std::string> removed = {
         "namespace Interop",
         "ERROR_INTEROP_",
@@ -86,8 +90,8 @@ TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
         "class ExportResolver",
         "class ExportRef",
     };
-    ExpectContainsNone(ReadTextFile("docs/bml-script-mod-api.as"), removed, "docs/bml-script-mod-api.as");
-    ExpectContainsNone(ReadTextFile("docs/as.predefined"), removed, "docs/as.predefined");
+    ExpectContainsNone(ReadTextFile(kScriptApiStub), removed, kScriptApiStub);
+    ExpectContainsNone(ReadTextFile(kPredefinedApi), removed, kPredefinedApi);
 }
 
 TEST(ScriptApiReferenceTest, BuiltinEventsUseOnlyImcPublishing) {
