@@ -8,4 +8,5 @@ or SDK documentation.
 - `scripting/`: script API coverage and validation records.
 - `documentation/`: documentation build and deployment procedures.
 
-Public author documentation belongs in `docs/en/` or `docs/zh-CN/`.
+Public prose belongs in `docs/en/` or `docs/zh-CN/`. Language-neutral,
+downloadable API reference files belong in `docs/api/`.

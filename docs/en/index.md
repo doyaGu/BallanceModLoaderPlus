@@ -10,6 +10,7 @@ and mod-authoring interfaces.
 
 - [Native mod API](native-mod-api.md)
 - [Script mod author guide](script-mod/author-guide.md)
+- [Script API reference](script-mod/api.md)
 - [Inter-mod communication](imc.md)
 - [Create a typed IMC API](imc-author-guide.md)
 
@@ -17,5 +18,4 @@ and mod-authoring interfaces.
 
 The native SDK, script mod author guide, and IMC documentation are available in
 English. The complete step-by-step AngelScript tutorial is currently maintained
-in the
-[Simplified Chinese site](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/).
+on the [Simplified Chinese site](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/).

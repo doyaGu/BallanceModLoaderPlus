@@ -1,15 +1,18 @@
-# BML 脚本 API
+# BML+ 脚本 API 参考
 
-这里放脚本教程中会用到的 BML 脚本绑定声明。
+以下参考文件描述 BML+ 提供的 AngelScript 接口。它们用于编辑器补全和 API
+查询，不是运行时脚本，也不应包含在 Mod 发布包中。
 
 ## 绑定声明
 
-- [as.predefined](as.predefined)
-- [BML 脚本 mod API](bml-script-mod-api.as)
-- [BML ImGui API](bml-imgui-api.as)
+<ul>
+  <li><a href="as.predefined"><code>as.predefined</code></a> — AngelScript Language Server 使用的完整定义，包含 CKAngelScript 与 BML+。</li>
+  <li><a href="bml-script-mod-api.as"><code>bml-script-mod-api.as</code></a> — BML+ 脚本 Mod 的类型、函数、回调和属性。</li>
+  <li><a href="bml-imgui-api.as"><code>bml-imgui-api.as</code></a> — 脚本可用的 Dear ImGui 绑定。</li>
+</ul>
 
-`as.predefined` 是给 AngelScript Language Server 使用的完整预定义文件，包含 CKAngelScript 导出的基础 API、BML 脚本 mod API 和 BML ImGui API。写脚本时建议把它放到 VS Code 工作区里。它不是运行时脚本，BML 不会加载它。
+编写脚本时，建议将 `as.predefined` 配置给 AngelScript Language Server。
+BML+ 不会在运行时加载这些参考文件。
 
-下面两个 `.as` 文件是拆分出来的 BML 声明，适合快速查 BML 自己提供的类型、函数、回调签名。声明里的 `get_XXX()` 表示 AngelScript 属性访问器，脚本里通常写成 `obj.XXX`。
-
-这些文件是 API reference stub，不是运行时源码。打包 mod 时不要把它们放进 `ModLoader/Mods`。
+声明中的 `get_Name()` 表示 AngelScript 属性访问器，脚本中通常写成
+`object.Name`。声明中的 `@+` 表示对应注册成功后，引用由 BML+ 保持。

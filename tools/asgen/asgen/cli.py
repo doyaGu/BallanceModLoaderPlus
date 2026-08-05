@@ -21,7 +21,7 @@ def generated_files(root: Path, header: str, source: str, stub: str, report: str
         root / "src" / "AngelScript" / "generated" / "BMLImGuiAngelScriptBindings.h": header,
         root / "src" / "AngelScript" / "generated" / "BMLImGuiAngelScriptBindings.cpp": source,
         root / "src" / "AngelScript" / "generated" / "BMLImGuiAngelScriptBindings.report.md": report,
-        root / "docs" / "bml-imgui-api.as": stub,
+        root / "docs" / "api" / "bml-imgui-api.as": stub,
     }
 
 
@@ -30,7 +30,7 @@ def generated_paths(root: Path) -> dict[str, Path]:
         "header": root / "src" / "AngelScript" / "generated" / "BMLImGuiAngelScriptBindings.h",
         "source": root / "src" / "AngelScript" / "generated" / "BMLImGuiAngelScriptBindings.cpp",
         "report": root / "src" / "AngelScript" / "generated" / "BMLImGuiAngelScriptBindings.report.md",
-        "stub": root / "docs" / "bml-imgui-api.as",
+        "stub": root / "docs" / "api" / "bml-imgui-api.as",
     }
 
 

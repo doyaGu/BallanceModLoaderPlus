@@ -109,7 +109,7 @@ def _check_registration_sources(root: Path, errors: list[str]) -> None:
 
 
 def _check_stub(root: Path, errors: list[str]) -> None:
-    relative = Path("docs/bml-script-mod-api.as")
+    relative = Path("docs/api/bml-script-mod-api.as")
     text = _read(root / relative)
     _check_forbidden(str(relative), text, errors)
     for declaration in REQUIRED_OWNERSHIP_DECLARATIONS:

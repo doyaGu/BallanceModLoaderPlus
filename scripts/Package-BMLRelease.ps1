@@ -152,8 +152,10 @@ function Assert-BMLSdkStage {
             'templates\script-mod-template\HelloScript.mod.as',
             'scripts\Pack-BMLScriptMod.ps1',
             'docs\en\script-mod\author-guide.md',
-            'docs\en\script-mod\bml-script-mod-api.as',
-            'docs\en\script-mod\bml-imgui-api.as'
+            'docs\en\script-mod\api.md',
+            'docs\api\as.predefined',
+            'docs\api\bml-script-mod-api.as',
+            'docs\api\bml-imgui-api.as'
         )) {
             Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
         }
@@ -430,8 +432,10 @@ if ($IncludeAngelScript -and -not $ckasRuntime) {
 }
 
 $scriptAuthorGuide = Join-Path $layout.DocsRoot 'en\script-mod\author-guide.md'
-$scriptApiStub = Join-Path $layout.DocsRoot 'zh-CN\bml-script-mod-api.as'
-$scriptImGuiApiStub = Join-Path $layout.DocsRoot 'zh-CN\bml-imgui-api.as'
+$scriptApiPage = Join-Path $layout.DocsRoot 'en\script-mod\api.md'
+$scriptPredefinedApi = Join-Path $layout.DocsRoot 'api\as.predefined'
+$scriptApiStub = Join-Path $layout.DocsRoot 'api\bml-script-mod-api.as'
+$scriptImGuiApiStub = Join-Path $layout.DocsRoot 'api\bml-imgui-api.as'
 $nativeTemplate = Join-Path $layout.TemplatesRoot 'native-mod-template'
 $scriptTemplate = Join-Path $layout.TemplatesRoot 'script-mod-template'
 
@@ -482,7 +486,7 @@ Assert-BMLBinaryVersionMatchesHeader `
 
 if ($IncludeAngelScript) {
     Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Type Leaf
-    foreach ($doc in @($scriptAuthorGuide, $scriptApiStub, $scriptImGuiApiStub)) {
+    foreach ($doc in @($scriptAuthorGuide, $scriptApiPage, $scriptPredefinedApi, $scriptApiStub, $scriptImGuiApiStub)) {
         Assert-BMLPath -Path $doc -Type Leaf
     }
     Assert-BMLPath -Path $scriptTemplate -Type Container
@@ -550,8 +554,10 @@ if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
     Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\script-mod-template')
     Copy-RequiredFile -Source $scriptAuthorGuide -Destination (Join-Path $releaseSdkStage 'docs\en\script-mod\author-guide.md')
-    Copy-RequiredFile -Source $scriptApiStub -Destination (Join-Path $releaseSdkStage 'docs\en\script-mod\bml-script-mod-api.as')
-    Copy-RequiredFile -Source $scriptImGuiApiStub -Destination (Join-Path $releaseSdkStage 'docs\en\script-mod\bml-imgui-api.as')
+    Copy-RequiredFile -Source $scriptApiPage -Destination (Join-Path $releaseSdkStage 'docs\en\script-mod\api.md')
+    Copy-RequiredFile -Source $scriptPredefinedApi -Destination (Join-Path $releaseSdkStage 'docs\api\as.predefined')
+    Copy-RequiredFile -Source $scriptApiStub -Destination (Join-Path $releaseSdkStage 'docs\api\bml-script-mod-api.as')
+    Copy-RequiredFile -Source $scriptImGuiApiStub -Destination (Join-Path $releaseSdkStage 'docs\api\bml-imgui-api.as')
     Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\Pack-BMLScriptMod.ps1')
     Copy-BMLDirectoryContents -SourceDir (Join-Path $layout.ScriptsRoot 'lib') -DestinationDir (Join-Path $releaseSdkStage 'scripts\lib')
 }

@@ -26,7 +26,7 @@ Player.exe 是 Ballance 原版的可执行文件。它加载 `BuildingBlocks/` �
 ## 需要准备的东西
 
 ```text
-BML 0.3.12（发布包）
+BML 0.3.13（发布包）
 VS Code
 AngelScript Language Server（VS Code 扩展）
 as.predefined（API 描述文件）
@@ -52,7 +52,7 @@ Textures/
 下载玩家用的 BML 发布包，例如：
 
 ```text
-BMLPlus-v0.3.12.zip
+BMLPlus-v0.3.13.zip
 ```
 
 把压缩包里的内容解压到游戏目录。解压完成后，应该能看到：
@@ -75,7 +75,7 @@ ModLoader/
 
 ```text
 Ballance/
-  BMLPlus-v0.3.12/         <- 多出来的一层
+  BMLPlus-v0.3.13/         <- 多出来的一层
     BuildingBlocks/BMLPlus.dll
 ```
 
@@ -95,7 +95,7 @@ Ballance/
 启动 `Bin/Player.exe`。进入游戏画面后，看画面中上方。能看到：
 
 ```text
-BML Plus 0.3.12
+BML Plus 0.3.13
 ```
 
 这行字表示 `BMLPlus.dll` 已经被 Player.exe 成功加载，并且初始化没有出错。
@@ -104,8 +104,8 @@ BML Plus 0.3.12
 
 | 现象 | 检查 |
 | --- | --- |
-| 游戏能启动，但没有 `BML Plus 0.3.12` | `BuildingBlocks/BMLPlus.dll` 是否在游戏根目录下的 BuildingBlocks 里 |
-| 解压后有 `BMLPlus-v0.3.12/BuildingBlocks` | 多套了一层目录，把里面的内容移到游戏根目录 |
+| 游戏能启动，但没有 `BML Plus 0.3.13` | `BuildingBlocks/BMLPlus.dll` 是否在游戏根目录下的 BuildingBlocks 里 |
+| 解压后有 `BMLPlus-v0.3.13/BuildingBlocks` | 多套了一层目录，把里面的内容移到游戏根目录 |
 | 启动时报 DLL 或运行库错误 | 安装 Microsoft Visual C++ 2015-2022 x86 运行库 |
 | 画面有 BML，但后续脚本功能异常 | `BuildingBlocks/AngelScript.dll` 是否存在 |
 
@@ -153,7 +153,10 @@ ModLoader/Mods/
   HelloMod.mod.as    <- 后面章节会创建
 ```
 
-下载 [`as.predefined`](../as.predefined)，放到上面的工作区目录。这个文件描述了 BML 对脚本暴露的所有 API 的类型信息。AngelScript Language Server 读取它之后，编辑器就能识别 `BML::ModContext`、`BML::Logger`、`ImGui::Begin`、`CKDataArray` 等名字，并提供补全和类型检查。
+下载 <a href="../../api/as.predefined"><code>as.predefined</code></a>，放到
+上面的工作区目录。这个文件描述了 BML+ 和 CKAngelScript 对脚本公开的 API。
+AngelScript Language Server 读取后，编辑器就能识别 `BML::ModContext`、
+`BML::Logger`、`ImGui::Begin`、`CKDataArray` 等名称，并提供补全和类型检查。
 
 BML 本身不会加载 `as.predefined`，它纯粹是给编辑器用的。
 
@@ -165,7 +168,7 @@ BML 本身不会加载 `as.predefined`，它纯粹是给编辑器用的。
 
 ```text
 [ ] Ballance 能正常启动
-[ ] 游戏画面中上方能看到 BML Plus 0.3.12
+[ ] 游戏画面中上方能看到 BML Plus 0.3.13
 [ ] BuildingBlocks/BMLPlus.dll 存在
 [ ] BuildingBlocks/AngelScript.dll 存在
 [ ] ModLoader/ModLoader.log 存在且有内容

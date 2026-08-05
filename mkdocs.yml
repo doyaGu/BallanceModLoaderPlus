@@ -1,5 +1,5 @@
 site_name: Ballance Mod Loader Plus
-site_description: BML+ native mod and inter-mod communication documentation.
+site_description: BML+ native mod, script mod, and inter-mod communication documentation.
 site_url: https://doyagu.github.io/BallanceModLoaderPlus/
 repo_url: https://github.com/doyaGu/BallanceModLoaderPlus
 repo_name: doyaGu/BallanceModLoaderPlus
@@ -7,6 +7,7 @@ docs_dir: docs/en
 site_dir: site
 hooks:
   - docs/hooks/pygments_angelscript.py
+  - docs/hooks/copy_api_assets.py
 
 theme:
   name: material
@@ -48,6 +49,7 @@ nav:
   - Native mod API: native-mod-api.md
   - Script mods:
       - Author guide: script-mod/author-guide.md
+      - API reference: script-mod/api.md
   - Inter-mod communication:
       - Overview: imc.md
       - Authoring guide: imc-author-guide.md

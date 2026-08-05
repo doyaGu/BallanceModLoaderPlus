@@ -23,7 +23,9 @@ Public documentation source is separated by language:
 ```text
 docs/en/
 docs/zh-CN/
+docs/api/
 docs/hooks/pygments_angelscript.py
+docs/hooks/copy_api_assets.py
 mkdocs.yml
 mkdocs.zh-CN.yml
 requirements-docs.txt
@@ -34,7 +36,9 @@ Repository maintenance notes live under `docs/internal/`. They are tracked for
 maintainers but are not inputs to either MkDocs site or the SDK package.
 
 `docs/en/` contains English prose only. `docs/zh-CN/` contains Simplified
-Chinese prose only. Identifiers, code, file names, and quoted diagnostics keep
+Chinese prose only. `docs/api/` contains language-neutral downloadable API
+reference files copied into each generated site's `api/` directory. Identifiers, code,
+file names, and quoted diagnostics keep
 their original language. A page that is unavailable in one language must be
 linked as an explicitly labelled external-language resource; do not place the
 other language's prose inside the local documentation tree.
@@ -69,6 +73,11 @@ Build both sites strictly, in this order:
 mkdocs build --strict --config-file mkdocs.yml
 mkdocs build --strict --config-file mkdocs.zh-CN.yml
 ```
+
+The `copy_api_assets.py` hook copies the language-neutral reference files from
+`docs/api/` to the configured site's `api/` directory during each build. The
+English files are written under `site/api/`; the Chinese files are written
+under `site/zh-CN/api/`.
 
 The English build owns `site/` and cleans it first. The Chinese build writes
 only `site/zh-CN/`, so reversing the order would delete the Chinese output.

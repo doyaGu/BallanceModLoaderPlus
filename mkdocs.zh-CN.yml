@@ -16,10 +16,7 @@ plugins:
 nav:
   - 首页: index.md
   - BML 原生 Mod API: native-mod-api.md
-  - IMC 跨 Mod 通信:
-      - 概览: imc.md
-      - 接口编写指南: imc-author-guide.md
-  - 脚本 Mod 教程:
+  - 脚本 Mod:
       - 导读: script-mod-tutorial/README.md
       - 教程:
           - 01 环境搭建: script-mod-tutorial/tutorial-01-setup.md
@@ -31,7 +28,7 @@ nav:
           - 07 配置与 Timer: script-mod-tutorial/tutorial-07-config-timer.md
           - 08 查找对象: script-mod-tutorial/tutorial-08-find-objects.md
           - 09 坐标显示器: script-mod-tutorial/tutorial-09-coordinate-mod.md
-          - 10 Ballance 内部结构: script-mod-tutorial/tutorial-10-ballance-internals.md
+          - 10 Ballance 运行结构: script-mod-tutorial/tutorial-10-ballance-internals.md
           - 11 读 DataArray: script-mod-tutorial/tutorial-11-dataarray-read.md
           - 12 状态面板: script-mod-tutorial/tutorial-12-status-panel-mod.md
           - 13 Levelinit 占位对象: script-mod-tutorial/tutorial-13-levelinit-placeholders.md
@@ -55,4 +52,7 @@ nav:
           - 跨 Mod 通信: script-mod-tutorial/ref-inter-mod.md
           - HUD、消息与资源: script-mod-tutorial/ref-hud-resources.md
           - Ballance 名称速查: script-mod-tutorial/ref-ballance-names.md
-  - BML 脚本 API: api.md
+      - API 参考: api.md
+  - IMC 跨 Mod 通信:
+      - 概览: imc.md
+      - 接口编写指南: imc-author-guide.md

@@ -45,8 +45,8 @@ void ExpectContainsNone(const std::string &text,
 } // namespace
 
 TEST(ScriptApiReferenceTest, ImcBackedFacadesAreDocumented) {
-    constexpr const char *kScriptApiStub = "docs/zh-CN/bml-script-mod-api.as";
-    constexpr const char *kPredefinedApi = "docs/zh-CN/as.predefined";
+    constexpr const char *kScriptApiStub = "docs/api/bml-script-mod-api.as";
+    constexpr const char *kPredefinedApi = "docs/api/as.predefined";
     const std::vector<std::string> declarations = {
         "namespace Runtime",
         "class State",
@@ -78,8 +78,8 @@ TEST(ScriptApiReferenceTest, ImcBackedFacadesAreDocumented) {
 }
 
 TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
-    constexpr const char *kScriptApiStub = "docs/zh-CN/bml-script-mod-api.as";
-    constexpr const char *kPredefinedApi = "docs/zh-CN/as.predefined";
+    constexpr const char *kScriptApiStub = "docs/api/bml-script-mod-api.as";
+    constexpr const char *kPredefinedApi = "docs/api/as.predefined";
     const std::vector<std::string> removed = {
         "namespace Interop",
         "ERROR_INTEROP_",
