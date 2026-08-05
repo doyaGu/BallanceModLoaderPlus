@@ -75,7 +75,7 @@ CKGroup@ group = ctx.BorrowGroupByName("PC_Checkpoints");
 保存为 `ModLoader/Mods/FindDemo.mod.as`：
 
 ```angelscript
-[bml.mod id="find.demo" name="Find Demo" version="1.0.0" author="Tutorial" bml="0.3.12" description="Find objects demo"]
+[bml.mod id="find.demo" name="Find Demo" version="1.0.0" author="Tutorial" bml="0.3.13" description="Find objects demo"]
 class FindDemo {
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {

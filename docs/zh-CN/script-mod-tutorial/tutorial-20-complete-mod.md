@@ -44,7 +44,7 @@
 新建文件 `ModLoader/Mods/CompleteMod.mod.as`：
 
 ```angelscript
-[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="Tutorial" bml="0.3.12" description="A complete tutorial mod with config, command, UI, and physics"]
+[bml.mod id="complete.mod" name="Complete Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="A complete tutorial mod with config, command, UI, and physics"]
 class CompleteMod {
     // ---- 配置 ----
     private bool showWindow = true;

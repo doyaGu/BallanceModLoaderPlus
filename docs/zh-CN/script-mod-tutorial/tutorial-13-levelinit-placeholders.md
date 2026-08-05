@@ -138,7 +138,7 @@ Checkpoints 表的结构：
 保存为 `ModLoader/Mods/PHGroupsMod.mod.as`：
 
 ```angelscript
-[bml.mod id="phgroups.script" name="PH Groups Reader" version="1.0.0" author="Tutorial" bml="0.3.12" description="Read PH_Groups table"]
+[bml.mod id="phgroups.script" name="PH Groups Reader" version="1.0.0" author="Tutorial" bml="0.3.13" description="Read PH_Groups table"]
 class PHGroupsMod {
 
     void OnLoad(const BML::ModContext &in ctx) {

@@ -116,7 +116,7 @@ int points = BML::CK::GetInt(table, 0, colPoints, 0);
 把读取和显示结合起来。保存为 `ModLoader/Mods/DataReadMod.mod.as`：
 
 ```angelscript
-[bml.mod id="dataread.script" name="DataArray Reader" version="1.0.0" author="Tutorial" bml="0.3.12" description="Read and display CurrentLevel"]
+[bml.mod id="dataread.script" name="DataArray Reader" version="1.0.0" author="Tutorial" bml="0.3.13" description="Read and display CurrentLevel"]
 class DataReadMod {
     private CKDataArray@ currentLevel = null;
     private bool showWindow = true;

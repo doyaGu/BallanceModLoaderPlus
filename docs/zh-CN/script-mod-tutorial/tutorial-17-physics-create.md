@@ -138,7 +138,7 @@ private void CleanupBall(const BML::ModContext &in ctx) {
 新建 `ModLoader/Mods/SpawnBall.mod.as`：
 
 ```angelscript
-[bml.mod id="spawn.ball" name="Spawn Ball" version="1.0.0" author="Tutorial" bml="0.3.12" description="Spawn a physicalized ball"]
+[bml.mod id="spawn.ball" name="Spawn Ball" version="1.0.0" author="Tutorial" bml="0.3.13" description="Spawn a physicalized ball"]
 class SpawnBall {
     private CK3dEntity@ spawnedBall = null;
 

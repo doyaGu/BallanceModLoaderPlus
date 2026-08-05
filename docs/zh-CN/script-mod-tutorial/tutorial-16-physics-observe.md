@@ -118,7 +118,7 @@ void OnPhysicalize(const BML::ModContext &in ctx,
 新建 `ModLoader/Mods/PhysObserve.mod.as`：
 
 ```angelscript
-[bml.mod id="phys.observe" name="Physics Observer" version="1.0.0" author="Tutorial" bml="0.3.12" description="Observe physics parameters"]
+[bml.mod id="phys.observe" name="Physics Observer" version="1.0.0" author="Tutorial" bml="0.3.13" description="Observe physics parameters"]
 class PhysObserve {
     private int eventCount = 0;
 

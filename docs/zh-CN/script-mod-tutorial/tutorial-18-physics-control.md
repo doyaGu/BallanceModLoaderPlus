@@ -102,7 +102,7 @@ J=生成球，K=清理，U=唤醒，I=向右推(Impulse)，H=向左推(Impulse)�
 新建 `ModLoader/Mods/ControlBall.mod.as`：
 
 ```angelscript
-[bml.mod id="control.ball" name="Control Ball" version="1.0.0" author="Tutorial" bml="0.3.12" description="Control a physicalized ball with keyboard"]
+[bml.mod id="control.ball" name="Control Ball" version="1.0.0" author="Tutorial" bml="0.3.13" description="Control a physicalized ball with keyboard"]
 class ControlBall {
     private CK3dEntity@ spawnedBall = null;
     private bool forceActive = false;

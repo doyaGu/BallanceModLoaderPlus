@@ -57,7 +57,7 @@ panel toggle   -> 切换显示/隐藏（默认行为）
 保存为 `ModLoader/Mods/PanelMod.mod.as`：
 
 ```angelscript
-[bml.mod id="panel.script" name="Status Panel" version="1.0.0" author="Tutorial" bml="0.3.12" description="Runtime status panel with command toggle"]
+[bml.mod id="panel.script" name="Status Panel" version="1.0.0" author="Tutorial" bml="0.3.13" description="Runtime status panel with command toggle"]
 class PanelMod {
     private CKDataArray@ currentLevel = null;
     private bool showPanel = true;

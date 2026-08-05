@@ -168,7 +168,7 @@ private void DrawWindow() {
 ## 完整脚本
 
 ```angelscript
-[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.12" description="Minimal tutorial script mod"]
+[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="Minimal tutorial script mod"]
 class HelloMod {
     private bool showWindow = true;
     private float fps = 0.0f;
