@@ -1,0 +1,1176 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BML+ native mod and inter-mod communication documentation.">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/imc-author-guide/">
+      
+      
+        <link rel="prev" href="../imc/">
+      
+      
+      
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en">
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Authoring guide - Ballance Mod Loader Plus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#create-a-typed-imc-api" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Authoring guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh" class="md-select__link">
+              简体中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-mod-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native mod API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Script mods
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Script mods
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/author-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Author guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inter-mod communication
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Inter-mod communication
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-write-the-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Write the interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Write the interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#evolve-a-compatible-minor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evolve a compatible minor
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-from-cmake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate from CMake
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-implement-the-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Implement the provider
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-call-synchronously-or-asynchronously" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Call synchronously or asynchronously
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-publish-and-subscribe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Publish and subscribe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-diagnose-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Diagnose failures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-release-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Release checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-write-the-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Write the interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Write the interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#evolve-a-compatible-minor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evolve a compatible minor
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-from-cmake" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate from CMake
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-implement-the-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Implement the provider
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-call-synchronously-or-asynchronously" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Call synchronously or asynchronously
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-publish-and-subscribe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Publish and subscribe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-diagnose-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Diagnose failures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-release-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Release checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="create-a-typed-imc-api">Create a typed IMC API<a class="headerlink" href="#create-a-typed-imc-api" title="Permanent link">&para;</a></h1>
+<p>This guide shows how a native mod can expose a typed, in-process API to another
+mod. Read <a href="../imc/">Inter-mod communication</a> first for the transport, threading,
+compatibility, and lifetime model.</p>
+<p>The examples require an installed BML+ SDK, CMake 3.14 or newer, a C++20
+compiler, and Python 3.10 or newer. New interfaces define RPCs and Topics.</p>
+<h2 id="1-write-the-interface">1. Write the interface<a class="headerlink" href="#1-write-the-interface" title="Permanent link">&para;</a></h2>
+<p>Name the file after the API ID so the default generated filename is obvious:
+<code>api/example.echo.imc</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>api example.echo 1.0
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>enum echo_mode {
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    normal = 0
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    uppercase = 1
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>}
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>rpc echo(string text, enum&lt;echo_mode&gt; mode) -&gt; (string text)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>topic changed(int sequence, string text)
+</code></pre></div>
+<p>The file is a small IDL, not JSON. Whitespace separates declarations; commas
+and semicolons are optional. Both <code># comment</code> and <code>// comment</code> are accepted.
+Only enum values need explicit numbers. Field IDs are assigned by
+the generator and frozen in the adjacent <code>example.echo.imc.lock</code>. Do not
+write transport bookkeeping in the source interface.</p>
+<p>Inline request, response, and Topic payloads are preferred when used by one
+endpoint. The generator names the corresponding value types <code>EchoRequestValue</code>,
+<code>EchoReplyValue</code>, and <code>ChangedEventValue</code>. Use a named record when several
+endpoints share a payload:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>record object_query {
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    object target
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    optional string label
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>}
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>rpc inspect(object_query) -&gt; (string description)
+</code></pre></div>
+<p>A zero-input RPC uses empty parentheses: <code>rpc state() -&gt; runtime_state</code>.
+Add <code>optional</code> before a field type when evolving an existing record:
+<code>optional string label</code>.</p>
+<p>Omit <code>-&gt; response</code> when the RPC only reports success or failure:
+<code>rpc clear_cache()</code>. The generated client returns the RPC status directly and
+does not allocate, register, encode, or decode an empty response payload.</p>
+<p>The native authoring surface maps directly to the runtime:</p>
+<table>
+<thead>
+<tr>
+<th><code>.imc</code> entry</th>
+<th>Generated IMC surface</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rpc name() -&gt; response</code></td>
+<td>zero-input <code>Call*</code> RPC</td>
+</tr>
+<tr>
+<td><code>rpc name(request) -&gt; response</code></td>
+<td>request/response <code>Call*</code> RPC</td>
+</tr>
+<tr>
+<td><code>rpc name(request)</code></td>
+<td>response-less <code>Call*</code> RPC</td>
+</tr>
+<tr>
+<td><code>topic name(message)</code></td>
+<td><code>Publish*</code>/<code>Subscribe*</code> Topic</td>
+</tr>
+</tbody>
+</table>
+<p>Model object lookup as an ordinary request record containing an <code>object</code> field.
+Put query/command intent in the RPC name and payload types, not in a transport
+kind. One record can consume at most 64 permanent field IDs; the generator
+reports this limit at generation time rather than emitting an incomplete codec.</p>
+<p>Enum, record, field, enum-value, RPC, and Topic names may use ASCII letters,
+digits, <code>_</code>, <code>-</code>, and <code>.</code> and must contain at least one letter or digit. API IDs
+use a stricter canonical form: non-empty dot-separated segments containing only
+lowercase ASCII letters and digits. This makes both the generated filename and
+C++ namespace unambiguous across independently generated APIs.</p>
+<p>Names beginning with a digit are supported: generated C++ identifiers receive
+a leading <code>_</code>, while the original interface name and route are unchanged.
+Codegen rejects punctuation-only names, empty API segments,
+non-canonical API IDs, and two names that collapse to the same generated
+identifier before the C++ compiler is invoked.</p>
+<p>The grammar is closed: unknown declarations and malformed fields fail with the
+input path, line, and column. Keep prose or project-specific metadata in
+comments or outside the <code>.imc</code> file.</p>
+<p>The IMC field vocabulary is:</p>
+<table>
+<thead>
+<tr>
+<th>Interface type</th>
+<th>Generated C++ type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bool</code>, <code>int</code>, <code>float</code></td>
+<td><code>bool</code>, 32-bit <code>int</code>, <code>float</code></td>
+</tr>
+<tr>
+<td><code>int64</code>, <code>uint64</code>, <code>double</code></td>
+<td><code>std::int64_t</code>, <code>std::uint64_t</code>, <code>double</code></td>
+</tr>
+<tr>
+<td><code>string</code>, <code>bytes</code></td>
+<td><code>std::string</code>, <code>std::vector&lt;std::uint8_t&gt;</code></td>
+</tr>
+<tr>
+<td><code>object</code>, <code>vec2</code>, <code>vec3</code>, <code>mat4</code></td>
+<td>BML opaque object/math value</td>
+</tr>
+<tr>
+<td><code>array&lt;T&gt;</code></td>
+<td><code>std::vector&lt;T&gt;</code> for bool, numeric, string, object, and math types</td>
+</tr>
+<tr>
+<td><code>enum&lt;name&gt;</code></td>
+<td>generated <code>enum class Name</code> with a fixed integer underlying type</td>
+</tr>
+</tbody>
+</table>
+<p>Wide numeric arrays support <code>array&lt;int64&gt;</code>, <code>array&lt;uint64&gt;</code>, and
+<code>array&lt;double&gt;</code>. A byte blob uses <code>bytes</code>; there is no redundant
+<code>array&lt;bytes&gt;</code> shape. The CMake helper selects typed IMC generation
+automatically. Manual generation uses the same IMC-only generator.</p>
+<p>An enum may specify <code>: int</code>, <code>: int64</code>, or <code>: uint64</code>; <code>int</code> is the default.
+Values must have unique names and numbers and fit the
+selected width. A record refers to it as <code>enum&lt;echo_mode&gt;</code>. Codegen emits
+<code>enum class EchoMode</code> and <code>IsKnownEchoMode()</code> but reuses the corresponding
+integer wire codec, so this adds no runtime registry, reflection, or wire tag.
+Only scalar enum fields are supported; use a numeric array with an API-owned
+conversion helper if a concrete interface needs repeated enum values.</p>
+<p>Decoding deliberately preserves an unrecognized underlying number instead of
+failing the message. Check <code>IsKnownEchoMode(value)</code> before switching when the
+sender may be newer. A compatible minor may add named values. It may not remove,
+rename, or renumber an existing value, change the underlying type, or introduce
+a numeric alias. The interface lock validates these rules. This lets an older
+binding receive a newly added value, retain its number, and choose an
+API-specific fallback.</p>
+<h3 id="evolve-a-compatible-minor">Evolve a compatible minor<a class="headerlink" href="#evolve-a-compatible-minor" title="Permanent link">&para;</a></h3>
+<p>For a same-major update, keep existing records, fields, RPCs, and Topics
+unchanged. New fields must be optional. Increase the minor version, edit the
+source, then explicitly update the interface lock:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python imc_codegen.py --update-lock \
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  --input api/example.echo.imc \
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  --out-dir generated
+</code></pre></div>
+<p>The adjacent <code>.imc.lock</code> file owns permanent field IDs. It also keeps tombstones
+for removed optional fields, so an old ID can never be reused by
+accident. Declaration reordering does not change those IDs. The update rejects
+a required new field, changed old field or endpoint, removed required field,
+changed enum value, or a structural edit without a minor-version increase.</p>
+<p>Commit <code>.imc</code> and <code>.imc.lock</code> together. Treat <code>.imc.lock</code> like a lock file:
+review its diff, but do not edit it by hand. Ordinary generation and <code>--check</code>
+never modify the lock; they fail with an actionable command when it is
+missing or stale. Increase the major version for an intentional clean break;
+that starts a new ID space.</p>
+<h2 id="2-generate-from-cmake">2. Generate from CMake<a class="headerlink" href="#2-generate-from-cmake" title="Permanent link">&para;</a></h2>
+<p>The installed BML package includes the generator and
+<code>bml_target_imc_api()</code>. The helper adds the generated
+header to the target, adds its build directory to the include path, and applies
+the required C++20 compile feature. It requires Python 3.10 or newer during
+configuration, matching the installed generator. The source interface must have
+an adjacent, committed <code>.imc.lock</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">EchoMod</span><span class="w"> </span><span class="s">EchoMod.cpp</span><span class="p">)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nb">bml_target_imc_api</span><span class="p">(</span><span class="s">EchoMod</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="s">INPUT</span><span class="w"> </span><span class="s2">&quot;${CMAKE_CURRENT_SOURCE_DIR}/api/example.echo.imc&quot;</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">)</span>
+</code></pre></div>
+<p>The default output is
+<code>${CMAKE_CURRENT_BINARY_DIR}/bml-imc/example_echo_imc.hpp</code>. By default the
+<code>.imc</code> filename must equal the interface's <code>api</code>; when it does not, pass
+<code>API_ID example.echo</code>. The helper passes that expected identity to codegen, so
+a typo now reports both IDs and the input path instead of surfacing later as a
+missing generated header. <code>OUTPUT_DIR</code> can override the generated directory.</p>
+<p>For a manual or committed-output workflow, the package exposes the
+<code>BML_IMC_CODEGEN</code> path:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python imc_codegen.py \
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  --input api/example.echo.imc \
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  --expected-api-id example.echo \
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  --out-dir generated
+</code></pre></div>
+<p><code>--expected-api-id</code> is optional outside the CMake helper but useful in scripts
+that predict the output filename. Add <code>--check</code> in CI to fail when a committed
+generated header or interface lock is stale. Use <code>--update-lock</code> only in the
+author-controlled interface update step. Parse and validation errors include the
+responsible input path, including when several interfaces are generated together.</p>
+<h2 id="3-implement-the-provider">3. Implement the provider<a class="headerlink" href="#3-implement-the-provider" title="Permanent link">&para;</a></h2>
+<p>The generated namespace follows the API ID. Provider handlers receive typed
+values and return an ordinary BML status code.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;example_echo_imc.hpp&quot;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">namespace</span><span class="w"> </span><span class="nn">Echo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nn">BML</span><span class="o">::</span><span class="nn">Imc</span><span class="o">::</span><span class="nn">Generated</span><span class="o">::</span><span class="nn">Example</span><span class="o">::</span><span class="nn">Echo</span><span class="p">;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Provider</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">;</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="kt">int</span><span class="w"> </span><span class="nf">HandleEcho</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoRequestValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">request</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">               </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoReplyValue</span><span class="w"> </span><span class="o">&amp;</span><span class="n">reply</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">               </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="n">reply</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">request</span><span class="p">.</span><span class="n">Text</span><span class="p">;</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">;</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="p">}</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="kt">int</span><span class="w"> </span><span class="nf">StartEchoProvider</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">Open</span><span class="p">();</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">        </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">RegisterEcho</span><span class="p">(</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">            </span><span class="o">&amp;</span><span class="n">HandleEcho</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="n">BML_IMC_EXECUTION_CALLER_THREAD</span><span class="p">);</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">status</span><span class="p">;</span>
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="p">}</span>
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="kt">void</span><span class="w"> </span><span class="nf">StopEchoProvider</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">UnregisterEcho</span><span class="p">();</span>
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">g_EchoProvider</span><span class="p">.</span><span class="n">Close</span><span class="p">();</span>
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="p">}</span>
+</code></pre></div>
+<p>For a response-less declaration such as <code>rpc clear_cache()</code>, the handler is
+simply <code>int ClearCache(void *userdata)</code> and the client call is
+<code>client.CallClearCache()</code>. With a request, the handler receives
+<code>const RequestValue &amp;</code> before <code>userdata</code>; neither form receives a dummy output.</p>
+<p>Use caller-thread execution only for short, thread-safe code. A handler that
+touches Virtools, BML UI, or other game-thread state must use
+<code>BML_IMC_EXECUTION_GAME_THREAD</code> (the generated default).</p>
+<p><code>Open()</code> with no owner ID resolves the native mod from the calling DLL. If one
+DLL contains multiple mods, pass that mod's explicit owner ID. Keep the
+Provider and its callback userdata alive until unregister/close succeeds.</p>
+<h2 id="4-call-synchronously-or-asynchronously">4. Call synchronously or asynchronously<a class="headerlink" href="#4-call-synchronously-or-asynchronously" title="Permanent link">&para;</a></h2>
+<p>The ordinary generated method performs the complete typed call:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Client</span><span class="w"> </span><span class="n">client</span><span class="p">;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">Open</span><span class="p">();</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">Echo</span><span class="o">::</span><span class="n">EchoRequestValue</span><span class="w"> </span><span class="n">request</span><span class="p">;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">request</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;hello&quot;</span><span class="p">;</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">request</span><span class="p">.</span><span class="n">Mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">EchoMode</span><span class="o">::</span><span class="n">Normal</span><span class="p">;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">Echo</span><span class="o">::</span><span class="n">EchoReplyValue</span><span class="w"> </span><span class="n">reply</span><span class="p">;</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">CallEcho</span><span class="p">(</span><span class="n">request</span><span class="p">,</span><span class="w"> </span><span class="n">reply</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span>
+</code></pre></div>
+<p>An optional integration can avoid a speculative call:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kt">bool</span><span class="w"> </span><span class="n">available</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">IsEchoAvailable</span><span class="p">(</span><span class="n">available</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">available</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="c1">// Show or enable the integration. The normal call still handles unload.</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>IsEchoAvailable</code> is one read-only lookup for the already cached RPC ID. It is
+an advisory point-in-time snapshot: the provider may unload immediately after
+the check, so <code>CallEcho</code>/<code>BeginCallEcho</code> must still handle
+<code>BML_ERROR_IMC_ENDPOINT_NOT_FOUND</code>. It does not enumerate providers or
+create a future.</p>
+<p>Every generated RPC also has a typed future method. It avoids manual request
+encoding, raw future handles, payload checks, and result decoding:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">Echo</span><span class="o">::</span><span class="n">Client</span><span class="o">::</span><span class="n">EchoFuture</span><span class="w"> </span><span class="n">pending</span><span class="p">;</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">BeginCallEcho</span><span class="p">(</span><span class="n">request</span><span class="p">,</span><span class="w"> </span><span class="n">pending</span><span class="p">,</span><span class="w"> </span><span class="mi">1000</span><span class="p">);</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1">// A later tick or worker iteration:</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pending</span><span class="p">.</span><span class="n">AwaitResult</span><span class="p">(</span><span class="n">reply</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w"> </span><span class="c1">// zero means poll</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_ERROR_BUSY</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">        </span><span class="c1">// Still pending; keep the future and try again later.</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>RpcFuture&lt;T&gt;</code> is move-only and releases its raw future automatically. It also
+offers <code>GetState</code>, <code>Await</code>, <code>Cancel</code>, <code>GetError</code>, <code>GetResult</code>, and explicit
+<code>Release</code>. A <code>Begin*</code> method returns <code>BML_ERROR_BUSY</code> rather than silently
+overwriting a future that is still owned by the caller.</p>
+<p>Do not perform a nonzero wait on the game thread for pending game-thread work.
+A zero-time poll is safe.</p>
+<h2 id="5-publish-and-subscribe">5. Publish and subscribe<a class="headerlink" href="#5-publish-and-subscribe" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="n">subscribers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">GetChangedSubscriberCount</span><span class="p">(</span><span class="n">subscribers</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">subscribers</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="n">event</span><span class="p">;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="n">event</span><span class="p">.</span><span class="n">Sequence</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="n">event</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;updated&quot;</span><span class="p">;</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">client</span><span class="p">.</span><span class="n">PublishChanged</span><span class="p">(</span><span class="n">event</span><span class="p">);</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">}</span>
+</code></pre></div>
+<p>Checking the count first is useful when constructing the typed event itself is
+expensive. The runtime still handles a zero-subscriber publish safely without
+allocating an internal queued message.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnChanged</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="o">*</span><span class="n">event</span><span class="p">,</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">BML_ImcMessage</span><span class="w"> </span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">        </span><span class="c1">// The typed value is borrowed for this callback only.</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="p">}</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedSubscription</span><span class="w"> </span><span class="n">subscription</span><span class="p">;</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">client</span><span class="p">.</span><span class="n">SubscribeChanged</span><span class="p">(</span><span class="n">subscription</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">OnChanged</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="n">BML_IMC_BACKPRESSURE_DROP_OLDEST</span><span class="p">,</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">    </span><span class="n">BML_IMC_EXECUTION_GAME_THREAD</span><span class="p">);</span>
+</code></pre></div>
+<p>Keep the subscription and callback userdata alive until <code>Close()</code> succeeds.
+Use <code>DroppedCount()</code> to observe backpressure loss.</p>
+<h2 id="6-diagnose-failures">6. Diagnose failures<a class="headerlink" href="#6-diagnose-failures" title="Permanent link">&para;</a></h2>
+<p>All generated methods return BML status codes. Log both the code and
+<code>BML_GetErrorString(status)</code>. The common integration failures are:</p>
+<ul>
+<li><code>BML_ERROR_IMC_ENDPOINT_NOT_FOUND</code>: no provider registered that RPC route;</li>
+<li><code>BML_ERROR_IMC_API_MISMATCH</code>: the received payload type does not match the
+  generated endpoint;</li>
+<li><code>BML_ERROR_WRONG_THREAD</code>: a pending future was synchronously waited on the
+  game thread;</li>
+<li><code>BML_ERROR_WOULD_BLOCK</code>: a bounded queue using FAIL backpressure is full;</li>
+<li><code>BML_ERROR_BUSY</code>: a teardown or future replacement would violate lifetime
+  rules.</li>
+</ul>
+<p>Close subscriptions and providers before destroying callback userdata. Close
+clients before unloading the native DLL. Owner cleanup is the final safety net,
+not the normal lifecycle mechanism.</p>
+<h2 id="7-release-checklist">7. Release checklist<a class="headerlink" href="#7-release-checklist" title="Permanent link">&para;</a></h2>
+<p>Before publishing an API:</p>
+<ul>
+<li>verify that the API, record, field, RPC, Topic, and enum identities are final;</li>
+<li>commit the generated <code>.imc.lock</code> beside its <code>.imc</code> source;</li>
+<li>run generation with <code>--check</code> in CI when generated headers are committed;</li>
+<li>inspect the interface-lock diff for a compatible minor;</li>
+<li>use game-thread execution for every callback that touches Virtools or BML UI;</li>
+<li>choose explicit RPC timeouts and Topic queue/backpressure settings;</li>
+<li>test provider unload while clients, futures, and subscriptions exist;</li>
+<li>log and handle BML status codes instead of treating availability as permanent.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

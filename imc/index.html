@@ -1,0 +1,1131 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BML+ native mod and inter-mod communication documentation.">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/imc/">
+      
+      
+        <link rel="prev" href="../script-mod/author-guide/">
+      
+      
+        <link rel="next" href="../imc-author-guide/">
+      
+      
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en">
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Overview - Ballance Mod Loader Plus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#inter-mod-communication-imc" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Overview
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh" class="md-select__link">
+              简体中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-mod-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native mod API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Script mods
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Script mods
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/author-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Author guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inter-mod communication
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Inter-mod communication
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#programming-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programming model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-api-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public API layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interface-identity-and-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interface identity and compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rpc-execution-and-waiting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RPC execution and waiting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#topic-delivery-and-backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Topic delivery and backpressure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ownership-and-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership and shutdown
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#built-in-apis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in APIs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance characteristics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clean-break-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clean-break boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imc-author-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#programming-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programming model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-api-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public API layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interface-identity-and-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interface identity and compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rpc-execution-and-waiting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RPC execution and waiting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#topic-delivery-and-backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Topic delivery and backpressure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ownership-and-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ownership and shutdown
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#built-in-apis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built-in APIs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance characteristics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clean-break-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clean-break boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="inter-mod-communication-imc">Inter-mod communication (IMC)<a class="headerlink" href="#inter-mod-communication-imc" title="Permanent link">&para;</a></h1>
+<p>IMC is BML+'s typed, in-process transport for communication between mods and
+loader-provided services. It provides two operations:</p>
+<ul>
+<li>RPC for request/response calls;</li>
+<li>Topic for publish/subscribe notifications.</li>
+</ul>
+<p>Use IMC when two independently built native modules need a stable API without
+sharing C++ objects, STL containers, allocators, or Virtools pointers.</p>
+<p>For a complete interface, provider, client, and Topic example, see
+<a href="../imc-author-guide/">Create a typed IMC API</a>.</p>
+<h2 id="programming-model">Programming model<a class="headerlink" href="#programming-model" title="Permanent link">&para;</a></h2>
+<p>IMC keeps transport concerns separate from domain terminology:</p>
+<table>
+<thead>
+<tr>
+<th>API intent</th>
+<th>IMC representation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Read current state</td>
+<td>RPC with no request payload</td>
+</tr>
+<tr>
+<td>Look up an object</td>
+<td>RPC taking an opaque <code>BML_ObjectRef</code></td>
+</tr>
+<tr>
+<td>Run a query</td>
+<td>Request/response RPC</td>
+</tr>
+<tr>
+<td>Execute a command</td>
+<td>Request/response RPC with an explicit result</td>
+</tr>
+<tr>
+<td>Return a collection</td>
+<td>RPC whose response contains a counted array</td>
+</tr>
+<tr>
+<td>Notify observers</td>
+<td>Topic</td>
+</tr>
+</tbody>
+</table>
+<p>Resources, components, commands, and collections are API design patterns, not
+additional transport types. A small transport surface keeps threading,
+lifetime, and failure handling consistent across APIs.</p>
+<h2 id="recommended-workflow">Recommended workflow<a class="headerlink" href="#recommended-workflow" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Define records, RPCs, and Topics in a versioned <code>.imc</code> interface.</li>
+<li>Generate and commit its adjacent <code>.imc.lock</code> once with <code>--update-lock</code>.</li>
+<li>Add the interface to a CMake target with <code>bml_target_imc_api()</code>.</li>
+<li>Implement the generated <code>Provider</code> callbacks.</li>
+<li>Call the API through the generated <code>Client</code>.</li>
+<li>Keep providers, clients, subscriptions, futures, and callback data alive
+   until their corresponding close or release operation succeeds.</li>
+</ol>
+<p>Generated bindings are the normal API surface. They encode and validate
+payloads, cache route IDs, manage opaque handles, and return BML status codes.
+Most mods should not construct <code>BML_ImcMessage</code> values directly.</p>
+<h2 id="public-api-layers">Public API layers<a class="headerlink" href="#public-api-layers" title="Permanent link">&para;</a></h2>
+<p>IMC has three public layers:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Generated <code>*_imc.hpp</code></td>
+<td>Typed payloads, codecs, clients, providers, futures, and subscriptions</td>
+</tr>
+<tr>
+<td><code>BML/ImcCpp.hpp</code></td>
+<td>Generic C++ RAII wrappers for custom integrations</td>
+</tr>
+<tr>
+<td><code>BML/Imc.h</code></td>
+<td>Fixed-layout C ABI used across DLL boundaries</td>
+</tr>
+</tbody>
+</table>
+<p>The C ABI exports <code>BML_Imc_*</code> functions and uses only C scalars, fixed-layout
+structures, byte spans, callbacks, and opaque handles. C++ classes, exceptions,
+RTTI objects, and allocator-owned values never cross the module boundary.</p>
+<p><code>BML/ImcWire.hpp</code> defines the little-endian field encoding used by generated
+bindings. A callback may borrow the bytes in a <code>BML_ImcMessage</code> only for the
+duration of that callback. Generated decoders copy strings, arrays, and blobs
+into their typed result values. The message already carries its payload type,
+so the payload does not repeat a schema ID or descriptor hash. Each field uses
+a Protobuf-style varint tag that combines its permanent ID and physical wire
+kind. Fixed-width scalars carry no redundant length; only strings, composite
+values, and packed arrays are length-delimited.</p>
+<h2 id="interface-identity-and-compatibility">Interface identity and compatibility<a class="headerlink" href="#interface-identity-and-compatibility" title="Permanent link">&para;</a></h2>
+<p>An API ID uses lowercase alphanumeric dot-separated segments, such as
+<code>example.echo</code>. The generated header for that ID is
+<code>example_echo_imc.hpp</code>, and its C++ namespace is
+<code>BML::Imc::Generated::Example::Echo</code>.</p>
+<p>Authors do not write field numbers in <code>.imc</code>. The generator assigns permanent
+field IDs in the adjacent <code>.imc.lock</code>, which is committed beside the
+source interface. Once released:</p>
+<ul>
+<li>do not change an existing field's type or required/optional status;</li>
+<li>add new fields as optional fields;</li>
+<li>preserve existing RPC and Topic names and payload records;</li>
+<li>preserve existing enum names, numeric values, and underlying types.</li>
+</ul>
+<p>For a compatible minor release, increase the interface minor version and run the
+generator once with <code>--update-lock</code>. It checks evolution against the lock,
+preserves assigned IDs, and reserves IDs of removed optional fields. Normal
+builds only verify the lock. Unknown fields are skipped, and unknown enum
+numbers are preserved so API-specific code can choose a fallback.</p>
+<p>Increase the interface's major version when a change cannot follow those rules.
+Do not rely on runtime route IDs for compatibility: route IDs are process-local
+cache keys. The API ID, major version, endpoint payload kind, and frozen field
+layout define the interoperable interface.</p>
+<h2 id="rpc-execution-and-waiting">RPC execution and waiting<a class="headerlink" href="#rpc-execution-and-waiting" title="Permanent link">&para;</a></h2>
+<p>Every RPC provider selects an execution mode:</p>
+<ul>
+<li><code>BML_IMC_EXECUTION_CALLER_THREAD</code> runs immediately on the caller's thread.
+  Use it only for short, thread-safe work.</li>
+<li><code>BML_IMC_EXECUTION_GAME_THREAD</code> queues the request for the BML game-thread
+  pump. Use it for Virtools objects, BML UI, and other game-thread-only state.</li>
+</ul>
+<p>Synchronous generated calls wait for their typed result up to the supplied
+timeout. Generated <code>Begin*</code> methods return a move-only typed future for polling,
+cancellation, or bounded waiting.</p>
+<p>Do not wait with a nonzero timeout on the game thread for game-thread work. A
+zero-time wait is a safe poll and returns <code>BML_ERROR_BUSY</code> while the operation
+is still pending.</p>
+<p>An RPC name has at most one live provider. Calls must handle
+<code>BML_ERROR_IMC_ENDPOINT_NOT_FOUND</code> because a provider can unload after an
+availability check.</p>
+<h2 id="topic-delivery-and-backpressure">Topic delivery and backpressure<a class="headerlink" href="#topic-delivery-and-backpressure" title="Permanent link">&para;</a></h2>
+<p>A Topic may have any number of subscribers. Caller-thread subscriptions run
+inline; game-thread subscriptions use a bounded per-subscription queue.</p>
+<p>Choose an overflow policy when subscribing:</p>
+<ul>
+<li><code>BML_IMC_BACKPRESSURE_DROP_OLDEST</code> keeps recent messages;</li>
+<li><code>BML_IMC_BACKPRESSURE_DROP_NEWEST</code> preserves queued messages;</li>
+<li><code>BML_IMC_BACKPRESSURE_FAIL</code> reports <code>BML_ERROR_WOULD_BLOCK</code> to the publisher.</li>
+</ul>
+<p>Select a capacity that matches how quickly the consumer can drain its queue.
+Use the subscription's dropped-message count to detect sustained overload. If
+building an event payload is expensive, query the subscriber count before
+constructing it.</p>
+<h2 id="ownership-and-shutdown">Ownership and shutdown<a class="headerlink" href="#ownership-and-shutdown" title="Permanent link">&para;</a></h2>
+<p>Clients and providers are associated with a mod owner. BML revokes an owner's
+IMC state during unload, but explicit shutdown is still required:</p>
+<ol>
+<li>stop producing new calls or messages;</li>
+<li>cancel or release outstanding futures;</li>
+<li>close subscriptions before destroying callback data;</li>
+<li>unregister provider callbacks;</li>
+<li>close providers and clients.</li>
+</ol>
+<p>Closing a client, unregistering a provider, or closing a subscription is a
+callback-quiescence boundary. Calling the same teardown operation recursively
+from its active callback returns <code>BML_ERROR_BUSY</code> instead of deadlocking.</p>
+<p>Opaque handles become invalid immediately after successful release. Treat
+<code>BML_ERROR_INVALID_HANDLE</code> as a stale-owner or double-release programming
+error, not as a recoverable route failure.</p>
+<h2 id="built-in-apis">Built-in APIs<a class="headerlink" href="#built-in-apis" title="Permanent link">&para;</a></h2>
+<p>BML+'s public typed facades use IMC internally:</p>
+<table>
+<thead>
+<tr>
+<th>Namespace</th>
+<th>Service</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BML::Runtime</code></td>
+<td>Runtime state, clock, and score</td>
+</tr>
+<tr>
+<td><code>BML::Scene</code></td>
+<td>Object information, transforms, and lookup</td>
+</tr>
+<tr>
+<td><code>BML::Gameplay</code></td>
+<td>Level, energy, checkpoint, and reset-point data</td>
+</tr>
+<tr>
+<td><code>BML::UI</code></td>
+<td>HUD state and UI commands</td>
+</tr>
+<tr>
+<td><code>BML::Events</code></td>
+<td>Typed event Topic</td>
+</tr>
+</tbody>
+</table>
+<p>Use those facades directly when they already cover the required operation.
+Create a new interface only for a capability owned by your mod.</p>
+<h2 id="performance-characteristics">Performance characteristics<a class="headerlink" href="#performance-characteristics" title="Permanent link">&para;</a></h2>
+<p>Generated clients resolve names once and reuse numeric route IDs. Small
+payloads use inline storage, direct caller-thread RPC avoids queueing, and
+game-thread work uses bounded queues and per-frame pump budgets. Topic publish
+has a zero-subscriber fast path.</p>
+<p>These optimizations do not relax the public rules: callback code still needs a
+clear execution mode, queues still need a backpressure policy, and payloads
+still need stable records. Release tests enforce latency and throughput floors
+for direct RPC and caller-thread Topic delivery.</p>
+<h2 id="clean-break-boundary">Clean-break boundary<a class="headerlink" href="#clean-break-boundary" title="Permanent link">&para;</a></h2>
+<p>IMC is the only public cross-mod RPC and Topic transport. The experimental
+Record/Registry API and its <code>BML::Interop</code> AngelScript namespace are not part of
+the SDK. There is no compatibility adapter, dual registration, or fallback
+lookup. Existing code that used that surface must move to generated native IMC
+bindings; script-only mods can consume BML's typed facades and use DataShare for
+simple shared state.</p>
+<h2 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../imc-author-guide/">Create a typed IMC API</a></li>
+<li>C ABI: <code>BML/Imc.h</code></li>
+<li>C++ wrappers: <code>BML/ImcCpp.hpp</code></li>
+<li>wire codec: <code>BML/ImcWire.hpp</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
