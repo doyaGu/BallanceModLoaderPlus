@@ -56,7 +56,7 @@ Z: 大约 0 到 10
 保存为 `ModLoader/Mods/CoordMod.mod.as`：
 
 ```angelscript
-[bml.mod id="coord.script" name="Coordinate Display" version="1.0.0" author="Tutorial" bml="0.3.12" description="Shows player ball position"]
+[bml.mod id="coord.script" name="Coordinate Display" version="1.0.0" author="Tutorial" bml="0.3.13" description="Shows player ball position"]
 class CoordMod {
     private CK3dEntity@ ball = null;
     private bool showWindow = true;
@@ -246,7 +246,7 @@ Z: 3.78901
 | 日志有 `loaded` 但窗口不出现 | `ball is null`，没进关卡或活动球没有取到 | 检查日志有没有 `ActiveBall found`。如果是 `ActiveBall not found`，确认 `CurrentLevel` 已经存在 |
 | 窗口出现但坐标不动 | 可能拿到的不是玩家球 | 确认查找名是 `Ball`，并且进入了正在游玩的关卡 |
 | 进入第二关后崩溃 | 漏掉了退出时清空句柄 | 确认 `GAME_EVENT_PRE_EXIT_LEVEL` 分支里有 `@ball = null` |
-| 编译报 `VxVector` 未定义 | 极少见，一般是 BML 版本太旧 | 确认 bml 版本属性写的是 `0.3.12` 或更高 |
+| 编译报 `VxVector` 未定义 | 极少见，一般是 BML 版本太旧 | 确认 bml 版本属性写的是 `0.3.13` 或更高 |
 | F10 按了没反应 | `input is null` | 确认 `BorrowInputManager()` 调用存在，且判空逻辑正确 |
 
 ---
@@ -283,4 +283,4 @@ Z: 3.78901
 
 ---
 
-下一步：[10 Ballance 内部结构](tutorial-10-ballance-internals.md)
+下一步：[10 Ballance 运行结构](tutorial-10-ballance-internals.md)

@@ -147,14 +147,17 @@ Gameplay_SectorManager: 检测到 Activation Phase? == TRUE
 | Cam Nav On | Gameplay_Ingame | 相机导航 | 恢复相机跟随 |
 | Cam Nav Off | Gameplay_Ingame | 相机导航 | 锁定相机 |
 
-这些消息对脚本 mod 来说是不可见的。你无法拦截或发送 Virtools 内部消息。但 BML 提供了 `GameEvent` 作为脚本层的等价物，让你在关键时机（关卡开始、死亡、过关）得到通知。
+`BML::GameEvent` 提供关卡开始、死亡、过关等常用生命周期通知。需要直接处理
+Virtools 消息时，可以通过 `ctx.BorrowMessageManager()` 使用 CKAngelScript 公开的
+`CKMessageManager` 接口；这是高级引擎集成，必须明确消息类型、接收对象和生命周期。
+GameEvent 与 Virtools 消息并不是一一对应关系。
 
 ## 实践：监控 Gameplay 状态面板
 
 下面这个脚本每帧读取 IngameParameter 和 CurrentLevel，用 ImGui 显示当前 Gameplay 状态。保存为 `ModLoader/Mods/GameplayMonitor.mod.as`：
 
 ```angelscript
-[bml.mod id="gameplay.monitor" name="Gameplay Monitor" version="1.0.0" author="Tutorial" bml="0.3.12" description="Monitor Gameplay state machine"]
+[bml.mod id="gameplay.monitor" name="Gameplay Monitor" version="1.0.0" author="Tutorial" bml="0.3.13" description="Monitor Gameplay state machine"]
 class GameplayMonitor {
     private CKDataArray@ ingameParam = null;
     private CKDataArray@ currentLevel = null;
@@ -382,9 +385,11 @@ Sector 切换只在球到达检查点时发生。如果你在第一个 Sector �
 
 `Energy` 也是 Gameplay 使用的表，包含分数、生命和计时参数。本章聚焦 IngameParameter 和 CurrentLevel 是因为它们直接关联 Sector 切换这一核心流程。Energy 的读取方式相同，可以按第 11 章的读取流程加入面板。
 
-**"脚本能拦截 Virtools 消息吗？"**
+**“脚本能处理 Virtools 消息吗？”**
 
-不能。Virtools 消息是行为图内部的通信机制，脚本层无法介入。但 BML 的 `GameEvent` 覆盖了所有你需要响应的时机。
+可以通过借用的 `CKMessageManager` 发送消息或为行为注册等待条件，但这属于高级
+CKAngelScript/CK2 接口。只需要响应关卡生命周期时，优先使用类型明确、生命周期
+清晰的 `BML::GameEvent`。
 
 ## 实验建议
 

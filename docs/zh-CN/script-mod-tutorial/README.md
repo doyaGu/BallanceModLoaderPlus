@@ -15,7 +15,7 @@
 | 07 | [配置与 Timer](tutorial-07-config-timer.md) | 配置文件 + 定时器 |
 | 08 | [查找对象](tutorial-08-find-objects.md) | 日志打印对象名列表 |
 | 09 | [坐标显示器](tutorial-09-coordinate-mod.md) | **第一个实用 mod** |
-| 10 | [Ballance 内部结构](tutorial-10-ballance-internals.md) | 能说出 Level01 里有什么 |
+| 10 | [Ballance 运行结构](tutorial-10-ballance-internals.md) | 能说出 Level01 里有什么 |
 | 11 | [读 DataArray](tutorial-11-dataarray-read.md) | ImGui 显示 CurrentLevel 表 |
 | 12 | [状态面板](tutorial-12-status-panel-mod.md) | **第二个实用 mod** |
 | 13 | [Levelinit 占位符](tutorial-13-levelinit-placeholders.md) | 能解释 PC_Checkpoints 如何进入运行时 |
@@ -36,12 +36,12 @@
 教程中遇到不认识的 API 或概念时来这里查。
 
 - [生命周期与事件](ref-lifecycle.md) | 回调签名、GameEvent 枚举、执行顺序
-- [ModContext 方法](ref-modcontext.md) | 所有 ctx 可调用的方法
+- [ModContext 方法](ref-modcontext.md) | 常用方法、服务与借用规则
 - [命令、配置、定时器](ref-commands-config-timer.md) | 注册、回调签名、ConfigProperty
 - [输入与 ImGui](ref-input-imgui.md) | 键盘 API、窗口模板、每帧模型
 - [对象与组](ref-objects-groups.md) | 查找、层级、句柄、组遍历
 - [DataArray](ref-dataarray.md) | 读写 API、已知表、回滚模板
 - [物理](ref-physics.md) | 物理化、力操作、OnPhysicalize 事件
-- [跨 Mod 通信](ref-inter-mod.md) | 依赖、导出、DataShare
+- [跨 Mod 通信](ref-inter-mod.md) | 类型化服务、DataShare、原生 IMC
 - [HUD、消息与资源](ref-hud-resources.md) | 消息、菜单、文件路径、加载资源
 - [Ballance 名称速查](ref-ballance-names.md) | 组名、对象名、DataArray 名、资源路径

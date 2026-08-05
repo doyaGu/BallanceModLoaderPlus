@@ -332,27 +332,30 @@ deactivate Sektor
 
 这就是为什么玩的时候，经过检查点后远处的路面突然出现而身后的路面消失。行为图按照 IngameParameter 表里的编号控制 Sector 组的显示和隐藏。
 
-## 脚本能做什么，不能做什么
+## 选择只读观察还是行为图编辑
 
-明确边界：
+本章使用只读观察，因为它对原版流程影响最小。BML+ 脚本同时运行在
+CKAngelScript 中，需要时也可以使用 CKAS 行为图接口和 BML+ Hook Block：
 
 | 能力 | 说明 |
 | --- | --- |
 | 读 DataArray | 可以。观察行为图写入的结果 |
 | 监听游戏事件 | 可以。知道行为图执行到了哪个阶段 |
 | 查看对象状态 | 可以。看到行为图设置的位置、可见性 |
-| 修改行为图 | 不可以。无法增删节点或改连线 |
-| 拦截行为图执行 | 不可以。无法暂停或跳过某个节点 |
-| 替换行为图逻辑 | 不可以。但可以在事件后覆盖效果 |
+| 修改行为图 | 可以使用 CKAS `BehaviorGraphEdit`；应用前必须验证布局并准备清理 |
+| 插入执行回调 | 可以使用 `BML::Hook` 或 `ModContext::InsertHookBlock*` |
+| 替换行为图逻辑 | 属于高风险修改，需要处理 Mod 冲突、卸载恢复和关卡切换 |
 
-这个限制意味着什么？你的脚本和行为图是并行的两套系统。行为图按原版流程运行，你的脚本通过事件和 DataArray 观察它的输出。如果你想改变游戏行为，方式是在行为图执行完之后覆盖它的结果（比如修改 DataArray 的值，移动对象位置），而不是修改行为图本身。
+优先通过事件、DataArray 和对象状态观察原版流程。能够在公开状态层完成的功能，
+不需要编辑行为图。只有目标行为确实由某段图控制，而且修改范围、回滚方式和冲突
+策略都明确时，才进入行为图编辑。
 
 ## 用脚本观察行为图的执行效果
 
 下面这段代码不读取行为图，而是观察行为图执行后的状态变化。当玩家经过检查点时，行为图会更新 Checkpoints 表和 IngameParameter 表，脚本能看到变化：
 
 ```angelscript
-[bml.mod id="bgwatch.script" name="BG Watcher" version="1.0.0" author="Tutorial" bml="0.3.12" description="Observe behavior graph effects"]
+[bml.mod id="bgwatch.script" name="BG Watcher" version="1.0.0" author="Tutorial" bml="0.3.13" description="Observe behavior graph effects"]
 class BGWatcher {
     private int lastSector = 0;
     private int lastCheckpointIndex = -1;
@@ -437,9 +440,9 @@ DataArray（第 11 章）
   行为图通过 Show/Hide/SetWorldMatrix 操作对象
   你的脚本通过 Borrow3dEntityByName 获取同一个对象并读取它的状态
 
-消息（Virtools 内部）
+消息（Virtools）
   行为图子流程之间用 Send/Wait Message 串联
-  脚本不直接收发 Virtools 消息，但能通过 BML 事件间接感知
+  常用生命周期优先使用 BML 事件；高级集成可借用 CKMessageManager
 ```
 
 行为图负责推进原版逻辑。DataArray 保存运行时状态。脚本先读这些状态，确认原版逻辑在做什么；需要改行为时，再选择一个影响范围明确的状态或对象去改。
@@ -460,11 +463,15 @@ DataArray（第 11 章）
 
 **Q：我的脚本能在行为图之前执行吗？**
 
-脚本层没有 `OnPreProcess` 固定回调。常规脚本主要在 `OnProcess` 里观察本帧状态，或通过 `GameEvent` 响应关卡阶段变化。脚本不能阻止某个行为图节点执行。
+脚本层没有 `OnPreProcess` 固定回调。常规脚本主要在 `OnProcess` 中观察本帧
+状态，或通过 `GameEvent` 响应关卡阶段变化。需要改变执行路径时，应使用经过
+验证的 CKAS 行为图编辑或 BML+ Hook Block，而不是依赖未定义的回调顺序。
 
 **Q：行为图里的 Send Message 会触发 BML 事件吗？**
 
-不是每个 Virtools 消息都对应一个 BML 事件。BML 只在特定的关键消息处生成事件（开始关卡、死亡、加分、过关等）。大部分行为图内部的消息传递对脚本是不可见的，你只能通过 DataArray 的变化来间接推断。
+不是每个 Virtools 消息都对应一个 BML 事件。BML+ 只为明确的游戏阶段提供
+`GameEvent`。其他消息可以通过 CK2 消息接口处理，也可以通过 DataArray 或对象
+状态变化进行观察；选择哪种方式取决于是否需要直接参与消息流。
 
 ## 完成状态
 
@@ -475,7 +482,7 @@ DataArray（第 11 章）
 - [x] 使用四步阅读法（图名 -> 顶层子图 -> DataArray -> 消息）
 - [x] 读懂 `activate next Checkpoint` 的完整流程
 - [x] 理解 `Gameplay_SectorManager` 的大致职责
-- [x] 知道脚本能观察行为图效果但不能修改行为图
+- [x] 知道何时只读观察、何时才考虑行为图编辑
 - [x] 通过监听 DataArray 变化间接观察行为图执行
 
 ## 下一步
