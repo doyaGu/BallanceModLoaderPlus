@@ -9,7 +9,7 @@
 在 `ModLoader/Mods/` 下新建一个文件，命名为 `HelloMod.mod.as`：
 
 ```angelscript
-[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.12" description="Minimal tutorial script mod"]
+[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="Minimal tutorial script mod"]
 class HelloMod {
     void OnLoad(const BML::ModContext &in ctx) {
         BML::Logger@ logger = ctx.BorrowLogger();
@@ -47,10 +47,11 @@ class HelloMod {
 ### 元数据行
 
 ```angelscript
-[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.12" description="Minimal tutorial script mod"]
+[bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="Minimal tutorial script mod"]
 ```
 
-这行不是 AngelScript 语法的一部分。它是 BML 定义的特殊注解，必须放在文件开头（前面不能有代码）。BML 在编译脚本之前先扫描这行，从中提取 mod 的信息。
+这是附加到入口类上的 AngelScript 元数据。`bml.mod` 声明 Mod 身份和版本要求，
+必须紧邻它所描述的类。参数使用 `key="value"` 形式。
 
 各字段的意义：
 
@@ -73,7 +74,9 @@ class HelloMod {
 }
 ```
 
-BML 要求每个脚本 mod 有一个入口类。文件里应该只有一个顶层 class（元数据行之后紧跟的那个）。BML 会实例化这个类的一个对象，然后在不同时机调用它上面的方法（回调）。
+BML 要求每个脚本 Mod 恰好有一个带 `[bml.mod ...]` 的入口类。文件中可以定义
+命令、定时器等辅助类，但不能让第二个类也声明 `bml.mod`。BML 会实例化入口类，
+并在相应时机调用它的生命周期和事件回调。
 
 类名可以随意取，不需要和文件名相同。但为了好找，建议保持一致。
 
@@ -85,7 +88,8 @@ void OnLoad(const BML::ModContext &in ctx) {
 }
 ```
 
-`OnLoad` 是 BML 定义的生命周期回调。当 BML 加载这个 mod 并准备好运行环境后，会调用一次 `OnLoad`。之后不会再调用第二次（除非游戏重启）。
+`OnLoad` 是 BML 定义的生命周期回调。每次成功装载脚本运行实例时调用一次；
+热重载成功后，新实例也会收到一次 `OnLoad`。
 
 参数 `ctx` 的类型是 `BML::ModContext`，它是脚本与 BML 交互的入口。通过 `ctx` 可以获取日志、输入、游戏对象等各种服务。
 
@@ -121,10 +125,10 @@ if (logger !is null) {
 ```text
 1. 扫描 ModLoader/Mods/ 目录
 2. 找到 .mod.as 文件
-3. 读取文件开头的 [bml.mod ...] 元数据
-4. 检查 bml 版本要求是否满足
-5. 用 CKAS 编译脚本
-6. 找到入口类，创建对象
+3. 用 CKAS 编译脚本
+4. 读取入口类的 [bml.mod ...] 元数据
+5. 检查 bml 版本和依赖要求
+6. 创建入口类对象
 7. 调用 OnLoad(ctx)
 ```
 
@@ -146,7 +150,7 @@ if (logger !is null) {
 | 日志里完全没有 `Loading Mod hello.script` | 文件是否在 `ModLoader/Mods/` 下；文件名后缀是否是 `.mod.as`；是否多了 `.txt` |
 | 有 `Loading Mod` 但没有 `HelloMod loaded` | 编译错误。在 `Loading Mod` 之后的日志行找 error 信息 |
 | `loaded=0` 或 `failed` 不为 0 | 向上翻日志找第一条错误行 |
-| 改了脚本但日志还是旧内容 | 确认保存了文件；确认关闭了 Player.exe 再重启（脚本只在启动时编译一次） |
+| 改了脚本但日志还是旧内容 | 确认保存了文件，然后执行 `script reload hello.script`；也可以重启 Player |
 | 编辑器里有红色下划线但游戏能跑 | Language Server 和 BML 的检查独立运行，以游戏日志为准 |
 
 ## 完成状态

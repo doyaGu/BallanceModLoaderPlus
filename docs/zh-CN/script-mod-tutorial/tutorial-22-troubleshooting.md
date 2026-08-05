@@ -135,13 +135,15 @@ void OnProcess(const BML::ModContext &in ctx) {
 常见情况：
 
 - **编译失败**：旧 runtime 仍继续运行；修正脚本后再次 `script reload <id>`。
-- **启动时首次编译失败**：BML 会保留 failed placeholder。修好文件后运行 `script reload` 或 `script reload <id>`，可以恢复到真实 mod id。
-- **运行中新增 `.mod.as` 文件**：不会加载新 mod。BML 不在运行中新增 registry 节点，需要重启 Player。
+- **启动时首次编译失败**：修好文件后重启 Player，重新执行完整发现和依赖排序。
+- **运行中新增 `.mod.as` 文件**：不会加载新 Mod。新增脚本 Mod 后需要重启 Player。
 - **改了 mod id 或 dependency 声明**：热重载会拒绝。依赖图变化需要重启。
-- **删除或改签名旧 export**：默认拒绝。只有确认调用方能接受时才用 `--force-exports`。
 - **状态迁移失败**：检查 `SaveState`、`MigrateState`、`RestoreState` 签名和日志。`--dry-run --check-state` 可以在不替换 runtime 的情况下验证迁移代码。
 
-状态迁移方法只能搬运纯数据。不要在 `SaveState`、`MigrateState`、`RestoreState` 里注册命令/Timer、写 DataShare/config、执行命令、调用 export、或修改 CK/game-world 对象。BML 回滚只能恢复自己持有的脚本资源，不能撤销脚本已经改过的游戏世界状态。
+状态迁移方法只能搬运纯数据。不要在 `SaveState`、`MigrateState`、
+`RestoreState` 中注册命令或 Timer、写入 DataShare/Config、执行命令，或修改
+CK/游戏世界对象。BML+ 只能恢复自己持有的脚本资源，不能撤销脚本已经改过的
+游戏世界状态。
 
 ---
 
@@ -236,7 +238,7 @@ void OnProcess(const BML::ModContext &in ctx) {
   - `void OnLoad()`：缺参数
   - `int OnLoad(...)`：返回值类型错
   - `void OnLoad(BML::ModContext &in ctx)`：缺 `const`
-- `[bml.mod ...]` 元数据行必须在 class 定义之前
+- `[bml.mod ...]` 必须紧邻并附加到入口 class
 - 最小化验证：OnLoad 只留一行日志，确认能执行再加回代码
 
 ---

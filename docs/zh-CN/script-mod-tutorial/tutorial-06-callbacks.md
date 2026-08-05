@@ -44,8 +44,8 @@ BML 靠函数名匹配。函数名、返回值、参数类型全部对上，BML 
 游戏运行（每帧循环）
   ┌─ OnProcess <- 逻辑更新
   │     检查按键、更新数据、提交 ImGui
-  ├─ OnRender <- Virtools 渲染阶段
-  │     处理 BML::UI 或底层渲染相关操作
+  ├─ OnRender <- Virtools 渲染回调
+  │     读取 RenderEvent 中的渲染标志
   └─ 回到下一帧
 
 游戏事件发生（关卡开始、重生等）
@@ -194,11 +194,13 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event)
 
 **触发时机**：每帧的 Virtools 渲染阶段，在 `OnProcess` 之后。
 
-**和 OnProcess 的区别**：`OnProcess` 是脚本每帧逻辑阶段，前面教程里的 ImGui 窗口都放在这里提交。`OnRender` 对接的是 Virtools 的渲染窗口期，适合处理 BML::UI 或底层渲染相关操作；一般脚本不需要用它。
+**和 OnProcess 的区别**：`OnProcess` 位于 BML+ 的活动 ImGui 帧中，前面教程里的
+ImGui 窗口和 `BML::UI` 控件都应在这里提交。`OnRender` 用于接收 Virtools 渲染
+回调及其 `RenderEvent.Flags`，不用于提交 BML/ImGui 绘制命令。
 
 **不要做的事**：
 
-- 把前面章节的 ImGui 窗口代码搬到这里
+- 在这里调用 ImGui 或 `BML::UI` 绘制函数
 - 在这里做逻辑计算（逻辑放 `OnProcess`，职责分离）
 
 ---

@@ -1,9 +1,9 @@
-[bml.mod(id: "example.hello.script",
-         name: "Hello Script",
-         version: "1.0.0",
-         author: "Template",
-         description: "Minimal BML+ script mod template",
-         bml: "0.3.12")]
+[bml.mod id="example.hello.script"
+         name="Hello Script"
+         version="1.0.0"
+         author="Template"
+         description="Minimal BML+ script mod template"
+         bml="0.3.13"]
 class HelloScript {
     private BML::TimerRef@ heartbeat;
     private BML::CommandRef@ helloCommand;
@@ -33,9 +33,6 @@ class HelloScript {
     }
 
     void OnProcess(const BML::ModContext &in ctx) {
-    }
-
-    void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
         BML::UI::Title("Hello Script");
         BML::UI::SetCursorCoord(0.4f, 0.35f);
         if (BML::UI::MainButton("Say Hello")) {
@@ -45,7 +42,6 @@ class HelloScript {
         BML::UI::InputIntButton("Counter", counter);
         BML::UI::SearchBar(search);
     }
-
 }
 
 class HeartbeatTimer : BML::Timer {

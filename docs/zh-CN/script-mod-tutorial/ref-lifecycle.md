@@ -111,7 +111,6 @@ script reload                  # 重载全部脚本 mod
 script reload <id>             # 重载一个脚本 mod
 script reload <id> --dry-run
 script reload <id> --dry-run --check-state
-script reload <id> --force-exports
 script diag <id>
 script logs error
 script panel
@@ -120,10 +119,10 @@ script panel
 关键规则：
 
 - 编译失败或 metadata 失败时，如果旧 runtime 存在，旧 runtime 会继续运行。
-- 启动时首次编译失败的脚本会保留 failed placeholder。修好文件后可以用 `script reload` 或 `script reload <id>` 恢复。
+- 启动时首次编译失败时，修正文件后重启 Player，确保重新执行完整发现和依赖排序。
 - 运行中放入新的 `*.mod.as` 不会新增 mod。新增 mod 需要重启 Player。
-- 改 mod id、改 dependency 声明、删除或改签名旧 export，默认会拒绝热重载。只有明确知道调用方能接受时才用 `--force-exports`。
-- 旧 Timer、Command、DataShare、callback、export method handle 在替换后失效。新资源必须在新 `OnLoad` 里重新注册。
+- 修改 Mod ID 或依赖声明后需要重启 Player。
+- Timer、Command、DataShare 和回调句柄在实例替换后失效，新实例必须在 `OnLoad` 中重新注册所需资源。
 - BML 只能恢复自己持有的脚本资源，不能自动撤销脚本改过的游戏世界状态。
 
 状态迁移示例：

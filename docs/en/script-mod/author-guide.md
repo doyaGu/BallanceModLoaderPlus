@@ -1,9 +1,9 @@
-# BML Script Mod v1 Author Guide
+# BML+ script mod author guide
 
 This guide is for people who want to publish a mod that BML+ loads from an
 AngelScript file. It starts with the authoring workflow, then moves into the
-API reference. `bml-script-mod-api.as` is only an editor/static-checking
-stub; do not package it as runtime script code.
+API reference. The downloadable declarations are available from the
+[script API reference](api.md); they are editor files, not runtime script code.
 
 ## Who This Is For
 
@@ -50,7 +50,7 @@ The smallest useful mod logs one line when it loads:
 ```angelscript
 [bml.mod id="example.hello" name="Hello Script" version="1.0.0"
          author="You" description="Minimal BML script mod"
-         bml="0.3.12"]
+         bml="0.3.13"]
 class HelloMod {
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
@@ -71,10 +71,6 @@ runtime when it can and records the full reason in `ModLoader.log`, `script
 logs`, and `script diag <id>`. When a script fails, read those diagnostics
 before guessing from symptoms in game.
 
-Keep smoke scripts and author examples separate. The smoke scripts under
-`tests/smoke/AngelScript` intentionally exercise edge cases and regression
-coverage; they are not minimal examples.
-
 ## Before You Start
 
 You need:
@@ -83,12 +79,10 @@ You need:
   build supports script mods.
 - The matching `AngelScript.dll` next to `BMLPlus.dll` in `BuildingBlocks` when
   distributing a script-capable release.
-- `bml-script-mod-api.as` in your editor for completion and static checks.
-  Do not include this stub from the script at runtime.
-- CKAngelScript API docs when the mod touches Virtools objects, behavior
-  graphs, components, messages, async work, or raw CK/Vx SDK bindings. Start
-  with CKAS `docs/api-inventory.md`, `docs/scene-interop.md`,
-  `docs/sdk-bindings.md`, `docs/messaging.md`, and `docs/async.md`.
+- The [script API reference](api.md) configured in your editor for completion
+  and static checks. Do not include those declarations at runtime.
+- The CKAngelScript documentation when the mod touches Virtools objects,
+  behavior graphs, components, messages, asynchronous work, or CK/Vx bindings.
 - Matching CKAngelScript and AngelScript headers only when building a native
   plugin that also exposes script APIs.
 
@@ -99,7 +93,7 @@ features.
 
 ## Package Shapes
 
-v1 supports three package forms under `ModLoader/Mods`:
+BML+ supports three script package forms under `ModLoader/Mods`:
 
 - A single `Foo.mod.as` file.
 - A directory containing exactly one `*.mod.as` entry.
@@ -167,7 +161,7 @@ resource root, not arbitrary global include paths.
 | Log messages or store user settings | `Logger And Config` | `ctx.BorrowLogger()`, `ctx.BorrowConfig()` |
 | Add commands or command completion | `Command And Completion` | `BML::Command`, `BML::CommandDefinition`, `BML::CommandCompletion` |
 | Delay or repeat work | `Timer` | `BML::Timer`, `ctx.AddTimer()` |
-| Draw BML/ImGui UI | `UI`, `Advanced ImGui` | `OnRender`, `ctx.Draw*`, `BML::ImGui::*` |
+| Draw BML/ImGui UI | `UI`, `Advanced ImGui` | `OnProcess`, `BML::UI::*`, `ImGui::*` |
 | Read BML runtime, scene, gameplay, or event snapshots | `IMC-Backed APIs` | `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events` |
 | Expose simple shared state to another script mod | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
@@ -195,11 +189,7 @@ resource root, not arbitrary global include paths.
 - The entry is AngelScript source. `[bml.mod]`, `[bml.require]`, and
   `[bml.optional]` are AngelScript metadata, not a separate
   manifest DSL.
-- BML does not use a source lexer/parser to infer namespace or class name.
-  Those facts come from CKAngelScript metadata reflection. Native IMC APIs are
-  declared separately in `.imc` files and compiled before runtime.
-- The `[bml.mod]` class may live in any AngelScript namespace. BML records the
-  namespace and class name reported by CKAS metadata reflection.
+- The `[bml.mod]` class may live in any AngelScript namespace.
 
 ## AngelScript Notes
 
@@ -304,7 +294,7 @@ exactly once.
 
 ```angelscript
 [bml.mod id="example.core" name="Example Core" version="1.2.0"
-         author="You" description="Example" bml="0.3.12"]
+         author="You" description="Example" bml="0.3.13"]
 class ExampleCore {
 }
 ```
@@ -327,7 +317,7 @@ scripts cannot mutate dependencies at runtime.
 [bml.require id="other.mod" version="1.0.0"]
 [bml.optional id="debug.helper" version="0.1.0"]
 [bml.mod id="example.dep" name="Example With Deps" version="1.0.0"
-         author="You" description="Dependency example" bml="0.3.12"]
+         author="You" description="Dependency example" bml="0.3.13"]
 class ExampleWithDeps {
 }
 ```
@@ -338,10 +328,9 @@ through `ModRef`, but it does not block loading when absent. Dependency metadata
 does not replace CKAngelScript `[script.depends]`; that belongs to CKAS runtime
 scripts.
 
-`bml.export` was removed with the experimental dynamic-call ABI. Native
-cross-mod capabilities use a versioned `.imc` interface and generated IMC
-bindings. Script mods use typed facades or DataShare; they do not register raw
-RPC/Topic providers.
+Native cross-mod capabilities use versioned `.imc` interfaces and generated
+IMC bindings. Script mods use BML+'s typed facades or DataShare and do not
+register custom RPC or Topic providers.
 
 ## Hot Reload
 
@@ -365,10 +354,6 @@ Expected behavior:
 - A compile or metadata failure keeps the old runtime active when one exists.
   The in-game message only says reload failed; use `script diag <id>` or the
   Logs tab for the structured compiler messages.
-- BML captures an in-memory source snapshot at the start of each reload attempt.
-  Validation and commit use that same candidate runtime, so saving the script
-  again while reload is running cannot switch the committed source underneath
-  the validator.
 - `--dry-run` does not call `SaveState`, `MigrateState`, `RestoreState`, or
   candidate `OnLoad`. It validates compilation, metadata, compatibility, and
   required state hook declarations only.
@@ -378,12 +363,8 @@ Expected behavior:
   migration hooks; keep those hooks pure because the old `SaveState` runs on
   the live script object. It should copy values into the `StateBag`, not mutate
   script members or host state.
-- If the mod failed during initial startup, BML keeps a failed placeholder. Fix
-  the file, then run `script reload` or `script reload <placeholder-id>` to
-  recover it. The placeholder can promote to the real mod id when that id does
-  not conflict.
 - Dropping a brand-new `*.mod.as` file into `ModLoader/Mods` after startup does
-  not load a new mod. Restart Player to discover new mod registry nodes.
+  not load it. Restart Player before using a newly added mod.
 - Changing a successfully loaded mod id requires restart. Changing dependency
   declarations, adding required dependencies, or requiring a new dependency
   graph node is rejected because BML does not reorder the graph at runtime.
@@ -455,11 +436,6 @@ void RestoreState(BML::StateBag@ state) {
   content; they must not execute commands, write DataShare/config values, mutate
   input state, invoke IMC-backed mutating facades, or change CK/game-world objects.
   Rebuild resources in `OnLoad` after pure state has been restored.
-- BML rejects BML-owned mutating APIs in these hooks, and rejects CKAngelScript
-  host APIs that have explicitly opted into CKAS host-call filtering. This does
-  not make hot reload a sandbox. Raw CK/Vx calls, CKAS APIs that have not been
-  marked as mutating, and other plugin extension APIs can still have external
-  side effects; do not call them from state hooks.
 - Rollback restores only resources BML owns: callbacks, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
@@ -487,8 +463,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 ## Callbacks
 
-Old `OnPre*` / `OnPost*` overload families are not part of the script API.
-Only these fixed signatures are recognized:
+The following fixed signatures are recognized:
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx);
@@ -519,8 +494,8 @@ handles and should be used immediately.
 | --- | --- | --- |
 | `OnLoad` | Initialize config, commands, timers, DataShare requests, and content registration. | No event object. Failures here fail the script mod load. |
 | `OnUnload` | Cancel optional work, unregister commands explicitly when desired, and clear script-side state. | BML also cleans up script-owned resources. |
-| `OnProcess` | Light per-tick orchestration. | Avoid expensive scene scans; cache durable ids/refs and revalidate near use. |
-| `OnRender` | BML UI and ImGui drawing. | `RenderEvent.Flags` is a snapshot of the render flags. Frame-scope handles from ImGui must not be stored. |
+| `OnProcess` | Per-tick logic, input handling, and BML/ImGui drawing. | Avoid expensive scene scans; cache durable ids/refs and revalidate near use. ImGui handles are valid only for the active frame. |
+| `OnRender` | Observe the Virtools render callback. | `RenderEvent.Flags` is a snapshot of the render flags. Do not issue BML/ImGui drawing calls here. |
 | `OnGameEvent` | Respond to BML/game lifecycle events such as level load, reset, pause, finish, and ball/nav state. | The payload is a `BML::GameEvent` enum. Use `BML::GetGameEventName(event)` for logs. |
 | `OnCheatEnabled` | Track cheat state changes. | `CheatEvent.Enabled` is a snapshot. |
 | `OnLoadObject` | Observe Object Load operations. | Object ids and load options are copied. `BorrowObject` and `BorrowMasterObject` resolve borrowed CK handles on demand. |
@@ -909,20 +884,17 @@ CKBehavior@ CreateHudText(const BML::ModContext &in ctx,
 
 ## UI
 
-`BML::UI` contains two groups. `SendMessage` and `ClearMessages` are core
-capabilities and may be called from normal callbacks. The BML-style menu
-controls below are render-time Bui helpers; use them from `OnRender`. Drawing
-and input calls outside a render callback are safe no-ops or return default
-values. The facade intentionally does not expose `Bui::Window`, `Bui::Page`,
-raw draw lists, raw text buffers, resource initialization, or script/menu
-transition internals.
+`BML::UI` contains two groups. `SendMessage` and `ClearMessages` may be called
+from normal callbacks. The BML-style controls below require the active ImGui
+frame and must be called from `OnProcess`. Calls made outside the active frame
+return default values or perform no drawing.
 
 ```angelscript
 bool enabled = true;
 int count = 3;
 string search = "";
 
-void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
+void OnProcess(const BML::ModContext &in ctx) {
   BML::UI::Title("Example Script");
   BML::UI::WrappedText("Use BML::UI for simple menu controls.", 360.0f);
 
@@ -939,27 +911,24 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
 ## Advanced ImGui
 
 `ImGui` is the lower-level frame-scope API for scripts that need custom debug
-or tooling UI. The checked-in generated binding surface is documented in
-`bml-imgui-api.as` in the SDK; the generation report is
-`src/AngelScript/generated/BMLImGuiAngelScriptBindings.report.md`.
+or tooling UI. Its complete declarations are available from the
+[script API reference](api.md).
 
-Use it only from `OnRender`. BML guards calls outside an active ImGui frame so
+Use it only from `OnProcess`. BML guards calls outside an active ImGui frame so
 they return default values or no-op, but those calls are still script errors in
 practice. Borrowed handles such as `ImDrawList@`, `ImGuiIO@`, and `ImGuiStyle@`
 are valid only during the current frame and must not be stored.
 
-The generated API intentionally omits context/platform lifecycle, allocators,
-raw callbacks, raw `void*`, internal debug helpers, and native resource
-lifecycle. Prefer `BML::UI` for ordinary menu buttons and page navigation; use
-`ImGui` for advanced windows, tables, trees, controls, images, and frame-local
-draw list work.
+Prefer `BML::UI` for ordinary menu buttons and page navigation. Use `ImGui` for
+advanced windows, tables, trees, controls, images, and frame-local draw-list
+work.
 
 ```angelscript
 ImVec4 accent(0.2f, 0.4f, 0.9f, 1.0f);
 int choice = 0;
 string filter = "";
 
-void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
+void OnProcess(const BML::ModContext &in ctx) {
   if (ImGui::Begin("Advanced ImGui")) {
     ImGui::TextUnformatted("Custom script UI");
     ImGui::InputText("Filter", filter, 128);
@@ -976,9 +945,7 @@ void OnRender(const BML::ModContext &in ctx, const BML::RenderEvent &in event) {
 
 ## Cross-Mod Services
 
-`ModRef` remains useful for dependency and diagnostics inspection, but it is
-not a dynamic function-call surface. `ExportRef`, `ExportResolver`,
-`CallFrame`, and `[bml.export]` were removed with the old experimental ABI.
+`ModRef` provides dependency, identity, load-state, and diagnostic information.
 
 For state-like cross-mod data, use DataShare. Script mods do not register custom
 RPC or Topic providers. This keeps the script surface typed and avoids a second
@@ -1256,8 +1223,7 @@ You can inspect diagnostics from:
 
 - The BML Mod menu: script mods show loaded/failed state and details.
 - Script code: `ModRef.Diagnostic`.
-- Native host: use the BML log and the in-game `script diag <id>` command;
-  the removed v1 `BML_GetModDiagnostic` function has no v2 C-ABI replacement.
+- Native host: use the BML log and the in-game `script diag <id>` command.
 
 Common phases:
 
@@ -1280,10 +1246,9 @@ Debugging order:
 5. Reproduce with a small script package before moving the same logic into a
    larger mod.
 
-For local validation, use the script-capable release package and copy the mod
-into a clean `ModLoader/Mods` directory. The repository smoke tests are useful
-for BML development, but an author should still verify the script in Player
-with the same CKAngelScript runtime that will ship with the mod.
+For final validation, use the script-capable release package and copy the mod
+into a clean `ModLoader/Mods` directory. Verify the script in Player with the
+same CKAngelScript runtime required by the target BML+ release.
 
 ## Lifetime Rules
 
@@ -1299,15 +1264,12 @@ with the same CKAngelScript runtime that will ship with the mod.
   CK handles when work crosses callbacks or frames.
 - Timer, Command, DataShareRequest, and HookBlock resources are owned by the
   script mod and are cleaned up on mod unload and hot reload replacement.
-- Export handles are generation-checked and become invalid when the owner or
-  export disappears.
-- Hot reload keeps the mod registry slot stable, but it does not discover new
-  mods, rebuild dependency graph nodes, cascade dependent reloads, or undo
+- Hot reload preserves the loaded mod's identity, but it does not discover new
+  mods, rebuild dependency relationships, cascade dependent reloads, or undo
   script-authored game-world side effects.
 
 ## Do Not
 
-- Do not rely on old callback overloads.
 - Do not store borrowed CK objects or CK managers in long-lived fields.
 - Do not access raw CKAngelScript engine/context/module/function state. This
   does not forbid ordinary CKAngelScript script APIs such as `Scene`, `Behavior`,
@@ -1317,7 +1279,7 @@ with the same CKAngelScript runtime that will ship with the mod.
   add a guarded CKAngelScript engine extension in the owning native plugin.
 - Do not mutate dependencies at runtime; use metadata.
 - Do not write a separate manifest DSL. The entry must be valid AngelScript.
-- Do not package script mods as `.bmodp`; v1 script packages are single-file,
+- Do not package script mods as `.bmodp`; script packages are single-file,
   directory, or `.zip`.
 
 ## Package Notes
@@ -1346,29 +1308,28 @@ with the same CKAngelScript runtime that will ship with the mod.
 - The package has exactly one `*.mod.as` entry.
 - The main class has one `[bml.mod]` with stable `id`, `name`, and `version`.
 - Every dependency that affects load order is metadata, not a runtime check.
-- Every export has a supported signature and a stable name.
 - `OnLoad` logs at least one clear startup line during development.
 - Long-lived CK object identity uses CKAS refs or ids, not borrowed raw handles.
 - Timers, commands, and DataShare requests are either held in fields or designed
   to finish immediately.
-- Render/UI code runs from `OnRender`.
+- BML/ImGui drawing code runs from `OnProcess`.
 - Heavy scene scans are delayed, cached as refs/ids, or moved to a native
   plugin/CKAS component when needed.
 - The script has been tested in Player with the release CKAngelScript runtime.
 
-## English Summary
+## Summary
 
-BML Script Mod v1 uses one `*.mod.as` entry per single-file, directory, or
+BML+ script mods use one `*.mod.as` entry per single-file, directory, or
 `.zip` script package, AngelScript metadata declarations, fixed callback
-signatures, script-owned Timer/Command objects, typed DataShare requests, and
-typed export handles. It supports hot reload for already discovered script mods
-within the documented lifecycle boundaries. `BML::ModContext` is the primary
+signatures, script-owned Timer/Command objects, and typed DataShare requests.
+They support hot reload for already discovered script mods
+under the documented lifecycle rules. `BML::ModContext` is the primary
 facade. Event objects are snapshots, while `Borrow*` methods remain borrowed CK
 escape hatches; CKAS `ObjectRef@`-derived handles are the long-lived CK object
 identity model.
 CKAngelScript runtime scripts,
 `AngelScript Component`, `Scene`, `Behavior`, `BB`, `Param`, `Message`, `Async`,
 raw CK/Vx SDK, ImGui, and registered extension APIs remain available according
-to their own APIs; BML v1 only defines the BML-owned mod surface. `.bmodp`
-script packages, BML-owned entity wrappers, raw CKAS engine/module/function
-access, BML callback suspension/resume, and a full sandbox policy are deferred.
+to their own APIs. BML+ defines the mod identity, lifecycle, services, and
+package rules described in this guide; `.bmodp` remains the native Mod package
+format.
