@@ -151,7 +151,7 @@ error, not as a recoverable route failure.
 
 ## Built-in APIs
 
-BML+'s public typed facades use IMC internally:
+BML+ provides the following typed service facades:
 
 | Namespace | Service |
 | --- | --- |
@@ -173,17 +173,7 @@ has a zero-subscriber fast path.
 
 These optimizations do not relax the public rules: callback code still needs a
 clear execution mode, queues still need a backpressure policy, and payloads
-still need stable records. Release tests enforce latency and throughput floors
-for direct RPC and caller-thread Topic delivery.
-
-## Clean-break boundary
-
-IMC is the only public cross-mod RPC and Topic transport. The experimental
-Record/Registry API and its `BML::Interop` AngelScript namespace are not part of
-the SDK. There is no compatibility adapter, dual registration, or fallback
-lookup. Existing code that used that surface must move to generated native IMC
-bindings; script-only mods can consume BML's typed facades and use DataShare for
-simple shared state.
+still need stable records.
 
 ## Reference
 

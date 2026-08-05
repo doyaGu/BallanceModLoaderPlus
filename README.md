@@ -96,7 +96,7 @@ This repository contains the core runtime (`BMLPlus.dll`), public headers (`incl
   - `IBML::AddTimer*`: loader-owned one-shot and loop scheduling.
   - `DataShare API (BML_DataShare_*)`: inter‑mod data sharing and subscriptions.
   - IMC: typed cross-mod RPC/Topic transport plus built-in Runtime, Scene, Gameplay, UI, and Events facades.
-  - UI: Ballance-styled ImGui helpers (`Bui`), legacy Virtools UI wrappers (`BGui`), and the `BML::UI` IMC service.
+  - UI: Ballance-styled ImGui helpers (`Bui`), Virtools UI wrappers (`BGui`), and the `BML::UI` IMC service.
   - `BML.h`: C-callable version, memory, string, path, file, and zip helpers.
 
 ## Runtime Layout
@@ -341,8 +341,8 @@ We welcome contributions to BML+! Here's how you can help:
   - Version text at top‑left; see `ModLoader/ModLoader.log`; run `bml` in the command bar.
 - Game doesn’t load or crashes?
   - Ensure `BuildingBlocks/BMLPlus.dll` is in place; remove leftovers from older loaders; install MSVC 2015–2022 VC++ Redistributable; attach logs when filing issues.
-- Is BML+ compatible with legacy `.bmod`?
-  - No. BML+ uses new mechanisms; mods are DLLs (often shipped as `.bmodp`) loaded via `BMLEntry`.
+- Which native Mod format does BML+ support?
+  - Native Mods are DLLs, normally packaged with the `.bmodp` extension, and export `BMLEntry`.
 - Default hotkey?
   - Command bar: `/`. Others depend on the UI/mods.
 
@@ -359,14 +359,14 @@ We welcome contributions to BML+! Here's how you can help:
 
 - **Issues and Bug Reports**: https://github.com/doyaGu/BallanceModLoaderPlus/issues
 - **Feature Requests**: Use the issue tracker with the "enhancement" label
-- **Documentation**: See `include/BML/` headers and this README
+- **Documentation**: [English](https://doyagu.github.io/BallanceModLoaderPlus/) · [简体中文](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/)
 - **Community Mods**: Check the releases page for community-contributed mods
 
 ## Current Limitations
 
 - Windows-only (due to Virtools CK2 dependency)
 - Requires New Player (BallancePlayer)
-- No backward compatibility with legacy `.bmod` files
+- Native Mods use the `.bmodp` package format
 - Limited to Virtools CK2 engine features
 
 ## Performance Notes

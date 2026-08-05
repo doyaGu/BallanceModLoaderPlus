@@ -135,8 +135,8 @@ changed enum value, or a structural edit without a minor-version increase.
 Commit `.imc` and `.imc.lock` together. Treat `.imc.lock` like a lock file:
 review its diff, but do not edit it by hand. Ordinary generation and `--check`
 never modify the lock; they fail with an actionable command when it is
-missing or stale. Increase the major version for an intentional clean break;
-that starts a new ID space.
+missing or stale. Increase the major version for an incompatible revision;
+the new major version starts a separate field-ID space.
 
 ## 2. Generate from CMake
 
@@ -295,8 +295,7 @@ if (client.GetChangedSubscriberCount(subscribers) == BML_OK && subscribers) {
 ```
 
 Checking the count first is useful when constructing the typed event itself is
-expensive. The runtime still handles a zero-subscriber publish safely without
-allocating an internal queued message.
+expensive. Publishing with no subscribers is also valid.
 
 ```cpp
 void OnChanged(int status, Echo::ChangedEventValue *event,

@@ -338,8 +338,8 @@ bml_add_mod(MyMod MyMod.cpp)
   - 进入游戏后左上角会显示版本信息；`ModLoader/ModLoader.log` 中包含初始化日志；命令栏输入 `bml` 查看。
 - 游戏未加载/崩溃？
   - 确认 `BuildingBlocks/BMLPlus.dll` 放置正确，移除旧版残留文件；安装 Visual C++ 2015–2022 运行库；仍有问题请附日志到 Issues。
-- BML+ 是否兼容旧版 `.bmod`？
-  - 不兼容。BML+ 使用全新机制，Mod 以 DLL（可使用 `.bmodp` 扩展名）形式，通过 `BMLEntry` 入口加载。
+- BML+ 支持哪种原生 Mod 格式？
+  - 原生 Mod 是导出 `BMLEntry` 的 DLL，通常使用 `.bmodp` 扩展名发布。
 - 默认快捷键？
   - 命令栏默认 `/`，其余操作依游戏 UI 与 Mod 而定。
 
@@ -356,14 +356,14 @@ bml_add_mod(MyMod MyMod.cpp)
 
 - **问题报告与 Bug 反馈**：https://github.com/doyaGu/BallanceModLoaderPlus/issues
 - **功能请求**：使用 Issue 跟踪器并添加"enhancement"标签
-- **文档**：查看 `include/BML/` 头文件和本 README
+- **文档**：[简体中文](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/) · [English](https://doyagu.github.io/BallanceModLoaderPlus/)
 - **社区 Mod**：查看 releases 页面获取社区贡献的 Mod
 
 ## 当前限制
 
 - 仅支持 Windows（由于 Virtools CK2 依赖）
 - 需要新版 Player（BallancePlayer）
-- 不向后兼容旧版 `.bmod` 文件
+- 原生 Mod 使用 `.bmodp` 包格式
 - 限于 Virtools CK2 引擎功能
 
 ## 性能说明

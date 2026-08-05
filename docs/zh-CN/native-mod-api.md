@@ -1,7 +1,7 @@
 # BML 原生 Mod API 总览
 
-本文按用途说明 BML SDK 安装后提供的公开头文件。公开接口以安装目录中的
-`include/BML` 为准；源码树中未被安装的头文件属于 Loader 实现细节。
+本文按用途说明 BML SDK 安装后提供的公开头文件。原生公开接口以安装目录中的
+`include/BML` 为准。
 
 ## 最小入口
 
@@ -53,7 +53,7 @@ bml_add_mod(MyMod MyMod.cpp)
 | `Generated/*.hpp` | 从 `.imc` 生成的内置接口绑定；不要手工修改 |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `UI.h`, `Events.h`, `EventKinds.h` | 内置 IMC 的易用 C++ 门面 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
-| `Gui.h`, `Gui/*.h` | `BGui` 旧式 Virtools 实体/行为 UI 封装 |
+| `Gui.h`, `Gui/*.h` | `BGui` Virtools 实体/行为 UI 封装 |
 | `InputHook.h` | 键盘、鼠标、手柄状态与可配对的输入屏蔽令牌 |
 | `ExecuteBB.h` | 执行或创建常用 Building Block |
 | `ScriptHelper.h` | 查找、连接、插入和删除行为图节点与参数 |
@@ -128,7 +128,7 @@ Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志�
 ## 三种 UI 接口
 
 - `Bui` 直接绘制 Ballance 风格的 ImGui 控件，适合原生覆盖层界面。
-- `BGui` 创建和操作 Virtools 2D Entity/Behavior 组成的旧式游戏内 UI。
+- `BGui` 创建和操作由 Virtools 2D Entity/Behavior 组成的游戏内 UI。
 - `BML::UI` 不绘制控件，而是通过 IMC 控制 Loader 已有的消息、菜单和 HUD。
 
 三者解决的问题不同，不应互相替代或混用命名。

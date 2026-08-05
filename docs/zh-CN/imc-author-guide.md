@@ -109,7 +109,7 @@ python imc_codegen.py --update-lock \
 
 `.imc` 与 `.imc.lock` 必须一起提交。像审查其他 Lock File 一样审查它的 Diff，但不要
 手工编辑。普通生成和 `--check` 不会修改 Lock；缺失或过期时会输出可执行的修复命令。
-有意 clean break 时增加 major，开始新的 ID 空间。
+不兼容修改必须增加 major；新的 major 使用独立的字段 ID 空间。
 
 ## 2. 从 CMake 生成
 
@@ -249,8 +249,7 @@ if (client.GetChangedSubscriberCount(subscribers) == BML_OK && subscribers) {
 }
 ```
 
-构造事件本身代价较高时，先检查订阅者数量。零订阅者发布仍是安全的，运行时不会分配
-内部队列消息。
+构造事件本身代价较高时，可以先检查订阅者数量。没有订阅者时发布仍然有效。
 
 ```cpp
 void OnChanged(int status, Echo::ChangedEventValue *event,

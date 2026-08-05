@@ -1,7 +1,7 @@
 # 跨 Mod 通信
 
-BML+ 只保留一套 RPC/事件传输：IMC。旧的 `[bml.export]`、`ExportRef`、
-`CallFrame` 和 `BML::Interop` Record/Registry 接口已经移除，不存在兼容层。
+BML+ 的跨 Mod RPC 和事件传输使用 IMC。脚本 Mod 可以直接使用 BML+ 提供的
+类型化服务门面；自定义 IMC Provider 由原生 Mod 实现。
 
 ## 脚本 Mod 如何选择
 
@@ -20,8 +20,8 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 ```
 
 可用的内置命名空间包括 `BML::Runtime`、`BML::Scene`、
-`BML::Gameplay`、`BML::UI` 和 `BML::Events`。这些接口内部使用 IMC，
-但不会把原始消息、provider 或 subscription 句柄暴露给脚本。
+`BML::Gameplay`、`BML::UI` 和 `BML::Events`。脚本通过这些门面处理
+类型化数据，不直接管理原始消息或原生 IMC 句柄。
 
 两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。

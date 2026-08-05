@@ -127,7 +127,7 @@ Client 和 Provider 都关联一个 Mod Owner。BML 会在 Mod 卸载时撤销�
 
 ## 内置 API
 
-BML+ 的公开类型化门面内部使用 IMC：
+BML+ 提供以下类型化服务门面：
 
 | 命名空间 | 服务 |
 | --- | --- |
@@ -146,14 +146,7 @@ BML+ 的公开类型化门面内部使用 IMC：
 零订阅者快速路径。
 
 这些优化不会放宽公开规则：回调仍需明确执行线程，队列仍需背压策略，载荷仍需稳定
-Record。Release 测试会检查直接 RPC 和调用线程 Topic 的延迟及吞吐底线。
-
-## Clean break 边界
-
-IMC 是唯一公开的跨 Mod RPC/Topic 传输层。实验性的 Record/Registry API 及其
-`BML::Interop` AngelScript 命名空间不属于 SDK，也没有兼容适配、双重注册或回退
-查找。旧代码必须迁移到生成的原生 IMC 绑定；纯脚本 Mod 可以使用 BML 类型化门面，
-简单共享状态可以使用 DataShare。
+Record。
 
 ## 参考
 

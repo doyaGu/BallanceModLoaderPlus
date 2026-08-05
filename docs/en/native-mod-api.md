@@ -1,8 +1,7 @@
 # BML+ native mod API overview
 
 This page groups the public headers installed by the BML+ SDK by purpose. The
-installed `include/BML` directory defines the supported surface; headers that
-exist only in the source tree are loader implementation details.
+installed `include/BML` directory defines the supported native API.
 
 ## Minimal entry point
 
@@ -56,7 +55,7 @@ an install rule.
 | `Generated/*.hpp` | Built-in bindings generated from `.imc`; do not edit them |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `UI.h`, `Events.h`, `EventKinds.h` | Convenient C++ facades for built-in IMC services |
 | `Bui.h` | Ballance-style ImGui widgets |
-| `Gui.h`, `Gui/*.h` | Legacy `BGui` wrappers around Virtools entities and behaviours |
+| `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
 | `InputHook.h` | Keyboard, mouse, controller state, and paired input-block tokens |
 | `ExecuteBB.h` | Execute or create common Building Blocks |
 | `ScriptHelper.h` | Find, connect, insert, and remove behaviour nodes and parameters |
@@ -138,7 +137,7 @@ evolution, cross-language bindings, RPC, or Topic semantics.
 ## Three UI surfaces
 
 - `Bui` draws Ballance-style ImGui widgets for native overlays.
-- `BGui` creates legacy in-game UI from Virtools 2D Entities and Behaviors.
+- `BGui` creates in-game UI from Virtools 2D Entities and Behaviors.
 - `BML::UI` does not draw widgets; it controls loader-owned messages, menus,
   and HUD state through IMC.
 
