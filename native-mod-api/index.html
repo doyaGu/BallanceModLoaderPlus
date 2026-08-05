@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="BML+ native mod and inter-mod communication documentation.">
+        <meta name="description" content="BML+ native mod, script mod, and inter-mod communication documentation.">
       
       
       
@@ -529,6 +529,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -798,8 +826,7 @@
 
 <h1 id="bml-native-mod-api-overview">BML+ native mod API overview<a class="headerlink" href="#bml-native-mod-api-overview" title="Permanent link">&para;</a></h1>
 <p>This page groups the public headers installed by the BML+ SDK by purpose. The
-installed <code>include/BML</code> directory defines the supported surface; headers that
-exist only in the source tree are loader implementation details.</p>
+installed <code>include/BML</code> directory defines the supported native API.</p>
 <h2 id="minimal-entry-point">Minimal entry point<a class="headerlink" href="#minimal-entry-point" title="Permanent link">&para;</a></h2>
 <p>A native mod is a dynamic library that exports <code>BMLEntry</code> and normally uses the
 <code>.bmodp</code> extension:</p>
@@ -890,7 +917,7 @@ an install rule.</p>
 </tr>
 <tr>
 <td><code>Gui.h</code>, <code>Gui/*.h</code></td>
-<td>Legacy <code>BGui</code> wrappers around Virtools entities and behaviours</td>
+<td><code>BGui</code> wrappers around Virtools entities and behaviours</td>
 </tr>
 <tr>
 <td><code>InputHook.h</code></td>
@@ -977,7 +1004,7 @@ evolution, cross-language bindings, RPC, or Topic semantics.</p>
 <h2 id="three-ui-surfaces">Three UI surfaces<a class="headerlink" href="#three-ui-surfaces" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>Bui</code> draws Ballance-style ImGui widgets for native overlays.</li>
-<li><code>BGui</code> creates legacy in-game UI from Virtools 2D Entities and Behaviors.</li>
+<li><code>BGui</code> creates in-game UI from Virtools 2D Entities and Behaviors.</li>
 <li><code>BML::UI</code> does not draw widgets; it controls loader-owned messages, menus,
   and HUD state through IMC.</li>
 </ul>

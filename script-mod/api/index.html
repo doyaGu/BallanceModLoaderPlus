@@ -10,11 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/">
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod/api/">
       
       
+        <link rel="prev" href="../author-guide/">
       
-        <link rel="next" href="native-mod-api/">
+      
+        <link rel="next" href="../../imc/">
       
       
         
@@ -24,16 +26,16 @@
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Ballance Mod Loader Plus</title>
+        <title>API reference - Ballance Mod Loader Plus</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -52,7 +54,7 @@
       
     
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -70,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#bml-documentation" class="md-skip">
+        <a href="#bml-script-api-reference" class="md-skip">
           Skip to content
         </a>
       
@@ -86,7 +88,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -106,7 +108,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              API reference
             
           </span>
         </div>
@@ -224,7 +226,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+    <a href="../.." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -251,37 +253,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -297,48 +272,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#start-here" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Start here
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#language-availability" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Language availability
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -350,7 +283,7 @@
   
   
     <li class="md-nav__item">
-      <a href="native-mod-api/" class="md-nav__link">
+      <a href="../../native-mod-api/" class="md-nav__link">
         
   
   
@@ -374,8 +307,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -386,11 +321,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
@@ -411,7 +346,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -429,7 +364,7 @@
   
   
     <li class="md-nav__item">
-      <a href="script-mod/author-guide/" class="md-nav__link">
+      <a href="../author-guide/" class="md-nav__link">
         
   
   
@@ -454,10 +389,19 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="script-mod/api/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -473,6 +417,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -544,7 +489,7 @@
   
   
     <li class="md-nav__item">
-      <a href="imc/" class="md-nav__link">
+      <a href="../../imc/" class="md-nav__link">
         
   
   
@@ -572,7 +517,7 @@
   
   
     <li class="md-nav__item">
-      <a href="imc-author-guide/" class="md-nav__link">
+      <a href="../../imc-author-guide/" class="md-nav__link">
         
   
   
@@ -620,36 +565,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#start-here" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Start here
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#language-availability" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Language availability
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -668,23 +583,21 @@
   
 
 
-<h1 id="bml-documentation">BML+ documentation<a class="headerlink" href="#bml-documentation" title="Permanent link">&para;</a></h1>
-<p>This is the English documentation for Ballance Mod Loader Plus.</p>
-<p>Use the repository README for project installation, source builds, release
-packages, and the general project overview. This site focuses on the public SDK
-and mod-authoring interfaces.</p>
-<h2 id="start-here">Start here<a class="headerlink" href="#start-here" title="Permanent link">&para;</a></h2>
+<h1 id="bml-script-api-reference">BML+ script API reference<a class="headerlink" href="#bml-script-api-reference" title="Permanent link">&para;</a></h1>
+<p>The downloadable reference files describe the AngelScript API exposed by BML+.
+They are intended for editor completion and API lookup; they are not runtime
+script files and must not be included in a mod package.</p>
 <ul>
-<li><a href="native-mod-api/">Native mod API</a></li>
-<li><a href="script-mod/author-guide/">Script mod author guide</a></li>
-<li><a href="script-mod/api/">Script API reference</a></li>
-<li><a href="imc/">Inter-mod communication</a></li>
-<li><a href="imc-author-guide/">Create a typed IMC API</a></li>
+  <li><a href="../../api/as.predefined"><code>as.predefined</code></a> — complete definitions for AngelScript Language Server, including CKAngelScript and BML+.</li>
+  <li><a href="../../api/bml-script-mod-api.as"><code>bml-script-mod-api.as</code></a> — BML+ script mod types, functions, callbacks, and properties.</li>
+  <li><a href="../../api/bml-imgui-api.as"><code>bml-imgui-api.as</code></a> — Dear ImGui bindings available to scripts.</li>
 </ul>
-<h2 id="language-availability">Language availability<a class="headerlink" href="#language-availability" title="Permanent link">&para;</a></h2>
-<p>The native SDK, script mod author guide, and IMC documentation are available in
-English. The complete step-by-step AngelScript tutorial is currently maintained
-on the <a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/">Simplified Chinese site</a>.</p>
+
+<p>An accessor named <code>get_Name()</code> defines an AngelScript property and is normally
+used as <code>object.Name</code>. A declaration containing <code>@+</code> transfers a retained
+reference to BML+ when the corresponding registration succeeds.</p>
+<p>Use <code>as.predefined</code> for editor tooling. Use the two smaller files when looking
+up only the BML+-owned API surface.</p>
 
 
 
@@ -740,10 +653,10 @@ on the <a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

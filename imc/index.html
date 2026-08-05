@@ -6,14 +6,14 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="BML+ native mod and inter-mod communication documentation.">
+        <meta name="description" content="BML+ native mod, script mod, and inter-mod communication documentation.">
       
       
       
         <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/imc/">
       
       
-        <link rel="prev" href="../script-mod/author-guide/">
+        <link rel="prev" href="../script-mod/api/">
       
       
         <link rel="next" href="../imc-author-guide/">
@@ -383,6 +383,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -610,17 +638,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#clean-break-boundary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Clean-break boundary
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#reference" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -794,17 +811,6 @@
     <span class="md-ellipsis">
       
         Performance characteristics
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#clean-break-boundary" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Clean-break boundary
       
     </span>
   </a>
@@ -1010,7 +1016,7 @@ from its active callback returns <code>BML_ERROR_BUSY</code> instead of deadlock
 <code>BML_ERROR_INVALID_HANDLE</code> as a stale-owner or double-release programming
 error, not as a recoverable route failure.</p>
 <h2 id="built-in-apis">Built-in APIs<a class="headerlink" href="#built-in-apis" title="Permanent link">&para;</a></h2>
-<p>BML+'s public typed facades use IMC internally:</p>
+<p>BML+ provides the following typed service facades:</p>
 <table>
 <thead>
 <tr>
@@ -1050,15 +1056,7 @@ game-thread work uses bounded queues and per-frame pump budgets. Topic publish
 has a zero-subscriber fast path.</p>
 <p>These optimizations do not relax the public rules: callback code still needs a
 clear execution mode, queues still need a backpressure policy, and payloads
-still need stable records. Release tests enforce latency and throughput floors
-for direct RPC and caller-thread Topic delivery.</p>
-<h2 id="clean-break-boundary">Clean-break boundary<a class="headerlink" href="#clean-break-boundary" title="Permanent link">&para;</a></h2>
-<p>IMC is the only public cross-mod RPC and Topic transport. The experimental
-Record/Registry API and its <code>BML::Interop</code> AngelScript namespace are not part of
-the SDK. There is no compatibility adapter, dual registration, or fallback
-lookup. Existing code that used that surface must move to generated native IMC
-bindings; script-only mods can consume BML's typed facades and use DataShare for
-simple shared state.</p>
+still need stable records.</p>
 <h2 id="reference">Reference<a class="headerlink" href="#reference" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../imc-author-guide/">Create a typed IMC API</a></li>

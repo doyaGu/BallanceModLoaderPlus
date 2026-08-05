@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="BML+ native mod and inter-mod communication documentation.">
+        <meta name="description" content="BML+ native mod, script mod, and inter-mod communication documentation.">
       
       
       
@@ -368,6 +368,34 @@
     
   
     Author guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
   
 
     
@@ -940,8 +968,8 @@ changed enum value, or a structural edit without a minor-version increase.</p>
 <p>Commit <code>.imc</code> and <code>.imc.lock</code> together. Treat <code>.imc.lock</code> like a lock file:
 review its diff, but do not edit it by hand. Ordinary generation and <code>--check</code>
 never modify the lock; they fail with an actionable command when it is
-missing or stale. Increase the major version for an intentional clean break;
-that starts a new ID space.</p>
+missing or stale. Increase the major version for an incompatible revision;
+the new major version starts a separate field-ID space.</p>
 <h2 id="2-generate-from-cmake">2. Generate from CMake<a class="headerlink" href="#2-generate-from-cmake" title="Permanent link">&para;</a></h2>
 <p>The installed BML package includes the generator and
 <code>bml_target_imc_api()</code>. The helper adds the generated
@@ -1067,8 +1095,7 @@ A zero-time poll is safe.</p>
 <a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">}</span>
 </code></pre></div>
 <p>Checking the count first is useful when constructing the typed event itself is
-expensive. The runtime still handles a zero-subscriber publish safely without
-allocating an internal queued message.</p>
+expensive. Publishing with no subscribers is also valid.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnChanged</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">Echo</span><span class="o">::</span><span class="n">ChangedEventValue</span><span class="w"> </span><span class="o">*</span><span class="n">event</span><span class="p">,</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">               </span><span class="k">const</span><span class="w"> </span><span class="n">BML_ImcMessage</span><span class="w"> </span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">status</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>

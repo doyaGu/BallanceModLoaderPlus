@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="BML+ native mod and inter-mod communication documentation.">
+        <meta name="description" content="BML+ native mod, script mod, and inter-mod communication documentation.">
       
       
       
@@ -16,7 +16,7 @@
         <link rel="prev" href="../../native-mod-api/">
       
       
-        <link rel="next" href="../../imc/">
+        <link rel="next" href="../api/">
       
       
         
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#bml-script-mod-v1-author-guide" class="md-skip">
+        <a href="#bml-script-mod-author-guide" class="md-skip">
           Skip to content
         </a>
       
@@ -871,10 +871,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#english-summary" class="md-nav__link">
+  <a href="#summary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        English Summary
+        Summary
       
     </span>
   </a>
@@ -885,6 +885,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1486,10 +1514,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#english-summary" class="md-nav__link">
+  <a href="#summary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        English Summary
+        Summary
       
     </span>
   </a>
@@ -1516,11 +1544,11 @@
   
 
 
-<h1 id="bml-script-mod-v1-author-guide">BML Script Mod v1 Author Guide<a class="headerlink" href="#bml-script-mod-v1-author-guide" title="Permanent link">&para;</a></h1>
+<h1 id="bml-script-mod-author-guide">BML+ script mod author guide<a class="headerlink" href="#bml-script-mod-author-guide" title="Permanent link">&para;</a></h1>
 <p>This guide is for people who want to publish a mod that BML+ loads from an
 AngelScript file. It starts with the authoring workflow, then moves into the
-API reference. <code>bml-script-mod-api.as</code> is only an editor/static-checking
-stub; do not package it as runtime script code.</p>
+API reference. The downloadable declarations are available from the
+<a href="../api/">script API reference</a>; they are editor files, not runtime script code.</p>
 <h2 id="who-this-is-for">Who This Is For<a class="headerlink" href="#who-this-is-for" title="Permanent link">&para;</a></h2>
 <p>You can use script mods without knowing the native BML C++ API first. You need
 basic C-like syntax and enough AngelScript to read handles such as <code>T@</code>,
@@ -1557,7 +1585,7 @@ the native binding work.</p>
 <p>The smallest useful mod logs one line when it loads:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;example.hello&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Script&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;You&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal BML script mod&quot;</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">         </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.12&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">         </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="p">]</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloMod</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
@@ -1575,9 +1603,6 @@ a timer, a DataShare request, a UI draw callback, or CKAngelScript scene work.</
 runtime when it can and records the full reason in <code>ModLoader.log</code>, <code>script
 logs</code>, and <code>script diag &lt;id&gt;</code>. When a script fails, read those diagnostics
 before guessing from symptoms in game.</p>
-<p>Keep smoke scripts and author examples separate. The smoke scripts under
-<code>tests/smoke/AngelScript</code> intentionally exercise edge cases and regression
-coverage; they are not minimal examples.</p>
 <h2 id="before-you-start">Before You Start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
 <p>You need:</p>
 <ul>
@@ -1585,12 +1610,10 @@ coverage; they are not minimal examples.</p>
   build supports script mods.</li>
 <li>The matching <code>AngelScript.dll</code> next to <code>BMLPlus.dll</code> in <code>BuildingBlocks</code> when
   distributing a script-capable release.</li>
-<li><code>bml-script-mod-api.as</code> in your editor for completion and static checks.
-  Do not include this stub from the script at runtime.</li>
-<li>CKAngelScript API docs when the mod touches Virtools objects, behavior
-  graphs, components, messages, async work, or raw CK/Vx SDK bindings. Start
-  with CKAS <code>docs/api-inventory.md</code>, <code>docs/scene-interop.md</code>,
-  <code>docs/sdk-bindings.md</code>, <code>docs/messaging.md</code>, and <code>docs/async.md</code>.</li>
+<li>The <a href="../api/">script API reference</a> configured in your editor for completion
+  and static checks. Do not include those declarations at runtime.</li>
+<li>The CKAngelScript documentation when the mod touches Virtools objects,
+  behavior graphs, components, messages, asynchronous work, or CK/Vx bindings.</li>
 <li>Matching CKAngelScript and AngelScript headers only when building a native
   plugin that also exposes script APIs.</li>
 </ul>
@@ -1599,7 +1622,7 @@ BML log. Missing or incompatible CKAngelScript is reported as a <code>ckas-host<
 diagnostic, and script mods stay unavailable without breaking native-only BML
 features.</p>
 <h2 id="package-shapes">Package Shapes<a class="headerlink" href="#package-shapes" title="Permanent link">&para;</a></h2>
-<p>v1 supports three package forms under <code>ModLoader/Mods</code>:</p>
+<p>BML+ supports three script package forms under <code>ModLoader/Mods</code>:</p>
 <ul>
 <li>A single <code>Foo.mod.as</code> file.</li>
 <li>A directory containing exactly one <code>*.mod.as</code> entry.</li>
@@ -1681,7 +1704,7 @@ resource root, not arbitrary global include paths.</p>
 <tr>
 <td>Draw BML/ImGui UI</td>
 <td><code>UI</code>, <code>Advanced ImGui</code></td>
-<td><code>OnRender</code>, <code>ctx.Draw*</code>, <code>BML::ImGui::*</code></td>
+<td><code>OnProcess</code>, <code>BML::UI::*</code>, <code>ImGui::*</code></td>
 </tr>
 <tr>
 <td>Read BML runtime, scene, gameplay, or event snapshots</td>
@@ -1761,11 +1784,7 @@ resource root, not arbitrary global include paths.</p>
 <li>The entry is AngelScript source. <code>[bml.mod]</code>, <code>[bml.require]</code>, and
   <code>[bml.optional]</code> are AngelScript metadata, not a separate
   manifest DSL.</li>
-<li>BML does not use a source lexer/parser to infer namespace or class name.
-  Those facts come from CKAngelScript metadata reflection. Native IMC APIs are
-  declared separately in <code>.imc</code> files and compiled before runtime.</li>
-<li>The <code>[bml.mod]</code> class may live in any AngelScript namespace. BML records the
-  namespace and class name reported by CKAS metadata reflection.</li>
+<li>The <code>[bml.mod]</code> class may live in any AngelScript namespace.</li>
 </ul>
 <h2 id="angelscript-notes">AngelScript Notes<a class="headerlink" href="#angelscript-notes" title="Permanent link">&para;</a></h2>
 <p>BML script mods are ordinary AngelScript classes hosted by CKAngelScript. These
@@ -1891,7 +1910,7 @@ the owner boundary instead of smuggling raw engine objects through BML.</p>
 <p><code>bml.mod</code> declares the main script mod class. It is required and must appear
 exactly once.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;example.core&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Example Core&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.2.0&quot;</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;You&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Example&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.12&quot;</span><span class="p">]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;You&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Example&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="p">]</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExampleCore</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">}</span>
 </code></pre></div>
@@ -1909,7 +1928,7 @@ scripts cannot mutate dependencies at runtime.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">require</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;other.mod&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="p">]</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">optional</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;debug.helper&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;0.1.0&quot;</span><span class="p">]</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;example.dep&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Example With Deps&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;You&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Dependency example&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.12&quot;</span><span class="p">]</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;You&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Dependency example&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="p">]</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="k">class</span><span class="w"> </span><span class="nc">ExampleWithDeps</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="p">}</span>
 </code></pre></div>
@@ -1918,10 +1937,9 @@ minimum version. <code>bml.optional</code> records a soft dependency that can be
 through <code>ModRef</code>, but it does not block loading when absent. Dependency metadata
 does not replace CKAngelScript <code>[script.depends]</code>; that belongs to CKAS runtime
 scripts.</p>
-<p><code>bml.export</code> was removed with the experimental dynamic-call ABI. Native
-cross-mod capabilities use a versioned <code>.imc</code> interface and generated IMC
-bindings. Script mods use typed facades or DataShare; they do not register raw
-RPC/Topic providers.</p>
+<p>Native cross-mod capabilities use versioned <code>.imc</code> interfaces and generated
+IMC bindings. Script mods use BML+'s typed facades or DataShare and do not
+register custom RPC or Topic providers.</p>
 <h2 id="hot-reload">Hot Reload<a class="headerlink" href="#hot-reload" title="Permanent link">&para;</a></h2>
 <p>Hot reload replaces the script runtime for a mod that BML already discovered at
 startup. It is meant for edit/test cycles, not for changing the mod graph while
@@ -1939,10 +1957,6 @@ the game is running.</p>
 <li>A compile or metadata failure keeps the old runtime active when one exists.
   The in-game message only says reload failed; use <code>script diag &lt;id&gt;</code> or the
   Logs tab for the structured compiler messages.</li>
-<li>BML captures an in-memory source snapshot at the start of each reload attempt.
-  Validation and commit use that same candidate runtime, so saving the script
-  again while reload is running cannot switch the committed source underneath
-  the validator.</li>
 <li><code>--dry-run</code> does not call <code>SaveState</code>, <code>MigrateState</code>, <code>RestoreState</code>, or
   candidate <code>OnLoad</code>. It validates compilation, metadata, compatibility, and
   required state hook declarations only.</li>
@@ -1952,12 +1966,8 @@ the game is running.</p>
   migration hooks; keep those hooks pure because the old <code>SaveState</code> runs on
   the live script object. It should copy values into the <code>StateBag</code>, not mutate
   script members or host state.</li>
-<li>If the mod failed during initial startup, BML keeps a failed placeholder. Fix
-  the file, then run <code>script reload</code> or <code>script reload &lt;placeholder-id&gt;</code> to
-  recover it. The placeholder can promote to the real mod id when that id does
-  not conflict.</li>
 <li>Dropping a brand-new <code>*.mod.as</code> file into <code>ModLoader/Mods</code> after startup does
-  not load a new mod. Restart Player to discover new mod registry nodes.</li>
+  not load it. Restart Player before using a newly added mod.</li>
 <li>Changing a successfully loaded mod id requires restart. Changing dependency
   declarations, adding required dependencies, or requiring a new dependency
   graph node is rejected because BML does not reorder the graph at runtime.</li>
@@ -2027,11 +2037,6 @@ the game is running.</p>
   content; they must not execute commands, write DataShare/config values, mutate
   input state, invoke IMC-backed mutating facades, or change CK/game-world objects.
   Rebuild resources in <code>OnLoad</code> after pure state has been restored.
-- BML rejects BML-owned mutating APIs in these hooks, and rejects CKAngelScript
-  host APIs that have explicitly opted into CKAS host-call filtering. This does
-  not make hot reload a sandbox. Raw CK/Vx calls, CKAS APIs that have not been
-  marked as mutating, and other plugin extension APIs can still have external
-  side effects; do not call them from state hooks.
 - Rollback restores only resources BML owns: callbacks, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
   changes your script already made to the game world through CKAS Scene/BB APIs,
@@ -2055,8 +2060,7 @@ the game is running.</p>
 <a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="callbacks">Callbacks<a class="headerlink" href="#callbacks" title="Permanent link">&para;</a></h2>
-<p>Old <code>OnPre*</code> / <code>OnPost*</code> overload families are not part of the script API.
-Only these fixed signatures are recognized:</p>
+<p>The following fixed signatures are recognized:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">);</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnUnload</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">);</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">);</span>
@@ -2099,13 +2103,13 @@ handles and should be used immediately.</p>
 </tr>
 <tr>
 <td><code>OnProcess</code></td>
-<td>Light per-tick orchestration.</td>
-<td>Avoid expensive scene scans; cache durable ids/refs and revalidate near use.</td>
+<td>Per-tick logic, input handling, and BML/ImGui drawing.</td>
+<td>Avoid expensive scene scans; cache durable ids/refs and revalidate near use. ImGui handles are valid only for the active frame.</td>
 </tr>
 <tr>
 <td><code>OnRender</code></td>
-<td>BML UI and ImGui drawing.</td>
-<td><code>RenderEvent.Flags</code> is a snapshot of the render flags. Frame-scope handles from ImGui must not be stored.</td>
+<td>Observe the Virtools render callback.</td>
+<td><code>RenderEvent.Flags</code> is a snapshot of the render flags. Do not issue BML/ImGui drawing calls here.</td>
 </tr>
 <tr>
 <td><code>OnGameEvent</code></td>
@@ -2469,18 +2473,15 @@ needed; keep <code>Text2DDefinition</code> value-only.</p>
 <a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="ui">UI<a class="headerlink" href="#ui" title="Permanent link">&para;</a></h2>
-<p><code>BML::UI</code> contains two groups. <code>SendMessage</code> and <code>ClearMessages</code> are core
-capabilities and may be called from normal callbacks. The BML-style menu
-controls below are render-time Bui helpers; use them from <code>OnRender</code>. Drawing
-and input calls outside a render callback are safe no-ops or return default
-values. The facade intentionally does not expose <code>Bui::Window</code>, <code>Bui::Page</code>,
-raw draw lists, raw text buffers, resource initialization, or script/menu
-transition internals.</p>
+<p><code>BML::UI</code> contains two groups. <code>SendMessage</code> and <code>ClearMessages</code> may be called
+from normal callbacks. The BML-style controls below require the active ImGui
+frame and must be called from <code>OnProcess</code>. Calls made outside the active frame
+return default values or perform no drawing.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kt">bool</span><span class="w"> </span><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
 <a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
 <a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="n">string</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">;</span>
 <a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnRender</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">RenderEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">  </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">Title</span><span class="p">(</span><span class="s">&quot;Example Script&quot;</span><span class="p">);</span>
 <a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">  </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">WrappedText</span><span class="p">(</span><span class="s">&quot;Use BML::UI for simple menu controls.&quot;</span><span class="p">,</span><span class="w"> </span><span class="mf">360.0f</span><span class="p">);</span>
 <a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>
@@ -2495,23 +2496,20 @@ transition internals.</p>
 </code></pre></div>
 <h2 id="advanced-imgui">Advanced ImGui<a class="headerlink" href="#advanced-imgui" title="Permanent link">&para;</a></h2>
 <p><code>ImGui</code> is the lower-level frame-scope API for scripts that need custom debug
-or tooling UI. The checked-in generated binding surface is documented in
-<code>bml-imgui-api.as</code> in the SDK; the generation report is
-<code>src/AngelScript/generated/BMLImGuiAngelScriptBindings.report.md</code>.</p>
-<p>Use it only from <code>OnRender</code>. BML guards calls outside an active ImGui frame so
+or tooling UI. Its complete declarations are available from the
+<a href="../api/">script API reference</a>.</p>
+<p>Use it only from <code>OnProcess</code>. BML guards calls outside an active ImGui frame so
 they return default values or no-op, but those calls are still script errors in
 practice. Borrowed handles such as <code>ImDrawList@</code>, <code>ImGuiIO@</code>, and <code>ImGuiStyle@</code>
 are valid only during the current frame and must not be stored.</p>
-<p>The generated API intentionally omits context/platform lifecycle, allocators,
-raw callbacks, raw <code>void*</code>, internal debug helpers, and native resource
-lifecycle. Prefer <code>BML::UI</code> for ordinary menu buttons and page navigation; use
-<code>ImGui</code> for advanced windows, tables, trees, controls, images, and frame-local
-draw list work.</p>
+<p>Prefer <code>BML::UI</code> for ordinary menu buttons and page navigation. Use <code>ImGui</code> for
+advanced windows, tables, trees, controls, images, and frame-local draw-list
+work.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">ImVec4</span><span class="w"> </span><span class="nf">accent</span><span class="p">(</span><span class="mf">0.2f</span><span class="p">,</span><span class="w"> </span><span class="mf">0.4f</span><span class="p">,</span><span class="w"> </span><span class="mf">0.9f</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0f</span><span class="p">);</span>
 <a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">choice</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 <a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="n">string</span><span class="w"> </span><span class="n">filter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">;</span>
 <a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>
-<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnRender</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">RenderEvent</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ImGui</span><span class="o">::</span><span class="n">Begin</span><span class="p">(</span><span class="s">&quot;Advanced ImGui&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">    </span><span class="n">ImGui</span><span class="o">::</span><span class="n">TextUnformatted</span><span class="p">(</span><span class="s">&quot;Custom script UI&quot;</span><span class="p">);</span>
 <a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="w">    </span><span class="n">ImGui</span><span class="o">::</span><span class="n">InputText</span><span class="p">(</span><span class="s">&quot;Filter&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">filter</span><span class="p">,</span><span class="w"> </span><span class="mi">128</span><span class="p">);</span>
@@ -2526,9 +2524,7 @@ draw list work.</p>
 <a id="__codelineno-24-17" name="__codelineno-24-17" href="#__codelineno-24-17"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="cross-mod-services">Cross-Mod Services<a class="headerlink" href="#cross-mod-services" title="Permanent link">&para;</a></h2>
-<p><code>ModRef</code> remains useful for dependency and diagnostics inspection, but it is
-not a dynamic function-call surface. <code>ExportRef</code>, <code>ExportResolver</code>,
-<code>CallFrame</code>, and <code>[bml.export]</code> were removed with the old experimental ABI.</p>
+<p><code>ModRef</code> provides dependency, identity, load-state, and diagnostic information.</p>
 <p>For state-like cross-mod data, use DataShare. Script mods do not register custom
 RPC or Topic providers. This keeps the script surface typed and avoids a second
 dynamic schema/record system beside IMC.</p>
@@ -2761,8 +2757,7 @@ typed and small. See <a href="../../imc/">Inter-mod communication</a> and
 <ul>
 <li>The BML Mod menu: script mods show loaded/failed state and details.</li>
 <li>Script code: <code>ModRef.Diagnostic</code>.</li>
-<li>Native host: use the BML log and the in-game <code>script diag &lt;id&gt;</code> command;
-  the removed v1 <code>BML_GetModDiagnostic</code> function has no v2 C-ABI replacement.</li>
+<li>Native host: use the BML log and the in-game <code>script diag &lt;id&gt;</code> command.</li>
 </ul>
 <p>Common phases:</p>
 <ul>
@@ -2785,10 +2780,9 @@ typed and small. See <a href="../../imc/">Inter-mod communication</a> and
 <li>Reproduce with a small script package before moving the same logic into a
    larger mod.</li>
 </ol>
-<p>For local validation, use the script-capable release package and copy the mod
-into a clean <code>ModLoader/Mods</code> directory. The repository smoke tests are useful
-for BML development, but an author should still verify the script in Player
-with the same CKAngelScript runtime that will ship with the mod.</p>
+<p>For final validation, use the script-capable release package and copy the mod
+into a clean <code>ModLoader/Mods</code> directory. Verify the script in Player with the
+same CKAngelScript runtime required by the target BML+ release.</p>
 <h2 id="lifetime-rules">Lifetime Rules<a class="headerlink" href="#lifetime-rules" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Script callbacks use <code>NO_SUSPEND</code>; suspension is an error.</li>
@@ -2803,15 +2797,12 @@ with the same CKAngelScript runtime that will ship with the mod.</p>
   CK handles when work crosses callbacks or frames.</li>
 <li>Timer, Command, DataShareRequest, and HookBlock resources are owned by the
   script mod and are cleaned up on mod unload and hot reload replacement.</li>
-<li>Export handles are generation-checked and become invalid when the owner or
-  export disappears.</li>
-<li>Hot reload keeps the mod registry slot stable, but it does not discover new
-  mods, rebuild dependency graph nodes, cascade dependent reloads, or undo
+<li>Hot reload preserves the loaded mod's identity, but it does not discover new
+  mods, rebuild dependency relationships, cascade dependent reloads, or undo
   script-authored game-world side effects.</li>
 </ul>
 <h2 id="do-not">Do Not<a class="headerlink" href="#do-not" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Do not rely on old callback overloads.</li>
 <li>Do not store borrowed CK objects or CK managers in long-lived fields.</li>
 <li>Do not access raw CKAngelScript engine/context/module/function state. This
   does not forbid ordinary CKAngelScript script APIs such as <code>Scene</code>, <code>Behavior</code>,
@@ -2821,7 +2812,7 @@ with the same CKAngelScript runtime that will ship with the mod.</p>
   add a guarded CKAngelScript engine extension in the owning native plugin.</li>
 <li>Do not mutate dependencies at runtime; use metadata.</li>
 <li>Do not write a separate manifest DSL. The entry must be valid AngelScript.</li>
-<li>Do not package script mods as <code>.bmodp</code>; v1 script packages are single-file,
+<li>Do not package script mods as <code>.bmodp</code>; script packages are single-file,
   directory, or <code>.zip</code>.</li>
 </ul>
 <h2 id="package-notes">Package Notes<a class="headerlink" href="#package-notes" title="Permanent link">&para;</a></h2>
@@ -2850,31 +2841,30 @@ with the same CKAngelScript runtime that will ship with the mod.</p>
 <li>The package has exactly one <code>*.mod.as</code> entry.</li>
 <li>The main class has one <code>[bml.mod]</code> with stable <code>id</code>, <code>name</code>, and <code>version</code>.</li>
 <li>Every dependency that affects load order is metadata, not a runtime check.</li>
-<li>Every export has a supported signature and a stable name.</li>
 <li><code>OnLoad</code> logs at least one clear startup line during development.</li>
 <li>Long-lived CK object identity uses CKAS refs or ids, not borrowed raw handles.</li>
 <li>Timers, commands, and DataShare requests are either held in fields or designed
   to finish immediately.</li>
-<li>Render/UI code runs from <code>OnRender</code>.</li>
+<li>BML/ImGui drawing code runs from <code>OnProcess</code>.</li>
 <li>Heavy scene scans are delayed, cached as refs/ids, or moved to a native
   plugin/CKAS component when needed.</li>
 <li>The script has been tested in Player with the release CKAngelScript runtime.</li>
 </ul>
-<h2 id="english-summary">English Summary<a class="headerlink" href="#english-summary" title="Permanent link">&para;</a></h2>
-<p>BML Script Mod v1 uses one <code>*.mod.as</code> entry per single-file, directory, or
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<p>BML+ script mods use one <code>*.mod.as</code> entry per single-file, directory, or
 <code>.zip</code> script package, AngelScript metadata declarations, fixed callback
-signatures, script-owned Timer/Command objects, typed DataShare requests, and
-typed export handles. It supports hot reload for already discovered script mods
-within the documented lifecycle boundaries. <code>BML::ModContext</code> is the primary
+signatures, script-owned Timer/Command objects, and typed DataShare requests.
+They support hot reload for already discovered script mods
+under the documented lifecycle rules. <code>BML::ModContext</code> is the primary
 facade. Event objects are snapshots, while <code>Borrow*</code> methods remain borrowed CK
 escape hatches; CKAS <code>ObjectRef@</code>-derived handles are the long-lived CK object
 identity model.
 CKAngelScript runtime scripts,
 <code>AngelScript Component</code>, <code>Scene</code>, <code>Behavior</code>, <code>BB</code>, <code>Param</code>, <code>Message</code>, <code>Async</code>,
 raw CK/Vx SDK, ImGui, and registered extension APIs remain available according
-to their own APIs; BML v1 only defines the BML-owned mod surface. <code>.bmodp</code>
-script packages, BML-owned entity wrappers, raw CKAS engine/module/function
-access, BML callback suspension/resume, and a full sandbox policy are deferred.</p>
+to their own APIs. BML+ defines the mod identity, lifecycle, services, and
+package rules described in this guide; <code>.bmodp</code> remains the native Mod package
+format.</p>
 
 
 
