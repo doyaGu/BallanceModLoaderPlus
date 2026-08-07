@@ -116,12 +116,17 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} `
             -DVIRTOOLS_SDK_PATH="${{ github.workspace }}\Virtools-SDK-2.1" `
             -DBML_ENABLE_ANGELSCRIPT=ON `
+            -DBML_BUILD_TESTS=ON `
             -DCKANGELSCRIPT_ROOT="${{ github.workspace }}\artifacts\ckangelscript-release" `
             -DCMAKE_INSTALL_PREFIX="${{ env.BASE_DIST_DIR }}\${{ matrix.configuration }}"
 
       - name: Build the project
         shell: pwsh
         run: cmake --build "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}"
+
+      - name: Run the test suite
+        shell: pwsh
+        run: ctest --test-dir "${{ env.BASE_BUILD_DIR }}\${{ matrix.configuration }}" --output-on-failure
 
       - name: Install binaries to distribution folder
         shell: pwsh

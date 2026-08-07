@@ -100,6 +100,15 @@ add_test(
 )
 set_tests_properties(ImcPublicSurfaceTest PROPERTIES LABELS "imc;abi")
 
+add_test(
+        NAME LegacyNativeHeaderAbiTest
+        COMMAND "${CMAKE_COMMAND}"
+                "-DSOURCE_ROOT=${PROJECT_SOURCE_DIR}"
+                "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/abi/legacy-native-headers.sha256"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/LegacyNativeHeaderAbiTest.cmake"
+)
+set_tests_properties(LegacyNativeHeaderAbiTest PROPERTIES LABELS "legacy-native;abi")
+
 if(MSVC)
     get_filename_component(BML_TOOL_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
     set(BML_DUMPBIN "${BML_TOOL_DIRECTORY}/dumpbin.exe")
@@ -112,6 +121,17 @@ if(MSVC)
                 "-P" "${CMAKE_CURRENT_SOURCE_DIR}/ImcDllExportAbiTest.cmake"
         )
         set_tests_properties(ImcDllExportAbiTest PROPERTIES LABELS "imc;abi")
+
+        add_test(
+                NAME LegacyNativeDllExportAbiTest
+                COMMAND "${CMAKE_COMMAND}"
+                "-DDUMPBIN=${BML_DUMPBIN}"
+                "-DBINARY=$<TARGET_FILE:BML>"
+                "-DEXPECTED_COUNT=333"
+                "-DEXPECTED_SHA256=fa1005dc8b0684a71fe6d512c4a8f062fdff5e55b1586eaeb16193959f5a2a89"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/LegacyNativeDllExportAbiTest.cmake"
+        )
+        set_tests_properties(LegacyNativeDllExportAbiTest PROPERTIES LABELS "legacy-native;abi")
     endif()
 endif()
 
