@@ -1,0 +1,15 @@
+api bml.speedrun 1.0
+
+record visible_input {
+    bool visible
+}
+
+record timer_state {
+    float elapsed_time
+}
+
+rpc pause_timer()
+rpc reset_timer()
+rpc set_timer_visible(visible_input)
+rpc start_timer()
+rpc state() -> timer_state

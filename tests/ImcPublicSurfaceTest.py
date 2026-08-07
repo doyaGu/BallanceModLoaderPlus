@@ -75,6 +75,7 @@ def main() -> int:
         "include/BML/Gameplay.h",
         "include/BML/Events.h",
         "include/BML/UI.h",
+        "include/BML/Speedrun.h",
     )
     for relative in header_only:
         if "BML_EXPORT" in read(root, relative):

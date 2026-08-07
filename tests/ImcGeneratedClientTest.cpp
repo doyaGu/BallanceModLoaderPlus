@@ -2,6 +2,7 @@
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/Generated/bml_scene_imc.hpp"
+#include "BML/Generated/bml_speedrun_imc.hpp"
 #include "BML/Generated/bml_runtime_imc.hpp"
 #include "BML/Generated/bml_ui_imc.hpp"
 #include "BML/Runtime.h"
@@ -112,6 +113,17 @@ int EncodeCatalogResult(BML_ImcFuture_T &future) {
     future.Result.PayloadType = StableId(Gameplay::CatalogResponsePayload); return status;
 }
 
+int EncodeSpeedrunStateResult(BML_ImcFuture_T &future) {
+    namespace Speedrun = BML::Imc::Generated::Bml::Speedrun;
+    Speedrun::TimerStateValue value{};
+    value.ElapsedTime = 12.5f;
+    future.Data.resize(Speedrun::EncodedTimerStateSize(value));
+    const int status = Speedrun::EncodeTimerState(value, future.Data.data(), future.Data.size());
+    future.Result = {}; future.Result.Size = sizeof(BML_ImcMessage);
+    future.Result.Data = future.Data.data(); future.Result.DataSize = future.Data.size();
+    future.Result.PayloadType = StableId(Speedrun::TimerStatePayload); return status;
+}
+
 int ProvideRuntimeState(BML::Imc::Generated::Bml::Runtime::RuntimeStateValue &out, void *) {
     out.InGame = true; out.InLevel = false; out.Paused = true;
     out.Playing = false; out.CheatEnabled = true;
@@ -196,6 +208,7 @@ int BML_Imc_ResponseCommit(BML_ImcResponse *response, std::size_t size, BML_ImcP
     int status = BML_ERROR_NOT_FOUND;
     if (rpcId == StableId(BML::Imc::Generated::Bml::Runtime::StateRoute)) status = EncodeRuntimeResult(*future);
     if (rpcId == StableId(BML::Imc::Generated::Bml::Ui::MessageAddRoute)) status = BML_OK;
+    if (rpcId == StableId(BML::Imc::Generated::Bml::Speedrun::StateRoute)) status = EncodeSpeedrunStateResult(*future);
     if (rpcId == StableId(BML::Imc::Generated::Bml::Scene::EntityRoute)) status = EncodeEntityResult(*future);
     if (rpcId == StableId(BML::Imc::Generated::Bml::Gameplay::CatalogRoute)) status = EncodeCatalogResult(*future);
     if (status != BML_OK) { delete future; return status; }
@@ -396,6 +409,17 @@ TEST(ImcGeneratedClientTest, EncodesTypedRequestForResponseLessRpc) {
     Ui::MessageInputValue decoded{};
     ASSERT_EQ(Ui::DecodeMessageInput(request, decoded), BML_OK);
     EXPECT_EQ(decoded.Message, input.Message);
+    EXPECT_EQ(g_FutureReleases, 1);
+}
+
+TEST(ImcGeneratedClientTest, ReadsSpeedrunStateFromItsOwnInterface) {
+    ResetMock();
+    namespace Speedrun = BML::Imc::Generated::Bml::Speedrun;
+    Speedrun::Client client;
+    ASSERT_EQ(client.Open("test.consumer"), BML_OK);
+    Speedrun::TimerStateValue state{};
+    ASSERT_EQ(client.CallState(state), BML_OK);
+    EXPECT_FLOAT_EQ(state.ElapsedTime, 12.5f);
     EXPECT_EQ(g_FutureReleases, 1);
 }
 

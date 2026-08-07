@@ -19,6 +19,7 @@
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/Generated/bml_scene_imc.hpp"
+#include "BML/Generated/bml_speedrun_imc.hpp"
 #include "BML/Generated/bml_ui_imc.hpp"
 #include "BML/Generated/bml_runtime_imc.hpp"
 
@@ -28,6 +29,7 @@ namespace ImcRuntimeApi = BML::Imc::Generated::Bml::Runtime;
 namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
 namespace ImcGameplayApi = BML::Imc::Generated::Bml::Gameplay;
 namespace ImcSceneApi = BML::Imc::Generated::Bml::Scene;
+namespace ImcSpeedrunApi = BML::Imc::Generated::Bml::Speedrun;
 namespace ImcUiApi = BML::Imc::Generated::Bml::Ui;
 
 constexpr uint32_t kVirtoolsObjectDomain = BML_IMC_OBJECT_DOMAIN_VIRTOOLS;
@@ -75,6 +77,7 @@ public:
 
     void Unregister() {
         (void)m_ImcEvents.Close();
+        (void)m_ImcSpeedrun.Close();
         (void)m_ImcUi.Close();
         (void)m_ImcGameplay.Close();
         (void)m_ImcScene.Close();
@@ -121,9 +124,12 @@ private:
         if (status == BML_OK) status = m_ImcGameplay.RegisterResetpoints(&ReadImcGameplayResetpoints, this);
         if (status == BML_OK) status = m_ImcUi.Open(owner);
         if (status == BML_OK) status = RegisterImcUi();
+        if (status == BML_OK) status = m_ImcSpeedrun.Open(owner);
+        if (status == BML_OK) status = RegisterImcSpeedrun();
         if (status == BML_OK) status = m_ImcEvents.Open(owner);
         if (status != BML_OK) {
             (void)m_ImcEvents.Close();
+            (void)m_ImcSpeedrun.Close();
             (void)m_ImcUi.Close();
             (void)m_ImcGameplay.Close();
             (void)m_ImcScene.Close();
@@ -336,10 +342,6 @@ private:
         if (status == BML_OK) status = m_ImcUi.RegisterHudSet(&ImcUiHudSet, this);
         if (status == BML_OK) status = m_ImcUi.RegisterHudTitleShow(&ImcUiHudTitleShow, this);
         if (status == BML_OK) status = m_ImcUi.RegisterHudFpsShow(&ImcUiHudFpsShow, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterHudSrShow(&ImcUiHudSrShow, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterHudSrStart(&ImcUiHudSrStart, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterHudSrPause(&ImcUiHudSrPause, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterHudSrReset(&ImcUiHudSrReset, this);
         if (status == BML_OK) status = m_ImcUi.RegisterState(&ReadImcUiState, this);
         return status;
     }
@@ -384,25 +386,43 @@ private:
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         provider->m_Mod.ShowFPS(input.Visible); return BML_OK;
     }
-    static int ImcUiHudSrShow(const ImcUiApi::VisibleInputValue &input, void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.ShowSRTimer(input.Visible); return BML_OK;
-    }
-    static int ImcUiHudSrStart(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.StartSRTimer(); return BML_OK;
-    }
-    static int ImcUiHudSrPause(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.PauseSRTimer(); return BML_OK;
-    }
-    static int ImcUiHudSrReset(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.ResetSRTimer(); return BML_OK;
-    }
     static int ReadImcUiState(ImcUiApi::HudStateValue &out, void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        out.Mode = provider->m_Mod.GetHUD(); out.SrTime = provider->m_Mod.GetSRTime(); return BML_OK;
+        out.Mode = provider->m_Mod.GetHUD(); return BML_OK;
+    }
+
+    int RegisterImcSpeedrun() {
+        int status = m_ImcSpeedrun.RegisterSetTimerVisible(&ImcSpeedrunSetTimerVisible, this);
+        if (status == BML_OK) status = m_ImcSpeedrun.RegisterStartTimer(&ImcSpeedrunStartTimer, this);
+        if (status == BML_OK) status = m_ImcSpeedrun.RegisterPauseTimer(&ImcSpeedrunPauseTimer, this);
+        if (status == BML_OK) status = m_ImcSpeedrun.RegisterResetTimer(&ImcSpeedrunResetTimer, this);
+        if (status == BML_OK) status = m_ImcSpeedrun.RegisterState(&ReadImcSpeedrunState, this);
+        return status;
+    }
+
+    static BuiltinImcProvider *ImcSpeedrunProvider(void *userdata) {
+        return static_cast<BuiltinImcProvider *>(userdata);
+    }
+
+    static int ImcSpeedrunSetTimerVisible(const ImcSpeedrunApi::VisibleInputValue &input, void *userdata) {
+        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.ShowSRTimer(input.Visible); return BML_OK;
+    }
+    static int ImcSpeedrunStartTimer(void *userdata) {
+        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.StartSRTimer(); return BML_OK;
+    }
+    static int ImcSpeedrunPauseTimer(void *userdata) {
+        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.PauseSRTimer(); return BML_OK;
+    }
+    static int ImcSpeedrunResetTimer(void *userdata) {
+        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        provider->m_Mod.ResetSRTimer(); return BML_OK;
+    }
+    static int ReadImcSpeedrunState(ImcSpeedrunApi::TimerStateValue &out, void *userdata) {
+        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
+        out.ElapsedTime = provider->m_Mod.GetSRTime(); return BML_OK;
     }
     ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
 
@@ -483,6 +503,7 @@ private:
     ImcSceneApi::Provider m_ImcScene;
     ImcGameplayApi::Provider m_ImcGameplay;
     ImcUiApi::Provider m_ImcUi;
+    ImcSpeedrunApi::Provider m_ImcSpeedrun;
     ImcEventsApi::Client m_ImcEvents;
 };
 

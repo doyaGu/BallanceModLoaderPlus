@@ -23,6 +23,7 @@
 #include "BML/Scene.h"
 #include "BML/Gameplay.h"
 #include "BML/UI.h"
+#include "BML/Speedrun.h"
 #include "BML/Events.h"
 
 #include "BML/Bui.h"

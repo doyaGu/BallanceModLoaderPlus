@@ -4,9 +4,11 @@
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/Generated/bml_runtime_imc.hpp"
 #include "BML/Generated/bml_scene_imc.hpp"
+#include "BML/Generated/bml_speedrun_imc.hpp"
 #include "BML/Generated/bml_ui_imc.hpp"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
+#include "BML/Speedrun.h"
 #include "BML/UI.h"
 
 #include <gtest/gtest.h>
@@ -23,6 +25,10 @@ TEST(ImcHeadersTest, PublicFacadesRemainHeaderOnlyAndCAbiBacked) {
     EXPECT_FALSE(generated.InGame);
     EXPECT_STREQ(BML::Imc::Generated::Bml::Runtime::StateRoute,
                  "bml.runtime/v1/rpc/state");
+    EXPECT_STREQ(BML::Imc::Generated::Bml::Ui::StateRoute,
+                 "bml.ui/v2/rpc/state");
+    EXPECT_STREQ(BML::Imc::Generated::Bml::Speedrun::StateRoute,
+                 "bml.speedrun/v1/rpc/state");
 }
 
 TEST(ImcHeadersTest, GeneratedImcCodecRoundTripsTypedValues) {

@@ -2,7 +2,7 @@
   "format": 1,
   "api": "bml.ui",
   "version": {
-    "major": 1,
+    "major": 2,
     "minor": 0
   },
   "enums": [],
@@ -26,13 +26,6 @@
           "id": 1,
           "name": "mode",
           "type": "int",
-          "optional": false,
-          "reserved": false
-        },
-        {
-          "id": 2,
-          "name": "sr_time",
-          "type": "float",
           "optional": false,
           "reserved": false
         }
@@ -71,19 +64,6 @@
     {
       "name": "hud_set",
       "request": "hud_mode_input"
-    },
-    {
-      "name": "hud_sr_pause"
-    },
-    {
-      "name": "hud_sr_reset"
-    },
-    {
-      "name": "hud_sr_show",
-      "request": "visible_input"
-    },
-    {
-      "name": "hud_sr_start"
     },
     {
       "name": "hud_title_show",
