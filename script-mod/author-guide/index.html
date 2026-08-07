@@ -650,10 +650,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#input-game-state-and-hud" class="md-nav__link">
+  <a href="#input-game-state-and-loader-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Input, Game State, And HUD
+        Input, Game State, And Loader UI
       
     </span>
   </a>
@@ -1293,10 +1293,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#input-game-state-and-hud" class="md-nav__link">
+  <a href="#input-game-state-and-loader-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Input, Game State, And HUD
+        Input, Game State, And Loader UI
       
     </span>
   </a>
@@ -1702,7 +1702,12 @@ resource root, not arbitrary global include paths.</p>
 <td><code>BML::Timer</code>, <code>ctx.AddTimer()</code></td>
 </tr>
 <tr>
-<td>Draw BML/ImGui UI</td>
+<td>Control loader UI or the speedrun timer</td>
+<td><code>Input, Game State, And Loader UI</code></td>
+<td><code>BML::UI::*</code>, <code>BML::Speedrun::*</code></td>
+</tr>
+<tr>
+<td>Draw BML/ImGui controls</td>
 <td><code>UI</code>, <code>Advanced ImGui</code></td>
 <td><code>OnProcess</code>, <code>BML::UI::*</code>, <code>ImGui::*</code></td>
 </tr>
@@ -2261,35 +2266,29 @@ typed getters with defaults: <code>GetString</code>, <code>GetBoolean</code>, <c
 <code>GetFloat</code>, and <code>GetKey</code>. Use typed setters and default setters for values.
 <code>OnModifyConfig</code> fires when a property changes; same-property recursive edits
 are suppressed to prevent accidental infinite loops.</p>
-<h2 id="input-game-state-and-hud">Input, Game State, And HUD<a class="headerlink" href="#input-game-state-and-hud" title="Permanent link">&para;</a></h2>
+<h2 id="input-game-state-and-loader-ui">Input, Game State, And Loader UI<a class="headerlink" href="#input-game-state-and-loader-ui" title="Permanent link">&para;</a></h2>
 <p>Input lives on <code>InputHook</code>, reached through <code>ctx.BorrowInputManager()</code>.
 <code>InputHook</code> is a borrowed BML facade over the native input hook; use it during
 callbacks and do not store it as durable state.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="n">BML</span><span class="o">::</span><span class="n">InputHook</span><span class="err">@</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowInputManager</span><span class="p">();</span>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">input</span><span class="p">.</span><span class="n">IsKeyPressed</span><span class="p">(</span><span class="n">CKKEY_F5</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="n">ctx</span><span class="p">.</span><span class="n">SendIngameMessage</span><span class="p">(</span><span class="s">&quot;F5 pressed by script&quot;</span><span class="p">);</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;F5 pressed by script&quot;</span><span class="p">);</span>
 <a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">  </span><span class="p">}</span>
 <a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="p">}</span>
 </code></pre></div>
-<p>Useful <code>ModContext</code> state and HUD helpers include:</p>
+<p>Useful <code>ModContext</code> state and runtime helpers include:</p>
 <ul>
 <li><code>IsInGame</code>, <code>IsInLevel</code>, <code>IsPaused</code>, <code>IsPlaying</code>, and <code>IsCheatEnabled</code>.</li>
-<li><code>EnableCheat</code>, <code>ExitGame</code>, <code>SendIngameMessage</code>, <code>ClearIngameMessages</code>,
-  <code>ExecuteCommand</code>, and <code>SkipRenderForNextTick</code>.</li>
-<li><code>GetSRScore</code>, <code>GetHSScore</code>, <code>GetHUD</code>, <code>SetHUD</code>, <code>ShowTitle</code>, <code>ShowFPS</code>,
-  <code>ShowSRTimer</code>, <code>StartSRTimer</code>, <code>PauseSRTimer</code>, <code>ResetSRTimer</code>, and
-  <code>GetSRTime</code>.</li>
-<li><code>OpenModsMenu</code>, <code>CloseModsMenu</code>, <code>OpenMapMenu</code>, and <code>CloseMapMenu</code>.</li>
+<li><code>EnableCheat</code>, <code>ExitGame</code>, <code>ExecuteCommand</code>, and <code>SkipRenderForNextTick</code>.</li>
+<li><code>GetSRScore</code> and <code>GetHSScore</code>.</li>
 </ul>
-<p><code>ModContext</code> keeps these methods for compatibility, but new code should prefer
-the mod-to-mod capability facade when it does not need per-mod state:
-<code>BML::UI::SendMessage</code>, <code>BML::UI::ClearMessages</code>,
-<code>BML::Menu::OpenModsMenu</code>, <code>BML::Menu::CloseModsMenu</code>,
-<code>BML::Menu::OpenMapMenu</code>, <code>BML::Menu::CloseMapMenu</code>, and
-<code>BML::HUD::*</code>. These functions are backed by the built-in <code>bml.ui</code> API,
-so scripts and native mods use the same public capability API without a
-C++ class ABI.</p>
+<p>Loader-owned presentation is grouped under <code>BML::UI</code>: <code>AddMessage</code>,
+<code>ClearMessages</code>, the mod/map menu controls, <code>GetHUDMode</code>, <code>SetHUDMode</code>,
+<code>ShowTitle</code>, and <code>ShowFPS</code>. Speedrun timing is a separate feature under
+<code>BML::Speedrun</code>: <code>SetTimerVisible</code>, <code>StartTimer</code>, <code>PauseTimer</code>, <code>ResetTimer</code>,
+and <code>GetElapsedTime</code>. These functions are lightweight and may be called from
+normal callbacks; they do not require an active ImGui frame.</p>
 <p>Guard mutating calls with state checks when they depend on a loaded level. BML
 returns defaults or no-ops when the underlying runtime is unavailable, but a
 script is easier to debug when the state check is explicit.</p>
@@ -2473,10 +2472,11 @@ needed; keep <code>Text2DDefinition</code> value-only.</p>
 <a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="p">}</span>
 </code></pre></div>
 <h2 id="ui">UI<a class="headerlink" href="#ui" title="Permanent link">&para;</a></h2>
-<p><code>BML::UI</code> contains two groups. <code>SendMessage</code> and <code>ClearMessages</code> may be called
-from normal callbacks. The BML-style controls below require the active ImGui
-frame and must be called from <code>OnProcess</code>. Calls made outside the active frame
-return default values or perform no drawing.</p>
+<p><code>BML::UI</code> controls loader-owned messages, menus, and HUD elements, and provides
+BML-style controls for drawing mod UI. Drawing calls require the active ImGui
+frame and must be made from <code>OnProcess</code>. Calls made outside the active frame
+return default values or perform no drawing. Message, menu, and HUD controls do
+not require an active frame.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kt">bool</span><span class="w"> </span><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
 <a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
 <a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="n">string</span><span class="w"> </span><span class="n">search</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">;</span>
@@ -2502,8 +2502,8 @@ or tooling UI. Its complete declarations are available from the
 they return default values or no-op, but those calls are still script errors in
 practice. Borrowed handles such as <code>ImDrawList@</code>, <code>ImGuiIO@</code>, and <code>ImGuiStyle@</code>
 are valid only during the current frame and must not be stored.</p>
-<p>Prefer <code>BML::UI</code> for ordinary menu buttons and page navigation. Use <code>ImGui</code> for
-advanced windows, tables, trees, controls, images, and frame-local draw-list
+<p>Prefer <code>BML::UI</code> for ordinary menu buttons and page navigation. Use <code>ImGui</code>
+for advanced windows, tables, trees, controls, images, and frame-local draw-list
 work.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">ImVec4</span><span class="w"> </span><span class="nf">accent</span><span class="p">(</span><span class="mf">0.2f</span><span class="p">,</span><span class="w"> </span><span class="mf">0.4f</span><span class="p">,</span><span class="w"> </span><span class="mf">0.9f</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0f</span><span class="p">);</span>
 <a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="kt">int</span><span class="w"> </span><span class="n">choice</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
@@ -2715,7 +2715,7 @@ namespace when <code>name</code> is empty.</p>
 <a id="__codelineno-33-22" name="__codelineno-33-22" href="#__codelineno-33-22"></a><span class="w">  </span><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="n">enabled</span><span class="p">;</span>
 <a id="__codelineno-33-23" name="__codelineno-33-23" href="#__codelineno-33-23"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">enabledProp</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">enabledProp</span><span class="p">.</span><span class="n">IsValid</span><span class="p">)</span>
 <a id="__codelineno-33-24" name="__codelineno-33-24" href="#__codelineno-33-24"></a><span class="w">    </span><span class="n">enabledProp</span><span class="p">.</span><span class="n">SetBoolean</span><span class="p">(</span><span class="n">enabled</span><span class="p">);</span>
-<a id="__codelineno-33-25" name="__codelineno-33-25" href="#__codelineno-33-25"></a><span class="w">  </span><span class="n">ctx</span><span class="p">.</span><span class="n">SendIngameMessage</span><span class="p">(</span><span class="n">enabled</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;Example enabled&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;Example disabled&quot;</span><span class="p">);</span>
+<a id="__codelineno-33-25" name="__codelineno-33-25" href="#__codelineno-33-25"></a><span class="w">  </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="n">enabled</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;Example enabled&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;Example disabled&quot;</span><span class="p">);</span>
 <a id="__codelineno-33-26" name="__codelineno-33-26" href="#__codelineno-33-26"></a><span class="p">}</span>
 <a id="__codelineno-33-27" name="__codelineno-33-27" href="#__codelineno-33-27"></a>
 <a id="__codelineno-33-28" name="__codelineno-33-28" href="#__codelineno-33-28"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnModifyConfig</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span>

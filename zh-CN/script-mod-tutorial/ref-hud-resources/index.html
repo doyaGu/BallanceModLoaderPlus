@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#hud" class="md-skip">
+        <a href="#ui" class="md-skip">
           跳转至
         </a>
       
@@ -1411,10 +1411,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#hud_1" class="md-nav__link">
+  <a href="#hud" class="md-nav__link">
     <span class="md-ellipsis">
       
         HUD 控制
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#speedrun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speedrun 计时
       
     </span>
   </a>
@@ -1709,10 +1720,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#hud_1" class="md-nav__link">
+  <a href="#hud" class="md-nav__link">
     <span class="md-ellipsis">
       
         HUD 控制
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#speedrun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Speedrun 计时
       
     </span>
   </a>
@@ -1794,70 +1816,71 @@
   
 
 
-<h1 id="hud">HUD、消息与资源<a class="headerlink" href="#hud" title="Permanent link">&para;</a></h1>
+<h1 id="ui">UI、计时与资源<a class="headerlink" href="#ui" title="Permanent link">&para;</a></h1>
 <h2 id="_1">游戏内消息<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">ctx</span><span class="p">.</span><span class="n">SendIngameMessage</span><span class="p">(</span><span class="s">&quot;text&quot;</span><span class="p">);</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">ctx</span><span class="p">.</span><span class="n">ClearIngameMessages</span><span class="p">();</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1">// 或</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">SendMessage</span><span class="p">(</span><span class="s">&quot;text&quot;</span><span class="p">);</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">ClearMessages</span><span class="p">();</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;text&quot;</span><span class="p">);</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">ClearMessages</span><span class="p">();</span>
 </code></pre></div>
-<p>注意：ClearMessages 清除所有 mod 的消息。</p>
-<h2 id="hud_1">HUD 控制<a class="headerlink" href="#hud_1" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ctx</span><span class="p">.</span><span class="n">ShowFPS</span><span class="p">(</span><span class="kt">bool</span><span class="p">);</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ctx</span><span class="p">.</span><span class="n">ShowSRTimer</span><span class="p">(</span><span class="kt">bool</span><span class="p">);</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">ctx</span><span class="p">.</span><span class="n">ResetSRTimer</span><span class="p">();</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">ctx</span><span class="p">.</span><span class="n">StartSRTimer</span><span class="p">();</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">ctx</span><span class="p">.</span><span class="n">PauseSRTimer</span><span class="p">();</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="kt">float</span><span class="w"> </span><span class="n">time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">GetSRTime</span><span class="p">();</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="kt">int</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">GetHUD</span><span class="p">();</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">ctx</span><span class="p">.</span><span class="n">SetHUD</span><span class="p">(</span><span class="n">mode</span><span class="p">);</span>
+<p><code>ClearMessages</code> 会清除当前消息板上的全部消息。</p>
+<h2 id="hud">HUD 控制<a class="headerlink" href="#hud" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kt">int</span><span class="w"> </span><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">GetHUDMode</span><span class="p">();</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">SetHUDMode</span><span class="p">(</span><span class="n">mode</span><span class="p">);</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">ShowTitle</span><span class="p">(</span><span class="nb">true</span><span class="p">);</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">ShowFPS</span><span class="p">(</span><span class="nb">true</span><span class="p">);</span>
 </code></pre></div>
-<p>规则：加载时保存原始 HUD 状态，卸载时恢复。</p>
+<p>如果 Mod 会修改 HUD 模式，应在加载时保存 <code>GetHUDMode()</code> 的结果，并在卸载时恢复。</p>
+<h2 id="speedrun">Speedrun 计时<a class="headerlink" href="#speedrun" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">Speedrun</span><span class="o">::</span><span class="n">SetTimerVisible</span><span class="p">(</span><span class="nb">true</span><span class="p">);</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">BML</span><span class="o">::</span><span class="n">Speedrun</span><span class="o">::</span><span class="n">ResetTimer</span><span class="p">();</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">BML</span><span class="o">::</span><span class="n">Speedrun</span><span class="o">::</span><span class="n">StartTimer</span><span class="p">();</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">BML</span><span class="o">::</span><span class="n">Speedrun</span><span class="o">::</span><span class="n">PauseTimer</span><span class="p">();</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="kt">float</span><span class="w"> </span><span class="n">elapsed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Speedrun</span><span class="o">::</span><span class="n">GetElapsedTime</span><span class="p">();</span>
+</code></pre></div>
+<p>Speedrun 计时是 Loader 的共享功能。只有确实需要控制计时流程的 Mod 才应调用修改函数。</p>
 <h2 id="_2">菜单<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ctx</span><span class="p">.</span><span class="n">OpenModsMenu</span><span class="p">();</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">ctx</span><span class="p">.</span><span class="n">CloseModsMenu</span><span class="p">();</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">ctx</span><span class="p">.</span><span class="n">OpenMapMenu</span><span class="p">();</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">ctx</span><span class="p">.</span><span class="n">CloseMapMenu</span><span class="p">();</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">OpenModsMenu</span><span class="p">();</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">CloseModsMenu</span><span class="p">();</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">OpenMapMenu</span><span class="p">();</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">CloseMapMenu</span><span class="p">();</span>
 </code></pre></div>
-<p>不要在 OnLoad 里自动打开菜单。</p>
+<p>不要在 <code>OnLoad</code> 中自动打开菜单。</p>
 <h2 id="_3">文件路径<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">string</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">GetModRootUtf8</span><span class="p">();</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">string</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">ResolveModPathUtf8</span><span class="p">(</span><span class="s">&quot;data/message.txt&quot;</span><span class="p">);</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="kt">bool</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">ModFileExistsUtf8</span><span class="p">(</span><span class="s">&quot;data/message.txt&quot;</span><span class="p">);</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">string</span><span class="w"> </span><span class="n">content</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">ReadModTextFileUtf8</span><span class="p">(</span><span class="s">&quot;data/message.txt&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">string</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">GetModRootUtf8</span><span class="p">();</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">string</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">ResolveModPathUtf8</span><span class="p">(</span><span class="s">&quot;data/message.txt&quot;</span><span class="p">);</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kt">bool</span><span class="w"> </span><span class="n">exists</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">ModFileExistsUtf8</span><span class="p">(</span><span class="s">&quot;data/message.txt&quot;</span><span class="p">);</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">string</span><span class="w"> </span><span class="n">content</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">ReadModTextFileUtf8</span><span class="p">(</span><span class="s">&quot;data/message.txt&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">);</span>
 </code></pre></div>
 <p>规则：
 - 路径用正斜杠
 - 不要硬编码绝对路径
 - 读取前先检查 ModFileExistsUtf8</p>
 <h2 id="_4">文件布局<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ModLoader/Mods/
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  MyMod/
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    MyMod.mod.as
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    libs/
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>      MyUtils.as
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    data/
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>      message.txt
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ModLoader/Mods/
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  MyMod/
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    MyMod.mod.as
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    libs/
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>      MyUtils.as
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    data/
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>      message.txt
 </code></pre></div>
 <h2 id="include">脚本库 (#include)<a class="headerlink" href="#include" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;libs/MyUtils.as&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;libs/MyUtils.as&quot;</span>
 </code></pre></div>
 <p>库文件不能有 [bml.mod] 属性。放在当前 mod 目录自己的 <code>libs/</code> 下，不要放到全局
 <code>ModLoader/Mods/libs/</code> 里给多个 mod 共用。热重载按单个 mod 的入口和资源根目录
 计算源码范围；全局 include 文件不是稳定的热重载边界。</p>
 <h2 id="_5">加载资源对象<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">ObjectLoadOptions</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">options</span><span class="p">.</span><span class="n">File</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Path</span><span class="o">::</span><span class="n">Combine</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">GetDirectoryUtf8</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">DIR_GAME</span><span class="p">),</span><span class="w"> </span><span class="s">&quot;3D Entities</span><span class="se">\\</span><span class="s">PH</span><span class="se">\\</span><span class="s">P_Ball_Wood.nmo&quot;</span><span class="p">);</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">options</span><span class="p">.</span><span class="n">Rename</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">options</span><span class="p">.</span><span class="n">MasterName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;UniqueObjectName&quot;</span><span class="p">;</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">options</span><span class="p">.</span><span class="n">AddToScene</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">options</span><span class="p">.</span><span class="n">Dynamic</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">BML</span><span class="o">::</span><span class="n">ObjectLoadResult</span><span class="err">@</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">LoadObject</span><span class="p">(</span><span class="n">options</span><span class="p">);</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">Success</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">Count</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="n">CKObject</span><span class="err">@</span><span class="w"> </span><span class="n">obj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">BorrowObject</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">ObjectLoadOptions</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">options</span><span class="p">.</span><span class="n">File</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Path</span><span class="o">::</span><span class="n">Combine</span><span class="p">(</span><span class="n">ctx</span><span class="p">.</span><span class="n">GetDirectoryUtf8</span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">DIR_GAME</span><span class="p">),</span><span class="w"> </span><span class="s">&quot;3D Entities</span><span class="se">\\</span><span class="s">PH</span><span class="se">\\</span><span class="s">P_Ball_Wood.nmo&quot;</span><span class="p">);</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">options</span><span class="p">.</span><span class="n">Rename</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">options</span><span class="p">.</span><span class="n">MasterName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;UniqueObjectName&quot;</span><span class="p">;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">options</span><span class="p">.</span><span class="n">AddToScene</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">options</span><span class="p">.</span><span class="n">Dynamic</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">BML</span><span class="o">::</span><span class="n">ObjectLoadResult</span><span class="err">@</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">CK</span><span class="o">::</span><span class="n">LoadObject</span><span class="p">(</span><span class="n">options</span><span class="p">);</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">Success</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">Count</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="n">CKObject</span><span class="err">@</span><span class="w"> </span><span class="n">obj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">BorrowObject</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="p">}</span>
 </code></pre></div>
 <p>返回值必须检查 <code>result !is null &amp;&amp; result.Success</code>。</p>
 
