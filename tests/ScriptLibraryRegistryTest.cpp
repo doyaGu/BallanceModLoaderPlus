@@ -69,7 +69,9 @@ TEST_F(ScriptLibraryRegistryTest, ScansAndResolvesExactPackage) {
 
     std::wstring physical;
     ASSERT_TRUE(registry.ResolveInclude(include, physical, diagnostic)) << diagnostic;
-    EXPECT_TRUE(utils::IsPathInsideRootW(physical, packageRoot));
+    std::wstring finalPackageRoot;
+    ASSERT_TRUE(utils::TryGetFinalPathW(packageRoot, finalPackageRoot));
+    EXPECT_TRUE(utils::IsPathInsideRootW(physical, finalPackageRoot));
 }
 
 TEST_F(ScriptLibraryRegistryTest, ResolveIncludeRejectsSymlinkEscapingPackageRoot) {
