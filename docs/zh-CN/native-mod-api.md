@@ -119,7 +119,8 @@ Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志�
 - `BML::Runtime`：运行状态、时钟和分数。
 - `BML::Scene`：对象信息、实体变换和按名查找。
 - `BML::Gameplay`：关卡、能量、目录、检查点和重置点。
-- `BML::UI`：消息板、Mod/地图菜单和 HUD/SR Timer 控制。
+- `BML::UI`：消息板、Mod/地图菜单和 HUD。
+- `BML::Speedrun`：共享 Speedrun 计时器。
 - `BML::Events`：带类型化附加数据的事件流。
 
 `DataShare` 适合共享少量命名字节数据，调用方必须遵守引用计数和借用指针

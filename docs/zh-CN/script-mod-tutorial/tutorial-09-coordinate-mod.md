@@ -63,7 +63,7 @@ class CoordMod {
 
     void OnLoad(const BML::ModContext &in ctx) {
         LogInfo(ctx, "CoordMod loaded");
-        ctx.SendIngameMessage("CoordMod loaded. Enter a level to see coordinates.");
+        BML::UI::AddMessage("CoordMod loaded. Enter a level to see coordinates.");
     }
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {

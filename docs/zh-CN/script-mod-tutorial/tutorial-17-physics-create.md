@@ -169,7 +169,7 @@ class SpawnBall {
         }
         if (input.IsKeyPressed(CKKEY_K)) {
             CleanupBall(ctx);
-            ctx.SendIngameMessage("Ball cleaned up.");
+            BML::UI::AddMessage("Ball cleaned up.");
         }
     }
 
@@ -237,7 +237,7 @@ class SpawnBall {
 
         string name = BML::CK::GetName(spawnedBall);
         LogInfo(ctx, "Spawned: " + name + " physical=" + BoolText(physical));
-        ctx.SendIngameMessage("Ball spawned above player.");
+        BML::UI::AddMessage("Ball spawned above player.");
     }
 
     private void CleanupBall(const BML::ModContext &in ctx) {

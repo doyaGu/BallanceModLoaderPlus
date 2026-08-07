@@ -138,7 +138,7 @@ class ControlBall {
         }
         if (input.IsKeyPressed(CKKEY_K)) {
             CleanupBall(ctx);
-            ctx.SendIngameMessage("Ball cleaned.");
+            BML::UI::AddMessage("Ball cleaned.");
         }
         if (input.IsKeyPressed(CKKEY_U)) {
             WakeBall(ctx);
@@ -170,7 +170,7 @@ class ControlBall {
 
     private void WakeBall(const BML::ModContext &in ctx) {
         if (spawnedBall is null) {
-            ctx.SendIngameMessage("No ball. Press J first.");
+            BML::UI::AddMessage("No ball. Press J first.");
             return;
         }
 
@@ -180,7 +180,7 @@ class ControlBall {
 
     private void ImpulseBall(const BML::ModContext &in ctx, VxVector direction) {
         if (spawnedBall is null) {
-            ctx.SendIngameMessage("No ball. Press J first.");
+            BML::UI::AddMessage("No ball. Press J first.");
             return;
         }
 
@@ -192,12 +192,12 @@ class ControlBall {
             1.5f);
 
         LogInfo(ctx, "Impulse direction=(" + direction.x + "," + direction.y + "," + direction.z + ") ok=" + BoolText(ok));
-        ctx.SendIngameMessage("Impulse sent.");
+        BML::UI::AddMessage("Impulse sent.");
     }
 
     private void SetBallForce(const BML::ModContext &in ctx) {
         if (spawnedBall is null) {
-            ctx.SendIngameMessage("No ball. Press J first.");
+            BML::UI::AddMessage("No ball. Press J first.");
             return;
         }
 
@@ -215,7 +215,7 @@ class ControlBall {
         }
 
         LogInfo(ctx, "SetForce ok=" + BoolText(ok) + " frames=90");
-        ctx.SendIngameMessage("Force applied for ~90 frames.");
+        BML::UI::AddMessage("Force applied for ~90 frames.");
     }
 
     private void ClearBallForce(const BML::ModContext &in ctx, const string &in reason) {
@@ -264,7 +264,7 @@ class ControlBall {
         physics.CollisionSurface = "P_Ball_Wood_Mesh";
         BML::Physics::PhysicalizeBall(spawnedBall, physics, VxVector(0.0f, 0.0f, 0.0f), 2.0f);
         BML::CK::Show(spawnedBall, CKSHOW, true);
-        ctx.SendIngameMessage("Ball spawned.");
+        BML::UI::AddMessage("Ball spawned.");
     }
 
     private void CleanupBall(const BML::ModContext &in ctx) {

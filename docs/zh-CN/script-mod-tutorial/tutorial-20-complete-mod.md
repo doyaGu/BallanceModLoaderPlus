@@ -361,7 +361,7 @@ class CompleteMod {
     private void SetLast(const BML::ModContext &in ctx, const string &in text) {
         lastAction = text;
         LogInfo(ctx, text);
-        ctx.SendIngameMessage("CompleteMod: " + text);
+        BML::UI::AddMessage("CompleteMod: " + text);
     }
 
     private string BoolText(bool value) {

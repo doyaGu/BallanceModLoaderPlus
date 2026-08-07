@@ -48,7 +48,7 @@ private string lastCommand = "none";
 void OnLoad(const BML::ModContext &in ctx) {
     RegisterCommands(ctx);
     LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
-    ctx.SendIngameMessage("HelloMod loaded.");
+    BML::UI::AddMessage("HelloMod loaded.");
 }
 
 private void RegisterCommands(const BML::ModContext &in ctx) {
@@ -124,11 +124,11 @@ private void OnHelloCommand(const BML::ModContext &in ctx,
 
     if (action == "toggle") {
         showWindow = !showWindow;
-        ctx.SendIngameMessage("HelloMod window toggled by command.");
+        BML::UI::AddMessage("HelloMod window toggled by command.");
         return;
     }
 
-    ctx.SendIngameMessage("Command: " + lastCommand);
+    BML::UI::AddMessage("Command: " + lastCommand);
 }
 ```
 

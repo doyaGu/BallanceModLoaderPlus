@@ -175,7 +175,7 @@ class HelloMod {
 
     void OnLoad(const BML::ModContext &in ctx) {
         LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
-        ctx.SendIngameMessage("HelloMod loaded.");
+        BML::UI::AddMessage("HelloMod loaded.");
     }
 
     void OnProcess(const BML::ModContext &in ctx) {
@@ -190,7 +190,7 @@ class HelloMod {
             return;
         }
         showWindow = !showWindow;
-        ctx.SendIngameMessage("HelloMod window toggled.");
+        BML::UI::AddMessage("HelloMod window toggled.");
     }
 
     private void UpdateFps() {

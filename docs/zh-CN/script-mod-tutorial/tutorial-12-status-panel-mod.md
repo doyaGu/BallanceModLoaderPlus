@@ -66,7 +66,7 @@ class PanelMod {
     void OnLoad(const BML::ModContext &in ctx) {
         RegisterCommand(ctx);
         LogInfo(ctx, "PanelMod loaded");
-        ctx.SendIngameMessage("PanelMod loaded. Command: panel show/hide");
+        BML::UI::AddMessage("PanelMod loaded. Command: panel show/hide");
     }
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
@@ -149,15 +149,15 @@ class PanelMod {
 
         if (action == "show") {
             showPanel = true;
-            ctx.SendIngameMessage("Panel shown.");
+            BML::UI::AddMessage("Panel shown.");
         } else if (action == "hide") {
             showPanel = false;
-            ctx.SendIngameMessage("Panel hidden.");
+            BML::UI::AddMessage("Panel hidden.");
         } else if (action == "toggle") {
             showPanel = !showPanel;
-            ctx.SendIngameMessage(showPanel ? "Panel shown." : "Panel hidden.");
+            BML::UI::AddMessage(showPanel ? "Panel shown." : "Panel hidden.");
         } else {
-            ctx.SendIngameMessage("Usage: panel [show|hide|toggle]");
+            BML::UI::AddMessage("Usage: panel [show|hide|toggle]");
         }
     }
 

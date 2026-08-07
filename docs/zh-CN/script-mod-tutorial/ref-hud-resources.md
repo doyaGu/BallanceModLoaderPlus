@@ -1,42 +1,47 @@
-# HUD、消息与资源
+# UI、计时与资源
 
 ## 游戏内消息
 
 ```angelscript
-ctx.SendIngameMessage("text");
-ctx.ClearIngameMessages();
-// 或
-BML::UI::SendMessage("text");
+BML::UI::AddMessage("text");
 BML::UI::ClearMessages();
 ```
 
-注意：ClearMessages 清除所有 mod 的消息。
+`ClearMessages` 会清除当前消息板上的全部消息。
 
 ## HUD 控制
 
 ```angelscript
-ctx.ShowFPS(bool);
-ctx.ShowSRTimer(bool);
-ctx.ResetSRTimer();
-ctx.StartSRTimer();
-ctx.PauseSRTimer();
-float time = ctx.GetSRTime();
-int mode = ctx.GetHUD();
-ctx.SetHUD(mode);
+int mode = BML::UI::GetHUDMode();
+BML::UI::SetHUDMode(mode);
+BML::UI::ShowTitle(true);
+BML::UI::ShowFPS(true);
 ```
 
-规则：加载时保存原始 HUD 状态，卸载时恢复。
+如果 Mod 会修改 HUD 模式，应在加载时保存 `GetHUDMode()` 的结果，并在卸载时恢复。
+
+## Speedrun 计时
+
+```angelscript
+BML::Speedrun::SetTimerVisible(true);
+BML::Speedrun::ResetTimer();
+BML::Speedrun::StartTimer();
+BML::Speedrun::PauseTimer();
+float elapsed = BML::Speedrun::GetElapsedTime();
+```
+
+Speedrun 计时是 Loader 的共享功能。只有确实需要控制计时流程的 Mod 才应调用修改函数。
 
 ## 菜单
 
 ```angelscript
-ctx.OpenModsMenu();
-ctx.CloseModsMenu();
-ctx.OpenMapMenu();
-ctx.CloseMapMenu();
+BML::UI::OpenModsMenu();
+BML::UI::CloseModsMenu();
+BML::UI::OpenMapMenu();
+BML::UI::CloseMapMenu();
 ```
 
-不要在 OnLoad 里自动打开菜单。
+不要在 `OnLoad` 中自动打开菜单。
 
 ## 文件路径
 

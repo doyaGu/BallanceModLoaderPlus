@@ -11,7 +11,7 @@
 | 方式 | 输出位置 | 什么时候看到 |
 | --- | --- | --- |
 | `logger.Info(...)` | `ModLoader/ModLoader.log` 文件 | 打开日志文件时 |
-| `ctx.SendIngameMessage(...)` | 游戏画面左下方的 BML 短消息区域 | 消息发出的瞬间，在画面里 |
+| `BML::UI::AddMessage(...)` | 游戏画面左下方的 BML 短消息区域 | 消息发出的瞬间，在画面里 |
 
 日志适合记录"之后回头查"的信息，比如初始化步骤、错误原因、调试数据。它不会打扰游戏画面，也不会因为消息太快而看不清。
 
@@ -25,7 +25,7 @@
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
-    ctx.SendIngameMessage("HelloMod loaded.");
+    BML::UI::AddMessage("HelloMod loaded.");
 
     BML::Logger@ logger = ctx.BorrowLogger();
     if (logger !is null) {
@@ -36,7 +36,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 重启游戏后，游戏画面上会出现 `HelloMod loaded.` 的消息。同时日志文件里也有对应的记录。
 
-`ctx.SendIngameMessage(...)` 接收一个字符串参数，直接显示在画面里。不需要获取句柄，不需要 null 检查，调用一次就发送一条消息。
+`BML::UI::AddMessage(...)` 接收一个字符串参数，直接显示在画面里。不需要获取句柄，也不需要 null 检查；调用一次就添加一条消息。
 
 ## Logger helper 模式
 
@@ -66,7 +66,7 @@ private void LogWarn(const BML::ModContext &in ctx, const string &in message) {
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
-    ctx.SendIngameMessage("HelloMod loaded.");
+    BML::UI::AddMessage("HelloMod loaded.");
     LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
 }
 ```
@@ -87,7 +87,7 @@ void OnProcess(const BML::ModContext &in ctx) {
     }
 
     if (input.IsKeyPressed(CKKEY_F9)) {
-        ctx.SendIngameMessage("F9 pressed!");
+        BML::UI::AddMessage("F9 pressed!");
         LogInfo(ctx, "F9 pressed");
     }
 }
@@ -150,7 +150,7 @@ IsKeyDown:     true  true  true  true  true  ... true  false
 
 ```angelscript
 if (input.IsKeyDown(CKKEY_F9)) {
-    ctx.SendIngameMessage("F9 is held!");
+    BML::UI::AddMessage("F9 is held!");
 }
 ```
 
@@ -181,7 +181,7 @@ CKKEY_LCONTROL           左 Ctrl
 [bml.mod id="hello.script" name="Hello Mod" version="1.0.0" author="Tutorial" bml="0.3.13" description="Minimal tutorial script mod"]
 class HelloMod {
     void OnLoad(const BML::ModContext &in ctx) {
-        ctx.SendIngameMessage("HelloMod loaded.");
+        BML::UI::AddMessage("HelloMod loaded.");
         LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
     }
 
@@ -192,7 +192,7 @@ class HelloMod {
         }
 
         if (input.IsKeyPressed(CKKEY_F9)) {
-            ctx.SendIngameMessage("F9 pressed!");
+            BML::UI::AddMessage("F9 pressed!");
             LogInfo(ctx, "F9 pressed");
         }
     }
@@ -225,6 +225,6 @@ class HelloMod {
 
 ## 完成状态
 
-脚本能在游戏画面显示消息（`SendIngameMessage`），能写日志（`Logger.Info`），并能响应键盘按键（`IsKeyPressed`）。已经掌握了两种输出方式的区别和两种按键检测的区别。
+脚本能在游戏画面显示消息（`BML::UI::AddMessage`），能写日志（`Logger.Info`），并能响应键盘按键（`IsKeyPressed`）。已经掌握了两种输出方式的区别和两种按键检测的区别。
 
 -> 下一节：[04 ImGui 窗口](tutorial-04-imgui-window.md)

@@ -160,7 +160,7 @@ AngelScript Language Server 读取后，编辑器就能识别 `BML::ModContext`�
 
 BML 本身不会加载 `as.predefined`，它纯粹是给编辑器用的。
 
-验证方法：在任意 `.mod.as` 文件里输入 `ctx.`（假设 ctx 是 `BML::ModContext` 类型），看能否弹出 `BorrowLogger`、`SendIngameMessage` 等补全项。如果能看到，说明 Language Server 工作正常。
+验证方法：在任意 `.mod.as` 文件里输入 `ctx.`（假设 `ctx` 是 `BML::ModContext` 类型），确认能补全 `BorrowLogger`；再输入 `BML::UI::`，确认能补全 `AddMessage` 和 `MainButton`。如果都能看到，说明 Language Server 工作正常。
 
 ## 安装自检
 

@@ -221,7 +221,7 @@ ImGui 窗口和 `BML::UI` 控件都应在这里提交。`OnRender` 用于接收 
 | --- | --- |
 | `ctx.BorrowLogger()` | 日志 |
 | `ctx.BorrowInputManager()` | 输入 |
-| `ctx.SendIngameMessage(...)` | 游戏内消息 |
+| `BML::UI::AddMessage(...)` | 游戏内消息 |
 | `ctx.RegisterCommand(...)` | 注册命令 |
 
 ### 下一章将用到的服务

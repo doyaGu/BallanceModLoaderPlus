@@ -80,24 +80,11 @@ BML::ReloadPhase ReloadPhase;
 | `BML::RELOAD_MIGRATE_STATE` | 正在调用新 runtime 的 `MigrateState` |
 | `BML::RELOAD_RESTORE_STATE` | 正在调用 `RestoreState` |
 
-## 消息与 HUD
+## UI 与 Speedrun
 
-```angelscript
-void SendIngameMessage(const string &in text) const;
-void ClearIngameMessages() const;
-void ShowFPS(bool show) const;
-void ShowSRTimer(bool show) const;
-void ResetSRTimer() const;
-void StartSRTimer() const;
-void PauseSRTimer() const;
-float GetSRTime() const;
-int GetHUD() const;
-void SetHUD(int mode) const;
-void OpenModsMenu() const;
-void CloseModsMenu() const;
-void OpenMapMenu() const;
-void CloseMapMenu() const;
-```
+消息、菜单、HUD 和 BML 风格控件由 `BML::UI` 提供；Speedrun 计时由
+`BML::Speedrun` 提供。它们不是 `ModContext` 成员。完整声明和使用规则见
+[UI、计时与资源](ref-hud-resources.md)。
 
 ## 时间
 

@@ -159,6 +159,7 @@ BML+ provides the following typed service facades:
 | `BML::Scene` | Object information, transforms, and lookup |
 | `BML::Gameplay` | Level, energy, checkpoint, and reset-point data |
 | `BML::UI` | HUD state and UI commands |
+| `BML::Speedrun` | Shared timer state and controls |
 | `BML::Events` | Typed event Topic |
 
 Use those facades directly when they already cover the required operation.

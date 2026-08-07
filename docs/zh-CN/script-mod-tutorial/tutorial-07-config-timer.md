@@ -55,7 +55,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 
     LogInfo(ctx, "HelloMod loaded messagesEnabled=" + BoolText(messagesEnabled));
     if (messagesEnabled) {
-        ctx.SendIngameMessage("HelloMod loaded.");
+        BML::UI::AddMessage("HelloMod loaded.");
     }
 }
 
@@ -110,7 +110,7 @@ private void ToggleMessages(const BML::ModContext &in ctx) {
 
     LogInfo(ctx, "HelloMod messages=" + BoolText(messagesEnabled));
     if (messagesEnabled) {
-        ctx.SendIngameMessage("HelloMod messages=" + BoolText(messagesEnabled));
+        BML::UI::AddMessage("HelloMod messages=" + BoolText(messagesEnabled));
     }
 }
 ```
@@ -148,13 +148,13 @@ private void OnHelloCommand(const BML::ModContext &in ctx,
     if (action == "toggle") {
         showWindow = !showWindow;
         if (messagesEnabled) {
-            ctx.SendIngameMessage("HelloMod window toggled by command.");
+            BML::UI::AddMessage("HelloMod window toggled by command.");
         }
         return;
     }
 
     if (messagesEnabled) {
-        ctx.SendIngameMessage("Command: " + lastCommand);
+        BML::UI::AddMessage("Command: " + lastCommand);
     }
 }
 ```

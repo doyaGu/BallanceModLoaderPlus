@@ -36,7 +36,7 @@ class HelloScript {
         BML::UI::Title("Hello Script");
         BML::UI::SetCursorCoord(0.4f, 0.35f);
         if (BML::UI::MainButton("Say Hello")) {
-            ctx.SendIngameMessage("Hello from script UI");
+            BML::UI::AddMessage("Hello from script UI");
         }
         BML::UI::YesNoButton("Enabled", enabled);
         BML::UI::InputIntButton("Counter", counter);
@@ -62,7 +62,7 @@ class HelloCommand : BML::Command {
 
     void Execute(const BML::ModContext &in ctx, const BML::CommandEvent &in event) {
         string target = event.ArgCount > 0 ? event.GetArg(0) : "Ballance";
-        ctx.SendIngameMessage("Hello, " + target + "!");
+        BML::UI::AddMessage("Hello, " + target + "!");
     }
 
     void Complete(const BML::ModContext &in ctx,

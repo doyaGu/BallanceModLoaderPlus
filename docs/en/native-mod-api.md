@@ -127,7 +127,8 @@ Built-in facades include:
 - `BML::Runtime` for runtime state, clock, and scores;
 - `BML::Scene` for object information, transforms, and named lookup;
 - `BML::Gameplay` for level, energy, directory, checkpoint, and reset data;
-- `BML::UI` for the message board, mod/map menus, HUD, and SR timer;
+- `BML::UI` for the message board, mod/map menus, and HUD;
+- `BML::Speedrun` for the shared speedrun timer;
 - `BML::Events` for the typed event stream.
 
 `DataShare` is suitable for small named byte values when both sides obey its

@@ -161,7 +161,8 @@ resource root, not arbitrary global include paths.
 | Log messages or store user settings | `Logger And Config` | `ctx.BorrowLogger()`, `ctx.BorrowConfig()` |
 | Add commands or command completion | `Command And Completion` | `BML::Command`, `BML::CommandDefinition`, `BML::CommandCompletion` |
 | Delay or repeat work | `Timer` | `BML::Timer`, `ctx.AddTimer()` |
-| Draw BML/ImGui UI | `UI`, `Advanced ImGui` | `OnProcess`, `BML::UI::*`, `ImGui::*` |
+| Control loader UI or the speedrun timer | `Input, Game State, And Loader UI` | `BML::UI::*`, `BML::Speedrun::*` |
+| Draw BML/ImGui controls | `UI`, `Advanced ImGui` | `OnProcess`, `BML::UI::*`, `ImGui::*` |
 | Read BML runtime, scene, gameplay, or event snapshots | `IMC-Backed APIs` | `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events` |
 | Expose simple shared state to another script mod | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
@@ -635,7 +636,7 @@ typed getters with defaults: `GetString`, `GetBoolean`, `GetInteger`,
 `OnModifyConfig` fires when a property changes; same-property recursive edits
 are suppressed to prevent accidental infinite loops.
 
-## Input, Game State, And HUD
+## Input, Game State, And Loader UI
 
 Input lives on `InputHook`, reached through `ctx.BorrowInputManager()`.
 `InputHook` is a borrowed BML facade over the native input hook; use it during
@@ -645,29 +646,23 @@ callbacks and do not store it as durable state.
 void OnProcess(const BML::ModContext &in ctx) {
   BML::InputHook@ input = ctx.BorrowInputManager();
   if (input !is null && input.IsKeyPressed(CKKEY_F5)) {
-    ctx.SendIngameMessage("F5 pressed by script");
+    BML::UI::AddMessage("F5 pressed by script");
   }
 }
 ```
 
-Useful `ModContext` state and HUD helpers include:
+Useful `ModContext` state and runtime helpers include:
 
 - `IsInGame`, `IsInLevel`, `IsPaused`, `IsPlaying`, and `IsCheatEnabled`.
-- `EnableCheat`, `ExitGame`, `SendIngameMessage`, `ClearIngameMessages`,
-  `ExecuteCommand`, and `SkipRenderForNextTick`.
-- `GetSRScore`, `GetHSScore`, `GetHUD`, `SetHUD`, `ShowTitle`, `ShowFPS`,
-  `ShowSRTimer`, `StartSRTimer`, `PauseSRTimer`, `ResetSRTimer`, and
-  `GetSRTime`.
-- `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, and `CloseMapMenu`.
+- `EnableCheat`, `ExitGame`, `ExecuteCommand`, and `SkipRenderForNextTick`.
+- `GetSRScore` and `GetHSScore`.
 
-`ModContext` keeps these methods for compatibility, but new code should prefer
-the mod-to-mod capability facade when it does not need per-mod state:
-`BML::UI::SendMessage`, `BML::UI::ClearMessages`,
-`BML::Menu::OpenModsMenu`, `BML::Menu::CloseModsMenu`,
-`BML::Menu::OpenMapMenu`, `BML::Menu::CloseMapMenu`, and
-`BML::HUD::*`. These functions are backed by the built-in `bml.ui` API,
-so scripts and native mods use the same public capability API without a
-C++ class ABI.
+Loader-owned presentation is grouped under `BML::UI`: `AddMessage`,
+`ClearMessages`, the mod/map menu controls, `GetHUDMode`, `SetHUDMode`,
+`ShowTitle`, and `ShowFPS`. Speedrun timing is a separate feature under
+`BML::Speedrun`: `SetTimerVisible`, `StartTimer`, `PauseTimer`, `ResetTimer`,
+and `GetElapsedTime`. These functions are lightweight and may be called from
+normal callbacks; they do not require an active ImGui frame.
 
 Guard mutating calls with state checks when they depend on a loaded level. BML
 returns defaults or no-ops when the underlying runtime is unavailable, but a
@@ -884,10 +879,11 @@ CKBehavior@ CreateHudText(const BML::ModContext &in ctx,
 
 ## UI
 
-`BML::UI` contains two groups. `SendMessage` and `ClearMessages` may be called
-from normal callbacks. The BML-style controls below require the active ImGui
-frame and must be called from `OnProcess`. Calls made outside the active frame
-return default values or perform no drawing.
+`BML::UI` controls loader-owned messages, menus, and HUD elements, and provides
+BML-style controls for drawing mod UI. Drawing calls require the active ImGui
+frame and must be made from `OnProcess`. Calls made outside the active frame
+return default values or perform no drawing. Message, menu, and HUD controls do
+not require an active frame.
 
 ```angelscript
 bool enabled = true;
@@ -919,8 +915,8 @@ they return default values or no-op, but those calls are still script errors in
 practice. Borrowed handles such as `ImDrawList@`, `ImGuiIO@`, and `ImGuiStyle@`
 are valid only during the current frame and must not be stored.
 
-Prefer `BML::UI` for ordinary menu buttons and page navigation. Use `ImGui` for
-advanced windows, tables, trees, controls, images, and frame-local draw-list
+Prefer `BML::UI` for ordinary menu buttons and page navigation. Use `ImGui`
+for advanced windows, tables, trees, controls, images, and frame-local draw-list
 work.
 
 ```angelscript
@@ -1170,7 +1166,7 @@ void ToggleExample(const BML::ModContext &in ctx,
   enabled = !enabled;
   if (enabledProp !is null && enabledProp.IsValid)
     enabledProp.SetBoolean(enabled);
-  ctx.SendIngameMessage(enabled ? "Example enabled" : "Example disabled");
+  BML::UI::AddMessage(enabled ? "Example enabled" : "Example disabled");
 }
 
 void OnModifyConfig(const BML::ModContext &in ctx,
