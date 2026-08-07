@@ -6,9 +6,9 @@
 
 #include "BML/BML.h"
 #include "BML/Bui.h"
-#include "BML/UI.h"
 #include "BML/DataShare.h"
 #include "BML/IConfig.h"
+#include "BML/ImcTypes.h"
 #include "BML/InputHook.h"
 #include "BML/ILogger.h"
 
@@ -137,60 +137,12 @@ void BMLAS_EnableCheat(bool enable) {
         ctx->EnableCheat(enable);
 }
 
-void BMLAS_SendIngameMessage(const std::string &message) {
-    if (RejectRestrictedHostCall("BML::SendIngameMessage"))
-        return;
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->SendIngameMessage(message.c_str());
-}
-
 void BMLAS_ExecuteCommand(const std::string &command) {
     if (RejectRestrictedHostCall("BML::ExecuteCommand"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ExecuteCommand(command.c_str());
-}
-
-void BMLAS_OpenModsMenu() {
-    if (RejectRestrictedHostCall("BML::OpenModsMenu"))
-        return;
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->OpenModsMenu();
-}
-
-void BMLAS_CloseModsMenu() {
-    if (RejectRestrictedHostCall("BML::CloseModsMenu"))
-        return;
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->CloseModsMenu();
-}
-
-void BMLAS_OpenMapMenu() {
-    if (RejectRestrictedHostCall("BML::OpenMapMenu"))
-        return;
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->OpenMapMenu();
-}
-
-void BMLAS_CloseMapMenu() {
-    if (RejectRestrictedHostCall("BML::CloseMapMenu"))
-        return;
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->CloseMapMenu();
-}
-
-void BMLAS_ClearIngameMessages() {
-    if (RejectRestrictedHostCall("BML::ClearIngameMessages"))
-        return;
-    ModContext *ctx = nullptr;
-    if (RequireLoadedContext(ctx))
-        ctx->ClearIngameMessages();
 }
 
 float BMLAS_GetSRScore() {
@@ -203,158 +155,118 @@ int BMLAS_GetHSScore() {
     return RequireLoadedContext(ctx) ? ctx->GetHSScore() : 0;
 }
 
-int BMLAS_GetHUD() {
+void BMLAS_UI_AddMessage(const std::string &message) {
+    if (RejectRestrictedHostCall("BML::UI::AddMessage"))
+        return;
+    ModContext *ctx = nullptr;
+    if (RequireLoadedContext(ctx))
+        ctx->SendIngameMessage(message.c_str());
+}
+
+void BMLAS_UI_ClearMessages() {
+    if (RejectRestrictedHostCall("BML::UI::ClearMessages"))
+        return;
+    ModContext *ctx = nullptr;
+    if (RequireLoadedContext(ctx))
+        ctx->ClearIngameMessages();
+}
+
+void BMLAS_UI_OpenModsMenu() {
+    if (RejectRestrictedHostCall("BML::UI::OpenModsMenu"))
+        return;
+    ModContext *ctx = nullptr;
+    if (RequireLoadedContext(ctx))
+        ctx->OpenModsMenu();
+}
+
+void BMLAS_UI_CloseModsMenu() {
+    if (RejectRestrictedHostCall("BML::UI::CloseModsMenu"))
+        return;
+    ModContext *ctx = nullptr;
+    if (RequireLoadedContext(ctx))
+        ctx->CloseModsMenu();
+}
+
+void BMLAS_UI_OpenMapMenu() {
+    if (RejectRestrictedHostCall("BML::UI::OpenMapMenu"))
+        return;
+    ModContext *ctx = nullptr;
+    if (RequireLoadedContext(ctx))
+        ctx->OpenMapMenu();
+}
+
+void BMLAS_UI_CloseMapMenu() {
+    if (RejectRestrictedHostCall("BML::UI::CloseMapMenu"))
+        return;
+    ModContext *ctx = nullptr;
+    if (RequireLoadedContext(ctx))
+        ctx->CloseMapMenu();
+}
+
+int BMLAS_UI_GetHUDMode() {
     ModContext *ctx = nullptr;
     return RequireLoadedContext(ctx) ? ctx->GetHUD() : 0;
 }
 
-void BMLAS_SetHUD(int mode) {
-    if (RejectRestrictedHostCall("BML::SetHUD"))
+void BMLAS_UI_SetHUDMode(int mode) {
+    if (RejectRestrictedHostCall("BML::UI::SetHUDMode"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->SetHUD(mode);
 }
 
-void BMLAS_ShowTitle(bool show) {
-    if (RejectRestrictedHostCall("BML::ShowTitle"))
+void BMLAS_UI_ShowTitle(bool show) {
+    if (RejectRestrictedHostCall("BML::UI::ShowTitle"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ShowTitle(show);
 }
 
-void BMLAS_ShowFPS(bool show) {
-    if (RejectRestrictedHostCall("BML::ShowFPS"))
+void BMLAS_UI_ShowFPS(bool show) {
+    if (RejectRestrictedHostCall("BML::UI::ShowFPS"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ShowFPS(show);
 }
 
-void BMLAS_ShowSRTimer(bool show) {
-    if (RejectRestrictedHostCall("BML::ShowSRTimer"))
+void BMLAS_Speedrun_SetTimerVisible(bool visible) {
+    if (RejectRestrictedHostCall("BML::Speedrun::SetTimerVisible"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
-        ctx->ShowSRTimer(show);
+        ctx->ShowSRTimer(visible);
 }
 
-void BMLAS_StartSRTimer() {
-    if (RejectRestrictedHostCall("BML::StartSRTimer"))
+void BMLAS_Speedrun_StartTimer() {
+    if (RejectRestrictedHostCall("BML::Speedrun::StartTimer"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->StartSRTimer();
 }
 
-void BMLAS_PauseSRTimer() {
-    if (RejectRestrictedHostCall("BML::PauseSRTimer"))
+void BMLAS_Speedrun_PauseTimer() {
+    if (RejectRestrictedHostCall("BML::Speedrun::PauseTimer"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->PauseSRTimer();
 }
 
-void BMLAS_ResetSRTimer() {
-    if (RejectRestrictedHostCall("BML::ResetSRTimer"))
+void BMLAS_Speedrun_ResetTimer() {
+    if (RejectRestrictedHostCall("BML::Speedrun::ResetTimer"))
         return;
     ModContext *ctx = nullptr;
     if (RequireLoadedContext(ctx))
         ctx->ResetSRTimer();
 }
 
-float BMLAS_GetSRTime() {
+float BMLAS_Speedrun_GetElapsedTime() {
     ModContext *ctx = nullptr;
     return RequireLoadedContext(ctx) ? ctx->GetSRTime() : 0.0f;
-}
-
-void BMLAS_UI_SendMessage(const std::string &message) {
-    if (RejectRestrictedHostCall("BML::UI::SendMessage"))
-        return;
-    BML::UI::AddMessage(message);
-}
-
-void BMLAS_UI_ClearMessages() {
-    if (RejectRestrictedHostCall("BML::UI::ClearMessages"))
-        return;
-    BML::UI::ClearMessages();
-}
-
-void BMLAS_Menu_OpenModsMenu() {
-    if (RejectRestrictedHostCall("BML::Menu::OpenModsMenu"))
-        return;
-    BML::UI::OpenModsMenu();
-}
-
-void BMLAS_Menu_CloseModsMenu() {
-    if (RejectRestrictedHostCall("BML::Menu::CloseModsMenu"))
-        return;
-    BML::UI::CloseModsMenu();
-}
-
-void BMLAS_Menu_OpenMapMenu() {
-    if (RejectRestrictedHostCall("BML::Menu::OpenMapMenu"))
-        return;
-    BML::UI::OpenMapMenu();
-}
-
-void BMLAS_Menu_CloseMapMenu() {
-    if (RejectRestrictedHostCall("BML::Menu::CloseMapMenu"))
-        return;
-    BML::UI::CloseMapMenu();
-}
-
-int BMLAS_HUD_GetMode() {
-    BML::UI::HUDState state{};
-    return BML::UI::ReadHUDState(state) == BML_OK ? state.Mode : 0;
-}
-
-void BMLAS_HUD_SetMode(int mode) {
-    if (RejectRestrictedHostCall("BML::HUD::SetMode"))
-        return;
-    BML::UI::SetHUDMode(mode);
-}
-
-void BMLAS_HUD_ShowTitle(bool show) {
-    if (RejectRestrictedHostCall("BML::HUD::ShowTitle"))
-        return;
-    BML::UI::ShowTitle(show);
-}
-
-void BMLAS_HUD_ShowFPS(bool show) {
-    if (RejectRestrictedHostCall("BML::HUD::ShowFPS"))
-        return;
-    BML::UI::ShowFPS(show);
-}
-
-void BMLAS_HUD_ShowSRTimer(bool show) {
-    if (RejectRestrictedHostCall("BML::HUD::ShowSRTimer"))
-        return;
-    BML::UI::ShowSRTimer(show);
-}
-
-void BMLAS_HUD_StartSRTimer() {
-    if (RejectRestrictedHostCall("BML::HUD::StartSRTimer"))
-        return;
-    BML::UI::StartSRTimer();
-}
-
-void BMLAS_HUD_PauseSRTimer() {
-    if (RejectRestrictedHostCall("BML::HUD::PauseSRTimer"))
-        return;
-    BML::UI::PauseSRTimer();
-}
-
-void BMLAS_HUD_ResetSRTimer() {
-    if (RejectRestrictedHostCall("BML::HUD::ResetSRTimer"))
-        return;
-    BML::UI::ResetSRTimer();
-}
-
-float BMLAS_HUD_GetSRTime() {
-    BML::UI::HUDState state{};
-    return BML::UI::ReadHUDState(state) == BML_OK ? state.SRTime : 0.0f;
 }
 
 void BMLAS_SkipRenderForNextTick() {
@@ -3077,15 +2989,6 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "CKSound@ BorrowSoundByName(const string &in name) const", "CKSound@ ModContext::BorrowSoundByName(const string &in name) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::GetSoundByName), asCALL_GENERIC},
     {"ModContext", "CKTexture@ BorrowTextureByName(const string &in name) const", "CKTexture@ ModContext::BorrowTextureByName(const string &in name) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::GetTextureByName), asCALL_GENERIC},
     {"ModContext", "CKBehavior@ BorrowScriptByName(const string &in name) const", "CKBehavior@ ModContext::BorrowScriptByName(const string &in name) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::GetScriptByName), asCALL_GENERIC},
-    {"ModContext", "int GetHUD() const", "int ModContext::GetHUD() const", asMETHOD(BML::ScriptModContextView, GetHUD), asCALL_THISCALL},
-    {"ModContext", "void SetHUD(int mode) const", "void ModContext::SetHUD(int mode) const", asMETHOD(BML::ScriptModContextView, SetHUD), asCALL_THISCALL},
-    {"ModContext", "void ShowTitle(bool show) const", "void ModContext::ShowTitle(bool show) const", asMETHOD(BML::ScriptModContextView, ShowTitle), asCALL_THISCALL},
-    {"ModContext", "void ShowFPS(bool show) const", "void ModContext::ShowFPS(bool show) const", asMETHOD(BML::ScriptModContextView, ShowFPS), asCALL_THISCALL},
-    {"ModContext", "void ShowSRTimer(bool show) const", "void ModContext::ShowSRTimer(bool show) const", asMETHOD(BML::ScriptModContextView, ShowSRTimer), asCALL_THISCALL},
-    {"ModContext", "void StartSRTimer() const", "void ModContext::StartSRTimer() const", asMETHOD(BML::ScriptModContextView, StartSRTimer), asCALL_THISCALL},
-    {"ModContext", "void PauseSRTimer() const", "void ModContext::PauseSRTimer() const", asMETHOD(BML::ScriptModContextView, PauseSRTimer), asCALL_THISCALL},
-    {"ModContext", "void ResetSRTimer() const", "void ModContext::ResetSRTimer() const", asMETHOD(BML::ScriptModContextView, ResetSRTimer), asCALL_THISCALL},
-    {"ModContext", "float GetSRTime() const", "float ModContext::GetSRTime() const", asMETHOD(BML::ScriptModContextView, GetSRTime), asCALL_THISCALL},
     {"ModContext", "TimerRef@ AddTimer(Timer@+ timer) const", "TimerRef@ ModContext::AddTimer(Timer@+ timer) const", asMETHOD(BML::ScriptModContextView, AddTimer), asCALL_THISCALL},
     {"ModContext", "TimerRef@ SetTimeoutTicks(uint delayTicks, TimerCallback@+ callback, const string &in name = \"\") const", "TimerRef@ ModContext::SetTimeoutTicks(uint delayTicks, TimerCallback@+ callback, const string &in name = \"\") const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::SetTimeoutTicks), asCALL_GENERIC},
     {"ModContext", "TimerRef@ SetTimeout(float delayMs, TimerCallback@+ callback, const string &in name = \"\") const", "TimerRef@ ModContext::SetTimeout(float delayMs, TimerCallback@+ callback, const string &in name = \"\") const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::SetTimeout), asCALL_GENERIC},
@@ -3123,14 +3026,8 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "ModRef@ GetMod(int index) const", "ModRef@ ModContext::GetMod(int index) const", asFUNCTION(BMLAS_ContextGetMod), asCALL_CDECL_OBJFIRST},
     {"ModContext", "Logger@ BorrowLogger() const", "Logger@ ModContext::BorrowLogger() const", asFUNCTION(BMLAS_ContextBorrowLogger), asCALL_CDECL_OBJFIRST},
     {"ModContext", "Config@ BorrowConfig() const", "Config@ ModContext::BorrowConfig() const", asFUNCTION(BMLAS_ContextBorrowConfig), asCALL_CDECL_OBJFIRST},
-    {"ModContext", "void SendIngameMessage(const string &in message) const", "void ModContext::SendIngameMessage(const string &in message) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::SendIngameMessage), asCALL_GENERIC},
-    {"ModContext", "void ClearIngameMessages() const", "void ModContext::ClearIngameMessages() const", asMETHOD(BML::ScriptModContextView, ClearIngameMessages), asCALL_THISCALL},
     {"ModContext", "void ExecuteCommand(const string &in command) const", "void ModContext::ExecuteCommand(const string &in command) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::ExecuteCommand), asCALL_GENERIC},
     {"ModContext", "void SkipRenderForNextTick() const", "void ModContext::SkipRenderForNextTick() const", asMETHOD(BML::ScriptModContextView, SkipRenderForNextTick), asCALL_THISCALL},
-    {"ModContext", "void OpenModsMenu() const", "void ModContext::OpenModsMenu() const", asMETHOD(BML::ScriptModContextView, OpenModsMenu), asCALL_THISCALL},
-    {"ModContext", "void CloseModsMenu() const", "void ModContext::CloseModsMenu() const", asMETHOD(BML::ScriptModContextView, CloseModsMenu), asCALL_THISCALL},
-    {"ModContext", "void OpenMapMenu() const", "void ModContext::OpenMapMenu() const", asMETHOD(BML::ScriptModContextView, OpenMapMenu), asCALL_THISCALL},
-    {"ModContext", "void CloseMapMenu() const", "void ModContext::CloseMapMenu() const", asMETHOD(BML::ScriptModContextView, CloseMapMenu), asCALL_THISCALL},
     {"StateBag", "bool Has(const string &in key) const", "bool StateBag::Has(const string &in) const", BML_AS_GENERIC_METHOD(&BML::ScriptStateBag::Has), asCALL_GENERIC},
     {"StateBag", "bool Remove(const string &in key)", "bool StateBag::Remove(const string &in)", BML_AS_GENERIC_METHOD(&BML::ScriptStateBag::Remove), asCALL_GENERIC},
     {"StateBag", "void Clear()", "void StateBag::Clear()", asMETHOD(BML::ScriptStateBag, Clear), asCALL_THISCALL},
@@ -3372,8 +3269,16 @@ static const ScriptUiEnumValueRegistration kFontTypeRegistrations[] = {
 };
 
 static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {
-    {"void SendMessage(const string &in message)", "BML::UI::SendMessage", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_SendMessage), asCALL_GENERIC},
+    {"void AddMessage(const string &in message)", "BML::UI::AddMessage", BML_AS_GENERIC_FUNCTION(&BMLAS_UI_AddMessage), asCALL_GENERIC},
     {"void ClearMessages()", "BML::UI::ClearMessages", asFUNCTION(BMLAS_UI_ClearMessages), asCALL_CDECL},
+    {"void OpenModsMenu()", "BML::UI::OpenModsMenu", asFUNCTION(BMLAS_UI_OpenModsMenu), asCALL_CDECL},
+    {"void CloseModsMenu()", "BML::UI::CloseModsMenu", asFUNCTION(BMLAS_UI_CloseModsMenu), asCALL_CDECL},
+    {"void OpenMapMenu()", "BML::UI::OpenMapMenu", asFUNCTION(BMLAS_UI_OpenMapMenu), asCALL_CDECL},
+    {"void CloseMapMenu()", "BML::UI::CloseMapMenu", asFUNCTION(BMLAS_UI_CloseMapMenu), asCALL_CDECL},
+    {"int GetHUDMode()", "BML::UI::GetHUDMode", asFUNCTION(BMLAS_UI_GetHUDMode), asCALL_CDECL},
+    {"void SetHUDMode(int mode)", "BML::UI::SetHUDMode", asFUNCTION(BMLAS_UI_SetHUDMode), asCALL_CDECL},
+    {"void ShowTitle(bool show)", "BML::UI::ShowTitle", asFUNCTION(BMLAS_UI_ShowTitle), asCALL_CDECL},
+    {"void ShowFPS(bool show)", "BML::UI::ShowFPS", asFUNCTION(BMLAS_UI_ShowFPS), asCALL_CDECL},
     {"void SetCursorCoord(float x, float y)", "BML::UI::SetCursorCoord", asFUNCTION(BMLAS_UI_SetCursorCoord), asCALL_CDECL},
     {"float CoordToPixelX(float x)", "BML::UI::CoordToPixelX", asFUNCTION(BMLAS_UI_CoordToPixelX), asCALL_CDECL},
     {"float CoordToPixelY(float y)", "BML::UI::CoordToPixelY", asFUNCTION(BMLAS_UI_CoordToPixelY), asCALL_CDECL},
@@ -3456,23 +3361,12 @@ static const ScriptGlobalFunctionRegistration kPathFunctionRegistrations[] = {
     {"string RemoveExtension(const string &in path)", "BML::Path::RemoveExtension", BML_AS_GENERIC_FUNCTION(&BMLAS_RemoveExtensionUtf8), asCALL_GENERIC},
 };
 
-static const ScriptGlobalFunctionRegistration kMenuFunctionRegistrations[] = {
-    {"void OpenModsMenu()", "BML::Menu::OpenModsMenu", asFUNCTION(BMLAS_Menu_OpenModsMenu), asCALL_CDECL},
-    {"void CloseModsMenu()", "BML::Menu::CloseModsMenu", asFUNCTION(BMLAS_Menu_CloseModsMenu), asCALL_CDECL},
-    {"void OpenMapMenu()", "BML::Menu::OpenMapMenu", asFUNCTION(BMLAS_Menu_OpenMapMenu), asCALL_CDECL},
-    {"void CloseMapMenu()", "BML::Menu::CloseMapMenu", asFUNCTION(BMLAS_Menu_CloseMapMenu), asCALL_CDECL},
-};
-
-static const ScriptGlobalFunctionRegistration kHudFunctionRegistrations[] = {
-    {"int GetMode()", "BML::HUD::GetMode", asFUNCTION(BMLAS_HUD_GetMode), asCALL_CDECL},
-    {"void SetMode(int mode)", "BML::HUD::SetMode", asFUNCTION(BMLAS_HUD_SetMode), asCALL_CDECL},
-    {"void ShowTitle(bool show)", "BML::HUD::ShowTitle", asFUNCTION(BMLAS_HUD_ShowTitle), asCALL_CDECL},
-    {"void ShowFPS(bool show)", "BML::HUD::ShowFPS", asFUNCTION(BMLAS_HUD_ShowFPS), asCALL_CDECL},
-    {"void ShowSRTimer(bool show)", "BML::HUD::ShowSRTimer", asFUNCTION(BMLAS_HUD_ShowSRTimer), asCALL_CDECL},
-    {"void StartSRTimer()", "BML::HUD::StartSRTimer", asFUNCTION(BMLAS_HUD_StartSRTimer), asCALL_CDECL},
-    {"void PauseSRTimer()", "BML::HUD::PauseSRTimer", asFUNCTION(BMLAS_HUD_PauseSRTimer), asCALL_CDECL},
-    {"void ResetSRTimer()", "BML::HUD::ResetSRTimer", asFUNCTION(BMLAS_HUD_ResetSRTimer), asCALL_CDECL},
-    {"float GetSRTime()", "BML::HUD::GetSRTime", asFUNCTION(BMLAS_HUD_GetSRTime), asCALL_CDECL},
+static const ScriptGlobalFunctionRegistration kSpeedrunFunctionRegistrations[] = {
+    {"void SetTimerVisible(bool visible)", "BML::Speedrun::SetTimerVisible", asFUNCTION(BMLAS_Speedrun_SetTimerVisible), asCALL_CDECL},
+    {"void StartTimer()", "BML::Speedrun::StartTimer", asFUNCTION(BMLAS_Speedrun_StartTimer), asCALL_CDECL},
+    {"void PauseTimer()", "BML::Speedrun::PauseTimer", asFUNCTION(BMLAS_Speedrun_PauseTimer), asCALL_CDECL},
+    {"void ResetTimer()", "BML::Speedrun::ResetTimer", asFUNCTION(BMLAS_Speedrun_ResetTimer), asCALL_CDECL},
+    {"float GetElapsedTime()", "BML::Speedrun::GetElapsedTime", asFUNCTION(BMLAS_Speedrun_GetElapsedTime), asCALL_CDECL},
 };
 
 static const ScriptGlobalFunctionRegistration kCkFunctionRegistrations[] = {
@@ -3647,8 +3541,7 @@ bool CheckScriptFacadeRegistrationSurface() {
     const ScriptGlobalFunctionRegistration *globalFunctionGroups[] = {
         kGlobalFunctionRegistrations,
         kPathFunctionRegistrations,
-        kMenuFunctionRegistrations,
-        kHudFunctionRegistrations,
+        kSpeedrunFunctionRegistrations,
         kCkFunctionRegistrations,
         kPhysicsFunctionRegistrations,
         kTextFunctionRegistrations,
@@ -3657,8 +3550,7 @@ bool CheckScriptFacadeRegistrationSurface() {
     const std::size_t globalFunctionGroupSizes[] = {
         std::size(kGlobalFunctionRegistrations),
         std::size(kPathFunctionRegistrations),
-        std::size(kMenuFunctionRegistrations),
-        std::size(kHudFunctionRegistrations),
+        std::size(kSpeedrunFunctionRegistrations),
         std::size(kCkFunctionRegistrations),
         std::size(kPhysicsFunctionRegistrations),
         std::size(kTextFunctionRegistrations),
@@ -3802,12 +3694,9 @@ int RegisterScriptGlobalFunctions(asIScriptEngine *engine, const char **errorMes
     const int pathResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Path", kPathFunctionRegistrations);
     if (pathResult < 0)
         return pathResult;
-    const int menuResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Menu", kMenuFunctionRegistrations);
-    if (menuResult < 0)
-        return menuResult;
-    const int hudResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::HUD", kHudFunctionRegistrations);
-    if (hudResult < 0)
-        return hudResult;
+    const int speedrunResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::Speedrun", kSpeedrunFunctionRegistrations);
+    if (speedrunResult < 0)
+        return speedrunResult;
     const int ckResult = RegisterScriptGlobalFunctionList(engine, errorMessage, "BML::CK", kCkFunctionRegistrations);
     if (ckResult < 0)
         return ckResult;

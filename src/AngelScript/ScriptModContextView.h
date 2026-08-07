@@ -90,15 +90,6 @@ public:
     void SetIC(CKBeObject *object, bool hierarchy) const;
     void RestoreIC(CKBeObject *object, bool hierarchy) const;
     void Show(CKBeObject *object, CK_OBJECT_SHOWOPTION show, bool hierarchy) const;
-    int GetHUD() const;
-    void SetHUD(int mode) const;
-    void ShowTitle(bool show) const;
-    void ShowFPS(bool show) const;
-    void ShowSRTimer(bool show) const;
-    void StartSRTimer() const;
-    void PauseSRTimer() const;
-    void ResetSRTimer() const;
-    float GetSRTime() const;
     ScriptTimerRef *AddTimer(asIScriptObject *timer) const;
     ScriptTimerRef *SetTimeoutTicks(unsigned int delayTicks, asIScriptFunction *callback, const std::string &name) const;
     ScriptTimerRef *SetTimeout(float delayMs, asIScriptFunction *callback, const std::string &name) const;
@@ -194,14 +185,8 @@ public:
     bool IsCommandCheat(const std::string &name) const;
     int GetGlobalModCount() const;
     std::string GetGlobalModId(int index) const;
-    void SendIngameMessage(const std::string &message) const;
-    void ClearIngameMessages() const;
     void ExecuteCommand(const std::string &command) const;
     void SkipRenderForNextTick() const;
-    void OpenModsMenu() const;
-    void CloseModsMenu() const;
-    void OpenMapMenu() const;
-    void CloseMapMenu() const;
 
 private:
     ModContext *m_Context = nullptr;

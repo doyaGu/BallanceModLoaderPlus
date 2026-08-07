@@ -38,7 +38,7 @@ void ExpectContainsNone(const std::string &text,
     ASSERT_FALSE(text.empty()) << label << " should be readable";
     for (const std::string &needle : needles) {
         EXPECT_EQ(std::string::npos, text.find(needle))
-            << label << " still exposes removed Interop surface: " << needle;
+            << label << " still exposes removed surface: " << needle;
     }
 }
 
@@ -90,6 +90,40 @@ TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
         "class ExportResolver",
         "class ExportRef",
     };
+    ExpectContainsNone(ReadTextFile(kScriptApiStub), removed, kScriptApiStub);
+    ExpectContainsNone(ReadTextFile(kPredefinedApi), removed, kPredefinedApi);
+}
+
+TEST(ScriptApiReferenceTest, UiAndSpeedrunHaveDistinctResponsibilities) {
+    constexpr const char *kScriptApiStub = "docs/api/bml-script-mod-api.as";
+    constexpr const char *kPredefinedApi = "docs/api/as.predefined";
+    const std::vector<std::string> declarations = {
+        "namespace UI",
+        "void AddMessage(const string &in message)",
+        "int GetHUDMode()",
+        "void SetHUDMode(int mode)",
+        "namespace Speedrun",
+        "void SetTimerVisible(bool visible)",
+        "float GetElapsedTime()",
+        "enum ButtonType",
+        "bool MainButton(const string &in label)",
+    };
+    const std::vector<std::string> removed = {
+        "namespace Menu",
+        "namespace HUD",
+        "void SendMessage(const string &in message)",
+        "void SendIngameMessage(const string &in message) const",
+        "void ClearIngameMessages() const",
+        "int GetHUD() const",
+        "void SetHUD(int mode) const",
+        "namespace Overlay",
+        "void ShowSRTimer(bool show)",
+        "void StartSRTimer()",
+        "float GetSRTime()",
+    };
+
+    ExpectContainsAll(ReadTextFile(kScriptApiStub), declarations, kScriptApiStub);
+    ExpectContainsAll(ReadTextFile(kPredefinedApi), declarations, kPredefinedApi);
     ExpectContainsNone(ReadTextFile(kScriptApiStub), removed, kScriptApiStub);
     ExpectContainsNone(ReadTextFile(kPredefinedApi), removed, kPredefinedApi);
 }

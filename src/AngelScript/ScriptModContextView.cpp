@@ -297,63 +297,6 @@ void ScriptModContextView::Show(CKBeObject *object, CK_OBJECT_SHOWOPTION show, b
         m_Context->Show(object, show, hierarchy);
 }
 
-int ScriptModContextView::GetHUD() const {
-    return m_Context ? m_Context->GetHUD() : 0;
-}
-
-void ScriptModContextView::SetHUD(int mode) const {
-    if (RejectRestrictedHostCall("ModContext::SetHUD"))
-        return;
-    if (m_Context)
-        m_Context->SetHUD(mode);
-}
-
-void ScriptModContextView::ShowTitle(bool show) const {
-    if (RejectRestrictedHostCall("ModContext::ShowTitle"))
-        return;
-    if (m_Context)
-        m_Context->ShowTitle(show);
-}
-
-void ScriptModContextView::ShowFPS(bool show) const {
-    if (RejectRestrictedHostCall("ModContext::ShowFPS"))
-        return;
-    if (m_Context)
-        m_Context->ShowFPS(show);
-}
-
-void ScriptModContextView::ShowSRTimer(bool show) const {
-    if (RejectRestrictedHostCall("ModContext::ShowSRTimer"))
-        return;
-    if (m_Context)
-        m_Context->ShowSRTimer(show);
-}
-
-void ScriptModContextView::StartSRTimer() const {
-    if (RejectRestrictedHostCall("ModContext::StartSRTimer"))
-        return;
-    if (m_Context)
-        m_Context->StartSRTimer();
-}
-
-void ScriptModContextView::PauseSRTimer() const {
-    if (RejectRestrictedHostCall("ModContext::PauseSRTimer"))
-        return;
-    if (m_Context)
-        m_Context->PauseSRTimer();
-}
-
-void ScriptModContextView::ResetSRTimer() const {
-    if (RejectRestrictedHostCall("ModContext::ResetSRTimer"))
-        return;
-    if (m_Context)
-        m_Context->ResetSRTimer();
-}
-
-float ScriptModContextView::GetSRTime() const {
-    return m_Context ? m_Context->GetSRTime() : 0.0f;
-}
-
 ScriptTimerRef *ScriptModContextView::AddTimer(asIScriptObject *timer) const {
     if (RejectRestrictedHostCall("ModContext::AddTimer"))
         return nullptr;
@@ -611,20 +554,6 @@ std::string ScriptModContextView::GetGlobalModId(int index) const {
     return mod ? mod->GetID() : "";
 }
 
-void ScriptModContextView::SendIngameMessage(const std::string &message) const {
-    if (RejectRestrictedHostCall("ModContext::SendIngameMessage"))
-        return;
-    if (m_Context)
-        m_Context->SendIngameMessage(message.c_str());
-}
-
-void ScriptModContextView::ClearIngameMessages() const {
-    if (RejectRestrictedHostCall("ModContext::ClearIngameMessages"))
-        return;
-    if (m_Context)
-        m_Context->ClearIngameMessages();
-}
-
 void ScriptModContextView::ExecuteCommand(const std::string &command) const {
     if (RejectRestrictedHostCall("ModContext::ExecuteCommand"))
         return;
@@ -637,34 +566,6 @@ void ScriptModContextView::SkipRenderForNextTick() const {
         return;
     if (m_Context)
         m_Context->SkipRenderForNextTick();
-}
-
-void ScriptModContextView::OpenModsMenu() const {
-    if (RejectRestrictedHostCall("ModContext::OpenModsMenu"))
-        return;
-    if (m_Context)
-        m_Context->OpenModsMenu();
-}
-
-void ScriptModContextView::CloseModsMenu() const {
-    if (RejectRestrictedHostCall("ModContext::CloseModsMenu"))
-        return;
-    if (m_Context)
-        m_Context->CloseModsMenu();
-}
-
-void ScriptModContextView::OpenMapMenu() const {
-    if (RejectRestrictedHostCall("ModContext::OpenMapMenu"))
-        return;
-    if (m_Context)
-        m_Context->OpenMapMenu();
-}
-
-void ScriptModContextView::CloseMapMenu() const {
-    if (RejectRestrictedHostCall("ModContext::CloseMapMenu"))
-        return;
-    if (m_Context)
-        m_Context->CloseMapMenu();
 }
 
 } // namespace BML

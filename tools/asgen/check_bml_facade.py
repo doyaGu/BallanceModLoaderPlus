@@ -50,6 +50,30 @@ STALE_OWNERSHIP_DECLARATIONS = [
     "DataShareRequestRef@ RequestDataShare(DataShareRequest@ request)",
 ]
 
+REQUIRED_UI_DECLARATIONS = [
+    "void AddMessage(const string &in message)",
+    "int GetHUDMode()",
+    "void SetHUDMode(int mode)",
+    "namespace Speedrun",
+    "void SetTimerVisible(bool visible)",
+    "float GetElapsedTime()",
+    "bool MainButton(const string &in label)",
+]
+
+REMOVED_UI_DECLARATIONS = [
+    "namespace Menu",
+    "namespace HUD",
+    "void SendMessage(const string &in message)",
+    "void SendIngameMessage(const string &in message) const",
+    "void ClearIngameMessages() const",
+    "int GetHUD() const",
+    "void SetHUD(int mode) const",
+    "namespace Overlay",
+    "void ShowSRTimer(bool show)",
+    "void StartSRTimer()",
+    "float GetSRTime()",
+]
+
 
 def _read(path: Path) -> str:
     if not path.exists():
@@ -118,6 +142,12 @@ def _check_stub(root: Path, errors: list[str]) -> None:
     for declaration in STALE_OWNERSHIP_DECLARATIONS:
         if declaration in text:
             errors.append(f"{relative}: stale ownership declaration {declaration!r}")
+    for declaration in REQUIRED_UI_DECLARATIONS:
+        if declaration not in text:
+            errors.append(f"{relative}: missing UI declaration {declaration!r}")
+    for declaration in REMOVED_UI_DECLARATIONS:
+        if declaration in text:
+            errors.append(f"{relative}: removed UI declaration is still present {declaration!r}")
 
 
 def main() -> int:
