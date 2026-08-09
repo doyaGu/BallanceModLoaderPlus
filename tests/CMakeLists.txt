@@ -426,6 +426,14 @@ add_bml_test(ImcGeneratedClientTest
         SOURCES ImcGeneratedClientTest.cpp
 )
 
+add_bml_test(ImcGeneratedRuntimeIntegrationTest
+        SOURCES
+        ImcGeneratedRuntimeIntegrationTest.cpp
+        ${BML_SOURCE_DIR}/ImcRuntime.cpp
+)
+set_tests_properties(ImcGeneratedRuntimeIntegrationTest PROPERTIES
+        LABELS "imc;integration;performance")
+
 add_subdirectory(smoke)
 if (BML_BUILD_UPDATER)
     add_subdirectory(updater)
