@@ -108,6 +108,8 @@ def main() -> int:
             "struct Handlers", "int Start(const Handlers &handlers",
             "RegisterState", "RegisterLookup", "class ChangedSubscription",
             "writer.Begin();", "reader.Begin();", "WriteResponse(",
+            "const BML_ImcPayloadTypeId responsePayload",
+            "void *handlerUserdata = slot->Userdata;",
         ):
             if snippet not in header:
                 raise AssertionError(f"generated binding is missing {snippet!r}")
@@ -118,6 +120,10 @@ def main() -> int:
         ):
             if obsolete in header:
                 raise AssertionError(f"generated binding leaked obsolete wire metadata: {obsolete}")
+        if "WriteResponse(response, slot->Owner" in header:
+            raise AssertionError(
+                "generated Provider reads its owner after invoking the Handler"
+            )
 
         generate(generator, interface, output, check=True)
         header_path.write_text("stale\n", encoding="utf-8")

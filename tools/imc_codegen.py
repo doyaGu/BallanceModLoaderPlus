@@ -1407,33 +1407,39 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
         lines.extend([
             f"    static int {name}Thunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *{'response' if output else ''}, void *userdata) noexcept {{",
             f"        auto *slot = static_cast<{name}Slot *>(userdata);",
-            "        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;", "        try {",
+            "        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;",
+            "        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;",
         ])
+        if endpoint.input_schema or output:
+            lines.append("        auto *owner = slot->Owner;")
+        lines.append("        try {")
+        if output:
+            lines.append(f"            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.{output_name}PayloadType();")
         if endpoint.input_schema:
             input_record = schemas[endpoint.input_schema]
             input_name = camel(input_record.name)
             input_value = value_name(input_record)
             lines.extend([
                 "            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;",
-                f"            if (request->PayloadType != slot->Owner->m_Transport.{input_name}PayloadType()) return BML_ERROR_TYPE_MISMATCH;",
+                f"            if (request->PayloadType != owner->m_Transport.{input_name}PayloadType()) return BML_ERROR_TYPE_MISMATCH;",
                 f"            {input_value} input{{}}; int status = Decode{input_name}(*request, input);",
                 "            if (status != BML_OK) return status;",
             ])
             if output:
-                lines.append(f"            {output_value} output{{}}; status = slot->Function(input, output, slot->Userdata);")
+                lines.append(f"            {output_value} output{{}}; status = function(input, output, handlerUserdata);")
             else:
-                lines.append("            status = slot->Function(input, slot->Userdata);")
+                lines.append("            status = function(input, handlerUserdata);")
         else:
             lines.extend([
                 "            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;",
             ])
             if output:
-                lines.append(f"            {output_value} output{{}}; const int status = slot->Function(output, slot->Userdata);")
+                lines.append(f"            {output_value} output{{}}; const int status = function(output, handlerUserdata);")
             else:
-                lines.append("            const int status = slot->Function(slot->Userdata);")
+                lines.append("            const int status = function(handlerUserdata);")
         lines.append("            if (status != BML_OK) return status;")
         if output:
-            lines.append(f"            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.{output_name}PayloadType(), output, Encoded{output_name}Size, Encode{output_name});")
+            lines.append(f"            return ::BML::Imc::WriteResponse(response, responsePayload, output, Encoded{output_name}Size, Encode{output_name});")
         else:
             lines.append("            return BML_OK;")
         lines.extend(["        } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }", "    }"])

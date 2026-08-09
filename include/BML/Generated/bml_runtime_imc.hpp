@@ -441,33 +441,42 @@ private:
     static int ClockThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<ClockSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.ClockStatePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            ClockStateValue output{}; const int status = slot->Function(output, slot->Userdata);
+            ClockStateValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ClockStatePayloadType(), output, EncodedClockStateSize, EncodeClockState);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedClockStateSize, EncodeClockState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ScoreSlot { Provider *Owner = nullptr; ScoreHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int ScoreThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<ScoreSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.ScoreStatePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            ScoreStateValue output{}; const int status = slot->Function(output, slot->Userdata);
+            ScoreStateValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ScoreStatePayloadType(), output, EncodedScoreStateSize, EncodeScoreState);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedScoreStateSize, EncodeScoreState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct StateSlot { Provider *Owner = nullptr; StateHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<StateSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.RuntimeStatePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            RuntimeStateValue output{}; const int status = slot->Function(output, slot->Userdata);
+            RuntimeStateValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.RuntimeStatePayloadType(), output, EncodedRuntimeStateSize, EncodeRuntimeState);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedRuntimeStateSize, EncodeRuntimeState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     void ResetSlots() noexcept {

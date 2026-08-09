@@ -675,55 +675,70 @@ private:
     static int CatalogThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<CatalogSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.CatalogResponsePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            CatalogResponseValue output{}; const int status = slot->Function(output, slot->Userdata);
+            CatalogResponseValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CatalogResponsePayloadType(), output, EncodedCatalogResponseSize, EncodeCatalogResponse);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedCatalogResponseSize, EncodeCatalogResponse);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct CheckpointsSlot { Provider *Owner = nullptr; CheckpointsHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int CheckpointsThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<CheckpointsSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.CheckpointsResponsePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            CheckpointsResponseValue output{}; const int status = slot->Function(output, slot->Userdata);
+            CheckpointsResponseValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.CheckpointsResponsePayloadType(), output, EncodedCheckpointsResponseSize, EncodeCheckpointsResponse);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedCheckpointsResponseSize, EncodeCheckpointsResponse);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct EnergySlot { Provider *Owner = nullptr; EnergyHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int EnergyThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<EnergySlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.EnergyStatePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            EnergyStateValue output{}; const int status = slot->Function(output, slot->Userdata);
+            EnergyStateValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.EnergyStatePayloadType(), output, EncodedEnergyStateSize, EncodeEnergyState);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedEnergyStateSize, EncodeEnergyState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct LevelSlot { Provider *Owner = nullptr; LevelHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int LevelThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<LevelSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.LevelStatePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            LevelStateValue output{}; const int status = slot->Function(output, slot->Userdata);
+            LevelStateValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.LevelStatePayloadType(), output, EncodedLevelStateSize, EncodeLevelState);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedLevelStateSize, EncodeLevelState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ResetpointsSlot { Provider *Owner = nullptr; ResetpointsHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int ResetpointsThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<ResetpointsSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.ResetpointsResponsePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            ResetpointsResponseValue output{}; const int status = slot->Function(output, slot->Userdata);
+            ResetpointsResponseValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ResetpointsResponsePayloadType(), output, EncodedResetpointsResponseSize, EncodeResetpointsResponse);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedResetpointsResponseSize, EncodeResetpointsResponse);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     void ResetSlots() noexcept {

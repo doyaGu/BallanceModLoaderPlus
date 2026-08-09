@@ -385,9 +385,10 @@ private:
     static int PauseTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<PauseTimerSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -396,9 +397,10 @@ private:
     static int ResetTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<ResetTimerSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -407,12 +409,14 @@ private:
     static int SetTimerVisibleThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<SetTimerVisibleSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             VisibleInputValue input{}; int status = DecodeVisibleInput(*request, input);
             if (status != BML_OK) return status;
-            status = slot->Function(input, slot->Userdata);
+            status = function(input, handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -421,9 +425,10 @@ private:
     static int StartTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<StartTimerSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -432,11 +437,14 @@ private:
     static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<StateSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.TimerStatePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            TimerStateValue output{}; const int status = slot->Function(output, slot->Userdata);
+            TimerStateValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.TimerStatePayloadType(), output, EncodedTimerStateSize, EncodeTimerState);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedTimerStateSize, EncodeTimerState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     void ResetSlots() noexcept {

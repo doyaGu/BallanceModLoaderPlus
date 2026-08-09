@@ -689,12 +689,14 @@ private:
     static int HudFpsShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudFpsShowSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             VisibleInputValue input{}; int status = DecodeVisibleInput(*request, input);
             if (status != BML_OK) return status;
-            status = slot->Function(input, slot->Userdata);
+            status = function(input, handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -703,12 +705,14 @@ private:
     static int HudSetThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudSetSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.HudModeInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.HudModeInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             HudModeInputValue input{}; int status = DecodeHudModeInput(*request, input);
             if (status != BML_OK) return status;
-            status = slot->Function(input, slot->Userdata);
+            status = function(input, handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -717,12 +721,14 @@ private:
     static int HudTitleShowThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<HudTitleShowSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.VisibleInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             VisibleInputValue input{}; int status = DecodeVisibleInput(*request, input);
             if (status != BML_OK) return status;
-            status = slot->Function(input, slot->Userdata);
+            status = function(input, handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -731,9 +737,10 @@ private:
     static int MapMenuCloseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MapMenuCloseSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -742,9 +749,10 @@ private:
     static int MapMenuOpenThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MapMenuOpenSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -753,12 +761,14 @@ private:
     static int MessageAddThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MessageAddSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.MessageInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.MessageInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             MessageInputValue input{}; int status = DecodeMessageInput(*request, input);
             if (status != BML_OK) return status;
-            status = slot->Function(input, slot->Userdata);
+            status = function(input, handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -767,9 +777,10 @@ private:
     static int MessageClearThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<MessageClearSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -778,9 +789,10 @@ private:
     static int ModsMenuCloseThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<ModsMenuCloseSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -789,9 +801,10 @@ private:
     static int ModsMenuOpenThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<ModsMenuOpenSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
         try {
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            const int status = slot->Function(slot->Userdata);
+            const int status = function(handlerUserdata);
             if (status != BML_OK) return status;
             return BML_OK;
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
@@ -800,11 +813,14 @@ private:
     static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<StateSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.HudStatePayloadType();
             if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            HudStateValue output{}; const int status = slot->Function(output, slot->Userdata);
+            HudStateValue output{}; const int status = function(output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.HudStatePayloadType(), output, EncodedHudStateSize, EncodeHudState);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedHudStateSize, EncodeHudState);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     void ResetSlots() noexcept {

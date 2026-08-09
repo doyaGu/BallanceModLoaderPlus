@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -38,6 +39,26 @@ int ReadRuntimeState(RuntimeApi::RuntimeStateValue &out, void *userdata) {
     out.Paused = false;
     out.Playing = true;
     out.CheatEnabled = false;
+    return BML_OK;
+}
+
+struct SelfClosingRuntimeStateSource {
+    std::unique_ptr<RuntimeApi::Provider> *Owner = nullptr;
+    std::uint64_t Calls = 0;
+};
+
+int ReadRuntimeStateAndDestroyProvider(RuntimeApi::RuntimeStateValue &out,
+                                       void *userdata) {
+    auto *source = static_cast<SelfClosingRuntimeStateSource *>(userdata);
+    if (!source || !source->Owner)
+        return BML_ERROR_INVALID_PARAMETER;
+    ++source->Calls;
+    out.InGame = true;
+    out.InLevel = false;
+    out.Paused = false;
+    out.Playing = true;
+    out.CheatEnabled = false;
+    source->Owner->reset();
     return BML_OK;
 }
 
@@ -193,6 +214,26 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
     RuntimeApi::RuntimeStateValue state{};
     EXPECT_EQ(m_Client.CallState(state), BML_ERROR_IMC_ENDPOINT_NOT_FOUND);
     EXPECT_EQ(m_Source.Calls, 0u);
+}
+
+TEST_F(ImcGeneratedRuntimeIntegrationTest,
+       GeneratedProviderCanBeDestroyedByItsOwnHandler) {
+    ASSERT_EQ(m_Provider.Close(), BML_OK);
+    auto provider = std::make_unique<RuntimeApi::Provider>();
+    SelfClosingRuntimeStateSource source{&provider};
+    RuntimeApi::Provider::Handlers handlers{};
+    handlers.Userdata = &source;
+    handlers.State = &ReadRuntimeStateAndDestroyProvider;
+    ASSERT_EQ(provider->Start(handlers, "self-closing.provider"), BML_OK);
+
+    RuntimeApi::RuntimeStateValue state{};
+    EXPECT_EQ(m_Client.CallState(state), BML_OK);
+    EXPECT_EQ(source.Calls, 1u);
+    EXPECT_EQ(provider, nullptr);
+
+    bool available = true;
+    ASSERT_EQ(m_Client.IsStateAvailable(available), BML_OK);
+    EXPECT_FALSE(available);
 }
 
 TEST_F(ImcGeneratedRuntimeIntegrationTest,

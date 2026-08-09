@@ -649,56 +649,68 @@ private:
     static int EntityThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<EntitySlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.EntityTransformPayloadType();
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.ObjectRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.ObjectRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             ObjectRequestValue input{}; int status = DecodeObjectRequest(*request, input);
             if (status != BML_OK) return status;
-            EntityTransformValue output{}; status = slot->Function(input, output, slot->Userdata);
+            EntityTransformValue output{}; status = function(input, output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.EntityTransformPayloadType(), output, EncodedEntityTransformSize, EncodeEntityTransform);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedEntityTransformSize, EncodeEntityTransform);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct FindNameSlot { Provider *Owner = nullptr; FindNameHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int FindNameThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<FindNameSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.FindResultPayloadType();
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.FindNameRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.FindNameRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             FindNameRequestValue input{}; int status = DecodeFindNameRequest(*request, input);
             if (status != BML_OK) return status;
-            FindResultValue output{}; status = slot->Function(input, output, slot->Userdata);
+            FindResultValue output{}; status = function(input, output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.FindResultPayloadType(), output, EncodedFindResultSize, EncodeFindResult);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedFindResultSize, EncodeFindResult);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct FindNameClassSlot { Provider *Owner = nullptr; FindNameClassHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int FindNameClassThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<FindNameClassSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.FindResultPayloadType();
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.FindNameClassRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.FindNameClassRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             FindNameClassRequestValue input{}; int status = DecodeFindNameClassRequest(*request, input);
             if (status != BML_OK) return status;
-            FindResultValue output{}; status = slot->Function(input, output, slot->Userdata);
+            FindResultValue output{}; status = function(input, output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.FindResultPayloadType(), output, EncodedFindResultSize, EncodeFindResult);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedFindResultSize, EncodeFindResult);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ObjectSlot { Provider *Owner = nullptr; ObjectHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
     static int ObjectThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<ObjectSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
+        auto *owner = slot->Owner;
         try {
+            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.ObjectInfoPayloadType();
             if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != slot->Owner->m_Transport.ObjectRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
+            if (request->PayloadType != owner->m_Transport.ObjectRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
             ObjectRequestValue input{}; int status = DecodeObjectRequest(*request, input);
             if (status != BML_OK) return status;
-            ObjectInfoValue output{}; status = slot->Function(input, output, slot->Userdata);
+            ObjectInfoValue output{}; status = function(input, output, handlerUserdata);
             if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, slot->Owner->m_Transport.ObjectInfoPayloadType(), output, EncodedObjectInfoSize, EncodeObjectInfo);
+            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedObjectInfoSize, EncodeObjectInfo);
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     void ResetSlots() noexcept {
