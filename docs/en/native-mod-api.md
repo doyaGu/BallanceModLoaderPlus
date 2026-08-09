@@ -32,11 +32,14 @@ Use the CMake helper installed with the SDK:
 ```cmake
 find_package(BML CONFIG REQUIRED)
 bml_add_mod(MyMod MyMod.cpp)
+bml_install_mod(MyMod)
 ```
 
 `bml_add_mod` links `BML::BML`, enables C++20, disables compiler extensions,
-and produces `MyMod.bmodp`. Add `bml_install_mod(MyMod)` when the project needs
-an install rule.
+and produces `MyMod.bmodp`. `bml_install_mod` adds the standard install rule.
+Configure a 32-bit build with `CMAKE_INSTALL_PREFIX` set to the Ballance
+`ModLoader` directory, then use CMake's `install` target to build and deploy the
+mod under `ModLoader/Mods`.
 
 ## Public headers
 

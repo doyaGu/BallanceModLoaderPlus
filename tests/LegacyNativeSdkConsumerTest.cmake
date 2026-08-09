@@ -65,6 +65,7 @@ endif()
 file(REMOVE_RECURSE "${work_root}")
 set(install_root "${work_root}/install")
 set(consumer_build_dir "${work_root}/build")
+set(consumer_modloader_dir "${work_root}/game/ModLoader")
 
 if(use_sdk_archive)
     file(MAKE_DIRECTORY "${install_root}")
@@ -115,6 +116,9 @@ set(configure_command
 if(DEFINED GENERATOR_PLATFORM AND NOT "${GENERATOR_PLATFORM}" STREQUAL "")
     list(APPEND configure_command -A "${GENERATOR_PLATFORM}")
 endif()
+if(DEFINED CXX_COMPILER AND NOT "${CXX_COMPILER}" STREQUAL "")
+    list(APPEND configure_command "-DCMAKE_CXX_COMPILER=${CXX_COMPILER}")
+endif()
 list(APPEND configure_command
         "-DCMAKE_BUILD_TYPE=${CONFIGURATION}"
         "-DBML_DIR=${install_root}/lib/cmake/BML"
@@ -145,6 +149,25 @@ if(NOT build_status EQUAL 0)
     message(FATAL_ERROR
             "The installed SDK could not build the legacy native Mod template.\n"
             "${build_output}${build_error}")
+endif()
+
+execute_process(
+    COMMAND "${CMAKE_EXECUTABLE}" --install "${consumer_build_dir}"
+            --prefix "${consumer_modloader_dir}" --config "${CONFIGURATION}"
+    RESULT_VARIABLE consumer_install_status
+    OUTPUT_VARIABLE consumer_install_output
+    ERROR_VARIABLE consumer_install_error
+)
+if(NOT consumer_install_status EQUAL 0)
+    message(FATAL_ERROR
+            "The installed SDK could not install the native Mod template.\n"
+            "${consumer_install_output}${consumer_install_error}")
+endif()
+
+set(installed_mod "${consumer_modloader_dir}/Mods/HelloMod.bmodp")
+if(NOT EXISTS "${installed_mod}")
+    message(FATAL_ERROR
+            "The native Mod template install rule did not produce: ${installed_mod}")
 endif()
 
 file(GLOB_RECURSE mod_candidates LIST_DIRECTORIES FALSE

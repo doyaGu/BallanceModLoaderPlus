@@ -141,6 +141,7 @@ if(MSVC)
                         "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/legacy-native-sdk-consumer-$<CONFIG>"
                         "-DGENERATOR=${CMAKE_GENERATOR}"
                         "-DGENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+                        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
                         "-DCONFIGURATION=$<CONFIG>"
                         "-DVIRTOOLS_SDK_PATH=${VIRTOOLS_SDK_PATH}"
                         "-DDUMPBIN=${BML_DUMPBIN}"

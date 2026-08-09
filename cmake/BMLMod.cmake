@@ -27,5 +27,5 @@ function(bml_install_mod TARGET_NAME)
         message(FATAL_ERROR "bml_install_mod target does not exist: ${TARGET_NAME}")
     endif ()
 
-    install(TARGETS "${TARGET_NAME}" RUNTIME DESTINATION mods)
+    install(TARGETS "${TARGET_NAME}" RUNTIME DESTINATION Mods)
 endfunction()
