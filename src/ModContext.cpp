@@ -425,70 +425,108 @@ bool ModContext::InitMods() {
         return false;
 
     ClearFlags(BML_MODS_SHUTTING_DOWN);
-
-    if (!ResolveDependencies())
+    m_ActiveMods.clear();
+    try {
+        m_ActiveMods.reserve(m_Mods.size());
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Cannot initialize Mods: failed to prepare activation state.");
         return false;
-
-    for (IMod *mod : m_Mods) {
-        m_Logger->Info("Loading Mod %s[%s] v%s by %s",
-                       mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
-
-        std::string dependencyDiagnostic;
-        if (EvaluateDependencies(mod, &dependencyDiagnostic) == 0) {
-            m_Logger->Error("Cannot initialize Mod %s: %s",
-                            mod->GetID(),
-                            dependencyDiagnostic.empty()
-                                ? "dependencies are not satisfied."
-                                : dependencyDiagnostic.c_str());
-            continue; // Skip this mod but continue loading others
-        }
-
-        FillCallbackMap(mod);
-        mod->OnLoad();
     }
+
+    const char *activatingModId = nullptr;
+    try {
+        if (!ResolveDependencies())
+            return false;
+
+        for (IMod *mod : m_Mods) {
+            activatingModId = mod->GetID();
+            m_Logger->Info("Loading Mod %s[%s] v%s by %s",
+                           activatingModId, mod->GetName(), mod->GetVersion(), mod->GetAuthor());
+
+            std::string dependencyDiagnostic;
+            if (EvaluateActivationDependencies(mod, &dependencyDiagnostic) == 0) {
+                m_Logger->Error("Cannot initialize Mod %s: %s",
+                                activatingModId,
+                                dependencyDiagnostic.empty()
+                                    ? "dependencies are not satisfied."
+                                    : dependencyDiagnostic.c_str());
+                activatingModId = nullptr;
+                continue; // Skip this mod but continue loading others
+            }
+
+            // Preserve the legacy behavior that lets a mod receive callbacks
+            // which it triggers from its own OnLoad implementation.
+            FillCallbackMap(mod);
+            mod->OnLoad();
+            // Capacity was reserved before activation, so recording success
+            // cannot fail after a mod has completed OnLoad.
+            m_ActiveMods.push_back(mod);
+            activatingModId = nullptr;
+        }
 
 #if BML_ENABLE_ANGELSCRIPT
-    int scriptLoadedCount = 0;
-    int scriptFailedCount = 0;
-    BML::ScriptMod *firstFailedScript = nullptr;
-    for (IMod *mod : m_Mods) {
-        auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod);
-        if (!scriptMod)
-            continue;
-        if (scriptMod->IsFailed()) {
-            ++scriptFailedCount;
-            if (!firstFailedScript)
-                firstFailedScript = scriptMod;
-        } else if (scriptMod->IsLoaded()) {
-            ++scriptLoadedCount;
+        int scriptLoadedCount = 0;
+        int scriptFailedCount = 0;
+        BML::ScriptMod *firstFailedScript = nullptr;
+        for (IMod *mod : m_Mods) {
+            auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod);
+            if (!scriptMod)
+                continue;
+            if (scriptMod->IsFailed()) {
+                ++scriptFailedCount;
+                if (!firstFailedScript)
+                    firstFailedScript = scriptMod;
+            } else if (scriptMod->IsLoaded()) {
+                ++scriptLoadedCount;
+            }
         }
-    }
-    if (scriptLoadedCount > 0 || scriptFailedCount > 0) {
-        m_Logger->Info("BML script mod summary: loaded=%d failed=%d",
-                       scriptLoadedCount,
-                       scriptFailedCount);
-        if (firstFailedScript) {
-            m_Logger->Warn("First failed script mod %s: %s",
-                           firstFailedScript->GetID(),
-                           firstFailedScript->GetLastDiagnostic().c_str());
+        if (scriptLoadedCount > 0 || scriptFailedCount > 0) {
+            m_Logger->Info("BML script mod summary: loaded=%d failed=%d",
+                           scriptLoadedCount,
+                           scriptFailedCount);
+            if (firstFailedScript) {
+                m_Logger->Warn("First failed script mod %s: %s",
+                               firstFailedScript->GetID(),
+                               firstFailedScript->GetLastDiagnostic().c_str());
+            }
         }
-    }
 #endif
 
-    for (Config *config : m_Configs)
-        SaveConfig(config);
+        for (Config *config : m_Configs)
+            SaveConfig(config);
 
-    m_CommandContext.SortCommands();
+        m_CommandContext.SortCommands();
 
-    OnLoadGame();
+        OnLoadGame();
 
 #if BML_ENABLE_ANGELSCRIPT
-    if (m_ScriptHotReload)
-        m_ScriptHotReload->Start();
+        if (m_ScriptHotReload)
+            m_ScriptHotReload->Start();
 #endif
 
-    SetFlags(BML_MODS_INITED);
-    return true;
+        SetFlags(BML_MODS_INITED);
+        return true;
+    } catch (const std::exception &e) {
+        if (m_Logger) {
+            if (activatingModId)
+                m_Logger->Error("Cannot initialize Mod %s: activation raised an exception: %s",
+                                activatingModId, e.what());
+            else
+                m_Logger->Error("Cannot complete Mod initialization: %s", e.what());
+        }
+    } catch (...) {
+        if (m_Logger) {
+            if (activatingModId)
+                m_Logger->Error("Cannot initialize Mod %s: activation raised an unknown exception.",
+                                activatingModId);
+            else
+                m_Logger->Error("Cannot complete Mod initialization: unknown exception.");
+        }
+    }
+
+    RollbackModActivation();
+    return false;
 }
 
 void ModContext::ShutdownMods() {
@@ -501,41 +539,93 @@ void ModContext::ShutdownMods() {
     }
 
     SetFlags(BML_MODS_SHUTTING_DOWN);
-    auto invocationLock = LockModInvocation();
 
 #if BML_ENABLE_ANGELSCRIPT
     if (m_ScriptHotReload)
         m_ScriptHotReload->Stop();
 #endif
 
-    for (auto rit = m_Mods.rbegin(); rit != m_Mods.rend(); ++rit) {
-        auto *mod = *rit;
+    // Wait for concurrent callbacks before unloading their owning Mod objects.
+    auto invocationLock = m_ModInvocationGate.LockMutation();
+    DeactivateActiveMods();
+
+    ClearFlags(BML_MODS_INITED);
+}
+
+void ModContext::DeactivateActiveMods() {
+    for (auto rit = m_ActiveMods.rbegin(); rit != m_ActiveMods.rend(); ++rit) {
+        IMod *mod = *rit;
         try {
             mod->OnUnload();
         } catch (const std::exception &e) {
             if (m_Logger)
-                m_Logger->Error("Exception in mod %s unload callback: %s", mod->GetID(), e.what());
+                m_Logger->Error("Exception in a Mod unload callback: %s", e.what());
         } catch (...) {
             if (m_Logger)
-                m_Logger->Error("Unknown exception in mod %s unload callback", mod->GetID());
+                m_Logger->Error("Unknown exception in a Mod unload callback.");
+        }
+
+        try {
+            m_ImcRuntime.CleanupOwner(mod->GetID());
+        } catch (...) {
+            if (m_Logger)
+                m_Logger->Error("Failed to clean IMC state for a Mod during shutdown.");
         }
     }
 
-    Timer::CancelAll();
-    if (m_TimeManager) {
-        Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
-    } else {
-        Timer::ProcessAll(0, 0.0f);
+    try {
+        Timer::CancelAll();
+        if (m_TimeManager) {
+            Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
+        } else {
+            Timer::ProcessAll(0, 0.0f);
+        }
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Failed to clean Mod timers during shutdown.");
     }
 
     for (auto rit = m_Configs.rbegin(); rit != m_Configs.rend(); ++rit) {
-        SaveConfig(*rit);
+        try {
+            SaveConfig(*rit);
+        } catch (const std::exception &e) {
+            if (m_Logger)
+                m_Logger->Error("Exception while saving a Mod config during shutdown: %s", e.what());
+        } catch (...) {
+            if (m_Logger)
+                m_Logger->Error("Unknown exception while saving a Mod config during shutdown.");
+        }
     }
 
-    m_CallbackMap.clear();
-    m_Configs.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        m_CallbackMap.clear();
+        m_Configs.clear();
+        m_ConfigMap.clear();
+    }
     m_CommandContext.ClearCommands();
+    m_ActiveMods.clear();
+}
 
+void ModContext::RollbackModActivation() {
+    SetFlags(BML_MODS_SHUTTING_DOWN);
+#if BML_ENABLE_ANGELSCRIPT
+    if (m_ScriptHotReload)
+        m_ScriptHotReload->Stop();
+#endif
+    auto invocationLock = m_ModInvocationGate.LockMutation();
+    DeactivateActiveMods();
+
+    // A throwing OnLoad may leave an IMC client behind before the Mod becomes
+    // active. Active owners were already cleaned by DeactivateActiveMods.
+    for (IMod *mod : m_Mods) {
+        try {
+            m_ImcRuntime.CleanupOwner(mod->GetID());
+        } catch (...) {
+            if (m_Logger)
+                m_Logger->Error("Failed to clean IMC state during Mod activation rollback.");
+        }
+    }
     ClearFlags(BML_MODS_INITED);
 }
 
@@ -723,6 +813,31 @@ int ModContext::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
             *diagnostic = "dependency check raised an unknown exception.";
         return 0;
     }
+}
+
+int ModContext::EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const {
+    if (EvaluateDependencies(mod, diagnostic) == 0)
+        return 0;
+
+    std::lock_guard<std::mutex> dependencyLock(m_Mutex);
+    const auto dependencies = m_ModDependencies.find(mod);
+    if (dependencies == m_ModDependencies.end())
+        return 1;
+
+    // InitMods runs on the game thread after dependency ordering is fixed, so
+    // the Mod registry and activation vector cannot change during this pass.
+    for (const ModDependency &dependency : dependencies->second) {
+        if (dependency.optional || !dependency.id || !*dependency.id)
+            continue;
+        const auto registered = m_ModMap.find(dependency.id);
+        if (registered == m_ModMap.end() ||
+            std::find(m_ActiveMods.begin(), m_ActiveMods.end(), registered->second) == m_ActiveMods.end()) {
+            if (diagnostic)
+                *diagnostic = "required dependency '" + std::string(dependency.id) + "' did not initialize.";
+            return 0;
+        }
+    }
+    return 1;
 }
 
 int ModContext::GetDependencyCount(IMod *mod) const {
@@ -2405,6 +2520,9 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
             if (oit != m_Mods.end()) {
                 m_Mods.erase(oit);
             }
+
+            m_ActiveMods.erase(std::remove(m_ActiveMods.begin(), m_ActiveMods.end(), mod),
+                               m_ActiveMods.end());
 
             m_ModDependencies.erase(mod);
 

@@ -396,9 +396,12 @@ private:
     bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
 
     int EvaluateDependencies(IMod *mod, std::string *diagnostic) const;
+    int EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const;
     bool ResolveDependencies();
 
     void FillCallbackMap(IMod *mod);
+    void DeactivateActiveMods();
+    void RollbackModActivation();
 
     void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
@@ -463,6 +466,7 @@ private:
     DllHandleMap m_DllHandleMap;
 
     std::vector<IMod *> m_Mods;
+    std::vector<IMod *> m_ActiveMods;
     typedef std::unordered_map<std::string, IMod *> ModMap;
     ModMap m_ModMap;
 

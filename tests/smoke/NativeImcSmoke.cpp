@@ -80,6 +80,7 @@ public:
 
     void OnUnload() override {
         (void)m_Events.Close();
+        GetLogger()->Info("BML native IMC smoke unloaded");
     }
 
 private:
