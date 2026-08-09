@@ -2,6 +2,7 @@
 
 #include <unordered_set>
 #include <queue>
+#include <system_error>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -1736,8 +1737,15 @@ std::shared_ptr<void> ModContext::LoadLib(const wchar_t *path) {
     std::shared_ptr<void> dllHandlePtr;
 
     HMODULE dllHandle = ::LoadLibraryExW(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!dllHandle)
+    if (!dllHandle) {
+        const DWORD error = ::GetLastError();
+        const std::string message = std::system_category().message(static_cast<int>(error));
+        m_Logger->Error("Failed to load native Mod DLL %s: Windows error %lu (%s).",
+                        utils::Utf16ToAnsi(path).c_str(),
+                        static_cast<unsigned long>(error),
+                        message.c_str());
         return nullptr;
+    }
 
     bool inserted;
     DllHandleMap::iterator it;
@@ -1784,10 +1792,8 @@ IMod *ModContext::LoadMod(const std::wstring &path) {
     _wsplitpath(path.c_str(), nullptr, nullptr, filename, nullptr);
 
     auto dllHandle = LoadLib(path.c_str());
-    if (!dllHandle) {
-        m_Logger->Error("Failed to load %s.", filename);
+    if (!dllHandle)
         return nullptr;
-    }
 
     constexpr const char *ENTRY_SYMBOL = "BMLEntry";
     typedef IMod *(*BMLEntryFunc)(IBML *);
@@ -1823,10 +1829,8 @@ IMod *ModContext::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
     }
 
     IMod *mod = scriptMod.get();
-    if (!RegisterMod(mod)) {
-        m_Logger->Warn("Duplicate or incompatible script Mod: %s", mod->GetID());
+    if (!RegisterMod(mod))
         return nullptr;
-    }
 
     RegisterScriptModDependencies(mod, loadResult.Definition);
     m_ScriptMods.push_back(std::move(scriptMod));
@@ -2143,10 +2147,16 @@ void ModContext::RegisterBuiltinMods() {
 
 bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
     // Allow registering built-in mods that don't come from a DLL (dllHandle can be null).
-    if (!mod) return false;
+    if (!mod) {
+        m_Logger->Error("Mod registration failed: the Mod pointer is null.");
+        return false;
+    }
 
     const char *modId = mod->GetID();
-    if (!modId || !*modId) return false;
+    if (!modId || !*modId) {
+        m_Logger->Error("Mod registration failed: GetID() returned an empty id.");
+        return false;
+    }
 
     BMLVersion curVer;
     BMLVersion reqVer = mod->GetBMLVersion();
@@ -2156,13 +2166,18 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         return false;
     }
 
-    if (m_ModInvocationGate.IsCallActiveOnCurrentThread())
+    if (m_ModInvocationGate.IsCallActiveOnCurrentThread()) {
+        m_Logger->Error("Mod %s cannot be registered from an active Mod callback.", modId);
         return false;
+    }
     auto invocationLock = m_ModInvocationGate.LockMutation();
     std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
     // Reject duplicates
-    if (m_ModMap.find(modId) != m_ModMap.end()) return false;
+    if (m_ModMap.find(modId) != m_ModMap.end()) {
+        m_Logger->Error("Mod registration failed: duplicate id %s.", modId);
+        return false;
+    }
 
     // Record the mod in our registries
     m_Mods.push_back(mod);
