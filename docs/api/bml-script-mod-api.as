@@ -935,7 +935,7 @@ bool DataShareHas(const string &in key, const string &in name = "BML");
 void DataShareRemove(const string &in key, const string &in name = "BML");
 int DataShareSizeOf(const string &in key, const string &in name = "BML");
 
-// Typed IMC-backed facades. Each read returns a BML status code and
+// Typed built-in capability facades. Each read returns a BML status code and
 // writes the output only on success.  Borrow* methods create a host-owned,
 // non-retained CK handle and therefore are valid only while the object still
 // belongs to the current game scene.

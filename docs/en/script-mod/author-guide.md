@@ -21,7 +21,7 @@ If you already use CKAngelScript, read this as the BML-owned layer on top of
 CKAS. Scene objects, behavior graphs, components, raw CK/Vx bindings, messages,
 async work, and plugin extension namespaces still belong to CKAngelScript and
 its docs. BML adds mod identity, dependencies, resources, config, commands,
-logging, UI hooks, typed IMC-backed facades, DataShare, and load diagnostics.
+logging, UI hooks, typed capability APIs, DataShare, and load diagnostics.
 
 If you are exposing APIs from a native plugin, this guide tells script authors
 how they will consume those APIs. Use the CKAngelScript registration docs for
@@ -164,7 +164,7 @@ resource root, not arbitrary global include paths.
 | Delay or repeat work | `Timer` | `BML::Timer`, `ctx.AddTimer()` |
 | Control loader UI or the speedrun timer | `Input, Game State, And Loader UI` | `BML::UI::*`, `BML::Speedrun::*` |
 | Draw BML/ImGui controls | `UI`, `Advanced ImGui` | `OnProcess`, `BML::UI::*`, `ImGui::*` |
-| Read BML runtime, scene, gameplay, or event snapshots | `IMC-Backed APIs` | `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events` |
+| Read BML runtime, scene, gameplay, or event snapshots | `Built-in Capability APIs` | `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events` |
 | Expose simple shared state to another script mod | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Hook an existing behavior graph path | `CK, Physics, And Text Helpers` | CKAS `Behavior`/`BB` lookup plus `ctx.InsertHookBlock*` or `BML::Hook::*` |
@@ -222,7 +222,7 @@ callback.
 
 BML script mods run inside CKAngelScript, but a BML script mod is only one
 script shape: an AngelScript module/class that BML gives mod identity, load
-order, callbacks, resources, dependencies, typed IMC-backed facades, commands, config, logging,
+order, callbacks, resources, dependencies, typed capability APIs, commands, config, logging,
 timers, DataShare, and BML UI helpers. It is not a replacement for every CKAS
 runtime surface.
 
@@ -442,7 +442,7 @@ void RestoreState(BML::StateBag@ state) {
   through `StateBag`, read context information, and log diagnostics. They must
   not register timers, commands, hooks, DataShare requests, or irreversible
   content; they must not execute commands, write DataShare/config values, mutate
-  input state, invoke IMC-backed mutating facades, or change CK/game-world objects.
+  input state, invoke host capability mutations, or change CK/game-world objects.
   Rebuild resources in `OnLoad` after pure state has been restored.
 - Rollback restores only resources BML owns: callbacks, timers,
   commands, DataShare requests, and script runtime handles. It cannot undo
@@ -517,12 +517,13 @@ Use event snapshots for logging, decisions, and delayed work. For delayed CK
 object work, store `CK_ID` values or CKAS `ObjectRef@`-derived handles and
 resolve raw CK handles only when the operation runs.
 
-## IMC-Backed APIs
+## Built-in Capability APIs
 
-Use the shallow API facades for BML-owned read-only snapshots. A read
-returns a BML status code and changes its output only on success; an
-`ERROR_IMC_UNSUPPORTED` or source diagnostic means that only that source is
-unavailable, not that every IMC-backed capability failed.
+Use these typed APIs for BML-owned read-only snapshots. A read returns a BML
+status code and changes its output only on success. An unavailable result or
+source diagnostic applies only to that source, not to every built-in
+capability. Runtime state, clock, and score reads use the in-process loader
+state directly; scripts do not open an IMC client for those local reads.
 
 ```angelscript
 BML::Runtime::State runtime;
@@ -538,10 +539,10 @@ if (BML::Runtime::ReadState(runtime) == BML::ERROR_OK && runtime.InLevel &&
 `BML::Runtime` covers state, clock, score, and cheats. `BML::Scene` covers
 lookup and object/entity snapshots. `BML::Gameplay` covers independently
 probed gameplay sources. `BML::Events::Stream` supplies immutable event
-snapshots in hook order. Script code receives only typed facades; raw IMC
+snapshots in hook order. Script code receives typed domain values; raw IMC
 messages, providers, subscriptions, and transport handles are intentionally not
-registered in AngelScript. A native plugin can expose another typed script
-facade when it also owns the generated IMC client.
+registered in AngelScript. Native plugins can expose additional typed script
+APIs through CKAngelScript registration.
 
 ## The ModContext Object
 
@@ -574,7 +575,7 @@ Common capabilities:
 - Mod registry queries such as `FindMod`, `GetModCount`, and `GetMod`.
 - Script-owned Timer and Command registration.
 - Typed DataShare read/request helpers.
-- IMC-backed runtime, scene, gameplay, UI, and event facades. Custom generated
+- Typed runtime, scene, gameplay, and event capability APIs. Custom generated
   IMC providers remain a native-mod capability.
 
 `BorrowLogger()` and `BorrowConfig()` return BML service wrappers that may be
