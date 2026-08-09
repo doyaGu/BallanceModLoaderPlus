@@ -94,6 +94,19 @@ TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
     ExpectContainsNone(ReadTextFile(kPredefinedApi), removed, kPredefinedApi);
 }
 
+TEST(ScriptApiReferenceTest, ImcFacadeDeclarationsDoNotUseLeadingGlobalScope) {
+    const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsNone(builtinFacade,
+                       {"\"::BML::"},
+                       "src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsNone(ReadTextFile("docs/api/bml-script-mod-api.as"),
+                       {"::BML::"},
+                       "docs/api/bml-script-mod-api.as");
+    ExpectContainsNone(ReadTextFile("docs/api/as.predefined"),
+                       {"::BML::"},
+                       "docs/api/as.predefined");
+}
+
 TEST(ScriptApiReferenceTest, UiAndSpeedrunHaveDistinctResponsibilities) {
     constexpr const char *kScriptApiStub = "docs/api/bml-script-mod-api.as";
     constexpr const char *kPredefinedApi = "docs/api/as.predefined";

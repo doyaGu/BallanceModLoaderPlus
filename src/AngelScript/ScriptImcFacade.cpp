@@ -851,11 +851,11 @@ bool RegisterEvents(asIScriptEngine *engine, const char **errorMessage) {
            Register(engine, engine->RegisterObjectMethod("Event", "float get_LinearDamp() const", asMETHOD(ScriptEvent, GetLinearDamp), asCALL_THISCALL), "Event::LinearDamp", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "float get_RotDamp() const", asMETHOD(ScriptEvent, GetRotDamp), asCALL_THISCALL), "Event::RotDamp", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "string get_CollisionSurface() const", BML_AS_GENERIC_METHOD(&ScriptEvent::GetCollisionSurface), asCALL_GENERIC), "Event::CollisionSurface", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("Event", "::BML::Vec3 get_MassCenter() const", asMETHOD(ScriptEvent, GetMassCenter), asCALL_THISCALL), "Event::MassCenter", errorMessage) &&
+           Register(engine, engine->RegisterObjectMethod("Event", "BML::Vec3 get_MassCenter() const", asMETHOD(ScriptEvent, GetMassCenter), asCALL_THISCALL), "Event::MassCenter", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "int get_ConvexMeshCount() const", asMETHOD(ScriptEvent, GetConvexMeshCount), asCALL_THISCALL), "Event::ConvexMeshCount", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "CKObject@ BorrowConvexMesh(int index) const", BML_AS_GENERIC_METHOD(&ScriptEvent::BorrowConvexMesh), asCALL_GENERIC), "Event::BorrowConvexMesh", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "int get_BallCount() const", asMETHOD(ScriptEvent, GetBallCount), asCALL_THISCALL), "Event::BallCount", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("Event", "::BML::Vec3 GetBallCenter(int index) const", asMETHOD(ScriptEvent, GetBallCenter), asCALL_THISCALL), "Event::GetBallCenter", errorMessage) &&
+           Register(engine, engine->RegisterObjectMethod("Event", "BML::Vec3 GetBallCenter(int index) const", asMETHOD(ScriptEvent, GetBallCenter), asCALL_THISCALL), "Event::GetBallCenter", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "float GetBallRadius(int index) const", asMETHOD(ScriptEvent, GetBallRadius), asCALL_THISCALL), "Event::GetBallRadius", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "int get_ConcaveMeshCount() const", asMETHOD(ScriptEvent, GetConcaveMeshCount), asCALL_THISCALL), "Event::ConcaveMeshCount", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Event", "CKObject@ BorrowConcaveMesh(int index) const", BML_AS_GENERIC_METHOD(&ScriptEvent::BorrowConcaveMesh), asCALL_GENERIC), "Event::BorrowConcaveMesh", errorMessage) &&
@@ -924,8 +924,8 @@ bool RegisterScene(asIScriptEngine *engine, const char **errorMessage) {
     BML_AS_PROPERTY("ObjectInfo", "int ClassId", asOFFSET(ObjectInfo, ClassId));
     BML_AS_PROPERTY("ObjectInfo", "bool Visible", asOFFSET(ObjectInfo, Visible));
     BML_AS_PROPERTY("ObjectInfo", "bool Dynamic", asOFFSET(ObjectInfo, Dynamic));
-    BML_AS_PROPERTY("EntityTransform", "::BML::Vec3 Position", asOFFSET(EntityTransform, Position));
-    BML_AS_PROPERTY("EntityTransform", "::BML::Vec3 Scale", asOFFSET(EntityTransform, Scale));
+    BML_AS_PROPERTY("EntityTransform", "BML::Vec3 Position", asOFFSET(EntityTransform, Position));
+    BML_AS_PROPERTY("EntityTransform", "BML::Vec3 Scale", asOFFSET(EntityTransform, Scale));
     BML_AS_PROPERTY("EntityTransform", "int ChildCount", asOFFSET(EntityTransform, ChildCount));
 #undef BML_AS_PROPERTY
     return Register(engine, engine->RegisterObjectMethod("ObjectInfo", "string get_Name() const", BML_AS_STRING_FIELD_GETTER(ObjectInfo, Name), asCALL_GENERIC), "ObjectInfo::Name", errorMessage) &&
@@ -960,7 +960,7 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
 #define BML_AS_PROPERTY(Type, Declaration, Field) \
     if (!Register(engine, engine->RegisterObjectProperty(Type, Declaration, Field), Declaration, errorMessage)) return false
     BML_AS_PROPERTY("LevelState", "int Id", asOFFSET(LevelState, Id));
-    BML_AS_PROPERTY("LevelState", "::BML::Mat4 ResetMatrix", asOFFSET(LevelState, ResetMatrix));
+    BML_AS_PROPERTY("LevelState", "BML::Mat4 ResetMatrix", asOFFSET(LevelState, ResetMatrix));
     BML_AS_PROPERTY("LevelState", "int Points", asOFFSET(LevelState, Points));
     BML_AS_PROPERTY("EnergyState", "int Points", asOFFSET(EnergyState, Points));
     BML_AS_PROPERTY("EnergyState", "int Lives", asOFFSET(EnergyState, Lives));
@@ -970,7 +970,7 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
     BML_AS_PROPERTY("EnergyState", "int LifeBonus", asOFFSET(EnergyState, LifeBonus));
     BML_AS_PROPERTY("CatalogEntry", "int Bonus", asOFFSET(CatalogEntry, Bonus));
     BML_AS_PROPERTY("CatalogEntry", "int Music", asOFFSET(CatalogEntry, Music));
-    BML_AS_PROPERTY("Checkpoint", "::BML::Mat4 Matrix", asOFFSET(Checkpoint, Matrix));
+    BML_AS_PROPERTY("Checkpoint", "BML::Mat4 Matrix", asOFFSET(Checkpoint, Matrix));
 #undef BML_AS_PROPERTY
     return Register(engine, engine->RegisterObjectMethod("LevelState", "CKObject@ BorrowActiveBall() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowActiveBall), asCALL_GENERIC), "LevelState::BorrowActiveBall", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("CatalogEntry", "string get_File() const", BML_AS_STRING_FIELD_GETTER(CatalogEntry, File), asCALL_GENERIC), "CatalogEntry::File", errorMessage) &&
