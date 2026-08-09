@@ -113,11 +113,37 @@ add_test(
         NAME BmlModCmakeTest
         COMMAND "${CMAKE_COMMAND}"
                 "-DBML_MOD_CMAKE=${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
+                -DTEST_CASE=compiler
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/BmlModCmakeTest.cmake"
 )
 set_tests_properties(BmlModCmakeTest PROPERTIES
         LABELS "legacy-native;cmake"
         PASS_REGULAR_EXPRESSION "bml_add_mod requires an MSVC-compatible C\\+\\+ ABI")
+
+add_test(
+        NAME BmlModArchitectureCmakeTest
+        COMMAND "${CMAKE_COMMAND}"
+                "-DBML_MOD_CMAKE=${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
+                -DTEST_CASE=architecture
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/BmlModCmakeTest.cmake"
+)
+set_tests_properties(BmlModArchitectureCmakeTest PROPERTIES
+        LABELS "legacy-native;cmake"
+        PASS_REGULAR_EXPRESSION "bml_add_mod requires a 32-bit target")
+
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    add_test(
+            NAME BmlModRequiredExportsTest
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/BmlModRequiredExportsTest.py"
+                    --source-root "${PROJECT_SOURCE_DIR}"
+                    --cmake "${CMAKE_COMMAND}"
+                    --generator "${CMAKE_GENERATOR}"
+                    --generator-platform "${CMAKE_GENERATOR_PLATFORM}"
+    )
+    set_tests_properties(BmlModRequiredExportsTest PROPERTIES
+            LABELS "legacy-native;cmake;integration"
+            TIMEOUT 120)
+endif()
 
 if(MSVC)
     get_filename_component(BML_TOOL_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)

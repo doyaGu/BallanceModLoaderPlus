@@ -10,14 +10,22 @@ function(bml_add_mod TARGET_NAME)
     if (ARGC LESS 2)
         message(FATAL_ERROR "bml_add_mod(${TARGET_NAME}) requires at least one source file")
     endif ()
-    if (NOT MSVC)
+    if (NOT MSVC AND NOT CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
         message(FATAL_ERROR
                 "bml_add_mod requires an MSVC-compatible C++ ABI because the legacy BML native interface crosses the DLL boundary; use MSVC or clang-cl")
+    endif ()
+    if (NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+        message(FATAL_ERROR
+                "bml_add_mod requires a 32-bit target because Ballance Player is a 32-bit process; configure an x86/Win32 build")
     endif ()
 
     add_library("${TARGET_NAME}" SHARED ${ARGN})
     target_link_libraries("${TARGET_NAME}" PRIVATE BML::BML)
     target_compile_features("${TARGET_NAME}" PRIVATE cxx_std_20)
+    target_link_options("${TARGET_NAME}" PRIVATE
+            "/EXPORT:BMLEntry"
+            "/EXPORT:BMLExit"
+    )
     set_target_properties("${TARGET_NAME}" PROPERTIES
             CXX_EXTENSIONS OFF
             PREFIX ""
