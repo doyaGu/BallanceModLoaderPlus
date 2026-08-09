@@ -163,19 +163,24 @@ int HandleEcho(const Echo::EchoRequestValue &request,
 }
 
 int StartEchoProvider() {
-    int status = g_EchoProvider.Open();
-    if (status == BML_OK) {
-        status = g_EchoProvider.RegisterEcho(
-            &HandleEcho, nullptr, BML_IMC_EXECUTION_CALLER_THREAD);
-    }
-    return status;
+    Echo::Provider::Handlers handlers{};
+    handlers.Echo = &HandleEcho;
+    handlers.Execution = BML_IMC_EXECUTION_CALLER_THREAD;
+    return g_EchoProvider.Start(handlers);
 }
 
-void StopEchoProvider() {
-    (void)g_EchoProvider.UnregisterEcho();
-    (void)g_EchoProvider.Close();
+int StopEchoProvider() {
+    return g_EchoProvider.Close();
 }
 ```
+
+`Provider::Start` 是普通生命周期入口。至少需要一个非空的生成 Handler。它会打开
+Transport，使用共享的 `Userdata` 和 `Execution` 注册所有非空 Handler，并在注册失败
+时回滚 Transport。`Close` 会移除该 Transport 拥有的全部 Route，因此普通卸载不需要
+逐个注销 Endpoint。
+
+若不同 Endpoint 需要不同 Userdata、不同执行线程模式或动态注册，仍可使用底层的
+`Open`、`Register*` 和 `Unregister*`；普通 Provider 生命周期无需使用这些方法。
 
 对于 `rpc clear_cache()` 这样的无响应声明，Handler 是
 `int ClearCache(void *userdata)`，Client 调用是 `client.CallClearCache()`。存在请求时，
@@ -184,8 +189,10 @@ Handler 在 `userdata` 前接收 `const RequestValue &`；两种形式都没有�
 调用线程模式只用于短小且线程安全的代码。访问 Virtools、BML UI 或其他游戏线程状态的
 Handler 必须使用 `BML_IMC_EXECUTION_GAME_THREAD`，这也是生成接口的默认值。
 
-不传 Owner ID 的 `Open()` 会从调用 DLL 解析原生 Mod。一个 DLL 包含多个 Mod 时，
-传入明确的 Owner ID。在注销和关闭成功前，保持 Provider 与 Callback Userdata 存活。
+不传 Owner ID 的 `Start()` 会从调用 DLL 解析原生 Mod。一个 DLL 包含多个 Mod 时，
+将明确的 Owner ID 作为第二个参数传入。在 `Close()` 成功前，保持 Provider 与
+`Handlers::Userdata` 存活。若回滚或关闭返回 `BML_ERROR_BUSY`，应在当前 Callback
+返回后重试 `Close()`。
 
 ## 4. 同步或异步调用
 

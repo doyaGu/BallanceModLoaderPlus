@@ -200,19 +200,26 @@ int HandleEcho(const Echo::EchoRequestValue &request,
 }
 
 int StartEchoProvider() {
-    int status = g_EchoProvider.Open();
-    if (status == BML_OK) {
-        status = g_EchoProvider.RegisterEcho(
-            &HandleEcho, nullptr, BML_IMC_EXECUTION_CALLER_THREAD);
-    }
-    return status;
+    Echo::Provider::Handlers handlers{};
+    handlers.Echo = &HandleEcho;
+    handlers.Execution = BML_IMC_EXECUTION_CALLER_THREAD;
+    return g_EchoProvider.Start(handlers);
 }
 
-void StopEchoProvider() {
-    (void)g_EchoProvider.UnregisterEcho();
-    (void)g_EchoProvider.Close();
+int StopEchoProvider() {
+    return g_EchoProvider.Close();
 }
 ```
+
+`Provider::Start` is the normal lifecycle path. At least one generated handler
+must be non-null. It opens the transport, registers every non-null handler with
+the shared `Userdata` and `Execution` values, and rolls the transport back if
+registration fails. `Close` removes every route owned by that transport, so
+ordinary teardown does not unregister endpoints one by one.
+
+The lower-level `Open`, `Register*`, and `Unregister*` methods remain available
+when endpoints need different userdata, different execution modes, or dynamic
+registration. They are not required for the common provider lifecycle.
 
 For a response-less declaration such as `rpc clear_cache()`, the handler is
 simply `int ClearCache(void *userdata)` and the client call is
@@ -223,9 +230,11 @@ Use caller-thread execution only for short, thread-safe code. A handler that
 touches Virtools, BML UI, or other game-thread state must use
 `BML_IMC_EXECUTION_GAME_THREAD` (the generated default).
 
-`Open()` with no owner ID resolves the native mod from the calling DLL. If one
-DLL contains multiple mods, pass that mod's explicit owner ID. Keep the
-Provider and its callback userdata alive until unregister/close succeeds.
+`Start()` with no owner ID resolves the native mod from the calling DLL. If one
+DLL contains multiple mods, pass that mod's explicit owner ID as the second
+argument. Keep the Provider and `Handlers::Userdata` alive until `Close()`
+succeeds. If rollback or close returns `BML_ERROR_BUSY`, retain both and retry
+`Close()` after the active callback returns.
 
 ## 4. Call synchronously or asynchronously
 
