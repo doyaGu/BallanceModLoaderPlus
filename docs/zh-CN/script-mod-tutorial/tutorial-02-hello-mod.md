@@ -150,7 +150,7 @@ if (logger !is null) {
 | 日志里完全没有 `Loading Mod hello.script` | 文件是否在 `ModLoader/Mods/` 下；文件名后缀是否是 `.mod.as`；是否多了 `.txt` |
 | 有 `Loading Mod` 但没有 `HelloMod loaded` | 编译错误。在 `Loading Mod` 之后的日志行找 error 信息 |
 | `loaded=0` 或 `failed` 不为 0 | 向上翻日志找第一条错误行 |
-| 改了脚本但日志还是旧内容 | 确认保存了文件，然后执行 `script reload hello.script`；也可以重启 Player |
+| 改了脚本但日志还是旧内容 | 目录和单文件 mod 默认会自动热重载；先执行 `script status` 检查 watcher，再用 `script reload hello.script` 手动重载 |
 | 编辑器里有红色下划线但游戏能跑 | Language Server 和 BML 的检查独立运行，以游戏日志为准 |
 
 ## 完成状态

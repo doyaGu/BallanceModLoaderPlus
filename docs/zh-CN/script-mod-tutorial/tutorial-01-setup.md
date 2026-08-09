@@ -21,7 +21,7 @@ Player.exe  ──加载──->  BMLPlus.dll  ──包含──->  AngelScript
 
 Player.exe 是 Ballance 原版的可执行文件。它加载 `BuildingBlocks/` 目录里所有的 DLL。`BMLPlus.dll` 借此机制启动，然后扫描 `ModLoader/Mods/` 目录，对其中每个 `.mod.as` 文件调用 CKAS 编译并注册。脚本通过 BML 提供的 API 与游戏交互，比如写日志、发送游戏内消息、读按键状态、操作 Virtools 对象。
 
-脚本 mod 的整个生命周期都在游戏进程内。每次要测试改动，需要关闭游戏再重新启动。
+脚本 mod 的整个生命周期都在游戏进程内。Player 启动时发现新 mod；对于已经加载的目录或单文件 mod，保存源码后默认会由 watcher 自动热重载。新增 mod、修改 id 或改变依赖图时才需要重新启动 Player。
 
 ## 需要准备的东西
 

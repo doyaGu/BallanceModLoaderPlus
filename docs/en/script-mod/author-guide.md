@@ -65,11 +65,12 @@ line appears, the mod entry compiled, metadata was accepted, and the `OnLoad`
 callback ran. From there, add one feature at a time: a config value, a command,
 a timer, a DataShare request, a UI draw callback, or CKAngelScript scene work.
 
-After editing an already loaded script source, use `script reload <id>` or
-`script reload` for all script mods. If a reload fails, BML keeps the previous
-runtime when it can and records the full reason in `ModLoader.log`, `script
-logs`, and `script diag <id>`. When a script fails, read those diagnostics
-before guessing from symptoms in game.
+Directory and single-file script mods use automatic hot reload by default.
+After saving an already loaded source, BML watches its source root and queues a
+reload. Use `script reload <id>` to request one explicitly. If a reload fails,
+BML keeps the previous runtime when it can and records the full reason in
+`ModLoader.log`, `script logs`, and `script diag <id>`. When a script fails,
+read those diagnostics before guessing from symptoms in game.
 
 ## Before You Start
 
@@ -339,6 +340,10 @@ Hot reload replaces the script runtime for a mod that BML already discovered at
 startup. It is meant for edit/test cycles, not for changing the mod graph while
 the game is running.
 
+Automatic watching is enabled when the script runtime starts. Directory and
+single-file mods default to automatic reload; zip packages default to manual
+reload because their extracted runtime is not the authoring source.
+
 Commands:
 
 ```text
@@ -346,6 +351,8 @@ script reload              # reload all script mods
 script reload <id>         # reload one script mod
 script reload <id> --dry-run
 script reload <id> --dry-run --check-state
+script watch on            # enable automatic source watching
+script watch off           # disable automatic source watching
 script diag <id>
 script logs error
 ```
