@@ -158,6 +158,10 @@ Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志�
 - `BML::Speedrun`：共享 Speedrun 计时器。
 - `BML::Events`：带类型化附加数据的事件流。
 
+原生 `BML::Gameplay` 的集合读取函数会在调用方持有的 `std::vector` 中返回完整
+快照。目录应在初始化时读取，检查点和重置点应在关卡变化时刷新；这些调用会
+传输完整集合，不适合逐帧轮询。
+
 `DataShare` 适合共享少量命名字节数据，调用方必须遵守引用计数和借用指针
 有效期。需要演进、跨语言绑定或 RPC/Topic 语义时使用 IMC。
 

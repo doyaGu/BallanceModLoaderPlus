@@ -171,6 +171,11 @@ Built-in facades include:
 - `BML::Speedrun` for the shared speedrun timer;
 - `BML::Events` for the typed event stream.
 
+The native `BML::Gameplay` collection reads return complete snapshots in a
+caller-owned `std::vector`. Read the catalog during setup and refresh level
+checkpoints or reset points when the level changes; these calls transfer the
+complete collection and are not intended for per-frame polling.
+
 `DataShare` is suitable for small named byte values when both sides obey its
 reference-count and borrowed-pointer lifetime rules. Use IMC when an API needs
 evolution, cross-language bindings, RPC, or Topic semantics.
