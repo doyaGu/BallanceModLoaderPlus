@@ -625,3 +625,40 @@ TEST(ImcGeneratedClientTest, PublicEventFacadePreservesTopicMetadataAndTypedPayl
     int dropped = -1; ASSERT_EQ(stream.DroppedCount(dropped), BML_OK); EXPECT_EQ(dropped, 0);
     EXPECT_EQ(stream.Close(), BML_OK);
 }
+
+TEST(ImcGeneratedClientTest, PublicEventFacadeDistinguishesClosedEmptyAndReadyStates) {
+    ResetMock();
+    BML::Events::Stream stream;
+    BML::Events::Event event{};
+    event.Kind = BML_EVENT_CHEAT_CHANGED;
+
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_INVALID_HANDLE);
+    EXPECT_EQ(event.Kind, 0);
+
+    ASSERT_EQ(stream.Open(2), BML_OK);
+    event.Kind = BML_EVENT_CHEAT_CHANGED;
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(event.Kind, 0);
+
+    ASSERT_NE(g_TopicHandler, nullptr);
+    namespace Events = BML::Imc::Generated::Bml::Events;
+    Events::EventValue value{};
+    value.Kind = BML_EVENT_CHEAT_CHANGED;
+    value.HasCheatEnabled = true;
+    value.CheatEnabled = true;
+    std::vector<std::uint8_t> data(Events::EncodedEventSize(value));
+    ASSERT_EQ(Events::EncodeEvent(value, data.data(), data.size()), BML_OK);
+    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
+    message.Data = data.data();
+    message.DataSize = data.size();
+    message.PayloadType = StableId(Events::EventPayload);
+    g_TopicHandler(StableId(Events::AllRoute), &message, g_TopicUserdata);
+
+    EXPECT_EQ(stream.Poll(event), BML_OK);
+    EXPECT_EQ(event.Kind, BML_EVENT_CHEAT_CHANGED);
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(event.Kind, 0);
+
+    ASSERT_EQ(stream.Close(), BML_OK);
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_INVALID_HANDLE);
+}

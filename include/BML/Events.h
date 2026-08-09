@@ -65,9 +65,12 @@ public:
         const std::uint64_t total = runtime + m_LocalDropped; out = total > static_cast<std::uint64_t>((std::numeric_limits<int>::max)()) ? (std::numeric_limits<int>::max)() : static_cast<int>(total); return BML_OK;
     }
     int Close() { const int status = m_Subscription.Close(); if (!m_Subscription.IsOpen()) { m_Queue.clear(); m_Capacity = 0; m_LocalDropped = 0; m_PendingError = BML_OK; } return status; }
-    int Poll(Event &out) const {
-        out = {}; if (m_PendingError != BML_OK) { const int status = m_PendingError; m_PendingError = BML_OK; return status; }
-        if (m_Queue.empty()) return BML_OK; out = std::move(m_Queue.front()); m_Queue.pop_front(); return BML_OK;
+    int Poll(Event &out) {
+        out = {};
+        if (!IsOpen()) return BML_ERROR_INVALID_HANDLE;
+        if (m_PendingError != BML_OK) { const int status = m_PendingError; m_PendingError = BML_OK; return status; }
+        if (m_Queue.empty()) return BML_ERROR_NOT_FOUND;
+        out = std::move(m_Queue.front()); m_Queue.pop_front(); return BML_OK;
     }
 private:
     static void OnEvent(int status, Detail::Api::EventValue *wire, const BML_ImcMessage *message, void *userdata) noexcept {
@@ -80,7 +83,7 @@ private:
         } catch (const std::bad_alloc &) { self->m_PendingError = BML_ERROR_OUT_OF_MEMORY; } catch (...) { self->m_PendingError = BML_ERROR_FAIL; }
     }
     Imc::Generated::Bml::Events::AllSubscription m_Subscription;
-    mutable std::deque<Event> m_Queue; std::size_t m_Capacity = 0; mutable std::uint64_t m_LocalDropped = 0; mutable int m_PendingError = BML_OK;
+    std::deque<Event> m_Queue; std::size_t m_Capacity = 0; std::uint64_t m_LocalDropped = 0; int m_PendingError = BML_OK;
 };
 } // namespace BML::Events
 #endif // BML_EVENTS_H

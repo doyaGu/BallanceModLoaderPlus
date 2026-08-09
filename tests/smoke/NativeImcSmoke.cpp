@@ -221,18 +221,19 @@ private:
         int dropped = -1;
         BML::Events::Event event{};
         return m_Events.DroppedCount(dropped) == BML_OK && dropped == 0 &&
-               m_Events.Poll(event) == BML_OK;
+               m_Events.Poll(event) == BML_ERROR_NOT_FOUND;
     }
 
     bool PollForEvent(int expectedKind) {
         for (int attempt = 0; attempt < 16; ++attempt) {
             BML::Events::Event event{};
-            if (m_Events.Poll(event) != BML_OK)
+            const int status = m_Events.Poll(event);
+            if (status == BML_ERROR_NOT_FOUND)
+                return false;
+            if (status != BML_OK)
                 return false;
             if (event.Kind == expectedKind)
                 return true;
-            if (event.Kind == 0)
-                return false;
         }
         return false;
     }
