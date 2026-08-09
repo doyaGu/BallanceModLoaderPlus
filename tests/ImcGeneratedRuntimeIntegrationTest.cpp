@@ -205,23 +205,26 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
     for (int index = 0; index < 10000; ++index)
         ASSERT_TRUE(invoke());
 
-    constexpr int ThroughputIterations = 100000;
+    constexpr int ThroughputIterations = 1000000;
+    std::uint64_t failedCalls = 0;
     const auto throughputStart = std::chrono::steady_clock::now();
     for (int index = 0; index < ThroughputIterations; ++index)
-        ASSERT_TRUE(invoke());
+        failedCalls += invoke() ? 0u : 1u;
     const double seconds = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - throughputStart).count();
     const double callsPerSecond = ThroughputIterations / seconds;
 
     constexpr int LatencyIterations = 10000;
+    std::uint64_t failedLatencyCalls = 0;
     std::vector<std::uint64_t> latencies;
     latencies.reserve(LatencyIterations);
     for (int index = 0; index < LatencyIterations; ++index) {
         const auto start = std::chrono::steady_clock::now();
-        ASSERT_TRUE(invoke());
+        const bool succeeded = invoke();
         latencies.push_back(static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - start).count()));
+        failedLatencyCalls += succeeded ? 0u : 1u;
     }
     const auto percentile = latencies.begin() +
         static_cast<std::ptrdiff_t>(latencies.size() * 99 / 100);
@@ -230,6 +233,8 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
 
     RecordProperty("calls_per_second", callsPerSecond);
     RecordProperty("p99_nanoseconds", p99Ns);
+    EXPECT_EQ(failedCalls, 0u);
+    EXPECT_EQ(failedLatencyCalls, 0u);
     EXPECT_GE(callsPerSecond, 1000000.0);
     EXPECT_LE(p99Ns, 5000u);
 #endif
