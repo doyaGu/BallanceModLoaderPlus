@@ -142,9 +142,16 @@ IMC state during unload, but explicit shutdown is still required:
 4. unregister provider callbacks;
 5. close providers and clients.
 
-Closing a client, unregistering a provider, or closing a subscription is a
-callback-quiescence boundary. Calling the same teardown operation recursively
-from its active callback returns `BML_ERROR_BUSY` instead of deadlocking.
+Closing a client or subscription from one of its active callbacks immediately
+prevents new dispatch and defers final removal until the outermost callback
+returns. This also makes generated Provider and Subscription destruction safe
+from their own game-thread callbacks. Unregistering one provider route directly
+still returns `BML_ERROR_BUSY` when called recursively; use generated
+`Provider::Close` for whole-provider teardown.
+
+Caller-thread handlers may run concurrently. Before destroying shared Provider
+or callback data from such a handler, the author must first ensure that no
+other caller-thread handler is using it.
 
 Opaque handles become invalid immediately after successful release. Treat
 `BML_ERROR_INVALID_HANDLE` as a stale-owner or double-release programming

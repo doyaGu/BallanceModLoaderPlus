@@ -245,9 +245,15 @@ touches Virtools, BML UI, or other game-thread state must use
 
 `Start()` with no owner ID resolves the native mod from the calling DLL. If one
 DLL contains multiple mods, pass that mod's explicit owner ID as the second
-argument. Keep the Provider and `Handlers::Userdata` alive until `Close()`
-succeeds. If rollback or close returns `BML_ERROR_BUSY`, retain both and retry
-`Close()` after the active callback returns.
+argument. `Provider::Close` also works from one of that Provider's callbacks:
+it prevents another dispatch immediately and completes removal after the
+outermost callback returns. A generated Provider may therefore be destroyed by
+its own game-thread Handler without a retry state machine.
+
+Caller-thread Handlers may run concurrently. Synchronize them before destroying
+their shared Provider or `Handlers::Userdata` from a Handler. The lower-level
+`Unregister*` methods still return `BML_ERROR_BUSY` when called recursively;
+retain the Provider and retry an individual unregister after the callback.
 
 ## 4. Call synchronously or asynchronously
 
@@ -333,8 +339,12 @@ int status = client.SubscribeChanged(subscription, &OnChanged, nullptr, 256,
     BML_IMC_EXECUTION_GAME_THREAD);
 ```
 
-Keep the subscription and callback userdata alive until `Close()` succeeds.
-Use `DroppedCount()` to observe backpressure loss.
+`Close()` may be called from the subscription's own callback. It prevents new
+delivery immediately and completes removal after the outermost callback
+returns, so a generated subscription may be destroyed by its own game-thread
+callback. Caller-thread callbacks must be synchronized before destroying
+shared subscription or callback data. Use `DroppedCount()` to observe
+backpressure loss.
 
 ## 6. Diagnose failures
 
@@ -347,8 +357,8 @@ All generated methods return BML status codes. Log both the code and
 - `BML_ERROR_WRONG_THREAD`: a pending future was synchronously waited on the
   game thread;
 - `BML_ERROR_WOULD_BLOCK`: a bounded queue using FAIL backpressure is full;
-- `BML_ERROR_BUSY`: a teardown or future replacement would violate lifetime
-  rules.
+- `BML_ERROR_BUSY`: an individual provider-route unregister or future
+  replacement would violate lifetime rules.
 
 Close subscriptions and providers before destroying callback userdata. Close
 clients before unloading the native DLL. Owner cleanup is the final safety net,

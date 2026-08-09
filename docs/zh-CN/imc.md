@@ -119,8 +119,13 @@ Client 和 Provider 都关联一个 Mod Owner。BML 会在 Mod 卸载时撤销�
 4. 注销 Provider 回调；
 5. 关闭 Provider 和 Client。
 
-关闭 Client、注销 Provider 或关闭 Subscription 都是回调静止边界。从当前正在执行
-的回调中递归执行同一关闭操作会返回 `BML_ERROR_BUSY`，而不是死锁。
+在 Client 或 Subscription 自己的活动回调中关闭它时，Runtime 会立即阻止新的分派，
+并在最外层回调返回后完成删除。因此，生成的 Provider 和 Subscription 可以在自己的
+游戏线程回调中安全销毁。若在 Provider 回调中直接注销单个 Route，仍会返回
+`BML_ERROR_BUSY`；关闭整个 Provider 时应使用生成的 `Provider::Close`。
+
+调用线程 Handler 可能并发执行。在其中销毁共享的 Provider 或 Callback 数据前，
+作者必须先确保其他调用线程 Handler 已不再使用这些对象。
 
 不透明句柄在成功释放后立即失效。`BML_ERROR_INVALID_HANDLE` 表示过期 Owner 或重复
 释放等编程错误，不是可恢复的路由失败。

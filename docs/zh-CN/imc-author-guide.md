@@ -199,9 +199,13 @@ Handler 在 `userdata` 前接收 `const RequestValue &`；两种形式都没有�
 Handler 必须使用 `BML_IMC_EXECUTION_GAME_THREAD`，这也是生成接口的默认值。
 
 不传 Owner ID 的 `Start()` 会从调用 DLL 解析原生 Mod。一个 DLL 包含多个 Mod 时，
-将明确的 Owner ID 作为第二个参数传入。在 `Close()` 成功前，保持 Provider 与
-`Handlers::Userdata` 存活。若回滚或关闭返回 `BML_ERROR_BUSY`，应在当前 Callback
-返回后重试 `Close()`。
+将明确的 Owner ID 作为第二个参数传入。`Provider::Close` 可以从该 Provider 自己的
+回调中调用：它会立即阻止新的分派，并在最外层回调返回后完成删除。因此，生成的
+Provider 可以在自己的游戏线程 Handler 中销毁，无需维护重试状态。
+
+调用线程 Handler 可能并发执行。在 Handler 中销毁共享 Provider 或
+`Handlers::Userdata` 前，必须先同步这些 Handler。底层 `Unregister*` 若从对应回调中
+递归调用，仍会返回 `BML_ERROR_BUSY`；应保留 Provider，并在回调返回后重试单个注销。
 
 ## 4. 同步或异步调用
 
@@ -281,7 +285,9 @@ int status = client.SubscribeChanged(subscription, &OnChanged, nullptr, 256,
     BML_IMC_EXECUTION_GAME_THREAD);
 ```
 
-在 `Close()` 成功前保持 Subscription 和 Callback Userdata 存活。使用
+`Close()` 可以从 Subscription 自己的回调中调用。它会立即阻止新的投递，并在最外层
+回调返回后完成删除，因此生成的 Subscription 可以在自己的游戏线程回调中销毁。
+销毁共享 Subscription 或 Callback 数据前，必须先同步调用线程回调。使用
 `DroppedCount()` 观察背压导致的消息丢失。
 
 ## 6. 诊断失败
@@ -293,7 +299,7 @@ int status = client.SubscribeChanged(subscription, &OnChanged, nullptr, 256,
 - `BML_ERROR_IMC_API_MISMATCH`：收到的载荷类型与生成端点不一致；
 - `BML_ERROR_WRONG_THREAD`：在游戏线程同步等待游戏线程 Future；
 - `BML_ERROR_WOULD_BLOCK`：使用 FAIL 背压的有界队列已满；
-- `BML_ERROR_BUSY`：关闭或替换 Future 会违反生命周期规则。
+- `BML_ERROR_BUSY`：注销单个 Provider Route 或替换 Future 会违反生命周期规则。
 
 销毁 Callback Userdata 前先关闭 Subscription 和 Provider，卸载原生 DLL 前先关闭
 Client。Owner Cleanup 是最后的安全网，不是正常生命周期机制。
