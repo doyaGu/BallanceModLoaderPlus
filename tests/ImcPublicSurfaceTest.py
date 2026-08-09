@@ -81,6 +81,13 @@ def main() -> int:
         if "BML_EXPORT" in read(root, relative):
             raise AssertionError(f"{relative} introduces an exported C++ IMC helper")
 
+    gameplay = read(root, "include/BML/Gameplay.h")
+    for cursor in ("Catalog", "Checkpoints", "Resetpoints"):
+        if re.search(rf"\bclass\s+{cursor}\b", gameplay):
+            raise AssertionError(
+                f"Gameplay.h reintroduces the client-side {cursor} cursor"
+            )
+
     for header in (root / "include/BML/Generated").glob("*_imc.hpp"):
         generated = header.read_text(encoding="utf-8")
         if "BML_EXPORT" in generated:
