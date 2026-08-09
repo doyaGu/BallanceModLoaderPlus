@@ -1088,7 +1088,7 @@ def append_imc_codec(lines: list[str], api: ApiDefinition, record: Record) -> No
         condition = f"value.Has{member} && " if field.optional else ""
         lines.append(f"    if ({condition}!{add_size}) return 0;")
     lines.extend(["    return size;", "}", ""])
-    lines.append(f"inline int Encode{name}(const {value} &value, void *data, std::size_t size) noexcept {{")
+    lines.append(f"[[nodiscard]] inline int Encode{name}(const {value} &value, void *data, std::size_t size) noexcept {{")
     lines.append(f"    if (size != Encoded{name}Size(value)) return BML_ERROR_INVALID_PARAMETER;")
     lines.append("    ::BML::Imc::Wire::Writer writer(data, size);")
     lines.append("    int status = writer.Begin();")
@@ -1102,7 +1102,7 @@ def append_imc_codec(lines: list[str], api: ApiDefinition, record: Record) -> No
         condition = f"status == BML_OK && value.Has{member}" if field.optional else "status == BML_OK"
         lines.append(f"    if ({condition}) status = {call};")
     lines.extend(["    return status == BML_OK ? writer.Finish() : status;", "}", ""])
-    lines.append(f"inline int Decode{name}(const BML_ImcMessage &message, {value} &out) {{")
+    lines.append(f"[[nodiscard]] inline int Decode{name}(const BML_ImcMessage &message, {value} &out) {{")
     lines.append("    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;")
     lines.append("    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);")
     lines.append("    int status = reader.Begin();")
@@ -1161,7 +1161,7 @@ def append_imc_subscriptions(lines: list[str], api: ApiDefinition) -> None:
             f"    {name}Subscription() = default;", f"    ~{name}Subscription() {{ (void)Close(); }}",
             f"    {name}Subscription(const {name}Subscription &) = delete;",
             f"    {name}Subscription &operator=(const {name}Subscription &) = delete;",
-            "    int Open(BML_ImcClient client, BML_ImcTopicId topic, BML_ImcPayloadTypeId payload,",
+            "    [[nodiscard]] int Open(BML_ImcClient client, BML_ImcTopicId topic, BML_ImcPayloadTypeId payload,",
             "             Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,",
             "             BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST,",
             "             BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {",
@@ -1172,13 +1172,13 @@ def append_imc_subscriptions(lines: list[str], api: ApiDefinition) -> None:
             "        options.Execution = execution; options.Backpressure = backpressure; options.Capacity = capacity; options.ExpectedPayloadType = payload;",
             "        const int status = BML_Imc_Subscribe(client, topic, &options, &Dispatch, this, &m_Subscription);",
             "        if (status != BML_OK) Reset(); return status;", "    }",
-            "    int Close() noexcept {",
+            "    [[nodiscard]] int Close() noexcept {",
             "        if (!m_Subscription) return BML_OK;",
             "        const int status = BML_Imc_Unsubscribe(m_Client, m_Subscription);",
             "        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) Reset();",
             "        return status;", "    }",
             "    bool IsOpen() const noexcept { return m_Subscription != nullptr; }",
-            "    int DroppedCount(std::uint64_t &out) const noexcept {",
+            "    [[nodiscard]] int DroppedCount(std::uint64_t &out) const noexcept {",
             "        return m_Subscription ? BML_Imc_GetSubscriptionDroppedCount(m_Client, m_Subscription, &out) : BML_ERROR_INVALID_HANDLE;", "    }",
             "private:",
             "    static void Dispatch(BML_ImcTopicId, const BML_ImcMessage *message, void *userdata) noexcept {",
@@ -1211,12 +1211,12 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
             lines.append(f"    using {name}Future = ::BML::Imc::RpcFuture<void>;")
     lines.extend([
         "",
-        "    int Open(const char *ownerId = nullptr) noexcept {",
+        "    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {",
         "        const int closeStatus = Close(); if (m_Client) return closeStatus;",
         "        BML_ImcClient client = nullptr;",
         "        const int status = BML_Imc_OpenClient(ownerId, &client);",
         "        return status == BML_OK ? Adopt(client) : status;", "    }",
-        "    int Adopt(BML_ImcClient client) noexcept {",
+        "    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {",
         "        const int closeStatus = Close(); if (m_Client) return closeStatus;",
         "        if (!client) return BML_ERROR_INVALID_PARAMETER;",
         "        m_Client = client;", "        int status = BML_OK;",
@@ -1232,13 +1232,13 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
             lines.append(f"        if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, {name}Route, &m_{name}Rpc);")
     lines.extend([
         "        if (status != BML_OK) (void)Close();", "        return status;", "    }",
-        "    int Close() noexcept {", "        if (!m_Client) return BML_OK;",
+        "    [[nodiscard]] int Close() noexcept {", "        if (!m_Client) return BML_OK;",
         "        const int status = BML_Imc_CloseClient(m_Client);",
         "        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }",
         "        return status;", "    }",
         "    BML_ImcClient Handle() const noexcept { return m_Client; }",
         "    bool IsOpen() const noexcept { return m_Client != nullptr; }",
-        "    int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }",
+        "    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }",
     ])
     for record in api.schemas:
         name = camel(record.name)
@@ -1251,7 +1251,7 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
             lines.append(f"    BML_ImcRpcId {name}RpcId() const noexcept {{ return m_{name}Rpc; }}")
         if endpoint.kind == "rpc":
             lines.extend([
-                f"    int Is{name}Available(bool &out) const noexcept {{",
+                f"    [[nodiscard]] int Is{name}Available(bool &out) const noexcept {{",
                 "        int available = 0;",
                 f"        const int status = BML_Imc_IsRpcAvailable(m_Client, m_{name}Rpc, &available);",
                 "        if (status == BML_OK) out = available != 0;",
@@ -1269,7 +1269,7 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
                 input_name = camel(input_record.name)
                 input_value = value_name(input_record)
                 lines.extend([
-                    f"    int BeginCall{name}(const {input_value} &input, {name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
+                    f"    [[nodiscard]] int BeginCall{name}(const {input_value} &input, {name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
                     "        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};",
                     f"        int status = ::BML::Imc::EncodeMessage(input, m_{input_name}Payload, buffer, request, Encoded{input_name}Size, Encode{input_name});",
                 ])
@@ -1283,7 +1283,7 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
                     await_expression = "future.AwaitResult(timeoutMs)"
                 lines.extend([
                     "    }",
-                    f"    int Call{name}({call_signature}) {{",
+                    f"    [[nodiscard]] int Call{name}({call_signature}) {{",
                     f"        {name}Future future; int status = BeginCall{name}(input, future, timeoutMs);",
                     f"        return status == BML_OK ? {await_expression} : status;", "    }",
                 ])
@@ -1297,9 +1297,9 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
                     call_signature = "std::uint32_t timeoutMs = 5000u"
                     await_expression = "future.AwaitResult(timeoutMs)"
                 lines.extend([
-                    f"    int BeginCall{name}({name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
+                    f"    [[nodiscard]] int BeginCall{name}({name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
                     f"        return {begin_expression};", "    }",
-                    f"    int Call{name}({call_signature}) {{",
+                    f"    [[nodiscard]] int Call{name}({call_signature}) {{",
                     f"        {name}Future future; int status = BeginCall{name}(future, timeoutMs);",
                     f"        return status == BML_OK ? {await_expression} : status;", "    }",
                 ])
@@ -1308,11 +1308,11 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
             output_name = camel(output.name)
             output_value = value_name(output)
             lines.extend([
-                f"    int Publish{name}(const {output_value} &value, std::size_t *outDelivered = nullptr) noexcept {{",
+                f"    [[nodiscard]] int Publish{name}(const {output_value} &value, std::size_t *outDelivered = nullptr) noexcept {{",
                 f"        return ::BML::Imc::Publish(m_Client, m_{name}Topic, m_{output_name}Payload, value, Encoded{output_name}Size, Encode{output_name}, outDelivered);", "    }",
-                f"    int Get{name}SubscriberCount(std::size_t &outCount) const noexcept {{",
+                f"    [[nodiscard]] int Get{name}SubscriberCount(std::size_t &outCount) const noexcept {{",
                 f"        return BML_Imc_GetTopicSubscriberCount(m_Client, m_{name}Topic, &outCount);", "    }",
-                f"    int Subscribe{name}({name}Subscription &out, {name}Subscription::Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,",
+                f"    [[nodiscard]] int Subscribe{name}({name}Subscription &out, {name}Subscription::Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,",
                 "                     BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {",
                 f"        return out.Open(m_Client, m_{name}Topic, m_{output_name}Payload, handler, userdata, capacity, backpressure, execution);", "    }",
             ])
@@ -1363,12 +1363,12 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
         lines.append(f"        {name}Handler {name} = nullptr;")
     lines.extend([
         "    };", "",
-        "    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }",
-        "    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }",
+        "    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }",
+        "    [[nodiscard]] int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }",
         "    bool IsOpen() const noexcept { return m_Transport.IsOpen(); }",
         "    Client &Transport() noexcept { return m_Transport; }",
         "    const Client &Transport() const noexcept { return m_Transport; }", "",
-        "    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {",
+        "    [[nodiscard]] int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {",
         "        if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;",
         f"        if (!({' || '.join(f'handlers.{camel(endpoint.name)}' for endpoint in rpc_endpoints)})) return BML_ERROR_INVALID_PARAMETER;",
         "        if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;",
@@ -1386,14 +1386,14 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
         lines.extend([
-            f"    int Register{name}({name}Handler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {{",
+            f"    [[nodiscard]] int Register{name}({name}Handler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {{",
             "        if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;",
             f"        if (m_{name}.Registered) return BML_ERROR_ALREADY_EXISTS;",
             f"        m_{name} = {{this, handler, userdata, false}};",
             "        BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT; options.Execution = execution;",
             f"        const int status = BML_Imc_RegisterRpc(m_Transport.Handle(), m_Transport.{name}RpcId(), &options, &{name}Thunk, &m_{name});",
             f"        if (status == BML_OK) m_{name}.Registered = true; else m_{name} = {{}};", "        return status;", "    }",
-            f"    int Unregister{name}() noexcept {{", f"        if (!m_{name}.Registered) return BML_ERROR_NOT_FOUND;",
+            f"    [[nodiscard]] int Unregister{name}() noexcept {{", f"        if (!m_{name}.Registered) return BML_ERROR_NOT_FOUND;",
             f"        const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.{name}RpcId());",
             f"        if (status == BML_OK) m_{name} = {{}};", "        return status;", "    }", "",
         ])
@@ -1405,7 +1405,7 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
         output_value = value_name(output) if output else ""
         lines.append(f"    struct {name}Slot {{ Provider *Owner = nullptr; {name}Handler Function = nullptr; void *Userdata = nullptr; bool Registered = false; }};")
         lines.extend([
-            f"    static int {name}Thunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *{'response' if output else ''}, void *userdata) noexcept {{",
+            f"    [[nodiscard]] static int {name}Thunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *{'response' if output else ''}, void *userdata) noexcept {{",
             f"        auto *slot = static_cast<{name}Slot *>(userdata);",
             "        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;",
             "        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;",

@@ -22,11 +22,11 @@ namespace Detail {
 namespace Api = Imc::Generated::Bml::Events;
 inline Imc::LazyClient<Api::Client> &ClientState() { static Imc::LazyClient<Api::Client> state; return state; }
 inline Api::Client &Client() { return ClientState().Get(); }
-inline int RequireApi() { return ClientState().EnsureOpen(); }
+[[nodiscard]] inline int RequireApi() { return ClientState().EnsureOpen(); }
 inline bool IsLoadKind(int kind) { return kind == BML_EVENT_LOAD_OBJECT || kind == BML_EVENT_LOAD_SCRIPT; }
 inline bool IsPhysicsKind(int kind) { return kind == BML_EVENT_PHYSICALIZE || kind == BML_EVENT_UNPHYSICALIZE; }
 inline bool IsCommandKind(int kind) { return kind == BML_EVENT_COMMAND_PRE || kind == BML_EVENT_COMMAND_POST; }
-inline int Decode(Api::EventValue &&wire, const BML_ImcMessage &message, Event &out) {
+[[nodiscard]] inline int Decode(Api::EventValue &&wire, const BML_ImcMessage &message, Event &out) {
     Event value{}; value.Kind = wire.Kind; value.Sequence = message.MessageId; value.Timestamp = message.TimestampNs;
     if (IsLoadKind(value.Kind)) {
         if (!wire.HasFilename || !wire.HasIsMap || !wire.HasMasterName || !wire.HasFilterClass || !wire.HasAddToScene || !wire.HasReuseMeshes || !wire.HasReuseMaterials || !wire.HasDynamic) return BML_ERROR_MALFORMED_MESSAGE;
@@ -52,7 +52,7 @@ inline int Decode(Api::EventValue &&wire, const BML_ImcMessage &message, Event &
 } // namespace Detail
 class Stream final {
 public:
-    int Open(int capacity = 256) {
+    [[nodiscard]] int Open(int capacity = 256) {
         const int closeStatus = Close(); if (IsOpen()) return closeStatus;
         if (capacity < 0) return BML_ERROR_INVALID_PARAMETER; if (capacity == 0) capacity = 256;
         int status = Detail::RequireApi(); if (status != BML_OK) return status;
@@ -60,12 +60,12 @@ public:
         return Detail::Client().SubscribeAll(m_Subscription, &OnEvent, this, static_cast<std::uint32_t>(capacity));
     }
     bool IsOpen() const { return m_Subscription.IsOpen(); }
-    int DroppedCount(int &out) const {
+    [[nodiscard]] int DroppedCount(int &out) const {
         std::uint64_t runtime = 0; const int status = m_Subscription.DroppedCount(runtime); if (status != BML_OK) return status;
         const std::uint64_t total = runtime + m_LocalDropped; out = total > static_cast<std::uint64_t>((std::numeric_limits<int>::max)()) ? (std::numeric_limits<int>::max)() : static_cast<int>(total); return BML_OK;
     }
-    int Close() { const int status = m_Subscription.Close(); if (!m_Subscription.IsOpen()) { m_Queue.clear(); m_Capacity = 0; m_LocalDropped = 0; m_PendingError = BML_OK; } return status; }
-    int Poll(Event &out) {
+    [[nodiscard]] int Close() { const int status = m_Subscription.Close(); if (!m_Subscription.IsOpen()) { m_Queue.clear(); m_Capacity = 0; m_LocalDropped = 0; m_PendingError = BML_OK; } return status; }
+    [[nodiscard]] int Poll(Event &out) {
         out = {};
         if (!IsOpen()) return BML_ERROR_INVALID_HANDLE;
         if (m_PendingError != BML_OK) { const int status = m_PendingError; m_PendingError = BML_OK; return status; }

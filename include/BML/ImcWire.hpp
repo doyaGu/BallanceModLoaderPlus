@@ -191,19 +191,19 @@ public:
     Writer(void *data, std::size_t size) noexcept
         : m_Data(static_cast<std::uint8_t *>(data)), m_Size(size) {}
 
-    int Begin() noexcept {
+    [[nodiscard]] int Begin() noexcept {
         if (m_Started || (m_Size && !m_Data)) return BML_ERROR_INVALID_PARAMETER;
         m_Cursor = 0;
         m_Started = true;
         return BML_OK;
     }
 
-    int Finish() const noexcept {
+    [[nodiscard]] int Finish() const noexcept {
         return m_Started && m_Cursor == m_Size
             ? BML_OK : BML_ERROR_MALFORMED_MESSAGE;
     }
 
-    int WriteBool(std::uint32_t id, bool value) noexcept {
+    [[nodiscard]] int WriteBool(std::uint32_t id, bool value) noexcept {
         void *storage = nullptr;
         const int status = ReserveFixed(id, Kind::VarUInt, 1, &storage);
         if (status == BML_OK)
@@ -211,51 +211,51 @@ public:
         return status;
     }
 
-    int WriteInt(std::uint32_t id, int value) noexcept {
+    [[nodiscard]] int WriteInt(std::uint32_t id, int value) noexcept {
         return WriteFixed32(id, static_cast<std::uint32_t>(value));
     }
-    int WriteFloat(std::uint32_t id, float value) noexcept {
+    [[nodiscard]] int WriteFloat(std::uint32_t id, float value) noexcept {
         return WriteFixed32(id, std::bit_cast<std::uint32_t>(value));
     }
-    int WriteInt64(std::uint32_t id, std::int64_t value) noexcept {
+    [[nodiscard]] int WriteInt64(std::uint32_t id, std::int64_t value) noexcept {
         return WriteFixed64(id, std::bit_cast<std::uint64_t>(value));
     }
-    int WriteUInt64(std::uint32_t id, std::uint64_t value) noexcept {
+    [[nodiscard]] int WriteUInt64(std::uint32_t id, std::uint64_t value) noexcept {
         return WriteFixed64(id, value);
     }
-    int WriteDouble(std::uint32_t id, double value) noexcept {
+    [[nodiscard]] int WriteDouble(std::uint32_t id, double value) noexcept {
         return WriteFixed64(id, std::bit_cast<std::uint64_t>(value));
     }
-    int WriteString(std::uint32_t id, std::string_view value) noexcept {
+    [[nodiscard]] int WriteString(std::uint32_t id, std::string_view value) noexcept {
         return WriteLengthDelimited(id, value.data(), value.size());
     }
-    int WriteBytes(std::uint32_t id,
+    [[nodiscard]] int WriteBytes(std::uint32_t id,
                    const std::vector<std::uint8_t> &value) noexcept {
         return WriteLengthDelimited(id, value.data(), value.size());
     }
-    int WriteObject(std::uint32_t id, const BML_ObjectRef &value) noexcept {
+    [[nodiscard]] int WriteObject(std::uint32_t id, const BML_ObjectRef &value) noexcept {
         std::uint8_t encoded[12];
         Detail::Store32(encoded, value.Domain);
         Detail::Store32(encoded + 4, value.Slot);
         Detail::Store32(encoded + 8, value.Generation);
         return WriteLengthDelimited(id, encoded, sizeof(encoded));
     }
-    int WriteVec2(std::uint32_t id, const BML_Vec2 &value) noexcept {
+    [[nodiscard]] int WriteVec2(std::uint32_t id, const BML_Vec2 &value) noexcept {
         std::uint8_t encoded[8];
         EncodeFloatObject(encoded, value);
         return WriteLengthDelimited(id, encoded, sizeof(encoded));
     }
-    int WriteVec3(std::uint32_t id, const BML_Vec3 &value) noexcept {
+    [[nodiscard]] int WriteVec3(std::uint32_t id, const BML_Vec3 &value) noexcept {
         std::uint8_t encoded[12];
         EncodeFloatObject(encoded, value);
         return WriteLengthDelimited(id, encoded, sizeof(encoded));
     }
-    int WriteMat4(std::uint32_t id, const BML_Mat4 &value) noexcept {
+    [[nodiscard]] int WriteMat4(std::uint32_t id, const BML_Mat4 &value) noexcept {
         std::uint8_t encoded[64];
         EncodeFloatObject(encoded, value);
         return WriteLengthDelimited(id, encoded, sizeof(encoded));
     }
-    int WriteBoolArray(std::uint32_t id,
+    [[nodiscard]] int WriteBoolArray(std::uint32_t id,
                        const std::vector<bool> &values) noexcept {
         void *storage = nullptr;
         const int status = ReserveLengthDelimited(id, values.size(), &storage);
@@ -265,42 +265,42 @@ public:
             out[index] = values[index] ? 1 : 0;
         return BML_OK;
     }
-    int WriteIntArray(std::uint32_t id,
+    [[nodiscard]] int WriteIntArray(std::uint32_t id,
                       const std::vector<int> &values) noexcept {
         return WriteFixedArray(id, values, 4,
             [](std::uint8_t *out, int value) {
                 Detail::Store32(out, static_cast<std::uint32_t>(value));
             });
     }
-    int WriteFloatArray(std::uint32_t id,
+    [[nodiscard]] int WriteFloatArray(std::uint32_t id,
                         const std::vector<float> &values) noexcept {
         return WriteFixedArray(id, values, 4,
             [](std::uint8_t *out, float value) {
                 Detail::Store32(out, std::bit_cast<std::uint32_t>(value));
             });
     }
-    int WriteInt64Array(std::uint32_t id,
+    [[nodiscard]] int WriteInt64Array(std::uint32_t id,
                         const std::vector<std::int64_t> &values) noexcept {
         return WriteFixedArray(id, values, 8,
             [](std::uint8_t *out, std::int64_t value) {
                 Detail::Store64(out, std::bit_cast<std::uint64_t>(value));
             });
     }
-    int WriteUInt64Array(std::uint32_t id,
+    [[nodiscard]] int WriteUInt64Array(std::uint32_t id,
                          const std::vector<std::uint64_t> &values) noexcept {
         return WriteFixedArray(id, values, 8,
             [](std::uint8_t *out, std::uint64_t value) {
                 Detail::Store64(out, value);
             });
     }
-    int WriteDoubleArray(std::uint32_t id,
+    [[nodiscard]] int WriteDoubleArray(std::uint32_t id,
                          const std::vector<double> &values) noexcept {
         return WriteFixedArray(id, values, 8,
             [](std::uint8_t *out, double value) {
                 Detail::Store64(out, std::bit_cast<std::uint64_t>(value));
             });
     }
-    int WriteStringArray(std::uint32_t id,
+    [[nodiscard]] int WriteStringArray(std::uint32_t id,
                          const std::vector<std::string> &values) noexcept {
         std::size_t payload = 0;
         if (!StringArrayPayloadSize(values, payload))
@@ -317,7 +317,7 @@ public:
         }
         return BML_OK;
     }
-    int WriteObjectArray(std::uint32_t id,
+    [[nodiscard]] int WriteObjectArray(std::uint32_t id,
                          const std::vector<BML_ObjectRef> &values) noexcept {
         return WriteFixedArray(id, values, 12,
             [](std::uint8_t *out, const BML_ObjectRef &value) {
@@ -326,21 +326,21 @@ public:
                 Detail::Store32(out + 8, value.Generation);
             });
     }
-    int WriteVec2Array(std::uint32_t id,
+    [[nodiscard]] int WriteVec2Array(std::uint32_t id,
                        const std::vector<BML_Vec2> &values) noexcept {
         return WriteFloatObjectArray(id, values, 8);
     }
-    int WriteVec3Array(std::uint32_t id,
+    [[nodiscard]] int WriteVec3Array(std::uint32_t id,
                        const std::vector<BML_Vec3> &values) noexcept {
         return WriteFloatObjectArray(id, values, 12);
     }
-    int WriteMat4Array(std::uint32_t id,
+    [[nodiscard]] int WriteMat4Array(std::uint32_t id,
                        const std::vector<BML_Mat4> &values) noexcept {
         return WriteFloatObjectArray(id, values, 64);
     }
 
 private:
-    int ReserveFixed(std::uint32_t id, Kind kind, std::size_t payload,
+    [[nodiscard]] int ReserveFixed(std::uint32_t id, Kind kind, std::size_t payload,
                      void **data) noexcept {
         if (!data || !m_Started) return BML_ERROR_INVALID_PARAMETER;
         std::uint32_t tag = 0;
@@ -356,7 +356,7 @@ private:
         return BML_OK;
     }
 
-    int ReserveLengthDelimited(std::uint32_t id, std::size_t payload,
+    [[nodiscard]] int ReserveLengthDelimited(std::uint32_t id, std::size_t payload,
                                void **data) noexcept {
         if (!data || !m_Started || payload > UINT32_MAX)
             return BML_ERROR_INVALID_PARAMETER;
@@ -377,7 +377,7 @@ private:
         return BML_OK;
     }
 
-    int WriteLengthDelimited(std::uint32_t id, const void *data,
+    [[nodiscard]] int WriteLengthDelimited(std::uint32_t id, const void *data,
                              std::size_t size) noexcept {
         if (size && !data) return BML_ERROR_INVALID_PARAMETER;
         void *destination = nullptr;
@@ -386,14 +386,14 @@ private:
         return status;
     }
 
-    int WriteFixed32(std::uint32_t id, std::uint32_t value) noexcept {
+    [[nodiscard]] int WriteFixed32(std::uint32_t id, std::uint32_t value) noexcept {
         void *storage = nullptr;
         const int status = ReserveFixed(id, Kind::Fixed32, 4, &storage);
         if (status == BML_OK) Detail::Store32(storage, value);
         return status;
     }
 
-    int WriteFixed64(std::uint32_t id, std::uint64_t value) noexcept {
+    [[nodiscard]] int WriteFixed64(std::uint32_t id, std::uint64_t value) noexcept {
         void *storage = nullptr;
         const int status = ReserveFixed(id, Kind::Fixed64, 8, &storage);
         if (status == BML_OK) Detail::Store64(storage, value);
@@ -401,7 +401,7 @@ private:
     }
 
     template <class Range, class Encoder>
-    int WriteFixedArray(std::uint32_t id, const Range &values,
+    [[nodiscard]] int WriteFixedArray(std::uint32_t id, const Range &values,
                         std::size_t elementSize, Encoder encode) noexcept {
         std::size_t payload = 0;
         if (!FixedArrayPayloadSize(values.size(), elementSize, payload))
@@ -416,7 +416,7 @@ private:
     }
 
     template <class T>
-    int WriteFloatObjectArray(std::uint32_t id, const std::vector<T> &values,
+    [[nodiscard]] int WriteFloatObjectArray(std::uint32_t id, const std::vector<T> &values,
                               std::size_t elementSize) noexcept {
         return WriteFixedArray(id, values, elementSize,
             [](std::uint8_t *out, const T &value) {
@@ -459,7 +459,7 @@ public:
     Reader(const void *data, std::size_t size) noexcept
         : m_Data(static_cast<const std::uint8_t *>(data)), m_Size(size) {}
 
-    int Begin() noexcept {
+    [[nodiscard]] int Begin() noexcept {
         if (m_Started || (m_Size && !m_Data))
             return BML_ERROR_MALFORMED_MESSAGE;
         m_Cursor = 0;
@@ -467,7 +467,7 @@ public:
         return BML_OK;
     }
 
-    int Next(FieldView &out) noexcept {
+    [[nodiscard]] int Next(FieldView &out) noexcept {
         if (!m_Started) return BML_ERROR_MALFORMED_MESSAGE;
         if (m_Cursor == m_Size) return BML_ERROR_NOT_FOUND;
         std::uint32_t tag = 0;
@@ -511,74 +511,74 @@ public:
         return BML_OK;
     }
 
-    int Finish() const noexcept {
+    [[nodiscard]] int Finish() const noexcept {
         return m_Started && m_Cursor == m_Size
             ? BML_OK : BML_ERROR_MALFORMED_MESSAGE;
     }
 
-    static int ReadBool(const FieldView &field, bool &out) noexcept {
+    [[nodiscard]] static int ReadBool(const FieldView &field, bool &out) noexcept {
         if (field.WireKind != Kind::VarUInt) return BML_ERROR_TYPE_MISMATCH;
         if (field.Size != 1 || field.Data[0] > 1)
             return BML_ERROR_MALFORMED_MESSAGE;
         out = field.Data[0] != 0;
         return BML_OK;
     }
-    static int ReadInt(const FieldView &field, int &out) noexcept {
+    [[nodiscard]] static int ReadInt(const FieldView &field, int &out) noexcept {
         if (field.WireKind != Kind::Fixed32) return BML_ERROR_TYPE_MISMATCH;
         out = static_cast<int>(Detail::Load32(field.Data));
         return BML_OK;
     }
-    static int ReadFloat(const FieldView &field, float &out) noexcept {
+    [[nodiscard]] static int ReadFloat(const FieldView &field, float &out) noexcept {
         if (field.WireKind != Kind::Fixed32) return BML_ERROR_TYPE_MISMATCH;
         out = std::bit_cast<float>(Detail::Load32(field.Data));
         return BML_OK;
     }
-    static int ReadInt64(const FieldView &field, std::int64_t &out) noexcept {
+    [[nodiscard]] static int ReadInt64(const FieldView &field, std::int64_t &out) noexcept {
         if (field.WireKind != Kind::Fixed64) return BML_ERROR_TYPE_MISMATCH;
         out = std::bit_cast<std::int64_t>(Detail::Load64(field.Data));
         return BML_OK;
     }
-    static int ReadUInt64(const FieldView &field, std::uint64_t &out) noexcept {
+    [[nodiscard]] static int ReadUInt64(const FieldView &field, std::uint64_t &out) noexcept {
         if (field.WireKind != Kind::Fixed64) return BML_ERROR_TYPE_MISMATCH;
         out = Detail::Load64(field.Data);
         return BML_OK;
     }
-    static int ReadDouble(const FieldView &field, double &out) noexcept {
+    [[nodiscard]] static int ReadDouble(const FieldView &field, double &out) noexcept {
         if (field.WireKind != Kind::Fixed64) return BML_ERROR_TYPE_MISMATCH;
         out = std::bit_cast<double>(Detail::Load64(field.Data));
         return BML_OK;
     }
-    static int ReadString(const FieldView &field, std::string &out) {
+    [[nodiscard]] static int ReadString(const FieldView &field, std::string &out) {
         if (field.WireKind != Kind::LengthDelimited)
             return BML_ERROR_TYPE_MISMATCH;
         out.assign(reinterpret_cast<const char *>(field.Data), field.Size);
         return BML_OK;
     }
-    static int ReadBytes(const FieldView &field,
+    [[nodiscard]] static int ReadBytes(const FieldView &field,
                          std::vector<std::uint8_t> &out) {
         if (field.WireKind != Kind::LengthDelimited)
             return BML_ERROR_TYPE_MISMATCH;
         out.assign(field.Data, field.Data + field.Size);
         return BML_OK;
     }
-    static int ReadObject(const FieldView &field, BML_ObjectRef &out) noexcept {
+    [[nodiscard]] static int ReadObject(const FieldView &field, BML_ObjectRef &out) noexcept {
         if (!IsLength(field, 12)) return LengthStatus(field);
         out = {Detail::Load32(field.Data), Detail::Load32(field.Data + 4),
                Detail::Load32(field.Data + 8)};
         return BML_OK;
     }
-    static int ReadVec2(const FieldView &field, BML_Vec2 &out) noexcept {
+    [[nodiscard]] static int ReadVec2(const FieldView &field, BML_Vec2 &out) noexcept {
         if (!IsLength(field, 8)) return LengthStatus(field);
         out = {LoadFloat(field.Data), LoadFloat(field.Data + 4)};
         return BML_OK;
     }
-    static int ReadVec3(const FieldView &field, BML_Vec3 &out) noexcept {
+    [[nodiscard]] static int ReadVec3(const FieldView &field, BML_Vec3 &out) noexcept {
         if (!IsLength(field, 12)) return LengthStatus(field);
         out = {LoadFloat(field.Data), LoadFloat(field.Data + 4),
                LoadFloat(field.Data + 8)};
         return BML_OK;
     }
-    static int ReadMat4(const FieldView &field, BML_Mat4 &out) noexcept {
+    [[nodiscard]] static int ReadMat4(const FieldView &field, BML_Mat4 &out) noexcept {
         if (!IsLength(field, 64)) return LengthStatus(field);
         float elements[16];
         for (std::size_t index = 0; index < 16; ++index)
@@ -591,7 +591,7 @@ public:
         };
         return BML_OK;
     }
-    static int ReadBoolArray(const FieldView &field,
+    [[nodiscard]] static int ReadBoolArray(const FieldView &field,
                              std::vector<bool> &out) {
         if (field.WireKind != Kind::LengthDelimited)
             return BML_ERROR_TYPE_MISMATCH;
@@ -604,37 +604,37 @@ public:
         out = std::move(decoded);
         return BML_OK;
     }
-    static int ReadIntArray(const FieldView &field, std::vector<int> &out) {
+    [[nodiscard]] static int ReadIntArray(const FieldView &field, std::vector<int> &out) {
         return ReadFixedArray(field, 4, out,
             [](const std::uint8_t *data) {
                 return static_cast<int>(Detail::Load32(data));
             });
     }
-    static int ReadFloatArray(const FieldView &field,
+    [[nodiscard]] static int ReadFloatArray(const FieldView &field,
                               std::vector<float> &out) {
         return ReadFixedArray(field, 4, out,
             [](const std::uint8_t *data) { return LoadFloat(data); });
     }
-    static int ReadInt64Array(const FieldView &field,
+    [[nodiscard]] static int ReadInt64Array(const FieldView &field,
                               std::vector<std::int64_t> &out) {
         return ReadFixedArray(field, 8, out,
             [](const std::uint8_t *data) {
                 return std::bit_cast<std::int64_t>(Detail::Load64(data));
             });
     }
-    static int ReadUInt64Array(const FieldView &field,
+    [[nodiscard]] static int ReadUInt64Array(const FieldView &field,
                                std::vector<std::uint64_t> &out) {
         return ReadFixedArray(field, 8, out,
             [](const std::uint8_t *data) { return Detail::Load64(data); });
     }
-    static int ReadDoubleArray(const FieldView &field,
+    [[nodiscard]] static int ReadDoubleArray(const FieldView &field,
                                std::vector<double> &out) {
         return ReadFixedArray(field, 8, out,
             [](const std::uint8_t *data) {
                 return std::bit_cast<double>(Detail::Load64(data));
             });
     }
-    static int ReadStringArray(const FieldView &field,
+    [[nodiscard]] static int ReadStringArray(const FieldView &field,
                                std::vector<std::string> &out) {
         if (field.WireKind != Kind::LengthDelimited)
             return BML_ERROR_TYPE_MISMATCH;
@@ -652,7 +652,7 @@ public:
         out = std::move(decoded);
         return BML_OK;
     }
-    static int ReadObjectArray(const FieldView &field,
+    [[nodiscard]] static int ReadObjectArray(const FieldView &field,
                                std::vector<BML_ObjectRef> &out) {
         return ReadFixedArray(field, 12, out,
             [](const std::uint8_t *data) {
@@ -660,14 +660,14 @@ public:
                     Detail::Load32(data + 4), Detail::Load32(data + 8)};
             });
     }
-    static int ReadVec2Array(const FieldView &field,
+    [[nodiscard]] static int ReadVec2Array(const FieldView &field,
                              std::vector<BML_Vec2> &out) {
         return ReadFixedArray(field, 8, out,
             [](const std::uint8_t *data) {
                 return BML_Vec2{LoadFloat(data), LoadFloat(data + 4)};
             });
     }
-    static int ReadVec3Array(const FieldView &field,
+    [[nodiscard]] static int ReadVec3Array(const FieldView &field,
                              std::vector<BML_Vec3> &out) {
         return ReadFixedArray(field, 12, out,
             [](const std::uint8_t *data) {
@@ -675,7 +675,7 @@ public:
                     LoadFloat(data + 8)};
             });
     }
-    static int ReadMat4Array(const FieldView &field,
+    [[nodiscard]] static int ReadMat4Array(const FieldView &field,
                              std::vector<BML_Mat4> &out) {
         return ReadFixedArray(field, 64, out,
             [](const std::uint8_t *data) {
@@ -697,7 +697,7 @@ private:
     static bool IsLength(const FieldView &field, std::size_t expected) noexcept {
         return field.WireKind == Kind::LengthDelimited && field.Size == expected;
     }
-    static int LengthStatus(const FieldView &field) noexcept {
+    [[nodiscard]] static int LengthStatus(const FieldView &field) noexcept {
         return field.WireKind == Kind::LengthDelimited
             ? BML_ERROR_MALFORMED_MESSAGE : BML_ERROR_TYPE_MISMATCH;
     }
@@ -706,7 +706,7 @@ private:
     }
 
     template <class T, class Decoder>
-    static int ReadFixedArray(const FieldView &field, std::size_t elementSize,
+    [[nodiscard]] static int ReadFixedArray(const FieldView &field, std::size_t elementSize,
                               std::vector<T> &out, Decoder decode) {
         if (field.WireKind != Kind::LengthDelimited)
             return BML_ERROR_TYPE_MISMATCH;

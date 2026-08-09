@@ -102,10 +102,11 @@ def main() -> int:
         header = header_path.read_text(encoding="utf-8")
         for snippet in (
             "inline constexpr std::uint32_t Value = 1u;",
-            "EncodedSampleSize", "EncodeSample", "DecodeSample",
+            "EncodedSampleSize", "[[nodiscard]] inline int EncodeSample",
+            "[[nodiscard]] inline int DecodeSample",
             "class Client", "class Provider", "CallState", "CallLookup",
             "CallNotify", "CallFlush", "RpcFuture<void>",
-            "struct Handlers", "int Start(const Handlers &handlers",
+            "struct Handlers", "[[nodiscard]] int Start(const Handlers &handlers",
             "RegisterState", "RegisterLookup", "class ChangedSubscription",
             "writer.Begin();", "reader.Begin();", "WriteResponse(",
             "const BML_ImcPayloadTypeId responsePayload",

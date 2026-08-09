@@ -36,7 +36,7 @@ inline std::size_t EncodedClockStateSize(const ClockStateValue &value) noexcept 
     return size;
 }
 
-inline int EncodeClockState(const ClockStateValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeClockState(const ClockStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedClockStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -47,7 +47,7 @@ inline int EncodeClockState(const ClockStateValue &value, void *data, std::size_
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeClockState(const BML_ImcMessage &message, ClockStateValue &out) {
+[[nodiscard]] inline int DecodeClockState(const BML_ImcMessage &message, ClockStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -119,7 +119,7 @@ inline std::size_t EncodedRuntimeStateSize(const RuntimeStateValue &value) noexc
     return size;
 }
 
-inline int EncodeRuntimeState(const RuntimeStateValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeRuntimeState(const RuntimeStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedRuntimeStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -131,7 +131,7 @@ inline int EncodeRuntimeState(const RuntimeStateValue &value, void *data, std::s
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeRuntimeState(const BML_ImcMessage &message, RuntimeStateValue &out) {
+[[nodiscard]] inline int DecodeRuntimeState(const BML_ImcMessage &message, RuntimeStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -200,7 +200,7 @@ inline std::size_t EncodedScoreStateSize(const ScoreStateValue &value) noexcept 
     return size;
 }
 
-inline int EncodeScoreState(const ScoreStateValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeScoreState(const ScoreStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedScoreStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -209,7 +209,7 @@ inline int EncodeScoreState(const ScoreStateValue &value, void *data, std::size_
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeScoreState(const BML_ImcMessage &message, ScoreStateValue &out) {
+[[nodiscard]] inline int DecodeScoreState(const BML_ImcMessage &message, ScoreStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -258,13 +258,13 @@ public:
     using ScoreFuture = ::BML::Imc::RpcFuture<ScoreStateValue>;
     using StateFuture = ::BML::Imc::RpcFuture<RuntimeStateValue>;
 
-    int Open(const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         BML_ImcClient client = nullptr;
         const int status = BML_Imc_OpenClient(ownerId, &client);
         return status == BML_OK ? Adopt(client) : status;
     }
-    int Adopt(BML_ImcClient client) noexcept {
+    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
@@ -278,7 +278,7 @@ public:
         if (status != BML_OK) (void)Close();
         return status;
     }
-    int Close() noexcept {
+    [[nodiscard]] int Close() noexcept {
         if (!m_Client) return BML_OK;
         const int status = BML_Imc_CloseClient(m_Client);
         if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }
@@ -286,50 +286,50 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     bool IsOpen() const noexcept { return m_Client != nullptr; }
-    int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
+    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId ClockStatePayloadType() const noexcept { return m_ClockStatePayload; }
     BML_ImcPayloadTypeId RuntimeStatePayloadType() const noexcept { return m_RuntimeStatePayload; }
     BML_ImcPayloadTypeId ScoreStatePayloadType() const noexcept { return m_ScoreStatePayload; }
     BML_ImcRpcId ClockRpcId() const noexcept { return m_ClockRpc; }
-    int IsClockAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsClockAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_ClockRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId ScoreRpcId() const noexcept { return m_ScoreRpc; }
-    int IsScoreAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsScoreAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_ScoreRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId StateRpcId() const noexcept { return m_StateRpc; }
-    int IsStateAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsStateAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_StateRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
 
-    int BeginCallClock(ClockFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallClock(ClockFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_ClockRpc, nullptr, m_ClockStatePayload, out, DecodeClockState, timeoutMs);
     }
-    int CallClock(ClockStateValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallClock(ClockStateValue &out, std::uint32_t timeoutMs = 5000u) {
         ClockFuture future; int status = BeginCallClock(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginCallScore(ScoreFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallScore(ScoreFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_ScoreRpc, nullptr, m_ScoreStatePayload, out, DecodeScoreState, timeoutMs);
     }
-    int CallScore(ScoreStateValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallScore(ScoreStateValue &out, std::uint32_t timeoutMs = 5000u) {
         ScoreFuture future; int status = BeginCallScore(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginCallState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_StateRpc, nullptr, m_RuntimeStatePayload, out, DecodeRuntimeState, timeoutMs);
     }
-    int CallState(RuntimeStateValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallState(RuntimeStateValue &out, std::uint32_t timeoutMs = 5000u) {
         StateFuture future; int status = BeginCallState(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
@@ -369,13 +369,13 @@ public:
         StateHandler State = nullptr;
     };
 
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    [[nodiscard]] int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
     bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
         if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
         if (!(handlers.Clock || handlers.Score || handlers.State)) return BML_ERROR_INVALID_PARAMETER;
         if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
@@ -388,7 +388,7 @@ public:
         return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
     }
 
-    int RegisterClock(ClockHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterClock(ClockHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Clock.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_Clock = {this, handler, userdata, false};
@@ -397,14 +397,14 @@ public:
         if (status == BML_OK) m_Clock.Registered = true; else m_Clock = {};
         return status;
     }
-    int UnregisterClock() noexcept {
+    [[nodiscard]] int UnregisterClock() noexcept {
         if (!m_Clock.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.ClockRpcId());
         if (status == BML_OK) m_Clock = {};
         return status;
     }
 
-    int RegisterScore(ScoreHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterScore(ScoreHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Score.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_Score = {this, handler, userdata, false};
@@ -413,14 +413,14 @@ public:
         if (status == BML_OK) m_Score.Registered = true; else m_Score = {};
         return status;
     }
-    int UnregisterScore() noexcept {
+    [[nodiscard]] int UnregisterScore() noexcept {
         if (!m_Score.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.ScoreRpcId());
         if (status == BML_OK) m_Score = {};
         return status;
     }
 
-    int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_State.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_State = {this, handler, userdata, false};
@@ -429,7 +429,7 @@ public:
         if (status == BML_OK) m_State.Registered = true; else m_State = {};
         return status;
     }
-    int UnregisterState() noexcept {
+    [[nodiscard]] int UnregisterState() noexcept {
         if (!m_State.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.StateRpcId());
         if (status == BML_OK) m_State = {};
@@ -438,7 +438,7 @@ public:
 
 private:
     struct ClockSlot { Provider *Owner = nullptr; ClockHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int ClockThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int ClockThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<ClockSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -452,7 +452,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ScoreSlot { Provider *Owner = nullptr; ScoreHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int ScoreThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int ScoreThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<ScoreSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -466,7 +466,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct StateSlot { Provider *Owner = nullptr; StateHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<StateSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;

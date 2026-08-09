@@ -9,11 +9,11 @@ namespace Detail {
 namespace Api = Imc::Generated::Bml::Runtime;
 inline Imc::LazyClient<Api::Client> &ClientState() { static Imc::LazyClient<Api::Client> state; return state; }
 inline Api::Client &Client() { return ClientState().Get(); }
-inline int RequireApi() { return ClientState().EnsureOpen(); }
+[[nodiscard]] inline int RequireApi() { return ClientState().EnsureOpen(); }
 }
-inline int RequireApi() { return Detail::RequireApi(); }
-inline int ReadState(State &out) { Imc::Generated::Bml::Runtime::RuntimeStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().CallState(wire); if (status == BML_OK) out = {wire.InGame, wire.InLevel, wire.Paused, wire.Playing, wire.CheatEnabled}; return status; }
-inline int ReadClock(Clock &out) { Imc::Generated::Bml::Runtime::ClockStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().CallClock(wire); if (status == BML_OK) out = {wire.TimeMs, wire.AbsoluteMs, wire.DeltaMs, wire.Frame}; return status; }
-inline int ReadScore(Score &out) { Imc::Generated::Bml::Runtime::ScoreStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().CallScore(wire); if (status == BML_OK) out = {wire.Sr, wire.Hs}; return status; }
+[[nodiscard]] inline int RequireApi() { return Detail::RequireApi(); }
+[[nodiscard]] inline int ReadState(State &out) { Imc::Generated::Bml::Runtime::RuntimeStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().CallState(wire); if (status == BML_OK) out = {wire.InGame, wire.InLevel, wire.Paused, wire.Playing, wire.CheatEnabled}; return status; }
+[[nodiscard]] inline int ReadClock(Clock &out) { Imc::Generated::Bml::Runtime::ClockStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().CallClock(wire); if (status == BML_OK) out = {wire.TimeMs, wire.AbsoluteMs, wire.DeltaMs, wire.Frame}; return status; }
+[[nodiscard]] inline int ReadScore(Score &out) { Imc::Generated::Bml::Runtime::ScoreStateValue wire{}; int status = RequireApi(); if (status == BML_OK) status = Detail::Client().CallScore(wire); if (status == BML_OK) out = {wire.Sr, wire.Hs}; return status; }
 } // namespace BML::Runtime
 #endif // BML_RUNTIME_H

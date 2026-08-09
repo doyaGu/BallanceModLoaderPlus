@@ -39,7 +39,7 @@ inline std::size_t EncodedCatalogResponseSize(const CatalogResponseValue &value)
     return size;
 }
 
-inline int EncodeCatalogResponse(const CatalogResponseValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeCatalogResponse(const CatalogResponseValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedCatalogResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -51,7 +51,7 @@ inline int EncodeCatalogResponse(const CatalogResponseValue &value, void *data, 
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeCatalogResponse(const BML_ImcMessage &message, CatalogResponseValue &out) {
+[[nodiscard]] inline int DecodeCatalogResponse(const BML_ImcMessage &message, CatalogResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -120,7 +120,7 @@ inline std::size_t EncodedCheckpointsResponseSize(const CheckpointsResponseValue
     return size;
 }
 
-inline int EncodeCheckpointsResponse(const CheckpointsResponseValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeCheckpointsResponse(const CheckpointsResponseValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedCheckpointsResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -129,7 +129,7 @@ inline int EncodeCheckpointsResponse(const CheckpointsResponseValue &value, void
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeCheckpointsResponse(const BML_ImcMessage &message, CheckpointsResponseValue &out) {
+[[nodiscard]] inline int DecodeCheckpointsResponse(const BML_ImcMessage &message, CheckpointsResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -192,7 +192,7 @@ inline std::size_t EncodedEnergyStateSize(const EnergyStateValue &value) noexcep
     return size;
 }
 
-inline int EncodeEnergyState(const EnergyStateValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeEnergyState(const EnergyStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedEnergyStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -205,7 +205,7 @@ inline int EncodeEnergyState(const EnergyStateValue &value, void *data, std::siz
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeEnergyState(const BML_ImcMessage &message, EnergyStateValue &out) {
+[[nodiscard]] inline int DecodeEnergyState(const BML_ImcMessage &message, EnergyStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -286,7 +286,7 @@ inline std::size_t EncodedLevelStateSize(const LevelStateValue &value) noexcept 
     return size;
 }
 
-inline int EncodeLevelState(const LevelStateValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeLevelState(const LevelStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedLevelStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -297,7 +297,7 @@ inline int EncodeLevelState(const LevelStateValue &value, void *data, std::size_
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeLevelState(const BML_ImcMessage &message, LevelStateValue &out) {
+[[nodiscard]] inline int DecodeLevelState(const BML_ImcMessage &message, LevelStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -357,7 +357,7 @@ inline std::size_t EncodedResetpointsResponseSize(const ResetpointsResponseValue
     return size;
 }
 
-inline int EncodeResetpointsResponse(const ResetpointsResponseValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeResetpointsResponse(const ResetpointsResponseValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedResetpointsResponseSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -365,7 +365,7 @@ inline int EncodeResetpointsResponse(const ResetpointsResponseValue &value, void
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeResetpointsResponse(const BML_ImcMessage &message, ResetpointsResponseValue &out) {
+[[nodiscard]] inline int DecodeResetpointsResponse(const BML_ImcMessage &message, ResetpointsResponseValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -412,13 +412,13 @@ public:
     using LevelFuture = ::BML::Imc::RpcFuture<LevelStateValue>;
     using ResetpointsFuture = ::BML::Imc::RpcFuture<ResetpointsResponseValue>;
 
-    int Open(const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         BML_ImcClient client = nullptr;
         const int status = BML_Imc_OpenClient(ownerId, &client);
         return status == BML_OK ? Adopt(client) : status;
     }
-    int Adopt(BML_ImcClient client) noexcept {
+    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
@@ -436,7 +436,7 @@ public:
         if (status != BML_OK) (void)Close();
         return status;
     }
-    int Close() noexcept {
+    [[nodiscard]] int Close() noexcept {
         if (!m_Client) return BML_OK;
         const int status = BML_Imc_CloseClient(m_Client);
         if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }
@@ -444,80 +444,80 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     bool IsOpen() const noexcept { return m_Client != nullptr; }
-    int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
+    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId CatalogResponsePayloadType() const noexcept { return m_CatalogResponsePayload; }
     BML_ImcPayloadTypeId CheckpointsResponsePayloadType() const noexcept { return m_CheckpointsResponsePayload; }
     BML_ImcPayloadTypeId EnergyStatePayloadType() const noexcept { return m_EnergyStatePayload; }
     BML_ImcPayloadTypeId LevelStatePayloadType() const noexcept { return m_LevelStatePayload; }
     BML_ImcPayloadTypeId ResetpointsResponsePayloadType() const noexcept { return m_ResetpointsResponsePayload; }
     BML_ImcRpcId CatalogRpcId() const noexcept { return m_CatalogRpc; }
-    int IsCatalogAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsCatalogAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_CatalogRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId CheckpointsRpcId() const noexcept { return m_CheckpointsRpc; }
-    int IsCheckpointsAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsCheckpointsAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_CheckpointsRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId EnergyRpcId() const noexcept { return m_EnergyRpc; }
-    int IsEnergyAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsEnergyAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_EnergyRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId LevelRpcId() const noexcept { return m_LevelRpc; }
-    int IsLevelAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsLevelAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_LevelRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId ResetpointsRpcId() const noexcept { return m_ResetpointsRpc; }
-    int IsResetpointsAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsResetpointsAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_ResetpointsRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
 
-    int BeginCallCatalog(CatalogFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallCatalog(CatalogFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_CatalogRpc, nullptr, m_CatalogResponsePayload, out, DecodeCatalogResponse, timeoutMs);
     }
-    int CallCatalog(CatalogResponseValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallCatalog(CatalogResponseValue &out, std::uint32_t timeoutMs = 5000u) {
         CatalogFuture future; int status = BeginCallCatalog(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginCallCheckpoints(CheckpointsFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallCheckpoints(CheckpointsFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_CheckpointsRpc, nullptr, m_CheckpointsResponsePayload, out, DecodeCheckpointsResponse, timeoutMs);
     }
-    int CallCheckpoints(CheckpointsResponseValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallCheckpoints(CheckpointsResponseValue &out, std::uint32_t timeoutMs = 5000u) {
         CheckpointsFuture future; int status = BeginCallCheckpoints(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginCallEnergy(EnergyFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallEnergy(EnergyFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_EnergyRpc, nullptr, m_EnergyStatePayload, out, DecodeEnergyState, timeoutMs);
     }
-    int CallEnergy(EnergyStateValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallEnergy(EnergyStateValue &out, std::uint32_t timeoutMs = 5000u) {
         EnergyFuture future; int status = BeginCallEnergy(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginCallLevel(LevelFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallLevel(LevelFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_LevelRpc, nullptr, m_LevelStatePayload, out, DecodeLevelState, timeoutMs);
     }
-    int CallLevel(LevelStateValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallLevel(LevelStateValue &out, std::uint32_t timeoutMs = 5000u) {
         LevelFuture future; int status = BeginCallLevel(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
-    int BeginCallResetpoints(ResetpointsFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallResetpoints(ResetpointsFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_ResetpointsRpc, nullptr, m_ResetpointsResponsePayload, out, DecodeResetpointsResponse, timeoutMs);
     }
-    int CallResetpoints(ResetpointsResponseValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallResetpoints(ResetpointsResponseValue &out, std::uint32_t timeoutMs = 5000u) {
         ResetpointsFuture future; int status = BeginCallResetpoints(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
@@ -569,13 +569,13 @@ public:
         ResetpointsHandler Resetpoints = nullptr;
     };
 
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    [[nodiscard]] int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
     bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
         if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
         if (!(handlers.Catalog || handlers.Checkpoints || handlers.Energy || handlers.Level || handlers.Resetpoints)) return BML_ERROR_INVALID_PARAMETER;
         if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
@@ -590,7 +590,7 @@ public:
         return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
     }
 
-    int RegisterCatalog(CatalogHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterCatalog(CatalogHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Catalog.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_Catalog = {this, handler, userdata, false};
@@ -599,14 +599,14 @@ public:
         if (status == BML_OK) m_Catalog.Registered = true; else m_Catalog = {};
         return status;
     }
-    int UnregisterCatalog() noexcept {
+    [[nodiscard]] int UnregisterCatalog() noexcept {
         if (!m_Catalog.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.CatalogRpcId());
         if (status == BML_OK) m_Catalog = {};
         return status;
     }
 
-    int RegisterCheckpoints(CheckpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterCheckpoints(CheckpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Checkpoints.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_Checkpoints = {this, handler, userdata, false};
@@ -615,14 +615,14 @@ public:
         if (status == BML_OK) m_Checkpoints.Registered = true; else m_Checkpoints = {};
         return status;
     }
-    int UnregisterCheckpoints() noexcept {
+    [[nodiscard]] int UnregisterCheckpoints() noexcept {
         if (!m_Checkpoints.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.CheckpointsRpcId());
         if (status == BML_OK) m_Checkpoints = {};
         return status;
     }
 
-    int RegisterEnergy(EnergyHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterEnergy(EnergyHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Energy.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_Energy = {this, handler, userdata, false};
@@ -631,14 +631,14 @@ public:
         if (status == BML_OK) m_Energy.Registered = true; else m_Energy = {};
         return status;
     }
-    int UnregisterEnergy() noexcept {
+    [[nodiscard]] int UnregisterEnergy() noexcept {
         if (!m_Energy.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.EnergyRpcId());
         if (status == BML_OK) m_Energy = {};
         return status;
     }
 
-    int RegisterLevel(LevelHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterLevel(LevelHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Level.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_Level = {this, handler, userdata, false};
@@ -647,14 +647,14 @@ public:
         if (status == BML_OK) m_Level.Registered = true; else m_Level = {};
         return status;
     }
-    int UnregisterLevel() noexcept {
+    [[nodiscard]] int UnregisterLevel() noexcept {
         if (!m_Level.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.LevelRpcId());
         if (status == BML_OK) m_Level = {};
         return status;
     }
 
-    int RegisterResetpoints(ResetpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterResetpoints(ResetpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Resetpoints.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_Resetpoints = {this, handler, userdata, false};
@@ -663,7 +663,7 @@ public:
         if (status == BML_OK) m_Resetpoints.Registered = true; else m_Resetpoints = {};
         return status;
     }
-    int UnregisterResetpoints() noexcept {
+    [[nodiscard]] int UnregisterResetpoints() noexcept {
         if (!m_Resetpoints.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.ResetpointsRpcId());
         if (status == BML_OK) m_Resetpoints = {};
@@ -672,7 +672,7 @@ public:
 
 private:
     struct CatalogSlot { Provider *Owner = nullptr; CatalogHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int CatalogThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int CatalogThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<CatalogSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -686,7 +686,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct CheckpointsSlot { Provider *Owner = nullptr; CheckpointsHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int CheckpointsThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int CheckpointsThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<CheckpointsSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -700,7 +700,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct EnergySlot { Provider *Owner = nullptr; EnergyHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int EnergyThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int EnergyThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<EnergySlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -714,7 +714,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct LevelSlot { Provider *Owner = nullptr; LevelHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int LevelThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int LevelThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<LevelSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -728,7 +728,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ResetpointsSlot { Provider *Owner = nullptr; ResetpointsHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int ResetpointsThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int ResetpointsThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<ResetpointsSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;

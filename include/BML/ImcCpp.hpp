@@ -17,7 +17,7 @@ namespace BML::Imc {
 template <class Client>
 class LazyClient {
 public:
-    int EnsureOpen(const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept {
         if (m_Ready.load(std::memory_order_acquire))
             return BML_OK;
         std::lock_guard lock(m_Mutex);
@@ -40,7 +40,7 @@ private:
 
 class MessageBuffer {
 public:
-    int Resize(std::size_t size) noexcept {
+    [[nodiscard]] int Resize(std::size_t size) noexcept {
         m_Size = size;
         if (size <= m_Inline.size()) {
             m_Heap.clear();
@@ -92,27 +92,27 @@ public:
     bool IsValid() const noexcept { return m_Future != nullptr; }
     BML_ImcFuture Handle() const noexcept { return m_Future; }
 
-    int GetState(BML_ImcFutureState &out) const noexcept {
+    [[nodiscard]] int GetState(BML_ImcFutureState &out) const noexcept {
         return m_Future ? BML_Imc_FutureGetState(m_Future, &out)
                         : BML_ERROR_INVALID_HANDLE;
     }
 
-    int Await(std::uint32_t timeoutMs = 5000u) const noexcept {
+    [[nodiscard]] int Await(std::uint32_t timeoutMs = 5000u) const noexcept {
         return m_Future ? BML_Imc_FutureAwait(m_Future, timeoutMs)
                         : BML_ERROR_INVALID_HANDLE;
     }
 
-    int Cancel() noexcept {
+    [[nodiscard]] int Cancel() noexcept {
         return m_Future ? BML_Imc_FutureCancel(m_Future)
                         : BML_ERROR_INVALID_HANDLE;
     }
 
-    int GetError(int &out) const noexcept {
+    [[nodiscard]] int GetError(int &out) const noexcept {
         return m_Future ? BML_Imc_FutureGetError(m_Future, &out)
                         : BML_ERROR_INVALID_HANDLE;
     }
 
-    int Release() noexcept {
+    [[nodiscard]] int Release() noexcept {
         if (!m_Future)
             return BML_OK;
         const int status = BML_Imc_FutureRelease(m_Future);
@@ -122,7 +122,7 @@ public:
     }
 
 protected:
-    int AdoptHandle(BML_ImcFuture future) noexcept {
+    [[nodiscard]] int AdoptHandle(BML_ImcFuture future) noexcept {
         if (m_Future)
             return BML_ERROR_BUSY;
         if (!future)
@@ -149,7 +149,7 @@ public:
     RpcFuture(RpcFuture &&) noexcept = default;
     RpcFuture &operator=(RpcFuture &&) noexcept = default;
 
-    int Adopt(BML_ImcFuture future, BML_ImcPayloadTypeId payloadType,
+    [[nodiscard]] int Adopt(BML_ImcFuture future, BML_ImcPayloadTypeId payloadType,
               DecodeFunction decode) noexcept {
         if (IsValid())
             return BML_ERROR_BUSY;
@@ -163,7 +163,7 @@ public:
         return status;
     }
 
-    int GetResult(Value &out) const {
+    [[nodiscard]] int GetResult(Value &out) const {
         if (!IsValid() || !m_Decode)
             return BML_ERROR_INVALID_HANDLE;
         BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
@@ -185,7 +185,7 @@ public:
         }
     }
 
-    int AwaitResult(Value &out, std::uint32_t timeoutMs = 5000u) const {
+    [[nodiscard]] int AwaitResult(Value &out, std::uint32_t timeoutMs = 5000u) const {
         const int status = Await(timeoutMs);
         return status == BML_OK ? GetResult(out) : status;
     }
@@ -202,14 +202,14 @@ public:
     RpcFuture(RpcFuture &&) noexcept = default;
     RpcFuture &operator=(RpcFuture &&) noexcept = default;
 
-    int Adopt(BML_ImcFuture future) noexcept { return AdoptHandle(future); }
-    int AwaitResult(std::uint32_t timeoutMs = 5000u) const noexcept {
+    [[nodiscard]] int Adopt(BML_ImcFuture future) noexcept { return AdoptHandle(future); }
+    [[nodiscard]] int AwaitResult(std::uint32_t timeoutMs = 5000u) const noexcept {
         return Await(timeoutMs);
     }
 };
 
 template <class Value, class SizeFunction, class EncodeFunction>
-int EncodeMessage(const Value &value, BML_ImcPayloadTypeId payloadType,
+[[nodiscard]] int EncodeMessage(const Value &value, BML_ImcPayloadTypeId payloadType,
                   MessageBuffer &buffer, BML_ImcMessage &message,
                   SizeFunction sizeFunction, EncodeFunction encodeFunction) noexcept {
     const std::size_t size = sizeFunction(value);
@@ -226,7 +226,7 @@ int EncodeMessage(const Value &value, BML_ImcPayloadTypeId payloadType,
 }
 
 template <class Output>
-int BeginRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
+[[nodiscard]] int BeginRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
              const BML_ImcMessage *request, BML_ImcPayloadTypeId outputPayload,
              RpcFuture<Output> &out, typename RpcFuture<Output>::DecodeFunction decodeFunction,
              std::uint32_t timeoutMs = 5000u) noexcept {
@@ -247,7 +247,7 @@ int BeginRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
     return status;
 }
 
-inline int BeginRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
+[[nodiscard]] inline int BeginRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
                     const BML_ImcMessage *request, RpcFuture<void> &out,
                     std::uint32_t timeoutMs = 5000u) noexcept {
     if (out.IsValid())
@@ -267,7 +267,7 @@ inline int BeginRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
 }
 
 template <class Output>
-int CallRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
+[[nodiscard]] int CallRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
             const BML_ImcMessage *request, BML_ImcPayloadTypeId outputPayload,
             Output &out, typename RpcFuture<Output>::DecodeFunction decodeFunction,
             std::uint32_t timeoutMs = 5000u) {
@@ -278,7 +278,7 @@ int CallRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
 }
 
 template <class Value, class SizeFunction, class EncodeFunction>
-int WriteResponse(BML_ImcResponse *response, BML_ImcPayloadTypeId payloadType,
+[[nodiscard]] int WriteResponse(BML_ImcResponse *response, BML_ImcPayloadTypeId payloadType,
                   const Value &value, SizeFunction sizeFunction,
                   EncodeFunction encodeFunction) noexcept {
     if (!response || payloadType == BML_IMC_INVALID_ID) return BML_ERROR_INVALID_PARAMETER;
@@ -291,7 +291,7 @@ int WriteResponse(BML_ImcResponse *response, BML_ImcPayloadTypeId payloadType,
 }
 
 template <class Value, class SizeFunction, class EncodeFunction>
-int Publish(BML_ImcClient client, BML_ImcTopicId topicId,
+[[nodiscard]] int Publish(BML_ImcClient client, BML_ImcTopicId topicId,
             BML_ImcPayloadTypeId payloadType, const Value &value,
             SizeFunction sizeFunction, EncodeFunction encodeFunction,
             std::size_t *outDelivered = nullptr) noexcept {

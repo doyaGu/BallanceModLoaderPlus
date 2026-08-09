@@ -78,8 +78,20 @@ def main() -> int:
         "include/BML/Speedrun.h",
     )
     for relative in header_only:
-        if "BML_EXPORT" in read(root, relative):
+        header = read(root, relative)
+        if "BML_EXPORT" in header:
             raise AssertionError(f"{relative} introduces an exported C++ IMC helper")
+        unhandled_status = re.search(
+            r"^\s*(?!\[\[nodiscard\]\])(?:inline\s+|static\s+)?"
+            r"int\s+[A-Za-z_][A-Za-z0-9_]*\s*\(",
+            header,
+            re.MULTILINE,
+        )
+        if unhandled_status:
+            line = header.count("\n", 0, unhandled_status.start()) + 1
+            raise AssertionError(
+                f"{relative}:{line} exposes an IMC status without [[nodiscard]]"
+            )
 
     gameplay = read(root, "include/BML/Gameplay.h")
     for cursor in ("Catalog", "Checkpoints", "Resetpoints"):
@@ -94,6 +106,17 @@ def main() -> int:
             raise AssertionError(f"{header} introduces an exported generated C++ helper")
         if "WireHash" in generated or "IsCompatibleHash" in generated:
             raise AssertionError(f"{header} reintroduces payload hash negotiation")
+        unhandled_status = re.search(
+            r"^\s*(?!\[\[nodiscard\]\])(?:inline\s+|static\s+)?"
+            r"int\s+[A-Za-z_][A-Za-z0-9_]*\s*\(",
+            generated,
+            re.MULTILINE,
+        )
+        if unhandled_status:
+            line = generated.count("\n", 0, unhandled_status.start()) + 1
+            raise AssertionError(
+                f"{header}:{line} exposes a generated status without [[nodiscard]]"
+            )
 
     field_number = re.compile(
         r"^\s*(?:optional\s+)?(?:bool|int|float|int64|uint64|double|string|bytes|"

@@ -167,7 +167,7 @@ inline std::size_t EncodedEventSize(const EventValue &value) noexcept {
     return size;
 }
 
-inline int EncodeEvent(const EventValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeEvent(const EventValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedEventSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -210,7 +210,7 @@ inline int EncodeEvent(const EventValue &value, void *data, std::size_t size) no
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeEvent(const BML_ImcMessage &message, EventValue &out) {
+[[nodiscard]] inline int DecodeEvent(const BML_ImcMessage &message, EventValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -492,7 +492,7 @@ public:
     ~AllSubscription() { (void)Close(); }
     AllSubscription(const AllSubscription &) = delete;
     AllSubscription &operator=(const AllSubscription &) = delete;
-    int Open(BML_ImcClient client, BML_ImcTopicId topic, BML_ImcPayloadTypeId payload,
+    [[nodiscard]] int Open(BML_ImcClient client, BML_ImcTopicId topic, BML_ImcPayloadTypeId payload,
              Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,
              BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST,
              BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
@@ -504,14 +504,14 @@ public:
         const int status = BML_Imc_Subscribe(client, topic, &options, &Dispatch, this, &m_Subscription);
         if (status != BML_OK) Reset(); return status;
     }
-    int Close() noexcept {
+    [[nodiscard]] int Close() noexcept {
         if (!m_Subscription) return BML_OK;
         const int status = BML_Imc_Unsubscribe(m_Client, m_Subscription);
         if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) Reset();
         return status;
     }
     bool IsOpen() const noexcept { return m_Subscription != nullptr; }
-    int DroppedCount(std::uint64_t &out) const noexcept {
+    [[nodiscard]] int DroppedCount(std::uint64_t &out) const noexcept {
         return m_Subscription ? BML_Imc_GetSubscriptionDroppedCount(m_Client, m_Subscription, &out) : BML_ERROR_INVALID_HANDLE;
     }
 private:
@@ -535,13 +535,13 @@ public:
     Client &operator=(const Client &) = delete;
 
 
-    int Open(const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         BML_ImcClient client = nullptr;
         const int status = BML_Imc_OpenClient(ownerId, &client);
         return status == BML_OK ? Adopt(client) : status;
     }
-    int Adopt(BML_ImcClient client) noexcept {
+    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
@@ -551,7 +551,7 @@ public:
         if (status != BML_OK) (void)Close();
         return status;
     }
-    int Close() noexcept {
+    [[nodiscard]] int Close() noexcept {
         if (!m_Client) return BML_OK;
         const int status = BML_Imc_CloseClient(m_Client);
         if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }
@@ -559,17 +559,17 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     bool IsOpen() const noexcept { return m_Client != nullptr; }
-    int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
+    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId EventPayloadType() const noexcept { return m_EventPayload; }
     BML_ImcTopicId AllTopicId() const noexcept { return m_AllTopic; }
 
-    int PublishAll(const EventValue &value, std::size_t *outDelivered = nullptr) noexcept {
+    [[nodiscard]] int PublishAll(const EventValue &value, std::size_t *outDelivered = nullptr) noexcept {
         return ::BML::Imc::Publish(m_Client, m_AllTopic, m_EventPayload, value, EncodedEventSize, EncodeEvent, outDelivered);
     }
-    int GetAllSubscriberCount(std::size_t &outCount) const noexcept {
+    [[nodiscard]] int GetAllSubscriberCount(std::size_t &outCount) const noexcept {
         return BML_Imc_GetTopicSubscriberCount(m_Client, m_AllTopic, &outCount);
     }
-    int SubscribeAll(AllSubscription &out, AllSubscription::Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,
+    [[nodiscard]] int SubscribeAll(AllSubscription &out, AllSubscription::Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,
                      BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         return out.Open(m_Client, m_AllTopic, m_EventPayload, handler, userdata, capacity, backpressure, execution);
     }

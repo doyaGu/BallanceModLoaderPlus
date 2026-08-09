@@ -27,7 +27,7 @@ inline std::size_t EncodedTimerStateSize(const TimerStateValue &value) noexcept 
     return size;
 }
 
-inline int EncodeTimerState(const TimerStateValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeTimerState(const TimerStateValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedTimerStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -35,7 +35,7 @@ inline int EncodeTimerState(const TimerStateValue &value, void *data, std::size_
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeTimerState(const BML_ImcMessage &message, TimerStateValue &out) {
+[[nodiscard]] inline int DecodeTimerState(const BML_ImcMessage &message, TimerStateValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -77,7 +77,7 @@ inline std::size_t EncodedVisibleInputSize(const VisibleInputValue &value) noexc
     return size;
 }
 
-inline int EncodeVisibleInput(const VisibleInputValue &value, void *data, std::size_t size) noexcept {
+[[nodiscard]] inline int EncodeVisibleInput(const VisibleInputValue &value, void *data, std::size_t size) noexcept {
     if (size != EncodedVisibleInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Writer writer(data, size);
     int status = writer.Begin();
@@ -85,7 +85,7 @@ inline int EncodeVisibleInput(const VisibleInputValue &value, void *data, std::s
     return status == BML_OK ? writer.Finish() : status;
 }
 
-inline int DecodeVisibleInput(const BML_ImcMessage &message, VisibleInputValue &out) {
+[[nodiscard]] inline int DecodeVisibleInput(const BML_ImcMessage &message, VisibleInputValue &out) {
     if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
     ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
     int status = reader.Begin();
@@ -132,13 +132,13 @@ public:
     using StartTimerFuture = ::BML::Imc::RpcFuture<void>;
     using StateFuture = ::BML::Imc::RpcFuture<TimerStateValue>;
 
-    int Open(const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         BML_ImcClient client = nullptr;
         const int status = BML_Imc_OpenClient(ownerId, &client);
         return status == BML_OK ? Adopt(client) : status;
     }
-    int Adopt(BML_ImcClient client) noexcept {
+    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {
         const int closeStatus = Close(); if (m_Client) return closeStatus;
         if (!client) return BML_ERROR_INVALID_PARAMETER;
         m_Client = client;
@@ -153,7 +153,7 @@ public:
         if (status != BML_OK) (void)Close();
         return status;
     }
-    int Close() noexcept {
+    [[nodiscard]] int Close() noexcept {
         if (!m_Client) return BML_OK;
         const int status = BML_Imc_CloseClient(m_Client);
         if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }
@@ -161,79 +161,79 @@ public:
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
     bool IsOpen() const noexcept { return m_Client != nullptr; }
-    int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
+    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId TimerStatePayloadType() const noexcept { return m_TimerStatePayload; }
     BML_ImcPayloadTypeId VisibleInputPayloadType() const noexcept { return m_VisibleInputPayload; }
     BML_ImcRpcId PauseTimerRpcId() const noexcept { return m_PauseTimerRpc; }
-    int IsPauseTimerAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsPauseTimerAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_PauseTimerRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId ResetTimerRpcId() const noexcept { return m_ResetTimerRpc; }
-    int IsResetTimerAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsResetTimerAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_ResetTimerRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId SetTimerVisibleRpcId() const noexcept { return m_SetTimerVisibleRpc; }
-    int IsSetTimerVisibleAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsSetTimerVisibleAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_SetTimerVisibleRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId StartTimerRpcId() const noexcept { return m_StartTimerRpc; }
-    int IsStartTimerAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsStartTimerAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_StartTimerRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
     BML_ImcRpcId StateRpcId() const noexcept { return m_StateRpc; }
-    int IsStateAvailable(bool &out) const noexcept {
+    [[nodiscard]] int IsStateAvailable(bool &out) const noexcept {
         int available = 0;
         const int status = BML_Imc_IsRpcAvailable(m_Client, m_StateRpc, &available);
         if (status == BML_OK) out = available != 0;
         return status;
     }
 
-    int BeginCallPauseTimer(PauseTimerFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallPauseTimer(PauseTimerFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_PauseTimerRpc, nullptr, out, timeoutMs);
     }
-    int CallPauseTimer(std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallPauseTimer(std::uint32_t timeoutMs = 5000u) {
         PauseTimerFuture future; int status = BeginCallPauseTimer(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCallResetTimer(ResetTimerFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallResetTimer(ResetTimerFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_ResetTimerRpc, nullptr, out, timeoutMs);
     }
-    int CallResetTimer(std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallResetTimer(std::uint32_t timeoutMs = 5000u) {
         ResetTimerFuture future; int status = BeginCallResetTimer(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCallSetTimerVisible(const VisibleInputValue &input, SetTimerVisibleFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallSetTimerVisible(const VisibleInputValue &input, SetTimerVisibleFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
         int status = ::BML::Imc::EncodeMessage(input, m_VisibleInputPayload, buffer, request, EncodedVisibleInputSize, EncodeVisibleInput);
         return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_SetTimerVisibleRpc, &request, out, timeoutMs) : status;
     }
-    int CallSetTimerVisible(const VisibleInputValue &input, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallSetTimerVisible(const VisibleInputValue &input, std::uint32_t timeoutMs = 5000u) {
         SetTimerVisibleFuture future; int status = BeginCallSetTimerVisible(input, future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCallStartTimer(StartTimerFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallStartTimer(StartTimerFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_StartTimerRpc, nullptr, out, timeoutMs);
     }
-    int CallStartTimer(std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallStartTimer(std::uint32_t timeoutMs = 5000u) {
         StartTimerFuture future; int status = BeginCallStartTimer(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-    int BeginCallState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
+    [[nodiscard]] int BeginCallState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         return ::BML::Imc::BeginRpc(m_Client, m_StateRpc, nullptr, m_TimerStatePayload, out, DecodeTimerState, timeoutMs);
     }
-    int CallState(TimerStateValue &out, std::uint32_t timeoutMs = 5000u) {
+    [[nodiscard]] int CallState(TimerStateValue &out, std::uint32_t timeoutMs = 5000u) {
         StateFuture future; int status = BeginCallState(future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
@@ -279,13 +279,13 @@ public:
         StateHandler State = nullptr;
     };
 
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    [[nodiscard]] int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
     bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+    [[nodiscard]] int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
         if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
         if (!(handlers.PauseTimer || handlers.ResetTimer || handlers.SetTimerVisible || handlers.StartTimer || handlers.State)) return BML_ERROR_INVALID_PARAMETER;
         if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
@@ -300,7 +300,7 @@ public:
         return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
     }
 
-    int RegisterPauseTimer(PauseTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterPauseTimer(PauseTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_PauseTimer.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_PauseTimer = {this, handler, userdata, false};
@@ -309,14 +309,14 @@ public:
         if (status == BML_OK) m_PauseTimer.Registered = true; else m_PauseTimer = {};
         return status;
     }
-    int UnregisterPauseTimer() noexcept {
+    [[nodiscard]] int UnregisterPauseTimer() noexcept {
         if (!m_PauseTimer.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.PauseTimerRpcId());
         if (status == BML_OK) m_PauseTimer = {};
         return status;
     }
 
-    int RegisterResetTimer(ResetTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterResetTimer(ResetTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_ResetTimer.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_ResetTimer = {this, handler, userdata, false};
@@ -325,14 +325,14 @@ public:
         if (status == BML_OK) m_ResetTimer.Registered = true; else m_ResetTimer = {};
         return status;
     }
-    int UnregisterResetTimer() noexcept {
+    [[nodiscard]] int UnregisterResetTimer() noexcept {
         if (!m_ResetTimer.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.ResetTimerRpcId());
         if (status == BML_OK) m_ResetTimer = {};
         return status;
     }
 
-    int RegisterSetTimerVisible(SetTimerVisibleHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterSetTimerVisible(SetTimerVisibleHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_SetTimerVisible.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_SetTimerVisible = {this, handler, userdata, false};
@@ -341,14 +341,14 @@ public:
         if (status == BML_OK) m_SetTimerVisible.Registered = true; else m_SetTimerVisible = {};
         return status;
     }
-    int UnregisterSetTimerVisible() noexcept {
+    [[nodiscard]] int UnregisterSetTimerVisible() noexcept {
         if (!m_SetTimerVisible.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.SetTimerVisibleRpcId());
         if (status == BML_OK) m_SetTimerVisible = {};
         return status;
     }
 
-    int RegisterStartTimer(StartTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterStartTimer(StartTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_StartTimer.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_StartTimer = {this, handler, userdata, false};
@@ -357,14 +357,14 @@ public:
         if (status == BML_OK) m_StartTimer.Registered = true; else m_StartTimer = {};
         return status;
     }
-    int UnregisterStartTimer() noexcept {
+    [[nodiscard]] int UnregisterStartTimer() noexcept {
         if (!m_StartTimer.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.StartTimerRpcId());
         if (status == BML_OK) m_StartTimer = {};
         return status;
     }
 
-    int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+    [[nodiscard]] int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_State.Registered) return BML_ERROR_ALREADY_EXISTS;
         m_State = {this, handler, userdata, false};
@@ -373,7 +373,7 @@ public:
         if (status == BML_OK) m_State.Registered = true; else m_State = {};
         return status;
     }
-    int UnregisterState() noexcept {
+    [[nodiscard]] int UnregisterState() noexcept {
         if (!m_State.Registered) return BML_ERROR_NOT_FOUND;
         const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.StateRpcId());
         if (status == BML_OK) m_State = {};
@@ -382,7 +382,7 @@ public:
 
 private:
     struct PauseTimerSlot { Provider *Owner = nullptr; PauseTimerHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int PauseTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
+    [[nodiscard]] static int PauseTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<PauseTimerSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -394,7 +394,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct ResetTimerSlot { Provider *Owner = nullptr; ResetTimerHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int ResetTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
+    [[nodiscard]] static int ResetTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<ResetTimerSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -406,7 +406,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct SetTimerVisibleSlot { Provider *Owner = nullptr; SetTimerVisibleHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int SetTimerVisibleThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
+    [[nodiscard]] static int SetTimerVisibleThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<SetTimerVisibleSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -422,7 +422,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct StartTimerSlot { Provider *Owner = nullptr; StartTimerHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int StartTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
+    [[nodiscard]] static int StartTimerThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
         auto *slot = static_cast<StartTimerSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
@@ -434,7 +434,7 @@ private:
         } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
     }
     struct StateSlot { Provider *Owner = nullptr; StateHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
+    [[nodiscard]] static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
         auto *slot = static_cast<StateSlot *>(userdata);
         if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
         const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
