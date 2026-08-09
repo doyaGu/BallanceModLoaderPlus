@@ -416,7 +416,6 @@ void ModContext::UnloadMods() {
 #endif
 
     m_ModDependencies.clear();
-    m_DependencyGraph.clear();
 
     ClearFlags(BML_MODS_LOADED);
 }
@@ -427,17 +426,20 @@ bool ModContext::InitMods() {
 
     ClearFlags(BML_MODS_SHUTTING_DOWN);
 
-    if (!ResolveDependencies()) {
-        m_Logger->Error("Failed to resolve mod dependencies");
+    if (!ResolveDependencies())
         return false;
-    }
 
     for (IMod *mod : m_Mods) {
         m_Logger->Info("Loading Mod %s[%s] v%s by %s",
                        mod->GetID(), mod->GetName(), mod->GetVersion(), mod->GetAuthor());
 
-        if (GetDependencyCount(mod) > 0 && CheckDependencies(mod) == 0) {
-            m_Logger->Error("Dependencies not satisfied for mod %s", mod->GetID());
+        std::string dependencyDiagnostic;
+        if (EvaluateDependencies(mod, &dependencyDiagnostic) == 0) {
+            m_Logger->Error("Cannot initialize Mod %s: %s",
+                            mod->GetID(),
+                            dependencyDiagnostic.empty()
+                                ? "dependencies are not satisfied."
+                                : dependencyDiagnostic.c_str());
             continue; // Skip this mod but continue loading others
         }
 
@@ -599,7 +601,18 @@ int ModContext::RegisterOptionalDependency(IMod *mod, const char *dependencyId, 
 }
 
 int ModContext::CheckDependencies(IMod *mod) const {
-    if (!mod) return 0;
+    return EvaluateDependencies(mod, nullptr);
+}
+
+int ModContext::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
+    if (diagnostic)
+        diagnostic->clear();
+    if (!mod) {
+        if (diagnostic)
+            *diagnostic = "the Mod pointer is null.";
+        return 0;
+    }
+
     auto invocationLock = LockModInvocation();
 
     // A relaxed semantic version parser:
@@ -668,13 +681,20 @@ int ModContext::CheckDependencies(IMod *mod) const {
         for (const auto &dependency : dependencies) {
             IMod *depMod = dependency.Mod;
             if (!depMod) {
-                if (!dependency.Optional)
+                if (!dependency.Optional) {
+                    if (diagnostic)
+                        *diagnostic = "required dependency '" + dependency.Id + "' is not installed.";
                     return 0;
+                }
                 continue;
             }
 #if BML_ENABLE_ANGELSCRIPT
             if (BML::IsFailedScriptMod(depMod)) {
-                if (!dependency.Optional) return 0;
+                if (!dependency.Optional) {
+                    if (diagnostic)
+                        *diagnostic = "required dependency '" + dependency.Id + "' failed to load.";
+                    return 0;
+                }
                 continue;
             }
 #endif
@@ -683,12 +703,25 @@ int ModContext::CheckDependencies(IMod *mod) const {
 
             // If version is older than required and it's not optional -> not satisfied
             if (have < dependency.MinVersion) {
-                if (!dependency.Optional) return 0;
+                if (!dependency.Optional) {
+                    if (diagnostic) {
+                        *diagnostic = "required dependency '" + dependency.Id + "' is version '" +
+                                      (verStr ? verStr : "") + "'; version " +
+                                      dependency.MinVersion.ToString() + " or newer is required.";
+                    }
+                    return 0;
+                }
             }
         }
         return 1;
+    } catch (const std::exception &e) {
+        if (diagnostic)
+            *diagnostic = std::string("dependency check raised an exception: ") + e.what();
+        return 0;
     } catch (...) {
-        return 0; // treat unexpected errors as "unsatisfied"
+        if (diagnostic)
+            *diagnostic = "dependency check raised an unknown exception.";
+        return 0;
     }
 }
 
@@ -2359,14 +2392,15 @@ bool ModContext::ResolveDependencies() {
 
     for (size_t i = 0; i < m_Mods.size(); ++i) {
         IMod *m = m_Mods[i];
-        if (!m || !m->GetID()) return false;
+        if (!m || !m->GetID() || !*m->GetID()) {
+            if (m_Logger)
+                m_Logger->Error("Cannot resolve Mod dependencies: registry entry %zu has no valid Mod id.", i);
+            return false;
+        }
         std::string id = m->GetID();
         pos[id] = i;
         modMap[id] = m;
     }
-
-    // Clear and (re)fill the externally visible graph for diagnostics/tools
-    m_DependencyGraph.clear();
 
     // adj: dependency -> [dependents]
     std::unordered_map<std::string, std::vector<std::string>> adj;
@@ -2389,11 +2423,17 @@ bool ModContext::ResolveDependencies() {
 
             auto depInSet = modMap.find(depId);
             if (depInSet == modMap.end()) {
-                if (!dep.optional) return false;
+                if (!dep.optional) {
+                    if (m_Logger) {
+                        m_Logger->Error(
+                            "Cannot initialize Mod %s: required dependency '%s' version %s or newer is not installed.",
+                            mid.c_str(), depId.c_str(), dep.minVersion.ToString().c_str());
+                    }
+                    return false;
+                }
                 continue;
             }
 
-            m_DependencyGraph[mid].push_back(depId); // mod -> dependsOn
             adj[depId].push_back(mid);               // dep -> dependent
             ++inDegree[mid];
         }
@@ -2431,92 +2471,31 @@ bool ModContext::ResolveDependencies() {
         }
     }
 
-    // If not all nodes were processed, there is a cycle
-    if (sorted.size() != m_Mods.size()) return false;
+    // If not all nodes were processed, a cycle exists. Nodes remaining with a
+    // non-zero in-degree either belong to the cycle or depend on one.
+    if (sorted.size() != m_Mods.size()) {
+        std::string affected;
+        for (IMod *mod : m_Mods) {
+            const char *id = mod ? mod->GetID() : nullptr;
+            const auto entry = id ? inDegree.find(id) : inDegree.end();
+            if (entry == inDegree.end() || entry->second == 0)
+                continue;
+            if (!affected.empty())
+                affected += ", ";
+            affected += "'";
+            affected += id;
+            affected += "'";
+        }
+        if (m_Logger) {
+            m_Logger->Error(
+                "Cannot resolve Mod dependencies: a dependency cycle involves or blocks %s.",
+                affected.empty() ? "one or more Mods" : affected.c_str());
+        }
+        return false;
+    }
 
     m_Mods.swap(sorted);
     return true;
-}
-
-bool ModContext::HasCircularDependencies(const std::string &modId,
-                                         std::unordered_set<std::string> &visited,
-                                         std::unordered_set<std::string> &inStack) {
-    if (!visited.insert(modId).second) {
-        // already visited outside this path
-        return false;
-    }
-    inStack.insert(modId);
-
-    auto it = m_DependencyGraph.find(modId);
-    if (it != m_DependencyGraph.end()) {
-        for (const auto &depId : it->second) {
-            if (inStack.count(depId)) return true; // back-edge
-            if (HasCircularDependencies(depId, visited, inStack)) return true;
-        }
-    }
-
-    inStack.erase(modId);
-    return false;
-}
-
-std::vector<IMod *> ModContext::SortModsByDependencies() {
-    // Build maps and stable positions from current m_Mods
-    std::unordered_map<std::string, IMod *> modMap;
-    std::unordered_map<std::string, size_t> pos;
-    modMap.reserve(m_Mods.size());
-    for (size_t i = 0; i < m_Mods.size(); ++i) {
-        modMap[m_Mods[i]->GetID()] = m_Mods[i];
-        pos[m_Mods[i]->GetID()] = i;
-    }
-
-    // Build adjacency (dep -> dependents) and in-degree (dependency count)
-    std::unordered_map<std::string, std::vector<std::string>> adj;
-    std::unordered_map<std::string, int> inDegree;
-    for (const auto &kv : modMap) inDegree[kv.first] = 0;
-
-    for (IMod *m : m_Mods) {
-        auto it = m_ModDependencies.find(m);
-        if (it == m_ModDependencies.end()) continue;
-
-        std::unordered_set<std::string> seen;
-        const std::string mid = m->GetID();
-        for (const auto &dep : it->second) {
-            if (!dep.id || !*dep.id) continue;
-            const std::string depId(dep.id);
-            if (!seen.insert(depId).second) continue; // dedup
-            if (!modMap.count(depId)) {
-                if (!dep.optional) return {}; // unsatisfied required dep
-                continue;                     // optional missing -> ignore
-            }
-            adj[depId].push_back(mid);
-            ++inDegree[mid];
-        }
-    }
-    for (auto &kv : adj) {
-        auto &v = kv.second;
-        std::stable_sort(v.begin(), v.end(), [&](const std::string &a, const std::string &b) {
-            return pos[a] < pos[b];
-        });
-    }
-
-    // Kahn (stable seeding by original order)
-    std::queue<std::string> q;
-    for (IMod *m : m_Mods) if (inDegree[m->GetID()] == 0) q.push(m->GetID());
-
-    std::vector<IMod *> order;
-    order.reserve(m_Mods.size());
-    while (!q.empty()) {
-        auto cur = q.front();
-        q.pop();
-        order.push_back(modMap[cur]);
-        auto it = adj.find(cur);
-        if (it == adj.end()) continue;
-        for (const auto &nxt : it->second) {
-            if (--inDegree[nxt] == 0) q.push(nxt);
-        }
-    }
-    if (order.size() != m_Mods.size()) return {}; // cycle detected
-    return order;
 }
 
 void ModContext::FillCallbackMap(IMod *mod) {

@@ -7,7 +7,6 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "BML/IBML.h"
@@ -395,9 +394,8 @@ private:
     bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
     bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
 
+    int EvaluateDependencies(IMod *mod, std::string *diagnostic) const;
     bool ResolveDependencies();
-    bool HasCircularDependencies(const std::string &modId, std::unordered_set<std::string> &visited, std::unordered_set<std::string> &inStack);
-    std::vector<IMod *> SortModsByDependencies();
 
     void FillCallbackMap(IMod *mod);
 
@@ -468,7 +466,6 @@ private:
     ModMap m_ModMap;
 
     std::unordered_map<IMod*, std::vector<ModDependency>> m_ModDependencies;
-    std::unordered_map<std::string, std::vector<std::string>> m_DependencyGraph;
 
     std::vector<Config *> m_Configs;
     typedef std::unordered_map<std::string, Config *> ConfigMap;

@@ -569,7 +569,7 @@ if (-not $SkipPlayer) {
             $lifecycleFailure =
                 (Test-SmokeTextContains $modLogText "Failed to load $fileStem.") -or
                 (Test-SmokeTextContains $modLogText "Duplicate Mod: $($fixture.ModId)") -or
-                (Test-SmokeTextContains $modLogText "Dependencies not satisfied for mod $($fixture.ModId)") -or
+                (Test-SmokeTextContains $modLogText "Cannot initialize Mod $($fixture.ModId):") -or
                 (Test-SmokeTextContains $modLogText "Exception in mod $($fixture.ModId) unload callback") -or
                 (Test-SmokeTextContains $modLogText "Failed to unload mod $($fixture.ModId).")
             Add-SmokeCheck $checks "legacy-native-$($fixture.ModId)-lifecycle" (-not $lifecycleFailure) "no load, duplicate, dependency, unload callback, or unload failure for $($fixture.ModId)"

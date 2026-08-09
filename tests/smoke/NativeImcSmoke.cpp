@@ -30,7 +30,10 @@ bool NearlyEqual(float left, float right) {
 
 class BMLNativeImcSmoke final : public IMod {
 public:
-    explicit BMLNativeImcSmoke(IBML *bml) : IMod(bml) {}
+    explicit BMLNativeImcSmoke(IBML *bml) : IMod(bml) {
+        AddDependency("BML");
+        AddOptionalDependency("BMLNativeOptionalDependencySmoke");
+    }
 
     const char *GetID() override { return "BMLNativeImcSmoke"; }
     const char *GetVersion() override { return "1.0.0"; }
