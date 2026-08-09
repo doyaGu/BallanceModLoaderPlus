@@ -4,8 +4,8 @@ endif()
 if(NOT DEFINED BINARY OR NOT EXISTS "${BINARY}")
     message(FATAL_ERROR "Legacy native DLL export ABI test needs the built BML DLL.")
 endif()
-if(NOT DEFINED EXPECTED_COUNT OR NOT DEFINED EXPECTED_SHA256)
-    message(FATAL_ERROR "Legacy native DLL export ABI baseline is incomplete.")
+if(NOT DEFINED BASELINE OR NOT EXISTS "${BASELINE}")
+    message(FATAL_ERROR "Legacy native DLL export ABI test needs a symbol baseline.")
 endif()
 
 execute_process(
@@ -35,18 +35,58 @@ endforeach()
 
 list(REMOVE_DUPLICATES legacy_symbols)
 list(SORT legacy_symbols)
-list(LENGTH legacy_symbols actual_count)
-list(JOIN legacy_symbols "\n" symbol_payload)
-string(APPEND symbol_payload "\n")
-string(SHA256 actual_sha256 "${symbol_payload}")
-string(TOLOWER "${EXPECTED_SHA256}" expected_sha256)
 
-if(NOT actual_count EQUAL EXPECTED_COUNT OR NOT actual_sha256 STREQUAL expected_sha256)
+file(STRINGS "${BASELINE}" baseline_entries ENCODING UTF-8)
+set(expected_symbols)
+foreach(entry IN LISTS baseline_entries)
+    string(STRIP "${entry}" entry)
+    if(NOT entry STREQUAL "" AND NOT entry MATCHES "^#")
+        list(APPEND expected_symbols "${entry}")
+    endif()
+endforeach()
+list(LENGTH expected_symbols baseline_entry_count)
+list(REMOVE_DUPLICATES expected_symbols)
+list(SORT expected_symbols)
+list(LENGTH expected_symbols expected_count)
+if(NOT baseline_entry_count EQUAL expected_count OR expected_count EQUAL 0)
+    message(FATAL_ERROR
+            "Legacy native DLL export ABI baseline is empty or contains duplicates.")
+endif()
+
+set(missing_symbols)
+foreach(expected_symbol IN LISTS expected_symbols)
+    if(NOT expected_symbol IN_LIST legacy_symbols)
+        list(APPEND missing_symbols "${expected_symbol}")
+    endif()
+endforeach()
+
+set(added_symbols)
+foreach(actual_symbol IN LISTS legacy_symbols)
+    if(NOT actual_symbol IN_LIST expected_symbols)
+        list(APPEND added_symbols "${actual_symbol}")
+    endif()
+endforeach()
+
+if(missing_symbols OR added_symbols)
+    list(LENGTH legacy_symbols actual_count)
+    list(JOIN missing_symbols "\n  - " missing_report)
+    list(JOIN added_symbols "\n  + " added_report)
+    if(NOT missing_report STREQUAL "")
+        string(PREPEND missing_report "  - ")
+    else()
+        set(missing_report "  (none)")
+    endif()
+    if(NOT added_report STREQUAL "")
+        string(PREPEND added_report "  + ")
+    else()
+        set(added_report "  (none)")
+    endif()
     message(FATAL_ERROR
             "Frozen legacy native DLL exports changed.\n"
-            "Expected: ${EXPECTED_COUNT} symbols, SHA-256 ${expected_sha256}\n"
-            "Actual:   ${actual_count} symbols, SHA-256 ${actual_sha256}\n"
+            "Expected ${expected_count} symbols; found ${actual_count}.\n"
+            "Missing:\n${missing_report}\n"
+            "Added:\n${added_report}\n"
             "The current major version must preserve decorated MSVC x86 exports.")
 endif()
 
-message(STATUS "Verified ${actual_count} frozen legacy native DLL exports.")
+message(STATUS "Verified ${expected_count} frozen legacy native DLL exports.")

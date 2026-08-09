@@ -127,8 +127,7 @@ if(MSVC)
                 COMMAND "${CMAKE_COMMAND}"
                 "-DDUMPBIN=${BML_DUMPBIN}"
                 "-DBINARY=$<TARGET_FILE:BML>"
-                "-DEXPECTED_COUNT=333"
-                "-DEXPECTED_SHA256=fa1005dc8b0684a71fe6d512c4a8f062fdff5e55b1586eaeb16193959f5a2a89"
+                "-DBASELINE=${CMAKE_CURRENT_SOURCE_DIR}/abi/legacy-native-exports-x86-msvc.txt"
                 "-P" "${CMAKE_CURRENT_SOURCE_DIR}/LegacyNativeDllExportAbiTest.cmake"
         )
         set_tests_properties(LegacyNativeDllExportAbiTest PROPERTIES LABELS "legacy-native;abi")
