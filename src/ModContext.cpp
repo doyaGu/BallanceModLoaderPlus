@@ -2197,6 +2197,21 @@ std::string ModContext::GetNativeImcOwnerId(
     }
 
     std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+
+    HMODULE bmlModule = nullptr;
+    if (::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                             reinterpret_cast<LPCSTR>(&BML_GetModContext),
+                             &bmlModule) &&
+        callerModule == bmlModule) {
+        if (!requestedOwnerId || !*requestedOwnerId || !m_BMLMod)
+            return {};
+        const auto requested = m_ModMap.find(requestedOwnerId);
+        return requested != m_ModMap.end() && requested->second == m_BMLMod
+                   ? requested->first
+                   : std::string();
+    }
+
     const auto owners = m_DllHandleToModsMap.find(callerModule);
     if (owners == m_DllHandleToModsMap.end())
         return {};
