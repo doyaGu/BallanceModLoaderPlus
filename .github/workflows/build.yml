@@ -178,6 +178,12 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v6.0.2
 
+      - name: Checkout Virtools SDK
+        uses: actions/checkout@v6.0.2
+        with:
+          repository: doyaGu/Virtools-SDK-2.1
+          path: Virtools-SDK-2.1
+
       - name: Download Release SDK distribution
         uses: actions/download-artifact@v8.0.1
         with:
@@ -246,6 +252,45 @@ jobs:
             }
           }
           .\scripts\Package-BMLRelease.ps1 @packageArgs
+
+      - name: Setup MSVC
+        uses: TheMrMilchmann/setup-msvc-dev@v4.0.0
+        with:
+          arch: x86
+
+      - name: Validate packaged SDK consumers
+        shell: pwsh
+        run: |
+          $cmake = (Get-Command cmake.exe).Source
+          $dumpbin = (Get-Command dumpbin.exe).Source
+          $variants = @(
+            [pscustomobject]@{ Name = 'Release'; Pattern = 'BMLPlus-SDK-*-Release.zip' }
+            [pscustomobject]@{ Name = 'Debug'; Pattern = 'BMLPlus-SDK-*-Debug.zip' }
+          )
+
+          foreach ($variant in $variants) {
+            $archives = @(Get-ChildItem -LiteralPath "${{ github.workspace }}\packages" -Filter $variant.Pattern)
+            if ($archives.Count -ne 1) {
+              throw "Expected one $($variant.Name) SDK archive, found $($archives.Count)."
+            }
+
+            $arguments = @(
+              "-DCMAKE_EXECUTABLE=$cmake"
+              "-DSOURCE_ROOT=${{ github.workspace }}"
+              "-DSDK_ARCHIVE=$($archives[0].FullName)"
+              "-DWORK_ROOT=${{ github.workspace }}\build\$($variant.Name.ToLowerInvariant())-sdk-consumer"
+              '-DGENERATOR=Ninja'
+              "-DCONFIGURATION=$($variant.Name)"
+              "-DVIRTOOLS_SDK_PATH=${{ github.workspace }}\Virtools-SDK-2.1"
+              "-DDUMPBIN=$dumpbin"
+              '-P'
+              "${{ github.workspace }}\tests\LegacyNativeSdkConsumerTest.cmake"
+            )
+            & $cmake @arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packaged $($variant.Name) SDK consumer validation failed with exit code $LASTEXITCODE."
+            }
+          }
 
       - name: Upload release package artifact
         uses: actions/upload-artifact@v7.0.1

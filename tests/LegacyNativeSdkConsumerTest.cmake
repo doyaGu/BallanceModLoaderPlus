@@ -1,7 +1,6 @@
 foreach(required_variable
         CMAKE_EXECUTABLE
         SOURCE_ROOT
-        MAIN_BUILD_DIR
         WORK_ROOT
         GENERATOR
         CONFIGURATION
@@ -13,10 +12,17 @@ foreach(required_variable
     endif()
 endforeach()
 
+set(use_sdk_archive FALSE)
+if(DEFINED SDK_ARCHIVE AND NOT "${SDK_ARCHIVE}" STREQUAL "")
+    set(use_sdk_archive TRUE)
+elseif(NOT DEFINED MAIN_BUILD_DIR OR "${MAIN_BUILD_DIR}" STREQUAL "")
+    message(FATAL_ERROR
+            "Legacy native SDK consumer test needs MAIN_BUILD_DIR or SDK_ARCHIVE.")
+endif()
+
 foreach(required_path
         CMAKE_EXECUTABLE
         SOURCE_ROOT
-        MAIN_BUILD_DIR
         VIRTOOLS_SDK_PATH
         DUMPBIN)
     if(NOT EXISTS "${${required_path}}")
@@ -26,38 +32,84 @@ foreach(required_path
     endif()
 endforeach()
 
-get_filename_component(main_build_dir "${MAIN_BUILD_DIR}" ABSOLUTE)
+if(use_sdk_archive)
+    if(NOT EXISTS "${SDK_ARCHIVE}")
+        message(FATAL_ERROR
+                "Legacy native SDK consumer archive does not exist: ${SDK_ARCHIVE}")
+    endif()
+elseif(NOT EXISTS "${MAIN_BUILD_DIR}")
+    message(FATAL_ERROR
+            "Legacy native SDK consumer main build directory does not exist: "
+            "${MAIN_BUILD_DIR}")
+endif()
+
+get_filename_component(source_root "${SOURCE_ROOT}" ABSOLUTE)
 get_filename_component(work_root "${WORK_ROOT}" ABSOLUTE)
-file(TO_CMAKE_PATH "${main_build_dir}" main_build_dir)
+file(TO_CMAKE_PATH "${source_root}" source_root)
 file(TO_CMAKE_PATH "${work_root}" work_root)
-set(main_build_prefix "${main_build_dir}/")
-string(FIND "${work_root}/" "${main_build_prefix}" work_root_prefix)
-if(NOT work_root_prefix EQUAL 0 OR work_root STREQUAL main_build_dir)
+if(use_sdk_archive)
+    set(work_root_guard "${source_root}")
+else()
+    get_filename_component(main_build_dir "${MAIN_BUILD_DIR}" ABSOLUTE)
+    file(TO_CMAKE_PATH "${main_build_dir}" main_build_dir)
+    set(work_root_guard "${main_build_dir}")
+endif()
+set(work_root_guard_prefix "${work_root_guard}/")
+string(FIND "${work_root}/" "${work_root_guard_prefix}" work_root_prefix)
+if(NOT work_root_prefix EQUAL 0 OR work_root STREQUAL work_root_guard)
     message(FATAL_ERROR
             "Legacy native SDK consumer work root must be inside the main build "
-            "directory: ${work_root}")
+            "or source directory: ${work_root}")
 endif()
 
 file(REMOVE_RECURSE "${work_root}")
 set(install_root "${work_root}/install")
 set(consumer_build_dir "${work_root}/build")
 
-execute_process(
-    COMMAND "${CMAKE_EXECUTABLE}" --install "${main_build_dir}"
-            --prefix "${install_root}" --config "${CONFIGURATION}"
-    RESULT_VARIABLE install_status
-    OUTPUT_VARIABLE install_output
-    ERROR_VARIABLE install_error
-)
-if(NOT install_status EQUAL 0)
-    message(FATAL_ERROR
-            "Failed to install the SDK for its legacy native consumer.\n"
-            "${install_output}${install_error}")
+if(use_sdk_archive)
+    file(MAKE_DIRECTORY "${install_root}")
+    execute_process(
+        COMMAND "${CMAKE_EXECUTABLE}" -E tar xvf "${SDK_ARCHIVE}"
+        WORKING_DIRECTORY "${install_root}"
+        RESULT_VARIABLE extract_status
+        OUTPUT_VARIABLE extract_output
+        ERROR_VARIABLE extract_error
+    )
+    if(NOT extract_status EQUAL 0)
+        message(FATAL_ERROR
+                "Failed to extract the release SDK archive.\n"
+                "${extract_output}${extract_error}")
+    endif()
+    set(consumer_source_dir "${install_root}/templates/native-mod-template")
+else()
+    execute_process(
+        COMMAND "${CMAKE_EXECUTABLE}" --install "${main_build_dir}"
+                --prefix "${install_root}" --config "${CONFIGURATION}"
+        RESULT_VARIABLE install_status
+        OUTPUT_VARIABLE install_output
+        ERROR_VARIABLE install_error
+    )
+    if(NOT install_status EQUAL 0)
+        message(FATAL_ERROR
+                "Failed to install the SDK for its legacy native consumer.\n"
+                "${install_output}${install_error}")
+    endif()
+    set(consumer_source_dir "${source_root}/templates/native-mod-template")
 endif()
+
+foreach(required_sdk_path
+        "${install_root}/lib/cmake/BML/BMLConfig.cmake"
+        "${install_root}/lib/BMLPlus.lib"
+        "${consumer_source_dir}/CMakeLists.txt")
+    if(NOT EXISTS "${required_sdk_path}")
+        message(FATAL_ERROR
+                "Legacy native SDK consumer input is incomplete: ${required_sdk_path}")
+    endif()
+endforeach()
 
 set(configure_command
         "${CMAKE_EXECUTABLE}"
-        -S "${SOURCE_ROOT}/templates/native-mod-template"
+        -S "${consumer_source_dir}"
         -B "${consumer_build_dir}"
         -G "${GENERATOR}")
 if(DEFINED GENERATOR_PLATFORM AND NOT "${GENERATOR_PLATFORM}" STREQUAL "")
@@ -136,6 +188,11 @@ if(NOT found_entry OR NOT found_exit)
             "points. BMLEntry=${found_entry}, BMLExit=${found_exit}\n${exports}")
 endif()
 
+if(use_sdk_archive)
+    set(sdk_input_label "SDK archive")
+else()
+    set(sdk_input_label "installed SDK")
+endif()
 message(STATUS
-        "Verified the installed SDK with HelloMod.bmodp and its "
+        "Verified the ${sdk_input_label} with HelloMod.bmodp and its "
         "BMLEntry/BMLExit exports.")
