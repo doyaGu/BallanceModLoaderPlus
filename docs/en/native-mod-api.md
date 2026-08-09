@@ -27,6 +27,13 @@ MOD_EXPORT IMod *BMLEntry(IBML *bml) { return new MyMod(bml); }
 MOD_EXPORT void BMLExit(IMod *mod) { delete mod; }
 ```
 
+The object returned by `BMLEntry` is allocated by the Mod DLL. Export
+`BMLExit` and destroy that same object there so allocation and deallocation use
+the same C++ runtime. BML calls `BMLExit` when registration fails after object
+creation and when a loaded native Mod is unloaded. For compatibility, BML can
+still load an older DLL without `BMLExit`, but it logs a warning and cannot
+destroy that Mod instance safely.
+
 Use the CMake helper installed with the SDK:
 
 ```cmake

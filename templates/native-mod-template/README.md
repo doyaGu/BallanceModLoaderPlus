@@ -43,7 +43,8 @@ Use `--config Release` for the artifact you publish.
 ## Notes
 
 - Entry point: `BMLEntry(IBML*) -> IMod*`
-- Cleanup (optional): `BMLExit(IMod*)`
+- Cleanup: `BMLExit(IMod*)` destroys the object returned by `BMLEntry` in the
+  same DLL and is required for new mods.
 - Registers a sample command: `hello [name]`
 - `bml_add_mod` links the BML SDK, enables C++20, and applies the `.bmodp` suffix.
 - `bml_install_mod` installs the target under the configured `Mods` directory.

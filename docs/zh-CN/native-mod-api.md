@@ -26,6 +26,11 @@ MOD_EXPORT IMod *BMLEntry(IBML *bml) { return new MyMod(bml); }
 MOD_EXPORT void BMLExit(IMod *mod) { delete mod; }
 ```
 
+`BMLEntry` 返回的对象由 Mod DLL 分配。Mod 应导出 `BMLExit`，并在其中销毁
+同一个对象，确保分配与释放使用相同的 C++ 运行库。对象创建后若注册失败，或
+已加载的原生 Mod 被卸载，BML 都会调用 `BMLExit`。为兼容旧 Mod，缺少
+`BMLExit` 的 DLL 仍可加载，但 BML 会记录警告，且无法安全销毁该 Mod 实例。
+
 推荐通过安装包提供的 CMake 函数创建目标：
 
 ```cmake
