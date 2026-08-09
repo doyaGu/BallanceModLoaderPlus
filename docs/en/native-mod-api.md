@@ -95,6 +95,11 @@ decoupled notifications can use `BML::Events::Stream`, which covers game flow,
 object and script loading, physics, commands, configuration, and cheat-state
 events.
 
+Open the stream before polling it. `Poll` returns `BML_OK` only when it removes
+an event from the queue, `BML_ERROR_NOT_FOUND` while an open stream has no
+queued event, and `BML_ERROR_INVALID_HANDLE` when the stream is not open. The
+output event is reset before every poll, including unsuccessful polls.
+
 ## `IBML` services
 
 `IBML` is the main loader service passed to a mod. It provides:
