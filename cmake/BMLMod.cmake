@@ -10,6 +10,10 @@ function(bml_add_mod TARGET_NAME)
     if (ARGC LESS 2)
         message(FATAL_ERROR "bml_add_mod(${TARGET_NAME}) requires at least one source file")
     endif ()
+    if (NOT MSVC)
+        message(FATAL_ERROR
+                "bml_add_mod requires an MSVC-compatible C++ ABI because the legacy BML native interface crosses the DLL boundary; use MSVC or clang-cl")
+    endif ()
 
     add_library("${TARGET_NAME}" SHARED ${ARGN})
     target_link_libraries("${TARGET_NAME}" PRIVATE BML::BML)

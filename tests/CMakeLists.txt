@@ -109,6 +109,16 @@ add_test(
 )
 set_tests_properties(LegacyNativeHeaderAbiTest PROPERTIES LABELS "legacy-native;abi")
 
+add_test(
+        NAME BmlModCmakeTest
+        COMMAND "${CMAKE_COMMAND}"
+                "-DBML_MOD_CMAKE=${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/BmlModCmakeTest.cmake"
+)
+set_tests_properties(BmlModCmakeTest PROPERTIES
+        LABELS "legacy-native;cmake"
+        PASS_REGULAR_EXPRESSION "bml_add_mod requires an MSVC-compatible C\\+\\+ ABI")
+
 if(MSVC)
     get_filename_component(BML_TOOL_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
     set(BML_DUMPBIN "${BML_TOOL_DIRECTORY}/dumpbin.exe")
