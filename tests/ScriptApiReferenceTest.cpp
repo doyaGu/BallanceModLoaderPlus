@@ -44,7 +44,7 @@ void ExpectContainsNone(const std::string &text,
 
 } // namespace
 
-TEST(ScriptApiReferenceTest, ImcBackedFacadesAreDocumented) {
+TEST(ScriptApiReferenceTest, BuiltinCapabilityFacadesAreDocumented) {
     constexpr const char *kScriptApiStub = "docs/api/bml-script-mod-api.as";
     constexpr const char *kPredefinedApi = "docs/api/as.predefined";
     const std::vector<std::string> declarations = {
@@ -75,6 +75,23 @@ TEST(ScriptApiReferenceTest, ImcBackedFacadesAreDocumented) {
     ExpectContainsNone(builtinFacade,
                        {"namespace BML::Interop", "InteropRegistry", "BML_RecordRef", "BML_StreamRef", "BML_CursorRef"},
                        "src/AngelScript/ScriptImcFacade.cpp");
+}
+
+TEST(ScriptApiReferenceTest, RuntimeFacadeUsesDirectHostReads) {
+    const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsAll(builtinFacade,
+                      {"context->ReadRuntimeState()", "context->GetTimeManager()",
+                       "context->GetSRScore()", "context->GetHSScore()"},
+                      "src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsNone(builtinFacade,
+                       {"bml_runtime_imc.hpp", "RuntimeImc::", "clients->Runtime("},
+                       "src/AngelScript/ScriptImcFacade.cpp");
+
+    const std::string clients = ReadTextFile("src/AngelScript/ScriptImcClients.h") +
+                                ReadTextFile("src/AngelScript/ScriptImcClients.cpp");
+    ExpectContainsNone(clients,
+                       {"bml_runtime_imc.hpp", "ScriptImcClients::Runtime", "m_Runtime"},
+                       "ScriptImcClients");
 }
 
 TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {

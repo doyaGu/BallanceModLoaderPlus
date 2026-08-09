@@ -31,10 +31,6 @@ int ScriptImcClients::Ensure(Client &client, Client *&out) noexcept {
     return BML_OK;
 }
 
-int ScriptImcClients::Runtime(Imc::Generated::Bml::Runtime::Client *&out) noexcept {
-    return Ensure(m_Runtime, out);
-}
-
 int ScriptImcClients::Scene(Imc::Generated::Bml::Scene::Client *&out) noexcept {
     return Ensure(m_Scene, out);
 }
@@ -57,7 +53,6 @@ void ScriptImcClients::Close() noexcept {
     (void)m_Ui.Close();
     (void)m_Gameplay.Close();
     (void)m_Scene.Close();
-    (void)m_Runtime.Close();
 }
 
 } // namespace BML

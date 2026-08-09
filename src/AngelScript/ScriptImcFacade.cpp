@@ -12,7 +12,6 @@
 
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
-#include "BML/Generated/bml_runtime_imc.hpp"
 #include "BML/Generated/bml_scene_imc.hpp"
 #include "BML/EventKinds.h"
 
@@ -26,7 +25,6 @@
 
 namespace {
 
-namespace RuntimeImc = BML::Imc::Generated::Bml::Runtime;
 namespace SceneImc = BML::Imc::Generated::Bml::Scene;
 namespace GameplayImc = BML::Imc::Generated::Bml::Gameplay;
 namespace EventsImc = BML::Imc::Generated::Bml::Events;
@@ -219,62 +217,65 @@ bool RegisterValue(asIScriptEngine *engine, const ValueTypeRegistration &registr
                     errorMessage);
 }
 
-int GetActiveImcClients(BML::ScriptImcClients *&outClients,
-                        ModContext *&outContext) {
-    outClients = nullptr;
+int GetActiveFacadeContext(ModContext *&outContext) {
     outContext = nullptr;
-    if (BML::RejectScriptRestrictedHostCall("BML IMC facade"))
+    if (BML::RejectScriptRestrictedHostCall("BML capability facade"))
         return BML_ERROR_FROZEN;
     BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
     if (!mod || !mod->GetModContext())
         return BML_ERROR_IMC_UNSUPPORTED;
+    outContext = mod->GetModContext();
+    return BML_OK;
+}
+
+int GetActiveImcClients(BML::ScriptImcClients *&outClients,
+                        ModContext *&outContext) {
+    outClients = nullptr;
+    int status = GetActiveFacadeContext(outContext);
+    if (status != BML_OK)
+        return status;
+    BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
     BML::ScriptModRuntime *runtime = BML::ScriptModRuntime::GetCurrentScriptModRuntime();
     if (!runtime)
         runtime = const_cast<BML::ScriptModRuntime *>(&mod->GetRuntimeForImc());
     outClients = runtime->GetImcClients();
     if (!outClients)
         return BML_ERROR_OUT_OF_MEMORY;
-    outContext = mod->GetModContext();
     return BML_OK;
 }
 
 int ReadRuntime(RuntimeState &out) {
-    BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    RuntimeImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Runtime(client);
-    RuntimeImc::RuntimeStateValue value{};
-    if (status == BML_OK) status = client->CallState(value);
+    const int status = GetActiveFacadeContext(context);
     if (status == BML_OK) {
-        out = {value.InGame, value.InLevel, value.Paused, value.Playing, value.CheatEnabled};
+        const BML::RuntimeStateSnapshot state = context->ReadRuntimeState();
+        out = {state.InGame, state.InLevel, state.Paused, state.Playing,
+               state.CheatEnabled};
     }
     return status;
 }
 
 int ReadClock(ClockState &out) {
-    BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    RuntimeImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Runtime(client);
-    RuntimeImc::ClockStateValue value{};
-    if (status == BML_OK) status = client->CallClock(value);
-    if (status == BML_OK)
-        out = {value.TimeMs, value.AbsoluteMs, value.DeltaMs, value.Frame};
+    int status = GetActiveFacadeContext(context);
+    CKTimeManager *time = status == BML_OK ? context->GetTimeManager() : nullptr;
+    if (status == BML_OK && !time)
+        status = BML_ERROR_IMC_UNSUPPORTED;
+    if (status == BML_OK) {
+        const CKDWORD tick = time->GetMainTickCount();
+        const CKDWORD maxFrame = static_cast<CKDWORD>((std::numeric_limits<int>::max)());
+        out = {time->GetTime(), time->GetAbsoluteTime(), time->GetLastDeltaTime(),
+               tick > maxFrame ? (std::numeric_limits<int>::max)()
+                               : static_cast<int>(tick)};
+    }
     return status;
 }
 
 int ReadScore(ScoreState &out) {
-    BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    RuntimeImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Runtime(client);
-    RuntimeImc::ScoreStateValue value{};
-    if (status == BML_OK) status = client->CallScore(value);
+    const int status = GetActiveFacadeContext(context);
     if (status == BML_OK)
-        out = {value.Sr, value.Hs};
+        out = {context->GetSRScore(), context->GetHSScore()};
     return status;
 }
 
