@@ -212,10 +212,88 @@ if(NOT found_entry OR NOT found_exit)
 endif()
 
 if(use_sdk_archive)
+    find_program(powershell_executable NAMES pwsh powershell REQUIRED)
+    set(script_template "${install_root}/templates/script-mod-template")
+    set(script_packer "${install_root}/scripts/Pack-BMLScriptMod.ps1")
+    set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")
+    foreach(required_script_path
+            "${script_template}/HelloScript.mod.as"
+            "${script_template}/Resources/hello.txt"
+            "${script_packer}"
+            "${script_project_module}")
+        if(NOT EXISTS "${required_script_path}")
+            message(FATAL_ERROR
+                    "The packaged SDK script consumer input is incomplete: "
+                    "${required_script_path}")
+        endif()
+    endforeach()
+
+    set(script_package_dir "${work_root}/script-package")
+    set(script_package "${script_package_dir}/HelloScript.zip")
+    file(MAKE_DIRECTORY "${script_package_dir}")
+    execute_process(
+        COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
+                -File "${script_packer}"
+                -Source "${script_template}"
+                -Output "${script_package}"
+                -Force
+        RESULT_VARIABLE script_pack_status
+        OUTPUT_VARIABLE script_pack_output
+        ERROR_VARIABLE script_pack_error
+    )
+    if(NOT script_pack_status EQUAL 0 OR NOT EXISTS "${script_package}")
+        message(FATAL_ERROR
+                "The packaged SDK could not package its script Mod template.\n"
+                "${script_pack_output}${script_pack_error}")
+    endif()
+
+    execute_process(
+        COMMAND "${CMAKE_EXECUTABLE}" -E tar tf "${script_package}"
+        RESULT_VARIABLE script_list_status
+        OUTPUT_VARIABLE script_package_entries_text
+        ERROR_VARIABLE script_list_error
+    )
+    if(NOT script_list_status EQUAL 0)
+        message(FATAL_ERROR
+                "The packaged script Mod archive could not be inspected.\n"
+                "${script_list_error}")
+    endif()
+    string(REPLACE "\r\n" "\n" script_package_entries_text "${script_package_entries_text}")
+    string(REPLACE "\r" "\n" script_package_entries_text "${script_package_entries_text}")
+    string(REPLACE "\n" ";" script_package_entries "${script_package_entries_text}")
+    list(FILTER script_package_entries EXCLUDE REGEX "^$")
+
+    foreach(required_entry
+            "HelloScript.mod.as"
+            "Resources/hello.txt")
+        list(FIND script_package_entries "${required_entry}" required_entry_index)
+        if(required_entry_index EQUAL -1)
+            message(FATAL_ERROR
+                    "The packaged script Mod is missing ${required_entry}: "
+                    "${script_package_entries}")
+        endif()
+    endforeach()
+
+    set(script_entry_count 0)
+    foreach(package_entry IN LISTS script_package_entries)
+        if(package_entry MATCHES "\\.mod\\.as$")
+            math(EXPR script_entry_count "${script_entry_count} + 1")
+        endif()
+    endforeach()
+    if(NOT script_entry_count EQUAL 1)
+        message(FATAL_ERROR
+                "Expected one script Mod entry in the packaged SDK consumer "
+                "archive, found ${script_entry_count}: ${script_package_entries}")
+    endif()
+endif()
+
+if(use_sdk_archive)
     set(sdk_input_label "SDK archive")
+    set(script_validation_label " and packaged script Mod tooling")
 else()
     set(sdk_input_label "installed SDK")
+    set(script_validation_label "")
 endif()
 message(STATUS
         "Verified the ${sdk_input_label} with HelloMod.bmodp and its "
-        "BMLEntry/BMLExit exports.")
+        "BMLEntry/BMLExit exports${script_validation_label}.")
