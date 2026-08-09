@@ -28,8 +28,8 @@ IMC 将传输机制与业务术语分开：
 ## 推荐工作流
 
 1. 在带版本的 `.imc` 文件中定义 Record、RPC 和 Topic。
-2. 首次执行 `--update-lock`，生成并提交相邻的 `.imc.lock`。
-3. 使用 `bml_target_imc_api()` 将接口加入 CMake 目标。
+2. 使用 `bml_target_imc_api()` 将接口加入 CMake 目标。
+3. 通过 CMake 目标 `bml_update_imc_locks` 生成或更新相邻的 `.imc.lock`，审查差异后提交。
 4. 实现生成的 `Provider` 回调。
 5. 通过生成的 `Client` 调用接口。
 6. 在关闭或释放成功前，保持 Provider、Client、Subscription、Future 和回调数据存活。

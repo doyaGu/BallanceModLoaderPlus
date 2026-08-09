@@ -95,27 +95,26 @@ API 使用数值数组和自己的转换 Helper 表达。
 ### 演进兼容 minor 版本
 
 同一 major 下保留现有 Record、Field、RPC 和 Topic，新字段必须为 optional。增加
-minor 版本后，显式更新接口 Lock：
+minor 版本并修改接口后，通过下文介绍的项目目标显式更新接口锁文件：
 
 ```text
-python imc_codegen.py --update-lock \
-  --input api/example.echo.imc \
-  --out-dir generated
+cmake --build build --target bml_update_imc_locks
 ```
 
 相邻的 `.imc.lock` 拥有永久字段 ID，并为删除的 optional 字段保留墓碑，防止旧 ID
 被重新使用。调整声明顺序不会改变 ID。更新操作会拒绝 required 新字段、修改旧字段或
 端点、删除 required 字段、修改 Enum Value，以及未增加 minor 的结构变化。
 
-`.imc` 与 `.imc.lock` 必须一起提交。像审查其他 Lock File 一样审查它的 Diff，但不要
-手工编辑。普通生成和 `--check` 不会修改 Lock；缺失或过期时会输出可执行的修复命令。
+`.imc` 与 `.imc.lock` 必须一起提交。像审查其他锁文件一样审查它的差异，但不要
+手工编辑。普通生成和 `--check` 不会修改锁文件；缺失或过期时会输出可执行的修复命令。
 不兼容修改必须增加 major；新的 major 使用独立的字段 ID 空间。
 
 ## 2. 从 CMake 生成
 
-安装后的 BML Package 包含 Generator 和 `bml_target_imc_api()`。该 Helper 将生成头
-加入目标、添加构建目录到 Include Path，并启用 C++20。配置时需要 Python 3.10 或
-更新版本，接口旁必须存在已提交的 `.imc.lock`。
+安装后的 BML 软件包包含生成器和 `bml_target_imc_api()`。该辅助函数将生成头加入
+目标、将构建目录加入包含路径，并启用 C++20。配置时需要 Python 3.10 或更新版本。
+普通目标构建要求接口旁存在已提交的 `.imc.lock`；缺少锁文件时仍可完成 CMake 配置，
+以便显式更新目标创建它。
 
 ```cmake
 find_package(BML CONFIG REQUIRED)
@@ -128,10 +127,20 @@ bml_target_imc_api(EchoMod
 ```
 
 默认输出为 `${CMAKE_CURRENT_BINARY_DIR}/bml-imc/example_echo_imc.hpp`。默认情况下，
-`.imc` 文件名必须与 `api` 相同；不同时传入 `API_ID example.echo`。Helper 会将期望 ID
-交给 Codegen，使拼写错误直接报告两个 ID 和输入路径。`OUTPUT_DIR` 可以覆盖输出目录。
+`.imc` 文件名必须与 `api` 相同；不同时传入 `API_ID example.echo`。辅助函数会将期望
+ID 交给生成器，使拼写错误直接报告两个 ID 和输入路径。`OUTPUT_DIR` 可以覆盖输出目录。
 
-手工或提交生成结果时，Package 提供 `BML_IMC_CODEGEN` 路径：
+该辅助函数会为项目中声明的所有 IMC 接口注册一个项目级更新目标：
+
+```text
+cmake --build build --target bml_update_imc_locks
+```
+
+有意修改 `.imc` 后运行该目标，然后审查并提交相邻 `.imc.lock` 的差异。普通配置和
+构建不会运行该目标，也不会修改接口锁文件。锁文件缺失或过期时，诊断会给出同一条
+目标命令，作者不需要自行拼接生成器参数。
+
+非 CMake 工作流或需要提交生成结果时，软件包提供 `BML_IMC_CODEGEN` 路径：
 
 ```text
 python imc_codegen.py \
@@ -140,9 +149,9 @@ python imc_codegen.py \
   --out-dir generated
 ```
 
-在 CI 中加入 `--check`，检查已提交的生成头和接口 Lock 是否过期。只有接口作者控制的
-更新步骤才使用 `--update-lock`。`--expected-api-id` 在 CMake 外可省略，但对预测输出
-文件名的脚本很有用。解析和校验错误始终包含对应输入路径。
+在 CI 中加入 `--check`，检查已提交的生成头和接口锁文件是否过期。非 CMake 工作流可在
+作者控制的更新步骤使用 `--update-lock`。`--expected-api-id` 在 CMake 外可省略，但对
+预测输出文件名的脚本很有用。解析和校验错误始终包含对应输入路径。
 
 ## 3. 实现 Provider
 

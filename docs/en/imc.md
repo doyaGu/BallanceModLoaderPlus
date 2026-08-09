@@ -32,8 +32,9 @@ lifetime, and failure handling consistent across APIs.
 ## Recommended workflow
 
 1. Define records, RPCs, and Topics in a versioned `.imc` interface.
-2. Generate and commit its adjacent `.imc.lock` once with `--update-lock`.
-3. Add the interface to a CMake target with `bml_target_imc_api()`.
+2. Add the interface to a CMake target with `bml_target_imc_api()`.
+3. Generate or refresh its adjacent `.imc.lock` with the
+   `bml_update_imc_locks` CMake target, then review and commit the diff.
 4. Implement the generated `Provider` callbacks.
 5. Call the API through the generated `Client`.
 6. Keep providers, clients, subscriptions, futures, and callback data alive

@@ -118,12 +118,11 @@ API-specific fallback.
 
 For a same-major update, keep existing records, fields, RPCs, and Topics
 unchanged. New fields must be optional. Increase the minor version, edit the
-source, then explicitly update the interface lock:
+source, then explicitly update the interface lock through the project target
+described below:
 
 ```text
-python imc_codegen.py --update-lock \
-  --input api/example.echo.imc \
-  --out-dir generated
+cmake --build build --target bml_update_imc_locks
 ```
 
 The adjacent `.imc.lock` file owns permanent field IDs. It also keeps tombstones
@@ -144,8 +143,9 @@ The installed BML package includes the generator and
 `bml_target_imc_api()`. The helper adds the generated
 header to the target, adds its build directory to the include path, and applies
 the required C++20 compile feature. It requires Python 3.10 or newer during
-configuration, matching the installed generator. The source interface must have
-an adjacent, committed `.imc.lock`.
+configuration, matching the installed generator. An ordinary target build
+requires an adjacent, committed `.imc.lock`; CMake configuration remains
+available when that lock is missing so the explicit update target can create it.
 
 ```cmake
 find_package(BML CONFIG REQUIRED)
@@ -164,7 +164,19 @@ The default output is
 a typo now reports both IDs and the input path instead of surfacing later as a
 missing generated header. `OUTPUT_DIR` can override the generated directory.
 
-For a manual or committed-output workflow, the package exposes the
+The helper also registers one project-level update target for every declared
+IMC interface:
+
+```text
+cmake --build build --target bml_update_imc_locks
+```
+
+Run it after an intentional `.imc` revision, then review and commit the adjacent
+`.imc.lock` diff. A normal configure or build never runs this target and never
+modifies interface locks. Missing and stale lock diagnostics report the same
+target command, so authors do not need to reconstruct the generator invocation.
+
+For a non-CMake or committed-output workflow, the package exposes the
 `BML_IMC_CODEGEN` path:
 
 ```text
@@ -176,9 +188,10 @@ python imc_codegen.py \
 
 `--expected-api-id` is optional outside the CMake helper but useful in scripts
 that predict the output filename. Add `--check` in CI to fail when a committed
-generated header or interface lock is stale. Use `--update-lock` only in the
-author-controlled interface update step. Parse and validation errors include the
-responsible input path, including when several interfaces are generated together.
+generated header or interface lock is stale. Non-CMake workflows may use
+`--update-lock` in their author-controlled update step. Parse and validation
+errors include the responsible input path, including when several interfaces
+are generated together.
 
 ## 3. Implement the provider
 
