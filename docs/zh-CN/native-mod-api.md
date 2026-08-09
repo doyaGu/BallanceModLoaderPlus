@@ -97,6 +97,24 @@ BML 版本要求，并可按需重写以下回调：
 定时器必须通过 `IBML` 创建。SDK 不发布独立 `Timer.h`；Loader 负责调度和
 处理这些回调，Mod 不应维护另一套隐式的静态定时器状态。
 
+## 原生 Mod 依赖
+
+依赖必须在 BML 初始化 Mod 之前注册。构造函数是通常的注册位置，因为它在
+`BMLEntry` 创建 Mod 时执行，早于任何 `OnLoad` 回调：
+
+```cpp
+explicit MyMod(IBML *bml) : IMod(bml) {
+    AddDependency("RequiredMod", BMLVersion(1, 2, 0));
+    AddOptionalDependency("OptionalMod", BMLVersion(1, 0, 0));
+}
+```
+
+BML 会调整初始化顺序，使已安装的依赖先于依赖方收到 `OnLoad`。缺失的可选
+依赖会被忽略。缺失必需依赖或出现依赖循环时，整个 Mod 初始化阶段不会开始；
+日志会指出发起依赖的 Mod、所需 ID 和版本，或受循环影响的 Mod。若依赖已经
+安装但版本过低，BML 会跳过依赖方的 `OnLoad`，在日志中同时给出实际版本和
+所需版本，并继续初始化其他 Mod。
+
 ## 配置、命令与日志
 
 `IConfig` 按 Category/Key 获取 `IProperty`。属性类型为 String、Boolean、

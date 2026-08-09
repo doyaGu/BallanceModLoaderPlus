@@ -102,6 +102,27 @@ events.
 Create timers through `IBML`. The SDK does not publish a standalone `Timer.h`;
 the loader owns scheduling and callback processing.
 
+## Native mod dependencies
+
+Register dependencies before BML initializes mods. The constructor is the
+usual place because it runs while `BMLEntry` creates the mod and before any
+`OnLoad` callback:
+
+```cpp
+explicit MyMod(IBML *bml) : IMod(bml) {
+    AddDependency("RequiredMod", BMLVersion(1, 2, 0));
+    AddOptionalDependency("OptionalMod", BMLVersion(1, 0, 0));
+}
+```
+
+BML orders mods so installed dependencies receive `OnLoad` before their
+dependents. A missing optional dependency is ignored. A missing required
+dependency or a dependency cycle prevents the mod initialization phase from
+starting; the log identifies the requesting mod, required id and version, or
+the mods affected by the cycle. If an installed dependency is older than the
+requested version, BML skips the dependent mod's `OnLoad` and reports both
+versions while continuing with other mods.
+
 ## Configuration, commands, and logging
 
 `IConfig` retrieves an `IProperty` by category and key. Properties can be
