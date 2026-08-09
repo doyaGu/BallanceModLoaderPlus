@@ -6,6 +6,8 @@ param(
 
     [string]$CKAngelScriptDll,
 
+    [string]$NativeImcSmokeMod,
+
     [ValidateRange(1, 600)]
     [int]$PlayerSeconds = 30,
 
@@ -14,6 +16,8 @@ param(
     [switch]$SkipPlayer,
 
     [switch]$SkipSmokeInstall,
+
+    [switch]$SkipScriptSmoke,
 
     [switch]$KeepInstalled,
 
@@ -241,6 +245,12 @@ function Install-SmokeMods {
 if (-not $BallanceRoot) {
     throw 'Ballance root is required. Pass -BallanceRoot or set BML_BALLANCE_ROOT.'
 }
+if ($SkipScriptSmoke -and ($SingleFileSmoke -or $ZipSmoke -or $HotReloadStateSmoke)) {
+    throw '-SingleFileSmoke, -ZipSmoke, and -HotReloadStateSmoke require script smoke tests.'
+}
+if ($SkipScriptSmoke -and -not $SkipPlayer -and -not $NativeImcSmokeMod) {
+    throw '-SkipScriptSmoke requires -NativeImcSmokeMod when Player is started.'
+}
 if (-not $HotReloadStateSmoke -and $HotReloadStateScenario -ne 'Success') {
     throw '-HotReloadStateScenario requires -HotReloadStateSmoke.'
 }
@@ -253,6 +263,7 @@ $modsDir = Join-Path $ballanceRootFull 'ModLoader\Mods'
 $playerPath = Join-Path $ballanceRootFull 'Bin\Player.exe'
 $installedDll = Join-Path $buildingBlocksDir 'BMLPlus.dll'
 $installedAngelScriptDll = Join-Path $buildingBlocksDir 'AngelScript.dll'
+$installedNativeImcSmokeMod = Join-Path $modsDir 'BMLNativeImcSmoke.bmodp'
 $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
 $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 $angelScriptLog = Join-Path $ballanceRootFull 'Bin\AngelScript.log'
@@ -275,7 +286,8 @@ Assert-BMLPath -Path $playerPath -Type Leaf
 if (-not $SkipInstall) {
     Assert-BMLPath -Path $BuildDll -Type Leaf
 }
-if (-not $SkipSmokeInstall) {
+if ($NativeImcSmokeMod) {
+    Assert-BMLPath -Path $NativeImcSmokeMod -Type Leaf
 }
 if ($CKAngelScriptDll) {
     Assert-BMLPath -Path $CKAngelScriptDll -Type Leaf
@@ -284,9 +296,69 @@ if ($CKAngelScriptDll) {
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupPath = $null
 $angelScriptBackupPath = $null
+$nativeImcSmokeBackupPath = $null
+$process = $null
+$playerExitCode = $null
+$playerTimedOut = $false
+$playerKilled = $false
+$playerStarted = $false
+$hotReloadStateSourcePatched = $false
 $sourceHash = Get-BMLOptionalHash $BuildDll
 $installedHashBefore = Get-BMLOptionalHash $installedDll
 $installedAngelScriptHashBefore = Get-BMLOptionalHash $installedAngelScriptDll
+
+$restoreState = [pscustomobject]@{ Completed = $false }
+$restoreInstall = {
+    if ($restoreState.Completed) {
+        return
+    }
+
+    try {
+        if ($null -ne $process) {
+            try {
+                $process.Refresh()
+                if (-not $process.HasExited) {
+                    Stop-Process -Id $process.Id -Force
+                    $process.WaitForExit()
+                }
+            } catch {
+                # The process may have exited between Refresh and Stop-Process.
+            }
+        }
+
+        if (-not $KeepInstalled -and -not $SkipInstall) {
+            if ($backupPath -and (Test-Path -LiteralPath $backupPath)) {
+                Copy-FileWithRetry -Source $backupPath -Destination $installedDll
+                Remove-Item -LiteralPath $backupPath -Force
+            } elseif (Test-Path -LiteralPath $installedDll) {
+                Remove-Item -LiteralPath $installedDll -Force
+            }
+        }
+        if (-not $KeepInstalled -and $CKAngelScriptDll) {
+            if ($angelScriptBackupPath -and (Test-Path -LiteralPath $angelScriptBackupPath)) {
+                Copy-FileWithRetry -Source $angelScriptBackupPath -Destination $installedAngelScriptDll
+                Remove-Item -LiteralPath $angelScriptBackupPath -Force
+            } elseif (Test-Path -LiteralPath $installedAngelScriptDll) {
+                Remove-Item -LiteralPath $installedAngelScriptDll -Force
+            }
+        }
+        if (-not $KeepInstalled -and -not $SkipSmokeInstall -and $NativeImcSmokeMod) {
+            if ($nativeImcSmokeBackupPath -and (Test-Path -LiteralPath $nativeImcSmokeBackupPath)) {
+                Copy-FileWithRetry -Source $nativeImcSmokeBackupPath -Destination $installedNativeImcSmokeMod
+                Remove-Item -LiteralPath $nativeImcSmokeBackupPath -Force
+            } elseif (Test-Path -LiteralPath $installedNativeImcSmokeMod) {
+                Remove-Item -LiteralPath $installedNativeImcSmokeMod -Force
+            }
+        }
+    } finally {
+        $restoreState.Completed = $true
+    }
+}
+
+trap {
+    & $restoreInstall
+    throw
+}
 
 if (-not $SkipInstall) {
     if (Test-Path -LiteralPath $installedDll) {
@@ -305,14 +377,18 @@ if ($CKAngelScriptDll) {
 }
 
 if (-not $SkipSmokeInstall) {
-    Install-SmokeMods -ScriptSmokeRoot $scriptSmokeRoot -ModsDirectory $modsDir
-}
+    if (-not $SkipScriptSmoke) {
+        Install-SmokeMods -ScriptSmokeRoot $scriptSmokeRoot -ModsDirectory $modsDir
+    }
 
-$playerExitCode = $null
-$playerTimedOut = $false
-$playerKilled = $false
-$playerStarted = $false
-$hotReloadStateSourcePatched = $false
+    if ($NativeImcSmokeMod) {
+        if (Test-Path -LiteralPath $installedNativeImcSmokeMod) {
+            $nativeImcSmokeBackupPath = "$installedNativeImcSmokeMod.bak-$timestamp"
+            Copy-Item -LiteralPath $installedNativeImcSmokeMod -Destination $nativeImcSmokeBackupPath
+        }
+        Copy-Item -LiteralPath $NativeImcSmokeMod -Destination $installedNativeImcSmokeMod -Force
+    }
+}
 
 if (-not $SkipPlayer) {
     foreach ($logPath in @($modLoaderLog, $playerLog, $angelScriptLog)) {
@@ -321,7 +397,7 @@ if (-not $SkipPlayer) {
         }
     }
 
-    $process = Start-Process -FilePath $playerPath -WorkingDirectory (Split-Path -Parent $playerPath) -PassThru
+    $process = Start-Process -FilePath $playerPath -WorkingDirectory (Split-Path -Parent $playerPath) -WindowStyle Hidden -PassThru
     $playerStarted = $true
     $deadline = (Get-Date).AddSeconds($PlayerSeconds)
     while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
@@ -352,46 +428,52 @@ $playerLogText = Convert-SmokeText (Get-BMLTextIfExists $playerLog)
 $checks = [System.Collections.Generic.List[object]]::new()
 if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'player-postprocess-clean' (-not (Test-SmokeTextContains $playerLogText 'Error : PostProcess')) 'Player.log must not contain Error : PostProcess'
-    Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
-    Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: imc-facades') 'BML script mod summary: imc-facades'
-    Add-SmokeCheck $checks 'script-imc-facades' (Test-SmokeTextContains $modLogText 'BML IMC facade smoke: runtime=true stream=true') 'BML IMC facade smoke: runtime=true stream=true'
-    Add-SmokeCheck $checks 'script-imc-stream' (Test-SmokeTextContains $modLogText 'BML IMC stream poll: status=0') 'BML IMC stream poll: status=0'
-    if ($SingleFileSmoke) {
-        Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
-    }
-    if ($ZipSmoke) {
-        Add-SmokeCheck $checks 'zip-script-package' (Test-SmokeTextContains $modLogText 'BML zip script smoke loaded resource=true') 'BML zip script smoke loaded resource=true'
-    }
-    if ($HotReloadStateSmoke) {
-        Add-SmokeCheck $checks 'state-reload-source-patched' $hotReloadStateSourcePatched 'BML state reload smoke source patched'
-        Add-SmokeCheck $checks 'state-reload-ready' (Test-SmokeTextContains $modLogText 'BML state reload smoke v1 ready') 'BML state reload smoke v1 ready'
-        if ($HotReloadStateScenario -eq 'Success') {
-            Add-SmokeCheck $checks 'state-reload-migrated' (Test-SmokeTextContains $modLogText 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated') 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated'
-            Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
-        } else {
-            $reloadFailedNeedle = 'Script mod bml.state.reload.smoke hot reload failed:'
-            Add-SmokeCheck $checks 'state-reload-rejected' (Test-SmokeTextContains $modLogText $reloadFailedNeedle) $reloadFailedNeedle
-            Add-SmokeCheck $checks 'state-reload-old-runtime-kept' (Test-SmokeTextContainsAfter $modLogText 'BML state reload smoke v1 heartbeat' $reloadFailedNeedle) 'BML state reload smoke v1 heartbeat after failed reload'
-            Add-SmokeCheck $checks 'state-reload-candidate-not-loaded' (-not (Test-SmokeTextContains $modLogText 'candidate should not load')) 'candidate should not load'
-            if ($HotReloadStateScenario -eq 'CompileFailure') {
-                Add-SmokeCheck $checks 'state-reload-compile-failed' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
-            } elseif ($HotReloadStateScenario -eq 'MigrateFailure') {
-                Add-SmokeCheck $checks 'state-reload-migrate-failed' (Test-SmokeTextContains $modLogText 'intentional state reload migrate failure smoke') 'intentional state reload migrate failure smoke'
-                Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
-            } elseif ($HotReloadStateScenario -eq 'RestoreFailure') {
-                Add-SmokeCheck $checks 'state-reload-restore-failed' (Test-SmokeTextContains $modLogText 'intentional state reload restore failure smoke') 'intentional state reload restore failure smoke'
-                Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
+    if (-not $SkipScriptSmoke) {
+        Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
+        Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: imc-facades') 'BML script mod summary: imc-facades'
+        Add-SmokeCheck $checks 'script-imc-facades' (Test-SmokeTextContains $modLogText 'BML IMC facade smoke: runtime=true stream=true') 'BML IMC facade smoke: runtime=true stream=true'
+        Add-SmokeCheck $checks 'script-imc-stream' (Test-SmokeTextContains $modLogText 'BML IMC stream poll: status=0') 'BML IMC stream poll: status=0'
+        if ($SingleFileSmoke) {
+            Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
+        }
+        if ($ZipSmoke) {
+            Add-SmokeCheck $checks 'zip-script-package' (Test-SmokeTextContains $modLogText 'BML zip script smoke loaded resource=true') 'BML zip script smoke loaded resource=true'
+        }
+        if ($HotReloadStateSmoke) {
+            Add-SmokeCheck $checks 'state-reload-source-patched' $hotReloadStateSourcePatched 'BML state reload smoke source patched'
+            Add-SmokeCheck $checks 'state-reload-ready' (Test-SmokeTextContains $modLogText 'BML state reload smoke v1 ready') 'BML state reload smoke v1 ready'
+            if ($HotReloadStateScenario -eq 'Success') {
+                Add-SmokeCheck $checks 'state-reload-migrated' (Test-SmokeTextContains $modLogText 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated') 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated'
+                Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
+            } else {
+                $reloadFailedNeedle = 'Script mod bml.state.reload.smoke hot reload failed:'
+                Add-SmokeCheck $checks 'state-reload-rejected' (Test-SmokeTextContains $modLogText $reloadFailedNeedle) $reloadFailedNeedle
+                Add-SmokeCheck $checks 'state-reload-old-runtime-kept' (Test-SmokeTextContainsAfter $modLogText 'BML state reload smoke v1 heartbeat' $reloadFailedNeedle) 'BML state reload smoke v1 heartbeat after failed reload'
+                Add-SmokeCheck $checks 'state-reload-candidate-not-loaded' (-not (Test-SmokeTextContains $modLogText 'candidate should not load')) 'candidate should not load'
+                if ($HotReloadStateScenario -eq 'CompileFailure') {
+                    Add-SmokeCheck $checks 'state-reload-compile-failed' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
+                } elseif ($HotReloadStateScenario -eq 'MigrateFailure') {
+                    Add-SmokeCheck $checks 'state-reload-migrate-failed' (Test-SmokeTextContains $modLogText 'intentional state reload migrate failure smoke') 'intentional state reload migrate failure smoke'
+                    Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
+                } elseif ($HotReloadStateScenario -eq 'RestoreFailure') {
+                    Add-SmokeCheck $checks 'state-reload-restore-failed' (Test-SmokeTextContains $modLogText 'intentional state reload restore failure smoke') 'intentional state reload restore failure smoke'
+                    Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
+                }
             }
         }
+        Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
+        Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
+        Add-SmokeCheck $checks 'script-imgui-stack-recovery' (Test-SmokeTextContains $modLogText 'Recovered mismatched ImGui stack after script callback') 'Recovered mismatched ImGui stack after script callback'
+        Add-SmokeCheck $checks 'script-imgui-stack-recovery-silent' (-not (Test-SmokeTextContains $modLogText '[imgui-error] In window')) 'no raw ImGui recovery errors in ModLoader log'
+        if (-not $HotReloadStateSmoke) {
+            Add-SmokeCheck $checks 'shutdown-smoke' (Test-SmokeTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'
+        }
     }
-    Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
-    Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
-    Add-SmokeCheck $checks 'script-imgui-stack-recovery' (Test-SmokeTextContains $modLogText 'Recovered mismatched ImGui stack after script callback') 'Recovered mismatched ImGui stack after script callback'
-    Add-SmokeCheck $checks 'script-imgui-stack-recovery-silent' (-not (Test-SmokeTextContains $modLogText '[imgui-error] In window')) 'no raw ImGui recovery errors in ModLoader log'
+    if ($NativeImcSmokeMod) {
+        Add-SmokeCheck $checks 'native-imc-interfaces' (Test-SmokeTextContains $modLogText 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true') 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true'
+        Add-SmokeCheck $checks 'native-imc-exit-event' (Test-SmokeTextContains $modLogText 'BML native IMC smoke exit event: received=true passed=true') 'BML native IMC smoke exit event: received=true passed=true'
+    }
     Add-SmokeCheck $checks 'goodbye' (Test-SmokeTextContains $modLogText 'Goodbye!') 'Goodbye!'
-    if (-not $HotReloadStateSmoke) {
-        Add-SmokeCheck $checks 'shutdown-smoke' (Test-SmokeTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'
-    }
 }
 
 $failedChecks = @($checks | Where-Object { -not $_.Passed })
@@ -405,12 +487,7 @@ if ($playerTimedOut -or $failedChecks.Count -gt 0) {
     $status = 'shutdown_anomaly'
 }
 
-if (-not $KeepInstalled -and -not $SkipInstall -and $backupPath -and (Test-Path -LiteralPath $backupPath)) {
-    Copy-FileWithRetry -Source $backupPath -Destination $installedDll
-}
-if (-not $KeepInstalled -and $CKAngelScriptDll -and $angelScriptBackupPath -and (Test-Path -LiteralPath $angelScriptBackupPath)) {
-    Copy-FileWithRetry -Source $angelScriptBackupPath -Destination $installedAngelScriptDll
-}
+& $restoreInstall
 
 $result = [pscustomobject]@{
     Status = $status
@@ -426,6 +503,10 @@ $result = [pscustomobject]@{
     InstalledAngelScriptHashBefore = $installedAngelScriptHashBefore
     InstalledAngelScriptHashAfter = Get-BMLOptionalHash $installedAngelScriptDll
     CKAngelScriptDll = $CKAngelScriptDll
+    NativeImcSmokeMod = $NativeImcSmokeMod
+    InstalledNativeImcSmokeMod = $installedNativeImcSmokeMod
+    NativeImcSmokeBackupPath = $nativeImcSmokeBackupPath
+    SkipScriptSmoke = [bool]$SkipScriptSmoke
     SingleFileSmoke = [bool]$SingleFileSmoke
     ZipSmoke = [bool]$ZipSmoke
     HotReloadStateSmoke = [bool]$HotReloadStateSmoke
