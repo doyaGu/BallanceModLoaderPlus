@@ -299,8 +299,8 @@ private:
         for (int row = 0; row < array->GetRowCount(); ++row) {
             std::string file, startBall, sky; int bonus = 0, music = 0;
             if (!ReadString(array, row, 0, file) || !ReadString(array, row, 1, startBall) ||
-                !ReadString(array, row, 2, sky) || !ReadValue(array, row, 3, bonus) ||
-                !ReadValue(array, row, 4, music)) return BML_ERROR_IMC_UNSUPPORTED;
+                !ReadString(array, row, 3, sky) || !ReadValue(array, row, 6, bonus) ||
+                !ReadValue(array, row, 7, music)) return BML_ERROR_IMC_UNSUPPORTED;
             out.Files.push_back(std::move(file)); out.StartBalls.push_back(std::move(startBall));
             out.Skies.push_back(std::move(sky)); out.Bonuses.push_back(bonus); out.Music.push_back(music);
         }
@@ -450,7 +450,8 @@ private:
                               {"Points", "Lifes", "StartPoints", "StartLifes", "Timefactor", "LifeBonus"});
         if (std::strcmp(endpoint, "catalog") == 0)
             return HasColumns(context->GetArrayByName("AllLevel"),
-                              {"Levelfile", "StartBall", "Sky", "LevelBonus", "Music"});
+                              {"Levelfile", "StartBall", "StartResetpoint", "Sky", "Light",
+                               "Skytranslation", "LevelBonus", "Music"});
         if (std::strcmp(endpoint, "checkpoints") == 0)
             return HasColumns(context->GetArrayByName("Checkpoints"), {"Matrix", "Object"});
         if (std::strcmp(endpoint, "resetpoints") == 0)
