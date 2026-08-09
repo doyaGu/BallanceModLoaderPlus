@@ -105,6 +105,7 @@ def main() -> int:
             "EncodedSampleSize", "EncodeSample", "DecodeSample",
             "class Client", "class Provider", "CallState", "CallLookup",
             "CallNotify", "CallFlush", "RpcFuture<void>",
+            "struct Handlers", "int Start(const Handlers &handlers",
             "RegisterState", "RegisterLookup", "class ChangedSubscription",
             "writer.Begin();", "reader.Begin();", "WriteResponse(",
         ):
@@ -188,6 +189,17 @@ def main() -> int:
         for snippet in ("EchoRequestValue", "EchoReplyValue", "ChangedEventValue"):
             if snippet not in inline_header:
                 raise AssertionError(f"inline payload binding is missing {snippet}")
+
+        reserved_handler = root / "reserved-handler.imc"
+        reserved_handler.write_text(
+            "api test.reserved 1.0\nrpc userdata()\n", encoding="utf-8"
+        )
+        reserved_handler_result = generate(
+            generator, reserved_handler, root / "reserved-handler", update=True,
+            expect_success=False,
+        )
+        if "generated identifier collision for Userdata" not in reserved_handler_result.stderr:
+            raise AssertionError("Provider handler-table member collision was not rejected")
 
         invalid_update = root / "invalid-update.imc"
         invalid_fields = "\n".join(

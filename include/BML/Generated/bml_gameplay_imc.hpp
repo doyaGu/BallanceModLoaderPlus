@@ -443,6 +443,7 @@ public:
         return status;
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
+    bool IsOpen() const noexcept { return m_Client != nullptr; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId CatalogResponsePayloadType() const noexcept { return m_CatalogResponsePayload; }
     BML_ImcPayloadTypeId CheckpointsResponsePayloadType() const noexcept { return m_CheckpointsResponsePayload; }
@@ -552,12 +553,43 @@ public:
     ~Provider() { (void)Close(); }
     Provider(const Provider &) = delete;
     Provider &operator=(const Provider &) = delete;
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.Handle() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.Handle()) ResetSlots(); return status; }
+    using CatalogHandler = int (*)(CatalogResponseValue &, void *);
+    using CheckpointsHandler = int (*)(CheckpointsResponseValue &, void *);
+    using EnergyHandler = int (*)(EnergyStateValue &, void *);
+    using LevelHandler = int (*)(LevelStateValue &, void *);
+    using ResetpointsHandler = int (*)(ResetpointsResponseValue &, void *);
+
+    struct Handlers {
+        void *Userdata = nullptr;
+        BML_ImcExecution Execution = BML_IMC_EXECUTION_GAME_THREAD;
+        CatalogHandler Catalog = nullptr;
+        CheckpointsHandler Checkpoints = nullptr;
+        EnergyHandler Energy = nullptr;
+        LevelHandler Level = nullptr;
+        ResetpointsHandler Resetpoints = nullptr;
+    };
+
+    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using CatalogHandler = int (*)(CatalogResponseValue &, void *);
+    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+        if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
+        if (!(handlers.Catalog || handlers.Checkpoints || handlers.Energy || handlers.Level || handlers.Resetpoints)) return BML_ERROR_INVALID_PARAMETER;
+        if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
+        int status = m_Transport.Open(ownerId);
+        if (status == BML_OK && handlers.Catalog) status = RegisterCatalog(handlers.Catalog, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.Checkpoints) status = RegisterCheckpoints(handlers.Checkpoints, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.Energy) status = RegisterEnergy(handlers.Energy, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.Level) status = RegisterLevel(handlers.Level, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.Resetpoints) status = RegisterResetpoints(handlers.Resetpoints, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK) return BML_OK;
+        const int cleanupStatus = Close();
+        return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
+    }
+
     int RegisterCatalog(CatalogHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Catalog.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -574,7 +606,6 @@ public:
         return status;
     }
 
-    using CheckpointsHandler = int (*)(CheckpointsResponseValue &, void *);
     int RegisterCheckpoints(CheckpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Checkpoints.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -591,7 +622,6 @@ public:
         return status;
     }
 
-    using EnergyHandler = int (*)(EnergyStateValue &, void *);
     int RegisterEnergy(EnergyHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Energy.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -608,7 +638,6 @@ public:
         return status;
     }
 
-    using LevelHandler = int (*)(LevelStateValue &, void *);
     int RegisterLevel(LevelHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Level.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -625,7 +654,6 @@ public:
         return status;
     }
 
-    using ResetpointsHandler = int (*)(ResetpointsResponseValue &, void *);
     int RegisterResetpoints(ResetpointsHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Resetpoints.Registered) return BML_ERROR_ALREADY_EXISTS;

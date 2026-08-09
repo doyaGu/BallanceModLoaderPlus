@@ -285,6 +285,7 @@ public:
         return status;
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
+    bool IsOpen() const noexcept { return m_Client != nullptr; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId ClockStatePayloadType() const noexcept { return m_ClockStatePayload; }
     BML_ImcPayloadTypeId RuntimeStatePayloadType() const noexcept { return m_RuntimeStatePayload; }
@@ -356,12 +357,37 @@ public:
     ~Provider() { (void)Close(); }
     Provider(const Provider &) = delete;
     Provider &operator=(const Provider &) = delete;
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.Handle() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.Handle()) ResetSlots(); return status; }
+    using ClockHandler = int (*)(ClockStateValue &, void *);
+    using ScoreHandler = int (*)(ScoreStateValue &, void *);
+    using StateHandler = int (*)(RuntimeStateValue &, void *);
+
+    struct Handlers {
+        void *Userdata = nullptr;
+        BML_ImcExecution Execution = BML_IMC_EXECUTION_GAME_THREAD;
+        ClockHandler Clock = nullptr;
+        ScoreHandler Score = nullptr;
+        StateHandler State = nullptr;
+    };
+
+    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using ClockHandler = int (*)(ClockStateValue &, void *);
+    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+        if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
+        if (!(handlers.Clock || handlers.Score || handlers.State)) return BML_ERROR_INVALID_PARAMETER;
+        if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
+        int status = m_Transport.Open(ownerId);
+        if (status == BML_OK && handlers.Clock) status = RegisterClock(handlers.Clock, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.Score) status = RegisterScore(handlers.Score, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.State) status = RegisterState(handlers.State, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK) return BML_OK;
+        const int cleanupStatus = Close();
+        return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
+    }
+
     int RegisterClock(ClockHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Clock.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -378,7 +404,6 @@ public:
         return status;
     }
 
-    using ScoreHandler = int (*)(ScoreStateValue &, void *);
     int RegisterScore(ScoreHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Score.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -395,7 +420,6 @@ public:
         return status;
     }
 
-    using StateHandler = int (*)(RuntimeStateValue &, void *);
     int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_State.Registered) return BML_ERROR_ALREADY_EXISTS;

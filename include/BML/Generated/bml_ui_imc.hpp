@@ -277,6 +277,7 @@ public:
         return status;
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
+    bool IsOpen() const noexcept { return m_Client != nullptr; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId HudModeInputPayloadType() const noexcept { return m_HudModeInputPayload; }
     BML_ImcPayloadTypeId HudStatePayloadType() const noexcept { return m_HudStatePayload; }
@@ -471,12 +472,58 @@ public:
     ~Provider() { (void)Close(); }
     Provider(const Provider &) = delete;
     Provider &operator=(const Provider &) = delete;
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.Handle() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.Handle()) ResetSlots(); return status; }
+    using HudFpsShowHandler = int (*)(const VisibleInputValue &, void *);
+    using HudSetHandler = int (*)(const HudModeInputValue &, void *);
+    using HudTitleShowHandler = int (*)(const VisibleInputValue &, void *);
+    using MapMenuCloseHandler = int (*)(void *);
+    using MapMenuOpenHandler = int (*)(void *);
+    using MessageAddHandler = int (*)(const MessageInputValue &, void *);
+    using MessageClearHandler = int (*)(void *);
+    using ModsMenuCloseHandler = int (*)(void *);
+    using ModsMenuOpenHandler = int (*)(void *);
+    using StateHandler = int (*)(HudStateValue &, void *);
+
+    struct Handlers {
+        void *Userdata = nullptr;
+        BML_ImcExecution Execution = BML_IMC_EXECUTION_GAME_THREAD;
+        HudFpsShowHandler HudFpsShow = nullptr;
+        HudSetHandler HudSet = nullptr;
+        HudTitleShowHandler HudTitleShow = nullptr;
+        MapMenuCloseHandler MapMenuClose = nullptr;
+        MapMenuOpenHandler MapMenuOpen = nullptr;
+        MessageAddHandler MessageAdd = nullptr;
+        MessageClearHandler MessageClear = nullptr;
+        ModsMenuCloseHandler ModsMenuClose = nullptr;
+        ModsMenuOpenHandler ModsMenuOpen = nullptr;
+        StateHandler State = nullptr;
+    };
+
+    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using HudFpsShowHandler = int (*)(const VisibleInputValue &, void *);
+    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+        if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
+        if (!(handlers.HudFpsShow || handlers.HudSet || handlers.HudTitleShow || handlers.MapMenuClose || handlers.MapMenuOpen || handlers.MessageAdd || handlers.MessageClear || handlers.ModsMenuClose || handlers.ModsMenuOpen || handlers.State)) return BML_ERROR_INVALID_PARAMETER;
+        if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
+        int status = m_Transport.Open(ownerId);
+        if (status == BML_OK && handlers.HudFpsShow) status = RegisterHudFpsShow(handlers.HudFpsShow, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.HudSet) status = RegisterHudSet(handlers.HudSet, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.HudTitleShow) status = RegisterHudTitleShow(handlers.HudTitleShow, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.MapMenuClose) status = RegisterMapMenuClose(handlers.MapMenuClose, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.MapMenuOpen) status = RegisterMapMenuOpen(handlers.MapMenuOpen, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.MessageAdd) status = RegisterMessageAdd(handlers.MessageAdd, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.MessageClear) status = RegisterMessageClear(handlers.MessageClear, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.ModsMenuClose) status = RegisterModsMenuClose(handlers.ModsMenuClose, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.ModsMenuOpen) status = RegisterModsMenuOpen(handlers.ModsMenuOpen, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.State) status = RegisterState(handlers.State, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK) return BML_OK;
+        const int cleanupStatus = Close();
+        return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
+    }
+
     int RegisterHudFpsShow(HudFpsShowHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudFpsShow.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -493,7 +540,6 @@ public:
         return status;
     }
 
-    using HudSetHandler = int (*)(const HudModeInputValue &, void *);
     int RegisterHudSet(HudSetHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudSet.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -510,7 +556,6 @@ public:
         return status;
     }
 
-    using HudTitleShowHandler = int (*)(const VisibleInputValue &, void *);
     int RegisterHudTitleShow(HudTitleShowHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_HudTitleShow.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -527,7 +572,6 @@ public:
         return status;
     }
 
-    using MapMenuCloseHandler = int (*)(void *);
     int RegisterMapMenuClose(MapMenuCloseHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MapMenuClose.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -544,7 +588,6 @@ public:
         return status;
     }
 
-    using MapMenuOpenHandler = int (*)(void *);
     int RegisterMapMenuOpen(MapMenuOpenHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MapMenuOpen.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -561,7 +604,6 @@ public:
         return status;
     }
 
-    using MessageAddHandler = int (*)(const MessageInputValue &, void *);
     int RegisterMessageAdd(MessageAddHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MessageAdd.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -578,7 +620,6 @@ public:
         return status;
     }
 
-    using MessageClearHandler = int (*)(void *);
     int RegisterMessageClear(MessageClearHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_MessageClear.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -595,7 +636,6 @@ public:
         return status;
     }
 
-    using ModsMenuCloseHandler = int (*)(void *);
     int RegisterModsMenuClose(ModsMenuCloseHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_ModsMenuClose.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -612,7 +652,6 @@ public:
         return status;
     }
 
-    using ModsMenuOpenHandler = int (*)(void *);
     int RegisterModsMenuOpen(ModsMenuOpenHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_ModsMenuOpen.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -629,7 +668,6 @@ public:
         return status;
     }
 
-    using StateHandler = int (*)(HudStateValue &, void *);
     int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_State.Registered) return BML_ERROR_ALREADY_EXISTS;

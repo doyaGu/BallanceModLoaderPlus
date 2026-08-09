@@ -558,6 +558,7 @@ public:
         return status;
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
+    bool IsOpen() const noexcept { return m_Client != nullptr; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId EventPayloadType() const noexcept { return m_EventPayload; }
     BML_ImcTopicId AllTopicId() const noexcept { return m_AllTopic; }

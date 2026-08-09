@@ -215,6 +215,10 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
                 add(members, f"Has{member}", f"optional flag for {record.name}.{field.name}")
 
     imc_client_symbols: dict[str, str] = {}
+    provider_handler_symbols: dict[str, str] = {
+        name: "generated Provider handler table"
+        for name in ("Handlers", "Userdata", "Execution")
+    }
     for endpoint in endpoints:
         endpoint_name = camel(endpoint.name)
         source = f"endpoint {endpoint.name}"
@@ -226,6 +230,7 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
         add(imc_client_symbols, generated_method, source)
         if endpoint.kind == "rpc":
             add(imc_client_symbols, f"Is{endpoint_name}Available", source)
+            add(provider_handler_symbols, endpoint_name, source)
 
 
 @dataclass(frozen=True)
@@ -1232,6 +1237,7 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
         "        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }",
         "        return status;", "    }",
         "    BML_ImcClient Handle() const noexcept { return m_Client; }",
+        "    bool IsOpen() const noexcept { return m_Client != nullptr; }",
         "    int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }",
     ])
     for record in api.schemas:
@@ -1336,10 +1342,6 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
     lines.extend([
         "class Provider {", "public:", "    Provider() = default;", "    ~Provider() { (void)Close(); }",
         "    Provider(const Provider &) = delete;", "    Provider &operator=(const Provider &) = delete;",
-        "    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.Handle() ? status : m_Transport.Open(ownerId); }",
-        "    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.Handle()) ResetSlots(); return status; }",
-        "    Client &Transport() noexcept { return m_Transport; }",
-        "    const Client &Transport() const noexcept { return m_Transport; }", "",
     ])
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
@@ -1354,6 +1356,35 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
         else:
             signature = "int (*)(void *)"
         lines.append(f"    using {name}Handler = {signature};")
+    lines.extend(["", "    struct Handlers {", "        void *Userdata = nullptr;",
+                  "        BML_ImcExecution Execution = BML_IMC_EXECUTION_GAME_THREAD;"])
+    for endpoint in rpc_endpoints:
+        name = camel(endpoint.name)
+        lines.append(f"        {name}Handler {name} = nullptr;")
+    lines.extend([
+        "    };", "",
+        "    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }",
+        "    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }",
+        "    bool IsOpen() const noexcept { return m_Transport.IsOpen(); }",
+        "    Client &Transport() noexcept { return m_Transport; }",
+        "    const Client &Transport() const noexcept { return m_Transport; }", "",
+        "    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {",
+        "        if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;",
+        f"        if (!({' || '.join(f'handlers.{camel(endpoint.name)}' for endpoint in rpc_endpoints)})) return BML_ERROR_INVALID_PARAMETER;",
+        "        if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;",
+        "        int status = m_Transport.Open(ownerId);",
+    ])
+    for endpoint in rpc_endpoints:
+        name = camel(endpoint.name)
+        lines.append(f"        if (status == BML_OK && handlers.{name}) status = Register{name}(handlers.{name}, handlers.Userdata, handlers.Execution);")
+    lines.extend([
+        "        if (status == BML_OK) return BML_OK;",
+        "        const int cleanupStatus = Close();",
+        "        return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;",
+        "    }", "",
+    ])
+    for endpoint in rpc_endpoints:
+        name = camel(endpoint.name)
         lines.extend([
             f"    int Register{name}({name}Handler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {{",
             "        if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;",

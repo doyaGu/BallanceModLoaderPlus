@@ -56,9 +56,12 @@ BML_ImcPayloadTypeId g_LastRequestPayload = 0;
 std::vector<std::uint8_t> g_LastPublish;
 BML_ImcPayloadTypeId g_LastPublishPayload = 0;
 std::string g_ProvidedMessage;
+void *g_LastProviderUserdata = nullptr;
+BML_ImcClient g_RegisteredClient = nullptr;
 BML_ImcRpcHandler g_RegisteredHandler = nullptr;
 void *g_RegisteredUserdata = nullptr;
 BML_ImcRpcId g_RegisteredRpc = BML_IMC_INVALID_ID;
+BML_ImcExecution g_RegisteredExecution = BML_IMC_EXECUTION_GAME_THREAD;
 BML_ImcTopicHandler g_TopicHandler = nullptr;
 void *g_TopicUserdata = nullptr;
 
@@ -69,8 +72,10 @@ void ResetMock() {
     g_LastSubscribeCapacity = 0;
     g_LastRequest.clear(); g_LastRequestPayload = 0;
     g_LastPublish.clear(); g_LastPublishPayload = 0;
-    g_ProvidedMessage.clear();
-    g_RegisteredHandler = nullptr; g_RegisteredUserdata = nullptr; g_RegisteredRpc = BML_IMC_INVALID_ID;
+    g_ProvidedMessage.clear(); g_LastProviderUserdata = nullptr;
+    g_RegisteredClient = nullptr; g_RegisteredHandler = nullptr;
+    g_RegisteredUserdata = nullptr; g_RegisteredRpc = BML_IMC_INVALID_ID;
+    g_RegisteredExecution = BML_IMC_EXECUTION_GAME_THREAD;
     g_TopicHandler = nullptr; g_TopicUserdata = nullptr;
 }
 
@@ -124,9 +129,14 @@ int EncodeSpeedrunStateResult(BML_ImcFuture_T &future) {
     future.Result.PayloadType = StableId(Speedrun::TimerStatePayload); return status;
 }
 
-int ProvideRuntimeState(BML::Imc::Generated::Bml::Runtime::RuntimeStateValue &out, void *) {
+int ProvideRuntimeState(BML::Imc::Generated::Bml::Runtime::RuntimeStateValue &out, void *userdata) {
+    g_LastProviderUserdata = userdata;
     out.InGame = true; out.InLevel = false; out.Paused = true;
     out.Playing = false; out.CheatEnabled = true;
+    return BML_OK;
+}
+
+int ProvideRuntimeClock(BML::Imc::Generated::Bml::Runtime::ClockStateValue &, void *) {
     return BML_OK;
 }
 
@@ -159,6 +169,12 @@ int BML_Imc_CloseClient(BML_ImcClient client) {
         if (g_LiveClients.erase(client) == 0) return BML_ERROR_INVALID_HANDLE;
     }
     ++g_CloseClients;
+    if (g_RegisteredClient == client) {
+        g_RegisteredClient = nullptr;
+        g_RegisteredHandler = nullptr;
+        g_RegisteredUserdata = nullptr;
+        g_RegisteredRpc = BML_IMC_INVALID_ID;
+    }
     delete client;
     return BML_OK;
 }
@@ -177,14 +193,20 @@ int BML_Imc_IsRpcAvailable(BML_ImcClient client, BML_ImcRpcId rpcId, int *outAva
     *outAvailable = g_RegisteredHandler && g_RegisteredRpc == rpcId ? 1 : 0;
     return BML_OK;
 }
-int BML_Imc_RegisterRpc(BML_ImcClient, BML_ImcRpcId rpcId,
-                        const BML_ImcRpcRegistrationOptions *, BML_ImcRpcHandler handler, void *userdata) {
+int BML_Imc_RegisterRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
+                        const BML_ImcRpcRegistrationOptions *options, BML_ImcRpcHandler handler, void *userdata) {
     if (!handler || g_RegisteredHandler) return handler ? BML_ERROR_ALREADY_EXISTS : BML_ERROR_INVALID_PARAMETER;
-    g_RegisteredRpc = rpcId; g_RegisteredHandler = handler; g_RegisteredUserdata = userdata; return BML_OK;
+    g_RegisteredClient = client; g_RegisteredRpc = rpcId; g_RegisteredHandler = handler;
+    g_RegisteredUserdata = userdata;
+    g_RegisteredExecution = options ? options->Execution : BML_IMC_EXECUTION_GAME_THREAD;
+    return BML_OK;
 }
-int BML_Imc_UnregisterRpc(BML_ImcClient, BML_ImcRpcId rpcId) {
+int BML_Imc_UnregisterRpc(BML_ImcClient client, BML_ImcRpcId rpcId) {
     if (!g_RegisteredHandler || rpcId != g_RegisteredRpc) return BML_ERROR_NOT_FOUND;
-    g_RegisteredHandler = nullptr; g_RegisteredUserdata = nullptr; g_RegisteredRpc = BML_IMC_INVALID_ID; return BML_OK;
+    if (client != g_RegisteredClient) return BML_ERROR_ACCESS_DENIED;
+    g_RegisteredClient = nullptr; g_RegisteredHandler = nullptr;
+    g_RegisteredUserdata = nullptr; g_RegisteredRpc = BML_IMC_INVALID_ID;
+    return BML_OK;
 }
 int BML_Imc_ResponseReserve(BML_ImcResponse *response, std::size_t size, void **outData) {
     if (!response || !outData) return BML_ERROR_INVALID_PARAMETER;
@@ -311,6 +333,61 @@ TEST(ImcGeneratedClientTest, ProviderCloseRetainsRegisteredSlotsAfterBusy) {
     EXPECT_EQ(provider.Transport().Handle(), handle);
     EXPECT_EQ(provider.UnregisterState(), BML_OK);
     g_CloseClientStatus = BML_OK;
+    EXPECT_EQ(provider.Close(), BML_OK);
+}
+
+TEST(ImcGeneratedClientTest, ProviderStartOwnsTheCommonRegistrationLifecycle) {
+    ResetMock();
+    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
+    Runtime::Provider provider;
+    Runtime::Provider::Handlers handlers{};
+    int ownerState = 42;
+    handlers.Userdata = &ownerState;
+    handlers.Execution = BML_IMC_EXECUTION_CALLER_THREAD;
+    handlers.State = &ProvideRuntimeState;
+
+    ASSERT_EQ(provider.Start(handlers, "test.provider"), BML_OK);
+    EXPECT_TRUE(provider.IsOpen());
+    EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(g_RegisteredExecution, BML_IMC_EXECUTION_CALLER_THREAD);
+    BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
+    BML_ImcResponse_T response;
+    ASSERT_EQ(g_RegisteredHandler(
+        g_RegisteredRpc, &request, &response, g_RegisteredUserdata), BML_OK);
+    EXPECT_EQ(g_LastProviderUserdata, &ownerState);
+    EXPECT_EQ(provider.Start(handlers, "test.provider"), BML_ERROR_ALREADY_EXISTS);
+    EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 1);
+
+    EXPECT_EQ(provider.Close(), BML_OK);
+    EXPECT_FALSE(provider.IsOpen());
+    EXPECT_EQ(g_RegisteredHandler, nullptr);
+    EXPECT_EQ(g_CloseClients.load(std::memory_order_relaxed), 1);
+}
+
+TEST(ImcGeneratedClientTest, ProviderStartRejectsEmptyHandlersAndRollsBackFailure) {
+    ResetMock();
+    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
+    Runtime::Provider provider;
+    Runtime::Provider::Handlers handlers{};
+    EXPECT_EQ(provider.Start(handlers, "test.provider"), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 0);
+
+    handlers.State = &ProvideRuntimeState;
+    handlers.Execution = static_cast<BML_ImcExecution>(99);
+    EXPECT_EQ(provider.Start(handlers, "test.provider"), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 0);
+
+    handlers.Execution = BML_IMC_EXECUTION_GAME_THREAD;
+    handlers.Clock = &ProvideRuntimeClock;
+    EXPECT_EQ(provider.Start(handlers, "test.provider"), BML_ERROR_ALREADY_EXISTS);
+    EXPECT_FALSE(provider.IsOpen());
+    EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(g_CloseClients.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(g_RegisteredHandler, nullptr);
+
+    handlers.Clock = nullptr;
+    ASSERT_EQ(provider.Start(handlers, "test.provider"), BML_OK);
+    EXPECT_TRUE(provider.IsOpen());
     EXPECT_EQ(provider.Close(), BML_OK);
 }
 

@@ -160,6 +160,7 @@ public:
         return status;
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
+    bool IsOpen() const noexcept { return m_Client != nullptr; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId TimerStatePayloadType() const noexcept { return m_TimerStatePayload; }
     BML_ImcPayloadTypeId VisibleInputPayloadType() const noexcept { return m_VisibleInputPayload; }
@@ -262,12 +263,43 @@ public:
     ~Provider() { (void)Close(); }
     Provider(const Provider &) = delete;
     Provider &operator=(const Provider &) = delete;
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.Handle() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.Handle()) ResetSlots(); return status; }
+    using PauseTimerHandler = int (*)(void *);
+    using ResetTimerHandler = int (*)(void *);
+    using SetTimerVisibleHandler = int (*)(const VisibleInputValue &, void *);
+    using StartTimerHandler = int (*)(void *);
+    using StateHandler = int (*)(TimerStateValue &, void *);
+
+    struct Handlers {
+        void *Userdata = nullptr;
+        BML_ImcExecution Execution = BML_IMC_EXECUTION_GAME_THREAD;
+        PauseTimerHandler PauseTimer = nullptr;
+        ResetTimerHandler ResetTimer = nullptr;
+        SetTimerVisibleHandler SetTimerVisible = nullptr;
+        StartTimerHandler StartTimer = nullptr;
+        StateHandler State = nullptr;
+    };
+
+    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using PauseTimerHandler = int (*)(void *);
+    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+        if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
+        if (!(handlers.PauseTimer || handlers.ResetTimer || handlers.SetTimerVisible || handlers.StartTimer || handlers.State)) return BML_ERROR_INVALID_PARAMETER;
+        if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
+        int status = m_Transport.Open(ownerId);
+        if (status == BML_OK && handlers.PauseTimer) status = RegisterPauseTimer(handlers.PauseTimer, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.ResetTimer) status = RegisterResetTimer(handlers.ResetTimer, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.SetTimerVisible) status = RegisterSetTimerVisible(handlers.SetTimerVisible, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.StartTimer) status = RegisterStartTimer(handlers.StartTimer, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.State) status = RegisterState(handlers.State, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK) return BML_OK;
+        const int cleanupStatus = Close();
+        return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
+    }
+
     int RegisterPauseTimer(PauseTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_PauseTimer.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -284,7 +316,6 @@ public:
         return status;
     }
 
-    using ResetTimerHandler = int (*)(void *);
     int RegisterResetTimer(ResetTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_ResetTimer.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -301,7 +332,6 @@ public:
         return status;
     }
 
-    using SetTimerVisibleHandler = int (*)(const VisibleInputValue &, void *);
     int RegisterSetTimerVisible(SetTimerVisibleHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_SetTimerVisible.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -318,7 +348,6 @@ public:
         return status;
     }
 
-    using StartTimerHandler = int (*)(void *);
     int RegisterStartTimer(StartTimerHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_StartTimer.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -335,7 +364,6 @@ public:
         return status;
     }
 
-    using StateHandler = int (*)(TimerStateValue &, void *);
     int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_State.Registered) return BML_ERROR_ALREADY_EXISTS;

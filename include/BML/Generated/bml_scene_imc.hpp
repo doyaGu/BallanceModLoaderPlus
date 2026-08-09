@@ -441,6 +441,7 @@ public:
         return status;
     }
     BML_ImcClient Handle() const noexcept { return m_Client; }
+    bool IsOpen() const noexcept { return m_Client != nullptr; }
     int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId EntityTransformPayloadType() const noexcept { return m_EntityTransformPayload; }
     BML_ImcPayloadTypeId FindNameClassRequestPayloadType() const noexcept { return m_FindNameClassRequestPayload; }
@@ -545,12 +546,40 @@ public:
     ~Provider() { (void)Close(); }
     Provider(const Provider &) = delete;
     Provider &operator=(const Provider &) = delete;
-    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.Handle() ? status : m_Transport.Open(ownerId); }
-    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.Handle()) ResetSlots(); return status; }
+    using EntityHandler = int (*)(const ObjectRequestValue &, EntityTransformValue &, void *);
+    using FindNameHandler = int (*)(const FindNameRequestValue &, FindResultValue &, void *);
+    using FindNameClassHandler = int (*)(const FindNameClassRequestValue &, FindResultValue &, void *);
+    using ObjectHandler = int (*)(const ObjectRequestValue &, ObjectInfoValue &, void *);
+
+    struct Handlers {
+        void *Userdata = nullptr;
+        BML_ImcExecution Execution = BML_IMC_EXECUTION_GAME_THREAD;
+        EntityHandler Entity = nullptr;
+        FindNameHandler FindName = nullptr;
+        FindNameClassHandler FindNameClass = nullptr;
+        ObjectHandler Object = nullptr;
+    };
+
+    int Open(const char *ownerId = nullptr) noexcept { const int status = Close(); return m_Transport.IsOpen() ? status : m_Transport.Open(ownerId); }
+    int Close() noexcept { const int status = m_Transport.Close(); if (!m_Transport.IsOpen()) ResetSlots(); return status; }
+    bool IsOpen() const noexcept { return m_Transport.IsOpen(); }
     Client &Transport() noexcept { return m_Transport; }
     const Client &Transport() const noexcept { return m_Transport; }
 
-    using EntityHandler = int (*)(const ObjectRequestValue &, EntityTransformValue &, void *);
+    int Start(const Handlers &handlers, const char *ownerId = nullptr) noexcept {
+        if (IsOpen()) return BML_ERROR_ALREADY_EXISTS;
+        if (!(handlers.Entity || handlers.FindName || handlers.FindNameClass || handlers.Object)) return BML_ERROR_INVALID_PARAMETER;
+        if (handlers.Execution != BML_IMC_EXECUTION_GAME_THREAD && handlers.Execution != BML_IMC_EXECUTION_CALLER_THREAD) return BML_ERROR_INVALID_PARAMETER;
+        int status = m_Transport.Open(ownerId);
+        if (status == BML_OK && handlers.Entity) status = RegisterEntity(handlers.Entity, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.FindName) status = RegisterFindName(handlers.FindName, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.FindNameClass) status = RegisterFindNameClass(handlers.FindNameClass, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK && handlers.Object) status = RegisterObject(handlers.Object, handlers.Userdata, handlers.Execution);
+        if (status == BML_OK) return BML_OK;
+        const int cleanupStatus = Close();
+        return cleanupStatus == BML_OK || cleanupStatus == BML_ERROR_INVALID_HANDLE ? status : cleanupStatus;
+    }
+
     int RegisterEntity(EntityHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Entity.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -567,7 +596,6 @@ public:
         return status;
     }
 
-    using FindNameHandler = int (*)(const FindNameRequestValue &, FindResultValue &, void *);
     int RegisterFindName(FindNameHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_FindName.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -584,7 +612,6 @@ public:
         return status;
     }
 
-    using FindNameClassHandler = int (*)(const FindNameClassRequestValue &, FindResultValue &, void *);
     int RegisterFindNameClass(FindNameClassHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_FindNameClass.Registered) return BML_ERROR_ALREADY_EXISTS;
@@ -601,7 +628,6 @@ public:
         return status;
     }
 
-    using ObjectHandler = int (*)(const ObjectRequestValue &, ObjectInfoValue &, void *);
     int RegisterObject(ObjectHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
         if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
         if (m_Object.Registered) return BML_ERROR_ALREADY_EXISTS;
