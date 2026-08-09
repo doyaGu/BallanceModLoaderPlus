@@ -20,7 +20,7 @@ bool IsNull(BML_ObjectRef reference) {
     return reference.Domain == 0 && reference.Slot == 0 && reference.Generation == 0;
 }
 
-bool IsAvailableOrNotReady(int status) {
+bool IsOkOrUnavailable(int status) {
     return status == BML_OK || status == BML_ERROR_IMC_UNSUPPORTED;
 }
 
@@ -94,6 +94,7 @@ private:
 
         if (state.InGame != m_BML->IsIngame() || state.Paused != m_BML->IsPaused() ||
             state.Playing != m_BML->IsPlaying() || state.CheatEnabled != m_BML->IsCheatEnabled() ||
+            (state.InLevel && (!state.InGame || state.Paused || !state.Playing)) ||
             !std::isfinite(clock.TimeMs) || !std::isfinite(clock.AbsoluteMs) ||
             !std::isfinite(clock.DeltaMs) || clock.Frame < 0 ||
             !NearlyEqual(score.SR, m_BML->GetSRScore()) || score.HS != m_BML->GetHSScore()) {
@@ -146,7 +147,7 @@ private:
                    typedReference.Generation == reference.Generation;
         }
 
-        return false;
+        return true;
     }
 
     bool CheckGameplay() {
@@ -170,13 +171,14 @@ private:
             LogArraySchema("CurrentLevel");
         if (catalogStatus == BML_ERROR_IMC_UNSUPPORTED)
             LogArraySchema("AllLevel");
-        const bool catalogValues = catalogStatus == BML_OK && catalog.size() == 13 &&
-                                   catalog.front().File == "Level_01.nmo" &&
-                                   catalog.front().StartBall == "Ball_Wood" &&
-                                   catalog.front().Bonus == 100 && catalog.front().Music == 1;
-        return IsAvailableOrNotReady(levelStatus) && IsAvailableOrNotReady(energyStatus) &&
-               catalogValues && IsAvailableOrNotReady(checkpointsStatus) &&
-               IsAvailableOrNotReady(resetpointsStatus);
+        const bool catalogValues = catalogStatus == BML_ERROR_IMC_UNSUPPORTED ||
+                                   (catalogStatus == BML_OK && catalog.size() == 13 &&
+                                    catalog.front().File == "Level_01.nmo" &&
+                                    catalog.front().StartBall == "Ball_Wood" &&
+                                    catalog.front().Bonus == 100 && catalog.front().Music == 1);
+        return IsOkOrUnavailable(levelStatus) && IsOkOrUnavailable(energyStatus) &&
+               catalogValues && IsOkOrUnavailable(checkpointsStatus) &&
+               IsOkOrUnavailable(resetpointsStatus);
     }
 
     void LogArraySchema(const char *name) {

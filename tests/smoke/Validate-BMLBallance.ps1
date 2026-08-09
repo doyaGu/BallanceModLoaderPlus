@@ -216,7 +216,8 @@ function Copy-FileWithRetry {
 function Install-SmokeMods {
     param(
         [string]$ScriptSmokeRoot,
-        [string]$ModsDirectory
+        [string]$ModsDirectory,
+        [bool]$InstallShutdownSmoke
     )
 
     Remove-SmokeInstall -ModsDirectory $ModsDirectory
@@ -231,7 +232,7 @@ function Install-SmokeMods {
 
     if ($HotReloadStateSmoke) {
         Copy-BMLDirectoryFresh -SourceDir (Join-Path $ScriptSmokeRoot 'BMLAngelScriptStateReloadSmoke') -DestinationDir (Join-Path $ModsDirectory 'BMLAngelScriptStateReloadSmoke')
-    } else {
+    } elseif ($InstallShutdownSmoke) {
         Copy-BMLDirectoryFresh -SourceDir (Join-Path $ScriptSmokeRoot 'BMLAngelScriptShutdownSmoke') -DestinationDir (Join-Path $ModsDirectory 'BMLAngelScriptShutdownSmoke')
     }
 
@@ -287,6 +288,7 @@ $playerPath = Join-Path $ballanceRootFull 'Bin\Player.exe'
 $installedDll = Join-Path $buildingBlocksDir 'BMLPlus.dll'
 $installedAngelScriptDll = Join-Path $buildingBlocksDir 'AngelScript.dll'
 $installedNativeImcSmokeMod = Join-Path $modsDir 'BMLNativeImcSmoke.bmodp'
+$retiredNativeInteropSmokeMod = Join-Path $modsDir 'BMLNativeInteropSmoke.bmodp'
 $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
 $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 $angelScriptLog = Join-Path $ballanceRootFull 'Bin\AngelScript.log'
@@ -331,6 +333,7 @@ $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupPath = $null
 $angelScriptBackupPath = $null
 $nativeImcSmokeBackupPath = $null
+$retiredNativeInteropSmokeBackupPath = $null
 $legacyNativeSmokeInstall = [System.Collections.Generic.List[object]]::new()
 $process = $null
 $playerExitCode = $null
@@ -377,6 +380,14 @@ $restoreInstall = {
                 Remove-Item -LiteralPath $installedAngelScriptDll -Force
             }
         }
+        if (-not $KeepInstalled -and -not $SkipSmokeInstall -and -not $SkipScriptSmoke) {
+            Remove-SmokeInstall -ModsDirectory $modsDir
+        }
+        if ($retiredNativeInteropSmokeBackupPath -and
+            (Test-Path -LiteralPath $retiredNativeInteropSmokeBackupPath)) {
+            Copy-FileWithRetry -Source $retiredNativeInteropSmokeBackupPath -Destination $retiredNativeInteropSmokeMod
+            Remove-Item -LiteralPath $retiredNativeInteropSmokeBackupPath -Force
+        }
         if (-not $KeepInstalled -and -not $SkipSmokeInstall -and $NativeImcSmokeMod) {
             if ($nativeImcSmokeBackupPath -and (Test-Path -LiteralPath $nativeImcSmokeBackupPath)) {
                 Copy-FileWithRetry -Source $nativeImcSmokeBackupPath -Destination $installedNativeImcSmokeMod
@@ -401,8 +412,9 @@ $restoreInstall = {
 }
 
 trap {
+    $failure = $_
     & $restoreInstall
-    throw
+    throw $failure
 }
 
 if (-not $SkipInstall) {
@@ -422,8 +434,15 @@ if ($CKAngelScriptDll) {
 }
 
 if (-not $SkipSmokeInstall) {
+    if (Test-Path -LiteralPath $retiredNativeInteropSmokeMod) {
+        $retiredNativeInteropSmokeBackupPath = "$retiredNativeInteropSmokeMod.bak-$timestamp"
+        Copy-Item -LiteralPath $retiredNativeInteropSmokeMod -Destination $retiredNativeInteropSmokeBackupPath
+        Remove-Item -LiteralPath $retiredNativeInteropSmokeMod -Force
+    }
+
     if (-not $SkipScriptSmoke) {
-        Install-SmokeMods -ScriptSmokeRoot $scriptSmokeRoot -ModsDirectory $modsDir
+        Install-SmokeMods -ScriptSmokeRoot $scriptSmokeRoot -ModsDirectory $modsDir `
+            -InstallShutdownSmoke (-not [bool]$NativeImcSmokeMod)
     }
 
     if ($NativeImcSmokeMod) {
@@ -496,6 +515,7 @@ $playerLogText = Convert-SmokeText (Get-BMLTextIfExists $playerLog)
 $checks = [System.Collections.Generic.List[object]]::new()
 if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'player-postprocess-clean' (-not (Test-SmokeTextContains $playerLogText 'Error : PostProcess')) 'Player.log must not contain Error : PostProcess'
+    Add-SmokeCheck $checks 'mod-load-clean' (-not (Test-SmokeTextContains $modLogText 'Failed to load ')) 'ModLoader.log must not contain native mod load failures'
     if (-not $SkipScriptSmoke) {
         Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
         Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: imc-facades') 'BML script mod summary: imc-facades'
@@ -533,7 +553,7 @@ if (-not $SkipPlayer) {
         Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
         Add-SmokeCheck $checks 'script-imgui-stack-recovery' (Test-SmokeTextContains $modLogText 'Recovered mismatched ImGui stack after script callback') 'Recovered mismatched ImGui stack after script callback'
         Add-SmokeCheck $checks 'script-imgui-stack-recovery-silent' (-not (Test-SmokeTextContains $modLogText '[imgui-error] In window')) 'no raw ImGui recovery errors in ModLoader log'
-        if (-not $HotReloadStateSmoke) {
+        if (-not $HotReloadStateSmoke -and -not $NativeImcSmokeMod) {
             Add-SmokeCheck $checks 'shutdown-smoke' (Test-SmokeTextContains $modLogText 'BML shutdown smoke requesting exit') 'BML shutdown smoke requesting exit'
         }
     }
@@ -588,6 +608,8 @@ $result = [pscustomobject]@{
     NativeImcSmokeMod = $NativeImcSmokeMod
     InstalledNativeImcSmokeMod = $installedNativeImcSmokeMod
     NativeImcSmokeBackupPath = $nativeImcSmokeBackupPath
+    RetiredNativeInteropSmokeMod = $retiredNativeInteropSmokeMod
+    RetiredNativeInteropSmokeBackupPath = $retiredNativeInteropSmokeBackupPath
     LegacyNativeSmoke = [bool]$LegacyNativeSmoke
     LegacyNativeSmokeInstall = @($legacyNativeSmokeInstall | ForEach-Object {
         [pscustomobject]@{

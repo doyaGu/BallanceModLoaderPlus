@@ -15,6 +15,7 @@ class BMLRuntimeErrorSmokeMod {
     }
     firstProcess = false;
 
+    ImGui::Begin("BML runtime error smoke leaked window", ImGuiWindowFlags_AlwaysAutoResize);
     throw("intentional BML runtime error smoke");
   }
 }

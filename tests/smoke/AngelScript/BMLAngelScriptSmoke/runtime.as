@@ -5,6 +5,12 @@ class BMLBindingsSmokeMod {
   BML::Events::Stream@ events;
   bool loggedPoll = false;
 
+  void Log(const BML::ModContext &in ctx, const string &in message) {
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null)
+      logger.Info(message);
+  }
+
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Runtime::State runtime;
     BML::Runtime::Clock clock;
@@ -13,9 +19,9 @@ class BMLBindingsSmokeMod {
                      BML::Runtime::ReadClock(clock) == BML::ERROR_OK &&
                      BML::Runtime::ReadScore(score) == BML::ERROR_OK;
     bool streamOk = BML::Events::Open(events, 8) == BML::ERROR_OK && events !is null && events.IsOpen;
-    LogInfo(ctx, "BML IMC facade smoke: runtime=" + (runtimeOk ? "true" : "false") +
-                 " stream=" + (streamOk ? "true" : "false"));
-    LogInfo(ctx, "BML script mod summary: imc-facades");
+    Log(ctx, "BML IMC facade smoke: runtime=" + (runtimeOk ? "true" : "false") +
+             " stream=" + (streamOk ? "true" : "false"));
+    Log(ctx, "BML script mod summary: imc-facades");
   }
 
   void OnProcess(const BML::ModContext &in ctx) {
@@ -23,14 +29,14 @@ class BMLBindingsSmokeMod {
       return;
     BML::Events::Event@ event;
     int status = events.Poll(event);
-    LogInfo(ctx, "BML IMC stream poll: status=" + status +
-                 " event=" + ((event is null) ? "none" : "record"));
+    Log(ctx, "BML IMC stream poll: status=" + status +
+             " event=" + ((event is null) ? "none" : "record"));
     loggedPoll = true;
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
     if (events !is null)
       events.Close();
-    LogInfo(ctx, "Goodbye!");
+    Log(ctx, "Goodbye!");
   }
 }
