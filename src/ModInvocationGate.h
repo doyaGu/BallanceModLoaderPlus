@@ -26,6 +26,7 @@ public:
             for (const auto &entry : s_MutationEntries) {
                 if (entry.Gate == &gate) {
                     s_CallEntries.push_back({&gate, 1});
+                    m_IsOutermost = true;
                     return;
                 }
             }
@@ -33,6 +34,7 @@ public:
             m_Lock = std::shared_lock<std::shared_mutex>(gate.m_Mutex);
             s_CallEntries.push_back({&gate, 1});
             m_OwnsUnderlyingLock = true;
+            m_IsOutermost = true;
         }
 
         CallLock(const CallLock &) = delete;
@@ -54,6 +56,10 @@ public:
             unlock();
         }
 
+        bool IsOutermost() const noexcept {
+            return m_Gate && m_IsOutermost;
+        }
+
         void unlock() {
             if (!m_Gate)
                 return;
@@ -69,6 +75,7 @@ public:
                 m_Lock.unlock();
             m_Gate = nullptr;
             m_OwnsUnderlyingLock = false;
+            m_IsOutermost = false;
         }
 
     private:
@@ -76,13 +83,16 @@ public:
             m_Gate = other.m_Gate;
             m_Lock = std::move(other.m_Lock);
             m_OwnsUnderlyingLock = other.m_OwnsUnderlyingLock;
+            m_IsOutermost = other.m_IsOutermost;
             other.m_Gate = nullptr;
             other.m_OwnsUnderlyingLock = false;
+            other.m_IsOutermost = false;
         }
 
         ModInvocationGate *m_Gate = nullptr;
         std::shared_lock<std::shared_mutex> m_Lock;
         bool m_OwnsUnderlyingLock = false;
+        bool m_IsOutermost = false;
     };
 
     class MutationLock {

@@ -36,8 +36,10 @@ TEST(ModInvocationGateTest, NestedCallsAreReentrantAndDetectable) {
     EXPECT_FALSE(gate.IsCallActiveOnCurrentThread());
     {
         auto outer = gate.LockCall();
+        EXPECT_TRUE(outer.IsOutermost());
         EXPECT_TRUE(gate.IsCallActiveOnCurrentThread());
         auto inner = gate.LockCall();
+        EXPECT_FALSE(inner.IsOutermost());
         EXPECT_TRUE(gate.IsCallActiveOnCurrentThread());
     }
     EXPECT_FALSE(gate.IsCallActiveOnCurrentThread());
@@ -67,6 +69,7 @@ TEST(ModInvocationGateTest, NestedMutationsAreReentrant) {
         auto inner = gate.LockMutation();
         EXPECT_TRUE(gate.IsMutationActiveOnCurrentThread());
         auto call = gate.LockCall();
+        EXPECT_TRUE(call.IsOutermost());
         EXPECT_TRUE(gate.IsCallActiveOnCurrentThread());
     }
     EXPECT_FALSE(gate.IsMutationActiveOnCurrentThread());

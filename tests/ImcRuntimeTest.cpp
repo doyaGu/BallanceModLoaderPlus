@@ -876,7 +876,7 @@ TEST(ImcRuntimeShutdownTest, InvalidatesLeakedPublicHandlesWithoutCrashing) {
     runtime.Shutdown();
 }
 
-TEST_F(ImcRuntimeTest, CloseClientRejectsReentrantImcCallbackWithoutDeactivatingOwner) {
+TEST_F(ImcRuntimeTest, CloseClientCompletesAfterReentrantImcCallback) {
     BML_ImcRpcId rpc = 0;
     ASSERT_EQ(m_Runtime.GetRpcId(m_Provider, "sample/v1/rpc/reentrant-close", &rpc),
               BML_OK);
@@ -900,9 +900,50 @@ TEST_F(ImcRuntimeTest, CloseClientRejectsReentrantImcCallbackWithoutDeactivating
 
     BML_ImcFuture future = nullptr;
     ASSERT_EQ(m_Runtime.CallRpc(m_Consumer, rpc, nullptr, nullptr, &future), BML_OK);
-    EXPECT_EQ(state.CloseStatus, BML_ERROR_BUSY);
+    EXPECT_EQ(state.CloseStatus, BML_OK);
     EXPECT_EQ(m_Runtime.FutureRelease(future), BML_OK);
-    EXPECT_EQ(m_Runtime.UnregisterRpc(m_Provider, rpc), BML_OK);
+    int available = 1;
+    EXPECT_EQ(m_Runtime.IsRpcAvailable(m_Consumer, rpc, &available), BML_OK);
+    EXPECT_EQ(available, 0);
+    m_Provider = nullptr;
+}
+
+TEST_F(ImcRuntimeTest, UnsubscribeCompletesAfterReentrantTopicCallback) {
+    BML_ImcTopicId topic = 0;
+    ASSERT_EQ(m_Runtime.GetTopicId(m_Provider, "sample/v1/topic/reentrant-close",
+                                   &topic),
+              BML_OK);
+    struct CallbackState {
+        BML::ImcRuntime *Runtime;
+        BML_ImcClient Client;
+        BML_ImcSubscription Subscription = nullptr;
+        int CloseStatus = BML_ERROR_FAIL;
+        int Calls = 0;
+    } state{&m_Runtime, m_Consumer};
+    BML_ImcSubscribeOptions options = BML_IMC_SUBSCRIBE_OPTIONS_INIT;
+    options.Execution = BML_IMC_EXECUTION_CALLER_THREAD;
+    ASSERT_EQ(m_Runtime.Subscribe(
+                  m_Consumer, topic, &options,
+                  [](BML_ImcTopicId, const BML_ImcMessage *, void *userdata) {
+                      auto *callback = static_cast<CallbackState *>(userdata);
+                      ++callback->Calls;
+                      callback->CloseStatus = callback->Runtime->Unsubscribe(
+                          callback->Client, callback->Subscription);
+                  },
+                  &state, &state.Subscription),
+              BML_OK);
+
+    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
+    std::size_t delivered = 0;
+    ASSERT_EQ(m_Runtime.Publish(m_Provider, topic, &message, &delivered), BML_OK);
+    EXPECT_EQ(state.CloseStatus, BML_OK);
+    EXPECT_EQ(state.Calls, 1);
+    EXPECT_EQ(delivered, 1u);
+
+    delivered = 1;
+    ASSERT_EQ(m_Runtime.Publish(m_Provider, topic, &message, &delivered), BML_OK);
+    EXPECT_EQ(state.Calls, 1);
+    EXPECT_EQ(delivered, 0u);
 }
 
 TEST_F(ImcRuntimeTest, UnregisterWaitsForConcurrentCallerThreadRpc) {
