@@ -131,6 +131,25 @@ if(MSVC)
                 "-P" "${CMAKE_CURRENT_SOURCE_DIR}/LegacyNativeDllExportAbiTest.cmake"
         )
         set_tests_properties(LegacyNativeDllExportAbiTest PROPERTIES LABELS "legacy-native;abi")
+
+        add_test(
+                NAME LegacyNativeSdkConsumerTest
+                COMMAND "${CMAKE_COMMAND}"
+                        "-DCMAKE_EXECUTABLE=${CMAKE_COMMAND}"
+                        "-DSOURCE_ROOT=${PROJECT_SOURCE_DIR}"
+                        "-DMAIN_BUILD_DIR=${PROJECT_BINARY_DIR}"
+                        "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/legacy-native-sdk-consumer-$<CONFIG>"
+                        "-DGENERATOR=${CMAKE_GENERATOR}"
+                        "-DGENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+                        "-DCONFIGURATION=$<CONFIG>"
+                        "-DVIRTOOLS_SDK_PATH=${VIRTOOLS_SDK_PATH}"
+                        "-DDUMPBIN=${BML_DUMPBIN}"
+                        -P "${CMAKE_CURRENT_SOURCE_DIR}/LegacyNativeSdkConsumerTest.cmake"
+        )
+        set_tests_properties(LegacyNativeSdkConsumerTest PROPERTIES
+                LABELS "legacy-native;integration;sdk"
+                RUN_SERIAL TRUE
+                TIMEOUT 180)
     endif()
 endif()
 
