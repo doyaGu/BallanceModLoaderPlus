@@ -8,6 +8,8 @@ param(
 
     [string]$NativeImcSmokeMod,
 
+    [switch]$LegacyNativeSmoke,
+
     [ValidateRange(1, 600)]
     [int]$PlayerSeconds = 30,
 
@@ -257,6 +259,27 @@ if (-not $HotReloadStateSmoke -and $HotReloadStateScenario -ne 'Success') {
 
 $layout = Get-BMLProjectLayout
 $scriptSmokeRoot = Join-Path $layout.RepoRoot 'tests\smoke\AngelScript'
+$legacyNativeSmokeRoot = Join-Path $layout.RepoRoot 'packaging\runtime\ModLoader\Mods'
+$legacyNativeSmokeFixtures = @(
+    [pscustomobject]@{
+        FileName = 'CameraUtilities.bmodp'
+        ModId = 'CameraUtilities'
+        ExpectedSha256 = '671D3A217D0E581B877FC9E2FD198030940D94F7615E839ED3CC7200411249C7'
+        LoadNeedle = 'Loading Mod CameraUtilities[Camera Utilities] v0.3.0'
+    },
+    [pscustomobject]@{
+        FileName = 'DebugUtilities.bmodp'
+        ModId = 'DebugUtilities'
+        ExpectedSha256 = '452039D194A9E9620E381EA1F29BE735DEC2EF38BAC8F75746558FE9F80127E9'
+        LoadNeedle = 'Loading Mod DebugUtilities[Debug Utilities] v0.3.1'
+    },
+    [pscustomobject]@{
+        FileName = 'TravelMode.bmodp'
+        ModId = 'TravelMode'
+        ExpectedSha256 = '353023505C04BAE008EFB8FB80B0247BF4B4CF4A9D82BE65EA8DFCB9F367C4BF'
+        LoadNeedle = 'Loading Mod TravelMode[Travel Mode] v0.3.0'
+    }
+)
 $ballanceRootFull = [System.IO.Path]::GetFullPath($BallanceRoot)
 $buildingBlocksDir = Join-Path $ballanceRootFull 'BuildingBlocks'
 $modsDir = Join-Path $ballanceRootFull 'ModLoader\Mods'
@@ -289,6 +312,17 @@ if (-not $SkipInstall) {
 if ($NativeImcSmokeMod) {
     Assert-BMLPath -Path $NativeImcSmokeMod -Type Leaf
 }
+if ($LegacyNativeSmoke) {
+    foreach ($fixture in $legacyNativeSmokeFixtures) {
+        $fixturePath = Join-Path $legacyNativeSmokeRoot $fixture.FileName
+        Assert-BMLPath -Path $fixturePath -Type Leaf
+        $fixtureHash = Get-BMLOptionalHash $fixturePath
+        if (-not [string]::Equals($fixtureHash, $fixture.ExpectedSha256,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Legacy native smoke fixture hash changed: $($fixture.FileName). Expected $($fixture.ExpectedSha256), got $fixtureHash."
+        }
+    }
+}
 if ($CKAngelScriptDll) {
     Assert-BMLPath -Path $CKAngelScriptDll -Type Leaf
 }
@@ -297,6 +331,7 @@ $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupPath = $null
 $angelScriptBackupPath = $null
 $nativeImcSmokeBackupPath = $null
+$legacyNativeSmokeInstall = [System.Collections.Generic.List[object]]::new()
 $process = $null
 $playerExitCode = $null
 $playerTimedOut = $false
@@ -350,6 +385,16 @@ $restoreInstall = {
                 Remove-Item -LiteralPath $installedNativeImcSmokeMod -Force
             }
         }
+        if (-not $KeepInstalled -and -not $SkipSmokeInstall -and $LegacyNativeSmoke) {
+            foreach ($installedFixture in $legacyNativeSmokeInstall) {
+                if ($installedFixture.BackupPath -and (Test-Path -LiteralPath $installedFixture.BackupPath)) {
+                    Copy-FileWithRetry -Source $installedFixture.BackupPath -Destination $installedFixture.Destination
+                    Remove-Item -LiteralPath $installedFixture.BackupPath -Force
+                } elseif (Test-Path -LiteralPath $installedFixture.Destination) {
+                    Remove-Item -LiteralPath $installedFixture.Destination -Force
+                }
+            }
+        }
     } finally {
         $restoreState.Completed = $true
     }
@@ -387,6 +432,29 @@ if (-not $SkipSmokeInstall) {
             Copy-Item -LiteralPath $installedNativeImcSmokeMod -Destination $nativeImcSmokeBackupPath
         }
         Copy-Item -LiteralPath $NativeImcSmokeMod -Destination $installedNativeImcSmokeMod -Force
+    }
+
+    if ($LegacyNativeSmoke) {
+        foreach ($fixture in $legacyNativeSmokeFixtures) {
+            $source = Join-Path $legacyNativeSmokeRoot $fixture.FileName
+            $destination = Join-Path $modsDir $fixture.FileName
+            $fixtureBackupPath = $null
+            if (Test-Path -LiteralPath $destination) {
+                $fixtureBackupPath = "$destination.bak-$timestamp"
+                Copy-Item -LiteralPath $destination -Destination $fixtureBackupPath
+            }
+            $legacyNativeSmokeInstall.Add([pscustomobject]@{
+                FileName = $fixture.FileName
+                ModId = $fixture.ModId
+                Source = $source
+                Destination = $destination
+                BackupPath = $fixtureBackupPath
+                SourceHash = Get-BMLOptionalHash $source
+                ExpectedSha256 = $fixture.ExpectedSha256
+                InstalledHashBefore = Get-BMLOptionalHash $destination
+            })
+            Copy-Item -LiteralPath $source -Destination $destination -Force
+        }
     }
 }
 
@@ -473,6 +541,20 @@ if (-not $SkipPlayer) {
         Add-SmokeCheck $checks 'native-imc-interfaces' (Test-SmokeTextContains $modLogText 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true') 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true'
         Add-SmokeCheck $checks 'native-imc-exit-event' (Test-SmokeTextContains $modLogText 'BML native IMC smoke exit event: received=true passed=true') 'BML native IMC smoke exit event: received=true passed=true'
     }
+    if ($LegacyNativeSmoke) {
+        foreach ($fixture in $legacyNativeSmokeFixtures) {
+            $fileStem = [System.IO.Path]::GetFileNameWithoutExtension($fixture.FileName)
+            Add-SmokeCheck $checks "legacy-native-$($fixture.ModId)-loaded" (Test-SmokeTextContains $modLogText $fixture.LoadNeedle) $fixture.LoadNeedle
+
+            $lifecycleFailure =
+                (Test-SmokeTextContains $modLogText "Failed to load $fileStem.") -or
+                (Test-SmokeTextContains $modLogText "Duplicate Mod: $($fixture.ModId)") -or
+                (Test-SmokeTextContains $modLogText "Dependencies not satisfied for mod $($fixture.ModId)") -or
+                (Test-SmokeTextContains $modLogText "Exception in mod $($fixture.ModId) unload callback") -or
+                (Test-SmokeTextContains $modLogText "Failed to unload mod $($fixture.ModId).")
+            Add-SmokeCheck $checks "legacy-native-$($fixture.ModId)-lifecycle" (-not $lifecycleFailure) "no load, duplicate, dependency, unload callback, or unload failure for $($fixture.ModId)"
+        }
+    }
     Add-SmokeCheck $checks 'goodbye' (Test-SmokeTextContains $modLogText 'Goodbye!') 'Goodbye!'
 }
 
@@ -506,6 +588,20 @@ $result = [pscustomobject]@{
     NativeImcSmokeMod = $NativeImcSmokeMod
     InstalledNativeImcSmokeMod = $installedNativeImcSmokeMod
     NativeImcSmokeBackupPath = $nativeImcSmokeBackupPath
+    LegacyNativeSmoke = [bool]$LegacyNativeSmoke
+    LegacyNativeSmokeInstall = @($legacyNativeSmokeInstall | ForEach-Object {
+        [pscustomobject]@{
+            FileName = $_.FileName
+            ModId = $_.ModId
+            Source = $_.Source
+            Destination = $_.Destination
+            BackupPath = $_.BackupPath
+            SourceHash = $_.SourceHash
+            ExpectedSha256 = $_.ExpectedSha256
+            InstalledHashBefore = $_.InstalledHashBefore
+            InstalledHashAfter = Get-BMLOptionalHash $_.Destination
+        }
+    })
     SkipScriptSmoke = [bool]$SkipScriptSmoke
     SingleFileSmoke = [bool]$SingleFileSmoke
     ZipSmoke = [bool]$ZipSmoke
