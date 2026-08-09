@@ -1483,22 +1483,7 @@ void ImcRuntime::CleanupOwner(const std::string &ownerId) {
     }
     for (auto *client : clients) {
         client->Active.store(false, std::memory_order_release);
-        std::vector<BML_ImcRpcId> rpcIds;
-        {
-            std::shared_lock lock(m_State->RpcMutex);
-            for (const auto &[id, entry] : m_State->RpcHandlers)
-                if (entry.Owner == client)
-                    rpcIds.push_back(id);
-        }
-        for (const auto id : rpcIds)
-            UnregisterRpc(client->Handle, id);
-
-        const auto subscriptions = m_State->SnapshotSubscriptions();
-        for (auto *subscription : subscriptions) {
-            if (subscription->Owner == client)
-                Unsubscribe(client->Handle, subscription->Handle);
-            m_State->ReleaseSubscriptionRef(subscription);
-        }
+        m_State->RevokeClientRegistrations(client);
 
         std::vector<BML_ImcFuture_T *> futures;
         {

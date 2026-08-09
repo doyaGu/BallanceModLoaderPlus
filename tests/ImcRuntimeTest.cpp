@@ -819,12 +819,22 @@ TEST_F(ImcRuntimeTest, ConcurrentPublishAndPumpPreserveEveryMessageOutcome) {
     EXPECT_EQ(m_Runtime.Unsubscribe(m_Consumer, subscription), BML_OK);
 }
 
-TEST_F(ImcRuntimeTest, CleanupOwnerRevokesProvidersBeforeDispatch) {
+TEST_F(ImcRuntimeTest, CleanupOwnerRevokesRegistrationsBeforeDispatch) {
     BML_ImcRpcId rpc = 0;
     ASSERT_EQ(m_Runtime.GetRpcId(m_Provider, "sample/v1/rpc/unload", &rpc), BML_OK);
     std::atomic<int> calls{0};
     ASSERT_EQ(m_Runtime.RegisterRpc(m_Provider, rpc, nullptr, CountingRpc, &calls),
               BML_OK);
+
+    BML_ImcTopicId topic = 0;
+    ASSERT_EQ(m_Runtime.GetTopicId(m_Provider, "sample/v1/topic/unload", &topic),
+              BML_OK);
+    std::atomic<int> delivered{0};
+    BML_ImcSubscription subscription = nullptr;
+    ASSERT_EQ(m_Runtime.Subscribe(m_Provider, topic, nullptr, CountTopic, &delivered,
+                                  &subscription),
+              BML_OK);
+
     m_Runtime.CleanupOwner("test.provider");
     m_Provider = nullptr;
 
@@ -833,6 +843,15 @@ TEST_F(ImcRuntimeTest, CleanupOwnerRevokesProvidersBeforeDispatch) {
               BML_ERROR_IMC_ENDPOINT_NOT_FOUND);
     EXPECT_EQ(future, nullptr);
     EXPECT_EQ(calls.load(std::memory_order_relaxed), 0);
+
+    const std::uint8_t byte = 1;
+    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
+    message.Data = &byte;
+    message.DataSize = sizeof(byte);
+    std::uint32_t recipients = 1;
+    EXPECT_EQ(m_Runtime.Publish(m_Consumer, topic, &message, &recipients), BML_OK);
+    EXPECT_EQ(recipients, 0u);
+    EXPECT_EQ(delivered.load(std::memory_order_relaxed), 0);
 }
 
 TEST_F(ImcRuntimeTest, CleanupOwnerReleasesQueuedConsumerHandlesSafely) {
