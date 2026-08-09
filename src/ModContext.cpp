@@ -1820,9 +1820,45 @@ bool ModContext::UnloadLib(void *dllHandle) {
     return true;
 }
 
+void ModContext::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabel) noexcept {
+    if (!dllHandle || !mod)
+        return;
+
+    constexpr const char *EXIT_SYMBOL = "BMLExit";
+    typedef void (*BMLExitFunc)(IMod *);
+
+    try {
+        auto func = reinterpret_cast<BMLExitFunc>(
+            ::GetProcAddress(static_cast<HMODULE>(dllHandle), EXIT_SYMBOL));
+        if (!func) {
+            if (m_Logger) {
+                m_Logger->Warn(
+                    "Native Mod %s does not export %s; its instance cannot be destroyed safely.",
+                    modLabel ? modLabel : "<unknown>", EXIT_SYMBOL);
+            }
+            return;
+        }
+
+        try {
+            func(mod);
+        } catch (const std::exception &e) {
+            if (m_Logger) {
+                m_Logger->Error("Exception in %s for native Mod %s: %s",
+                                EXIT_SYMBOL, modLabel ? modLabel : "<unknown>", e.what());
+            }
+        } catch (...) {
+            if (m_Logger) {
+                m_Logger->Error("Unknown exception in %s for native Mod %s.",
+                                EXIT_SYMBOL, modLabel ? modLabel : "<unknown>");
+            }
+        }
+    } catch (...) {
+        // Cleanup must not prevent the loader from releasing the DLL handle.
+    }
+}
+
 IMod *ModContext::LoadMod(const std::wstring &path) {
-    wchar_t filename[MAX_PATH];
-    _wsplitpath(path.c_str(), nullptr, nullptr, filename, nullptr);
+    const std::string modPath = utils::Utf16ToAnsi(path);
 
     auto dllHandle = LoadLib(path.c_str());
     if (!dllHandle)
@@ -1833,20 +1869,35 @@ IMod *ModContext::LoadMod(const std::wstring &path) {
 
     auto func = reinterpret_cast<BMLEntryFunc>(::GetProcAddress(static_cast<HMODULE>(dllHandle.get()), ENTRY_SYMBOL));
     if (!func) {
-        m_Logger->Error("%s does not export the required symbol: %s.", filename, ENTRY_SYMBOL);
+        m_Logger->Error("Native Mod DLL %s does not export the required symbol: %s.",
+                        modPath.c_str(), ENTRY_SYMBOL);
         return nullptr;
     }
 
     auto *bml = static_cast<IBML *>(this);
-    IMod *mod = func(bml);
-    if (!mod) {
-        m_Logger->Error("No mod could be registered, %s will be unloaded.", filename);
-        UnloadLib(dllHandle.get());
+    IMod *mod = nullptr;
+    try {
+        mod = func(bml);
+    } catch (const std::exception &e) {
+        m_Logger->Error("Exception in %s for native Mod DLL %s: %s",
+                        ENTRY_SYMBOL, modPath.c_str(), e.what());
+        return nullptr;
+    } catch (...) {
+        m_Logger->Error("Unknown exception in %s for native Mod DLL %s.",
+                        ENTRY_SYMBOL, modPath.c_str());
         return nullptr;
     }
 
-    if (!RegisterMod(mod, dllHandle))
+    if (!mod) {
+        m_Logger->Error("%s returned null for native Mod DLL %s; the DLL will be unloaded.",
+                        ENTRY_SYMBOL, modPath.c_str());
         return nullptr;
+    }
+
+    if (!RegisterMod(mod, dllHandle)) {
+        DestroyNativeMod(dllHandle.get(), mod, modPath.c_str());
+        return nullptr;
+    }
 
     return mod;
 }
@@ -2185,22 +2236,34 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         return false;
     }
 
-    const char *modId = mod->GetID();
-    if (!modId || !*modId) {
-        m_Logger->Error("Mod registration failed: GetID() returned an empty id.");
-        return false;
-    }
+    std::string modId;
+    try {
+        const char *reportedId = mod->GetID();
+        if (!reportedId || !*reportedId) {
+            m_Logger->Error("Mod registration failed: GetID() returned an empty id.");
+            return false;
+        }
+        modId = reportedId;
 
-    BMLVersion curVer;
-    BMLVersion reqVer = mod->GetBMLVersion();
-    if (curVer < reqVer) {
-        m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", mod->GetID(), mod->GetName(),
-                       reqVer.major, reqVer.minor, reqVer.patch);
+        BMLVersion curVer;
+        BMLVersion reqVer = mod->GetBMLVersion();
+        if (curVer < reqVer) {
+            m_Logger->Warn("Mod %s[%s] requires BML %d.%d.%d", modId.c_str(), mod->GetName(),
+                           reqVer.major, reqVer.minor, reqVer.patch);
+            return false;
+        }
+    } catch (const std::exception &e) {
+        m_Logger->Error("Mod registration failed for %s: %s",
+                        modId.empty() ? "<unknown>" : modId.c_str(), e.what());
+        return false;
+    } catch (...) {
+        m_Logger->Error("Mod registration failed for %s: unknown exception.",
+                        modId.empty() ? "<unknown>" : modId.c_str());
         return false;
     }
 
     if (m_ModInvocationGate.IsCallActiveOnCurrentThread()) {
-        m_Logger->Error("Mod %s cannot be registered from an active Mod callback.", modId);
+        m_Logger->Error("Mod %s cannot be registered from an active Mod callback.", modId.c_str());
         return false;
     }
     auto invocationLock = m_ModInvocationGate.LockMutation();
@@ -2208,7 +2271,7 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
 
     // Reject duplicates
     if (m_ModMap.find(modId) != m_ModMap.end()) {
-        m_Logger->Error("Mod registration failed: duplicate id %s.", modId);
+        m_Logger->Error("Mod registration failed: duplicate id %s.", modId.c_str());
         return false;
     }
 
@@ -2362,20 +2425,7 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
         }
 
         invocationLock.unlock();
-        if (rawDllHandle) {
-            // Call BMLExit function safely
-            constexpr const char *EXIT_SYMBOL = "BMLExit";
-            typedef void (*BMLExitFunc)(IMod *);
-
-            try {
-                auto func = reinterpret_cast<BMLExitFunc>(::GetProcAddress(static_cast<HMODULE>(rawDllHandle), EXIT_SYMBOL));
-                if (func) {
-                    func(mod);
-                }
-            } catch (...) {
-                // Continue cleanup even if BMLExit fails
-            }
-        }
+        DestroyNativeMod(rawDllHandle, mod, modIdCopy.c_str());
 
         return true;
     } catch (...) {

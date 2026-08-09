@@ -379,6 +379,7 @@ private:
 
     std::shared_ptr<void> LoadLib(const wchar_t *path);
     bool UnloadLib(void *dllHandle);
+    void DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabel) noexcept;
 
     IMod *LoadMod(const std::wstring &path);
 #if BML_ENABLE_ANGELSCRIPT
