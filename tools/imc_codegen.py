@@ -1543,6 +1543,12 @@ def load_interface_lock(path: Path) -> dict[str, Any]:
     return value
 
 
+def update_lock_instruction(command: str | None) -> str:
+    if command:
+        return f"run {command}"
+    return "run with --update-lock once"
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", action="append", type=Path, required=True,
@@ -1552,6 +1558,10 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--update-lock", action="store_true",
         help="create or update each adjacent .imc.lock snapshot before generation",
+    )
+    parser.add_argument(
+        "--update-lock-command",
+        help="command shown when an interface lock is missing or stale",
     )
     parser.add_argument("--expected-api-id",
                         help="require a single input to declare this API ID (used by CMake output tracking)")
@@ -1572,7 +1582,8 @@ def main(argv: list[str]) -> int:
                 previous = load_interface_lock(lock_path)
             elif not args.update_lock:
                 raise ApiDefinitionError(
-                    f"interface lock {lock_path} does not exist; run with --update-lock once"
+                    f"interface lock {lock_path} does not exist; "
+                    f"{update_lock_instruction(args.update_lock_command)}"
                 )
             snapshot = build_interface_lock(source, previous)
             snapshot_text = emit_interface_lock(snapshot)
@@ -1580,7 +1591,8 @@ def main(argv: list[str]) -> int:
                 previous is None or emit_interface_lock(previous) != snapshot_text
             ):
                 raise ApiDefinitionError(
-                    f"interface lock is stale: {lock_path}; review the change and run with --update-lock"
+                    f"interface lock is stale: {lock_path}; review the change and "
+                    f"{update_lock_instruction(args.update_lock_command)}"
                 )
             api_definitions.append(resolved_definition(snapshot))
             lock_outputs.append((lock_path, snapshot_text))

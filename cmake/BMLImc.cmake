@@ -31,11 +31,6 @@ function(bml_target_imc_api target)
                 "bml_target_imc_api: INPUT must use the .imc extension: ${input}")
     endif()
     set(interface_lock "${input}.lock")
-    if(NOT EXISTS "${interface_lock}")
-        message(FATAL_ERROR
-                "bml_target_imc_api: interface lock does not exist: ${interface_lock}; "
-                "run imc_codegen.py with --update-lock once")
-    endif()
 
     if(IMC_OUTPUT_DIR)
         get_filename_component(output_dir "${IMC_OUTPUT_DIR}" ABSOLUTE
@@ -61,12 +56,50 @@ function(bml_target_imc_api target)
     set(stem "${expected_api_id}")
     string(REPLACE "." "_" stem "${stem}")
     set(output "${output_dir}/${stem}_imc.hpp")
+    set(update_lock_target "bml_update_imc_locks")
+    set(update_lock_command
+            "cmake --build \"${CMAKE_BINARY_DIR}\" --target ${update_lock_target}")
     set(arguments
             --out-dir "${output_dir}"
             --input "${input}"
             --expected-api-id "${expected_api_id}"
+            --update-lock-command "${update_lock_command}"
     )
-    set(dependencies "${BML_IMC_CODEGEN}" "${input}" "${interface_lock}")
+    set(dependencies "${BML_IMC_CODEGEN}" "${input}")
+    if(EXISTS "${interface_lock}")
+        list(APPEND dependencies "${interface_lock}")
+    endif()
+
+    get_property(update_target_initialized GLOBAL
+                 PROPERTY BML_IMC_UPDATE_TARGET_INITIALIZED)
+    if(NOT update_target_initialized)
+        if(TARGET "${update_lock_target}")
+            message(FATAL_ERROR
+                    "bml_target_imc_api: target '${update_lock_target}' is reserved")
+        endif()
+        add_custom_target("${update_lock_target}")
+        set_property(TARGET "${update_lock_target}" PROPERTY FOLDER "BML/IMC")
+        set_property(GLOBAL PROPERTY BML_IMC_UPDATE_TARGET_INITIALIZED TRUE)
+    endif()
+
+    string(SHA256 update_step_key
+           "${target}|${input}|${expected_api_id}|${output_dir}")
+    string(SUBSTRING "${update_step_key}" 0 16 update_step_key)
+    set(update_step_target "bml_update_imc_lock_${update_step_key}")
+    if(TARGET "${update_step_target}")
+        message(FATAL_ERROR
+                "bml_target_imc_api: duplicate IMC interface registration for ${input}")
+    endif()
+    add_custom_target("${update_step_target}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${output_dir}"
+            COMMAND "${Python3_EXECUTABLE}" "${BML_IMC_CODEGEN}"
+                    ${arguments} --update-lock
+            DEPENDS "${BML_IMC_CODEGEN}" "${input}"
+            COMMENT "Updating IMC interface lock ${input_name}"
+            VERBATIM
+    )
+    set_property(TARGET "${update_step_target}" PROPERTY FOLDER "BML/IMC")
+    add_dependencies("${update_lock_target}" "${update_step_target}")
 
     add_custom_command(
             OUTPUT "${output}"

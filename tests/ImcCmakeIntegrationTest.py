@@ -239,9 +239,60 @@ def main() -> int:
         ]
         if args.generator_platform:
             missing_configure.extend(["-A", args.generator_platform])
-        missing_result = run(missing_configure, expect_success=False)
-        if "interface lock does not exist" not in missing_result.stdout:
-            raise AssertionError("missing interface lock did not fail during CMake configuration")
+        run(missing_configure)
+        if missing_interface.with_suffix(".imc.lock").exists():
+            raise AssertionError("CMake configuration unexpectedly created an interface lock")
+
+        missing_build_result = run([
+            str(args.cmake), "--build", str(missing_build), "--config", "Release",
+            "--target", "consumer",
+        ], expect_success=False)
+        if ("interface lock" not in missing_build_result.stdout
+                or "bml_update_imc_locks" not in missing_build_result.stdout):
+            raise AssertionError(
+                "missing interface lock did not fail with the CMake update target hint"
+            )
+        if missing_interface.with_suffix(".imc.lock").exists():
+            raise AssertionError("ordinary CMake generation unexpectedly created an interface lock")
+
+        run([
+            str(args.cmake), "--build", str(missing_build), "--config", "Release",
+            "--target", "bml_update_imc_locks",
+        ])
+        missing_lock = missing_interface.with_suffix(".imc.lock")
+        if not missing_lock.exists():
+            raise AssertionError("IMC lock update target did not create the missing lock")
+        run([
+            str(args.cmake), "--build", str(missing_build), "--config", "Release",
+            "--target", "consumer",
+        ])
+
+        previous_lock = missing_lock.read_text(encoding="utf-8")
+        missing_interface.write_text(
+            "api example.missing 1.1\n\nrpc ping()\nrpc pong()\n", encoding="utf-8"
+        )
+        stale_build_result = run([
+            str(args.cmake), "--build", str(missing_build), "--config", "Release",
+            "--target", "consumer",
+        ], expect_success=False)
+        if ("interface lock is stale" not in stale_build_result.stdout
+                or "bml_update_imc_locks" not in stale_build_result.stdout):
+            raise AssertionError(
+                "stale interface lock did not fail with the CMake update target hint"
+            )
+        if missing_lock.read_text(encoding="utf-8") != previous_lock:
+            raise AssertionError("ordinary CMake generation unexpectedly updated a stale lock")
+
+        run([
+            str(args.cmake), "--build", str(missing_build), "--config", "Release",
+            "--target", "bml_update_imc_locks",
+        ])
+        if missing_lock.read_text(encoding="utf-8") == previous_lock:
+            raise AssertionError("IMC lock update target did not refresh the stale lock")
+        run([
+            str(args.cmake), "--build", str(missing_build), "--config", "Release",
+            "--target", "consumer",
+        ])
 
         invalid_id_source = root / "invalid-id-source"
         invalid_id_build = root / "invalid-id-build"
