@@ -107,25 +107,53 @@ public:
 private:
     int RegisterImc() {
         const char *owner = m_Mod.GetID();
-        int status = m_ImcRuntime.Open(owner);
-        if (status == BML_OK) status = m_ImcRuntime.RegisterState(&ReadImcRuntimeState, this);
-        if (status == BML_OK) status = m_ImcRuntime.RegisterClock(&ReadImcRuntimeClock, this);
-        if (status == BML_OK) status = m_ImcRuntime.RegisterScore(&ReadImcRuntimeScore, this);
-        if (status == BML_OK) status = m_ImcScene.Open(owner);
-        if (status == BML_OK) status = m_ImcScene.RegisterObject(&ReadImcSceneObject, this);
-        if (status == BML_OK) status = m_ImcScene.RegisterEntity(&ReadImcSceneEntity, this);
-        if (status == BML_OK) status = m_ImcScene.RegisterFindName(&ReadImcSceneFindName, this);
-        if (status == BML_OK) status = m_ImcScene.RegisterFindNameClass(&ReadImcSceneFindNameClass, this);
-        if (status == BML_OK) status = m_ImcGameplay.Open(owner);
-        if (status == BML_OK) status = m_ImcGameplay.RegisterLevel(&ReadImcGameplayLevel, this);
-        if (status == BML_OK) status = m_ImcGameplay.RegisterEnergy(&ReadImcGameplayEnergy, this);
-        if (status == BML_OK) status = m_ImcGameplay.RegisterCatalog(&ReadImcGameplayCatalog, this);
-        if (status == BML_OK) status = m_ImcGameplay.RegisterCheckpoints(&ReadImcGameplayCheckpoints, this);
-        if (status == BML_OK) status = m_ImcGameplay.RegisterResetpoints(&ReadImcGameplayResetpoints, this);
-        if (status == BML_OK) status = m_ImcUi.Open(owner);
-        if (status == BML_OK) status = RegisterImcUi();
-        if (status == BML_OK) status = m_ImcSpeedrun.Open(owner);
-        if (status == BML_OK) status = RegisterImcSpeedrun();
+        ImcRuntimeApi::Provider::Handlers runtime{};
+        runtime.Userdata = this;
+        runtime.State = &ReadImcRuntimeState;
+        runtime.Clock = &ReadImcRuntimeClock;
+        runtime.Score = &ReadImcRuntimeScore;
+
+        ImcSceneApi::Provider::Handlers scene{};
+        scene.Userdata = this;
+        scene.Object = &ReadImcSceneObject;
+        scene.Entity = &ReadImcSceneEntity;
+        scene.FindName = &ReadImcSceneFindName;
+        scene.FindNameClass = &ReadImcSceneFindNameClass;
+
+        ImcGameplayApi::Provider::Handlers gameplay{};
+        gameplay.Userdata = this;
+        gameplay.Level = &ReadImcGameplayLevel;
+        gameplay.Energy = &ReadImcGameplayEnergy;
+        gameplay.Catalog = &ReadImcGameplayCatalog;
+        gameplay.Checkpoints = &ReadImcGameplayCheckpoints;
+        gameplay.Resetpoints = &ReadImcGameplayResetpoints;
+
+        ImcUiApi::Provider::Handlers ui{};
+        ui.Userdata = this;
+        ui.MessageAdd = &ImcUiMessageAdd;
+        ui.MessageClear = &ImcUiMessageClear;
+        ui.ModsMenuOpen = &ImcUiModsMenuOpen;
+        ui.ModsMenuClose = &ImcUiModsMenuClose;
+        ui.MapMenuOpen = &ImcUiMapMenuOpen;
+        ui.MapMenuClose = &ImcUiMapMenuClose;
+        ui.HudSet = &ImcUiHudSet;
+        ui.HudTitleShow = &ImcUiHudTitleShow;
+        ui.HudFpsShow = &ImcUiHudFpsShow;
+        ui.State = &ReadImcUiState;
+
+        ImcSpeedrunApi::Provider::Handlers speedrun{};
+        speedrun.Userdata = this;
+        speedrun.SetTimerVisible = &ImcSpeedrunSetTimerVisible;
+        speedrun.StartTimer = &ImcSpeedrunStartTimer;
+        speedrun.PauseTimer = &ImcSpeedrunPauseTimer;
+        speedrun.ResetTimer = &ImcSpeedrunResetTimer;
+        speedrun.State = &ReadImcSpeedrunState;
+
+        int status = m_ImcRuntime.Start(runtime, owner);
+        if (status == BML_OK) status = m_ImcScene.Start(scene, owner);
+        if (status == BML_OK) status = m_ImcGameplay.Start(gameplay, owner);
+        if (status == BML_OK) status = m_ImcUi.Start(ui, owner);
+        if (status == BML_OK) status = m_ImcSpeedrun.Start(speedrun, owner);
         if (status == BML_OK) status = m_ImcEvents.Open(owner);
         if (status != BML_OK) {
             (void)m_ImcEvents.Close();
@@ -335,20 +363,6 @@ private:
             out.Objects.push_back(provider->m_ObjectReferences.Make(ReadObject(array, row, 0)));
         return BML_OK;
     }
-    int RegisterImcUi() {
-        int status = m_ImcUi.RegisterMessageAdd(&ImcUiMessageAdd, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterMessageClear(&ImcUiMessageClear, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterModsMenuOpen(&ImcUiModsMenuOpen, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterModsMenuClose(&ImcUiModsMenuClose, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterMapMenuOpen(&ImcUiMapMenuOpen, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterMapMenuClose(&ImcUiMapMenuClose, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterHudSet(&ImcUiHudSet, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterHudTitleShow(&ImcUiHudTitleShow, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterHudFpsShow(&ImcUiHudFpsShow, this);
-        if (status == BML_OK) status = m_ImcUi.RegisterState(&ReadImcUiState, this);
-        return status;
-    }
-
     static BuiltinImcProvider *ImcUiProvider(void *userdata) {
         return static_cast<BuiltinImcProvider *>(userdata);
     }
@@ -392,15 +406,6 @@ private:
     static int ReadImcUiState(ImcUiApi::HudStateValue &out, void *userdata) {
         auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
         out.Mode = provider->m_Mod.GetHUD(); return BML_OK;
-    }
-
-    int RegisterImcSpeedrun() {
-        int status = m_ImcSpeedrun.RegisterSetTimerVisible(&ImcSpeedrunSetTimerVisible, this);
-        if (status == BML_OK) status = m_ImcSpeedrun.RegisterStartTimer(&ImcSpeedrunStartTimer, this);
-        if (status == BML_OK) status = m_ImcSpeedrun.RegisterPauseTimer(&ImcSpeedrunPauseTimer, this);
-        if (status == BML_OK) status = m_ImcSpeedrun.RegisterResetTimer(&ImcSpeedrunResetTimer, this);
-        if (status == BML_OK) status = m_ImcSpeedrun.RegisterState(&ReadImcSpeedrunState, this);
-        return status;
     }
 
     static BuiltinImcProvider *ImcSpeedrunProvider(void *userdata) {
