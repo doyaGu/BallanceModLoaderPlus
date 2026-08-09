@@ -349,7 +349,13 @@ backpressure loss.
 ## 6. Diagnose failures
 
 All generated methods return BML status codes. Log both the code and
-`BML_GetErrorString(status)`. The common integration failures are:
+`BML_GetErrorString(status)`. Generated C++ bindings and the C++ IMC helpers
+mark status-returning functions `[[nodiscard]]`, so an accidentally ignored
+failure is visible to the compiler. Handle the status normally; use an
+explicit `(void)` cast only for intentional best-effort cleanup. This attribute
+has no runtime cost and does not change the low-level C ABI.
+
+The common integration failures are:
 
 - `BML_ERROR_IMC_ENDPOINT_NOT_FOUND`: no provider registered that RPC route;
 - `BML_ERROR_IMC_API_MISMATCH`: the received payload type does not match the

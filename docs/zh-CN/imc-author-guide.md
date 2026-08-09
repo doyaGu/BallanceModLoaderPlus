@@ -293,7 +293,12 @@ int status = client.SubscribeChanged(subscription, &OnChanged, nullptr, 256,
 ## 6. 诊断失败
 
 所有生成方法都返回 BML 状态码。日志中同时记录状态码和
-`BML_GetErrorString(status)`。常见集成错误包括：
+`BML_GetErrorString(status)`。生成的 C++ 绑定和 C++ IMC helper 会为返回状态码的
+函数标记 `[[nodiscard]]`，使意外忽略的失败在编译期可见。通常应处理返回状态；只有
+明确采用尽力清理策略时才使用显式 `(void)` 转换。该属性没有运行时成本，也不改变
+底层 C ABI。
+
+常见集成错误包括：
 
 - `BML_ERROR_IMC_ENDPOINT_NOT_FOUND`：没有 Provider 注册该 RPC 路由；
 - `BML_ERROR_IMC_API_MISMATCH`：收到的载荷类型与生成端点不一致；

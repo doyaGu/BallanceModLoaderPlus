@@ -176,6 +176,10 @@ caller-owned `std::vector`. Read the catalog during setup and refresh level
 checkpoints or reset points when the level changes; these calls transfer the
 complete collection and are not intended for per-frame polling.
 
+C++ IMC operations that return a BML status are marked `[[nodiscard]]`. Handle
+the returned status, or use an explicit `(void)` cast when deliberately
+discarding the result of best-effort cleanup.
+
 `DataShare` is suitable for small named byte values when both sides obey its
 reference-count and borrowed-pointer lifetime rules. Use IMC when an API needs
 evolution, cross-language bindings, RPC, or Topic semantics.
