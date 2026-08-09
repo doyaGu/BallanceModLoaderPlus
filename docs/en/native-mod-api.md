@@ -43,10 +43,14 @@ bml_install_mod(MyMod)
 ```
 
 `bml_add_mod` links `BML::BML`, enables C++20, disables compiler extensions,
-and produces `MyMod.bmodp`. `bml_install_mod` adds the standard install rule.
-Configure a 32-bit build with `CMAKE_INSTALL_PREFIX` set to the Ballance
-`ModLoader` directory, then use CMake's `install` target to build and deploy the
-mod under `ModLoader/Mods`.
+and produces `MyMod.bmodp`. It requires an MSVC-compatible 32-bit target and
+makes the linker require the exact C symbols `BMLEntry` and `BMLExit`. A missing
+or C++-mangled entry point therefore fails the build instead of producing a Mod
+that the loader cannot use safely.
+
+`bml_install_mod` adds the standard install rule. Set `CMAKE_INSTALL_PREFIX` to
+the Ballance `ModLoader` directory, then use CMake's `install` target to build
+and deploy the Mod under `ModLoader/Mods`.
 
 ## Public headers
 

@@ -40,9 +40,13 @@ bml_install_mod(MyMod)
 ```
 
 `bml_add_mod` 链接 `BML::BML`、启用 C++20、关闭编译器扩展，并直接生成
-`MyMod.bmodp`。`bml_install_mod` 添加标准安装规则。配置 32 位构建时，将
-`CMAKE_INSTALL_PREFIX` 指向 Ballance 的 `ModLoader` 目录，再使用 CMake 的
-`install` 目标构建并部署到 `ModLoader/Mods`。
+`MyMod.bmodp`。它要求使用兼容 MSVC ABI 的 32 位目标，并让链接器校验精确的
+C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构建会直接
+失败，不会生成 Loader 无法安全使用的 Mod。
+
+`bml_install_mod` 添加标准安装规则。将 `CMAKE_INSTALL_PREFIX` 指向 Ballance
+的 `ModLoader` 目录，再使用 CMake 的 `install` 目标构建并部署到
+`ModLoader/Mods`。
 
 ## 公开头文件
 
