@@ -149,6 +149,7 @@ set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
         BuiltinImcApis.h
+        RuntimeState.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -189,6 +190,7 @@ set(BML_SOURCES
         ModManager.cpp
         ModContext.cpp
         BuiltinImcApis.cpp
+        RuntimeState.cpp
 
         IMod.cpp
         BMLMod.cpp

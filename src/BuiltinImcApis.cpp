@@ -142,9 +142,10 @@ private:
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
         ModContext *context = provider ? provider->GetContext() : nullptr;
         if (!context) return BML_ERROR_IMC_UNSUPPORTED;
-        out.InGame = context->IsIngame(); out.InLevel = context->IsInLevel();
-        out.Paused = context->IsPaused(); out.Playing = context->IsPlaying();
-        out.CheatEnabled = context->IsCheatEnabled(); return BML_OK;
+        const BML::RuntimeStateSnapshot state = context->ReadRuntimeState();
+        out.InGame = state.InGame; out.InLevel = state.InLevel;
+        out.Paused = state.Paused; out.Playing = state.Playing;
+        out.CheatEnabled = state.CheatEnabled; return BML_OK;
     }
 
     static int ReadImcRuntimeClock(ImcRuntimeApi::ClockStateValue &out, void *userdata) {
@@ -162,7 +163,9 @@ private:
     static int ReadImcRuntimeScore(ImcRuntimeApi::ScoreStateValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
         if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        out.Sr = provider->m_Mod.GetSRScore(); out.Hs = provider->m_Mod.GetHSScore(); return BML_OK;
+        ModContext *context = provider->GetContext();
+        if (!context) return BML_ERROR_IMC_UNSUPPORTED;
+        out.Sr = context->GetSRScore(); out.Hs = context->GetHSScore(); return BML_OK;
     }
 
     void PublishImcEvent(const BML::ImcEventSnapshot &event) {

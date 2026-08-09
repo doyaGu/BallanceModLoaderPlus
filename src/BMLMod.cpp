@@ -439,10 +439,6 @@ void BMLMod::LoadMap(const std::wstring &path) {
     m_ExitStart->Activate();
 }
 
-float BMLMod::GetSRScore() const {
-    return GetSRTime();
-}
-
 int BMLMod::GetHSScore() {
     CKDataArray *energy = m_BML->GetArrayByName("Energy");
     if (!energy) return 0;

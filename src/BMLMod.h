@@ -71,8 +71,6 @@ public:
 
     void LoadMap(const std::wstring &path);
 
-    float GetSRScore() const;
-
     int GetHSScore();
 
     void ApplyFrameRateSettings();

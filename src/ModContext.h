@@ -19,6 +19,7 @@
 #include "HookUtils.h"
 #include "ImcRuntime.h"
 #include "ModInvocationGate.h"
+#include "RuntimeState.h"
 
 typedef enum DirectoryType {
     BML_DIR_WORKING = 0,
@@ -58,11 +59,6 @@ public:
         BML_MODS_LOADED = 0x00000010,
         BML_MODS_INITED = 0x00000020,
         BML_MODS_SHUTTING_DOWN = 0x00000040,
-
-        BML_INGAME = 0x00000100,
-        BML_INLEVEL = 0x00000200,
-        BML_PAUSED = 0x00000400,
-        BML_CHEAT = 0x00000800,
     };
 
     explicit ModContext(CKContext *context);
@@ -88,7 +84,6 @@ public:
     void ShutdownMods();
 
     bool AreFlagsSet(int flags) const { return (m_Flags & flags) == flags; }
-    void ModifyFlags(int add, int remove) { m_Flags = (m_Flags | add) & ~remove; }
     void SetFlags(int flags, bool set = true) { m_Flags = set ? m_Flags | flags : m_Flags & ~flags; }
     void ClearFlags(int flags) { m_Flags &= ~flags; }
 #if BML_ENABLE_ANGELSCRIPT
@@ -237,17 +232,18 @@ public:
 
     void ExitGame() override;
 
-    bool IsIngame() override { return AreFlagsSet(BML_INGAME); }
-    bool IsInLevel() const { return AreFlagsSet(BML_INLEVEL) && !AreFlagsSet(BML_PAUSED); }
-    bool IsPaused() override { return AreFlagsSet(BML_PAUSED); }
-    bool IsPlaying() override { return AreFlagsSet(BML_INGAME) && !AreFlagsSet(BML_PAUSED); }
+    BML::RuntimeStateSnapshot ReadRuntimeState() const noexcept { return m_RuntimeState.Read(); }
+    bool IsIngame() override { return ReadRuntimeState().InGame; }
+    bool IsInLevel() const { return ReadRuntimeState().InLevel; }
+    bool IsPaused() override { return ReadRuntimeState().Paused; }
+    bool IsPlaying() override { return ReadRuntimeState().Playing; }
 
     void OpenModsMenu();
     void CloseModsMenu();
     void OpenMapMenu();
     void CloseMapMenu();
 
-    bool IsCheatEnabled() override { return AreFlagsSet(BML_CHEAT); }
+    bool IsCheatEnabled() override { return ReadRuntimeState().CheatEnabled; }
     void EnableCheat(bool enable) override;
 
     void SendIngameMessage(const char *msg) override;
@@ -410,6 +406,7 @@ private:
     void PublishImcEvent(int kind);
 
     int m_Flags = 0;
+    BML::RuntimeState m_RuntimeState;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;
     bool m_AngelScriptBindingsRegistered = false;

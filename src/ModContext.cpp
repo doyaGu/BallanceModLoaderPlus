@@ -1078,8 +1078,7 @@ void ModContext::CloseMapMenu() {
 }
 
 void ModContext::EnableCheat(bool enable) {
-    if (AreFlagsSet(BML_CHEAT) != enable) {
-        SetFlags(BML_CHEAT, enable);
+    if (m_RuntimeState.SetCheatEnabled(enable)) {
         CaptureBuiltinImcEventNoexcept(*this, [&](BML::ImcEventSnapshot &event) {
             event.Kind = BML_EVENT_CHEAT_CHANGED;
             event.CheatEnabled = enable;
@@ -1268,13 +1267,13 @@ void ModContext::OnPostLoadLevel() {
 void ModContext::OnStartLevel() {
     PublishImcEvent(BML_EVENT_START_LEVEL);
     BroadcastMessage("StartLevel", &IMod::OnStartLevel);
-    ModifyFlags(BML_INGAME | BML_INLEVEL, BML_PAUSED);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::EnterLevel);
 }
 
 void ModContext::OnPreResetLevel() {
     PublishImcEvent(BML_EVENT_PRE_RESET_LEVEL);
     BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
-    ClearFlags(BML_INLEVEL);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
 }
 
 void ModContext::OnPostResetLevel() {
@@ -1285,13 +1284,13 @@ void ModContext::OnPostResetLevel() {
 void ModContext::OnPauseLevel() {
     PublishImcEvent(BML_EVENT_PAUSE_LEVEL);
     BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
-    SetFlags(BML_PAUSED);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::Pause);
 }
 
 void ModContext::OnUnpauseLevel() {
     PublishImcEvent(BML_EVENT_UNPAUSE_LEVEL);
     BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
-    ClearFlags(BML_PAUSED);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::Resume);
 }
 
 void ModContext::OnPreExitLevel() {
@@ -1302,7 +1301,7 @@ void ModContext::OnPreExitLevel() {
 void ModContext::OnPostExitLevel() {
     PublishImcEvent(BML_EVENT_POST_EXIT_LEVEL);
     BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
-    ClearFlags(BML_INGAME | BML_INLEVEL);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
 }
 
 void ModContext::OnPreNextLevel() {
@@ -1313,13 +1312,13 @@ void ModContext::OnPreNextLevel() {
 void ModContext::OnPostNextLevel() {
     PublishImcEvent(BML_EVENT_POST_NEXT_LEVEL);
     BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
-    ClearFlags(BML_INLEVEL);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
 }
 
 void ModContext::OnDead() {
     PublishImcEvent(BML_EVENT_DEAD);
     BroadcastMessage("Dead", &IMod::OnDead);
-    ClearFlags(BML_INGAME | BML_INLEVEL);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
 }
 
 void ModContext::OnPreEndLevel() {
@@ -1330,7 +1329,7 @@ void ModContext::OnPreEndLevel() {
 void ModContext::OnPostEndLevel() {
     PublishImcEvent(BML_EVENT_POST_END_LEVEL);
     BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
-    ClearFlags(BML_INGAME | BML_INLEVEL);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
 }
 
 void ModContext::OnCounterActive() {
@@ -1381,7 +1380,7 @@ void ModContext::OnPostCheckpointReached() {
 void ModContext::OnLevelFinish() {
     PublishImcEvent(BML_EVENT_LEVEL_FINISH);
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
-    ClearFlags(BML_INLEVEL);
+    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
 }
 
 void ModContext::OnGameOver() {
