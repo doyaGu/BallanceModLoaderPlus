@@ -1,4 +1,4 @@
-[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.13" description="Smoke test for BML's IMC-backed AngelScript facades."]
+[bml.mod id="bml.bindings.smoke" name="BML Bindings Smoke" version="1.0.0" author="BML+" bml="0.3.13" description="Smoke test for BML's built-in AngelScript capability APIs."]
 [bml.require id="BML" version="0.3.13"]
 
 class BMLBindingsSmokeMod {
@@ -12,16 +12,15 @@ class BMLBindingsSmokeMod {
   }
 
   void OnLoad(const BML::ModContext &in ctx) {
-    BML::Runtime::State runtime;
-    BML::Runtime::Clock clock;
-    BML::Runtime::Score score;
-    bool runtimeOk = BML::Runtime::ReadState(runtime) == BML::ERROR_OK &&
-                     BML::Runtime::ReadClock(clock) == BML::ERROR_OK &&
-                     BML::Runtime::ReadScore(score) == BML::ERROR_OK;
+    BML::Runtime::State runtime = BML::Runtime::GetState();
+    BML::Runtime::Clock clock = BML::Runtime::GetClock();
+    BML::Runtime::Score score = BML::Runtime::GetScore();
+    bool runtimeOk = runtime.Playing == (runtime.InGame && !runtime.Paused) &&
+                     clock.Frame >= 0 && score.HS >= 0;
     bool streamOk = BML::Events::Open(events, 8) == BML::ERROR_OK && events !is null && events.IsOpen;
-    Log(ctx, "BML IMC facade smoke: runtime=" + (runtimeOk ? "true" : "false") +
+    Log(ctx, "BML capability smoke: runtime=" + (runtimeOk ? "true" : "false") +
              " stream=" + (streamOk ? "true" : "false"));
-    Log(ctx, "BML script mod summary: imc-facades");
+    Log(ctx, "BML script mod summary: capabilities");
   }
 
   void OnProcess(const BML::ModContext &in ctx) {

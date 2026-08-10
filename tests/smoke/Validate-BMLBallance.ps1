@@ -518,8 +518,8 @@ if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'mod-load-clean' (-not (Test-SmokeTextContains $modLogText 'Failed to load ')) 'ModLoader.log must not contain native mod load failures'
     if (-not $SkipScriptSmoke) {
         Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
-        Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: imc-facades') 'BML script mod summary: imc-facades'
-        Add-SmokeCheck $checks 'script-imc-facades' (Test-SmokeTextContains $modLogText 'BML IMC facade smoke: runtime=true stream=true') 'BML IMC facade smoke: runtime=true stream=true'
+        Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: capabilities') 'BML script mod summary: capabilities'
+        Add-SmokeCheck $checks 'script-capabilities' (Test-SmokeTextContains $modLogText 'BML capability smoke: runtime=true stream=true') 'BML capability smoke: runtime=true stream=true'
         Add-SmokeCheck $checks 'script-imc-stream' (Test-SmokeTextContains $modLogText 'BML IMC stream poll: status=0') 'BML IMC stream poll: status=0'
         if ($SingleFileSmoke) {
             Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'

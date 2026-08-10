@@ -935,19 +935,18 @@ bool DataShareHas(const string &in key, const string &in name = "BML");
 void DataShareRemove(const string &in key, const string &in name = "BML");
 int DataShareSizeOf(const string &in key, const string &in name = "BML");
 
-// Typed built-in capability facades. Each read returns a BML status code and
-// writes the output only on success.  Borrow* methods create a host-owned,
-// non-retained CK handle and therefore are valid only while the object still
-// belongs to the current game scene.
+// Typed built-in capability facades. Runtime snapshots are small values returned
+// directly. Borrow* methods create a host-owned, non-retained CK handle and are
+// valid only while the object still belongs to the current game scene.
 namespace Runtime {
 class State {
   bool InGame; bool InLevel; bool Paused; bool Playing; bool CheatEnabled;
 }
 class Clock { float TimeMs; float AbsoluteMs; float DeltaMs; int Frame; }
 class Score { float SR; int HS; }
-int ReadState(State &out state);
-int ReadClock(Clock &out state);
-int ReadScore(Score &out state);
+State GetState();
+Clock GetClock();
+Score GetScore();
 } // namespace Runtime
 
 namespace Scene {

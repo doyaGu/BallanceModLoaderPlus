@@ -50,7 +50,9 @@ TEST(ScriptApiReferenceTest, BuiltinCapabilityFacadesAreDocumented) {
     const std::vector<std::string> declarations = {
         "namespace Runtime",
         "class State",
-        "int ReadState(State &out state)",
+        "State GetState()",
+        "Clock GetClock()",
+        "Score GetScore()",
         "namespace Scene",
         "class ObjectInfo",
         "int ReadObject(CKObject@ object, ObjectInfo &out info)",
@@ -66,6 +68,15 @@ TEST(ScriptApiReferenceTest, BuiltinCapabilityFacadesAreDocumented) {
 
     ExpectContainsAll(ReadTextFile(kScriptApiStub), declarations, kScriptApiStub);
     ExpectContainsAll(ReadTextFile(kPredefinedApi), declarations, kPredefinedApi);
+    const std::vector<std::string> removedRuntimeReads = {
+        "int ReadState(State &out state)",
+        "int ReadClock(Clock &out state)",
+        "int ReadScore(Score &out state)",
+    };
+    ExpectContainsNone(ReadTextFile(kScriptApiStub), removedRuntimeReads,
+                       kScriptApiStub);
+    ExpectContainsNone(ReadTextFile(kPredefinedApi), removedRuntimeReads,
+                       kPredefinedApi);
     const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptImcFacade.cpp");
     ExpectContainsAll(builtinFacade,
                       {"RegisterScriptImcFacade", "RegisterRuntime", "RegisterScene", "RegisterGameplay", "RegisterEvents",
@@ -84,7 +95,10 @@ TEST(ScriptApiReferenceTest, RuntimeFacadeUsesDirectHostReads) {
                        "context->GetSRScore()", "context->GetHSScore()"},
                       "src/AngelScript/ScriptImcFacade.cpp");
     ExpectContainsNone(builtinFacade,
-                       {"bml_runtime_imc.hpp", "RuntimeImc::", "clients->Runtime("},
+                       {"bml_runtime_imc.hpp", "RuntimeImc::", "clients->Runtime(",
+                        "int ReadState(State &out state)",
+                        "int ReadClock(Clock &out state)",
+                        "int ReadScore(Score &out state)"},
                        "src/AngelScript/ScriptImcFacade.cpp");
 
     const std::string clients = ReadTextFile("src/AngelScript/ScriptImcClients.h") +
@@ -92,6 +106,17 @@ TEST(ScriptApiReferenceTest, RuntimeFacadeUsesDirectHostReads) {
     ExpectContainsNone(clients,
                        {"bml_runtime_imc.hpp", "ScriptImcClients::Runtime", "m_Runtime"},
                        "ScriptImcClients");
+
+    const std::string smoke = ReadTextFile(
+        "tests/smoke/AngelScript/BMLAngelScriptSmoke/runtime.as");
+    ExpectContainsAll(smoke,
+                      {"BML::Runtime::GetState()", "BML::Runtime::GetClock()",
+                       "BML::Runtime::GetScore()"},
+                      "BMLAngelScriptSmoke/runtime.as");
+    ExpectContainsNone(smoke,
+                       {"BML::Runtime::ReadState(", "BML::Runtime::ReadClock(",
+                        "BML::Runtime::ReadScore("},
+                       "BMLAngelScriptSmoke/runtime.as");
 }
 
 TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
