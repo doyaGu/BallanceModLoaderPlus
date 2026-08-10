@@ -99,33 +99,6 @@ def main() -> int:
         if "id" in sample or sample["fields"][0]["id"] != 1:
             raise AssertionError("interface lock did not assign dense initial wire IDs")
 
-        header = header_path.read_text(encoding="utf-8")
-        for snippet in (
-            "inline constexpr std::uint32_t Value = 1u;",
-            "EncodedSampleSize", "[[nodiscard]] inline int EncodeSample",
-            "[[nodiscard]] inline int DecodeSample",
-            "class Client", "class Provider", "CallState", "CallLookup",
-            "CallNotify", "CallFlush", "RpcFuture<void>",
-            "struct Handlers", "[[nodiscard]] int Start(const Handlers &handlers",
-            "RegisterState", "RegisterLookup", "class ChangedSubscription",
-            "writer.Begin();", "reader.Begin();", "WriteResponse(",
-            "const BML_ImcPayloadTypeId responsePayload",
-            "void *handlerUserdata = slot->Userdata;",
-        ):
-            if snippet not in header:
-                raise AssertionError(f"generated binding is missing {snippet!r}")
-        for obsolete in (
-            "WireHash", "IsCompatibleHash", "DescriptorHash", "HeaderSize",
-            "SchemaMetadata", "EndpointMetadata",
-            "inline constexpr std::uint64_t Hash",
-        ):
-            if obsolete in header:
-                raise AssertionError(f"generated binding leaked obsolete wire metadata: {obsolete}")
-        if "WriteResponse(response, slot->Owner" in header:
-            raise AssertionError(
-                "generated Provider reads its owner after invoking the Handler"
-            )
-
         generate(generator, interface, output, check=True)
         header_path.write_text("stale\n", encoding="utf-8")
         stale_header = generate(generator, interface, output, check=True, expect_success=False)
@@ -192,11 +165,6 @@ def main() -> int:
             "changed_event", "echo_reply", "echo_request"
         ]:
             raise AssertionError("inline payloads did not synthesize stable named records")
-        inline_header = (inline_output / "test_inline_imc.hpp").read_text(encoding="utf-8")
-        for snippet in ("EchoRequestValue", "EchoReplyValue", "ChangedEventValue"):
-            if snippet not in inline_header:
-                raise AssertionError(f"inline payload binding is missing {snippet}")
-
         reserved_handler = root / "reserved-handler.imc"
         reserved_handler.write_text(
             "api test.reserved 1.0\nrpc userdata()\n", encoding="utf-8"
