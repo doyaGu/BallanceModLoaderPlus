@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'lib\BMLProject.psm1') -Force
 
-function ConvertTo-AngelScriptString {
+function ConvertTo-CppString {
     param([string]$Value)
 
     return $Value.Replace('\', '\\').Replace('"', '\"').Replace("`r", '\r').Replace("`n", '\n').Replace("`t", '\t')
@@ -41,7 +41,7 @@ if ([string]::IsNullOrWhiteSpace($Author)) {
     throw 'Author must not be empty.'
 }
 if ([string]::IsNullOrWhiteSpace($Description)) {
-    $Description = "$Name script mod"
+    $Description = "$Name native mod"
 }
 
 $className = ConvertTo-BMLModClassName -ModId $Id
@@ -49,7 +49,7 @@ if ([string]::IsNullOrWhiteSpace($Destination)) {
     $Destination = Join-Path (Get-Location) $className
 }
 
-$templateRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\templates\script-mod-template'))
+$templateRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\templates\native-mod-template'))
 $destinationFull = [System.IO.Path]::GetFullPath($Destination)
 $templatePrefix = $templateRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
 if ($destinationFull.StartsWith($templatePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -59,43 +59,49 @@ if (Test-Path -LiteralPath $destinationFull) {
     throw "Destination already exists: $destinationFull"
 }
 
-Assert-BMLPath -Path (Join-Path $templateRoot 'HelloScript.mod.as') -Type Leaf
+Assert-BMLPath -Path (Join-Path $templateRoot 'CMakeLists.txt') -Type Leaf
+Assert-BMLPath -Path (Join-Path $templateRoot 'src\HelloMod.cpp') -Type Leaf
 Assert-BMLPath -Path (Join-Path $templateRoot 'README.md') -Type Leaf
 Copy-BMLDirectoryContents -SourceDir $templateRoot -DestinationDir $destinationFull
 
-$sourcePath = Join-Path $destinationFull 'HelloScript.mod.as'
-$entryPath = Join-Path $destinationFull "$className.mod.as"
+$cmakePath = Join-Path $destinationFull 'CMakeLists.txt'
+$sourcePath = Join-Path $destinationFull 'src\HelloMod.cpp'
+$renamedSourcePath = Join-Path $destinationFull "src\$className.cpp"
 $readmePath = Join-Path $destinationFull 'README.md'
 
-$escapedId = ConvertTo-AngelScriptString $Id
-$escapedName = ConvertTo-AngelScriptString $Name
-$escapedAuthor = ConvertTo-AngelScriptString $Author
-$escapedVersion = ConvertTo-AngelScriptString $Version
-$escapedDescription = ConvertTo-AngelScriptString $Description
+$escapedId = ConvertTo-CppString $Id
+$escapedName = ConvertTo-CppString $Name
+$escapedAuthor = ConvertTo-CppString $Author
+$escapedVersion = ConvertTo-CppString $Version
+$escapedDescription = ConvertTo-CppString $Description
+$cmakeVersion = ($Version -split '[-+]')[0]
+
+$cmake = Get-Content -LiteralPath $cmakePath -Raw -Encoding UTF8
+$cmake = $cmake.Replace('HelloMod', $className)
+$cmake = $cmake.Replace('1.0.0', $cmakeVersion)
 
 $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$source = $source.Replace('example.hello.script', $escapedId)
-$source = $source.Replace('Hello Script', $escapedName)
-$source = $source.Replace('Your Name', $escapedAuthor)
-$source = $source.Replace('1.0.0', $escapedVersion)
-$source = $source.Replace('Minimal BML+ script mod', $escapedDescription)
-$source = $source.Replace('HelloScript', $className)
+$source = $source.Replace('HelloMod', $className)
+$source = $source.Replace(('return "{0}";' -f $className), ('return "{0}";' -f $escapedId))
+$source = $source.Replace('"Hello Mod"', ('"{0}"' -f $escapedName))
+$source = $source.Replace('"Template"', ('"{0}"' -f $escapedAuthor))
+$source = $source.Replace('"1.0.0"', ('"{0}"' -f $escapedVersion))
+$source = $source.Replace('"Minimal example mod for BML+"', ('"{0}"' -f $escapedDescription))
 
 $readme = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
-$readme = $readme.Replace('# BML+ Script Mod Template', "# $Name")
-$readme = $readme.Replace('example.hello.script', $Id)
-$readme = $readme.Replace('Hello Script', $Name)
-$readme = $readme.Replace('HelloScript', $className)
+$readme = $readme.Replace('# BML+ Native Mod Template', "# $Name")
+$readme = $readme.Replace('HelloMod', $className)
 
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[System.IO.File]::WriteAllText($cmakePath, $cmake, $utf8NoBom)
 [System.IO.File]::WriteAllText($sourcePath, $source, $utf8NoBom)
 [System.IO.File]::WriteAllText($readmePath, $readme, $utf8NoBom)
-Move-Item -LiteralPath $sourcePath -Destination $entryPath
+Move-Item -LiteralPath $sourcePath -Destination $renamedSourcePath
 
 [pscustomobject]@{
     Id = $Id
     Name = $Name
     ClassName = $className
     Destination = $destinationFull
-    Entry = [System.IO.Path]::GetFileName($entryPath)
+    Source = "src/$className.cpp"
 }

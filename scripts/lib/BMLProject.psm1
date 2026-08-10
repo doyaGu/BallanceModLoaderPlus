@@ -89,6 +89,30 @@ function Assert-BMLPath {
     }
 }
 
+function ConvertTo-BMLModClassName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ModId
+    )
+
+    $leaf = ($ModId -split '\.')[-1]
+    $className = ''
+    foreach ($part in @($leaf -split '[^A-Za-z0-9]+' | Where-Object { $_ })) {
+        $className += $part.Substring(0, 1).ToUpperInvariant()
+        if ($part.Length -gt 1) {
+            $className += $part.Substring(1)
+        }
+    }
+
+    if ($className -notmatch '^[A-Za-z_]') {
+        $className = "Mod$className"
+    }
+    if (-not $className.EndsWith('Mod', [System.StringComparison]::Ordinal)) {
+        $className += 'Mod'
+    }
+    return $className
+}
+
 function New-BMLCleanDirectory {
     param(
         [Parameter(Mandatory = $true)]
@@ -222,6 +246,7 @@ Export-ModuleMember -Function `
     Resolve-BMLPath, `
     Get-BMLProjectLayout, `
     Assert-BMLPath, `
+    ConvertTo-BMLModClassName, `
     New-BMLCleanDirectory, `
     Copy-BMLDirectoryContents, `
     Copy-BMLDirectoryFresh, `

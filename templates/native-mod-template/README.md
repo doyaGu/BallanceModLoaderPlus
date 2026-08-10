@@ -1,6 +1,6 @@
 # BML+ Native Mod Template
 
-Minimal CMake-based template to build a BML+ mod with a sample command.
+Minimal CMake-based BML+ mod with a sample command.
 
 Read the SDK's `share/BML/docs/en/modding.md` before choosing the native route,
 then use `share/BML/docs/en/native-mod-api.md` for the native API and ownership
@@ -13,7 +13,7 @@ rules. The same pages are published at
 - Windows + Visual Studio 2019+ (C++20)
 - CMake 3.14+
 - Virtools SDK 2.1
-- BML installed (so that `BMLConfig.cmake` is available).
+- An extracted BML+ SDK (so that `BMLConfig.cmake` is available).
 
 If you built BML+ from source, configure that build with
 `-DCMAKE_INSTALL_PREFIX="<BML-SDK>"`, then install its SDK:
@@ -65,5 +65,5 @@ Use `--config Release` for the artifact you publish.
 - `bml_add_mod` enables C++20 and applies the `.bmodp` suffix.
 - `bml_install_mod` installs the target under the configured `Mods` directory.
 
-The template demonstrates loading and one command. It is not an API catalog;
+This mod demonstrates loading and one command. It is not an API catalog;
 use the installed headers and SDK documentation for additional services.
