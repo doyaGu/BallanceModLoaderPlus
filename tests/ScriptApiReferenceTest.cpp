@@ -260,6 +260,29 @@ TEST(ScriptApiReferenceTest, UiAndSpeedrunHaveDistinctResponsibilities) {
     ExpectContainsAll(ReadTextFile(kPredefinedApi), declarations, kPredefinedApi);
     ExpectContainsNone(ReadTextFile(kScriptApiStub), removed, kScriptApiStub);
     ExpectContainsNone(ReadTextFile(kPredefinedApi), removed, kPredefinedApi);
+
+    const std::string bindings = ReadTextFile(
+        "src/AngelScript/AngelScriptBindings.cpp");
+    ExpectContainsAll(bindings,
+                      {"ctx->SendIngameMessage(message.c_str())",
+                       "ctx->ClearIngameMessages()",
+                       "ctx->OpenModsMenu()",
+                       "ctx->SetHUD(mode)",
+                       "ctx->ShowSRTimer(visible)",
+                       "ctx->StartSRTimer()"},
+                      "src/AngelScript/AngelScriptBindings.cpp");
+
+    const std::string clients = ReadTextFile(
+                                    "src/AngelScript/ScriptImcClients.h") +
+                                ReadTextFile(
+                                    "src/AngelScript/ScriptImcClients.cpp");
+    ExpectContainsAll(clients,
+                      {"bml_events_imc.hpp", "ScriptImcClients::Events",
+                       "m_Events"},
+                      "ScriptImcClients");
+    ExpectContainsNone(clients,
+                       {"bml_ui_imc.hpp", "ScriptImcClients::Ui", "m_Ui"},
+                       "ScriptImcClients");
 }
 
 TEST(ScriptApiReferenceTest, BuiltinEventsUseOnlyImcPublishing) {

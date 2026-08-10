@@ -5,7 +5,6 @@
 #include <string>
 
 #include "BML/Generated/bml_events_imc.hpp"
-#include "BML/Generated/bml_ui_imc.hpp"
 
 class ModContext;
 
@@ -19,19 +18,14 @@ public:
     ScriptImcClients(const ScriptImcClients &) = delete;
     ScriptImcClients &operator=(const ScriptImcClients &) = delete;
 
-    int Ui(Imc::Generated::Bml::Ui::Client *&out) noexcept;
     int Events(Imc::Generated::Bml::Events::Client *&out) noexcept;
 
     void Close() noexcept;
 
 private:
-    template <typename Client>
-    int Ensure(Client &client, Client *&out) noexcept;
-
     ModContext *m_Context = nullptr;
     std::string m_OwnerId;
     std::mutex m_Mutex;
-    Imc::Generated::Bml::Ui::Client m_Ui;
     Imc::Generated::Bml::Events::Client m_Events;
 };
 
