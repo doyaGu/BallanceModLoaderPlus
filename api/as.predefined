@@ -15700,40 +15700,23 @@ bool DataShareHas(const string &in key, const string &in name = "BML");
 void DataShareRemove(const string &in key, const string &in name = "BML");
 int DataShareSizeOf(const string &in key, const string &in name = "BML");
 
-// Typed IMC-backed facades. Each read returns a BML status code and
-// writes the output only on success.  Borrow* methods create a host-owned,
-// non-retained CK handle and therefore are valid only while the object still
-// belongs to the current game scene.
+// Typed built-in capability facades. Runtime snapshots are small values returned
+// directly. Borrow* methods create a host-owned, non-retained CK handle and are
+// valid only while the object still belongs to the current game scene.
 namespace Runtime {
 class State {
   bool InGame; bool InLevel; bool Paused; bool Playing; bool CheatEnabled;
 }
 class Clock { float TimeMs; float AbsoluteMs; float DeltaMs; int Frame; }
 class Score { float SR; int HS; }
-int ReadState(State &out state);
-int ReadClock(Clock &out state);
-int ReadScore(Score &out state);
+State GetState();
+Clock GetClock();
+Score GetScore();
 } // namespace Runtime
-
-namespace Scene {
-class ObjectInfo {
-  int Id; int ClassId; bool Visible; bool Dynamic;
-  string get_Name() const;
-  CKObject@ BorrowObject() const;
-}
-class EntityTransform {
-  ::BML::Vec3 Position; ::BML::Vec3 Scale; int ChildCount;
-  CKObject@ BorrowParent() const;
-}
-int Find(const string &in name, CKObject@ &out object);
-int Find(const string &in name, int classId, CKObject@ &out object);
-int ReadObject(CKObject@ object, ObjectInfo &out info);
-int ReadEntity(CKObject@ object, EntityTransform &out transform);
-} // namespace Scene
 
 namespace Gameplay {
 class LevelState {
-  int Id; ::BML::Mat4 ResetMatrix; int Points;
+  int Id; BML::Mat4 ResetMatrix; int Points;
   CKObject@ BorrowActiveBall() const;
 }
 class EnergyState {
@@ -15743,25 +15726,13 @@ class CatalogEntry {
   int Bonus; int Music;
   string get_File() const; string get_StartBall() const; string get_Sky() const;
 }
-class Checkpoint { ::BML::Mat4 Matrix; CKObject@ BorrowObject() const; }
+class Checkpoint { BML::Mat4 Matrix; CKObject@ BorrowObject() const; }
 class Resetpoint { CKObject@ BorrowObject() const; }
-class CatalogCursor {
-  bool get_IsOpen() const; int Close();
-  int Next(CatalogEntry &out entry, bool &out hasValue, bool &out complete);
-}
-class CheckpointCursor {
-  bool get_IsOpen() const; int Close();
-  int Next(Checkpoint &out entry, bool &out hasValue, bool &out complete);
-}
-class ResetpointCursor {
-  bool get_IsOpen() const; int Close();
-  int Next(Resetpoint &out entry, bool &out hasValue, bool &out complete);
-}
 int ReadLevel(LevelState &out state);
 int ReadEnergy(EnergyState &out state);
-int OpenCatalog(CatalogCursor@ &out cursor);
-int OpenCheckpoints(CheckpointCursor@ &out cursor);
-int OpenResetpoints(ResetpointCursor@ &out cursor);
+int ReadCatalog(array<CatalogEntry>@ &out entries);
+int ReadCheckpoints(array<Checkpoint>@ &out entries);
+int ReadResetpoints(array<Resetpoint>@ &out entries);
 } // namespace Gameplay
 
 namespace Events {
@@ -15782,9 +15753,9 @@ class Event {
   float get_Mass() const; string get_CollisionGroup() const; bool get_StartFrozen() const;
   bool get_EnableCollision() const; bool get_AutoCalculateMassCenter() const;
   float get_LinearDamp() const; float get_RotDamp() const;
-  string get_CollisionSurface() const; ::BML::Vec3 get_MassCenter() const;
+  string get_CollisionSurface() const; BML::Vec3 get_MassCenter() const;
   int get_ConvexMeshCount() const; CKObject@ BorrowConvexMesh(int index) const;
-  int get_BallCount() const; ::BML::Vec3 GetBallCenter(int index) const;
+  int get_BallCount() const; BML::Vec3 GetBallCenter(int index) const;
   float GetBallRadius(int index) const; int get_ConcaveMeshCount() const;
   CKObject@ BorrowConcaveMesh(int index) const;
   string get_Command() const; int get_CommandArgumentCount() const;
