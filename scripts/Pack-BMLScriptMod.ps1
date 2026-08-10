@@ -1,9 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Source,
+    [string]$Source = '.',
 
-    [Parameter(Mandatory = $true)]
     [string]$Output,
 
     [switch]$Force
@@ -15,9 +13,16 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'lib\BMLProject.psm1') -Force
 
 $sourceFull = [System.IO.Path]::GetFullPath($Source)
-$outputFull = [System.IO.Path]::GetFullPath($Output)
-
 Assert-BMLPath -Path $sourceFull -Type Container
+
+if ([string]::IsNullOrWhiteSpace($Output)) {
+    $sourceName = Split-Path -Leaf ($sourceFull.TrimEnd('\', '/'))
+    if ([string]::IsNullOrWhiteSpace($sourceName)) {
+        throw 'Cannot derive a package name from the source directory. Pass -Output explicitly.'
+    }
+    $Output = Join-Path $sourceFull "dist\$sourceName.zip"
+}
+$outputFull = [System.IO.Path]::GetFullPath($Output)
 
 if ([System.IO.Path]::GetExtension($outputFull) -ne '.zip') {
     throw 'Output must be a .zip script package. .bmodp is reserved for native mods.'
@@ -51,6 +56,10 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open($outputFull, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
     $sourcePrefix = $sourceFull.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $excludedDirectories = @('.git', '.hg', '.svn', '.idea', '.vscode', '__pycache__')
+    $excludedFiles = @('.DS_Store', '.gitattributes', '.gitignore', 'as.predefined', 'Thumbs.db')
+    $excludedExtensions = @('.code-workspace', '.pyc', '.pyo')
+
     foreach ($file in $files) {
         if (-not $file.FullName.StartsWith($sourcePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw "Refusing to pack file outside source directory: $($file.FullName)"
@@ -58,7 +67,10 @@ try {
 
         $relative = $file.FullName.Substring($sourcePrefix.Length)
         $segments = $relative -split '[\\/]'
-        if ($segments -contains '__pycache__' -or $file.Extension -in @('.pyc', '.pyo')) {
+        if ($segments[0] -ieq 'dist' -or
+            ($excludedDirectories | Where-Object { $segments -contains $_ }) -or
+            $excludedFiles -contains $file.Name -or
+            $excludedExtensions -contains $file.Extension) {
             continue
         }
         $entryName = $relative.Replace('\', '/')

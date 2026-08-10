@@ -227,15 +227,21 @@ if(use_sdk_archive)
         endif()
     endforeach()
 
-    set(script_package_dir "${work_root}/script-package")
-    set(script_package "${script_package_dir}/HelloScript.zip")
-    file(MAKE_DIRECTORY "${script_package_dir}")
+    set(script_package_source "${work_root}/HelloScript")
+    file(REMOVE_RECURSE "${script_package_source}")
+    file(COPY "${script_template}/" DESTINATION "${script_package_source}")
+    file(MAKE_DIRECTORY
+            "${script_package_source}/.vscode"
+            "${script_package_source}/dist")
+    file(WRITE "${script_package_source}/.vscode/settings.json" "{}\n")
+    file(WRITE "${script_package_source}/as.predefined" "editor declarations\n")
+    file(WRITE "${script_package_source}/dist/stale.zip" "old package\n")
+    set(script_package "${script_package_source}/dist/HelloScript.zip")
     execute_process(
         COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
                 -File "${script_packer}"
-                -Source "${script_template}"
-                -Output "${script_package}"
                 -Force
+        WORKING_DIRECTORY "${script_package_source}"
         RESULT_VARIABLE script_pack_status
         OUTPUT_VARIABLE script_pack_output
         ERROR_VARIABLE script_pack_error
@@ -269,6 +275,18 @@ if(use_sdk_archive)
             message(FATAL_ERROR
                     "The packaged script Mod is missing ${required_entry}: "
                     "${script_package_entries}")
+        endif()
+    endforeach()
+
+    foreach(excluded_entry
+            ".vscode/settings.json"
+            "as.predefined"
+            "dist/stale.zip")
+        list(FIND script_package_entries "${excluded_entry}" excluded_entry_index)
+        if(NOT excluded_entry_index EQUAL -1)
+            message(FATAL_ERROR
+                    "The packaged script Mod contains development-only file "
+                    "${excluded_entry}: ${script_package_entries}")
         endif()
     endforeach()
 

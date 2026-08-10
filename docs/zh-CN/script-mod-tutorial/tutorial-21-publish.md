@@ -118,14 +118,13 @@ CompleteMod/
 正式发布目录形式的 Mod 时，使用 BML+ SDK 随附的打包脚本：
 
 ```powershell
-& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" `
-  -Source "<Ballance>/ModLoader/Mods/CompleteMod" `
-  -Output "dist/CompleteMod.zip" `
-  -Force
+Set-Location "<Ballance>/ModLoader/Mods/CompleteMod"
+& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" -Force
 ```
 
-源目录的顶层必须恰好有一个 `*.mod.as` 入口。打包脚本会保留相对路径，并让
-入口位于 zip 根目录：
+默认产物是 `dist/CompleteMod.zip`。自动化流程仍可通过 `-Source` 和 `-Output`
+指定其他路径。源目录的顶层必须恰好有一个 `*.mod.as` 入口；打包脚本会保留
+相对路径，并让入口位于 zip 根目录：
 
 ```text
 CompleteMod.zip
@@ -137,6 +136,9 @@ CompleteMod.zip
 
 用户把 `CompleteMod.zip` 直接放入 `ModLoader/Mods/` 即可，不需要手动解压。
 `.bmodp` 只用于原生 DLL Mod，不能作为脚本 Mod 的扩展名。
+
+打包器会自动排除 `dist`、编辑器设置、版本控制元数据、`as.predefined` 和 Python
+缓存文件。下面的源码与运行行为检查仍需作者自己完成。
 
 ---
 

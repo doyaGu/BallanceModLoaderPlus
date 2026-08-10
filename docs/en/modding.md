@@ -32,8 +32,9 @@ identity, lifecycle, configuration, commands, loader UI, and mod-level services.
 6. Keep Player open. Saving source in the loaded directory triggers automatic
    hot reload; only new entries, id changes, and dependency changes require a
    restart.
-7. Package the directory with `scripts/Pack-BMLScriptMod.ps1`, then test the zip
-   without the development copy installed.
+7. From the Mod directory, run `scripts/Pack-BMLScriptMod.ps1`; it writes
+   `dist/<directory-name>.zip`. Test that zip without the development copy
+   installed.
 
 Read the [script mod guide](https://doyagu.github.io/BallanceModLoaderPlus/script-mod/),
 then use its API reference for exact declarations. A script-capable SDK installs

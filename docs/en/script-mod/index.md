@@ -140,14 +140,16 @@ Saving a loaded source queues a reload. Adding a new mod, changing its id, or
 changing its dependency graph still requires a Player restart. Zip packages
 use manual reload and are intended for distribution testing.
 
-Package a directory with the SDK tool:
+Run the SDK tool from the Mod directory:
 
 ```powershell
-& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" `
-  -Source "<Ballance>/ModLoader/Mods/MyScriptMod" `
-  -Output "dist/MyScriptMod.zip" `
-  -Force
+Set-Location "<Ballance>/ModLoader/Mods/MyScriptMod"
+& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" -Force
 ```
+
+It writes `dist/MyScriptMod.zip`. `-Source` and `-Output` remain available for
+automation. The default package excludes editor settings, version-control
+metadata, `as.predefined`, Python cache files, and `dist` itself.
 
 Test the zip in a clean `ModLoader/Mods` directory without the development
 directory or a single-file copy of the same mod id. Do not package editor API

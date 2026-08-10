@@ -29,8 +29,8 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 5. 首次成功后再替换示例 id、名称和作者；Mod 身份发生变化，需要重启一次。
 6. 保持 Player 运行。保存已加载目录中的源码会自动热重载；只有新增入口、修改 id
    或修改依赖时才需要重启。
-7. 使用 `scripts/Pack-BMLScriptMod.ps1` 打包，再在没有开发目录副本的环境中测试
-   zip。
+7. 在 Mod 目录中运行 `scripts/Pack-BMLScriptMod.ps1`；产物位于
+   `dist/<目录名>.zip`。再在没有开发目录副本的环境中测试该 zip。
 
 先阅读[脚本 Mod 教程导读](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/)，
 需要准确声明时使用其中的 API 参考。支持脚本 Mod 的 SDK 会把同一套页面安装到

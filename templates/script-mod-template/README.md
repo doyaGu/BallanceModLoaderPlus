@@ -39,11 +39,14 @@ script logs error
 Use the packer shipped in the SDK:
 
 ```powershell
-& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" `
-  -Source "<Ballance>/ModLoader/Mods/HelloScript" `
-  -Output "dist/HelloScript.zip" `
-  -Force
+Set-Location "<Ballance>/ModLoader/Mods/HelloScript"
+& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" -Force
 ```
+
+The package is written to `dist/HelloScript.zip`. Pass `-Source` or `-Output`
+only when packaging from another directory or writing the zip elsewhere. The
+packer omits editor settings, version-control metadata, `as.predefined`, Python
+cache files, and the `dist` directory.
 
 Test the zip without the development directory installed; two packages with
 the same Mod id conflict. `.bmodp` is reserved for native DLL mods.
