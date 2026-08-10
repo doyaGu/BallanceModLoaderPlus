@@ -523,8 +523,9 @@ Use these typed APIs for BML-owned read-only snapshots. Runtime state, clock,
 and score are small values returned directly from the in-process loader state;
 scripts do not open an IMC client or handle a transport status for those local
 reads. Calling them outside a valid script callback raises a script exception.
-Other capability reads retain an explicit status where their source can be
-unavailable.
+Gameplay reads also reuse the in-process data reader directly, but retain an
+explicit status because the corresponding Ballance data array may be
+unavailable or have an unsupported layout.
 
 ```angelscript
 BML::Runtime::State runtime = BML::Runtime::GetState();
