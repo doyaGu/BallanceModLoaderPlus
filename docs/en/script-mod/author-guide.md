@@ -555,10 +555,16 @@ data is stable instead of rebuilding it every frame.
 `BML::Events::Stream` supplies immutable event snapshots in hook order. Use
 CKAngelScript `Scene::*` and its revalidating reference types for scene lookup
 and object identity; read object properties through those references or raw CK
-methods near the operation. Script code receives typed domain values; raw IMC
-messages, providers, subscriptions, and transport handles are intentionally not
-registered in AngelScript. Native plugins can expose additional typed script
-APIs through CKAngelScript registration.
+methods near the operation. Read an event only when `Poll` returns
+`BML::ERROR_OK`; `BML::ERROR_NOT_FOUND` means the stream is currently empty,
+while another status reports a transport or malformed-event failure. Such a
+pending failure is returned before queued events and cleared after it is
+reported; an incomplete event never becomes a valid snapshot.
+`GetDroppedCount` counts queue and backpressure loss, not decode
+failures. Script code receives typed domain values; raw IMC messages, providers,
+subscriptions, and transport handles are intentionally not registered in
+AngelScript. Native plugins can expose additional typed script APIs through
+CKAngelScript registration.
 
 ## The ModContext Object
 
