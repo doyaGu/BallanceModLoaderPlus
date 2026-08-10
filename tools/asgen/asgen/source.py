@@ -40,7 +40,7 @@ def load_cimgui_source(root: Path) -> CImguiSource:
         raise CImguiSourceError(
             "generation requires Dear ImGui metadata files that are not present in this checkout: "
             + relative
-            + ". Use 'asgen check' to validate the checked-in bindings."
+            + ". Generate or restore the cimgui metadata before running asgen."
         )
     definitions = load_json(definitions_path)
     structs_enums = load_json(structs_enums_path)
