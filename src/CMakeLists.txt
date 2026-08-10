@@ -514,4 +514,10 @@ if (BML_WITH_ANGELSCRIPT)
             DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/zh-CN"
             FILES_MATCHING PATTERN "*.md"
     )
+
+    install(DIRECTORY
+            "${PROJECT_SOURCE_DIR}/examples/script-mod"
+            DESTINATION "examples"
+            FILES_MATCHING PATTERN "*.md" PATTERN "*.as"
+    )
 endif ()

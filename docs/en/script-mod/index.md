@@ -67,11 +67,16 @@ After that first success, replace the example id, name, and author. Restart
 Player once because the Mod identity changed; ordinary source edits after that
 use automatic hot reload.
 
+The SDK's `examples/script-mod` directory contains three complete follow-up
+Mods for command/config, input/UI, and game-state access. Copy one example at a
+time into `ModLoader/Mods`; use the template, not an example, as the base for a
+real project.
+
 If it fails, run:
 
 ```text
 script status
-script diag example.hello
+script diag example.hello.script
 script logs error
 ```
 

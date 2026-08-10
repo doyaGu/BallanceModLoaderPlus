@@ -17,6 +17,10 @@ generated IMC Provider, or a performance-critical native loop.
    `<Ballance>/ModLoader/Mods/<YourMod>`.
 3. Follow the template README to run it unchanged before editing it.
 
+After the template works, copy one directory from
+[`examples/script-mod`](examples/script-mod) to learn commands and config,
+input and UI, or game-state access from a runnable example.
+
 Script support is present when `templates/script-mod-template` and
 `docs/api/as.predefined` exist. The latter is an editor declaration file, not
 runtime source.
@@ -36,6 +40,7 @@ SDK, or generated IMC services.
 | Path | Purpose |
 | --- | --- |
 | `templates/` | Runnable starting projects |
+| `examples/` | Focused follow-up examples |
 | `share/BML/docs/en/` | English Mod author documentation |
 | `share/BML/docs/zh-CN/` | Chinese Mod author documentation |
 | `docs/api/` | AngelScript editor declarations, when script support is enabled |

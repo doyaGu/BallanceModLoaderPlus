@@ -52,5 +52,6 @@ Test the zip without the development directory installed; two packages with
 the same Mod id conflict. `.bmodp` is reserved for native DLL mods.
 
 This template proves discovery, compilation, lifecycle entry, logging, and
-in-game output. Add commands, configuration, timers, UI, and engine access only
-after this file works.
+in-game output. After it works, use the SDK's `examples/script-mod` directory
+for focused command/config, input/UI, and game-state examples. Copy only the
+example you want to run.

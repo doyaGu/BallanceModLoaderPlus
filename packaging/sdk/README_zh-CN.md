@@ -16,6 +16,9 @@
    `<Ballance>/ModLoader/Mods/<你的Mod>`。
 3. 按模板 README 的说明，先原样运行成功，再开始修改。
 
+模板运行成功后，从 [`examples/script-mod`](examples/script-mod) 复制一个目录，
+通过可运行示例学习命令与配置、输入与界面或游戏状态访问。
+
 存在 `templates/script-mod-template` 和 `docs/api/as.predefined` 时，表示该 SDK
 包含脚本支持。`as.predefined` 只供编辑器补全使用，不是运行时脚本。
 
@@ -32,6 +35,7 @@
 | 路径 | 用途 |
 | --- | --- |
 | `templates/` | 可直接运行的起始项目 |
+| `examples/` | 聚焦单一主题的后续示例 |
 | `share/BML/docs/en/` | 英文 Mod 开发文档 |
 | `share/BML/docs/zh-CN/` | 中文 Mod 开发文档 |
 | `docs/api/` | 启用脚本支持时提供的 AngelScript 编辑器声明 |
