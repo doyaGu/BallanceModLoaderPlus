@@ -160,6 +160,8 @@ void SendReloadResultMessage(ModContext *context,
     } else {
         message += "failed: ";
         message += id;
+        message += "; script diag ";
+        message += id;
     }
 
     context->SendIngameMessage(message.c_str());

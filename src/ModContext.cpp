@@ -489,6 +489,11 @@ bool ModContext::InitMods() {
                 m_Logger->Warn("First failed script mod %s: %s",
                                firstFailedScript->GetID(),
                                firstFailedScript->GetLastDiagnostic().c_str());
+                std::string message = "[script] load failed: ";
+                message += firstFailedScript->GetID();
+                message += "; script diag ";
+                message += firstFailedScript->GetID();
+                SendIngameMessage(message.c_str());
             }
         }
 #endif
