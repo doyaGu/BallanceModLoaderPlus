@@ -195,7 +195,7 @@ if (entity !is null) {
 
 ## 运行结果
 
-进入第一关后，`ModLoader.log` 会出现类似：
+进入第一关后，`ModLoader/ModLoader.log` 会出现类似：
 
 ```text
 [find.demo/INFO]: ActiveBall: Ball_Wood id=42648

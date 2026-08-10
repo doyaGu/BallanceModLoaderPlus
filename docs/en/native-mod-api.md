@@ -206,6 +206,7 @@ same key is set or removed or when the instance is destroyed. Use
 
 ## Further reading
 
+- [Choose a mod development route](modding.md)
 - [Inter-mod communication](imc.md)
 - [Create a typed IMC API](imc-author-guide.md)
 - [Native mod template](https://github.com/doyaGu/BallanceModLoaderPlus/tree/main/templates/native-mod-template)

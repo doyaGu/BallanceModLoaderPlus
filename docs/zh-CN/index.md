@@ -1,26 +1,25 @@
 # BML+ 文档
 
-这里是 Ballance Mod Loader Plus 的正式在线文档。
+请按当前任务选择入口。安装 BML+、编写 Mod 和修改 Loader 使用的发布包、工具与
+验证方法并不相同。
 
-本站提供原生 Mod、脚本 Mod 和跨 Mod 通信的公开资料。源码构建、发布包和
-项目介绍以仓库根目录的 README 为准。
+## 使用 BML+
 
-## 推荐入口
+安装运行时、添加原生或脚本 Mod、更新已有安装，或者排查加载问题。
 
-- [脚本 Mod 创作教程](script-mod-tutorial/README.md)
-- [BML+ 脚本 API 参考](api.md)
-- [BML 原生 Mod API](native-mod-api.md)
-- [IMC 跨 Mod 通信](imc.md)
+[使用 BML+](using-bml.md)
 
-## 教程主线
+## 开发 Mod
 
-教程按四段推进：
+在脚本 Mod、原生 Mod 和带 CKAngelScript 接口的原生插件之间作出选择，并从已发布
+SDK 的模板开始。
 
-```text
-装好环境，脚本先跑起来
-看懂游戏运行时
-进入行为图和物理
-做一个可控小 Mod
-```
+[选择 Mod 开发路线](modding.md)
 
-第一次学习，直接从 [第 1 节](script-mod-tutorial/tutorial-01-setup.md) 开始。
+## 参与 BML+ 开发
+
+构建 Loader，找到负责目标行为的代码区域，保持公共接口兼容，并运行相应验证。
+
+[参与 BML+ 开发](contributing.md)
+
+第一次学习脚本 Mod，也可以直接进入[分步教程](script-mod-tutorial/README.md)。

@@ -115,18 +115,28 @@ CompleteMod/
 
 ### zip 包分发
 
-把目录压缩成 zip，方便在论坛或聊天工具中传递：
+正式发布目录形式的 Mod 时，使用 BML+ SDK 随附的打包脚本：
+
+```powershell
+& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" `
+  -Source "<Ballance>/ModLoader/Mods/CompleteMod" `
+  -Output "dist/CompleteMod.zip" `
+  -Force
+```
+
+源目录的顶层必须恰好有一个 `*.mod.as` 入口。打包脚本会保留相对路径，并让
+入口位于 zip 根目录：
 
 ```text
 CompleteMod.zip
-  -> CompleteMod/
-       CompleteMod.mod.as
-       libs/
-         Helper.as
-       README.md
+  CompleteMod.mod.as
+  libs/
+    Helper.as
+  README.md
 ```
 
-用户解压后把 `CompleteMod/` 目录放入 `ModLoader/Mods/` 即可。
+用户把 `CompleteMod.zip` 直接放入 `ModLoader/Mods/` 即可，不需要手动解压。
+`.bmodp` 只用于原生 DLL Mod，不能作为脚本 Mod 的扩展名。
 
 ---
 
@@ -156,7 +166,9 @@ CompleteMod.zip
 
 ### 步骤 2：使用打包后的文件安装
 
-不要直接用开发目录里的源码。把打包好的 zip 解压到一个干净的 `ModLoader/Mods/` 里，验证文件路径正确。
+不要直接使用开发目录里的源码。在一个干净的 `ModLoader/Mods/` 中只放入打包
+得到的 `CompleteMod.zip`。先移走相同 id 的开发目录或单文件，避免 BML 同时
+发现两个副本。zip 包默认不参与文件监视，最终验证时应重新启动 Player。
 
 ### 步骤 3：启动游戏并检查日志
 
@@ -187,7 +199,7 @@ CompleteMod.zip
 Complete Mod v1.0.0
 
 需要：BML+ 0.3.13 或更新版本。
-安装：把 CompleteMod.mod.as 放入 ModLoader/Mods/。
+安装：把 CompleteMod.zip 直接放入 ModLoader/Mods/，不要解压。
 命令：cmod [spawn|despawn|push|status|window]
 配置：ShowWindow, AutoSpawn
 卸载：删除 mod 文件。如需清掉设置，删除 ModLoader/Configs/complete.mod.cfg。
@@ -310,7 +322,7 @@ Ballance 社区常见的发布平台：
 | 11 | 日志检查 | 启动后日志无错误、无警告 |
 | 12 | 发布说明 | 安装、命令、配置、卸载、版本要求全部写清 |
 | 13 | 风险说明 | 中高风险 mod 写明影响范围 |
-| 14 | 打包格式 | zip 内目录结构正确，解压即可使用 |
+| 14 | 打包格式 | 使用 SDK 打包脚本生成 zip，并能直接从 `ModLoader/Mods/` 加载 |
 
 ---
 
@@ -328,9 +340,11 @@ Ballance 社区常见的发布平台：
 
 **现象**：别人下载后首次运行报错，找不到路径或缺少初始值。**解决**：所有默认值通过 `SetDefaultXxx()` 在代码中设置，不依赖外部文件。
 
-### zip 多嵌套一层目录
+### zip 中的入口数量不正确
 
-**现象**：解压放入 `Mods/` 后 BML 找不到 mod。**原因**：路径是 `CompleteMod/CompleteMod/CompleteMod.mod.as`。**解决**：打包时确认 zip 根目录就是 mod 目录或 `.mod.as` 文件本身。
+**现象**：zip 放入 `Mods/` 后 BML 拒绝加载。**原因**：包内没有入口，或存在多个
+`*.mod.as` 入口。**解决**：让源目录顶层恰好保留一个入口，并使用 SDK 的
+`Pack-BMLScriptMod.ps1` 重新打包。
 
 ### 残留调试代码
 

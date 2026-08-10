@@ -2,6 +2,12 @@
 
 Minimal CMake-based template to build a BML+ mod with a sample command.
 
+Read the SDK's `share/BML/docs/en/modding.md` before choosing the native route,
+then use `share/BML/docs/en/native-mod-api.md` for the native API and ownership
+rules. The same pages are published at
+[Create mods](https://doyagu.github.io/BallanceModLoaderPlus/modding/) and
+[Native mod API](https://doyagu.github.io/BallanceModLoaderPlus/native-mod-api/).
+
 ## Prerequisites
 
 - Windows + Visual Studio 2019+ (C++20)
@@ -9,7 +15,15 @@ Minimal CMake-based template to build a BML+ mod with a sample command.
 - Virtools SDK 2.1
 - BML installed (so that `BMLConfig.cmake` is available).
 
-If you built BML from source, run `cmake --install .` on the BML project first, then set `CMAKE_PREFIX_PATH` to BML's install prefix when configuring this template.
+If you built BML+ from source, configure that build with
+`-DCMAKE_INSTALL_PREFIX="<BML-SDK>"`, then install its SDK:
+
+```powershell
+cmake --build <BML-build-dir> --config Release --target install
+```
+
+Then pass `<BML-SDK>` through `CMAKE_PREFIX_PATH` when configuring this
+template.
 
 ## Configure
 
@@ -50,3 +64,6 @@ Use `--config Release` for the artifact you publish.
   loader entry points while linking the BML SDK.
 - `bml_add_mod` enables C++20 and applies the `.bmodp` suffix.
 - `bml_install_mod` installs the target under the configured `Mods` directory.
+
+The template demonstrates loading and one command. It is not an API catalog;
+use the installed headers and SDK documentation for additional services.

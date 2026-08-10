@@ -38,8 +38,8 @@ BML::InputHook@ BorrowInputManager() const;
 
 ```angelscript
 BML::CommandRef@ RegisterCommand(const BML::CommandDefinition &in def,
-    BML::CommandCallback@ execute,
-    BML::CommandCompletionCallback@ complete = null) const;
+    BML::CommandCallback@+ execute,
+    BML::CommandCompletionCallback@+ complete = null) const;
 bool UnregisterCommand(const string &in name) const;
 bool HasCommand(const string &in name) const;
 void ExecuteCommand(const string &in command) const;
@@ -48,8 +48,8 @@ void ExecuteCommand(const string &in command) const;
 ## 定时器
 
 ```angelscript
-BML::TimerRef@ SetTimeout(float delayMs, BML::TimerCallback@ callback, const string &in name = "") const;
-BML::TimerRef@ SetInterval(float delayMs, BML::TimerLoopCallback@ callback, const string &in name = "") const;
+BML::TimerRef@ SetTimeout(float delayMs, BML::TimerCallback@+ callback, const string &in name = "") const;
+BML::TimerRef@ SetInterval(float delayMs, BML::TimerLoopCallback@+ callback, const string &in name = "") const;
 ```
 
 ## 游戏状态
@@ -128,7 +128,9 @@ CKBehavior@ BorrowScriptByName(const string &in name) const;
 ## DataShare
 
 ```angelscript
-BML::DataShareRequestRef@ RequestDataShare(const string &in key, int type, BML::DataShareCallback@ cb, const string &in ns) const;
+BML::DataShareRequestRef@ RequestDataShare(BML::DataShareRequest@+ request) const;
+BML::DataShareRequestRef@ RequestDataShare(const string &in key, int type,
+    BML::DataShareCallback@+ callback, const string &in name = "") const;
 ```
 
 ## 注册 API (仅 OnLoad 可调用)
@@ -141,7 +143,10 @@ bool RegisterModule(const BML::ModuleDefinition &in module) const;
 
 ## Borrow 规则
 
-1. 所有 Borrow 返回值必须判空
-2. 可以在关卡内缓存 CK 句柄，但必须在退出关卡前清空
-3. 关卡对象在退出关卡后失效，需在下次 START_LEVEL 后重新查询
-4. 持久身份用名字（string），不用句柄或 ID
+1. 所有 `Borrow*` 返回值都必须判空。
+2. 原始 CK 句柄只在对应 CK 对象仍存在时有效。只应缓存生命周期明确、关卡内稳定
+   的对象，并在对象可能被删除或退出关卡前清空。
+3. 跨回调保存 CK 对象身份时，优先使用 CKAS 的可重新验证引用类型；每次使用前
+   检查 `valid`。否则保存 `CK_ID` 或确实唯一且稳定的名称，并在操作前重新查找。
+4. 不要把名称默认当成唯一标识，也不要在关卡切换后继续使用旧句柄或旧
+   `CK_ID`。

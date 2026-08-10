@@ -8,6 +8,10 @@ Minimal BML+ script mod template using the current script API:
 - script-owned Timer and Command objects
 - typed BML service facades
 
+Read the SDK's `share/BML/docs/en/modding.md`, then
+`share/BML/docs/en/script-mod/index.md`. The same guide is published at
+[Script mods](https://doyagu.github.io/BallanceModLoaderPlus/script-mod/).
+
 ## Develop In The Mods Directory
 
 Copy this template out of the SDK and use the copy as the working directory:
@@ -60,3 +64,7 @@ and zip do not declare the same mod id at the same time. Zip packages use manual
 reload and are intended for distribution and final package validation.
 
 `.bmodp` is reserved for native DLL mods. Do not use `.bmodp` for script mods.
+
+This template covers one working package and its development loop. Use the
+installed script guide and API reference for lifecycle, services, engine/UI,
+and communication details.

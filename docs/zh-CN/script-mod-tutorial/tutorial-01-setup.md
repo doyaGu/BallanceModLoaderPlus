@@ -8,18 +8,23 @@
 
 原版 Ballance 不会直接加载 `.mod.as` 脚本。BML 是脚本 mod 的运行环境，通过 Virtools 的 BuildingBlock 机制被 Player.exe 加载，然后接管一部分游戏流程，让外部代码能介入。
 
-CKAS 是 BML 内置的脚本引擎，基于 AngelScript 语言。脚本 mod 用 `.mod.as` 后缀保存在指定目录下，BML 启动时由 CKAS 编译并执行。
+CKAS 是由 `AngelScript.dll` 提供的脚本宿主，使用 AngelScript 语言。BML 通过
+CKAS 加载和管理脚本 Mod；脚本入口使用 `.mod.as` 后缀，并保存在指定目录中。
 
 它们的关系：
 
 ```text
-Player.exe  ──加载──->  BMLPlus.dll  ──包含──->  AngelScript.dll (CKAS)
-                           │                         │
-                           │                         │
-                    管理游戏回调              编译并运行 .mod.as 脚本
+BallancePlayer
+  ├──加载──> BMLPlus.dll       管理 Mod 与游戏回调
+  └──加载──> AngelScript.dll   提供 CKAS 脚本宿主
+                 ▲
+                 └── BMLPlus.dll 通过 CKAS API 编译并运行脚本 Mod
 ```
 
-Player.exe 是 Ballance 原版的可执行文件。它加载 `BuildingBlocks/` 目录里所有的 DLL。`BMLPlus.dll` 借此机制启动，然后扫描 `ModLoader/Mods/` 目录，对其中每个 `.mod.as` 文件调用 CKAS 编译并注册。脚本通过 BML 提供的 API 与游戏交互，比如写日志、发送游戏内消息、读按键状态、操作 Virtools 对象。
+BallancePlayer 从 `BuildingBlocks/` 装载 CK 插件。`BMLPlus.dll` 借此启动，并在
+`ModLoader/Mods/` 中发现单文件、目录或 zip 形式的脚本 Mod，再通过 CKAS 编译和
+注册其 `*.mod.as` 入口。脚本使用 BML API 完成日志、配置、命令和 Mod 生命周期
+工作；操作 Virtools 对象时使用 CKAS 提供的 CK/Vx 绑定。
 
 脚本 mod 的整个生命周期都在游戏进程内。Player 启动时发现新 mod；对于已经加载的目录或单文件 mod，保存源码后默认会由 watcher 自动热重载。新增 mod、修改 id 或改变依赖图时才需要重新启动 Player。
 

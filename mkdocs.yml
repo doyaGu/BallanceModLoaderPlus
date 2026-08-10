@@ -46,10 +46,18 @@ extra:
 
 nav:
   - Home: index.md
-  - Native mod API: native-mod-api.md
-  - Script mods:
-      - Author guide: script-mod/author-guide.md
-      - API reference: script-mod/api.md
-  - Inter-mod communication:
-      - Overview: imc.md
-      - Authoring guide: imc-author-guide.md
+  - Use BML+: using-bml.md
+  - Create mods:
+      - Choose a route: modding.md
+      - Native mods: native-mod-api.md
+      - Script mods:
+          - Start here: script-mod/index.md
+          - Lifecycle and reload: script-mod/lifecycle.md
+          - BML services: script-mod/services.md
+          - Engine and UI: script-mod/engine-ui.md
+          - Communication: script-mod/communication.md
+          - API reference: script-mod/api.md
+      - Cross-mod communication:
+          - Overview: imc.md
+          - Authoring guide: imc-author-guide.md
+  - Contribute to BML+: contributing.md

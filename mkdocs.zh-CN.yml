@@ -15,44 +15,48 @@ plugins:
 
 nav:
   - 首页: index.md
-  - BML 原生 Mod API: native-mod-api.md
-  - 脚本 Mod:
-      - 导读: script-mod-tutorial/README.md
-      - 教程:
-          - 01 环境搭建: script-mod-tutorial/tutorial-01-setup.md
-          - 02 第一个 Mod: script-mod-tutorial/tutorial-02-hello-mod.md
-          - 03 输出与输入: script-mod-tutorial/tutorial-03-output-input.md
-          - 04 ImGui 窗口: script-mod-tutorial/tutorial-04-imgui-window.md
-          - 05 命令系统: script-mod-tutorial/tutorial-05-commands.md
-          - 06 回调模型: script-mod-tutorial/tutorial-06-callbacks.md
-          - 07 配置与 Timer: script-mod-tutorial/tutorial-07-config-timer.md
-          - 08 查找对象: script-mod-tutorial/tutorial-08-find-objects.md
-          - 09 坐标显示器: script-mod-tutorial/tutorial-09-coordinate-mod.md
-          - 10 Ballance 运行结构: script-mod-tutorial/tutorial-10-ballance-internals.md
-          - 11 读 DataArray: script-mod-tutorial/tutorial-11-dataarray-read.md
-          - 12 状态面板: script-mod-tutorial/tutorial-12-status-panel-mod.md
-          - 13 Levelinit 占位对象: script-mod-tutorial/tutorial-13-levelinit-placeholders.md
-          - 14 Gameplay 状态机: script-mod-tutorial/tutorial-14-gameplay-state-machine.md
-          - 15 行为图阅读: script-mod-tutorial/tutorial-15-behavior-graph-reading.md
-          - 16 物理观察: script-mod-tutorial/tutorial-16-physics-observe.md
-          - 17 生成物理对象: script-mod-tutorial/tutorial-17-physics-create.md
-          - 18 控制物理对象: script-mod-tutorial/tutorial-18-physics-control.md
-          - 19 安全检查清单: script-mod-tutorial/tutorial-19-safety-checklist.md
-          - 20 完整 Mod: script-mod-tutorial/tutorial-20-complete-mod.md
-          - 21 发布: script-mod-tutorial/tutorial-21-publish.md
-          - 22 排错: script-mod-tutorial/tutorial-22-troubleshooting.md
-      - 参考:
-          - 生命周期与事件: script-mod-tutorial/ref-lifecycle.md
-          - ModContext 方法: script-mod-tutorial/ref-modcontext.md
-          - 命令、配置、定时器: script-mod-tutorial/ref-commands-config-timer.md
-          - 输入与 ImGui: script-mod-tutorial/ref-input-imgui.md
-          - 对象与组: script-mod-tutorial/ref-objects-groups.md
-          - DataArray: script-mod-tutorial/ref-dataarray.md
-          - 物理: script-mod-tutorial/ref-physics.md
-          - 跨 Mod 通信: script-mod-tutorial/ref-inter-mod.md
-          - HUD、消息与资源: script-mod-tutorial/ref-hud-resources.md
-          - Ballance 名称速查: script-mod-tutorial/ref-ballance-names.md
-      - API 参考: api.md
-  - IMC 跨 Mod 通信:
-      - 概览: imc.md
-      - 接口编写指南: imc-author-guide.md
+  - 使用 BML+: using-bml.md
+  - 开发 Mod:
+      - 选择路线: modding.md
+      - 原生 Mod: native-mod-api.md
+      - 脚本 Mod:
+          - 导读: script-mod-tutorial/README.md
+          - 教程:
+              - 01 环境搭建: script-mod-tutorial/tutorial-01-setup.md
+              - 02 第一个 Mod: script-mod-tutorial/tutorial-02-hello-mod.md
+              - 03 输出与输入: script-mod-tutorial/tutorial-03-output-input.md
+              - 04 ImGui 窗口: script-mod-tutorial/tutorial-04-imgui-window.md
+              - 05 命令系统: script-mod-tutorial/tutorial-05-commands.md
+              - 06 回调模型: script-mod-tutorial/tutorial-06-callbacks.md
+              - 07 配置与 Timer: script-mod-tutorial/tutorial-07-config-timer.md
+              - 08 查找对象: script-mod-tutorial/tutorial-08-find-objects.md
+              - 09 坐标显示器: script-mod-tutorial/tutorial-09-coordinate-mod.md
+              - 10 Ballance 运行结构: script-mod-tutorial/tutorial-10-ballance-internals.md
+              - 11 读 DataArray: script-mod-tutorial/tutorial-11-dataarray-read.md
+              - 12 状态面板: script-mod-tutorial/tutorial-12-status-panel-mod.md
+              - 13 Levelinit 占位对象: script-mod-tutorial/tutorial-13-levelinit-placeholders.md
+              - 14 Gameplay 状态机: script-mod-tutorial/tutorial-14-gameplay-state-machine.md
+              - 15 行为图阅读: script-mod-tutorial/tutorial-15-behavior-graph-reading.md
+              - 16 物理观察: script-mod-tutorial/tutorial-16-physics-observe.md
+              - 17 生成物理对象: script-mod-tutorial/tutorial-17-physics-create.md
+              - 18 控制物理对象: script-mod-tutorial/tutorial-18-physics-control.md
+              - 19 安全检查清单: script-mod-tutorial/tutorial-19-safety-checklist.md
+              - 20 完整 Mod: script-mod-tutorial/tutorial-20-complete-mod.md
+              - 21 发布: script-mod-tutorial/tutorial-21-publish.md
+              - 22 排错: script-mod-tutorial/tutorial-22-troubleshooting.md
+          - 参考:
+              - 生命周期与事件: script-mod-tutorial/ref-lifecycle.md
+              - ModContext 方法: script-mod-tutorial/ref-modcontext.md
+              - 命令、配置、定时器: script-mod-tutorial/ref-commands-config-timer.md
+              - 输入与 ImGui: script-mod-tutorial/ref-input-imgui.md
+              - 对象与组: script-mod-tutorial/ref-objects-groups.md
+              - DataArray: script-mod-tutorial/ref-dataarray.md
+              - 物理: script-mod-tutorial/ref-physics.md
+              - 跨 Mod 通信: script-mod-tutorial/ref-inter-mod.md
+              - HUD、消息与资源: script-mod-tutorial/ref-hud-resources.md
+              - Ballance 名称速查: script-mod-tutorial/ref-ballance-names.md
+          - API 参考: api.md
+      - 跨 Mod 通信:
+          - 概览: imc.md
+          - 接口编写指南: imc-author-guide.md
+  - 参与 BML+ 开发: contributing.md

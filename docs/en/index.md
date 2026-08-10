@@ -1,21 +1,28 @@
 # BML+ documentation
 
-This is the English documentation for Ballance Mod Loader Plus.
+Choose the page that matches what you are trying to do. Installing BML+,
+creating a mod, and changing the loader use different packages and tools.
 
-Use the repository README for project installation, source builds, release
-packages, and the general project overview. This site focuses on the public SDK
-and mod-authoring interfaces.
+## Use BML+
 
-## Start here
+Install the runtime, add native or script mods, update an existing
+installation, or diagnose a loading problem.
 
-- [Native mod API](native-mod-api.md)
-- [Script mod author guide](script-mod/author-guide.md)
-- [Script API reference](script-mod/api.md)
-- [Inter-mod communication](imc.md)
-- [Create a typed IMC API](imc-author-guide.md)
+[Use BML+](using-bml.md)
 
-## Language availability
+## Create a mod
 
-The native SDK, script mod author guide, and IMC documentation are available in
-English. The complete step-by-step AngelScript tutorial is currently maintained
-on the [Simplified Chinese site](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/).
+Choose between a script mod, a native mod, or a native plugin that also exposes
+a CKAngelScript API. Start from the released SDK and its templates.
+
+[Choose a mod development route](modding.md)
+
+## Contribute to BML+
+
+Build the loader, find the subsystem that owns a change, preserve its public
+interfaces, and run the appropriate tests.
+
+[Contribute to BML+](contributing.md)
+
+The full step-by-step script tutorial is maintained on the
+[Simplified Chinese site](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/).
