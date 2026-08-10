@@ -121,6 +121,8 @@ function Assert-BMLSdkStage {
     )
 
     foreach ($relative in @(
+        'README.md',
+        'README_zh-CN.md',
         'include\BML\BMLAll.h',
         'include\BML\Imc.h',
         'include\BML\Generated\bml_runtime_imc.hpp',

@@ -469,6 +469,12 @@ install(FILES
 )
 
 install(FILES
+        "${PROJECT_SOURCE_DIR}/packaging/sdk/README.md"
+        "${PROJECT_SOURCE_DIR}/packaging/sdk/README_zh-CN.md"
+        DESTINATION "."
+)
+
+install(FILES
         "${PROJECT_SOURCE_DIR}/docs/en/modding.md"
         "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
         "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
