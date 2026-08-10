@@ -95,7 +95,7 @@ else()
                 "Failed to install the SDK for its legacy native consumer.\n"
                 "${install_output}${install_error}")
     endif()
-    set(consumer_source_dir "${source_root}/templates/native-mod-template")
+    set(consumer_source_dir "${install_root}/templates/native-mod-template")
 endif()
 
 foreach(required_sdk_path
@@ -211,24 +211,33 @@ if(NOT found_entry OR NOT found_exit)
             "points. BMLEntry=${found_entry}, BMLExit=${found_exit}\n${exports}")
 endif()
 
-if(use_sdk_archive)
-    find_program(powershell_executable NAMES pwsh powershell REQUIRED)
-    set(script_template "${install_root}/templates/script-mod-template")
-    set(script_scaffolder "${install_root}/scripts/New-BMLScriptMod.ps1")
-    set(script_packer "${install_root}/scripts/Pack-BMLScriptMod.ps1")
-    set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")
-    foreach(required_script_path
-            "${script_template}/HelloScript.mod.as"
-            "${script_scaffolder}"
-            "${script_packer}"
-            "${script_project_module}")
-        if(NOT EXISTS "${required_script_path}")
-            message(FATAL_ERROR
-                    "The packaged SDK script consumer input is incomplete: "
-                    "${required_script_path}")
-        endif()
-    endforeach()
+set(script_template "${install_root}/templates/script-mod-template")
+set(script_scaffolder "${install_root}/scripts/New-BMLScriptMod.ps1")
+set(script_packer "${install_root}/scripts/Pack-BMLScriptMod.ps1")
+set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")
+set(script_sdk_inputs
+        "${script_template}/HelloScript.mod.as"
+        "${script_scaffolder}"
+        "${script_packer}"
+        "${script_project_module}")
+set(script_sdk_input_count 0)
+foreach(script_sdk_input IN LISTS script_sdk_inputs)
+    if(EXISTS "${script_sdk_input}")
+        math(EXPR script_sdk_input_count "${script_sdk_input_count} + 1")
+    endif()
+endforeach()
+list(LENGTH script_sdk_inputs expected_script_sdk_input_count)
+if(script_sdk_input_count GREATER 0 AND
+   script_sdk_input_count LESS expected_script_sdk_input_count)
+    message(FATAL_ERROR
+            "The installed SDK contains an incomplete set of script Mod tools: "
+            "${script_sdk_inputs}")
+endif()
 
+set(validated_script_tooling FALSE)
+if(script_sdk_input_count EQUAL expected_script_sdk_input_count)
+    set(validated_script_tooling TRUE)
+    find_program(powershell_executable NAMES pwsh powershell REQUIRED)
     set(script_package_source "${work_root}/QuickStartMod")
     file(REMOVE_RECURSE "${script_package_source}")
     execute_process(
@@ -245,7 +254,7 @@ if(use_sdk_archive)
     if(NOT script_scaffold_status EQUAL 0 OR
        NOT EXISTS "${script_package_source}/QuickStartMod.mod.as")
         message(FATAL_ERROR
-                "The packaged SDK could not create a script Mod.\n"
+                "The installed SDK could not create a script Mod.\n"
                 "${script_scaffold_output}${script_scaffold_error}")
     endif()
 
@@ -280,7 +289,7 @@ if(use_sdk_archive)
     )
     if(NOT script_pack_status EQUAL 0 OR NOT EXISTS "${script_package}")
         message(FATAL_ERROR
-                "The packaged SDK could not package its script Mod template.\n"
+                "The installed SDK could not package its generated script Mod.\n"
                 "${script_pack_output}${script_pack_error}")
     endif()
 
@@ -337,9 +346,12 @@ endif()
 
 if(use_sdk_archive)
     set(sdk_input_label "SDK archive")
-    set(script_validation_label " and packaged script Mod tooling")
 else()
     set(sdk_input_label "installed SDK")
+endif()
+if(validated_script_tooling)
+    set(script_validation_label " and script Mod tooling")
+else()
     set(script_validation_label "")
 endif()
 message(STATUS

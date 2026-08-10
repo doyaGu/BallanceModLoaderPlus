@@ -146,7 +146,10 @@ function Assert-BMLSdkStage {
         'share\BML\docs\zh-CN\native-mod-api.md',
         'share\BML\docs\zh-CN\imc-author-guide.md',
         'share\BML\docs\zh-CN\imc.md',
-        'templates\native-mod-template\CMakeLists.txt'
+        'templates\README.md',
+        'templates\native-mod-template\CMakeLists.txt',
+        'templates\native-mod-template\README.md',
+        'templates\native-mod-template\src\HelloMod.cpp'
     )) {
         Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
     }
@@ -156,6 +159,7 @@ function Assert-BMLSdkStage {
             'include\CKAngelScript.h',
             'include\angelscript.h',
             'templates\script-mod-template\HelloScript.mod.as',
+            'templates\script-mod-template\README.md',
             'examples\script-mod\README.md',
             'examples\script-mod\README_zh-CN.md',
             'examples\script-mod\command-config\CommandConfig.mod.as',
@@ -163,6 +167,7 @@ function Assert-BMLSdkStage {
             'examples\script-mod\game-state\GameState.mod.as',
             'scripts\New-BMLScriptMod.ps1',
             'scripts\Pack-BMLScriptMod.ps1',
+            'scripts\lib\BMLProject.psm1',
             'share\BML\docs\en\script-mod\index.md',
             'share\BML\docs\en\script-mod\api.md',
             'share\BML\docs\zh-CN\api.md',
@@ -172,6 +177,20 @@ function Assert-BMLSdkStage {
             'docs\api\bml-imgui-api.as'
         )) {
             Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
+        }
+    } else {
+        foreach ($relative in @(
+            'templates\script-mod-template',
+            'examples\script-mod',
+            'scripts\New-BMLScriptMod.ps1',
+            'scripts\Pack-BMLScriptMod.ps1',
+            'share\BML\docs\en\script-mod',
+            'share\BML\docs\zh-CN\script-mod-tutorial',
+            'docs\api\as.predefined'
+        )) {
+            if (Test-Path -LiteralPath (Join-Path $StageDir $relative)) {
+                throw "SDK stage contains AngelScript author assets but script support was not requested: $relative"
+            }
         }
     }
 
@@ -452,9 +471,6 @@ if ($IncludeAngelScript -and -not $ckasRuntime) {
     throw '-IncludeAngelScript requires -CKAngelScriptRuntimeDir.'
 }
 
-$nativeTemplate = Join-Path $layout.TemplatesRoot 'native-mod-template'
-$scriptTemplate = Join-Path $layout.TemplatesRoot 'script-mod-template'
-
 foreach ($path in @(
     $releaseInstall,
     $debugInstall,
@@ -463,9 +479,7 @@ foreach ($path in @(
     $runtimeSource,
     (Join-Path $layout.RepoRoot 'LICENSE'),
     (Join-Path $layout.RepoRoot 'README.md'),
-    (Join-Path $layout.RepoRoot 'README_zh-CN.md'),
-    (Join-Path $layout.TemplatesRoot 'README.md'),
-    $nativeTemplate
+    (Join-Path $layout.RepoRoot 'README_zh-CN.md')
 )) {
     Assert-BMLPath -Path $path
 }
@@ -501,9 +515,6 @@ Assert-BMLBinaryVersionMatchesHeader `
     -Label 'Debug BMLPlus.dll'
 
 if ($IncludeAngelScript) {
-    Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'New-BMLScriptMod.ps1') -Type Leaf
-    Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Type Leaf
-    Assert-BMLPath -Path $scriptTemplate -Type Container
     if ($ckasRuntime) {
         Assert-BMLPath -Path $ckasRuntimeDll -Type Leaf
         Assert-BMLPath -Path (Join-Path $ckasRuntime 'include\CKAngelScript.h') -Type Leaf
@@ -561,15 +572,9 @@ if ($SkipUpdateSigning) {
 $releaseSdkStage = Join-Path $stageRoot 'sdk-release'
 New-BMLCleanDirectory $releaseSdkStage
 Copy-BMLDirectoryContents -SourceDir $releaseInstall -DestinationDir $releaseSdkStage
-Copy-RequiredFile -Source (Join-Path $layout.TemplatesRoot 'README.md') -Destination (Join-Path $releaseSdkStage 'templates\README.md')
-Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\native-mod-template')
 
 if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
-    Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\script-mod-template')
-    Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'New-BMLScriptMod.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\New-BMLScriptMod.ps1')
-    Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\Pack-BMLScriptMod.ps1')
-    Copy-BMLDirectoryContents -SourceDir (Join-Path $layout.ScriptsRoot 'lib') -DestinationDir (Join-Path $releaseSdkStage 'scripts\lib')
 }
 
 Assert-BMLSdkStage -StageDir $releaseSdkStage -RequireAngelScript:$IncludeAngelScript
@@ -579,12 +584,6 @@ $debugStage = Join-Path $stageRoot 'sdk-debug'
 New-BMLCleanDirectory $debugStage
 Copy-BMLDirectoryContents -SourceDir $debugInstall -DestinationDir $debugStage
 Copy-RequiredFile -Source (Join-Path $debugBin 'BMLPlus.pdb') -Destination (Join-Path $debugStage 'bin\BMLPlus.pdb')
-foreach ($directory in @('docs', 'tools', 'examples', 'templates', 'scripts')) {
-    $source = Join-Path $releaseSdkStage $directory
-    if (Test-Path -LiteralPath $source) {
-        Copy-BMLDirectoryContents -SourceDir $source -DestinationDir (Join-Path $debugStage $directory)
-    }
-}
 if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $debugStage 'include')
 }

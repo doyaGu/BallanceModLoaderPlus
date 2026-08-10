@@ -476,6 +476,16 @@ install(FILES
 )
 
 install(FILES
+        "${PROJECT_SOURCE_DIR}/templates/README.md"
+        DESTINATION "templates"
+)
+
+install(DIRECTORY
+        "${PROJECT_SOURCE_DIR}/templates/native-mod-template"
+        DESTINATION "templates"
+)
+
+install(FILES
         "${PROJECT_SOURCE_DIR}/docs/en/modding.md"
         "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
         "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
@@ -520,5 +530,21 @@ if (BML_WITH_ANGELSCRIPT)
             "${PROJECT_SOURCE_DIR}/examples/script-mod"
             DESTINATION "examples"
             FILES_MATCHING PATTERN "*.md" PATTERN "*.as"
+    )
+
+    install(DIRECTORY
+            "${PROJECT_SOURCE_DIR}/templates/script-mod-template"
+            DESTINATION "templates"
+    )
+
+    install(FILES
+            "${PROJECT_SOURCE_DIR}/scripts/New-BMLScriptMod.ps1"
+            "${PROJECT_SOURCE_DIR}/scripts/Pack-BMLScriptMod.ps1"
+            DESTINATION "scripts"
+    )
+
+    install(FILES
+            "${PROJECT_SOURCE_DIR}/scripts/lib/BMLProject.psm1"
+            DESTINATION "scripts/lib"
     )
 endif ()
