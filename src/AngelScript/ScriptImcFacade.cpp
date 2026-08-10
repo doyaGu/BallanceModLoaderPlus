@@ -10,6 +10,7 @@
 
 #include <angelscript.h>
 
+#include "BML/Events.h"
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/EventKinds.h"
@@ -458,14 +459,12 @@ int ReadResetpoints(void *&out) {
         out, "array<BML::Gameplay::Resetpoint>", response.Objects.size(),
         [&response](std::size_t i) { return Resetpoint{response.Objects[i]}; });
 }
-/* Script events own decoded IMC values, never CK pointers. Object references are
- * resolved only by Borrow* calls, so destroyed Virtools objects remain safe. */
+/* Script events own decoded domain values, never CK pointers. Object references
+ * are resolved only by Borrow* calls, so destroyed Virtools objects remain safe. */
 class ScriptEvent {
 public:
-    ScriptEvent(ModContext *context, EventsImc::EventValue value,
-                std::uint64_t sequence, std::uint64_t timestamp)
-        : m_Context(context), m_Value(std::move(value)),
-          m_Sequence(sequence), m_Timestamp(timestamp) {}
+    ScriptEvent(ModContext *context, BML::Events::Event value)
+        : m_Context(context), m_Value(std::move(value)) {}
 
     void AddRef() { ++m_RefCount; }
     void Release() {
@@ -476,65 +475,119 @@ public:
     bool IsValid() const { return m_Context != nullptr; }
     int Status() const { return IsValid() ? BML_OK : BML_ERROR_IMC_HANDLE_STALE; }
     int GetKind() const { return m_Value.Kind; }
-    std::uint64_t GetSequence() const { return m_Sequence; }
-    std::uint64_t GetTimestamp() const { return m_Timestamp; }
+    std::uint64_t GetSequence() const { return m_Value.Sequence; }
+    std::uint64_t GetTimestamp() const { return m_Value.Timestamp; }
 
-    bool IsLoad() const {
-        return m_Value.Kind == BML_EVENT_LOAD_OBJECT || m_Value.Kind == BML_EVENT_LOAD_SCRIPT;
+    bool IsLoad() const { return m_Value.LoadData.has_value(); }
+    bool IsPhysics() const { return m_Value.PhysicsData.has_value(); }
+    bool IsCommand() const { return m_Value.CommandData.has_value(); }
+    bool IsConfig() const { return m_Value.ConfigData.has_value(); }
+    bool IsCheat() const { return m_Value.CheatData.has_value(); }
+
+    std::string GetFilename() const { return Load() ? Load()->Filename : std::string(); }
+    bool GetIsMap() const { return Load() ? Load()->IsMap : false; }
+    std::string GetMasterName() const { return Load() ? Load()->MasterName : std::string(); }
+    int GetFilterClass() const { return Load() ? Load()->FilterClass : 0; }
+    bool GetAddToScene() const { return Load() ? Load()->AddToScene : false; }
+    bool GetReuseMeshes() const { return Load() ? Load()->ReuseMeshes : false; }
+    bool GetReuseMaterials() const { return Load() ? Load()->ReuseMaterials : false; }
+    bool GetDynamic() const { return Load() ? Load()->Dynamic : false; }
+    CKObject *BorrowMasterObject() const {
+        return Load() ? Resolve(Load()->MasterObject) : nullptr;
     }
-    bool IsPhysics() const {
-        return m_Value.Kind == BML_EVENT_PHYSICALIZE || m_Value.Kind == BML_EVENT_UNPHYSICALIZE;
+    CKObject *BorrowScript() const {
+        return Load() ? Resolve(Load()->Script) : nullptr;
     }
-    bool IsCommand() const {
-        return m_Value.Kind == BML_EVENT_COMMAND_PRE || m_Value.Kind == BML_EVENT_COMMAND_POST;
+    int GetObjectCount() const { return Load() ? Count(Load()->Objects.size()) : 0; }
+    CKObject *BorrowObject(int index) const {
+        return Load() ? ResolveAt(Load()->Objects, index) : nullptr;
     }
-    bool IsConfig() const { return m_Value.Kind == BML_EVENT_CONFIG_MODIFIED; }
-    bool IsCheat() const { return m_Value.Kind == BML_EVENT_CHEAT_CHANGED; }
 
-    std::string GetFilename() const { return m_Value.Filename; }
-    bool GetIsMap() const { return m_Value.IsMap; }
-    std::string GetMasterName() const { return m_Value.MasterName; }
-    int GetFilterClass() const { return m_Value.FilterClass; }
-    bool GetAddToScene() const { return m_Value.AddToScene; }
-    bool GetReuseMeshes() const { return m_Value.ReuseMeshes; }
-    bool GetReuseMaterials() const { return m_Value.ReuseMaterials; }
-    bool GetDynamic() const { return m_Value.Dynamic; }
-    CKObject *BorrowMasterObject() const { return Resolve(m_Value.MasterObject); }
-    CKObject *BorrowScript() const { return Resolve(m_Value.Script); }
-    int GetObjectCount() const { return Count(m_Value.ObjectIds.size()); }
-    CKObject *BorrowObject(int index) const { return ResolveAt(m_Value.ObjectIds, index); }
+    CKObject *BorrowTarget() const {
+        return Physics() ? Resolve(Physics()->Target) : nullptr;
+    }
+    bool GetFixed() const { return Physics() ? Physics()->Fixed : false; }
+    float GetFriction() const { return Physics() ? Physics()->Friction : 0.0f; }
+    float GetElasticity() const { return Physics() ? Physics()->Elasticity : 0.0f; }
+    float GetMass() const { return Physics() ? Physics()->Mass : 0.0f; }
+    std::string GetCollisionGroup() const {
+        return Physics() ? Physics()->CollisionGroup : std::string();
+    }
+    bool GetStartFrozen() const { return Physics() ? Physics()->StartFrozen : false; }
+    bool GetEnableCollision() const { return Physics() ? Physics()->EnableCollision : false; }
+    bool GetAutoCalculateMassCenter() const {
+        return Physics() ? Physics()->AutoCalculateMassCenter : false;
+    }
+    float GetLinearDamp() const { return Physics() ? Physics()->LinearDamp : 0.0f; }
+    float GetRotDamp() const { return Physics() ? Physics()->RotDamp : 0.0f; }
+    std::string GetCollisionSurface() const {
+        return Physics() ? Physics()->CollisionSurface : std::string();
+    }
+    BML_Vec3 GetMassCenter() const {
+        return Physics() ? Physics()->MassCenter : BML_Vec3{};
+    }
+    int GetConvexMeshCount() const {
+        return Physics() ? Count(Physics()->ConvexMeshes.size()) : 0;
+    }
+    CKObject *BorrowConvexMesh(int index) const {
+        return Physics() ? ResolveAt(Physics()->ConvexMeshes, index) : nullptr;
+    }
+    int GetBallCount() const {
+        return Physics() ? Count(Physics()->BallCenters.size()) : 0;
+    }
+    BML_Vec3 GetBallCenter(int index) const {
+        return Physics() ? At(Physics()->BallCenters, index) : BML_Vec3{};
+    }
+    float GetBallRadius(int index) const {
+        return Physics() ? At(Physics()->BallRadii, index) : 0.0f;
+    }
+    int GetConcaveMeshCount() const {
+        return Physics() ? Count(Physics()->ConcaveMeshes.size()) : 0;
+    }
+    CKObject *BorrowConcaveMesh(int index) const {
+        return Physics() ? ResolveAt(Physics()->ConcaveMeshes, index) : nullptr;
+    }
 
-    CKObject *BorrowTarget() const { return Resolve(m_Value.Target); }
-    bool GetFixed() const { return m_Value.Fixed; }
-    float GetFriction() const { return m_Value.Friction; }
-    float GetElasticity() const { return m_Value.Elasticity; }
-    float GetMass() const { return m_Value.Mass; }
-    std::string GetCollisionGroup() const { return m_Value.CollisionGroup; }
-    bool GetStartFrozen() const { return m_Value.StartFrozen; }
-    bool GetEnableCollision() const { return m_Value.EnableCollision; }
-    bool GetAutoCalculateMassCenter() const { return m_Value.AutoCalculateMassCenter; }
-    float GetLinearDamp() const { return m_Value.LinearDamp; }
-    float GetRotDamp() const { return m_Value.RotDamp; }
-    std::string GetCollisionSurface() const { return m_Value.CollisionSurface; }
-    BML_Vec3 GetMassCenter() const { return m_Value.MassCenter; }
-    int GetConvexMeshCount() const { return Count(m_Value.ConvexMeshes.size()); }
-    CKObject *BorrowConvexMesh(int index) const { return ResolveAt(m_Value.ConvexMeshes, index); }
-    int GetBallCount() const { return Count(m_Value.BallCenters.size()); }
-    BML_Vec3 GetBallCenter(int index) const { return At(m_Value.BallCenters, index); }
-    float GetBallRadius(int index) const { return At(m_Value.BallRadii, index); }
-    int GetConcaveMeshCount() const { return Count(m_Value.ConcaveMeshes.size()); }
-    CKObject *BorrowConcaveMesh(int index) const { return ResolveAt(m_Value.ConcaveMeshes, index); }
-
-    std::string GetCommand() const { return m_Value.Command; }
-    int GetCommandArgumentCount() const { return Count(m_Value.CommandArgs.size()); }
-    std::string GetCommandArgument(int index) const { return At(m_Value.CommandArgs, index); }
-    std::string GetConfigCategory() const { return m_Value.ConfigCategory; }
-    std::string GetConfigKey() const { return m_Value.ConfigKey; }
-    int GetConfigType() const { return m_Value.ConfigType; }
-    std::string GetConfigValue() const { return m_Value.ConfigValue; }
-    bool GetCheatEnabled() const { return m_Value.CheatEnabled; }
+    std::string GetCommand() const {
+        return Command() ? Command()->Name : std::string();
+    }
+    int GetCommandArgumentCount() const {
+        return Command() ? Count(Command()->Arguments.size()) : 0;
+    }
+    std::string GetCommandArgument(int index) const {
+        return Command() ? At(Command()->Arguments, index) : std::string();
+    }
+    std::string GetConfigCategory() const {
+        return Config() ? Config()->Category : std::string();
+    }
+    std::string GetConfigKey() const {
+        return Config() ? Config()->Key : std::string();
+    }
+    int GetConfigType() const { return Config() ? Config()->Type : 0; }
+    std::string GetConfigValue() const {
+        return Config() ? Config()->Value : std::string();
+    }
+    bool GetCheatEnabled() const {
+        return Cheat() ? Cheat()->Enabled : false;
+    }
 
 private:
+    const BML::Events::Load *Load() const {
+        return m_Value.LoadData ? &*m_Value.LoadData : nullptr;
+    }
+    const BML::Events::Physics *Physics() const {
+        return m_Value.PhysicsData ? &*m_Value.PhysicsData : nullptr;
+    }
+    const BML::Events::Command *Command() const {
+        return m_Value.CommandData ? &*m_Value.CommandData : nullptr;
+    }
+    const BML::Events::Config *Config() const {
+        return m_Value.ConfigData ? &*m_Value.ConfigData : nullptr;
+    }
+    const BML::Events::Cheat *Cheat() const {
+        return m_Value.CheatData ? &*m_Value.CheatData : nullptr;
+    }
+
     static int Count(std::size_t count) {
         const auto limit = static_cast<std::size_t>((std::numeric_limits<int>::max)());
         return count > limit ? (std::numeric_limits<int>::max)()
@@ -560,9 +613,7 @@ private:
 
     int m_RefCount = 1;
     ModContext *m_Context = nullptr;
-    EventsImc::EventValue m_Value;
-    std::uint64_t m_Sequence = 0;
-    std::uint64_t m_Timestamp = 0;
+    BML::Events::Event m_Value;
 };
 
 class EventStream {
@@ -591,6 +642,7 @@ public:
         if (!m_Subscription.IsOpen()) {
             m_Queue.clear();
             m_LocalDrops = 0;
+            m_PendingError = BML_OK;
         }
         return status;
     }
@@ -614,43 +666,51 @@ public:
         out = nullptr;
         if (!m_Subscription.IsOpen())
             return BML_ERROR_INVALID_HANDLE;
+        if (m_PendingError != BML_OK) {
+            const int status = m_PendingError;
+            m_PendingError = BML_OK;
+            return status;
+        }
         if (m_Queue.empty())
             return BML_ERROR_NOT_FOUND;
-        QueuedEvent queued = std::move(m_Queue.front());
-        m_Queue.pop_front();
         ScriptEvent *event = new (std::nothrow) ScriptEvent(
-            m_Context, std::move(queued.Value), queued.Sequence, queued.Timestamp);
+            m_Context, std::move(m_Queue.front()));
         if (!event)
             return BML_ERROR_OUT_OF_MEMORY;
+        m_Queue.pop_front();
         out = event;
         return BML_OK;
     }
 
 private:
-    struct QueuedEvent {
-        EventsImc::EventValue Value;
-        std::uint64_t Sequence = 0;
-        std::uint64_t Timestamp = 0;
-    };
-
     static void OnEvent(int status, EventsImc::EventValue *value,
                         const BML_ImcMessage *message, void *userdata) noexcept {
         auto *self = static_cast<EventStream *>(userdata);
         if (!self)
             return;
         if (status != BML_OK || !value || !message) {
-            ++self->m_LocalDrops;
+            self->m_PendingError = status == BML_OK
+                                       ? BML_ERROR_MALFORMED_MESSAGE
+                                       : status;
             return;
         }
         try {
+            BML::Events::Event event{};
+            status = BML::Events::Detail::Decode(
+                std::move(*value), *message, event);
+            if (status != BML_OK) {
+                self->m_PendingError = status;
+                return;
+            }
             if (self->m_Queue.size() >= self->m_Capacity) {
                 self->m_Queue.pop_front();
                 ++self->m_LocalDrops;
             }
-            self->m_Queue.push_back(
-                {std::move(*value), message->MessageId, message->TimestampNs});
+            self->m_Queue.push_back(std::move(event));
+        } catch (const std::bad_alloc &) {
+            self->m_PendingError = BML_ERROR_OUT_OF_MEMORY;
         } catch (...) {
-            ++self->m_LocalDrops;
+            self->m_PendingError = BML_ERROR_FAIL;
         }
     }
 
@@ -658,8 +718,9 @@ private:
     ModContext *m_Context = nullptr;
     std::size_t m_Capacity = 0;
     std::uint64_t m_LocalDrops = 0;
+    int m_PendingError = BML_OK;
     EventsImc::AllSubscription m_Subscription;
-    std::deque<QueuedEvent> m_Queue;
+    std::deque<BML::Events::Event> m_Queue;
 };
 
 int OpenEvents(EventStream *&out, int capacity) {
