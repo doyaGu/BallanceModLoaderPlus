@@ -40,9 +40,18 @@ Use the native route for operations that genuinely require C++, the Virtools
 SDK, or generated IMC services.
 
 1. Open [`share/BML/docs/en/modding.md`](share/BML/docs/en/modding.md).
-2. Copy [`templates/native-mod-template`](templates/native-mod-template).
-3. Follow its README to configure an x86 build against this SDK and the
-   Virtools SDK.
+2. Create the project in your source workspace:
+
+   ```powershell
+   & "<BML-SDK>/scripts/New-BMLNativeMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+3. Follow the generated README to configure an x86 build against this SDK and
+   the Virtools SDK.
+
+You can also copy [`templates/native-mod-template`](templates/native-mod-template)
+manually.
 
 ## Where things are
 
@@ -55,7 +64,7 @@ SDK, or generated IMC services.
 | `docs/api/` | AngelScript editor declarations, when script support is enabled |
 | `include/`, `lib/` | Native headers, libraries, and CMake package files |
 | `share/BML/tools/` | Generated IMC tooling |
-| `scripts/` | Script Mod creation and packaging tools |
+| `scripts/` | Mod creation and script Mod packaging tools |
 
 Use the runtime release `BMLPlus-<version>.zip` to install BML+ into the game.
 Do not use an SDK archive as a runtime package.

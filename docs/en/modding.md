@@ -35,8 +35,8 @@ identity, lifecycle, configuration, commands, loader UI, and mod-level services.
 
 2. Open the generated directory and README.
 3. Confirm that the matching `BuildingBlocks/AngelScript.dll` is installed.
-4. Start Player without editing the template. Confirm both the in-game greeting and its load
-   line in `ModLoader/ModLoader.log`.
+4. Start Player without editing the generated source. Confirm both the in-game
+   greeting and its load line in `ModLoader/ModLoader.log`.
 5. Keep the generated id stable; changing it later creates a different Mod and
    requires a Player restart.
 6. Keep Player open. Saving source in the loaded directory triggers automatic
@@ -52,12 +52,23 @@ the same pages under `share/BML/docs/en/script-mod`.
 
 ## Start a native mod
 
-1. Copy `templates/native-mod-template` from the SDK.
-2. Configure it for an MSVC-compatible Win32 target and point
+1. Open PowerShell in the directory where you keep source projects and create
+   a Mod from the SDK template:
+
+   ```powershell
+   & "<BML-SDK>/scripts/New-BMLNativeMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+   The command keeps the CMake target, C++ class, source filename, and metadata
+   consistent. You can also copy `templates/native-mod-template` manually.
+
+2. Open the generated README. Configure the project for an MSVC-compatible
+   Win32 target and point
    `CMAKE_PREFIX_PATH` at the extracted BML+ SDK.
 3. Point `VIRTOOLS_SDK_PATH` at Virtools SDK 2.1.
 4. Build and install the Debug mod into `ModLoader/Mods`.
-5. Start Player and confirm the template's load line in
+5. Start Player and confirm the generated Mod's load line in
    `ModLoader/ModLoader.log`.
 6. Build Release and test the exact artifact you intend to publish.
 

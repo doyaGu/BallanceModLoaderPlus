@@ -149,7 +149,9 @@ function Assert-BMLSdkStage {
         'templates\README.md',
         'templates\native-mod-template\CMakeLists.txt',
         'templates\native-mod-template\README.md',
-        'templates\native-mod-template\src\HelloMod.cpp'
+        'templates\native-mod-template\src\HelloMod.cpp',
+        'scripts\New-BMLNativeMod.ps1',
+        'scripts\lib\BMLProject.psm1'
     )) {
         Assert-BMLPath -Path (Join-Path $StageDir $relative) -Type Leaf
     }
@@ -167,7 +169,6 @@ function Assert-BMLSdkStage {
             'examples\script-mod\game-state\GameState.mod.as',
             'scripts\New-BMLScriptMod.ps1',
             'scripts\Pack-BMLScriptMod.ps1',
-            'scripts\lib\BMLProject.psm1',
             'share\BML\docs\en\script-mod\index.md',
             'share\BML\docs\en\script-mod\api.md',
             'share\BML\docs\zh-CN\api.md',

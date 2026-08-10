@@ -486,6 +486,16 @@ install(DIRECTORY
 )
 
 install(FILES
+        "${PROJECT_SOURCE_DIR}/scripts/New-BMLNativeMod.ps1"
+        DESTINATION "scripts"
+)
+
+install(FILES
+        "${PROJECT_SOURCE_DIR}/scripts/lib/BMLProject.psm1"
+        DESTINATION "scripts/lib"
+)
+
+install(FILES
         "${PROJECT_SOURCE_DIR}/docs/en/modding.md"
         "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
         "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
@@ -541,10 +551,5 @@ if (BML_WITH_ANGELSCRIPT)
             "${PROJECT_SOURCE_DIR}/scripts/New-BMLScriptMod.ps1"
             "${PROJECT_SOURCE_DIR}/scripts/Pack-BMLScriptMod.ps1"
             DESTINATION "scripts"
-    )
-
-    install(FILES
-            "${PROJECT_SOURCE_DIR}/scripts/lib/BMLProject.psm1"
-            DESTINATION "scripts/lib"
     )
 endif ()

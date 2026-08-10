@@ -36,8 +36,16 @@
 只有确实需要 C++、Virtools SDK 或生成式 IMC 服务时才选择原生路线。
 
 1. 打开 [`share/BML/docs/zh-CN/modding.md`](share/BML/docs/zh-CN/modding.md)。
-2. 复制 [`templates/native-mod-template`](templates/native-mod-template)。
-3. 按模板 README 的说明，使用该 SDK 和 Virtools SDK 配置 x86 构建。
+2. 在你的源码工作区中创建项目：
+
+   ```powershell
+   & "<BML-SDK>/scripts/New-BMLNativeMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+3. 按生成的 README，使用该 SDK 和 Virtools SDK 配置 x86 构建。
+
+也可以手动复制 [`templates/native-mod-template`](templates/native-mod-template)。
 
 ## 目录用途
 
@@ -50,7 +58,7 @@
 | `docs/api/` | 启用脚本支持时提供的 AngelScript 编辑器声明 |
 | `include/`、`lib/` | 原生头文件、库和 CMake package |
 | `share/BML/tools/` | 生成式 IMC 工具 |
-| `scripts/` | 脚本 Mod 创建和打包工具 |
+| `scripts/` | Mod 创建和脚本 Mod 打包工具 |
 
 安装 BML+ 到游戏时应使用运行时发布包 `BMLPlus-<version>.zip`，不能使用 SDK
 压缩包代替运行时包。

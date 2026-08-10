@@ -81,7 +81,6 @@ if(use_sdk_archive)
                 "Failed to extract the release SDK archive.\n"
                 "${extract_output}${extract_error}")
     endif()
-    set(consumer_source_dir "${install_root}/templates/native-mod-template")
 else()
     execute_process(
         COMMAND "${CMAKE_EXECUTABLE}" --install "${main_build_dir}"
@@ -95,16 +94,51 @@ else()
                 "Failed to install the SDK for its legacy native consumer.\n"
                 "${install_output}${install_error}")
     endif()
-    set(consumer_source_dir "${install_root}/templates/native-mod-template")
 endif()
 
+find_program(powershell_executable NAMES pwsh powershell REQUIRED)
+set(native_template "${install_root}/templates/native-mod-template")
+set(native_scaffolder "${install_root}/scripts/New-BMLNativeMod.ps1")
+set(consumer_source_dir "${work_root}/NativeQuickStartMod")
 foreach(required_sdk_path
         "${install_root}/lib/cmake/BML/BMLConfig.cmake"
         "${install_root}/lib/BMLPlus.lib"
-        "${consumer_source_dir}/CMakeLists.txt")
+        "${native_template}/CMakeLists.txt"
+        "${native_template}/src/HelloMod.cpp"
+        "${native_scaffolder}")
     if(NOT EXISTS "${required_sdk_path}")
         message(FATAL_ERROR
                 "Legacy native SDK consumer input is incomplete: ${required_sdk_path}")
+    endif()
+endforeach()
+
+execute_process(
+    COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
+            -File "${native_scaffolder}"
+            -Id "sdk.quick-start"
+            -Name "SDK Quick Start"
+            -Author "SDK Test"
+            -Destination "${consumer_source_dir}"
+    RESULT_VARIABLE native_scaffold_status
+    OUTPUT_VARIABLE native_scaffold_output
+    ERROR_VARIABLE native_scaffold_error
+)
+if(NOT native_scaffold_status EQUAL 0 OR
+   NOT EXISTS "${consumer_source_dir}/src/QuickStartMod.cpp")
+    message(FATAL_ERROR
+            "The installed SDK could not create a native Mod.\n"
+            "${native_scaffold_output}${native_scaffold_error}")
+endif()
+
+file(READ "${consumer_source_dir}/src/QuickStartMod.cpp" generated_native_source)
+foreach(required_fragment
+        "return \"sdk.quick-start\";"
+        "return \"SDK Quick Start\";"
+        "return \"SDK Test\";")
+    string(FIND "${generated_native_source}" "${required_fragment}" fragment_index)
+    if(fragment_index EQUAL -1)
+        message(FATAL_ERROR
+                "The generated native Mod is missing ${required_fragment}.")
     endif()
 endforeach()
 
@@ -134,7 +168,7 @@ execute_process(
 )
 if(NOT configure_status EQUAL 0)
     message(FATAL_ERROR
-            "The installed SDK could not configure the legacy native Mod template.\n"
+            "The installed SDK could not configure its generated native Mod.\n"
             "${configure_output}${configure_error}")
 endif()
 
@@ -147,7 +181,7 @@ execute_process(
 )
 if(NOT build_status EQUAL 0)
     message(FATAL_ERROR
-            "The installed SDK could not build the legacy native Mod template.\n"
+            "The installed SDK could not build its generated native Mod.\n"
             "${build_output}${build_error}")
 endif()
 
@@ -160,24 +194,24 @@ execute_process(
 )
 if(NOT consumer_install_status EQUAL 0)
     message(FATAL_ERROR
-            "The installed SDK could not install the native Mod template.\n"
+            "The installed SDK could not install its generated native Mod.\n"
             "${consumer_install_output}${consumer_install_error}")
 endif()
 
-set(installed_mod "${consumer_modloader_dir}/Mods/HelloMod.bmodp")
+set(installed_mod "${consumer_modloader_dir}/Mods/QuickStartMod.bmodp")
 if(NOT EXISTS "${installed_mod}")
     message(FATAL_ERROR
-            "The native Mod template install rule did not produce: ${installed_mod}")
+            "The generated native Mod install rule did not produce: ${installed_mod}")
 endif()
 
 file(GLOB_RECURSE mod_candidates LIST_DIRECTORIES FALSE
-        "${consumer_build_dir}/HelloMod.bmodp"
-        "${consumer_build_dir}/*/HelloMod.bmodp")
+        "${consumer_build_dir}/QuickStartMod.bmodp"
+        "${consumer_build_dir}/*/QuickStartMod.bmodp")
 list(REMOVE_DUPLICATES mod_candidates)
 list(LENGTH mod_candidates mod_count)
 if(NOT mod_count EQUAL 1)
     message(FATAL_ERROR
-            "Expected one HelloMod.bmodp from the installed SDK consumer build, "
+            "Expected one QuickStartMod.bmodp from the installed SDK consumer build, "
             "found ${mod_count}: ${mod_candidates}")
 endif()
 list(GET mod_candidates 0 mod_binary)
@@ -215,29 +249,27 @@ set(script_template "${install_root}/templates/script-mod-template")
 set(script_scaffolder "${install_root}/scripts/New-BMLScriptMod.ps1")
 set(script_packer "${install_root}/scripts/Pack-BMLScriptMod.ps1")
 set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")
-set(script_sdk_inputs
+set(script_sdk_markers
         "${script_template}/HelloScript.mod.as"
         "${script_scaffolder}"
-        "${script_packer}"
-        "${script_project_module}")
-set(script_sdk_input_count 0)
-foreach(script_sdk_input IN LISTS script_sdk_inputs)
-    if(EXISTS "${script_sdk_input}")
-        math(EXPR script_sdk_input_count "${script_sdk_input_count} + 1")
+        "${script_packer}")
+set(script_sdk_marker_count 0)
+foreach(script_sdk_marker IN LISTS script_sdk_markers)
+    if(EXISTS "${script_sdk_marker}")
+        math(EXPR script_sdk_marker_count "${script_sdk_marker_count} + 1")
     endif()
 endforeach()
-list(LENGTH script_sdk_inputs expected_script_sdk_input_count)
-if(script_sdk_input_count GREATER 0 AND
-   script_sdk_input_count LESS expected_script_sdk_input_count)
-    message(FATAL_ERROR
-            "The installed SDK contains an incomplete set of script Mod tools: "
-            "${script_sdk_inputs}")
-endif()
+list(LENGTH script_sdk_markers expected_script_sdk_marker_count)
 
 set(validated_script_tooling FALSE)
-if(script_sdk_input_count EQUAL expected_script_sdk_input_count)
+if(script_sdk_marker_count GREATER 0)
+    if(script_sdk_marker_count LESS expected_script_sdk_marker_count OR
+       NOT EXISTS "${script_project_module}")
+        message(FATAL_ERROR
+                "The installed SDK contains an incomplete set of script Mod tools: "
+                "${script_sdk_markers};${script_project_module}")
+    endif()
     set(validated_script_tooling TRUE)
-    find_program(powershell_executable NAMES pwsh powershell REQUIRED)
     set(script_package_source "${work_root}/QuickStartMod")
     file(REMOVE_RECURSE "${script_package_source}")
     execute_process(
@@ -355,5 +387,5 @@ else()
     set(script_validation_label "")
 endif()
 message(STATUS
-        "Verified the ${sdk_input_label} with HelloMod.bmodp and its "
+        "Verified the ${sdk_input_label} with QuickStartMod.bmodp and its "
         "BMLEntry/BMLExit exports${script_validation_label}.")

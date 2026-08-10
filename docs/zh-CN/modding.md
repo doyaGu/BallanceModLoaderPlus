@@ -33,7 +33,7 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 
 2. 打开生成的目录和 README。
 3. 确认配套的 `BuildingBlocks/AngelScript.dll` 已安装。
-4. 不修改模板，直接启动 Player，同时确认游戏内问候语和
+4. 不修改生成的源码，直接启动 Player，同时确认游戏内问候语和
    `ModLoader/ModLoader.log` 中的加载日志。
 5. 保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启 Player。
 6. 保持 Player 运行。保存已加载目录中的源码会自动热重载；只有新增入口、修改 id
@@ -47,12 +47,22 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 
 ## 开始编写原生 Mod
 
-1. 从 SDK 复制 `templates/native-mod-template`。
-2. 使用兼容 MSVC ABI 的 Win32 目标配置项目，并让 `CMAKE_PREFIX_PATH` 指向解压后的
+1. 在存放源码项目的目录中打开 PowerShell，用 SDK 模板创建 Mod：
+
+   ```powershell
+   & "<BML-SDK>/scripts/New-BMLNativeMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+   命令会让 CMake target、C++ 类名、源文件名和元数据保持一致。也可以手动复制
+   `templates/native-mod-template`。
+
+2. 打开生成的 README。使用兼容 MSVC ABI 的 Win32 目标配置项目，并让
+   `CMAKE_PREFIX_PATH` 指向解压后的
    BML+ SDK。
 3. 让 `VIRTOOLS_SDK_PATH` 指向 Virtools SDK 2.1。
 4. 构建 Debug Mod，并安装到 `ModLoader/Mods`。
-5. 启动 Player，在 `ModLoader/ModLoader.log` 中确认模板的加载日志。
+5. 启动 Player，在 `ModLoader/ModLoader.log` 中确认生成 Mod 的加载日志。
 6. 构建 Release，并测试准备发布的同一个产物。
 
 SDK 的 CMake 入口为：
