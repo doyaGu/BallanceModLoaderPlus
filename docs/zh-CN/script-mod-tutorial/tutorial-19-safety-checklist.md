@@ -79,20 +79,20 @@ private bool ValidateTarget(const BML::ModContext &in ctx,
                             const string &in expectedName) {
     // 检查 1：是否为 null
     if (target is null) {
-        LogWarn(ctx, "Target is null");
+        ctx.LogWarn("Target is null");
         return false;
     }
 
     // 检查 2：对象是否仍然有效（可能已被引擎销毁）
     if (!BML::CK::IsValid(target)) {
-        LogWarn(ctx, "Target is no longer valid");
+        ctx.LogWarn("Target is no longer valid");
         return false;
     }
 
     // 检查 3：名字是否匹配预期
     string actualName = BML::CK::GetName(target);
     if (actualName != expectedName) {
-        LogWarn(ctx, "Name mismatch: expected=" + expectedName
+        ctx.LogWarn("Name mismatch: expected=" + expectedName
                      + " actual=" + actualName);
         return false;
     }
@@ -132,14 +132,14 @@ private bool ValidateTableForRead(const BML::ModContext &in ctx,
 
     // 表是否存在
     if (table is null) {
-        LogWarn(ctx, "Table not found: " + tableName);
+        ctx.LogWarn("Table not found: " + tableName);
         return false;
     }
 
     // 列数是否匹配预期
     int cols = BML::CK::GetColumnCount(table);
     if (cols < expectedColumns) {
-        LogWarn(ctx, tableName + " columns=" + cols
+        ctx.LogWarn(tableName + " columns=" + cols
                      + " expected>=" + expectedColumns);
         return false;
     }
@@ -147,7 +147,7 @@ private bool ValidateTableForRead(const BML::ModContext &in ctx,
     // 行数是否满足最低要求
     int rows = BML::CK::GetRowCount(table);
     if (rows < minRows) {
-        LogWarn(ctx, tableName + " rows=" + rows
+        ctx.LogWarn(tableName + " rows=" + rows
                      + " expected>=" + minRows);
         return false;
     }
@@ -176,7 +176,7 @@ private bool ValidateForPhysics(const BML::ModContext &in ctx,
                                  CK3dEntity@ target,
                                  bool knownPhysicalized) {
     if (target is null || !BML::CK::IsValid(target)) {
-        LogWarn(ctx, "Physics target invalid");
+        ctx.LogWarn("Physics target invalid");
         return false;
     }
 
@@ -187,7 +187,7 @@ private bool ValidateForPhysics(const BML::ModContext &in ctx,
     // 脚本 API 没有“是否已物理化”的查询函数。
     // 自己创建的对象应保存 PhysicalizeBall 的返回值。
     if (!knownPhysicalized) {
-        LogWarn(ctx, BML::CK::GetName(target) + " is not physicalized");
+        ctx.LogWarn(BML::CK::GetName(target) + " is not physicalized");
         return false;
     }
 

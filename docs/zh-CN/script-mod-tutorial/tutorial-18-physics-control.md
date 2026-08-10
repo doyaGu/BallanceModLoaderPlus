@@ -109,7 +109,7 @@ class ControlBall {
     private int forceFramesLeft = 0;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        LogInfo(ctx, "ControlBall loaded. J=spawn K=cleanup U=wake I/H=impulse F=force C=clear");
+        ctx.LogInfo("ControlBall loaded. J=spawn K=cleanup U=wake I/H=impulse F=force C=clear");
     }
 
     void OnUnload(const BML::ModContext &in ctx) {
@@ -175,7 +175,7 @@ class ControlBall {
         }
 
         bool ok = BML::Physics::WakeUp(spawnedBall);
-        LogInfo(ctx, "WakeUp ok=" + BoolText(ok));
+        ctx.LogInfo("WakeUp ok=" + BoolText(ok));
     }
 
     private void ImpulseBall(const BML::ModContext &in ctx, VxVector direction) {
@@ -191,7 +191,7 @@ class ControlBall {
             direction, null,
             1.5f);
 
-        LogInfo(ctx, "Impulse direction=(" + direction.x + "," + direction.y + "," + direction.z + ") ok=" + BoolText(ok));
+        ctx.LogInfo("Impulse direction=(" + direction.x + "," + direction.y + "," + direction.z + ") ok=" + BoolText(ok));
         BML::UI::AddMessage("Impulse sent.");
     }
 
@@ -214,7 +214,7 @@ class ControlBall {
             forceFramesLeft = 90;
         }
 
-        LogInfo(ctx, "SetForce ok=" + BoolText(ok) + " frames=90");
+        ctx.LogInfo("SetForce ok=" + BoolText(ok) + " frames=90");
         BML::UI::AddMessage("Force applied for ~90 frames.");
     }
 
@@ -227,7 +227,7 @@ class ControlBall {
 
         forceActive = false;
         forceFramesLeft = 0;
-        LogInfo(ctx, "ClearForce reason=" + reason);
+        ctx.LogInfo("ClearForce reason=" + reason);
     }
 
     // ---- 生成和清理（与上一章相同，区别是 CleanupBall 先调 ClearBallForce）----
@@ -239,7 +239,7 @@ class ControlBall {
 
         string relativePath = "3D Entities\\PH\\P_Ball_Wood.nmo";
         string resourcePath = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), relativePath);
-        if (!BML::Path::IsFile(resourcePath)) { LogWarn(ctx, "Resource missing"); return; }
+        if (!BML::Path::IsFile(resourcePath)) { ctx.LogWarn("Resource missing"); return; }
 
         BML::ObjectLoadOptions options;
         options.File = resourcePath;  options.Rename = true;
@@ -247,7 +247,7 @@ class ControlBall {
         options.ReuseMeshes = true;  options.ReuseMaterials = true;  options.Dynamic = true;
 
         BML::ObjectLoadResult@ result = BML::CK::LoadObject(options);
-        if (result is null || !result.Success || result.Count <= 0) { LogWarn(ctx, "Load failed"); return; }
+        if (result is null || !result.Success || result.Count <= 0) { ctx.LogWarn("Load failed"); return; }
         @spawnedBall = FindFirstEntity(result);
         if (spawnedBall is null) return;
 
@@ -298,12 +298,6 @@ class ControlBall {
     }
 
     private string BoolText(bool v) { return v ? "true" : "false"; }
-    private void LogInfo(const BML::ModContext &in ctx, const string &in msg) {
-        BML::Logger@ l = ctx.BorrowLogger(); if (l !is null) l.Info(msg);
-    }
-    private void LogWarn(const BML::ModContext &in ctx, const string &in msg) {
-        BML::Logger@ l = ctx.BorrowLogger(); if (l !is null) l.Warn(msg);
-    }
 }
 ```
 

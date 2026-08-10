@@ -164,10 +164,7 @@ class GameplayMonitor {
     private bool showWindow = true;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info("GameplayMonitor loaded");
-        }
+        ctx.LogInfo("GameplayMonitor loaded");
     }
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
@@ -175,12 +172,9 @@ class GameplayMonitor {
             @ingameParam = ctx.BorrowDataArrayByName("IngameParameter");
             @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
 
-            BML::Logger@ logger = ctx.BorrowLogger();
-            if (logger !is null) {
-                string ipStatus = (ingameParam is null) ? "not found" : "ok";
-                string clStatus = (currentLevel is null) ? "not found" : "ok";
-                logger.Info("IngameParameter=" + ipStatus + " CurrentLevel=" + clStatus);
-            }
+            string ipStatus = (ingameParam is null) ? "not found" : "ok";
+            string clStatus = (currentLevel is null) ? "not found" : "ok";
+            ctx.LogInfo("IngameParameter=" + ipStatus + " CurrentLevel=" + clStatus);
         } else if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL) {
             @ingameParam = null;
             @currentLevel = null;

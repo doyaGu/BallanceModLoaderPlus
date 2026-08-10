@@ -185,11 +185,11 @@ Gameplay 持续维护
 if (event == BML::GAME_EVENT_START_LEVEL) {
     // 验证对象存在
     CK3dEntity@ ball = ctx.Borrow3dEntityByName("Ball");
-    LogInfo(ctx, "Ball: " + (ball is null ? "null" : "found"));
+    ctx.LogInfo("Ball: " + (ball is null ? "null" : "found"));
 
     // 验证 DataArray 存在
     CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
-    LogInfo(ctx, "CurrentLevel: " + (table is null ? "null" : "found"));
+    ctx.LogInfo("CurrentLevel: " + (table is null ? "null" : "found"));
 }
 ```
 

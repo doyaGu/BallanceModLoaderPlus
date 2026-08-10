@@ -87,13 +87,13 @@ class FindDemo {
     private void FindBall(const BML::ModContext &in ctx) {
         CK3dEntity@ ball = BorrowActiveBall(ctx);
         if (ball is null) {
-            LogInfo(ctx, "ActiveBall not found");
+            ctx.LogInfo("ActiveBall not found");
             return;
         }
 
         string name = BML::CK::GetName(ball);
         int id = BML::CK::GetId(ball);
-        LogInfo(ctx, "ActiveBall: " + name + " id=" + id);
+        ctx.LogInfo("ActiveBall: " + name + " id=" + id);
     }
 
     private CK3dEntity@ BorrowActiveBall(const BML::ModContext &in ctx) {
@@ -110,27 +110,21 @@ class FindDemo {
     private void FindGroup(const BML::ModContext &in ctx) {
         CKGroup@ checkpoints = ctx.BorrowGroupByName("PC_Checkpoints");
         if (checkpoints is null) {
-            LogInfo(ctx, "PC_Checkpoints not found");
+            ctx.LogInfo("PC_Checkpoints not found");
             return;
         }
 
         int count = checkpoints.GetObjectCount();
-        LogInfo(ctx, "PC_Checkpoints has " + count + " members");
+        ctx.LogInfo("PC_Checkpoints has " + count + " members");
 
         for (int i = 0; i < count; i++) {
             CKBeObject@ member = checkpoints.GetObject(i);
             if (member !is null) {
-                LogInfo(ctx, "  [" + i + "] " + BML::CK::GetName(member));
+                ctx.LogInfo("  [" + i + "] " + BML::CK::GetName(member));
             }
         }
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
 }
 ```
 

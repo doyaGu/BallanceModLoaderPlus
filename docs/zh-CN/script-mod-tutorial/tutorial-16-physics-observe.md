@@ -40,7 +40,7 @@ void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
                 float friction = BML::CK::GetFloat(physBalls, i, 1, 0.0f);
                 float elasticity = BML::CK::GetFloat(physBalls, i, 2, 0.0f);
                 float mass = BML::CK::GetFloat(physBalls, i, 3, 0.0f);
-                LogInfo(ctx, name + " friction=" + friction
+                ctx.LogInfo(name + " friction=" + friction
                              + " elasticity=" + elasticity
                              + " mass=" + mass);
             }
@@ -68,7 +68,7 @@ P_Ball_Stone friction=0.7 elasticity=0.1 mass=10
 ```angelscript
 void OnPhysicalize(const BML::ModContext &in ctx,
                    const BML::PhysicalizeEvent &in event) {
-    LogInfo(ctx, "Physicalize: " + event.TargetName +
+    ctx.LogInfo("Physicalize: " + event.TargetName +
                  " friction=" + event.Friction +
                  " elasticity=" + event.Elasticity +
                  " mass=" + event.Mass);
@@ -123,13 +123,13 @@ class PhysObserve {
     private int eventCount = 0;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        LogInfo(ctx, "PhysObserve loaded");
+        ctx.LogInfo("PhysObserve loaded");
     }
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         if (event == BML::GAME_EVENT_START_LEVEL) {
             ReadPhysTable(ctx);
-            LogInfo(ctx, "Total physicalize events so far: " + eventCount);
+            ctx.LogInfo("Total physicalize events so far: " + eventCount);
         }
     }
 
@@ -145,34 +145,28 @@ class PhysObserve {
             info += " radius=" + event.GetBallRadius(0);
         }
 
-        LogInfo(ctx, info);
+        ctx.LogInfo(info);
     }
 
     private void ReadPhysTable(const BML::ModContext &in ctx) {
         CKDataArray@ physBalls = ctx.BorrowDataArrayByName("Physicalize_Balls");
         if (physBalls is null) {
-            LogInfo(ctx, "Physicalize_Balls not found");
+            ctx.LogInfo("Physicalize_Balls not found");
             return;
         }
 
         int rows = BML::CK::GetRowCount(physBalls);
-        LogInfo(ctx, "Physicalize_Balls rows=" + rows);
+        ctx.LogInfo("Physicalize_Balls rows=" + rows);
 
         for (int i = 0; i < rows; i++) {
             string name = BML::CK::GetString(physBalls, i, 0, "?");
             float friction = BML::CK::GetFloat(physBalls, i, 1, 0.0f);
             float elasticity = BML::CK::GetFloat(physBalls, i, 2, 0.0f);
             float mass = BML::CK::GetFloat(physBalls, i, 3, 0.0f);
-            LogInfo(ctx, name + " friction=" + friction + " elasticity=" + elasticity + " mass=" + mass);
+            ctx.LogInfo(name + " friction=" + friction + " elasticity=" + elasticity + " mass=" + mass);
         }
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
 }
 ```
 

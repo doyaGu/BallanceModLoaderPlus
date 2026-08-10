@@ -142,7 +142,7 @@ Checkpoints 表的结构：
 class PHGroupsMod {
 
     void OnLoad(const BML::ModContext &in ctx) {
-        LogInfo(ctx, "PHGroupsMod loaded");
+        ctx.LogInfo("PHGroupsMod loaded");
     }
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
@@ -156,13 +156,13 @@ class PHGroupsMod {
     private void ReadPHGroups(const BML::ModContext &in ctx) {
         CKDataArray@ table = ctx.BorrowDataArrayByName("PH_Groups");
         if (table is null) {
-            LogInfo(ctx, "PH_Groups not found");
+            ctx.LogInfo("PH_Groups not found");
             return;
         }
 
         int rows = BML::CK::GetRowCount(table);
         int cols = BML::CK::GetColumnCount(table);
-        LogInfo(ctx, "PH_Groups: rows=" + rows + " columns=" + cols);
+        ctx.LogInfo("PH_Groups: rows=" + rows + " columns=" + cols);
 
         int colName = BML::CK::FindColumn(table, "Group Names");
         int colAmount = BML::CK::FindColumn(table, "Amount");
@@ -170,7 +170,7 @@ class PHGroupsMod {
         int colReset = BML::CK::FindColumn(table, "Reset");
 
         if (colName < 0 || colAmount < 0 || colActivation < 0 || colReset < 0) {
-            LogInfo(ctx, "PH_Groups: column not found");
+            ctx.LogInfo("PH_Groups: column not found");
             return;
         }
 
@@ -180,7 +180,7 @@ class PHGroupsMod {
             int activation = BML::CK::GetInt(table, i, colActivation, 0);
             int reset = BML::CK::GetInt(table, i, colReset, 0);
 
-            LogInfo(ctx, "  " + name
+            ctx.LogInfo("  " + name
                 + " amount=" + amount
                 + " activation=" + activation
                 + " reset=" + reset);
@@ -190,31 +190,25 @@ class PHGroupsMod {
     private void ReadCheckpoints(const BML::ModContext &in ctx) {
         CKDataArray@ table = ctx.BorrowDataArrayByName("Checkpoints");
         if (table is null) {
-            LogInfo(ctx, "Checkpoints not found");
+            ctx.LogInfo("Checkpoints not found");
             return;
         }
 
         int rows = BML::CK::GetRowCount(table);
-        LogInfo(ctx, "Checkpoints: rows=" + rows);
+        ctx.LogInfo("Checkpoints: rows=" + rows);
     }
 
     private void ReadResetPoints(const BML::ModContext &in ctx) {
         CKDataArray@ table = ctx.BorrowDataArrayByName("ResetPoints");
         if (table is null) {
-            LogInfo(ctx, "ResetPoints not found");
+            ctx.LogInfo("ResetPoints not found");
             return;
         }
 
         int rows = BML::CK::GetRowCount(table);
-        LogInfo(ctx, "ResetPoints: rows=" + rows);
+        ctx.LogInfo("ResetPoints: rows=" + rows);
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
 }
 ```
 

@@ -143,7 +143,7 @@ class SpawnBall {
     private CK3dEntity@ spawnedBall = null;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        LogInfo(ctx, "SpawnBall loaded");
+        ctx.LogInfo("SpawnBall loaded");
     }
 
     void OnUnload(const BML::ModContext &in ctx) {
@@ -182,7 +182,7 @@ class SpawnBall {
         string relativePath = "3D Entities\\PH\\P_Ball_Wood.nmo";
         string resourcePath = BML::Path::Combine(ctx.GetDirectoryUtf8(BML::DIR_GAME), relativePath);
         if (!BML::Path::IsFile(resourcePath)) {
-            LogWarn(ctx, "Resource missing: " + relativePath);
+            ctx.LogWarn("Resource missing: " + relativePath);
             return;
         }
 
@@ -197,13 +197,13 @@ class SpawnBall {
 
         BML::ObjectLoadResult@ result = BML::CK::LoadObject(options);
         if (result is null || !result.Success || result.Count <= 0) {
-            LogWarn(ctx, "Load failed");
+            ctx.LogWarn("Load failed");
             return;
         }
 
         @spawnedBall = FindFirstEntity(result);
         if (spawnedBall is null) {
-            LogWarn(ctx, "No entity in loaded result");
+            ctx.LogWarn("No entity in loaded result");
             return;
         }
 
@@ -236,7 +236,7 @@ class SpawnBall {
         BML::CK::Show(spawnedBall, CKSHOW, true);
 
         string name = BML::CK::GetName(spawnedBall);
-        LogInfo(ctx, "Spawned: " + name + " physical=" + BoolText(physical));
+        ctx.LogInfo("Spawned: " + name + " physical=" + BoolText(physical));
         BML::UI::AddMessage("Ball spawned above player.");
     }
 
@@ -249,7 +249,7 @@ class SpawnBall {
         }
 
         @spawnedBall = null;
-        LogInfo(ctx, "Ball cleaned up");
+        ctx.LogInfo("Ball cleaned up");
     }
 
     private CK3dEntity@ BorrowActiveBall(const BML::ModContext &in ctx) {
@@ -278,19 +278,6 @@ class SpawnBall {
         return value ? "true" : "false";
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
-
-    private void LogWarn(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Warn(message);
-        }
-    }
 }
 ```
 

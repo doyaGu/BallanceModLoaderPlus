@@ -65,7 +65,7 @@ class PanelMod {
 
     void OnLoad(const BML::ModContext &in ctx) {
         RegisterCommand(ctx);
-        LogInfo(ctx, "PanelMod loaded");
+        ctx.LogInfo("PanelMod loaded");
         BML::UI::AddMessage("PanelMod loaded. Command: panel show/hide");
     }
 
@@ -136,7 +136,7 @@ class PanelMod {
 
         BML::CommandRef@ commandRef = ctx.RegisterCommand(def, execute, complete);
         if (commandRef is null || !commandRef.IsValid) {
-            LogInfo(ctx, "panel command registration failed");
+            ctx.LogInfo("panel command registration failed");
         }
     }
 
@@ -169,14 +169,6 @@ class PanelMod {
         completions.Add("toggle");
     }
 
-    // --- 工具 ---
-
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
 }
 ```
 

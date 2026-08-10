@@ -69,7 +69,7 @@ class CompleteMod {
     void OnLoad(const BML::ModContext &in ctx) {
         LoadConfig(ctx);
         RegisterCommand(ctx);
-        LogInfo(ctx, "CompleteMod loaded");
+        ctx.LogInfo("CompleteMod loaded");
     }
 
     void OnUnload(const BML::ModContext &in ctx) {
@@ -77,7 +77,7 @@ class CompleteMod {
         if (commandRef !is null && commandRef.IsValid) {
             commandRef.Unregister();
         }
-        LogInfo(ctx, "CompleteMod unloaded");
+        ctx.LogInfo("CompleteMod unloaded");
     }
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
@@ -360,7 +360,7 @@ class CompleteMod {
 
     private void SetLast(const BML::ModContext &in ctx, const string &in text) {
         lastAction = text;
-        LogInfo(ctx, text);
+        ctx.LogInfo(text);
         BML::UI::AddMessage("CompleteMod: " + text);
     }
 
@@ -368,10 +368,6 @@ class CompleteMod {
         return value ? "true" : "false";
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) logger.Info(message);
-    }
 }
 ```
 

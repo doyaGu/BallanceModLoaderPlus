@@ -59,13 +59,13 @@ void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     if (event == BML::GAME_EVENT_START_LEVEL) {
         CKDataArray@ table = ctx.BorrowDataArrayByName("CurrentLevel");
         if (table is null) {
-            LogInfo(ctx, "CurrentLevel not found");
+            ctx.LogInfo("CurrentLevel not found");
             return;
         }
 
         int rows = BML::CK::GetRowCount(table);
         if (rows < 1) {
-            LogInfo(ctx, "CurrentLevel has no rows");
+            ctx.LogInfo("CurrentLevel has no rows");
             return;
         }
 
@@ -74,7 +74,7 @@ void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
         string ball = BML::CK::GetString(table, 0, 1, "?");
         int points = BML::CK::GetInt(table, 0, 5, 0);
 
-        LogInfo(ctx, "Level=" + levelId + " Ball=" + ball + " Points=" + points);
+        ctx.LogInfo("Level=" + levelId + " Ball=" + ball + " Points=" + points);
     }
 }
 ```
@@ -98,7 +98,7 @@ int colPoints = BML::CK::FindColumn(table, "Points");
 
 // FindColumn 找不到时返回 -1
 if (colLevelId < 0 || colBall < 0 || colPoints < 0) {
-    LogInfo(ctx, "Column not found in CurrentLevel");
+    ctx.LogInfo("Column not found in CurrentLevel");
     return;
 }
 
@@ -125,7 +125,7 @@ class DataReadMod {
         if (event == BML::GAME_EVENT_START_LEVEL) {
             @currentLevel = ctx.BorrowDataArrayByName("CurrentLevel");
             if (currentLevel !is null) {
-                LogInfo(ctx, "CurrentLevel found, rows=" + BML::CK::GetRowCount(currentLevel));
+                ctx.LogInfo("CurrentLevel found, rows=" + BML::CK::GetRowCount(currentLevel));
             }
         } else if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL) {
             @currentLevel = null;
@@ -155,12 +155,6 @@ class DataReadMod {
         ImGui::End();
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
 }
 ```
 
@@ -223,7 +217,7 @@ if (allLevel !is null) {
         string file = BML::CK::GetString(allLevel, row, 0, "?");
         string ball = BML::CK::GetString(allLevel, row, 1, "?");
         int bonus = BML::CK::GetInt(allLevel, row, 6, 0);
-        LogInfo(ctx, "Level " + (row + 1) + ": " + file + " ball=" + ball + " bonus=" + bonus);
+        ctx.LogInfo("Level " + (row + 1) + ": " + file + " ball=" + ball + " bonus=" + bonus);
     }
 }
 ```

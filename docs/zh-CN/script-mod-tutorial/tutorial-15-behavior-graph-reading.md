@@ -361,7 +361,7 @@ class BGWatcher {
     private int lastCheckpointIndex = -1;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        LogInfo(ctx, "BGWatcher loaded");
+        ctx.LogInfo("BGWatcher loaded");
     }
 
     void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
@@ -382,7 +382,7 @@ class BGWatcher {
         int currentSector = BML::CK::GetInt(ingame, 0, colSector, 0);
         if (currentSector != lastSector) {
             lastSector = currentSector;
-            LogInfo(ctx, "Sector changed -> " + currentSector
+            ctx.LogInfo("Sector changed -> " + currentSector
                          + " (SectorManager activated a new sector)");
         }
     }
@@ -391,7 +391,7 @@ class BGWatcher {
                                const string &in reason) {
         CKDataArray@ ingame = ctx.BorrowDataArrayByName("IngameParameter");
         if (ingame is null) {
-            LogInfo(ctx, "IngameParameter not available at " + reason);
+            ctx.LogInfo("IngameParameter not available at " + reason);
             return;
         }
 
@@ -401,17 +401,11 @@ class BGWatcher {
         if (colActivate >= 0 && colDeactivate >= 0) {
             int activate = BML::CK::GetInt(ingame, 0, colActivate, 0);
             int deactivate = BML::CK::GetInt(ingame, 0, colDeactivate, 0);
-            LogInfo(ctx, "Snapshot[" + reason + "] Activate Sector="
+            ctx.LogInfo("Snapshot[" + reason + "] Activate Sector="
                          + activate + " Deactivate Sector=" + deactivate);
         }
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in msg) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(msg);
-        }
-    }
 }
 ```
 

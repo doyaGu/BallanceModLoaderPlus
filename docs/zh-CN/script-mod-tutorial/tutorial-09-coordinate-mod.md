@@ -66,7 +66,7 @@ class CoordMod {
     private bool showWindow = true;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        LogInfo(ctx, "CoordMod loaded");
+        ctx.LogInfo("CoordMod loaded");
         BML::UI::AddMessage("CoordMod loaded. Enter a level to see coordinates.");
     }
 
@@ -79,9 +79,9 @@ class CoordMod {
 
             CK3dEntity@ ball = BorrowActiveBall();
             if (ball !is null) {
-                LogInfo(ctx, "ActiveBall ready: " + BML::CK::GetName(ball));
+                ctx.LogInfo("ActiveBall ready: " + BML::CK::GetName(ball));
             } else {
-                LogInfo(ctx, "CurrentLevel.ActiveBall is unavailable");
+                ctx.LogInfo("CurrentLevel.ActiveBall is unavailable");
             }
         } else if (event == BML::GAME_EVENT_PRE_EXIT_LEVEL) {
             @currentLevel = null;
@@ -122,12 +122,6 @@ class CoordMod {
         return cast<CK3dEntity>(object);
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
 }
 ```
 
