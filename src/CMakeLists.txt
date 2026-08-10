@@ -23,6 +23,7 @@ add_custom_target(BML_VersionHeader ALL
     COMMAND "${CMAKE_COMMAND}"
         ${BML_VERSION_HEADER_ARGS}
         -P ${PROJECT_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake
+    BYPRODUCTS "${BML_VERSION_HEADER}"
     COMMENT "Generating Version.h with git metadata"
 )
 
