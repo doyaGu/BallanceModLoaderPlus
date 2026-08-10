@@ -27,6 +27,7 @@ site/
 .codex-cache/
 
 ## Local documentation drafts and private notes
+docs/internal/
 docs/script-mod-tutorial/archive/
 docs/script-mod-tutorial/libs/
 docs/script-mod-tutorial-materials/
