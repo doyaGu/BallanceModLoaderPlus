@@ -191,4 +191,4 @@ Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志�
 - [IMC 概览](imc.md)
 - [IMC 接口编写指南](imc-author-guide.md)
 - [原生 Mod 模板](https://github.com/doyaGu/BallanceModLoaderPlus/tree/main/templates/native-mod-template)
-- [脚本 Mod 教程](script-mod-tutorial/README.md)
+- [脚本 Mod 教程](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/)

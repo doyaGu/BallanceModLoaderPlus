@@ -485,6 +485,13 @@ install(FILES
 )
 
 if (BML_WITH_ANGELSCRIPT)
+    install(FILES
+            "${PROJECT_SOURCE_DIR}/docs/api/as.predefined"
+            "${PROJECT_SOURCE_DIR}/docs/api/bml-script-mod-api.as"
+            "${PROJECT_SOURCE_DIR}/docs/api/bml-imgui-api.as"
+            DESTINATION "docs/api"
+    )
+
     install(DIRECTORY
             "${PROJECT_SOURCE_DIR}/docs/en/script-mod"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/en"
