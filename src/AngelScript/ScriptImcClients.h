@@ -6,7 +6,6 @@
 
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
-#include "BML/Generated/bml_scene_imc.hpp"
 #include "BML/Generated/bml_ui_imc.hpp"
 
 class ModContext;
@@ -21,7 +20,6 @@ public:
     ScriptImcClients(const ScriptImcClients &) = delete;
     ScriptImcClients &operator=(const ScriptImcClients &) = delete;
 
-    int Scene(Imc::Generated::Bml::Scene::Client *&out) noexcept;
     int Gameplay(Imc::Generated::Bml::Gameplay::Client *&out) noexcept;
     int Ui(Imc::Generated::Bml::Ui::Client *&out) noexcept;
     int Events(Imc::Generated::Bml::Events::Client *&out) noexcept;
@@ -35,7 +33,6 @@ private:
     ModContext *m_Context = nullptr;
     std::string m_OwnerId;
     std::mutex m_Mutex;
-    Imc::Generated::Bml::Scene::Client m_Scene;
     Imc::Generated::Bml::Gameplay::Client m_Gameplay;
     Imc::Generated::Bml::Ui::Client m_Ui;
     Imc::Generated::Bml::Events::Client m_Events;

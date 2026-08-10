@@ -53,9 +53,6 @@ TEST(ScriptApiReferenceTest, BuiltinCapabilityFacadesAreDocumented) {
         "State GetState()",
         "Clock GetClock()",
         "Score GetScore()",
-        "namespace Scene",
-        "class ObjectInfo",
-        "int ReadObject(CKObject@ object, ObjectInfo &out info)",
         "namespace Gameplay",
         "class LevelState",
         "int OpenCatalog(CatalogCursor@ &out cursor)",
@@ -79,13 +76,38 @@ TEST(ScriptApiReferenceTest, BuiltinCapabilityFacadesAreDocumented) {
                        kPredefinedApi);
     const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptImcFacade.cpp");
     ExpectContainsAll(builtinFacade,
-                      {"RegisterScriptImcFacade", "RegisterRuntime", "RegisterScene", "RegisterGameplay", "RegisterEvents",
+                      {"RegisterScriptImcFacade", "RegisterRuntime", "RegisterGameplay", "RegisterEvents",
                        "ScriptImcClients", "SubscribeAll", "BML_IMC_EXECUTION_GAME_THREAD",
                        "if (capacity < 0)", "if (capacity == 0)", "capacity = 256;"},
                       "src/AngelScript/ScriptImcFacade.cpp");
     ExpectContainsNone(builtinFacade,
                        {"namespace BML::Interop", "InteropRegistry", "BML_RecordRef", "BML_StreamRef", "BML_CursorRef"},
                        "src/AngelScript/ScriptImcFacade.cpp");
+}
+
+TEST(ScriptApiReferenceTest, SceneFacadeDoesNotDuplicateCKAngelScript) {
+    constexpr const char *kScriptApiStub = "docs/api/bml-script-mod-api.as";
+    constexpr const char *kPredefinedApi = "docs/api/as.predefined";
+    const std::vector<std::string> removed = {
+        "class ObjectInfo",
+        "class EntityTransform",
+        "int Find(const string &in name, CKObject@ &out object)",
+        "int ReadObject(CKObject@ object, ObjectInfo &out info)",
+        "int ReadEntity(CKObject@ object, EntityTransform &out transform)",
+    };
+    ExpectContainsNone(ReadTextFile(kScriptApiStub), removed, kScriptApiStub);
+    ExpectContainsNone(ReadTextFile(kPredefinedApi), removed, kPredefinedApi);
+
+    const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsNone(builtinFacade,
+                       {"RegisterScene", "SceneImc::", "bml_scene_imc.hpp"},
+                       "src/AngelScript/ScriptImcFacade.cpp");
+
+    const std::string clients = ReadTextFile("src/AngelScript/ScriptImcClients.h") +
+                                ReadTextFile("src/AngelScript/ScriptImcClients.cpp");
+    ExpectContainsNone(clients,
+                       {"bml_scene_imc.hpp", "ScriptImcClients::Scene", "m_Scene"},
+                       "ScriptImcClients");
 }
 
 TEST(ScriptApiReferenceTest, RuntimeFacadeUsesDirectHostReads) {

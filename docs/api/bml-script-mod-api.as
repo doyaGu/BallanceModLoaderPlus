@@ -949,22 +949,6 @@ Clock GetClock();
 Score GetScore();
 } // namespace Runtime
 
-namespace Scene {
-class ObjectInfo {
-  int Id; int ClassId; bool Visible; bool Dynamic;
-  string get_Name() const;
-  CKObject@ BorrowObject() const;
-}
-class EntityTransform {
-  BML::Vec3 Position; BML::Vec3 Scale; int ChildCount;
-  CKObject@ BorrowParent() const;
-}
-int Find(const string &in name, CKObject@ &out object);
-int Find(const string &in name, int classId, CKObject@ &out object);
-int ReadObject(CKObject@ object, ObjectInfo &out info);
-int ReadEntity(CKObject@ object, EntityTransform &out transform);
-} // namespace Scene
-
 namespace Gameplay {
 class LevelState {
   int Id; BML::Mat4 ResetMatrix; int Points;

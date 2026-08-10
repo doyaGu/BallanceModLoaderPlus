@@ -12,7 +12,6 @@
 
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
-#include "BML/Generated/bml_scene_imc.hpp"
 #include "BML/EventKinds.h"
 
 #include "BuiltinImcApis.h"
@@ -25,7 +24,6 @@
 
 namespace {
 
-namespace SceneImc = BML::Imc::Generated::Bml::Scene;
 namespace GameplayImc = BML::Imc::Generated::Bml::Gameplay;
 namespace EventsImc = BML::Imc::Generated::Bml::Events;
 
@@ -47,22 +45,6 @@ struct ClockState {
 struct ScoreState {
     float SR = 0.0f;
     int HS = 0;
-};
-
-struct ObjectInfo {
-    BML_ObjectRef Object{};
-    int Id = 0;
-    std::string Name;
-    int ClassId = 0;
-    bool Visible = false;
-    bool Dynamic = false;
-};
-
-struct EntityTransform {
-    BML_Vec3 Position{};
-    BML_Vec3 Scale{};
-    BML_ObjectRef Parent{};
-    int ChildCount = 0;
 };
 
 struct LevelState {
@@ -134,8 +116,6 @@ T &AssignValue(const T &other, T *self) {
 BML_AS_DEFINE_IMC_VALUE(RuntimeState, RuntimeState)
 BML_AS_DEFINE_IMC_VALUE(ClockState, ClockState)
 BML_AS_DEFINE_IMC_VALUE(ScoreState, ScoreState)
-BML_AS_DEFINE_IMC_VALUE(ObjectInfo, ObjectInfo)
-BML_AS_DEFINE_IMC_VALUE(EntityTransform, EntityTransform)
 BML_AS_DEFINE_IMC_VALUE(LevelState, LevelState)
 BML_AS_DEFINE_IMC_VALUE(EnergyState, EnergyState)
 BML_AS_DEFINE_IMC_VALUE(CatalogEntry, CatalogEntry)
@@ -288,79 +268,6 @@ ScoreState GetRuntimeScore() {
                    : ScoreState{};
 }
 
-int ReadObjectInfo(CKObject *object, ObjectInfo &out) {
-    BML::ScriptImcClients *clients = nullptr;
-    ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    SceneImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Scene(client);
-    const BML_ObjectRef reference = context ? MakeBuiltinObjectRef(*context, object) : BML_ObjectRef{};
-    if (status == BML_OK && object && reference.Domain == 0)
-        status = BML_ERROR_IMC_OBJECT_INVALID;
-    SceneImc::ObjectRequestValue input{};
-    input.Object = reference;
-    SceneImc::ObjectInfoValue value{};
-    if (status == BML_OK) status = client->CallObject(input, value);
-    if (status == BML_OK) {
-        out.Object = reference;
-        out.Id = value.Id;
-        out.Name = std::move(value.Name);
-        out.ClassId = value.ClassId;
-        out.Visible = value.Visible;
-        out.Dynamic = value.Dynamic;
-    }
-    return status;
-}
-
-int ReadEntity(CKObject *object, EntityTransform &out) {
-    BML::ScriptImcClients *clients = nullptr;
-    ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    SceneImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Scene(client);
-    const BML_ObjectRef reference = context ? MakeBuiltinObjectRef(*context, object) : BML_ObjectRef{};
-    if (status == BML_OK && object && reference.Domain == 0)
-        status = BML_ERROR_IMC_OBJECT_INVALID;
-    SceneImc::ObjectRequestValue input{};
-    input.Object = reference;
-    SceneImc::EntityTransformValue value{};
-    if (status == BML_OK) status = client->CallEntity(input, value);
-    if (status == BML_OK)
-        out = {value.Position, value.Scale, value.Parent, value.ChildCount};
-    return status;
-}
-
-int FindObject(const std::string &name, int classId, bool filterClass, CKObject *&out) {
-    out = nullptr;
-    BML::ScriptImcClients *clients = nullptr;
-    ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    SceneImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Scene(client);
-    SceneImc::FindResultValue result{};
-    if (status == BML_OK && filterClass) {
-        SceneImc::FindNameClassRequestValue request{name, classId};
-        status = client->CallFindNameClass(request, result);
-    } else if (status == BML_OK) {
-        SceneImc::FindNameRequestValue request{name};
-        status = client->CallFindName(request, result);
-    }
-    if (status == BML_OK && result.Object.Domain != 0) {
-        out = ResolveBuiltinObjectRef(*context, result.Object);
-        if (!out)
-            status = BML_ERROR_IMC_OBJECT_INVALID;
-    }
-    return status;
-}
-
-int FindByName(const std::string &name, CKObject *&out) {
-    return FindObject(name, 0, false, out);
-}
-
-int FindByNameAndClass(const std::string &name, int classId, CKObject *&out) {
-    return FindObject(name, classId, true, out);
-}
-
 int ReadLevel(LevelState &out) {
     BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
@@ -401,14 +308,6 @@ CKObject *ResolveScriptObject(const BML_ObjectRef &reference) {
     return context && reference.Domain != 0
                ? ResolveBuiltinObjectRef(*context, reference)
                : nullptr;
-}
-
-CKObject *BorrowObject(const ObjectInfo *value) {
-    return value ? ResolveScriptObject(value->Object) : nullptr;
-}
-
-CKObject *BorrowParent(const EntityTransform *value) {
-    return value ? ResolveScriptObject(value->Parent) : nullptr;
 }
 
 CKObject *BorrowActiveBall(const LevelState *value) {
@@ -917,37 +816,6 @@ bool RegisterRuntime(asIScriptEngine *engine, const char **errorMessage) {
            Register(engine, engine->SetDefaultNamespace(""), "namespace reset", errorMessage);
 }
 
-bool RegisterScene(asIScriptEngine *engine, const char **errorMessage) {
-    if (!Register(engine, engine->SetDefaultNamespace("BML::Scene"), "namespace BML::Scene", errorMessage))
-        return false;
-    const ValueTypeRegistration values[] = {
-        ValueType<ObjectInfo>("ObjectInfo", asFUNCTION(ConstructObjectInfo), asFUNCTION(CopyConstructObjectInfo), asFUNCTION(DestructObjectInfo), asFUNCTION(AssignObjectInfo)),
-        ValueType<EntityTransform>("EntityTransform", asFUNCTION(ConstructEntityTransform), asFUNCTION(CopyConstructEntityTransform), asFUNCTION(DestructEntityTransform), asFUNCTION(AssignEntityTransform)),
-    };
-    for (const ValueTypeRegistration &value : values) {
-        if (!RegisterValue(engine, value, errorMessage))
-            return false;
-    }
-#define BML_AS_PROPERTY(Type, Declaration, Field) \
-    if (!Register(engine, engine->RegisterObjectProperty(Type, Declaration, Field), Declaration, errorMessage)) return false
-    BML_AS_PROPERTY("ObjectInfo", "int Id", asOFFSET(ObjectInfo, Id));
-    BML_AS_PROPERTY("ObjectInfo", "int ClassId", asOFFSET(ObjectInfo, ClassId));
-    BML_AS_PROPERTY("ObjectInfo", "bool Visible", asOFFSET(ObjectInfo, Visible));
-    BML_AS_PROPERTY("ObjectInfo", "bool Dynamic", asOFFSET(ObjectInfo, Dynamic));
-    BML_AS_PROPERTY("EntityTransform", "BML::Vec3 Position", asOFFSET(EntityTransform, Position));
-    BML_AS_PROPERTY("EntityTransform", "BML::Vec3 Scale", asOFFSET(EntityTransform, Scale));
-    BML_AS_PROPERTY("EntityTransform", "int ChildCount", asOFFSET(EntityTransform, ChildCount));
-#undef BML_AS_PROPERTY
-    return Register(engine, engine->RegisterObjectMethod("ObjectInfo", "string get_Name() const", BML_AS_STRING_FIELD_GETTER(ObjectInfo, Name), asCALL_GENERIC), "ObjectInfo::Name", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("ObjectInfo", "CKObject@ BorrowObject() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowObject), asCALL_GENERIC), "ObjectInfo::BorrowObject", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("EntityTransform", "CKObject@ BorrowParent() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowParent), asCALL_GENERIC), "EntityTransform::BorrowParent", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int Find(const string &in name, CKObject@ &out object)", BML_AS_GENERIC_FUNCTION(&FindByName), asCALL_GENERIC), "Scene::Find", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int Find(const string &in name, int classId, CKObject@ &out object)", BML_AS_GENERIC_FUNCTION(&FindByNameAndClass), asCALL_GENERIC), "Scene::FindByClass", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int ReadObject(CKObject@ object, ObjectInfo &out info)", BML_AS_GENERIC_FUNCTION(&ReadObjectInfo), asCALL_GENERIC), "Scene::ReadObject", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int ReadEntity(CKObject@ object, EntityTransform &out transform)", BML_AS_GENERIC_FUNCTION(&ReadEntity), asCALL_GENERIC), "Scene::ReadEntity", errorMessage) &&
-           Register(engine, engine->SetDefaultNamespace(""), "namespace reset", errorMessage);
-}
-
 bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
     if (!Register(engine, engine->SetDefaultNamespace("BML::Gameplay"), "namespace BML::Gameplay", errorMessage))
         return false;
@@ -1021,7 +889,6 @@ int RegisterScriptImcFacade(asIScriptEngine *engine, const char **errorMessage) 
         return asERROR;
     }
     if (!RegisterRuntime(engine, errorMessage) ||
-        !RegisterScene(engine, errorMessage) ||
         !RegisterGameplay(engine, errorMessage) ||
         !RegisterEvents(engine, errorMessage)) {
         engine->SetDefaultNamespace("");
