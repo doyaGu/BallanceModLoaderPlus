@@ -164,7 +164,7 @@ resource root, not arbitrary global include paths.
 | Delay or repeat work | `Timer` | `BML::Timer`, `ctx.AddTimer()` |
 | Control loader UI or the speedrun timer | `Input, Game State, And Loader UI` | `BML::UI::*`, `BML::Speedrun::*` |
 | Draw BML/ImGui controls | `UI`, `Advanced ImGui` | `OnProcess`, `BML::UI::*`, `ImGui::*` |
-| Read BML runtime, scene, gameplay, or event snapshots | `Built-in Capability APIs` | `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::Events` |
+| Read BML runtime, gameplay, or event snapshots | `Built-in Capability APIs` | `BML::Runtime`, `BML::Gameplay`, `BML::Events` |
 | Expose simple shared state to another script mod | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Exchange typed data with native mods or scripts | `DataShare` | `BML::DataShareRequest`, `ctx.RequestDataShare*` |
 | Hook an existing behavior graph path | `CK, Physics, And Text Helpers` | CKAS `Behavior`/`BB` lookup plus `ctx.InsertHookBlock*` or `BML::Hook::*` |
@@ -536,13 +536,15 @@ if (runtime.InLevel && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
 }
 ```
 
-`BML::Runtime` covers state, clock, score, and cheats. `BML::Scene` covers
-lookup and object/entity snapshots. `BML::Gameplay` covers independently
-probed gameplay sources. `BML::Events::Stream` supplies immutable event
-snapshots in hook order. Script code receives typed domain values; raw IMC
-messages, providers, subscriptions, and transport handles are intentionally not
-registered in AngelScript. Native plugins can expose additional typed script
-APIs through CKAngelScript registration.
+`BML::Runtime` covers state, clock, score, and cheats. `BML::Gameplay` covers
+independently probed gameplay sources. `BML::Events::Stream` supplies immutable
+event snapshots in hook order. Use CKAngelScript `Scene::*` and its revalidating
+reference types for scene lookup and object identity; read object properties
+through those references or raw CK methods near the operation. Script code
+receives typed domain values; raw IMC messages, providers, subscriptions, and
+transport handles are intentionally not registered in AngelScript. Native
+plugins can expose additional typed script APIs through CKAngelScript
+registration.
 
 ## The ModContext Object
 

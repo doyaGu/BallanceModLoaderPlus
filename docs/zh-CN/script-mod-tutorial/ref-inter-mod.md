@@ -19,8 +19,9 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 }
 ```
 
-可用的内置命名空间包括 `BML::Runtime`、`BML::Scene`、
-`BML::Gameplay`、`BML::UI` 和 `BML::Events`。其中 Runtime 状态、时钟和
+可用的内置命名空间包括 `BML::Runtime`、`BML::Gameplay`、`BML::UI` 和
+`BML::Events`。Virtools 场景查找和对象标识应使用 CKAngelScript 的
+`Scene` 命名空间及其可重新验证的引用类型。其中 Runtime 状态、时钟和
 分数读取直接返回进程内加载器状态的值，不会为本地调用打开 IMC client，
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
 异常。脚本只处理类型化数据，不直接管理原始消息或原生 IMC 句柄。
