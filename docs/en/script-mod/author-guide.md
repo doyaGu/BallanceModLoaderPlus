@@ -535,17 +535,30 @@ if (runtime.InLevel && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
   CKObject@ ball = level.BorrowActiveBall();
   // Borrowed CK handles remain valid only while their scene object exists.
 }
+
+array<BML::Gameplay::Checkpoint>@ checkpoints;
+if (BML::Gameplay::ReadCheckpoints(checkpoints) == BML::ERROR_OK) {
+  for (uint i = 0; i < checkpoints.length(); ++i) {
+    CKObject@ checkpoint = checkpoints[i].BorrowObject();
+  }
+}
 ```
 
 `BML::Runtime` covers state, clock, score, and cheats. `BML::Gameplay` covers
-independently probed gameplay sources. `BML::Events::Stream` supplies immutable
-event snapshots in hook order. Use CKAngelScript `Scene::*` and its revalidating
-reference types for scene lookup and object identity; read object properties
-through those references or raw CK methods near the operation. Script code
-receives typed domain values; raw IMC messages, providers, subscriptions, and
-transport handles are intentionally not registered in AngelScript. Native
-plugins can expose additional typed script APIs through CKAngelScript
-registration.
+independently probed gameplay sources. `ReadCatalog`, `ReadCheckpoints`, and
+`ReadResetpoints` return standard AngelScript arrays containing complete,
+script-owned snapshots; the output handle is null when a read fails. They do
+not require a cursor, `Next` loop, or explicit `Close`. Because each call reads
+the source data and creates a new snapshot, retain the returned array when the
+data is stable instead of rebuilding it every frame.
+
+`BML::Events::Stream` supplies immutable event snapshots in hook order. Use
+CKAngelScript `Scene::*` and its revalidating reference types for scene lookup
+and object identity; read object properties through those references or raw CK
+methods near the operation. Script code receives typed domain values; raw IMC
+messages, providers, subscriptions, and transport handles are intentionally not
+registered in AngelScript. Native plugins can expose additional typed script
+APIs through CKAngelScript registration.
 
 ## The ModContext Object
 

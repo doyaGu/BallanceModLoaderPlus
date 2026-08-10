@@ -13,6 +13,13 @@ if (runtime.InLevel) {
   // 使用 runtime 的复制快照。
 }
 
+array<BML::Gameplay::Checkpoint>@ checkpoints;
+if (BML::Gameplay::ReadCheckpoints(checkpoints) == BML::ERROR_OK) {
+  for (uint i = 0; i < checkpoints.length(); ++i) {
+    CKObject@ checkpoint = checkpoints[i].BorrowObject();
+  }
+}
+
 BML::Events::Stream@ events;
 if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
   // 在 OnProcess 中 Poll；用完后 Close。
@@ -26,7 +33,11 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
 异常。Gameplay 读取也直接复用进程内的数据读取器，但对应的 Ballance
 数据数组可能尚不可用或布局不受支持，因此仍返回明确的状态码。脚本只处理
-类型化数据，不直接管理原始消息或原生 IMC 句柄。
+类型化数据，不直接管理原始消息或原生 IMC 句柄。`ReadCatalog`、
+`ReadCheckpoints` 和 `ReadResetpoints` 返回标准 AngelScript 数组形式的完整
+快照；读取失败时输出句柄为 `null`，不需要游标、`Next` 循环或显式 `Close`。
+每次调用都会重新读取源数据并创建快照，因此数据稳定时应复用已返回的数组，
+不要每帧重复构建。
 
 两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。
