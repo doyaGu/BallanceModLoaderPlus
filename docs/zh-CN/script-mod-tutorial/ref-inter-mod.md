@@ -8,8 +8,8 @@ BML+ 的跨 Mod RPC 和事件传输使用 IMC。脚本 Mod 直接使用 BML+ 提
 脚本中读取 BML 自带能力时，直接使用有类型的接口：
 
 ```angelscript
-BML::Runtime::State runtime;
-if (BML::Runtime::ReadState(runtime) == BML::ERROR_OK && runtime.InLevel) {
+BML::Runtime::State runtime = BML::Runtime::GetState();
+if (runtime.InLevel) {
   // 使用 runtime 的复制快照。
 }
 
@@ -21,8 +21,9 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 
 可用的内置命名空间包括 `BML::Runtime`、`BML::Scene`、
 `BML::Gameplay`、`BML::UI` 和 `BML::Events`。其中 Runtime 状态、时钟和
-分数读取直接访问进程内的加载器状态，不会为本地调用打开 IMC client。
-脚本只处理类型化数据，不直接管理原始消息或原生 IMC 句柄。
+分数读取直接返回进程内加载器状态的值，不会为本地调用打开 IMC client，
+也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
+异常。脚本只处理类型化数据，不直接管理原始消息或原生 IMC 句柄。
 
 两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。

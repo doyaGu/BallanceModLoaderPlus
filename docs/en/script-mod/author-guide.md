@@ -519,18 +519,18 @@ resolve raw CK handles only when the operation runs.
 
 ## Built-in Capability APIs
 
-Use these typed APIs for BML-owned read-only snapshots. A read returns a BML
-status code and changes its output only on success. An unavailable result or
-source diagnostic applies only to that source, not to every built-in
-capability. Runtime state, clock, and score reads use the in-process loader
-state directly; scripts do not open an IMC client for those local reads.
+Use these typed APIs for BML-owned read-only snapshots. Runtime state, clock,
+and score are small values returned directly from the in-process loader state;
+scripts do not open an IMC client or handle a transport status for those local
+reads. Calling them outside a valid script callback raises a script exception.
+Other capability reads retain an explicit status where their source can be
+unavailable.
 
 ```angelscript
-BML::Runtime::State runtime;
+BML::Runtime::State runtime = BML::Runtime::GetState();
 BML::Gameplay::LevelState level;
 
-if (BML::Runtime::ReadState(runtime) == BML::ERROR_OK && runtime.InLevel &&
-    BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
+if (runtime.InLevel && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
   CKObject@ ball = level.BorrowActiveBall();
   // Borrowed CK handles remain valid only while their scene object exists.
 }
