@@ -7,12 +7,18 @@
 `BMLPlus-SDK-<version>-Release.zip` SDK。如果尚未安装运行时，先阅读
 [使用 BML+](../using-bml.md)。
 
-1. 从 SDK 复制 `templates/script-mod-template` 到
-   `<Ballance>/ModLoader/Mods/HelloScript`。
+1. 在 `<Ballance>/ModLoader/Mods` 中打开 PowerShell，让 SDK 生成并填写模板：
+
+   ```powershell
+   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+   也可以继续手动复制 `templates/script-mod-template`。
 2. 确认 `<Ballance>/BuildingBlocks/AngelScript.dll` 存在。
-3. 不修改模板，直接启动 `Bin/Player.exe`，确认游戏内出现问候语，并在
-   `ModLoader/ModLoader.log` 中找到 `Hello Script loaded`。
-4. 首次成功后再替换示例 id、名称和作者，然后重启一次。
+3. 不再修改生成的源码，直接启动 `Bin/Player.exe`，确认游戏内出现问候语，并在
+   `ModLoader/ModLoader.log` 中找到 `My Mod loaded`。
+4. 保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启一次。
 5. 保持 Player 运行，修改问候语并保存。已加载的目录 Mod 会自动热重载。
 
 新增 Mod、修改 id 或修改依赖时需要重启 Player；普通源码修改不需要。加载失败时
@@ -20,11 +26,11 @@
 
 ```text
 script status
-script diag example.hello.script
+script diag yourname.my-mod
 script logs error
 ```
 
-修改 id 后，把诊断命令中的 `example.hello.script` 换成你的实际 id。
+把诊断命令中的 `yourname.my-mod` 换成你的实际 id。
 
 完成这条最短路径后，再按下面的课程系统学习。课程会从环境和语言基础重新讲起，
 不要求预先理解模板中的全部内容。

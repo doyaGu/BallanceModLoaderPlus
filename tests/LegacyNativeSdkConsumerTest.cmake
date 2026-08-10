@@ -214,10 +214,12 @@ endif()
 if(use_sdk_archive)
     find_program(powershell_executable NAMES pwsh powershell REQUIRED)
     set(script_template "${install_root}/templates/script-mod-template")
+    set(script_scaffolder "${install_root}/scripts/New-BMLScriptMod.ps1")
     set(script_packer "${install_root}/scripts/Pack-BMLScriptMod.ps1")
     set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")
     foreach(required_script_path
             "${script_template}/HelloScript.mod.as"
+            "${script_scaffolder}"
             "${script_packer}"
             "${script_project_module}")
         if(NOT EXISTS "${required_script_path}")
@@ -227,16 +229,46 @@ if(use_sdk_archive)
         endif()
     endforeach()
 
-    set(script_package_source "${work_root}/HelloScript")
+    set(script_package_source "${work_root}/QuickStartMod")
     file(REMOVE_RECURSE "${script_package_source}")
-    file(COPY "${script_template}/" DESTINATION "${script_package_source}")
+    execute_process(
+        COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
+                -File "${script_scaffolder}"
+                -Id "sdk.quick-start"
+                -Name "SDK Quick Start"
+                -Author "SDK Test"
+                -Destination "${script_package_source}"
+        RESULT_VARIABLE script_scaffold_status
+        OUTPUT_VARIABLE script_scaffold_output
+        ERROR_VARIABLE script_scaffold_error
+    )
+    if(NOT script_scaffold_status EQUAL 0 OR
+       NOT EXISTS "${script_package_source}/QuickStartMod.mod.as")
+        message(FATAL_ERROR
+                "The packaged SDK could not create a script Mod.\n"
+                "${script_scaffold_output}${script_scaffold_error}")
+    endif()
+
+    file(READ "${script_package_source}/QuickStartMod.mod.as" generated_script)
+    foreach(required_fragment
+            "id=\"sdk.quick-start\""
+            "name=\"SDK Quick Start\""
+            "author=\"SDK Test\""
+            "class QuickStartMod")
+        string(FIND "${generated_script}" "${required_fragment}" fragment_index)
+        if(fragment_index EQUAL -1)
+            message(FATAL_ERROR
+                    "The generated script Mod is missing ${required_fragment}.")
+        endif()
+    endforeach()
+
     file(MAKE_DIRECTORY
             "${script_package_source}/.vscode"
             "${script_package_source}/dist")
     file(WRITE "${script_package_source}/.vscode/settings.json" "{}\n")
     file(WRITE "${script_package_source}/as.predefined" "editor declarations\n")
     file(WRITE "${script_package_source}/dist/stale.zip" "old package\n")
-    set(script_package "${script_package_source}/dist/HelloScript.zip")
+    set(script_package "${script_package_source}/dist/QuickStartMod.zip")
     execute_process(
         COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
                 -File "${script_packer}"
@@ -269,7 +301,7 @@ if(use_sdk_archive)
     list(FILTER script_package_entries EXCLUDE REGEX "^$")
 
     foreach(required_entry
-            "HelloScript.mod.as")
+            "QuickStartMod.mod.as")
         list(FIND script_package_entries "${required_entry}" required_entry_index)
         if(required_entry_index EQUAL -1)
             message(FATAL_ERROR

@@ -21,12 +21,21 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 
 ## 开始编写脚本 Mod
 
-1. 从 SDK 复制 `templates/script-mod-template`。
-2. 将副本放到 `ModLoader/Mods/<你的Mod>`。
+1. 在 `ModLoader/Mods` 中打开 PowerShell，用 SDK 模板创建 Mod：
+
+   ```powershell
+   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+   命令会创建目标目录、合法的类名和入口文件名，并写入你的元数据。也可以手动复制
+   `templates/script-mod-template`。
+
+2. 打开生成的目录和 README。
 3. 确认配套的 `BuildingBlocks/AngelScript.dll` 已安装。
 4. 不修改模板，直接启动 Player，同时确认游戏内问候语和
    `ModLoader/ModLoader.log` 中的加载日志。
-5. 首次成功后再替换示例 id、名称和作者；Mod 身份发生变化，需要重启一次。
+5. 保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启 Player。
 6. 保持 Player 运行。保存已加载目录中的源码会自动热重载；只有新增入口、修改 id
    或修改依赖时才需要重启。
 7. 在 Mod 目录中运行 `scripts/Pack-BMLScriptMod.ps1`；产物位于

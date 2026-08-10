@@ -22,13 +22,23 @@ identity, lifecycle, configuration, commands, loader UI, and mod-level services.
 
 ## Start a script mod
 
-1. Copy `templates/script-mod-template` from the SDK.
-2. Place the copy at `ModLoader/Mods/<YourMod>`.
+1. Open PowerShell in `ModLoader/Mods` and create a Mod from the SDK template:
+
+   ```powershell
+   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+   The command creates the destination directory, a valid class and entry
+   filename, and personalized metadata. You can also copy
+   `templates/script-mod-template` manually.
+
+2. Open the generated directory and README.
 3. Confirm that the matching `BuildingBlocks/AngelScript.dll` is installed.
 4. Start Player without editing the template. Confirm both the in-game greeting and its load
    line in `ModLoader/ModLoader.log`.
-5. Replace the example id, name, and author, then restart Player because the Mod
-   identity changed.
+5. Keep the generated id stable; changing it later creates a different Mod and
+   requires a Player restart.
 6. Keep Player open. Saving source in the loaded directory triggers automatic
    hot reload; only new entries, id changes, and dependency changes require a
    restart.

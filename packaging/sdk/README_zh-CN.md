@@ -12,9 +12,18 @@
 否则先从脚本 Mod 开始。
 
 1. 打开 [`share/BML/docs/zh-CN/modding.md`](share/BML/docs/zh-CN/modding.md)。
-2. 把 [`templates/script-mod-template`](templates/script-mod-template) 复制到
-   `<Ballance>/ModLoader/Mods/<你的Mod>`。
-3. 按模板 README 的说明，先原样运行成功，再开始修改。
+2. 在 `ModLoader/Mods` 中创建 Mod：
+
+   ```powershell
+   Set-Location "<Ballance>/ModLoader/Mods"
+   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+3. 按生成的 README，先原样运行成功，再开始修改。
+
+需要自行编写自动化流程时，也可以手动复制
+[`templates/script-mod-template`](templates/script-mod-template)。
 
 模板运行成功后，从 [`examples/script-mod`](examples/script-mod) 复制一个目录，
 通过可运行示例学习命令与配置、输入与界面或游戏状态访问。
@@ -41,7 +50,7 @@
 | `docs/api/` | 启用脚本支持时提供的 AngelScript 编辑器声明 |
 | `include/`、`lib/` | 原生头文件、库和 CMake package |
 | `share/BML/tools/` | 生成式 IMC 工具 |
-| `scripts/` | 脚本 Mod 打包工具 |
+| `scripts/` | 脚本 Mod 创建和打包工具 |
 
 安装 BML+ 到游戏时应使用运行时发布包 `BMLPlus-<version>.zip`，不能使用 SDK
 压缩包代替运行时包。

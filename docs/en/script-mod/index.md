@@ -39,8 +39,16 @@ cannot start.
 
 ## Create the first mod
 
-Copy `templates/script-mod-template` from the BML+ SDK to
-`ModLoader/Mods/HelloScript`. Its entry is deliberately small:
+Open PowerShell in `ModLoader/Mods` and let the SDK personalize the template:
+
+```powershell
+& "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
+  -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+```
+
+The command derives a safe class and entry filename from the id and refuses to
+overwrite an existing directory. Copying `templates/script-mod-template`
+manually remains supported. The underlying entry is deliberately small:
 
 ```angelscript
 [bml.mod id="example.hello.script"
@@ -57,15 +65,15 @@ class HelloScript {
 }
 ```
 
-Start `Bin/Player.exe` once without editing the template. The in-game greeting
-proves that `OnLoad` ran; the `Hello Script loaded` line in
+Start `Bin/Player.exe` once without editing the generated source. The in-game
+greeting proves that `OnLoad` ran; the `My Mod loaded` line in
 `ModLoader/ModLoader.log` proves which Mod produced it. Together they confirm
 that BML+ found the entry, compiled it through CKAngelScript, accepted the
 metadata, created the main class, and called `OnLoad`.
 
-After that first success, replace the example id, name, and author. Restart
-Player once because the Mod identity changed; ordinary source edits after that
-use automatic hot reload.
+After that first success, keep the generated id stable. Ordinary source edits
+use automatic hot reload; changing the id creates a different Mod and requires
+a Player restart.
 
 The SDK's `examples/script-mod` directory contains three complete follow-up
 Mods for command/config, input/UI, and game-state access. Copy one example at a
@@ -76,7 +84,7 @@ If it fails, run:
 
 ```text
 script status
-script diag example.hello.script
+script diag yourname.my-mod
 script logs error
 ```
 

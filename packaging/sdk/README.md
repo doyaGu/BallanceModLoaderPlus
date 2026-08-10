@@ -13,9 +13,18 @@ Start here unless you specifically need native hooks, native memory access, a
 generated IMC Provider, or a performance-critical native loop.
 
 1. Open [`share/BML/docs/en/modding.md`](share/BML/docs/en/modding.md).
-2. Copy [`templates/script-mod-template`](templates/script-mod-template) to
-   `<Ballance>/ModLoader/Mods/<YourMod>`.
-3. Follow the template README to run it unchanged before editing it.
+2. Create the Mod in `ModLoader/Mods`:
+
+   ```powershell
+   Set-Location "<Ballance>/ModLoader/Mods"
+   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
+     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```
+
+3. Follow the generated README and run the Mod unchanged before editing it.
+
+You can copy [`templates/script-mod-template`](templates/script-mod-template)
+manually when scripting the setup yourself.
 
 After the template works, copy one directory from
 [`examples/script-mod`](examples/script-mod) to learn commands and config,
@@ -46,7 +55,7 @@ SDK, or generated IMC services.
 | `docs/api/` | AngelScript editor declarations, when script support is enabled |
 | `include/`, `lib/` | Native headers, libraries, and CMake package files |
 | `share/BML/tools/` | Generated IMC tooling |
-| `scripts/` | Script Mod packaging tools |
+| `scripts/` | Script Mod creation and packaging tools |
 
 Use the runtime release `BMLPlus-<version>.zip` to install BML+ into the game.
 Do not use an SDK archive as a runtime package.

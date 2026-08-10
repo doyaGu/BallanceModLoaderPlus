@@ -8,15 +8,16 @@ Read the SDK's `share/BML/docs/en/modding.md`, then
 [Create mods](https://doyagu.github.io/BallanceModLoaderPlus/modding/) and
 [Script mods](https://doyagu.github.io/BallanceModLoaderPlus/script-mod/).
 
-## Run the template
+## Run the mod
 
-1. Copy this directory to `<Ballance>/ModLoader/Mods/HelloScript`.
+1. Place this directory at `<Ballance>/ModLoader/Mods/HelloScript`; if it is
+   already there, continue.
 2. Confirm that the matching `BuildingBlocks/AngelScript.dll` is installed.
-3. Start `Bin/Player.exe` without editing the template.
+3. Start `Bin/Player.exe` without editing the source further.
 4. Look for the greeting in game and `Hello Script loaded` in
    `ModLoader/ModLoader.log`.
-5. Replace the example id, name, and author, then restart Player once because
-   the Mod identity changed.
+5. Confirm that the id, name, and author at the top of the entry are yours. If
+   you copied the unmodified SDK template, change them before continuing.
 
 BML+ discovers a new Mod only during Player startup. After the Mod has loaded,
 saving a source file in a directory package triggers automatic hot reload.
@@ -51,7 +52,7 @@ cache files, and the `dist` directory.
 Test the zip without the development directory installed; two packages with
 the same Mod id conflict. `.bmodp` is reserved for native DLL mods.
 
-This template proves discovery, compilation, lifecycle entry, logging, and
+This mod proves discovery, compilation, lifecycle entry, logging, and
 in-game output. After it works, use the SDK's `examples/script-mod` directory
 for focused command/config, input/UI, and game-state examples. Copy only the
 example you want to run.

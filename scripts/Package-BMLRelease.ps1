@@ -161,6 +161,7 @@ function Assert-BMLSdkStage {
             'examples\script-mod\command-config\CommandConfig.mod.as',
             'examples\script-mod\input-ui\InputUi.mod.as',
             'examples\script-mod\game-state\GameState.mod.as',
+            'scripts\New-BMLScriptMod.ps1',
             'scripts\Pack-BMLScriptMod.ps1',
             'share\BML\docs\en\script-mod\index.md',
             'share\BML\docs\en\script-mod\api.md',
@@ -500,6 +501,7 @@ Assert-BMLBinaryVersionMatchesHeader `
     -Label 'Debug BMLPlus.dll'
 
 if ($IncludeAngelScript) {
+    Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'New-BMLScriptMod.ps1') -Type Leaf
     Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Type Leaf
     Assert-BMLPath -Path $scriptTemplate -Type Container
     if ($ckasRuntime) {
@@ -565,6 +567,7 @@ Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path 
 if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
     Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\script-mod-template')
+    Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'New-BMLScriptMod.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\New-BMLScriptMod.ps1')
     Copy-RequiredFile -Source (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Destination (Join-Path $releaseSdkStage 'scripts\Pack-BMLScriptMod.ps1')
     Copy-BMLDirectoryContents -SourceDir (Join-Path $layout.ScriptsRoot 'lib') -DestinationDir (Join-Path $releaseSdkStage 'scripts\lib')
 }
