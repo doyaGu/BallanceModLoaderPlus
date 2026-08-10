@@ -55,7 +55,9 @@ TEST(ScriptApiReferenceTest, BuiltinCapabilityFacadesAreDocumented) {
         "Score GetScore()",
         "namespace Gameplay",
         "class LevelState",
-        "int OpenCatalog(CatalogCursor@ &out cursor)",
+        "int ReadCatalog(array<CatalogEntry>@ &out entries)",
+        "int ReadCheckpoints(array<Checkpoint>@ &out entries)",
+        "int ReadResetpoints(array<Resetpoint>@ &out entries)",
         "namespace Events",
         "class Stream",
         "int Open(Stream@ &out stream, int capacity = 256)",
@@ -146,12 +148,13 @@ TEST(ScriptApiReferenceTest, GameplayFacadeUsesDirectBuiltinReads) {
     ExpectContainsAll(builtinFacade,
                       {"ReadBuiltinGameplayLevel", "ReadBuiltinGameplayEnergy",
                        "ReadBuiltinGameplayCatalog", "ReadBuiltinGameplayCheckpoints",
-                       "ReadBuiltinGameplayResetpoints"},
+                       "ReadBuiltinGameplayResetpoints", "CreateArray",
+                       "ArrayGetElementAddress", "ArrayRelease"},
                       "src/AngelScript/ScriptImcFacade.cpp");
     ExpectContainsNone(builtinFacade,
                        {"clients->Gameplay(", "client.CallLevel(", "client.CallEnergy(",
                         "client.CallCatalog(", "client.CallCheckpoints(",
-                        "client.CallResetpoints("},
+                        "client.CallResetpoints(", "CScriptArray"},
                        "src/AngelScript/ScriptImcFacade.cpp");
 
     const std::string clients = ReadTextFile("src/AngelScript/ScriptImcClients.h") +
@@ -159,6 +162,27 @@ TEST(ScriptApiReferenceTest, GameplayFacadeUsesDirectBuiltinReads) {
     ExpectContainsNone(clients,
                        {"bml_gameplay_imc.hpp", "ScriptImcClients::Gameplay", "m_Gameplay"},
                        "ScriptImcClients");
+
+    const std::vector<std::string> removedCursors = {
+        "CollectionCursor", "CatalogCursor", "CheckpointCursor", "ResetpointCursor",
+        "OpenCatalog", "OpenCheckpoints", "OpenResetpoints",
+        "bool &out hasValue", "bool &out complete",
+    };
+    ExpectContainsNone(builtinFacade, removedCursors,
+                       "src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsNone(ReadTextFile("docs/api/bml-script-mod-api.as"), removedCursors,
+                       "docs/api/bml-script-mod-api.as");
+    ExpectContainsNone(ReadTextFile("docs/api/as.predefined"), removedCursors,
+                       "docs/api/as.predefined");
+
+    const std::string smoke = ReadTextFile(
+        "tests/smoke/AngelScript/BMLAngelScriptSmoke/runtime.as");
+    ExpectContainsAll(smoke,
+                      {"array<BML::Gameplay::CatalogEntry>@ catalog",
+                       "BML::Gameplay::ReadCatalog(catalog)"},
+                      "BMLAngelScriptSmoke/runtime.as");
+    ExpectContainsNone(smoke, removedCursors,
+                       "BMLAngelScriptSmoke/runtime.as");
 }
 
 TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {

@@ -17,8 +17,12 @@ class BMLBindingsSmokeMod {
     BML::Runtime::Score score = BML::Runtime::GetScore();
     bool runtimeOk = runtime.Playing == (runtime.InGame && !runtime.Paused) &&
                      clock.Frame >= 0 && score.HS >= 0;
+    array<BML::Gameplay::CatalogEntry>@ catalog;
+    int catalogStatus = BML::Gameplay::ReadCatalog(catalog);
+    bool catalogOk = catalogStatus == BML::ERROR_OK && catalog !is null;
     bool streamOk = BML::Events::Open(events, 8) == BML::ERROR_OK && events !is null && events.IsOpen;
     Log(ctx, "BML capability smoke: runtime=" + (runtimeOk ? "true" : "false") +
+             " catalog=" + (catalogOk ? "true" : "false") +
              " stream=" + (streamOk ? "true" : "false"));
     Log(ctx, "BML script mod summary: capabilities");
   }

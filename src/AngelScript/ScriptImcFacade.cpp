@@ -316,167 +316,147 @@ CKObject *BorrowResetpointObject(const Resetpoint *value) {
     return value ? ResolveScriptObject(value->Object) : nullptr;
 }
 
-class CollectionCursor {
+class ScriptArrayOutput {
 public:
-    void AddRef() { ++m_RefCount; }
-    void Release() {
-        if (--m_RefCount == 0)
-            delete this;
+    ScriptArrayOutput() = default;
+    ScriptArrayOutput(const ScriptArrayOutput &) = delete;
+    ScriptArrayOutput &operator=(const ScriptArrayOutput &) = delete;
+
+    ~ScriptArrayOutput() {
+        if (m_Array && m_Api && m_Api->ArrayRelease)
+            (void)m_Api->ArrayRelease(m_Array);
     }
-    bool IsOpen() const { return m_Open; }
-    int Close() {
-        m_Open = false;
+
+    int Create(const char *declaration, std::size_t count) {
+        if (count > static_cast<std::size_t>((std::numeric_limits<CKDWORD>::max)()))
+            return BML_ERROR_OUT_OF_MEMORY;
+
+        BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
+        const BML::ScriptModRuntime *runtime =
+            BML::ScriptModRuntime::GetCurrentScriptModRuntime();
+        if (!runtime && mod)
+            runtime = &mod->GetRuntimeForImc();
+        if (!runtime || !runtime->GetAngelScript())
+            return BML_ERROR_SCRIPT_EXECUTION;
+
+        m_Api = &runtime->GetApi();
+        if (!m_Api->CreateArray || !m_Api->ArrayRelease ||
+            !m_Api->ArrayGetElementAddress) {
+            return BML_ERROR_NOT_IMPLEMENTED;
+        }
+
+        const CKAS_STATUS status = m_Api->CreateArray(
+            runtime->GetAngelScript(), declaration, static_cast<CKDWORD>(count),
+            &m_Array);
+        if (status == CKAS_EXECUTIONFAILED)
+            return BML_ERROR_OUT_OF_MEMORY;
+        return status == CKAS_OK && m_Array ? BML_OK
+                                            : BML_ERROR_SCRIPT_EXECUTION;
+    }
+
+    template <typename Value>
+    int MoveElement(CKDWORD index, Value &value) {
+        void *element = nullptr;
+        if (!m_Api || !m_Array ||
+            m_Api->ArrayGetElementAddress(m_Array, index, &element) != CKAS_OK ||
+            !element) {
+            return BML_ERROR_SCRIPT_EXECUTION;
+        }
+        *static_cast<Value *>(element) = std::move(value);
         return BML_OK;
     }
 
-protected:
-    virtual ~CollectionCursor() = default;
-    int BeginNext(std::size_t count, bool &hasValue, bool &complete) const {
-        hasValue = false;
-        complete = false;
-        if (!m_Open)
-            return BML_ERROR_INVALID_HANDLE;
-        hasValue = m_Index < count;
-        complete = !hasValue || m_Index + 1 >= count;
-        return BML_OK;
+    void *Detach() {
+        void *array = m_Array;
+        m_Array = nullptr;
+        return array;
     }
-    void Advance() { ++m_Index; }
-    std::size_t Index() const { return m_Index; }
 
 private:
-    int m_RefCount = 1;
-    bool m_Open = true;
-    std::size_t m_Index = 0;
+    const CKAngelScriptAdapter::Api *m_Api = nullptr;
+    void *m_Array = nullptr;
 };
 
-class CatalogCursor final : public CollectionCursor {
-public:
-    explicit CatalogCursor(std::vector<CatalogEntry> values)
-        : m_Values(std::move(values)) {}
-    int Next(CatalogEntry &out, bool &hasValue, bool &complete) {
-        const int status = BeginNext(m_Values.size(), hasValue, complete);
-        if (status != BML_OK || !hasValue)
-            return status;
-        out = std::move(m_Values[Index()]);
-        Advance();
-        return BML_OK;
-    }
-private:
-    std::vector<CatalogEntry> m_Values;
-};
-
-class CheckpointCursor final : public CollectionCursor {
-public:
-    explicit CheckpointCursor(std::vector<Checkpoint> values)
-        : m_Values(std::move(values)) {}
-    int Next(Checkpoint &out, bool &hasValue, bool &complete) {
-        const int status = BeginNext(m_Values.size(), hasValue, complete);
-        if (status != BML_OK || !hasValue)
-            return status;
-        out = m_Values[Index()];
-        Advance();
-        return BML_OK;
-    }
-private:
-    std::vector<Checkpoint> m_Values;
-};
-
-class ResetpointCursor final : public CollectionCursor {
-public:
-    explicit ResetpointCursor(std::vector<Resetpoint> values)
-        : m_Values(std::move(values)) {}
-    int Next(Resetpoint &out, bool &hasValue, bool &complete) {
-        const int status = BeginNext(m_Values.size(), hasValue, complete);
-        if (status != BML_OK || !hasValue)
-            return status;
-        out = m_Values[Index()];
-        Advance();
-        return BML_OK;
-    }
-private:
-    std::vector<Resetpoint> m_Values;
-};
-
-template <typename Cursor, typename Value, typename Reader>
-int OpenCollection(Cursor *&out, Reader reader) {
+template <typename Value, typename Factory>
+int CreateGameplayArray(void *&out, const char *declaration,
+                        std::size_t count, Factory factory) {
     out = nullptr;
-    ModContext *context = nullptr;
-    int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    std::vector<Value> values;
-    if (status == BML_OK) status = reader(*context, values);
+    ScriptArrayOutput array;
+    int status = array.Create(declaration, count);
     if (status != BML_OK)
         return status;
-    Cursor *result = new (std::nothrow) Cursor(std::move(values));
-    if (!result)
+    try {
+        for (std::size_t i = 0; i < count; ++i) {
+            Value value = factory(i);
+            status = array.MoveElement(static_cast<CKDWORD>(i), value);
+            if (status != BML_OK)
+                return status;
+        }
+    } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
-    out = result;
+    } catch (...) {
+        return BML_ERROR_SCRIPT_EXECUTION;
+    }
+    out = array.Detach();
     return BML_OK;
 }
 
-int OpenCatalog(CatalogCursor *&out) {
-    return OpenCollection<CatalogCursor, CatalogEntry>(
-        out, [](ModContext &context, auto &values) {
-            GameplayImc::CatalogResponseValue response{};
-            int status = ReadBuiltinGameplayCatalog(context, response);
-            const std::size_t count = response.Files.size();
-            if (status == BML_OK && (response.StartBalls.size() != count ||
-                                     response.Skies.size() != count ||
-                                     response.Bonuses.size() != count ||
-                                     response.Music.size() != count))
-                status = BML_ERROR_MALFORMED_MESSAGE;
-            if (status != BML_OK)
-                return status;
-            try {
-                values.reserve(count);
-                for (std::size_t i = 0; i < count; ++i) {
-                    values.push_back({std::move(response.Files[i]),
-                                      std::move(response.StartBalls[i]),
-                                      std::move(response.Skies[i]),
-                                      response.Bonuses[i], response.Music[i]});
-                }
-            } catch (const std::bad_alloc &) {
-                return BML_ERROR_OUT_OF_MEMORY;
-            }
-            return BML_OK;
+int ReadCatalog(void *&out) {
+    out = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveFacadeContext(context, "BML::Gameplay");
+    GameplayImc::CatalogResponseValue response{};
+    if (status == BML_OK)
+        status = ReadBuiltinGameplayCatalog(*context, response);
+    const std::size_t count = response.Files.size();
+    if (status == BML_OK && (response.StartBalls.size() != count ||
+                             response.Skies.size() != count ||
+                             response.Bonuses.size() != count ||
+                             response.Music.size() != count)) {
+        status = BML_ERROR_MALFORMED_MESSAGE;
+    }
+    if (status != BML_OK)
+        return status;
+    return CreateGameplayArray<CatalogEntry>(
+        out, "array<BML::Gameplay::CatalogEntry>", count,
+        [&response](std::size_t i) {
+            return CatalogEntry{std::move(response.Files[i]),
+                                std::move(response.StartBalls[i]),
+                                std::move(response.Skies[i]),
+                                response.Bonuses[i], response.Music[i]};
         });
 }
 
-int OpenCheckpoints(CheckpointCursor *&out) {
-    return OpenCollection<CheckpointCursor, Checkpoint>(
-        out, [](ModContext &context, auto &values) {
-            GameplayImc::CheckpointsResponseValue response{};
-            int status = ReadBuiltinGameplayCheckpoints(context, response);
-            if (status == BML_OK && response.Matrices.size() != response.Objects.size())
-                status = BML_ERROR_MALFORMED_MESSAGE;
-            if (status != BML_OK)
-                return status;
-            try {
-                values.reserve(response.Matrices.size());
-                for (std::size_t i = 0; i < response.Matrices.size(); ++i)
-                    values.push_back({response.Matrices[i], response.Objects[i]});
-            } catch (const std::bad_alloc &) {
-                return BML_ERROR_OUT_OF_MEMORY;
-            }
-            return BML_OK;
+int ReadCheckpoints(void *&out) {
+    out = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveFacadeContext(context, "BML::Gameplay");
+    GameplayImc::CheckpointsResponseValue response{};
+    if (status == BML_OK)
+        status = ReadBuiltinGameplayCheckpoints(*context, response);
+    if (status == BML_OK && response.Matrices.size() != response.Objects.size())
+        status = BML_ERROR_MALFORMED_MESSAGE;
+    if (status != BML_OK)
+        return status;
+    return CreateGameplayArray<Checkpoint>(
+        out, "array<BML::Gameplay::Checkpoint>", response.Matrices.size(),
+        [&response](std::size_t i) {
+            return Checkpoint{response.Matrices[i], response.Objects[i]};
         });
 }
 
-int OpenResetpoints(ResetpointCursor *&out) {
-    return OpenCollection<ResetpointCursor, Resetpoint>(
-        out, [](ModContext &context, auto &values) {
-            GameplayImc::ResetpointsResponseValue response{};
-            const int status = ReadBuiltinGameplayResetpoints(context, response);
-            if (status != BML_OK)
-                return status;
-            try {
-                values.reserve(response.Objects.size());
-                for (const BML_ObjectRef &object : response.Objects)
-                    values.push_back({object});
-            } catch (const std::bad_alloc &) {
-                return BML_ERROR_OUT_OF_MEMORY;
-            }
-            return BML_OK;
-        });
+int ReadResetpoints(void *&out) {
+    out = nullptr;
+    ModContext *context = nullptr;
+    int status = GetActiveFacadeContext(context, "BML::Gameplay");
+    GameplayImc::ResetpointsResponseValue response{};
+    if (status == BML_OK)
+        status = ReadBuiltinGameplayResetpoints(*context, response);
+    if (status != BML_OK)
+        return status;
+    return CreateGameplayArray<Resetpoint>(
+        out, "array<BML::Gameplay::Resetpoint>", response.Objects.size(),
+        [&response](std::size_t i) { return Resetpoint{response.Objects[i]}; });
 }
 /* Script events own decoded IMC values, never CK pointers. Object references are
  * resolved only by Borrow* calls, so destroyed Virtools objects remain safe. */
@@ -821,11 +801,6 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
         if (!RegisterValue(engine, value, errorMessage))
             return false;
     }
-    if (!Register(engine, engine->RegisterObjectType("CatalogCursor", 0, asOBJ_REF), "CatalogCursor", errorMessage) ||
-        !Register(engine, engine->RegisterObjectType("CheckpointCursor", 0, asOBJ_REF), "CheckpointCursor", errorMessage) ||
-        !Register(engine, engine->RegisterObjectType("ResetpointCursor", 0, asOBJ_REF), "ResetpointCursor", errorMessage)) {
-        return false;
-    }
 #define BML_AS_PROPERTY(Type, Declaration, Field) \
     if (!Register(engine, engine->RegisterObjectProperty(Type, Declaration, Field), Declaration, errorMessage)) return false
     BML_AS_PROPERTY("LevelState", "int Id", asOFFSET(LevelState, Id));
@@ -847,26 +822,11 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
            Register(engine, engine->RegisterObjectMethod("CatalogEntry", "string get_Sky() const", BML_AS_STRING_FIELD_GETTER(CatalogEntry, Sky), asCALL_GENERIC), "CatalogEntry::Sky", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Checkpoint", "CKObject@ BorrowObject() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowCheckpointObject), asCALL_GENERIC), "Checkpoint::BorrowObject", errorMessage) &&
            Register(engine, engine->RegisterObjectMethod("Resetpoint", "CKObject@ BorrowObject() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowResetpointObject), asCALL_GENERIC), "Resetpoint::BorrowObject", errorMessage) &&
-           Register(engine, engine->RegisterObjectBehaviour("CatalogCursor", asBEHAVE_ADDREF, "void f()", asMETHOD(CollectionCursor, AddRef), asCALL_THISCALL), "CatalogCursor::AddRef", errorMessage) &&
-           Register(engine, engine->RegisterObjectBehaviour("CatalogCursor", asBEHAVE_RELEASE, "void f()", asMETHOD(CollectionCursor, Release), asCALL_THISCALL), "CatalogCursor::Release", errorMessage) &&
-           Register(engine, engine->RegisterObjectBehaviour("CheckpointCursor", asBEHAVE_ADDREF, "void f()", asMETHOD(CollectionCursor, AddRef), asCALL_THISCALL), "CheckpointCursor::AddRef", errorMessage) &&
-           Register(engine, engine->RegisterObjectBehaviour("CheckpointCursor", asBEHAVE_RELEASE, "void f()", asMETHOD(CollectionCursor, Release), asCALL_THISCALL), "CheckpointCursor::Release", errorMessage) &&
-           Register(engine, engine->RegisterObjectBehaviour("ResetpointCursor", asBEHAVE_ADDREF, "void f()", asMETHOD(CollectionCursor, AddRef), asCALL_THISCALL), "ResetpointCursor::AddRef", errorMessage) &&
-           Register(engine, engine->RegisterObjectBehaviour("ResetpointCursor", asBEHAVE_RELEASE, "void f()", asMETHOD(CollectionCursor, Release), asCALL_THISCALL), "ResetpointCursor::Release", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("CatalogCursor", "bool get_IsOpen() const", asMETHOD(CollectionCursor, IsOpen), asCALL_THISCALL), "CatalogCursor::IsOpen", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("CatalogCursor", "int Close()", asMETHOD(CollectionCursor, Close), asCALL_THISCALL), "CatalogCursor::Close", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("CatalogCursor", "int Next(CatalogEntry &out entry, bool &out hasValue, bool &out complete)", BML_AS_GENERIC_METHOD(&CatalogCursor::Next), asCALL_GENERIC), "CatalogCursor::Next", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("CheckpointCursor", "bool get_IsOpen() const", asMETHOD(CollectionCursor, IsOpen), asCALL_THISCALL), "CheckpointCursor::IsOpen", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("CheckpointCursor", "int Close()", asMETHOD(CollectionCursor, Close), asCALL_THISCALL), "CheckpointCursor::Close", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("CheckpointCursor", "int Next(Checkpoint &out entry, bool &out hasValue, bool &out complete)", BML_AS_GENERIC_METHOD(&CheckpointCursor::Next), asCALL_GENERIC), "CheckpointCursor::Next", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("ResetpointCursor", "bool get_IsOpen() const", asMETHOD(CollectionCursor, IsOpen), asCALL_THISCALL), "ResetpointCursor::IsOpen", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("ResetpointCursor", "int Close()", asMETHOD(CollectionCursor, Close), asCALL_THISCALL), "ResetpointCursor::Close", errorMessage) &&
-           Register(engine, engine->RegisterObjectMethod("ResetpointCursor", "int Next(Resetpoint &out entry, bool &out hasValue, bool &out complete)", BML_AS_GENERIC_METHOD(&ResetpointCursor::Next), asCALL_GENERIC), "ResetpointCursor::Next", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadLevel(LevelState &out state)", BML_AS_GENERIC_FUNCTION(&ReadLevel), asCALL_GENERIC), "Gameplay::ReadLevel", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadEnergy(EnergyState &out state)", BML_AS_GENERIC_FUNCTION(&ReadEnergy), asCALL_GENERIC), "Gameplay::ReadEnergy", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int OpenCatalog(CatalogCursor@ &out cursor)", BML_AS_GENERIC_FUNCTION(&OpenCatalog), asCALL_GENERIC), "Gameplay::OpenCatalog", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int OpenCheckpoints(CheckpointCursor@ &out cursor)", BML_AS_GENERIC_FUNCTION(&OpenCheckpoints), asCALL_GENERIC), "Gameplay::OpenCheckpoints", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int OpenResetpoints(ResetpointCursor@ &out cursor)", BML_AS_GENERIC_FUNCTION(&OpenResetpoints), asCALL_GENERIC), "Gameplay::OpenResetpoints", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadCatalog(array<CatalogEntry>@ &out entries)", BML_AS_GENERIC_FUNCTION(&ReadCatalog), asCALL_GENERIC), "Gameplay::ReadCatalog", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadCheckpoints(array<Checkpoint>@ &out entries)", BML_AS_GENERIC_FUNCTION(&ReadCheckpoints), asCALL_GENERIC), "Gameplay::ReadCheckpoints", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadResetpoints(array<Resetpoint>@ &out entries)", BML_AS_GENERIC_FUNCTION(&ReadResetpoints), asCALL_GENERIC), "Gameplay::ReadResetpoints", errorMessage) &&
            Register(engine, engine->SetDefaultNamespace(""), "namespace reset", errorMessage);
 }
 

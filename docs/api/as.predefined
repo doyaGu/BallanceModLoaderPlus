@@ -15728,23 +15728,11 @@ class CatalogEntry {
 }
 class Checkpoint { BML::Mat4 Matrix; CKObject@ BorrowObject() const; }
 class Resetpoint { CKObject@ BorrowObject() const; }
-class CatalogCursor {
-  bool get_IsOpen() const; int Close();
-  int Next(CatalogEntry &out entry, bool &out hasValue, bool &out complete);
-}
-class CheckpointCursor {
-  bool get_IsOpen() const; int Close();
-  int Next(Checkpoint &out entry, bool &out hasValue, bool &out complete);
-}
-class ResetpointCursor {
-  bool get_IsOpen() const; int Close();
-  int Next(Resetpoint &out entry, bool &out hasValue, bool &out complete);
-}
 int ReadLevel(LevelState &out state);
 int ReadEnergy(EnergyState &out state);
-int OpenCatalog(CatalogCursor@ &out cursor);
-int OpenCheckpoints(CheckpointCursor@ &out cursor);
-int OpenResetpoints(ResetpointCursor@ &out cursor);
+int ReadCatalog(array<CatalogEntry>@ &out entries);
+int ReadCheckpoints(array<Checkpoint>@ &out entries);
+int ReadResetpoints(array<Resetpoint>@ &out entries);
 } // namespace Gameplay
 
 namespace Events {
