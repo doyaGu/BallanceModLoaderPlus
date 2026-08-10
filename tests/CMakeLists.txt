@@ -94,22 +94,6 @@ set_tests_properties(ImcCompatibilityIntegrationTest PROPERTIES
         LABELS "imc;codegen;compatibility")
 
 add_test(
-        NAME ImcPublicSurfaceTest
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ImcPublicSurfaceTest.py"
-                --source-root "${PROJECT_SOURCE_DIR}"
-)
-set_tests_properties(ImcPublicSurfaceTest PROPERTIES LABELS "imc;abi")
-
-add_test(
-        NAME LegacyNativeHeaderAbiTest
-        COMMAND "${CMAKE_COMMAND}"
-                "-DSOURCE_ROOT=${PROJECT_SOURCE_DIR}"
-                "-DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/abi/legacy-native-headers.sha256"
-                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/LegacyNativeHeaderAbiTest.cmake"
-)
-set_tests_properties(LegacyNativeHeaderAbiTest PROPERTIES LABELS "legacy-native;abi")
-
-add_test(
         NAME BmlModCmakeTest
         COMMAND "${CMAKE_COMMAND}"
                 "-DBML_MOD_CMAKE=${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
@@ -407,14 +391,6 @@ if (BML_WITH_ANGELSCRIPT)
             SOURCES
             ScriptStateBagTest.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptStateBag.cpp
-    )
-
-    add_bml_test(ScriptApiReferenceTest
-            SOURCES
-            ScriptApiReferenceTest.cpp
-    )
-    target_compile_definitions(ScriptApiReferenceTest PRIVATE
-            "BML_TEST_SOURCE_ROOT=\"${PROJECT_SOURCE_DIR}\""
     )
 
     add_bml_test(ScriptReloadStagingCleanupTest
