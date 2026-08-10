@@ -136,9 +136,11 @@ function Assert-BMLSdkStage {
         'lib\cmake\BML\BMLImc.cmake',
         'lib\cmake\BML\FindVirtoolsSDK.cmake',
         'share\BML\tools\imc_codegen.py',
+        'share\BML\docs\en\modding.md',
         'share\BML\docs\en\native-mod-api.md',
         'share\BML\docs\en\imc-author-guide.md',
         'share\BML\docs\en\imc.md',
+        'share\BML\docs\zh-CN\modding.md',
         'share\BML\docs\zh-CN\native-mod-api.md',
         'share\BML\docs\zh-CN\imc-author-guide.md',
         'share\BML\docs\zh-CN\imc.md',
@@ -153,8 +155,10 @@ function Assert-BMLSdkStage {
             'include\angelscript.h',
             'templates\script-mod-template\HelloScript.mod.as',
             'scripts\Pack-BMLScriptMod.ps1',
-            'docs\en\script-mod\author-guide.md',
-            'docs\en\script-mod\api.md',
+            'share\BML\docs\en\script-mod\index.md',
+            'share\BML\docs\en\script-mod\api.md',
+            'share\BML\docs\zh-CN\api.md',
+            'share\BML\docs\zh-CN\script-mod-tutorial\README.md',
             'docs\api\as.predefined',
             'docs\api\bml-script-mod-api.as',
             'docs\api\bml-imgui-api.as'
@@ -174,6 +178,13 @@ function Assert-BMLSdkStage {
         $forbidden = Join-Path $StageDir $relative
         if (Test-Path -LiteralPath $forbidden) {
             throw "SDK stage contains a removed or internal header: $relative"
+        }
+    }
+
+    foreach ($relative in @('docs\en', 'docs\zh-CN')) {
+        $duplicateDocs = Join-Path $StageDir $relative
+        if (Test-Path -LiteralPath $duplicateDocs) {
+            throw "SDK stage contains duplicate author documentation: $relative"
         }
     }
 
@@ -433,8 +444,6 @@ if ($IncludeAngelScript -and -not $ckasRuntime) {
     throw '-IncludeAngelScript requires -CKAngelScriptRuntimeDir.'
 }
 
-$scriptAuthorGuide = Join-Path $layout.DocsRoot 'en\script-mod\author-guide.md'
-$scriptApiPage = Join-Path $layout.DocsRoot 'en\script-mod\api.md'
 $scriptPredefinedApi = Join-Path $layout.DocsRoot 'api\as.predefined'
 $scriptApiStub = Join-Path $layout.DocsRoot 'api\bml-script-mod-api.as'
 $scriptImGuiApiStub = Join-Path $layout.DocsRoot 'api\bml-imgui-api.as'
@@ -488,7 +497,7 @@ Assert-BMLBinaryVersionMatchesHeader `
 
 if ($IncludeAngelScript) {
     Assert-BMLPath -Path (Join-Path $layout.ScriptsRoot 'Pack-BMLScriptMod.ps1') -Type Leaf
-    foreach ($doc in @($scriptAuthorGuide, $scriptApiPage, $scriptPredefinedApi, $scriptApiStub, $scriptImGuiApiStub)) {
+    foreach ($doc in @($scriptPredefinedApi, $scriptApiStub, $scriptImGuiApiStub)) {
         Assert-BMLPath -Path $doc -Type Leaf
     }
     Assert-BMLPath -Path $scriptTemplate -Type Container
@@ -555,8 +564,6 @@ Copy-BMLDirectoryContents -SourceDir $nativeTemplate -DestinationDir (Join-Path 
 if ($IncludeAngelScript) {
     Copy-CKAngelScriptHeaders -DestinationIncludeDir (Join-Path $releaseSdkStage 'include')
     Copy-BMLDirectoryContents -SourceDir $scriptTemplate -DestinationDir (Join-Path $releaseSdkStage 'templates\script-mod-template')
-    Copy-RequiredFile -Source $scriptAuthorGuide -Destination (Join-Path $releaseSdkStage 'docs\en\script-mod\author-guide.md')
-    Copy-RequiredFile -Source $scriptApiPage -Destination (Join-Path $releaseSdkStage 'docs\en\script-mod\api.md')
     Copy-RequiredFile -Source $scriptPredefinedApi -Destination (Join-Path $releaseSdkStage 'docs\api\as.predefined')
     Copy-RequiredFile -Source $scriptApiStub -Destination (Join-Path $releaseSdkStage 'docs\api\bml-script-mod-api.as')
     Copy-RequiredFile -Source $scriptImGuiApiStub -Destination (Join-Path $releaseSdkStage 'docs\api\bml-imgui-api.as')

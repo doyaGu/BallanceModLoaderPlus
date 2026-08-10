@@ -468,16 +468,37 @@ install(FILES
         DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/tools"
 )
 
-  install(FILES
-          "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
-          "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
-          "${PROJECT_SOURCE_DIR}/docs/en/imc.md"
-          DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/en"
-  )
+install(FILES
+        "${PROJECT_SOURCE_DIR}/docs/en/modding.md"
+        "${PROJECT_SOURCE_DIR}/docs/en/native-mod-api.md"
+        "${PROJECT_SOURCE_DIR}/docs/en/imc-author-guide.md"
+        "${PROJECT_SOURCE_DIR}/docs/en/imc.md"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/en"
+)
 
-  install(FILES
-          "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-mod-api.md"
-          "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc-author-guide.md"
-          "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc.md"
-          DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/zh-CN"
-  )
+install(FILES
+        "${PROJECT_SOURCE_DIR}/docs/zh-CN/modding.md"
+        "${PROJECT_SOURCE_DIR}/docs/zh-CN/native-mod-api.md"
+        "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc-author-guide.md"
+        "${PROJECT_SOURCE_DIR}/docs/zh-CN/imc.md"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/zh-CN"
+)
+
+if (BML_WITH_ANGELSCRIPT)
+    install(DIRECTORY
+            "${PROJECT_SOURCE_DIR}/docs/en/script-mod"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/en"
+            FILES_MATCHING PATTERN "*.md"
+    )
+
+    install(FILES
+            "${PROJECT_SOURCE_DIR}/docs/zh-CN/api.md"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/zh-CN"
+    )
+
+    install(DIRECTORY
+            "${PROJECT_SOURCE_DIR}/docs/zh-CN/script-mod-tutorial"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/docs/zh-CN"
+            FILES_MATCHING PATTERN "*.md"
+    )
+endif ()
