@@ -27,7 +27,7 @@ Use a callback request when the value may not exist yet:
 ```angelscript
 void ReceiveGreeting(const BML::ModContext &in ctx,
                      const BML::DataShareEvent &in event) {
-  ctx.BorrowLogger().Info(
+  ctx.LogInfo(
       event.Exists ? event.StringValue : "missing " + event.Key);
 }
 
@@ -35,7 +35,7 @@ void OnLoad(const BML::ModContext &in ctx) {
   BML::DataShareRequestRef@ request = ctx.RequestDataShare(
       "remote.greeting", BML::DATASHARE_STRING, ReceiveGreeting);
   if (request is null)
-    ctx.BorrowLogger().Warn("failed to request remote.greeting");
+    ctx.LogWarn("failed to request remote.greeting");
 }
 ```
 

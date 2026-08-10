@@ -3,6 +3,10 @@
 编写 Mod 时应使用已发布的 BML+ SDK。只有修改 Loader、SDK、脚本宿主或内建服务时
 才需要构建 BML+ 仓库。
 
+不确定选择哪条路线时，先从脚本 Mod 开始。它不需要 C++ 构建，并具有最短的编辑、
+热重载和诊断循环。只有明确需要原生 Hook、原生内存、生成式 IMC Provider 或
+性能敏感循环时，再进入原生路线。
+
 ## 选择开发路线
 
 | 路线 | 适用场景 | 主要代价 |
@@ -19,10 +23,13 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 
 1. 从 SDK 复制 `templates/script-mod-template`。
 2. 将副本放到 `ModLoader/Mods/<你的Mod>`。
-3. 为唯一的 `*.mod.as` 入口设置稳定的 id 和元数据。
-4. 启动 Player，在 `ModLoader/ModLoader.log` 中确认模板的加载日志。
-5. 直接修改已安装的目录，并在开发过程中使用热重载。
-6. 使用 `scripts/Pack-BMLScriptMod.ps1` 打包，再在没有开发目录副本的环境中测试
+3. 确认配套的 `BuildingBlocks/AngelScript.dll` 已安装。
+4. 不修改模板，直接启动 Player，同时确认游戏内问候语和
+   `ModLoader/ModLoader.log` 中的加载日志。
+5. 首次成功后再替换示例 id、名称和作者；Mod 身份发生变化，需要重启一次。
+6. 保持 Player 运行。保存已加载目录中的源码会自动热重载；只有新增入口、修改 id
+   或修改依赖时才需要重启。
+7. 使用 `scripts/Pack-BMLScriptMod.ps1` 打包，再在没有开发目录副本的环境中测试
    zip。
 
 先阅读[脚本 Mod 教程导读](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/)，

@@ -47,7 +47,7 @@ private string lastCommand = "none";
 
 void OnLoad(const BML::ModContext &in ctx) {
     RegisterCommands(ctx);
-    LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
+    ctx.LogInfo("HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
     BML::UI::AddMessage("HelloMod loaded.");
 }
 
@@ -65,10 +65,10 @@ private void RegisterCommands(const BML::ModContext &in ctx) {
 
     BML::CommandRef@ command = ctx.RegisterCommand(def, execute, complete);
     if (command is null || !command.IsValid) {
-        LogWarn(ctx, "HelloMod command registration failed");
+        ctx.LogWarn("HelloMod command registration failed");
         return;
     }
-    LogInfo(ctx, "HelloMod command registered: " + command.Name);
+    ctx.LogInfo("HelloMod command registered: " + command.Name);
 }
 ```
 

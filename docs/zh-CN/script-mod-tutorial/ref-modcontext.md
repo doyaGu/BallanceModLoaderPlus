@@ -10,9 +10,15 @@ string GetModName() const;
 ## 日志
 
 ```angelscript
+void LogInfo(const string &in message) const;
+void LogWarn(const string &in message) const;
+void LogError(const string &in message) const;
 BML::Logger@ BorrowLogger() const;
-// logger.Info(msg), logger.Warn(msg), logger.Error(msg)
 ```
+
+普通日志直接使用 `ctx.LogInfo(...)`、`ctx.LogWarn(...)` 和
+`ctx.LogError(...)`。只有明确需要保存一个可重新验证的 Logger wrapper 时才使用
+`BorrowLogger()`；返回的句柄必须判空。
 
 ## 配置
 

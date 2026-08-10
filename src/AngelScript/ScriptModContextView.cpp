@@ -35,6 +35,21 @@ std::string ScriptModContextView::GetModName() const {
     return m_Owner ? m_Owner->GetName() : "";
 }
 
+void ScriptModContextView::LogInfo(const std::string &message) const {
+    if (m_Owner)
+        m_Owner->LogInfo(message);
+}
+
+void ScriptModContextView::LogWarn(const std::string &message) const {
+    if (m_Owner)
+        m_Owner->LogWarn(message);
+}
+
+void ScriptModContextView::LogError(const std::string &message) const {
+    if (m_Owner)
+        m_Owner->LogError(message);
+}
+
 bool ScriptModContextView::IsReloading() const {
     return m_Owner && m_Owner->GetReloadPhase() != ScriptModReloadPhase::None;
 }

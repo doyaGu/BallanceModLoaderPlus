@@ -10,7 +10,7 @@
 
 | 方式 | 输出位置 | 什么时候看到 |
 | --- | --- | --- |
-| `logger.Info(...)` | `ModLoader/ModLoader.log` 文件 | 打开日志文件时 |
+| `ctx.LogInfo(...)` | `ModLoader/ModLoader.log` 文件 | 打开日志文件时 |
 | `BML::UI::AddMessage(...)` | 游戏画面左下方的 BML 短消息区域 | 消息发出的瞬间，在画面里 |
 
 日志适合记录"之后回头查"的信息，比如初始化步骤、错误原因、调试数据。它不会打扰游戏画面，也不会因为消息太快而看不清。
@@ -26,52 +26,27 @@
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
     BML::UI::AddMessage("HelloMod loaded.");
-
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-        logger.Info("HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
-    }
+    ctx.LogInfo("HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
 }
 ```
 
-重启游戏后，游戏画面上会出现 `HelloMod loaded.` 的消息。同时日志文件里也有对应的记录。
+保存后，已加载的脚本会自动热重载，游戏画面上会出现 `HelloMod loaded.` 的消息，
+日志文件里也有对应记录。
 
 `BML::UI::AddMessage(...)` 接收一个字符串参数，直接显示在画面里。不需要获取句柄，也不需要 null 检查；调用一次就添加一条消息。
 
-## Logger helper 模式
+## 直接记录日志
 
-上一节用到 Logger 时，每次都要写 `BorrowLogger`、null 检查、再调用方法。代码量虽然不多，但如果每个回调里都重复写，会让代码变得冗长。
-
-一种常见的做法是把日志调用封装成类的私有方法：
+`ModContext` 直接提供三个带当前 Mod 前缀的日志方法：
 
 ```angelscript
-private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-        logger.Info(message);
-    }
-}
-
-private void LogWarn(const BML::ModContext &in ctx, const string &in message) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-        logger.Warn(message);
-    }
-}
+ctx.LogInfo("normal information");
+ctx.LogWarn("recoverable problem");
+ctx.LogError("operation failed");
 ```
 
-把这两个方法放在 `HelloMod` 类里面。`private` 表示它们只能在类内部使用，外部看不到。
-
-之后 `OnLoad` 可以写成：
-
-```angelscript
-void OnLoad(const BML::ModContext &in ctx) {
-    BML::UI::AddMessage("HelloMod loaded.");
-    LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
-}
-```
-
-这样的好处是：null 检查只写一次，以后所有地方用 `LogInfo` / `LogWarn` 就行。如果将来需要统一给日志加前缀或者改格式，只改 helper 方法就够了。
+普通 Mod 代码优先使用这些方法。`ctx.BorrowLogger()` 是进阶接口，只在确实需要
+保存一个可重新验证的 Logger wrapper 时使用；它不是记录一行日志的必经步骤。
 
 ## 键盘输入：OnProcess 回调
 
@@ -88,12 +63,12 @@ void OnProcess(const BML::ModContext &in ctx) {
 
     if (input.IsKeyPressed(CKKEY_F9)) {
         BML::UI::AddMessage("F9 pressed!");
-        LogInfo(ctx, "F9 pressed");
+        ctx.LogInfo("F9 pressed");
     }
 }
 ```
 
-重启游戏后按 F9，画面上出现 `F9 pressed!`。
+保存并等待热重载后按 F9，画面上出现 `F9 pressed!`。
 
 ### 轮询模型
 
@@ -154,7 +129,8 @@ if (input.IsKeyDown(CKKEY_F9)) {
 }
 ```
 
-重启后按住 F9 不放，会看到消息疯狂刷屏。这就是 `IsKeyDown` 在每帧触发的效果。改回 `IsKeyPressed` 后，同样按住 F9，消息只出现一次。
+保存并等待热重载后按住 F9 不放，会看到消息连续出现。这就是 `IsKeyDown` 在每帧
+触发的效果。改回 `IsKeyPressed` 后，同样按住 F9，消息只出现一次。
 
 ## 按键常量
 
@@ -182,7 +158,7 @@ CKKEY_LCONTROL           左 Ctrl
 class HelloMod {
     void OnLoad(const BML::ModContext &in ctx) {
         BML::UI::AddMessage("HelloMod loaded.");
-        LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
+        ctx.LogInfo("HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
     }
 
     void OnProcess(const BML::ModContext &in ctx) {
@@ -193,21 +169,7 @@ class HelloMod {
 
         if (input.IsKeyPressed(CKKEY_F9)) {
             BML::UI::AddMessage("F9 pressed!");
-            LogInfo(ctx, "F9 pressed");
-        }
-    }
-
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
-
-    private void LogWarn(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Warn(message);
+            ctx.LogInfo("F9 pressed");
         }
     }
 }
@@ -217,7 +179,7 @@ class HelloMod {
 
 | 现象 | 检查 |
 | --- | --- |
-| 游戏画面里没有消息 | `OnLoad` 有没有执行（看日志）；是否忘记重启游戏 |
+| 游戏画面里没有消息 | `OnLoad` 有没有执行（看日志）；热重载是否成功 |
 | 按 F9 没反应 | `OnProcess` 是否在 class 内部；方法签名是否正确 |
 | 一按键消息刷很多条 | 是否错用了 `IsKeyDown`，应该换成 `IsKeyPressed` |
 | 编译提示找不到 `CKKEY_F9` | `as.predefined` 是否在 VS Code 工作区里（编辑器报错）；实际运行中这个常量由 BML 注入，不会找不到 |

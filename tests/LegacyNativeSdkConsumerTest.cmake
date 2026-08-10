@@ -218,7 +218,6 @@ if(use_sdk_archive)
     set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")
     foreach(required_script_path
             "${script_template}/HelloScript.mod.as"
-            "${script_template}/Resources/hello.txt"
             "${script_packer}"
             "${script_project_module}")
         if(NOT EXISTS "${required_script_path}")
@@ -264,8 +263,7 @@ if(use_sdk_archive)
     list(FILTER script_package_entries EXCLUDE REGEX "^$")
 
     foreach(required_entry
-            "HelloScript.mod.as"
-            "Resources/hello.txt")
+            "HelloScript.mod.as")
         list(FIND script_package_entries "${required_entry}" required_entry_index)
         if(required_entry_index EQUAL -1)
             message(FATAL_ERROR

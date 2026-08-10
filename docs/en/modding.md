@@ -3,6 +3,11 @@
 Use a released BML+ SDK to create mods. Building the BML+ repository is only
 necessary when changing the loader, SDK, script host, or bundled services.
 
+If you are unsure which route to choose, start with a script mod. It has the
+shortest build-free edit, reload, and diagnosis loop. Move to native code only
+when a concrete requirement needs native hooks, native memory, a generated IMC
+Provider, or a performance-critical loop.
+
 ## Choose a development route
 
 | Route | Use it when | Main trade-off |
@@ -19,10 +24,15 @@ identity, lifecycle, configuration, commands, loader UI, and mod-level services.
 
 1. Copy `templates/script-mod-template` from the SDK.
 2. Place the copy at `ModLoader/Mods/<YourMod>`.
-3. Give its single `*.mod.as` entry a stable id and metadata.
-4. Start Player and check `ModLoader/ModLoader.log` for the template's load line.
-5. Edit the installed directory and use hot reload during development.
-6. Package the directory with `scripts/Pack-BMLScriptMod.ps1`, then test the zip
+3. Confirm that the matching `BuildingBlocks/AngelScript.dll` is installed.
+4. Start Player without editing the template. Confirm both the in-game greeting and its load
+   line in `ModLoader/ModLoader.log`.
+5. Replace the example id, name, and author, then restart Player because the Mod
+   identity changed.
+6. Keep Player open. Saving source in the loaded directory triggers automatic
+   hot reload; only new entries, id changes, and dependency changes require a
+   restart.
+7. Package the directory with `scripts/Pack-BMLScriptMod.ps1`, then test the zip
    without the development copy installed.
 
 Read the [script mod guide](https://doyagu.github.io/BallanceModLoaderPlus/script-mod/),

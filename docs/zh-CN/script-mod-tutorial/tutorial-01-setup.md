@@ -31,13 +31,16 @@ BallancePlayer 从 `BuildingBlocks/` 装载 CK 插件。`BMLPlus.dll` 借此启�
 ## 需要准备的东西
 
 ```text
-BML 0.3.13（发布包）
+BML+ 运行时（BMLPlus-<version>.zip）
+BML+ SDK（BMLPlus-SDK-<version>-Release.zip）
 VS Code
 AngelScript Language Server（VS Code 扩展）
 as.predefined（API 描述文件）
 ```
 
-其中，BML 是运行时必须的。VS Code、AngelScript Language Server 和 `as.predefined` 只在写代码时使用，游戏运行不需要它们。
+其中，BML+ 运行时是游戏运行所必需的；SDK 提供模板、打包脚本、API 声明和离线
+作者文档。VS Code、AngelScript Language Server 和 `as.predefined` 只在写代码时
+使用，游戏运行不需要它们。运行时和 SDK 应使用相同版本。
 
 ## 游戏目录
 
@@ -57,7 +60,7 @@ Textures/
 下载玩家用的 BML 发布包，例如：
 
 ```text
-BMLPlus-v0.3.13.zip
+BMLPlus-<version>.zip
 ```
 
 把压缩包里的内容解压到游戏目录。解压完成后，应该能看到：
@@ -80,7 +83,7 @@ ModLoader/
 
 ```text
 Ballance/
-  BMLPlus-v0.3.13/         <- 多出来的一层
+  BMLPlus-<version>/       <- 多出来的一层
     BuildingBlocks/BMLPlus.dll
 ```
 
@@ -100,7 +103,7 @@ Ballance/
 启动 `Bin/Player.exe`。进入游戏画面后，看画面中上方。能看到：
 
 ```text
-BML Plus 0.3.13
+BML Plus <version>
 ```
 
 这行字表示 `BMLPlus.dll` 已经被 Player.exe 成功加载，并且初始化没有出错。
@@ -109,8 +112,8 @@ BML Plus 0.3.13
 
 | 现象 | 检查 |
 | --- | --- |
-| 游戏能启动，但没有 `BML Plus 0.3.13` | `BuildingBlocks/BMLPlus.dll` 是否在游戏根目录下的 BuildingBlocks 里 |
-| 解压后有 `BMLPlus-v0.3.13/BuildingBlocks` | 多套了一层目录，把里面的内容移到游戏根目录 |
+| 游戏能启动，但没有 `BML Plus <version>` | `BuildingBlocks/BMLPlus.dll` 是否在游戏根目录下的 BuildingBlocks 里 |
+| 解压后有 `BMLPlus-<version>/BuildingBlocks` | 多套了一层目录，把里面的内容移到游戏根目录 |
 | 启动时报 DLL 或运行库错误 | 安装 Microsoft Visual C++ 2015-2022 x86 运行库 |
 | 画面有 BML，但后续脚本功能异常 | `BuildingBlocks/AngelScript.dll` 是否存在 |
 
@@ -158,14 +161,17 @@ ModLoader/Mods/
   HelloMod.mod.as    <- 后面章节会创建
 ```
 
-下载 <a href="../../api/as.predefined"><code>as.predefined</code></a>，放到
+从 SDK 的 `docs/api/as.predefined` 复制该文件；没有 SDK 时也可以
+<a href="../../api/as.predefined">在线下载 <code>as.predefined</code></a>。把它放到
 上面的工作区目录。这个文件描述了 BML+ 和 CKAngelScript 对脚本公开的 API。
 AngelScript Language Server 读取后，编辑器就能识别 `BML::ModContext`、
 `BML::Logger`、`ImGui::Begin`、`CKDataArray` 等名称，并提供补全和类型检查。
 
 BML 本身不会加载 `as.predefined`，它纯粹是给编辑器用的。
 
-验证方法：在任意 `.mod.as` 文件里输入 `ctx.`（假设 `ctx` 是 `BML::ModContext` 类型），确认能补全 `BorrowLogger`；再输入 `BML::UI::`，确认能补全 `AddMessage` 和 `MainButton`。如果都能看到，说明 Language Server 工作正常。
+验证方法：在任意 `.mod.as` 文件里输入 `ctx.`（假设 `ctx` 是 `BML::ModContext`
+类型），确认能补全 `LogInfo`；再输入 `BML::UI::`，确认能补全 `AddMessage` 和
+`MainButton`。如果都能看到，说明 Language Server 工作正常。
 
 ## 安装自检
 
@@ -173,7 +179,7 @@ BML 本身不会加载 `as.predefined`，它纯粹是给编辑器用的。
 
 ```text
 [ ] Ballance 能正常启动
-[ ] 游戏画面中上方能看到 BML Plus 0.3.13
+[ ] 游戏画面中上方能看到当前 BML Plus 版本
 [ ] BuildingBlocks/BMLPlus.dll 存在
 [ ] BuildingBlocks/AngelScript.dll 存在
 [ ] ModLoader/ModLoader.log 存在且有内容

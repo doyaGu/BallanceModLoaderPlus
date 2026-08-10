@@ -26,10 +26,7 @@ private bool processLogged = false;
 
 void OnProcess(const BML::ModContext &in ctx) {
     if (!processLogged) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info("OnProcess first frame");
-        }
+        ctx.LogInfo("OnProcess first frame");
         processLogged = true;
     }
     // ... 其余代码
@@ -292,10 +289,7 @@ ImGui::End();  // 必须在 if 外面
 ```angelscript
 CKGroup@ checkpoints = ctx.BorrowGroupByName("PC_Checkpoints");
 if (checkpoints is null) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null) {
-        logger.Info("PC_Checkpoints not found, IsInLevel=" + ctx.IsInLevel);
-    }
+    ctx.LogInfo("PC_Checkpoints not found, IsInLevel=" + ctx.IsInLevel);
 }
 ```
 

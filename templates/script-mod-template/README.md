@@ -1,50 +1,42 @@
-﻿# BML+ Script Mod Template
+# BML+ Script Mod Template
 
-Minimal BML+ script mod template using the current script API:
-
-- one arbitrary `*.mod.as` entry file
-- AngelScript metadata declarations
-- fixed callback signatures
-- script-owned Timer and Command objects
-- typed BML service facades
+This is the smallest supported starting point for a BML+ script mod. If you
+are unsure which development route to choose, start here.
 
 Read the SDK's `share/BML/docs/en/modding.md`, then
-`share/BML/docs/en/script-mod/index.md`. The same guide is published at
+`share/BML/docs/en/script-mod/index.md`. The same pages are published at
+[Create mods](https://doyagu.github.io/BallanceModLoaderPlus/modding/) and
 [Script mods](https://doyagu.github.io/BallanceModLoaderPlus/script-mod/).
 
-## Develop In The Mods Directory
+## Run the template
 
-Copy this template out of the SDK and use the copy as the working directory:
+1. Copy this directory to `<Ballance>/ModLoader/Mods/HelloScript`.
+2. Confirm that the matching `BuildingBlocks/AngelScript.dll` is installed.
+3. Start `Bin/Player.exe` without editing the template.
+4. Look for the greeting in game and `Hello Script loaded` in
+   `ModLoader/ModLoader.log`.
+5. Replace the example id, name, and author, then restart Player once because
+   the Mod identity changed.
 
-```text
-<Ballance>/ModLoader/Mods/HelloScript/
-```
+BML+ discovers a new Mod only during Player startup. After the Mod has loaded,
+saving a source file in a directory package triggers automatic hot reload.
+Changing the Mod id or dependencies still requires a restart.
 
-Make sure CKAngelScript is installed as `BuildingBlocks/AngelScript.dll`, then
-start Player. Directory script mods use automatic hot reload by default. Keep
-Player open and edit the installed copy; BML reloads it after saved `.as`
-source files change.
+For editor completion, open `ModLoader/Mods` as the workspace and place the
+SDK's `docs/api/as.predefined` in that workspace root. Do not package the API
+stub with the Mod.
 
-Use these commands in the BML command bar when needed:
+If the Mod does not load, use the BML+ command bar:
 
 ```text
 script status
-script reload example.hello.script
 script diag example.hello.script
 script logs error
-script panel
 ```
 
-`script watch on` re-enables automatic reload if it was disabled. Adding a new
-script mod, changing its id, or changing its dependency graph still requires a
-Player restart.
+## Package the Mod
 
-For editor completion, place the SDK's `docs/api/as.predefined` at the
-`ModLoader/Mods` workspace root. Do not put it inside this mod directory.
-
-## Package As Zip
-
-Use the packer shipped in the extracted BML+ SDK:
+Use the packer shipped in the SDK:
 
 ```powershell
 & "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" `
@@ -53,18 +45,9 @@ Use the packer shipped in the extracted BML+ SDK:
   -Force
 ```
 
-Install the resulting zip at:
+Test the zip without the development directory installed; two packages with
+the same Mod id conflict. `.bmodp` is reserved for native DLL mods.
 
-```text
-<Ballance>/ModLoader/Mods/HelloScript.zip
-```
-
-Test the zip in a clean `ModLoader/Mods` directory so the development directory
-and zip do not declare the same mod id at the same time. Zip packages use manual
-reload and are intended for distribution and final package validation.
-
-`.bmodp` is reserved for native DLL mods. Do not use `.bmodp` for script mods.
-
-This template covers one working package and its development loop. Use the
-installed script guide and API reference for lifecycle, services, engine/UI,
-and communication details.
+This template proves discovery, compilation, lifecycle entry, logging, and
+in-game output. Add commands, configuration, timers, UI, and engine access only
+after this file works.

@@ -174,7 +174,7 @@ class HelloMod {
     private float fps = 0.0f;
 
     void OnLoad(const BML::ModContext &in ctx) {
-        LogInfo(ctx, "HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
+        ctx.LogInfo("HelloMod loaded from ModLoader/Mods/HelloMod.mod.as");
         BML::UI::AddMessage("HelloMod loaded.");
     }
 
@@ -216,12 +216,6 @@ class HelloMod {
         ImGui::End();
     }
 
-    private void LogInfo(const BML::ModContext &in ctx, const string &in message) {
-        BML::Logger@ logger = ctx.BorrowLogger();
-        if (logger !is null) {
-            logger.Info(message);
-        }
-    }
 }
 ```
 

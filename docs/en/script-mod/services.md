@@ -8,9 +8,7 @@ Prefer the callback parameter over a global helper when both exist.
 
 ```angelscript
 void OnLoad(const BML::ModContext &in ctx) {
-  BML::Logger@ logger = ctx.BorrowLogger();
-  if (logger !is null)
-    logger.Info("id=" + ctx.ModId);
+  ctx.LogInfo("id=" + ctx.ModId);
 
   BML::Config@ config = ctx.BorrowConfig();
   if (config !is null) {
@@ -31,8 +29,10 @@ Common capabilities include:
 - CK manager and named-object borrowing;
 - typed runtime, gameplay, and event snapshots.
 
-`BorrowLogger()` and `BorrowConfig()` return BML+ wrappers that revalidate the
-owning mod. Other `Borrow*` methods commonly expose non-owning CK or manager
+Use `LogInfo`, `LogWarn`, and `LogError` for ordinary per-Mod logging without
+creating a handle. `BorrowLogger()` remains available when code specifically
+needs a revalidating logger wrapper. `BorrowConfig()` returns a revalidating
+BML+ wrapper. Other `Borrow*` methods commonly expose non-owning CK or manager
 handles; do not keep those across callbacks.
 
 ## Resources and paths
@@ -45,7 +45,7 @@ void OnLoad(const BML::ModContext &in ctx) {
   string root = ctx.GetModRootUtf8();
   string text = ctx.ReadModTextFileUtf8("Resources/readme.txt", "");
   if (ctx.ModFileExistsUtf8("Resources/settings.txt"))
-    ctx.BorrowLogger().Info("resource root=" + root + " text=" + text);
+    ctx.LogInfo("resource root=" + root + " text=" + text);
 }
 ```
 
@@ -151,12 +151,12 @@ Prefer callback timers for simple delays and intervals:
 ```angelscript
 void SayReady(const BML::ModContext &in ctx,
               const BML::TimerEvent &in event) {
-  ctx.BorrowLogger().Info("ready");
+  ctx.LogInfo("ready");
 }
 
 bool Heartbeat(const BML::ModContext &in ctx,
                const BML::TimerEvent &in event) {
-  ctx.BorrowLogger().Info("heartbeat " + event.CompletedIterations);
+  ctx.LogInfo("heartbeat " + event.CompletedIterations);
   return event.CompletedIterations < 5;
 }
 
@@ -181,7 +181,7 @@ Use `CommandDefinition` and delegates for a small command:
 ```angelscript
 void HelloExecute(const BML::ModContext &in ctx,
                   const BML::CommandEvent &in event) {
-  ctx.BorrowLogger().Info("hello " + event.ArgsText);
+  ctx.LogInfo("hello " + event.ArgsText);
 }
 
 void HelloComplete(const BML::ModContext &in ctx,

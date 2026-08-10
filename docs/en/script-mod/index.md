@@ -28,8 +28,8 @@ code.
 
 - A BML+ release built with script support.
 - The matching `BuildingBlocks/AngelScript.dll` from that release.
-- Basic AngelScript syntax, including handles (`T@`), references
-  (`const T &in`), classes, interfaces, and delegates.
+- Basic AngelScript class and function syntax. The first Mod does not require
+  handles, interfaces, or delegates; learn those when an API first needs them.
 - CKAngelScript documentation when working with Virtools objects, behavior
   graphs, components, messages, asynchronous work, or CK/Vx bindings.
 
@@ -39,25 +39,33 @@ cannot start.
 
 ## Create the first mod
 
-Copy `templates/script-mod-template` from the BML+ SDK, or create
-`ModLoader/Mods/HelloScript.mod.as`:
+Copy `templates/script-mod-template` from the BML+ SDK to
+`ModLoader/Mods/HelloScript`. Its entry is deliberately small:
 
 ```angelscript
-[bml.mod id="example.hello" name="Hello Script" version="1.0.0"
-         author="You" description="Minimal BML script mod"
+[bml.mod id="example.hello.script"
+         name="Hello Script"
+         version="1.0.0"
+         author="Your Name"
+         description="Minimal BML+ script mod"
          bml="0.3.13"]
-class HelloMod {
-  void OnLoad(const BML::ModContext &in ctx) {
-    BML::Logger@ logger = ctx.BorrowLogger();
-    if (logger !is null)
-      logger.Info("Hello from BML script");
-  }
+class HelloScript {
+    void OnLoad(const BML::ModContext &in ctx) {
+        ctx.LogInfo("Hello Script loaded");
+        BML::UI::AddMessage("Hello from your first script mod!");
+    }
 }
 ```
 
-Start `Bin/Player.exe` and check `ModLoader/ModLoader.log`. The log line proves
+Start `Bin/Player.exe` once without editing the template. The in-game greeting
+proves that `OnLoad` ran; the `Hello Script loaded` line in
+`ModLoader/ModLoader.log` proves which Mod produced it. Together they confirm
 that BML+ found the entry, compiled it through CKAngelScript, accepted the
 metadata, created the main class, and called `OnLoad`.
+
+After that first success, replace the example id, name, and author. Restart
+Player once because the Mod identity changed; ordinary source edits after that
+use automatic hot reload.
 
 If it fails, run:
 

@@ -76,7 +76,7 @@ void OnLoad(const BML::ModContext &in ctx)
 void OnLoad(const BML::ModContext &in ctx) {
     LoadConfig(ctx);
     RegisterCommands(ctx);
-    LogInfo(ctx, "MyMod loaded");
+    ctx.LogInfo("MyMod loaded");
 }
 ```
 
@@ -144,7 +144,7 @@ void OnUnload(const BML::ModContext &in ctx) {
     if (statusTimer !is null && statusTimer.IsValid) {
         statusTimer.Cancel();
     }
-    LogInfo(ctx, "MyMod unloaded");
+    ctx.LogInfo("MyMod unloaded");
 }
 ```
 
@@ -175,7 +175,7 @@ void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event)
 ```angelscript
 void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
     // 根据 event 判断发生了什么，再执行对应逻辑
-    LogInfo(ctx, "Game event received");
+    ctx.LogInfo("Game event received");
 }
 ```
 
@@ -213,13 +213,14 @@ ImGui 窗口和 `BML::UI` 控件都应在这里提交。`OnRender` 用于接收 
 
 1. **不要存起来**。BML 每次调用回调时传入 `ctx`，保证这一次调用期间有效。不要把它保存到成员变量留着下次用。
 2. **每个回调都有**。无论 `OnLoad` 还是 `OnProcess`，拿到的 `ctx` 指向同一个 mod 的服务。
-3. **往下传就行**。需要用 `ctx` 的 helper 函数，把它当参数传进去即可（前面章节的 `LogInfo(ctx, ...)` 就是这个模式）。
+3. **往下传就行**。需要使用 Mod 服务的 helper 函数，把 `ctx` 当参数传进去即可；
+   简单日志直接调用 `ctx.LogInfo(...)`。
 
 ### 已经用过的服务
 
 | 写法 | 用途 |
 | --- | --- |
-| `ctx.BorrowLogger()` | 日志 |
+| `ctx.LogInfo/LogWarn/LogError()` | 日志 |
 | `ctx.BorrowInputManager()` | 输入 |
 | `BML::UI::AddMessage(...)` | 游戏内消息 |
 | `ctx.RegisterCommand(...)` | 注册命令 |

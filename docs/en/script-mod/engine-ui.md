@@ -91,7 +91,7 @@ void OnLoad(const BML::ModContext &in ctx) {
   ball.Mass = 1.0f;
   ball.Radius = 2.0f;
   if (!ctx.RegisterBallType(ball))
-    ctx.BorrowLogger().Warn("failed to register ball type");
+    ctx.LogWarn("failed to register ball type");
 }
 ```
 
@@ -108,7 +108,7 @@ BML::HookBlockRef@ hook;
 
 int OnBallHook(const BML::ModContext &in ctx,
                const BML::HookBlockEvent &in event) {
-  ctx.BorrowLogger().Info("Hooked " + event.BlockName);
+  ctx.LogInfo("Hooked " + event.BlockName);
   return CKBR_OK;
 }
 
@@ -153,7 +153,7 @@ void MakeBallPhysical(const BML::ModContext &in ctx, CK3dEntity@ target) {
 
   if (!BML::Physics::PhysicalizeBall(
           target, def, VxVector(0.0f, 0.0f, 0.0f), 2.0f))
-    ctx.BorrowLogger().Warn("physicalize failed");
+    ctx.LogWarn("physicalize failed");
 }
 ```
 
@@ -178,7 +178,7 @@ void OnProcess(const BML::ModContext &in ctx) {
   BML::UI::Title("Example Script");
   BML::UI::WrappedText("BML controls", 360.0f);
   if (BML::UI::MainButton("Click"))
-    ctx.BorrowLogger().Info("clicked");
+    ctx.LogInfo("clicked");
   BML::UI::YesNoButton("Enabled", enabled);
   BML::UI::InputIntButton("Count", count);
   BML::UI::SearchBar(search);

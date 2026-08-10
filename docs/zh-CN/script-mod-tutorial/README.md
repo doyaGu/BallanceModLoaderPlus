@@ -1,8 +1,38 @@
 # Ballance 脚本 Mod 编写指南
 
-## 教程
+## 五分钟快速开始
 
-从第 01 节开始。每节结束时都能看到明确结果。
+不确定从哪里开始时，先完成这一段；不需要先理解句柄、Timer、IMC 或 Virtools
+对象。准备配套版本的 `BMLPlus-<version>.zip` 运行时和
+`BMLPlus-SDK-<version>-Release.zip` SDK。如果尚未安装运行时，先阅读
+[使用 BML+](../using-bml.md)。
+
+1. 从 SDK 复制 `templates/script-mod-template` 到
+   `<Ballance>/ModLoader/Mods/HelloScript`。
+2. 确认 `<Ballance>/BuildingBlocks/AngelScript.dll` 存在。
+3. 不修改模板，直接启动 `Bin/Player.exe`，确认游戏内出现问候语，并在
+   `ModLoader/ModLoader.log` 中找到 `Hello Script loaded`。
+4. 首次成功后再替换示例 id、名称和作者，然后重启一次。
+5. 保持 Player 运行，修改问候语并保存。已加载的目录 Mod 会自动热重载。
+
+新增 Mod、修改 id 或修改依赖时需要重启 Player；普通源码修改不需要。加载失败时
+依次使用：
+
+```text
+script status
+script diag example.hello.script
+script logs error
+```
+
+修改 id 后，把诊断命令中的 `example.hello.script` 换成你的实际 id。
+
+完成这条最短路径后，再按下面的课程系统学习。课程会从环境和语言基础重新讲起，
+不要求预先理解模板中的全部内容。
+
+## 系统教程
+
+从第 01 节开始。每节结束时都能看到明确结果；第 01～07 节是基础开发，第
+08 节以后逐步进入 Ballance 数据、行为图和物理系统。
 
 | # | 标题 | 你会得到 |
 | --- | --- | --- |

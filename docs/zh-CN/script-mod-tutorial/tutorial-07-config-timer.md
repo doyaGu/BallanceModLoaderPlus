@@ -53,7 +53,7 @@ void OnLoad(const BML::ModContext &in ctx) {
     RegisterCommands(ctx);
     StartTimers(ctx);
 
-    LogInfo(ctx, "HelloMod loaded messagesEnabled=" + BoolText(messagesEnabled));
+    ctx.LogInfo("HelloMod loaded messagesEnabled=" + BoolText(messagesEnabled));
     if (messagesEnabled) {
         BML::UI::AddMessage("HelloMod loaded.");
     }
@@ -62,7 +62,7 @@ void OnLoad(const BML::ModContext &in ctx) {
 private void LoadConfig(const BML::ModContext &in ctx) {
     BML::Config@ config = ctx.BorrowConfig();
     if (config is null) {
-        LogWarn(ctx, "HelloMod config is not available");
+        ctx.LogWarn("HelloMod config is not available");
         return;
     }
 
@@ -108,7 +108,7 @@ private void ToggleMessages(const BML::ModContext &in ctx) {
         messagesEnabledProp.SetBoolean(messagesEnabled);
     }
 
-    LogInfo(ctx, "HelloMod messages=" + BoolText(messagesEnabled));
+    ctx.LogInfo("HelloMod messages=" + BoolText(messagesEnabled));
     if (messagesEnabled) {
         BML::UI::AddMessage("HelloMod messages=" + BoolText(messagesEnabled));
     }
@@ -233,7 +233,7 @@ private void StartTimers(const BML::ModContext &in ctx) {
     BML::TimerLoopCallback@ statusCallback = BML::TimerLoopCallback(this.OnStatusTimer);
     @statusTimer = ctx.SetInterval(2000.0f, statusCallback, "hello-status");
 
-    LogInfo(ctx, "HelloMod timers started");
+    ctx.LogInfo("HelloMod timers started");
 }
 ```
 
@@ -249,7 +249,7 @@ private void StartTimers(const BML::ModContext &in ctx) {
 private void OnCommandTimer(const BML::ModContext &in ctx,
                             const BML::TimerEvent &in event) {
     lastTimer = "timeout: " + event.Name;
-    LogInfo(ctx, "HelloMod timer " + lastTimer);
+    ctx.LogInfo("HelloMod timer " + lastTimer);
     ctx.ExecuteCommand("hello status");
 }
 ```
@@ -265,7 +265,7 @@ private bool OnStatusTimer(const BML::ModContext &in ctx,
                            const BML::TimerEvent &in event) {
     timerTicks++;
     lastTimer = "tick " + timerTicks + " from " + event.Name;
-    LogInfo(ctx, "HelloMod timer " + lastTimer);
+    ctx.LogInfo("HelloMod timer " + lastTimer);
 
     return timerTicks < 3;
 }

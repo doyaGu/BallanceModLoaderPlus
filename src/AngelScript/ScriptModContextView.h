@@ -29,6 +29,9 @@ public:
     bool HasContext() const { return m_Context != nullptr; }
     std::string GetModId() const;
     std::string GetModName() const;
+    void LogInfo(const std::string &message) const;
+    void LogWarn(const std::string &message) const;
+    void LogError(const std::string &message) const;
     bool IsReloading() const;
     ScriptModReloadPhase GetReloadPhase() const;
     unsigned int GetReloadAttemptId() const;
