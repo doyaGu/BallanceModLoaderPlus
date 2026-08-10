@@ -67,6 +67,25 @@ function Test-SmokeTextContains {
     return $textString.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
 }
 
+function Test-SmokeTextMatches {
+    param(
+        [AllowNull()]
+        [object]$Text,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern
+    )
+
+    $textString = Convert-SmokeText $Text
+    if ($textString.Length -eq 0) {
+        return $false
+    }
+    return [System.Text.RegularExpressions.Regex]::IsMatch(
+        $textString,
+        $Pattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+}
+
 function Test-SmokeTextContainsAfter {
     param(
         [AllowNull()]
@@ -558,6 +577,8 @@ if (-not $SkipPlayer) {
         }
     }
     if ($NativeImcSmokeMod) {
+        $scriptGameplaySnapshotPattern = 'BML gameplay snapshot: status=0 count=[1-9][0-9]* values=true'
+        Add-SmokeCheck $checks 'script-gameplay-snapshot' (Test-SmokeTextMatches $modLogText $scriptGameplaySnapshotPattern) $scriptGameplaySnapshotPattern
         Add-SmokeCheck $checks 'native-imc-interfaces' (Test-SmokeTextContains $modLogText 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true') 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true'
         Add-SmokeCheck $checks 'native-imc-exit-event' (Test-SmokeTextContains $modLogText 'BML native IMC smoke exit event: received=true passed=true') 'BML native IMC smoke exit event: received=true passed=true'
         Add-SmokeCheck $checks 'native-imc-unload' (Test-SmokeTextContains $modLogText 'BML native IMC smoke unloaded') 'BML native IMC smoke unloaded'

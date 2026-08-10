@@ -179,10 +179,23 @@ TEST(ScriptApiReferenceTest, GameplayFacadeUsesDirectBuiltinReads) {
         "tests/smoke/AngelScript/BMLAngelScriptSmoke/runtime.as");
     ExpectContainsAll(smoke,
                       {"array<BML::Gameplay::CatalogEntry>@ catalog",
-                       "BML::Gameplay::ReadCatalog(catalog)"},
+                       "BML::Gameplay::ReadCatalog(catalog)",
+                       "status == BML::ERROR_OK",
+                       "status != BML::ERROR_IMC_UNSUPPORTED",
+                       "catalog.length() > 0",
+                       "catalog[0].File.length() > 0",
+                       "BML gameplay snapshot: status="},
                       "BMLAngelScriptSmoke/runtime.as");
     ExpectContainsNone(smoke, removedCursors,
                        "BMLAngelScriptSmoke/runtime.as");
+
+    const std::string smokeValidator = ReadTextFile(
+        "tests/smoke/Validate-BMLBallance.ps1");
+    ExpectContainsAll(smokeValidator,
+                      {"BML capability smoke: runtime=true stream=true",
+                       "Test-SmokeTextMatches",
+                       "BML gameplay snapshot: status=0 count=[1-9][0-9]* values=true"},
+                      "Validate-BMLBallance.ps1");
 }
 
 TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {

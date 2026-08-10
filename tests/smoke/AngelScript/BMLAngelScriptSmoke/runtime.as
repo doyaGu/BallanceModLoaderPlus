@@ -3,6 +3,7 @@
 
 class BMLBindingsSmokeMod {
   BML::Events::Stream@ events;
+  bool loggedGameplay = false;
   bool loggedPoll = false;
 
   void Log(const BML::ModContext &in ctx, const string &in message) {
@@ -17,17 +18,31 @@ class BMLBindingsSmokeMod {
     BML::Runtime::Score score = BML::Runtime::GetScore();
     bool runtimeOk = runtime.Playing == (runtime.InGame && !runtime.Paused) &&
                      clock.Frame >= 0 && score.HS >= 0;
-    array<BML::Gameplay::CatalogEntry>@ catalog;
-    int catalogStatus = BML::Gameplay::ReadCatalog(catalog);
-    bool catalogOk = catalogStatus == BML::ERROR_OK && catalog !is null;
     bool streamOk = BML::Events::Open(events, 8) == BML::ERROR_OK && events !is null && events.IsOpen;
     Log(ctx, "BML capability smoke: runtime=" + (runtimeOk ? "true" : "false") +
-             " catalog=" + (catalogOk ? "true" : "false") +
              " stream=" + (streamOk ? "true" : "false"));
     Log(ctx, "BML script mod summary: capabilities");
   }
 
   void OnProcess(const BML::ModContext &in ctx) {
+    if (!loggedGameplay) {
+      array<BML::Gameplay::CatalogEntry>@ catalog;
+      int status = BML::Gameplay::ReadCatalog(catalog);
+      if (status == BML::ERROR_OK) {
+        int count = catalog is null ? -1 : int(catalog.length());
+        bool valuesOk = catalog !is null && catalog.length() > 0 &&
+                        catalog[0].File.length() > 0;
+        Log(ctx, "BML gameplay snapshot: status=" + status +
+                 " count=" + count +
+                 " values=" + (valuesOk ? "true" : "false"));
+        loggedGameplay = true;
+      } else if (status != BML::ERROR_IMC_UNSUPPORTED) {
+        Log(ctx, "BML gameplay snapshot: status=" + status +
+                 " count=-1 values=false");
+        loggedGameplay = true;
+      }
+    }
+
     if (events is null || !events.IsOpen || loggedPoll)
       return;
     BML::Events::Event@ event;
