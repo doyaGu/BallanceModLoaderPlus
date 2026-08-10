@@ -40,6 +40,7 @@ inline bool IsCommandKind(int kind) { return kind == BML_EVENT_COMMAND_PRE || ki
         Physics physics{}; physics.Target = wire.Target;
         if (value.Kind == BML_EVENT_PHYSICALIZE) {
             if (!wire.HasFixed || !wire.HasFriction || !wire.HasElasticity || !wire.HasMass || !wire.HasCollisionGroup || !wire.HasStartFrozen || !wire.HasEnableCollision || !wire.HasAutoCalculateMassCenter || !wire.HasLinearDamp || !wire.HasRotDamp || !wire.HasCollisionSurface || !wire.HasMassCenter || !wire.HasConvexMeshes || !wire.HasBallCenters || !wire.HasBallRadii || !wire.HasConcaveMeshes) return BML_ERROR_MALFORMED_MESSAGE;
+            if (wire.BallCenters.size() != wire.BallRadii.size()) return BML_ERROR_MALFORMED_MESSAGE;
             physics.Fixed = wire.Fixed; physics.Friction = wire.Friction; physics.Elasticity = wire.Elasticity; physics.Mass = wire.Mass; physics.CollisionGroup = std::move(wire.CollisionGroup); physics.StartFrozen = wire.StartFrozen; physics.EnableCollision = wire.EnableCollision; physics.AutoCalculateMassCenter = wire.AutoCalculateMassCenter; physics.LinearDamp = wire.LinearDamp; physics.RotDamp = wire.RotDamp; physics.CollisionSurface = std::move(wire.CollisionSurface); physics.MassCenter = wire.MassCenter; physics.ConvexMeshes = std::move(wire.ConvexMeshes); physics.BallCenters = std::move(wire.BallCenters); physics.BallRadii = std::move(wire.BallRadii); physics.ConcaveMeshes = std::move(wire.ConcaveMeshes);
         }
         value.PhysicsData = std::move(physics);

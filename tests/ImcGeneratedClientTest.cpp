@@ -626,6 +626,64 @@ TEST(ImcGeneratedClientTest, PublicEventFacadePreservesTopicMetadataAndTypedPayl
     EXPECT_EQ(stream.Close(), BML_OK);
 }
 
+TEST(ImcGeneratedClientTest, PublicEventFacadeRejectsInvalidDomainPayloads) {
+    ResetMock();
+    BML::Events::Stream stream;
+    ASSERT_EQ(stream.Open(2), BML_OK);
+    ASSERT_NE(g_TopicHandler, nullptr);
+
+    namespace Events = BML::Imc::Generated::Bml::Events;
+    Events::EventValue value{};
+    value.Kind = BML_EVENT_LOAD_OBJECT;
+    std::vector<std::uint8_t> data(Events::EncodedEventSize(value));
+    ASSERT_EQ(Events::EncodeEvent(value, data.data(), data.size()), BML_OK);
+    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
+    message.Data = data.data();
+    message.DataSize = data.size();
+    message.PayloadType = StableId(Events::EventPayload);
+    g_TopicHandler(StableId(Events::AllRoute), &message, g_TopicUserdata);
+
+    BML::Events::Event event{};
+    event.Kind = BML_EVENT_CHEAT_CHANGED;
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_MALFORMED_MESSAGE);
+    EXPECT_EQ(event.Kind, 0);
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
+
+    value = {};
+    value.Kind = BML_EVENT_PHYSICALIZE;
+    value.HasTarget = true;
+    value.HasFixed = true;
+    value.HasFriction = true;
+    value.HasElasticity = true;
+    value.HasMass = true;
+    value.HasCollisionGroup = true;
+    value.HasStartFrozen = true;
+    value.HasEnableCollision = true;
+    value.HasAutoCalculateMassCenter = true;
+    value.HasLinearDamp = true;
+    value.HasRotDamp = true;
+    value.HasCollisionSurface = true;
+    value.HasMassCenter = true;
+    value.HasConvexMeshes = true;
+    value.HasBallCenters = true;
+    value.BallCenters.push_back({1.0f, 2.0f, 3.0f});
+    value.HasBallRadii = true;
+    value.HasConcaveMeshes = true;
+    data.resize(Events::EncodedEventSize(value));
+    ASSERT_EQ(Events::EncodeEvent(value, data.data(), data.size()), BML_OK);
+    message.Data = data.data();
+    message.DataSize = data.size();
+    g_TopicHandler(StableId(Events::AllRoute), &message, g_TopicUserdata);
+
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_MALFORMED_MESSAGE);
+    EXPECT_EQ(event.Kind, 0);
+    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
+    int dropped = -1;
+    EXPECT_EQ(stream.DroppedCount(dropped), BML_OK);
+    EXPECT_EQ(dropped, 0);
+    EXPECT_EQ(stream.Close(), BML_OK);
+}
+
 TEST(ImcGeneratedClientTest, PublicEventFacadeDistinguishesClosedEmptyAndReadyStates) {
     ResetMock();
     BML::Events::Stream stream;
