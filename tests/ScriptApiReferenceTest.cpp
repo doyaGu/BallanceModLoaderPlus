@@ -141,6 +141,26 @@ TEST(ScriptApiReferenceTest, RuntimeFacadeUsesDirectHostReads) {
                        "BMLAngelScriptSmoke/runtime.as");
 }
 
+TEST(ScriptApiReferenceTest, GameplayFacadeUsesDirectBuiltinReads) {
+    const std::string builtinFacade = ReadTextFile("src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsAll(builtinFacade,
+                      {"ReadBuiltinGameplayLevel", "ReadBuiltinGameplayEnergy",
+                       "ReadBuiltinGameplayCatalog", "ReadBuiltinGameplayCheckpoints",
+                       "ReadBuiltinGameplayResetpoints"},
+                      "src/AngelScript/ScriptImcFacade.cpp");
+    ExpectContainsNone(builtinFacade,
+                       {"clients->Gameplay(", "client.CallLevel(", "client.CallEnergy(",
+                        "client.CallCatalog(", "client.CallCheckpoints(",
+                        "client.CallResetpoints("},
+                       "src/AngelScript/ScriptImcFacade.cpp");
+
+    const std::string clients = ReadTextFile("src/AngelScript/ScriptImcClients.h") +
+                                ReadTextFile("src/AngelScript/ScriptImcClients.cpp");
+    ExpectContainsNone(clients,
+                       {"bml_gameplay_imc.hpp", "ScriptImcClients::Gameplay", "m_Gameplay"},
+                       "ScriptImcClients");
+}
+
 TEST(ScriptApiReferenceTest, RemovedRawInteropSurfaceIsNotDocumented) {
     constexpr const char *kScriptApiStub = "docs/api/bml-script-mod-api.as";
     constexpr const char *kPredefinedApi = "docs/api/as.predefined";

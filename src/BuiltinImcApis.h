@@ -13,6 +13,14 @@ class ILogger;
 class ModContext;
 class CKObject;
 
+namespace BML::Imc::Generated::Bml::Gameplay {
+struct CatalogResponseValue;
+struct CheckpointsResponseValue;
+struct EnergyStateValue;
+struct LevelStateValue;
+struct ResetpointsResponseValue;
+}
+
 /* Registers the BML-owned generated IMC providers. */
 void RegisterBuiltinImcApis(BMLMod &mod, ILogger *logger);
 void UnregisterBuiltinImcApis(BMLMod &mod);
@@ -46,5 +54,24 @@ void InvalidateAllBuiltinObjectRefs(ModContext &context);
  * mapping appears in the public IMC ABI. */
 BML_ObjectRef MakeBuiltinObjectRef(ModContext &context, CKObject *object);
 CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference);
+
+/* Script bindings reuse the built-in gameplay provider directly.  This keeps
+ * the Ballance data-array interpretation in one place without routing a local
+ * call through IMC serialization. */
+int ReadBuiltinGameplayCatalog(
+    ModContext &context,
+    BML::Imc::Generated::Bml::Gameplay::CatalogResponseValue &out);
+int ReadBuiltinGameplayCheckpoints(
+    ModContext &context,
+    BML::Imc::Generated::Bml::Gameplay::CheckpointsResponseValue &out);
+int ReadBuiltinGameplayEnergy(
+    ModContext &context,
+    BML::Imc::Generated::Bml::Gameplay::EnergyStateValue &out);
+int ReadBuiltinGameplayLevel(
+    ModContext &context,
+    BML::Imc::Generated::Bml::Gameplay::LevelStateValue &out);
+int ReadBuiltinGameplayResetpoints(
+    ModContext &context,
+    BML::Imc::Generated::Bml::Gameplay::ResetpointsResponseValue &out);
 
 #endif // BML_BUILTINIMCAPIS_H

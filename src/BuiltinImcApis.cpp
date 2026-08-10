@@ -104,6 +104,79 @@ public:
 
     void PublishEvent(const BML::ImcEventSnapshot &event) { PublishImcEvent(event); }
 
+    int ReadGameplayCatalog(ImcGameplayApi::CatalogResponseValue &out) {
+        ModContext *context = GetContext();
+        if (!context || !ProbeGameplaySource("catalog"))
+            return BML_ERROR_IMC_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("AllLevel");
+        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
+        out.Files.reserve(count); out.StartBalls.reserve(count); out.Skies.reserve(count);
+        out.Bonuses.reserve(count); out.Music.reserve(count);
+        for (int row = 0; row < array->GetRowCount(); ++row) {
+            std::string file, startBall, sky; int bonus = 0, music = 0;
+            if (!ReadString(array, row, 0, file) || !ReadString(array, row, 1, startBall) ||
+                !ReadString(array, row, 3, sky) || !ReadValue(array, row, 6, bonus) ||
+                !ReadValue(array, row, 7, music))
+                return BML_ERROR_IMC_UNSUPPORTED;
+            out.Files.push_back(std::move(file)); out.StartBalls.push_back(std::move(startBall));
+            out.Skies.push_back(std::move(sky)); out.Bonuses.push_back(bonus); out.Music.push_back(music);
+        }
+        return BML_OK;
+    }
+    int ReadGameplayCheckpoints(ImcGameplayApi::CheckpointsResponseValue &out) {
+        ModContext *context = GetContext();
+        if (!context || !ProbeGameplaySource("checkpoints"))
+            return BML_ERROR_IMC_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("Checkpoints");
+        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
+        out.Matrices.reserve(count); out.Objects.reserve(count);
+        for (int row = 0; row < array->GetRowCount(); ++row) {
+            VxMatrix matrix;
+            if (!ReadMatrix(array, row, 0, matrix))
+                return BML_ERROR_IMC_UNSUPPORTED;
+            out.Matrices.push_back(BML::Imc::ToMat4(matrix));
+            out.Objects.push_back(m_ObjectReferences.Make(ReadObject(array, row, 1)));
+        }
+        return BML_OK;
+    }
+    int ReadGameplayEnergy(ImcGameplayApi::EnergyStateValue &out) {
+        ModContext *context = GetContext();
+        if (!context || !ProbeGameplaySource("energy"))
+            return BML_ERROR_IMC_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("Energy");
+        if (!ReadValue(array, 0, 0, out.Points) || !ReadValue(array, 0, 1, out.Lives) ||
+            !ReadValue(array, 0, 2, out.StartPoints) || !ReadValue(array, 0, 3, out.StartLives) ||
+            !ReadValue(array, 0, 4, out.TimeFactor) || !ReadValue(array, 0, 5, out.LifeBonus))
+            return BML_ERROR_IMC_UNSUPPORTED;
+        return BML_OK;
+    }
+    int ReadGameplayLevel(ImcGameplayApi::LevelStateValue &out) {
+        ModContext *context = GetContext();
+        if (!context || !ProbeGameplaySource("level"))
+            return BML_ERROR_IMC_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("CurrentLevel");
+        int id = 0, points = 0;
+        VxMatrix matrix;
+        if (!ReadValue(array, 0, 0, id) || !ReadMatrix(array, 0, 3, matrix) ||
+            !ReadValue(array, 0, 5, points))
+            return BML_ERROR_IMC_UNSUPPORTED;
+        out.Id = id;
+        out.ActiveBall = m_ObjectReferences.Make(ReadObject(array, 0, 1));
+        out.ResetMatrix = BML::Imc::ToMat4(matrix);
+        out.Points = points;
+        return BML_OK;
+    }
+    int ReadGameplayResetpoints(ImcGameplayApi::ResetpointsResponseValue &out) {
+        ModContext *context = GetContext();
+        if (!context || !ProbeGameplaySource("resetpoints"))
+            return BML_ERROR_IMC_UNSUPPORTED;
+        CKDataArray *array = context->GetArrayByName("ResetPoints");
+        out.Objects.reserve(static_cast<std::size_t>(array->GetRowCount()));
+        for (int row = 0; row < array->GetRowCount(); ++row)
+            out.Objects.push_back(m_ObjectReferences.Make(ReadObject(array, row, 0)));
+        return BML_OK;
+    }
+
 private:
     int RegisterImc() {
         const char *owner = m_Mod.GetID();
@@ -297,71 +370,27 @@ private:
 
     static int ReadImcGameplayLevel(ImcGameplayApi::LevelStateValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context || !provider->ProbeGameplaySource("level")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("CurrentLevel");
-        int id = 0, points = 0; VxMatrix matrix;
-        if (!ReadValue(array, 0, 0, id) || !ReadMatrix(array, 0, 3, matrix) || !ReadValue(array, 0, 5, points))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        out.Id = id; out.ActiveBall = provider->m_ObjectReferences.Make(ReadObject(array, 0, 1));
-        out.ResetMatrix = BML::Imc::ToMat4(matrix); out.Points = points; return BML_OK;
+        return provider ? provider->ReadGameplayLevel(out) : BML_ERROR_INVALID_PARAMETER;
     }
 
     static int ReadImcGameplayEnergy(ImcGameplayApi::EnergyStateValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context || !provider->ProbeGameplaySource("energy")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("Energy");
-        if (!ReadValue(array, 0, 0, out.Points) || !ReadValue(array, 0, 1, out.Lives) ||
-            !ReadValue(array, 0, 2, out.StartPoints) || !ReadValue(array, 0, 3, out.StartLives) ||
-            !ReadValue(array, 0, 4, out.TimeFactor) || !ReadValue(array, 0, 5, out.LifeBonus))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        return BML_OK;
+        return provider ? provider->ReadGameplayEnergy(out) : BML_ERROR_INVALID_PARAMETER;
     }
 
     static int ReadImcGameplayCatalog(ImcGameplayApi::CatalogResponseValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context || !provider->ProbeGameplaySource("catalog")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("AllLevel");
-        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
-        out.Files.reserve(count); out.StartBalls.reserve(count); out.Skies.reserve(count);
-        out.Bonuses.reserve(count); out.Music.reserve(count);
-        for (int row = 0; row < array->GetRowCount(); ++row) {
-            std::string file, startBall, sky; int bonus = 0, music = 0;
-            if (!ReadString(array, row, 0, file) || !ReadString(array, row, 1, startBall) ||
-                !ReadString(array, row, 3, sky) || !ReadValue(array, row, 6, bonus) ||
-                !ReadValue(array, row, 7, music)) return BML_ERROR_IMC_UNSUPPORTED;
-            out.Files.push_back(std::move(file)); out.StartBalls.push_back(std::move(startBall));
-            out.Skies.push_back(std::move(sky)); out.Bonuses.push_back(bonus); out.Music.push_back(music);
-        }
-        return BML_OK;
+        return provider ? provider->ReadGameplayCatalog(out) : BML_ERROR_INVALID_PARAMETER;
     }
 
     static int ReadImcGameplayCheckpoints(ImcGameplayApi::CheckpointsResponseValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context || !provider->ProbeGameplaySource("checkpoints")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("Checkpoints");
-        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
-        out.Matrices.reserve(count); out.Objects.reserve(count);
-        for (int row = 0; row < array->GetRowCount(); ++row) {
-            VxMatrix matrix; if (!ReadMatrix(array, row, 0, matrix)) return BML_ERROR_IMC_UNSUPPORTED;
-            out.Matrices.push_back(BML::Imc::ToMat4(matrix));
-            out.Objects.push_back(provider->m_ObjectReferences.Make(ReadObject(array, row, 1)));
-        }
-        return BML_OK;
+        return provider ? provider->ReadGameplayCheckpoints(out) : BML_ERROR_INVALID_PARAMETER;
     }
 
     static int ReadImcGameplayResetpoints(ImcGameplayApi::ResetpointsResponseValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context || !provider->ProbeGameplaySource("resetpoints")) return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("ResetPoints");
-        out.Objects.reserve(static_cast<std::size_t>(array->GetRowCount()));
-        for (int row = 0; row < array->GetRowCount(); ++row)
-            out.Objects.push_back(provider->m_ObjectReferences.Make(ReadObject(array, row, 0)));
-        return BML_OK;
+        return provider ? provider->ReadGameplayResetpoints(out) : BML_ERROR_INVALID_PARAMETER;
     }
     static BuiltinImcProvider *ImcUiProvider(void *userdata) {
         return static_cast<BuiltinImcProvider *>(userdata);
@@ -588,4 +617,43 @@ BML_ObjectRef MakeBuiltinObjectRef(ModContext &context, CKObject *object) {
 CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference) {
     BuiltinImcProvider *provider = FindProvider(context);
     return provider ? provider->ResolveObjectRef(reference) : nullptr;
+}
+
+template <typename Value>
+int ReadBuiltinGameplay(
+    ModContext &context, Value &out,
+    int (BuiltinImcProvider::*reader)(Value &)) {
+    BuiltinImcProvider *provider = FindProvider(context);
+    if (!provider)
+        return BML_ERROR_IMC_UNSUPPORTED;
+    try {
+        return (provider->*reader)(out);
+    } catch (...) {
+        return BML_ERROR_IMC_TARGET_EXECUTION_FAILED;
+    }
+}
+
+int ReadBuiltinGameplayCatalog(
+    ModContext &context, ImcGameplayApi::CatalogResponseValue &out) {
+    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayCatalog);
+}
+
+int ReadBuiltinGameplayCheckpoints(
+    ModContext &context, ImcGameplayApi::CheckpointsResponseValue &out) {
+    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayCheckpoints);
+}
+
+int ReadBuiltinGameplayEnergy(
+    ModContext &context, ImcGameplayApi::EnergyStateValue &out) {
+    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayEnergy);
+}
+
+int ReadBuiltinGameplayLevel(
+    ModContext &context, ImcGameplayApi::LevelStateValue &out) {
+    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayLevel);
+}
+
+int ReadBuiltinGameplayResetpoints(
+    ModContext &context, ImcGameplayApi::ResetpointsResponseValue &out) {
+    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayResetpoints);
 }

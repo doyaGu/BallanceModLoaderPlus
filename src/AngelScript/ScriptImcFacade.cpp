@@ -208,10 +208,10 @@ int GetActiveFacadeContext(ModContext *&outContext, const char *apiName) {
     return BML_OK;
 }
 
-int GetActiveImcClients(BML::ScriptImcClients *&outClients,
-                        ModContext *&outContext) {
+int GetActiveEventClients(BML::ScriptImcClients *&outClients,
+                          ModContext *&outContext) {
     outClients = nullptr;
-    int status = GetActiveFacadeContext(outContext, "BML capability facade");
+    int status = GetActiveFacadeContext(outContext, "BML::Events");
     if (status != BML_OK)
         return status;
     BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
@@ -269,26 +269,20 @@ ScoreState GetRuntimeScore() {
 }
 
 int ReadLevel(LevelState &out) {
-    BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    GameplayImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Gameplay(client);
+    int status = GetActiveFacadeContext(context, "BML::Gameplay");
     GameplayImc::LevelStateValue value{};
-    if (status == BML_OK) status = client->CallLevel(value);
+    if (status == BML_OK) status = ReadBuiltinGameplayLevel(*context, value);
     if (status == BML_OK)
         out = {value.Id, value.ActiveBall, value.ResetMatrix, value.Points};
     return status;
 }
 
 int ReadEnergy(EnergyState &out) {
-    BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    GameplayImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Gameplay(client);
+    int status = GetActiveFacadeContext(context, "BML::Gameplay");
     GameplayImc::EnergyStateValue value{};
-    if (status == BML_OK) status = client->CallEnergy(value);
+    if (status == BML_OK) status = ReadBuiltinGameplayEnergy(*context, value);
     if (status == BML_OK) {
         out = {value.Points, value.Lives, value.StartPoints, value.StartLives,
                value.TimeFactor, value.LifeBonus};
@@ -406,13 +400,10 @@ private:
 template <typename Cursor, typename Value, typename Reader>
 int OpenCollection(Cursor *&out, Reader reader) {
     out = nullptr;
-    BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
-    GameplayImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Gameplay(client);
+    int status = GetActiveFacadeContext(context, "BML::Gameplay");
     std::vector<Value> values;
-    if (status == BML_OK) status = reader(*client, values);
+    if (status == BML_OK) status = reader(*context, values);
     if (status != BML_OK)
         return status;
     Cursor *result = new (std::nothrow) Cursor(std::move(values));
@@ -424,9 +415,9 @@ int OpenCollection(Cursor *&out, Reader reader) {
 
 int OpenCatalog(CatalogCursor *&out) {
     return OpenCollection<CatalogCursor, CatalogEntry>(
-        out, [](GameplayImc::Client &client, auto &values) {
+        out, [](ModContext &context, auto &values) {
             GameplayImc::CatalogResponseValue response{};
-            int status = client.CallCatalog(response);
+            int status = ReadBuiltinGameplayCatalog(context, response);
             const std::size_t count = response.Files.size();
             if (status == BML_OK && (response.StartBalls.size() != count ||
                                      response.Skies.size() != count ||
@@ -452,9 +443,9 @@ int OpenCatalog(CatalogCursor *&out) {
 
 int OpenCheckpoints(CheckpointCursor *&out) {
     return OpenCollection<CheckpointCursor, Checkpoint>(
-        out, [](GameplayImc::Client &client, auto &values) {
+        out, [](ModContext &context, auto &values) {
             GameplayImc::CheckpointsResponseValue response{};
-            int status = client.CallCheckpoints(response);
+            int status = ReadBuiltinGameplayCheckpoints(context, response);
             if (status == BML_OK && response.Matrices.size() != response.Objects.size())
                 status = BML_ERROR_MALFORMED_MESSAGE;
             if (status != BML_OK)
@@ -472,9 +463,9 @@ int OpenCheckpoints(CheckpointCursor *&out) {
 
 int OpenResetpoints(ResetpointCursor *&out) {
     return OpenCollection<ResetpointCursor, Resetpoint>(
-        out, [](GameplayImc::Client &client, auto &values) {
+        out, [](ModContext &context, auto &values) {
             GameplayImc::ResetpointsResponseValue response{};
-            const int status = client.CallResetpoints(response);
+            const int status = ReadBuiltinGameplayResetpoints(context, response);
             if (status != BML_OK)
                 return status;
             try {
@@ -699,7 +690,7 @@ int OpenEvents(EventStream *&out, int capacity) {
         capacity = 256;
     BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveImcClients(clients, context);
+    int status = GetActiveEventClients(clients, context);
     EventsImc::Client *client = nullptr;
     if (status == BML_OK) status = clients->Events(client);
     if (status != BML_OK)
