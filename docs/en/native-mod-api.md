@@ -254,6 +254,7 @@ same key is set or removed or when the instance is destroyed. Use
 
 ## Further reading
 
+- [Which native API to use](native-api-routes.md)
 - [Choose a mod development route](modding.md)
 - [Inter-mod communication](imc.md)
 - [Create a typed IMC API](imc-author-guide.md)

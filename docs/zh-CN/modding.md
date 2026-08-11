@@ -85,7 +85,8 @@ bml_add_mod(MyMod MyMod.cpp)
 bml_install_mod(MyMod)
 ```
 
-增加所有权、回调、UI 或跨 Mod 服务前，先阅读[原生 Mod API 总览](native-mod-api.md)。
+增加所有权、回调、UI 或跨 Mod 服务前，先阅读[原生 Mod API 总览](native-mod-api.md)；
+某项能力同时有旧式 C++ 与 IMC 两种写法时，参见[原生 API 该走哪条路](native-api-routes.md)。
 
 ## 两条路线共同遵守的规则
 

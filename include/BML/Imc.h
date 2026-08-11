@@ -46,10 +46,16 @@
 // GAME_THREAD queues the work for the loader's pump, which is the only way to touch
 // Virtools objects, the loader's UI, or anything else of the game's. CALLER_THREAD runs
 // it inline on whichever thread called, so it has to be short and safe to run beside
-// itself, since several callers can be inside it at once. Waiting for game-thread work
-// from the game thread would deadlock, so a wait with a nonzero timeout is refused there;
-// a zero timeout is a poll and is always allowed, answering BML_ERROR_BUSY while the call
-// is still pending.
+// itself, since several callers can be inside it at once. A GAME_THREAD handler called
+// from the game thread is the one case that is neither: it runs inline as well, since the
+// caller is already where the work belongs, and the future comes back ready.
+//
+// That is also what makes waiting safe or not. Waiting for the pump from the pump would
+// deadlock, so a nonzero-timeout wait on a future that is still pending answers
+// BML_ERROR_WRONG_THREAD on the game thread; a wait on one that is already ready, which
+// is what a game-thread call to a game-thread handler leaves behind, returns the result.
+// A zero timeout is a poll and is allowed anywhere, answering BML_ERROR_BUSY while the
+// call is still pending.
 //
 // Bytes are borrowed everywhere. The Data of a BML_ImcMessage handed to a handler is good
 // only until that handler returns, and the one from BML_Imc_FutureGetResult only until

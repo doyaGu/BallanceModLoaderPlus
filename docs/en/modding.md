@@ -98,7 +98,9 @@ bml_install_mod(MyMod)
 ```
 
 Read the [native mod API overview](native-mod-api.md) before adding ownership,
-callbacks, UI, or cross-mod services.
+callbacks, UI, or cross-mod services, and
+[Which native API to use](native-api-routes.md) when a capability has both a
+legacy C++ and an IMC spelling.
 
 ## Shared authoring rules
 

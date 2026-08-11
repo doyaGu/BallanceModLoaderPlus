@@ -50,6 +50,7 @@ nav:
   - Create mods:
       - Choose a route: modding.md
       - Native mods: native-mod-api.md
+      - Which native API to use: native-api-routes.md
       - Script mods:
           - Start here: script-mod/index.md
           - Lifecycle and reload: script-mod/lifecycle.md

@@ -19,6 +19,7 @@ nav:
   - 开发 Mod:
       - 选择路线: modding.md
       - 原生 Mod: native-mod-api.md
+      - 原生 API 该走哪条路: native-api-routes.md
       - 脚本 Mod:
           - 导读: script-mod-tutorial/README.md
           - 教程:

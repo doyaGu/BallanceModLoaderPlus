@@ -229,6 +229,7 @@ ImGui 帧由 Loader 掌管。它在 Mod 回调之前开帧，并在 `OnProcess` 
 
 ## 延伸阅读
 
+- [原生 API 该走哪条路](native-api-routes.md)
 - [选择 Mod 开发路线](modding.md)
 - [IMC 概览](imc.md)
 - [IMC 接口编写指南](imc-author-guide.md)
