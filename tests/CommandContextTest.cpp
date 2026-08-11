@@ -376,3 +376,30 @@ TEST_F(CommandContextTest, ParseCommandLineSingleArg) {
     ASSERT_EQ(1u, args.size());
     EXPECT_EQ("test", args[0]);
 }
+
+TEST(ICommandParse, ParseFloatKeepsNegativeValuesByDefault) {
+    EXPECT_FLOAT_EQ(-1.5f, ICommand::ParseFloat("-1.5"));
+    EXPECT_FLOAT_EQ(-1000.0f, ICommand::ParseFloat("-1000"));
+    EXPECT_FLOAT_EQ(0.0f, ICommand::ParseFloat("0"));
+    EXPECT_FLOAT_EQ(1.5f, ICommand::ParseFloat("1.5"));
+}
+
+TEST(ICommandParse, ParseFloatClampsToExplicitBounds) {
+    EXPECT_FLOAT_EQ(-1.0f, ICommand::ParseFloat("-5", -1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(1.0f, ICommand::ParseFloat("5", -1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(0.25f, ICommand::ParseFloat("0.25", -1.0f, 1.0f));
+}
+
+TEST(ICommandParse, ParseIntegerClampsToExplicitBounds) {
+    EXPECT_EQ(-3, ICommand::ParseInteger("-7", -3, 3));
+    EXPECT_EQ(3, ICommand::ParseInteger("7", -3, 3));
+    EXPECT_EQ(-7, ICommand::ParseInteger("-7"));
+}
+
+TEST(ICommandParse, ParseBooleanAcceptsKnownTruthyTokens) {
+    EXPECT_TRUE(ICommand::ParseBoolean("true"));
+    EXPECT_TRUE(ICommand::ParseBoolean("on"));
+    EXPECT_TRUE(ICommand::ParseBoolean("1"));
+    EXPECT_FALSE(ICommand::ParseBoolean("false"));
+    EXPECT_FALSE(ICommand::ParseBoolean("TRUE"));
+}

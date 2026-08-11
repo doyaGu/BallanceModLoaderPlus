@@ -26,7 +26,7 @@ public:
     static int ParseInteger(const std::string &str, int mn = INT_MIN, int mx = INT_MAX) {
         return (std::max)(mn, (std::min)(mx, atoi(str.c_str())));
     }
-    static float ParseFloat(const std::string &str, float mn = FLT_MIN, float mx = FLT_MAX) {
+    static float ParseFloat(const std::string &str, float mn = -FLT_MAX, float mx = FLT_MAX) {
         return (std::max)(mn, (std::min)(mx, (float) atof(str.c_str())));
     }
     static bool ParseBoolean(const std::string &str) {
