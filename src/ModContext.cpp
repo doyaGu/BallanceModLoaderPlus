@@ -181,7 +181,7 @@ bool ModContext::Init() {
     InitLogger();
 
     m_Logger->Info("Initializing Mod Loader Plus version " BML_VERSION);
-    m_Logger->Info("Website: https://github.com/doyaGu/BallanceModContextPlus");
+    m_Logger->Info("Website: https://github.com/doyaGu/BallanceModLoaderPlus");
 
 #ifdef _DEBUG
     m_Logger->Info("Player.exe Address: 0x%08x", ::GetModuleHandleA("Player.exe"));
