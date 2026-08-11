@@ -57,7 +57,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | Header | Purpose |
 | --- | --- |
 | `Version.h`, `Defines.h` | Version macros, export macros, status codes, and base definitions |
-| `BML.h` | C ABI for version, memory, encoding, path, file, and Zip utilities |
+| `BML.h` | C ABI for version, loader and mod directories, memory, encoding, path, file, and Zip utilities |
 | `BMLAll.h` | Convenience header that includes the complete native SDK surface |
 | `IMod.h`, `IMessageReceiver.h` | Mod metadata, lifecycle, gameplay, and engine callbacks |
 | `IBML.h` | Loader services, CK managers, lookup, commands, timers, and dependencies |
@@ -251,6 +251,37 @@ DLL boundary.
 `BML_DataShare_Get` returns a borrowed pointer. It becomes invalid when the
 same key is set or removed or when the instance is destroyed. Use
 `BML_DataShare_CopyEx` when a stable copy is required.
+
+## Where the loader and your mod live
+
+`BML.h` answers both questions a mod has about the file system:
+
+```cpp
+// The loader's own directories. Borrowed, valid for the process, never freed.
+const char *loaderDir = BML_GetLoaderPathUtf8(BML_DIR_LOADER);
+
+// Your own installation directory. Allocated, so release it.
+char *modRoot = BML_GetModRootUtf8(nullptr);
+// ... use modRoot ...
+BML_FreeString(modRoot);
+```
+
+`BML_GetLoaderPathW` and `BML_GetLoaderPathUtf8` take a `BML_LoaderDirectory`:
+`BML_DIR_WORKING`, `BML_DIR_TEMP`, `BML_DIR_GAME`, `BML_DIR_LOADER`, or
+`BML_DIR_CONFIG`. They return a pointer the loader owns, so do not free it. Do
+not confuse them with `BML_GetDirectoryA/W/Utf8`, which parse a path string and
+return its directory part.
+
+`BML_GetModRootW` and `BML_GetModRootUtf8` answer with the directory a mod is
+installed in. Pass `nullptr` for your own: it resolves the calling DLL, needs no
+registration, and therefore works from your constructor. Pass a mod id to ask
+about another mod, which answers with its DLL's directory for a native mod and
+with its script root for a script mod. Both allocate, so release the result with
+`BML_FreeWString` or `BML_FreeString`.
+
+Both return null while the loader is still initializing and when the directory
+cannot be resolved. `BML_GetModRoot` also takes the loader's mod-registry lock,
+so call it from your mod rather than from `DllMain`.
 
 ## Further reading
 

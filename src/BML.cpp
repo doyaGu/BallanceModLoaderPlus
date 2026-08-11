@@ -5,11 +5,13 @@
 
 #include <MinHook.h>
 
+#include <intrin.h>
 #include <limits>
 
 #include "CKContext.h"
 
 #include "BML/BML.h"
+#include "ModContext.h"
 #include "ModManager.h"
 #include "RenderHook.h"
 #include "Overlay.h"
@@ -127,6 +129,42 @@ void BML_GetVersion(int *major, int *minor, int *patch) {
 
 const char *BML_GetVersionString() {
     return BML_VERSION;
+}
+
+const wchar_t *BML_GetLoaderPathW(BML_LoaderDirectory directory) {
+    ModContext *context = BML_GetModContext();
+    if (!context)
+        return nullptr;
+
+    const wchar_t *path = context->GetDirectory(directory);
+    return path && *path ? path : nullptr;
+}
+
+const char *BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
+    ModContext *context = BML_GetModContext();
+    if (!context)
+        return nullptr;
+
+    const char *path = context->GetDirectoryUtf8(directory);
+    return path && *path ? path : nullptr;
+}
+
+wchar_t *BML_GetModRootW(const char *modId) {
+    ModContext *context = BML_GetModContext();
+    if (!context)
+        return nullptr;
+
+    const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
+    return root.empty() ? nullptr : CopyWString(root);
+}
+
+char *BML_GetModRootUtf8(const char *modId) {
+    ModContext *context = BML_GetModContext();
+    if (!context)
+        return nullptr;
+
+    const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
+    return root.empty() ? nullptr : BML_Strdup(utils::Utf16ToUtf8(root).c_str());
 }
 
 void *BML_Malloc(size_t size) {

@@ -30,8 +30,10 @@ facades exist: they are the loader's own IMC interfaces, wrapped in inline C++
 so that using one looks like calling a function.
 
 The `BML_*` functions of `BML.h` are the third spelling. They are plain C with
-no vtable involved, so they can be added to freely, and they cover strings,
-paths, files, and allocation rather than anything about the game.
+no vtable involved, so they can be added to freely. They cover strings, paths,
+files, and allocation rather than anything about the game, and they are also
+where a capability lands when it needs neither a game object nor a route of its
+own, which is how the loader and mod directory queries got there.
 
 Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
@@ -65,6 +67,7 @@ the facade spelling; each facade is a header of the same name under
 | Publishing an API of your own to other mods | none | IMC, ideally generated from a `.imc` file | IMC only. A C++ class of your own would put your vtable layout and your standard library in every consumer's build. |
 | Drawing your own UI | `Bui` for ImGui widgets, `BGui` for in-game 2D entities | none | Neither is IMC. `BML::UI` controls the loader's own UI and draws nothing of yours. |
 | Strings, paths, files, allocation | none | the `BML_*` functions of `BML.h` | The C exports. Release what they return with the matching `BML_Free*`, never with the CRT `free`. |
+| The loader's directories, and where your mod is installed | none | `BML_GetLoaderPathW`, `BML_GetLoaderPathUtf8`, `BML_GetModRootW`, `BML_GetModRootUtf8`, also C exports of `BML.h` | The C exports. `IBML` never offered these. The loader path is borrowed and the mod root is allocated, so only the second needs freeing. |
 
 ## Mixing them
 

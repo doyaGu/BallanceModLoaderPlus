@@ -38,8 +38,6 @@
 #include "BMLMod.h"
 #include "NewBallTypeMod.h"
 
-extern HMODULE g_DllHandle;
-
 using namespace BML;
 
 namespace {
@@ -57,6 +55,46 @@ namespace {
             return {};
 
         return trimmed.substr(0, separator);
+    }
+
+    // The directory a loaded module sits in. GetModuleFileNameW truncates instead of
+    // failing when the buffer is too small, so grow until the name fits.
+    std::wstring GetModuleDirectory(HMODULE module) {
+        if (!module)
+            return {};
+
+        std::wstring path(MAX_PATH, L'\0');
+        for (;;) {
+            const DWORD written = ::GetModuleFileNameW(module, path.data(),
+                                                       static_cast<DWORD>(path.size()));
+            if (written == 0)
+                return {};
+            if (written < path.size()) {
+                path.resize(written);
+                break;
+            }
+            if (path.size() >= 32768)
+                return {};
+            path.resize(path.size() * 2);
+        }
+
+        return GetParentDirectory(path);
+    }
+
+    // The directory of whichever module the given address belongs to.
+    std::wstring GetModuleDirectoryFromAddress(const void *address) {
+        if (!address)
+            return {};
+
+        HMODULE module = nullptr;
+        if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                  reinterpret_cast<LPCSTR>(address),
+                                  &module)) {
+            return {};
+        }
+
+        return GetModuleDirectory(module);
     }
 
     std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
@@ -1105,6 +1143,39 @@ const char *ModContext::GetDirectoryUtf8(DirectoryType type) {
     }
 
     return nullptr;
+}
+
+std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const char *modId) const {
+    if (!modId || !*modId)
+        return GetModuleDirectoryFromAddress(callerAddress);
+
+    std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+
+    const auto entry = m_ModMap.find(modId);
+    if (entry == m_ModMap.end() || !entry->second)
+        return {};
+
+    IMod *mod = entry->second;
+
+    // A native Mod lives wherever its DLL was loaded from.
+    const auto handle = m_ModToDllHandleMap.find(mod);
+    if (handle != m_ModToDllHandleMap.end() && handle->second)
+        return GetModuleDirectory(static_cast<HMODULE>(handle->second.get()));
+
+#if BML_ENABLE_ANGELSCRIPT
+    // A script Mod has no DLL of its own; its root is the directory it was scanned
+    // from, which is also what the script API answers.
+    for (const auto &scriptMod : m_ScriptMods) {
+        if (scriptMod.get() == mod)
+            return scriptMod->GetEntry().RootDirectory;
+    }
+#endif
+
+    // The built-in Mods are part of the loader itself.
+    if (mod == static_cast<IMod *>(m_BMLMod) || mod == static_cast<IMod *>(m_BallTypeMod))
+        return GetModuleDirectoryFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
+
+    return {};
 }
 
 BML_DataShare *ModContext::GetDataShare(const char *name) {

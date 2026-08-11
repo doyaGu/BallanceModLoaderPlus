@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "BML/BML.h"
 #include "BML/IBML.h"
 #include "BML/IMod.h"
 
@@ -20,13 +21,9 @@
 #include "ModInvocationGate.h"
 #include "RuntimeState.h"
 
-typedef enum DirectoryType {
-    BML_DIR_WORKING = 0,
-    BML_DIR_TEMP = 1,
-    BML_DIR_GAME = 2,
-    BML_DIR_LOADER = 3,
-    BML_DIR_CONFIG = 4,
-} DirectoryType;
+// The ids themselves are public, since BML_GetLoaderPath takes them. This name
+// stays for the loader's own call sites and for the script binding.
+typedef BML_LoaderDirectory DirectoryType;
 
 class ModContext;
 class BMLMod;
@@ -159,6 +156,13 @@ public:
 
     const wchar_t *GetDirectory(DirectoryType type);
     const char *GetDirectoryUtf8(DirectoryType type);
+
+    // The directory a Mod is installed in. A null or empty modId asks about the DLL
+    // that callerAddress belongs to, which needs no Mod registration and so answers
+    // during BMLEntry as well. A modId asks about that Mod: a native Mod answers
+    // with the directory of its DLL, a script Mod with its script root. Empty when
+    // nothing could be resolved.
+    std::wstring GetModRootDirectory(const void *callerAddress, const char *modId) const;
 
     BML::CommandContext &GetCommandContext() { return m_CommandContext; }
     BML_DataShare *GetDataShare(const char *name = nullptr);

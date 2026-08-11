@@ -24,9 +24,13 @@
 // belongs in the A form and a path that came from a config file or the network
 // belongs in the Utf8 one.
 //
-// Nothing here touches loader or game state, so unlike the rest of the SDK these
-// may be called from any thread. The one exception is BML_SetCurrentDirectory,
-// which moves the whole process and therefore the game with it.
+// Almost nothing here touches loader or game state, so unlike the rest of the SDK
+// these may be called from any thread. There are three exceptions.
+// BML_SetCurrentDirectory moves the whole process and therefore the game with it.
+// BML_GetLoaderPath and BML_GetModRoot read what the loader resolved at startup,
+// so both answer null before it has initialized. BML_GetModRoot also takes the
+// lock that guards the Mod registry, which makes it safe beside a Mod being
+// loaded or unloaded but unsafe from inside DllMain.
 #ifndef BML_H
 #define BML_H
 
@@ -40,6 +44,51 @@ BML_BEGIN_CDECLS
 // its siblings to find out whether a function added in a later release is there.
 BML_EXPORT void BML_GetVersion(int *major, int *minor, int *patch);
 BML_EXPORT const char *BML_GetVersionString();
+
+// Where the loader put its own directories, and where a Mod is installed. These
+// are the only functions here that ask the loader something; the rest work only on
+// the strings and files they are handed.
+//
+// BML_GetLoaderPath takes one of the five ids below rather than a path, and must
+// not be confused with BML_GetDirectory further down, which takes a path apart.
+// Its result is const because it is borrowed: the loader owns the string, resolves
+// it once at startup, and never changes it, so do not pass it to BML_Free. Only
+// the UTF-16 and UTF-8 spellings exist because those are the two forms the loader
+// keeps; for a code page copy pass the UTF-16 one through BML_Utf16ToAnsi.
+//
+// BML_GetModRoot answers with the directory a Mod is installed in, which is where
+// its own data files belong. A null or empty modId means the DLL that made the
+// call, which is what a Mod normally wants, and is also the only spelling that
+// works before the Mod is registered, so it can be used from a constructor. A
+// modId asks about another Mod instead: a native Mod answers with the directory of
+// the DLL it was loaded from, and a script Mod with its script root. Unlike
+// BML_GetLoaderPath these allocate, so release the result with BML_FreeWString or
+// BML_FreeString.
+//
+// Both answer null while the loader is still initializing, when the directory
+// could not be resolved, and when modId names no loaded Mod.
+typedef enum BML_LoaderDirectory {
+    // Where the process was started, read once when the loader initialized. The
+    // game does not keep it there: BML_SetCurrentDirectory and the game itself
+    // both move the process, and this id keeps answering the original directory.
+    BML_DIR_WORKING = 0,
+    // A scratch directory of this one run, created empty at startup and deleted
+    // when the loader shuts down. Nothing written here survives the process.
+    BML_DIR_TEMP = 1,
+    // The Ballance installation root, the parent of Bin.
+    BML_DIR_GAME = 2,
+    // The ModLoader directory under it, which holds Mods, Configs, and
+    // ModLoader.log.
+    BML_DIR_LOADER = 3,
+    // The Configs directory under that, where the loader writes one .cfg per Mod.
+    BML_DIR_CONFIG = 4,
+} BML_LoaderDirectory;
+
+BML_EXPORT const wchar_t *BML_GetLoaderPathW(BML_LoaderDirectory directory);
+BML_EXPORT const char *BML_GetLoaderPathUtf8(BML_LoaderDirectory directory);
+
+BML_EXPORT wchar_t *BML_GetModRootW(const char *modId);
+BML_EXPORT char *BML_GetModRootUtf8(const char *modId);
 
 // The loader's heap. A Mod needs these only for memory that crosses the boundary,
 // which is what the ModDependency ids do, and for releasing what the functions
@@ -150,7 +199,8 @@ BML_EXPORT int BML_ExtractZipUtf8(const char *path, const char *dest);
 
 // Path manipulation, meaning that all of these take apart or put together the path
 // string they are given and touch no file. In particular BML_GetDirectory does not
-// report a directory of the loader's: it returns the directory part of path.
+// report a directory of the loader's: it returns the directory part of path. The
+// loader's own directories come from BML_GetLoaderPath near the top of this header.
 BML_EXPORT char *BML_GetDriveA(const char *path);
 BML_EXPORT wchar_t *BML_GetDriveW(const wchar_t *path);
 BML_EXPORT char *BML_GetDriveUtf8(const char *path);

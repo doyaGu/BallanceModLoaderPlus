@@ -53,7 +53,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | 头文件 | 用途 |
 | --- | --- |
 | `Version.h`, `Defines.h` | 版本宏、导出宏、状态码和基础定义 |
-| `BML.h` | C ABI：版本、内存、字符串/编码、路径、文件与 Zip 工具 |
+| `BML.h` | C ABI：版本、Loader 与 Mod 目录、内存、字符串/编码、路径、文件与 Zip 工具 |
 | `BMLAll.h` | 一次包含全部原生 SDK 接口的便捷聚合头 |
 | `IMod.h`, `IMessageReceiver.h` | Mod 元数据、生命周期、玩法和引擎回调 |
 | `IBML.h` | Loader 服务、CK 管理器、对象查找、命令、定时器和依赖管理 |
@@ -226,6 +226,33 @@ ImGui 帧由 Loader 掌管。它在 Mod 回调之前开帧，并在 `OnProcess` 
 不要跨 DLL 直接调用 CRT `free`。`BML_DataShare_Get` 返回借用指针；同一键
 再次 Set/Remove 或实例销毁后立即失效，需要稳定副本时使用
 `BML_DataShare_CopyEx`。
+
+## Loader 与 Mod 所在目录
+
+Mod 关于文件系统的两个问题都由 `BML.h` 回答：
+
+```cpp
+// Loader 自己的目录。借用指针，进程期间有效，不要释放。
+const char *loaderDir = BML_GetLoaderPathUtf8(BML_DIR_LOADER);
+
+// 自己的安装目录。新分配的字符串，用完要释放。
+char *modRoot = BML_GetModRootUtf8(nullptr);
+// ... 使用 modRoot ...
+BML_FreeString(modRoot);
+```
+
+`BML_GetLoaderPathW` 和 `BML_GetLoaderPathUtf8` 接收一个 `BML_LoaderDirectory`：
+`BML_DIR_WORKING`、`BML_DIR_TEMP`、`BML_DIR_GAME`、`BML_DIR_LOADER` 或
+`BML_DIR_CONFIG`。返回的指针归 Loader 所有，不要释放。不要与
+`BML_GetDirectoryA/W/Utf8` 混淆：后者只是取出所给路径字符串的目录部分。
+
+`BML_GetModRootW` 和 `BML_GetModRootUtf8` 返回某个 Mod 的安装目录。查询自己时传
+`nullptr`，它按调用方 DLL 解析，不需要 Mod 已注册，因此在构造函数中即可使用。传入
+Mod id 则查询该 Mod：原生 Mod 返回其 DLL 所在目录，脚本 Mod 返回其脚本根目录。两者
+都会分配内存，结果需用 `BML_FreeWString` 或 `BML_FreeString` 释放。
+
+Loader 尚未初始化完成或目录无法解析时两者都返回空指针。`BML_GetModRoot` 还会获取
+Loader 的 Mod 注册表锁，因此应在 Mod 内调用，不要放在 `DllMain` 中。
 
 ## 延伸阅读
 
