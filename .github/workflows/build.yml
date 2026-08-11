@@ -29,7 +29,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v6.0.2
 
-      - name: Validate release version markers
+      - name: Validate release version
         shell: pwsh
         run: |
           $tag = $env:GITHUB_REF_NAME
@@ -37,20 +37,14 @@ jobs:
             throw "Release tag must use vX.Y.Z format: $tag"
           }
 
+          # CMakeLists.txt is the single source of truth for the release
+          # version. The READMEs deliberately carry no version marker; they
+          # link to the documentation site and the Releases page instead, so
+          # they must not be released-version dependent.
           $version = $tag.Substring(1)
           $cmake = Get-Content -LiteralPath 'CMakeLists.txt' -Raw
           if ($cmake -notmatch "VERSION\s+$([regex]::Escape($version))(\s|$)") {
             throw "CMakeLists.txt project VERSION must be $version"
-          }
-
-          $readme = Get-Content -LiteralPath 'README.md' -Encoding utf8 -Raw
-          if (-not $readme.Contains("Current version: $tag")) {
-            throw "README.md must contain: Current version: $tag"
-          }
-
-          $readmeZh = Get-Content -LiteralPath 'README_zh-CN.md' -Encoding utf8 -Raw
-          if (-not $readmeZh.Contains("当前版本：$tag")) {
-            throw "README_zh-CN.md must contain: 当前版本：$tag"
           }
 
   build:
