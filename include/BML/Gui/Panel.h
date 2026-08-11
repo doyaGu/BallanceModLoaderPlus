@@ -1,3 +1,6 @@
+// A rectangle of flat colour, for the background a screen is drawn over. It creates a
+// material of its own next to the entity, alpha blended, so the alpha of the colour is
+// the transparency, and sits at Z order 0 to stay behind the other elements.
 #ifndef BML_GUI_PANEL_H
 #define BML_GUI_PANEL_H
 

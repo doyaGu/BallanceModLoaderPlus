@@ -1,3 +1,50 @@
+// Reading and rewriting the game's behaviour graphs from C++. Most of what Ballance does
+// is a script rather than code, so a Mod that wants to change the game usually has to
+// find a block inside a script, read what it was given, put a block of its own between
+// two others, or take a link out of the way. The CK SDK can do all of that, and this is
+// the short way to write it.
+//
+// A Mod gets the script to work on from IBML::GetScriptByName or from
+// IMod::OnLoadScript, which is the moment the loader offers a script before the game has
+// run it and the only safe place to rewrite one. The names to look for are the ones
+// Virtools Dev shows, and the GUIDs for CreateBB are in BML/Guids.
+//
+// Finding. FindBB walks the sub-blocks of a script and calls back for each one matching
+// the filters given; a filter left at its default matches anything, and the counts of
+// inputs, outputs, and parameters are there to tell apart the several blocks a script has
+// under one name. Returning false from the callback stops the walk, and FindBB then
+// returns false as well, which is how FindFirstBB stops at the first hit. With
+// hierarchically set the walk goes into a block's own sub-graph before looking at the
+// block itself, so the first hit can be one nested deep rather than the outermost, and
+// FindFirstBB is not the topmost match. FindNextBB, FindPreviousBB, and FindEndOfChain
+// follow the links out of a block instead, and the FindLink pair answers with the link.
+//
+// Writing. CreateBB adds a block of the given GUID to the script, with target set when
+// the block takes one, and CreateLink joins two of them; the overloads differ only in
+// whether a block plus a pin number or a CKBehaviorIO is passed. InsertBB is the one to
+// reach for when hooking: it puts a block into an existing link, so what ran before still
+// runs and the new block runs in the middle.
+//
+// Parameters. CreateLocalParameter and the CreateParam family make a value for a block to
+// read; a block's own input parameter is usually a shortcut to somewhere else, so to
+// change what a block reads, write to GetInputParameter(i)->GetDirectSource() for a
+// parameter this code created, or GetRealSource() to follow the shortcuts to where the
+// value really lives. SetParamValue and GetParamValue copy sizeof(T) bytes in and out
+// unchecked, so the T has to be the type the parameter holds, an int for an int
+// parameter, and a wrong one reads or writes the wrong number of bytes. Objects go in and
+// out as a CK_ID, which is what SetParamObject and GetParamObject are for, and
+// GetParamString hands back the parameter's own buffer, good until the parameter changes.
+//
+// Removing, which is not a removal. DeleteLink points the link at a hidden do-nothing
+// block instead of destroying it, and DeleteBB deactivates the block and does that to
+// every link touching it. Nothing leaves the script either way: the sub-block count is
+// unchanged and FindBB still finds what was deleted. So a Mod that has to undo a hook
+// puts the links back the way they were rather than expecting these to have removed
+// anything, and DeleteLink also creates that hidden block once and keeps it for the rest
+// of the process.
+//
+// All of it runs on the game thread and none of it is safe once the level holding the
+// script is gone, since the blocks, links, and parameters are objects of that level.
 #ifndef BML_SCRIPTHELPER_H
 #define BML_SCRIPTHELPER_H
 

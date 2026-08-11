@@ -1,3 +1,31 @@
+// One screen's worth of BGui elements and the input that drives them. See BML/Gui.h for
+// what BGui is and when to use it instead of Bui.
+//
+// The Add functions build an element, put it on the screen at a position given in
+// fractions of the window, 0 to 1, and hand back a pointer the Gui keeps owning: the
+// destructor deletes every element it made, so hold those pointers no longer than the
+// Gui itself and do not delete one. The name goes to the CK object, and nothing
+// requires it to be unique. AddYesNoButton and AddKeyButton each build two elements and
+// return both.
+//
+// Process is the whole of the machinery and a Mod calls it once a frame while its screen
+// is up. It re-executes each element's text block, notices a change of resolution and
+// runs OnScreenModeChanged, reads the keyboard buffer and the mouse out of InputHook,
+// and from that calls OnCharTyped, OnMouseDown, OnMouseMove, and OnMouseWheel, which is
+// where a button's callback is run from. Those five are virtual so a derived screen can
+// take them over; call the base if the elements should still react.
+//
+// SetCanBeBlocked decides which read Process uses. On, which is the default, it reads
+// through the loader's input blocks, so this screen goes quiet while something else has
+// the keyboard, InputHook::AcquireBlock included. Off, it reads the raw device and sees
+// keys the game and the loader are trying to keep to themselves.
+//
+// Escape is wired to whatever AddBackButton made, so a screen with a back button closes
+// on Escape through that button's own callback. A click that landed on a button or an
+// input also sends the game's Menu_Click sound.
+//
+// SetVisible hides or shows every element at once, which is how a screen goes away
+// without being destroyed. The elements stay in the level either way.
 #ifndef BML_GUI_GUI_H
 #define BML_GUI_GUI_H
 

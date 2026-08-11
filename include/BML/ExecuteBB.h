@@ -1,3 +1,42 @@
+// Building blocks called from C++. Some of what Ballance does exists only as a Virtools
+// building block, physicalizing an object and loading an NMO among them, with no function
+// in the SDK behind it, and the way to get at those from a Mod is to build the block and
+// run it. That is what this namespace does, and it comes in two halves.
+//
+// The functions with a plain name do the thing at once. Each keeps one block of its own,
+// created by the loader inside the game's Level_Init script while the game starts, and a
+// call writes that block's parameters and executes it there and then, before returning.
+// So the work happens outside any script's flow, on the thread that called, which has to
+// be the game thread. There is one block per action for the whole loader, so these are
+// not reentrant: do not call one from inside a callback of the same one, and do not call
+// them from a thread of the Mod's own. Before the loader has built them, which is
+// anything earlier than the game's own scripts loading, they do nothing at all and
+// report nothing.
+//
+// The Create functions build a block instead of running one, inside the script passed as
+// the first argument, with every parameter given a source of its own, and hand it back
+// for the Mod to use: wire it into the script, or set what is wanted and call
+// ActivateInput then Execute as the direct functions do. The block belongs to the script
+// from then on, meaning it is destroyed with the level, and ScriptHelper.h is what reads
+// and writes its parameters afterwards.
+//
+// CreateHookBlock is the odd one and the most useful: it makes a block that calls a
+// plain C function of the Mod's when the script reaches it, with as many input and
+// output pins as asked for. Inserting one into a game script is how the loader gets its
+// own callbacks, IMessageReceiver among them, so a Mod can hook a place the loader does
+// not cover. The callback runs inside the script's execution, so it is as brief as a
+// building block has to be.
+//
+// ObjectLoad returns the array of loaded objects together with the master object, and
+// that array belongs to the block: it is filled again by the next call, so copy out of it
+// before doing anything else, and never free it. With rename set, which is the default,
+// every loaded object gets _BMLLoad_<n> put after its name, so a map's objects cannot
+// collide with the level's.
+//
+// FontType names the game's own menu fonts rather than a font file, and the loader fills
+// in which is which while the game starts, so a font asked for before that draws as
+// NOFONT. The TEXT_ and ALIGN_ macros above are the 2D Text block's flags and alignment
+// as Virtools numbers them, for Create2DText and for BGui::Label.
 #ifndef BML_EXECUTEBB_H
 #define BML_EXECUTEBB_H
 

@@ -1,3 +1,17 @@
+// The GUIDs of the Virtools building blocks, parameter types, and attributes, one header
+// per plugin, and this one pulling in all of them. Nothing here is code or is anything of
+// the loader's: these are the numbers the engine identifies its own pieces by, written out
+// so that a Mod can name one instead of pasting a pair of hex words.
+//
+// They are what ScriptHelper::CreateBB and the CreateParam family are given: a
+// VT_<plugin>_<block> for a block, a CKPGUID_ for the type of a parameter. The plugin
+// names are the Virtools ones, so a block found in Virtools Dev is looked up in the header
+// for the plugin it came from, and BML/Guids/Hooks.h holds the one block that is the
+// loader's own, the hook block ExecuteBB::CreateHookBlock builds.
+//
+// Include the one header a Mod needs rather than this file. A GUID being listed says only
+// that the block exists in Virtools, not that the game has that plugin loaded:
+// CKBehavior::InitFromGuid fails for one the running game does not have.
 #ifndef BML_GUIDS_H
 #define BML_GUIDS_H
 
