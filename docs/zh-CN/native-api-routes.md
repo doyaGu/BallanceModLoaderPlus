@@ -23,12 +23,21 @@ IMC 没有这个问题。路由按名字寻址，载荷逐字段编码，读取�
 接口，外面包了一层 inline C++，用起来和调用普通函数一样。
 
 `BML.h` 里的 `BML_*` 函数是第三种写法。它们是纯 C，不涉及任何 vtable，所以可以
-自由增加。它们覆盖的是字符串、路径、文件与内存分配，而不是游戏本身；一项能力既不
-需要游戏对象、也不值得单开一条 IMC 路由时也会落在这里，Loader 与 Mod 目录查询、
-命令注销就是这样进来的。
+自由增加。但能落在这里的只有两类。一类是与游戏和 Loader 状态无关的纯工具：字符串、
+路径、文件、编码与内存分配，Loader 与 Mod 目录查询属于这一类。另一类是补齐一个另
+一半冻结在 C++ 里的操作，`BML_UnregisterCommand` 就是这样站到 `IBML::RegisterCommand`
+旁边的。把一对操作的正反两半拆到两种机制上，比任选一种都更难读，所以反向操作跟着
+正向走。
+
+其余的新增能力都走 IMC，判据是一个问题：脚本 Mod 是否也该有这项能力。是，那么只有
+IMC 能从一份 `.imc` 声明同时到达两侧；否，且属于上面两类，才走 C 导出。
 
 冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。
+
+内置门面在脚本侧只有四个：`BML::Runtime`、`BML::Gameplay`、`BML::UI`、`BML::Events`。
+`BML::Scene` 与 `BML::Speedrun` 目前只有原生侧有。脚本侧的投射是手写的，与 `.imc`
+声明之间没有任何校验，所以这个差集不会自动收敛。
 
 ## 逐项能力对照
 
@@ -54,7 +63,7 @@ IMC 没有这个问题。路由按名字寻址，载荷逐字段编码，读取�
 | 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |
 | 已加载了哪些 Mod，以及依赖 | `GetModCount`、`GetMod`、`FindMod`、`RegisterDependency`、`CheckDependencies` | 无 | 只有旧式 C++。 |
-| 把自己的接口发布给别的 Mod | 无 | IMC，最好从 `.imc` 文件生成 | 只有 IMC。自己定义 C++ 类，等于把自己的 vtable 布局和标准库塞进每个使用方的构建里。 |
+| 把自己的接口发布给别的 Mod | 无 | IMC，最好从 `.imc` 文件生成 | 只有 IMC。自己定义 C++ 类，等于把自己的 vtable 布局和标准库塞进每个使用方的构建里。它到达的是原生使用方：脚本 Mod 目前既不能调用别的 Mod 的路由，也不能发布自己的。 |
 | 绘制自己的界面 | `Bui` 画 ImGui 控件，`BGui` 用游戏内 2D 实体 | 无 | 两者都不是 IMC。`BML::UI` 控制的是 Loader 自己的界面，不画你的东西。 |
 | 字符串、路径、文件、内存分配 | 无 | `BML.h` 的 `BML_*` 函数 | 走 C 导出。它们返回的东西要用对应的 `BML_Free*` 释放，不能用 CRT 的 `free`。 |
 | Loader 的各个目录，以及自己 Mod 的安装目录 | 无 | `BML_GetLoaderPathW`、`BML_GetLoaderPathUtf8`、`BML_GetModRootW`、`BML_GetModRootUtf8`，同样是 `BML.h` 的 C 导出 | 走 C 导出。`IBML` 从来没有提供过这些。Loader 目录是借用指针，Mod 根目录是新分配的，只有后者需要释放。 |

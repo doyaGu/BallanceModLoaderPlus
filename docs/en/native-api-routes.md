@@ -30,15 +30,29 @@ facades exist: they are the loader's own IMC interfaces, wrapped in inline C++
 so that using one looks like calling a function.
 
 The `BML_*` functions of `BML.h` are the third spelling. They are plain C with
-no vtable involved, so they can be added to freely. They cover strings, paths,
-files, and allocation rather than anything about the game, and they are also
-where a capability lands when it needs neither a game object nor a route of its
-own, which is how the loader and mod directory queries and command
-unregistration got there.
+no vtable involved, so they can be added to freely. Only two kinds of capability
+belong there. The first is a utility that touches neither the game nor loader
+state: strings, paths, files, encoding, and allocation, which is where the
+loader and mod directory queries sit. The second is the other half of an
+operation whose first half is frozen in C++, which is how
+`BML_UnregisterCommand` came to stand beside `IBML::RegisterCommand`. Splitting
+one pair of operations across two mechanisms reads worse than either choice
+alone, so the reverse operation follows the forward one.
+
+Every other new capability goes through IMC, and one question decides it: should
+a script mod have this capability too? If yes, IMC is the only route that
+reaches both sides from one `.imc` declaration. If no, and it is one of the two
+kinds above, it is a C export.
 
 Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
 at an engine object.
+
+The script side has four of the built-in facades: `BML::Runtime`,
+`BML::Gameplay`, `BML::UI`, and `BML::Events`. `BML::Scene` and `BML::Speedrun`
+are native-only for now. The script projection is written by hand and nothing
+checks it against the `.imc` declarations, so that difference does not close by
+itself.
 
 ## Capability by capability
 
@@ -65,7 +79,7 @@ the facade spelling; each facade is a header of the same name under
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
 | Which mods are loaded, and dependencies | `GetModCount`, `GetMod`, `FindMod`, `RegisterDependency`, `CheckDependencies` | none | Frozen C++ only. |
-| Publishing an API of your own to other mods | none | IMC, ideally generated from a `.imc` file | IMC only. A C++ class of your own would put your vtable layout and your standard library in every consumer's build. |
+| Publishing an API of your own to other mods | none | IMC, ideally generated from a `.imc` file | IMC only. A C++ class of your own would put your vtable layout and your standard library in every consumer's build. It reaches native consumers: a script mod can currently neither call another mod's route nor publish one of its own. |
 | Drawing your own UI | `Bui` for ImGui widgets, `BGui` for in-game 2D entities | none | Neither is IMC. `BML::UI` controls the loader's own UI and draws nothing of yours. |
 | Strings, paths, files, allocation | none | the `BML_*` functions of `BML.h` | The C exports. Release what they return with the matching `BML_Free*`, never with the CRT `free`. |
 | The loader's directories, and where your mod is installed | none | `BML_GetLoaderPathW`, `BML_GetLoaderPathUtf8`, `BML_GetModRootW`, `BML_GetModRootUtf8`, also C exports of `BML.h` | The C exports. `IBML` never offered these. The loader path is borrowed and the mod root is allocated, so only the second needs freeing. |
