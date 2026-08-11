@@ -138,7 +138,13 @@ public:
                               XObjectArray *objArray, CKObject *masterObj) {}
     virtual void OnLoadScript(const char *filename, CKBehavior *script) {}
 
+    // Draw all ImGui and Bui controls from OnProcess. It is the only callback
+    // that runs inside the active ImGui frame.
     virtual void OnProcess() {}
+
+    // OnRender runs after the loader has already ended the ImGui frame, so
+    // ImGui and Bui calls made here draw nothing and may trip an ImGui
+    // assertion. Use it for renderer state work only.
     virtual void OnRender(CK_RENDER_FLAGS flags) {}
 
     virtual void OnCheatEnabled(bool enable) {}

@@ -84,6 +84,9 @@ BML 版本要求，并可按需重写以下回调：
 - 游戏流程：菜单、加载/开始/重置/暂停/退出/下一关、死亡、结算、检查点、
   生命和导航状态等 `IMessageReceiver` 回调。
 
+`OnProcess` 是唯一运行在 ImGui 帧内部的回调。所有 ImGui 和 `Bui` 控件都必须
+在它里面绘制，不能放在 `OnRender` 中。参见[三种 UI 接口](#三种-ui-接口)。
+
 `OnRender` 每次收到一个 `CK_RENDER_FLAGS`；原生 API 没有分别命名的
 “渲染前/渲染后”回调。需要解耦的事件消费方可以使用
 `BML::Events::Stream`，它覆盖游戏流程、对象/脚本加载、物理、命令、配置和
@@ -100,7 +103,7 @@ BML 版本要求，并可按需重写以下回调：
 
 - CK 上下文和 Attribute、Behavior、Collision、Input、Message、Path、
   Parameter、Render、Sound、Time 等管理器访问。
-- `AddTimer` / `AddTimerLoop`：按 Tick 数或时间值安排回调。
+- `AddTimer` / `AddTimerLoop`：按帧数或毫秒安排回调。
 - 游戏状态、作弊开关、游戏内消息、命令注册/查找/执行。
 - 按名称查找 DataArray、Group、Material、Mesh、2D/3D Entity、Camera、
   Light、Sound、Texture 和 Behavior。
@@ -110,6 +113,19 @@ BML 版本要求，并可按需重写以下回调：
 
 定时器必须通过 `IBML` 创建。SDK 不发布独立 `Timer.h`；Loader 负责调度和
 处理这些回调，Mod 不应维护另一套隐式的静态定时器状态。
+
+`AddTimer` 和 `AddTimerLoop` 各有 `CKDWORD` 与 `float` 两个重载：`CKDWORD`
+按帧计数，`float` 按毫秒计数。两种单位共用同一个函数名，因此不带后缀的整型
+字面量是二义的，无法编译。调用时必须写明后缀：
+
+```cpp
+bml->AddTimer(1ul, [] { /* 下一帧 */ });
+bml->AddTimer(1000.0f, [] { /* 一秒后 */ });
+bml->AddTimerLoop(1.0f, [] { return KeepRunning(); });
+```
+
+循环回调返回 `true` 时继续运行。两个重载都不返回句柄，已安排的定时器无法取消，
+需要停止时让循环回调返回 `false`。
 
 ## 原生 Mod 依赖
 
@@ -138,6 +154,16 @@ Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和
 
 `ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
 Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。
+
+`IBML::RegisterCommand` 接收裸 `ICommand *`，Loader 从不删除它。命令对象只需
+分配一次，并保持存活到进程结束。不要在 `OnUnload` 中删除它：卸载单个 Mod 不会
+从命令表中移除它注册的命令，删除后命令表里会留下悬空指针。`IBML` 没有对应的
+注销函数。注册成功时没有任何返回信息，只在失败时写日志；失败的情况包括命令为
+空指针、命令名或别名非法、命令名已被注册。
+
+`ParseFloat` 的默认取值范围是整个有限 float 范围。早期版本的默认下界是
+`FLT_MIN`，即最小正规格化数，因此负数输入会被静默截断到约 `1.17e-38`。需要更
+窄的范围时显式传入上下界。
 
 ## 跨 Mod 通信
 
@@ -175,6 +201,22 @@ Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志�
 - `BML::UI` 不绘制控件，而是通过 IMC 控制 Loader 已有的消息、菜单和 HUD。
 
 三者解决的问题不同，不应互相替代或混用命名。
+
+### 在 `OnProcess` 中绘制 ImGui
+
+ImGui 帧由 Loader 掌管。它在 Mod 回调之前开帧，并在 `OnProcess` 返回后立即
+结束该帧：
+
+1. Loader 在每帧的 Mod 回调之前调用 `ImGui::NewFrame`。
+2. 所有 Mod 的 `OnProcess` 在这一帧内部运行。
+3. Loader 调用 `ImGui::Render`，该帧结束。
+4. `OnRender` 运行。
+5. Loader 提交已记录的绘制数据。
+
+因此 `ImGui` 和 `Bui` 调用必须写在 `OnProcess` 里。同样的调用放在 `OnRender`
+中时帧已经结束，既不会绘制出任何内容，还可能触发 ImGui 断言。`BML::UI` 的
+消息、菜单和 HUD 调用不受影响，因为它们修改的是 Loader 状态，而不是记录绘制
+命令。
 
 ## C API 的所有权
 

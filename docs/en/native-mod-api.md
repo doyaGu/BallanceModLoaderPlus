@@ -89,6 +89,10 @@ callbacks it needs:
 - game flow: menu, load, start, reset, pause, exit, next-level, death, finish,
   checkpoint, life, and navigation callbacks from `IMessageReceiver`.
 
+`OnProcess` is the only callback that runs inside the active ImGui frame. Draw
+every ImGui and `Bui` control from it, and never from `OnRender`. See
+[Three UI surfaces](#three-ui-surfaces).
+
 `OnRender` receives one `CK_RENDER_FLAGS` value. The native API does not expose
 separately named before-render and after-render callbacks. Consumers that need
 decoupled notifications can use `BML::Events::Stream`, which covers game flow,
@@ -106,7 +110,7 @@ output event is reset before every poll, including unsuccessful polls.
 
 - the CK context and Attribute, Behavior, Collision, Input, Message, Path,
   Parameter, Render, Sound, and Time managers;
-- `AddTimer` and `AddTimerLoop` scheduling by ticks or time values;
+- `AddTimer` and `AddTimerLoop` scheduling by frames or by milliseconds;
 - game state, cheat control, in-game messages, and command registration,
   lookup, and execution;
 - named lookup for DataArrays, Groups, Materials, Meshes, 2D/3D Entities,
@@ -117,6 +121,21 @@ output event is reset before every poll, including unsuccessful polls.
 
 Create timers through `IBML`. The SDK does not publish a standalone `Timer.h`;
 the loader owns scheduling and callback processing.
+
+`AddTimer` and `AddTimerLoop` are each overloaded on `CKDWORD` and `float`. The
+`CKDWORD` overloads count frames, the `float` overloads count milliseconds, and
+both units share one name, so an unsuffixed integer literal is ambiguous and
+fails to compile. Write the suffix explicitly:
+
+```cpp
+bml->AddTimer(1ul, [] { /* next frame */ });
+bml->AddTimer(1000.0f, [] { /* one second later */ });
+bml->AddTimerLoop(1.0f, [] { return KeepRunning(); });
+```
+
+The loop callbacks keep running while they return `true`. Neither overload
+returns a handle, so a scheduled timer cannot be cancelled; make the loop
+callback return `false` instead.
 
 ## Native mod dependencies
 
@@ -149,6 +168,19 @@ property API; use the explicit conversion functions in `BML.h` when needed.
 `ICommand` provides the command name, aliases, description, cheat flag,
 execution, Tab completion, and basic Integer, Float, and Boolean parsers.
 `ILogger` provides three log levels.
+
+`IBML::RegisterCommand` takes a raw `ICommand *` and the loader never deletes
+it. Allocate the command once and keep it alive for the whole process lifetime.
+Do not delete it in `OnUnload`: unloading a single mod does not remove its
+commands from the command table, so a deleted command leaves a dangling entry
+there. `IBML` has no matching unregister function. Registration returns `void`
+and only writes to the log when it fails, which happens for a null command, an
+invalid name or alias, and an already registered name.
+
+`ParseFloat` clamps to the whole finite float range by default. Earlier releases
+defaulted its lower bound to `FLT_MIN`, the smallest positive normal value, so
+negative input was silently clamped to about `1.17e-38`. Pass explicit bounds
+when a command needs a narrower range.
 
 ## Inter-mod communication
 
@@ -192,6 +224,22 @@ evolution, cross-language bindings, RPC, or Topic semantics.
   and HUD state through IMC.
 
 These surfaces solve different problems and are not interchangeable.
+
+### Draw ImGui from `OnProcess`
+
+The loader owns the ImGui frame. It opens the frame before mod callbacks run and
+ends it immediately after `OnProcess` returns:
+
+1. the loader calls `ImGui::NewFrame` before the per-frame mod callbacks;
+2. every mod's `OnProcess` runs inside that frame;
+3. the loader calls `ImGui::Render`, which ends the frame;
+4. `OnRender` runs;
+5. the loader submits the recorded draw data.
+
+So `ImGui` and `Bui` calls belong in `OnProcess`. The same calls made from
+`OnRender` happen after the frame has ended: they draw nothing and may trip an
+ImGui assertion. `BML::UI` message, menu, and HUD calls are not affected,
+because they change loader state instead of recording draw commands.
 
 ## C API ownership
 

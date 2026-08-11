@@ -32,6 +32,11 @@ public:
     virtual CKSoundManager *GetSoundManager() = 0;
     virtual CKTimeManager *GetTimeManager() = 0;
 
+    // The CKDWORD overloads count frames; the float overloads count
+    // milliseconds. The two units share a name, so an unsuffixed integer
+    // literal is ambiguous. Write AddTimer(1ul, ...) for frames and
+    // AddTimer(1.0f, ...) for milliseconds.
+    // The loop callbacks keep running while they return true.
     virtual void AddTimer(CKDWORD delay, std::function<void()> callback) = 0;
     virtual void AddTimerLoop(CKDWORD delay, std::function<bool()> callback) = 0;
     virtual void AddTimer(float delay, std::function<void()> callback) = 0;
@@ -42,6 +47,13 @@ public:
 
     virtual void SendIngameMessage(const char *msg) = 0;
 
+    // The loader stores the raw pointer and never deletes it. Allocate the
+    // command once and keep it alive for the whole process lifetime. Do not
+    // delete it in OnUnload: unloading a single mod does not remove its
+    // commands from the command table, so a deleted command leaves a dangling
+    // entry there. This interface has no matching unregister function.
+    // Registration is silent on success and only logs on failure. It fails for
+    // a null command, an invalid name or alias, and an already registered name.
     virtual void RegisterCommand(ICommand *cmd) = 0;
 
     virtual void SetIC(CKBeObject *obj, bool hierarchy = false) = 0;
