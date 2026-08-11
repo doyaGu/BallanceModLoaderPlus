@@ -5,6 +5,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifndef BML_BEGIN_CDECLS
 #ifdef __cplusplus
@@ -36,7 +38,11 @@
 #define MAX_PATH 260
 #endif
 
-// Memory allocation macros
+// Memory allocation macros. These forward to the CRT of whichever binary
+// expands them, so they allocate on the caller's own heap. They are unrelated to
+// the exported BML_Malloc, BML_Realloc, and BML_Free functions in BML.h, which
+// allocate on the loader's heap and must be paired with each other. Never
+// release a BML_Malloc pointer with BML_FREE, or the reverse.
 #ifndef BML_MALLOC
 #define BML_MALLOC(size) malloc(size)
 #endif
@@ -63,11 +69,44 @@
 #define BML_CACHE_LINE_SIZE 64
 #define BML_CACHE_ALIGNED BML_ALIGN(BML_CACHE_LINE_SIZE)
 
-// Compiler hints
+// Compiler hints. MSVC has no expression-level branch hint, so these expand to
+// the plain condition there and carry a real hint under clang-cl, which
+// bml_add_mod also accepts.
+#ifndef BML_HAS_BUILTIN
+#ifdef __has_builtin
+#define BML_HAS_BUILTIN(x) __has_builtin(x)
+#else
+#define BML_HAS_BUILTIN(x) 0
+#endif
+#endif
+
+#if BML_HAS_BUILTIN(__builtin_expect)
+#define BML_LIKELY(x) (__builtin_expect(!!(x), 1))
+#define BML_UNLIKELY(x) (__builtin_expect(!!(x), 0))
+#else
 #define BML_LIKELY(x) (!!(x))
 #define BML_UNLIKELY(x) (!!(x))
+#endif
+
+#ifndef BML_HAS_ATTRIBUTE
+#ifdef __has_attribute
+#define BML_HAS_ATTRIBUTE(x) __has_attribute(x)
+#else
+#define BML_HAS_ATTRIBUTE(x) 0
+#endif
+#endif
+
+#if BML_HAS_ATTRIBUTE(pure)
+#define BML_PURE __attribute__((pure))
+#else
 #define BML_PURE
+#endif
+
+#if BML_HAS_ATTRIBUTE(const)
+#define BML_CONST __attribute__((const))
+#else
 #define BML_CONST
+#endif
 
 // Debug assertions
 #ifdef NDEBUG
