@@ -57,7 +57,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | Header | Purpose |
 | --- | --- |
 | `Version.h`, `Defines.h` | Version macros, export macros, status codes, and base definitions |
-| `BML.h` | C ABI for version, loader and mod directories, memory, encoding, path, file, and Zip utilities |
+| `BML.h` | C ABI for version, loader and mod directories, command unregistration, memory, encoding, path, file, and Zip utilities |
 | `BMLAll.h` | Convenience header that includes the complete native SDK surface |
 | `IMod.h`, `IMessageReceiver.h` | Mod metadata, lifecycle, gameplay, and engine callbacks |
 | `IBML.h` | Loader services, CK managers, lookup, commands, timers, and dependencies |
@@ -170,12 +170,30 @@ execution, Tab completion, and basic Integer, Float, and Boolean parsers.
 `ILogger` provides three log levels.
 
 `IBML::RegisterCommand` takes a raw `ICommand *` and the loader never deletes
-it. Allocate the command once and keep it alive for the whole process lifetime.
-Do not delete it in `OnUnload`: unloading a single mod does not remove its
-commands from the command table, so a deleted command leaves a dangling entry
-there. `IBML` has no matching unregister function. Registration returns `void`
-and only writes to the log when it fails, which happens for a null command, an
-invalid name or alias, and an already registered name.
+it. Registration returns `void` and only writes to the log when it fails, which
+happens for a null command, an invalid name or alias, and an already registered
+name.
+
+`IBML` has no unregister function, so removing a command goes through
+`BML_UnregisterCommand` in `BML.h`:
+
+```cpp
+void MyMod::OnUnload() {
+    if (BML_UnregisterCommand("mycmd") == BML_OK)
+        delete m_Command;  // only now is deleting it safe
+}
+```
+
+Only the DLL that registered a command may remove it, which the loader decides
+by remembering which module called `RegisterCommand`. Asking about someone else's
+command answers `BML_ERROR_ACCESS_DENIED`, an unknown name answers
+`BML_ERROR_NOT_FOUND`, and the name is matched the way the console matches it, so
+the alias names the command too. Call it from the game thread.
+
+Without that call, a registered command stays in the command table until the
+process ends. In particular, do not delete an `ICommand` in `OnUnload` while it is
+still registered: unloading a mod does not remove its commands by itself, so a
+deleted command leaves a dangling entry that the console will still try to run.
 
 `ParseFloat` clamps to the whole finite float range by default. Earlier releases
 defaulted its lower bound to `FLT_MIN`, the smallest positive normal value, so

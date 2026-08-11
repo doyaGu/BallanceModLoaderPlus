@@ -140,6 +140,15 @@ public:
     int ClearDependencies(IMod *mod) override;
 
     void RegisterCommand(ICommand *cmd) override;
+
+    // Removes a command again, but only for the module that registered it.
+    // callerAddress belongs to the DLL asking, and has to be the one that called
+    // RegisterCommand for this command. Answers BML_OK,
+    // BML_ERROR_INVALID_PARAMETER for a null or empty name, BML_ERROR_NOT_FOUND
+    // when no command answers to the name, or BML_ERROR_ACCESS_DENIED when one
+    // does but another module owns it.
+    int UnregisterCommand(const void *callerAddress, const char *name);
+
     int GetCommandCount() const override;
     ICommand *GetCommand(int index) const override;
     ICommand *FindCommand(const char *name) const override;
@@ -431,6 +440,11 @@ private:
     std::string m_ConfigDirUtf8;
 
     BML::CommandContext m_CommandContext;
+    // Which module registered each command, so that only that module can take it
+    // away again. Written on every registration rather than only the first, so an
+    // address reused by a later command is attributed to whoever registered that
+    // one. Guarded by m_Mutex.
+    std::unordered_map<const ICommand *, void *> m_CommandOwnerMap;
     BML::DataShare *m_DataShare = nullptr;
 
     FILE *m_Logfile = nullptr;

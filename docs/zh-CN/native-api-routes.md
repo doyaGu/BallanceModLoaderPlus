@@ -24,8 +24,8 @@ IMC 没有这个问题。路由按名字寻址，载荷逐字段编码，读取�
 
 `BML.h` 里的 `BML_*` 函数是第三种写法。它们是纯 C，不涉及任何 vtable，所以可以
 自由增加。它们覆盖的是字符串、路径、文件与内存分配，而不是游戏本身；一项能力既不
-需要游戏对象、也不值得单开一条 IMC 路由时也会落在这里，Loader 与 Mod 目录查询就是
-这样进来的。
+需要游戏对象、也不值得单开一条 IMC 路由时也会落在这里，Loader 与 Mod 目录查询、
+命令注销就是这样进来的。
 
 冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。
@@ -49,7 +49,7 @@ IMC 没有这个问题。路由按名字寻址，载荷逐字段编码，读取�
 | HUD 各部分、Mod 菜单、地图菜单 | 无 | `UI::SetHUDMode`、`ShowTitle`、`ShowFPS`、`OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 只有 IMC。 |
 | Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | `Events::Stream` | 两者皆可，事件内容相同。虚函数在 Loader 的派发过程内执行，且要求继承 `IMod`。流是一个自己排空的队列，适合不是 `IMod` 的代码、对所有事件一律处理的代码，以及宁愿先缓冲而不是当场响应的代码。 |
 | 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Runtime::ReadState` 可读 | 读两者皆可，写走旧式 C++。 |
-| 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | 无 | 只有旧式 C++。目前没有注销函数，所以注册过的命令必须活到进程结束。 |
+| 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | 无 | 注册走旧式 C++。注销是 C 导出 `BML_UnregisterCommand`，因为 `IBML` 已经无法再加函数。 |
 | 配置 | `IMod::GetConfig` 加 `IConfig`、`IProperty` | 无 | 只有旧式 C++。 |
 | 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |

@@ -4,6 +4,8 @@
 #include <queue>
 #include <system_error>
 
+#include <intrin.h>
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -81,20 +83,27 @@ namespace {
         return GetParentDirectory(path);
     }
 
-    // The directory of whichever module the given address belongs to.
-    std::wstring GetModuleDirectoryFromAddress(const void *address) {
+    // Whichever module the given address belongs to. The handle is not reference
+    // counted, so it is only an identity to compare against, never something to
+    // keep or to free.
+    HMODULE GetModuleFromAddress(const void *address) {
         if (!address)
-            return {};
+            return nullptr;
 
         HMODULE module = nullptr;
         if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                                   reinterpret_cast<LPCSTR>(address),
                                   &module)) {
-            return {};
+            return nullptr;
         }
 
-        return GetModuleDirectory(module);
+        return module;
+    }
+
+    // The directory of whichever module the given address belongs to.
+    std::wstring GetModuleDirectoryFromAddress(const void *address) {
+        return GetModuleDirectory(GetModuleFromAddress(address));
     }
 
     std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
@@ -645,6 +654,7 @@ void ModContext::DeactivateActiveMods() {
         m_CallbackMap.clear();
         m_Configs.clear();
         m_ConfigMap.clear();
+        m_CommandOwnerMap.clear();
     }
     m_CommandContext.ClearCommands();
     m_ActiveMods.clear();
@@ -954,8 +964,18 @@ int ModContext::ClearDependencies(IMod *mod) {
 }
 
 void ModContext::RegisterCommand(ICommand *cmd) {
+    // Taken before the lock: this is a virtual the Mod calls across the DLL
+    // boundary, so the return address is in whichever module is registering.
+    void *const owner = GetModuleFromAddress(_ReturnAddress());
+
     std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_CommandContext.RegisterCommand(cmd)) {
+        try {
+            m_CommandOwnerMap[cmd] = owner;
+        } catch (const std::bad_alloc &) {
+            // The command is registered either way. Without an owner recorded it
+            // simply cannot be unregistered again, which is the old behaviour.
+        }
         return;
     }
 
@@ -967,6 +987,33 @@ void ModContext::RegisterCommand(ICommand *cmd) {
     m_Logger->Error(
         "Failed to register command '%s'. Command names are case-insensitive and must be valid UTF-8 tokens without spaces.",
         cmd->GetName().c_str());
+}
+
+int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
+    if (!name || name[0] == '\0')
+        return BML_ERROR_INVALID_PARAMETER;
+
+    void *const caller = GetModuleFromAddress(callerAddress);
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
+    // Resolved through the command table so that the name is matched the way the
+    // console matches it, which also lets an alias name the command.
+    ICommand *cmd = m_CommandContext.GetCommandByName(name);
+    if (!cmd)
+        return BML_ERROR_NOT_FOUND;
+
+    const auto owner = m_CommandOwnerMap.find(cmd);
+    if (!caller || owner == m_CommandOwnerMap.end() || owner->second != caller) {
+        m_Logger->Error("Refused to unregister command '%s': it belongs to another module.", name);
+        return BML_ERROR_ACCESS_DENIED;
+    }
+
+    if (!m_CommandContext.UnregisterCommand(name))
+        return BML_ERROR_FAIL;
+
+    m_CommandOwnerMap.erase(owner);
+    return BML_OK;
 }
 
 int ModContext::GetCommandCount() const {

@@ -53,7 +53,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | 头文件 | 用途 |
 | --- | --- |
 | `Version.h`, `Defines.h` | 版本宏、导出宏、状态码和基础定义 |
-| `BML.h` | C ABI：版本、Loader 与 Mod 目录、内存、字符串/编码、路径、文件与 Zip 工具 |
+| `BML.h` | C ABI：版本、Loader 与 Mod 目录、命令注销、内存、字符串/编码、路径、文件与 Zip 工具 |
 | `BMLAll.h` | 一次包含全部原生 SDK 接口的便捷聚合头 |
 | `IMod.h`, `IMessageReceiver.h` | Mod 元数据、生命周期、玩法和引擎回调 |
 | `IBML.h` | Loader 服务、CK 管理器、对象查找、命令、定时器和依赖管理 |
@@ -155,11 +155,27 @@ Integer、Float 或 Keyboard Key，支持设置当前值、默认值、注释和
 `ICommand` 提供命令名、别名、说明、作弊标记、执行函数和 Tab 补全，并附带
 Integer、Float、Boolean 的基础解析函数。`ILogger` 提供三个日志级别。
 
-`IBML::RegisterCommand` 接收裸 `ICommand *`，Loader 从不删除它。命令对象只需
-分配一次，并保持存活到进程结束。不要在 `OnUnload` 中删除它：卸载单个 Mod 不会
-从命令表中移除它注册的命令，删除后命令表里会留下悬空指针。`IBML` 没有对应的
-注销函数。注册成功时没有任何返回信息，只在失败时写日志；失败的情况包括命令为
-空指针、命令名或别名非法、命令名已被注册。
+`IBML::RegisterCommand` 接收裸 `ICommand *`，Loader 从不删除它。注册成功时没有
+任何返回信息，只在失败时写日志；失败的情况包括命令为空指针、命令名或别名非法、
+命令名已被注册。
+
+`IBML` 没有注销函数，注销命令要用 `BML.h` 里的 `BML_UnregisterCommand`：
+
+```cpp
+void MyMod::OnUnload() {
+    if (BML_UnregisterCommand("mycmd") == BML_OK)
+        delete m_Command;  // 到这一步删除才是安全的
+}
+```
+
+只有注册该命令的那个 DLL 才能注销它。Loader 记下是哪个模块调用了
+`RegisterCommand`，据此判断：注销别人的命令返回 `BML_ERROR_ACCESS_DENIED`，名字
+不存在返回 `BML_ERROR_NOT_FOUND`。名字的匹配方式与控制台一致，因此用别名也能指到
+同一个命令。该函数应在游戏线程调用。
+
+不调用它，注册过的命令就会一直留在命令表里直到进程结束。特别注意：命令还在注册
+状态时不要在 `OnUnload` 里删除 `ICommand`，卸载 Mod 本身不会移除它注册的命令，
+删除后命令表里会留下悬空指针，控制台仍会尝试执行它。
 
 `ParseFloat` 的默认取值范围是整个有限 float 范围。早期版本的默认下界是
 `FLT_MIN`，即最小正规格化数，因此负数输入会被静默截断到约 `1.17e-38`。需要更

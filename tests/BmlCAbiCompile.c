@@ -16,3 +16,14 @@ void BML_TestCAbiModRoot(void) {
     char *root = BML_GetModRootUtf8(NULL);
     BML_FreeString(root);
 }
+
+// BML_UnregisterCommand is the one function here that answers with a status code
+// instead of 1 or 0, so this also checks that the codes it documents are reachable
+// from C.
+int BML_TestCAbiUnregisterCommand(const char *name) {
+    const int result = BML_UnregisterCommand(name);
+    if (result == BML_ERROR_NOT_FOUND || result == BML_ERROR_ACCESS_DENIED ||
+        result == BML_ERROR_INVALID_PARAMETER)
+        return 0;
+    return result == BML_OK;
+}

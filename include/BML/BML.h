@@ -17,6 +17,9 @@
 // false. They do not use BML_OK and the BML_ERROR_ codes, and they report nothing
 // beyond that 0, so a failed call and a null argument look alike. The functions
 // that return a pointer return null instead, and the size queries return -1.
+// BML_UnregisterCommand is the one exception: it answers BML_OK or one of the
+// BML_ERROR_ codes, because it refuses for more than one reason and the caller has
+// to be able to tell them apart.
 //
 // The A, W, and Utf8 spellings of one name differ only in how they read the strings
 // handed to them: A takes the process code page, W takes UTF-16, and Utf8 takes
@@ -25,12 +28,13 @@
 // belongs in the Utf8 one.
 //
 // Almost nothing here touches loader or game state, so unlike the rest of the SDK
-// these may be called from any thread. There are three exceptions.
+// these may be called from any thread. There are four exceptions.
 // BML_SetCurrentDirectory moves the whole process and therefore the game with it.
 // BML_GetLoaderPath and BML_GetModRoot read what the loader resolved at startup,
 // so both answer null before it has initialized. BML_GetModRoot also takes the
 // lock that guards the Mod registry, which makes it safe beside a Mod being
-// loaded or unloaded but unsafe from inside DllMain.
+// loaded or unloaded but unsafe from inside DllMain. BML_UnregisterCommand changes
+// the command table the console reads, and belongs on the game thread.
 #ifndef BML_H
 #define BML_H
 
@@ -89,6 +93,28 @@ BML_EXPORT const char *BML_GetLoaderPathUtf8(BML_LoaderDirectory directory);
 
 BML_EXPORT wchar_t *BML_GetModRootW(const char *modId);
 BML_EXPORT char *BML_GetModRootUtf8(const char *modId);
+
+// Taking a console command back out of the command table. IBML::RegisterCommand has
+// no counterpart there, so without this a registered command has to stay until the
+// process ends: a Mod cannot drop its commands in OnUnload, and cannot register them
+// again if it is loaded a second time.
+//
+// Only the DLL that registered a command may take it away. The loader remembers
+// which module called IBML::RegisterCommand and compares it against the module this
+// call comes from, so one Mod cannot remove another Mod's command, nor one that a
+// script Mod registered, nor one of the loader's own. The name is matched the way
+// the console matches it, ignoring case and accepting the alias as well.
+//
+// Unlike the other int-returning functions in this header this one says why it
+// refused: BML_OK, BML_ERROR_INVALID_PARAMETER for a null or empty name,
+// BML_ERROR_NOT_FOUND when no command answers to that name, BML_ERROR_ACCESS_DENIED
+// when one does but belongs to another module, and BML_ERROR_FAIL before the loader
+// has initialized.
+//
+// The command object stays the Mod's to delete, and deleting it is only safe once
+// this has answered BML_OK. Call it from the game thread, which is the thread
+// commands run on; this does not wait for one that is executing.
+BML_EXPORT int BML_UnregisterCommand(const char *name);
 
 // The loader's heap. A Mod needs these only for memory that crosses the boundary,
 // which is what the ModDependency ids do, and for releasing what the functions

@@ -167,6 +167,14 @@ char *BML_GetModRootUtf8(const char *modId) {
     return root.empty() ? nullptr : BML_Strdup(utils::Utf16ToUtf8(root).c_str());
 }
 
+int BML_UnregisterCommand(const char *name) {
+    ModContext *context = BML_GetModContext();
+    if (!context)
+        return BML_ERROR_FAIL;
+
+    return context->UnregisterCommand(_ReturnAddress(), name);
+}
+
 void *BML_Malloc(size_t size) {
     if (size == 0)
         return nullptr;

@@ -33,7 +33,8 @@ The `BML_*` functions of `BML.h` are the third spelling. They are plain C with
 no vtable involved, so they can be added to freely. They cover strings, paths,
 files, and allocation rather than anything about the game, and they are also
 where a capability lands when it needs neither a game object nor a route of its
-own, which is how the loader and mod directory queries got there.
+own, which is how the loader and mod directory queries and command
+unregistration got there.
 
 Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
@@ -59,7 +60,7 @@ the facade spelling; each facade is a header of the same name under
 | HUD parts, mods menu, map menu | none | `UI::SetHUDMode`, `ShowTitle`, `ShowFPS`, `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, `CloseMapMenu` | IMC only. |
 | Loader events | the `IMessageReceiver` virtuals on `IMod` | `Events::Stream` | Either, and they carry the same events. The virtuals run inside the loader's dispatch and need an `IMod` subclass. The stream is a queue you drain yourself, which suits code that is not an `IMod`, code that treats every kind the same way, and code that would rather buffer than react at once. |
 | Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Runtime::ReadState` reads it | Read either, set through the frozen C++. |
-| Console commands | `RegisterCommand` plus an `ICommand` subclass | none | Frozen C++ only. There is no unregister function yet, so a registered command has to live for the whole process. |
+| Console commands | `RegisterCommand` plus an `ICommand` subclass | none | Frozen C++ to register. Removing one again is a C export, `BML_UnregisterCommand`, because `IBML` could not grow the function. |
 | Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | none | Frozen C++ only. |
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
