@@ -57,12 +57,24 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
    命令会让 CMake target、C++ 类名、源文件名和元数据保持一致。也可以手动复制
    `templates/native-mod-template`。
 
-2. 打开生成的 README。使用兼容 MSVC ABI 的 Win32 目标配置项目，并让
-   `CMAKE_PREFIX_PATH` 指向解压后的
-   BML+ SDK。
+2. 打开生成的 README。先运行 `cmake --help`，明确选择本机已安装的 Visual
+   Studio 生成器，再配置它的 Win32 目标，并让 `CMAKE_PREFIX_PATH` 指向解压后的
+   BML+ SDK。源码和构建目录应尽量短，例如 `C:\Mods\MyMod`，避免 MSBuild 在过深
+   目录中出现文件跟踪错误。
 3. 让 `VIRTOOLS_SDK_PATH` 指向 Virtools SDK 2.1。
-4. 构建 Debug Mod，并安装到 `ModLoader/Mods`。
-5. 启动 Player，在 `ModLoader/ModLoader.log` 中确认生成 Mod 的加载日志。
+4. 构建 `RelWithDebInfo`，并将 Mod 安装到 `ModLoader/Mods`。原生接口会让 C++ 对象
+   跨越 DLL 边界，因此原生 Mod 必须与装载它的 Loader 链接同一套 MSVC 运行库。
+   `BMLPlus-<version>.zip` 中的运行时基于 Release 版 MSVC 运行库构建，Debug
+   `.bmodp` 与之不具备 ABI 兼容性；`RelWithDebInfo` 在使用兼容运行库的同时保留调试
+   信息。`bml_add_mod` 会把 Mod 的运行库固定为所配置 SDK 使用的那一套，并在
+   `CMAKE_MSVC_RUNTIME_LIBRARY` 与之冲突时直接让配置失败，所以两者不会在无声中错位。
+   `BMLPlus-SDK-<version>-Debug.zip` 是受支持的例外。它包含 Debug 版
+   `bin/BMLPlus.dll` 及其 `.pdb`，只要同时用这个 Debug Loader 覆盖
+   `BuildingBlocks/BMLPlus.dll`，Debug Mod 就是有效的。Loader 和所有已安装的原生
+   Mod 必须处于同一侧；测试待发布产物前要换回 Release 版 Loader。
+5. 启动该 Ballance 安装目录中的 Player，等待主菜单出现，然后同时确认游戏内提示、
+   `ModLoader/ModLoader.log` 中的加载日志和示例命令。只看到 BML+ 版本并不代表目标
+   Mod 已经加载。
 6. 构建 Release，并测试准备发布的同一个产物。
 
 SDK 的 CMake 入口为：
@@ -115,5 +127,5 @@ BML 回调和同步 IMC handler 通常在游戏线程执行。稳定的查询结
   `BMLExit(IMod*)`。
 - 脚本 Mod 发布为单个 `*.mod.as` 文件，或包含且只包含一个入口的 zip；
   `.bmodp` 只属于原生 Mod。
-- 测试实际发布的产物，而不只是开发目录或 Debug DLL。
+- 测试实际发布的产物，而不只是开发目录或 `RelWithDebInfo` 构建。
 - Mod README 应写明依赖、支持版本、安装、配置和有效的问题反馈方式。

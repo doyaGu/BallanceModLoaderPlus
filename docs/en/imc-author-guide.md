@@ -4,7 +4,7 @@ This guide shows how a native mod can expose a typed, in-process API to another
 mod. Read [Inter-mod communication](imc.md) first for the transport, threading,
 compatibility, and lifetime model.
 
-The examples require an installed BML+ SDK, CMake 3.14 or newer, a C++20
+The examples require an installed BML+ SDK, CMake 3.15 or newer, a C++20
 compiler, and Python 3.10 or newer. New interfaces define RPCs and Topics.
 
 ## 1. Write the interface

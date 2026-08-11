@@ -63,13 +63,30 @@ the same pages under `share/BML/docs/en/script-mod`.
    The command keeps the CMake target, C++ class, source filename, and metadata
    consistent. You can also copy `templates/native-mod-template` manually.
 
-2. Open the generated README. Configure the project for an MSVC-compatible
-   Win32 target and point
-   `CMAKE_PREFIX_PATH` at the extracted BML+ SDK.
+2. Open the generated README. Run `cmake --help`, select an installed Visual
+   Studio generator explicitly, configure its Win32 target, and point
+   `CMAKE_PREFIX_PATH` at the extracted BML+ SDK. Keep the source and build
+   paths short, for example `C:\Mods\MyMod`, to avoid MSBuild file-tracking
+   failures in deeply nested directories.
 3. Point `VIRTOOLS_SDK_PATH` at Virtools SDK 2.1.
-4. Build and install the Debug mod into `ModLoader/Mods`.
-5. Start Player and confirm the generated Mod's load line in
-   `ModLoader/ModLoader.log`.
+4. Build `RelWithDebInfo` and install the Mod into `ModLoader/Mods`. A native
+   Mod must link the same MSVC runtime as the loader it runs in, because the
+   native interface passes C++ objects across the DLL boundary. The runtime in
+   `BMLPlus-<version>.zip` is built against the Release MSVC runtime, so a Debug
+   `.bmodp` is not ABI-compatible with it; `RelWithDebInfo` provides debug
+   information while using the compatible runtime. `bml_add_mod` pins the Mod's
+   runtime to the SDK you configured against and fails the configure step on a
+   conflicting `CMAKE_MSVC_RUNTIME_LIBRARY`, so the two cannot drift apart
+   silently.
+   `BMLPlus-SDK-<version>-Debug.zip` is the supported exception. It contains a
+   Debug `bin/BMLPlus.dll` and its `.pdb`, so a Debug Mod is valid as long as
+   you also copy that Debug loader over `BuildingBlocks/BMLPlus.dll`. Keep the
+   loader and every installed native Mod on one side of that line, and go back
+   to the Release loader before testing what you publish.
+5. Start that Ballance installation's Player, wait until the main menu is
+   visible, and confirm the generated Mod's in-game greeting, load line in
+   `ModLoader/ModLoader.log`, and sample command. The BML+ version banner alone
+   only proves that the loader initialized.
 6. Build Release and test the exact artifact you intend to publish.
 
 The SDK CMake entry point is:
@@ -132,6 +149,7 @@ when that split makes the mod easier to develop.
   `BMLEntry(IBML*)` and `BMLExit(IMod*)`.
 - Script mods publish a single `*.mod.as` file or a zip containing exactly one
   entry. `.bmodp` is native-only.
-- Test the distributed artifact, not only the working directory or Debug DLL.
+- Test the distributed artifact, not only the working directory or a
+  `RelWithDebInfo` build.
 - Include dependencies, supported versions, installation, configuration, and a
   useful failure-reporting path in the mod README.
