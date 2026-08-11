@@ -12,6 +12,17 @@ foreach(required_variable
     endif()
 endforeach()
 
+# Visual Studio generators locate the toolchain themselves. Ninja and Makefile
+# generators invoke cl.exe directly and need the search paths that vcvarsall
+# exports, so without them the consumer configure fails while detecting the
+# compiler and reports nothing about the packaged SDK.
+if(NOT GENERATOR MATCHES "^Visual Studio" AND "$ENV{INCLUDE}" STREQUAL "")
+    message(STATUS
+            "BML_TEST_SKIPPED: the ${GENERATOR} generator needs an MSVC "
+            "developer environment; INCLUDE is not set.")
+    return()
+endif()
+
 set(use_sdk_archive FALSE)
 if(DEFINED SDK_ARCHIVE AND NOT "${SDK_ARCHIVE}" STREQUAL "")
     set(use_sdk_archive TRUE)

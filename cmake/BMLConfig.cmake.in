@@ -8,6 +8,35 @@ set(CMAKE_MODULE_PATH "${_BML_SAVED_CMAKE_MODULE_PATH}")
 unset(_BML_SAVED_CMAKE_MODULE_PATH)
 
 include("${CMAKE_CURRENT_LIST_DIR}/BMLTargets.cmake")
+
+# A native Mod must link the same MSVC runtime as the loader it is loaded into,
+# because the legacy native interface passes C++ objects across the DLL
+# boundary. Derive that runtime from the configurations this package actually
+# ships so bml_add_mod can enforce it. A package carrying both flavours cannot
+# decide for the consumer, so it leaves the choice to CMake's defaults.
+set(BML_MSVC_RUNTIME_LIBRARY "")
+get_target_property(_bml_imported_configurations BML::BML IMPORTED_CONFIGURATIONS)
+if (_bml_imported_configurations)
+    set(_bml_has_debug FALSE)
+    set(_bml_has_release FALSE)
+    foreach (_bml_imported_configuration IN LISTS _bml_imported_configurations)
+        if (_bml_imported_configuration STREQUAL "DEBUG")
+            set(_bml_has_debug TRUE)
+        else ()
+            set(_bml_has_release TRUE)
+        endif ()
+    endforeach ()
+    if (_bml_has_debug AND NOT _bml_has_release)
+        set(BML_MSVC_RUNTIME_LIBRARY "MultiThreadedDebugDLL")
+    elseif (_bml_has_release AND NOT _bml_has_debug)
+        set(BML_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+    endif ()
+    unset(_bml_imported_configuration)
+    unset(_bml_has_debug)
+    unset(_bml_has_release)
+endif ()
+unset(_bml_imported_configurations)
+
 include("${CMAKE_CURRENT_LIST_DIR}/BMLMod.cmake")
 
 set_and_check(BML_IMC_CODEGEN
