@@ -1,3 +1,12 @@
+// Loader-internal header. It is deliberately absent from BML_PUBLIC_HEADERS in
+// src/CMakeLists.txt and is not installed into the SDK, so a Mod cannot include
+// it. Mods schedule work through IBML::AddTimer and IBML::AddTimerLoop instead.
+//
+// The registry below lives in function-local statics, which means every binary
+// that expands this header owns a separate one. Only the copy inside BMLPlus.dll
+// is advanced by Timer::ProcessAll, so timers registered from any other binary
+// would never tick. That is the reason this header stays unshipped rather than a
+// packaging oversight.
 #ifndef BML_TIMER_H
 #define BML_TIMER_H
 
