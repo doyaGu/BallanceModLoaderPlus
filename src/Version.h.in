@@ -1,3 +1,13 @@
+// Generated at configure time from src/Version.h.in, so do not edit the copy in
+// include/BML. These are the version of the SDK a Mod is being compiled against,
+// which is what DECLARE_BML_VERSION reports and what the loader compares its own
+// version to when it decides whether to accept the Mod. To find out which loader is
+// actually running, ask BML_GetVersion from BML.h instead.
+//
+// BML_VERSION is the three numbers as a string, "0.3.13". BML_VERSION_FULL adds the
+// commit the loader was built from and a .dirty marker for a build with uncommitted
+// changes, so it identifies a build while BML_VERSION identifies a release; report
+// the full one in a bug report and compare against the numbers.
 #ifndef BML_VERSION_H
 #define BML_VERSION_H
 

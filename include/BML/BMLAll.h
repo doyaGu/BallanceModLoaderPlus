@@ -1,3 +1,13 @@
+// Every public header at once, for a Mod that would rather not track which one
+// declares what. It pulls in CKAll.h from the Virtools SDK and imgui.h through
+// Bui.h, so both have to be on the include path, which bml_add_mod arranges.
+//
+// This is the slow way to compile. A Mod that knows what it needs includes those
+// headers instead: IMod.h for the class to derive from, which already brings IBML.h,
+// IConfig.h, ILogger.h, and IMessageReceiver.h with it, then Bui.h or Gui.h for a
+// user interface, InputHook.h for the keyboard and mouse, and Runtime.h, Scene.h,
+// Gameplay.h, UI.h, Speedrun.h, or Events.h for what the legacy interfaces do not
+// cover.
 #ifndef BMLALL_H
 #define BMLALL_H
 

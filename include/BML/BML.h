@@ -1,3 +1,32 @@
+// The loader's exported C functions: its version, its heap, and the string, path,
+// and file helpers it already carries. They are plain C, so unlike the classes in
+// IBML.h and IMod.h they do not depend on the compiler or the standard library a
+// Mod is built with, and they can be called from a Mod written in any language that
+// can load a DLL.
+//
+// Three rules cover almost everything here.
+//
+// Whoever gets a pointer back frees it. Every char *, wchar_t *, and array returned
+// below was allocated on the loader's heap, and only the BML_Free family releases
+// it: BML_Free, BML_FreeString, and BML_FreeWString are the same operation, while
+// BML_FreeStringArray and BML_FreeWStringArray also free each element. The BML_MALLOC
+// macros in Defines.h are a different heap, the caller's own, and mixing the two
+// corrupts one of them.
+//
+// The int-returning functions answer 1 for success or true and 0 for failure or
+// false. They do not use BML_OK and the BML_ERROR_ codes, and they report nothing
+// beyond that 0, so a failed call and a null argument look alike. The functions
+// that return a pointer return null instead, and the size queries return -1.
+//
+// The A, W, and Utf8 spellings of one name differ only in how they read the strings
+// handed to them: A takes the process code page, W takes UTF-16, and Utf8 takes
+// UTF-8. Ballance itself is a code page program, so a path that came from the game
+// belongs in the A form and a path that came from a config file or the network
+// belongs in the Utf8 one.
+//
+// Nothing here touches loader or game state, so unlike the rest of the SDK these
+// may be called from any thread. The one exception is BML_SetCurrentDirectory,
+// which moves the whole process and therefore the game with it.
 #ifndef BML_H
 #define BML_H
 
@@ -6,10 +35,17 @@
 
 BML_BEGIN_CDECLS
 
+// The loader that is actually running, which is not necessarily the one whose
+// headers the Mod was compiled against. Compare it against BML_MAJOR_VERSION and
+// its siblings to find out whether a function added in a later release is there.
 BML_EXPORT void BML_GetVersion(int *major, int *minor, int *patch);
 BML_EXPORT const char *BML_GetVersionString();
 
-// Memory management
+// The loader's heap. A Mod needs these only for memory that crosses the boundary,
+// which is what the ModDependency ids do, and for releasing what the functions
+// below return. BML_Malloc and BML_Calloc treat a zero size as a failure and return
+// null, and BML_Realloc with a zero size frees and returns null, so a null result
+// is not always an out-of-memory answer.
 BML_EXPORT void *BML_Malloc(size_t size);
 BML_EXPORT void *BML_Calloc(size_t count, size_t size);
 BML_EXPORT void *BML_Realloc(void *ptr, size_t size);
@@ -112,7 +148,9 @@ BML_EXPORT int BML_ExtractZipA(const char *path, const char *dest);
 BML_EXPORT int BML_ExtractZipW(const wchar_t *path, const wchar_t *dest);
 BML_EXPORT int BML_ExtractZipUtf8(const char *path, const char *dest);
 
-// Path manipulation
+// Path manipulation, meaning that all of these take apart or put together the path
+// string they are given and touch no file. In particular BML_GetDirectory does not
+// report a directory of the loader's: it returns the directory part of path.
 BML_EXPORT char *BML_GetDriveA(const char *path);
 BML_EXPORT wchar_t *BML_GetDriveW(const wchar_t *path);
 BML_EXPORT char *BML_GetDriveUtf8(const char *path);
@@ -223,7 +261,13 @@ BML_EXPORT char *BML_CreateTempFileA(const char *prefix);
 BML_EXPORT wchar_t *BML_CreateTempFileW(const wchar_t *prefix);
 BML_EXPORT char *BML_CreateTempFileUtf8(const char *prefix);
 
-// Directory listing - returns array and sets count
+// Directory listing. The names are returned as an array to be released with
+// BML_FreeStringArray, and count is always written, including on failure. A null
+// return with count 0 is what an empty or unreadable directory gives, so these two
+// cases are not told apart. A null pattern means every entry, and the pattern is a
+// Windows wildcard matched by the file system, not a regular expression. The entries
+// are bare names rather than paths, so combine each with dir before opening it, and
+// the listing does not recurse.
 BML_EXPORT char **BML_ListFilesA(const char *dir, const char *pattern, size_t *count);
 BML_EXPORT wchar_t **BML_ListFilesW(const wchar_t *dir, const wchar_t *pattern, size_t *count);
 BML_EXPORT char **BML_ListFilesUtf8(const char *dir, const char *pattern, size_t *count);
