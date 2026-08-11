@@ -1,3 +1,34 @@
+// The C++ side of Imc.h: the same calls, with the buffer and the handle looked after and
+// the return code still the one to check. Header-only and inline, so including it costs
+// nothing at link time and adds no export to the loader.
+//
+// A generated *_imc.hpp is written in terms of what is here, which is why a Mod using a
+// generated client rarely names any of it directly. Reach for these when publishing an
+// interface of one's own, or when calling something no .imc file describes.
+//
+// LazyClient opens a client the first time something needs it and hands the same one out
+// afterwards, so a Mod does not have to find a place in its startup to open one. It locks
+// while opening, so it can be reached from more than one thread.
+//
+// MessageBuffer holds a payload while it is being sent, on the stack up to
+// BML_IMC_INLINE_PAYLOAD_SIZE bytes and on the heap past that. Because the loader borrows
+// the bytes rather than copying them, the buffer has to outlive the call that reads it,
+// which is what EncodeMessage assumes when it points a BML_ImcMessage into one.
+//
+// RpcFuture and FutureGuard release the future in their destructor, and RpcFuture also
+// remembers which payload type was asked for and refuses a reply of another with
+// BML_ERROR_TYPE_MISMATCH. RpcFuture moves and does not copy, so there is one owner of a
+// future and no chance of a double release. Adopt on a future already holding one answers
+// BML_ERROR_BUSY rather than dropping it.
+//
+// BeginRpc starts a call and leaves the waiting to the caller, CallRpc does both and is the
+// one that blocks, so on the game thread BeginRpc plus a zero-timeout poll is the pair to
+// use. WriteResponse encodes straight into the loader's own buffer from inside a handler,
+// and Publish encodes and publishes in one step.
+//
+// Nothing here throws out: an exception during a decode becomes BML_ERROR_OUT_OF_MEMORY or
+// BML_ERROR_FAIL, which is the same as the C ABI does, since a handler is called from the
+// loader and an exception must not cross back into it.
 #ifndef BML_IMCCPP_HPP
 #define BML_IMCCPP_HPP
 

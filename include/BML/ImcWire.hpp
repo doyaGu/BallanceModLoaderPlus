@@ -1,3 +1,36 @@
+// How a payload is turned into bytes and back. An IMC message is a span of bytes and
+// nothing else, so both sides need one agreed way of laying out the fields, and this is it:
+// a Writer that puts them in, a Reader that takes them out, and the size helpers that say
+// how many bytes it will come to.
+//
+// This is written for the code generator, not for a Mod. A generated *_imc.hpp calls these
+// with the field numbers from the .imc file, and getting a number or an order wrong here
+// produces a message the other side misreads, so a Mod encoding by hand is doing the
+// generator's job. Read this to follow what the generated code does, or when adding a type
+// the generator has to know how to carry.
+//
+// A field is a tag then a payload, the tag holding the field number and how long the
+// payload is to be measured, which is what lets a reader step over a field it does not
+// know: a newer sender's extra fields do not break an older reader. Field numbers are
+// permanent once published. Renaming a field is nothing, renumbering or reusing a number is
+// a different message.
+//
+// Sizing comes first and has to be exact. The Add*FieldSize helpers total up what the
+// Writer will produce, the caller allocates that much, and Writer::Finish answers
+// BML_ERROR_MALFORMED_MESSAGE unless exactly that many bytes were written, which catches a
+// sizing function and a writing function that have drifted apart. Every helper answers
+// false on overflow rather than wrapping.
+//
+// Reading is one pass forward: Begin, then Next until it answers BML_ERROR_NOT_FOUND, then
+// Finish. A FieldView points into the message being read and copies nothing, so it lives
+// only as long as those bytes do, which inside a handler means until the handler returns.
+// A field read as the wrong type answers BML_ERROR_TYPE_MISMATCH and a truncated or
+// otherwise unreadable one BML_ERROR_MALFORMED_MESSAGE, so a reader treats a bad message as
+// data to reject rather than trusting what it was handed.
+//
+// Numbers go out least significant byte first whatever the host does, written and read a
+// byte at a time, so nothing here depends on the alignment or the byte order of the machine
+// it was compiled for.
 #ifndef BML_IMCWIRE_HPP
 #define BML_IMCWIRE_HPP
 

@@ -1,3 +1,74 @@
+// The C ABI two Mods talk to each other over, and the layer everything else about IMC is
+// built on. Nothing but C scalars, fixed-layout structs, byte spans, function pointers,
+// and opaque handles crosses this boundary, which is what lets a Mod built with another
+// compiler, another standard library, or another language use an API a Mod publishes,
+// where handing over a C++ object or an STL container could not.
+//
+// There are two operations and no more: an RPC, one caller to one handler with an answer
+// coming back, and a Topic, one publisher to any number of subscribers with nothing
+// coming back. Everything else, a query, a command, a collection, a notification, is one
+// of those two carrying a payload the two sides agreed on.
+//
+// This is the bottom layer, and most Mods should be a layer or two above it. A generated
+// *_imc.hpp from a .imc interface gives typed calls and does the encoding, the id
+// caching, and the handle lifetime; ImcCpp.hpp gives C++ wrappers for a Mod integrating
+// something of its own; the built-in facades, Runtime.h, Scene.h, Gameplay.h, UI.h,
+// Speedrun.h, and Events.h, are already written on top of it for what the loader itself
+// offers. Reach for the functions here when writing that kind of layer, not when using
+// one. docs/en/imc.md is the whole picture and imc-author-guide.md is how an interface is
+// written.
+//
+// What this header cannot show:
+//
+// Every function answers with an int from Defines.h, BML_OK for success and a negative
+// code otherwise, and never throws: an exception inside the loader becomes
+// BML_ERROR_FAIL or BML_ERROR_OUT_OF_MEMORY. Output is written through the out
+// parameters and only on success.
+//
+// Every struct here starts with Size and the loader reads it, both to tell which version
+// of the struct it was handed and to refuse one that is too small. Fill a struct from its
+// _INIT macro and change what is needed, rather than zeroing it, and set Size on an
+// output struct too: BML_Imc_FutureGetResult and BML_Imc_GetStats read it before writing
+// anything.
+//
+// A client is opened once per Mod and stands for that Mod's IMC state. Pass null for
+// ownerId and the loader works out which Mod's DLL called; pass a name and it has to be
+// that Mod's own, or the call is refused. Everything else takes the client, which is how
+// the loader knows whose registrations to revoke when the Mod unloads.
+//
+// Names become ids through the three Get*Id functions, and an id is a cache key inside
+// this process, not something to store or send anywhere. Those functions make the id up
+// on the spot for a name nobody has used, so an id in hand says nothing about anyone
+// being there to answer: BML_Imc_IsRpcAvailable is a snapshot, and a call still has to
+// handle BML_ERROR_IMC_ENDPOINT_NOT_FOUND.
+//
+// Which thread a handler runs on is chosen when it is registered, not when it is called.
+// GAME_THREAD queues the work for the loader's pump, which is the only way to touch
+// Virtools objects, the loader's UI, or anything else of the game's. CALLER_THREAD runs
+// it inline on whichever thread called, so it has to be short and safe to run beside
+// itself, since several callers can be inside it at once. Waiting for game-thread work
+// from the game thread would deadlock, so a wait with a nonzero timeout is refused there;
+// a zero timeout is a poll and is always allowed, answering BML_ERROR_BUSY while the call
+// is still pending.
+//
+// Bytes are borrowed everywhere. The Data of a BML_ImcMessage handed to a handler is good
+// only until that handler returns, and the one from BML_Imc_FutureGetResult only until
+// the future is released, so copy out anything to be kept. A response is written from
+// inside the handler, either by reserving space and committing what was written or by
+// handing over a buffer to copy, and not after the handler has returned.
+//
+// Handles are dead the moment they are released. Closing a client, unsubscribing, or
+// releasing a future invalidates that token at once, even where the loader still has
+// queued work of its own to finish, and using it afterwards is BML_ERROR_INVALID_HANDLE,
+// which is a fault in the Mod rather than something to retry. Closing a client or a
+// subscription from inside one of its own callbacks is allowed and stops further dispatch
+// at once, with the removal itself left until the outermost callback returns.
+//
+// Shutting down is the Mod's job and the order matters: stop calling and publishing,
+// cancel or release the futures still out, close the subscriptions before freeing what
+// their callbacks read, unregister the handlers, then close the client. The loader
+// revokes what is left when the Mod unloads, but a callback still running while its data
+// goes away is not something it can save.
 #ifndef BML_IMC_H
 #define BML_IMC_H
 

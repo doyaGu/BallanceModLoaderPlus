@@ -1,3 +1,19 @@
+// The pieces every other public header starts from, and the error codes the loader
+// answers with. Nothing here does anything on its own, so a Mod includes it for
+// MOD_EXPORT and for the error codes rather than for its own sake.
+//
+// BML_EXPORT marks what the loader exports and turns into an import when a Mod compiles,
+// which is why a Mod must not define BML_EXPORTS. MOD_EXPORT is what the Mod's own
+// BMLEntry and BMLExit are marked with, since those two are what the loader looks for in
+// the .bmodp file. BML_BEGIN_CDECLS and BML_END_CDECLS wrap the plain C parts so the same
+// header compiles as C and as C++.
+//
+// The error codes are one numbering shared by everything that answers with an int: 0 is
+// BML_OK and every failure is negative, grouped by what it is about, and
+// BML_GetErrorString turns any of them into a short English line, "Unknown error" for a
+// number it does not know. The IMC functions and the C++ facades built on them report
+// these. The BML_ functions of BML.h do not: those answer 1 for success and 0 for
+// failure, or a null pointer, and say nothing about why.
 #ifndef BML_DEFINES_H
 #define BML_DEFINES_H
 

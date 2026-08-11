@@ -1,15 +1,27 @@
+// The few values that mean the same thing to both sides of an IMC call, spelled so that
+// the bytes are the same whatever built them. A vector, a matrix, or a reference to one of
+// the game's objects comes up in almost every interface, so they are written down once
+// here instead of once per interface. Everything is plain C with a fixed layout and no
+// padding to guess at, which is what makes it usable from C, from C++, and from a language
+// binding.
+//
+// Vectors and matrices are numbers and nothing more, so ImcMath.h converts between these
+// and the Virtools types, VxVector and VxMatrix, for a Mod on the C++ side.
+//
+// A BML_ObjectRef is how one of the game's objects is named across the boundary, and it is
+// deliberately not a pointer or a bare CK_ID: those are recycled, so an old one would come
+// back pointing at whatever took its place. Only the provider that made a reference can
+// resolve it, which for the built-in interfaces means the loader turning it back into the
+// CKObject it stood for, or into nothing if that object is gone. Treat it as opaque: a
+// zero Domain is null, two references are the same object when all three fields match, and
+// resolving one that has gone stale answers BML_ERROR_IMC_OBJECT_INVALID rather than
+// something wrong. They are good for this run of the process only, so a reference is not
+// something to write to a file or to hold across a level change.
 #ifndef BML_IMC_TYPES_H
 #define BML_IMC_TYPES_H
 
 #include "BML/Defines.h"
 
-/*
- * Fixed-layout values shared by typed IMC payloads.
- *
- * This header intentionally has no C++ declarations.  It is safe to include
- * from C, C++, and foreign-function bindings; every cross-DLL value is a POD
- * value with an explicitly documented representation.
- */
 BML_BEGIN_CDECLS
 
 #define BML_IMC_OBJECT_DOMAIN_VIRTOOLS 1u

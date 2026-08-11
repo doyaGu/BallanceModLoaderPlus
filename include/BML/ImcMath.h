@@ -1,3 +1,12 @@
+// Turning the game's vectors and matrices into the ones an IMC payload carries, and back.
+// A Mod holding a VxVector has to hand a BML_Vec3 to an IMC call, and the two are the same
+// three floats, so these do the copy and there is nothing more to it.
+//
+// They are inline and header-only, so this is the one IMC header that needs the Virtools
+// SDK and C++: a Mod that only speaks the C ABI includes ImcTypes.h and leaves this alone.
+// The copies are written out element by element on purpose, since VxMatrix keeps its
+// storage to itself and its layout is not something to assume; the IMC matrix is row-major
+// m[row][column].
 #ifndef BML_IMCMATH_H
 #define BML_IMCMATH_H
 
