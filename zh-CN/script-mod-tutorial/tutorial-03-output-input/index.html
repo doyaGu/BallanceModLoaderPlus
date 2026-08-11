@@ -688,10 +688,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#logger-helper" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Logger helper 模式
+        直接记录日志
       
     </span>
   </a>
@@ -711,7 +711,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         轮询模型
@@ -750,7 +750,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         什么时候用哪个
@@ -761,7 +761,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         实验
@@ -777,7 +777,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         按键常量
@@ -788,7 +788,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         当前完整代码
@@ -799,7 +799,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         排查
@@ -810,7 +810,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         完成状态
@@ -1938,10 +1938,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#logger-helper" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Logger helper 模式
+        直接记录日志
       
     </span>
   </a>
@@ -1961,7 +1961,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         轮询模型
@@ -2000,7 +2000,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         什么时候用哪个
@@ -2011,7 +2011,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         实验
@@ -2027,7 +2027,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         按键常量
@@ -2038,7 +2038,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         当前完整代码
@@ -2049,7 +2049,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         排查
@@ -2060,7 +2060,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         完成状态
@@ -2105,7 +2105,7 @@
 </thead>
 <tbody>
 <tr>
-<td><code>logger.Info(...)</code></td>
+<td><code>ctx.LogInfo(...)</code></td>
 <td><code>ModLoader/ModLoader.log</code> 文件</td>
 <td>打开日志文件时</td>
 </tr>
@@ -2123,57 +2123,37 @@
 <p>把 <code>HelloMod.mod.as</code> 的 <code>OnLoad</code> 改成：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;HelloMod loaded.&quot;</span><span class="p">);</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">        </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span>
 </code></pre></div>
-<p>重启游戏后，游戏画面上会出现 <code>HelloMod loaded.</code> 的消息。同时日志文件里也有对应的记录。</p>
+<p>保存后，已加载的脚本会自动热重载，游戏画面上会出现 <code>HelloMod loaded.</code> 的消息，
+日志文件里也有对应记录。</p>
 <p><code>BML::UI::AddMessage(...)</code> 接收一个字符串参数，直接显示在画面里。不需要获取句柄，也不需要 null 检查；调用一次就添加一条消息。</p>
-<h2 id="logger-helper">Logger helper 模式<a class="headerlink" href="#logger-helper" title="Permanent link">&para;</a></h2>
-<p>上一节用到 Logger 时，每次都要写 <code>BorrowLogger</code>、null 检查、再调用方法。代码量虽然不多，但如果每个回调里都重复写，会让代码变得冗长。</p>
-<p>一种常见的做法是把日志调用封装成类的私有方法：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">LogInfo</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">message</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">        </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="n">message</span><span class="p">);</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">}</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">LogWarn</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">message</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">        </span><span class="n">logger</span><span class="p">.</span><span class="n">Warn</span><span class="p">(</span><span class="n">message</span><span class="p">);</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="p">}</span>
+<h2 id="_2">直接记录日志<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p><code>ModContext</code> 直接提供三个带当前 Mod 前缀的日志方法：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;normal information&quot;</span><span class="p">);</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ctx</span><span class="p">.</span><span class="n">LogWarn</span><span class="p">(</span><span class="s">&quot;recoverable problem&quot;</span><span class="p">);</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">ctx</span><span class="p">.</span><span class="n">LogError</span><span class="p">(</span><span class="s">&quot;operation failed&quot;</span><span class="p">);</span>
 </code></pre></div>
-<p>把这两个方法放在 <code>HelloMod</code> 类里面。<code>private</code> 表示它们只能在类内部使用，外部看不到。</p>
-<p>之后 <code>OnLoad</code> 可以写成：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;HelloMod loaded.&quot;</span><span class="p">);</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span>
-</code></pre></div>
-<p>这样的好处是：null 检查只写一次，以后所有地方用 <code>LogInfo</code> / <code>LogWarn</code> 就行。如果将来需要统一给日志加前缀或者改格式，只改 helper 方法就够了。</p>
+<p>普通 Mod 代码优先使用这些方法。<code>ctx.BorrowLogger()</code> 是进阶接口，只在确实需要
+保存一个可重新验证的 Logger wrapper 时使用；它不是记录一行日志的必经步骤。</p>
 <h2 id="onprocess">键盘输入：OnProcess 回调<a class="headerlink" href="#onprocess" title="Permanent link">&para;</a></h2>
 <p>到目前为止，脚本只在游戏启动时执行一次（<code>OnLoad</code>）。要响应键盘，需要每帧检查按键状态。BML 提供了 <code>OnProcess</code> 回调，每一帧调用一次。</p>
 <p>在 <code>HelloMod</code> 类里加一个新方法：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">InputHook</span><span class="err">@</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowInputManager</span><span class="p">();</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">        </span><span class="k">return</span><span class="p">;</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="p">.</span><span class="n">IsKeyPressed</span><span class="p">(</span><span class="n">CKKEY_F9</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;F9 pressed!&quot;</span><span class="p">);</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">        </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;F9 pressed&quot;</span><span class="p">);</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">InputHook</span><span class="err">@</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowInputManager</span><span class="p">();</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">        </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="p">.</span><span class="n">IsKeyPressed</span><span class="p">(</span><span class="n">CKKEY_F9</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;F9 pressed!&quot;</span><span class="p">);</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;F9 pressed&quot;</span><span class="p">);</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">}</span>
 </code></pre></div>
-<p>重启游戏后按 F9，画面上出现 <code>F9 pressed!</code>。</p>
-<h3 id="_2">轮询模型<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<p>保存并等待热重载后按 F9，画面上出现 <code>F9 pressed!</code>。</p>
+<h3 id="_3">轮询模型<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <p>BML 的输入系统是轮询（polling）模型，不是事件（event）模型。这个区别很重要：</p>
 <ul>
 <li><strong>事件模型</strong>：按下按键时，系统主动通知你"F9 被按下了"。你写一个处理函数等着被调用。</li>
@@ -2206,12 +2186,12 @@
 </tbody>
 </table>
 <p>用一个具体的场景来理解：假设你按住 F9 不放，持续了 60 帧（大约 1 秒），然后松开。</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>帧:  1    2    3    4    5   ...  60   61
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>     v按下                          ^松开
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>IsKeyPressed:  true  false false false false ... false false
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>IsKeyDown:     true  true  true  true  true  ... true  false
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>帧:  1    2    3    4    5   ...  60   61
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>     v按下                          ^松开
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>IsKeyPressed:  true  false false false false ... false false
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>IsKeyDown:     true  true  true  true  true  ... true  false
 </code></pre></div>
-<h3 id="_3">什么时候用哪个<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<h3 id="_4">什么时候用哪个<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
 <p><strong>IsKeyPressed</strong> 适合"执行一次"的动作：</p>
 <ul>
 <li>按 F9 打开/关闭一个窗口</li>
@@ -2226,62 +2206,49 @@
 <li>按住某个键让数值持续增长</li>
 </ul>
 <p>如果用 <code>IsKeyPressed</code> 做这些事情，玩家按住按键时只有第一帧有效果，后续帧没有反应。</p>
-<h3 id="_4">实验<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<h3 id="_5">实验<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p>把代码改成 <code>IsKeyDown</code>：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="p">.</span><span class="n">IsKeyDown</span><span class="p">(</span><span class="n">CKKEY_F9</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;F9 is held!&quot;</span><span class="p">);</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="p">.</span><span class="n">IsKeyDown</span><span class="p">(</span><span class="n">CKKEY_F9</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;F9 is held!&quot;</span><span class="p">);</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">}</span>
 </code></pre></div>
-<p>重启后按住 F9 不放，会看到消息疯狂刷屏。这就是 <code>IsKeyDown</code> 在每帧触发的效果。改回 <code>IsKeyPressed</code> 后，同样按住 F9，消息只出现一次。</p>
-<h2 id="_5">按键常量<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>保存并等待热重载后按住 F9 不放，会看到消息连续出现。这就是 <code>IsKeyDown</code> 在每帧
+触发的效果。改回 <code>IsKeyPressed</code> 后，同样按住 F9，消息只出现一次。</p>
+<h2 id="_6">按键常量<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <p>BML 使用 Virtools 的键盘常量命名。常用的几个：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>CKKEY_F1 ~ CKKEY_F12     功能键
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>CKKEY_A ~ CKKEY_Z        字母键
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>CKKEY_0 ~ CKKEY_9        数字键（主键盘）
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>CKKEY_SPACE              空格
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>CKKEY_RETURN             回车
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>CKKEY_ESCAPE             Esc
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>CKKEY_LSHIFT             左 Shift
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>CKKEY_LCONTROL           左 Ctrl
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>CKKEY_F1 ~ CKKEY_F12     功能键
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>CKKEY_A ~ CKKEY_Z        字母键
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>CKKEY_0 ~ CKKEY_9        数字键（主键盘）
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>CKKEY_SPACE              空格
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>CKKEY_RETURN             回车
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>CKKEY_ESCAPE             Esc
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>CKKEY_LSHIFT             左 Shift
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>CKKEY_LCONTROL           左 Ctrl
 </code></pre></div>
 <p>这些常量定义在 <code>as.predefined</code> 里，编辑器能识别和补全。如果输入 <code>CKKEY_</code> 后没有补全提示，检查 <code>as.predefined</code> 文件是否在工作区里。</p>
-<h2 id="_6">当前完整代码<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_7">当前完整代码<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
 <p>把本节的内容整合起来，<code>HelloMod.mod.as</code> 现在应该是：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;hello.script&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Mod&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Tutorial&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal tutorial script mod&quot;</span><span class="p">]</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloMod</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;HelloMod loaded.&quot;</span><span class="p">);</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">        </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">InputHook</span><span class="err">@</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowInputManager</span><span class="p">();</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">            </span><span class="k">return</span><span class="p">;</span>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>
-<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="p">.</span><span class="n">IsKeyPressed</span><span class="p">(</span><span class="n">CKKEY_F9</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">            </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;F9 pressed!&quot;</span><span class="p">);</span>
-<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">            </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;F9 pressed&quot;</span><span class="p">);</span>
-<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
-<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="w">    </span><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">LogInfo</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">message</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="w">            </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="n">message</span><span class="p">);</span>
-<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>
-<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a><span class="w">    </span><span class="k">private</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">LogWarn</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">string</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">message</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="w">            </span><span class="n">logger</span><span class="p">.</span><span class="n">Warn</span><span class="p">(</span><span class="n">message</span><span class="p">);</span>
-<a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;hello.script&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Mod&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Tutorial&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal tutorial script mod&quot;</span><span class="p">]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloMod</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;HelloMod loaded.&quot;</span><span class="p">);</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">InputHook</span><span class="err">@</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowInputManager</span><span class="p">();</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">            </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">input</span><span class="p">.</span><span class="n">IsKeyPressed</span><span class="p">(</span><span class="n">CKKEY_F9</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">            </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;F9 pressed!&quot;</span><span class="p">);</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">            </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;F9 pressed&quot;</span><span class="p">);</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="p">}</span>
 </code></pre></div>
-<h2 id="_7">排查<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<h2 id="_8">排查<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2292,7 +2259,7 @@
 <tbody>
 <tr>
 <td>游戏画面里没有消息</td>
-<td><code>OnLoad</code> 有没有执行（看日志）；是否忘记重启游戏</td>
+<td><code>OnLoad</code> 有没有执行（看日志）；热重载是否成功</td>
 </tr>
 <tr>
 <td>按 F9 没反应</td>
@@ -2312,7 +2279,7 @@
 </tr>
 </tbody>
 </table>
-<h2 id="_8">完成状态<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<h2 id="_9">完成状态<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
 <p>脚本能在游戏画面显示消息（<code>BML::UI::AddMessage</code>），能写日志（<code>Logger.Info</code>），并能响应键盘按键（<code>IsKeyPressed</code>）。已经掌握了两种输出方式的区别和两种按键检测的区别。</p>
 <p>-&gt; 下一节：<a href="../tutorial-04-imgui-window/">04 ImGui 窗口</a></p>
 

@@ -2385,7 +2385,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="n">LoadConfig</span><span class="p">(</span><span class="n">ctx</span><span class="p">);</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">RegisterCommands</span><span class="p">(</span><span class="n">ctx</span><span class="p">);</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;MyMod loaded&quot;</span><span class="p">);</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;MyMod loaded&quot;</span><span class="p">);</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">}</span>
 </code></pre></div>
 <p><strong>不要做的事</strong>：</p>
@@ -2435,7 +2435,7 @@
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">statusTimer</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">statusTimer</span><span class="p">.</span><span class="n">IsValid</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">        </span><span class="n">statusTimer</span><span class="p">.</span><span class="n">Cancel</span><span class="p">();</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;MyMod unloaded&quot;</span><span class="p">);</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;MyMod unloaded&quot;</span><span class="p">);</span>
 <a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="p">}</span>
 </code></pre></div>
 <p><strong>不要做的事</strong>：</p>
@@ -2458,7 +2458,7 @@
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnGameEvent</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">GameEvent</span><span class="w"> </span><span class="n">event</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="c1">// 根据 event 判断发生了什么，再执行对应逻辑</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="n">LogInfo</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Game event received&quot;</span><span class="p">);</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;Game event received&quot;</span><span class="p">);</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">}</span>
 </code></pre></div>
 <p><strong>不要做的事</strong>：</p>
@@ -2486,7 +2486,8 @@ ImGui 窗口和 <code>BML::UI</code> 控件都应在这里提交。<code>OnRende
 <ol>
 <li><strong>不要存起来</strong>。BML 每次调用回调时传入 <code>ctx</code>，保证这一次调用期间有效。不要把它保存到成员变量留着下次用。</li>
 <li><strong>每个回调都有</strong>。无论 <code>OnLoad</code> 还是 <code>OnProcess</code>，拿到的 <code>ctx</code> 指向同一个 mod 的服务。</li>
-<li><strong>往下传就行</strong>。需要用 <code>ctx</code> 的 helper 函数，把它当参数传进去即可（前面章节的 <code>LogInfo(ctx, ...)</code> 就是这个模式）。</li>
+<li><strong>往下传就行</strong>。需要使用 Mod 服务的 helper 函数，把 <code>ctx</code> 当参数传进去即可；
+   简单日志直接调用 <code>ctx.LogInfo(...)</code>。</li>
 </ol>
 <h3 id="_6">已经用过的服务<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
 <table>
@@ -2498,7 +2499,7 @@ ImGui 窗口和 <code>BML::UI</code> 控件都应在这里提交。<code>OnRende
 </thead>
 <tbody>
 <tr>
-<td><code>ctx.BorrowLogger()</code></td>
+<td><code>ctx.LogInfo/LogWarn/LogError()</code></td>
 <td>日志</td>
 </tr>
 <tr>

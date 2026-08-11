@@ -15523,6 +15523,9 @@ class ModContext {
   string GetModId(int index) const;
   string get_ModName() const;
   string GetModName() const;
+  void LogInfo(const string &in message) const;
+  void LogWarn(const string &in message) const;
+  void LogError(const string &in message) const;
   bool get_IsReloading() const;
   bool IsReloading() const;
   ReloadPhase get_ReloadPhase() const;

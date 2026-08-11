@@ -1035,6 +1035,10 @@
 <h1 id="create-mods-for-bml">Create mods for BML+<a class="headerlink" href="#create-mods-for-bml" title="Permanent link">&para;</a></h1>
 <p>Use a released BML+ SDK to create mods. Building the BML+ repository is only
 necessary when changing the loader, SDK, script host, or bundled services.</p>
+<p>If you are unsure which route to choose, start with a script mod. It has the
+shortest build-free edit, reload, and diagnosis loop. Move to native code only
+when a concrete requirement needs native hooks, native memory, a generated IMC
+Provider, or a performance-critical loop.</p>
 <h2 id="choose-a-development-route">Choose a development route<a class="headerlink" href="#choose-a-development-route" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1067,32 +1071,72 @@ APIs in a new BML wrapper. Use CKAngelScript for CK/Vx work and BML+ for mod
 identity, lifecycle, configuration, commands, loader UI, and mod-level services.</p>
 <h2 id="start-a-script-mod">Start a script mod<a class="headerlink" href="#start-a-script-mod" title="Permanent link">&para;</a></h2>
 <ol>
-<li>Copy <code>templates/script-mod-template</code> from the SDK.</li>
-<li>Place the copy at <code>ModLoader/Mods/&lt;YourMod&gt;</code>.</li>
-<li>Give its single <code>*.mod.as</code> entry a stable id and metadata.</li>
-<li>Start Player and check <code>ModLoader/ModLoader.log</code> for the template's load line.</li>
-<li>Edit the installed directory and use hot reload during development.</li>
-<li>Package the directory with <code>scripts/Pack-BMLScriptMod.ps1</code>, then test the zip
-   without the development copy installed.</li>
+<li>Open PowerShell in <code>ModLoader/Mods</code> and create a Mod from the SDK template:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1&quot;</span> <span class="p">`</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
+</code></pre></div>
+<p>The command creates the destination directory, a valid class and entry
+   filename, and personalized metadata. You can also copy
+   <code>templates/script-mod-template</code> manually.</p>
+<ol>
+<li>Open the generated directory and README.</li>
+<li>Confirm that the matching <code>BuildingBlocks/AngelScript.dll</code> is installed.</li>
+<li>Start Player without editing the generated source. Confirm both the in-game
+   greeting and its load line in <code>ModLoader/ModLoader.log</code>.</li>
+<li>Keep the generated id stable; changing it later creates a different Mod and
+   requires a Player restart.</li>
+<li>Keep Player open. Saving source in the loaded directory triggers automatic
+   hot reload; only new entries, id changes, and dependency changes require a
+   restart.</li>
+<li>From the Mod directory, run <code>scripts/Pack-BMLScriptMod.ps1</code>; it writes
+   <code>dist/&lt;directory-name&gt;.zip</code>. Test that zip without the development copy
+   installed.</li>
 </ol>
 <p>Read the <a href="https://doyagu.github.io/BallanceModLoaderPlus/script-mod/">script mod guide</a>,
 then use its API reference for exact declarations. A script-capable SDK installs
 the same pages under <code>share/BML/docs/en/script-mod</code>.</p>
 <h2 id="start-a-native-mod">Start a native mod<a class="headerlink" href="#start-a-native-mod" title="Permanent link">&para;</a></h2>
 <ol>
-<li>Copy <code>templates/native-mod-template</code> from the SDK.</li>
-<li>Configure it for an MSVC-compatible Win32 target and point
-   <code>CMAKE_PREFIX_PATH</code> at the extracted BML+ SDK.</li>
+<li>Open PowerShell in the directory where you keep source projects and create
+   a Mod from the SDK template:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLNativeMod.ps1&quot;</span> <span class="p">`</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
+</code></pre></div>
+<p>The command keeps the CMake target, C++ class, source filename, and metadata
+   consistent. You can also copy <code>templates/native-mod-template</code> manually.</p>
+<ol>
+<li>Open the generated README. Run <code>cmake --help</code>, select an installed Visual
+   Studio generator explicitly, configure its Win32 target, and point
+   <code>CMAKE_PREFIX_PATH</code> at the extracted BML+ SDK. Keep the source and build
+   paths short, for example <code>C:\Mods\MyMod</code>, to avoid MSBuild file-tracking
+   failures in deeply nested directories.</li>
 <li>Point <code>VIRTOOLS_SDK_PATH</code> at Virtools SDK 2.1.</li>
-<li>Build and install the Debug mod into <code>ModLoader/Mods</code>.</li>
-<li>Start Player and confirm the template's load line in
-   <code>ModLoader/ModLoader.log</code>.</li>
+<li>Build <code>RelWithDebInfo</code> and install the Mod into <code>ModLoader/Mods</code>. A native
+   Mod must link the same MSVC runtime as the loader it runs in, because the
+   native interface passes C++ objects across the DLL boundary. The runtime in
+   <code>BMLPlus-&lt;version&gt;.zip</code> is built against the Release MSVC runtime, so a Debug
+   <code>.bmodp</code> is not ABI-compatible with it; <code>RelWithDebInfo</code> provides debug
+   information while using the compatible runtime. <code>bml_add_mod</code> pins the Mod's
+   runtime to the SDK you configured against and fails the configure step on a
+   conflicting <code>CMAKE_MSVC_RUNTIME_LIBRARY</code>, so the two cannot drift apart
+   silently.
+   <code>BMLPlus-SDK-&lt;version&gt;-Debug.zip</code> is the supported exception. It contains a
+   Debug <code>bin/BMLPlus.dll</code> and its <code>.pdb</code>, so a Debug Mod is valid as long as
+   you also copy that Debug loader over <code>BuildingBlocks/BMLPlus.dll</code>. Keep the
+   loader and every installed native Mod on one side of that line, and go back
+   to the Release loader before testing what you publish.</li>
+<li>Start that Ballance installation's Player, wait until the main menu is
+   visible, and confirm the generated Mod's in-game greeting, load line in
+   <code>ModLoader/ModLoader.log</code>, and sample command. The BML+ version banner alone
+   only proves that the loader initialized.</li>
 <li>Build Release and test the exact artifact you intend to publish.</li>
 </ol>
 <p>The SDK CMake entry point is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">bml_install_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">bml_install_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="p">)</span>
 </code></pre></div>
 <p>Read the <a href="../native-mod-api/">native mod API overview</a> before adding ownership,
 callbacks, UI, or cross-mod services.</p>
@@ -1158,7 +1202,8 @@ when that split makes the mod easier to develop.</p>
   <code>BMLEntry(IBML*)</code> and <code>BMLExit(IMod*)</code>.</li>
 <li>Script mods publish a single <code>*.mod.as</code> file or a zip containing exactly one
   entry. <code>.bmodp</code> is native-only.</li>
-<li>Test the distributed artifact, not only the working directory or Debug DLL.</li>
+<li>Test the distributed artifact, not only the working directory or a
+  <code>RelWithDebInfo</code> build.</li>
 <li>Include dependencies, supported versions, installation, configuration, and a
   useful failure-reporting path in the mod README.</li>
 </ul>

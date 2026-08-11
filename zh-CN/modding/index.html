@@ -1933,6 +1933,9 @@
 <h1 id="bml-mod">为 BML+ 开发 Mod<a class="headerlink" href="#bml-mod" title="Permanent link">&para;</a></h1>
 <p>编写 Mod 时应使用已发布的 BML+ SDK。只有修改 Loader、SDK、脚本宿主或内建服务时
 才需要构建 BML+ 仓库。</p>
+<p>不确定选择哪条路线时，先从脚本 Mod 开始。它不需要 C++ 构建，并具有最短的编辑、
+热重载和诊断循环。只有明确需要原生 Hook、原生内存、生成式 IMC Provider 或
+性能敏感循环时，再进入原生路线。</p>
 <h2 id="_1">选择开发路线<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1965,31 +1968,61 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 命令、Loader UI 和 Mod 级服务使用 BML+。</p>
 <h2 id="mod">开始编写脚本 Mod<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
 <ol>
-<li>从 SDK 复制 <code>templates/script-mod-template</code>。</li>
-<li>将副本放到 <code>ModLoader/Mods/&lt;你的Mod&gt;</code>。</li>
-<li>为唯一的 <code>*.mod.as</code> 入口设置稳定的 id 和元数据。</li>
-<li>启动 Player，在 <code>ModLoader/ModLoader.log</code> 中确认模板的加载日志。</li>
-<li>直接修改已安装的目录，并在开发过程中使用热重载。</li>
-<li>使用 <code>scripts/Pack-BMLScriptMod.ps1</code> 打包，再在没有开发目录副本的环境中测试
-   zip。</li>
+<li>在 <code>ModLoader/Mods</code> 中打开 PowerShell，用 SDK 模板创建 Mod：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1&quot;</span> <span class="p">`</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
+</code></pre></div>
+<p>命令会创建目标目录、合法的类名和入口文件名，并写入你的元数据。也可以手动复制
+   <code>templates/script-mod-template</code>。</p>
+<ol>
+<li>打开生成的目录和 README。</li>
+<li>确认配套的 <code>BuildingBlocks/AngelScript.dll</code> 已安装。</li>
+<li>不修改生成的源码，直接启动 Player，同时确认游戏内问候语和
+   <code>ModLoader/ModLoader.log</code> 中的加载日志。</li>
+<li>保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启 Player。</li>
+<li>保持 Player 运行。保存已加载目录中的源码会自动热重载；只有新增入口、修改 id
+   或修改依赖时才需要重启。</li>
+<li>在 Mod 目录中运行 <code>scripts/Pack-BMLScriptMod.ps1</code>；产物位于
+   <code>dist/&lt;目录名&gt;.zip</code>。再在没有开发目录副本的环境中测试该 zip。</li>
 </ol>
 <p>先阅读<a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/">脚本 Mod 教程导读</a>，
 需要准确声明时使用其中的 API 参考。支持脚本 Mod 的 SDK 会把同一套页面安装到
 <code>share/BML/docs/zh-CN</code>。</p>
 <h2 id="mod_1">开始编写原生 Mod<a class="headerlink" href="#mod_1" title="Permanent link">&para;</a></h2>
 <ol>
-<li>从 SDK 复制 <code>templates/native-mod-template</code>。</li>
-<li>使用兼容 MSVC ABI 的 Win32 目标配置项目，并让 <code>CMAKE_PREFIX_PATH</code> 指向解压后的
-   BML+ SDK。</li>
+<li>在存放源码项目的目录中打开 PowerShell，用 SDK 模板创建 Mod：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLNativeMod.ps1&quot;</span> <span class="p">`</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
+</code></pre></div>
+<p>命令会让 CMake target、C++ 类名、源文件名和元数据保持一致。也可以手动复制
+   <code>templates/native-mod-template</code>。</p>
+<ol>
+<li>打开生成的 README。先运行 <code>cmake --help</code>，明确选择本机已安装的 Visual
+   Studio 生成器，再配置它的 Win32 目标，并让 <code>CMAKE_PREFIX_PATH</code> 指向解压后的
+   BML+ SDK。源码和构建目录应尽量短，例如 <code>C:\Mods\MyMod</code>，避免 MSBuild 在过深
+   目录中出现文件跟踪错误。</li>
 <li>让 <code>VIRTOOLS_SDK_PATH</code> 指向 Virtools SDK 2.1。</li>
-<li>构建 Debug Mod，并安装到 <code>ModLoader/Mods</code>。</li>
-<li>启动 Player，在 <code>ModLoader/ModLoader.log</code> 中确认模板的加载日志。</li>
+<li>构建 <code>RelWithDebInfo</code>，并将 Mod 安装到 <code>ModLoader/Mods</code>。原生接口会让 C++ 对象
+   跨越 DLL 边界，因此原生 Mod 必须与装载它的 Loader 链接同一套 MSVC 运行库。
+   <code>BMLPlus-&lt;version&gt;.zip</code> 中的运行时基于 Release 版 MSVC 运行库构建，Debug
+   <code>.bmodp</code> 与之不具备 ABI 兼容性；<code>RelWithDebInfo</code> 在使用兼容运行库的同时保留调试
+   信息。<code>bml_add_mod</code> 会把 Mod 的运行库固定为所配置 SDK 使用的那一套，并在
+   <code>CMAKE_MSVC_RUNTIME_LIBRARY</code> 与之冲突时直接让配置失败，所以两者不会在无声中错位。
+   <code>BMLPlus-SDK-&lt;version&gt;-Debug.zip</code> 是受支持的例外。它包含 Debug 版
+   <code>bin/BMLPlus.dll</code> 及其 <code>.pdb</code>，只要同时用这个 Debug Loader 覆盖
+   <code>BuildingBlocks/BMLPlus.dll</code>，Debug Mod 就是有效的。Loader 和所有已安装的原生
+   Mod 必须处于同一侧；测试待发布产物前要换回 Release 版 Loader。</li>
+<li>启动该 Ballance 安装目录中的 Player，等待主菜单出现，然后同时确认游戏内提示、
+   <code>ModLoader/ModLoader.log</code> 中的加载日志和示例命令。只看到 BML+ 版本并不代表目标
+   Mod 已经加载。</li>
 <li>构建 Release，并测试准备发布的同一个产物。</li>
 </ol>
 <p>SDK 的 CMake 入口为：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">bml_install_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">bml_install_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="p">)</span>
 </code></pre></div>
 <p>增加所有权、回调、UI 或跨 Mod 服务前，先阅读<a href="../native-mod-api/">原生 Mod API 总览</a>。</p>
 <h2 id="_2">两条路线共同遵守的规则<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
@@ -2045,7 +2078,7 @@ CKAngelScript 扩展。</p>
   <code>BMLExit(IMod*)</code>。</li>
 <li>脚本 Mod 发布为单个 <code>*.mod.as</code> 文件，或包含且只包含一个入口的 zip；
   <code>.bmodp</code> 只属于原生 Mod。</li>
-<li>测试实际发布的产物，而不只是开发目录或 Debug DLL。</li>
+<li>测试实际发布的产物，而不只是开发目录或 <code>RelWithDebInfo</code> 构建。</li>
 <li>Mod README 应写明依赖、支持版本、安装、配置和有效的问题反馈方式。</li>
 </ul>
 

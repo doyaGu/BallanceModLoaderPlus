@@ -1062,8 +1062,8 @@ code.</p>
 <ul>
 <li>A BML+ release built with script support.</li>
 <li>The matching <code>BuildingBlocks/AngelScript.dll</code> from that release.</li>
-<li>Basic AngelScript syntax, including handles (<code>T@</code>), references
-  (<code>const T &amp;in</code>), classes, interfaces, and delegates.</li>
+<li>Basic AngelScript class and function syntax. The first Mod does not require
+  handles, interfaces, or delegates; learn those when an API first needs them.</li>
 <li>CKAngelScript documentation when working with Virtools objects, behavior
   graphs, components, messages, asynchronous work, or CK/Vx bindings.</li>
 </ul>
@@ -1071,26 +1071,42 @@ code.</p>
 diagnostic. Native-only BML+ features remain available when the script host
 cannot start.</p>
 <h2 id="create-the-first-mod">Create the first mod<a class="headerlink" href="#create-the-first-mod" title="Permanent link">&para;</a></h2>
-<p>Copy <code>templates/script-mod-template</code> from the BML+ SDK, or create
-<code>ModLoader/Mods/HelloScript.mod.as</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;example.hello&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Script&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;You&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal BML script mod&quot;</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">         </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="p">]</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloMod</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">      </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="s">&quot;Hello from BML script&quot;</span><span class="p">);</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">}</span>
+<p>Open PowerShell in <code>ModLoader/Mods</code> and let the SDK personalize the template:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1&quot;</span> <span class="p">`</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
 </code></pre></div>
-<p>Start <code>Bin/Player.exe</code> and check <code>ModLoader/ModLoader.log</code>. The log line proves
+<p>The command derives a safe class and entry filename from the id and refuses to
+overwrite an existing directory. Copying <code>templates/script-mod-template</code>
+manually remains supported. The underlying entry is deliberately small:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;example.hello.script&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">         </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Script&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">         </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Your Name&quot;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">         </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal BML+ script mod&quot;</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">         </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="p">]</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloScript</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;Hello Script loaded&quot;</span><span class="p">);</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;Hello from your first script mod!&quot;</span><span class="p">);</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
+</code></pre></div>
+<p>Start <code>Bin/Player.exe</code> once without editing the generated source. The in-game
+greeting proves that <code>OnLoad</code> ran; the <code>My Mod loaded</code> line in
+<code>ModLoader/ModLoader.log</code> proves which Mod produced it. Together they confirm
 that BML+ found the entry, compiled it through CKAngelScript, accepted the
 metadata, created the main class, and called <code>OnLoad</code>.</p>
+<p>After that first success, keep the generated id stable. Ordinary source edits
+use automatic hot reload; changing the id creates a different Mod and requires
+a Player restart.</p>
+<p>The SDK's <code>examples/script-mod</code> directory contains three complete follow-up
+Mods for command/config, input/UI, and game-state access. Copy one example at a
+time into <code>ModLoader/Mods</code>; use the template, not an example, as the base for a
+real project.</p>
 <p>If it fails, run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>script status
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>script diag example.hello
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>script logs error
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>script status
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>script diag yourname.my-mod
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>script logs error
 </code></pre></div>
 <p>Fix the first <code>ckas-host</code>, <code>compile</code>, or <code>metadata</code> error before debugging
 callback behavior.</p>
@@ -1102,17 +1118,17 @@ callback behavior.</p>
 <li>a zip containing exactly one <code>*.mod.as</code> entry.</li>
 </ul>
 <p>Directory package:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>MyScriptMod/
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  MyScript.mod.as       # the only BML+ entry
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  libs/                 # files included by the entry through CKAngelScript
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  Resources/            # textures, NMO/CMO/VMO assets, and data
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  README.md
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>MyScriptMod/
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  MyScript.mod.as       # the only BML+ entry
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  libs/                 # files included by the entry through CKAngelScript
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  Resources/            # textures, NMO/CMO/VMO assets, and data
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  README.md
 </code></pre></div>
 <p>Zip package:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>MyScriptMod.zip
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  MyScript.mod.as
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  Resources/...
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  README.md
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>MyScriptMod.zip
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  MyScript.mod.as
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  Resources/...
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  README.md
 </code></pre></div>
 <p>The entry filename can be any name ending in <code>*.mod.as</code>. The class marked with
 <code>[bml.mod]</code> can live in any AngelScript namespace. BML+ reads metadata from
@@ -1143,12 +1159,13 @@ change the syntax used when passing an ordinary script object or delegate.</p>
 Saving a loaded source queues a reload. Adding a new mod, changing its id, or
 changing its dependency graph still requires a Player restart. Zip packages
 use manual reload and are intended for distribution testing.</p>
-<p>Package a directory with the SDK tool:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="n">-Source</span> <span class="s2">&quot;&lt;Ballance&gt;/ModLoader/Mods/MyScriptMod&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="n">-Output</span> <span class="s2">&quot;dist/MyScriptMod.zip&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="n">-Force</span>
+<p>Run the SDK tool from the Mod directory:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">Set-Location</span> <span class="s2">&quot;&lt;Ballance&gt;/ModLoader/Mods/MyScriptMod&quot;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1&quot;</span> <span class="n">-Force</span>
 </code></pre></div>
+<p>It writes <code>dist/MyScriptMod.zip</code>. <code>-Source</code> and <code>-Output</code> remain available for
+automation. The default package excludes editor settings, version-control
+metadata, <code>as.predefined</code>, Python cache files, and <code>dist</code> itself.</p>
 <p>Test the zip in a clean <code>ModLoader/Mods</code> directory without the development
 directory or a single-file copy of the same mod id. Do not package editor API
 stubs as runtime source.</p>

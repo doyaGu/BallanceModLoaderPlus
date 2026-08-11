@@ -2862,13 +2862,12 @@
 <p>规则：目录里有且只能有一个 <code>*.mod.as</code> 入口文件。BML 扫描 <code>ModLoader/Mods/</code> 时，如果遇到子目录，会进入其中寻找入口。</p>
 <h3 id="zip">zip 包分发<a class="headerlink" href="#zip" title="Permanent link">&para;</a></h3>
 <p>正式发布目录形式的 Mod 时，使用 BML+ SDK 随附的打包脚本：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="n">-Source</span> <span class="s2">&quot;&lt;Ballance&gt;/ModLoader/Mods/CompleteMod&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="n">-Output</span> <span class="s2">&quot;dist/CompleteMod.zip&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="n">-Force</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">Set-Location</span> <span class="s2">&quot;&lt;Ballance&gt;/ModLoader/Mods/CompleteMod&quot;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1&quot;</span> <span class="n">-Force</span>
 </code></pre></div>
-<p>源目录的顶层必须恰好有一个 <code>*.mod.as</code> 入口。打包脚本会保留相对路径，并让
-入口位于 zip 根目录：</p>
+<p>默认产物是 <code>dist/CompleteMod.zip</code>。自动化流程仍可通过 <code>-Source</code> 和 <code>-Output</code>
+指定其他路径。源目录的顶层必须恰好有一个 <code>*.mod.as</code> 入口；打包脚本会保留
+相对路径，并让入口位于 zip 根目录：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>CompleteMod.zip
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  CompleteMod.mod.as
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  libs/
@@ -2877,6 +2876,8 @@
 </code></pre></div>
 <p>用户把 <code>CompleteMod.zip</code> 直接放入 <code>ModLoader/Mods/</code> 即可，不需要手动解压。
 <code>.bmodp</code> 只用于原生 DLL Mod，不能作为脚本 Mod 的扩展名。</p>
+<p>打包器会自动排除 <code>dist</code>、编辑器设置、版本控制元数据、<code>as.predefined</code> 和 Python
+缓存文件。下面的源码与运行行为检查仍需作者自己完成。</p>
 <hr />
 <h2 id="_10">不应包含的内容<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
 <p>打包前检查一遍，确保没有把以下内容混入发布包：</p>
@@ -3160,7 +3161,7 @@
 <code>*.mod.as</code> 入口。<strong>解决</strong>：让源目录顶层恰好保留一个入口，并使用 SDK 的
 <code>Pack-BMLScriptMod.ps1</code> 重新打包。</p>
 <h3 id="_26">残留调试代码<a class="headerlink" href="#_26" title="Permanent link">&para;</a></h3>
-<p><strong>现象</strong>：用户反馈日志刷屏，影响性能。<strong>原因</strong>：<code>OnProcess</code> 里留下了每帧 <code>logger.Info</code>，或者发布包还保留测试命令。<strong>解决</strong>：发布前搜索 <code>logger.</code> 和命令注册代码，移除调试专用输出。</p>
+<p><strong>现象</strong>：用户反馈日志刷屏，影响性能。<strong>原因</strong>：<code>OnProcess</code> 里留下了每帧 <code>ctx.LogInfo</code>，或者发布包还保留测试命令。<strong>解决</strong>：发布前搜索 <code>ctx.Log</code> 和命令注册代码，移除调试专用输出。</p>
 <h3 id="bml_1">bml 版本要求过低<a class="headerlink" href="#bml_1" title="Permanent link">&para;</a></h3>
 <p><strong>现象</strong>：旧版 BML 用户加载后报"未定义的方法"。<strong>原因</strong>：用了新 API 但 <code>bml</code> 字段没更新。<strong>解决</strong>：不确定时就写当前安装的 BML 版本号。</p>
 <hr />

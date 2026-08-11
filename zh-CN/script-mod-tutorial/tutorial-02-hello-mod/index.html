@@ -705,10 +705,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#logger" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Logger 和 @ 符号
+        记录日志和显示消息
       
     </span>
   </a>
@@ -732,7 +732,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         试着改一下
@@ -743,7 +743,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         加载失败时的排查
@@ -754,7 +754,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         完成状态
@@ -1955,10 +1955,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#logger" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Logger 和 @ 符号
+        记录日志和显示消息
       
     </span>
   </a>
@@ -1982,7 +1982,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         试着改一下
@@ -1993,7 +1993,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         加载失败时的排查
@@ -2004,7 +2004,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         完成状态
@@ -2036,20 +2036,21 @@
 
 <h1 id="02-mod">02 第一个 Mod<a class="headerlink" href="#02-mod" title="Permanent link">&para;</a></h1>
 <p>上一节装好了 BML 和编辑器。现在写一个最小的脚本 mod，让 BML 找到它、编译它、执行它。</p>
-<p>本节要看到的结果：<code>ModLoader/ModLoader.log</code> 里出现脚本写出的一行日志。看到这行日志，就说明 BML 已经找到文件、编译脚本、创建 mod 对象，并调用了 <code>OnLoad</code>。</p>
+<p>本节要看到的结果：游戏内出现一条问候语，<code>ModLoader/ModLoader.log</code> 里也出现
+脚本写出的一行日志。这说明 BML 已经找到文件、编译脚本、创建 Mod 对象，并调用了
+<code>OnLoad</code>。</p>
 <h2 id="_1">创建脚本文件<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <p>在 <code>ModLoader/Mods/</code> 下新建一个文件，命名为 <code>HelloMod.mod.as</code>：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;hello.script&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Mod&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Tutorial&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal tutorial script mod&quot;</span><span class="p">]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloMod</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">            </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">        </span><span class="p">}</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">}</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;Hello from your first script mod!&quot;</span><span class="p">);</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
 </code></pre></div>
-<p>保存后，关闭 Player.exe（如果还开着），再重新启动游戏。</p>
+<p>保存后启动游戏。如果 Player 已经在运行，新增的 Mod 入口仍需要重启一次；BML 只在
+启动时发现新 Mod。</p>
 <h2 id="_2">日志结果<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>打开 <code>ModLoader/ModLoader.log</code>，在文件末尾附近找这几行：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[ModLoader/INFO]: Loading Mod hello.script[Hello Mod] v1.0.0 by Tutorial
@@ -2079,7 +2080,7 @@
 </tr>
 </tbody>
 </table>
-<p>如果能看到第二行，第一个脚本 mod 就已经跑通了。</p>
+<p>如果能看到游戏内问候语和第二行日志，第一个脚本 Mod 就已经跑通了。</p>
 <h2 id="_3">逐行解释<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <h3 id="_4">元数据行<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;hello.script&quot;</span><span class="w"> </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Mod&quot;</span><span class="w"> </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span><span class="w"> </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Tutorial&quot;</span><span class="w"> </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="w"> </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal tutorial script mod&quot;</span><span class="p">]</span>
@@ -2146,16 +2147,15 @@
 <li>合起来 <code>const BML::ModContext &amp;in ctx</code> 的意思是：接收一个 <code>BML::ModContext</code> 的只读引用，叫做 <code>ctx</code>。</li>
 </ul>
 <p>现在不需要完全理解这些修饰符的底层机制，先按这个格式写。第 5 章讲命令回调时会再次遇到函数签名，第 6 章会完整整理回调规则。</p>
-<h3 id="logger">Logger 和 @ 符号<a class="headerlink" href="#logger" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">Logger</span><span class="err">@</span><span class="w"> </span><span class="n">logger</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowLogger</span><span class="p">();</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">logger</span><span class="w"> </span><span class="o">!</span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="n">logger</span><span class="p">.</span><span class="n">Info</span><span class="p">(</span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">}</span>
+<h3 id="_5">记录日志和显示消息<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;HelloMod loaded from ModLoader/Mods/HelloMod.mod.as&quot;</span><span class="p">);</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;Hello from your first script mod!&quot;</span><span class="p">);</span>
 </code></pre></div>
-<p><code>BML::Logger@</code>  --  这里的 <code>@</code> 表示这是一个"句柄"（handle）。句柄类似于其他语言里的指针或引用，它指向一个对象，但这个对象可能为空。</p>
-<p>为什么需要句柄？因为 <code>ctx.BorrowLogger()</code> 不一定总能返回有效的 Logger。虽然实际上在 OnLoad 时几乎不会失败，但 API 的设计是"可能为空"，所以返回类型是句柄。</p>
-<p><code>logger !is null</code>  --  检查句柄是否为空。<code>!is null</code> 是 AngelScript 的写法，含义是"不是空的"。如果不检查就直接用，空句柄会导致脚本运行出错。</p>
-<p><code>logger.Info(...)</code>  --  把一条消息写入 <code>ModLoader/ModLoader.log</code>，前缀是 <code>[hello.script/INFO]</code>。Logger 还有 <code>Warn</code> 和 <code>Error</code> 级别。</p>
+<p><code>ctx.LogInfo(...)</code> 把消息写入 <code>ModLoader/ModLoader.log</code>，并自动使用当前 Mod 的
+日志前缀。对应的警告和错误方法是 <code>LogWarn</code>、<code>LogError</code>。普通日志不需要获取
+Logger 句柄。</p>
+<p><code>BML::UI::AddMessage(...)</code> 在游戏画面中显示短消息，让第一次成功不必只靠翻日志
+确认。下一章会继续解释日志、游戏内消息和输入。</p>
 <h2 id="bml">BML 的加载流程<a class="headerlink" href="#bml" title="Permanent link">&para;</a></h2>
 <p>把上面的内容串起来，BML 对一个脚本 mod 的处理流程是：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>1. 扫描 ModLoader/Mods/ 目录
@@ -2167,15 +2167,18 @@
 <a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>7. 调用 OnLoad(ctx)
 </code></pre></div>
 <p>如果第 3-5 步任何一步失败，日志里会有对应的错误信息，而 <code>OnLoad</code> 不会被调用。</p>
-<h2 id="_5">试着改一下<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<p>理解了每个部分的作用后，可以尝试以下修改，每次改完重启游戏看日志：</p>
+<h2 id="_6">试着改一下<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<p>理解了每个部分的作用后，可以尝试以下修改：</p>
 <ol>
-<li><strong>改 id</strong>：把 <code>id="hello.script"</code> 改成 <code>id="my.test"</code>，重启后看日志前缀是否变成 <code>[my.test/INFO]</code></li>
-<li><strong>改日志内容</strong>：把 <code>logger.Info(...)</code> 里的字符串换成别的，确认日志跟着变</li>
-<li><strong>观察 null 检查的作用</strong>：把 <code>if (logger !is null)</code> 那层暂时去掉，直接调用 <code>logger.Info(...)</code>。在正常情况下这也能工作，因为 OnLoad 时 logger 通常不为空。看完效果后把检查加回去</li>
-<li><strong>故意写错 OnLoad 签名</strong>：比如写成 <code>void onLoad(...)</code> 或 <code>void OnLoad(BML::ModContext ctx)</code>（去掉 const &amp;in），看日志里的错误信息长什么样</li>
+<li><strong>改日志和问候语</strong>：修改两个字符串并保存。已经加载的单文件 Mod 会自动热
+   重载，不需要重启 Player。</li>
+<li><strong>改 id</strong>：把 <code>id="hello.script"</code> 改成 <code>id="my.test"</code>。身份变化不能热重载，
+   需要重启后观察日志前缀是否变成 <code>[my.test/INFO]</code>。</li>
+<li><strong>故意写错 OnLoad 签名</strong>：比如写成 <code>void onLoad(...)</code> 或
+   <code>void OnLoad(BML::ModContext ctx)</code>，观察 <code>script diag &lt;id&gt;</code> 和日志中的错误，随后
+   恢复正确签名。</li>
 </ol>
-<h2 id="_6">加载失败时的排查<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_7">加载失败时的排查<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2189,8 +2192,8 @@
 <td>文件是否在 <code>ModLoader/Mods/</code> 下；文件名后缀是否是 <code>.mod.as</code>；是否多了 <code>.txt</code></td>
 </tr>
 <tr>
-<td>有 <code>Loading Mod</code> 但没有 <code>HelloMod loaded</code></td>
-<td>编译错误。在 <code>Loading Mod</code> 之后的日志行找 error 信息</td>
+<td>有 <code>Loading Mod</code> 但没有问候语或 <code>HelloMod loaded</code></td>
+<td>先运行 <code>script diag hello.script</code>，再检查第一条 compile、metadata 或 callback 错误</td>
 </tr>
 <tr>
 <td><code>loaded=0</code> 或 <code>failed</code> 不为 0</td>
@@ -2206,8 +2209,9 @@
 </tr>
 </tbody>
 </table>
-<h2 id="_7">完成状态<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<p><code>ModLoader/Mods/HelloMod.mod.as</code> 能被 BML 加载并执行 <code>OnLoad</code>，日志中能看到脚本输出的消息。</p>
+<h2 id="_8">完成状态<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<p><code>ModLoader/Mods/HelloMod.mod.as</code> 能被 BML 加载并执行 <code>OnLoad</code>，游戏画面和日志中都
+能看到脚本输出的消息；普通源码修改可以通过热重载验证。</p>
 <p>-&gt; 下一节：<a href="../tutorial-03-output-input/">03 输出与输入</a></p>
 
 

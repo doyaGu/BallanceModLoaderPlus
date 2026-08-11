@@ -1998,12 +1998,15 @@ CKAS 加载和管理脚本 Mod；脚本入口使用 <code>.mod.as</code> 后缀�
 工作；操作 Virtools 对象时使用 CKAS 提供的 CK/Vx 绑定。</p>
 <p>脚本 mod 的整个生命周期都在游戏进程内。Player 启动时发现新 mod；对于已经加载的目录或单文件 mod，保存源码后默认会由 watcher 自动热重载。新增 mod、修改 id 或改变依赖图时才需要重新启动 Player。</p>
 <h2 id="_1">需要准备的东西<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>BML 0.3.13（发布包）
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>VS Code
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>AngelScript Language Server（VS Code 扩展）
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>as.predefined（API 描述文件）
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>BML+ 运行时（BMLPlus-&lt;version&gt;.zip）
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>BML+ SDK（BMLPlus-SDK-&lt;version&gt;-Release.zip）
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>VS Code
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>AngelScript Language Server（VS Code 扩展）
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>as.predefined（API 描述文件）
 </code></pre></div>
-<p>其中，BML 是运行时必须的。VS Code、AngelScript Language Server 和 <code>as.predefined</code> 只在写代码时使用，游戏运行不需要它们。</p>
+<p>其中，BML+ 运行时是游戏运行所必需的；SDK 提供模板、打包脚本、API 声明和离线
+作者文档。VS Code、AngelScript Language Server 和 <code>as.predefined</code> 只在写代码时
+使用，游戏运行不需要它们。运行时和 SDK 应使用相同版本。</p>
 <h2 id="_2">游戏目录<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>后面提到"游戏目录"，指的是 Ballance 的安装根目录。打开它时，能看到这些内容：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Bin/Player.exe
@@ -2014,7 +2017,7 @@ CKAS 加载和管理脚本 Mod；脚本入口使用 <code>.mod.as</code> 后缀�
 <p><code>Player.exe</code> 在 <code>Bin/</code> 子目录里。接下来解压 BML 时，目标是游戏根目录这一层，不是 <code>Bin/</code>。</p>
 <h2 id="bml">安装 BML<a class="headerlink" href="#bml" title="Permanent link">&para;</a></h2>
 <p>下载玩家用的 BML 发布包，例如：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>BMLPlus-v0.3.13.zip
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>BMLPlus-&lt;version&gt;.zip
 </code></pre></div>
 <p>把压缩包里的内容解压到游戏目录。解压完成后，应该能看到：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>BuildingBlocks/BMLPlus.dll
@@ -2046,7 +2049,7 @@ CKAS 加载和管理脚本 Mod；脚本入口使用 <code>.mod.as</code> 后缀�
 </table>
 <p>这里有一个常见的错误。很多压缩工具解压时会自动创建一个和压缩包同名的子目录：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Ballance/
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  BMLPlus-v0.3.13/         &lt;- 多出来的一层
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  BMLPlus-&lt;version&gt;/       &lt;- 多出来的一层
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    BuildingBlocks/BMLPlus.dll
 </code></pre></div>
 <p>这是错的。正确的结构是：</p>
@@ -2058,7 +2061,7 @@ CKAS 加载和管理脚本 Mod；脚本入口使用 <code>.mod.as</code> 后缀�
 <p>如果发现 BML 没生效，第一步就检查有没有多套目录。</p>
 <h2 id="_3">启动验证<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>启动 <code>Bin/Player.exe</code>。进入游戏画面后，看画面中上方。能看到：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>BML Plus 0.3.13
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>BML Plus &lt;version&gt;
 </code></pre></div>
 <p>这行字表示 <code>BMLPlus.dll</code> 已经被 Player.exe 成功加载，并且初始化没有出错。</p>
 <p>看不到这行字时，按下面排查：</p>
@@ -2071,11 +2074,11 @@ CKAS 加载和管理脚本 Mod；脚本入口使用 <code>.mod.as</code> 后缀�
 </thead>
 <tbody>
 <tr>
-<td>游戏能启动，但没有 <code>BML Plus 0.3.13</code></td>
+<td>游戏能启动，但没有 <code>BML Plus &lt;version&gt;</code></td>
 <td><code>BuildingBlocks/BMLPlus.dll</code> 是否在游戏根目录下的 BuildingBlocks 里</td>
 </tr>
 <tr>
-<td>解压后有 <code>BMLPlus-v0.3.13/BuildingBlocks</code></td>
+<td>解压后有 <code>BMLPlus-&lt;version&gt;/BuildingBlocks</code></td>
 <td>多套了一层目录，把里面的内容移到游戏根目录</td>
 </tr>
 <tr>
@@ -2111,16 +2114,19 @@ CKAS 加载和管理脚本 Mod；脚本入口使用 <code>.mod.as</code> 后缀�
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  as.predefined
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>  HelloMod.mod.as    &lt;- 后面章节会创建
 </code></pre></div>
-<p>下载 <a href="../../api/as.predefined"><code>as.predefined</code></a>，放到
+<p>从 SDK 的 <code>docs/api/as.predefined</code> 复制该文件；没有 SDK 时也可以
+<a href="../../api/as.predefined">在线下载 <code>as.predefined</code></a>。把它放到
 上面的工作区目录。这个文件描述了 BML+ 和 CKAngelScript 对脚本公开的 API。
 AngelScript Language Server 读取后，编辑器就能识别 <code>BML::ModContext</code>、
 <code>BML::Logger</code>、<code>ImGui::Begin</code>、<code>CKDataArray</code> 等名称，并提供补全和类型检查。</p>
 <p>BML 本身不会加载 <code>as.predefined</code>，它纯粹是给编辑器用的。</p>
-<p>验证方法：在任意 <code>.mod.as</code> 文件里输入 <code>ctx.</code>（假设 <code>ctx</code> 是 <code>BML::ModContext</code> 类型），确认能补全 <code>BorrowLogger</code>；再输入 <code>BML::UI::</code>，确认能补全 <code>AddMessage</code> 和 <code>MainButton</code>。如果都能看到，说明 Language Server 工作正常。</p>
+<p>验证方法：在任意 <code>.mod.as</code> 文件里输入 <code>ctx.</code>（假设 <code>ctx</code> 是 <code>BML::ModContext</code>
+类型），确认能补全 <code>LogInfo</code>；再输入 <code>BML::UI::</code>，确认能补全 <code>AddMessage</code> 和
+<code>MainButton</code>。如果都能看到，说明 Language Server 工作正常。</p>
 <h2 id="_4">安装自检<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>继续下一节前，逐项确认：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>[ ] Ballance 能正常启动
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>[ ] 游戏画面中上方能看到 BML Plus 0.3.13
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>[ ] 游戏画面中上方能看到当前 BML Plus 版本
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>[ ] BuildingBlocks/BMLPlus.dll 存在
 <a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>[ ] BuildingBlocks/AngelScript.dll 存在
 <a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>[ ] ModLoader/ModLoader.log 存在且有内容
