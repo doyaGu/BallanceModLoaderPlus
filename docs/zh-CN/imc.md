@@ -50,14 +50,15 @@ IMC 有三层公开接口：
 | 层次 | 用途 |
 | --- | --- |
 | 生成的 `*_imc.hpp` | 类型化载荷、编解码器、Client、Provider、Future 和 Subscription |
-| `BML/ImcCpp.hpp` | 面向自定义集成的通用 C++ RAII 包装 |
+| `BML/ImcCpp.hpp` | 面向自定义集成的通用 C++ RAII 包装，以及生成的绑定复用的 Client、Subscription 和 RPC 机制 |
 | `BML/Imc.h` | 跨 DLL 使用的固定布局 C ABI |
 
 C ABI 只导出 `BML_Imc_*` 函数，并只使用 C 标量、固定布局结构体、字节区间、
 回调和不透明句柄。C++ 类、异常、RTTI 对象和由分配器持有的值不会跨模块边界。
 
-`BML/ImcWire.hpp` 定义生成绑定使用的小端字段编码。回调只能在本次回调期间借用
-`BML_ImcMessage` 的字节；生成的解码器会把字符串、数组和 Blob 复制到类型化结果。
+`BML/ImcWire.hpp` 定义生成绑定使用的小端字段编码。生成的载荷只声明一张字段表，
+该头文件里的大小计算、编码和解码驱动会遍历这张表，因此新增字段只多一行，而不是
+多三段代码。回调只能在本次回调期间借用 `BML_ImcMessage` 的字节；生成的解码器会把字符串、数组和 Blob 复制到类型化结果。
 消息本身已经携带载荷类型，因此载荷不会重复保存 Schema ID 或描述哈希。字段使用
 类似 Protobuf 的 Varint Tag，将永久字段 ID 和物理线类型组合起来。定长标量没有
 冗余长度，只有字符串、复合值和打包数组使用长度分隔。

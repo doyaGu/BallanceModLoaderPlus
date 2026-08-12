@@ -31,6 +31,11 @@
 // Numbers go out least significant byte first whatever the host does, written and read a
 // byte at a time, so nothing here depends on the alignment or the byte order of the machine
 // it was compiled for.
+//
+// A generated payload does not spell any of that out field by field. It declares a table of
+// FieldCodec rows, one Field<&Value::Member>(id) per field, and EncodedSize, Encode and
+// Decode walk the table. Each field type has exactly one C++ type, so the member type alone
+// decides which Writer and Reader member the field uses and the table names no wire kind.
 #ifndef BML_IMCWIRE_HPP
 #define BML_IMCWIRE_HPP
 
@@ -44,6 +49,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -758,6 +764,308 @@ private:
     std::size_t m_Cursor = 0;
     bool m_Started = false;
 };
+
+namespace Detail {
+// One C++ type per .imc field type, so the member type alone says which Writer
+// and Reader member the field uses. The generated table names no wire kind.
+template <class T>
+struct MemberPointer;
+
+template <class Class, class Type>
+struct MemberPointer<Type Class::*> {
+    using Record = Class;
+    using Value = Type;
+};
+
+template <class T>
+struct VectorElement {
+    using Type = void;
+};
+
+template <class T, class Allocator>
+struct VectorElement<std::vector<T, Allocator>> {
+    using Type = T;
+};
+
+// Bytes on the wire, not sizeof: a payload lays out its own members a byte at a
+// time and must not follow the host's padding.
+template <class T>
+inline constexpr std::size_t WireFixedSize = 0;
+template <> inline constexpr std::size_t WireFixedSize<bool> = 1;
+template <> inline constexpr std::size_t WireFixedSize<int> = 4;
+template <> inline constexpr std::size_t WireFixedSize<float> = 4;
+template <> inline constexpr std::size_t WireFixedSize<std::int64_t> = 8;
+template <> inline constexpr std::size_t WireFixedSize<std::uint64_t> = 8;
+template <> inline constexpr std::size_t WireFixedSize<double> = 8;
+template <> inline constexpr std::size_t WireFixedSize<BML_ObjectRef> = 12;
+template <> inline constexpr std::size_t WireFixedSize<BML_Vec2> = 8;
+template <> inline constexpr std::size_t WireFixedSize<BML_Vec3> = 12;
+template <> inline constexpr std::size_t WireFixedSize<BML_Mat4> = 64;
+
+template <class T>
+inline bool AddFieldSize(std::size_t &total, std::uint32_t id, const T &value) noexcept {
+    using Element = typename VectorElement<T>::Type;
+    if constexpr (std::is_enum_v<T>) {
+        return AddFieldSize(total, id, static_cast<std::underlying_type_t<T>>(value));
+    } else if constexpr (std::is_same_v<T, bool>) {
+        return AddBoolFieldSize(total, id);
+    } else if constexpr (std::is_same_v<T, int> || std::is_same_v<T, float>) {
+        return AddFixed32FieldSize(total, id);
+    } else if constexpr (std::is_same_v<T, std::int64_t> || std::is_same_v<T, std::uint64_t>
+                         || std::is_same_v<T, double>) {
+        return AddFixed64FieldSize(total, id);
+    } else if constexpr (std::is_same_v<T, std::string>
+                         || std::is_same_v<T, std::vector<std::uint8_t>>) {
+        return AddLengthDelimitedFieldSize(total, id, value.size());
+    } else if constexpr (std::is_same_v<T, BML_ObjectRef> || std::is_same_v<T, BML_Vec2>
+                         || std::is_same_v<T, BML_Vec3> || std::is_same_v<T, BML_Mat4>) {
+        return AddLengthDelimitedFieldSize(total, id, WireFixedSize<T>);
+    } else if constexpr (std::is_same_v<T, std::vector<std::string>>) {
+        return AddStringArrayFieldSize(total, id, value);
+    } else {
+        static_assert(WireFixedSize<Element> != 0, "unsupported IMC field type");
+        return AddFixedArrayFieldSize(total, id, value.size(), WireFixedSize<Element>);
+    }
+}
+
+template <class T>
+inline int WriteField(Writer &writer, std::uint32_t id, const T &value) noexcept {
+    if constexpr (std::is_enum_v<T>) {
+        return WriteField(writer, id, static_cast<std::underlying_type_t<T>>(value));
+    } else if constexpr (std::is_same_v<T, bool>) {
+        return writer.WriteBool(id, value);
+    } else if constexpr (std::is_same_v<T, int>) {
+        return writer.WriteInt(id, value);
+    } else if constexpr (std::is_same_v<T, float>) {
+        return writer.WriteFloat(id, value);
+    } else if constexpr (std::is_same_v<T, std::int64_t>) {
+        return writer.WriteInt64(id, value);
+    } else if constexpr (std::is_same_v<T, std::uint64_t>) {
+        return writer.WriteUInt64(id, value);
+    } else if constexpr (std::is_same_v<T, double>) {
+        return writer.WriteDouble(id, value);
+    } else if constexpr (std::is_same_v<T, std::string>) {
+        return writer.WriteString(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<std::uint8_t>>) {
+        return writer.WriteBytes(id, value);
+    } else if constexpr (std::is_same_v<T, BML_ObjectRef>) {
+        return writer.WriteObject(id, value);
+    } else if constexpr (std::is_same_v<T, BML_Vec2>) {
+        return writer.WriteVec2(id, value);
+    } else if constexpr (std::is_same_v<T, BML_Vec3>) {
+        return writer.WriteVec3(id, value);
+    } else if constexpr (std::is_same_v<T, BML_Mat4>) {
+        return writer.WriteMat4(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<bool>>) {
+        return writer.WriteBoolArray(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<int>>) {
+        return writer.WriteIntArray(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<float>>) {
+        return writer.WriteFloatArray(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>) {
+        return writer.WriteInt64Array(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<std::uint64_t>>) {
+        return writer.WriteUInt64Array(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<double>>) {
+        return writer.WriteDoubleArray(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<std::string>>) {
+        return writer.WriteStringArray(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<BML_ObjectRef>>) {
+        return writer.WriteObjectArray(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<BML_Vec2>>) {
+        return writer.WriteVec2Array(id, value);
+    } else if constexpr (std::is_same_v<T, std::vector<BML_Vec3>>) {
+        return writer.WriteVec3Array(id, value);
+    } else {
+        static_assert(std::is_same_v<T, std::vector<BML_Mat4>>, "unsupported IMC field type");
+        return writer.WriteMat4Array(id, value);
+    }
+}
+
+template <class T>
+inline int ReadField(const FieldView &field, T &out) {
+    if constexpr (std::is_enum_v<T>) {
+        std::underlying_type_t<T> raw{};
+        const int status = ReadField(field, raw);
+        if (status == BML_OK) out = static_cast<T>(raw);
+        return status;
+    } else if constexpr (std::is_same_v<T, bool>) {
+        return Reader::ReadBool(field, out);
+    } else if constexpr (std::is_same_v<T, int>) {
+        return Reader::ReadInt(field, out);
+    } else if constexpr (std::is_same_v<T, float>) {
+        return Reader::ReadFloat(field, out);
+    } else if constexpr (std::is_same_v<T, std::int64_t>) {
+        return Reader::ReadInt64(field, out);
+    } else if constexpr (std::is_same_v<T, std::uint64_t>) {
+        return Reader::ReadUInt64(field, out);
+    } else if constexpr (std::is_same_v<T, double>) {
+        return Reader::ReadDouble(field, out);
+    } else if constexpr (std::is_same_v<T, std::string>) {
+        return Reader::ReadString(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<std::uint8_t>>) {
+        return Reader::ReadBytes(field, out);
+    } else if constexpr (std::is_same_v<T, BML_ObjectRef>) {
+        return Reader::ReadObject(field, out);
+    } else if constexpr (std::is_same_v<T, BML_Vec2>) {
+        return Reader::ReadVec2(field, out);
+    } else if constexpr (std::is_same_v<T, BML_Vec3>) {
+        return Reader::ReadVec3(field, out);
+    } else if constexpr (std::is_same_v<T, BML_Mat4>) {
+        return Reader::ReadMat4(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<bool>>) {
+        return Reader::ReadBoolArray(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<int>>) {
+        return Reader::ReadIntArray(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<float>>) {
+        return Reader::ReadFloatArray(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>) {
+        return Reader::ReadInt64Array(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<std::uint64_t>>) {
+        return Reader::ReadUInt64Array(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<double>>) {
+        return Reader::ReadDoubleArray(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<std::string>>) {
+        return Reader::ReadStringArray(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<BML_ObjectRef>>) {
+        return Reader::ReadObjectArray(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<BML_Vec2>>) {
+        return Reader::ReadVec2Array(field, out);
+    } else if constexpr (std::is_same_v<T, std::vector<BML_Vec3>>) {
+        return Reader::ReadVec3Array(field, out);
+    } else {
+        static_assert(std::is_same_v<T, std::vector<BML_Mat4>>, "unsupported IMC field type");
+        return Reader::ReadMat4Array(field, out);
+    }
+}
+} // namespace Detail
+
+// One row per field of one payload record: the permanent field ID, whether the
+// message must carry it, and the three operations that sizing, writing and
+// reading need. An optional field also carries how its Has member is read and
+// set, which is the only difference between a missing field and a present one.
+template <class Record>
+struct FieldCodec {
+    std::uint32_t Id = 0;
+    bool Required = true;
+    bool (*AddSize)(std::size_t &total, std::uint32_t id, const Record &record) noexcept = nullptr;
+    int (*Write)(Writer &writer, std::uint32_t id, const Record &record) noexcept = nullptr;
+    int (*Read)(const FieldView &field, Record &record) = nullptr;
+    bool (*Present)(const Record &record) noexcept = nullptr;
+    void (*MarkPresent)(Record &record) noexcept = nullptr;
+};
+
+// Field<&Value::Member>(id) for a required field, Field<&Value::Member,
+// &Value::HasMember>(id) for an optional one. Both members must belong to the
+// same record, which is what keeps a table from naming another payload's field.
+template <auto Member, auto Presence = nullptr>
+[[nodiscard]] constexpr FieldCodec<typename Detail::MemberPointer<decltype(Member)>::Record>
+Field(std::uint32_t id) noexcept {
+    using Record = typename Detail::MemberPointer<decltype(Member)>::Record;
+    constexpr bool optional = !std::is_same_v<decltype(Presence), std::nullptr_t>;
+    FieldCodec<Record> codec{};
+    codec.Id = id;
+    codec.Required = !optional;
+    codec.AddSize = [](std::size_t &total, std::uint32_t fieldId, const Record &record) noexcept {
+        return Detail::AddFieldSize(total, fieldId, record.*Member);
+    };
+    codec.Write = [](Writer &writer, std::uint32_t fieldId, const Record &record) noexcept {
+        return Detail::WriteField(writer, fieldId, record.*Member);
+    };
+    codec.Read = [](const FieldView &field, Record &record) {
+        return Detail::ReadField(field, record.*Member);
+    };
+    if constexpr (optional) {
+        static_assert(std::is_same_v<typename Detail::MemberPointer<decltype(Presence)>::Record, Record>,
+                      "presence member belongs to another record");
+        codec.Present = [](const Record &record) noexcept { return record.*Presence; };
+        codec.MarkPresent = [](Record &record) noexcept { record.*Presence = true; };
+    }
+    return codec;
+}
+
+template <class Record>
+inline std::size_t EncodedSize(const Record &record, const FieldCodec<Record> *fields,
+                               std::size_t count) noexcept {
+    std::size_t size = 0;
+    for (std::size_t index = 0; index < count; ++index) {
+        const FieldCodec<Record> &field = fields[index];
+        if (field.Present && !field.Present(record)) continue;
+        if (!field.AddSize(size, field.Id, record)) return 0;
+    }
+    return size;
+}
+
+template <class Record>
+[[nodiscard]] inline int Encode(const Record &record, void *data, std::size_t size,
+                                const FieldCodec<Record> *fields, std::size_t count) noexcept {
+    if (size != EncodedSize(record, fields, count)) return BML_ERROR_INVALID_PARAMETER;
+    Writer writer(data, size);
+    int status = writer.Begin();
+    for (std::size_t index = 0; status == BML_OK && index < count; ++index) {
+        const FieldCodec<Record> &field = fields[index];
+        if (field.Present && !field.Present(record)) continue;
+        status = field.Write(writer, field.Id, record);
+    }
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+// A field the table does not list is stepped over, a field it lists twice is a
+// malformed message, and a required field that never arrived is malformed as
+// well. The output is left untouched unless the whole message decodes.
+template <class Record>
+[[nodiscard]] inline int Decode(const BML_ImcMessage &message, Record &out,
+                                const FieldCodec<Record> *fields, std::size_t count) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data))
+        return BML_ERROR_INVALID_PARAMETER;
+    Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    Record decoded{};
+    std::uint64_t seen = 0;
+    std::uint64_t required = 0;
+    for (std::size_t index = 0; index < count; ++index) {
+        if (fields[index].Required) required |= UINT64_C(1) << index;
+    }
+    FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        for (std::size_t index = 0; index < count; ++index) {
+            const FieldCodec<Record> &codec = fields[index];
+            if (codec.Id != field.Id) continue;
+            const std::uint64_t bit = UINT64_C(1) << index;
+            if (seen & bit) return BML_ERROR_MALFORMED_MESSAGE;
+            status = codec.Read(field, decoded);
+            if (status != BML_OK) return status;
+            seen |= bit;
+            if (codec.MarkPresent) codec.MarkPresent(decoded);
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & required) != required) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
+template <class Record, std::size_t Count>
+inline std::size_t EncodedSize(const Record &record,
+                               const FieldCodec<Record> (&fields)[Count]) noexcept {
+    return EncodedSize(record, fields, Count);
+}
+
+template <class Record, std::size_t Count>
+[[nodiscard]] inline int Encode(const Record &record, void *data, std::size_t size,
+                                const FieldCodec<Record> (&fields)[Count]) noexcept {
+    return Encode(record, data, size, fields, Count);
+}
+
+template <class Record, std::size_t Count>
+[[nodiscard]] inline int Decode(const BML_ImcMessage &message, Record &out,
+                                const FieldCodec<Record> (&fields)[Count]) {
+    return Decode(message, out, fields, Count);
+}
 
 } // namespace BML::Imc::Wire
 

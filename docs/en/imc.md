@@ -58,7 +58,7 @@ IMC has three public layers:
 | Layer | Purpose |
 | --- | --- |
 | Generated `*_imc.hpp` | Typed payloads, codecs, clients, providers, futures, and subscriptions |
-| `BML/ImcCpp.hpp` | Generic C++ RAII wrappers for custom integrations |
+| `BML/ImcCpp.hpp` | Generic C++ RAII wrappers, plus the client, subscription, and RPC machinery the generated bindings reuse |
 | `BML/Imc.h` | Fixed-layout C ABI used across DLL boundaries |
 
 The C ABI exports `BML_Imc_*` functions and uses only C scalars, fixed-layout
@@ -66,8 +66,10 @@ structures, byte spans, callbacks, and opaque handles. C++ classes, exceptions,
 RTTI objects, and allocator-owned values never cross the module boundary.
 
 `BML/ImcWire.hpp` defines the little-endian field encoding used by generated
-bindings. A callback may borrow the bytes in a `BML_ImcMessage` only for the
-duration of that callback. Generated decoders copy strings, arrays, and blobs
+bindings. A generated payload declares one field table, and the size, encode,
+and decode drivers in that header walk it, so a new field adds a row rather than
+three more blocks of code. A callback may borrow the bytes in a
+`BML_ImcMessage` only for the duration of that callback. Generated decoders copy strings, arrays, and blobs
 into their typed result values. The message already carries its payload type,
 so the payload does not repeat a schema ID or descriptor hash. Each field uses
 a Protobuf-style varint tag that combines its permanent ID and physical wire

@@ -198,6 +198,7 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
         source = f"record {record.name}"
         imc_names = [
             f"{record_name}Field",
+            f"{record_name}Fields",
             f"{record_name}Payload",
             f"Encoded{record_name}Size",
             f"Encode{record_name}",
@@ -1058,204 +1059,109 @@ def enum_cpp_literal(enum: EnumDefinition, value: int) -> str:
     return f"UINT64_C({value})"
 
 
-def append_imc_codec(lines: list[str], api: ApiDefinition, record: Record) -> None:
+def append_imc_codec(lines: list[str], record: Record) -> None:
+    """Emit the field table and the three one-line codec entry points."""
     name = camel(record.name)
     value = value_name(record)
-    required_mask = sum(1 << index for index, field in enumerate(record.fields) if not field.optional)
-    lines.append(f"inline std::size_t Encoded{name}Size(const {value} &value) noexcept {{")
-    lines.append("    std::size_t size = 0;")
-    for field in record.fields:
-        member = camel(field.name)
-        field_id = f"{name}Field::{member}"
-        wire_type = imc_field_wire_type(api, field.type)
-        if wire_type == "array<string>":
-            add_size = f"::BML::Imc::Wire::AddStringArrayFieldSize(size, {field_id}, value.{member})"
-        elif wire_type in IMC_ARRAY_ELEMENT_SIZES:
-            add_size = (
-                f"::BML::Imc::Wire::AddFixedArrayFieldSize(size, {field_id}, value.{member}.size(), "
-                f"{IMC_ARRAY_ELEMENT_SIZES[wire_type]})"
-            )
-        elif wire_type == "bool":
-            add_size = f"::BML::Imc::Wire::AddBoolFieldSize(size, {field_id})"
-        elif wire_type in {"int", "float"}:
-            add_size = f"::BML::Imc::Wire::AddFixed32FieldSize(size, {field_id})"
-        elif wire_type in {"int64", "uint64", "double"}:
-            add_size = f"::BML::Imc::Wire::AddFixed64FieldSize(size, {field_id})"
-        else:
-            payload = (f"value.{member}.size()" if wire_type in {"string", "bytes"}
-                       else str(IMC_LENGTH_DELIMITED_PAYLOAD_SIZES[wire_type]))
-            add_size = f"::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, {field_id}, {payload})"
-        condition = f"value.Has{member} && " if field.optional else ""
-        lines.append(f"    if ({condition}!{add_size}) return 0;")
-    lines.extend(["    return size;", "}", ""])
-    lines.append(f"[[nodiscard]] inline int Encode{name}(const {value} &value, void *data, std::size_t size) noexcept {{")
-    lines.append(f"    if (size != Encoded{name}Size(value)) return BML_ERROR_INVALID_PARAMETER;")
-    lines.append("    ::BML::Imc::Wire::Writer writer(data, size);")
-    lines.append("    int status = writer.Begin();")
-    for field in record.fields:
-        member = camel(field.name)
-        enum = enum_definition(api, field.type)
-        wire_type = imc_field_wire_type(api, field.type)
-        argument = (f"static_cast<{ENUM_WIRE_CPP_TYPES[wire_type]}>(value.{member})"
-                    if enum is not None else f"value.{member}")
-        call = f"writer.{IMC_WRITERS[wire_type]}({name}Field::{member}, {argument})"
-        condition = f"status == BML_OK && value.Has{member}" if field.optional else "status == BML_OK"
-        lines.append(f"    if ({condition}) status = {call};")
-    lines.extend(["    return status == BML_OK ? writer.Finish() : status;", "}", ""])
-    lines.append(f"[[nodiscard]] inline int Decode{name}(const BML_ImcMessage &message, {value} &out) {{")
-    lines.append("    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;")
-    lines.append("    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);")
-    lines.append("    int status = reader.Begin();")
-    lines.append("    if (status != BML_OK) return status;")
-
-    lines.extend([f"    {value} decoded{{}};", "    std::uint64_t seen = 0;", "    ::BML::Imc::Wire::FieldView field;"])
-    lines.append("    while ((status = reader.Next(field)) == BML_OK) {")
     if record.fields:
-        lines.append("        switch (field.Id) {")
-        for index, field in enumerate(record.fields):
+        lines.append(f"inline constexpr ::BML::Imc::Wire::FieldCodec<{value}> {name}Fields[] = {{")
+        for field in record.fields:
             member = camel(field.name)
-            enum = enum_definition(api, field.type)
-            wire_type = imc_field_wire_type(api, field.type)
-            if enum is not None:
-                lines.append(f"        case {name}Field::{member}: {{")
-                lines.append(f"            if (seen & (UINT64_C(1) << {index})) return BML_ERROR_MALFORMED_MESSAGE;")
-                lines.append(f"            {ENUM_WIRE_CPP_TYPES[wire_type]} raw{{}};")
-                lines.append(f"            status = ::BML::Imc::Wire::Reader::{IMC_READERS[wire_type]}(field, raw);")
-                lines.append("            if (status != BML_OK) return status;")
-                lines.append(f"            decoded.{member} = static_cast<{camel(enum.name)}>(raw);")
-                lines.append(f"            seen |= UINT64_C(1) << {index};")
-                if field.optional:
-                    lines.append(f"            decoded.Has{member} = true;")
-                lines.extend(["            break;", "        }"])
-            else:
-                lines.append(f"        case {name}Field::{member}:")
-                lines.append(f"            if (seen & (UINT64_C(1) << {index})) return BML_ERROR_MALFORMED_MESSAGE;")
-                lines.append(f"            status = ::BML::Imc::Wire::Reader::{IMC_READERS[wire_type]}(field, decoded.{member});")
-                lines.append("            if (status != BML_OK) return status;")
-                lines.append(f"            seen |= UINT64_C(1) << {index};")
-                if field.optional:
-                    lines.append(f"            decoded.Has{member} = true;")
-                lines.append("            break;")
-        lines.extend(["        default:", "            break;", "        }"])
+            presence = f", &{value}::Has{member}" if field.optional else ""
+            lines.append(
+                f"    ::BML::Imc::Wire::Field<&{value}::{member}{presence}>({name}Field::{member}),"
+            )
+        lines.append("};")
+        table = f"{name}Fields"
+        size_call = f"::BML::Imc::Wire::EncodedSize(value, {table})"
+        encode_call = f"::BML::Imc::Wire::Encode(value, data, size, {table})"
+        decode_call = f"::BML::Imc::Wire::Decode(message, out, {table})"
     else:
-        lines.append("        (void)field;")
-    lines.append("    }")
-    lines.append("    if (status != BML_ERROR_NOT_FOUND) return status;")
-    lines.append("    status = reader.Finish();")
-    lines.append("    if (status != BML_OK) return status;")
-    lines.append(f"    if ((seen & UINT64_C(0x{required_mask:X})) != UINT64_C(0x{required_mask:X})) return BML_ERROR_MALFORMED_MESSAGE;")
-    lines.extend(["    out = std::move(decoded);", "    return BML_OK;", "}", ""])
+        size_call = f"::BML::Imc::Wire::EncodedSize<{value}>(value, nullptr, 0)"
+        encode_call = f"::BML::Imc::Wire::Encode<{value}>(value, data, size, nullptr, 0)"
+        decode_call = f"::BML::Imc::Wire::Decode<{value}>(message, out, nullptr, 0)"
+    lines.extend([
+        f"inline std::size_t Encoded{name}Size(const {value} &value) noexcept {{",
+        f"    return {size_call};", "}",
+        f"[[nodiscard]] inline int Encode{name}(const {value} &value, void *data, std::size_t size) noexcept {{",
+        f"    return {encode_call};", "}",
+        f"[[nodiscard]] inline int Decode{name}(const BML_ImcMessage &message, {value} &out) {{",
+        f"    return {decode_call};", "}", "",
+    ])
+
 
 def append_imc_subscriptions(lines: list[str], api: ApiDefinition) -> None:
+    """Alias one TopicSubscription per topic; the machinery lives in ImcCpp.hpp."""
     schemas = {record.id: record for record in api.schemas}
+    emitted = False
     for endpoint in api.endpoints:
         if endpoint.kind != "topic":
             continue
-        name = camel(endpoint.name)
         output = schemas[endpoint.output_schema]
-        output_name = camel(output.name)
-        output_value = value_name(output)
-        lines.extend([
-            f"class {name}Subscription {{", "public:",
-            f"    using Handler = void (*)(int status, {output_value} *value, const BML_ImcMessage *message, void *userdata);",
-            f"    {name}Subscription() = default;", f"    ~{name}Subscription() {{ (void)Close(); }}",
-            f"    {name}Subscription(const {name}Subscription &) = delete;",
-            f"    {name}Subscription &operator=(const {name}Subscription &) = delete;",
-            "    [[nodiscard]] int Open(BML_ImcClient client, BML_ImcTopicId topic, BML_ImcPayloadTypeId payload,",
-            "             Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,",
-            "             BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST,",
-            "             BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {",
-            "        const int closeStatus = Close(); if (IsOpen()) return closeStatus;",
-            "        if (!client || topic == BML_IMC_INVALID_ID || payload == BML_IMC_INVALID_ID || !handler || capacity == 0) return BML_ERROR_INVALID_PARAMETER;",
-            "        m_Client = client; m_Payload = payload; m_Handler = handler; m_Userdata = userdata;",
-            "        BML_ImcSubscribeOptions options = BML_IMC_SUBSCRIBE_OPTIONS_INIT;",
-            "        options.Execution = execution; options.Backpressure = backpressure; options.Capacity = capacity; options.ExpectedPayloadType = payload;",
-            "        const int status = BML_Imc_Subscribe(client, topic, &options, &Dispatch, this, &m_Subscription);",
-            "        if (status != BML_OK) Reset(); return status;", "    }",
-            "    [[nodiscard]] int Close() noexcept {",
-            "        if (!m_Subscription) return BML_OK;",
-            "        const int status = BML_Imc_Unsubscribe(m_Client, m_Subscription);",
-            "        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) Reset();",
-            "        return status;", "    }",
-            "    bool IsOpen() const noexcept { return m_Subscription != nullptr; }",
-            "    [[nodiscard]] int DroppedCount(std::uint64_t &out) const noexcept {",
-            "        return m_Subscription ? BML_Imc_GetSubscriptionDroppedCount(m_Client, m_Subscription, &out) : BML_ERROR_INVALID_HANDLE;", "    }",
-            "private:",
-            "    static void Dispatch(BML_ImcTopicId, const BML_ImcMessage *message, void *userdata) noexcept {",
-            f"        auto *self = static_cast<{name}Subscription *>(userdata); if (!self || !self->m_Handler) return;",
-            f"        {output_value} value{{}}; int status = BML_ERROR_MALFORMED_MESSAGE;",
-            f"        if (message && message->PayloadType == self->m_Payload) status = Decode{output_name}(*message, value);",
-            "        else if (message) status = BML_ERROR_TYPE_MISMATCH;",
-            "        try { self->m_Handler(status, status == BML_OK ? &value : nullptr, message, self->m_Userdata); } catch (...) {}", "    }",
-            "    void Reset() noexcept { m_Client = nullptr; m_Subscription = nullptr; m_Payload = BML_IMC_INVALID_ID; m_Handler = nullptr; m_Userdata = nullptr; }",
-            "    BML_ImcClient m_Client = nullptr; BML_ImcSubscription m_Subscription = nullptr;",
-            "    BML_ImcPayloadTypeId m_Payload = BML_IMC_INVALID_ID; Handler m_Handler = nullptr; void *m_Userdata = nullptr;",
-            "};", "",
-        ])
+        lines.append(
+            f"using {camel(endpoint.name)}Subscription = ::BML::Imc::TopicSubscription"
+            f"<{value_name(output)}, &Decode{camel(output.name)}>;"
+        )
+        emitted = True
+    if emitted:
+        lines.append("")
+
+
+def client_routes(api: ApiDefinition) -> list[tuple[str, str, str]]:
+    """One row per resolved id, as (index name, RouteKind, route name constant)."""
+    routes = [
+        (f"Index{camel(record.name)}Payload", "Payload", f"{camel(record.name)}Payload")
+        for record in api.schemas
+    ]
+    for endpoint in api.endpoints:
+        name = camel(endpoint.name)
+        kind = "Topic" if endpoint.kind == "topic" else "Rpc"
+        routes.append((f"Index{name}{kind}", kind, f"{name}Route"))
+    return routes
+
 
 def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
     schemas = {record.id: record for record in api.schemas}
     append_imc_subscriptions(lines, api)
+    routes = client_routes(api)
+    base = f"::BML::Imc::ClientBase<{len(routes)}>"
     lines.extend([
-        "class Client {", "public:", "    Client() = default;", "    ~Client() { (void)Close(); }",
-        "    Client(const Client &) = delete;", "    Client &operator=(const Client &) = delete;", "",
+        f"class Client : public {base} {{", f"    using Base = {base};",
+        "    static constexpr ::BML::Imc::RouteBinding Routes[] = {",
     ])
+    for _, kind, route in routes:
+        lines.append(f"        {{::BML::Imc::RouteKind::{kind}, {route}}},")
+    lines.append("    };")
+    lines.append("    enum : std::size_t {")
+    for index_name, _, _ in routes:
+        lines.append(f"        {index_name},")
+    lines.extend(["    };", "", "public:", "    Client() noexcept : Base(Routes) {}", ""])
     for endpoint in api.endpoints:
         if endpoint.kind == "topic":
             continue
         name = camel(endpoint.name)
-        if endpoint.output_schema:
-            output_value = value_name(schemas[endpoint.output_schema])
-            lines.append(f"    using {name}Future = ::BML::Imc::RpcFuture<{output_value}>;")
-        else:
-            lines.append(f"    using {name}Future = ::BML::Imc::RpcFuture<void>;")
-    lines.extend([
-        "",
-        "    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {",
-        "        const int closeStatus = Close(); if (m_Client) return closeStatus;",
-        "        BML_ImcClient client = nullptr;",
-        "        const int status = BML_Imc_OpenClient(ownerId, &client);",
-        "        return status == BML_OK ? Adopt(client) : status;", "    }",
-        "    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {",
-        "        const int closeStatus = Close(); if (m_Client) return closeStatus;",
-        "        if (!client) return BML_ERROR_INVALID_PARAMETER;",
-        "        m_Client = client;", "        int status = BML_OK;",
-    ])
+        output = f"<{value_name(schemas[endpoint.output_schema])}>" if endpoint.output_schema else "<void>"
+        lines.append(f"    using {name}Future = ::BML::Imc::RpcFuture{output};")
+    lines.append("")
     for record in api.schemas:
         name = camel(record.name)
-        lines.append(f"        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, {name}Payload, &m_{name}Payload);")
+        lines.append(
+            f"    BML_ImcPayloadTypeId {name}PayloadType() const noexcept "
+            f"{{ return RouteId(Index{name}Payload); }}"
+        )
     for endpoint in api.endpoints:
         name = camel(endpoint.name)
         if endpoint.kind == "topic":
-            lines.append(f"        if (status == BML_OK) status = BML_Imc_GetTopicId(m_Client, {name}Route, &m_{name}Topic);")
+            lines.append(
+                f"    BML_ImcTopicId {name}TopicId() const noexcept "
+                f"{{ return RouteId(Index{name}Topic); }}"
+            )
         else:
-            lines.append(f"        if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, {name}Route, &m_{name}Rpc);")
-    lines.extend([
-        "        if (status != BML_OK) (void)Close();", "        return status;", "    }",
-        "    [[nodiscard]] int Close() noexcept {", "        if (!m_Client) return BML_OK;",
-        "        const int status = BML_Imc_CloseClient(m_Client);",
-        "        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }",
-        "        return status;", "    }",
-        "    BML_ImcClient Handle() const noexcept { return m_Client; }",
-        "    bool IsOpen() const noexcept { return m_Client != nullptr; }",
-        "    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }",
-    ])
-    for record in api.schemas:
-        name = camel(record.name)
-        lines.append(f"    BML_ImcPayloadTypeId {name}PayloadType() const noexcept {{ return m_{name}Payload; }}")
-    for endpoint in api.endpoints:
-        name = camel(endpoint.name)
-        if endpoint.kind == "topic":
-            lines.append(f"    BML_ImcTopicId {name}TopicId() const noexcept {{ return m_{name}Topic; }}")
-        else:
-            lines.append(f"    BML_ImcRpcId {name}RpcId() const noexcept {{ return m_{name}Rpc; }}")
-        if endpoint.kind == "rpc":
             lines.extend([
-                f"    [[nodiscard]] int Is{name}Available(bool &out) const noexcept {{",
-                "        int available = 0;",
-                f"        const int status = BML_Imc_IsRpcAvailable(m_Client, m_{name}Rpc, &available);",
-                "        if (status == BML_OK) out = available != 0;",
-                "        return status;", "    }",
+                f"    BML_ImcRpcId {name}RpcId() const noexcept "
+                f"{{ return RouteId(Index{name}Rpc); }}",
+                f"    [[nodiscard]] int Is{name}Available(bool &out) const noexcept "
+                f"{{ return RpcAvailable(Index{name}Rpc, out); }}",
             ])
     lines.append("")
     for endpoint in api.endpoints:
@@ -1271,14 +1177,14 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
                 lines.extend([
                     f"    [[nodiscard]] int BeginCall{name}(const {input_value} &input, {name}Future &out, std::uint32_t timeoutMs = 5000u) noexcept {{",
                     "        ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};",
-                    f"        int status = ::BML::Imc::EncodeMessage(input, m_{input_name}Payload, buffer, request, Encoded{input_name}Size, Encode{input_name});",
+                    f"        int status = ::BML::Imc::EncodeMessage(input, {input_name}PayloadType(), buffer, request, Encoded{input_name}Size, Encode{input_name});",
                 ])
                 if output:
-                    lines.append(f"        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, &request, m_{output_name}Payload, out, Decode{output_name}, timeoutMs) : status;")
+                    lines.append(f"        return status == BML_OK ? ::BML::Imc::BeginRpc(Handle(), {name}RpcId(), &request, {output_name}PayloadType(), out, Decode{output_name}, timeoutMs) : status;")
                     call_signature = f"const {input_value} &input, {output_value} &out, std::uint32_t timeoutMs = 5000u"
                     await_expression = "future.AwaitResult(out, timeoutMs)"
                 else:
-                    lines.append(f"        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, &request, out, timeoutMs) : status;")
+                    lines.append(f"        return status == BML_OK ? ::BML::Imc::BeginRpc(Handle(), {name}RpcId(), &request, out, timeoutMs) : status;")
                     call_signature = f"const {input_value} &input, std::uint32_t timeoutMs = 5000u"
                     await_expression = "future.AwaitResult(timeoutMs)"
                 lines.extend([
@@ -1289,11 +1195,11 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
                 ])
             else:
                 if output:
-                    begin_expression = f"::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, nullptr, m_{output_name}Payload, out, Decode{output_name}, timeoutMs)"
+                    begin_expression = f"::BML::Imc::BeginRpc(Handle(), {name}RpcId(), nullptr, {output_name}PayloadType(), out, Decode{output_name}, timeoutMs)"
                     call_signature = f"{output_value} &out, std::uint32_t timeoutMs = 5000u"
                     await_expression = "future.AwaitResult(out, timeoutMs)"
                 else:
-                    begin_expression = f"::BML::Imc::BeginRpc(m_Client, m_{name}Rpc, nullptr, out, timeoutMs)"
+                    begin_expression = f"::BML::Imc::BeginRpc(Handle(), {name}RpcId(), nullptr, out, timeoutMs)"
                     call_signature = "std::uint32_t timeoutMs = 5000u"
                     await_expression = "future.AwaitResult(timeoutMs)"
                 lines.extend([
@@ -1309,29 +1215,37 @@ def append_imc_client(lines: list[str], api: ApiDefinition) -> None:
             output_value = value_name(output)
             lines.extend([
                 f"    [[nodiscard]] int Publish{name}(const {output_value} &value, std::size_t *outDelivered = nullptr) noexcept {{",
-                f"        return ::BML::Imc::Publish(m_Client, m_{name}Topic, m_{output_name}Payload, value, Encoded{output_name}Size, Encode{output_name}, outDelivered);", "    }",
+                f"        return ::BML::Imc::Publish(Handle(), {name}TopicId(), {output_name}PayloadType(), value, Encoded{output_name}Size, Encode{output_name}, outDelivered);", "    }",
                 f"    [[nodiscard]] int Get{name}SubscriberCount(std::size_t &outCount) const noexcept {{",
-                f"        return BML_Imc_GetTopicSubscriberCount(m_Client, m_{name}Topic, &outCount);", "    }",
+                f"        return BML_Imc_GetTopicSubscriberCount(Handle(), {name}TopicId(), &outCount);", "    }",
                 f"    [[nodiscard]] int Subscribe{name}({name}Subscription &out, {name}Subscription::Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,",
                 "                     BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {",
-                f"        return out.Open(m_Client, m_{name}Topic, m_{output_name}Payload, handler, userdata, capacity, backpressure, execution);", "    }",
+                f"        return out.Open(Handle(), {name}TopicId(), {output_name}PayloadType(), handler, userdata, capacity, backpressure, execution);", "    }",
             ])
-    lines.extend(["private:", "    void ResetIds() noexcept {"])
-    for record in api.schemas:
-        lines.append(f"        m_{camel(record.name)}Payload = BML_IMC_INVALID_ID;")
-    for endpoint in api.endpoints:
-        name = camel(endpoint.name)
-        lines.append(f"        m_{name}{'Topic' if endpoint.kind == 'topic' else 'Rpc'} = BML_IMC_INVALID_ID;")
-    lines.extend(["    }", "    BML_ImcClient m_Client = nullptr;"])
-    for record in api.schemas:
-        lines.append(f"    BML_ImcPayloadTypeId m_{camel(record.name)}Payload = BML_IMC_INVALID_ID;")
-    for endpoint in api.endpoints:
-        name = camel(endpoint.name)
-        if endpoint.kind == "topic":
-            lines.append(f"    BML_ImcTopicId m_{name}Topic = BML_IMC_INVALID_ID;")
-        else:
-            lines.append(f"    BML_ImcRpcId m_{name}Rpc = BML_IMC_INVALID_ID;")
     lines.extend(["};", ""])
+
+
+def rpc_binding_arguments(endpoint: Endpoint,
+                          schemas: dict[int, Record]) -> tuple[str, str, str]:
+    """The RpcBinding arguments, the request payload and the reply payload."""
+    name = camel(endpoint.name)
+    output = schemas[endpoint.output_schema] if endpoint.output_schema else None
+    input_record = schemas[endpoint.input_schema] if endpoint.input_schema else None
+    input_type = value_name(input_record) if input_record else "void"
+    output_type = value_name(output) if output else "void"
+    arguments = [input_type, output_type, f"{name}Handler"]
+    if input_record:
+        arguments.append(f"&Decode{camel(input_record.name)}")
+    elif output:
+        arguments.append("nullptr")
+    if output:
+        output_name = camel(output.name)
+        arguments.extend([f"&Encoded{output_name}Size", f"&Encode{output_name}"])
+    request_payload = (f"m_Transport.{camel(input_record.name)}PayloadType()"
+                       if input_record else "BML_IMC_INVALID_ID")
+    response_payload = (f"m_Transport.{camel(output.name)}PayloadType()"
+                        if output else "BML_IMC_INVALID_ID")
+    return ", ".join(arguments), request_payload, response_payload
 
 
 def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
@@ -1385,72 +1299,28 @@ def append_imc_provider(lines: list[str], api: ApiDefinition) -> None:
     ])
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
+        _, request_payload, response_payload = rpc_binding_arguments(endpoint, schemas)
         lines.extend([
             f"    [[nodiscard]] int Register{name}({name}Handler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {{",
-            "        if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;",
-            f"        if (m_{name}.Registered) return BML_ERROR_ALREADY_EXISTS;",
-            f"        m_{name} = {{this, handler, userdata, false}};",
-            "        BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT; options.Execution = execution;",
-            f"        const int status = BML_Imc_RegisterRpc(m_Transport.Handle(), m_Transport.{name}RpcId(), &options, &{name}Thunk, &m_{name});",
-            f"        if (status == BML_OK) m_{name}.Registered = true; else m_{name} = {{}};", "        return status;", "    }",
-            f"    [[nodiscard]] int Unregister{name}() noexcept {{", f"        if (!m_{name}.Registered) return BML_ERROR_NOT_FOUND;",
-            f"        const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.{name}RpcId());",
-            f"        if (status == BML_OK) m_{name} = {{}};", "        return status;", "    }", "",
+            f"        return ::BML::Imc::RegisterRpc<{name}Binding>(m_Transport.Handle(), m_Transport.{name}RpcId(), m_{name}, handler, userdata, execution,",
+            f"                                      {request_payload}, {response_payload});", "    }",
+            f"    [[nodiscard]] int Unregister{name}() noexcept {{",
+            f"        return ::BML::Imc::UnregisterRpc(m_Transport.Handle(), m_Transport.{name}RpcId(), m_{name});", "    }",
         ])
-    lines.append("private:")
+    lines.extend(["", "private:"])
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
-        output = schemas[endpoint.output_schema] if endpoint.output_schema else None
-        output_name = camel(output.name) if output else ""
-        output_value = value_name(output) if output else ""
-        lines.append(f"    struct {name}Slot {{ Provider *Owner = nullptr; {name}Handler Function = nullptr; void *Userdata = nullptr; bool Registered = false; }};")
-        lines.extend([
-            f"    [[nodiscard]] static int {name}Thunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *{'response' if output else ''}, void *userdata) noexcept {{",
-            f"        auto *slot = static_cast<{name}Slot *>(userdata);",
-            "        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;",
-            "        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;",
-        ])
-        if endpoint.input_schema or output:
-            lines.append("        auto *owner = slot->Owner;")
-        lines.append("        try {")
-        if output:
-            lines.append(f"            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.{output_name}PayloadType();")
-        if endpoint.input_schema:
-            input_record = schemas[endpoint.input_schema]
-            input_name = camel(input_record.name)
-            input_value = value_name(input_record)
-            lines.extend([
-                "            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;",
-                f"            if (request->PayloadType != owner->m_Transport.{input_name}PayloadType()) return BML_ERROR_TYPE_MISMATCH;",
-                f"            {input_value} input{{}}; int status = Decode{input_name}(*request, input);",
-                "            if (status != BML_OK) return status;",
-            ])
-            if output:
-                lines.append(f"            {output_value} output{{}}; status = function(input, output, handlerUserdata);")
-            else:
-                lines.append("            status = function(input, handlerUserdata);")
-        else:
-            lines.extend([
-                "            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;",
-            ])
-            if output:
-                lines.append(f"            {output_value} output{{}}; const int status = function(output, handlerUserdata);")
-            else:
-                lines.append("            const int status = function(handlerUserdata);")
-        lines.append("            if (status != BML_OK) return status;")
-        if output:
-            lines.append(f"            return ::BML::Imc::WriteResponse(response, responsePayload, output, Encoded{output_name}Size, Encode{output_name});")
-        else:
-            lines.append("            return BML_OK;")
-        lines.extend(["        } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }", "    }"])
-    lines.extend(["    void ResetSlots() noexcept {"])
+        arguments, _, _ = rpc_binding_arguments(endpoint, schemas)
+        lines.append(f"    using {name}Binding = ::BML::Imc::RpcBinding<{arguments}>;")
+    lines.extend(["", "    void ResetSlots() noexcept {"])
     for endpoint in rpc_endpoints:
         lines.append(f"        m_{camel(endpoint.name)} = {{}};")
-    lines.extend(["    }", "    Client m_Transport;"])
+    lines.extend(["    }", "", "    Client m_Transport;"])
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
-        lines.append(f"    {name}Slot m_{name}{{}};")
+        lines.append(f"    {name}Binding::Slot m_{name}{{}};")
     lines.extend(["};", ""])
+
 
 def emit_imc_header(api: ApiDefinition) -> str:
     """Emit typed values and stable IMC routes without a dynamic record API."""
@@ -1501,7 +1371,7 @@ def emit_imc_header(api: ApiDefinition) -> str:
                 lines.append(f"    bool Has{member} = false;")
             lines.append(f"    {imc_field_cpp_type(api, field.type)} {member}{{}};")
         lines.extend(["};", ""])
-        append_imc_codec(lines, api, record)
+        append_imc_codec(lines, record)
 
     for endpoint in api.endpoints:
         endpoint_name = camel(endpoint.name)

@@ -26,6 +26,12 @@
 // use. WriteResponse encodes straight into the loader's own buffer from inside a handler,
 // and Publish encodes and publishes in one step.
 //
+// ClientBase, TopicSubscription and RpcBinding are the machinery a generated client and
+// provider used to carry a copy of each. A generated Client derives from ClientBase and
+// passes its route table, a generated topic subscription is a TopicSubscription alias, and a
+// generated provider registers an RpcBinding thunk per RPC, so what the generator writes is
+// the interface's own names and nothing else.
+//
 // Nothing here throws out: an exception during a decode becomes BML_ERROR_OUT_OF_MEMORY or
 // BML_ERROR_FAIL, which is the same as the C ABI does, since a handler is called from the
 // loader and an exception must not cross back into it.
@@ -40,6 +46,7 @@
 #include <cstdint>
 #include <mutex>
 #include <new>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -332,6 +339,275 @@ template <class Value, class SizeFunction, class EncodeFunction>
     BML_ImcMessage message{};
     const int status = EncodeMessage(value, payloadType, buffer, message, sizeFunction, encodeFunction);
     return status == BML_OK ? BML_Imc_Publish(client, topicId, &message, outDelivered) : status;
+}
+
+enum class RouteKind : std::uint8_t {
+    Payload,
+    Rpc,
+    Topic,
+};
+
+struct RouteBinding {
+    RouteKind Kind = RouteKind::Payload;
+    const char *Name = nullptr;
+};
+
+// Every payload type, RPC and topic name of one interface, resolved to numeric
+// ids once when the client opens so a call names an id rather than a string. A
+// generated Client hands its own route table in and reads the ids back by index,
+// which is why the ids are here and not repeated per route in generated code.
+template <std::size_t Count>
+class ClientBase {
+public:
+    ClientBase(const ClientBase &) = delete;
+    ClientBase &operator=(const ClientBase &) = delete;
+
+    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {
+        const int closeStatus = Close();
+        if (m_Client) return closeStatus;
+        BML_ImcClient client = nullptr;
+        const int status = BML_Imc_OpenClient(ownerId, &client);
+        return status == BML_OK ? Adopt(client) : status;
+    }
+
+    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {
+        const int closeStatus = Close();
+        if (m_Client) return closeStatus;
+        if (!client) return BML_ERROR_INVALID_PARAMETER;
+        m_Client = client;
+        int status = BML_OK;
+        for (std::size_t index = 0; status == BML_OK && index < Count; ++index) {
+            const RouteBinding &route = m_Routes[index];
+            switch (route.Kind) {
+            case RouteKind::Payload:
+                status = BML_Imc_GetPayloadTypeId(m_Client, route.Name, &m_Ids[index]);
+                break;
+            case RouteKind::Rpc:
+                status = BML_Imc_GetRpcId(m_Client, route.Name, &m_Ids[index]);
+                break;
+            case RouteKind::Topic:
+                status = BML_Imc_GetTopicId(m_Client, route.Name, &m_Ids[index]);
+                break;
+            }
+        }
+        if (status != BML_OK) (void)Close();
+        return status;
+    }
+
+    [[nodiscard]] int Close() noexcept {
+        if (!m_Client) return BML_OK;
+        const int status = BML_Imc_CloseClient(m_Client);
+        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) {
+            m_Client = nullptr;
+            m_Ids.fill(BML_IMC_INVALID_ID);
+        }
+        return status;
+    }
+
+    BML_ImcClient Handle() const noexcept { return m_Client; }
+    bool IsOpen() const noexcept { return m_Client != nullptr; }
+
+    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept {
+        return m_Client ? BML_OK : Open(ownerId);
+    }
+
+protected:
+    explicit ClientBase(const RouteBinding (&routes)[Count]) noexcept : m_Routes(routes) {}
+    ~ClientBase() { (void)Close(); }
+
+    std::uint32_t RouteId(std::size_t index) const noexcept { return m_Ids[index]; }
+
+    [[nodiscard]] int RpcAvailable(std::size_t index, bool &out) const noexcept {
+        int available = 0;
+        const int status = BML_Imc_IsRpcAvailable(m_Client, m_Ids[index], &available);
+        if (status == BML_OK) out = available != 0;
+        return status;
+    }
+
+private:
+    const RouteBinding *m_Routes = nullptr;
+    std::array<std::uint32_t, Count> m_Ids{};
+    BML_ImcClient m_Client = nullptr;
+};
+
+// One subscription to one topic, decoding each message to the topic's payload
+// type before the handler sees it. A message of another payload type is
+// BML_ERROR_TYPE_MISMATCH and an undecodable one keeps its decode status, so a
+// handler is told what went wrong rather than handed a half-filled value.
+template <class Value, int (*DecodeFunction)(const BML_ImcMessage &, Value &)>
+class TopicSubscription {
+public:
+    using Handler = void (*)(int status, Value *value, const BML_ImcMessage *message, void *userdata);
+
+    TopicSubscription() = default;
+    ~TopicSubscription() { (void)Close(); }
+    TopicSubscription(const TopicSubscription &) = delete;
+    TopicSubscription &operator=(const TopicSubscription &) = delete;
+
+    [[nodiscard]] int Open(BML_ImcClient client, BML_ImcTopicId topic, BML_ImcPayloadTypeId payload,
+                           Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,
+                           BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST,
+                           BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
+        const int closeStatus = Close();
+        if (IsOpen()) return closeStatus;
+        if (!client || topic == BML_IMC_INVALID_ID || payload == BML_IMC_INVALID_ID || !handler
+                || capacity == 0)
+            return BML_ERROR_INVALID_PARAMETER;
+        m_Client = client;
+        m_Payload = payload;
+        m_Handler = handler;
+        m_Userdata = userdata;
+        BML_ImcSubscribeOptions options = BML_IMC_SUBSCRIBE_OPTIONS_INIT;
+        options.Execution = execution;
+        options.Backpressure = backpressure;
+        options.Capacity = capacity;
+        options.ExpectedPayloadType = payload;
+        const int status = BML_Imc_Subscribe(client, topic, &options, &Dispatch, this, &m_Subscription);
+        if (status != BML_OK) Reset();
+        return status;
+    }
+
+    [[nodiscard]] int Close() noexcept {
+        if (!m_Subscription) return BML_OK;
+        const int status = BML_Imc_Unsubscribe(m_Client, m_Subscription);
+        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) Reset();
+        return status;
+    }
+
+    bool IsOpen() const noexcept { return m_Subscription != nullptr; }
+
+    [[nodiscard]] int DroppedCount(std::uint64_t &out) const noexcept {
+        return m_Subscription ? BML_Imc_GetSubscriptionDroppedCount(m_Client, m_Subscription, &out)
+                              : BML_ERROR_INVALID_HANDLE;
+    }
+
+private:
+    static void Dispatch(BML_ImcTopicId, const BML_ImcMessage *message, void *userdata) noexcept {
+        auto *self = static_cast<TopicSubscription *>(userdata);
+        if (!self || !self->m_Handler) return;
+        Value value{};
+        int status = BML_ERROR_MALFORMED_MESSAGE;
+        try {
+            if (message && message->PayloadType == self->m_Payload)
+                status = DecodeFunction(*message, value);
+            else if (message)
+                status = BML_ERROR_TYPE_MISMATCH;
+            self->m_Handler(status, status == BML_OK ? &value : nullptr, message, self->m_Userdata);
+        } catch (...) {}
+    }
+
+    void Reset() noexcept {
+        m_Client = nullptr;
+        m_Subscription = nullptr;
+        m_Payload = BML_IMC_INVALID_ID;
+        m_Handler = nullptr;
+        m_Userdata = nullptr;
+    }
+
+    BML_ImcClient m_Client = nullptr;
+    BML_ImcSubscription m_Subscription = nullptr;
+    BML_ImcPayloadTypeId m_Payload = BML_IMC_INVALID_ID;
+    Handler m_Handler = nullptr;
+    void *m_Userdata = nullptr;
+};
+
+// What one registered RPC needs at dispatch time: the handler, its userdata and
+// the payload types the request must carry and the reply will carry. The thunk
+// reads nothing else, which is what lets one thunk serve every interface.
+template <class Handler>
+struct RpcSlot {
+    Handler Function = nullptr;
+    void *Userdata = nullptr;
+    BML_ImcPayloadTypeId RequestPayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId ResponsePayload = BML_IMC_INVALID_ID;
+    bool Registered = false;
+};
+
+// The four shapes an RPC comes in, as one thunk: Input and Output are void when
+// the RPC has no request or no reply payload, and the codec functions are the
+// generated ones for the types that are there. An exception from a handler
+// becomes BML_ERROR_IMC_TARGET_EXECUTION_FAILED rather than crossing back into
+// the loader.
+template <class Input, class Output, class Handler,
+          auto DecodeInput = nullptr, auto EncodedOutputSize = nullptr, auto EncodeOutput = nullptr>
+struct RpcBinding {
+    using Slot = RpcSlot<Handler>;
+
+    [[nodiscard]] static int Thunk(BML_ImcRpcId, const BML_ImcMessage *request,
+                                   BML_ImcResponse *response, void *userdata) noexcept {
+        auto *slot = static_cast<Slot *>(userdata);
+        if (!slot || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
+        // A handler is allowed to destroy its own provider, which destroys this slot. Copy
+        // everything the thunk still needs before the handler runs.
+        const Handler function = slot->Function;
+        void *handlerUserdata = slot->Userdata;
+        const BML_ImcPayloadTypeId requestPayload = slot->RequestPayload;
+        const BML_ImcPayloadTypeId responsePayload = slot->ResponsePayload;
+        (void)requestPayload;
+        (void)responsePayload;
+        (void)response;
+        try {
+            if constexpr (std::is_void_v<Input>) {
+                if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0))
+                    return BML_ERROR_MALFORMED_MESSAGE;
+                if constexpr (std::is_void_v<Output>) {
+                    return function(handlerUserdata);
+                } else {
+                    Output output{};
+                    const int status = function(output, handlerUserdata);
+                    return status == BML_OK
+                        ? WriteResponse(response, responsePayload, output,
+                                        EncodedOutputSize, EncodeOutput)
+                        : status;
+                }
+            } else {
+                if (!request || request->Size < sizeof(BML_ImcMessage))
+                    return BML_ERROR_MALFORMED_MESSAGE;
+                if (request->PayloadType != requestPayload)
+                    return BML_ERROR_TYPE_MISMATCH;
+                Input input{};
+                int status = DecodeInput(*request, input);
+                if (status != BML_OK) return status;
+                if constexpr (std::is_void_v<Output>) {
+                    return function(input, handlerUserdata);
+                } else {
+                    Output output{};
+                    status = function(input, output, handlerUserdata);
+                    return status == BML_OK
+                        ? WriteResponse(response, responsePayload, output,
+                                        EncodedOutputSize, EncodeOutput)
+                        : status;
+                }
+            }
+        } catch (...) {
+            return BML_ERROR_IMC_TARGET_EXECUTION_FAILED;
+        }
+    }
+};
+
+template <class Binding, class Handler>
+[[nodiscard]] int RegisterRpc(BML_ImcClient client, BML_ImcRpcId rpcId, RpcSlot<Handler> &slot,
+                              Handler handler, void *userdata, BML_ImcExecution execution,
+                              BML_ImcPayloadTypeId requestPayload,
+                              BML_ImcPayloadTypeId responsePayload) noexcept {
+    if (!client || !handler) return BML_ERROR_INVALID_PARAMETER;
+    if (slot.Registered) return BML_ERROR_ALREADY_EXISTS;
+    slot = {handler, userdata, requestPayload, responsePayload, false};
+    BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT;
+    options.Execution = execution;
+    const int status = BML_Imc_RegisterRpc(client, rpcId, &options, &Binding::Thunk, &slot);
+    if (status == BML_OK) slot.Registered = true;
+    else slot = {};
+    return status;
+}
+
+template <class Handler>
+[[nodiscard]] int UnregisterRpc(BML_ImcClient client, BML_ImcRpcId rpcId,
+                                RpcSlot<Handler> &slot) noexcept {
+    if (!slot.Registered) return BML_ERROR_NOT_FOUND;
+    const int status = BML_Imc_UnregisterRpc(client, rpcId);
+    if (status == BML_OK) slot = {};
+    return status;
 }
 
 } // namespace BML::Imc

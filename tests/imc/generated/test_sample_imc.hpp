@@ -23,54 +23,18 @@ struct ArrayStateValue {
     std::vector<int> Values{};
 };
 
+inline constexpr ::BML::Imc::Wire::FieldCodec<ArrayStateValue> ArrayStateFields[] = {
+    ::BML::Imc::Wire::Field<&ArrayStateValue::Names>(ArrayStateField::Names),
+    ::BML::Imc::Wire::Field<&ArrayStateValue::Values>(ArrayStateField::Values),
+};
 inline std::size_t EncodedArrayStateSize(const ArrayStateValue &value) noexcept {
-    std::size_t size = 0;
-    if (!::BML::Imc::Wire::AddStringArrayFieldSize(size, ArrayStateField::Names, value.Names)) return 0;
-    if (!::BML::Imc::Wire::AddFixedArrayFieldSize(size, ArrayStateField::Values, value.Values.size(), 4)) return 0;
-    return size;
+    return ::BML::Imc::Wire::EncodedSize(value, ArrayStateFields);
 }
-
 [[nodiscard]] inline int EncodeArrayState(const ArrayStateValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedArrayStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin();
-    if (status == BML_OK) status = writer.WriteStringArray(ArrayStateField::Names, value.Names);
-    if (status == BML_OK) status = writer.WriteIntArray(ArrayStateField::Values, value.Values);
-    return status == BML_OK ? writer.Finish() : status;
+    return ::BML::Imc::Wire::Encode(value, data, size, ArrayStateFields);
 }
-
 [[nodiscard]] inline int DecodeArrayState(const BML_ImcMessage &message, ArrayStateValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin();
-    if (status != BML_OK) return status;
-    ArrayStateValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case ArrayStateField::Names:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Names);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case ArrayStateField::Values:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadIntArray(field, decoded.Values);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x3)) != UINT64_C(0x3)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
+    return ::BML::Imc::Wire::Decode(message, out, ArrayStateFields);
 }
 
 inline constexpr const char BundlePayload[] = "test.sample/v1/payload/bundle";
@@ -91,74 +55,20 @@ struct BundleValue {
     std::vector<std::string> Labels{};
 };
 
+inline constexpr ::BML::Imc::Wire::FieldCodec<BundleValue> BundleFields[] = {
+    ::BML::Imc::Wire::Field<&BundleValue::Objects, &BundleValue::HasObjects>(BundleField::Objects),
+    ::BML::Imc::Wire::Field<&BundleValue::Points, &BundleValue::HasPoints>(BundleField::Points),
+    ::BML::Imc::Wire::Field<&BundleValue::Weights, &BundleValue::HasWeights>(BundleField::Weights),
+    ::BML::Imc::Wire::Field<&BundleValue::Labels, &BundleValue::HasLabels>(BundleField::Labels),
+};
 inline std::size_t EncodedBundleSize(const BundleValue &value) noexcept {
-    std::size_t size = 0;
-    if (value.HasObjects && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, BundleField::Objects, value.Objects.size(), 12)) return 0;
-    if (value.HasPoints && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, BundleField::Points, value.Points.size(), 12)) return 0;
-    if (value.HasWeights && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, BundleField::Weights, value.Weights.size(), 4)) return 0;
-    if (value.HasLabels && !::BML::Imc::Wire::AddStringArrayFieldSize(size, BundleField::Labels, value.Labels)) return 0;
-    return size;
+    return ::BML::Imc::Wire::EncodedSize(value, BundleFields);
 }
-
 [[nodiscard]] inline int EncodeBundle(const BundleValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedBundleSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin();
-    if (status == BML_OK && value.HasObjects) status = writer.WriteObjectArray(BundleField::Objects, value.Objects);
-    if (status == BML_OK && value.HasPoints) status = writer.WriteVec3Array(BundleField::Points, value.Points);
-    if (status == BML_OK && value.HasWeights) status = writer.WriteFloatArray(BundleField::Weights, value.Weights);
-    if (status == BML_OK && value.HasLabels) status = writer.WriteStringArray(BundleField::Labels, value.Labels);
-    return status == BML_OK ? writer.Finish() : status;
+    return ::BML::Imc::Wire::Encode(value, data, size, BundleFields);
 }
-
 [[nodiscard]] inline int DecodeBundle(const BML_ImcMessage &message, BundleValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin();
-    if (status != BML_OK) return status;
-    BundleValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case BundleField::Objects:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObjectArray(field, decoded.Objects);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            decoded.HasObjects = true;
-            break;
-        case BundleField::Points:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadVec3Array(field, decoded.Points);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            decoded.HasPoints = true;
-            break;
-        case BundleField::Weights:
-            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadFloatArray(field, decoded.Weights);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 2;
-            decoded.HasWeights = true;
-            break;
-        case BundleField::Labels:
-            if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Labels);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 3;
-            decoded.HasLabels = true;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x0)) != UINT64_C(0x0)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
+    return ::BML::Imc::Wire::Decode(message, out, BundleFields);
 }
 
 inline constexpr const char NoticePayload[] = "test.sample/v1/payload/notice";
@@ -175,64 +85,19 @@ struct NoticeValue {
     std::vector<std::string> Tags{};
 };
 
+inline constexpr ::BML::Imc::Wire::FieldCodec<NoticeValue> NoticeFields[] = {
+    ::BML::Imc::Wire::Field<&NoticeValue::Kind>(NoticeField::Kind),
+    ::BML::Imc::Wire::Field<&NoticeValue::Enabled, &NoticeValue::HasEnabled>(NoticeField::Enabled),
+    ::BML::Imc::Wire::Field<&NoticeValue::Tags, &NoticeValue::HasTags>(NoticeField::Tags),
+};
 inline std::size_t EncodedNoticeSize(const NoticeValue &value) noexcept {
-    std::size_t size = 0;
-    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, NoticeField::Kind)) return 0;
-    if (value.HasEnabled && !::BML::Imc::Wire::AddBoolFieldSize(size, NoticeField::Enabled)) return 0;
-    if (value.HasTags && !::BML::Imc::Wire::AddStringArrayFieldSize(size, NoticeField::Tags, value.Tags)) return 0;
-    return size;
+    return ::BML::Imc::Wire::EncodedSize(value, NoticeFields);
 }
-
 [[nodiscard]] inline int EncodeNotice(const NoticeValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedNoticeSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin();
-    if (status == BML_OK) status = writer.WriteInt(NoticeField::Kind, value.Kind);
-    if (status == BML_OK && value.HasEnabled) status = writer.WriteBool(NoticeField::Enabled, value.Enabled);
-    if (status == BML_OK && value.HasTags) status = writer.WriteStringArray(NoticeField::Tags, value.Tags);
-    return status == BML_OK ? writer.Finish() : status;
+    return ::BML::Imc::Wire::Encode(value, data, size, NoticeFields);
 }
-
 [[nodiscard]] inline int DecodeNotice(const BML_ImcMessage &message, NoticeValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin();
-    if (status != BML_OK) return status;
-    NoticeValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case NoticeField::Kind:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Kind);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case NoticeField::Enabled:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadBool(field, decoded.Enabled);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            decoded.HasEnabled = true;
-            break;
-        case NoticeField::Tags:
-            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Tags);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 2;
-            decoded.HasTags = true;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
+    return ::BML::Imc::Wire::Decode(message, out, NoticeFields);
 }
 
 inline constexpr const char ObjectRequestPayload[] = "test.sample/v1/payload/object_request";
@@ -243,46 +108,17 @@ struct ObjectRequestValue {
     BML_ObjectRef Object{};
 };
 
+inline constexpr ::BML::Imc::Wire::FieldCodec<ObjectRequestValue> ObjectRequestFields[] = {
+    ::BML::Imc::Wire::Field<&ObjectRequestValue::Object>(ObjectRequestField::Object),
+};
 inline std::size_t EncodedObjectRequestSize(const ObjectRequestValue &value) noexcept {
-    std::size_t size = 0;
-    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, ObjectRequestField::Object, 12)) return 0;
-    return size;
+    return ::BML::Imc::Wire::EncodedSize(value, ObjectRequestFields);
 }
-
 [[nodiscard]] inline int EncodeObjectRequest(const ObjectRequestValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedObjectRequestSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin();
-    if (status == BML_OK) status = writer.WriteObject(ObjectRequestField::Object, value.Object);
-    return status == BML_OK ? writer.Finish() : status;
+    return ::BML::Imc::Wire::Encode(value, data, size, ObjectRequestFields);
 }
-
 [[nodiscard]] inline int DecodeObjectRequest(const BML_ImcMessage &message, ObjectRequestValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin();
-    if (status != BML_OK) return status;
-    ObjectRequestValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case ObjectRequestField::Object:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Object);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
+    return ::BML::Imc::Wire::Decode(message, out, ObjectRequestFields);
 }
 
 inline constexpr const char ScalarStatePayload[] = "test.sample/v1/payload/scalar_state";
@@ -297,62 +133,19 @@ struct ScalarStateValue {
     float Ratio{};
 };
 
+inline constexpr ::BML::Imc::Wire::FieldCodec<ScalarStateValue> ScalarStateFields[] = {
+    ::BML::Imc::Wire::Field<&ScalarStateValue::Flag>(ScalarStateField::Flag),
+    ::BML::Imc::Wire::Field<&ScalarStateValue::Count>(ScalarStateField::Count),
+    ::BML::Imc::Wire::Field<&ScalarStateValue::Ratio>(ScalarStateField::Ratio),
+};
 inline std::size_t EncodedScalarStateSize(const ScalarStateValue &value) noexcept {
-    std::size_t size = 0;
-    if (!::BML::Imc::Wire::AddBoolFieldSize(size, ScalarStateField::Flag)) return 0;
-    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ScalarStateField::Count)) return 0;
-    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, ScalarStateField::Ratio)) return 0;
-    return size;
+    return ::BML::Imc::Wire::EncodedSize(value, ScalarStateFields);
 }
-
 [[nodiscard]] inline int EncodeScalarState(const ScalarStateValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedScalarStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin();
-    if (status == BML_OK) status = writer.WriteBool(ScalarStateField::Flag, value.Flag);
-    if (status == BML_OK) status = writer.WriteInt(ScalarStateField::Count, value.Count);
-    if (status == BML_OK) status = writer.WriteFloat(ScalarStateField::Ratio, value.Ratio);
-    return status == BML_OK ? writer.Finish() : status;
+    return ::BML::Imc::Wire::Encode(value, data, size, ScalarStateFields);
 }
-
 [[nodiscard]] inline int DecodeScalarState(const BML_ImcMessage &message, ScalarStateValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin();
-    if (status != BML_OK) return status;
-    ScalarStateValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case ScalarStateField::Flag:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadBool(field, decoded.Flag);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case ScalarStateField::Count:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.Count);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            break;
-        case ScalarStateField::Ratio:
-            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadFloat(field, decoded.Ratio);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 2;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x7)) != UINT64_C(0x7)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
+    return ::BML::Imc::Wire::Decode(message, out, ScalarStateFields);
 }
 
 inline constexpr const char TextInputPayload[] = "test.sample/v1/payload/text_input";
@@ -363,46 +156,17 @@ struct TextInputValue {
     std::string Text{};
 };
 
+inline constexpr ::BML::Imc::Wire::FieldCodec<TextInputValue> TextInputFields[] = {
+    ::BML::Imc::Wire::Field<&TextInputValue::Text>(TextInputField::Text),
+};
 inline std::size_t EncodedTextInputSize(const TextInputValue &value) noexcept {
-    std::size_t size = 0;
-    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, TextInputField::Text, value.Text.size())) return 0;
-    return size;
+    return ::BML::Imc::Wire::EncodedSize(value, TextInputFields);
 }
-
 [[nodiscard]] inline int EncodeTextInput(const TextInputValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedTextInputSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin();
-    if (status == BML_OK) status = writer.WriteString(TextInputField::Text, value.Text);
-    return status == BML_OK ? writer.Finish() : status;
+    return ::BML::Imc::Wire::Encode(value, data, size, TextInputFields);
 }
-
 [[nodiscard]] inline int DecodeTextInput(const BML_ImcMessage &message, TextInputValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin();
-    if (status != BML_OK) return status;
-    TextInputValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case TextInputField::Text:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadString(field, decoded.Text);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0x1)) != UINT64_C(0x1)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
+    return ::BML::Imc::Wire::Decode(message, out, TextInputFields);
 }
 
 inline constexpr const char TransformStatePayload[] = "test.sample/v1/payload/transform_state";
@@ -419,70 +183,20 @@ struct TransformStateValue {
     int ChildCount{};
 };
 
+inline constexpr ::BML::Imc::Wire::FieldCodec<TransformStateValue> TransformStateFields[] = {
+    ::BML::Imc::Wire::Field<&TransformStateValue::Position>(TransformStateField::Position),
+    ::BML::Imc::Wire::Field<&TransformStateValue::Scale>(TransformStateField::Scale),
+    ::BML::Imc::Wire::Field<&TransformStateValue::Parent>(TransformStateField::Parent),
+    ::BML::Imc::Wire::Field<&TransformStateValue::ChildCount>(TransformStateField::ChildCount),
+};
 inline std::size_t EncodedTransformStateSize(const TransformStateValue &value) noexcept {
-    std::size_t size = 0;
-    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, TransformStateField::Position, 12)) return 0;
-    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, TransformStateField::Scale, 12)) return 0;
-    if (!::BML::Imc::Wire::AddLengthDelimitedFieldSize(size, TransformStateField::Parent, 12)) return 0;
-    if (!::BML::Imc::Wire::AddFixed32FieldSize(size, TransformStateField::ChildCount)) return 0;
-    return size;
+    return ::BML::Imc::Wire::EncodedSize(value, TransformStateFields);
 }
-
 [[nodiscard]] inline int EncodeTransformState(const TransformStateValue &value, void *data, std::size_t size) noexcept {
-    if (size != EncodedTransformStateSize(value)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Writer writer(data, size);
-    int status = writer.Begin();
-    if (status == BML_OK) status = writer.WriteVec3(TransformStateField::Position, value.Position);
-    if (status == BML_OK) status = writer.WriteVec3(TransformStateField::Scale, value.Scale);
-    if (status == BML_OK) status = writer.WriteObject(TransformStateField::Parent, value.Parent);
-    if (status == BML_OK) status = writer.WriteInt(TransformStateField::ChildCount, value.ChildCount);
-    return status == BML_OK ? writer.Finish() : status;
+    return ::BML::Imc::Wire::Encode(value, data, size, TransformStateFields);
 }
-
 [[nodiscard]] inline int DecodeTransformState(const BML_ImcMessage &message, TransformStateValue &out) {
-    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
-    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
-    int status = reader.Begin();
-    if (status != BML_OK) return status;
-    TransformStateValue decoded{};
-    std::uint64_t seen = 0;
-    ::BML::Imc::Wire::FieldView field;
-    while ((status = reader.Next(field)) == BML_OK) {
-        switch (field.Id) {
-        case TransformStateField::Position:
-            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadVec3(field, decoded.Position);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 0;
-            break;
-        case TransformStateField::Scale:
-            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadVec3(field, decoded.Scale);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 1;
-            break;
-        case TransformStateField::Parent:
-            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadObject(field, decoded.Parent);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 2;
-            break;
-        case TransformStateField::ChildCount:
-            if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
-            status = ::BML::Imc::Wire::Reader::ReadInt(field, decoded.ChildCount);
-            if (status != BML_OK) return status;
-            seen |= UINT64_C(1) << 3;
-            break;
-        default:
-            break;
-        }
-    }
-    if (status != BML_ERROR_NOT_FOUND) return status;
-    status = reader.Finish();
-    if (status != BML_OK) return status;
-    if ((seen & UINT64_C(0xF)) != UINT64_C(0xF)) return BML_ERROR_MALFORMED_MESSAGE;
-    out = std::move(decoded);
-    return BML_OK;
+    return ::BML::Imc::Wire::Decode(message, out, TransformStateFields);
 }
 
 inline constexpr const char ArraysRoute[] = "test.sample/v1/rpc/arrays";
@@ -491,134 +205,66 @@ inline constexpr const char NoticesRoute[] = "test.sample/v1/topic/notices";
 inline constexpr const char StateRoute[] = "test.sample/v1/rpc/state";
 inline constexpr const char WriteRoute[] = "test.sample/v1/rpc/write";
 
-class NoticesSubscription {
-public:
-    using Handler = void (*)(int status, NoticeValue *value, const BML_ImcMessage *message, void *userdata);
-    NoticesSubscription() = default;
-    ~NoticesSubscription() { (void)Close(); }
-    NoticesSubscription(const NoticesSubscription &) = delete;
-    NoticesSubscription &operator=(const NoticesSubscription &) = delete;
-    [[nodiscard]] int Open(BML_ImcClient client, BML_ImcTopicId topic, BML_ImcPayloadTypeId payload,
-             Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,
-             BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST,
-             BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
-        const int closeStatus = Close(); if (IsOpen()) return closeStatus;
-        if (!client || topic == BML_IMC_INVALID_ID || payload == BML_IMC_INVALID_ID || !handler || capacity == 0) return BML_ERROR_INVALID_PARAMETER;
-        m_Client = client; m_Payload = payload; m_Handler = handler; m_Userdata = userdata;
-        BML_ImcSubscribeOptions options = BML_IMC_SUBSCRIBE_OPTIONS_INIT;
-        options.Execution = execution; options.Backpressure = backpressure; options.Capacity = capacity; options.ExpectedPayloadType = payload;
-        const int status = BML_Imc_Subscribe(client, topic, &options, &Dispatch, this, &m_Subscription);
-        if (status != BML_OK) Reset(); return status;
-    }
-    [[nodiscard]] int Close() noexcept {
-        if (!m_Subscription) return BML_OK;
-        const int status = BML_Imc_Unsubscribe(m_Client, m_Subscription);
-        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) Reset();
-        return status;
-    }
-    bool IsOpen() const noexcept { return m_Subscription != nullptr; }
-    [[nodiscard]] int DroppedCount(std::uint64_t &out) const noexcept {
-        return m_Subscription ? BML_Imc_GetSubscriptionDroppedCount(m_Client, m_Subscription, &out) : BML_ERROR_INVALID_HANDLE;
-    }
-private:
-    static void Dispatch(BML_ImcTopicId, const BML_ImcMessage *message, void *userdata) noexcept {
-        auto *self = static_cast<NoticesSubscription *>(userdata); if (!self || !self->m_Handler) return;
-        NoticeValue value{}; int status = BML_ERROR_MALFORMED_MESSAGE;
-        if (message && message->PayloadType == self->m_Payload) status = DecodeNotice(*message, value);
-        else if (message) status = BML_ERROR_TYPE_MISMATCH;
-        try { self->m_Handler(status, status == BML_OK ? &value : nullptr, message, self->m_Userdata); } catch (...) {}
-    }
-    void Reset() noexcept { m_Client = nullptr; m_Subscription = nullptr; m_Payload = BML_IMC_INVALID_ID; m_Handler = nullptr; m_Userdata = nullptr; }
-    BML_ImcClient m_Client = nullptr; BML_ImcSubscription m_Subscription = nullptr;
-    BML_ImcPayloadTypeId m_Payload = BML_IMC_INVALID_ID; Handler m_Handler = nullptr; void *m_Userdata = nullptr;
-};
+using NoticesSubscription = ::BML::Imc::TopicSubscription<NoticeValue, &DecodeNotice>;
 
-class Client {
+class Client : public ::BML::Imc::ClientBase<12> {
+    using Base = ::BML::Imc::ClientBase<12>;
+    static constexpr ::BML::Imc::RouteBinding Routes[] = {
+        {::BML::Imc::RouteKind::Payload, ArrayStatePayload},
+        {::BML::Imc::RouteKind::Payload, BundlePayload},
+        {::BML::Imc::RouteKind::Payload, NoticePayload},
+        {::BML::Imc::RouteKind::Payload, ObjectRequestPayload},
+        {::BML::Imc::RouteKind::Payload, ScalarStatePayload},
+        {::BML::Imc::RouteKind::Payload, TextInputPayload},
+        {::BML::Imc::RouteKind::Payload, TransformStatePayload},
+        {::BML::Imc::RouteKind::Rpc, ArraysRoute},
+        {::BML::Imc::RouteKind::Rpc, EntityRoute},
+        {::BML::Imc::RouteKind::Topic, NoticesRoute},
+        {::BML::Imc::RouteKind::Rpc, StateRoute},
+        {::BML::Imc::RouteKind::Rpc, WriteRoute},
+    };
+    enum : std::size_t {
+        IndexArrayStatePayload,
+        IndexBundlePayload,
+        IndexNoticePayload,
+        IndexObjectRequestPayload,
+        IndexScalarStatePayload,
+        IndexTextInputPayload,
+        IndexTransformStatePayload,
+        IndexArraysRpc,
+        IndexEntityRpc,
+        IndexNoticesTopic,
+        IndexStateRpc,
+        IndexWriteRpc,
+    };
+
 public:
-    Client() = default;
-    ~Client() { (void)Close(); }
-    Client(const Client &) = delete;
-    Client &operator=(const Client &) = delete;
+    Client() noexcept : Base(Routes) {}
 
     using ArraysFuture = ::BML::Imc::RpcFuture<ArrayStateValue>;
     using EntityFuture = ::BML::Imc::RpcFuture<TransformStateValue>;
     using StateFuture = ::BML::Imc::RpcFuture<ScalarStateValue>;
     using WriteFuture = ::BML::Imc::RpcFuture<void>;
 
-    [[nodiscard]] int Open(const char *ownerId = nullptr) noexcept {
-        const int closeStatus = Close(); if (m_Client) return closeStatus;
-        BML_ImcClient client = nullptr;
-        const int status = BML_Imc_OpenClient(ownerId, &client);
-        return status == BML_OK ? Adopt(client) : status;
-    }
-    [[nodiscard]] int Adopt(BML_ImcClient client) noexcept {
-        const int closeStatus = Close(); if (m_Client) return closeStatus;
-        if (!client) return BML_ERROR_INVALID_PARAMETER;
-        m_Client = client;
-        int status = BML_OK;
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ArrayStatePayload, &m_ArrayStatePayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, BundlePayload, &m_BundlePayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, NoticePayload, &m_NoticePayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ObjectRequestPayload, &m_ObjectRequestPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ScalarStatePayload, &m_ScalarStatePayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, TextInputPayload, &m_TextInputPayload);
-        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, TransformStatePayload, &m_TransformStatePayload);
-        if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, ArraysRoute, &m_ArraysRpc);
-        if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, EntityRoute, &m_EntityRpc);
-        if (status == BML_OK) status = BML_Imc_GetTopicId(m_Client, NoticesRoute, &m_NoticesTopic);
-        if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, StateRoute, &m_StateRpc);
-        if (status == BML_OK) status = BML_Imc_GetRpcId(m_Client, WriteRoute, &m_WriteRpc);
-        if (status != BML_OK) (void)Close();
-        return status;
-    }
-    [[nodiscard]] int Close() noexcept {
-        if (!m_Client) return BML_OK;
-        const int status = BML_Imc_CloseClient(m_Client);
-        if (status == BML_OK || status == BML_ERROR_INVALID_HANDLE) { m_Client = nullptr; ResetIds(); }
-        return status;
-    }
-    BML_ImcClient Handle() const noexcept { return m_Client; }
-    bool IsOpen() const noexcept { return m_Client != nullptr; }
-    [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
-    BML_ImcPayloadTypeId ArrayStatePayloadType() const noexcept { return m_ArrayStatePayload; }
-    BML_ImcPayloadTypeId BundlePayloadType() const noexcept { return m_BundlePayload; }
-    BML_ImcPayloadTypeId NoticePayloadType() const noexcept { return m_NoticePayload; }
-    BML_ImcPayloadTypeId ObjectRequestPayloadType() const noexcept { return m_ObjectRequestPayload; }
-    BML_ImcPayloadTypeId ScalarStatePayloadType() const noexcept { return m_ScalarStatePayload; }
-    BML_ImcPayloadTypeId TextInputPayloadType() const noexcept { return m_TextInputPayload; }
-    BML_ImcPayloadTypeId TransformStatePayloadType() const noexcept { return m_TransformStatePayload; }
-    BML_ImcRpcId ArraysRpcId() const noexcept { return m_ArraysRpc; }
-    [[nodiscard]] int IsArraysAvailable(bool &out) const noexcept {
-        int available = 0;
-        const int status = BML_Imc_IsRpcAvailable(m_Client, m_ArraysRpc, &available);
-        if (status == BML_OK) out = available != 0;
-        return status;
-    }
-    BML_ImcRpcId EntityRpcId() const noexcept { return m_EntityRpc; }
-    [[nodiscard]] int IsEntityAvailable(bool &out) const noexcept {
-        int available = 0;
-        const int status = BML_Imc_IsRpcAvailable(m_Client, m_EntityRpc, &available);
-        if (status == BML_OK) out = available != 0;
-        return status;
-    }
-    BML_ImcTopicId NoticesTopicId() const noexcept { return m_NoticesTopic; }
-    BML_ImcRpcId StateRpcId() const noexcept { return m_StateRpc; }
-    [[nodiscard]] int IsStateAvailable(bool &out) const noexcept {
-        int available = 0;
-        const int status = BML_Imc_IsRpcAvailable(m_Client, m_StateRpc, &available);
-        if (status == BML_OK) out = available != 0;
-        return status;
-    }
-    BML_ImcRpcId WriteRpcId() const noexcept { return m_WriteRpc; }
-    [[nodiscard]] int IsWriteAvailable(bool &out) const noexcept {
-        int available = 0;
-        const int status = BML_Imc_IsRpcAvailable(m_Client, m_WriteRpc, &available);
-        if (status == BML_OK) out = available != 0;
-        return status;
-    }
+    BML_ImcPayloadTypeId ArrayStatePayloadType() const noexcept { return RouteId(IndexArrayStatePayload); }
+    BML_ImcPayloadTypeId BundlePayloadType() const noexcept { return RouteId(IndexBundlePayload); }
+    BML_ImcPayloadTypeId NoticePayloadType() const noexcept { return RouteId(IndexNoticePayload); }
+    BML_ImcPayloadTypeId ObjectRequestPayloadType() const noexcept { return RouteId(IndexObjectRequestPayload); }
+    BML_ImcPayloadTypeId ScalarStatePayloadType() const noexcept { return RouteId(IndexScalarStatePayload); }
+    BML_ImcPayloadTypeId TextInputPayloadType() const noexcept { return RouteId(IndexTextInputPayload); }
+    BML_ImcPayloadTypeId TransformStatePayloadType() const noexcept { return RouteId(IndexTransformStatePayload); }
+    BML_ImcRpcId ArraysRpcId() const noexcept { return RouteId(IndexArraysRpc); }
+    [[nodiscard]] int IsArraysAvailable(bool &out) const noexcept { return RpcAvailable(IndexArraysRpc, out); }
+    BML_ImcRpcId EntityRpcId() const noexcept { return RouteId(IndexEntityRpc); }
+    [[nodiscard]] int IsEntityAvailable(bool &out) const noexcept { return RpcAvailable(IndexEntityRpc, out); }
+    BML_ImcTopicId NoticesTopicId() const noexcept { return RouteId(IndexNoticesTopic); }
+    BML_ImcRpcId StateRpcId() const noexcept { return RouteId(IndexStateRpc); }
+    [[nodiscard]] int IsStateAvailable(bool &out) const noexcept { return RpcAvailable(IndexStateRpc, out); }
+    BML_ImcRpcId WriteRpcId() const noexcept { return RouteId(IndexWriteRpc); }
+    [[nodiscard]] int IsWriteAvailable(bool &out) const noexcept { return RpcAvailable(IndexWriteRpc, out); }
 
     [[nodiscard]] int BeginCallArrays(ArraysFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        return ::BML::Imc::BeginRpc(m_Client, m_ArraysRpc, nullptr, m_ArrayStatePayload, out, DecodeArrayState, timeoutMs);
+        return ::BML::Imc::BeginRpc(Handle(), ArraysRpcId(), nullptr, ArrayStatePayloadType(), out, DecodeArrayState, timeoutMs);
     }
     [[nodiscard]] int CallArrays(ArrayStateValue &out, std::uint32_t timeoutMs = 5000u) {
         ArraysFuture future; int status = BeginCallArrays(future, timeoutMs);
@@ -626,25 +272,25 @@ public:
     }
     [[nodiscard]] int BeginCallEntity(const ObjectRequestValue &input, EntityFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_ObjectRequestPayload, buffer, request, EncodedObjectRequestSize, EncodeObjectRequest);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_EntityRpc, &request, m_TransformStatePayload, out, DecodeTransformState, timeoutMs) : status;
+        int status = ::BML::Imc::EncodeMessage(input, ObjectRequestPayloadType(), buffer, request, EncodedObjectRequestSize, EncodeObjectRequest);
+        return status == BML_OK ? ::BML::Imc::BeginRpc(Handle(), EntityRpcId(), &request, TransformStatePayloadType(), out, DecodeTransformState, timeoutMs) : status;
     }
     [[nodiscard]] int CallEntity(const ObjectRequestValue &input, TransformStateValue &out, std::uint32_t timeoutMs = 5000u) {
         EntityFuture future; int status = BeginCallEntity(input, future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(out, timeoutMs) : status;
     }
     [[nodiscard]] int PublishNotices(const NoticeValue &value, std::size_t *outDelivered = nullptr) noexcept {
-        return ::BML::Imc::Publish(m_Client, m_NoticesTopic, m_NoticePayload, value, EncodedNoticeSize, EncodeNotice, outDelivered);
+        return ::BML::Imc::Publish(Handle(), NoticesTopicId(), NoticePayloadType(), value, EncodedNoticeSize, EncodeNotice, outDelivered);
     }
     [[nodiscard]] int GetNoticesSubscriberCount(std::size_t &outCount) const noexcept {
-        return BML_Imc_GetTopicSubscriberCount(m_Client, m_NoticesTopic, &outCount);
+        return BML_Imc_GetTopicSubscriberCount(Handle(), NoticesTopicId(), &outCount);
     }
     [[nodiscard]] int SubscribeNotices(NoticesSubscription &out, NoticesSubscription::Handler handler, void *userdata = nullptr, std::uint32_t capacity = 256u,
                      BML_ImcBackpressure backpressure = BML_IMC_BACKPRESSURE_DROP_OLDEST, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
-        return out.Open(m_Client, m_NoticesTopic, m_NoticePayload, handler, userdata, capacity, backpressure, execution);
+        return out.Open(Handle(), NoticesTopicId(), NoticePayloadType(), handler, userdata, capacity, backpressure, execution);
     }
     [[nodiscard]] int BeginCallState(StateFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
-        return ::BML::Imc::BeginRpc(m_Client, m_StateRpc, nullptr, m_ScalarStatePayload, out, DecodeScalarState, timeoutMs);
+        return ::BML::Imc::BeginRpc(Handle(), StateRpcId(), nullptr, ScalarStatePayloadType(), out, DecodeScalarState, timeoutMs);
     }
     [[nodiscard]] int CallState(ScalarStateValue &out, std::uint32_t timeoutMs = 5000u) {
         StateFuture future; int status = BeginCallState(future, timeoutMs);
@@ -652,41 +298,13 @@ public:
     }
     [[nodiscard]] int BeginCallWrite(const TextInputValue &input, WriteFuture &out, std::uint32_t timeoutMs = 5000u) noexcept {
         ::BML::Imc::MessageBuffer buffer; BML_ImcMessage request{};
-        int status = ::BML::Imc::EncodeMessage(input, m_TextInputPayload, buffer, request, EncodedTextInputSize, EncodeTextInput);
-        return status == BML_OK ? ::BML::Imc::BeginRpc(m_Client, m_WriteRpc, &request, out, timeoutMs) : status;
+        int status = ::BML::Imc::EncodeMessage(input, TextInputPayloadType(), buffer, request, EncodedTextInputSize, EncodeTextInput);
+        return status == BML_OK ? ::BML::Imc::BeginRpc(Handle(), WriteRpcId(), &request, out, timeoutMs) : status;
     }
     [[nodiscard]] int CallWrite(const TextInputValue &input, std::uint32_t timeoutMs = 5000u) {
         WriteFuture future; int status = BeginCallWrite(input, future, timeoutMs);
         return status == BML_OK ? future.AwaitResult(timeoutMs) : status;
     }
-private:
-    void ResetIds() noexcept {
-        m_ArrayStatePayload = BML_IMC_INVALID_ID;
-        m_BundlePayload = BML_IMC_INVALID_ID;
-        m_NoticePayload = BML_IMC_INVALID_ID;
-        m_ObjectRequestPayload = BML_IMC_INVALID_ID;
-        m_ScalarStatePayload = BML_IMC_INVALID_ID;
-        m_TextInputPayload = BML_IMC_INVALID_ID;
-        m_TransformStatePayload = BML_IMC_INVALID_ID;
-        m_ArraysRpc = BML_IMC_INVALID_ID;
-        m_EntityRpc = BML_IMC_INVALID_ID;
-        m_NoticesTopic = BML_IMC_INVALID_ID;
-        m_StateRpc = BML_IMC_INVALID_ID;
-        m_WriteRpc = BML_IMC_INVALID_ID;
-    }
-    BML_ImcClient m_Client = nullptr;
-    BML_ImcPayloadTypeId m_ArrayStatePayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_BundlePayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_NoticePayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_ObjectRequestPayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_ScalarStatePayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_TextInputPayload = BML_IMC_INVALID_ID;
-    BML_ImcPayloadTypeId m_TransformStatePayload = BML_IMC_INVALID_ID;
-    BML_ImcRpcId m_ArraysRpc = BML_IMC_INVALID_ID;
-    BML_ImcRpcId m_EntityRpc = BML_IMC_INVALID_ID;
-    BML_ImcTopicId m_NoticesTopic = BML_IMC_INVALID_ID;
-    BML_ImcRpcId m_StateRpc = BML_IMC_INVALID_ID;
-    BML_ImcRpcId m_WriteRpc = BML_IMC_INVALID_ID;
 };
 
 class Provider {
@@ -730,142 +348,52 @@ public:
     }
 
     [[nodiscard]] int RegisterArrays(ArraysHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
-        if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
-        if (m_Arrays.Registered) return BML_ERROR_ALREADY_EXISTS;
-        m_Arrays = {this, handler, userdata, false};
-        BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT; options.Execution = execution;
-        const int status = BML_Imc_RegisterRpc(m_Transport.Handle(), m_Transport.ArraysRpcId(), &options, &ArraysThunk, &m_Arrays);
-        if (status == BML_OK) m_Arrays.Registered = true; else m_Arrays = {};
-        return status;
+        return ::BML::Imc::RegisterRpc<ArraysBinding>(m_Transport.Handle(), m_Transport.ArraysRpcId(), m_Arrays, handler, userdata, execution,
+                                      BML_IMC_INVALID_ID, m_Transport.ArrayStatePayloadType());
     }
     [[nodiscard]] int UnregisterArrays() noexcept {
-        if (!m_Arrays.Registered) return BML_ERROR_NOT_FOUND;
-        const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.ArraysRpcId());
-        if (status == BML_OK) m_Arrays = {};
-        return status;
+        return ::BML::Imc::UnregisterRpc(m_Transport.Handle(), m_Transport.ArraysRpcId(), m_Arrays);
     }
-
     [[nodiscard]] int RegisterEntity(EntityHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
-        if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
-        if (m_Entity.Registered) return BML_ERROR_ALREADY_EXISTS;
-        m_Entity = {this, handler, userdata, false};
-        BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT; options.Execution = execution;
-        const int status = BML_Imc_RegisterRpc(m_Transport.Handle(), m_Transport.EntityRpcId(), &options, &EntityThunk, &m_Entity);
-        if (status == BML_OK) m_Entity.Registered = true; else m_Entity = {};
-        return status;
+        return ::BML::Imc::RegisterRpc<EntityBinding>(m_Transport.Handle(), m_Transport.EntityRpcId(), m_Entity, handler, userdata, execution,
+                                      m_Transport.ObjectRequestPayloadType(), m_Transport.TransformStatePayloadType());
     }
     [[nodiscard]] int UnregisterEntity() noexcept {
-        if (!m_Entity.Registered) return BML_ERROR_NOT_FOUND;
-        const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.EntityRpcId());
-        if (status == BML_OK) m_Entity = {};
-        return status;
+        return ::BML::Imc::UnregisterRpc(m_Transport.Handle(), m_Transport.EntityRpcId(), m_Entity);
     }
-
     [[nodiscard]] int RegisterState(StateHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
-        if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
-        if (m_State.Registered) return BML_ERROR_ALREADY_EXISTS;
-        m_State = {this, handler, userdata, false};
-        BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT; options.Execution = execution;
-        const int status = BML_Imc_RegisterRpc(m_Transport.Handle(), m_Transport.StateRpcId(), &options, &StateThunk, &m_State);
-        if (status == BML_OK) m_State.Registered = true; else m_State = {};
-        return status;
+        return ::BML::Imc::RegisterRpc<StateBinding>(m_Transport.Handle(), m_Transport.StateRpcId(), m_State, handler, userdata, execution,
+                                      BML_IMC_INVALID_ID, m_Transport.ScalarStatePayloadType());
     }
     [[nodiscard]] int UnregisterState() noexcept {
-        if (!m_State.Registered) return BML_ERROR_NOT_FOUND;
-        const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.StateRpcId());
-        if (status == BML_OK) m_State = {};
-        return status;
+        return ::BML::Imc::UnregisterRpc(m_Transport.Handle(), m_Transport.StateRpcId(), m_State);
     }
-
     [[nodiscard]] int RegisterWrite(WriteHandler handler, void *userdata = nullptr, BML_ImcExecution execution = BML_IMC_EXECUTION_GAME_THREAD) noexcept {
-        if (!m_Transport.Handle() || !handler) return BML_ERROR_INVALID_PARAMETER;
-        if (m_Write.Registered) return BML_ERROR_ALREADY_EXISTS;
-        m_Write = {this, handler, userdata, false};
-        BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT; options.Execution = execution;
-        const int status = BML_Imc_RegisterRpc(m_Transport.Handle(), m_Transport.WriteRpcId(), &options, &WriteThunk, &m_Write);
-        if (status == BML_OK) m_Write.Registered = true; else m_Write = {};
-        return status;
+        return ::BML::Imc::RegisterRpc<WriteBinding>(m_Transport.Handle(), m_Transport.WriteRpcId(), m_Write, handler, userdata, execution,
+                                      m_Transport.TextInputPayloadType(), BML_IMC_INVALID_ID);
     }
     [[nodiscard]] int UnregisterWrite() noexcept {
-        if (!m_Write.Registered) return BML_ERROR_NOT_FOUND;
-        const int status = BML_Imc_UnregisterRpc(m_Transport.Handle(), m_Transport.WriteRpcId());
-        if (status == BML_OK) m_Write = {};
-        return status;
+        return ::BML::Imc::UnregisterRpc(m_Transport.Handle(), m_Transport.WriteRpcId(), m_Write);
     }
 
 private:
-    struct ArraysSlot { Provider *Owner = nullptr; ArraysHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    [[nodiscard]] static int ArraysThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
-        auto *slot = static_cast<ArraysSlot *>(userdata);
-        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
-        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
-        auto *owner = slot->Owner;
-        try {
-            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.ArrayStatePayloadType();
-            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            ArrayStateValue output{}; const int status = function(output, handlerUserdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedArrayStateSize, EncodeArrayState);
-        } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
-    }
-    struct EntitySlot { Provider *Owner = nullptr; EntityHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    [[nodiscard]] static int EntityThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
-        auto *slot = static_cast<EntitySlot *>(userdata);
-        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
-        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
-        auto *owner = slot->Owner;
-        try {
-            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.TransformStatePayloadType();
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != owner->m_Transport.ObjectRequestPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            ObjectRequestValue input{}; int status = DecodeObjectRequest(*request, input);
-            if (status != BML_OK) return status;
-            TransformStateValue output{}; status = function(input, output, handlerUserdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedTransformStateSize, EncodeTransformState);
-        } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
-    }
-    struct StateSlot { Provider *Owner = nullptr; StateHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    [[nodiscard]] static int StateThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *response, void *userdata) noexcept {
-        auto *slot = static_cast<StateSlot *>(userdata);
-        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
-        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
-        auto *owner = slot->Owner;
-        try {
-            const BML_ImcPayloadTypeId responsePayload = owner->m_Transport.ScalarStatePayloadType();
-            if (request && (request->Size < sizeof(BML_ImcMessage) || request->DataSize != 0)) return BML_ERROR_MALFORMED_MESSAGE;
-            ScalarStateValue output{}; const int status = function(output, handlerUserdata);
-            if (status != BML_OK) return status;
-            return ::BML::Imc::WriteResponse(response, responsePayload, output, EncodedScalarStateSize, EncodeScalarState);
-        } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
-    }
-    struct WriteSlot { Provider *Owner = nullptr; WriteHandler Function = nullptr; void *Userdata = nullptr; bool Registered = false; };
-    [[nodiscard]] static int WriteThunk(BML_ImcRpcId, const BML_ImcMessage *request, BML_ImcResponse *, void *userdata) noexcept {
-        auto *slot = static_cast<WriteSlot *>(userdata);
-        if (!slot || !slot->Owner || !slot->Function) return BML_ERROR_INVALID_PARAMETER;
-        const auto function = slot->Function; void *handlerUserdata = slot->Userdata;
-        auto *owner = slot->Owner;
-        try {
-            if (!request || request->Size < sizeof(BML_ImcMessage)) return BML_ERROR_MALFORMED_MESSAGE;
-            if (request->PayloadType != owner->m_Transport.TextInputPayloadType()) return BML_ERROR_TYPE_MISMATCH;
-            TextInputValue input{}; int status = DecodeTextInput(*request, input);
-            if (status != BML_OK) return status;
-            status = function(input, handlerUserdata);
-            if (status != BML_OK) return status;
-            return BML_OK;
-        } catch (...) { return BML_ERROR_IMC_TARGET_EXECUTION_FAILED; }
-    }
+    using ArraysBinding = ::BML::Imc::RpcBinding<void, ArrayStateValue, ArraysHandler, nullptr, &EncodedArrayStateSize, &EncodeArrayState>;
+    using EntityBinding = ::BML::Imc::RpcBinding<ObjectRequestValue, TransformStateValue, EntityHandler, &DecodeObjectRequest, &EncodedTransformStateSize, &EncodeTransformState>;
+    using StateBinding = ::BML::Imc::RpcBinding<void, ScalarStateValue, StateHandler, nullptr, &EncodedScalarStateSize, &EncodeScalarState>;
+    using WriteBinding = ::BML::Imc::RpcBinding<TextInputValue, void, WriteHandler, &DecodeTextInput>;
+
     void ResetSlots() noexcept {
         m_Arrays = {};
         m_Entity = {};
         m_State = {};
         m_Write = {};
     }
+
     Client m_Transport;
-    ArraysSlot m_Arrays{};
-    EntitySlot m_Entity{};
-    StateSlot m_State{};
-    WriteSlot m_Write{};
+    ArraysBinding::Slot m_Arrays{};
+    EntityBinding::Slot m_Entity{};
+    StateBinding::Slot m_State{};
+    WriteBinding::Slot m_Write{};
 };
 
 } // namespace BML::Imc::Generated::Test::Sample
