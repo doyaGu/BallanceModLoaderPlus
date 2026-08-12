@@ -1,6 +1,7 @@
 #include "BML/BML.h"
 #include "BML/Runtime.h"
 #include "BML/Speedrun.h"
+#include "BML/UI.h"
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
     BML_FreeStringArray(strings, count);
@@ -67,4 +68,26 @@ int BML_TestCAbiRuntimeInterface(void) {
         runtime->ReadScore(&score) != BML_OK)
         return 0;
     return state.Playing && clock.Frame >= 0 && score.HS >= 0;
+}
+
+// The UI interface is mostly commands rather than reads, and its HUD bitmask is an
+// enum, so this checks that a void-argument member, a string argument, and the
+// BML_UI_HUD_* values are all reachable the C way.
+int BML_TestCAbiUIInterface(const char *message) {
+    const void *found = NULL;
+    const BML_UIInterface *ui = NULL;
+    BML_UIHUDState hud = {0};
+
+    if (BML_GetInterface(BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    ui = (const BML_UIInterface *) found;
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, ShowFPS))
+        return 0;
+    if (ui->ReadHUDState(&hud) != BML_OK)
+        return 0;
+    if (ui->AddMessage(message) != BML_OK || ui->ClearMessages() != BML_OK)
+        return 0;
+    if (ui->SetHUDMode(hud.Mode | BML_UI_HUD_TITLE | BML_UI_HUD_FPS | BML_UI_HUD_SR) != BML_OK)
+        return 0;
+    return ui->ShowTitle(0) == BML_OK && ui->ShowFPS(1) == BML_OK;
 }

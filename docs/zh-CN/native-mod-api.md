@@ -214,7 +214,8 @@ void MyMod::OnUnload() {
 
 - `Bui` 直接绘制 Ballance 风格的 ImGui 控件，适合原生覆盖层界面。
 - `BGui` 创建和操作由 Virtools 2D Entity/Behavior 组成的游戏内 UI。
-- `BML::UI` 不绘制控件，而是通过 IMC 控制 Loader 已有的消息、菜单和 HUD。
+- `BML::UI` 不绘制控件，而是控制 Loader 已有的消息、菜单和 HUD，且每个调用
+  都必须在游戏线程上发出。
 
 三者解决的问题不同，不应互相替代或混用命名。
 

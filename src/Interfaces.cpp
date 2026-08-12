@@ -8,6 +8,7 @@
 #include "BML/Interface.h"
 #include "BML/Runtime.h"
 #include "BML/Speedrun.h"
+#include "BML/UI.h"
 
 #include <iterator>
 #include <limits>
@@ -31,6 +32,18 @@ int Serve(Body &&body) {
     } catch (...) {
         return BML_ERROR_FAIL;
     }
+}
+
+// The UI thunks read and write state the loader draws from the main thread, so
+// they refuse a call from anywhere else rather than racing the frame that draws
+// it. The read refuses too, so there is one rule for the whole interface.
+template <typename Body>
+int ServeOnMainThread(Body &&body) {
+    return Serve([&body](ModContext &context) {
+        if (!context.IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        return body(context);
+    });
 }
 
 int RuntimeReadState(BML_RuntimeState *out) {
@@ -112,6 +125,80 @@ int SpeedrunResetTimer() {
     });
 }
 
+int UIReadHUDState(BML_UIHUDState *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([out](ModContext &context) {
+        out->Mode = context.GetHUD();
+        return BML_OK;
+    });
+}
+
+int UIAddMessage(const char *message) {
+    if (!message)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([message](ModContext &context) {
+        context.SendIngameMessage(message);
+        return BML_OK;
+    });
+}
+
+int UIClearMessages() {
+    return ServeOnMainThread([](ModContext &context) {
+        context.ClearIngameMessages();
+        return BML_OK;
+    });
+}
+
+int UIOpenModsMenu() {
+    return ServeOnMainThread([](ModContext &context) {
+        context.OpenModsMenu();
+        return BML_OK;
+    });
+}
+
+int UICloseModsMenu() {
+    return ServeOnMainThread([](ModContext &context) {
+        context.CloseModsMenu();
+        return BML_OK;
+    });
+}
+
+int UIOpenMapMenu() {
+    return ServeOnMainThread([](ModContext &context) {
+        context.OpenMapMenu();
+        return BML_OK;
+    });
+}
+
+int UICloseMapMenu() {
+    return ServeOnMainThread([](ModContext &context) {
+        context.CloseMapMenu();
+        return BML_OK;
+    });
+}
+
+int UISetHUDMode(int mode) {
+    return ServeOnMainThread([mode](ModContext &context) {
+        context.SetHUD(mode);
+        return BML_OK;
+    });
+}
+
+int UIShowTitle(int visible) {
+    return ServeOnMainThread([visible](ModContext &context) {
+        context.ShowTitle(visible != 0);
+        return BML_OK;
+    });
+}
+
+int UIShowFPS(int visible) {
+    return ServeOnMainThread([visible](ModContext &context) {
+        context.ShowFPS(visible != 0);
+        return BML_OK;
+    });
+}
+
 const BML_RuntimeInterface kRuntimeInterface = {
     BML_IFACE_HEADER(BML_RuntimeInterface, BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR,
                      BML_RUNTIME_INTERFACE_MINOR),
@@ -130,9 +217,25 @@ const BML_SpeedrunInterface kSpeedrunInterface = {
     &SpeedrunResetTimer,
 };
 
+const BML_UIInterface kUIInterface = {
+    BML_IFACE_HEADER(BML_UIInterface, BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR,
+                     BML_UI_INTERFACE_MINOR),
+    &UIReadHUDState,
+    &UIAddMessage,
+    &UIClearMessages,
+    &UIOpenModsMenu,
+    &UICloseModsMenu,
+    &UIOpenMapMenu,
+    &UICloseMapMenu,
+    &UISetHUDMode,
+    &UIShowTitle,
+    &UIShowFPS,
+};
+
 const BML::InterfaceEntry kInterfaces[] = {
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
     {BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR, &kSpeedrunInterface},
+    {BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR, &kUIInterface},
 };
 
 } // namespace

@@ -19,14 +19,12 @@
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/Generated/bml_scene_imc.hpp"
-#include "BML/Generated/bml_ui_imc.hpp"
 
 namespace {
 
 namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
 namespace ImcGameplayApi = BML::Imc::Generated::Bml::Gameplay;
 namespace ImcSceneApi = BML::Imc::Generated::Bml::Scene;
-namespace ImcUiApi = BML::Imc::Generated::Bml::Ui;
 
 constexpr uint32_t kVirtoolsObjectDomain = BML_IMC_OBJECT_DOMAIN_VIRTOOLS;
 
@@ -73,7 +71,6 @@ public:
 
     void Unregister() {
         (void)m_ImcEvents.Close();
-        (void)m_ImcUi.Close();
         (void)m_ImcGameplay.Close();
         (void)m_ImcScene.Close();
     }
@@ -189,26 +186,11 @@ private:
         gameplay.Checkpoints = &ReadImcGameplayCheckpoints;
         gameplay.Resetpoints = &ReadImcGameplayResetpoints;
 
-        ImcUiApi::Provider::Handlers ui{};
-        ui.Userdata = this;
-        ui.MessageAdd = &ImcUiMessageAdd;
-        ui.MessageClear = &ImcUiMessageClear;
-        ui.ModsMenuOpen = &ImcUiModsMenuOpen;
-        ui.ModsMenuClose = &ImcUiModsMenuClose;
-        ui.MapMenuOpen = &ImcUiMapMenuOpen;
-        ui.MapMenuClose = &ImcUiMapMenuClose;
-        ui.HudSet = &ImcUiHudSet;
-        ui.HudTitleShow = &ImcUiHudTitleShow;
-        ui.HudFpsShow = &ImcUiHudFpsShow;
-        ui.State = &ReadImcUiState;
-
         int status = m_ImcScene.Start(scene, owner);
         if (status == BML_OK) status = m_ImcGameplay.Start(gameplay, owner);
-        if (status == BML_OK) status = m_ImcUi.Start(ui, owner);
         if (status == BML_OK) status = m_ImcEvents.Open(owner);
         if (status != BML_OK) {
             (void)m_ImcEvents.Close();
-            (void)m_ImcUi.Close();
             (void)m_ImcGameplay.Close();
             (void)m_ImcScene.Close();
         }
@@ -338,50 +320,6 @@ private:
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
         return provider ? provider->ReadGameplayResetpoints(out) : BML_ERROR_INVALID_PARAMETER;
     }
-    static BuiltinImcProvider *ImcUiProvider(void *userdata) {
-        return static_cast<BuiltinImcProvider *>(userdata);
-    }
-
-    static int ImcUiMessageAdd(const ImcUiApi::MessageInputValue &input, void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.AddIngameMessage(input.Message.c_str()); return BML_OK;
-    }
-    static int ImcUiMessageClear(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.ClearIngameMessages(); return BML_OK;
-    }
-    static int ImcUiModsMenuOpen(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.OpenModsMenu(); return BML_OK;
-    }
-    static int ImcUiModsMenuClose(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.CloseModsMenu(); return BML_OK;
-    }
-    static int ImcUiMapMenuOpen(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.OpenMapMenu(); return BML_OK;
-    }
-    static int ImcUiMapMenuClose(void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.CloseMapMenu(); return BML_OK;
-    }
-    static int ImcUiHudSet(const ImcUiApi::HudModeInputValue &input, void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.SetHUD(input.Mode); return BML_OK;
-    }
-    static int ImcUiHudTitleShow(const ImcUiApi::VisibleInputValue &input, void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.ShowTitle(input.Visible); return BML_OK;
-    }
-    static int ImcUiHudFpsShow(const ImcUiApi::VisibleInputValue &input, void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.ShowFPS(input.Visible); return BML_OK;
-    }
-    static int ReadImcUiState(ImcUiApi::HudStateValue &out, void *userdata) {
-        auto *provider = ImcUiProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        out.Mode = provider->m_Mod.GetHUD(); return BML_OK;
-    }
 
     ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
 
@@ -461,7 +399,6 @@ private:
     ObjectReferences m_ObjectReferences;
     ImcSceneApi::Provider m_ImcScene;
     ImcGameplayApi::Provider m_ImcGameplay;
-    ImcUiApi::Provider m_ImcUi;
     ImcEventsApi::Client m_ImcEvents;
 };
 

@@ -239,7 +239,7 @@ evolution, cross-language bindings, RPC, or Topic semantics.
 - `Bui` draws Ballance-style ImGui widgets for native overlays.
 - `BGui` creates in-game UI from Virtools 2D Entities and Behaviors.
 - `BML::UI` does not draw widgets; it controls loader-owned messages, menus,
-  and HUD state through IMC.
+  and HUD state. Every one of its calls has to be made from the game thread.
 
 These surfaces solve different problems and are not interchangeable.
 

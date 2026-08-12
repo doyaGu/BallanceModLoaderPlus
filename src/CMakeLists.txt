@@ -33,13 +33,11 @@ find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 set(BML_IMC_API_INPUTS
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
 )
 set(BML_IMC_LOCK_INPUTS
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc.lock
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc.lock
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc.lock
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc.lock
 )
 add_custom_target(BML_ImcApiGeneration
@@ -48,7 +46,6 @@ add_custom_target(BML_ImcApiGeneration
                 --out-dir ${BML_INCLUDE_DIR}/BML/Generated
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
-                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
         DEPENDS
                 ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
@@ -117,7 +114,6 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/EventKinds.h
         ${BML_INCLUDE_DIR}/BML/Generated/bml_scene_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_imc.hpp
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_ui_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_events_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h

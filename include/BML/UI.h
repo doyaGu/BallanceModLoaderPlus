@@ -1,121 +1,187 @@
-// Drives the loader's own UI over IMC: the ingame message list, the mods and map
-// menus, and the HUD. This is a thin inline wrapper around the generated bml.ui
-// client, so including it costs nothing at link time.
+// Drives the loader's own UI: the ingame message list, the mods and map menus,
+// and the HUD. The interface struct below is what the loader hands out and what a
+// Mod written in C uses directly; the inline C++ namespace under it is the same
+// thing with the lookup and the checks folded in, so including this header still
+// costs nothing at link time.
 //
-// Status handling, first-call client opening, and the thread rules are the same
-// as in Runtime.h. The routes here run on the game thread, so a call from the
-// main thread executes inline and has taken effect by the time it returns, while
-// a call from any other thread is queued and served during the loader's next
-// frame, blocking the caller until then or until the 5000 ms default timeout.
+// Interface.h explains the header, the version rules, and BML_IFACE_HAS. Every
+// function here runs on the calling thread and touches UI state the loader draws
+// from the main thread, so every one of them, the read included, answers
+// BML_ERROR_WRONG_THREAD when called from any other thread. Nothing is queued for
+// the next frame: hand the work to the main thread yourself, from IMod::OnProcess
+// or another loader callback.
+//
+// Each function answers BML_ERROR_INVALID_PARAMETER for a null argument and
+// BML_ERROR_FAIL before the loader has loaded its mods. A read fills its out
+// parameter only when it answers BML_OK.
 //
 // None of this is ImGui. Unlike the Bui controls, which only work inside the
 // ImGui frame that the loader keeps open across IMod::OnProcess, these functions
-// hand work to loader-owned UI and can be called from any callback.
+// hand work to loader-owned UI and can be called from any main-thread callback.
 #ifndef BML_UI_H
 #define BML_UI_H
 
-#include "BML/Generated/bml_ui_imc.hpp"
+#include "BML/Interface.h"
+
+BML_BEGIN_CDECLS
+
+#define BML_UI_INTERFACE_ID "bml.ui"
+#define BML_UI_INTERFACE_MAJOR 1
+#define BML_UI_INTERFACE_MINOR 0
+
+// Bits accepted by SetHUDMode and reported by ReadHUDState. These match the
+// HUD_TITLE, HUD_FPS, and HUD_SR values the script API exposes.
+typedef enum BML_UIHUDElement {
+    BML_UI_HUD_TITLE = 1,
+    BML_UI_HUD_FPS = 2,
+    BML_UI_HUD_SR = 4,
+    _BML_UI_HUD_ELEMENT_FORCE_32BIT = 0x7fffffff
+} BML_UIHUDElement;
+
+// Mode is a bitmask of the BML_UIHUDElement values above. This is a C struct and
+// has no default member initializers: zero it with BML_UIHUDState state = {0} in
+// C, or with HUDState state{} in C++.
+typedef struct BML_UIHUDState {
+    int Mode;
+} BML_UIHUDState;
+
+typedef struct BML_UIInterface {
+    BML_InterfaceHeader Header;
+
+    int (*ReadHUDState)(BML_UIHUDState *out);
+
+    // Appends one line to the loader's ingame message list, the same list
+    // IBML::SendIngameMessage writes to. Older lines scroll off on their own.
+    int (*AddMessage)(const char *message);
+    int (*ClearMessages)(void);
+
+    int (*OpenModsMenu)(void);
+    int (*CloseModsMenu)(void);
+    int (*OpenMapMenu)(void);
+    int (*CloseMapMenu)(void);
+
+    // Replaces the whole HUD bitmask, so read it first and mask if you only mean
+    // to change one element. This writes the loader's own ShowTitle, ShowFPS, and
+    // ShowSR configuration entries, so the change persists across restarts.
+    int (*SetHUDMode)(int mode);
+
+    // These two only toggle the visibility of the HUD element and do not write the
+    // configuration, so they are not the same as setting one bit through
+    // SetHUDMode. ReadHUDState keeps reporting the configured bit, and the loader
+    // restores that configured value whenever it rebuilds the HUD, which includes
+    // every level load. Use them for a temporary hide and SetHUDMode for a lasting
+    // change.
+    int (*ShowTitle)(int visible);
+    int (*ShowFPS)(int visible);
+} BML_UIInterface;
+
+BML_END_CDECLS
+
+#ifdef __cplusplus
 
 #include <string>
 
 namespace BML::UI {
 
-// Mode is a bitmask of the HUDElement values below.
-struct HUDState {
-    int Mode = 0;
-};
+using HUDState = BML_UIHUDState;
 
-// Bits accepted by SetHUDMode and reported by ReadHUDState. These match the
-// HUD_TITLE, HUD_FPS, and HUD_SR values the script API exposes.
 enum HUDElement {
-    HUD_TITLE = 1,
-    HUD_FPS = 2,
-    HUD_SR = 4,
+    HUD_TITLE = BML_UI_HUD_TITLE,
+    HUD_FPS = BML_UI_HUD_FPS,
+    HUD_SR = BML_UI_HUD_SR,
 };
 
 namespace Detail {
 
-namespace Api = Imc::Generated::Bml::Ui;
-
-inline Imc::LazyClient<Api::Client> &ClientState() {
-    static Imc::LazyClient<Api::Client> state;
-    return state;
-}
-
-inline Api::Client &Client() { return ClientState().Get(); }
-
-[[nodiscard]] inline int RequireApi() { return ClientState().EnsureOpen(); }
-
-// Shared bodies for the argument-free and single-bool routes. The 5000u is the
-// call timeout in milliseconds, matching the generated client default.
-[[nodiscard]] inline int EmptyCommand(int (Api::Client::*command)(std::uint32_t)) {
-    int status = RequireApi();
-    return status == BML_OK ? (Client().*command)(5000u) : status;
-}
-
-[[nodiscard]] inline int VisibleCommand(int (Api::Client::*command)(const Api::VisibleInputValue &, std::uint32_t),
-                                        bool visible) {
-    Api::VisibleInputValue input{};
-    input.Visible = visible;
-    int status = RequireApi();
-    return status == BML_OK ? (Client().*command)(input, 5000u) : status;
+// Looked up once per Mod. The loader's table is static, so a null answer means
+// the running loader does not carry this interface at all, which is not something
+// that can change later in the process.
+inline const BML_UIInterface *Interface() {
+    static const BML_UIInterface *found =
+        FindInterface<BML_UIInterface>(BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR);
+    return found;
 }
 
 } // namespace Detail
 
-// Opens the client if it is not open yet. The functions below already do this,
-// so call it directly only to probe whether the routes exist.
-[[nodiscard]] inline int RequireApi() { return Detail::RequireApi(); }
+// Whether the running loader carries this interface. The functions below check
+// for themselves, so call this directly only to probe.
+[[nodiscard]] inline int RequireApi() {
+    return Detail::Interface() != nullptr ? BML_OK : BML_ERROR_NOT_FOUND;
+}
 
 [[nodiscard]] inline int ReadHUDState(HUDState &out) {
-    Detail::Api::HudStateValue wire{};
-    int status = RequireApi();
-    if (status == BML_OK)
-        status = Detail::Client().CallState(wire);
-    if (status == BML_OK)
-        out.Mode = wire.Mode;
-    return status;
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, ReadHUDState))
+        return BML_ERROR_NOT_FOUND;
+    return ui->ReadHUDState(&out);
 }
 
-// Appends one line to the loader's ingame message list, the same list
-// IBML::SendIngameMessage writes to. Older lines scroll off on their own.
 [[nodiscard]] inline int AddMessage(const std::string &message) {
-    Detail::Api::MessageInputValue input{};
-    input.Message = message;
-    int status = RequireApi();
-    return status == BML_OK ? Detail::Client().CallMessageAdd(input) : status;
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, AddMessage))
+        return BML_ERROR_NOT_FOUND;
+    return ui->AddMessage(message.c_str());
 }
 
-[[nodiscard]] inline int ClearMessages() { return Detail::EmptyCommand(&Detail::Api::Client::CallMessageClear); }
+[[nodiscard]] inline int ClearMessages() {
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, ClearMessages))
+        return BML_ERROR_NOT_FOUND;
+    return ui->ClearMessages();
+}
 
-[[nodiscard]] inline int OpenModsMenu() { return Detail::EmptyCommand(&Detail::Api::Client::CallModsMenuOpen); }
-[[nodiscard]] inline int CloseModsMenu() { return Detail::EmptyCommand(&Detail::Api::Client::CallModsMenuClose); }
-[[nodiscard]] inline int OpenMapMenu() { return Detail::EmptyCommand(&Detail::Api::Client::CallMapMenuOpen); }
-[[nodiscard]] inline int CloseMapMenu() { return Detail::EmptyCommand(&Detail::Api::Client::CallMapMenuClose); }
+[[nodiscard]] inline int OpenModsMenu() {
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, OpenModsMenu))
+        return BML_ERROR_NOT_FOUND;
+    return ui->OpenModsMenu();
+}
 
-// Replaces the whole HUD bitmask, so read it first and mask if you only mean to
-// change one element. This writes the loader's own ShowTitle, ShowFPS, and ShowSR
-// configuration entries, so the change persists across restarts.
+[[nodiscard]] inline int CloseModsMenu() {
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, CloseModsMenu))
+        return BML_ERROR_NOT_FOUND;
+    return ui->CloseModsMenu();
+}
+
+[[nodiscard]] inline int OpenMapMenu() {
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, OpenMapMenu))
+        return BML_ERROR_NOT_FOUND;
+    return ui->OpenMapMenu();
+}
+
+[[nodiscard]] inline int CloseMapMenu() {
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, CloseMapMenu))
+        return BML_ERROR_NOT_FOUND;
+    return ui->CloseMapMenu();
+}
+
 [[nodiscard]] inline int SetHUDMode(int mode) {
-    Detail::Api::HudModeInputValue input{};
-    input.Mode = mode;
-    int status = RequireApi();
-    return status == BML_OK ? Detail::Client().CallHudSet(input) : status;
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, SetHUDMode))
+        return BML_ERROR_NOT_FOUND;
+    return ui->SetHUDMode(mode);
 }
 
-// These two only toggle the visibility of the HUD element and do not write the
-// configuration, so they are not the same as setting one bit through SetHUDMode.
-// ReadHUDState keeps reporting the configured bit, and the loader restores that
-// configured value whenever it rebuilds the HUD, which includes every level load.
-// Use them for a temporary hide and SetHUDMode for a lasting change.
 [[nodiscard]] inline int ShowTitle(bool visible) {
-    return Detail::VisibleCommand(&Detail::Api::Client::CallHudTitleShow, visible);
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, ShowTitle))
+        return BML_ERROR_NOT_FOUND;
+    return ui->ShowTitle(visible ? 1 : 0);
 }
 
 [[nodiscard]] inline int ShowFPS(bool visible) {
-    return Detail::VisibleCommand(&Detail::Api::Client::CallHudFpsShow, visible);
+    const BML_UIInterface *ui = Detail::Interface();
+    if (!BML_IFACE_HAS(ui, BML_UIInterface, ShowFPS))
+        return BML_ERROR_NOT_FOUND;
+    return ui->ShowFPS(visible ? 1 : 0);
 }
 
 } // namespace BML::UI
+
+#endif // __cplusplus
 
 #endif // BML_UI_H
