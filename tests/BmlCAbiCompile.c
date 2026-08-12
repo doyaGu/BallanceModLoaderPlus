@@ -1,4 +1,5 @@
 #include "BML/BML.h"
+#include "BML/Speedrun.h"
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
     BML_FreeStringArray(strings, count);
@@ -26,4 +27,23 @@ int BML_TestCAbiUnregisterCommand(const char *name) {
         result == BML_ERROR_INVALID_PARAMETER)
         return 0;
     return result == BML_OK;
+}
+
+// Interface.h and every interface struct built on it have to compile as C, since
+// a Mod that is not written in C++ reaches this capability only through them.
+// This walks the whole sequence a C caller goes through: the lookup, the member
+// check, and the call.
+int BML_TestCAbiSpeedrunInterface(void) {
+    const void *found = NULL;
+    const BML_SpeedrunInterface *speedrun = NULL;
+    BML_SpeedrunTimerState state = {0};
+
+    if (BML_GetInterface(BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    speedrun = (const BML_SpeedrunInterface *) found;
+    if (!BML_IFACE_HAS(speedrun, BML_SpeedrunInterface, ReadTimerState))
+        return 0;
+    if (speedrun->ReadTimerState(&state) != BML_OK)
+        return 0;
+    return state.ElapsedTime >= 0.0f;
 }

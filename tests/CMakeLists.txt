@@ -233,6 +233,12 @@ add_bml_test(ImcObjectReferenceRegistryTest
         ImcObjectReferenceRegistryTest.cpp
 )
 
+add_bml_test(InterfaceRegistryTest
+        SOURCES
+        InterfaceRegistryTest.cpp
+        ${BML_SOURCE_DIR}/InterfaceRegistry.cpp
+)
+
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp

@@ -35,7 +35,6 @@ set(BML_IMC_API_INPUTS
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.speedrun.imc
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
 )
 set(BML_IMC_LOCK_INPUTS
@@ -43,7 +42,6 @@ set(BML_IMC_LOCK_INPUTS
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc.lock
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc.lock
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc.lock
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.speedrun.imc.lock
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc.lock
 )
 add_custom_target(BML_ImcApiGeneration
@@ -54,7 +52,6 @@ add_custom_target(BML_ImcApiGeneration
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.ui.imc
-                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.speedrun.imc
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
         DEPENDS
                 ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
@@ -105,6 +102,7 @@ set(BML_PUBLIC_GUID_HEADERS
 set(BML_PUBLIC_HEADERS
         ${BML_VERSION_HEADER}
         ${BML_INCLUDE_DIR}/BML/Defines.h
+        ${BML_INCLUDE_DIR}/BML/Interface.h
         ${BML_INCLUDE_DIR}/BML/BML.h
 
         ${BML_INCLUDE_DIR}/BML/ILogger.h
@@ -124,7 +122,6 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Generated/bml_scene_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_ui_imc.hpp
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_speedrun_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_events_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h
@@ -150,6 +147,7 @@ set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
         BuiltinImcApis.h
+        InterfaceRegistry.h
         RuntimeState.h
 
         BMLMod.h
@@ -191,6 +189,8 @@ set(BML_SOURCES
         ModManager.cpp
         ModContext.cpp
         BuiltinImcApis.cpp
+        InterfaceRegistry.cpp
+        Interfaces.cpp
         RuntimeState.cpp
 
         IMod.cpp

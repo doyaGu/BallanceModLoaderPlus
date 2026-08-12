@@ -1,9 +1,10 @@
-// Drives the loader's speedrun timer over IMC. This is a thin inline wrapper
-// around the generated bml.speedrun client, so including it costs nothing at
-// link time.
+// Drives the loader's speedrun timer. The interface struct below is what the
+// loader hands out and what a Mod written in C uses directly; the inline C++
+// namespace under it is the same thing with the lookup and the checks folded in,
+// so including this header still costs nothing at link time.
 //
-// Status handling, first-call client opening, and the thread rules are the same
-// as in Runtime.h.
+// Interface.h explains the header, the version rules, and BML_IFACE_HAS. Every
+// function here runs on the calling thread, so call them from the game thread.
 //
 // There is exactly one timer, the one the loader shows on its own HUD, and the
 // loader keeps driving it: it resets on level start, pauses on level pause and
@@ -15,73 +16,110 @@
 #ifndef BML_SPEEDRUN_H
 #define BML_SPEEDRUN_H
 
-#include "BML/Generated/bml_speedrun_imc.hpp"
+#include "BML/Interface.h"
+
+BML_BEGIN_CDECLS
+
+#define BML_SPEEDRUN_INTERFACE_ID "bml.speedrun"
+#define BML_SPEEDRUN_INTERFACE_MAJOR 1
+#define BML_SPEEDRUN_INTERFACE_MINOR 0
+
+// ElapsedTime is in milliseconds, and is the same value Runtime::ReadScore
+// reports as Score::SR. This is a C struct and has no default member
+// initializer: zero it with BML_SpeedrunTimerState state = {0} in C, or with
+// TimerState state{} in C++.
+typedef struct BML_SpeedrunTimerState {
+    float ElapsedTime;
+} BML_SpeedrunTimerState;
+
+typedef struct BML_SpeedrunInterface {
+    BML_InterfaceHeader Header;
+
+    // Answers BML_ERROR_INVALID_PARAMETER for a null out and BML_ERROR_FAIL
+    // before the loader has initialized. Nothing else fails.
+    int (*ReadTimerState)(BML_SpeedrunTimerState *out);
+
+    // Toggles only the visibility of the HUD timer element, without writing the
+    // loader's ShowSR configuration entry. The loader restores the configured
+    // value on the next level start, and hides the element on level exit. Use
+    // UI::SetHUDMode with HUD_SR for a lasting change.
+    int (*SetTimerVisible)(int visible);
+
+    // Resumes counting from the current elapsed time rather than from zero. Call
+    // ResetTimer first for a fresh run.
+    int (*StartTimer)(void);
+
+    // Stops counting and keeps the elapsed time.
+    int (*PauseTimer)(void);
+
+    // Zeroes the elapsed time and leaves the timer stopped.
+    int (*ResetTimer)(void);
+} BML_SpeedrunInterface;
+
+BML_END_CDECLS
+
+#ifdef __cplusplus
 
 namespace BML::Speedrun {
 
-// ElapsedTime is in milliseconds, and is the same value Runtime::ReadScore
-// reports as Score::SR.
-struct TimerState {
-    float ElapsedTime = 0.0f;
-};
+using TimerState = BML_SpeedrunTimerState;
 
 namespace Detail {
 
-namespace Api = Imc::Generated::Bml::Speedrun;
-
-inline Imc::LazyClient<Api::Client> &ClientState() {
-    static Imc::LazyClient<Api::Client> state;
-    return state;
-}
-
-inline Api::Client &Client() { return ClientState().Get(); }
-
-[[nodiscard]] inline int RequireApi() { return ClientState().EnsureOpen(); }
-
-// Shared body for the argument-free routes. The 5000u is the call timeout in
-// milliseconds, matching the generated client default.
-[[nodiscard]] inline int EmptyCommand(int (Api::Client::*command)(std::uint32_t)) {
-    int status = RequireApi();
-    return status == BML_OK ? (Client().*command)(5000u) : status;
+// Looked up once per Mod. The loader's table is static, so a null answer means
+// the running loader does not carry this interface at all, which is not something
+// that can change later in the process.
+inline const BML_SpeedrunInterface *Interface() {
+    static const BML_SpeedrunInterface *found =
+        FindInterface<BML_SpeedrunInterface>(BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR);
+    return found;
 }
 
 } // namespace Detail
 
-// Opens the client if it is not open yet. The functions below already do this,
-// so call it directly only to probe whether the routes exist.
-[[nodiscard]] inline int RequireApi() { return Detail::RequireApi(); }
+// Whether the running loader carries this interface. The functions below check
+// for themselves, so call this directly only to probe.
+[[nodiscard]] inline int RequireApi() {
+    return Detail::Interface() != nullptr ? BML_OK : BML_ERROR_NOT_FOUND;
+}
 
 [[nodiscard]] inline int ReadTimerState(TimerState &out) {
-    Detail::Api::TimerStateValue wire{};
-    int status = RequireApi();
-    if (status == BML_OK)
-        status = Detail::Client().CallState(wire);
-    if (status == BML_OK)
-        out.ElapsedTime = wire.ElapsedTime;
-    return status;
+    const BML_SpeedrunInterface *speedrun = Detail::Interface();
+    if (!BML_IFACE_HAS(speedrun, BML_SpeedrunInterface, ReadTimerState))
+        return BML_ERROR_NOT_FOUND;
+    return speedrun->ReadTimerState(&out);
 }
 
-// Toggles only the visibility of the HUD timer element, without writing the
-// loader's ShowSR configuration entry. The loader restores the configured value
-// on the next level start, and hides the element on level exit. Use
-// UI::SetHUDMode with HUD_SR for a lasting change.
 [[nodiscard]] inline int SetTimerVisible(bool visible) {
-    Detail::Api::VisibleInputValue input{};
-    input.Visible = visible;
-    int status = RequireApi();
-    return status == BML_OK ? Detail::Client().CallSetTimerVisible(input) : status;
+    const BML_SpeedrunInterface *speedrun = Detail::Interface();
+    if (!BML_IFACE_HAS(speedrun, BML_SpeedrunInterface, SetTimerVisible))
+        return BML_ERROR_NOT_FOUND;
+    return speedrun->SetTimerVisible(visible ? 1 : 0);
 }
 
-// Resumes counting from the current elapsed time rather than from zero. Call
-// ResetTimer first for a fresh run.
-[[nodiscard]] inline int StartTimer() { return Detail::EmptyCommand(&Detail::Api::Client::CallStartTimer); }
+[[nodiscard]] inline int StartTimer() {
+    const BML_SpeedrunInterface *speedrun = Detail::Interface();
+    if (!BML_IFACE_HAS(speedrun, BML_SpeedrunInterface, StartTimer))
+        return BML_ERROR_NOT_FOUND;
+    return speedrun->StartTimer();
+}
 
-// Stops counting and keeps the elapsed time.
-[[nodiscard]] inline int PauseTimer() { return Detail::EmptyCommand(&Detail::Api::Client::CallPauseTimer); }
+[[nodiscard]] inline int PauseTimer() {
+    const BML_SpeedrunInterface *speedrun = Detail::Interface();
+    if (!BML_IFACE_HAS(speedrun, BML_SpeedrunInterface, PauseTimer))
+        return BML_ERROR_NOT_FOUND;
+    return speedrun->PauseTimer();
+}
 
-// Zeroes the elapsed time and leaves the timer stopped.
-[[nodiscard]] inline int ResetTimer() { return Detail::EmptyCommand(&Detail::Api::Client::CallResetTimer); }
+[[nodiscard]] inline int ResetTimer() {
+    const BML_SpeedrunInterface *speedrun = Detail::Interface();
+    if (!BML_IFACE_HAS(speedrun, BML_SpeedrunInterface, ResetTimer))
+        return BML_ERROR_NOT_FOUND;
+    return speedrun->ResetTimer();
+}
 
 } // namespace BML::Speedrun
+
+#endif // __cplusplus
 
 #endif // BML_SPEEDRUN_H

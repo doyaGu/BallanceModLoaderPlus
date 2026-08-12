@@ -38,6 +38,8 @@ const char *BML_GetErrorString(int errorCode) {
             return "Malformed encoded message";
         case BML_ERROR_TYPE_MISMATCH:
             return "Encoded field type mismatch";
+        case BML_ERROR_VERSION_MISMATCH:
+            return "Interface major version mismatch";
 
         /* Mod-specific error codes */
         case BML_ERROR_MOD_LOAD_FAILED:

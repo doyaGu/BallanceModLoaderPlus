@@ -19,7 +19,6 @@
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/Generated/bml_scene_imc.hpp"
-#include "BML/Generated/bml_speedrun_imc.hpp"
 #include "BML/Generated/bml_ui_imc.hpp"
 #include "BML/Generated/bml_runtime_imc.hpp"
 
@@ -29,7 +28,6 @@ namespace ImcRuntimeApi = BML::Imc::Generated::Bml::Runtime;
 namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
 namespace ImcGameplayApi = BML::Imc::Generated::Bml::Gameplay;
 namespace ImcSceneApi = BML::Imc::Generated::Bml::Scene;
-namespace ImcSpeedrunApi = BML::Imc::Generated::Bml::Speedrun;
 namespace ImcUiApi = BML::Imc::Generated::Bml::Ui;
 
 constexpr uint32_t kVirtoolsObjectDomain = BML_IMC_OBJECT_DOMAIN_VIRTOOLS;
@@ -77,7 +75,6 @@ public:
 
     void Unregister() {
         (void)m_ImcEvents.Close();
-        (void)m_ImcSpeedrun.Close();
         (void)m_ImcUi.Close();
         (void)m_ImcGameplay.Close();
         (void)m_ImcScene.Close();
@@ -214,23 +211,13 @@ private:
         ui.HudFpsShow = &ImcUiHudFpsShow;
         ui.State = &ReadImcUiState;
 
-        ImcSpeedrunApi::Provider::Handlers speedrun{};
-        speedrun.Userdata = this;
-        speedrun.SetTimerVisible = &ImcSpeedrunSetTimerVisible;
-        speedrun.StartTimer = &ImcSpeedrunStartTimer;
-        speedrun.PauseTimer = &ImcSpeedrunPauseTimer;
-        speedrun.ResetTimer = &ImcSpeedrunResetTimer;
-        speedrun.State = &ReadImcSpeedrunState;
-
         int status = m_ImcRuntime.Start(runtime, owner);
         if (status == BML_OK) status = m_ImcScene.Start(scene, owner);
         if (status == BML_OK) status = m_ImcGameplay.Start(gameplay, owner);
         if (status == BML_OK) status = m_ImcUi.Start(ui, owner);
-        if (status == BML_OK) status = m_ImcSpeedrun.Start(speedrun, owner);
         if (status == BML_OK) status = m_ImcEvents.Open(owner);
         if (status != BML_OK) {
             (void)m_ImcEvents.Close();
-            (void)m_ImcSpeedrun.Close();
             (void)m_ImcUi.Close();
             (void)m_ImcGameplay.Close();
             (void)m_ImcScene.Close();
@@ -437,30 +424,6 @@ private:
         out.Mode = provider->m_Mod.GetHUD(); return BML_OK;
     }
 
-    static BuiltinImcProvider *ImcSpeedrunProvider(void *userdata) {
-        return static_cast<BuiltinImcProvider *>(userdata);
-    }
-
-    static int ImcSpeedrunSetTimerVisible(const ImcSpeedrunApi::VisibleInputValue &input, void *userdata) {
-        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.ShowSRTimer(input.Visible); return BML_OK;
-    }
-    static int ImcSpeedrunStartTimer(void *userdata) {
-        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.StartSRTimer(); return BML_OK;
-    }
-    static int ImcSpeedrunPauseTimer(void *userdata) {
-        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.PauseSRTimer(); return BML_OK;
-    }
-    static int ImcSpeedrunResetTimer(void *userdata) {
-        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        provider->m_Mod.ResetSRTimer(); return BML_OK;
-    }
-    static int ReadImcSpeedrunState(ImcSpeedrunApi::TimerStateValue &out, void *userdata) {
-        auto *provider = ImcSpeedrunProvider(userdata); if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        out.ElapsedTime = provider->m_Mod.GetSRTime(); return BML_OK;
-    }
     ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
 
     static bool HasColumns(CKDataArray *array, std::initializer_list<const char *> columns) {
@@ -541,7 +504,6 @@ private:
     ImcSceneApi::Provider m_ImcScene;
     ImcGameplayApi::Provider m_ImcGameplay;
     ImcUiApi::Provider m_ImcUi;
-    ImcSpeedrunApi::Provider m_ImcSpeedrun;
     ImcEventsApi::Client m_ImcEvents;
 };
 
