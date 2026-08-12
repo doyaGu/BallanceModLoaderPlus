@@ -99,8 +99,8 @@ bml_install_mod(MyMod)
 
 Read the [native mod API overview](native-mod-api.md) before adding ownership,
 callbacks, UI, or cross-mod services, and
-[Which native API to use](native-api-routes.md) when a capability has both a
-legacy C++ and an IMC spelling.
+[Which native API to use](native-api-routes.md) when a capability has more than
+one spelling.
 
 ## Shared authoring rules
 
@@ -121,12 +121,12 @@ legacy C++ and an IMC spelling.
 | Need | Use |
 | --- | --- |
 | A small named scalar or byte value in the same process | DataShare |
-| Typed request/response calls, asynchronous results, Topics, versioned data, or high throughput | A generated IMC interface implemented by a native mod |
+| Typed request/response calls, asynchronous results, Topics, versioned data, or high throughput between mods | A generated IMC interface implemented by a native mod |
 | A built-in BML+ runtime, gameplay, event, UI, or speedrun service | The existing typed BML+ API for the selected language |
 | Communication among CKAngelScript runtime scripts or components | CKAngelScript `Message` or `Async` where their execution model fits |
 
 Do not invent a JSON message format or hand-write field identifiers. Define a
-`.imc` interface, let `bml_add_imc_interface` generate its C++ binding, and keep
+`.imc` interface, let `bml_target_imc_api` generate its C++ binding, and keep
 the schema lock with the interface. See [Inter-mod communication](imc.md) and
 [Create a typed IMC API](imc-author-guide.md).
 

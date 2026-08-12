@@ -1,7 +1,7 @@
 # 跨 Mod 通信
 
-BML+ 的跨 Mod RPC 和事件传输使用 IMC。脚本 Mod 直接使用 BML+ 提供的
-类型化能力接口；自定义 IMC Provider 由原生 Mod 实现。
+IMC 用于一个 Mod 发布给其他 Mod 的接口，不承载任何 Loader 能力。脚本 Mod
+直接使用 Loader 提供的类型化能力接口；IMC Provider 只能由原生 Mod 实现。
 
 ## 脚本 Mod 如何选择
 
@@ -26,10 +26,10 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 }
 ```
 
-可用的内置命名空间包括 `BML::Runtime`、`BML::Gameplay`、`BML::UI` 和
-`BML::Events`。Virtools 场景查找和对象标识应使用 CKAngelScript 的
-`Scene` 命名空间及其可重新验证的引用类型。其中 Runtime 状态、时钟和
-分数读取直接返回进程内加载器状态的值，不会为本地调用打开 IMC client，
+可用的内置命名空间包括 `BML::Runtime`、`BML::Gameplay`、`BML::UI`、
+`BML::Events` 和 `BML::Speedrun`。Virtools 场景查找和对象标识应使用
+CKAngelScript 的 `Scene` 命名空间及其可重新验证的引用类型。其中 Runtime
+状态、时钟和分数读取直接返回 Loader 进程内状态的值，不经过任何传输层，
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
 异常。Gameplay 读取也直接复用进程内的数据读取器，但对应的 Ballance
 数据数组可能尚不可用或布局不受支持，因此仍返回明确的状态码。脚本只处理
@@ -41,16 +41,16 @@ if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
 
 `BML::Events::Stream` 按 Hook 顺序提供不可变事件快照。仅当 `Poll` 返回
 `BML::ERROR_OK` 时读取事件；`BML::ERROR_NOT_FOUND` 表示流当前为空，其他状态
-表示传输失败或事件格式错误。待处理错误会在已排队事件之前返回，返回后即清除；
-字段不完整的事件不会被伪装成有效快照。`GetDroppedCount` 只统计队列和背压造成
-的丢失，不统计解码错误。
+表示流未打开（`BML::ERROR_INVALID_HANDLE`）或复制事件失败
+（`BML::ERROR_OUT_OF_MEMORY`）。`GetDroppedCount` 统计队列容量和背压造成的丢失。
 
 两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。
 
 ## 何时需要原生 IMC Provider
 
-下面任一条件成立时，应把服务实现为原生 Mod：
+IMC 只用于一个 Mod 发布给其他 Mod 的接口。这类服务满足下面任一条件时，应把它
+实现为原生 Mod：
 
 - 需要请求/响应 RPC；
 - 需要高频或有背压策略的事件流；

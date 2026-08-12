@@ -86,7 +86,7 @@ bml_install_mod(MyMod)
 ```
 
 增加所有权、回调、UI 或跨 Mod 服务前，先阅读[原生 Mod API 总览](native-mod-api.md)；
-某项能力同时有旧式 C++ 与 IMC 两种写法时，参见[原生 API 该走哪条路](native-api-routes.md)。
+某项能力有不止一种写法时，参见[原生 API 该走哪条路](native-api-routes.md)。
 
 ## 两条路线共同遵守的规则
 
@@ -102,12 +102,12 @@ bml_install_mod(MyMod)
 | 需求 | 使用 |
 | --- | --- |
 | 同一进程内少量具名标量或字节值 | DataShare |
-| 类型化请求与响应、异步结果、Topic、版本化数据或高吞吐 | 由原生 Mod 实现的生成式 IMC 接口 |
+| Mod 之间的类型化请求与响应、异步结果、Topic、版本化数据或高吞吐 | 由原生 Mod 实现的生成式 IMC 接口 |
 | BML+ 内建的运行时、玩法、事件、UI 或速通服务 | 对应语言已有的 BML+ 类型化 API |
 | CKAngelScript runtime script 或 Component 之间通信 | 在执行模型合适时使用 CKAngelScript `Message` 或 `Async` |
 
 不要自定义 JSON 消息格式，也不要手写字段编号。编写 `.imc` 接口，由
-`bml_add_imc_interface` 生成 C++ 绑定，并让 schema lock 与接口一起维护。参见
+`bml_target_imc_api` 生成 C++ 绑定，并让 schema lock 与接口一起维护。参见
 [跨 Mod 通信](imc.md)和[创建类型化 IMC API](imc-author-guide.md)。
 
 脚本 Mod 可以使用 BML+ 类型化脚本 API 和 DataShare。自定义 IMC Provider 仍由

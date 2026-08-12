@@ -202,9 +202,38 @@ defaulted its lower bound to `FLT_MIN`, the smallest positive normal value, so
 negative input was silently clamped to about `1.17e-38`. Pass explicit bounds
 when a command needs a narrower range.
 
+## Loader capabilities
+
+Capability added after the legacy C++ interfaces were frozen is published as a
+versioned interface struct, fetched by id and major version through
+`BML_GetInterface`. Each has its own header under `include/BML`, and each header
+also declares an inline C++ namespace that folds the lookup and the argument
+checks in:
+
+- `BML::Runtime` for runtime state, clock, and scores;
+- `BML::Scene` for object information, transforms, and named lookup;
+- `BML::Gameplay` for level, energy, catalog, checkpoint, and reset data;
+- `BML::UI` for the message board, mod/map menus, and HUD;
+- `BML::Speedrun` for the shared speedrun timer;
+- `BML::Events` for the loader event queue.
+
+`Interface.h` documents the version rules: a struct grows only by appending a
+member and bumping its minor version, and `BML_IFACE_HAS` asks whether the
+running loader has a member added after the header the mod was built against.
+
+The native `BML::Gameplay` collection reads return complete snapshots in a
+caller-owned `std::vector`. Read the catalog during setup and refresh level
+checkpoints or reset points when the level changes; these calls transfer the
+complete collection and are not intended for per-frame polling.
+
+The inline C++ operations return a BML status and are marked `[[nodiscard]]`.
+Handle the returned status, or use an explicit `(void)` cast when deliberately
+discarding the result of best-effort cleanup.
+
 ## Inter-mod communication
 
-Prefer IMC for new public integrations:
+An API a mod publishes for other mods is not an interface struct: only the loader
+answers `BML_GetInterface`. Prefer IMC there:
 
 - a `.imc` file contains interface declarations only; field IDs are permanent
   wire identifiers rather than array positions;
@@ -212,28 +241,15 @@ Prefer IMC for new public integrations:
 - RPC supports synchronous calls, futures, cancellation, timeouts, and
   completion callbacks;
 - Topic supports bounded subscriber queues, unsubscribe, and drop counts;
-- generated types and cached route IDs keep text parsing out of hot paths.
+- generated types and cached route IDs keep text parsing out of hot paths;
+- a consumer discovers at runtime whether a route is there, so provider and
+  consumer can ship separately.
 
-Built-in facades include:
-
-- `BML::Runtime` for runtime state, clock, and scores;
-- `BML::Scene` for object information, transforms, and named lookup;
-- `BML::Gameplay` for level, energy, directory, checkpoint, and reset data;
-- `BML::UI` for the message board, mod/map menus, and HUD;
-- `BML::Speedrun` for the shared speedrun timer.
-
-The native `BML::Gameplay` collection reads return complete snapshots in a
-caller-owned `std::vector`. Read the catalog during setup and refresh level
-checkpoints or reset points when the level changes; these calls transfer the
-complete collection and are not intended for per-frame polling.
-
-C++ IMC operations that return a BML status are marked `[[nodiscard]]`. Handle
-the returned status, or use an explicit `(void)` cast when deliberately
-discarding the result of best-effort cleanup.
+C++ IMC operations that return a BML status are marked `[[nodiscard]]` as well.
 
 `DataShare` is suitable for small named byte values when both sides obey its
-reference-count and borrowed-pointer lifetime rules. Use IMC when an API needs
-evolution, cross-language bindings, RPC, or Topic semantics.
+reference-count and borrowed-pointer lifetime rules. Use IMC when an API has to
+evolve on its own schedule, or needs RPC or Topic semantics.
 
 ## Three UI surfaces
 

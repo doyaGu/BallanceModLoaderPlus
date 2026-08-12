@@ -1,13 +1,20 @@
 # Inter-mod communication (IMC)
 
-IMC is BML+'s typed, in-process transport for communication between mods and
-loader-provided services. It provides two operations:
+IMC is BML+'s typed, in-process transport for an API one mod publishes for other
+mods. It provides two operations:
 
 - RPC for request/response calls;
 - Topic for publish/subscribe notifications.
 
 Use IMC when two independently built native modules need a stable API without
-sharing C++ objects, STL containers, allocators, or Virtools pointers.
+sharing C++ objects, STL containers, allocators, or Virtools pointers. Both sides
+ship on their own schedule: a consumer asks at runtime whether a route is there,
+so a missing provider is a status code rather than a load failure.
+
+IMC carries no loader capability. The loader serves its own state, its events,
+and its UI through versioned interface structs reached by `BML_GetInterface`, and
+it publishes no `.imc` interface of its own. See [Which native API to
+use](native-api-routes.md) for where each capability lives.
 
 For a complete interface, provider, client, and Topic example, see
 [Create a typed IMC API](imc-author-guide.md).
@@ -157,20 +164,13 @@ Opaque handles become invalid immediately after successful release. Treat
 `BML_ERROR_INVALID_HANDLE` as a stale-owner or double-release programming
 error, not as a recoverable route failure.
 
-## Built-in APIs
+## What does not belong in an interface
 
-BML+ provides the following typed service facades:
-
-| Namespace | Service |
-| --- | --- |
-| `BML::Runtime` | Runtime state, clock, and score |
-| `BML::Scene` | Object information, transforms, and lookup |
-| `BML::Gameplay` | Level, energy, checkpoint, and reset-point data |
-| `BML::UI` | HUD state and UI commands |
-| `BML::Speedrun` | Shared timer state and controls |
-
-Use those facades directly when they already cover the required operation.
-Create a new interface only for a capability owned by your mod.
+Do not define an `.imc` interface for something the loader already serves. Its
+runtime state, scene lookups, gameplay data, UI, events, and speedrun timer are
+interface structs, spelled `BML::Runtime`, `BML::Scene`, `BML::Gameplay`,
+`BML::UI`, `BML::Events`, and `BML::Speedrun`. Call those directly and define an
+interface only for a capability your own mod owns.
 
 ## Performance characteristics
 
@@ -186,6 +186,7 @@ still need stable records.
 ## Reference
 
 - [Create a typed IMC API](imc-author-guide.md)
+- [Which native API to use](native-api-routes.md)
 - C ABI: `BML/Imc.h`
 - C++ wrappers: `BML/ImcCpp.hpp`
 - wire codec: `BML/ImcWire.hpp`

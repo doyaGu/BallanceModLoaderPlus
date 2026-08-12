@@ -1,13 +1,19 @@
 # 跨 Mod 通信（IMC）
 
-IMC 是 BML+ 为 Mod 及 Loader 服务提供的类型化进程内通信机制，包含两种操作：
+IMC 是 BML+ 的类型化进程内通信机制，用于一个 Mod 发布给其他 Mod 的接口，
+包含两种操作：
 
 - RPC：请求/响应调用；
 - Topic：发布/订阅通知。
 
 当两个独立构建的原生模块需要稳定接口，又不能共享 C++ 对象、STL 容器、
-分配器或 Virtools 指针时，应使用 IMC。完整示例参见
-[创建类型化 IMC API](imc-author-guide.md)。
+分配器或 Virtools 指针时，应使用 IMC。双方可以各自独立发布：使用方在运行期
+才查询某条路由是否存在，因此提供方缺失只是一个状态码，而不是装载失败。
+完整示例参见[创建类型化 IMC API](imc-author-guide.md)。
+
+IMC 不承载任何 Loader 能力。Loader 自己的状态、事件和 UI 都通过
+`BML_GetInterface` 取得的带版本 interface struct 提供，它自己也不发布任何
+`.imc` 接口。各项能力分别走哪条路线，参见[原生 API 该走哪条路](native-api-routes.md)。
 
 ## 编程模型
 
@@ -130,19 +136,12 @@ Client 和 Provider 都关联一个 Mod Owner。BML 会在 Mod 卸载时撤销�
 不透明句柄在成功释放后立即失效。`BML_ERROR_INVALID_HANDLE` 表示过期 Owner 或重复
 释放等编程错误，不是可恢复的路由失败。
 
-## 内置 API
+## 哪些内容不该定义成接口
 
-BML+ 提供以下类型化服务门面：
-
-| 命名空间 | 服务 |
-| --- | --- |
-| `BML::Runtime` | 运行状态、时钟和分数 |
-| `BML::Scene` | 对象信息、变换和查找 |
-| `BML::Gameplay` | 关卡、能量、检查点和重置点数据 |
-| `BML::UI` | HUD 状态和 UI 命令 |
-| `BML::Speedrun` | 共享计时器状态和控制 |
-
-已有门面能覆盖需求时直接使用它。只有能力确实由你的 Mod 拥有时，才创建新接口。
+不要为 Loader 已经提供的能力定义 `.imc` 接口。它的运行状态、场景查找、Gameplay
+数据、UI、事件和 Speedrun 计时器都是 interface struct，分别写作 `BML::Runtime`、
+`BML::Scene`、`BML::Gameplay`、`BML::UI`、`BML::Events` 和 `BML::Speedrun`。这些
+直接调用即可；只有能力确实由你的 Mod 拥有时，才定义接口。
 
 ## 性能特征
 
@@ -156,6 +155,7 @@ Record。
 ## 参考
 
 - [创建类型化 IMC API](imc-author-guide.md)
+- [原生 API 该走哪条路](native-api-routes.md)
 - C ABI：`BML/Imc.h`
 - C++ 包装：`BML/ImcCpp.hpp`
 - 线格式编解码：`BML/ImcWire.hpp`

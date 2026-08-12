@@ -54,8 +54,9 @@ streams, large payloads, or a protocol that must evolve independently.
 ## Built-in typed services
 
 For BML+ runtime, gameplay, event, UI, and speedrun features, use the existing
-typed script APIs. They are local facades over BML+-owned behavior; scripts do
-not need to open an IMC transport handle or decode payloads.
+typed script APIs. They project the loader's own interface structs, which is
+where loader capability lives; IMC carries none of it, and no transport handle or
+payload decoding is involved.
 
 For communication among CKAngelScript runtime scripts and components, use
 CKAngelScript `Message` or `Async` when that execution model fits. A BML+ fixed
@@ -63,7 +64,8 @@ callback cannot suspend.
 
 ## Generated IMC services
 
-Use generated IMC when a service needs one or more of these properties:
+IMC is for an API one mod publishes for other mods. Use generated IMC when such a
+service needs one or more of these properties:
 
 - typed request and response messages;
 - asynchronous completion;
