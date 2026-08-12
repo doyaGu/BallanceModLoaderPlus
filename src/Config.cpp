@@ -11,6 +11,7 @@
 #ifndef BML_TEST
 #include "ModContext.h"
 #include "BuiltinImcApis.h"
+#include "EventStreams.h"
 #endif
 #include "StringUtils.h"
 
@@ -590,7 +591,7 @@ void Property::SetModified() {
 #ifndef BML_TEST
         ModContext *context = BML_GetModContext();
         if (context) {
-            CaptureBuiltinImcEventNoexcept(*context, [&](BML::ImcEventSnapshot &event) {
+            BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
                 event.Kind = BML_EVENT_CONFIG_MODIFIED;
                 event.ConfigCategory = m_Category;
                 event.ConfigKey = m_Key;

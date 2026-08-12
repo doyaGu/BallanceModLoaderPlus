@@ -1,7 +1,6 @@
 #include "ScriptImcFacade.h"
 
 #include <cstddef>
-#include <deque>
 #include <limits>
 #include <new>
 #include <string>
@@ -12,20 +11,17 @@
 
 #include "BML/Events.h"
 #include "BML/Gameplay.h"
-#include "BML/Generated/bml_events_imc.hpp"
 #include "BML/EventKinds.h"
 
 #include "BuiltinImcApis.h"
+#include "EventStreams.h"
 #include "ModContext.h"
 #include "ScriptMod.h"
-#include "ScriptImcClients.h"
 #include "ScriptModRuntime.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptStringInterop.h"
 
 namespace {
-
-namespace EventsImc = BML::Imc::Generated::Bml::Events;
 
 struct RuntimeState {
     bool InGame = false;
@@ -205,22 +201,6 @@ int GetActiveFacadeContext(ModContext *&outContext, const char *apiName) {
     if (!mod || !mod->GetModContext())
         return BML_ERROR_UNAVAILABLE;
     outContext = mod->GetModContext();
-    return BML_OK;
-}
-
-int GetActiveEventClients(BML::ScriptImcClients *&outClients,
-                          ModContext *&outContext) {
-    outClients = nullptr;
-    int status = GetActiveFacadeContext(outContext, "BML::Events");
-    if (status != BML_OK)
-        return status;
-    BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
-    BML::ScriptModRuntime *runtime = BML::ScriptModRuntime::GetCurrentScriptModRuntime();
-    if (!runtime)
-        runtime = const_cast<BML::ScriptModRuntime *>(&mod->GetRuntimeForImc());
-    outClients = runtime->GetImcClients();
-    if (!outClients)
-        return BML_ERROR_OUT_OF_MEMORY;
     return BML_OK;
 }
 
@@ -624,10 +604,12 @@ private:
     BML::Events::Event m_Value;
 };
 
+/* The script side of a stream is the loader's own queue with a reference count
+ * on top: the queue in EventStreams.h holds the events, and this holds the
+ * ModContext a polled event needs to turn an ObjectRef back into a CKObject. */
 class EventStream {
 public:
-    EventStream(ModContext *context, std::size_t capacity)
-        : m_Context(context), m_Capacity(capacity) {}
+    explicit EventStream(ModContext *context) : m_Context(context) {}
     ~EventStream() { (void)Close(); }
 
     void AddRef() { ++m_RefCount; }
@@ -636,119 +618,67 @@ public:
             delete this;
     }
 
-    int Open(EventsImc::Client &client) {
-        return client.SubscribeAll(m_Subscription, &OnEvent, this,
-                                   static_cast<std::uint32_t>(m_Capacity),
-                                   BML_IMC_BACKPRESSURE_DROP_OLDEST,
-                                   BML_IMC_EXECUTION_GAME_THREAD);
-    }
+    int Open(int capacity) { return BML::OpenEventStream(capacity, m_Handle); }
 
-    bool IsOpen() const { return m_Subscription.IsOpen(); }
+    bool IsOpen() const { return m_Handle != nullptr; }
 
     int Close() {
-        const int status = m_Subscription.Close();
-        if (!m_Subscription.IsOpen()) {
-            m_Queue.clear();
-            m_LocalDrops = 0;
-            m_PendingError = BML_OK;
-        }
+        if (!m_Handle)
+            return BML_ERROR_INVALID_HANDLE;
+        const int status = BML::CloseEventStream(m_Handle);
+        m_Handle = nullptr;
         return status;
     }
 
     int GetDroppedCount(int &out) const {
         out = 0;
-        if (!m_Subscription.IsOpen())
+        if (!m_Handle)
             return BML_ERROR_INVALID_HANDLE;
-        std::uint64_t runtimeDrops = 0;
-        const int status = m_Subscription.DroppedCount(runtimeDrops);
-        if (status != BML_OK)
-            return status;
-        const std::uint64_t total = runtimeDrops + m_LocalDrops;
-        out = total > static_cast<std::uint64_t>((std::numeric_limits<int>::max)())
-                  ? (std::numeric_limits<int>::max)()
-                  : static_cast<int>(total);
-        return BML_OK;
+        return BML::ReadEventStreamDroppedCount(m_Handle, out);
     }
 
     int Poll(ScriptEvent *&out) {
         out = nullptr;
-        if (!m_Subscription.IsOpen())
+        if (!m_Handle)
             return BML_ERROR_INVALID_HANDLE;
-        if (m_PendingError != BML_OK) {
-            const int status = m_PendingError;
-            m_PendingError = BML_OK;
-            return status;
+
+        // Taking the queued event as the whole C++ value copies its strings and
+        // its lists, so the allocation is caught here rather than in a script.
+        BML::Events::Event value;
+        int status = BML_OK;
+        try {
+            status = BML::PollEventStreamValue(m_Handle, value);
+        } catch (const std::bad_alloc &) {
+            return BML_ERROR_OUT_OF_MEMORY;
+        } catch (...) {
+            return BML_ERROR_FAIL;
         }
-        if (m_Queue.empty())
-            return BML_ERROR_NOT_FOUND;
-        ScriptEvent *event = new (std::nothrow) ScriptEvent(
-            m_Context, std::move(m_Queue.front()));
+        if (status != BML_OK)
+            return status;
+
+        ScriptEvent *event = new (std::nothrow) ScriptEvent(m_Context, std::move(value));
         if (!event)
             return BML_ERROR_OUT_OF_MEMORY;
-        m_Queue.pop_front();
         out = event;
         return BML_OK;
     }
 
 private:
-    static void OnEvent(int status, EventsImc::EventValue *value,
-                        const BML_ImcMessage *message, void *userdata) noexcept {
-        auto *self = static_cast<EventStream *>(userdata);
-        if (!self)
-            return;
-        if (status != BML_OK || !value || !message) {
-            self->m_PendingError = status == BML_OK
-                                       ? BML_ERROR_MALFORMED_MESSAGE
-                                       : status;
-            return;
-        }
-        try {
-            BML::Events::Event event{};
-            status = BML::Events::Detail::Decode(
-                std::move(*value), *message, event);
-            if (status != BML_OK) {
-                self->m_PendingError = status;
-                return;
-            }
-            if (self->m_Queue.size() >= self->m_Capacity) {
-                self->m_Queue.pop_front();
-                ++self->m_LocalDrops;
-            }
-            self->m_Queue.push_back(std::move(event));
-        } catch (const std::bad_alloc &) {
-            self->m_PendingError = BML_ERROR_OUT_OF_MEMORY;
-        } catch (...) {
-            self->m_PendingError = BML_ERROR_FAIL;
-        }
-    }
-
     int m_RefCount = 1;
     ModContext *m_Context = nullptr;
-    std::size_t m_Capacity = 0;
-    std::uint64_t m_LocalDrops = 0;
-    int m_PendingError = BML_OK;
-    EventsImc::AllSubscription m_Subscription;
-    std::deque<BML::Events::Event> m_Queue;
+    BML_EventStream m_Handle = nullptr;
 };
 
 int OpenEvents(EventStream *&out, int capacity) {
     out = nullptr;
-    if (capacity < 0)
-        return BML_ERROR_INVALID_PARAMETER;
-    if (capacity == 0)
-        capacity = 256;
-    BML::ScriptImcClients *clients = nullptr;
     ModContext *context = nullptr;
-    int status = GetActiveEventClients(clients, context);
-    EventsImc::Client *client = nullptr;
-    if (status == BML_OK) status = clients->Events(client);
+    int status = GetActiveFacadeContext(context, "BML::Events");
     if (status != BML_OK)
         return status;
-    EventStream *result = new (std::nothrow) EventStream(
-        context, static_cast<std::size_t>(capacity));
+    EventStream *result = new (std::nothrow) EventStream(context);
     if (!result)
         return BML_ERROR_OUT_OF_MEMORY;
-    status = result->Open(*client);
+    status = result->Open(capacity);
     if (status != BML_OK) {
         result->Release();
         return status;
@@ -756,6 +686,7 @@ int OpenEvents(EventStream *&out, int capacity) {
     out = result;
     return BML_OK;
 }
+
 bool RegisterEvents(asIScriptEngine *engine, const char **errorMessage) {
     if (!Register(engine, engine->SetDefaultNamespace("BML::Events"), "namespace BML::Events", errorMessage) ||
         !Register(engine, engine->RegisterObjectType("Event", 0, asOBJ_REF), "Event", errorMessage) ||

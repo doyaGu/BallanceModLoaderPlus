@@ -27,26 +27,10 @@ add_custom_target(BML_VersionHeader ALL
     COMMENT "Generating Version.h with git metadata"
 )
 
-# .imc files are authoring inputs only. This target verifies the committed
-# typed IMC headers and prevents a runtime dependency on an IDL parser.
+# The IMC code generator is an authoring tool for mods that publish their own
+# .imc interfaces. The loader ships none of its own, so nothing here runs it;
+# the sample interface under tests/imc is what keeps the generator covered.
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
-set(BML_IMC_API_INPUTS
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
-)
-set(BML_IMC_LOCK_INPUTS
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc.lock
-)
-add_custom_target(BML_ImcApiGeneration
-        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
-                --check
-                --out-dir ${BML_INCLUDE_DIR}/BML/Generated
-                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
-        DEPENDS
-                ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
-                ${BML_IMC_API_INPUTS}
-                ${BML_IMC_LOCK_INPUTS}
-        COMMENT "Verifying generated IMC API bindings"
-)
 
 add_subdirectory(Utils)
 
@@ -106,7 +90,6 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
         ${BML_INCLUDE_DIR}/BML/ImcMath.h
         ${BML_INCLUDE_DIR}/BML/EventKinds.h
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_events_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h
         ${BML_INCLUDE_DIR}/BML/Gameplay.h
@@ -154,9 +137,10 @@ set(BML_PRIVATE_HEADERS
         Overlay.h
 
         RenderHook.h
+        EventSnapshot.h
+        EventStreams.h
         ImcPrimitives.h
         ImcRuntime.h
-        ImcEventSnapshot.h
         ImcObjectReferenceRegistry.h
 
         CommandContext.h
@@ -175,6 +159,7 @@ set(BML_SOURCES
         BuiltinImcApis.cpp
         InterfaceRegistry.cpp
         Interfaces.cpp
+        EventStreams.cpp
         RuntimeState.cpp
 
         IMod.cpp
@@ -256,7 +241,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
             AngelScript/ScriptImcFacade.h
-            AngelScript/ScriptImcClients.h
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
             AngelScript/ScriptModEntryScanner.h
@@ -301,7 +285,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptMod.cpp
             AngelScript/ScriptModContextView.cpp
             AngelScript/ScriptImcFacade.cpp
-            AngelScript/ScriptImcClients.cpp
             AngelScript/ScriptModDefinition.cpp
             AngelScript/ScriptModDefinitionBuilder.cpp
             AngelScript/ScriptModEntryScanner.cpp
@@ -382,7 +365,6 @@ target_link_libraries(BML
 )
 
 add_dependencies(BML BML_VersionHeader)
-add_dependencies(BML BML_ImcApiGeneration)
 
 target_compile_definitions(BML PRIVATE
         BML_EXPORTS IMGUI_EXPORT IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\"

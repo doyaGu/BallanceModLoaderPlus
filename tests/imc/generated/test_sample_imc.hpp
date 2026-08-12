@@ -11,7 +11,7 @@
 namespace BML::Imc::Generated::Test::Sample {
 inline constexpr const char ApiId[] = "test.sample";
 inline constexpr unsigned int Major = 1;
-inline constexpr unsigned int Minor = 0;
+inline constexpr unsigned int Minor = 1;
 
 inline constexpr const char ArrayStatePayload[] = "test.sample/v1/payload/array_state";
 namespace ArrayStateField {
@@ -69,6 +69,94 @@ inline std::size_t EncodedArrayStateSize(const ArrayStateValue &value) noexcept 
     status = reader.Finish();
     if (status != BML_OK) return status;
     if ((seen & UINT64_C(0x3)) != UINT64_C(0x3)) return BML_ERROR_MALFORMED_MESSAGE;
+    out = std::move(decoded);
+    return BML_OK;
+}
+
+inline constexpr const char BundlePayload[] = "test.sample/v1/payload/bundle";
+namespace BundleField {
+inline constexpr std::uint32_t Objects = 1u;
+inline constexpr std::uint32_t Points = 2u;
+inline constexpr std::uint32_t Weights = 3u;
+inline constexpr std::uint32_t Labels = 4u;
+}
+struct BundleValue {
+    bool HasObjects = false;
+    std::vector<BML_ObjectRef> Objects{};
+    bool HasPoints = false;
+    std::vector<BML_Vec3> Points{};
+    bool HasWeights = false;
+    std::vector<float> Weights{};
+    bool HasLabels = false;
+    std::vector<std::string> Labels{};
+};
+
+inline std::size_t EncodedBundleSize(const BundleValue &value) noexcept {
+    std::size_t size = 0;
+    if (value.HasObjects && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, BundleField::Objects, value.Objects.size(), 12)) return 0;
+    if (value.HasPoints && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, BundleField::Points, value.Points.size(), 12)) return 0;
+    if (value.HasWeights && !::BML::Imc::Wire::AddFixedArrayFieldSize(size, BundleField::Weights, value.Weights.size(), 4)) return 0;
+    if (value.HasLabels && !::BML::Imc::Wire::AddStringArrayFieldSize(size, BundleField::Labels, value.Labels)) return 0;
+    return size;
+}
+
+[[nodiscard]] inline int EncodeBundle(const BundleValue &value, void *data, std::size_t size) noexcept {
+    if (size != EncodedBundleSize(value)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Writer writer(data, size);
+    int status = writer.Begin();
+    if (status == BML_OK && value.HasObjects) status = writer.WriteObjectArray(BundleField::Objects, value.Objects);
+    if (status == BML_OK && value.HasPoints) status = writer.WriteVec3Array(BundleField::Points, value.Points);
+    if (status == BML_OK && value.HasWeights) status = writer.WriteFloatArray(BundleField::Weights, value.Weights);
+    if (status == BML_OK && value.HasLabels) status = writer.WriteStringArray(BundleField::Labels, value.Labels);
+    return status == BML_OK ? writer.Finish() : status;
+}
+
+[[nodiscard]] inline int DecodeBundle(const BML_ImcMessage &message, BundleValue &out) {
+    if (message.Size < sizeof(BML_ImcMessage) || (message.DataSize && !message.Data)) return BML_ERROR_INVALID_PARAMETER;
+    ::BML::Imc::Wire::Reader reader(message.Data, message.DataSize);
+    int status = reader.Begin();
+    if (status != BML_OK) return status;
+    BundleValue decoded{};
+    std::uint64_t seen = 0;
+    ::BML::Imc::Wire::FieldView field;
+    while ((status = reader.Next(field)) == BML_OK) {
+        switch (field.Id) {
+        case BundleField::Objects:
+            if (seen & (UINT64_C(1) << 0)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadObjectArray(field, decoded.Objects);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 0;
+            decoded.HasObjects = true;
+            break;
+        case BundleField::Points:
+            if (seen & (UINT64_C(1) << 1)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadVec3Array(field, decoded.Points);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 1;
+            decoded.HasPoints = true;
+            break;
+        case BundleField::Weights:
+            if (seen & (UINT64_C(1) << 2)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadFloatArray(field, decoded.Weights);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 2;
+            decoded.HasWeights = true;
+            break;
+        case BundleField::Labels:
+            if (seen & (UINT64_C(1) << 3)) return BML_ERROR_MALFORMED_MESSAGE;
+            status = ::BML::Imc::Wire::Reader::ReadStringArray(field, decoded.Labels);
+            if (status != BML_OK) return status;
+            seen |= UINT64_C(1) << 3;
+            decoded.HasLabels = true;
+            break;
+        default:
+            break;
+        }
+    }
+    if (status != BML_ERROR_NOT_FOUND) return status;
+    status = reader.Finish();
+    if (status != BML_OK) return status;
+    if ((seen & UINT64_C(0x0)) != UINT64_C(0x0)) return BML_ERROR_MALFORMED_MESSAGE;
     out = std::move(decoded);
     return BML_OK;
 }
@@ -469,6 +557,7 @@ public:
         m_Client = client;
         int status = BML_OK;
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ArrayStatePayload, &m_ArrayStatePayload);
+        if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, BundlePayload, &m_BundlePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, NoticePayload, &m_NoticePayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ObjectRequestPayload, &m_ObjectRequestPayload);
         if (status == BML_OK) status = BML_Imc_GetPayloadTypeId(m_Client, ScalarStatePayload, &m_ScalarStatePayload);
@@ -492,6 +581,7 @@ public:
     bool IsOpen() const noexcept { return m_Client != nullptr; }
     [[nodiscard]] int EnsureOpen(const char *ownerId = nullptr) noexcept { return m_Client ? BML_OK : Open(ownerId); }
     BML_ImcPayloadTypeId ArrayStatePayloadType() const noexcept { return m_ArrayStatePayload; }
+    BML_ImcPayloadTypeId BundlePayloadType() const noexcept { return m_BundlePayload; }
     BML_ImcPayloadTypeId NoticePayloadType() const noexcept { return m_NoticePayload; }
     BML_ImcPayloadTypeId ObjectRequestPayloadType() const noexcept { return m_ObjectRequestPayload; }
     BML_ImcPayloadTypeId ScalarStatePayloadType() const noexcept { return m_ScalarStatePayload; }
@@ -572,6 +662,7 @@ public:
 private:
     void ResetIds() noexcept {
         m_ArrayStatePayload = BML_IMC_INVALID_ID;
+        m_BundlePayload = BML_IMC_INVALID_ID;
         m_NoticePayload = BML_IMC_INVALID_ID;
         m_ObjectRequestPayload = BML_IMC_INVALID_ID;
         m_ScalarStatePayload = BML_IMC_INVALID_ID;
@@ -585,6 +676,7 @@ private:
     }
     BML_ImcClient m_Client = nullptr;
     BML_ImcPayloadTypeId m_ArrayStatePayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId m_BundlePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_NoticePayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_ObjectRequestPayload = BML_IMC_INVALID_ID;
     BML_ImcPayloadTypeId m_ScalarStatePayload = BML_IMC_INVALID_ID;

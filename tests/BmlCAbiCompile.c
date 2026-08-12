@@ -1,4 +1,5 @@
 #include "BML/BML.h"
+#include "BML/Events.h"
 #include "BML/Gameplay.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
@@ -157,4 +158,51 @@ int BML_TestCAbiUIInterface(const char *message) {
     if (ui->SetHUDMode(hud.Mode | BML_UI_HUD_TITLE | BML_UI_HUD_FPS | BML_UI_HUD_SR) != BML_OK)
         return 0;
     return ui->ShowTitle(0) == BML_OK && ui->ShowFPS(1) == BML_OK;
+}
+
+// The events interface is the only one that hands out a handle and the only one
+// read through a cursor, so this walks the whole shape a C caller needs: open,
+// poll, read the payload the kind says is there, walk one of its lists to the
+// end, and close. Events.h has a C++ Stream class over all of this, so compiling
+// it here is what keeps the C route working on its own.
+int BML_TestCAbiEventsInterface(void) {
+    const void *found = NULL;
+    const BML_EventsInterface *events = NULL;
+    BML_EventStream stream = NULL;
+    BML_EventInfo info;
+    BML_EventCommand command;
+    BML_EventText argument;
+    int dropped = 0;
+    int index = 0;
+
+    if (BML_GetInterface(BML_EVENTS_INTERFACE_ID, BML_EVENTS_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    events = (const BML_EventsInterface *) found;
+    if (!BML_IFACE_HAS(events, BML_EventsInterface, ReadCheat))
+        return 0;
+    if (events->OpenStream(BML_EVENT_DEFAULT_CAPACITY, &stream) != BML_OK)
+        return 0;
+
+    while (events->Poll(stream, &info) == BML_OK) {
+        if (info.Kind != BML_EVENT_COMMAND_PRE && info.Kind != BML_EVENT_COMMAND_POST)
+            continue;
+        if (events->ReadCommand(stream, &command) != BML_OK)
+            break;
+        if (command.Name.Length >= (int) BML_EVENT_TEXT_CAPACITY &&
+            strlen(command.Name.Value) != BML_EVENT_TEXT_CAPACITY - 1u)
+            break;
+        for (index = 0; index < command.ArgumentCount; ++index) {
+            if (events->ReadCommandArgument(stream, (size_t) index, &argument) != BML_OK)
+                break;
+        }
+        if (events->ReadCommandArgument(stream, (size_t) command.ArgumentCount, &argument) !=
+            BML_ERROR_NOT_FOUND)
+            break;
+    }
+
+    if (events->ReadDroppedCount(stream, &dropped) != BML_OK || dropped < 0) {
+        (void) events->CloseStream(stream);
+        return 0;
+    }
+    return events->CloseStream(stream) == BML_OK;
 }

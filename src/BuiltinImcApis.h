@@ -7,36 +7,15 @@
 #include "CKTypes.h"
 
 #include <cstddef>
-#include <utility>
-
-#include "ImcEventSnapshot.h"
 
 class BMLMod;
 class ILogger;
 class ModContext;
 class CKObject;
 
-/* Registers the BML-owned generated IMC providers. */
+/* Registers the BML-owned built-in providers. */
 void RegisterBuiltinImcApis(BMLMod &mod, ILogger *logger);
 void UnregisterBuiltinImcApis(BMLMod &mod);
-void PublishBuiltinImcEvent(ModContext &context, const BML::ImcEventSnapshot &event);
-bool HasBuiltinImcEventConsumers(ModContext &context) noexcept;
-
-/* Event telemetry is strictly observational.  Construct the potentially
- * allocating snapshot inside this boundary so an OOM or a provider failure
- * never changes the outcome of an original game hook. */
-template <typename Capture>
-void CaptureBuiltinImcEventNoexcept(ModContext &context, Capture &&capture) noexcept {
-    try {
-        if (!HasBuiltinImcEventConsumers(context))
-            return;
-        BML::ImcEventSnapshot event;
-        std::forward<Capture>(capture)(event);
-        PublishBuiltinImcEvent(context, event);
-    } catch (...) {
-        // Observability must never escape into the original game callback.
-    }
-}
 
 /* Called only by the loader's Virtools-manager callbacks.  This stays private
  * because ObjectRef never exposes CK lifetime mechanics across the ABI. */

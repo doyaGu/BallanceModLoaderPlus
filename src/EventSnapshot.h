@@ -1,5 +1,5 @@
-#ifndef BML_IMCEVENTSNAPSHOT_H
-#define BML_IMCEVENTSNAPSHOT_H
+#ifndef BML_EVENTSNAPSHOT_H
+#define BML_EVENTSNAPSHOT_H
 
 #include <cstdint>
 #include <string>
@@ -10,9 +10,9 @@
 
 namespace BML {
 
-/* Private hook ingress for bml.events.  It contains copied scalar data and
- * opaque ObjectRefs only: no CK pointer is retained past the hook frame. */
-struct ImcEventSnapshot {
+/* Private hook ingress for the event streams.  It contains copied scalar data
+ * and opaque ObjectRefs only: no CK pointer is retained past the hook frame. */
+struct EventSnapshot {
     int Kind = BML_EVENT_PRE_START_MENU;
 
     std::string Filename;
@@ -56,4 +56,4 @@ struct ImcEventSnapshot {
 
 } // namespace BML
 
-#endif // BML_IMCEVENTSNAPSHOT_H
+#endif // BML_EVENTSNAPSHOT_H

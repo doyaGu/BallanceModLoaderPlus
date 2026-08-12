@@ -65,10 +65,9 @@ target_include_directories(BmlCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BmlCAbiCompile PROPERTIES FOLDER "Tests")
 
 # imc/test.sample.imc is the authoring input behind the generated header the
-# generator tests compile against. It exists so those tests do not have to track
-# whichever interfaces the loader happens to ship. This target keeps the
-# committed header and lock in step with it, the way BML_ImcApiGeneration does
-# for the loader's own interfaces.
+# generator tests compile against. The loader publishes no .imc interface of its
+# own, so this sample is the only thing keeping the generator, its lock format,
+# and the committed output in step.
 set(BML_IMC_SAMPLE_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/imc/test.sample.imc")
 set(BML_IMC_SAMPLE_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/imc/generated")
 add_custom_target(BML_ImcSampleApiGeneration
@@ -467,6 +466,15 @@ add_bml_test(ModInvocationGateTest
         ModInvocationGateTest.cpp
 )
 
+# The event queues need no ModContext, so this drives them through the same
+# bml.events interface a Mod sees, with the thunks defined in the test itself.
+add_bml_test(EventStreamTest
+        SOURCES
+        EventStreamTest.cpp
+        ${BML_SOURCE_DIR}/EventStreams.cpp
+        ${BML_SOURCE_DIR}/InterfaceRegistry.cpp
+)
+
 add_bml_test(ImcErrorTest
         SOURCES
         ImcErrorTest.cpp
@@ -476,6 +484,8 @@ add_bml_test(ImcErrorTest
 add_bml_test(ImcHeadersTest
         SOURCES ImcHeadersTest.cpp
 )
+target_include_directories(ImcHeadersTest PRIVATE "${BML_IMC_SAMPLE_GENERATED_DIR}")
+add_dependencies(ImcHeadersTest BML_ImcSampleApiGeneration)
 
 add_bml_test(ImcMathTest
         SOURCES ImcMathTest.cpp

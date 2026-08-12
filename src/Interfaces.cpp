@@ -5,6 +5,7 @@
 // interface costs nothing at runtime and there is no registration order to get
 // right. Adding an interface means a struct here plus one row in kInterfaces; the
 // rules for changing one that already shipped are in Interface.h.
+#include "BML/Events.h"
 #include "BML/Gameplay.h"
 #include "BML/Interface.h"
 #include "BML/Runtime.h"
@@ -16,6 +17,7 @@
 #include <limits>
 
 #include "BuiltinImcApis.h"
+#include "EventStreams.h"
 #include "InterfaceRegistry.h"
 #include "ModContext.h"
 
@@ -299,6 +301,121 @@ int UIShowFPS(int visible) {
     });
 }
 
+// The event queues carry no locks, and every one of these takes a handle a Mod is
+// holding, so the game thread owns them: opening, polling, reading, and closing a
+// stream all refuse a call from anywhere else. EventStreams.h keeps the queues
+// themselves, so nothing here needs the ModContext beyond that rule.
+int EventsOpenStream(int capacity, BML_EventStream *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([capacity, out](ModContext &) {
+        return BML::OpenEventStream(capacity, *out);
+    });
+}
+
+int EventsCloseStream(BML_EventStream stream) {
+    return ServeOnMainThread([stream](ModContext &) {
+        return BML::CloseEventStream(stream);
+    });
+}
+
+int EventsReadDroppedCount(BML_EventStream stream, int *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, out](ModContext &) {
+        return BML::ReadEventStreamDroppedCount(stream, *out);
+    });
+}
+
+int EventsPoll(BML_EventStream stream, BML_EventInfo *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, out](ModContext &) {
+        return BML::PollEventStream(stream, *out);
+    });
+}
+
+int EventsReadLoad(BML_EventStream stream, BML_EventLoad *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, out](ModContext &) {
+        return BML::ReadEventLoad(stream, *out);
+    });
+}
+
+int EventsReadLoadObject(BML_EventStream stream, size_t index, BML_ObjectRef *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, index, out](ModContext &) {
+        return BML::ReadEventLoadObject(stream, index, *out);
+    });
+}
+
+int EventsReadPhysics(BML_EventStream stream, BML_EventPhysics *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, out](ModContext &) {
+        return BML::ReadEventPhysics(stream, *out);
+    });
+}
+
+int EventsReadPhysicsConvexMesh(BML_EventStream stream, size_t index, BML_ObjectRef *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, index, out](ModContext &) {
+        return BML::ReadEventPhysicsConvexMesh(stream, index, *out);
+    });
+}
+
+int EventsReadPhysicsBall(BML_EventStream stream, size_t index, BML_Vec3 *outCenter,
+                          float *outRadius) {
+    if (!outCenter || !outRadius)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, index, outCenter, outRadius](ModContext &) {
+        return BML::ReadEventPhysicsBall(stream, index, *outCenter, *outRadius);
+    });
+}
+
+int EventsReadPhysicsConcaveMesh(BML_EventStream stream, size_t index, BML_ObjectRef *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, index, out](ModContext &) {
+        return BML::ReadEventPhysicsConcaveMesh(stream, index, *out);
+    });
+}
+
+int EventsReadCommand(BML_EventStream stream, BML_EventCommand *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, out](ModContext &) {
+        return BML::ReadEventCommand(stream, *out);
+    });
+}
+
+int EventsReadCommandArgument(BML_EventStream stream, size_t index, BML_EventText *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, index, out](ModContext &) {
+        return BML::ReadEventCommandArgument(stream, index, *out);
+    });
+}
+
+int EventsReadConfig(BML_EventStream stream, BML_EventConfig *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, out](ModContext &) {
+        return BML::ReadEventConfig(stream, *out);
+    });
+}
+
+int EventsReadCheat(BML_EventStream stream, BML_EventCheat *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([stream, out](ModContext &) {
+        return BML::ReadEventCheat(stream, *out);
+    });
+}
+
 const BML_RuntimeInterface kRuntimeInterface = {
     BML_IFACE_HEADER(BML_RuntimeInterface, BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR,
                      BML_RUNTIME_INTERFACE_MINOR),
@@ -354,7 +471,27 @@ const BML_UIInterface kUIInterface = {
     &UIShowFPS,
 };
 
+const BML_EventsInterface kEventsInterface = {
+    BML_IFACE_HEADER(BML_EventsInterface, BML_EVENTS_INTERFACE_ID, BML_EVENTS_INTERFACE_MAJOR,
+                     BML_EVENTS_INTERFACE_MINOR),
+    &EventsOpenStream,
+    &EventsCloseStream,
+    &EventsReadDroppedCount,
+    &EventsPoll,
+    &EventsReadLoad,
+    &EventsReadLoadObject,
+    &EventsReadPhysics,
+    &EventsReadPhysicsConvexMesh,
+    &EventsReadPhysicsBall,
+    &EventsReadPhysicsConcaveMesh,
+    &EventsReadCommand,
+    &EventsReadCommandArgument,
+    &EventsReadConfig,
+    &EventsReadCheat,
+};
+
 const BML::InterfaceEntry kInterfaces[] = {
+    {BML_EVENTS_INTERFACE_ID, BML_EVENTS_INTERFACE_MAJOR, &kEventsInterface},
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
     {BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &kSceneInterface},

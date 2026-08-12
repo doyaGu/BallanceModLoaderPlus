@@ -1,4 +1,4 @@
-// The numbers that say which loader event a record in the bml.events stream is. A Mod
+// The numbers that say which loader event a stream from Events.h carries. A Mod
 // draining that stream reads the kind first and then the payload that goes with it, so this
 // is the list to switch on. Events.h is the C++ side of the same stream and the place the
 // payload structs are.

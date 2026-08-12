@@ -1,8 +1,15 @@
-api test.sample 1.0
+api test.sample 1.1
 
 record array_state {
     array<string> names
     array<int> values
+}
+
+record bundle {
+    optional array<object> objects
+    optional array<vec3> points
+    optional array<float> weights
+    optional array<string> labels
 }
 
 record notice {

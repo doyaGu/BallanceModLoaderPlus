@@ -126,7 +126,7 @@ specified.
 | HUD, menus, command bar, or built-in behavior | `src/BMLMod.*`, `src/Overlay.*`, `src/Bui.cpp`, `src/Gui/` | Focused UI/service tests and Player visual/input smoke test |
 | Legacy native SDK or CMake consumer behavior | `include/BML/`, `cmake/` | ABI/compile tests, template configure/build, and installed SDK check |
 | IMC runtime or built-in Provider | `src/ImcApi.cpp`, `src/ImcRuntime.*`, `src/BuiltinImcApis.*` | IMC runtime/compatibility tests and native IMC smoke test |
-| IMC interface definition | `imc/interfaces/`, `tools/imc_codegen.py` | Generator check, compatibility test, and review of interface, lock, and header together |
+| IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
 | Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
 | Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/Package-BMLRelease.ps1` | Both strict MkDocs builds, CMake install, and SDK stage validation |
 
@@ -143,9 +143,10 @@ release line. Do not change virtual function signatures or order, object
 layout, ownership rules, or types passed across that boundary.
 
 The `BML_*` C APIs and IMC use explicit handles, status codes, and allocation
-functions. Preserve their documented ownership and compatibility rules. New
-cross-mod services should normally use a generated IMC interface instead of a
-new ad hoc C++ ABI.
+functions. Preserve their documented ownership and compatibility rules. A new
+loader capability belongs in a versioned interface struct reached through
+`BML_GetInterface`; a service one Mod publishes for other Mods belongs in a
+generated IMC interface rather than a new ad hoc C++ ABI.
 
 Script APIs are public source interfaces. A binding change must update the
 script API reference, author documentation, and runtime smoke coverage in the
@@ -153,20 +154,25 @@ same change.
 
 ## Generated interfaces
 
-Do not edit files under `include/BML/Generated` by hand. Change the matching
-`.imc` file and run the generator. For example:
+The loader publishes no `.imc` interface of its own; the generator is an
+authoring tool for Mods that publish theirs. The only `.imc` file in this
+repository is `tests/imc/test.sample.imc`, which keeps the generator, its lock
+format, and its committed output under test.
+
+Do not edit a generated header by hand. Change the matching `.imc` file and run
+the generator. For the sample interface that is:
 
 ```powershell
 python tools/imc_codegen.py `
   --update-lock `
-  --out-dir include/BML/Generated `
-  --input imc/interfaces/bml.events.imc
+  --out-dir tests/imc/generated `
+  --input tests/imc/test.sample.imc
 ```
 
 Review and commit the `.imc`, `.imc.lock`, and generated header together. The
 lock owns stable field and endpoint identities; do not edit its numbers by
-hand. A normal BML+ build runs the generator in check mode and fails when a
-committed binding is stale.
+hand. A normal BML+ build runs the generator in check mode over the sample and
+fails when its committed binding is stale.
 
 Public Mod-author documentation is installed from CMake into
 `share/BML/docs/<language>`. The release packager copies that installed tree;

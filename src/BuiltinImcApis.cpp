@@ -15,15 +15,11 @@
 #include "BML/Scene.h"
 
 #include "BMLMod.h"
-#include "ImcEventSnapshot.h"
 #include "ImcObjectReferenceRegistry.h"
 #include "Logger.h"
 #include "ModContext.h"
-#include "BML/Generated/bml_events_imc.hpp"
 
 namespace {
-
-namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
 
 constexpr uint32_t kVirtoolsObjectDomain = BML_OBJECT_DOMAIN_VIRTOOLS;
 
@@ -66,12 +62,6 @@ class BuiltinImcProvider {
 public:
     explicit BuiltinImcProvider(BMLMod &mod) : m_Mod(mod) {}
 
-    int Register() { return RegisterImc(); }
-
-    void Unregister() {
-        (void)m_ImcEvents.Close();
-    }
-
     ModContext *Context() const { return GetContext(); }
 
     BML_ObjectRef MakeObjectRef(CKObject *object) {
@@ -84,13 +74,6 @@ public:
 
     void InvalidateObjectRefs(const CK_ID *ids, int count) { m_ObjectReferences.Invalidate(ids, count); }
     void InvalidateAllObjectRefs() { m_ObjectReferences.InvalidateAll(); }
-
-    bool HasImcEventConsumers() const noexcept {
-        std::size_t count = 0;
-        return m_ImcEvents.GetAllSubscriberCount(count) == BML_OK && count != 0;
-    }
-
-    void PublishEvent(const BML::ImcEventSnapshot &event) { PublishImcEvent(event); }
 
     int ReadSceneObject(BML_ObjectRef reference, BML_SceneObjectInfo &out) {
         CKObject *object = m_ObjectReferences.Resolve(GetContext(), reference);
@@ -222,71 +205,6 @@ public:
     }
 
 private:
-    int RegisterImc() {
-        const int status = m_ImcEvents.Open(m_Mod.GetID());
-        if (status != BML_OK)
-            (void)m_ImcEvents.Close();
-        return status;
-    }
-
-    void PublishImcEvent(const BML::ImcEventSnapshot &event) {
-        ImcEventsApi::EventValue value{}; value.Kind = event.Kind;
-        const bool isLoad = event.Kind == BML_EVENT_LOAD_OBJECT || event.Kind == BML_EVENT_LOAD_SCRIPT;
-        const bool isPhysics = event.Kind == BML_EVENT_PHYSICALIZE || event.Kind == BML_EVENT_UNPHYSICALIZE;
-        const bool isCommand = event.Kind == BML_EVENT_COMMAND_PRE || event.Kind == BML_EVENT_COMMAND_POST;
-        if (isLoad) {
-            value.HasFilename = true; value.Filename = event.Filename;
-            value.HasIsMap = true; value.IsMap = event.IsMap;
-            value.HasMasterName = true; value.MasterName = event.MasterName;
-            value.HasFilterClass = true; value.FilterClass = event.FilterClass;
-            value.HasAddToScene = true; value.AddToScene = event.AddToScene;
-            value.HasReuseMeshes = true; value.ReuseMeshes = event.ReuseMeshes;
-            value.HasReuseMaterials = true; value.ReuseMaterials = event.ReuseMaterials;
-            value.HasDynamic = true; value.Dynamic = event.IsDynamic;
-            if (event.Kind == BML_EVENT_LOAD_OBJECT) {
-                value.HasObjectIds = true; value.ObjectIds = event.ObjectIds;
-                value.HasMasterObject = true; value.MasterObject = event.MasterObject;
-            } else {
-                value.HasScript = true; value.Script = event.Script;
-            }
-        }
-        if (isPhysics) {
-            value.HasTarget = true; value.Target = event.Target;
-            if (event.Kind == BML_EVENT_PHYSICALIZE) {
-                value.HasFixed = true; value.Fixed = event.Fixed;
-                value.HasFriction = true; value.Friction = event.Friction;
-                value.HasElasticity = true; value.Elasticity = event.Elasticity;
-                value.HasMass = true; value.Mass = event.Mass;
-                value.HasCollisionGroup = true; value.CollisionGroup = event.CollisionGroup;
-                value.HasStartFrozen = true; value.StartFrozen = event.StartFrozen;
-                value.HasEnableCollision = true; value.EnableCollision = event.EnableCollision;
-                value.HasAutoCalculateMassCenter = true; value.AutoCalculateMassCenter = event.AutoCalculateMassCenter;
-                value.HasLinearDamp = true; value.LinearDamp = event.LinearDamp;
-                value.HasRotDamp = true; value.RotDamp = event.RotDamp;
-                value.HasCollisionSurface = true; value.CollisionSurface = event.CollisionSurface;
-                value.HasMassCenter = true; value.MassCenter = event.MassCenter;
-                value.HasConvexMeshes = true; value.ConvexMeshes = event.ConvexMeshes;
-                value.HasBallCenters = true; value.BallCenters = event.BallCenters;
-                value.HasBallRadii = true; value.BallRadii = event.BallRadii;
-                value.HasConcaveMeshes = true; value.ConcaveMeshes = event.ConcaveMeshes;
-            }
-        }
-        if (isCommand) {
-            value.HasCommand = true; value.Command = event.Command;
-            value.HasCommandArgs = true; value.CommandArgs = event.CommandArgs;
-        }
-        if (event.Kind == BML_EVENT_CONFIG_MODIFIED) {
-            value.HasConfigCategory = true; value.ConfigCategory = event.ConfigCategory;
-            value.HasConfigKey = true; value.ConfigKey = event.ConfigKey;
-            value.HasConfigType = true; value.ConfigType = event.ConfigType;
-            value.HasConfigValue = true; value.ConfigValue = event.ConfigValue;
-        }
-        if (event.Kind == BML_EVENT_CHEAT_CHANGED) {
-            value.HasCheatEnabled = true; value.CheatEnabled = event.CheatEnabled;
-        }
-        (void)m_ImcEvents.PublishAll(value);
-    }
-
     ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
 
     // outLength is the whole length, so text too long for the buffer is detectable
@@ -401,7 +319,6 @@ private:
 
     BMLMod &m_Mod;
     ObjectReferences m_ObjectReferences;
-    ImcEventsApi::Client m_ImcEvents;
 };
 
 std::unordered_map<BMLMod *, std::unique_ptr<BuiltinImcProvider>> g_Providers;
@@ -419,43 +336,17 @@ BuiltinImcProvider *FindProvider(ModContext &context) {
 
 void RegisterBuiltinImcApis(BMLMod &mod, ILogger *logger) {
     UnregisterBuiltinImcApis(mod);
-    auto provider = std::make_unique<BuiltinImcProvider>(mod);
-    const int status = provider->Register();
-    if (status != BML_OK) {
+    try {
+        g_Providers.emplace(&mod, std::make_unique<BuiltinImcProvider>(mod));
+    } catch (const std::bad_alloc &) {
         if (logger)
-            logger->Warn("Failed to register built-in IMC providers: %s", BML_GetErrorString(status));
-        return;
+            logger->Warn("Failed to register the built-in providers: %s",
+                         BML_GetErrorString(BML_ERROR_OUT_OF_MEMORY));
     }
-    g_Providers.emplace(&mod, std::move(provider));
 }
 
 void UnregisterBuiltinImcApis(BMLMod &mod) {
-    const auto found = g_Providers.find(&mod);
-    if (found == g_Providers.end())
-        return;
-    found->second->Unregister();
-    g_Providers.erase(found);
-}
-
-void PublishBuiltinImcEvent(ModContext &context, const BML::ImcEventSnapshot &event) {
-    BuiltinImcProvider *provider = FindProvider(context);
-    if (!provider)
-        return;
-    try {
-        provider->PublishEvent(event);
-    } catch (...) {
-        // Hook paths must never let a telemetry allocation or provider error
-        // alter the original game callback.
-    }
-}
-
-bool HasBuiltinImcEventConsumers(ModContext &context) noexcept {
-    try {
-        BuiltinImcProvider *provider = FindProvider(context);
-        return provider && provider->HasImcEventConsumers();
-    } catch (...) {
-        return false;
-    }
+    g_Providers.erase(&mod);
 }
 
 void InvalidateBuiltinObjectRefs(ModContext &context, const CK_ID *ids, int count) {

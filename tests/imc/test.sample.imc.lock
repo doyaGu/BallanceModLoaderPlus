@@ -3,7 +3,7 @@
   "api": "test.sample",
   "version": {
     "major": 1,
-    "minor": 0
+    "minor": 1
   },
   "enums": [],
   "schemas": [
@@ -22,6 +22,39 @@
           "name": "values",
           "type": "array<int>",
           "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "bundle",
+      "fields": [
+        {
+          "id": 1,
+          "name": "objects",
+          "type": "array<object>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "points",
+          "type": "array<vec3>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 3,
+          "name": "weights",
+          "type": "array<float>",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 4,
+          "name": "labels",
+          "type": "array<string>",
+          "optional": true,
           "reserved": false
         }
       ]

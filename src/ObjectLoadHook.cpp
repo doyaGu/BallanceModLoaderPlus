@@ -4,7 +4,7 @@
 #include <string>
 
 #include "BuiltinImcApis.h"
-#include "ImcEventSnapshot.h"
+#include "EventStreams.h"
 #include "ModContext.h"
 
 static CKBEHAVIORFCT g_ObjectLoad = nullptr;
@@ -67,7 +67,7 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
     }
 
     CKContext *ckContext = modContext->GetCKContext();
-    CaptureBuiltinImcEventNoexcept(*modContext, [&](BML::ImcEventSnapshot &event) {
+    BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
         event.Kind = BML_EVENT_LOAD_OBJECT;
         event.Filename = callbackName;
         event.MasterName = mastername;
@@ -94,7 +94,7 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
             auto *behavior = static_cast<CKBehavior *>(obj);
             if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
-                CaptureBuiltinImcEventNoexcept(*modContext, [&](BML::ImcEventSnapshot &event) {
+                BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
                     event.Kind = BML_EVENT_LOAD_SCRIPT;
                     event.Filename = callbackName;
                     event.Script = MakeBuiltinObjectRef(*modContext, behavior);

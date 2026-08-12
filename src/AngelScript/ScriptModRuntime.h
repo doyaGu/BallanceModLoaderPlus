@@ -13,7 +13,6 @@ namespace BML {
 
 class ScriptMod;
 class ScriptModRuntime;
-class ScriptImcClients;
 
 class ScriptCurrentModScope {
 public:
@@ -141,7 +140,6 @@ public:
     ScriptMod *GetOwner() const { return m_Owner; }
     static ScriptMod *GetCurrentScriptMod();
     static ScriptModRuntime *GetCurrentScriptModRuntime();
-    ScriptImcClients *GetImcClients() noexcept;
     static bool IsConstructingScriptObject();
     static bool RecordConstructionHostCallViolation(const char *apiName);
     static bool IsInStateHook();
@@ -215,9 +213,6 @@ private:
     bool m_ModuleLoaded = false;
     bool m_Loaded = false;
     ScriptMod *m_Owner = nullptr;
-#ifndef BML_SCRIPT_RUNTIME_TEST_ACCESS
-    std::unique_ptr<ScriptImcClients> m_ImcClients;
-#endif
 };
 
 } // namespace BML

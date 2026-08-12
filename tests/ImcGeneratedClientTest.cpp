@@ -8,13 +8,6 @@
 // interface churn this file, and a third-party mod is what the generated layer
 // is for in the first place. tests/imc/test.sample.imc is the authoring input
 // and tests/imc/generated holds the committed output.
-//
-// The BML::Events::Stream tests at the end are about the loader's own event
-// facade rather than about the generator, which is why they still use
-// bml.events.
-#include "BML/Events.h"
-#include "BML/Generated/bml_events_imc.hpp"
-
 #include "test_sample_imc.hpp"
 
 #include <gtest/gtest.h>
@@ -304,6 +297,7 @@ TEST(ImcGeneratedClientTest, SubscriptionCloseCanRetryAfterBusy) {
     ASSERT_EQ(client.SubscribeNotices(subscription,
         [](int, Sample::NoticeValue *, const BML_ImcMessage *, void *) noexcept {},
         nullptr, 2), BML_OK);
+    EXPECT_EQ(g_LastSubscribeCapacity.load(std::memory_order_relaxed), 2u);
     g_UnsubscribeStatus = BML_ERROR_BUSY;
     EXPECT_EQ(subscription.Close(), BML_ERROR_BUSY);
     EXPECT_TRUE(subscription.IsOpen());
@@ -414,7 +408,7 @@ TEST(ImcGeneratedClientTest, AdoptsInternallyOwnedClientWithoutReopeningIt) {
     ASSERT_EQ(client.Adopt(raw), BML_OK);
     EXPECT_EQ(client.Handle(), raw);
     EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 0);
-    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 6);
+    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 7);
     EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 4);
     EXPECT_EQ(g_TopicLookups.load(std::memory_order_relaxed), 1);
     EXPECT_EQ(client.Close(), BML_OK);
@@ -426,13 +420,13 @@ TEST(ImcGeneratedClientTest, ResolvesIdsOnceAndReleasesEveryRpcFuture) {
     Sample::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
     EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 4);
-    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 6);
+    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 7);
     Sample::ScalarStateValue state{};
     ASSERT_EQ(client.CallState(state), BML_OK);
     EXPECT_TRUE(state.Flag);
     EXPECT_EQ(state.Count, 7);
     EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 4);
-    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 6);
+    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 7);
     EXPECT_EQ(g_FutureReleases, 1);
 }
 
@@ -565,129 +559,4 @@ TEST(ImcGeneratedClientTest, RpcResponseCarriesCountedArrays) {
     EXPECT_EQ(arrays.Values[1], 4);
     EXPECT_TRUE(g_LastRequest.empty());
     EXPECT_EQ(g_FutureReleases, 1);
-}
-TEST(ImcGeneratedClientTest, PublicEventFacadePreservesTopicMetadataAndTypedPayload) {
-    ResetMock();
-    BML::Events::Stream stream;
-    ASSERT_EQ(stream.Open(0), BML_OK);
-    EXPECT_EQ(g_LastSubscribeCapacity.load(std::memory_order_relaxed), 256u);
-    ASSERT_EQ(stream.Close(), BML_OK);
-    ASSERT_EQ(stream.Open(1), BML_OK);
-    EXPECT_EQ(g_LastSubscribeCapacity.load(std::memory_order_relaxed), 1u);
-    ASSERT_EQ(stream.Close(), BML_OK);
-    ASSERT_EQ(stream.Open(2), BML_OK);
-    ASSERT_NE(g_TopicHandler, nullptr);
-    namespace Events = BML::Imc::Generated::Bml::Events;
-    Events::EventValue value{}; value.Kind = BML_EVENT_CHEAT_CHANGED;
-    value.HasCheatEnabled = true; value.CheatEnabled = true;
-    std::vector<std::uint8_t> data(Events::EncodedEventSize(value));
-    ASSERT_EQ(Events::EncodeEvent(value, data.data(), data.size()), BML_OK);
-    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
-    message.Data = data.data(); message.DataSize = data.size();
-    message.PayloadType = StableId(Events::EventPayload); message.MessageId = 77; message.TimestampNs = 88;
-    g_TopicHandler(StableId(Events::AllRoute), &message, g_TopicUserdata);
-    BML::Events::Event event{};
-    ASSERT_EQ(stream.Poll(event), BML_OK);
-    EXPECT_EQ(event.Kind, BML_EVENT_CHEAT_CHANGED);
-    EXPECT_EQ(event.Sequence, 77u);
-    EXPECT_EQ(event.Timestamp, 88u);
-    ASSERT_TRUE(event.CheatData.has_value());
-    EXPECT_TRUE(event.CheatData->Enabled);
-    int dropped = -1; ASSERT_EQ(stream.DroppedCount(dropped), BML_OK); EXPECT_EQ(dropped, 0);
-    EXPECT_EQ(stream.Close(), BML_OK);
-}
-
-TEST(ImcGeneratedClientTest, PublicEventFacadeRejectsInvalidDomainPayloads) {
-    ResetMock();
-    BML::Events::Stream stream;
-    ASSERT_EQ(stream.Open(2), BML_OK);
-    ASSERT_NE(g_TopicHandler, nullptr);
-
-    namespace Events = BML::Imc::Generated::Bml::Events;
-    Events::EventValue value{};
-    value.Kind = BML_EVENT_LOAD_OBJECT;
-    std::vector<std::uint8_t> data(Events::EncodedEventSize(value));
-    ASSERT_EQ(Events::EncodeEvent(value, data.data(), data.size()), BML_OK);
-    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
-    message.Data = data.data();
-    message.DataSize = data.size();
-    message.PayloadType = StableId(Events::EventPayload);
-    g_TopicHandler(StableId(Events::AllRoute), &message, g_TopicUserdata);
-
-    BML::Events::Event event{};
-    event.Kind = BML_EVENT_CHEAT_CHANGED;
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_MALFORMED_MESSAGE);
-    EXPECT_EQ(event.Kind, 0);
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
-
-    value = {};
-    value.Kind = BML_EVENT_PHYSICALIZE;
-    value.HasTarget = true;
-    value.HasFixed = true;
-    value.HasFriction = true;
-    value.HasElasticity = true;
-    value.HasMass = true;
-    value.HasCollisionGroup = true;
-    value.HasStartFrozen = true;
-    value.HasEnableCollision = true;
-    value.HasAutoCalculateMassCenter = true;
-    value.HasLinearDamp = true;
-    value.HasRotDamp = true;
-    value.HasCollisionSurface = true;
-    value.HasMassCenter = true;
-    value.HasConvexMeshes = true;
-    value.HasBallCenters = true;
-    value.BallCenters.push_back({1.0f, 2.0f, 3.0f});
-    value.HasBallRadii = true;
-    value.HasConcaveMeshes = true;
-    data.resize(Events::EncodedEventSize(value));
-    ASSERT_EQ(Events::EncodeEvent(value, data.data(), data.size()), BML_OK);
-    message.Data = data.data();
-    message.DataSize = data.size();
-    g_TopicHandler(StableId(Events::AllRoute), &message, g_TopicUserdata);
-
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_MALFORMED_MESSAGE);
-    EXPECT_EQ(event.Kind, 0);
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
-    int dropped = -1;
-    EXPECT_EQ(stream.DroppedCount(dropped), BML_OK);
-    EXPECT_EQ(dropped, 0);
-    EXPECT_EQ(stream.Close(), BML_OK);
-}
-
-TEST(ImcGeneratedClientTest, PublicEventFacadeDistinguishesClosedEmptyAndReadyStates) {
-    ResetMock();
-    BML::Events::Stream stream;
-    BML::Events::Event event{};
-    event.Kind = BML_EVENT_CHEAT_CHANGED;
-
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_INVALID_HANDLE);
-    EXPECT_EQ(event.Kind, 0);
-
-    ASSERT_EQ(stream.Open(2), BML_OK);
-    event.Kind = BML_EVENT_CHEAT_CHANGED;
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
-    EXPECT_EQ(event.Kind, 0);
-
-    ASSERT_NE(g_TopicHandler, nullptr);
-    namespace Events = BML::Imc::Generated::Bml::Events;
-    Events::EventValue value{};
-    value.Kind = BML_EVENT_CHEAT_CHANGED;
-    value.HasCheatEnabled = true;
-    value.CheatEnabled = true;
-    std::vector<std::uint8_t> data(Events::EncodedEventSize(value));
-    ASSERT_EQ(Events::EncodeEvent(value, data.data(), data.size()), BML_OK);
-    BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
-    message.Data = data.data();
-    message.DataSize = data.size();
-    message.PayloadType = StableId(Events::EventPayload);
-    g_TopicHandler(StableId(Events::AllRoute), &message, g_TopicUserdata);
-
-    EXPECT_EQ(stream.Poll(event), BML_OK);
-    EXPECT_EQ(event.Kind, BML_EVENT_CHEAT_CHANGED);
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_NOT_FOUND);
-    EXPECT_EQ(event.Kind, 0);
-
-    ASSERT_EQ(stream.Close(), BML_OK);
-    EXPECT_EQ(stream.Poll(event), BML_ERROR_INVALID_HANDLE);
 }

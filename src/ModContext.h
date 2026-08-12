@@ -418,7 +418,7 @@ private:
 
     void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
-    void PublishImcEvent(int kind);
+    void PublishEvent(int kind);
 
     int m_Flags = 0;
     BML::RuntimeState m_RuntimeState;

@@ -69,8 +69,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with inline C++ wrappers |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
-| `Generated/*.hpp` | Built-in bindings generated from `.imc`; do not edit them |
-| `Events.h`, `EventKinds.h` | The loader event stream over IMC, and the event kind codes |
+| `Events.h`, `EventKinds.h` | The loader event queue, reached through an interface struct, and the event kind codes |
 | `Bui.h` | Ballance-style ImGui widgets |
 | `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
 | `InputHook.h` | Keyboard, mouse, controller state, and paired input-block tokens |
@@ -221,8 +220,7 @@ Built-in facades include:
 - `BML::Scene` for object information, transforms, and named lookup;
 - `BML::Gameplay` for level, energy, directory, checkpoint, and reset data;
 - `BML::UI` for the message board, mod/map menus, and HUD;
-- `BML::Speedrun` for the shared speedrun timer;
-- `BML::Events` for the typed event stream.
+- `BML::Speedrun` for the shared speedrun timer.
 
 The native `BML::Gameplay` collection reads return complete snapshots in a
 caller-owned `std::vector`. Read the catalog during setup and refresh level

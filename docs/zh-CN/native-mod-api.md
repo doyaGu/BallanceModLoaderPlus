@@ -65,8 +65,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带内联 C++ 包装 |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
-| `Generated/*.hpp` | 从 `.imc` 生成的内置接口绑定；不要手工修改 |
-| `Events.h`, `EventKinds.h` | 基于 IMC 的 Loader 事件流，以及事件种类码 |
+| `Events.h`, `EventKinds.h` | 经由 interface struct 取得的 Loader 事件队列，以及事件种类码 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
 | `Gui.h`, `Gui/*.h` | `BGui` Virtools 实体/行为 UI 封装 |
 | `InputHook.h` | 键盘、鼠标、手柄状态与可配对的输入屏蔽令牌 |
@@ -201,7 +200,6 @@ void MyMod::OnUnload() {
 - `BML::Gameplay`：关卡、能量、目录、检查点和重置点。
 - `BML::UI`：消息板、Mod/地图菜单和 HUD。
 - `BML::Speedrun`：共享 Speedrun 计时器。
-- `BML::Events`：带类型化附加数据的事件流。
 
 原生 `BML::Gameplay` 的集合读取函数会在调用方持有的 `std::vector` 中返回完整
 快照。目录应在初始化时读取，检查点和重置点应在关卡变化时刷新；这些调用会

@@ -119,7 +119,7 @@ powershell -ExecutionPolicy Bypass `
 | HUD、菜单、命令栏或内建行为 | `src/BMLMod.*`、`src/Overlay.*`、`src/Bui.cpp`、`src/Gui/` | 定向 UI/服务测试和 Player 画面/输入冒烟测试 |
 | 旧式原生 SDK 或 CMake 消费端行为 | `include/BML/`、`cmake/` | ABI/编译测试、模板配置构建和安装后 SDK 检查 |
 | IMC 运行时或内建 Provider | `src/ImcApi.cpp`、`src/ImcRuntime.*`、`src/BuiltinImcApis.*` | IMC 运行时/兼容性测试和原生 IMC 冒烟测试 |
-| IMC 接口定义 | `imc/interfaces/`、`tools/imc_codegen.py` | 生成器检查、兼容性测试，并一起审查接口、lock 和头文件 |
+| IMC 代码生成器或其示例接口 | `tools/imc_codegen.py`、`tests/imc/` | 生成器检查、兼容性测试，并一起审查接口、lock 和头文件 |
 | 脚本发现、绑定、执行或重载 | `src/AngelScript/`、`docs/api/` | 定向脚本测试、API stub 检查和脚本版 Player 冒烟测试 |
 | 公开文档或发布目录 | `docs/`、`src/CMakeLists.txt`、`scripts/Package-BMLRelease.ps1` | 中英文严格文档构建、CMake install 和 SDK stage 校验 |
 
@@ -134,27 +134,31 @@ powershell -ExecutionPolicy Bypass `
 传递的类型。
 
 `BML_*` C API 和 IMC 使用显式 handle、状态码及分配函数。修改时必须保持文档
-规定的所有权和兼容性。新增跨 Mod 服务时，通常应使用生成式 IMC，而不是增加
-新的临时 C++ ABI。
+规定的所有权和兼容性。新增 Loader 能力应放进经由 `BML_GetInterface` 取得的
+带版本 interface struct；某个 Mod 向其他 Mod 提供的服务应使用生成式 IMC，而
+不是增加新的临时 C++ ABI。
 
 脚本 API 是公开的源码接口。修改绑定时，必须在同一次变更中更新脚本 API
 参考、作者文档和运行时冒烟测试覆盖。
 
 ## 生成式接口
 
-不要手工修改 `include/BML/Generated`。应修改对应的 `.imc` 文件并运行生成器。
-例如：
+Loader 自己不发布任何 `.imc` 接口，生成器是给发布接口的 Mod 用的编写工具。
+本仓库里唯一的 `.imc` 文件是 `tests/imc/test.sample.imc`，它让生成器、lock
+格式和已提交的输出都保持在测试覆盖之下。
+
+不要手工修改生成头。应修改对应的 `.imc` 文件并运行生成器。对示例接口即：
 
 ```powershell
 python tools/imc_codegen.py `
   --update-lock `
-  --out-dir include/BML/Generated `
-  --input imc/interfaces/bml.events.imc
+  --out-dir tests/imc/generated `
+  --input tests/imc/test.sample.imc
 ```
 
 `.imc`、`.imc.lock` 和生成头应一起审查和提交。lock 保存稳定的字段与端点标识，
-不要手工调整其中的数字。BML+ 的正常构建会以检查模式运行生成器，并在已提交
-的绑定过期时失败。
+不要手工调整其中的数字。BML+ 的正常构建会对该示例以检查模式运行生成器，并在
+已提交的绑定过期时失败。
 
 面向 Mod 作者的公开文档由 CMake 安装到 `share/BML/docs/<语言>`，发布脚本复制
 该安装树。不要在打包脚本中增加第二套源码文档复制规则。编辑器 API stub 仍位于
