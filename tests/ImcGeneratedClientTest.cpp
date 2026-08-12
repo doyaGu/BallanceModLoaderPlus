@@ -1,10 +1,21 @@
+// Runtime coverage for what the IMC generator emits: the typed Client, the
+// Provider registration slots, the topic subscription, and the RPC futures. The
+// mocks below stand in for the loader's IMC transport, so none of this needs a
+// running loader.
+//
+// These tests drive test.sample, an interface that exists for them alone.
+// Pinning them to one of the loader's own interfaces made every change to that
+// interface churn this file, and a third-party mod is what the generated layer
+// is for in the first place. tests/imc/test.sample.imc is the authoring input
+// and tests/imc/generated holds the committed output.
+//
+// The BML::Events::Stream tests at the end are about the loader's own event
+// facade rather than about the generator, which is why they still use
+// bml.events.
 #include "BML/Events.h"
 #include "BML/Generated/bml_events_imc.hpp"
-#include "BML/Generated/bml_gameplay_imc.hpp"
-#include "BML/Generated/bml_scene_imc.hpp"
-#include "BML/Generated/bml_runtime_imc.hpp"
-#include "BML/Generated/bml_ui_imc.hpp"
-#include "BML/Runtime.h"
+
+#include "test_sample_imc.hpp"
 
 #include <gtest/gtest.h>
 
@@ -32,6 +43,8 @@ struct BML_ImcResponse_T {
     BML_ImcPayloadTypeId PayloadType = BML_IMC_INVALID_ID;
 };
 
+namespace Sample = BML::Imc::Generated::Test::Sample;
+
 namespace {
 std::uint32_t StableId(std::string_view name) {
     std::uint32_t value = 2166136261u;
@@ -54,7 +67,7 @@ std::vector<std::uint8_t> g_LastRequest;
 BML_ImcPayloadTypeId g_LastRequestPayload = 0;
 std::vector<std::uint8_t> g_LastPublish;
 BML_ImcPayloadTypeId g_LastPublishPayload = 0;
-std::string g_ProvidedMessage;
+std::string g_ProvidedText;
 void *g_LastProviderUserdata = nullptr;
 BML_ImcClient g_RegisteredClient = nullptr;
 BML_ImcRpcHandler g_RegisteredHandler = nullptr;
@@ -71,65 +84,59 @@ void ResetMock() {
     g_LastSubscribeCapacity = 0;
     g_LastRequest.clear(); g_LastRequestPayload = 0;
     g_LastPublish.clear(); g_LastPublishPayload = 0;
-    g_ProvidedMessage.clear(); g_LastProviderUserdata = nullptr;
+    g_ProvidedText.clear(); g_LastProviderUserdata = nullptr;
     g_RegisteredClient = nullptr; g_RegisteredHandler = nullptr;
     g_RegisteredUserdata = nullptr; g_RegisteredRpc = BML_IMC_INVALID_ID;
     g_RegisteredExecution = BML_IMC_EXECUTION_GAME_THREAD;
     g_TopicHandler = nullptr; g_TopicUserdata = nullptr;
 }
 
-int EncodeRuntimeResult(BML_ImcFuture_T &future) {
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::RuntimeStateValue value{};
-    value.InGame = true; value.InLevel = true; value.Paused = false;
-    value.Playing = true; value.CheatEnabled = false;
-    future.Data.resize(Runtime::EncodedRuntimeStateSize(value));
-    const int status = Runtime::EncodeRuntimeState(value, future.Data.data(), future.Data.size());
+int EncodeScalarStateResult(BML_ImcFuture_T &future) {
+    Sample::ScalarStateValue value{};
+    value.Flag = true; value.Count = 7; value.Ratio = 1.5f;
+    future.Data.resize(Sample::EncodedScalarStateSize(value));
+    const int status = Sample::EncodeScalarState(value, future.Data.data(), future.Data.size());
     future.Result = {};
     future.Result.Size = sizeof(BML_ImcMessage);
     future.Result.Data = future.Data.data();
     future.Result.DataSize = future.Data.size();
-    future.Result.PayloadType = StableId(Runtime::RuntimeStatePayload);
+    future.Result.PayloadType = StableId(Sample::ScalarStatePayload);
     return status;
 }
 
-int EncodeEntityResult(BML_ImcFuture_T &future) {
-    namespace Scene = BML::Imc::Generated::Bml::Scene;
-    Scene::EntityTransformValue value{};
+int EncodeTransformStateResult(BML_ImcFuture_T &future) {
+    Sample::TransformStateValue value{};
     value.Position = {1.0f, 2.0f, 3.0f}; value.Scale = {1.0f, 1.0f, 1.0f};
     value.Parent = {9, 8, 7}; value.ChildCount = 4;
-    future.Data.resize(Scene::EncodedEntityTransformSize(value));
-    const int status = Scene::EncodeEntityTransform(value, future.Data.data(), future.Data.size());
+    future.Data.resize(Sample::EncodedTransformStateSize(value));
+    const int status = Sample::EncodeTransformState(value, future.Data.data(), future.Data.size());
     future.Result = {}; future.Result.Size = sizeof(BML_ImcMessage);
     future.Result.Data = future.Data.data(); future.Result.DataSize = future.Data.size();
-    future.Result.PayloadType = StableId(Scene::EntityTransformPayload); return status;
+    future.Result.PayloadType = StableId(Sample::TransformStatePayload); return status;
 }
 
-int EncodeCatalogResult(BML_ImcFuture_T &future) {
-    namespace Gameplay = BML::Imc::Generated::Bml::Gameplay;
-    Gameplay::CatalogResponseValue value{};
-    value.Files = {"alpha.nmo", "beta.nmo"}; value.StartBalls = {"A", "B"};
-    value.Skies = {"S", "T"}; value.Bonuses = {1, 3}; value.Music = {2, 4};
-    future.Data.resize(Gameplay::EncodedCatalogResponseSize(value));
-    const int status = Gameplay::EncodeCatalogResponse(value, future.Data.data(), future.Data.size());
+int EncodeArrayStateResult(BML_ImcFuture_T &future) {
+    Sample::ArrayStateValue value{};
+    value.Names = {"alpha.nmo", "beta.nmo"}; value.Values = {2, 4};
+    future.Data.resize(Sample::EncodedArrayStateSize(value));
+    const int status = Sample::EncodeArrayState(value, future.Data.data(), future.Data.size());
     future.Result = {}; future.Result.Size = sizeof(BML_ImcMessage);
     future.Result.Data = future.Data.data(); future.Result.DataSize = future.Data.size();
-    future.Result.PayloadType = StableId(Gameplay::CatalogResponsePayload); return status;
+    future.Result.PayloadType = StableId(Sample::ArrayStatePayload); return status;
 }
 
-int ProvideRuntimeState(BML::Imc::Generated::Bml::Runtime::RuntimeStateValue &out, void *userdata) {
+int ProvideScalarState(Sample::ScalarStateValue &out, void *userdata) {
     g_LastProviderUserdata = userdata;
-    out.InGame = true; out.InLevel = false; out.Paused = true;
-    out.Playing = false; out.CheatEnabled = true;
+    out.Flag = true; out.Count = 3; out.Ratio = 0.5f;
     return BML_OK;
 }
 
-int ProvideRuntimeClock(BML::Imc::Generated::Bml::Runtime::ClockStateValue &, void *) {
+int ProvideArrayState(Sample::ArrayStateValue &, void *) {
     return BML_OK;
 }
 
-int ProvideUiMessage(const BML::Imc::Generated::Bml::Ui::MessageInputValue &input, void *) {
-    g_ProvidedMessage = input.Message;
+int ProvideText(const Sample::TextInputValue &input, void *) {
+    g_ProvidedText = input.Text;
     return BML_OK;
 }
 } // namespace
@@ -216,10 +223,10 @@ int BML_Imc_ResponseCommit(BML_ImcResponse *response, std::size_t size, BML_ImcP
     auto *future = new (std::nothrow) BML_ImcFuture_T;
     if (!future) return BML_ERROR_OUT_OF_MEMORY;
     int status = BML_ERROR_NOT_FOUND;
-    if (rpcId == StableId(BML::Imc::Generated::Bml::Runtime::StateRoute)) status = EncodeRuntimeResult(*future);
-    if (rpcId == StableId(BML::Imc::Generated::Bml::Ui::MessageAddRoute)) status = BML_OK;
-    if (rpcId == StableId(BML::Imc::Generated::Bml::Scene::EntityRoute)) status = EncodeEntityResult(*future);
-    if (rpcId == StableId(BML::Imc::Generated::Bml::Gameplay::CatalogRoute)) status = EncodeCatalogResult(*future);
+    if (rpcId == StableId(Sample::StateRoute)) status = EncodeScalarStateResult(*future);
+    if (rpcId == StableId(Sample::WriteRoute)) status = BML_OK;
+    if (rpcId == StableId(Sample::EntityRoute)) status = EncodeTransformStateResult(*future);
+    if (rpcId == StableId(Sample::ArraysRoute)) status = EncodeArrayStateResult(*future);
     if (status != BML_OK) { delete future; return status; }
     *outFuture = future; return BML_OK;
 }
@@ -252,9 +259,10 @@ int BML_Imc_GetSubscriptionDroppedCount(BML_ImcClient, BML_ImcSubscription subsc
 }
 }
 
-TEST(ImcGeneratedClientTest, PublicFacadeInitializesClientOnce) {
+TEST(ImcGeneratedClientTest, LazyClientOpensTheTransportOnce) {
     ResetMock();
     constexpr int ThreadCount = 8;
+    BML::Imc::LazyClient<Sample::Client> lazy;
     std::atomic<bool> start{false};
     std::vector<std::thread> callers;
     callers.reserve(ThreadCount);
@@ -263,20 +271,19 @@ TEST(ImcGeneratedClientTest, PublicFacadeInitializesClientOnce) {
         callers.emplace_back([&, index] {
             while (!start.load(std::memory_order_acquire))
                 std::this_thread::yield();
-            statuses[index] = BML::Runtime::RequireApi();
+            statuses[index] = lazy.EnsureOpen("test.consumer");
         });
     }
     start.store(true, std::memory_order_release);
     for (auto &caller : callers) caller.join();
     for (const int status : statuses) EXPECT_EQ(status, BML_OK);
     EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 1);
-
+    EXPECT_EQ(lazy.Get().Close(), BML_OK);
 }
 
 TEST(ImcGeneratedClientTest, ClientCloseRetainsHandleUntilRuntimeTeardownSucceeds) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Client client;
+    Sample::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
     BML_ImcClient handle = client.Handle();
     g_CloseClientStatus = BML_ERROR_BUSY;
@@ -291,12 +298,11 @@ TEST(ImcGeneratedClientTest, ClientCloseRetainsHandleUntilRuntimeTeardownSucceed
 
 TEST(ImcGeneratedClientTest, SubscriptionCloseCanRetryAfterBusy) {
     ResetMock();
-    namespace Events = BML::Imc::Generated::Bml::Events;
-    Events::Client client;
-    Events::AllSubscription subscription;
+    Sample::Client client;
+    Sample::NoticesSubscription subscription;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
-    ASSERT_EQ(client.SubscribeAll(subscription,
-        [](int, Events::EventValue *, const BML_ImcMessage *, void *) noexcept {},
+    ASSERT_EQ(client.SubscribeNotices(subscription,
+        [](int, Sample::NoticeValue *, const BML_ImcMessage *, void *) noexcept {},
         nullptr, 2), BML_OK);
     g_UnsubscribeStatus = BML_ERROR_BUSY;
     EXPECT_EQ(subscription.Close(), BML_ERROR_BUSY);
@@ -310,10 +316,9 @@ TEST(ImcGeneratedClientTest, SubscriptionCloseCanRetryAfterBusy) {
 
 TEST(ImcGeneratedClientTest, ProviderCloseRetainsRegisteredSlotsAfterBusy) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Provider provider;
+    Sample::Provider provider;
     ASSERT_EQ(provider.Open("test.provider"), BML_OK);
-    ASSERT_EQ(provider.RegisterState(&ProvideRuntimeState), BML_OK);
+    ASSERT_EQ(provider.RegisterState(&ProvideScalarState), BML_OK);
     BML_ImcClient handle = provider.Transport().Handle();
     g_CloseClientStatus = BML_ERROR_BUSY;
     EXPECT_EQ(provider.Close(), BML_ERROR_BUSY);
@@ -325,13 +330,12 @@ TEST(ImcGeneratedClientTest, ProviderCloseRetainsRegisteredSlotsAfterBusy) {
 
 TEST(ImcGeneratedClientTest, ProviderStartOwnsTheCommonRegistrationLifecycle) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Provider provider;
-    Runtime::Provider::Handlers handlers{};
+    Sample::Provider provider;
+    Sample::Provider::Handlers handlers{};
     int ownerState = 42;
     handlers.Userdata = &ownerState;
     handlers.Execution = BML_IMC_EXECUTION_CALLER_THREAD;
-    handlers.State = &ProvideRuntimeState;
+    handlers.State = &ProvideScalarState;
 
     ASSERT_EQ(provider.Start(handlers, "test.provider"), BML_OK);
     EXPECT_TRUE(provider.IsOpen());
@@ -353,26 +357,25 @@ TEST(ImcGeneratedClientTest, ProviderStartOwnsTheCommonRegistrationLifecycle) {
 
 TEST(ImcGeneratedClientTest, ProviderStartRejectsEmptyHandlersAndRollsBackFailure) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Provider provider;
-    Runtime::Provider::Handlers handlers{};
+    Sample::Provider provider;
+    Sample::Provider::Handlers handlers{};
     EXPECT_EQ(provider.Start(handlers, "test.provider"), BML_ERROR_INVALID_PARAMETER);
     EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 0);
 
-    handlers.State = &ProvideRuntimeState;
+    handlers.State = &ProvideScalarState;
     handlers.Execution = static_cast<BML_ImcExecution>(99);
     EXPECT_EQ(provider.Start(handlers, "test.provider"), BML_ERROR_INVALID_PARAMETER);
     EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 0);
 
     handlers.Execution = BML_IMC_EXECUTION_GAME_THREAD;
-    handlers.Clock = &ProvideRuntimeClock;
+    handlers.Arrays = &ProvideArrayState;
     EXPECT_EQ(provider.Start(handlers, "test.provider"), BML_ERROR_ALREADY_EXISTS);
     EXPECT_FALSE(provider.IsOpen());
     EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 1);
     EXPECT_EQ(g_CloseClients.load(std::memory_order_relaxed), 1);
     EXPECT_EQ(g_RegisteredHandler, nullptr);
 
-    handlers.Clock = nullptr;
+    handlers.Arrays = nullptr;
     ASSERT_EQ(provider.Start(handlers, "test.provider"), BML_OK);
     EXPECT_TRUE(provider.IsOpen());
     EXPECT_EQ(provider.Close(), BML_OK);
@@ -380,19 +383,18 @@ TEST(ImcGeneratedClientTest, ProviderStartRejectsEmptyHandlersAndRollsBackFailur
 
 TEST(ImcGeneratedClientTest, GeneratedAvailabilityIsAnAdvisoryHandlerSnapshot) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Client consumer;
+    Sample::Client consumer;
     bool available = true;
     EXPECT_EQ(consumer.IsStateAvailable(available), BML_ERROR_INVALID_HANDLE);
     EXPECT_TRUE(available);
 
-    Runtime::Provider provider;
+    Sample::Provider provider;
     ASSERT_EQ(consumer.Open("test.consumer"), BML_OK);
     ASSERT_EQ(provider.Open("test.provider"), BML_OK);
     ASSERT_EQ(consumer.IsStateAvailable(available), BML_OK);
     EXPECT_FALSE(available);
 
-    ASSERT_EQ(provider.RegisterState(&ProvideRuntimeState), BML_OK);
+    ASSERT_EQ(provider.RegisterState(&ProvideScalarState), BML_OK);
     ASSERT_EQ(consumer.IsStateAvailable(available), BML_OK);
     EXPECT_TRUE(available);
 
@@ -403,8 +405,7 @@ TEST(ImcGeneratedClientTest, GeneratedAvailabilityIsAnAdvisoryHandlerSnapshot) {
 
 TEST(ImcGeneratedClientTest, AdoptsInternallyOwnedClientWithoutReopeningIt) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Client client;
+    Sample::Client client;
     auto *raw = new BML_ImcClient_T;
     {
         std::lock_guard lock(g_LiveClientMutex);
@@ -413,44 +414,43 @@ TEST(ImcGeneratedClientTest, AdoptsInternallyOwnedClientWithoutReopeningIt) {
     ASSERT_EQ(client.Adopt(raw), BML_OK);
     EXPECT_EQ(client.Handle(), raw);
     EXPECT_EQ(g_OpenClients.load(std::memory_order_relaxed), 0);
-    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 3);
-    EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 3);
+    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 6);
+    EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 4);
+    EXPECT_EQ(g_TopicLookups.load(std::memory_order_relaxed), 1);
     EXPECT_EQ(client.Close(), BML_OK);
     EXPECT_EQ(g_CloseClients.load(std::memory_order_relaxed), 1);
 }
 
 TEST(ImcGeneratedClientTest, ResolvesIdsOnceAndReleasesEveryRpcFuture) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Client client;
+    Sample::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
-    EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 3);
-    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 3);
-    Runtime::RuntimeStateValue state{};
+    EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 4);
+    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 6);
+    Sample::ScalarStateValue state{};
     ASSERT_EQ(client.CallState(state), BML_OK);
-    EXPECT_TRUE(state.InGame);
-    EXPECT_TRUE(state.Playing);
-    EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 3);
-    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 3);
+    EXPECT_TRUE(state.Flag);
+    EXPECT_EQ(state.Count, 7);
+    EXPECT_EQ(g_RpcLookups.load(std::memory_order_relaxed), 4);
+    EXPECT_EQ(g_PayloadLookups.load(std::memory_order_relaxed), 6);
     EXPECT_EQ(g_FutureReleases, 1);
 }
 
 TEST(ImcGeneratedClientTest, TypedAsyncRpcOwnsAndDecodesFutureWithoutRawCPlumbing) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Client client;
+    Sample::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
 
-    Runtime::Client::StateFuture future;
+    Sample::Client::StateFuture future;
     EXPECT_FALSE(future.IsValid());
     ASSERT_EQ(client.BeginCallState(future), BML_OK);
     EXPECT_TRUE(future.IsValid());
     EXPECT_EQ(g_FutureReleases, 0);
 
-    Runtime::RuntimeStateValue state{};
+    Sample::ScalarStateValue state{};
     ASSERT_EQ(future.AwaitResult(state, 0), BML_OK);
-    EXPECT_TRUE(state.InGame);
-    EXPECT_TRUE(state.Playing);
+    EXPECT_TRUE(state.Flag);
+    EXPECT_EQ(state.Count, 7);
 
     EXPECT_EQ(client.BeginCallState(future), BML_ERROR_BUSY);
     EXPECT_EQ(g_FutureReleases, 0);
@@ -461,46 +461,44 @@ TEST(ImcGeneratedClientTest, TypedAsyncRpcOwnsAndDecodesFutureWithoutRawCPlumbin
 
 TEST(ImcGeneratedClientTest, EncodesTypedRequestForResponseLessRpc) {
     ResetMock();
-    namespace Ui = BML::Imc::Generated::Bml::Ui;
-    Ui::Client client;
+    Sample::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
-    Ui::MessageInputValue input{}; input.Message = "hello IMC";
-    ASSERT_EQ(client.CallMessageAdd(input), BML_OK);
+    Sample::TextInputValue input{}; input.Text = "hello IMC";
+    ASSERT_EQ(client.CallWrite(input), BML_OK);
     ASSERT_FALSE(g_LastRequest.empty());
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
     request.Data = g_LastRequest.data(); request.DataSize = g_LastRequest.size();
     request.PayloadType = g_LastRequestPayload;
-    Ui::MessageInputValue decoded{};
-    ASSERT_EQ(Ui::DecodeMessageInput(request, decoded), BML_OK);
-    EXPECT_EQ(decoded.Message, input.Message);
+    Sample::TextInputValue decoded{};
+    ASSERT_EQ(Sample::DecodeTextInput(request, decoded), BML_OK);
+    EXPECT_EQ(decoded.Text, input.Text);
     EXPECT_EQ(g_FutureReleases, 1);
 }
 
 TEST(ImcGeneratedClientTest, PublishesTypedTopicPayload) {
     ResetMock();
-    namespace Events = BML::Imc::Generated::Bml::Events;
-    Events::Client client;
+    Sample::Client client;
     ASSERT_EQ(client.Open("test.publisher"), BML_OK);
-    Events::EventValue event{}; event.Kind = 42; event.HasCommandArgs = true;
-    event.CommandArgs = {"one", "two"};
+    Sample::NoticeValue notice{}; notice.Kind = 42; notice.HasTags = true;
+    notice.Tags = {"one", "two"};
     std::size_t delivered = 0;
-    ASSERT_EQ(client.PublishAll(event, &delivered), BML_OK);
+    ASSERT_EQ(client.PublishNotices(notice, &delivered), BML_OK);
     EXPECT_EQ(delivered, 1u);
-    EXPECT_EQ(g_LastPublishPayload, StableId(Events::EventPayload));
+    EXPECT_EQ(g_LastPublishPayload, StableId(Sample::NoticePayload));
     BML_ImcMessage message = BML_IMC_MESSAGE_INIT;
     message.Data = g_LastPublish.data(); message.DataSize = g_LastPublish.size();
     message.PayloadType = g_LastPublishPayload;
-    Events::EventValue decoded{};
-    ASSERT_EQ(Events::DecodeEvent(message, decoded), BML_OK);
+    Sample::NoticeValue decoded{};
+    ASSERT_EQ(Sample::DecodeNotice(message, decoded), BML_OK);
     EXPECT_EQ(decoded.Kind, 42);
-    EXPECT_EQ(decoded.CommandArgs, event.CommandArgs);
+    EXPECT_TRUE(decoded.HasTags);
+    EXPECT_EQ(decoded.Tags, notice.Tags);
 }
 TEST(ImcGeneratedClientTest, ProviderTrampolineEncodesTypedResponseDirectly) {
     ResetMock();
-    namespace Runtime = BML::Imc::Generated::Bml::Runtime;
-    Runtime::Provider provider;
+    Sample::Provider provider;
     ASSERT_EQ(provider.Open("test.provider"), BML_OK);
-    ASSERT_EQ(provider.RegisterState(&ProvideRuntimeState, nullptr, BML_IMC_EXECUTION_CALLER_THREAD), BML_OK);
+    ASSERT_EQ(provider.RegisterState(&ProvideScalarState, nullptr, BML_IMC_EXECUTION_CALLER_THREAD), BML_OK);
     ASSERT_NE(g_RegisteredHandler, nullptr);
 
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
@@ -508,66 +506,63 @@ TEST(ImcGeneratedClientTest, ProviderTrampolineEncodesTypedResponseDirectly) {
     ASSERT_EQ(g_RegisteredHandler(g_RegisteredRpc, &request, &response, g_RegisteredUserdata), BML_OK);
     BML_ImcMessage result = BML_IMC_MESSAGE_INIT;
     result.Data = response.Data.data(); result.DataSize = response.Data.size(); result.PayloadType = response.PayloadType;
-    Runtime::RuntimeStateValue decoded{};
-    ASSERT_EQ(Runtime::DecodeRuntimeState(result, decoded), BML_OK);
-    EXPECT_TRUE(decoded.InGame);
-    EXPECT_TRUE(decoded.Paused);
-    EXPECT_TRUE(decoded.CheatEnabled);
-    EXPECT_EQ(response.PayloadType, StableId(Runtime::RuntimeStatePayload));
+    Sample::ScalarStateValue decoded{};
+    ASSERT_EQ(Sample::DecodeScalarState(result, decoded), BML_OK);
+    EXPECT_TRUE(decoded.Flag);
+    EXPECT_EQ(decoded.Count, 3);
+    EXPECT_FLOAT_EQ(decoded.Ratio, 0.5f);
+    EXPECT_EQ(response.PayloadType, StableId(Sample::ScalarStatePayload));
 }
 
 TEST(ImcGeneratedClientTest, ResponseLessProviderDoesNotRequireOrWriteResponse) {
     ResetMock();
-    namespace Ui = BML::Imc::Generated::Bml::Ui;
-    Ui::Provider provider;
+    Sample::Provider provider;
     ASSERT_EQ(provider.Open("test.provider"), BML_OK);
-    ASSERT_EQ(provider.RegisterMessageAdd(
-        &ProvideUiMessage, nullptr, BML_IMC_EXECUTION_CALLER_THREAD), BML_OK);
+    ASSERT_EQ(provider.RegisterWrite(
+        &ProvideText, nullptr, BML_IMC_EXECUTION_CALLER_THREAD), BML_OK);
 
-    Ui::MessageInputValue input{};
-    input.Message = "provider call";
-    std::vector<std::uint8_t> bytes(Ui::EncodedMessageInputSize(input));
-    ASSERT_EQ(Ui::EncodeMessageInput(input, bytes.data(), bytes.size()), BML_OK);
+    Sample::TextInputValue input{};
+    input.Text = "provider call";
+    std::vector<std::uint8_t> bytes(Sample::EncodedTextInputSize(input));
+    ASSERT_EQ(Sample::EncodeTextInput(input, bytes.data(), bytes.size()), BML_OK);
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
     request.Data = bytes.data();
     request.DataSize = bytes.size();
-    request.PayloadType = StableId(Ui::MessageInputPayload);
+    request.PayloadType = StableId(Sample::TextInputPayload);
 
     ASSERT_EQ(g_RegisteredHandler(
         g_RegisteredRpc, &request, nullptr, g_RegisteredUserdata), BML_OK);
-    EXPECT_EQ(g_ProvidedMessage, input.Message);
+    EXPECT_EQ(g_ProvidedText, input.Text);
 }
 TEST(ImcGeneratedClientTest, RpcUsesTypedObjectRequestSchema) {
     ResetMock();
-    namespace Scene = BML::Imc::Generated::Bml::Scene;
-    Scene::Client client;
+    Sample::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
     const BML_ObjectRef object{3, 20, 9};
-    Scene::ObjectRequestValue input{}; input.Object = object;
-    Scene::EntityTransformValue transform{};
+    Sample::ObjectRequestValue input{}; input.Object = object;
+    Sample::TransformStateValue transform{};
     ASSERT_EQ(client.CallEntity(input, transform), BML_OK);
     EXPECT_FLOAT_EQ(transform.Position.y, 2.0f);
     EXPECT_EQ(transform.ChildCount, 4);
     BML_ImcMessage request = BML_IMC_MESSAGE_INIT;
     request.Data = g_LastRequest.data(); request.DataSize = g_LastRequest.size(); request.PayloadType = g_LastRequestPayload;
-    Scene::ObjectRequestValue decoded{};
-    ASSERT_EQ(Scene::DecodeObjectRequest(request, decoded), BML_OK);
+    Sample::ObjectRequestValue decoded{};
+    ASSERT_EQ(Sample::DecodeObjectRequest(request, decoded), BML_OK);
     EXPECT_EQ(decoded.Object.Domain, object.Domain);
     EXPECT_EQ(decoded.Object.Slot, object.Slot);
     EXPECT_EQ(decoded.Object.Generation, object.Generation);
-    EXPECT_EQ(request.PayloadType, StableId(Scene::ObjectRequestPayload));
+    EXPECT_EQ(request.PayloadType, StableId(Sample::ObjectRequestPayload));
 }
 
 TEST(ImcGeneratedClientTest, RpcResponseCarriesCountedArrays) {
     ResetMock();
-    namespace Gameplay = BML::Imc::Generated::Bml::Gameplay;
-    Gameplay::Client client;
+    Sample::Client client;
     ASSERT_EQ(client.Open("test.consumer"), BML_OK);
-    Gameplay::CatalogResponseValue catalog{};
-    ASSERT_EQ(client.CallCatalog(catalog), BML_OK);
-    ASSERT_EQ(catalog.Files.size(), 2u);
-    EXPECT_EQ(catalog.Files[0], "alpha.nmo");
-    EXPECT_EQ(catalog.Music[1], 4);
+    Sample::ArrayStateValue arrays{};
+    ASSERT_EQ(client.CallArrays(arrays), BML_OK);
+    ASSERT_EQ(arrays.Names.size(), 2u);
+    EXPECT_EQ(arrays.Names[0], "alpha.nmo");
+    EXPECT_EQ(arrays.Values[1], 4);
     EXPECT_TRUE(g_LastRequest.empty());
     EXPECT_EQ(g_FutureReleases, 1);
 }

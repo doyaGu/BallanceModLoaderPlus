@@ -1,4 +1,4 @@
-#include "BML/Generated/bml_runtime_imc.hpp"
+#include "test_sample_imc.hpp"
 
 #include "ImcRuntime.h"
 #include "ModInvocationGate.h"
@@ -20,44 +20,40 @@ BML::ImcRuntime *Runtime() noexcept {
     return g_Runtime;
 }
 
-namespace RuntimeApi = BML::Imc::Generated::Bml::Runtime;
+namespace SampleApi = BML::Imc::Generated::Test::Sample;
 
-struct RuntimeStateSource {
+struct ScalarStateSource {
     int Status = BML_OK;
     std::uint64_t Calls = 0;
 };
 
-int ReadRuntimeState(RuntimeApi::RuntimeStateValue &out, void *userdata) {
-    auto *source = static_cast<RuntimeStateSource *>(userdata);
+int ReadScalarState(SampleApi::ScalarStateValue &out, void *userdata) {
+    auto *source = static_cast<ScalarStateSource *>(userdata);
     if (!source)
         return BML_ERROR_INVALID_PARAMETER;
     ++source->Calls;
     if (source->Status != BML_OK)
         return source->Status;
-    out.InGame = true;
-    out.InLevel = true;
-    out.Paused = false;
-    out.Playing = true;
-    out.CheatEnabled = false;
+    out.Flag = true;
+    out.Count = 5;
+    out.Ratio = 2.5f;
     return BML_OK;
 }
 
-struct SelfClosingRuntimeStateSource {
-    std::unique_ptr<RuntimeApi::Provider> *Owner = nullptr;
+struct SelfClosingScalarStateSource {
+    std::unique_ptr<SampleApi::Provider> *Owner = nullptr;
     std::uint64_t Calls = 0;
 };
 
-int ReadRuntimeStateAndDestroyProvider(RuntimeApi::RuntimeStateValue &out,
-                                       void *userdata) {
-    auto *source = static_cast<SelfClosingRuntimeStateSource *>(userdata);
+int ReadScalarStateAndDestroyProvider(SampleApi::ScalarStateValue &out,
+                                      void *userdata) {
+    auto *source = static_cast<SelfClosingScalarStateSource *>(userdata);
     if (!source || !source->Owner)
         return BML_ERROR_INVALID_PARAMETER;
     ++source->Calls;
-    out.InGame = true;
-    out.InLevel = false;
-    out.Paused = false;
-    out.Playing = true;
-    out.CheatEnabled = false;
+    out.Flag = true;
+    out.Count = 1;
+    out.Ratio = 1.0f;
     source->Owner->reset();
     return BML_OK;
 }
@@ -69,7 +65,7 @@ protected:
         g_Runtime = &m_Runtime;
         ASSERT_EQ(m_Provider.Open("bml.core.test"), BML_OK);
         ASSERT_EQ(m_Provider.RegisterState(
-                          &ReadRuntimeState, &m_Source,
+                          &ReadScalarState, &m_Source,
                           BML_IMC_EXECUTION_CALLER_THREAD),
                   BML_OK);
         ASSERT_EQ(m_Client.Open("consumer.test"), BML_OK);
@@ -83,9 +79,9 @@ protected:
 
     BML::ModInvocationGate m_InvocationGate;
     BML::ImcRuntime m_Runtime{&m_InvocationGate};
-    RuntimeStateSource m_Source;
-    RuntimeApi::Provider m_Provider;
-    RuntimeApi::Client m_Client;
+    ScalarStateSource m_Source;
+    SampleApi::Provider m_Provider;
+    SampleApi::Client m_Client;
 };
 
 } // namespace
@@ -117,6 +113,12 @@ BML_EXPORT int BML_Imc_GetPayloadTypeId(BML_ImcClient client, const char *name,
     auto *runtime = Runtime();
     return runtime ? runtime->GetPayloadTypeId(client, name, outId)
                    : BML_ERROR_FROZEN;
+}
+
+BML_EXPORT int BML_Imc_GetTopicId(BML_ImcClient client, const char *name,
+                                  BML_ImcTopicId *outId) {
+    auto *runtime = Runtime();
+    return runtime ? runtime->GetTopicId(client, name, outId) : BML_ERROR_FROZEN;
 }
 
 BML_EXPORT int BML_Imc_IsRpcAvailable(BML_ImcClient client,
@@ -174,13 +176,11 @@ BML_EXPORT int BML_Imc_FutureRelease(BML_ImcFuture future) {
 
 TEST_F(ImcGeneratedRuntimeIntegrationTest,
        GeneratedRuntimeInterfaceRoundTripsThroughActualTransport) {
-    RuntimeApi::RuntimeStateValue state{};
+    SampleApi::ScalarStateValue state{};
     ASSERT_EQ(m_Client.CallState(state), BML_OK);
-    EXPECT_TRUE(state.InGame);
-    EXPECT_TRUE(state.InLevel);
-    EXPECT_FALSE(state.Paused);
-    EXPECT_TRUE(state.Playing);
-    EXPECT_FALSE(state.CheatEnabled);
+    EXPECT_TRUE(state.Flag);
+    EXPECT_EQ(state.Count, 5);
+    EXPECT_FLOAT_EQ(state.Ratio, 2.5f);
     EXPECT_EQ(m_Source.Calls, 1u);
 
     BML_ImcStats stats{sizeof(BML_ImcStats)};
@@ -193,7 +193,7 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
 TEST_F(ImcGeneratedRuntimeIntegrationTest,
        GeneratedRuntimeInterfacePreservesProviderFailure) {
     m_Source.Status = BML_ERROR_IMC_UNSUPPORTED;
-    RuntimeApi::RuntimeStateValue state{};
+    SampleApi::ScalarStateValue state{};
     EXPECT_EQ(m_Client.CallState(state), BML_ERROR_IMC_UNSUPPORTED);
     EXPECT_EQ(m_Source.Calls, 1u);
 
@@ -211,7 +211,7 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
     ASSERT_EQ(m_Client.IsStateAvailable(available), BML_OK);
     EXPECT_FALSE(available);
 
-    RuntimeApi::RuntimeStateValue state{};
+    SampleApi::ScalarStateValue state{};
     EXPECT_EQ(m_Client.CallState(state), BML_ERROR_IMC_ENDPOINT_NOT_FOUND);
     EXPECT_EQ(m_Source.Calls, 0u);
 }
@@ -219,14 +219,14 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
 TEST_F(ImcGeneratedRuntimeIntegrationTest,
        GeneratedProviderCanBeDestroyedByItsOwnHandler) {
     ASSERT_EQ(m_Provider.Close(), BML_OK);
-    auto provider = std::make_unique<RuntimeApi::Provider>();
-    SelfClosingRuntimeStateSource source{&provider};
-    RuntimeApi::Provider::Handlers handlers{};
+    auto provider = std::make_unique<SampleApi::Provider>();
+    SelfClosingScalarStateSource source{&provider};
+    SampleApi::Provider::Handlers handlers{};
     handlers.Userdata = &source;
-    handlers.State = &ReadRuntimeStateAndDestroyProvider;
+    handlers.State = &ReadScalarStateAndDestroyProvider;
     ASSERT_EQ(provider->Start(handlers, "self-closing.provider"), BML_OK);
 
-    RuntimeApi::RuntimeStateValue state{};
+    SampleApi::ScalarStateValue state{};
     EXPECT_EQ(m_Client.CallState(state), BML_OK);
     EXPECT_EQ(source.Calls, 1u);
     EXPECT_EQ(provider, nullptr);
@@ -241,7 +241,7 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
 #ifndef NDEBUG
     GTEST_SKIP() << "Performance gate runs only in Release builds";
 #else
-    RuntimeApi::RuntimeStateValue state{};
+    SampleApi::ScalarStateValue state{};
     auto invokeGenerated = [&] { return m_Client.CallState(state) == BML_OK; };
     const BML_ImcCallOptions callOptions = BML_IMC_CALL_OPTIONS_INIT;
     auto invokeTransport = [&] {
@@ -255,7 +255,7 @@ TEST_F(ImcGeneratedRuntimeIntegrationTest,
         if (status == BML_OK)
             status = BML_Imc_FutureGetResult(future, &message);
         if (status == BML_OK &&
-            message.PayloadType != m_Client.RuntimeStatePayloadType())
+            message.PayloadType != m_Client.ScalarStatePayloadType())
             status = BML_ERROR_TYPE_MISMATCH;
 
         const int releaseStatus = future

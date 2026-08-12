@@ -1,0 +1,40 @@
+api test.sample 1.0
+
+record array_state {
+    array<string> names
+    array<int> values
+}
+
+record notice {
+    int kind
+    optional bool enabled
+    optional array<string> tags
+}
+
+record object_request {
+    object object
+}
+
+record scalar_state {
+    bool flag
+    int count
+    float ratio
+}
+
+record text_input {
+    string text
+}
+
+record transform_state {
+    vec3 position
+    vec3 scale
+    object parent
+    int child_count
+}
+
+rpc arrays() -> array_state
+rpc entity(object_request) -> transform_state
+rpc state() -> scalar_state
+rpc write(text_input)
+
+topic notices(notice)

@@ -1,0 +1,164 @@
+{
+  "format": 1,
+  "api": "test.sample",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "enums": [],
+  "schemas": [
+    {
+      "name": "array_state",
+      "fields": [
+        {
+          "id": 1,
+          "name": "names",
+          "type": "array<string>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "values",
+          "type": "array<int>",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "notice",
+      "fields": [
+        {
+          "id": 1,
+          "name": "kind",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "enabled",
+          "type": "bool",
+          "optional": true,
+          "reserved": false
+        },
+        {
+          "id": 3,
+          "name": "tags",
+          "type": "array<string>",
+          "optional": true,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "object_request",
+      "fields": [
+        {
+          "id": 1,
+          "name": "object",
+          "type": "object",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "scalar_state",
+      "fields": [
+        {
+          "id": 1,
+          "name": "flag",
+          "type": "bool",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "count",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 3,
+          "name": "ratio",
+          "type": "float",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "text_input",
+      "fields": [
+        {
+          "id": 1,
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "transform_state",
+      "fields": [
+        {
+          "id": 1,
+          "name": "position",
+          "type": "vec3",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "scale",
+          "type": "vec3",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 3,
+          "name": "parent",
+          "type": "object",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 4,
+          "name": "child_count",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    }
+  ],
+  "rpcs": [
+    {
+      "name": "arrays",
+      "response": "array_state"
+    },
+    {
+      "name": "entity",
+      "request": "object_request",
+      "response": "transform_state"
+    },
+    {
+      "name": "state",
+      "response": "scalar_state"
+    },
+    {
+      "name": "write",
+      "request": "text_input"
+    }
+  ],
+  "topics": [
+    {
+      "name": "notices",
+      "message": "notice"
+    }
+  ]
+}

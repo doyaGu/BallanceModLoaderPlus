@@ -64,6 +64,26 @@ add_library(BmlCAbiCompile OBJECT BmlCAbiCompile.c)
 target_include_directories(BmlCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BmlCAbiCompile PROPERTIES FOLDER "Tests")
 
+# imc/test.sample.imc is the authoring input behind the generated header the
+# generator tests compile against. It exists so those tests do not have to track
+# whichever interfaces the loader happens to ship. This target keeps the
+# committed header and lock in step with it, the way BML_ImcApiGeneration does
+# for the loader's own interfaces.
+set(BML_IMC_SAMPLE_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/imc/test.sample.imc")
+set(BML_IMC_SAMPLE_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/imc/generated")
+add_custom_target(BML_ImcSampleApiGeneration
+        COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py"
+                --check
+                --out-dir "${BML_IMC_SAMPLE_GENERATED_DIR}"
+                --input "${BML_IMC_SAMPLE_INPUT}"
+        DEPENDS
+                "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py"
+                "${BML_IMC_SAMPLE_INPUT}"
+                "${BML_IMC_SAMPLE_INPUT}.lock"
+        COMMENT "Verifying the generated test.sample IMC bindings"
+)
+set_target_properties(BML_ImcSampleApiGeneration PROPERTIES FOLDER "Tests")
+
 # Keep the IMC generator and its compatibility rules executable.
 add_test(
         NAME ImcCodegenTest
@@ -475,12 +495,16 @@ add_bml_test(ImcWireTest
 add_bml_test(ImcGeneratedClientTest
         SOURCES ImcGeneratedClientTest.cpp
 )
+target_include_directories(ImcGeneratedClientTest PRIVATE "${BML_IMC_SAMPLE_GENERATED_DIR}")
+add_dependencies(ImcGeneratedClientTest BML_ImcSampleApiGeneration)
 
 add_bml_test(ImcGeneratedRuntimeIntegrationTest
         SOURCES
         ImcGeneratedRuntimeIntegrationTest.cpp
         ${BML_SOURCE_DIR}/ImcRuntime.cpp
 )
+target_include_directories(ImcGeneratedRuntimeIntegrationTest PRIVATE "${BML_IMC_SAMPLE_GENERATED_DIR}")
+add_dependencies(ImcGeneratedRuntimeIntegrationTest BML_ImcSampleApiGeneration)
 set_tests_properties(ImcGeneratedRuntimeIntegrationTest PROPERTIES
         LABELS "imc;integration;performance")
 
