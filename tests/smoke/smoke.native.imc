@@ -1,0 +1,19 @@
+api smoke.native 1.0
+
+record echo_reply {
+    int value
+    string label
+}
+
+record echo_request {
+    int value
+    string label
+}
+
+record notice {
+    int count
+}
+
+rpc echo(echo_request) -> echo_reply
+
+topic notices(notice)

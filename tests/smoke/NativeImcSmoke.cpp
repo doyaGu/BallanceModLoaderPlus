@@ -8,6 +8,8 @@
 #include <BML/Speedrun.h>
 #include <BML/UI.h>
 
+#include "smoke_native_imc.hpp"
+
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -15,6 +17,8 @@
 #include <vector>
 
 namespace {
+
+namespace Smoke = BML::Imc::Generated::Smoke::Native;
 
 bool IsNull(BML_ObjectRef reference) {
     return reference.Domain == 0 && reference.Slot == 0 && reference.Generation == 0;
@@ -47,6 +51,7 @@ public:
         m_UiPassed = CheckUi();
         m_SpeedrunPassed = CheckSpeedrun();
         m_EventsPassed = CheckEvents();
+        m_ImcPassed = CheckImc();
     }
 
     void OnProcess() override {
@@ -66,12 +71,13 @@ public:
 
         const bool scene = CheckScene();
         const bool gameplay = CheckGameplay();
+        const bool imc = m_ImcPassed && CheckImcNotice();
         GetLogger()->Info(
-            "BML native IMC smoke: runtime=%s scene=%s gameplay=%s ui=%s speedrun=%s events=%s",
+            "BML native IMC smoke: runtime=%s scene=%s gameplay=%s ui=%s speedrun=%s events=%s imc=%s",
             Text(m_RuntimePassed), Text(scene), Text(gameplay), Text(m_UiPassed),
-            Text(m_SpeedrunPassed), Text(m_EventsPassed));
+            Text(m_SpeedrunPassed), Text(m_EventsPassed), Text(imc));
         m_Passed = m_RuntimePassed && scene && gameplay && m_UiPassed &&
-                   m_SpeedrunPassed && m_EventsPassed;
+                   m_SpeedrunPassed && m_EventsPassed && imc;
 
         GetLogger()->Info("BML native IMC smoke requesting exit");
         m_ExitRequested = true;
@@ -80,6 +86,9 @@ public:
 
     void OnUnload() override {
         (void)m_Events.Close();
+        (void)m_ImcNotices.Close();
+        (void)m_ImcClient.Close();
+        (void)m_ImcProvider.Close();
         GetLogger()->Info("BML native IMC smoke unloaded");
     }
 
@@ -227,6 +236,71 @@ private:
                m_Events.Poll(event) == BML_ERROR_NOT_FOUND;
     }
 
+    // The loader publishes no .imc interface of its own, so the only way a native
+    // Mod exercises the loader's IMC exports is by publishing one itself. This one
+    // plays both sides: the provider answers the RPC and publishes the topic, the
+    // client calls and subscribes.
+    bool CheckImc() {
+        Smoke::Provider::Handlers handlers;
+        handlers.Userdata = this;
+        handlers.Echo = &EchoHandler;
+        if (m_ImcProvider.Start(handlers) != BML_OK || m_ImcClient.Open() != BML_OK)
+            return false;
+
+        bool available = false;
+        if (m_ImcClient.IsEchoAvailable(available) != BML_OK || !available)
+            return false;
+
+        Smoke::EchoRequestValue request;
+        request.Value = 41;
+        request.Label = "smoke";
+        Smoke::EchoReplyValue reply;
+        // OnLoad runs on the game thread, so the handler answers inside this call
+        // rather than waiting for the next pump.
+        if (m_ImcClient.CallEcho(request, reply) != BML_OK || reply.Value != 42 ||
+            reply.Label != "smoke") {
+            return false;
+        }
+
+        if (m_ImcClient.SubscribeNotices(m_ImcNotices, &NoticeHandler, this, 8) != BML_OK)
+            return false;
+
+        std::size_t subscribers = 0;
+        std::size_t delivered = 0;
+        Smoke::NoticeValue notice;
+        notice.Count = kNoticeCount;
+        // A game-thread subscription is queued here and drained by the pump, so the
+        // notice itself is checked back in OnProcess.
+        return m_ImcProvider.Transport().GetNoticesSubscriberCount(subscribers) == BML_OK &&
+               subscribers == 1 &&
+               m_ImcProvider.Transport().PublishNotices(notice, &delivered) == BML_OK &&
+               delivered == 1;
+    }
+
+    bool CheckImcNotice() {
+        std::uint64_t dropped = 1;
+        return m_NoticesReceived == 1 && !m_NoticeMismatched &&
+               m_ImcNotices.DroppedCount(dropped) == BML_OK && dropped == 0;
+    }
+
+    static int EchoHandler(const Smoke::EchoRequestValue &request,
+                           Smoke::EchoReplyValue &reply, void *) {
+        reply.Value = request.Value + 1;
+        reply.Label = request.Label;
+        return BML_OK;
+    }
+
+    static void NoticeHandler(int status, Smoke::NoticeValue *value, const BML_ImcMessage *,
+                              void *userdata) {
+        auto *self = static_cast<BMLNativeImcSmoke *>(userdata);
+        if (!self)
+            return;
+        if (status == BML_OK && value && value->Count == kNoticeCount)
+            ++self->m_NoticesReceived;
+        else
+            self->m_NoticeMismatched = true;
+    }
+
     bool PollForEvent(int expectedKind) {
         for (int attempt = 0; attempt < 16; ++attempt) {
             BML::Events::Event event{};
@@ -241,12 +315,22 @@ private:
         return false;
     }
 
+    static constexpr int kNoticeCount = 7;
+
     BML::Events::Stream m_Events;
+    // The subscription belongs to the client, so it is declared after it and torn
+    // down first.
+    Smoke::Provider m_ImcProvider;
+    Smoke::Client m_ImcClient;
+    Smoke::NoticesSubscription m_ImcNotices;
+    int m_NoticesReceived = 0;
+    bool m_NoticeMismatched = false;
     int m_ProcessCount = 0;
     bool m_RuntimePassed = false;
     bool m_UiPassed = false;
     bool m_SpeedrunPassed = false;
     bool m_EventsPassed = false;
+    bool m_ImcPassed = false;
     bool m_Passed = false;
     bool m_ExitRequested = false;
     bool m_ExitEventChecked = false;

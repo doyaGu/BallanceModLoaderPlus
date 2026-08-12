@@ -66,8 +66,9 @@ set_target_properties(BmlCAbiCompile PROPERTIES FOLDER "Tests")
 
 # imc/test.sample.imc is the authoring input behind the generated header the
 # generator tests compile against. The loader publishes no .imc interface of its
-# own, so this sample is the only thing keeping the generator, its lock format,
-# and the committed output in step.
+# own, so this sample is what keeps the generator, its lock format, and the
+# committed output in step; smoke/smoke.native.imc covers the other half, a real
+# Mod generating and using a binding at build time.
 set(BML_IMC_SAMPLE_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/imc/test.sample.imc")
 set(BML_IMC_SAMPLE_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/imc/generated")
 add_custom_target(BML_ImcSampleApiGeneration

@@ -145,8 +145,11 @@ powershell -ExecutionPolicy Bypass `
 ## 生成式接口
 
 Loader 自己不发布任何 `.imc` 接口，生成器是给发布接口的 Mod 用的编写工具。
-本仓库里唯一的 `.imc` 文件是 `tests/imc/test.sample.imc`，它让生成器、lock
-格式和已提交的输出都保持在测试覆盖之下。
+本仓库里有两个 `.imc` 文件，都属于测试。`tests/imc/test.sample.imc` 让生成器、
+lock 格式和已提交的输出都保持在测试覆盖之下。`tests/smoke/smoke.native.imc`
+属于原生冒烟 Mod，它在 Player 中既发布该接口又反过来消费它，让 Loader 的 IMC
+导出在运行期持续被覆盖；`bml_target_imc_api` 把它的生成头写进构建树，因此仓库
+里只提交 `.imc` 和它的 lock。
 
 不要手工修改生成头。应修改对应的 `.imc` 文件并运行生成器。对示例接口即：
 
@@ -159,7 +162,8 @@ python tools/imc_codegen.py `
 
 `.imc`、`.imc.lock` 和生成头应一起审查和提交。lock 保存稳定的字段与端点标识，
 不要手工调整其中的数字。BML+ 的正常构建会对该示例以检查模式运行生成器，并在
-已提交的绑定过期时失败。
+已提交的绑定过期时失败。冒烟接口的生成头由构建本身重新生成，其 lock 与 `.imc`
+不再匹配时构建会失败，并给出应运行的 `bml_update_imc_locks` 目标。
 
 面向 Mod 作者的公开文档由 CMake 安装到 `share/BML/docs/<语言>`，发布脚本复制
 该安装树。不要在打包脚本中增加第二套源码文档复制规则。编辑器 API stub 仍位于

@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "api": "smoke.native",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "enums": [],
+  "schemas": [
+    {
+      "name": "echo_reply",
+      "fields": [
+        {
+          "id": 1,
+          "name": "value",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "echo_request",
+      "fields": [
+        {
+          "id": 1,
+          "name": "value",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "notice",
+      "fields": [
+        {
+          "id": 1,
+          "name": "count",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    }
+  ],
+  "rpcs": [
+    {
+      "name": "echo",
+      "request": "echo_request",
+      "response": "echo_reply"
+    }
+  ],
+  "topics": [
+    {
+      "name": "notices",
+      "message": "notice"
+    }
+  ]
+}
