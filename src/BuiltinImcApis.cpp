@@ -4,11 +4,13 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "BML/Gameplay.h"
 #include "BML/ImcMath.h"
 #include "BML/Scene.h"
 
@@ -18,12 +20,10 @@
 #include "Logger.h"
 #include "ModContext.h"
 #include "BML/Generated/bml_events_imc.hpp"
-#include "BML/Generated/bml_gameplay_imc.hpp"
 
 namespace {
 
 namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
-namespace ImcGameplayApi = BML::Imc::Generated::Bml::Gameplay;
 
 constexpr uint32_t kVirtoolsObjectDomain = BML_OBJECT_DOMAIN_VIRTOOLS;
 
@@ -70,7 +70,6 @@ public:
 
     void Unregister() {
         (void)m_ImcEvents.Close();
-        (void)m_ImcGameplay.Close();
     }
 
     ModContext *Context() const { return GetContext(); }
@@ -99,7 +98,7 @@ public:
             return BML_ERROR_OBJECT_INVALID;
         out.Id = static_cast<int>(object->GetID());
         out.ClassId = static_cast<int>(object->GetClassID());
-        WriteName(out, object->GetName());
+        WriteText(out.Name, out.NameLength, object->GetName());
         out.Visible = object->IsVisible() != FALSE ? 1 : 0;
         out.Dynamic = object->IsDynamic() != FALSE ? 1 : 0;
         return BML_OK;
@@ -136,96 +135,97 @@ public:
         return BML_OK;
     }
 
-    int ReadGameplayCatalog(ImcGameplayApi::CatalogResponseValue &out) {
-        ModContext *context = GetContext();
-        if (!context || !ProbeGameplaySource("catalog"))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("AllLevel");
-        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
-        out.Files.reserve(count); out.StartBalls.reserve(count); out.Skies.reserve(count);
-        out.Bonuses.reserve(count); out.Music.reserve(count);
-        for (int row = 0; row < array->GetRowCount(); ++row) {
-            std::string file, startBall, sky; int bonus = 0, music = 0;
-            if (!ReadString(array, row, 0, file) || !ReadString(array, row, 1, startBall) ||
-                !ReadString(array, row, 3, sky) || !ReadValue(array, row, 6, bonus) ||
-                !ReadValue(array, row, 7, music))
-                return BML_ERROR_IMC_UNSUPPORTED;
-            out.Files.push_back(std::move(file)); out.StartBalls.push_back(std::move(startBall));
-            out.Skies.push_back(std::move(sky)); out.Bonuses.push_back(bonus); out.Music.push_back(music);
-        }
-        return BML_OK;
-    }
-    int ReadGameplayCheckpoints(ImcGameplayApi::CheckpointsResponseValue &out) {
-        ModContext *context = GetContext();
-        if (!context || !ProbeGameplaySource("checkpoints"))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("Checkpoints");
-        const std::size_t count = static_cast<std::size_t>(array->GetRowCount());
-        out.Matrices.reserve(count); out.Objects.reserve(count);
-        for (int row = 0; row < array->GetRowCount(); ++row) {
-            VxMatrix matrix;
-            if (!ReadMatrix(array, row, 0, matrix))
-                return BML_ERROR_IMC_UNSUPPORTED;
-            out.Matrices.push_back(BML::Imc::ToMat4(matrix));
-            out.Objects.push_back(m_ObjectReferences.Make(ReadObject(array, row, 1)));
-        }
-        return BML_OK;
-    }
-    int ReadGameplayEnergy(ImcGameplayApi::EnergyStateValue &out) {
-        ModContext *context = GetContext();
-        if (!context || !ProbeGameplaySource("energy"))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("Energy");
-        if (!ReadValue(array, 0, 0, out.Points) || !ReadValue(array, 0, 1, out.Lives) ||
-            !ReadValue(array, 0, 2, out.StartPoints) || !ReadValue(array, 0, 3, out.StartLives) ||
-            !ReadValue(array, 0, 4, out.TimeFactor) || !ReadValue(array, 0, 5, out.LifeBonus))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        return BML_OK;
-    }
-    int ReadGameplayLevel(ImcGameplayApi::LevelStateValue &out) {
-        ModContext *context = GetContext();
-        if (!context || !ProbeGameplaySource("level"))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("CurrentLevel");
+    int ReadGameplayLevel(BML_GameplayLevelState &out) {
+        CKDataArray *array = GameplaySource("level", "CurrentLevel");
+        if (!array)
+            return BML_ERROR_UNAVAILABLE;
         int id = 0, points = 0;
         VxMatrix matrix;
         if (!ReadValue(array, 0, 0, id) || !ReadMatrix(array, 0, 3, matrix) ||
             !ReadValue(array, 0, 5, points))
-            return BML_ERROR_IMC_UNSUPPORTED;
+            return BML_ERROR_UNAVAILABLE;
         out.Id = id;
         out.ActiveBall = m_ObjectReferences.Make(ReadObject(array, 0, 1));
         out.ResetMatrix = BML::Imc::ToMat4(matrix);
         out.Points = points;
         return BML_OK;
     }
-    int ReadGameplayResetpoints(ImcGameplayApi::ResetpointsResponseValue &out) {
-        ModContext *context = GetContext();
-        if (!context || !ProbeGameplaySource("resetpoints"))
-            return BML_ERROR_IMC_UNSUPPORTED;
-        CKDataArray *array = context->GetArrayByName("ResetPoints");
-        out.Objects.reserve(static_cast<std::size_t>(array->GetRowCount()));
-        for (int row = 0; row < array->GetRowCount(); ++row)
-            out.Objects.push_back(m_ObjectReferences.Make(ReadObject(array, row, 0)));
+
+    int ReadGameplayEnergy(BML_GameplayEnergyState &out) {
+        CKDataArray *array = GameplaySource("energy", "Energy");
+        if (!array)
+            return BML_ERROR_UNAVAILABLE;
+        if (!ReadValue(array, 0, 0, out.Points) || !ReadValue(array, 0, 1, out.Lives) ||
+            !ReadValue(array, 0, 2, out.StartPoints) || !ReadValue(array, 0, 3, out.StartLives) ||
+            !ReadValue(array, 0, 4, out.TimeFactor) || !ReadValue(array, 0, 5, out.LifeBonus))
+            return BML_ERROR_UNAVAILABLE;
+        return BML_OK;
+    }
+
+    int ReadGameplayCatalogCount(std::size_t &out) {
+        return CountGameplayRows("catalog", "AllLevel", out);
+    }
+
+    int ReadGameplayCatalogEntry(std::size_t index, BML_GameplayCatalogEntry &out) {
+        CKDataArray *array = GameplaySource("catalog", "AllLevel");
+        if (!array)
+            return BML_ERROR_UNAVAILABLE;
+        const int row = RowIndex(array, index);
+        if (row < 0)
+            return BML_ERROR_NOT_FOUND;
+        std::string file, startBall, sky;
+        int bonus = 0, music = 0;
+        if (!ReadString(array, row, 0, file) || !ReadString(array, row, 1, startBall) ||
+            !ReadString(array, row, 3, sky) || !ReadValue(array, row, 6, bonus) ||
+            !ReadValue(array, row, 7, music))
+            return BML_ERROR_UNAVAILABLE;
+        WriteText(out.File, out.FileLength, file.c_str());
+        WriteText(out.StartBall, out.StartBallLength, startBall.c_str());
+        WriteText(out.Sky, out.SkyLength, sky.c_str());
+        out.Bonus = bonus;
+        out.Music = music;
+        return BML_OK;
+    }
+
+    int ReadGameplayCheckpointCount(std::size_t &out) {
+        return CountGameplayRows("checkpoints", "Checkpoints", out);
+    }
+
+    int ReadGameplayCheckpoint(std::size_t index, BML_GameplayCheckpoint &out) {
+        CKDataArray *array = GameplaySource("checkpoints", "Checkpoints");
+        if (!array)
+            return BML_ERROR_UNAVAILABLE;
+        const int row = RowIndex(array, index);
+        if (row < 0)
+            return BML_ERROR_NOT_FOUND;
+        VxMatrix matrix;
+        if (!ReadMatrix(array, row, 0, matrix))
+            return BML_ERROR_UNAVAILABLE;
+        out.Matrix = BML::Imc::ToMat4(matrix);
+        out.Object = m_ObjectReferences.Make(ReadObject(array, row, 1));
+        return BML_OK;
+    }
+
+    int ReadGameplayResetpointCount(std::size_t &out) {
+        return CountGameplayRows("resetpoints", "ResetPoints", out);
+    }
+
+    int ReadGameplayResetpoint(std::size_t index, BML_GameplayResetpoint &out) {
+        CKDataArray *array = GameplaySource("resetpoints", "ResetPoints");
+        if (!array)
+            return BML_ERROR_UNAVAILABLE;
+        const int row = RowIndex(array, index);
+        if (row < 0)
+            return BML_ERROR_NOT_FOUND;
+        out.Object = m_ObjectReferences.Make(ReadObject(array, row, 0));
         return BML_OK;
     }
 
 private:
     int RegisterImc() {
-        const char *owner = m_Mod.GetID();
-        ImcGameplayApi::Provider::Handlers gameplay{};
-        gameplay.Userdata = this;
-        gameplay.Level = &ReadImcGameplayLevel;
-        gameplay.Energy = &ReadImcGameplayEnergy;
-        gameplay.Catalog = &ReadImcGameplayCatalog;
-        gameplay.Checkpoints = &ReadImcGameplayCheckpoints;
-        gameplay.Resetpoints = &ReadImcGameplayResetpoints;
-
-        int status = m_ImcGameplay.Start(gameplay, owner);
-        if (status == BML_OK) status = m_ImcEvents.Open(owner);
-        if (status != BML_OK) {
+        const int status = m_ImcEvents.Open(m_Mod.GetID());
+        if (status != BML_OK)
             (void)m_ImcEvents.Close();
-            (void)m_ImcGameplay.Close();
-        }
         return status;
     }
 
@@ -287,42 +287,44 @@ private:
         (void)m_ImcEvents.PublishAll(value);
     }
 
-    static int ReadImcGameplayLevel(ImcGameplayApi::LevelStateValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        return provider ? provider->ReadGameplayLevel(out) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    static int ReadImcGameplayEnergy(ImcGameplayApi::EnergyStateValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        return provider ? provider->ReadGameplayEnergy(out) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    static int ReadImcGameplayCatalog(ImcGameplayApi::CatalogResponseValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        return provider ? provider->ReadGameplayCatalog(out) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    static int ReadImcGameplayCheckpoints(ImcGameplayApi::CheckpointsResponseValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        return provider ? provider->ReadGameplayCheckpoints(out) : BML_ERROR_INVALID_PARAMETER;
-    }
-
-    static int ReadImcGameplayResetpoints(ImcGameplayApi::ResetpointsResponseValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        return provider ? provider->ReadGameplayResetpoints(out) : BML_ERROR_INVALID_PARAMETER;
-    }
-
     ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
 
-    // NameLength is the whole length, so a name too long for the buffer is
-    // detectable instead of silently short.
-    static void WriteName(BML_SceneObjectInfo &out, const char *name) {
-        const std::size_t length = name ? std::strlen(name) : 0u;
-        const std::size_t copied = (std::min)(length, static_cast<std::size_t>(BML_SCENE_NAME_CAPACITY - 1u));
+    // outLength is the whole length, so text too long for the buffer is detectable
+    // instead of silently short.
+    template <std::size_t Capacity>
+    static void WriteText(char (&buffer)[Capacity], int &outLength, const char *text) {
+        const std::size_t length = text ? std::strlen(text) : 0u;
+        const std::size_t copied = (std::min)(length, Capacity - 1u);
         if (copied != 0u)
-            std::memcpy(out.Name, name, copied);
-        out.Name[copied] = 0;
-        out.NameLength = static_cast<int>(length);
+            std::memcpy(buffer, text, copied);
+        buffer[copied] = 0;
+        outLength = static_cast<int>(length);
+    }
+
+    // The array a gameplay read works on, or null when there is nothing to read:
+    // no context yet, the array missing because no level is loaded, or a column
+    // layout that is not the one the readers assume.
+    CKDataArray *GameplaySource(const char *endpoint, const char *arrayName) const {
+        ModContext *context = GetContext();
+        if (!context || !ProbeGameplaySource(endpoint))
+            return nullptr;
+        return context->GetArrayByName(arrayName);
+    }
+
+    int CountGameplayRows(const char *endpoint, const char *arrayName, std::size_t &out) const {
+        CKDataArray *array = GameplaySource(endpoint, arrayName);
+        if (!array)
+            return BML_ERROR_UNAVAILABLE;
+        const int rows = array->GetRowCount();
+        out = rows > 0 ? static_cast<std::size_t>(rows) : 0u;
+        return BML_OK;
+    }
+
+    // A row index is checked against the array as it is right now, so an index
+    // that was inside it before a level change is simply not there any more.
+    static int RowIndex(CKDataArray *array, std::size_t index) {
+        const int rows = array->GetRowCount();
+        return rows > 0 && index < static_cast<std::size_t>(rows) ? static_cast<int>(index) : -1;
     }
 
     static bool HasColumns(CKDataArray *array, std::initializer_list<const char *> columns) {
@@ -399,7 +401,6 @@ private:
 
     BMLMod &m_Mod;
     ObjectReferences m_ObjectReferences;
-    ImcGameplayApi::Provider m_ImcGameplay;
     ImcEventsApi::Client m_ImcEvents;
 };
 
@@ -477,67 +478,73 @@ CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference) 
     return provider ? provider->ResolveObjectRef(reference) : nullptr;
 }
 
+// Every interface thunk and every script binding reaches the provider through
+// here.  The catalog read allocates, so the catch is what keeps a bad_alloc from
+// crossing back out to a Mod or to a script.
 template <typename Reader, typename... Args>
-int ServeBuiltinScene(ModContext &context, Reader reader, Args &&...args) {
+int ServeBuiltinProvider(ModContext &context, Reader reader, Args &&...args) {
     BuiltinImcProvider *provider = FindProvider(context);
     if (!provider)
         return BML_ERROR_UNAVAILABLE;
-    return (provider->*reader)(std::forward<Args>(args)...);
+    try {
+        return (provider->*reader)(std::forward<Args>(args)...);
+    } catch (const std::bad_alloc &) {
+        return BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
 }
 
 int ReadBuiltinSceneObject(ModContext &context, BML_ObjectRef object, BML_SceneObjectInfo &out) {
-    return ServeBuiltinScene(context, &BuiltinImcProvider::ReadSceneObject, object, out);
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadSceneObject, object, out);
 }
 
 int ReadBuiltinSceneEntityTransform(ModContext &context, BML_ObjectRef object,
                                     BML_SceneEntityTransform &out) {
-    return ServeBuiltinScene(context, &BuiltinImcProvider::ReadSceneEntityTransform, object, out);
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadSceneEntityTransform, object, out);
 }
 
 int FindBuiltinSceneObject(ModContext &context, const char *name, BML_ObjectRef &out) {
-    return ServeBuiltinScene(context, &BuiltinImcProvider::FindSceneObject, name, out);
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::FindSceneObject, name, out);
 }
 
 int FindBuiltinSceneObjectOfClass(ModContext &context, const char *name, int classId,
                                   BML_ObjectRef &out) {
-    return ServeBuiltinScene(context, &BuiltinImcProvider::FindSceneObjectOfClass, name, classId, out);
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::FindSceneObjectOfClass, name, classId,
+                                out);
 }
 
-template <typename Value>
-int ReadBuiltinGameplay(
-    ModContext &context, Value &out,
-    int (BuiltinImcProvider::*reader)(Value &)) {
-    BuiltinImcProvider *provider = FindProvider(context);
-    if (!provider)
-        return BML_ERROR_IMC_UNSUPPORTED;
-    try {
-        return (provider->*reader)(out);
-    } catch (...) {
-        return BML_ERROR_IMC_TARGET_EXECUTION_FAILED;
-    }
+int ReadBuiltinGameplayLevel(ModContext &context, BML_GameplayLevelState &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayLevel, out);
 }
 
-int ReadBuiltinGameplayCatalog(
-    ModContext &context, ImcGameplayApi::CatalogResponseValue &out) {
-    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayCatalog);
+int ReadBuiltinGameplayEnergy(ModContext &context, BML_GameplayEnergyState &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayEnergy, out);
 }
 
-int ReadBuiltinGameplayCheckpoints(
-    ModContext &context, ImcGameplayApi::CheckpointsResponseValue &out) {
-    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayCheckpoints);
+int ReadBuiltinGameplayCatalogCount(ModContext &context, std::size_t &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCatalogCount, out);
 }
 
-int ReadBuiltinGameplayEnergy(
-    ModContext &context, ImcGameplayApi::EnergyStateValue &out) {
-    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayEnergy);
+int ReadBuiltinGameplayCatalogEntry(ModContext &context, std::size_t index,
+                                    BML_GameplayCatalogEntry &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCatalogEntry, index, out);
 }
 
-int ReadBuiltinGameplayLevel(
-    ModContext &context, ImcGameplayApi::LevelStateValue &out) {
-    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayLevel);
+int ReadBuiltinGameplayCheckpointCount(ModContext &context, std::size_t &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCheckpointCount, out);
 }
 
-int ReadBuiltinGameplayResetpoints(
-    ModContext &context, ImcGameplayApi::ResetpointsResponseValue &out) {
-    return ReadBuiltinGameplay(context, out, &BuiltinImcProvider::ReadGameplayResetpoints);
+int ReadBuiltinGameplayCheckpoint(ModContext &context, std::size_t index,
+                                  BML_GameplayCheckpoint &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCheckpoint, index, out);
+}
+
+int ReadBuiltinGameplayResetpointCount(ModContext &context, std::size_t &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayResetpointCount, out);
+}
+
+int ReadBuiltinGameplayResetpoint(ModContext &context, std::size_t index,
+                                  BML_GameplayResetpoint &out) {
+    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayResetpoint, index, out);
 }

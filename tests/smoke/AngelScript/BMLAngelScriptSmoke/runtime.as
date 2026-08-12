@@ -30,7 +30,7 @@ class BMLBindingsSmokeMod {
                     " count=" + count +
                     " values=" + (valuesOk ? "true" : "false"));
         loggedGameplay = true;
-      } else if (status != BML::ERROR_IMC_UNSUPPORTED) {
+      } else if (status != BML::ERROR_UNAVAILABLE) {
         ctx.LogInfo("BML gameplay snapshot: status=" + status +
                     " count=-1 values=false");
         loggedGameplay = true;

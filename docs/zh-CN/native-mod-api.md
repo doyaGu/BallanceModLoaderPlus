@@ -62,9 +62,11 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `ILogger.h` | Info、Warn、Error 日志 |
 | `DataShare.h` | 低层、同进程的命名字节数据共享 |
 | `Types.h`, `ImcMath.h` | 对象引用、向量与矩阵，以及针对它们的辅助函数 |
+| `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
+| `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带内联 C++ 包装 |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
 | `Generated/*.hpp` | 从 `.imc` 生成的内置接口绑定；不要手工修改 |
-| `Runtime.h`, `Scene.h`, `Gameplay.h`, `UI.h`, `Events.h`, `EventKinds.h` | 内置 IMC 的易用 C++ 门面 |
+| `Events.h`, `EventKinds.h` | 基于 IMC 的 Loader 事件流，以及事件种类码 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
 | `Gui.h`, `Gui/*.h` | `BGui` Virtools 实体/行为 UI 封装 |
 | `InputHook.h` | 键盘、鼠标、手柄状态与可配对的输入屏蔽令牌 |

@@ -1,10 +1,12 @@
 #ifndef BML_BUILTINIMCAPIS_H
 #define BML_BUILTINIMCAPIS_H
 
+#include "BML/Gameplay.h"
 #include "BML/Scene.h"
 #include "BML/Types.h"
 #include "CKTypes.h"
 
+#include <cstddef>
 #include <utility>
 
 #include "ImcEventSnapshot.h"
@@ -13,14 +15,6 @@ class BMLMod;
 class ILogger;
 class ModContext;
 class CKObject;
-
-namespace BML::Imc::Generated::Bml::Gameplay {
-struct CatalogResponseValue;
-struct CheckpointsResponseValue;
-struct EnergyStateValue;
-struct LevelStateValue;
-struct ResetpointsResponseValue;
-}
 
 /* Registers the BML-owned generated IMC providers. */
 void RegisterBuiltinImcApis(BMLMod &mod, ILogger *logger);
@@ -66,23 +60,19 @@ int FindBuiltinSceneObject(ModContext &context, const char *name, BML_ObjectRef 
 int FindBuiltinSceneObjectOfClass(ModContext &context, const char *name, int classId,
                                   BML_ObjectRef &out);
 
-/* Script bindings reuse the built-in gameplay provider directly.  This keeps
- * the Ballance data-array interpretation in one place without routing a local
- * call through IMC serialization. */
-int ReadBuiltinGameplayCatalog(
-    ModContext &context,
-    BML::Imc::Generated::Bml::Gameplay::CatalogResponseValue &out);
-int ReadBuiltinGameplayCheckpoints(
-    ModContext &context,
-    BML::Imc::Generated::Bml::Gameplay::CheckpointsResponseValue &out);
-int ReadBuiltinGameplayEnergy(
-    ModContext &context,
-    BML::Imc::Generated::Bml::Gameplay::EnergyStateValue &out);
-int ReadBuiltinGameplayLevel(
-    ModContext &context,
-    BML::Imc::Generated::Bml::Gameplay::LevelStateValue &out);
-int ReadBuiltinGameplayResetpoints(
-    ModContext &context,
-    BML::Imc::Generated::Bml::Gameplay::ResetpointsResponseValue &out);
+/* The gameplay interface in Gameplay.h answers out of these, and the script
+ * bindings call them directly as well.  That keeps the Ballance data-array
+ * interpretation in one place for both. */
+int ReadBuiltinGameplayLevel(ModContext &context, BML_GameplayLevelState &out);
+int ReadBuiltinGameplayEnergy(ModContext &context, BML_GameplayEnergyState &out);
+int ReadBuiltinGameplayCatalogCount(ModContext &context, std::size_t &out);
+int ReadBuiltinGameplayCatalogEntry(ModContext &context, std::size_t index,
+                                    BML_GameplayCatalogEntry &out);
+int ReadBuiltinGameplayCheckpointCount(ModContext &context, std::size_t &out);
+int ReadBuiltinGameplayCheckpoint(ModContext &context, std::size_t index,
+                                  BML_GameplayCheckpoint &out);
+int ReadBuiltinGameplayResetpointCount(ModContext &context, std::size_t &out);
+int ReadBuiltinGameplayResetpoint(ModContext &context, std::size_t index,
+                                  BML_GameplayResetpoint &out);
 
 #endif // BML_BUILTINIMCAPIS_H

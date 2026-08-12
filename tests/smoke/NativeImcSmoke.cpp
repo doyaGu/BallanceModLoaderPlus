@@ -21,7 +21,7 @@ bool IsNull(BML_ObjectRef reference) {
 }
 
 bool IsOkOrUnavailable(int status) {
-    return status == BML_OK || status == BML_ERROR_IMC_UNSUPPORTED;
+    return status == BML_OK || status == BML_ERROR_UNAVAILABLE;
 }
 
 bool NearlyEqual(float left, float right) {
@@ -174,11 +174,11 @@ private:
         GetLogger()->Info(
             "BML native IMC smoke gameplay: level=%d energy=%d catalog=%d checkpoints=%d resetpoints=%d",
             levelStatus, energyStatus, catalogStatus, checkpointsStatus, resetpointsStatus);
-        if (levelStatus == BML_ERROR_IMC_UNSUPPORTED)
+        if (levelStatus == BML_ERROR_UNAVAILABLE)
             LogArraySchema("CurrentLevel");
-        if (catalogStatus == BML_ERROR_IMC_UNSUPPORTED)
+        if (catalogStatus == BML_ERROR_UNAVAILABLE)
             LogArraySchema("AllLevel");
-        const bool catalogValues = catalogStatus == BML_ERROR_IMC_UNSUPPORTED ||
+        const bool catalogValues = catalogStatus == BML_ERROR_UNAVAILABLE ||
                                    (catalogStatus == BML_OK && catalog.size() == 13 &&
                                     catalog.front().File == "Level_01.nmo" &&
                                     catalog.front().StartBall == "Ball_Wood" &&

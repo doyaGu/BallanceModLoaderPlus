@@ -11,8 +11,8 @@
 #include <angelscript.h>
 
 #include "BML/Events.h"
+#include "BML/Gameplay.h"
 #include "BML/Generated/bml_events_imc.hpp"
-#include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/EventKinds.h"
 
 #include "BuiltinImcApis.h"
@@ -25,7 +25,6 @@
 
 namespace {
 
-namespace GameplayImc = BML::Imc::Generated::Bml::Gameplay;
 namespace EventsImc = BML::Imc::Generated::Bml::Events;
 
 struct RuntimeState {
@@ -204,7 +203,7 @@ int GetActiveFacadeContext(ModContext *&outContext, const char *apiName) {
         return BML_ERROR_FROZEN;
     BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
     if (!mod || !mod->GetModContext())
-        return BML_ERROR_IMC_UNSUPPORTED;
+        return BML_ERROR_UNAVAILABLE;
     outContext = mod->GetModContext();
     return BML_OK;
 }
@@ -272,7 +271,7 @@ ScoreState GetRuntimeScore() {
 int ReadLevel(LevelState &out) {
     ModContext *context = nullptr;
     int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    GameplayImc::LevelStateValue value{};
+    BML_GameplayLevelState value = {};
     if (status == BML_OK) status = ReadBuiltinGameplayLevel(*context, value);
     if (status == BML_OK)
         out = {value.Id, value.ActiveBall, value.ResetMatrix, value.Points};
@@ -282,7 +281,7 @@ int ReadLevel(LevelState &out) {
 int ReadEnergy(EnergyState &out) {
     ModContext *context = nullptr;
     int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    GameplayImc::EnergyStateValue value{};
+    BML_GameplayEnergyState value = {};
     if (status == BML_OK) status = ReadBuiltinGameplayEnergy(*context, value);
     if (status == BML_OK) {
         out = {value.Points, value.Lives, value.StartPoints, value.StartLives,
@@ -378,9 +377,9 @@ private:
     void *m_Array = nullptr;
 };
 
-template <typename Value, typename Factory>
+template <typename Value, typename Reader>
 int CreateGameplayArray(void *&out, const char *declaration,
-                        std::size_t count, Factory factory) {
+                        std::size_t count, Reader readElement) {
     out = nullptr;
     ScriptArrayOutput array;
     int status = array.Create(declaration, count);
@@ -388,7 +387,10 @@ int CreateGameplayArray(void *&out, const char *declaration,
         return status;
     try {
         for (std::size_t i = 0; i < count; ++i) {
-            Value value = factory(i);
+            Value value{};
+            status = readElement(i, value);
+            if (status != BML_OK)
+                return status;
             status = array.MoveElement(static_cast<CKDWORD>(i), value);
             if (status != BML_OK)
                 return status;
@@ -406,25 +408,21 @@ int ReadCatalog(void *&out) {
     out = nullptr;
     ModContext *context = nullptr;
     int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    GameplayImc::CatalogResponseValue response{};
+    std::size_t count = 0;
     if (status == BML_OK)
-        status = ReadBuiltinGameplayCatalog(*context, response);
-    const std::size_t count = response.Files.size();
-    if (status == BML_OK && (response.StartBalls.size() != count ||
-                             response.Skies.size() != count ||
-                             response.Bonuses.size() != count ||
-                             response.Music.size() != count)) {
-        status = BML_ERROR_MALFORMED_MESSAGE;
-    }
+        status = ReadBuiltinGameplayCatalogCount(*context, count);
     if (status != BML_OK)
         return status;
     return CreateGameplayArray<CatalogEntry>(
         out, "array<BML::Gameplay::CatalogEntry>", count,
-        [&response](std::size_t i) {
-            return CatalogEntry{std::move(response.Files[i]),
-                                std::move(response.StartBalls[i]),
-                                std::move(response.Skies[i]),
-                                response.Bonuses[i], response.Music[i]};
+        [context](std::size_t i, CatalogEntry &value) {
+            BML_GameplayCatalogEntry row = {};
+            const int rowStatus = ReadBuiltinGameplayCatalogEntry(*context, i, row);
+            if (rowStatus != BML_OK)
+                return rowStatus;
+            value = {std::string(row.File), std::string(row.StartBall),
+                     std::string(row.Sky), row.Bonus, row.Music};
+            return BML_OK;
         });
 }
 
@@ -432,17 +430,20 @@ int ReadCheckpoints(void *&out) {
     out = nullptr;
     ModContext *context = nullptr;
     int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    GameplayImc::CheckpointsResponseValue response{};
+    std::size_t count = 0;
     if (status == BML_OK)
-        status = ReadBuiltinGameplayCheckpoints(*context, response);
-    if (status == BML_OK && response.Matrices.size() != response.Objects.size())
-        status = BML_ERROR_MALFORMED_MESSAGE;
+        status = ReadBuiltinGameplayCheckpointCount(*context, count);
     if (status != BML_OK)
         return status;
     return CreateGameplayArray<Checkpoint>(
-        out, "array<BML::Gameplay::Checkpoint>", response.Matrices.size(),
-        [&response](std::size_t i) {
-            return Checkpoint{response.Matrices[i], response.Objects[i]};
+        out, "array<BML::Gameplay::Checkpoint>", count,
+        [context](std::size_t i, Checkpoint &value) {
+            BML_GameplayCheckpoint row = {};
+            const int rowStatus = ReadBuiltinGameplayCheckpoint(*context, i, row);
+            if (rowStatus != BML_OK)
+                return rowStatus;
+            value = {row.Matrix, row.Object};
+            return BML_OK;
         });
 }
 
@@ -450,14 +451,21 @@ int ReadResetpoints(void *&out) {
     out = nullptr;
     ModContext *context = nullptr;
     int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    GameplayImc::ResetpointsResponseValue response{};
+    std::size_t count = 0;
     if (status == BML_OK)
-        status = ReadBuiltinGameplayResetpoints(*context, response);
+        status = ReadBuiltinGameplayResetpointCount(*context, count);
     if (status != BML_OK)
         return status;
     return CreateGameplayArray<Resetpoint>(
-        out, "array<BML::Gameplay::Resetpoint>", response.Objects.size(),
-        [&response](std::size_t i) { return Resetpoint{response.Objects[i]}; });
+        out, "array<BML::Gameplay::Resetpoint>", count,
+        [context](std::size_t i, Resetpoint &value) {
+            BML_GameplayResetpoint row = {};
+            const int rowStatus = ReadBuiltinGameplayResetpoint(*context, i, row);
+            if (rowStatus != BML_OK)
+                return rowStatus;
+            value = {row.Object};
+            return BML_OK;
+        });
 }
 /* Script events own decoded domain values, never CK pointers. Object references
  * are resolved only by Borrow* calls, so destroyed Virtools objects remain safe. */

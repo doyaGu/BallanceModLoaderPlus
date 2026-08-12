@@ -1,4 +1,5 @@
 #include "BML/BML.h"
+#include "BML/Gameplay.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
@@ -76,6 +77,36 @@ int BML_TestCAbiRuntimeInterface(void) {
 // The UI interface is mostly commands rather than reads, and its HUD bitmask is an
 // enum, so this checks that a void-argument member, a string argument, and the
 // BML_UI_HUD_* values are all reachable the C way.
+// The gameplay collections are read as a count and then one row at a time, which
+// is the shape a C caller has to walk without a std::vector to hand back.
+int BML_TestCAbiGameplayInterface(void) {
+    const void *found = NULL;
+    const BML_GameplayInterface *gameplay = NULL;
+    BML_GameplayLevelState level;
+    BML_GameplayEnergyState energy;
+    BML_GameplayCatalogEntry entry;
+    size_t count = 0;
+    size_t index = 0;
+
+    if (BML_GetInterface(BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    gameplay = (const BML_GameplayInterface *) found;
+    if (!BML_IFACE_HAS(gameplay, BML_GameplayInterface, ReadResetpoint))
+        return 0;
+
+    if (gameplay->ReadLevel(&level) != BML_OK || gameplay->ReadEnergy(&energy) != BML_OK)
+        return 0;
+    if (gameplay->ReadCatalogCount(&count) != BML_OK)
+        return 0;
+    for (index = 0; index < count; ++index) {
+        if (gameplay->ReadCatalogEntry(index, &entry) != BML_OK)
+            return 0;
+        if (entry.FileLength < (int) strlen(entry.File))
+            return 0;
+    }
+    return gameplay->ReadCatalogEntry(count, &entry) == BML_ERROR_NOT_FOUND;
+}
+
 // The scene interface is the one that writes text back, so this also checks the
 // fixed-capacity Name buffer next to its NameLength from C: a name longer than the
 // buffer is still terminated, and NameLength says how long it really was.

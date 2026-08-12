@@ -66,9 +66,11 @@ and deploy the Mod under `ModLoader/Mods`.
 | `ILogger.h` | Info, Warn, and Error logging |
 | `DataShare.h` | Low-level, named in-process byte sharing |
 | `Types.h`, `ImcMath.h` | Object references, vectors, and matrices, plus helpers over them |
+| `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
+| `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with inline C++ wrappers |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
 | `Generated/*.hpp` | Built-in bindings generated from `.imc`; do not edit them |
-| `Runtime.h`, `Scene.h`, `Gameplay.h`, `UI.h`, `Events.h`, `EventKinds.h` | Convenient C++ facades for built-in IMC services |
+| `Events.h`, `EventKinds.h` | The loader event stream over IMC, and the event kind codes |
 | `Bui.h` | Ballance-style ImGui widgets |
 | `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
 | `InputHook.h` | Keyboard, mouse, controller state, and paired input-block tokens |

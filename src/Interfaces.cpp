@@ -5,6 +5,7 @@
 // interface costs nothing at runtime and there is no registration order to get
 // right. Adding an interface means a struct here plus one row in kInterfaces; the
 // rules for changing one that already shipped are in Interface.h.
+#include "BML/Gameplay.h"
 #include "BML/Interface.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
@@ -36,8 +37,8 @@ int Serve(Body &&body) {
     }
 }
 
-// The scene and UI thunks touch Virtools objects and the UI the loader draws from
-// the main thread, so they refuse a call from anywhere else rather than racing the
+// The gameplay, scene, and UI thunks touch the game's data arrays, its objects,
+// and the UI the loader draws from the main thread, so they refuse a call from anywhere else rather than racing the
 // frame that draws it. The reads refuse too, so there is one rule per interface
 // rather than one per member.
 template <typename Body>
@@ -125,6 +126,70 @@ int SpeedrunResetTimer() {
     return Serve([](ModContext &context) {
         context.ResetSRTimer();
         return BML_OK;
+    });
+}
+
+int GameplayReadLevel(BML_GameplayLevelState *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([out](ModContext &context) {
+        return ReadBuiltinGameplayLevel(context, *out);
+    });
+}
+
+int GameplayReadEnergy(BML_GameplayEnergyState *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([out](ModContext &context) {
+        return ReadBuiltinGameplayEnergy(context, *out);
+    });
+}
+
+int GameplayReadCatalogCount(size_t *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([out](ModContext &context) {
+        return ReadBuiltinGameplayCatalogCount(context, *out);
+    });
+}
+
+int GameplayReadCatalogEntry(size_t index, BML_GameplayCatalogEntry *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([index, out](ModContext &context) {
+        return ReadBuiltinGameplayCatalogEntry(context, index, *out);
+    });
+}
+
+int GameplayReadCheckpointCount(size_t *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([out](ModContext &context) {
+        return ReadBuiltinGameplayCheckpointCount(context, *out);
+    });
+}
+
+int GameplayReadCheckpoint(size_t index, BML_GameplayCheckpoint *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([index, out](ModContext &context) {
+        return ReadBuiltinGameplayCheckpoint(context, index, *out);
+    });
+}
+
+int GameplayReadResetpointCount(size_t *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([out](ModContext &context) {
+        return ReadBuiltinGameplayResetpointCount(context, *out);
+    });
+}
+
+int GameplayReadResetpoint(size_t index, BML_GameplayResetpoint *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([index, out](ModContext &context) {
+        return ReadBuiltinGameplayResetpoint(context, index, *out);
     });
 }
 
@@ -252,6 +317,19 @@ const BML_SpeedrunInterface kSpeedrunInterface = {
     &SpeedrunResetTimer,
 };
 
+const BML_GameplayInterface kGameplayInterface = {
+    BML_IFACE_HEADER(BML_GameplayInterface, BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR,
+                     BML_GAMEPLAY_INTERFACE_MINOR),
+    &GameplayReadLevel,
+    &GameplayReadEnergy,
+    &GameplayReadCatalogCount,
+    &GameplayReadCatalogEntry,
+    &GameplayReadCheckpointCount,
+    &GameplayReadCheckpoint,
+    &GameplayReadResetpointCount,
+    &GameplayReadResetpoint,
+};
+
 const BML_SceneInterface kSceneInterface = {
     BML_IFACE_HEADER(BML_SceneInterface, BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR,
                      BML_SCENE_INTERFACE_MINOR),
@@ -277,6 +355,7 @@ const BML_UIInterface kUIInterface = {
 };
 
 const BML::InterfaceEntry kInterfaces[] = {
+    {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
     {BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &kSceneInterface},
     {BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR, &kSpeedrunInterface},
