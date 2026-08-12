@@ -35,9 +35,12 @@ IMC 能从一份 `.imc` 声明同时到达两侧；否，且属于上面两类�
 冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。
 
-内置门面在脚本侧只有四个：`BML::Runtime`、`BML::Gameplay`、`BML::UI`、`BML::Events`。
-`BML::Scene` 与 `BML::Speedrun` 目前只有原生侧有。脚本侧的投射是手写的，与 `.imc`
-声明之间没有任何校验，所以这个差集不会自动收敛。
+这些能力在脚本侧有五个够得着：`BML::Runtime`、`BML::Gameplay`、`BML::UI`、
+`BML::Events`、`BML::Speedrun`。只有 `BML::Scene` 只在原生侧。脚本侧的
+`BML::Speedrun` 目前并不是门面的投射：它的写法是 `SetTimerVisible`、`StartTimer`、
+`PauseTimer`、`ResetTimer`、`GetElapsedTime`，返回的是值或者什么都不返回，而不是
+状态码。脚本侧的投射是手写的，与 `.imc` 声明之间没有任何校验，所以无论是缺的那项
+能力还是写法上的差异，都不会自动收敛。
 
 ## 逐项能力对照
 

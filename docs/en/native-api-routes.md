@@ -48,11 +48,14 @@ Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
 at an engine object.
 
-The script side has four of the built-in facades: `BML::Runtime`,
-`BML::Gameplay`, `BML::UI`, and `BML::Events`. `BML::Scene` and `BML::Speedrun`
-are native-only for now. The script projection is written by hand and nothing
-checks it against the `.imc` declarations, so that difference does not close by
-itself.
+The script side reaches five of these capabilities: `BML::Runtime`,
+`BML::Gameplay`, `BML::UI`, `BML::Events`, and `BML::Speedrun`. `BML::Scene` is
+native-only. The script `BML::Speedrun` is not the facade projected as it
+stands: it is spelled `SetTimerVisible`, `StartTimer`, `PauseTimer`,
+`ResetTimer`, and `GetElapsedTime`, and it returns the value or nothing rather
+than a status. The script projection is written by hand and nothing checks it
+against the `.imc` declarations, so neither the missing capability nor the
+spelling difference closes by itself.
 
 ## Capability by capability
 
