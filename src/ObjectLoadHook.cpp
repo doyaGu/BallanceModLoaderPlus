@@ -3,7 +3,7 @@
 #include <cstring>
 #include <string>
 
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 #include "EventStreams.h"
 #include "ModContext.h"
 

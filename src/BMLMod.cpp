@@ -19,7 +19,7 @@
 #include "StringUtils.h"
 #include "PathUtils.h"
 #include "EventHook.h"
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 
 namespace ExecuteBB {
     void Init();
@@ -201,11 +201,11 @@ void BMLMod::OnUnload() {
 }
 
 void BMLMod::RegisterCoreImcApis() {
-    RegisterBuiltinImcApis(*this, GetLogger());
+    RegisterBuiltinCapabilities(*this, GetLogger());
 }
 
 void BMLMod::UnregisterCoreImcApis() {
-    UnregisterBuiltinImcApis(*this);
+    UnregisterBuiltinCapabilities(*this);
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,

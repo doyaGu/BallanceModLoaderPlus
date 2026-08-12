@@ -17,7 +17,7 @@
 
 #include "BML/BML.h"
 #include "BML/Timer.h"
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 #include "EventStreams.h"
 
 #include "RenderHook.h"

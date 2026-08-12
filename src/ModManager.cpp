@@ -1,7 +1,7 @@
 #include "ModManager.h"
 
 #include "ModContext.h"
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 
 #include "BML/InputHook.h"
 #include "Overlay.h"

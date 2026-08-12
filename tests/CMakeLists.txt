@@ -247,9 +247,9 @@ add_bml_test(ConfigTest
         VirtoolsSDK::VxMath
 )
 
-add_bml_test(ImcObjectReferenceRegistryTest
+add_bml_test(ObjectReferenceRegistryTest
         SOURCES
-        ImcObjectReferenceRegistryTest.cpp
+        ObjectReferenceRegistryTest.cpp
 )
 
 add_bml_test(InterfaceRegistryTest
@@ -487,8 +487,8 @@ add_bml_test(ImcHeadersTest
 target_include_directories(ImcHeadersTest PRIVATE "${BML_IMC_SAMPLE_GENERATED_DIR}")
 add_dependencies(ImcHeadersTest BML_ImcSampleApiGeneration)
 
-add_bml_test(ImcMathTest
-        SOURCES ImcMathTest.cpp
+add_bml_test(TypeConvertTest
+        SOURCES TypeConvertTest.cpp
         DEPENDENCIES VirtoolsSDK::VxMath
 )
 

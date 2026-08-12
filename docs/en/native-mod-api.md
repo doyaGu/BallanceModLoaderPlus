@@ -65,7 +65,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | `IConfig.h` | Typed configuration properties |
 | `ILogger.h` | Info, Warn, and Error logging |
 | `DataShare.h` | Low-level, named in-process byte sharing |
-| `Types.h`, `ImcMath.h` | Object references, vectors, and matrices, plus helpers over them |
+| `Types.h`, `TypeConvert.h` | Object references, vectors, and matrices, plus conversions to and from the Virtools types |
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with inline C++ wrappers |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |

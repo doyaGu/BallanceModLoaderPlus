@@ -39,7 +39,7 @@
 #include "ScriptHookBlockService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
-#include "ScriptImcFacade.h"
+#include "ScriptBuiltinFacade.h"
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
@@ -3765,7 +3765,7 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int uiResult = RegisterScriptUiFacade(engine, errorMessage);
     if (uiResult < 0)
         return uiResult;
-    return RegisterScriptImcFacade(engine, errorMessage);
+    return RegisterScriptBuiltinFacade(engine, errorMessage);
 }
 
 int RegisterImGuiBindings(asIScriptEngine *engine, const char **errorMessage) {

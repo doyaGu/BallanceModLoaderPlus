@@ -28,7 +28,7 @@
 #include "BML/Imc.h"
 #include "BML/ImcWire.hpp"
 #include "BML/ImcCpp.hpp"
-#include "BML/ImcMath.h"
+#include "BML/TypeConvert.h"
 #include "BML/EventKinds.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"

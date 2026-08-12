@@ -118,7 +118,8 @@ powershell -ExecutionPolicy Bypass `
 | Mod 发现、依赖顺序、服务或关闭 | `src/ModContext.*` | 对应 Loader/依赖测试和原生/脚本冒烟覆盖 |
 | HUD、菜单、命令栏或内建行为 | `src/BMLMod.*`、`src/Overlay.*`、`src/Bui.cpp`、`src/Gui/` | 定向 UI/服务测试和 Player 画面/输入冒烟测试 |
 | 旧式原生 SDK 或 CMake 消费端行为 | `include/BML/`、`cmake/` | ABI/编译测试、模板配置构建和安装后 SDK 检查 |
-| IMC 运行时或内建 Provider | `src/ImcApi.cpp`、`src/ImcRuntime.*`、`src/BuiltinImcApis.*` | IMC 运行时/兼容性测试和原生 IMC 冒烟测试 |
+| IMC 运行时 | `src/ImcApi.cpp`、`src/ImcRuntime.*` | IMC 运行时/兼容性测试和原生 IMC 冒烟测试 |
+| 内建 interface struct 或其背后的读取实现 | `include/BML/Interface.h`、`src/Interfaces.cpp`、`src/BuiltinCapabilities.*` | 定向 interface 测试、C ABI 编译测试和原生冒烟测试 |
 | IMC 代码生成器或其示例接口 | `tools/imc_codegen.py`、`tests/imc/` | 生成器检查、兼容性测试，并一起审查接口、lock 和头文件 |
 | 脚本发现、绑定、执行或重载 | `src/AngelScript/`、`docs/api/` | 定向脚本测试、API stub 检查和脚本版 Player 冒烟测试 |
 | 公开文档或发布目录 | `docs/`、`src/CMakeLists.txt`、`scripts/Package-BMLRelease.ps1` | 中英文严格文档构建、CMake install 和 SDK stage 校验 |

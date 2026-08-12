@@ -1,4 +1,4 @@
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -11,11 +11,11 @@
 #include <vector>
 
 #include "BML/Gameplay.h"
-#include "BML/ImcMath.h"
+#include "BML/TypeConvert.h"
 #include "BML/Scene.h"
 
 #include "BMLMod.h"
-#include "ImcObjectReferenceRegistry.h"
+#include "ObjectReferenceRegistry.h"
 #include "Logger.h"
 #include "ModContext.h"
 
@@ -55,12 +55,12 @@ public:
     void InvalidateAll() { m_References.InvalidateAll(); }
 
 private:
-    ImcObjectReferenceRegistry m_References;
+    ObjectReferenceRegistry m_References;
 };
 
-class BuiltinImcProvider {
+class BuiltinCapabilities {
 public:
-    explicit BuiltinImcProvider(BMLMod &mod) : m_Mod(mod) {}
+    explicit BuiltinCapabilities(BMLMod &mod) : m_Mod(mod) {}
 
     ModContext *Context() const { return GetContext(); }
 
@@ -94,8 +94,8 @@ public:
         VxVector position, scale;
         entity->GetPosition(&position);
         entity->GetScale(&scale);
-        out.Position = BML::Imc::ToVec3(position);
-        out.Scale = BML::Imc::ToVec3(scale);
+        out.Position = BML::Convert::ToVec3(position);
+        out.Scale = BML::Convert::ToVec3(scale);
         out.Parent = m_ObjectReferences.Make(entity->GetParent());
         out.ChildCount = entity->GetChildrenCount();
         return BML_OK;
@@ -129,7 +129,7 @@ public:
             return BML_ERROR_UNAVAILABLE;
         out.Id = id;
         out.ActiveBall = m_ObjectReferences.Make(ReadObject(array, 0, 1));
-        out.ResetMatrix = BML::Imc::ToMat4(matrix);
+        out.ResetMatrix = BML::Convert::ToMat4(matrix);
         out.Points = points;
         return BML_OK;
     }
@@ -184,7 +184,7 @@ public:
         VxMatrix matrix;
         if (!ReadMatrix(array, row, 0, matrix))
             return BML_ERROR_UNAVAILABLE;
-        out.Matrix = BML::Imc::ToMat4(matrix);
+        out.Matrix = BML::Convert::ToMat4(matrix);
         out.Object = m_ObjectReferences.Make(ReadObject(array, row, 1));
         return BML_OK;
     }
@@ -321,64 +321,64 @@ private:
     ObjectReferences m_ObjectReferences;
 };
 
-std::unordered_map<BMLMod *, std::unique_ptr<BuiltinImcProvider>> g_Providers;
+std::unordered_map<BMLMod *, std::unique_ptr<BuiltinCapabilities>> g_Capabilities;
 
-BuiltinImcProvider *FindProvider(ModContext &context) {
-    for (const auto &[mod, provider] : g_Providers) {
+BuiltinCapabilities *Find(ModContext &context) {
+    for (const auto &[mod, capabilities] : g_Capabilities) {
         (void)mod;
-        if (provider && provider->Context() == &context)
-            return provider.get();
+        if (capabilities && capabilities->Context() == &context)
+            return capabilities.get();
     }
     return nullptr;
 }
 
 } // namespace
 
-void RegisterBuiltinImcApis(BMLMod &mod, ILogger *logger) {
-    UnregisterBuiltinImcApis(mod);
+void RegisterBuiltinCapabilities(BMLMod &mod, ILogger *logger) {
+    UnregisterBuiltinCapabilities(mod);
     try {
-        g_Providers.emplace(&mod, std::make_unique<BuiltinImcProvider>(mod));
+        g_Capabilities.emplace(&mod, std::make_unique<BuiltinCapabilities>(mod));
     } catch (const std::bad_alloc &) {
         if (logger)
-            logger->Warn("Failed to register the built-in providers: %s",
+            logger->Warn("Failed to register the built-in capabilities: %s",
                          BML_GetErrorString(BML_ERROR_OUT_OF_MEMORY));
     }
 }
 
-void UnregisterBuiltinImcApis(BMLMod &mod) {
-    g_Providers.erase(&mod);
+void UnregisterBuiltinCapabilities(BMLMod &mod) {
+    g_Capabilities.erase(&mod);
 }
 
 void InvalidateBuiltinObjectRefs(ModContext &context, const CK_ID *ids, int count) {
-    if (BuiltinImcProvider *provider = FindProvider(context))
-        provider->InvalidateObjectRefs(ids, count);
+    if (BuiltinCapabilities *capabilities = Find(context))
+        capabilities->InvalidateObjectRefs(ids, count);
 }
 
 void InvalidateAllBuiltinObjectRefs(ModContext &context) {
-    if (BuiltinImcProvider *provider = FindProvider(context))
-        provider->InvalidateAllObjectRefs();
+    if (BuiltinCapabilities *capabilities = Find(context))
+        capabilities->InvalidateAllObjectRefs();
 }
 
 BML_ObjectRef MakeBuiltinObjectRef(ModContext &context, CKObject *object) {
-    BuiltinImcProvider *provider = FindProvider(context);
-    return provider ? provider->MakeObjectRef(object) : BML_ObjectRef{};
+    BuiltinCapabilities *capabilities = Find(context);
+    return capabilities ? capabilities->MakeObjectRef(object) : BML_ObjectRef{};
 }
 
 CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference) {
-    BuiltinImcProvider *provider = FindProvider(context);
-    return provider ? provider->ResolveObjectRef(reference) : nullptr;
+    BuiltinCapabilities *capabilities = Find(context);
+    return capabilities ? capabilities->ResolveObjectRef(reference) : nullptr;
 }
 
-// Every interface thunk and every script binding reaches the provider through
+// Every interface thunk and every script binding reaches these reads through
 // here.  The catalog read allocates, so the catch is what keeps a bad_alloc from
 // crossing back out to a Mod or to a script.
 template <typename Reader, typename... Args>
-int ServeBuiltinProvider(ModContext &context, Reader reader, Args &&...args) {
-    BuiltinImcProvider *provider = FindProvider(context);
-    if (!provider)
+int ServeBuiltinCapability(ModContext &context, Reader reader, Args &&...args) {
+    BuiltinCapabilities *capabilities = Find(context);
+    if (!capabilities)
         return BML_ERROR_UNAVAILABLE;
     try {
-        return (provider->*reader)(std::forward<Args>(args)...);
+        return (capabilities->*reader)(std::forward<Args>(args)...);
     } catch (const std::bad_alloc &) {
         return BML_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -387,55 +387,55 @@ int ServeBuiltinProvider(ModContext &context, Reader reader, Args &&...args) {
 }
 
 int ReadBuiltinSceneObject(ModContext &context, BML_ObjectRef object, BML_SceneObjectInfo &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadSceneObject, object, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadSceneObject, object, out);
 }
 
 int ReadBuiltinSceneEntityTransform(ModContext &context, BML_ObjectRef object,
                                     BML_SceneEntityTransform &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadSceneEntityTransform, object, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadSceneEntityTransform, object, out);
 }
 
 int FindBuiltinSceneObject(ModContext &context, const char *name, BML_ObjectRef &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::FindSceneObject, name, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::FindSceneObject, name, out);
 }
 
 int FindBuiltinSceneObjectOfClass(ModContext &context, const char *name, int classId,
                                   BML_ObjectRef &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::FindSceneObjectOfClass, name, classId,
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::FindSceneObjectOfClass, name, classId,
                                 out);
 }
 
 int ReadBuiltinGameplayLevel(ModContext &context, BML_GameplayLevelState &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayLevel, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayLevel, out);
 }
 
 int ReadBuiltinGameplayEnergy(ModContext &context, BML_GameplayEnergyState &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayEnergy, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayEnergy, out);
 }
 
 int ReadBuiltinGameplayCatalogCount(ModContext &context, std::size_t &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCatalogCount, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayCatalogCount, out);
 }
 
 int ReadBuiltinGameplayCatalogEntry(ModContext &context, std::size_t index,
                                     BML_GameplayCatalogEntry &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCatalogEntry, index, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayCatalogEntry, index, out);
 }
 
 int ReadBuiltinGameplayCheckpointCount(ModContext &context, std::size_t &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCheckpointCount, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayCheckpointCount, out);
 }
 
 int ReadBuiltinGameplayCheckpoint(ModContext &context, std::size_t index,
                                   BML_GameplayCheckpoint &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayCheckpoint, index, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayCheckpoint, index, out);
 }
 
 int ReadBuiltinGameplayResetpointCount(ModContext &context, std::size_t &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayResetpointCount, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayResetpointCount, out);
 }
 
 int ReadBuiltinGameplayResetpoint(ModContext &context, std::size_t index,
                                   BML_GameplayResetpoint &out) {
-    return ServeBuiltinProvider(context, &BuiltinImcProvider::ReadGameplayResetpoint, index, out);
+    return ServeBuiltinCapability(context, &BuiltinCapabilities::ReadGameplayResetpoint, index, out);
 }

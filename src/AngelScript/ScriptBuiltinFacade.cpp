@@ -1,4 +1,4 @@
-#include "ScriptImcFacade.h"
+#include "ScriptBuiltinFacade.h"
 
 #include <cstddef>
 #include <limits>
@@ -13,7 +13,7 @@
 #include "BML/Gameplay.h"
 #include "BML/EventKinds.h"
 
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 #include "EventStreams.h"
 #include "ModContext.h"
 #include "ScriptMod.h"
@@ -76,7 +76,7 @@ struct Resetpoint {
     BML_ObjectRef Object{};
 };
 
-std::string g_ImcFacadeRegistrationError;
+std::string g_FacadeRegistrationError;
 
 template <typename T>
 void ConstructValue(T *self) {
@@ -142,12 +142,12 @@ ValueTypeRegistration ValueType(const char *name,
 bool Register(asIScriptEngine *engine, int status, const char *declaration, const char **errorMessage) {
     if (status >= 0)
         return true;
-    g_ImcFacadeRegistrationError = "Failed to register IMC facade declaration: ";
-    g_ImcFacadeRegistrationError += declaration;
-    g_ImcFacadeRegistrationError += " returned ";
-    g_ImcFacadeRegistrationError += std::to_string(status);
+    g_FacadeRegistrationError = "Failed to register built-in facade declaration: ";
+    g_FacadeRegistrationError += declaration;
+    g_FacadeRegistrationError += " returned ";
+    g_FacadeRegistrationError += std::to_string(status);
     if (errorMessage)
-        *errorMessage = g_ImcFacadeRegistrationError.c_str();
+        *errorMessage = g_FacadeRegistrationError.c_str();
     if (engine)
         engine->SetDefaultNamespace("");
     return false;
@@ -315,7 +315,7 @@ public:
         const BML::ScriptModRuntime *runtime =
             BML::ScriptModRuntime::GetCurrentScriptModRuntime();
         if (!runtime && mod)
-            runtime = &mod->GetRuntimeForImc();
+            runtime = &mod->GetRuntimeForFacade();
         if (!runtime || !runtime->GetAngelScript())
             return BML_ERROR_SCRIPT_EXECUTION;
 
@@ -832,11 +832,11 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
 
 } // namespace
 
-int RegisterScriptImcFacade(asIScriptEngine *engine, const char **errorMessage) {
+int RegisterScriptBuiltinFacade(asIScriptEngine *engine, const char **errorMessage) {
     if (!engine) {
-        g_ImcFacadeRegistrationError = "IMC script facade received a null engine.";
+        g_FacadeRegistrationError = "The built-in script facade received a null engine.";
         if (errorMessage)
-            *errorMessage = g_ImcFacadeRegistrationError.c_str();
+            *errorMessage = g_FacadeRegistrationError.c_str();
         return asERROR;
     }
     if (!RegisterRuntime(engine, errorMessage) ||

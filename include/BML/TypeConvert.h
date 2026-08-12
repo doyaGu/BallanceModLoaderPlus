@@ -1,14 +1,14 @@
-// Turning the game's vectors and matrices into the ones an IMC payload carries, and back.
-// A Mod holding a VxVector has to hand a BML_Vec3 to an IMC call, and the two are the same
-// three floats, so these do the copy and there is nothing more to it.
+// Turning the game's vectors and matrices into the ones Types.h declares, and back. A Mod
+// holding a VxVector has to hand a BML_Vec3 to an interface call or an IMC payload, and the
+// two are the same three floats, so these do the copy and there is nothing more to it.
 //
-// They are inline and header-only, so this is the one IMC header that needs the Virtools
-// SDK and C++: a Mod that only speaks the C ABI includes Types.h and leaves this alone.
-// The copies are written out element by element on purpose, since VxMatrix keeps its
-// storage to itself and its layout is not something to assume; the IMC matrix is row-major
+// They are inline and header-only, and this is the one header of the pair that needs the
+// Virtools SDK and C++: a Mod that only speaks the C ABI includes Types.h and leaves this
+// alone. The copies are written out element by element on purpose, since VxMatrix keeps its
+// storage to itself and its layout is not something to assume; BML_Mat4 is row-major
 // m[row][column].
-#ifndef BML_IMCMATH_H
-#define BML_IMCMATH_H
+#ifndef BML_TYPECONVERT_H
+#define BML_TYPECONVERT_H
 
 #include "BML/Types.h"
 
@@ -16,7 +16,7 @@
 #include "VxMatrix.h"
 #include "VxVector.h"
 
-namespace BML::Imc {
+namespace BML::Convert {
 
 inline BML_Vec2 ToVec2(const Vx2DVector &value) {
     return {value.x, value.y};
@@ -35,7 +35,7 @@ inline VxVector ToVxVector(const BML_Vec3 &value) {
 }
 
 /* Explicit element copies deliberately avoid VxMatrix's private storage and
- * any ABI-dependent padding.  The IMC matrix is always row-major m[row][col]. */
+ * any ABI-dependent padding.  BML_Mat4 is always row-major m[row][col]. */
 inline BML_Mat4 ToMat4(const VxMatrix &value) {
     return {value[0][0], value[0][1], value[0][2], value[0][3],
             value[1][0], value[1][1], value[1][2], value[1][3],
@@ -52,6 +52,6 @@ inline VxMatrix ToVxMatrix(const BML_Mat4 &value) {
     return result;
 }
 
-} // namespace BML::Imc
+} // namespace BML::Convert
 
-#endif // BML_IMCMATH_H
+#endif // BML_TYPECONVERT_H

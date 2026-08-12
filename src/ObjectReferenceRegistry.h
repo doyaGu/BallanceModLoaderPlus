@@ -1,5 +1,5 @@
-#ifndef BML_IMC_OBJECT_REFERENCE_REGISTRY_H
-#define BML_IMC_OBJECT_REFERENCE_REGISTRY_H
+#ifndef BML_OBJECT_REFERENCE_REGISTRY_H
+#define BML_OBJECT_REFERENCE_REGISTRY_H
 
 #include <cstdint>
 #include <cstddef>
@@ -10,12 +10,12 @@
 
 /*
  * Private bookkeeping for object identities emitted by the built-in scene
- * provider.  CK_ID alone is not a lifetime token: a reset/load can recycle a
+ * reads.  CK_ID alone is not a lifetime token: a reset/load can recycle a
  * slot.  The ModManager invalidates a slot from Virtools' deletion callback
  * before its storage can be reused, so the next Make() receives a new
  * generation even when the allocator gives the replacement the same address.
  */
-class ImcObjectReferenceRegistry {
+class ObjectReferenceRegistry {
 public:
     BML_ObjectRef Make(uint32_t domain, uint32_t slot, const void *identity) {
         if (domain == 0 || slot == 0 || !identity)
@@ -64,4 +64,4 @@ private:
     uint32_t m_NextGeneration = 1;
 };
 
-#endif // BML_IMC_OBJECT_REFERENCE_REGISTRY_H
+#endif // BML_OBJECT_REFERENCE_REGISTRY_H

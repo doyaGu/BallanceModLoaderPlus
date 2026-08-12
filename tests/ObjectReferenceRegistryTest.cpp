@@ -1,11 +1,11 @@
-#include "ImcObjectReferenceRegistry.h"
+#include "ObjectReferenceRegistry.h"
 
 #include <gtest/gtest.h>
 
 namespace {
 
-TEST(ImcObjectReferenceRegistryTest, DeletionInvalidatesAReusedSlotEvenAtTheSameAddress) {
-    ImcObjectReferenceRegistry references;
+TEST(ObjectReferenceRegistryTest, DeletionInvalidatesAReusedSlotEvenAtTheSameAddress) {
+    ObjectReferenceRegistry references;
     int storage = 0;
 
     const BML_ObjectRef first = references.Make(1, 42, &storage);
@@ -21,8 +21,8 @@ TEST(ImcObjectReferenceRegistryTest, DeletionInvalidatesAReusedSlotEvenAtTheSame
     EXPECT_TRUE(references.Matches(42, replacement.Generation, &storage));
 }
 
-TEST(ImcObjectReferenceRegistryTest, ResetInvalidatesEveryTrackedReference) {
-    ImcObjectReferenceRegistry references;
+TEST(ObjectReferenceRegistryTest, ResetInvalidatesEveryTrackedReference) {
+    ObjectReferenceRegistry references;
     int firstStorage = 0;
     int secondStorage = 0;
     const BML_ObjectRef first = references.Make(1, 1, &firstStorage);
@@ -35,8 +35,8 @@ TEST(ImcObjectReferenceRegistryTest, ResetInvalidatesEveryTrackedReference) {
     EXPECT_EQ(0u, references.Size());
 }
 
-TEST(ImcObjectReferenceRegistryTest, DeletionReleasesBookkeepingWithoutRevalidatingStaleRefs) {
-    ImcObjectReferenceRegistry references;
+TEST(ObjectReferenceRegistryTest, DeletionReleasesBookkeepingWithoutRevalidatingStaleRefs) {
+    ObjectReferenceRegistry references;
     int storage = 0;
     const BML_ObjectRef first = references.Make(1, 42, &storage);
     ASSERT_EQ(1u, references.Size());

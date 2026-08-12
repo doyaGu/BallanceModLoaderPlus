@@ -1,6 +1,6 @@
 #include "BML/Guids/physics_RT.h"
 
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 #include "EventStreams.h"
 #include "ModContext.h"
 #include "VTables.h"

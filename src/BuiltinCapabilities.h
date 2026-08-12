@@ -1,5 +1,5 @@
-#ifndef BML_BUILTINIMCAPIS_H
-#define BML_BUILTINIMCAPIS_H
+#ifndef BML_BUILTINCAPABILITIES_H
+#define BML_BUILTINCAPABILITIES_H
 
 #include "BML/Gameplay.h"
 #include "BML/Scene.h"
@@ -13,19 +13,19 @@ class ILogger;
 class ModContext;
 class CKObject;
 
-/* Registers the BML-owned built-in providers. */
-void RegisterBuiltinImcApis(BMLMod &mod, ILogger *logger);
-void UnregisterBuiltinImcApis(BMLMod &mod);
+/* Registers the reads behind the loader's own interface structs. */
+void RegisterBuiltinCapabilities(BMLMod &mod, ILogger *logger);
+void UnregisterBuiltinCapabilities(BMLMod &mod);
 
 /* Called only by the loader's Virtools-manager callbacks.  This stays private
  * because ObjectRef never exposes CK lifetime mechanics across the ABI. */
 void InvalidateBuiltinObjectRefs(ModContext &context, const CK_ID *ids, int count);
 void InvalidateAllBuiltinObjectRefs(ModContext &context);
 
-/* Script bindings are allowed to translate an already-borrowed CKObject to
- * the built-in scene provider's opaque identity, and back again at the final
- * host boundary.  These are private loader helpers: neither CKObject nor this
- * mapping appears in the public IMC ABI. */
+/* Script bindings are allowed to translate an already-borrowed CKObject to the
+ * opaque identity the scene reads hand out, and back again at the final host
+ * boundary.  These are private loader helpers: neither CKObject nor this
+ * mapping crosses the ABI. */
 BML_ObjectRef MakeBuiltinObjectRef(ModContext &context, CKObject *object);
 CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference);
 
@@ -54,4 +54,4 @@ int ReadBuiltinGameplayResetpointCount(ModContext &context, std::size_t &out);
 int ReadBuiltinGameplayResetpoint(ModContext &context, std::size_t index,
                                   BML_GameplayResetpoint &out);
 
-#endif // BML_BUILTINIMCAPIS_H
+#endif // BML_BUILTINCAPABILITIES_H

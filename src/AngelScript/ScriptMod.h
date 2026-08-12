@@ -311,7 +311,7 @@ public:
     size_t GetActiveCommandCount() const { return m_Commands.GetActiveCount(); }
     size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
     size_t GetActiveHookBlockCount() const { return m_HookBlocks.GetActiveCount(); }
-    const ScriptModRuntime &GetRuntimeForImc() const { return m_Runtime; }
+    const ScriptModRuntime &GetRuntimeForFacade() const { return m_Runtime; }
     size_t GetQueuedScriptServiceCallbackCount() const;
     size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
     int GetActiveScriptCallCount() const;

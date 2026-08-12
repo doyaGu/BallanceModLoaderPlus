@@ -125,7 +125,8 @@ specified.
 | Mod discovery, dependency order, services, or shutdown | `src/ModContext.*` | Relevant loader/dependency tests and native/script smoke coverage |
 | HUD, menus, command bar, or built-in behavior | `src/BMLMod.*`, `src/Overlay.*`, `src/Bui.cpp`, `src/Gui/` | Focused UI/service tests and Player visual/input smoke test |
 | Legacy native SDK or CMake consumer behavior | `include/BML/`, `cmake/` | ABI/compile tests, template configure/build, and installed SDK check |
-| IMC runtime or built-in Provider | `src/ImcApi.cpp`, `src/ImcRuntime.*`, `src/BuiltinImcApis.*` | IMC runtime/compatibility tests and native IMC smoke test |
+| IMC runtime | `src/ImcApi.cpp`, `src/ImcRuntime.*` | IMC runtime/compatibility tests and native IMC smoke test |
+| Built-in interface struct or the reads behind it | `include/BML/Interface.h`, `src/Interfaces.cpp`, `src/BuiltinCapabilities.*` | Focused interface tests, the C ABI compile test, and native smoke test |
 | IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
 | Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
 | Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/Package-BMLRelease.ps1` | Both strict MkDocs builds, CMake install, and SDK stage validation |

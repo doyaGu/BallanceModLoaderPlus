@@ -61,7 +61,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `IConfig.h` | 类型化配置属性 |
 | `ILogger.h` | Info、Warn、Error 日志 |
 | `DataShare.h` | 低层、同进程的命名字节数据共享 |
-| `Types.h`, `ImcMath.h` | 对象引用、向量与矩阵，以及针对它们的辅助函数 |
+| `Types.h`, `TypeConvert.h` | 对象引用、向量与矩阵，以及与 Virtools 类型之间的互转 |
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带内联 C++ 包装 |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |

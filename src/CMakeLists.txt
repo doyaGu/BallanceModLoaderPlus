@@ -88,7 +88,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/Types.h
         ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
         ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
-        ${BML_INCLUDE_DIR}/BML/ImcMath.h
+        ${BML_INCLUDE_DIR}/BML/TypeConvert.h
         ${BML_INCLUDE_DIR}/BML/EventKinds.h
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h
@@ -113,7 +113,7 @@ set(BML_PUBLIC_HEADERS
 set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
-        BuiltinImcApis.h
+        BuiltinCapabilities.h
         InterfaceRegistry.h
         RuntimeState.h
 
@@ -141,7 +141,7 @@ set(BML_PRIVATE_HEADERS
         EventStreams.h
         ImcPrimitives.h
         ImcRuntime.h
-        ImcObjectReferenceRegistry.h
+        ObjectReferenceRegistry.h
 
         CommandContext.h
         DataShare.hpp
@@ -156,7 +156,7 @@ set(BML_SOURCES
         HookBlock.cpp
         ModManager.cpp
         ModContext.cpp
-        BuiltinImcApis.cpp
+        BuiltinCapabilities.cpp
         InterfaceRegistry.cpp
         Interfaces.cpp
         EventStreams.cpp
@@ -240,7 +240,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.h
             AngelScript/ScriptMod.h
             AngelScript/ScriptModContextView.h
-            AngelScript/ScriptImcFacade.h
+            AngelScript/ScriptBuiltinFacade.h
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
             AngelScript/ScriptModEntryScanner.h
@@ -284,7 +284,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptLibraryValidator.cpp
             AngelScript/ScriptMod.cpp
             AngelScript/ScriptModContextView.cpp
-            AngelScript/ScriptImcFacade.cpp
+            AngelScript/ScriptBuiltinFacade.cpp
             AngelScript/ScriptModDefinition.cpp
             AngelScript/ScriptModDefinitionBuilder.cpp
             AngelScript/ScriptModEntryScanner.cpp

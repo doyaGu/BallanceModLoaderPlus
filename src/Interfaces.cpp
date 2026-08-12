@@ -16,7 +16,7 @@
 #include <iterator>
 #include <limits>
 
-#include "BuiltinImcApis.h"
+#include "BuiltinCapabilities.h"
 #include "EventStreams.h"
 #include "InterfaceRegistry.h"
 #include "ModContext.h"

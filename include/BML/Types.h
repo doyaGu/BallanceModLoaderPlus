@@ -5,7 +5,7 @@
 // use these. Everything is plain C with a fixed layout and no padding to guess at, which is
 // what makes it usable from C, from C++, and from a language binding.
 //
-// Vectors and matrices are numbers and nothing more, so ImcMath.h converts between these
+// Vectors and matrices are numbers and nothing more, so TypeConvert.h converts between these
 // and the Virtools types, VxVector and VxMatrix, for a Mod on the C++ side.
 //
 // A BML_ObjectRef is how one of the game's objects is named across the boundary, and it is
