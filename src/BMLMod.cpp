@@ -165,11 +165,11 @@ void BMLMod::OnLoad() {
     // Apply initial FPS update frequency setting
     SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
 
-    RegisterCoreImcApis();
+    RegisterBuiltinCapabilities(*this, GetLogger());
 }
 
 void BMLMod::OnUnload() {
-    UnregisterCoreImcApis();
+    UnregisterBuiltinCapabilities(*this);
 
     m_CommandBar.SaveHistory();
 
@@ -198,14 +198,6 @@ void BMLMod::OnUnload() {
     // Clear containers
     m_WindowRect = VxRect();
     m_OldWindowRect = VxRect();
-}
-
-void BMLMod::RegisterCoreImcApis() {
-    RegisterBuiltinCapabilities(*this, GetLogger());
-}
-
-void BMLMod::UnregisterCoreImcApis() {
-    UnregisterBuiltinCapabilities(*this);
 }
 
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,

@@ -57,11 +57,11 @@ public:
     void SetModified();
 
 #ifdef BML_TEST
-    std::string GetImcValueStringForTest() const { return GetImcValueString(); }
+    std::string GetEventValueStringForTest() const { return GetEventValueString(); }
 #endif
 
 private:
-    std::string GetImcValueString() const;
+    std::string GetEventValueString() const;
     std::variant<bool, int, float, std::string> m_Value = 0;
     PropertyType m_Type = INTEGER;
     size_t m_Hash = 0;

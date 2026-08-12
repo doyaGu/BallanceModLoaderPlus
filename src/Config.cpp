@@ -595,7 +595,7 @@ void Property::SetModified() {
                 event.ConfigCategory = m_Category;
                 event.ConfigKey = m_Key;
                 event.ConfigType = static_cast<int>(m_Type);
-                event.ConfigValue = GetImcValueString();
+                event.ConfigValue = GetEventValueString();
             });
         }
 #endif
@@ -607,7 +607,7 @@ void Property::SetModified() {
     }
 }
 
-std::string Property::GetImcValueString() const {
+std::string Property::GetEventValueString() const {
     switch (m_Type) {
     case STRING:
         if (const auto *value = std::get_if<std::string>(&m_Value))
