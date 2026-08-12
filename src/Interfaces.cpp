@@ -6,9 +6,11 @@
 // right. Adding an interface means a struct here plus one row in kInterfaces; the
 // rules for changing one that already shipped are in Interface.h.
 #include "BML/Interface.h"
+#include "BML/Runtime.h"
 #include "BML/Speedrun.h"
 
 #include <iterator>
+#include <limits>
 
 #include "InterfaceRegistry.h"
 #include "ModContext.h"
@@ -29,6 +31,48 @@ int Serve(Body &&body) {
     } catch (...) {
         return BML_ERROR_FAIL;
     }
+}
+
+int RuntimeReadState(BML_RuntimeState *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return Serve([out](ModContext &context) {
+        const BML::RuntimeStateSnapshot state = context.ReadRuntimeState();
+        out->InGame = state.InGame ? 1 : 0;
+        out->InLevel = state.InLevel ? 1 : 0;
+        out->Paused = state.Paused ? 1 : 0;
+        out->Playing = state.Playing ? 1 : 0;
+        out->CheatEnabled = state.CheatEnabled ? 1 : 0;
+        return BML_OK;
+    });
+}
+
+int RuntimeReadClock(BML_RuntimeClock *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return Serve([out](ModContext &context) {
+        CKTimeManager *time = context.GetTimeManager();
+        if (!time)
+            return BML_ERROR_UNAVAILABLE;
+        out->TimeMs = time->GetTime();
+        out->AbsoluteMs = time->GetAbsoluteTime();
+        out->DeltaMs = time->GetLastDeltaTime();
+        const CKDWORD tick = time->GetMainTickCount();
+        out->Frame = tick > static_cast<CKDWORD>((std::numeric_limits<int>::max)())
+                         ? (std::numeric_limits<int>::max)()
+                         : static_cast<int>(tick);
+        return BML_OK;
+    });
+}
+
+int RuntimeReadScore(BML_RuntimeScore *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return Serve([out](ModContext &context) {
+        out->SR = context.GetSRScore();
+        out->HS = context.GetHSScore();
+        return BML_OK;
+    });
 }
 
 int SpeedrunReadTimerState(BML_SpeedrunTimerState *out) {
@@ -68,6 +112,14 @@ int SpeedrunResetTimer() {
     });
 }
 
+const BML_RuntimeInterface kRuntimeInterface = {
+    BML_IFACE_HEADER(BML_RuntimeInterface, BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR,
+                     BML_RUNTIME_INTERFACE_MINOR),
+    &RuntimeReadState,
+    &RuntimeReadClock,
+    &RuntimeReadScore,
+};
+
 const BML_SpeedrunInterface kSpeedrunInterface = {
     BML_IFACE_HEADER(BML_SpeedrunInterface, BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR,
                      BML_SPEEDRUN_INTERFACE_MINOR),
@@ -79,6 +131,7 @@ const BML_SpeedrunInterface kSpeedrunInterface = {
 };
 
 const BML::InterfaceEntry kInterfaces[] = {
+    {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
     {BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR, &kSpeedrunInterface},
 };
 

@@ -1,4 +1,5 @@
 #include "BML/BML.h"
+#include "BML/Runtime.h"
 #include "BML/Speedrun.h"
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
@@ -46,4 +47,24 @@ int BML_TestCAbiSpeedrunInterface(void) {
     if (speedrun->ReadTimerState(&state) != BML_OK)
         return 0;
     return state.ElapsedTime >= 0.0f;
+}
+
+// The runtime interface fills three out structs rather than one, so this checks
+// that each of them is spelled and zeroed the C way.
+int BML_TestCAbiRuntimeInterface(void) {
+    const void *found = NULL;
+    const BML_RuntimeInterface *runtime = NULL;
+    BML_RuntimeState state = {0};
+    BML_RuntimeClock clock = {0};
+    BML_RuntimeScore score = {0};
+
+    if (BML_GetInterface(BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    runtime = (const BML_RuntimeInterface *) found;
+    if (!BML_IFACE_HAS(runtime, BML_RuntimeInterface, ReadScore))
+        return 0;
+    if (runtime->ReadState(&state) != BML_OK || runtime->ReadClock(&clock) != BML_OK ||
+        runtime->ReadScore(&score) != BML_OK)
+        return 0;
+    return state.Playing && clock.Frame >= 0 && score.HS >= 0;
 }

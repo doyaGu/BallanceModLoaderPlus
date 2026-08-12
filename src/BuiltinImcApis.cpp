@@ -20,11 +20,9 @@
 #include "BML/Generated/bml_gameplay_imc.hpp"
 #include "BML/Generated/bml_scene_imc.hpp"
 #include "BML/Generated/bml_ui_imc.hpp"
-#include "BML/Generated/bml_runtime_imc.hpp"
 
 namespace {
 
-namespace ImcRuntimeApi = BML::Imc::Generated::Bml::Runtime;
 namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
 namespace ImcGameplayApi = BML::Imc::Generated::Bml::Gameplay;
 namespace ImcSceneApi = BML::Imc::Generated::Bml::Scene;
@@ -78,7 +76,6 @@ public:
         (void)m_ImcUi.Close();
         (void)m_ImcGameplay.Close();
         (void)m_ImcScene.Close();
-        (void)m_ImcRuntime.Close();
     }
 
     ModContext *Context() const { return GetContext(); }
@@ -177,12 +174,6 @@ public:
 private:
     int RegisterImc() {
         const char *owner = m_Mod.GetID();
-        ImcRuntimeApi::Provider::Handlers runtime{};
-        runtime.Userdata = this;
-        runtime.State = &ReadImcRuntimeState;
-        runtime.Clock = &ReadImcRuntimeClock;
-        runtime.Score = &ReadImcRuntimeScore;
-
         ImcSceneApi::Provider::Handlers scene{};
         scene.Userdata = this;
         scene.Object = &ReadImcSceneObject;
@@ -211,8 +202,7 @@ private:
         ui.HudFpsShow = &ImcUiHudFpsShow;
         ui.State = &ReadImcUiState;
 
-        int status = m_ImcRuntime.Start(runtime, owner);
-        if (status == BML_OK) status = m_ImcScene.Start(scene, owner);
+        int status = m_ImcScene.Start(scene, owner);
         if (status == BML_OK) status = m_ImcGameplay.Start(gameplay, owner);
         if (status == BML_OK) status = m_ImcUi.Start(ui, owner);
         if (status == BML_OK) status = m_ImcEvents.Open(owner);
@@ -221,39 +211,8 @@ private:
             (void)m_ImcUi.Close();
             (void)m_ImcGameplay.Close();
             (void)m_ImcScene.Close();
-            (void)m_ImcRuntime.Close();
         }
         return status;
-    }
-
-    static int ReadImcRuntimeState(ImcRuntimeApi::RuntimeStateValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context) return BML_ERROR_IMC_UNSUPPORTED;
-        const BML::RuntimeStateSnapshot state = context->ReadRuntimeState();
-        out.InGame = state.InGame; out.InLevel = state.InLevel;
-        out.Paused = state.Paused; out.Playing = state.Playing;
-        out.CheatEnabled = state.CheatEnabled; return BML_OK;
-    }
-
-    static int ReadImcRuntimeClock(ImcRuntimeApi::ClockStateValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        CKTimeManager *time = context ? context->GetTimeManager() : nullptr;
-        if (!time) return BML_ERROR_IMC_UNSUPPORTED;
-        out.TimeMs = time->GetTime(); out.AbsoluteMs = time->GetAbsoluteTime(); out.DeltaMs = time->GetLastDeltaTime();
-        const CKDWORD tick = time->GetMainTickCount();
-        out.Frame = tick > static_cast<CKDWORD>((std::numeric_limits<int>::max)())
-                        ? (std::numeric_limits<int>::max)() : static_cast<int>(tick);
-        return BML_OK;
-    }
-
-    static int ReadImcRuntimeScore(ImcRuntimeApi::ScoreStateValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        if (!provider) return BML_ERROR_INVALID_PARAMETER;
-        ModContext *context = provider->GetContext();
-        if (!context) return BML_ERROR_IMC_UNSUPPORTED;
-        out.Sr = context->GetSRScore(); out.Hs = context->GetHSScore(); return BML_OK;
     }
 
     void PublishImcEvent(const BML::ImcEventSnapshot &event) {
@@ -500,7 +459,6 @@ private:
 
     BMLMod &m_Mod;
     ObjectReferences m_ObjectReferences;
-    ImcRuntimeApi::Provider m_ImcRuntime;
     ImcSceneApi::Provider m_ImcScene;
     ImcGameplayApi::Provider m_ImcGameplay;
     ImcUiApi::Provider m_ImcUi;

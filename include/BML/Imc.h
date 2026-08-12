@@ -12,10 +12,11 @@
 // This is the bottom layer, and most Mods should be a layer or two above it. A generated
 // *_imc.hpp from a .imc interface gives typed calls and does the encoding, the id
 // caching, and the handle lifetime; ImcCpp.hpp gives C++ wrappers for a Mod integrating
-// something of its own; the built-in facades, Runtime.h, Scene.h, Gameplay.h, UI.h,
-// Speedrun.h, and Events.h, are already written on top of it for what the loader itself
-// offers. Reach for the functions here when writing that kind of layer, not when using
-// one. docs/en/imc.md is the whole picture and imc-author-guide.md is how an interface is
+// something of its own; Scene.h, Gameplay.h, UI.h, and Events.h are already written on
+// top of it for what the loader itself offers. Runtime.h and Speedrun.h answer out of a
+// versioned interface struct instead of over IMC, which is what Interface.h is about.
+// Reach for the functions here when writing that kind of layer, not when using one.
+// docs/en/imc.md is the whole picture and imc-author-guide.md is how an interface is
 // written.
 //
 // What this header cannot show:

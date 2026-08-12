@@ -156,6 +156,7 @@
 #define BML_ERROR_MALFORMED_MESSAGE          (-15)  /**< Encoded message is truncated or malformed */
 #define BML_ERROR_TYPE_MISMATCH              (-16)  /**< Encoded field has an unexpected type */
 #define BML_ERROR_VERSION_MISMATCH           (-17)  /**< Interface exists, but not in the requested major version */
+#define BML_ERROR_UNAVAILABLE                (-18)  /**< Requested state exists, but cannot be read in this state */
 
 /* Mod-specific error codes */
 #define BML_ERROR_MOD_LOAD_FAILED           (-100) /**< Failed to load mod */

@@ -96,8 +96,11 @@ private:
             return false;
         }
 
-        if (state.InGame != m_BML->IsIngame() || state.Paused != m_BML->IsPaused() ||
-            state.Playing != m_BML->IsPlaying() || state.CheatEnabled != m_BML->IsCheatEnabled() ||
+        // The interface flags are 0 or 1 rather than bool, so each comparison against an
+        // IBML getter has to say which side is being narrowed.
+        if ((state.InGame != 0) != m_BML->IsIngame() || (state.Paused != 0) != m_BML->IsPaused() ||
+            (state.Playing != 0) != m_BML->IsPlaying() ||
+            (state.CheatEnabled != 0) != m_BML->IsCheatEnabled() ||
             (state.InLevel && (!state.InGame || state.Paused || !state.Playing)) ||
             !std::isfinite(clock.TimeMs) || !std::isfinite(clock.AbsoluteMs) ||
             !std::isfinite(clock.DeltaMs) || clock.Frame < 0 ||

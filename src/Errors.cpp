@@ -40,6 +40,8 @@ const char *BML_GetErrorString(int errorCode) {
             return "Encoded field type mismatch";
         case BML_ERROR_VERSION_MISMATCH:
             return "Interface major version mismatch";
+        case BML_ERROR_UNAVAILABLE:
+            return "Requested state cannot be read right now";
 
         /* Mod-specific error codes */
         case BML_ERROR_MOD_LOAD_FAILED:
