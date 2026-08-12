@@ -27,6 +27,13 @@
 // successful BML_GetInterface means every member the Mod's own header declares
 // either exists or is covered by a BML_IFACE_HAS check.
 //
+// Text the loader writes back goes into a fixed-capacity char array inside the out
+// struct, always terminated, next to a separate member saying how long the whole
+// string is. Nothing is allocated and there is nothing to free; a length larger
+// than the array means the answer was cut short, which is the one thing worth
+// checking. Text passed in is a plain null-terminated const char *, borrowed only
+// for the duration of the call.
+//
 // Every function reached through an interface runs on the calling thread, with no
 // queue in between, so like the legacy C++ interfaces they belong on the game
 // thread unless their own header says otherwise.

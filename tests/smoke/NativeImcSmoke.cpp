@@ -132,7 +132,7 @@ private:
         }
 
         BML::Scene::ObjectInfo invalidInfo{};
-        if (BML::Scene::ReadObject({}, invalidInfo) != BML_ERROR_IMC_OBJECT_INVALID)
+        if (BML::Scene::ReadObject({}, invalidInfo) != BML_ERROR_OBJECT_INVALID)
             return false;
 
         CKContext *context = m_BML->GetCKContext();

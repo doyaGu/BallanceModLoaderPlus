@@ -157,6 +157,7 @@
 #define BML_ERROR_TYPE_MISMATCH              (-16)  /**< Encoded field has an unexpected type */
 #define BML_ERROR_VERSION_MISMATCH           (-17)  /**< Interface exists, but not in the requested major version */
 #define BML_ERROR_UNAVAILABLE                (-18)  /**< Requested state exists, but cannot be read in this state */
+#define BML_ERROR_OBJECT_INVALID             (-19)  /**< Object reference is stale, or names the wrong kind of object */
 
 /* Mod-specific error codes */
 #define BML_ERROR_MOD_LOAD_FAILED           (-100) /**< Failed to load mod */
@@ -201,7 +202,6 @@
 #define BML_ERROR_IMC_UNSUPPORTED              (-710) /**< Operation requires an unavailable IMC feature */
 #define BML_ERROR_IMC_API_MISMATCH             (-712) /**< IMC payload type or layout is incompatible */
 #define BML_ERROR_IMC_PROVIDER_UNLOADED        (-713) /**< IMC provider was unloaded during an operation */
-#define BML_ERROR_IMC_OBJECT_INVALID           (-717) /**< IMC object reference is invalid or expired */
 #define BML_ERROR_IMC_SCHEMA_MISMATCH          (-718) /**< IMC payload schema does not match the route */
 #define BML_ERROR_IMC_TARGET_EXECUTION_FAILED  (-719) /**< IMC provider callback failed to execute */
 

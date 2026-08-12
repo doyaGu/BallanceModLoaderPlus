@@ -61,7 +61,8 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `IConfig.h` | 类型化配置属性 |
 | `ILogger.h` | Info、Warn、Error 日志 |
 | `DataShare.h` | 低层、同进程的命名字节数据共享 |
-| `Imc.h`, `ImcTypes.h`, `ImcWire.hpp`, `ImcCpp.hpp`, `ImcMath.h` | IMC C/C++ 运行时、线格式与基础类型 |
+| `Types.h`, `ImcMath.h` | 对象引用、向量与矩阵，以及针对它们的辅助函数 |
+| `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
 | `Generated/*.hpp` | 从 `.imc` 生成的内置接口绑定；不要手工修改 |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `UI.h`, `Events.h`, `EventKinds.h` | 内置 IMC 的易用 C++ 门面 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "BML/ImcMath.h"
+#include "BML/Scene.h"
 
 #include "BMLMod.h"
 #include "ImcEventSnapshot.h"
@@ -18,15 +19,13 @@
 #include "ModContext.h"
 #include "BML/Generated/bml_events_imc.hpp"
 #include "BML/Generated/bml_gameplay_imc.hpp"
-#include "BML/Generated/bml_scene_imc.hpp"
 
 namespace {
 
 namespace ImcEventsApi = BML::Imc::Generated::Bml::Events;
 namespace ImcGameplayApi = BML::Imc::Generated::Bml::Gameplay;
-namespace ImcSceneApi = BML::Imc::Generated::Bml::Scene;
 
-constexpr uint32_t kVirtoolsObjectDomain = BML_IMC_OBJECT_DOMAIN_VIRTOOLS;
+constexpr uint32_t kVirtoolsObjectDomain = BML_OBJECT_DOMAIN_VIRTOOLS;
 
 class ObjectReferences {
 public:
@@ -72,7 +71,6 @@ public:
     void Unregister() {
         (void)m_ImcEvents.Close();
         (void)m_ImcGameplay.Close();
-        (void)m_ImcScene.Close();
     }
 
     ModContext *Context() const { return GetContext(); }
@@ -94,6 +92,49 @@ public:
     }
 
     void PublishEvent(const BML::ImcEventSnapshot &event) { PublishImcEvent(event); }
+
+    int ReadSceneObject(BML_ObjectRef reference, BML_SceneObjectInfo &out) {
+        CKObject *object = m_ObjectReferences.Resolve(GetContext(), reference);
+        if (!object)
+            return BML_ERROR_OBJECT_INVALID;
+        out.Id = static_cast<int>(object->GetID());
+        out.ClassId = static_cast<int>(object->GetClassID());
+        WriteName(out, object->GetName());
+        out.Visible = object->IsVisible() != FALSE ? 1 : 0;
+        out.Dynamic = object->IsDynamic() != FALSE ? 1 : 0;
+        return BML_OK;
+    }
+
+    int ReadSceneEntityTransform(BML_ObjectRef reference, BML_SceneEntityTransform &out) {
+        auto *entity = dynamic_cast<CK3dEntity *>(m_ObjectReferences.Resolve(GetContext(), reference));
+        if (!entity)
+            return BML_ERROR_OBJECT_INVALID;
+        VxVector position, scale;
+        entity->GetPosition(&position);
+        entity->GetScale(&scale);
+        out.Position = BML::Imc::ToVec3(position);
+        out.Scale = BML::Imc::ToVec3(scale);
+        out.Parent = m_ObjectReferences.Make(entity->GetParent());
+        out.ChildCount = entity->GetChildrenCount();
+        return BML_OK;
+    }
+
+    int FindSceneObject(const char *name, BML_ObjectRef &out) {
+        ModContext *context = GetContext();
+        if (!context || !context->GetCKContext())
+            return BML_ERROR_UNAVAILABLE;
+        out = m_ObjectReferences.Make(context->GetCKContext()->GetObjectByName(const_cast<char *>(name)));
+        return BML_OK;
+    }
+
+    int FindSceneObjectOfClass(const char *name, int classId, BML_ObjectRef &out) {
+        ModContext *context = GetContext();
+        if (!context || !context->GetCKContext())
+            return BML_ERROR_UNAVAILABLE;
+        out = m_ObjectReferences.Make(context->GetCKContext()->GetObjectByNameAndClass(
+            const_cast<char *>(name), static_cast<CK_CLASSID>(classId)));
+        return BML_OK;
+    }
 
     int ReadGameplayCatalog(ImcGameplayApi::CatalogResponseValue &out) {
         ModContext *context = GetContext();
@@ -171,13 +212,6 @@ public:
 private:
     int RegisterImc() {
         const char *owner = m_Mod.GetID();
-        ImcSceneApi::Provider::Handlers scene{};
-        scene.Userdata = this;
-        scene.Object = &ReadImcSceneObject;
-        scene.Entity = &ReadImcSceneEntity;
-        scene.FindName = &ReadImcSceneFindName;
-        scene.FindNameClass = &ReadImcSceneFindNameClass;
-
         ImcGameplayApi::Provider::Handlers gameplay{};
         gameplay.Userdata = this;
         gameplay.Level = &ReadImcGameplayLevel;
@@ -186,13 +220,11 @@ private:
         gameplay.Checkpoints = &ReadImcGameplayCheckpoints;
         gameplay.Resetpoints = &ReadImcGameplayResetpoints;
 
-        int status = m_ImcScene.Start(scene, owner);
-        if (status == BML_OK) status = m_ImcGameplay.Start(gameplay, owner);
+        int status = m_ImcGameplay.Start(gameplay, owner);
         if (status == BML_OK) status = m_ImcEvents.Open(owner);
         if (status != BML_OK) {
             (void)m_ImcEvents.Close();
             (void)m_ImcGameplay.Close();
-            (void)m_ImcScene.Close();
         }
         return status;
     }
@@ -255,47 +287,6 @@ private:
         (void)m_ImcEvents.PublishAll(value);
     }
 
-    static int ReadImcSceneObject(const ImcSceneApi::ObjectRequestValue &input,
-                                  ImcSceneApi::ObjectInfoValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), input.Object) : nullptr;
-        if (!object) return BML_ERROR_IMC_OBJECT_INVALID;
-        out.Id = static_cast<int>(object->GetID()); out.Name = object->GetName() ? object->GetName() : "";
-        out.ClassId = static_cast<int>(object->GetClassID()); out.Visible = object->IsVisible() != FALSE;
-        out.Dynamic = object->IsDynamic() != FALSE; return BML_OK;
-    }
-
-    static int ReadImcSceneEntity(const ImcSceneApi::ObjectRequestValue &input,
-                                  ImcSceneApi::EntityTransformValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        CKObject *object = provider ? provider->m_ObjectReferences.Resolve(provider->GetContext(), input.Object) : nullptr;
-        CK3dEntity *entity = dynamic_cast<CK3dEntity *>(object);
-        if (!entity) return BML_ERROR_IMC_OBJECT_INVALID;
-        VxVector position, scale; entity->GetPosition(&position); entity->GetScale(&scale);
-        out.Position = BML::Imc::ToVec3(position); out.Scale = BML::Imc::ToVec3(scale);
-        out.Parent = provider->m_ObjectReferences.Make(entity->GetParent());
-        out.ChildCount = entity->GetChildrenCount(); return BML_OK;
-    }
-
-    static int ReadImcSceneFindName(const ImcSceneApi::FindNameRequestValue &input,
-                                    ImcSceneApi::FindResultValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context || !context->GetCKContext()) return BML_ERROR_IMC_UNSUPPORTED;
-        out.Object = provider->m_ObjectReferences.Make(context->GetCKContext()->GetObjectByName(const_cast<char *>(input.Name.c_str())));
-        return BML_OK;
-    }
-
-    static int ReadImcSceneFindNameClass(const ImcSceneApi::FindNameClassRequestValue &input,
-                                         ImcSceneApi::FindResultValue &out, void *userdata) {
-        auto *provider = static_cast<BuiltinImcProvider *>(userdata);
-        ModContext *context = provider ? provider->GetContext() : nullptr;
-        if (!context || !context->GetCKContext()) return BML_ERROR_IMC_UNSUPPORTED;
-        out.Object = provider->m_ObjectReferences.Make(
-            context->GetCKContext()->GetObjectByNameAndClass(const_cast<char *>(input.Name.c_str()), static_cast<CK_CLASSID>(input.ClassId)));
-        return BML_OK;
-    }
-
     static int ReadImcGameplayLevel(ImcGameplayApi::LevelStateValue &out, void *userdata) {
         auto *provider = static_cast<BuiltinImcProvider *>(userdata);
         return provider ? provider->ReadGameplayLevel(out) : BML_ERROR_INVALID_PARAMETER;
@@ -322,6 +313,17 @@ private:
     }
 
     ModContext *GetContext() const { return m_Mod.GetRuntimeContext(); }
+
+    // NameLength is the whole length, so a name too long for the buffer is
+    // detectable instead of silently short.
+    static void WriteName(BML_SceneObjectInfo &out, const char *name) {
+        const std::size_t length = name ? std::strlen(name) : 0u;
+        const std::size_t copied = (std::min)(length, static_cast<std::size_t>(BML_SCENE_NAME_CAPACITY - 1u));
+        if (copied != 0u)
+            std::memcpy(out.Name, name, copied);
+        out.Name[copied] = 0;
+        out.NameLength = static_cast<int>(length);
+    }
 
     static bool HasColumns(CKDataArray *array, std::initializer_list<const char *> columns) {
         if (!array || array->GetColumnCount() < static_cast<int>(columns.size()))
@@ -397,7 +399,6 @@ private:
 
     BMLMod &m_Mod;
     ObjectReferences m_ObjectReferences;
-    ImcSceneApi::Provider m_ImcScene;
     ImcGameplayApi::Provider m_ImcGameplay;
     ImcEventsApi::Client m_ImcEvents;
 };
@@ -474,6 +475,32 @@ BML_ObjectRef MakeBuiltinObjectRef(ModContext &context, CKObject *object) {
 CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference) {
     BuiltinImcProvider *provider = FindProvider(context);
     return provider ? provider->ResolveObjectRef(reference) : nullptr;
+}
+
+template <typename Reader, typename... Args>
+int ServeBuiltinScene(ModContext &context, Reader reader, Args &&...args) {
+    BuiltinImcProvider *provider = FindProvider(context);
+    if (!provider)
+        return BML_ERROR_UNAVAILABLE;
+    return (provider->*reader)(std::forward<Args>(args)...);
+}
+
+int ReadBuiltinSceneObject(ModContext &context, BML_ObjectRef object, BML_SceneObjectInfo &out) {
+    return ServeBuiltinScene(context, &BuiltinImcProvider::ReadSceneObject, object, out);
+}
+
+int ReadBuiltinSceneEntityTransform(ModContext &context, BML_ObjectRef object,
+                                    BML_SceneEntityTransform &out) {
+    return ServeBuiltinScene(context, &BuiltinImcProvider::ReadSceneEntityTransform, object, out);
+}
+
+int FindBuiltinSceneObject(ModContext &context, const char *name, BML_ObjectRef &out) {
+    return ServeBuiltinScene(context, &BuiltinImcProvider::FindSceneObject, name, out);
+}
+
+int FindBuiltinSceneObjectOfClass(ModContext &context, const char *name, int classId,
+                                  BML_ObjectRef &out) {
+    return ServeBuiltinScene(context, &BuiltinImcProvider::FindSceneObjectOfClass, name, classId, out);
 }
 
 template <typename Value>

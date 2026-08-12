@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "BML/EventKinds.h"
-#include "BML/ImcTypes.h"
+#include "BML/Types.h"
 
 namespace BML {
 

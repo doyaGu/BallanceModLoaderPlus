@@ -31,12 +31,10 @@ add_custom_target(BML_VersionHeader ALL
 # typed IMC headers and prevents a runtime dependency on an IDL parser.
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 set(BML_IMC_API_INPUTS
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
 )
 set(BML_IMC_LOCK_INPUTS
-        ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc.lock
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc.lock
         ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc.lock
 )
@@ -44,7 +42,6 @@ add_custom_target(BML_ImcApiGeneration
         COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/imc_codegen.py
                 --check
                 --out-dir ${BML_INCLUDE_DIR}/BML/Generated
-                --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.scene.imc
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.gameplay.imc
                 --input ${PROJECT_SOURCE_DIR}/imc/interfaces/bml.events.imc
         DEPENDS
@@ -107,12 +104,11 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/IMod.h
         ${BML_INCLUDE_DIR}/BML/DataShare.h
         ${BML_INCLUDE_DIR}/BML/Imc.h
-        ${BML_INCLUDE_DIR}/BML/ImcTypes.h
+        ${BML_INCLUDE_DIR}/BML/Types.h
         ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
         ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
         ${BML_INCLUDE_DIR}/BML/ImcMath.h
         ${BML_INCLUDE_DIR}/BML/EventKinds.h
-        ${BML_INCLUDE_DIR}/BML/Generated/bml_scene_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_gameplay_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Generated/bml_events_imc.hpp
         ${BML_INCLUDE_DIR}/BML/Runtime.h

@@ -1,7 +1,8 @@
 #ifndef BML_BUILTINIMCAPIS_H
 #define BML_BUILTINIMCAPIS_H
 
-#include "BML/ImcTypes.h"
+#include "BML/Scene.h"
+#include "BML/Types.h"
 #include "CKTypes.h"
 
 #include <utility>
@@ -54,6 +55,16 @@ void InvalidateAllBuiltinObjectRefs(ModContext &context);
  * mapping appears in the public IMC ABI. */
 BML_ObjectRef MakeBuiltinObjectRef(ModContext &context, CKObject *object);
 CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference);
+
+/* The scene interface in Scene.h answers out of these.  The CKObject handling
+ * and the object-reference registry stay on this side, so the thunks that fill
+ * the interface struct never touch either. */
+int ReadBuiltinSceneObject(ModContext &context, BML_ObjectRef object, BML_SceneObjectInfo &out);
+int ReadBuiltinSceneEntityTransform(ModContext &context, BML_ObjectRef object,
+                                    BML_SceneEntityTransform &out);
+int FindBuiltinSceneObject(ModContext &context, const char *name, BML_ObjectRef &out);
+int FindBuiltinSceneObjectOfClass(ModContext &context, const char *name, int classId,
+                                  BML_ObjectRef &out);
 
 /* Script bindings reuse the built-in gameplay provider directly.  This keeps
  * the Ballance data-array interpretation in one place without routing a local

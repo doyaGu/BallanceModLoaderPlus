@@ -65,7 +65,8 @@ and deploy the Mod under `ModLoader/Mods`.
 | `IConfig.h` | Typed configuration properties |
 | `ILogger.h` | Info, Warn, and Error logging |
 | `DataShare.h` | Low-level, named in-process byte sharing |
-| `Imc.h`, `ImcTypes.h`, `ImcWire.hpp`, `ImcCpp.hpp`, `ImcMath.h` | IMC C/C++ runtime, wire format, and base types |
+| `Types.h`, `ImcMath.h` | Object references, vectors, and matrices, plus helpers over them |
+| `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
 | `Generated/*.hpp` | Built-in bindings generated from `.imc`; do not edit them |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `UI.h`, `Events.h`, `EventKinds.h` | Convenient C++ facades for built-in IMC services |
 | `Bui.h` | Ballance-style ImGui widgets |

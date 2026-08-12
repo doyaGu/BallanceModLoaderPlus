@@ -42,6 +42,8 @@ const char *BML_GetErrorString(int errorCode) {
             return "Interface major version mismatch";
         case BML_ERROR_UNAVAILABLE:
             return "Requested state cannot be read right now";
+        case BML_ERROR_OBJECT_INVALID:
+            return "Object reference is stale or names the wrong kind of object";
 
         /* Mod-specific error codes */
         case BML_ERROR_MOD_LOAD_FAILED:
@@ -116,8 +118,6 @@ const char *BML_GetErrorString(int errorCode) {
             return "IMC payload type or layout is incompatible";
         case BML_ERROR_IMC_PROVIDER_UNLOADED:
             return "IMC provider was unloaded";
-        case BML_ERROR_IMC_OBJECT_INVALID:
-            return "IMC object reference is invalid or expired";
         case BML_ERROR_IMC_SCHEMA_MISMATCH:
             return "IMC payload schema does not match the route";
         case BML_ERROR_IMC_TARGET_EXECUTION_FAILED:

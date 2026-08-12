@@ -7,12 +7,14 @@
 // rules for changing one that already shipped are in Interface.h.
 #include "BML/Interface.h"
 #include "BML/Runtime.h"
+#include "BML/Scene.h"
 #include "BML/Speedrun.h"
 #include "BML/UI.h"
 
 #include <iterator>
 #include <limits>
 
+#include "BuiltinImcApis.h"
 #include "InterfaceRegistry.h"
 #include "ModContext.h"
 
@@ -34,9 +36,10 @@ int Serve(Body &&body) {
     }
 }
 
-// The UI thunks read and write state the loader draws from the main thread, so
-// they refuse a call from anywhere else rather than racing the frame that draws
-// it. The read refuses too, so there is one rule for the whole interface.
+// The scene and UI thunks touch Virtools objects and the UI the loader draws from
+// the main thread, so they refuse a call from anywhere else rather than racing the
+// frame that draws it. The reads refuse too, so there is one rule per interface
+// rather than one per member.
 template <typename Body>
 int ServeOnMainThread(Body &&body) {
     return Serve([&body](ModContext &context) {
@@ -122,6 +125,38 @@ int SpeedrunResetTimer() {
     return Serve([](ModContext &context) {
         context.ResetSRTimer();
         return BML_OK;
+    });
+}
+
+int SceneReadObject(BML_ObjectRef object, BML_SceneObjectInfo *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([object, out](ModContext &context) {
+        return ReadBuiltinSceneObject(context, object, *out);
+    });
+}
+
+int SceneReadEntityTransform(BML_ObjectRef object, BML_SceneEntityTransform *out) {
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([object, out](ModContext &context) {
+        return ReadBuiltinSceneEntityTransform(context, object, *out);
+    });
+}
+
+int SceneFindObject(const char *name, BML_ObjectRef *out) {
+    if (!name || !out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([name, out](ModContext &context) {
+        return FindBuiltinSceneObject(context, name, *out);
+    });
+}
+
+int SceneFindObjectOfClass(const char *name, int classId, BML_ObjectRef *out) {
+    if (!name || !out)
+        return BML_ERROR_INVALID_PARAMETER;
+    return ServeOnMainThread([name, classId, out](ModContext &context) {
+        return FindBuiltinSceneObjectOfClass(context, name, classId, *out);
     });
 }
 
@@ -217,6 +252,15 @@ const BML_SpeedrunInterface kSpeedrunInterface = {
     &SpeedrunResetTimer,
 };
 
+const BML_SceneInterface kSceneInterface = {
+    BML_IFACE_HEADER(BML_SceneInterface, BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR,
+                     BML_SCENE_INTERFACE_MINOR),
+    &SceneReadObject,
+    &SceneReadEntityTransform,
+    &SceneFindObject,
+    &SceneFindObjectOfClass,
+};
+
 const BML_UIInterface kUIInterface = {
     BML_IFACE_HEADER(BML_UIInterface, BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR,
                      BML_UI_INTERFACE_MINOR),
@@ -234,6 +278,7 @@ const BML_UIInterface kUIInterface = {
 
 const BML::InterfaceEntry kInterfaces[] = {
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
+    {BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &kSceneInterface},
     {BML_SPEEDRUN_INTERFACE_ID, BML_SPEEDRUN_INTERFACE_MAJOR, &kSpeedrunInterface},
     {BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR, &kUIInterface},
 };

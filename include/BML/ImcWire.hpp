@@ -35,7 +35,7 @@
 #define BML_IMCWIRE_HPP
 
 #include "BML/Imc.h"
-#include "BML/ImcTypes.h"
+#include "BML/Types.h"
 
 #include <bit>
 #include <cstddef>

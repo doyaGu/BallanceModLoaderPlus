@@ -8,7 +8,7 @@
 #include "BML/Bui.h"
 #include "BML/DataShare.h"
 #include "BML/IConfig.h"
-#include "BML/ImcTypes.h"
+#include "BML/Types.h"
 #include "BML/InputHook.h"
 #include "BML/ILogger.h"
 

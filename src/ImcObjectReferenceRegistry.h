@@ -6,7 +6,7 @@
 #include <limits>
 #include <unordered_map>
 
-#include "BML/ImcTypes.h"
+#include "BML/Types.h"
 
 /*
  * Private bookkeeping for object identities emitted by the built-in scene

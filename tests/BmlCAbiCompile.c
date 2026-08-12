@@ -1,7 +1,10 @@
 #include "BML/BML.h"
 #include "BML/Runtime.h"
+#include "BML/Scene.h"
 #include "BML/Speedrun.h"
 #include "BML/UI.h"
+
+#include <string.h>
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
     BML_FreeStringArray(strings, count);
@@ -73,6 +76,39 @@ int BML_TestCAbiRuntimeInterface(void) {
 // The UI interface is mostly commands rather than reads, and its HUD bitmask is an
 // enum, so this checks that a void-argument member, a string argument, and the
 // BML_UI_HUD_* values are all reachable the C way.
+// The scene interface is the one that writes text back, so this also checks the
+// fixed-capacity Name buffer next to its NameLength from C: a name longer than the
+// buffer is still terminated, and NameLength says how long it really was.
+int BML_TestCAbiSceneInterface(const char *name) {
+    const void *found = NULL;
+    const BML_SceneInterface *scene = NULL;
+    BML_ObjectRef reference;
+    BML_SceneObjectInfo info;
+    BML_SceneEntityTransform transform;
+
+    if (BML_GetInterface(BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    scene = (const BML_SceneInterface *) found;
+    if (!BML_IFACE_HAS(scene, BML_SceneInterface, FindObjectOfClass))
+        return 0;
+
+    reference.Domain = 0u;
+    reference.Slot = 0u;
+    reference.Generation = 0u;
+    if (scene->FindObject(name, &reference) != BML_OK)
+        return 0;
+    if (reference.Domain == 0u)
+        return 1;
+
+    if (scene->ReadObject(reference, &info) != BML_OK)
+        return 0;
+    if (info.NameLength >= (int) BML_SCENE_NAME_CAPACITY)
+        return strlen(info.Name) == BML_SCENE_NAME_CAPACITY - 1u;
+
+    return scene->ReadEntityTransform(reference, &transform) != BML_ERROR_INVALID_PARAMETER &&
+           scene->FindObjectOfClass(info.Name, info.ClassId, &reference) == BML_OK;
+}
+
 int BML_TestCAbiUIInterface(const char *message) {
     const void *found = NULL;
     const BML_UIInterface *ui = NULL;
