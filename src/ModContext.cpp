@@ -1059,14 +1059,14 @@ void ModContext::ExecuteCommand(const char *cmd) {
         BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
             event.Kind = BML_EVENT_COMMAND_PRE;
             event.Command = args[0];
-            event.CommandArgs = args;
+            event.CommandArgs.assign(args.begin() + 1, args.end());
         });
         BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
         command->Execute(this, args);
         BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
             event.Kind = BML_EVENT_COMMAND_POST;
             event.Command = args[0];
-            event.CommandArgs = args;
+            event.CommandArgs.assign(args.begin() + 1, args.end());
         });
         BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
     } catch (const std::exception &e) {

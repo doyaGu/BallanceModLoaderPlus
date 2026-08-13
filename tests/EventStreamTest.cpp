@@ -273,15 +273,15 @@ TEST_F(EventStreamTest, CommandEventCarriesItsArguments) {
     BML::EventSnapshot snapshot;
     snapshot.Kind = BML_EVENT_COMMAND_PRE;
     snapshot.Command = "cheat";
-    snapshot.CommandArgs = {"cheat", "on"};
+    snapshot.CommandArgs = {"on"};
     BML::PublishEventSnapshot(snapshot);
 
     BML::Events::Event event{};
     ASSERT_EQ(stream.Poll(event), BML_OK);
     ASSERT_TRUE(event.CommandData.has_value());
     EXPECT_EQ(event.CommandData->Name, "cheat");
-    ASSERT_EQ(event.CommandData->Arguments.size(), 2u);
-    EXPECT_EQ(event.CommandData->Arguments[1], "on");
+    ASSERT_EQ(event.CommandData->Arguments.size(), 1u);
+    EXPECT_EQ(event.CommandData->Arguments[0], "on");
 }
 
 TEST_F(EventStreamTest, ConfigEventCarriesTheRenderedValue) {
@@ -397,6 +397,8 @@ TEST_F(EventStreamTest, ReopeningReplacesTheQueue) {
 TEST_F(EventStreamTest, TextLongerThanTheBufferIsTruncatedButItsLengthIsWhole) {
     BML_EventStream stream = nullptr;
     ASSERT_EQ(BML::OpenEventStream(2, stream), BML_OK);
+    BML::Events::Stream valueStream;
+    ASSERT_EQ(valueStream.Open(2), BML_OK);
 
     const std::string name(600u, 'x');
     BML::EventSnapshot snapshot;
@@ -410,6 +412,12 @@ TEST_F(EventStreamTest, TextLongerThanTheBufferIsTruncatedButItsLengthIsWhole) {
     ASSERT_EQ(BML::ReadEventCommand(stream, command), BML_OK);
     EXPECT_EQ(command.Name.Length, 600);
     EXPECT_EQ(std::string(command.Name.Value).size(), BML_EVENT_TEXT_CAPACITY - 1u);
+
+    BML::Events::Event event{};
+    ASSERT_EQ(valueStream.Poll(event), BML_OK);
+    ASSERT_TRUE(event.CommandData.has_value());
+    EXPECT_TRUE(event.TextTruncated);
+    EXPECT_EQ(event.CommandData->Name.size(), BML_EVENT_TEXT_CAPACITY - 1u);
 
     EXPECT_EQ(BML::CloseEventStream(stream), BML_OK);
 }

@@ -150,21 +150,29 @@ const char *BML_GetLoaderPathUtf8(BML_LoaderDirectory directory) {
 }
 
 wchar_t *BML_GetModRootW(const char *modId) {
-    ModContext *context = BML_GetModContext();
-    if (!context)
-        return nullptr;
+    try {
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return nullptr;
 
-    const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
-    return root.empty() ? nullptr : CopyWString(root);
+        const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
+        return root.empty() ? nullptr : CopyWString(root);
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 char *BML_GetModRootUtf8(const char *modId) {
-    ModContext *context = BML_GetModContext();
-    if (!context)
-        return nullptr;
+    try {
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return nullptr;
 
-    const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
-    return root.empty() ? nullptr : BML_Strdup(utils::Utf16ToUtf8(root).c_str());
+        const std::wstring root = context->GetModRootDirectory(_ReturnAddress(), modId);
+        return root.empty() ? nullptr : BML_Strdup(utils::Utf16ToUtf8(root).c_str());
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 int BML_UnregisterCommand(const char *name) {

@@ -963,6 +963,7 @@ class EnergyState {
 }
 class CatalogEntry {
   int Bonus; int Music;
+  bool FileTruncated; bool StartBallTruncated; bool SkyTruncated;
   string get_File() const; string get_StartBall() const; string get_Sky() const;
 }
 class Checkpoint { BML::Mat4 Matrix; CKObject@ BorrowObject() const; }

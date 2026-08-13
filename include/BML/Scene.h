@@ -92,15 +92,16 @@ using ObjectRef = BML_ObjectRef;
 using Vec3 = BML_Vec3;
 using EntityTransform = BML_SceneEntityTransform;
 
-// The C++ shape of BML_SceneObjectInfo, with the name as a std::string so that a
-// name longer than the C buffer is not something to handle. Id is the CK_ID and
-// ClassId is the CK_CLASSID.
+// The C++ shape of BML_SceneObjectInfo. Name is the text that fit in the C
+// buffer; NameTruncated reports whether the object's full name was longer. Id is
+// the CK_ID and ClassId is the CK_CLASSID.
 struct ObjectInfo {
     int Id = 0;
     std::string Name;
     int ClassId = 0;
     bool Visible = false;
     bool Dynamic = false;
+    bool NameTruncated = false;
 };
 
 namespace Detail {
@@ -129,7 +130,9 @@ inline const BML_SceneInterface *Interface() {
     BML_SceneObjectInfo info = {};
     const int status = scene->ReadObject(object, &info);
     if (status == BML_OK)
-        out = {info.Id, std::string(info.Name), info.ClassId, info.Visible != 0, info.Dynamic != 0};
+        out = {info.Id, std::string(info.Name), info.ClassId, info.Visible != 0,
+               info.Dynamic != 0,
+               info.NameLength >= static_cast<int>(BML_SCENE_NAME_CAPACITY)};
     return status;
 }
 

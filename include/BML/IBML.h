@@ -5,9 +5,10 @@
 // and their signatures across loader releases, because a Mod compiled against an
 // older SDK calls them by slot number, and no function is ever added, removed, or
 // reordered here. Capabilities that arrived after the layout was fixed live
-// elsewhere: the BML_* C functions in BML.h, and the IMC facades in Runtime.h,
-// Scene.h, Gameplay.h, UI.h, Speedrun.h, and Events.h. So when something a Mod
-// needs is missing here, look there rather than expecting it to appear below.
+// elsewhere: the BML_* C functions in BML.h, and the versioned interfaces and
+// C++ facades in Runtime.h, Scene.h, Gameplay.h, UI.h, Speedrun.h, and Events.h.
+// So when something a Mod needs is missing here, look there rather than expecting
+// it to appear below.
 //
 // Everything here is for the game thread, called from a Mod callback. Nothing
 // here is safe from a thread of the Mod's own.
@@ -88,11 +89,12 @@ public:
     // scroll off on their own. A null message is treated as an empty line.
     virtual void SendIngameMessage(const char *msg) = 0;
 
-    // The loader stores the raw pointer and never deletes it. Allocate the
-    // command once and keep it alive for the whole process lifetime. Do not
-    // delete it in OnUnload: unloading a single mod does not remove its
-    // commands from the command table, so a deleted command leaves a dangling
-    // entry there. This interface has no matching unregister function.
+    // The loader stores the raw pointer and never deletes it. Keep the command
+    // alive while it is registered. This interface has no matching virtual slot,
+    // but BML_UnregisterCommand in BML.h removes a command without changing this
+    // frozen vtable. A Mod may unregister during OnUnload and delete the command
+    // only after BML_UnregisterCommand returns BML_OK. A command that is not
+    // unregistered must remain alive for the whole process lifetime.
     // Registration is silent on success and only logs on failure. It fails for
     // a null command, an invalid name or alias, and an already registered name.
     virtual void RegisterCommand(ICommand *cmd) = 0;

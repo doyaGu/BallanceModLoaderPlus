@@ -130,14 +130,18 @@ using EnergyState = BML_GameplayEnergyState;
 using Checkpoint = BML_GameplayCheckpoint;
 using Resetpoint = BML_GameplayResetpoint;
 
-// The C++ shape of BML_GameplayCatalogEntry, with the three names as std::string
-// so that a name longer than the C buffers is not something to handle.
+// The C++ shape of BML_GameplayCatalogEntry. Each string contains the text that
+// fit in its C buffer; the corresponding Truncated member reports whether the
+// source text was longer.
 struct CatalogEntry {
     std::string File;
     std::string StartBall;
     std::string Sky;
     int Bonus = 0;
     int Music = 0;
+    bool FileTruncated = false;
+    bool StartBallTruncated = false;
+    bool SkyTruncated = false;
 };
 
 namespace Detail {
@@ -211,7 +215,10 @@ int ReadList(int (*readCount)(std::size_t *), int (*readRow)(std::size_t, Row *)
     return Detail::ReadList(gameplay->ReadCatalogCount, gameplay->ReadCatalogEntry, out,
                             [](const BML_GameplayCatalogEntry &row) {
                                 return CatalogEntry{std::string(row.File), std::string(row.StartBall),
-                                                    std::string(row.Sky), row.Bonus, row.Music};
+                                                    std::string(row.Sky), row.Bonus, row.Music,
+                                                    row.FileLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+                                                    row.StartBallLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+                                                    row.SkyLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY)};
                             });
 }
 

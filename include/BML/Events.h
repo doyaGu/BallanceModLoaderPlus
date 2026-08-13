@@ -266,6 +266,9 @@ struct Event {
     std::optional<Command> CommandData;
     std::optional<Config> ConfigData;
     std::optional<Cheat> CheatData;
+    // True when at least one textual payload field did not fit in the C
+    // interface buffer. The corresponding string still contains its prefix.
+    bool TextTruncated = false;
 };
 
 namespace Detail {
@@ -291,7 +294,10 @@ inline bool IsCommandKind(int kind) {
     return kind == BML_EVENT_COMMAND_PRE || kind == BML_EVENT_COMMAND_POST;
 }
 
-inline std::string ToString(const BML_EventText &text) { return std::string(text.Value); }
+inline std::string ToString(const BML_EventText &text, bool &truncated) {
+    truncated = truncated || text.Length >= static_cast<int>(BML_EVENT_TEXT_CAPACITY);
+    return std::string(text.Value);
+}
 
 // Reads one list out of the event the stream is on. count comes from the payload
 // struct that was just read, so a row that is suddenly missing is a fault rather
@@ -332,9 +338,9 @@ int ReadList(int count, std::vector<Value> &out, Read read) {
             return status;
 
         Load load{};
-        load.Filename = ToString(raw.Filename);
+        load.Filename = ToString(raw.Filename, value.TextTruncated);
         load.IsMap = raw.IsMap != 0;
-        load.MasterName = ToString(raw.MasterName);
+        load.MasterName = ToString(raw.MasterName, value.TextTruncated);
         load.FilterClass = raw.FilterClass;
         load.AddToScene = raw.AddToScene != 0;
         load.ReuseMeshes = raw.ReuseMeshes != 0;
@@ -369,13 +375,13 @@ int ReadList(int count, std::vector<Value> &out, Read read) {
         physics.Friction = raw.Friction;
         physics.Elasticity = raw.Elasticity;
         physics.Mass = raw.Mass;
-        physics.CollisionGroup = ToString(raw.CollisionGroup);
+        physics.CollisionGroup = ToString(raw.CollisionGroup, value.TextTruncated);
         physics.StartFrozen = raw.StartFrozen != 0;
         physics.EnableCollision = raw.EnableCollision != 0;
         physics.AutoCalculateMassCenter = raw.AutoCalculateMassCenter != 0;
         physics.LinearDamp = raw.LinearDamp;
         physics.RotDamp = raw.RotDamp;
-        physics.CollisionSurface = ToString(raw.CollisionSurface);
+        physics.CollisionSurface = ToString(raw.CollisionSurface, value.TextTruncated);
         physics.MassCenter = raw.MassCenter;
 
         status = ReadList(raw.ConvexMeshCount, physics.ConvexMeshes,
@@ -417,15 +423,15 @@ int ReadList(int count, std::vector<Value> &out, Read read) {
             return status;
 
         Command command{};
-        command.Name = ToString(raw.Name);
+        command.Name = ToString(raw.Name, value.TextTruncated);
         status = ReadList(raw.ArgumentCount, command.Arguments,
-                          [events, stream](std::size_t index, std::string &argument) {
+                          [events, stream, &value](std::size_t index, std::string &argument) {
                               BML_EventText text = {};
                               const int rowStatus =
                                   events->ReadCommandArgument(stream, index, &text);
                               if (rowStatus != BML_OK)
                                   return rowStatus;
-                              argument = ToString(text);
+                              argument = ToString(text, value.TextTruncated);
                               return BML_OK;
                           });
         if (status != BML_OK)
@@ -440,8 +446,12 @@ int ReadList(int count, std::vector<Value> &out, Read read) {
         const int status = events->ReadConfig(stream, &raw);
         if (status != BML_OK)
             return status;
-        value.ConfigData = Config{ToString(raw.Category), ToString(raw.Key), raw.Type,
-                                  ToString(raw.Value)};
+        Config config{};
+        config.Category = ToString(raw.Category, value.TextTruncated);
+        config.Key = ToString(raw.Key, value.TextTruncated);
+        config.Type = raw.Type;
+        config.Value = ToString(raw.Value, value.TextTruncated);
+        value.ConfigData = std::move(config);
     }
 
     if (info.Kind == BML_EVENT_CHEAT_CHANGED) {

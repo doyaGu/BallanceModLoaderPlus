@@ -65,6 +65,9 @@ struct CatalogEntry {
     std::string Sky;
     int Bonus = 0;
     int Music = 0;
+    bool FileTruncated = false;
+    bool StartBallTruncated = false;
+    bool SkyTruncated = false;
 };
 
 struct Checkpoint {
@@ -400,8 +403,16 @@ int ReadCatalog(void *&out) {
             const int rowStatus = ReadBuiltinGameplayCatalogEntry(*context, i, row);
             if (rowStatus != BML_OK)
                 return rowStatus;
-            value = {std::string(row.File), std::string(row.StartBall),
-                     std::string(row.Sky), row.Bonus, row.Music};
+            value = {
+                std::string(row.File),
+                std::string(row.StartBall),
+                std::string(row.Sky),
+                row.Bonus,
+                row.Music,
+                row.FileLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+                row.StartBallLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+                row.SkyLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+            };
             return BML_OK;
         });
 }
@@ -814,6 +825,9 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
     BML_AS_PROPERTY("EnergyState", "int LifeBonus", asOFFSET(EnergyState, LifeBonus));
     BML_AS_PROPERTY("CatalogEntry", "int Bonus", asOFFSET(CatalogEntry, Bonus));
     BML_AS_PROPERTY("CatalogEntry", "int Music", asOFFSET(CatalogEntry, Music));
+    BML_AS_PROPERTY("CatalogEntry", "bool FileTruncated", asOFFSET(CatalogEntry, FileTruncated));
+    BML_AS_PROPERTY("CatalogEntry", "bool StartBallTruncated", asOFFSET(CatalogEntry, StartBallTruncated));
+    BML_AS_PROPERTY("CatalogEntry", "bool SkyTruncated", asOFFSET(CatalogEntry, SkyTruncated));
     BML_AS_PROPERTY("Checkpoint", "BML::Mat4 Matrix", asOFFSET(Checkpoint, Matrix));
 #undef BML_AS_PROPERTY
     return Register(engine, engine->RegisterObjectMethod("LevelState", "CKObject@ BorrowActiveBall() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowActiveBall), asCALL_GENERIC), "LevelState::BorrowActiveBall", errorMessage) &&

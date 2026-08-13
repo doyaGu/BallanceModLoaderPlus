@@ -70,7 +70,8 @@ BML_EXPORT const char *BML_GetVersionString();
 // BML_FreeString.
 //
 // Both answer null while the loader is still initializing, when the directory
-// could not be resolved, and when modId names no loaded Mod.
+// could not be resolved, when modId names no loaded Mod, or when allocating or
+// converting the returned string fails.
 typedef enum BML_LoaderDirectory {
     // Where the process was started, read once when the loader initialized. The
     // game does not keep it there: BML_SetCurrentDirectory and the game itself
