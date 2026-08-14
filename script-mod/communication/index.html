@@ -417,6 +417,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../native-api-routes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which native API to use
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -432,10 +460,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -453,8 +481,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -770,10 +798,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -791,8 +819,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1052,13 +1080,15 @@ and value type. Use it for a small piece of state, not request routing, event
 streams, large payloads, or a protocol that must evolve independently.</p>
 <h2 id="built-in-typed-services">Built-in typed services<a class="headerlink" href="#built-in-typed-services" title="Permanent link">&para;</a></h2>
 <p>For BML+ runtime, gameplay, event, UI, and speedrun features, use the existing
-typed script APIs. They are local facades over BML+-owned behavior; scripts do
-not need to open an IMC transport handle or decode payloads.</p>
+typed script APIs. They project the loader's own interface structs, which is
+where loader capability lives; IMC carries none of it, and no transport handle or
+payload decoding is involved.</p>
 <p>For communication among CKAngelScript runtime scripts and components, use
 CKAngelScript <code>Message</code> or <code>Async</code> when that execution model fits. A BML+ fixed
 callback cannot suspend.</p>
 <h2 id="generated-imc-services">Generated IMC services<a class="headerlink" href="#generated-imc-services" title="Permanent link">&para;</a></h2>
-<p>Use generated IMC when a service needs one or more of these properties:</p>
+<p>IMC is for an API one mod publishes for other mods. Use generated IMC when such a
+service needs one or more of these properties:</p>
 <ul>
 <li>typed request and response messages;</li>
 <li>asynchronous completion;</li>

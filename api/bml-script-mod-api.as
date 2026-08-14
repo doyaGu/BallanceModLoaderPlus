@@ -122,7 +122,8 @@ const int ERROR_IMC_HANDLE_STALE;
 const int ERROR_IMC_UNSUPPORTED;
 const int ERROR_IMC_API_MISMATCH;
 const int ERROR_IMC_PROVIDER_UNLOADED;
-const int ERROR_IMC_OBJECT_INVALID;
+const int ERROR_UNAVAILABLE;
+const int ERROR_OBJECT_INVALID;
 const int ERROR_IMC_SCHEMA_MISMATCH;
 const int ERROR_IMC_TARGET_EXECUTION_FAILED;
 
@@ -962,6 +963,7 @@ class EnergyState {
 }
 class CatalogEntry {
   int Bonus; int Music;
+  bool FileTruncated; bool StartBallTruncated; bool SkyTruncated;
   string get_File() const; string get_StartBall() const; string get_Sky() const;
 }
 class Checkpoint { BML::Mat4 Matrix; CKObject@ BorrowObject() const; }

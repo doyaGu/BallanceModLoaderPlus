@@ -16,7 +16,7 @@
         <link rel="prev" href="../modding/">
       
       
-        <link rel="next" href="../script-mod/">
+        <link rel="next" href="../native-api-routes/">
       
       
         
@@ -518,6 +518,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#loader-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loader capabilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#inter-mod-communication" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -537,6 +548,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Three UI surfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#draw-imgui-from-onprocess" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draw ImGui from OnProcess
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -544,6 +572,17 @@
     <span class="md-ellipsis">
       
         C API ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-loader-and-your-mod-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the loader and your mod live
       
     </span>
   </a>
@@ -576,6 +615,34 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../native-api-routes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which native API to use
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
     
     
@@ -587,10 +654,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -608,8 +675,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -812,10 +879,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -833,8 +900,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1035,6 +1102,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#loader-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loader capabilities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#inter-mod-communication" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1054,6 +1132,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Three UI surfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#draw-imgui-from-onprocess" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draw ImGui from OnProcess
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1061,6 +1156,17 @@
     <span class="md-ellipsis">
       
         C API ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-loader-and-your-mod-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the loader and your mod live
       
     </span>
   </a>
@@ -1155,7 +1261,7 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 </tr>
 <tr>
 <td><code>BML.h</code></td>
-<td>C ABI for version, memory, encoding, path, file, and Zip utilities</td>
+<td>C ABI for version, loader and mod directories, command unregistration, memory, encoding, path, file, and Zip utilities</td>
 </tr>
 <tr>
 <td><code>BMLAll.h</code></td>
@@ -1186,16 +1292,24 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 <td>Low-level, named in-process byte sharing</td>
 </tr>
 <tr>
-<td><code>Imc.h</code>, <code>ImcTypes.h</code>, <code>ImcWire.hpp</code>, <code>ImcCpp.hpp</code>, <code>ImcMath.h</code></td>
-<td>IMC C/C++ runtime, wire format, and base types</td>
+<td><code>Types.h</code>, <code>TypeConvert.h</code></td>
+<td>Object references, vectors, and matrices, plus conversions to and from the Virtools types</td>
 </tr>
 <tr>
-<td><code>Generated/*.hpp</code></td>
-<td>Built-in bindings generated from <code>.imc</code>; do not edit them</td>
+<td><code>Interface.h</code></td>
+<td>The versioned interface structs the loader hands out, and how to ask for one</td>
 </tr>
 <tr>
-<td><code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>UI.h</code>, <code>Events.h</code>, <code>EventKinds.h</code></td>
-<td>Convenient C++ facades for built-in IMC services</td>
+<td><code>Runtime.h</code>, <code>Scene.h</code>, <code>Gameplay.h</code>, <code>Speedrun.h</code>, <code>UI.h</code></td>
+<td>Loader capabilities reached through an interface struct, with inline C++ wrappers</td>
+</tr>
+<tr>
+<td><code>Imc.h</code>, <code>ImcWire.hpp</code>, <code>ImcCpp.hpp</code></td>
+<td>IMC C/C++ runtime and wire format</td>
+</tr>
+<tr>
+<td><code>Events.h</code>, <code>EventKinds.h</code></td>
+<td>The loader event queue, reached through an interface struct, and the event kind codes</td>
 </tr>
 <tr>
 <td><code>Bui.h</code></td>
@@ -1236,6 +1350,9 @@ callbacks it needs:</p>
 <li>game flow: menu, load, start, reset, pause, exit, next-level, death, finish,
   checkpoint, life, and navigation callbacks from <code>IMessageReceiver</code>.</li>
 </ul>
+<p><code>OnProcess</code> is the only callback that runs inside the active ImGui frame. Draw
+every ImGui and <code>Bui</code> control from it, and never from <code>OnRender</code>. See
+<a href="#three-ui-surfaces">Three UI surfaces</a>.</p>
 <p><code>OnRender</code> receives one <code>CK_RENDER_FLAGS</code> value. The native API does not expose
 separately named before-render and after-render callbacks. Consumers that need
 decoupled notifications can use <code>BML::Events::Stream</code>, which covers game flow,
@@ -1250,7 +1367,7 @@ output event is reset before every poll, including unsuccessful polls.</p>
 <ul>
 <li>the CK context and Attribute, Behavior, Collision, Input, Message, Path,
   Parameter, Render, Sound, and Time managers;</li>
-<li><code>AddTimer</code> and <code>AddTimerLoop</code> scheduling by ticks or time values;</li>
+<li><code>AddTimer</code> and <code>AddTimerLoop</code> scheduling by frames or by milliseconds;</li>
 <li>game state, cheat control, in-game messages, and command registration,
   lookup, and execution;</li>
 <li>named lookup for DataArrays, Groups, Materials, Meshes, 2D/3D Entities,
@@ -1261,14 +1378,25 @@ output event is reset before every poll, including unsuccessful polls.</p>
 </ul>
 <p>Create timers through <code>IBML</code>. The SDK does not publish a standalone <code>Timer.h</code>;
 the loader owns scheduling and callback processing.</p>
+<p><code>AddTimer</code> and <code>AddTimerLoop</code> are each overloaded on <code>CKDWORD</code> and <code>float</code>. The
+<code>CKDWORD</code> overloads count frames, the <code>float</code> overloads count milliseconds, and
+both units share one name, so an unsuffixed integer literal is ambiguous and
+fails to compile. Write the suffix explicitly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mi">1ul</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* next frame */</span><span class="w"> </span><span class="p">});</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimer</span><span class="p">(</span><span class="mf">1000.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* one second later */</span><span class="w"> </span><span class="p">});</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">bml</span><span class="o">-&gt;</span><span class="n">AddTimerLoop</span><span class="p">(</span><span class="mf">1.0f</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">KeepRunning</span><span class="p">();</span><span class="w"> </span><span class="p">});</span>
+</code></pre></div>
+<p>The loop callbacks keep running while they return <code>true</code>. Neither overload
+returns a handle, so a scheduled timer cannot be cancelled; make the loop
+callback return <code>false</code> instead.</p>
 <h2 id="native-mod-dependencies">Native mod dependencies<a class="headerlink" href="#native-mod-dependencies" title="Permanent link">&para;</a></h2>
 <p>Register dependencies before BML initializes mods. The constructor is the
 usual place because it runs while <code>BMLEntry</code> creates the mod and before any
 <code>OnLoad</code> callback:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">&quot;RequiredMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">&quot;OptionalMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">&quot;RequiredMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">&quot;OptionalMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>BML orders mods so installed dependencies receive <code>OnLoad</code> before their
 dependents. A missing optional dependency is ignored. A missing required
@@ -1285,8 +1413,57 @@ property API; use the explicit conversion functions in <code>BML.h</code> when n
 <p><code>ICommand</code> provides the command name, aliases, description, cheat flag,
 execution, Tab completion, and basic Integer, Float, and Boolean parsers.
 <code>ILogger</code> provides three log levels.</p>
+<p><code>IBML::RegisterCommand</code> takes a raw <code>ICommand *</code> and the loader never deletes
+it. Registration returns <code>void</code> and only writes to the log when it fails, which
+happens for a null command, an invalid name or alias, and an already registered
+name.</p>
+<p><code>IBML</code> has no unregister function, so removing a command goes through
+<code>BML_UnregisterCommand</code> in <code>BML.h</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">MyMod::OnUnload</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_UnregisterCommand</span><span class="p">(</span><span class="s">&quot;mycmd&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="k">delete</span><span class="w"> </span><span class="n">m_Command</span><span class="p">;</span><span class="w">  </span><span class="c1">// only now is deleting it safe</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>Only the DLL that registered a command may remove it, which the loader decides
+by remembering which module called <code>RegisterCommand</code>. Asking about someone else's
+command answers <code>BML_ERROR_ACCESS_DENIED</code>, an unknown name answers
+<code>BML_ERROR_NOT_FOUND</code>, and the name is matched the way the console matches it, so
+the alias names the command too. Call it from the game thread.</p>
+<p>Without that call, a registered command stays in the command table until the
+process ends. In particular, do not delete an <code>ICommand</code> in <code>OnUnload</code> while it is
+still registered: unloading a mod does not remove its commands by itself, so a
+deleted command leaves a dangling entry that the console will still try to run.</p>
+<p><code>ParseFloat</code> clamps to the whole finite float range by default. Earlier releases
+defaulted its lower bound to <code>FLT_MIN</code>, the smallest positive normal value, so
+negative input was silently clamped to about <code>1.17e-38</code>. Pass explicit bounds
+when a command needs a narrower range.</p>
+<h2 id="loader-capabilities">Loader capabilities<a class="headerlink" href="#loader-capabilities" title="Permanent link">&para;</a></h2>
+<p>Capability added after the legacy C++ interfaces were frozen is published as a
+versioned interface struct, fetched by id and major version through
+<code>BML_GetInterface</code>. Each has its own header under <code>include/BML</code>, and each header
+also declares an inline C++ namespace that folds the lookup and the argument
+checks in:</p>
+<ul>
+<li><code>BML::Runtime</code> for runtime state, clock, and scores;</li>
+<li><code>BML::Scene</code> for object information, transforms, and named lookup;</li>
+<li><code>BML::Gameplay</code> for level, energy, catalog, checkpoint, and reset data;</li>
+<li><code>BML::UI</code> for the message board, mod/map menus, and HUD;</li>
+<li><code>BML::Speedrun</code> for the shared speedrun timer;</li>
+<li><code>BML::Events</code> for the loader event queue.</li>
+</ul>
+<p><code>Interface.h</code> documents the version rules: a struct grows only by appending a
+member and bumping its minor version, and <code>BML_IFACE_HAS</code> asks whether the
+running loader has a member added after the header the mod was built against.</p>
+<p>The native <code>BML::Gameplay</code> collection reads return complete snapshots in a
+caller-owned <code>std::vector</code>. Read the catalog during setup and refresh level
+checkpoints or reset points when the level changes; these calls transfer the
+complete collection and are not intended for per-frame polling.</p>
+<p>The inline C++ operations return a BML status and are marked <code>[[nodiscard]]</code>.
+Handle the returned status, or use an explicit <code>(void)</code> cast when deliberately
+discarding the result of best-effort cleanup.</p>
 <h2 id="inter-mod-communication">Inter-mod communication<a class="headerlink" href="#inter-mod-communication" title="Permanent link">&para;</a></h2>
-<p>Prefer IMC for new public integrations:</p>
+<p>An API a mod publishes for other mods is not an interface struct: only the loader
+answers <code>BML_GetInterface</code>. Prefer IMC there:</p>
 <ul>
 <li>a <code>.imc</code> file contains interface declarations only; field IDs are permanent
   wire identifiers rather than array positions;</li>
@@ -1294,35 +1471,36 @@ execution, Tab completion, and basic Integer, Float, and Boolean parsers.
 <li>RPC supports synchronous calls, futures, cancellation, timeouts, and
   completion callbacks;</li>
 <li>Topic supports bounded subscriber queues, unsubscribe, and drop counts;</li>
-<li>generated types and cached route IDs keep text parsing out of hot paths.</li>
+<li>generated types and cached route IDs keep text parsing out of hot paths;</li>
+<li>a consumer discovers at runtime whether a route is there, so provider and
+  consumer can ship separately.</li>
 </ul>
-<p>Built-in facades include:</p>
-<ul>
-<li><code>BML::Runtime</code> for runtime state, clock, and scores;</li>
-<li><code>BML::Scene</code> for object information, transforms, and named lookup;</li>
-<li><code>BML::Gameplay</code> for level, energy, directory, checkpoint, and reset data;</li>
-<li><code>BML::UI</code> for the message board, mod/map menus, and HUD;</li>
-<li><code>BML::Speedrun</code> for the shared speedrun timer;</li>
-<li><code>BML::Events</code> for the typed event stream.</li>
-</ul>
-<p>The native <code>BML::Gameplay</code> collection reads return complete snapshots in a
-caller-owned <code>std::vector</code>. Read the catalog during setup and refresh level
-checkpoints or reset points when the level changes; these calls transfer the
-complete collection and are not intended for per-frame polling.</p>
-<p>C++ IMC operations that return a BML status are marked <code>[[nodiscard]]</code>. Handle
-the returned status, or use an explicit <code>(void)</code> cast when deliberately
-discarding the result of best-effort cleanup.</p>
+<p>C++ IMC operations that return a BML status are marked <code>[[nodiscard]]</code> as well.</p>
 <p><code>DataShare</code> is suitable for small named byte values when both sides obey its
-reference-count and borrowed-pointer lifetime rules. Use IMC when an API needs
-evolution, cross-language bindings, RPC, or Topic semantics.</p>
+reference-count and borrowed-pointer lifetime rules. Use IMC when an API has to
+evolve on its own schedule, or needs RPC or Topic semantics.</p>
 <h2 id="three-ui-surfaces">Three UI surfaces<a class="headerlink" href="#three-ui-surfaces" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>Bui</code> draws Ballance-style ImGui widgets for native overlays.</li>
 <li><code>BGui</code> creates in-game UI from Virtools 2D Entities and Behaviors.</li>
 <li><code>BML::UI</code> does not draw widgets; it controls loader-owned messages, menus,
-  and HUD state through IMC.</li>
+  and HUD state. Every one of its calls has to be made from the game thread.</li>
 </ul>
 <p>These surfaces solve different problems and are not interchangeable.</p>
+<h3 id="draw-imgui-from-onprocess">Draw ImGui from <code>OnProcess</code><a class="headerlink" href="#draw-imgui-from-onprocess" title="Permanent link">&para;</a></h3>
+<p>The loader owns the ImGui frame. It opens the frame before mod callbacks run and
+ends it immediately after <code>OnProcess</code> returns:</p>
+<ol>
+<li>the loader calls <code>ImGui::NewFrame</code> before the per-frame mod callbacks;</li>
+<li>every mod's <code>OnProcess</code> runs inside that frame;</li>
+<li>the loader calls <code>ImGui::Render</code>, which ends the frame;</li>
+<li><code>OnRender</code> runs;</li>
+<li>the loader submits the recorded draw data.</li>
+</ol>
+<p>So <code>ImGui</code> and <code>Bui</code> calls belong in <code>OnProcess</code>. The same calls made from
+<code>OnRender</code> happen after the frame has ended: they draw nothing and may trip an
+ImGui assertion. <code>BML::UI</code> message, menu, and HUD calls are not affected,
+because they change loader state instead of recording draw commands.</p>
 <h2 id="c-api-ownership">C API ownership<a class="headerlink" href="#c-api-ownership" title="Permanent link">&para;</a></h2>
 <p><code>BML.h</code> and <code>DataShare.h</code> are callable through the C ABI. Release strings,
 wide strings, string arrays, wide-string arrays, and binary buffers allocated
@@ -1331,8 +1509,33 @@ DLL boundary.</p>
 <p><code>BML_DataShare_Get</code> returns a borrowed pointer. It becomes invalid when the
 same key is set or removed or when the instance is destroyed. Use
 <code>BML_DataShare_CopyEx</code> when a stable copy is required.</p>
+<h2 id="where-the-loader-and-your-mod-live">Where the loader and your mod live<a class="headerlink" href="#where-the-loader-and-your-mod-live" title="Permanent link">&para;</a></h2>
+<p><code>BML.h</code> answers both questions a mod has about the file system:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// The loader&#39;s own directories. Borrowed, valid for the process, never freed.</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">loaderDir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetLoaderPathUtf8</span><span class="p">(</span><span class="n">BML_DIR_LOADER</span><span class="p">);</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">// Your own installation directory. Allocated, so release it.</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">modRoot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetModRootUtf8</span><span class="p">(</span><span class="nb">nullptr</span><span class="p">);</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">// ... use modRoot ...</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">BML_FreeString</span><span class="p">(</span><span class="n">modRoot</span><span class="p">);</span>
+</code></pre></div>
+<p><code>BML_GetLoaderPathW</code> and <code>BML_GetLoaderPathUtf8</code> take a <code>BML_LoaderDirectory</code>:
+<code>BML_DIR_WORKING</code>, <code>BML_DIR_TEMP</code>, <code>BML_DIR_GAME</code>, <code>BML_DIR_LOADER</code>, or
+<code>BML_DIR_CONFIG</code>. They return a pointer the loader owns, so do not free it. Do
+not confuse them with <code>BML_GetDirectoryA/W/Utf8</code>, which parse a path string and
+return its directory part.</p>
+<p><code>BML_GetModRootW</code> and <code>BML_GetModRootUtf8</code> answer with the directory a mod is
+installed in. Pass <code>nullptr</code> for your own: it resolves the calling DLL, needs no
+registration, and therefore works from your constructor. Pass a mod id to ask
+about another mod, which answers with its DLL's directory for a native mod and
+with its script root for a script mod. Both allocate, so release the result with
+<code>BML_FreeWString</code> or <code>BML_FreeString</code>.</p>
+<p>Both return null while the loader is still initializing and when the directory
+cannot be resolved. <code>BML_GetModRoot</code> also takes the loader's mod-registry lock,
+so call it from your mod rather than from <code>DllMain</code>.</p>
 <h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <ul>
+<li><a href="../native-api-routes/">Which native API to use</a></li>
 <li><a href="../modding/">Choose a mod development route</a></li>
 <li><a href="../imc/">Inter-mod communication</a></li>
 <li><a href="../imc-author-guide/">Create a typed IMC API</a></li>

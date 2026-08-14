@@ -417,6 +417,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../native-api-routes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    原生 API 该走哪条路
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -432,10 +460,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -453,8 +481,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -509,10 +537,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_2" >
         
           
-          <label class="md-nav__link" for="__nav_3_3_2" id="__nav_3_3_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4_2" id="__nav_3_4_2_label" tabindex="0">
             
   
   
@@ -530,8 +558,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_3_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_3_2">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1184,10 +1212,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3_3_3" id="__nav_3_3_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4_3" id="__nav_3_4_3_label" tabindex="0">
             
   
   
@@ -1205,8 +1233,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_3_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_3_3">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_4_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1626,10 +1654,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -1647,8 +1675,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1825,8 +1853,8 @@
 
 
 <h1 id="mod">跨 Mod 通信<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h1>
-<p>BML+ 的跨 Mod RPC 和事件传输使用 IMC。脚本 Mod 直接使用 BML+ 提供的
-类型化能力接口；自定义 IMC Provider 由原生 Mod 实现。</p>
+<p>IMC 用于一个 Mod 发布给其他 Mod 的接口，不承载任何 Loader 能力。脚本 Mod
+直接使用 Loader 提供的类型化能力接口；IMC Provider 只能由原生 Mod 实现。</p>
 <h2 id="mod_1">脚本 Mod 如何选择<a class="headerlink" href="#mod_1" title="Permanent link">&para;</a></h2>
 <p>脚本中读取 BML 自带能力时，直接使用有类型的接口：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">BML</span><span class="o">::</span><span class="n">Runtime</span><span class="o">::</span><span class="n">State</span><span class="w"> </span><span class="n">runtime</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">Runtime</span><span class="o">::</span><span class="n">GetState</span><span class="p">();</span>
@@ -1846,10 +1874,10 @@
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="c1">// 在 OnProcess 中 Poll；用完后 Close。</span>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="p">}</span>
 </code></pre></div>
-<p>可用的内置命名空间包括 <code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code> 和
-<code>BML::Events</code>。Virtools 场景查找和对象标识应使用 CKAngelScript 的
-<code>Scene</code> 命名空间及其可重新验证的引用类型。其中 Runtime 状态、时钟和
-分数读取直接返回进程内加载器状态的值，不会为本地调用打开 IMC client，
+<p>可用的内置命名空间包括 <code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code>、
+<code>BML::Events</code> 和 <code>BML::Speedrun</code>。Virtools 场景查找和对象标识应使用
+CKAngelScript 的 <code>Scene</code> 命名空间及其可重新验证的引用类型。其中 Runtime
+状态、时钟和分数读取直接返回 Loader 进程内状态的值，不经过任何传输层，
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
 异常。Gameplay 读取也直接复用进程内的数据读取器，但对应的 Ballance
 数据数组可能尚不可用或布局不受支持，因此仍返回明确的状态码。脚本只处理
@@ -1860,13 +1888,13 @@
 不要每帧重复构建。</p>
 <p><code>BML::Events::Stream</code> 按 Hook 顺序提供不可变事件快照。仅当 <code>Poll</code> 返回
 <code>BML::ERROR_OK</code> 时读取事件；<code>BML::ERROR_NOT_FOUND</code> 表示流当前为空，其他状态
-表示传输失败或事件格式错误。待处理错误会在已排队事件之前返回，返回后即清除；
-字段不完整的事件不会被伪装成有效快照。<code>GetDroppedCount</code> 只统计队列和背压造成
-的丢失，不统计解码错误。</p>
+表示流未打开（<code>BML::ERROR_INVALID_HANDLE</code>）或复制事件失败
+（<code>BML::ERROR_OUT_OF_MEMORY</code>）。<code>GetDroppedCount</code> 统计队列容量和背压造成的丢失。</p>
 <p>两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。</p>
 <h2 id="imc-provider">何时需要原生 IMC Provider<a class="headerlink" href="#imc-provider" title="Permanent link">&para;</a></h2>
-<p>下面任一条件成立时，应把服务实现为原生 Mod：</p>
+<p>IMC 只用于一个 Mod 发布给其他 Mod 的接口。这类服务满足下面任一条件时，应把它
+实现为原生 Mod：</p>
 <ul>
 <li>需要请求/响应 RPC；</li>
 <li>需要高频或有背压策略的事件流；</li>

@@ -415,6 +415,34 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../native-api-routes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    原生 API 该走哪条路
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
     
     
@@ -426,10 +454,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -447,8 +475,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -503,10 +531,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_2" >
         
           
-          <label class="md-nav__link" for="__nav_3_3_2" id="__nav_3_3_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4_2" id="__nav_3_4_2_label" tabindex="0">
             
   
   
@@ -524,8 +552,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_3_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_3_2">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1176,10 +1204,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_3" >
         
           
-          <label class="md-nav__link" for="__nav_3_3_3" id="__nav_3_3_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4_3" id="__nav_3_4_3_label" tabindex="0">
             
   
   
@@ -1197,8 +1225,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_3_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_3_3">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1549,10 +1577,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -1570,8 +1598,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2086,13 +2114,18 @@ API 文件。</p>
 <td>ABI/编译测试、模板配置构建和安装后 SDK 检查</td>
 </tr>
 <tr>
-<td>IMC 运行时或内建 Provider</td>
-<td><code>src/ImcApi.cpp</code>、<code>src/ImcRuntime.*</code>、<code>src/BuiltinImcApis.*</code></td>
+<td>IMC 运行时</td>
+<td><code>src/ImcApi.cpp</code>、<code>src/ImcRuntime.*</code></td>
 <td>IMC 运行时/兼容性测试和原生 IMC 冒烟测试</td>
 </tr>
 <tr>
-<td>IMC 接口定义</td>
-<td><code>imc/interfaces/</code>、<code>tools/imc_codegen.py</code></td>
+<td>内建 interface struct 或其背后的读取实现</td>
+<td><code>include/BML/Interface.h</code>、<code>src/Interfaces.cpp</code>、<code>src/BuiltinCapabilities.*</code></td>
+<td>定向 interface 测试、C ABI 编译测试和原生冒烟测试</td>
+</tr>
+<tr>
+<td>IMC 代码生成器或其示例接口</td>
+<td><code>tools/imc_codegen.py</code>、<code>tests/imc/</code></td>
 <td>生成器检查、兼容性测试，并一起审查接口、lock 和头文件</td>
 </tr>
 <tr>
@@ -2115,21 +2148,28 @@ API 文件。</p>
 发布线冻结其 ABI。不要修改虚函数签名或顺序、对象布局、所有权规则和跨边界
 传递的类型。</p>
 <p><code>BML_*</code> C API 和 IMC 使用显式 handle、状态码及分配函数。修改时必须保持文档
-规定的所有权和兼容性。新增跨 Mod 服务时，通常应使用生成式 IMC，而不是增加
-新的临时 C++ ABI。</p>
+规定的所有权和兼容性。新增 Loader 能力应放进经由 <code>BML_GetInterface</code> 取得的
+带版本 interface struct；某个 Mod 向其他 Mod 提供的服务应使用生成式 IMC，而
+不是增加新的临时 C++ ABI。</p>
 <p>脚本 API 是公开的源码接口。修改绑定时，必须在同一次变更中更新脚本 API
 参考、作者文档和运行时冒烟测试覆盖。</p>
 <h2 id="_7">生成式接口<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<p>不要手工修改 <code>include/BML/Generated</code>。应修改对应的 <code>.imc</code> 文件并运行生成器。
-例如：</p>
+<p>Loader 自己不发布任何 <code>.imc</code> 接口，生成器是给发布接口的 Mod 用的编写工具。
+本仓库里有两个 <code>.imc</code> 文件，都属于测试。<code>tests/imc/test.sample.imc</code> 让生成器、
+lock 格式和已提交的输出都保持在测试覆盖之下。<code>tests/smoke/smoke.native.imc</code>
+属于原生冒烟 Mod，它在 Player 中既发布该接口又反过来消费它，让 Loader 的 IMC
+导出在运行期持续被覆盖；<code>bml_target_imc_api</code> 把它的生成头写进构建树，因此仓库
+里只提交 <code>.imc</code> 和它的 lock。</p>
+<p>不要手工修改生成头。应修改对应的 <code>.imc</code> 文件并运行生成器。对示例接口即：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">include</span><span class="p">/</span><span class="n">BML</span><span class="p">/</span><span class="n">Generated</span> <span class="p">`</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">imc</span><span class="p">/</span><span class="n">interfaces</span><span class="p">/</span><span class="n">bml</span><span class="p">.</span><span class="n">events</span><span class="p">.</span><span class="n">imc</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
 </code></pre></div>
 <p><code>.imc</code>、<code>.imc.lock</code> 和生成头应一起审查和提交。lock 保存稳定的字段与端点标识，
-不要手工调整其中的数字。BML+ 的正常构建会以检查模式运行生成器，并在已提交
-的绑定过期时失败。</p>
+不要手工调整其中的数字。BML+ 的正常构建会对该示例以检查模式运行生成器，并在
+已提交的绑定过期时失败。冒烟接口的生成头由构建本身重新生成，其 lock 与 <code>.imc</code>
+不再匹配时构建会失败，并给出应运行的 <code>bml_update_imc_locks</code> 目标。</p>
 <p>面向 Mod 作者的公开文档由 CMake 安装到 <code>share/BML/docs/&lt;语言&gt;</code>，发布脚本复制
 该安装树。不要在打包脚本中增加第二套源码文档复制规则。编辑器 API stub 仍位于
 <code>docs/api</code>，因为它们是工具输入，不是阅读文档。</p>

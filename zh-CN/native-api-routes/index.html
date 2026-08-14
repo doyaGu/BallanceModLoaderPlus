@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/modding/">
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/native-api-routes/">
       
       
-        <link rel="prev" href="../using-bml/">
+        <link rel="prev" href="../native-mod-api/">
       
       
-        <link rel="next" href="../native-mod-api/">
+        <link rel="next" href="../script-mod-tutorial/">
       
       
         
@@ -31,7 +31,7 @@
     
     
       
-        <title>选择路线 - Ballance Mod Loader Plus 文档</title>
+        <title>原生 API 该走哪条路 - Ballance Mod Loader Plus 文档</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#bml-mod" class="md-skip">
+        <a href="#api" class="md-skip">
           跳转至
         </a>
       
@@ -108,7 +108,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              选择路线
+              原生 API 该走哪条路
             
           </span>
         </div>
@@ -361,37 +361,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    选择路线
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../modding/" class="md-nav__link">
         
   
   
@@ -407,103 +380,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="目录">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      目录
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        选择开发路线
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mod" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        开始编写脚本 Mod
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mod_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        开始编写原生 Mod
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        两条路线共同遵守的规则
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mod_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        选择跨 Mod 通信方式
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        性能与所有权
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        发布
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -541,10 +417,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../native-api-routes/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    原生 API 该走哪条路
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -560,6 +463,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        为什么会有多种写法
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        逐项能力对照
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        能不能混用
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        延伸阅读
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1865,29 +1832,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        选择开发路线
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mod" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        开始编写脚本 Mod
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mod_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        开始编写原生 Mod
+        为什么会有多种写法
       
     </span>
   </a>
@@ -1898,18 +1843,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        两条路线共同遵守的规则
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mod_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        选择跨 Mod 通信方式
+        逐项能力对照
       
     </span>
   </a>
@@ -1920,7 +1854,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        性能与所有权
+        能不能混用
       
     </span>
   </a>
@@ -1931,7 +1865,7 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        发布
+        延伸阅读
       
     </span>
   </a>
@@ -1958,157 +1892,214 @@
   
 
 
-<h1 id="bml-mod">为 BML+ 开发 Mod<a class="headerlink" href="#bml-mod" title="Permanent link">&para;</a></h1>
-<p>编写 Mod 时应使用已发布的 BML+ SDK。只有修改 Loader、SDK、脚本宿主或内建服务时
-才需要构建 BML+ 仓库。</p>
-<p>不确定选择哪条路线时，先从脚本 Mod 开始。它不需要 C++ 构建，并具有最短的编辑、
-热重载和诊断循环。只有明确需要原生 Hook、原生内存、生成式 IMC Provider 或
-性能敏感循环时，再进入原生路线。</p>
-<h2 id="_1">选择开发路线<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<h1 id="api">原生 API 该走哪条路<a class="headerlink" href="#api" title="Permanent link">&para;</a></h1>
+<p>原生 Mod 有三种方式访问 Loader，部分能力可以由其中不止一种提供。本页给出每项
+能力有哪些写法、该优先选哪个，以及为什么会同时存在多种写法。IMC 不在这三种之内：
+它不承载任何 Loader 能力，是一个 Mod 发布给别的 Mod 的东西，见
+<a href="../imc/">跨 Mod 通信</a>。</p>
+<p>如果只想要一条规则：凡是要拿到引擎对象、或只有它们提供的能力，走旧式 <code>IBML</code> 与
+<code>IMod</code>；读取游戏状态、接收 Loader 事件、控制 Loader 自己的界面，走 interface
+struct；要把接口发布给别的 Mod，走 IMC。</p>
+<h2 id="_1">为什么会有多种写法<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p><code>IBML</code>、<code>IMod</code>、<code>IMessageReceiver</code>、<code>IConfig</code>、<code>ICommand</code> 都是带虚函数的 C++ 类，
+而 Mod 是跨 DLL 边界调用它们的。虚函数调用跳转到的槽位号在 Mod 编译时就已固定，
+因此新增、删除或重排任何一个虚函数都会移动它之后的全部槽位，已经构建好的
+<code>.bmodp</code> 会调到错误的函数上。Loader 用 <code>src/ModContext.cpp</code> 里的静态断言钉住这些
+槽位号，并在每次构建时把导出符号集与
+<code>tests/abi/legacy-native-exports-x86-msvc.txt</code> 比对。所以这些接口在当前发布线上是
+冻结的：不能再往里加东西。</p>
+<p>interface struct 没有这个问题。Loader 交出的是一个函数指针结构体，Mod 通过唯一的
+导出 <code>BML_GetInterface</code> 按 id 和主版本号取用它，而这个结构体只会在末尾追加成员并
+提升次版本号。旧 Mod 继续调用自己编译时就有的那些成员；新 Mod 用 <code>BML_IFACE_HAS</code>
+询问正在运行的 Loader 有没有它之后才加进来的成员。这就是冻结之后新增的能力都以
+interface struct 形式出现的原因，而且每个都配了一层 inline C++ 命名空间，用起来和
+调用普通函数一样。</p>
+<p><code>BML.h</code> 里的 <code>BML_*</code> 函数是第三种写法。它们是纯 C，不涉及任何 vtable，所以可以
+自由增加。但能落在这里的只有两类。一类是与游戏和 Loader 状态无关的纯工具：字符串、
+路径、文件、编码与内存分配，Loader 与 Mod 目录查询属于这一类。另一类是补齐一个另
+一半冻结在 C++ 里的操作，<code>BML_UnregisterCommand</code> 就是这样站到 <code>IBML::RegisterCommand</code>
+旁边的。把一对操作的正反两半拆到两种机制上，比任选一种都更难读，所以反向操作跟着
+正向走。</p>
+<p>新能力该落在这三种里的哪一种，由一个问题决定：谁来提供它。Loader 提供、Mod 读取或
+驱动的，是 interface struct。某个 Mod 提供给别的 Mod 的，是 IMC 接口，因为 Loader
+不参与这段对话，而且双方各自按自己的节奏发布。与游戏和 Loader 状态都无关的纯工具，
+或者某个已冻结在 C++ 里的操作的反向操作，走 C 导出。</p>
+<p>冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
+是唯一能拿到引擎对象的途径。</p>
+<p>这些能力在脚本侧有五个够得着：<code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code>、
+<code>BML::Events</code>、<code>BML::Speedrun</code>。只有 <code>BML::Scene</code> 只在原生侧。脚本侧的
+<code>BML::Speedrun</code> 目前并不是原接口的投射：它的写法是 <code>SetTimerVisible</code>、
+<code>StartTimer</code>、<code>PauseTimer</code>、<code>ResetTimer</code>、<code>GetElapsedTime</code>，返回的是值或者什么都不
+返回，而不是状态码。脚本侧的投射是手写的，与 interface struct 之间没有任何校验，
+所以无论是缺的那项能力还是写法上的差异，都不会自动收敛。</p>
+<h2 id="_2">逐项能力对照<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p><code>旧式 C++</code> 一列若未特别说明，均为 <code>IBML</code> 的成员。<code>新路线</code> 一列里写成
+<code>命名空间::函数</code> 的，是 interface struct 外面那层 inline C++，声明在 <code>include/BML/</code>
+下的同名头文件里；其余的是 <code>BML.h</code> 的 <code>BML_*</code> C 导出。</p>
 <table>
 <thead>
 <tr>
-<th>路线</th>
-<th>适用场景</th>
-<th>主要代价</th>
+<th>能力</th>
+<th>旧式 C++</th>
+<th>新路线</th>
+<th>选哪个</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>脚本 Mod</td>
-<td>希望快速修改和测试，需要命令、配置、UI、玩法脚本或 CKAngelScript 引擎访问，但不想配置 C++ 构建。</td>
-<td>不能提供自定义 IMC Provider，也不应承担不安全 Hook 或性能敏感的原生循环。</td>
+<td>CK 上下文、渲染上下文与各引擎管理器</td>
+<td><code>GetCKContext</code>、<code>GetRenderContext</code>、<code>GetInputManager</code>、<code>GetTimeManager</code> 等</td>
+<td>无</td>
+<td>只有旧式 C++。interface struct 有意不交出引擎指针：指针无法带上一个对方能校验的生命期。</td>
 </tr>
 <tr>
-<td>原生 Mod</td>
-<td>需要 C++20、直接 Virtools 集成、原生 Hook、生成式 IMC Provider，或必须严格控制热路径。</td>
-<td>需要兼容 MSVC ABI 的 Win32 构建，并明确处理 DLL ABI 和所有权。</td>
+<td>是否在关卡内、是否暂停、是否运行、是否开作弊</td>
+<td><code>IsIngame</code>、<code>IsPaused</code>、<code>IsPlaying</code>、<code>IsCheatEnabled</code></td>
+<td><code>Runtime::ReadState</code></td>
+<td>两者皆可。门面一次读回五个标志，且不要求调用方是 <code>IMod</code>。</td>
 </tr>
 <tr>
-<td>原生插件加 CKAngelScript 扩展</td>
-<td>不安全或性能敏感的服务由原生代码负责，但脚本需要小型、类型化的控制接口。</td>
-<td>原生插件必须通过 CKAngelScript 注册并维护该脚本接口。</td>
+<td>帧时间与帧计数</td>
+<td><code>GetTimeManager()</code> 与 CK 时钟</td>
+<td><code>Runtime::ReadClock</code></td>
+<td>两者皆可。</td>
+</tr>
+<tr>
+<td>竞速用时与 highscore 数值</td>
+<td><code>GetSRScore</code>、<code>GetHSScore</code></td>
+<td><code>Runtime::ReadScore</code>、<code>Speedrun::ReadTimerState</code></td>
+<td>两者皆可。<code>Score::SR</code> 是以毫秒计的竞速用时，不是分数。</td>
+</tr>
+<tr>
+<td>启动、暂停、重置或显示竞速计时器</td>
+<td>无</td>
+<td><code>Speedrun::StartTimer</code>、<code>PauseTimer</code>、<code>ResetTimer</code>、<code>SetTimerVisible</code></td>
+<td>只有 interface struct。</td>
+</tr>
+<tr>
+<td>按名字查找对象</td>
+<td><code>Get3dObjectByName</code>、<code>GetGroupByName</code>、<code>GetMaterialByName</code> 等一整族</td>
+<td><code>Scene::FindObject</code>，可带 class id</td>
+<td>拿到之后还要用 CK SDK 操作它，就走旧式 C++，因为它直接给出指针。<code>Scene::FindObject</code> 给出的是 <code>BML_ObjectRef</code>，适合只需要标识或转手传递的场合。</td>
+</tr>
+<tr>
+<td>读取对象的类、名字或变换</td>
+<td>经指针使用 CK SDK</td>
+<td><code>Scene::ReadObject</code>、<code>Scene::ReadEntityTransform</code></td>
+<td>两者皆可。</td>
+</tr>
+<tr>
+<td>关卡状态、能量、检查点、重置点、关卡目录</td>
+<td><code>GetArrayByName</code> 加 <code>CKDataArray</code> 按列读取</td>
+<td><code>Gameplay::ReadLevel</code>、<code>ReadEnergy</code>、<code>ReadCheckpoints</code>、<code>ReadResetpoints</code>、<code>ReadCatalog</code></td>
+<td>走 interface struct。它已经知道游戏那些数组的列顺序，而这正是最容易写错的部分。集合类读取会整份拷贝，属于初始化或换关时做的事，不适合每帧调用。</td>
+</tr>
+<tr>
+<td>游戏内消息板</td>
+<td><code>SendIngameMessage</code></td>
+<td><code>UI::AddMessage</code>、<code>UI::ClearMessages</code></td>
+<td>两者皆可。清空消息板只有门面能做。</td>
+</tr>
+<tr>
+<td>HUD 各部分、Mod 菜单、地图菜单</td>
+<td>无</td>
+<td><code>UI::SetHUDMode</code>、<code>ShowTitle</code>、<code>ShowFPS</code>、<code>OpenModsMenu</code>、<code>CloseModsMenu</code>、<code>OpenMapMenu</code>、<code>CloseMapMenu</code></td>
+<td>只有 interface struct。</td>
+</tr>
+<tr>
+<td>Loader 事件</td>
+<td><code>IMod</code> 上的 <code>IMessageReceiver</code> 虚函数</td>
+<td><code>Events::Stream</code></td>
+<td>两者皆可，事件内容相同。虚函数在 Loader 的派发过程内执行，且要求继承 <code>IMod</code>。流是一个自己排空的队列，适合不是 <code>IMod</code> 的代码、对所有事件一律处理的代码，以及宁愿先缓冲而不是当场响应的代码。</td>
+</tr>
+<tr>
+<td>作弊模式</td>
+<td>写用 <code>EnableCheat</code>，读用 <code>IsCheatEnabled</code></td>
+<td><code>Runtime::ReadState</code> 可读</td>
+<td>读两者皆可，写走旧式 C++。</td>
+</tr>
+<tr>
+<td>控制台命令</td>
+<td><code>RegisterCommand</code> 加 <code>ICommand</code> 子类</td>
+<td>无</td>
+<td>注册走旧式 C++。注销是 C 导出 <code>BML_UnregisterCommand</code>，因为 <code>IBML</code> 已经无法再加函数。</td>
+</tr>
+<tr>
+<td>配置</td>
+<td><code>IMod::GetConfig</code> 加 <code>IConfig</code>、<code>IProperty</code></td>
+<td>无</td>
+<td>只有旧式 C++。</td>
+</tr>
+<tr>
+<td>定时器</td>
+<td><code>AddTimer</code>、<code>AddTimerLoop</code></td>
+<td>无</td>
+<td>只有旧式 C++。</td>
+</tr>
+<tr>
+<td>退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染</td>
+<td><code>ExitGame</code>、<code>SetIC</code>、<code>RestoreIC</code>、<code>Show</code>、<code>RegisterBallType</code> 等注册族、<code>SkipRenderForNextTick</code></td>
+<td>无</td>
+<td>只有旧式 C++。</td>
+</tr>
+<tr>
+<td>已加载了哪些 Mod，以及依赖</td>
+<td><code>GetModCount</code>、<code>GetMod</code>、<code>FindMod</code>、<code>RegisterDependency</code>、<code>CheckDependencies</code></td>
+<td>无</td>
+<td>只有旧式 C++。</td>
+</tr>
+<tr>
+<td>把自己的接口发布给别的 Mod</td>
+<td>无</td>
+<td>IMC，最好从 <code>.imc</code> 文件生成</td>
+<td>只有 IMC。自己定义 C++ 类，等于把自己的 vtable 布局和标准库塞进每个使用方的构建里；<code>BML_GetInterface</code> 也不是替代品，它交出的是 Loader 自己的接口，Mod 无法往里添加。IMC 到达的是原生使用方：脚本 Mod 目前既不能调用别的 Mod 的路由，也不能发布自己的。</td>
+</tr>
+<tr>
+<td>绘制自己的界面</td>
+<td><code>Bui</code> 画 ImGui 控件，<code>BGui</code> 用游戏内 2D 实体</td>
+<td>无</td>
+<td>这两者都不是 <code>BML::UI</code>，后者控制的是 Loader 自己的界面，不画你的东西。</td>
+</tr>
+<tr>
+<td>字符串、路径、文件、内存分配</td>
+<td>无</td>
+<td><code>BML.h</code> 的 <code>BML_*</code> 函数</td>
+<td>走 C 导出。它们返回的东西要用对应的 <code>BML_Free*</code> 释放，不能用 CRT 的 <code>free</code>。</td>
+</tr>
+<tr>
+<td>Loader 的各个目录，以及自己 Mod 的安装目录</td>
+<td>无</td>
+<td><code>BML_GetLoaderPathW</code>、<code>BML_GetLoaderPathUtf8</code>、<code>BML_GetModRootW</code>、<code>BML_GetModRootUtf8</code>，同样是 <code>BML.h</code> 的 C 导出</td>
+<td>走 C 导出。<code>IBML</code> 从来没有提供过这些。Loader 目录是借用指针，Mod 根目录是新分配的，只有后者需要释放。</td>
 </tr>
 </tbody>
 </table>
-<p>不要在 BML 中重新封装一套 CKAngelScript 已有的 Scene、Behavior、Component、
-Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命周期、配置、
-命令、Loader UI 和 Mod 级服务使用 BML+。</p>
-<h2 id="mod">开始编写脚本 Mod<a class="headerlink" href="#mod" title="Permanent link">&para;</a></h2>
-<ol>
-<li>在 <code>ModLoader/Mods</code> 中打开 PowerShell，用 SDK 模板创建 Mod：</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1&quot;</span> <span class="p">`</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
-</code></pre></div>
-<p>命令会创建目标目录、合法的类名和入口文件名，并写入你的元数据。也可以手动复制
-   <code>templates/script-mod-template</code>。</p>
-<ol>
-<li>打开生成的目录和 README。</li>
-<li>确认配套的 <code>BuildingBlocks/AngelScript.dll</code> 已安装。</li>
-<li>不修改生成的源码，直接启动 Player，同时确认游戏内问候语和
-   <code>ModLoader/ModLoader.log</code> 中的加载日志。</li>
-<li>保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启 Player。</li>
-<li>保持 Player 运行。保存已加载目录中的源码会自动热重载；只有新增入口、修改 id
-   或修改依赖时才需要重启。</li>
-<li>在 Mod 目录中运行 <code>scripts/Pack-BMLScriptMod.ps1</code>；产物位于
-   <code>dist/&lt;目录名&gt;.zip</code>。再在没有开发目录副本的环境中测试该 zip。</li>
-</ol>
-<p>先阅读<a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/">脚本 Mod 教程导读</a>，
-需要准确声明时使用其中的 API 参考。支持脚本 Mod 的 SDK 会把同一套页面安装到
-<code>share/BML/docs/zh-CN</code>。</p>
-<h2 id="mod_1">开始编写原生 Mod<a class="headerlink" href="#mod_1" title="Permanent link">&para;</a></h2>
-<ol>
-<li>在存放源码项目的目录中打开 PowerShell，用 SDK 模板创建 Mod：</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLNativeMod.ps1&quot;</span> <span class="p">`</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
-</code></pre></div>
-<p>命令会让 CMake target、C++ 类名、源文件名和元数据保持一致。也可以手动复制
-   <code>templates/native-mod-template</code>。</p>
-<ol>
-<li>打开生成的 README。先运行 <code>cmake --help</code>，明确选择本机已安装的 Visual
-   Studio 生成器，再配置它的 Win32 目标，并让 <code>CMAKE_PREFIX_PATH</code> 指向解压后的
-   BML+ SDK。源码和构建目录应尽量短，例如 <code>C:\Mods\MyMod</code>，避免 MSBuild 在过深
-   目录中出现文件跟踪错误。</li>
-<li>让 <code>VIRTOOLS_SDK_PATH</code> 指向 Virtools SDK 2.1。</li>
-<li>构建 <code>RelWithDebInfo</code>，并将 Mod 安装到 <code>ModLoader/Mods</code>。原生接口会让 C++ 对象
-   跨越 DLL 边界，因此原生 Mod 必须与装载它的 Loader 链接同一套 MSVC 运行库。
-   <code>BMLPlus-&lt;version&gt;.zip</code> 中的运行时基于 Release 版 MSVC 运行库构建，Debug
-   <code>.bmodp</code> 与之不具备 ABI 兼容性；<code>RelWithDebInfo</code> 在使用兼容运行库的同时保留调试
-   信息。<code>bml_add_mod</code> 会把 Mod 的运行库固定为所配置 SDK 使用的那一套，并在
-   <code>CMAKE_MSVC_RUNTIME_LIBRARY</code> 与之冲突时直接让配置失败，所以两者不会在无声中错位。
-   <code>BMLPlus-SDK-&lt;version&gt;-Debug.zip</code> 是受支持的例外。它包含 Debug 版
-   <code>bin/BMLPlus.dll</code> 及其 <code>.pdb</code>，只要同时用这个 Debug Loader 覆盖
-   <code>BuildingBlocks/BMLPlus.dll</code>，Debug Mod 就是有效的。Loader 和所有已安装的原生
-   Mod 必须处于同一侧；测试待发布产物前要换回 Release 版 Loader。</li>
-<li>启动该 Ballance 安装目录中的 Player，等待主菜单出现，然后同时确认游戏内提示、
-   <code>ModLoader/ModLoader.log</code> 中的加载日志和示例命令。只看到 BML+ 版本并不代表目标
-   Mod 已经加载。</li>
-<li>构建 Release，并测试准备发布的同一个产物。</li>
-</ol>
-<p>SDK 的 CMake 入口为：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">BML</span><span class="w"> </span><span class="s">CONFIG</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">bml_add_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="w"> </span><span class="s">MyMod.cpp</span><span class="p">)</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">bml_install_mod</span><span class="p">(</span><span class="s">MyMod</span><span class="p">)</span>
-</code></pre></div>
-<p>增加所有权、回调、UI 或跨 Mod 服务前，先阅读<a href="../native-mod-api/">原生 Mod API 总览</a>；
-某项能力有不止一种写法时，参见<a href="../native-api-routes/">原生 API 该走哪条路</a>。</p>
-<h2 id="_2">两条路线共同遵守的规则<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h2 id="_3">能不能混用<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>混用是预期用法，同一个函数里同时用三种也可以。interface struct 由 Loader 自己实现，
+读的是 <code>IBML</code> 读的同一份状态，因此不存在第二份副本，也没有需要同步的东西。
+<code>Runtime::ReadState</code> 与 <code>IsIngame</code> 不会互相矛盾。</p>
+<p>会显现出来的差异有三处：</p>
 <ul>
-<li>保持 Mod id 稳定。其他 Mod 会用它声明依赖和服务所有权。</li>
-<li>在加载前声明依赖，不要在逐帧回调中临时寻找必需的 Mod。</li>
-<li>CK 借用对象不转移所有权；关卡和对象变化后要重新验证。</li>
-<li>限制逐 Tick、渲染、引擎 Hook 和同步 RPC 中的工作量。</li>
-<li>开发期间记录一条明确的启动日志，并在干净的 <code>ModLoader/Mods</code> 目录中测试发布包。</li>
-<li>在 Mod README 中写明所需的 BML+、CKAngelScript、原生插件和依赖版本。</li>
+<li><strong>失败怎么报告。</strong> 旧式 C++ 函数大多直接返回值或什么都不返回，<code>RegisterCommand</code>
+  失败时只写日志。interface struct 的函数一律返回状态：<code>BML_OK</code>，或者 <code>Defines.h</code>
+  里的某个负数错误码。它们外层的 inline C++ 包装带 <code>[[nodiscard]]</code>，要么处理这个
+  状态，要么显式转成 <code>(void)</code>。</li>
+<li><strong>拿回来的是什么。</strong> 旧式 C++ 查找给的是引擎指针，只在对象存活期间有效，且只能
+  在游戏线程上使用。门面给的是值：一个普通结构体，或者一个 Loader 在解析前能先
+  校验的 <code>BML_ObjectRef</code>。</li>
+<li><strong>线程。</strong> 旧式 C++ 接口只能在游戏线程上用。interface struct 的调用是在调用线程上
+  直接进入 Loader，不入队、也没有什么要等，这就是 <code>Runtime::ReadState</code> 能在
+  <code>OnProcess</code> 里用的原因。<code>BML::Gameplay</code>、<code>BML::Scene</code>、<code>BML::UI</code> 触碰的是游戏的
+  数组、游戏对象和 Loader 自己绘制的界面，<code>BML::Events</code> 的队列不带锁，因此这四个从
+  别的线程调用一律返回 <code>BML_ERROR_WRONG_THREAD</code>。<code>BML::Runtime</code> 和 <code>BML::Speedrun</code>
+  不拒绝其他线程，但同样是给游戏线程用的。在 Loader 加载完 Mod 之前，它们全都返回
+  <code>BML_ERROR_FAIL</code>。</li>
 </ul>
-<h2 id="mod_2">选择跨 Mod 通信方式<a class="headerlink" href="#mod_2" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>需求</th>
-<th>使用</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>同一进程内少量具名标量或字节值</td>
-<td>DataShare</td>
-</tr>
-<tr>
-<td>Mod 之间的类型化请求与响应、异步结果、Topic、版本化数据或高吞吐</td>
-<td>由原生 Mod 实现的生成式 IMC 接口</td>
-</tr>
-<tr>
-<td>BML+ 内建的运行时、玩法、事件、UI 或速通服务</td>
-<td>对应语言已有的 BML+ 类型化 API</td>
-</tr>
-<tr>
-<td>CKAngelScript runtime script 或 Component 之间通信</td>
-<td>在执行模型合适时使用 CKAngelScript <code>Message</code> 或 <code>Async</code></td>
-</tr>
-</tbody>
-</table>
-<p>不要自定义 JSON 消息格式，也不要手写字段编号。编写 <code>.imc</code> 接口，由
-<code>bml_target_imc_api</code> 生成 C++ 绑定，并让 schema lock 与接口一起维护。参见
-<a href="../imc/">跨 Mod 通信</a>和<a href="../imc-author-guide/">创建类型化 IMC API</a>。</p>
-<p>脚本 Mod 可以使用 BML+ 类型化脚本 API 和 DataShare。自定义 IMC Provider 仍由
-原生 Mod 提供。如果脚本必须调用原生服务，应由该原生插件提供小型、类型化的
-CKAngelScript 扩展。</p>
-<h2 id="_3">性能与所有权<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>BML 回调和同步 IMC handler 通常在游戏线程执行。稳定的查询结果应缓存为 id 或可
-重新验证的引用；准备工作移出热回调；Topic 使用有界容量并监控丢弃数。</p>
-<p>需要修改引擎内部、高频执行、控制原生内存或提供高吞吐服务时使用原生 Mod。策略、
-配置和低频控制调用可以留在脚本层，使开发和调试更直接。</p>
-<h2 id="_4">发布<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h2 id="_4">延伸阅读<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ul>
-<li>原生 Mod 通常发布为 <code>.bmodp</code>，并同时导出 <code>BMLEntry(IBML*)</code> 和
-  <code>BMLExit(IMod*)</code>。</li>
-<li>脚本 Mod 发布为单个 <code>*.mod.as</code> 文件，或包含且只包含一个入口的 zip；
-  <code>.bmodp</code> 只属于原生 Mod。</li>
-<li>测试实际发布的产物，而不只是开发目录或 <code>RelWithDebInfo</code> 构建。</li>
-<li>Mod README 应写明依赖、支持版本、安装、配置和有效的问题反馈方式。</li>
+<li><a href="../native-mod-api/">原生 Mod API 概览</a></li>
+<li><a href="../imc/">跨 Mod 通信</a></li>
+<li><a href="../imc-author-guide/">编写类型化 IMC 接口</a></li>
 </ul>
 
 

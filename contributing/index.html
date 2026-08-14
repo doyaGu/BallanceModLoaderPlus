@@ -415,6 +415,34 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../native-api-routes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which native API to use
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
     
     
@@ -426,10 +454,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -447,8 +475,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -651,10 +679,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -672,8 +700,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1195,13 +1223,18 @@ specified.</p>
 <td>ABI/compile tests, template configure/build, and installed SDK check</td>
 </tr>
 <tr>
-<td>IMC runtime or built-in Provider</td>
-<td><code>src/ImcApi.cpp</code>, <code>src/ImcRuntime.*</code>, <code>src/BuiltinImcApis.*</code></td>
+<td>IMC runtime</td>
+<td><code>src/ImcApi.cpp</code>, <code>src/ImcRuntime.*</code></td>
 <td>IMC runtime/compatibility tests and native IMC smoke test</td>
 </tr>
 <tr>
-<td>IMC interface definition</td>
-<td><code>imc/interfaces/</code>, <code>tools/imc_codegen.py</code></td>
+<td>Built-in interface struct or the reads behind it</td>
+<td><code>include/BML/Interface.h</code>, <code>src/Interfaces.cpp</code>, <code>src/BuiltinCapabilities.*</code></td>
+<td>Focused interface tests, the C ABI compile test, and native smoke test</td>
+</tr>
+<tr>
+<td>IMC code generator or its sample interface</td>
+<td><code>tools/imc_codegen.py</code>, <code>tests/imc/</code></td>
 <td>Generator check, compatibility test, and review of interface, lock, and header together</td>
 </tr>
 <tr>
@@ -1226,24 +1259,35 @@ introduction.</p>
 release line. Do not change virtual function signatures or order, object
 layout, ownership rules, or types passed across that boundary.</p>
 <p>The <code>BML_*</code> C APIs and IMC use explicit handles, status codes, and allocation
-functions. Preserve their documented ownership and compatibility rules. New
-cross-mod services should normally use a generated IMC interface instead of a
-new ad hoc C++ ABI.</p>
+functions. Preserve their documented ownership and compatibility rules. A new
+loader capability belongs in a versioned interface struct reached through
+<code>BML_GetInterface</code>; a service one Mod publishes for other Mods belongs in a
+generated IMC interface rather than a new ad hoc C++ ABI.</p>
 <p>Script APIs are public source interfaces. A binding change must update the
 script API reference, author documentation, and runtime smoke coverage in the
 same change.</p>
 <h2 id="generated-interfaces">Generated interfaces<a class="headerlink" href="#generated-interfaces" title="Permanent link">&para;</a></h2>
-<p>Do not edit files under <code>include/BML/Generated</code> by hand. Change the matching
-<code>.imc</code> file and run the generator. For example:</p>
+<p>The loader publishes no <code>.imc</code> interface of its own; the generator is an
+authoring tool for Mods that publish theirs. Two <code>.imc</code> files live in this
+repository, both as tests. <code>tests/imc/test.sample.imc</code> keeps the generator, its
+lock format, and its committed output under test.
+<code>tests/smoke/smoke.native.imc</code> belongs to the native smoke Mod, which publishes
+it and consumes it again in the Player so the loader's IMC exports stay
+exercised at runtime; <code>bml_target_imc_api</code> generates its header into the build
+tree, so only the <code>.imc</code> and its lock are committed.</p>
+<p>Do not edit a generated header by hand. Change the matching <code>.imc</code> file and run
+the generator. For the sample interface that is:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">include</span><span class="p">/</span><span class="n">BML</span><span class="p">/</span><span class="n">Generated</span> <span class="p">`</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">imc</span><span class="p">/</span><span class="n">interfaces</span><span class="p">/</span><span class="n">bml</span><span class="p">.</span><span class="n">events</span><span class="p">.</span><span class="n">imc</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
 </code></pre></div>
 <p>Review and commit the <code>.imc</code>, <code>.imc.lock</code>, and generated header together. The
 lock owns stable field and endpoint identities; do not edit its numbers by
-hand. A normal BML+ build runs the generator in check mode and fails when a
-committed binding is stale.</p>
+hand. A normal BML+ build runs the generator in check mode over the sample and
+fails when its committed binding is stale. The smoke interface is regenerated by
+the build itself, and a lock that no longer matches its <code>.imc</code> fails that build
+with the <code>bml_update_imc_locks</code> target to run.</p>
 <p>Public Mod-author documentation is installed from CMake into
 <code>share/BML/docs/&lt;language&gt;</code>. The release packager copies that installed tree;
 do not add a second source-document copy step to the packaging script. Editor
