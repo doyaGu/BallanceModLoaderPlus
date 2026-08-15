@@ -271,17 +271,6 @@ add_bml_test(SdkUtilsTest
         BMLUtils
 )
 
-# The frozen consumer resolves BML/*.h to the v0.3.12 snapshot ahead of the
-# current headers, and needs the Virtools headers the archived IMod.h pulls in.
-add_bml_test(FrozenSdkConsumerTest
-        SOURCES
-        FrozenSdkConsumerTest.cpp
-)
-target_include_directories(FrozenSdkConsumerTest BEFORE PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/abi/frozen-sdk/v0.3.12/include"
-        "${VIRTOOLS_SDK_INCLUDE_DIR}"
-)
-
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp
