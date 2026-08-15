@@ -2,12 +2,11 @@
 # Cross-platform utilities
 # ============================================================================
 
-# -- BML_HashUtils - FNV-1a hashing, CRC-16, SplitMix64 PRNG ----------------
+# -- BML_HashUtils - FNV-1a hashing, CRC-16 ----------------
 add_library(BML_HashUtils STATIC
     HashUtils.h
     HashUtils.cpp
     Crc16.h
-    SplitMix64.h
 )
 
 target_include_directories(BML_HashUtils PUBLIC
