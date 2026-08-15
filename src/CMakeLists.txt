@@ -151,6 +151,7 @@ set(BML_PRIVATE_HEADERS
 
 set(BML_SOURCES
         BML.cpp
+        BmlApi.cpp
         Errors.cpp
 
         HookBlock.cpp
