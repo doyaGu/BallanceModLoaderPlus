@@ -78,14 +78,6 @@ static bool ParseMetadataQuotedString(const std::string &text, size_t &pos, std:
     return false;
 }
 
-BMLVersion ParseBmlVersion(const std::string &value) {
-    int major = 0;
-    int minor = 0;
-    int patch = 0;
-    std::sscanf(value.c_str(), "%d.%d.%d", &major, &minor, &patch);
-    return BMLVersion(major, minor, patch);
-}
-
 ScriptModReloadPolicy ParseScriptModReloadPolicy(const std::string &value) {
     const std::string normalized = utils::ToLower(utils::TrimStringCopy(value));
     if (normalized == "auto")

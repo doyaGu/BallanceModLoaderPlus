@@ -20,6 +20,7 @@
 #include "ScriptModRuntime.h"
 #include "ScriptSourceSnapshotBuilder.h"
 #include "Utils/PathUtils.h"
+#include "Utils/SdkUtils.h"
 #include "Utils/StringUtils.h"
 
 namespace BML {
@@ -69,12 +70,6 @@ std::string FormatTimestamp(uint64_t timestampMs) {
     std::ostringstream stream;
     stream << std::put_time(&localTime, "%H:%M:%S") << '.'
            << std::setw(3) << std::setfill('0') << (timestampMs % 1000);
-    return stream.str();
-}
-
-std::string VersionToString(const BMLVersion &version) {
-    std::ostringstream stream;
-    stream << version.major << '.' << version.minor << '.' << version.patch;
     return stream.str();
 }
 
@@ -915,12 +910,12 @@ ScriptModSnapshot ScriptDevToolsService::BuildSnapshot(ScriptMod *mod) const {
     for (const auto &dependency : definition.Dependencies) {
         ScriptDependencySnapshot item;
         item.Id = dependency.Id;
-        item.MinVersion = VersionToString(dependency.MinVersion);
+        item.MinVersion = dependency.MinVersion.ToString();
         item.Optional = dependency.Optional;
         IMod *target = m_Context ? m_Context->FindMod(dependency.Id.c_str()) : nullptr;
         item.Satisfied = dependency.Optional;
         if (!dependency.Optional && target && !IsFailedScriptMod(target)) {
-            item.Satisfied = ParseBmlVersion(target->GetVersion() ? target->GetVersion() : "0.0.0") >=
+            item.Satisfied = utils::ParseVersion(target->GetVersion() ? target->GetVersion() : "0.0.0") >=
                              dependency.MinVersion;
         }
         snapshot.Dependencies.push_back(std::move(item));

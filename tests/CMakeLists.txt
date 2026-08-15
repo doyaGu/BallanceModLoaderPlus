@@ -264,6 +264,13 @@ add_bml_test(InterfaceStructOffsetsTest
         InterfaceStructOffsetsTest.cpp
 )
 
+add_bml_test(SdkUtilsTest
+        SOURCES
+        SdkUtilsTest.cpp
+        DEPENDENCIES
+        BMLUtils
+)
+
 # The frozen consumer resolves BML/*.h to the v0.3.12 snapshot ahead of the
 # current headers, and needs the Virtools headers the archived IMod.h pulls in.
 add_bml_test(FrozenSdkConsumerTest

@@ -23,6 +23,7 @@
 #include "RenderHook.h"
 #include "Overlay.h"
 #include "Logger.h"
+#include "SdkUtils.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScriptBindings.h"
 #include "ScriptDevToolsService.h"
@@ -762,36 +763,6 @@ int ModContext::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
 
     auto invocationLock = LockModInvocation();
 
-    // A relaxed semantic version parser:
-    // - Reads up to three numeric parts.
-    // - "1.2"     -> (1,2,0)
-    // - "1.2.3-x" -> (1,2,3)  (suffix ignored)
-    auto parseRelaxed = [](const char *s) -> BMLVersion {
-        if (!s || !*s) return BMLVersion(0, 0, 0);
-        int parts[3] = {0, 0, 0};
-        int n = 0;
-        const char *p = s;
-
-        // Scan digits, allow arbitrary separators/suffix after a part
-        while (*p && n < 3) {
-            // Skip non-digits until we find a digit
-            while (*p && (*p < '0' || *p > '9')) ++p;
-            if (!*p) break;
-
-            // Accumulate one integer part
-            int val = 0;
-            while (*p >= '0' && *p <= '9') {
-                val = val * 10 + (*p - '0');
-                ++p;
-            }
-            parts[n++] = val;
-
-            // Skip until next digit or end (tolerate '.', '-', '+', etc.)
-            while (*p && (*p < '0' || *p > '9')) ++p;
-        }
-        return BMLVersion(parts[0], parts[1], parts[2]);
-    };
-
     try {
         struct DependencySnapshot {
             std::string Id;
@@ -846,7 +817,7 @@ int ModContext::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
             }
 #endif
             const char *verStr = depMod->GetVersion();
-            BMLVersion have = parseRelaxed(verStr);
+            BMLVersion have = utils::ParseVersion(verStr);
 
             // If version is older than required and it's not optional -> not satisfied
             if (have < dependency.MinVersion) {
@@ -2282,7 +2253,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             continue;
         }
 #endif
-        const BMLVersion have = BML::ParseBmlVersion(dependencyMod->GetVersion() ? dependencyMod->GetVersion() : "0.0.0");
+        const BMLVersion have = utils::ParseVersion(dependencyMod->GetVersion() ? dependencyMod->GetVersion() : "0.0.0");
         if (have < dependency.MinVersion && !dependency.Optional) {
             diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required. "
                          "Hot reload does not cascade reload dependencies; update/reload that dependency first, or restart.";
@@ -2291,7 +2262,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         }
     }
 
-    const BMLVersion candidateVersion = BML::ParseBmlVersion(candidate.Version);
+    const BMLVersion candidateVersion = utils::ParseVersion(candidate.Version);
     for (const auto &entry : m_ModDependencies) {
         IMod *dependent = entry.first;
         if (!dependent || dependent == mod)

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <vector>
 
+#include "Utils/SdkUtils.h"
 #include "Utils/StringUtils.h"
 
 namespace BML {
@@ -147,7 +148,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
         const std::string bmlVersion = MetadataArg(tag, "bml");
         if (!bmlVersion.empty()) {
             reflected.Metadata["bml"] = bmlVersion;
-            reflected.MinBmlVersion = ParseBmlVersion(bmlVersion);
+            reflected.MinBmlVersion = utils::ParseVersion(bmlVersion);
         }
     }
 
@@ -164,7 +165,7 @@ bool ScriptModDefinitionBuilder::Build(CKContext *context,
             dependency.Optional = tag.Name == "bml.optional";
             const std::string version = MetadataArg(tag, "version");
             if (!version.empty())
-                dependency.MinVersion = ParseBmlVersion(version);
+                dependency.MinVersion = utils::ParseVersion(version);
             reflected.Dependencies.push_back(dependency);
             continue;
         }

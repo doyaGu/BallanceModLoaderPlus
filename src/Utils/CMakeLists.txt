@@ -66,6 +66,29 @@ target_include_directories(BML_StringUtils PUBLIC
 
 target_link_libraries(BML_StringUtils PUBLIC utf8)
 
+# -- BML_SdkUtils - Helpers over the public BML SDK types --------------------
+add_library(BML_SdkUtils STATIC
+    SdkUtils.h
+    SdkUtils.cpp
+)
+
+target_include_directories(BML_SdkUtils PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${BML_INCLUDE_DIR}
+    ${VIRTOOLS_SDK_INCLUDE_DIR}
+)
+
+# SdkUtils.h reaches BML/IMod.h and with it the Virtools headers, which need
+# the same conformance exception the VirtoolsSDK::* targets already carry.
+target_compile_options(BML_SdkUtils PUBLIC
+    $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
+)
+
+set_target_properties(BML_SdkUtils PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    FOLDER "Utils"
+)
+
 set_target_properties(BML_StringUtils PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     FOLDER "Utils"
@@ -196,6 +219,7 @@ target_link_libraries(BML_Utils INTERFACE
     BML_HashUtils
     BML_JsonUtils
     BML_ReedSolomon
+    BML_SdkUtils
     BML_StringUtils
     BML_TimeUtils
 )

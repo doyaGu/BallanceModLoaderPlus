@@ -49,7 +49,6 @@ struct ScriptMetadataTag {
     std::unordered_map<std::string, std::string> Args;
 };
 
-BMLVersion ParseBmlVersion(const std::string &value);
 bool ParseScriptMetadataTag(const std::string &metadata,
                             ScriptMetadataTag &tag,
                             std::string &diagnostic);
