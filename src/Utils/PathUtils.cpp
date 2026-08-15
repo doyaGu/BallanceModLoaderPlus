@@ -719,6 +719,17 @@ namespace utils {
         return path.substr(0, length);
     }
 
+std::wstring GetParentDirectoryW(const std::wstring &path) {
+    const std::wstring trimmed = TrimTrailingSeparatorsW(path);
+    const size_t separator = trimmed.find_last_of(L"\\/");
+    if (separator == std::wstring::npos)
+        return {};
+    if (separator == 2 && trimmed.size() == 3 && trimmed[1] == L':')
+        return {};
+
+    return trimmed.substr(0, separator);
+}
+
     bool IsPathInsideRootW(const std::wstring &path, const std::wstring &root) {
         if (path.empty() || root.empty())
             return false;

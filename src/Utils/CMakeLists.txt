@@ -84,6 +84,10 @@ target_compile_options(BML_SdkUtils PUBLIC
     $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
 )
 
+target_link_libraries(BML_SdkUtils PUBLIC
+    BML_PathUtils
+)
+
 set_target_properties(BML_SdkUtils PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     FOLDER "Utils"

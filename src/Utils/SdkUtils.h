@@ -32,6 +32,22 @@ inline BMLVersion ParseVersion(const std::string &value) {
     return ParseVersion(value.c_str());
 }
 
+// Which module an address belongs to, and where that module sits on disk. The
+// handle is an opaque module identity (an HMODULE value): not reference
+// counted, so it is only something to compare against, never something to keep
+// or to free. Windows.h stays out of this header on purpose -- the .cpp casts
+// internally -- so ParseVersion consumers do not inherit it. The
+// command-ownership map and the IMC owner resolution both attribute a call
+// through these; they used to each carry their own copy of the
+// GetModuleHandleExA sequence.
+void *GetModuleFromAddress(const void *address);
+
+// The directory a loaded module sits in. GetModuleFileNameW truncates instead
+// of failing when the buffer is too small, so the buffer grows until the name
+// fits. Empty when the module is null or its name cannot be read.
+std::wstring GetModuleDirectory(void *module);
+
+std::wstring GetModuleDirectoryFromAddress(const void *address);
 
 } // namespace utils
 

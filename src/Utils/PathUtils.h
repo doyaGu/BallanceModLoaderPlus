@@ -134,6 +134,11 @@ namespace utils {
     std::wstring NormalizePathW(const std::wstring &path);
     std::string NormalizePathUtf8(const std::string &path);
     std::wstring TrimTrailingSeparatorsW(const std::wstring &path);
+
+    // The directory part of a path, with trailing separators trimmed and drive
+    // roots ("C:\") answering empty. Used for module and game directory
+    // resolution, where an empty answer means "no parent" rather than an error.
+    std::wstring GetParentDirectoryW(const std::wstring &path);
     bool IsPathInsideRootW(const std::wstring &path, const std::wstring &root);
     bool TryGetFinalPathW(const std::wstring &path, std::wstring &finalPath);
 
