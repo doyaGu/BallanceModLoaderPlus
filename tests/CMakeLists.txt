@@ -259,6 +259,11 @@ add_bml_test(InterfaceRegistryTest
         ${BML_SOURCE_DIR}/InterfaceRegistry.cpp
 )
 
+add_bml_test(InterfaceStructOffsetsTest
+        SOURCES
+        InterfaceStructOffsetsTest.cpp
+)
+
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp
