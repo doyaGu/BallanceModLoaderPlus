@@ -2,33 +2,37 @@
 #define BML_SCRIPTCALLBACKDISPATCHER_H
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "BML/ICommand.h"
 #include "BML/IMod.h"
 #include "ScriptApiSurface.h"
-#include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"
-#include "ScriptModContextView.h"
-#include "ScriptModRuntime.h"
 
 namespace BML {
 
+class ScriptModContextView;
+class ScriptModRuntime;
+
 class ScriptCallbackDispatcher {
 public:
-    bool CacheAll(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic &diagnostic);
-    bool Release(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic *diagnostic = nullptr);
-    bool HasCallback(ScriptCallbackId id) const;
+    void Bind(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView);
+    bool Cache(ScriptDiagnostic &diagnostic);
+    bool Release(ScriptDiagnostic *diagnostic = nullptr);
 
-    bool CallOnLoad(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, ScriptDiagnostic &diagnostic);
-    bool CallOnUnload(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, ScriptDiagnostic &diagnostic);
-    bool CallOnProcess(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, ScriptDiagnostic &diagnostic);
-    bool CallGameEvent(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, size_t eventIndex, ScriptDiagnostic &diagnostic);
-    bool CallRender(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, CK_RENDER_FLAGS flags, ScriptDiagnostic &diagnostic);
-    bool CallLoadObject(CKContext *context,
-                        ScriptModRuntime &runtime,
-                        ScriptModContextView &contextView,
-                        const char *filename,
+    bool HasCallback(ScriptCallbackId id) const;
+    bool HasOnProcess() const { return HasCallback(ScriptCallbackOnProcess); }
+    bool HasOnRender() const { return HasCallback(ScriptCallbackOnRender); }
+    bool HasGameEvent() const { return HasCallback(ScriptCallbackOnGameEvent); }
+    void GetCallbackNames(std::vector<std::string> &out) const;
+
+    bool CallOnLoad(ScriptDiagnostic &diagnostic);
+    bool CallOnUnload(ScriptDiagnostic &diagnostic);
+    bool CallOnProcess(ScriptDiagnostic &diagnostic);
+    bool CallGameEvent(size_t eventIndex, ScriptDiagnostic &diagnostic);
+    bool CallRender(CK_RENDER_FLAGS flags, ScriptDiagnostic &diagnostic);
+    bool CallLoadObject(const char *filename,
                         CKBOOL isMap,
                         const char *masterName,
                         CK_CLASSID filterClass,
@@ -39,32 +43,18 @@ public:
                         XObjectArray *objectArray,
                         CKObject *masterObject,
                         ScriptDiagnostic &diagnostic);
-    bool CallLoadScript(CKContext *context,
-                        ScriptModRuntime &runtime,
-                        ScriptModContextView &contextView,
-                        const char *filename,
-                        CKBehavior *script,
-                        ScriptDiagnostic &diagnostic);
-    bool CallCheatEnabled(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, bool enable, ScriptDiagnostic &diagnostic);
-    bool CallCommandEvent(CKContext *context,
-                          ScriptModRuntime &runtime,
-                          ScriptModContextView &contextView,
-                          bool beforeCommand,
+    bool CallLoadScript(const char *filename, CKBehavior *script, ScriptDiagnostic &diagnostic);
+    bool CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic);
+    bool CallCommandEvent(bool beforeCommand,
                           ICommand *command,
                           const std::vector<std::string> &args,
                           ScriptDiagnostic &diagnostic);
-    bool CallModifyConfig(CKContext *context,
-                          ScriptModRuntime &runtime,
-                          ScriptModContextView &contextView,
-                          const char *modId,
+    bool CallModifyConfig(const char *modId,
                           const char *category,
                           const char *key,
                           IProperty *property,
                           ScriptDiagnostic &diagnostic);
-    bool CallPhysicalize(CKContext *context,
-                         ScriptModRuntime &runtime,
-                         ScriptModContextView &contextView,
-                         CK3dEntity *target,
+    bool CallPhysicalize(CK3dEntity *target,
                          CKBOOL fixed,
                          float friction,
                          float elasticity,
@@ -85,25 +75,17 @@ public:
                          int concaveCnt,
                          CKMesh **concaveMesh,
                          ScriptDiagnostic &diagnostic);
-    bool CallUnphysicalize(CKContext *context,
-                           ScriptModRuntime &runtime,
-                           ScriptModContextView &contextView,
-                           CK3dEntity *target,
-                           ScriptDiagnostic &diagnostic);
+    bool CallUnphysicalize(CK3dEntity *target, ScriptDiagnostic &diagnostic);
 
 private:
-    bool CallContextOnly(CKContext *context,
-                         ScriptModRuntime &runtime,
-                         ScriptCallbackId id,
-                         ScriptModContextView &contextView,
-                         ScriptDiagnostic &diagnostic);
-    bool CallWithEvent(CKContext *context,
-                       ScriptModRuntime &runtime,
-                       ScriptCallbackId id,
-                       ScriptModContextView &contextView,
-                       void *eventView,
-                       ScriptDiagnostic &diagnostic);
+    bool IsBound() const;
+    bool RequireBound(ScriptDiagnostic &diagnostic) const;
+    bool CallContextOnly(ScriptCallbackId id, ScriptDiagnostic &diagnostic);
+    bool CallWithEvent(ScriptCallbackId id, void *eventView, ScriptDiagnostic &diagnostic);
 
+    CKContext *m_Context = nullptr;
+    ScriptModRuntime *m_Runtime = nullptr;
+    ScriptModContextView *m_ContextView = nullptr;
     CKAngelScriptMethod *m_Methods[ScriptCallbackCount] = {};
 };
 

@@ -458,10 +458,7 @@ bool ScriptReloadCandidateBuilder::FailWithMessage(const std::string &message,
 }
 
 void ScriptReloadCandidateBuilder::ReleasePreparedHandles() {
-    if (m_EventsBound) {
-        m_CandidateEvents.Release(nullptr);
-        m_EventsBound = false;
-    }
+    m_CandidateCallbacks.Release(nullptr);
 }
 
 void ScriptReloadCandidateBuilder::DiscardPreparedCandidate() {
@@ -518,11 +515,10 @@ bool ScriptReloadCandidateBuilder::Build(ScriptModReloadResult &result, Failure 
         return FailWithDiagnostic(diagnostic, failure);
     }
 
-    m_CandidateEvents.Bind(m_Mod.m_Context ? m_Mod.m_Context->GetCKContext() : nullptr,
-                           &m_State.CandidateRuntime,
-                           &m_Mod.m_ContextView);
-    m_EventsBound = true;
-    if (!m_CandidateEvents.Cache(diagnostic))
+    m_CandidateCallbacks.Bind(m_Mod.m_Context ? m_Mod.m_Context->GetCKContext() : nullptr,
+                              m_State.CandidateRuntime,
+                              m_Mod.m_ContextView);
+    if (!m_CandidateCallbacks.Cache(diagnostic))
         return FailWithDiagnostic(diagnostic, failure);
 
     std::string validationDiagnostic;

@@ -132,7 +132,7 @@ void ScriptModReloadTransaction::DeactivateCurrentRuntime() {
     ScriptDiagnostic unloadDiagnostic;
     if (m_Mod.m_State.IsLoaded()) {
         ScriptModReloadPhaseScope unloadPhase(m_Mod, ScriptModReloadPhase::Unload);
-        if (!m_Mod.m_EventRouter.CallOnUnload(unloadDiagnostic))
+        if (!m_Mod.m_Callbacks.CallOnUnload(unloadDiagnostic))
             m_Mod.Record(unloadDiagnostic);
     }
 

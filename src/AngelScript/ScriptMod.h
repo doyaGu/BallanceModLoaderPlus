@@ -19,7 +19,7 @@
 #include "ScriptModEntryScanner.h"
 #include "ScriptModContextView.h"
 #include "ScriptModDefinition.h"
-#include "ScriptModEventRouter.h"
+#include "ScriptCallbackDispatcher.h"
 #include "ScriptModRuntime.h"
 #include "ScriptModState.h"
 #include "ScriptTimerService.h"
@@ -315,7 +315,7 @@ public:
     size_t GetQueuedScriptServiceCallbackCount() const;
     size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
     int GetActiveScriptCallCount() const;
-    void GetCallbackNames(std::vector<std::string> &out) const { m_EventRouter.GetCallbackNames(out); }
+    void GetCallbackNames(std::vector<std::string> &out) const { m_Callbacks.GetCallbackNames(out); }
 
 private:
     enum class HostRegistrationMode {
@@ -372,7 +372,7 @@ private:
     ScriptModEntry m_Entry;
     ScriptModContextView m_ContextView;
     ScriptModRuntime m_Runtime;
-    ScriptModEventRouter m_EventRouter;
+    ScriptCallbackDispatcher m_Callbacks;
     ScriptTimerService m_Timers;
     ScriptCommandService m_Commands;
     ScriptDataShareService m_DataShareRequests;

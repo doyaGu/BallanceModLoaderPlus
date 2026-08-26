@@ -330,10 +330,10 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
         cleanupFailedPrepare();
         return false;
     }
-    m_EventRouter.Bind(m_Context ? m_Context->GetCKContext() : nullptr, &m_Runtime, &m_ContextView);
+    m_Callbacks.Bind(m_Context ? m_Context->GetCKContext() : nullptr, m_Runtime, m_ContextView);
 
     ScriptDiagnostic diagnostic;
-    if (!m_EventRouter.Cache(diagnostic)) {
+    if (!m_Callbacks.Cache(diagnostic)) {
         Fail(diagnostic);
         cleanupFailedPrepare();
         return false;
@@ -412,7 +412,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
     m_HostRegistrationMode = validateHostRegistrations ? HostRegistrationMode::Validate : HostRegistrationMode::Capture;
     m_PendingHostRegistrations.clear();
     m_InLoadCallback = true;
-    const bool onLoadOk = m_EventRouter.CallOnLoad(diagnostic);
+    const bool onLoadOk = m_Callbacks.CallOnLoad(diagnostic);
     m_InLoadCallback = false;
     m_HostRegistrationMode = previousMode;
     if (!onLoadOk || m_State.IsFailed()) {
@@ -439,7 +439,7 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
 void ScriptMod::OnUnload() {
     if (m_State.IsLoaded()) {
         ScriptDiagnostic diagnostic;
-        if (!m_EventRouter.CallOnUnload(diagnostic)) {
+        if (!m_Callbacks.CallOnUnload(diagnostic)) {
             Record(diagnostic);
             if (m_Context && m_Context->GetLogger())
                 m_Context->GetLogger()->Warn("Script mod %s cleanup failed: %s",
@@ -469,7 +469,7 @@ void ScriptMod::OnLoadObject(const char *filename,
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallLoadObject(filename,
+    FailIfEventCallFailed(m_Callbacks.CallLoadObject(filename,
                                                        isMap,
                                                        masterName,
                                                        filterClass,
@@ -491,7 +491,7 @@ void ScriptMod::OnLoadScript(const char *filename, CKBehavior *script) {
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallLoadScript(filename, script, diagnostic),
+    FailIfEventCallFailed(m_Callbacks.CallLoadScript(filename, script, diagnostic),
                           diagnostic);
 }
 
@@ -526,7 +526,7 @@ void ScriptMod::OnModifyConfig(const char *category, const char *key, IProperty 
 
     ActiveConfigEventGuard activeEvent(m_ActiveConfigEvents, eventCategory, eventKey);
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallModifyConfig(GetID(), category, key, prop, diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallModifyConfig(GetID(), category, key, prop, diagnostic), diagnostic);
 }
 
 void ScriptMod::OnPreStartMenu() {
@@ -667,11 +667,11 @@ void ScriptMod::OnProcess() {
         return;
     if (!CanDispatchScriptCallback())
         return;
-    if (!m_EventRouter.HasOnProcess())
+    if (!m_Callbacks.HasOnProcess())
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallOnProcess(diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallOnProcess(diagnostic), diagnostic);
 }
 
 void ScriptMod::OnRender(CK_RENDER_FLAGS flags) {
@@ -680,11 +680,11 @@ void ScriptMod::OnRender(CK_RENDER_FLAGS flags) {
         return;
     if (!CanDispatchScriptCallback())
         return;
-    if (!m_EventRouter.HasOnRender())
+    if (!m_Callbacks.HasOnRender())
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallRender(flags, diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallRender(flags, diagnostic), diagnostic);
 }
 
 void ScriptMod::OnCheatEnabled(bool enable) {
@@ -695,7 +695,7 @@ void ScriptMod::OnCheatEnabled(bool enable) {
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallCheatEnabled(enable, diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallCheatEnabled(enable, diagnostic), diagnostic);
 }
 
 void ScriptMod::OnPhysicalize(CK3dEntity *target,
@@ -725,7 +725,7 @@ void ScriptMod::OnPhysicalize(CK3dEntity *target,
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallPhysicalize(target,
+    FailIfEventCallFailed(m_Callbacks.CallPhysicalize(target,
                                                         fixed,
                                                         friction,
                                                         elasticity,
@@ -757,7 +757,7 @@ void ScriptMod::OnUnphysicalize(CK3dEntity *target) {
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallUnphysicalize(target, diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallUnphysicalize(target, diagnostic), diagnostic);
 }
 
 void ScriptMod::OnPreCommandExecute(ICommand *command, const std::vector<std::string> &args) {
@@ -768,7 +768,7 @@ void ScriptMod::OnPreCommandExecute(ICommand *command, const std::vector<std::st
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallCommandEvent(true, command, args, diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallCommandEvent(true, command, args, diagnostic), diagnostic);
 }
 
 void ScriptMod::OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {
@@ -779,7 +779,7 @@ void ScriptMod::OnPostCommandExecute(ICommand *command, const std::vector<std::s
         return;
 
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallCommandEvent(false, command, args, diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallCommandEvent(false, command, args, diagnostic), diagnostic);
 }
 
 void ScriptMod::SetLoadFailure(const std::string &diagnostic) {
@@ -1367,20 +1367,20 @@ void ScriptMod::CallGameEvent(size_t eventIndex) {
         return;
     if (!CanDispatchScriptCallback())
         return;
-    if (!m_EventRouter.HasGameEvent())
+    if (!m_Callbacks.HasGameEvent())
         return;
     ScriptDiagnostic diagnostic;
-    FailIfEventCallFailed(m_EventRouter.CallGameEvent(eventIndex, diagnostic), diagnostic);
+    FailIfEventCallFailed(m_Callbacks.CallGameEvent(eventIndex, diagnostic), diagnostic);
 }
 
 void ScriptMod::CleanupFailedLoad() {
     const ScriptDiagnostic failureDiagnostic = m_State.GetLastDiagnostic();
     ScriptDiagnostic unloadDiagnostic;
     if (GetReloadPhase() == ScriptModReloadPhase::None) {
-        m_EventRouter.CallOnUnload(unloadDiagnostic);
+        m_Callbacks.CallOnUnload(unloadDiagnostic);
     } else {
         ScriptModReloadPhaseScope cleanupPhase(*this, ScriptModReloadPhase::Cleanup);
-        m_EventRouter.CallOnUnload(unloadDiagnostic);
+        m_Callbacks.CallOnUnload(unloadDiagnostic);
     }
     ReleaseRuntime();
     m_State.MarkLoaded(false);
@@ -1539,7 +1539,7 @@ bool ScriptMod::ReleaseScriptServices() {
 bool ScriptMod::ReleaseScriptMethodHandles() {
     ScriptDiagnostic releaseDiagnostic;
     bool ok = true;
-    if (!m_EventRouter.Release(&releaseDiagnostic)) {
+    if (!m_Callbacks.Release(&releaseDiagnostic)) {
         Record(releaseDiagnostic);
         ok = false;
     }

@@ -245,7 +245,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptModDefinition.h
             AngelScript/ScriptModDefinitionBuilder.h
             AngelScript/ScriptModEntryScanner.h
-            AngelScript/ScriptModEventRouter.h
             AngelScript/ScriptModHotReloadPathFilter.h
             AngelScript/ScriptModHotReloadService.h
             AngelScript/ScriptModLifecycle.h
@@ -289,7 +288,6 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptModDefinition.cpp
             AngelScript/ScriptModDefinitionBuilder.cpp
             AngelScript/ScriptModEntryScanner.cpp
-            AngelScript/ScriptModEventRouter.cpp
             AngelScript/ScriptModHotReloadPathFilter.cpp
             AngelScript/ScriptModHotReloadService.cpp
             AngelScript/ScriptModLifecycle.cpp

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "ScriptModEventRouter.h"
+#include "ScriptCallbackDispatcher.h"
 #include "ScriptModReloadCandidateInternal.h"
 
 namespace BML {
@@ -41,8 +41,7 @@ private:
     ScriptMod &m_Mod;
     ScriptModReloadCandidate::State &m_State;
     const ScriptModReloadOptions &m_Options;
-    ScriptModEventRouter m_CandidateEvents;
-    bool m_EventsBound = false;
+    ScriptCallbackDispatcher m_CandidateCallbacks;
     bool m_RuntimeOwned = false;
 };
 

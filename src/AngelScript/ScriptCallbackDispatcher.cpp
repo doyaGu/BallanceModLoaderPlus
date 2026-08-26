@@ -1,5 +1,9 @@
 #include "ScriptCallbackDispatcher.h"
 
+#include "ScriptCallbackEvents.h"
+#include "ScriptModContextView.h"
+#include "ScriptModRuntime.h"
+
 namespace BML {
 
 namespace {
@@ -50,12 +54,23 @@ static CKAS_STATUS WriteEventObjectArgs(CKAngelScriptArgWriter *writer, void *us
 
 } // namespace
 
-bool ScriptCallbackDispatcher::CacheAll(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic &diagnostic) {
+void ScriptCallbackDispatcher::Bind(CKContext *context,
+                                    ScriptModRuntime &runtime,
+                                    ScriptModContextView &contextView) {
+    m_Context = context;
+    m_Runtime = &runtime;
+    m_ContextView = &contextView;
+}
+
+bool ScriptCallbackDispatcher::Cache(ScriptDiagnostic &diagnostic) {
+    if (!RequireBound(diagnostic))
+        return false;
+
     for (CKAngelScriptMethod *method : m_Methods) {
         if (!method)
             continue;
         ScriptDiagnostic releaseDiagnostic;
-        if (!Release(context, runtime, &releaseDiagnostic)) {
+        if (!Release(&releaseDiagnostic)) {
             diagnostic = releaseDiagnostic;
             if (diagnostic.Message.empty())
                 diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Unload,
@@ -66,23 +81,26 @@ bool ScriptCallbackDispatcher::CacheAll(CKContext *context, ScriptModRuntime &ru
     }
 
     for (const ScriptCallbackDescriptor &descriptor : ScriptApiSurface::Callbacks()) {
-        m_Methods[descriptor.Id] = runtime.FindMethod(context, descriptor.Declaration, diagnostic);
+        m_Methods[descriptor.Id] = m_Runtime->FindMethod(m_Context, descriptor.Declaration, diagnostic);
         if (!m_Methods[descriptor.Id] && diagnostic.Status != CKAS_OK && !diagnostic.Message.empty()) {
             diagnostic.Phase = ScriptDiagnosticPhase::MethodLookup;
             diagnostic.Message = std::string("Method lookup failed for ") + descriptor.Name + ": " + diagnostic.Message;
-            Release(context, runtime, nullptr);
+            Release(nullptr);
             return false;
         }
     }
     return true;
 }
 
-bool ScriptCallbackDispatcher::Release(CKContext *context, ScriptModRuntime &runtime, ScriptDiagnostic *diagnostic) {
+bool ScriptCallbackDispatcher::Release(ScriptDiagnostic *diagnostic) {
+    if (!m_Runtime)
+        return true;
+
     bool ok = true;
     ScriptDiagnostic firstFailure;
     for (CKAngelScriptMethod *&method : m_Methods) {
         ScriptDiagnostic releaseDiagnostic;
-        if (!runtime.ReleaseMethod(context, method, &releaseDiagnostic)) {
+        if (!m_Runtime->ReleaseMethod(m_Context, method, &releaseDiagnostic)) {
             if (ok)
                 firstFailure = releaseDiagnostic;
             ok = false;
@@ -97,77 +115,82 @@ bool ScriptCallbackDispatcher::HasCallback(ScriptCallbackId id) const {
     return id >= 0 && id < ScriptCallbackCount && m_Methods[id] != nullptr;
 }
 
-bool ScriptCallbackDispatcher::CallContextOnly(CKContext *context,
-                                               ScriptModRuntime &runtime,
-                                               ScriptCallbackId id,
-                                               ScriptModContextView &contextView,
-                                               ScriptDiagnostic &diagnostic) {
-    CKAngelScriptMethod *method = m_Methods[id];
-    if (!method)
-        return true;
+void ScriptCallbackDispatcher::GetCallbackNames(std::vector<std::string> &out) const {
+    for (const ScriptCallbackDescriptor &descriptor : ScriptApiSurface::Callbacks()) {
+        if (HasCallback(descriptor.Id) && descriptor.Name)
+            out.emplace_back(descriptor.Name);
+    }
+}
 
-    ContextOnlyCallArgs args = {&contextView, &runtime.GetApi()};
+bool ScriptCallbackDispatcher::CallContextOnly(ScriptCallbackId id, ScriptDiagnostic &diagnostic) {
+    ContextOnlyCallArgs args = {m_ContextView, &m_Runtime->GetApi()};
     const ScriptCallbackDescriptor &descriptor = Descriptor(id);
     ScriptMethodCall call;
-    call.Method = method;
+    call.Method = m_Methods[id];
     call.WriteArgs = WriteContextOnlyArgs;
     call.UserData = &args;
     call.Phase = ScriptDiagnosticPhase::Callback;
     call.FailurePrefix = descriptor.FailurePrefix;
-    return runtime.CallMethod(context, call, diagnostic);
+    return m_Runtime->CallMethod(m_Context, call, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallWithEvent(CKContext *context,
-                                             ScriptModRuntime &runtime,
-                                             ScriptCallbackId id,
-                                             ScriptModContextView &contextView,
+bool ScriptCallbackDispatcher::CallWithEvent(ScriptCallbackId id,
                                              void *eventView,
                                              ScriptDiagnostic &diagnostic) {
-    CKAngelScriptMethod *method = m_Methods[id];
-    if (!method)
-        return true;
-
-    EventCallArgs args = {&contextView, eventView, &runtime.GetApi()};
+    EventCallArgs args = {m_ContextView, eventView, &m_Runtime->GetApi()};
     const ScriptCallbackDescriptor &descriptor = Descriptor(id);
     ScriptMethodCall call;
-    call.Method = method;
-    call.WriteArgs = descriptor.PayloadKind == ScriptCallbackPayloadKind::GameEventInt ? WriteGameEventArgs : WriteEventObjectArgs;
+    call.Method = m_Methods[id];
+    call.WriteArgs = descriptor.PayloadKind == ScriptCallbackPayloadKind::GameEventInt
+                         ? WriteGameEventArgs
+                         : WriteEventObjectArgs;
     call.UserData = &args;
     call.Phase = ScriptDiagnosticPhase::Callback;
     call.FailurePrefix = descriptor.FailurePrefix;
-    return runtime.CallMethod(context, call, diagnostic);
+    return m_Runtime->CallMethod(m_Context, call, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallOnLoad(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, ScriptDiagnostic &diagnostic) {
-    return CallContextOnly(context, runtime, ScriptCallbackOnLoad, contextView, diagnostic);
+bool ScriptCallbackDispatcher::CallOnLoad(ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnLoad))
+        return true;
+    return RequireBound(diagnostic) && CallContextOnly(ScriptCallbackOnLoad, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallOnUnload(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, ScriptDiagnostic &diagnostic) {
-    return CallContextOnly(context, runtime, ScriptCallbackOnUnload, contextView, diagnostic);
+bool ScriptCallbackDispatcher::CallOnUnload(ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnUnload))
+        return true;
+    return RequireBound(diagnostic) && CallContextOnly(ScriptCallbackOnUnload, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallOnProcess(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, ScriptDiagnostic &diagnostic) {
-    return CallContextOnly(context, runtime, ScriptCallbackOnProcess, contextView, diagnostic);
+bool ScriptCallbackDispatcher::CallOnProcess(ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnProcess))
+        return true;
+    return RequireBound(diagnostic) && CallContextOnly(ScriptCallbackOnProcess, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallGameEvent(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, size_t eventIndex, ScriptDiagnostic &diagnostic) {
+bool ScriptCallbackDispatcher::CallGameEvent(size_t eventIndex, ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnGameEvent))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
     if (eventIndex >= ScriptGameEventCount) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Callback, "Script game event index is out of range.");
         return false;
     }
     int eventValue = static_cast<int>(eventIndex);
-    return CallWithEvent(context, runtime, ScriptCallbackOnGameEvent, contextView, &eventValue, diagnostic);
+    return CallWithEvent(ScriptCallbackOnGameEvent, &eventValue, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallRender(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, CK_RENDER_FLAGS flags, ScriptDiagnostic &diagnostic) {
+bool ScriptCallbackDispatcher::CallRender(CK_RENDER_FLAGS flags, ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnRender))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
     ScriptRenderEventView event(flags);
-    return CallWithEvent(context, runtime, ScriptCallbackOnRender, contextView, &event, diagnostic);
+    return CallWithEvent(ScriptCallbackOnRender, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallLoadObject(CKContext *context,
-                                              ScriptModRuntime &runtime,
-                                              ScriptModContextView &contextView,
-                                              const char *filename,
+bool ScriptCallbackDispatcher::CallLoadObject(const char *filename,
                                               CKBOOL isMap,
                                               const char *masterName,
                                               CK_CLASSID filterClass,
@@ -178,6 +201,10 @@ bool ScriptCallbackDispatcher::CallLoadObject(CKContext *context,
                                               XObjectArray *objectArray,
                                               CKObject *masterObject,
                                               ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnLoadObject))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
     ScriptLoadObjectEventView event(filename,
                                     isMap,
                                     masterName,
@@ -186,54 +213,58 @@ bool ScriptCallbackDispatcher::CallLoadObject(CKContext *context,
                                     reuseMeshes,
                                     reuseMaterials,
                                     dynamic,
-                                    context,
+                                    m_Context,
                                     objectArray,
                                     masterObject);
-    return CallWithEvent(context, runtime, ScriptCallbackOnLoadObject, contextView, &event, diagnostic);
+    return CallWithEvent(ScriptCallbackOnLoadObject, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallLoadScript(CKContext *context,
-                                              ScriptModRuntime &runtime,
-                                              ScriptModContextView &contextView,
-                                              const char *filename,
+bool ScriptCallbackDispatcher::CallLoadScript(const char *filename,
                                               CKBehavior *script,
                                               ScriptDiagnostic &diagnostic) {
-    ScriptLoadScriptEventView event(context, filename, script);
-    return CallWithEvent(context, runtime, ScriptCallbackOnLoadScript, contextView, &event, diagnostic);
+    if (!HasCallback(ScriptCallbackOnLoadScript))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
+    ScriptLoadScriptEventView event(m_Context, filename, script);
+    return CallWithEvent(ScriptCallbackOnLoadScript, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallCheatEnabled(CKContext *context, ScriptModRuntime &runtime, ScriptModContextView &contextView, bool enable, ScriptDiagnostic &diagnostic) {
+bool ScriptCallbackDispatcher::CallCheatEnabled(bool enable, ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnCheatEnabled))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
     ScriptCheatEventView event(enable);
-    return CallWithEvent(context, runtime, ScriptCallbackOnCheatEnabled, contextView, &event, diagnostic);
+    return CallWithEvent(ScriptCallbackOnCheatEnabled, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallCommandEvent(CKContext *context,
-                                                ScriptModRuntime &runtime,
-                                                ScriptModContextView &contextView,
-                                                bool beforeCommand,
+bool ScriptCallbackDispatcher::CallCommandEvent(bool beforeCommand,
                                                 ICommand *command,
                                                 const std::vector<std::string> &args,
                                                 ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnCommandEvent))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
     ScriptCommandEventView event(beforeCommand ? ScriptCommandEventPre : ScriptCommandEventPost, command, &args);
-    return CallWithEvent(context, runtime, ScriptCallbackOnCommandEvent, contextView, &event, diagnostic);
+    return CallWithEvent(ScriptCallbackOnCommandEvent, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallModifyConfig(CKContext *context,
-                                                ScriptModRuntime &runtime,
-                                                ScriptModContextView &contextView,
-                                                const char *modId,
+bool ScriptCallbackDispatcher::CallModifyConfig(const char *modId,
                                                 const char *category,
                                                 const char *key,
                                                 IProperty *property,
                                                 ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnModifyConfig))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
     ScriptConfigEventView event(modId, category, key, property);
-    return CallWithEvent(context, runtime, ScriptCallbackOnModifyConfig, contextView, &event, diagnostic);
+    return CallWithEvent(ScriptCallbackOnModifyConfig, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallPhysicalize(CKContext *context,
-                                               ScriptModRuntime &runtime,
-                                               ScriptModContextView &contextView,
-                                               CK3dEntity *target,
+bool ScriptCallbackDispatcher::CallPhysicalize(CK3dEntity *target,
                                                CKBOOL fixed,
                                                float friction,
                                                float elasticity,
@@ -254,19 +285,35 @@ bool ScriptCallbackDispatcher::CallPhysicalize(CKContext *context,
                                                int concaveCnt,
                                                CKMesh **concaveMesh,
                                                ScriptDiagnostic &diagnostic) {
-    ScriptPhysicalizeEventView event(context, target, fixed, friction, elasticity, mass, collGroup, startFrozen, enableColl,
-                                     calcMassCenter, linearDamp, rotDamp, collSurface, massCenter, convexCnt,
-                                     convexMesh, ballCnt, ballCenter, ballRadius, concaveCnt, concaveMesh);
-    return CallWithEvent(context, runtime, ScriptCallbackOnPhysicalize, contextView, &event, diagnostic);
+    if (!HasCallback(ScriptCallbackOnPhysicalize))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
+    ScriptPhysicalizeEventView event(m_Context, target, fixed, friction, elasticity, mass, collGroup, startFrozen,
+                                     enableColl, calcMassCenter, linearDamp, rotDamp, collSurface, massCenter,
+                                     convexCnt, convexMesh, ballCnt, ballCenter, ballRadius, concaveCnt, concaveMesh);
+    return CallWithEvent(ScriptCallbackOnPhysicalize, &event, diagnostic);
 }
 
-bool ScriptCallbackDispatcher::CallUnphysicalize(CKContext *context,
-                                                 ScriptModRuntime &runtime,
-                                                 ScriptModContextView &contextView,
-                                                 CK3dEntity *target,
-                                                 ScriptDiagnostic &diagnostic) {
-    ScriptObjectEventView event(context, target);
-    return CallWithEvent(context, runtime, ScriptCallbackOnUnphysicalize, contextView, &event, diagnostic);
+bool ScriptCallbackDispatcher::CallUnphysicalize(CK3dEntity *target, ScriptDiagnostic &diagnostic) {
+    if (!HasCallback(ScriptCallbackOnUnphysicalize))
+        return true;
+    if (!RequireBound(diagnostic))
+        return false;
+    ScriptObjectEventView event(m_Context, target);
+    return CallWithEvent(ScriptCallbackOnUnphysicalize, &event, diagnostic);
+}
+
+bool ScriptCallbackDispatcher::IsBound() const {
+    return m_Runtime && m_ContextView;
+}
+
+bool ScriptCallbackDispatcher::RequireBound(ScriptDiagnostic &diagnostic) const {
+    if (IsBound())
+        return true;
+    diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+                                      "Script callback dispatcher is not bound.");
+    return false;
 }
 
 } // namespace BML
