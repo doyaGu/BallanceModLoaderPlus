@@ -402,6 +402,14 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptModState.cpp
     )
 
+    add_bml_test(ScriptModDefinitionTest
+            SOURCES
+            ScriptModDefinitionTest.cpp
+            ${BML_SOURCE_DIR}/AngelScript/ScriptModDefinition.cpp
+            DEPENDENCIES
+            BML_StringUtils
+    )
+
     add_bml_test(ScriptModRuntimeTest
             SOURCES
             ScriptModRuntimeTest.cpp

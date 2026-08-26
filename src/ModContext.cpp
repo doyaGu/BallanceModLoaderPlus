@@ -2121,7 +2121,13 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         }
     }
 
-    const BMLVersion candidateVersion = utils::ParseVersion(candidate.Version);
+    BMLVersion candidateVersion(0, 0, 0);
+    if (!BML::ParseScriptModVersion(candidate.Version, candidateVersion)) {
+        diagnostic = "Script mod reload candidate has an invalid version.";
+        addField("boundary", "mod_version");
+        addField("action", "fix_metadata");
+        return false;
+    }
     for (const auto &entry : m_ModDependencies) {
         IMod *dependent = entry.first;
         if (!dependent || dependent == mod)
