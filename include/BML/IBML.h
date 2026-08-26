@@ -6,7 +6,7 @@
 // older SDK calls them by slot number, and no function is ever added, removed, or
 // reordered here. Capabilities that arrived after the layout was fixed live
 // elsewhere: the BML_* C functions in BML.h, and the versioned interfaces and
-// C++ facades in Runtime.h, Scene.h, Gameplay.h, UI.h, Speedrun.h, and Events.h.
+// C++ facades in Runtime.h, Scene.h, Gameplay.h, UI.h, and Speedrun.h.
 // So when something a Mod needs is missing here, look there rather than expecting
 // it to appear below.
 //

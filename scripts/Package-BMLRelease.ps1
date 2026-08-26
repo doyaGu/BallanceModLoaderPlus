@@ -128,7 +128,6 @@ function Assert-BMLSdkStage {
         'include\BML\Interface.h',
         'include\BML\Runtime.h',
         'include\BML\Speedrun.h',
-        'include\BML\Events.h',
         'include\BML\Bui.h',
         'include\BML\Gui\Gui.h',
         'include\BML\Guids\Hooks.h',
