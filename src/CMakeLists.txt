@@ -112,7 +112,6 @@ set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
         BuiltinCapabilities.h
-        InterfaceRegistry.h
         RuntimeState.h
 
         BMLMod.h
@@ -154,7 +153,6 @@ set(BML_SOURCES
         ModManager.cpp
         ModContext.cpp
         BuiltinCapabilities.cpp
-        InterfaceRegistry.cpp
         Interfaces.cpp
         RuntimeState.cpp
 

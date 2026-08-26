@@ -12,11 +12,11 @@
 #include "BML/Speedrun.h"
 #include "BML/UI.h"
 
+#include <cstring>
 #include <iterator>
 #include <limits>
 
 #include "BuiltinCapabilities.h"
-#include "InterfaceRegistry.h"
 #include "ModContext.h"
 
 namespace {
@@ -354,7 +354,13 @@ const BML_UIInterface kUIInterface = {
     &UIShowFPS,
 };
 
-const BML::InterfaceEntry kInterfaces[] = {
+struct InterfaceEntry {
+    const char *Id;
+    uint16_t MajorVersion;
+    const void *Interface;
+};
+
+const InterfaceEntry kInterfaces[] = {
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
     {BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &kSceneInterface},
@@ -365,5 +371,21 @@ const BML::InterfaceEntry kInterfaces[] = {
 } // namespace
 
 int BML_GetInterface(const char *interfaceId, uint16_t majorVersion, const void **out) {
-    return BML::FindInterface(kInterfaces, std::size(kInterfaces), interfaceId, majorVersion, out);
+    if (!out)
+        return BML_ERROR_INVALID_PARAMETER;
+    *out = nullptr;
+    if (!interfaceId || interfaceId[0] == '\0')
+        return BML_ERROR_INVALID_PARAMETER;
+
+    bool idExists = false;
+    for (const InterfaceEntry &entry : kInterfaces) {
+        if (std::strcmp(entry.Id, interfaceId) != 0)
+            continue;
+        idExists = true;
+        if (entry.MajorVersion != majorVersion)
+            continue;
+        *out = entry.Interface;
+        return BML_OK;
+    }
+    return idExists ? BML_ERROR_VERSION_MISMATCH : BML_ERROR_NOT_FOUND;
 }

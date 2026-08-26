@@ -253,10 +253,8 @@ add_bml_test(ObjectReferenceRegistryTest
         ObjectReferenceRegistryTest.cpp
 )
 
-add_bml_test(InterfaceRegistryTest
-        SOURCES
-        InterfaceRegistryTest.cpp
-        ${BML_SOURCE_DIR}/InterfaceRegistry.cpp
+add_bml_test(InterfaceHeaderTest
+        SOURCES InterfaceHeaderTest.cpp
 )
 
 add_bml_test(InterfaceStructOffsetsTest
