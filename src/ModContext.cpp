@@ -1977,8 +1977,7 @@ IMod *ModContext::LoadMod(const std::wstring &path) {
 
 #if BML_ENABLE_ANGELSCRIPT
 IMod *ModContext::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
-    BML::ScriptModLoader loader;
-    BML::ScriptModLoadResult loadResult = loader.Load(this, GetCKContext(), candidate);
+    BML::ScriptModLoadResult loadResult = BML::LoadScriptMod(this, GetCKContext(), candidate);
     auto &scriptMod = loadResult.Mod;
     if (!scriptMod) {
         m_Logger->Error("Script Mod could not be loaded due to allocation failure.");

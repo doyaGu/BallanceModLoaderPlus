@@ -15,13 +15,9 @@ struct ScriptModLoadResult {
     bool Failed = false;
 };
 
-class ScriptModLoader {
-public:
-    ScriptModLoadResult Load(ModContext *owner, CKContext *context, const ScriptModLoadCandidate &candidate) const;
-
-private:
-    static ScriptModDefinition MakePlaceholderDefinition(const ScriptModLoadCandidate &candidate);
-};
+ScriptModLoadResult LoadScriptMod(ModContext *owner,
+                                  CKContext *context,
+                                  const ScriptModLoadCandidate &candidate);
 
 } // namespace BML
 

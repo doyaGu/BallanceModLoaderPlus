@@ -10,8 +10,9 @@
 #include "Utils/StringUtils.h"
 
 namespace BML {
+namespace {
 
-ScriptModDefinition ScriptModLoader::MakePlaceholderDefinition(const ScriptModLoadCandidate &candidate) {
+ScriptModDefinition MakePlaceholderDefinition(const ScriptModLoadCandidate &candidate) {
     ScriptModDefinition placeholder;
     const std::string syntheticId = candidate.SyntheticId.empty()
                                         ? MakeSyntheticScriptModId(candidate.RootDirectory)
@@ -25,9 +26,11 @@ ScriptModDefinition ScriptModLoader::MakePlaceholderDefinition(const ScriptModLo
     return placeholder;
 }
 
-ScriptModLoadResult ScriptModLoader::Load(ModContext *owner,
-                                          CKContext *context,
-                                          const ScriptModLoadCandidate &candidate) const {
+} // namespace
+
+ScriptModLoadResult LoadScriptMod(ModContext *owner,
+                                  CKContext *context,
+                                  const ScriptModLoadCandidate &candidate) {
     ScriptModLoadResult result;
 
     const ScriptModDefinition placeholder = MakePlaceholderDefinition(candidate);
