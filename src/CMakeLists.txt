@@ -136,8 +136,6 @@ set(BML_PRIVATE_HEADERS
         RenderHook.h
         ImcPrimitives.h
         ImcRuntime.h
-        ObjectReferenceRegistry.h
-
         CommandContext.h
         DataShare.hpp
         Logger.h

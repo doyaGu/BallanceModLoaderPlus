@@ -248,11 +248,6 @@ add_bml_test(ConfigTest
         VirtoolsSDK::VxMath
 )
 
-add_bml_test(ObjectReferenceRegistryTest
-        SOURCES
-        ObjectReferenceRegistryTest.cpp
-)
-
 add_bml_test(InterfaceHeaderTest
         SOURCES InterfaceHeaderTest.cpp
 )

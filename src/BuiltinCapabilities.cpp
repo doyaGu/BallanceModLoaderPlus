@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <new>
 #include <string>
@@ -15,7 +16,6 @@
 #include "BML/Scene.h"
 
 #include "BMLMod.h"
-#include "ObjectReferenceRegistry.h"
 #include "Logger.h"
 #include "ModContext.h"
 
@@ -23,14 +23,20 @@ namespace {
 
 constexpr uint32_t kVirtoolsObjectDomain = BML_OBJECT_DOMAIN_VIRTOOLS;
 
+// CK_ID slots can be reused. A reference therefore carries the generation that
+// was current when it was emitted, and deletion callbacks erase the slot before
+// a replacement object can inherit it.
 class ObjectReferences {
 public:
     BML_ObjectRef Make(CKObject *object) {
         if (!object || object->GetID() == 0)
             return {};
-        return m_References.Make(kVirtoolsObjectDomain,
-                                 static_cast<uint32_t>(object->GetID()),
-                                 object);
+
+        const uint32_t slot = static_cast<uint32_t>(object->GetID());
+        Entry &entry = m_Entries[slot];
+        if (entry.Identity != object)
+            entry = {object, NextGeneration()};
+        return {kVirtoolsObjectDomain, slot, entry.Generation};
     }
 
     CKObject *Resolve(ModContext *context, BML_ObjectRef reference) const {
@@ -39,8 +45,10 @@ public:
             return nullptr;
         }
         CKObject *current = context->GetCKContext()->GetObject(static_cast<CK_ID>(reference.Slot));
-        return current && !current->IsToBeDeleted() &&
-                       m_References.Matches(reference.Slot, reference.Generation, current)
+        const auto entry = m_Entries.find(reference.Slot);
+        return current && !current->IsToBeDeleted() && entry != m_Entries.end() &&
+                       entry->second.Generation == reference.Generation &&
+                       entry->second.Identity == current
                    ? current
                    : nullptr;
     }
@@ -49,13 +57,27 @@ public:
         if (!ids || count <= 0)
             return;
         for (int index = 0; index < count; ++index)
-            m_References.Invalidate(static_cast<uint32_t>(ids[index]));
+            m_Entries.erase(static_cast<uint32_t>(ids[index]));
     }
 
-    void InvalidateAll() { m_References.InvalidateAll(); }
+    void InvalidateAll() { m_Entries.clear(); }
 
 private:
-    ObjectReferenceRegistry m_References;
+    struct Entry {
+        CKObject *Identity = nullptr;
+        uint32_t Generation = 0;
+    };
+
+    uint32_t NextGeneration() {
+        const uint32_t generation = m_NextGeneration;
+        m_NextGeneration = m_NextGeneration == (std::numeric_limits<uint32_t>::max)()
+                               ? 1
+                               : m_NextGeneration + 1;
+        return generation;
+    }
+
+    std::unordered_map<uint32_t, Entry> m_Entries;
+    uint32_t m_NextGeneration = 1;
 };
 
 class BuiltinCapabilities {
