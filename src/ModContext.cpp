@@ -18,7 +18,6 @@
 #include "BML/BML.h"
 #include "BML/Timer.h"
 #include "BuiltinCapabilities.h"
-#include "EventStreams.h"
 
 #include "RenderHook.h"
 #include "Overlay.h"
@@ -135,12 +134,6 @@ CKContext *BML_GetCKContext() {
 
 CKRenderContext *BML_GetRenderContext() {
     return g_ModContext ? g_ModContext->GetRenderContext() : nullptr;
-}
-
-void ModContext::PublishEvent(int kind) {
-    BML::CaptureEventNoexcept([kind](BML::EventSnapshot &snapshot) {
-        snapshot.Kind = kind;
-    });
 }
 
 ModContext::ModContext(CKContext *context) {
@@ -406,10 +399,6 @@ void ModContext::UnloadMods() {
 #endif
 
     m_ModDependencies.clear();
-
-    // A Mod that forgot to close a stream is gone by now, so the queues go with
-    // it rather than outliving the DLL that holds the handle.
-    BML::CloseAllEventStreams();
 
     ClearFlags(BML_MODS_LOADED);
 }
@@ -958,18 +947,8 @@ void ModContext::ExecuteCommand(const char *cmd) {
     m_Logger->Info("Execute Command: %s", cmd);
 
     try {
-        BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
-            event.Kind = BML_EVENT_COMMAND_PRE;
-            event.Command = args[0];
-            event.CommandArgs.assign(args.begin() + 1, args.end());
-        });
         BroadcastCallback(&IMod::OnPreCommandExecute, command, args);
         command->Execute(this, args);
-        BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
-            event.Kind = BML_EVENT_COMMAND_POST;
-            event.Command = args[0];
-            event.CommandArgs.assign(args.begin() + 1, args.end());
-        });
         BroadcastCallback(&IMod::OnPostCommandExecute, command, args);
     } catch (const std::exception &e) {
         m_Logger->Error("Exception executing command '%s': %s", cmd, e.what());
@@ -1257,10 +1236,6 @@ void ModContext::CloseMapMenu() {
 
 void ModContext::EnableCheat(bool enable) {
     if (m_RuntimeState.SetCheatEnabled(enable)) {
-        BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
-            event.Kind = BML_EVENT_CHEAT_CHANGED;
-            event.CheatEnabled = enable;
-        });
         BroadcastCallback(&IMod::OnCheatEnabled, enable);
     }
 }
@@ -1391,14 +1366,6 @@ void ModContext::OnRender(CKRenderContext *dev) {
 }
 
 void ModContext::OnLoadGame() {
-    BML::CaptureEventNoexcept([](BML::EventSnapshot &event) {
-        event.Kind = BML_EVENT_LOAD_OBJECT;
-        event.Filename = "base.cmo";
-        event.AddToScene = true;
-        event.ReuseMeshes = true;
-        event.ReuseMaterials = true;
-        event.FilterClass = CKCID_3DOBJECT;
-    });
     BroadcastCallback(&IMod::OnLoadObject, "base.cmo", false, "", CKCID_3DOBJECT,
                       true, true, true, false, nullptr, nullptr);
 
@@ -1407,187 +1374,149 @@ void ModContext::OnLoadGame() {
     for (int i = 0; i < scriptCnt; i++) {
         auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
         if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
-            BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
-                event.Kind = BML_EVENT_LOAD_SCRIPT;
-                event.Filename = "base.cmo";
-                event.Script = MakeBuiltinObjectRef(*this, behavior);
-            });
             BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
         }
     }
 }
 
 void ModContext::OnPreStartMenu() {
-    PublishEvent(BML_EVENT_PRE_START_MENU);
     BroadcastMessage("PreStartMenu", &IMod::OnPreStartMenu);
 }
 
 void ModContext::OnPostStartMenu() {
-    PublishEvent(BML_EVENT_POST_START_MENU);
     BroadcastMessage("PostStartMenu", &IMod::OnPostStartMenu);
 }
 
 void ModContext::OnExitGame() {
-    PublishEvent(BML_EVENT_EXIT_GAME);
     BroadcastMessage("ExitGame", &IMod::OnExitGame);
 }
 
 void ModContext::OnPreLoadLevel() {
-    PublishEvent(BML_EVENT_PRE_LOAD_LEVEL);
     BroadcastMessage("PreLoadLevel", &IMod::OnPreLoadLevel);
 }
 
 void ModContext::OnPostLoadLevel() {
-    PublishEvent(BML_EVENT_POST_LOAD_LEVEL);
     BroadcastMessage("PostLoadLevel", &IMod::OnPostLoadLevel);
 }
 
 void ModContext::OnStartLevel() {
-    PublishEvent(BML_EVENT_START_LEVEL);
     BroadcastMessage("StartLevel", &IMod::OnStartLevel);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::EnterLevel);
 }
 
 void ModContext::OnPreResetLevel() {
-    PublishEvent(BML_EVENT_PRE_RESET_LEVEL);
     BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
 }
 
 void ModContext::OnPostResetLevel() {
-    PublishEvent(BML_EVENT_POST_RESET_LEVEL);
     BroadcastMessage("PostResetLevel", &IMod::OnPostResetLevel);
 }
 
 void ModContext::OnPauseLevel() {
-    PublishEvent(BML_EVENT_PAUSE_LEVEL);
     BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::Pause);
 }
 
 void ModContext::OnUnpauseLevel() {
-    PublishEvent(BML_EVENT_UNPAUSE_LEVEL);
     BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::Resume);
 }
 
 void ModContext::OnPreExitLevel() {
-    PublishEvent(BML_EVENT_PRE_EXIT_LEVEL);
     BroadcastMessage("PreExitLevel", &IMod::OnPreExitLevel);
 }
 
 void ModContext::OnPostExitLevel() {
-    PublishEvent(BML_EVENT_POST_EXIT_LEVEL);
     BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
 }
 
 void ModContext::OnPreNextLevel() {
-    PublishEvent(BML_EVENT_PRE_NEXT_LEVEL);
     BroadcastMessage("PreNextLevel", &IMod::OnPreNextLevel);
 }
 
 void ModContext::OnPostNextLevel() {
-    PublishEvent(BML_EVENT_POST_NEXT_LEVEL);
     BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
 }
 
 void ModContext::OnDead() {
-    PublishEvent(BML_EVENT_DEAD);
     BroadcastMessage("Dead", &IMod::OnDead);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
 }
 
 void ModContext::OnPreEndLevel() {
-    PublishEvent(BML_EVENT_PRE_END_LEVEL);
     BroadcastMessage("PreEndLevel", &IMod::OnPreEndLevel);
 }
 
 void ModContext::OnPostEndLevel() {
-    PublishEvent(BML_EVENT_POST_END_LEVEL);
     BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
 }
 
 void ModContext::OnCounterActive() {
-    PublishEvent(BML_EVENT_COUNTER_ACTIVE);
     BroadcastMessage("CounterActive", &IMod::OnCounterActive);
 }
 
 void ModContext::OnCounterInactive() {
-    PublishEvent(BML_EVENT_COUNTER_INACTIVE);
     BroadcastMessage("CounterInactive", &IMod::OnCounterInactive);
 }
 
 void ModContext::OnBallNavActive() {
-    PublishEvent(BML_EVENT_BALL_NAV_ACTIVE);
     BroadcastMessage("BallNavActive", &IMod::OnBallNavActive);
 }
 
 void ModContext::OnBallNavInactive() {
-    PublishEvent(BML_EVENT_BALL_NAV_INACTIVE);
     BroadcastMessage("BallNavInactive", &IMod::OnBallNavInactive);
 }
 
 void ModContext::OnCamNavActive() {
-    PublishEvent(BML_EVENT_CAM_NAV_ACTIVE);
     BroadcastMessage("CamNavActive", &IMod::OnCamNavActive);
 }
 
 void ModContext::OnCamNavInactive() {
-    PublishEvent(BML_EVENT_CAM_NAV_INACTIVE);
     BroadcastMessage("CamNavInactive", &IMod::OnCamNavInactive);
 }
 
 void ModContext::OnBallOff() {
-    PublishEvent(BML_EVENT_BALL_OFF);
     BroadcastMessage("BallOff", &IMod::OnBallOff);
 }
 
 void ModContext::OnPreCheckpointReached() {
-    PublishEvent(BML_EVENT_PRE_CHECKPOINT_REACHED);
     BroadcastMessage("PreCheckpoint", &IMod::OnPreCheckpointReached);
 }
 
 void ModContext::OnPostCheckpointReached() {
-    PublishEvent(BML_EVENT_POST_CHECKPOINT_REACHED);
     BroadcastMessage("PostCheckpoint", &IMod::OnPostCheckpointReached);
 }
 
 void ModContext::OnLevelFinish() {
-    PublishEvent(BML_EVENT_LEVEL_FINISH);
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
     m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
 }
 
 void ModContext::OnGameOver() {
-    PublishEvent(BML_EVENT_GAME_OVER);
     BroadcastMessage("GameOver", &IMod::OnGameOver);
 }
 
 void ModContext::OnExtraPoint() {
-    PublishEvent(BML_EVENT_EXTRA_POINT);
     BroadcastMessage("ExtraPoint", &IMod::OnExtraPoint);
 }
 
 void ModContext::OnPreSubLife() {
-    PublishEvent(BML_EVENT_PRE_SUB_LIFE);
     BroadcastMessage("PreSubLife", &IMod::OnPreSubLife);
 }
 
 void ModContext::OnPostSubLife() {
-    PublishEvent(BML_EVENT_POST_SUB_LIFE);
     BroadcastMessage("PostSubLife", &IMod::OnPostSubLife);
 }
 
 void ModContext::OnPreLifeUp() {
-    PublishEvent(BML_EVENT_PRE_LIFE_UP);
     BroadcastMessage("PreLifeUp", &IMod::OnPreLifeUp);
 }
 
 void ModContext::OnPostLifeUp() {
-    PublishEvent(BML_EVENT_POST_LIFE_UP);
     BroadcastMessage("PostLifeUp", &IMod::OnPostLifeUp);
 }
 

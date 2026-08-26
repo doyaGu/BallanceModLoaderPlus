@@ -89,13 +89,11 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
         ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
         ${BML_INCLUDE_DIR}/BML/TypeConvert.h
-        ${BML_INCLUDE_DIR}/BML/EventKinds.h
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h
         ${BML_INCLUDE_DIR}/BML/Gameplay.h
         ${BML_INCLUDE_DIR}/BML/UI.h
         ${BML_INCLUDE_DIR}/BML/Speedrun.h
-        ${BML_INCLUDE_DIR}/BML/Events.h
 
         ${BML_INCLUDE_DIR}/BML/Bui.h
         ${BML_INCLUDE_DIR}/BML/Gui.h
@@ -137,8 +135,6 @@ set(BML_PRIVATE_HEADERS
         Overlay.h
 
         RenderHook.h
-        EventSnapshot.h
-        EventStreams.h
         ImcPrimitives.h
         ImcRuntime.h
         ObjectReferenceRegistry.h
@@ -160,7 +156,6 @@ set(BML_SOURCES
         BuiltinCapabilities.cpp
         InterfaceRegistry.cpp
         Interfaces.cpp
-        EventStreams.cpp
         RuntimeState.cpp
 
         IMod.cpp

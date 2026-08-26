@@ -7,7 +7,6 @@
 // size checks below verify growth is paired with a minor bump.
 //
 // Offsets are the x86 MSVC layout, the only platform the loader ships on.
-#include "BML/Events.h"
 #include "BML/Gameplay.h"
 #include "BML/Interface.h"
 #include "BML/Runtime.h"
@@ -87,24 +86,6 @@ TEST(InterfaceStructOffsets, UIInterface) {
     EXPECT_GOLDEN_OFFSET(BML_UIInterface, ShowTitle, 44);
     EXPECT_GOLDEN_OFFSET(BML_UIInterface, ShowFPS, 48);
     ExpectGrowthRules<BML_UIInterface>("bml.ui", 52, 0, BML_UI_INTERFACE_MINOR);
-}
-
-TEST(InterfaceStructOffsets, EventsInterface) {
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, OpenStream, 12);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, CloseStream, 16);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadDroppedCount, 20);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, Poll, 24);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadLoad, 28);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadLoadObject, 32);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadPhysics, 36);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadPhysicsConvexMesh, 40);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadPhysicsBall, 44);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadPhysicsConcaveMesh, 48);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadCommand, 52);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadCommandArgument, 56);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadConfig, 60);
-    EXPECT_GOLDEN_OFFSET(BML_EventsInterface, ReadCheat, 64);
-    ExpectGrowthRules<BML_EventsInterface>("bml.events", 68, 0, BML_EVENTS_INTERFACE_MINOR);
 }
 
 TEST(InterfaceStructOffsets, SpeedrunInterface) {

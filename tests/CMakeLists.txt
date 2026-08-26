@@ -479,15 +479,6 @@ add_bml_test(ModInvocationGateTest
         ModInvocationGateTest.cpp
 )
 
-# The event queues need no ModContext, so this drives them through the same
-# bml.events interface a Mod sees, with the thunks defined in the test itself.
-add_bml_test(EventStreamTest
-        SOURCES
-        EventStreamTest.cpp
-        ${BML_SOURCE_DIR}/EventStreams.cpp
-        ${BML_SOURCE_DIR}/InterfaceRegistry.cpp
-)
-
 add_bml_test(ImcErrorTest
         SOURCES
         ImcErrorTest.cpp

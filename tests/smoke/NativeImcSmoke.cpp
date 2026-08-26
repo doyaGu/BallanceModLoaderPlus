@@ -1,4 +1,3 @@
-#include <BML/Events.h>
 #include <BML/Gameplay.h>
 #include <BML/IBML.h>
 #include <BML/ILogger.h>
@@ -50,21 +49,12 @@ public:
         m_RuntimePassed = CheckRuntime();
         m_UiPassed = CheckUi();
         m_SpeedrunPassed = CheckSpeedrun();
-        m_EventsPassed = CheckEvents();
         m_ImcPassed = CheckImc();
     }
 
     void OnProcess() override {
-        if (m_ExitRequested) {
-            if (m_ExitEventChecked)
-                return;
-            const bool exitEvent = PollForEvent(BML_EVENT_EXIT_GAME);
-            m_Passed = m_Passed && exitEvent;
-            m_ExitEventChecked = true;
-            GetLogger()->Info("BML native IMC smoke exit event: received=%s passed=%s",
-                              Text(exitEvent), Text(m_Passed));
+        if (m_ExitRequested)
             return;
-        }
 
         if (++m_ProcessCount != 30)
             return;
@@ -73,19 +63,23 @@ public:
         const bool gameplay = CheckGameplay();
         const bool imc = m_ImcPassed && CheckImcNotice();
         GetLogger()->Info(
-            "BML native IMC smoke: runtime=%s scene=%s gameplay=%s ui=%s speedrun=%s events=%s imc=%s",
+            "BML native IMC smoke: runtime=%s scene=%s gameplay=%s ui=%s speedrun=%s imc=%s",
             Text(m_RuntimePassed), Text(scene), Text(gameplay), Text(m_UiPassed),
-            Text(m_SpeedrunPassed), Text(m_EventsPassed), Text(imc));
+            Text(m_SpeedrunPassed), Text(imc));
         m_Passed = m_RuntimePassed && scene && gameplay && m_UiPassed &&
-                   m_SpeedrunPassed && m_EventsPassed && imc;
+                   m_SpeedrunPassed && imc;
 
         GetLogger()->Info("BML native IMC smoke requesting exit");
         m_ExitRequested = true;
         m_BML->ExitGame();
     }
 
+    void OnExitGame() override {
+        GetLogger()->Info("BML native IMC smoke exit callback: received=true passed=%s",
+                          Text(m_Passed));
+    }
+
     void OnUnload() override {
-        (void)m_Events.Close();
         (void)m_ImcNotices.Close();
         (void)m_ImcClient.Close();
         (void)m_ImcProvider.Close();
@@ -226,16 +220,6 @@ private:
                std::isfinite(state.ElapsedTime) && state.ElapsedTime >= 0.0f;
     }
 
-    bool CheckEvents() {
-        if (m_Events.Open(8) != BML_OK || !m_Events.IsOpen())
-            return false;
-
-        int dropped = -1;
-        BML::Events::Event event{};
-        return m_Events.DroppedCount(dropped) == BML_OK && dropped == 0 &&
-               m_Events.Poll(event) == BML_ERROR_NOT_FOUND;
-    }
-
     // The loader publishes no .imc interface of its own, so the only way a native
     // Mod exercises the loader's IMC exports is by publishing one itself. This one
     // plays both sides: the provider answers the RPC and publishes the topic, the
@@ -301,23 +285,8 @@ private:
             self->m_NoticeMismatched = true;
     }
 
-    bool PollForEvent(int expectedKind) {
-        for (int attempt = 0; attempt < 16; ++attempt) {
-            BML::Events::Event event{};
-            const int status = m_Events.Poll(event);
-            if (status == BML_ERROR_NOT_FOUND)
-                return false;
-            if (status != BML_OK)
-                return false;
-            if (event.Kind == expectedKind)
-                return true;
-        }
-        return false;
-    }
-
     static constexpr int kNoticeCount = 7;
 
-    BML::Events::Stream m_Events;
     // The subscription belongs to the client, so it is declared after it and torn
     // down first.
     Smoke::Provider m_ImcProvider;
@@ -329,11 +298,9 @@ private:
     bool m_RuntimePassed = false;
     bool m_UiPassed = false;
     bool m_SpeedrunPassed = false;
-    bool m_EventsPassed = false;
     bool m_ImcPassed = false;
     bool m_Passed = false;
     bool m_ExitRequested = false;
-    bool m_ExitEventChecked = false;
 };
 
 } // namespace

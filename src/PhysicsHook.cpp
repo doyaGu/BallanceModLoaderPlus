@@ -1,7 +1,5 @@
 #include "BML/Guids/physics_RT.h"
 
-#include "BuiltinCapabilities.h"
-#include "EventStreams.h"
 #include "ModContext.h"
 #include "VTables.h"
 #include "HookUtils.h"
@@ -173,31 +171,6 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         VxVector shiftMassCenter;
         beh->GetLocalParameterValue(3, &shiftMassCenter);
 
-        BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
-            event.Kind = BML_EVENT_PHYSICALIZE;
-            event.Target = MakeBuiltinObjectRef(*modContext, target);
-            event.Fixed = fixed != FALSE;
-            event.Friction = friction;
-            event.Elasticity = elasticity;
-            event.Mass = mass;
-            event.CollisionGroup = collisionGroup ? collisionGroup : "";
-            event.StartFrozen = startFrozen != FALSE;
-            event.EnableCollision = enableCollision != FALSE;
-            event.AutoCalculateMassCenter = autoCalcMassCenter != FALSE;
-            event.LinearDamp = linearSpeedDampening;
-            event.RotDamp = rotSpeedDampening;
-            event.CollisionSurface = collisionSurface ? collisionSurface : "";
-            event.MassCenter = {shiftMassCenter.x, shiftMassCenter.y, shiftMassCenter.z};
-            for (int i = 0; i < convexCount; ++i)
-                event.ConvexMeshes.push_back(MakeBuiltinObjectRef(*modContext, convexMesh[i]));
-            for (int i = 0; i < ballCount; ++i) {
-                event.BallCenters.push_back({ballCenter[i].x, ballCenter[i].y, ballCenter[i].z});
-                event.BallRadii.push_back(ballRadius[i]);
-            }
-            for (int i = 0; i < concaveCount; ++i)
-                event.ConcaveMeshes.push_back(MakeBuiltinObjectRef(*modContext, concaveMesh[i]));
-        });
-
         modContext->BroadcastCallback(&IMod::OnPhysicalize, target,
                                                fixed, friction, elasticity, mass,
                                                collisionGroup, startFrozen, enableCollision,
@@ -211,10 +184,6 @@ int Physicalize(const CKBehaviorContext &behcontext) {
         delete[] ballRadius;
         delete[] concaveMesh;
     } else {
-        BML::CaptureEventNoexcept([&](BML::EventSnapshot &event) {
-            event.Kind = BML_EVENT_UNPHYSICALIZE;
-            event.Target = MakeBuiltinObjectRef(*modContext, target);
-        });
         modContext->BroadcastCallback(&IMod::OnUnphysicalize, target);
     }
 

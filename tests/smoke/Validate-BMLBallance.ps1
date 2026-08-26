@@ -538,8 +538,8 @@ if (-not $SkipPlayer) {
     if (-not $SkipScriptSmoke) {
         Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
         Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: capabilities') 'BML script mod summary: capabilities'
-        Add-SmokeCheck $checks 'script-capabilities' (Test-SmokeTextContains $modLogText 'BML capability smoke: runtime=true stream=true') 'BML capability smoke: runtime=true stream=true'
-        Add-SmokeCheck $checks 'script-imc-stream' (Test-SmokeTextContains $modLogText 'BML IMC stream poll: status=0') 'BML IMC stream poll: status=0'
+        Add-SmokeCheck $checks 'script-capabilities' (Test-SmokeTextContains $modLogText 'BML capability smoke: runtime=true') 'BML capability smoke: runtime=true'
+        Add-SmokeCheck $checks 'script-event-callback' (Test-SmokeTextContains $modLogText 'BML script event callback: exit_game') 'BML script event callback: exit_game'
         if ($SingleFileSmoke) {
             Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'
         }
@@ -579,8 +579,8 @@ if (-not $SkipPlayer) {
     if ($NativeImcSmokeMod) {
         $scriptGameplaySnapshotPattern = 'BML gameplay snapshot: status=0 count=[1-9][0-9]* values=true'
         Add-SmokeCheck $checks 'script-gameplay-snapshot' (Test-SmokeTextMatches $modLogText $scriptGameplaySnapshotPattern) $scriptGameplaySnapshotPattern
-        Add-SmokeCheck $checks 'native-imc-interfaces' (Test-SmokeTextContains $modLogText 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true imc=true') 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true events=true imc=true'
-        Add-SmokeCheck $checks 'native-imc-exit-event' (Test-SmokeTextContains $modLogText 'BML native IMC smoke exit event: received=true passed=true') 'BML native IMC smoke exit event: received=true passed=true'
+        Add-SmokeCheck $checks 'native-imc-interfaces' (Test-SmokeTextContains $modLogText 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true imc=true') 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true imc=true'
+        Add-SmokeCheck $checks 'native-exit-callback' (Test-SmokeTextContains $modLogText 'BML native IMC smoke exit callback: received=true passed=true') 'BML native IMC smoke exit callback: received=true passed=true'
         Add-SmokeCheck $checks 'native-imc-unload' (Test-SmokeTextContains $modLogText 'BML native IMC smoke unloaded') 'BML native IMC smoke unloaded'
     }
     if ($LegacyNativeSmoke) {

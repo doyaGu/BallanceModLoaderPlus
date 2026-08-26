@@ -418,8 +418,6 @@ private:
 
     void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
-    void PublishEvent(int kind);
-
     int m_Flags = 0;
     BML::RuntimeState m_RuntimeState;
 #if BML_ENABLE_ANGELSCRIPT

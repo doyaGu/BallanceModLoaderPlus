@@ -29,13 +29,11 @@
 #include "BML/ImcWire.hpp"
 #include "BML/ImcCpp.hpp"
 #include "BML/TypeConvert.h"
-#include "BML/EventKinds.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
 #include "BML/Gameplay.h"
 #include "BML/UI.h"
 #include "BML/Speedrun.h"
-#include "BML/Events.h"
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"

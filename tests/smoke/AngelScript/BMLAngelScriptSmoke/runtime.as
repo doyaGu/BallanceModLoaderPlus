@@ -2,9 +2,7 @@
 [bml.require id="BML" version="0.3.13"]
 
 class BMLBindingsSmokeMod {
-  BML::Events::Stream@ events;
   bool loggedGameplay = false;
-  bool loggedPoll = false;
 
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Runtime::State runtime = BML::Runtime::GetState();
@@ -12,9 +10,7 @@ class BMLBindingsSmokeMod {
     BML::Runtime::Score score = BML::Runtime::GetScore();
     bool runtimeOk = runtime.Playing == (runtime.InGame && !runtime.Paused) &&
                      clock.Frame >= 0 && score.HS >= 0;
-    bool streamOk = BML::Events::Open(events, 8) == BML::ERROR_OK && events !is null && events.IsOpen;
-    ctx.LogInfo("BML capability smoke: runtime=" + (runtimeOk ? "true" : "false") +
-                " stream=" + (streamOk ? "true" : "false"));
+    ctx.LogInfo("BML capability smoke: runtime=" + (runtimeOk ? "true" : "false"));
     ctx.LogInfo("BML script mod summary: capabilities");
   }
 
@@ -37,18 +33,14 @@ class BMLBindingsSmokeMod {
       }
     }
 
-    if (events is null || !events.IsOpen || loggedPoll)
-      return;
-    BML::Events::Event@ event;
-    int status = events.Poll(event);
-    ctx.LogInfo("BML IMC stream poll: status=" + status +
-                " event=" + ((event is null) ? "none" : "record"));
-    loggedPoll = true;
+  }
+
+  void OnGameEvent(const BML::ModContext &in ctx, BML::GameEvent event) {
+    if (event == BML::GameEvent::GAME_EVENT_EXIT_GAME)
+      ctx.LogInfo("BML script event callback: exit_game");
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
-    if (events !is null)
-      events.Close();
     ctx.LogInfo("Goodbye!");
   }
 }
