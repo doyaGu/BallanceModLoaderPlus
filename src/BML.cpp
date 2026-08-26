@@ -5,20 +5,12 @@
 
 #include <MinHook.h>
 
-#include <intrin.h>
-#include <limits>
-
 #include "CKContext.h"
 
-#include "BML/BML.h"
-#include "ModContext.h"
 #include "ModManager.h"
 #include "RenderHook.h"
 #include "Overlay.h"
 #include "HookUtils.h"
-#include "PathUtils.h"
-#include "StringUtils.h"
-
 
 CKERROR CreateModManager(CKContext *context) {
     new ModManager(context);
