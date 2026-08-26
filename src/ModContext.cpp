@@ -23,7 +23,6 @@
 #include "Overlay.h"
 #include "Logger.h"
 #include "LegacyModVersion.h"
-#include "SdkUtils.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScriptBindings.h"
 #include "ScriptDevToolsService.h"
@@ -48,6 +47,44 @@ namespace {
     constexpr wchar_t kTempDirectoryName[] = L"Temp";
     constexpr wchar_t kInstanceDirectoryName[] = L"Instance";
     constexpr wchar_t kPackagesDirectoryName[] = L"Packages";
+
+    HMODULE ModuleFromAddress(const void *address) {
+        if (!address)
+            return nullptr;
+
+        HMODULE module = nullptr;
+        if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                  reinterpret_cast<LPCSTR>(address),
+                                  &module)) {
+            return nullptr;
+        }
+        return module;
+    }
+
+    std::wstring ModuleDirectory(HMODULE module) {
+        if (!module)
+            return {};
+
+        std::wstring path(260, L'\0');
+        for (;;) {
+            const DWORD written = ::GetModuleFileNameW(
+                module, path.data(), static_cast<DWORD>(path.size()));
+            if (written == 0)
+                return {};
+            if (written < path.size()) {
+                path.resize(written);
+                return utils::GetParentDirectoryW(path);
+            }
+            if (path.size() >= 32768)
+                return {};
+            path.resize(path.size() * 2);
+        }
+    }
+
+    std::wstring ModuleDirectoryFromAddress(const void *address) {
+        return ModuleDirectory(ModuleFromAddress(address));
+    }
 
     std::wstring ResolveGameDirectoryFromExecutable(const std::wstring &executablePath) {
         if (executablePath.empty())
@@ -870,7 +907,7 @@ int ModContext::ClearDependencies(IMod *mod) {
 void ModContext::RegisterCommand(ICommand *cmd) {
     // Taken before the lock: this is a virtual the Mod calls across the DLL
     // boundary, so the return address is in whichever module is registering.
-    void *const registrar = utils::GetModuleFromAddress(_ReturnAddress());
+    void *const registrar = ModuleFromAddress(_ReturnAddress());
 
     std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_CommandContext.RegisterCommand(registrar, cmd)) {
@@ -891,7 +928,7 @@ int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
     if (!name || name[0] == '\0')
         return BML_ERROR_INVALID_PARAMETER;
 
-    void *const caller = utils::GetModuleFromAddress(callerAddress);
+    void *const caller = ModuleFromAddress(callerAddress);
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
@@ -1080,7 +1117,7 @@ const char *ModContext::GetDirectoryUtf8(DirectoryType type) {
 
 std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const char *modId) const {
     if (!modId || !*modId)
-        return utils::GetModuleDirectoryFromAddress(callerAddress);
+        return ModuleDirectoryFromAddress(callerAddress);
 
     std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
@@ -1093,7 +1130,7 @@ std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const ch
     // A native Mod lives wherever its DLL was loaded from.
     const auto handle = m_ModToDllHandleMap.find(mod);
     if (handle != m_ModToDllHandleMap.end() && handle->second)
-        return utils::GetModuleDirectory(handle->second.get());
+        return ModuleDirectory(static_cast<HMODULE>(handle->second.get()));
 
 #if BML_ENABLE_ANGELSCRIPT
     // A script Mod has no DLL of its own; its root is the directory it was scanned
@@ -1106,7 +1143,7 @@ std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const ch
 
     // The built-in Mods are part of the loader itself.
     if (mod == static_cast<IMod *>(m_BMLMod) || mod == static_cast<IMod *>(m_BallTypeMod))
-        return utils::GetModuleDirectoryFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
+        return ModuleDirectoryFromAddress(reinterpret_cast<const void *>(&BML_GetModContext));
 
     return {};
 }
@@ -2377,13 +2414,13 @@ std::string ModContext::GetNativeImcOwnerId(
     if (!callerAddress)
         return {};
 
-    void *callerModule = utils::GetModuleFromAddress(callerAddress);
+    HMODULE callerModule = ModuleFromAddress(callerAddress);
     if (!callerModule)
         return {};
 
     std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
-    void *const bmlModule = utils::GetModuleFromAddress(&BML_GetModContext);
+    HMODULE const bmlModule = ModuleFromAddress(&BML_GetModContext);
     if (bmlModule && callerModule == bmlModule) {
         if (!requestedOwnerId || !*requestedOwnerId || !m_BMLMod)
             return {};

@@ -257,13 +257,6 @@ add_bml_test(InterfaceStructOffsetsTest
         InterfaceStructOffsetsTest.cpp
 )
 
-add_bml_test(SdkUtilsTest
-        SOURCES
-        SdkUtilsTest.cpp
-        DEPENDENCIES
-        BMLUtils
-)
-
 add_bml_test(LegacyModVersionTest
         SOURCES
         LegacyModVersionTest.cpp

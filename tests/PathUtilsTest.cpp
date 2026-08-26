@@ -348,6 +348,14 @@ TEST_F(PathUtilsTest, PathManipulation) {
     EXPECT_EQ(L"D:\\Games\\Steam", utils::NormalizePathW(L"D:/Games/Steam"));
 }
 
+TEST_F(PathUtilsTest, ParentDirectoryEdgeCases) {
+    EXPECT_EQ(utils::GetParentDirectoryW(L"C:\\dir\\file.txt"), L"C:\\dir");
+    EXPECT_EQ(utils::GetParentDirectoryW(L"C:\\dir\\"), L"C:");
+    EXPECT_EQ(utils::GetParentDirectoryW(L"C:\\"), L"");
+    EXPECT_EQ(utils::GetParentDirectoryW(L"file.txt"), L"");
+    EXPECT_EQ(utils::GetParentDirectoryW(L"dir\\file.txt"), L"dir");
+}
+
 // Test path validation functions
 TEST_F(PathUtilsTest, PathValidation) {
     // IsPathValid - note that Windows paths with drive letters contain colons,
