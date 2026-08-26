@@ -264,6 +264,13 @@ add_bml_test(SdkUtilsTest
         BMLUtils
 )
 
+add_bml_test(LegacyModVersionTest
+        SOURCES
+        LegacyModVersionTest.cpp
+        DEPENDENCIES
+        VirtoolsSDK::CK2
+)
+
 add_bml_test(IniFileTest
         SOURCES
         IniFileTest.cpp

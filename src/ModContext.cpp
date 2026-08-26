@@ -22,6 +22,7 @@
 #include "RenderHook.h"
 #include "Overlay.h"
 #include "Logger.h"
+#include "LegacyModVersion.h"
 #include "SdkUtils.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScriptBindings.h"
@@ -745,7 +746,7 @@ int ModContext::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
             }
 #endif
             const char *verStr = depMod->GetVersion();
-            BMLVersion have = utils::ParseVersion(verStr);
+            BMLVersion have = BML::ParseLegacyModVersion(verStr);
 
             // If version is older than required and it's not optional -> not satisfied
             if (have < dependency.MinVersion) {
@@ -2112,7 +2113,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             continue;
         }
 #endif
-        const BMLVersion have = utils::ParseVersion(dependencyMod->GetVersion() ? dependencyMod->GetVersion() : "0.0.0");
+        const BMLVersion have = BML::ParseLegacyModVersion(dependencyMod->GetVersion());
         if (have < dependency.MinVersion && !dependency.Optional) {
             diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required. "
                          "Hot reload does not cascade reload dependencies; update/reload that dependency first, or restart.";

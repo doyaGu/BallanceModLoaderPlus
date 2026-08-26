@@ -111,6 +111,7 @@ set(BML_PUBLIC_HEADERS
 set(BML_PRIVATE_HEADERS
         ModManager.h
         ModContext.h
+        LegacyModVersion.h
         BuiltinCapabilities.h
         RuntimeState.h
 
