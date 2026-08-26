@@ -232,7 +232,6 @@ ScriptModRuntime::ScriptModRuntime(ScriptModRuntime &&other) noexcept
       m_Api(nullptr),
       m_Object(other.m_Object),
       m_ModuleLoaded(other.m_ModuleLoaded),
-      m_Loaded(other.m_Loaded),
       m_Owner(other.m_Owner) {
     RebindCachedPointersAfterMove();
     other.ResetMovedFrom();
@@ -251,7 +250,6 @@ ScriptModRuntime &ScriptModRuntime::operator=(ScriptModRuntime &&other) noexcept
     m_Api = nullptr;
     m_Object = other.m_Object;
     m_ModuleLoaded = other.m_ModuleLoaded;
-    m_Loaded = other.m_Loaded;
     m_Owner = other.m_Owner;
 
     RebindCachedPointersAfterMove();
@@ -268,7 +266,6 @@ void ScriptModRuntime::ResetMovedFrom() noexcept {
     m_Api = nullptr;
     m_Object = nullptr;
     m_ModuleLoaded = false;
-    m_Loaded = false;
     m_Owner = nullptr;
 }
 
@@ -787,7 +784,6 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
 bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic) {
     if (!m_Object && (!m_ModuleLoaded || m_ModuleName.empty())) {
         m_ModuleLoaded = false;
-        m_Loaded = false;
         return true;
     }
 
@@ -840,7 +836,6 @@ bool ScriptModRuntime::Release(CKContext *context, ScriptDiagnostic *diagnostic)
 
     if (ok) {
         m_ModuleLoaded = false;
-        m_Loaded = false;
         m_AngelScript = nullptr;
         m_Api = nullptr;
     }

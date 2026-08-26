@@ -429,7 +429,6 @@ bool ScriptMod::LoadCurrentRuntime(bool validateHostRegistrations,
             return false;
         }
     }
-    m_Runtime.SetLoaded(true);
     m_PendingFailureCleanup.store(false, std::memory_order_release);
     TouchRuntimeGeneration();
     TouchModGeneration();

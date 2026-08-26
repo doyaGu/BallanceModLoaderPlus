@@ -135,7 +135,6 @@ public:
     CKAngelScriptObject *GetObject() const { return m_Object; }
     const ::CKAngelScriptAdapter::Api &GetApi() const { return m_Adapter.GetApi(); }
     CKAngelScript *GetAngelScript() const { return m_Adapter.GetAngelScript(); }
-    void SetLoaded(bool loaded) { m_Loaded = loaded; }
     void SetOwner(ScriptMod *owner) { m_Owner = owner; }
     ScriptMod *GetOwner() const { return m_Owner; }
     static ScriptMod *GetCurrentScriptMod();
@@ -211,7 +210,6 @@ private:
     const ::CKAngelScriptAdapter::Api *m_Api = nullptr;
     CKAngelScriptObject *m_Object = nullptr;
     bool m_ModuleLoaded = false;
-    bool m_Loaded = false;
     ScriptMod *m_Owner = nullptr;
 };
 
