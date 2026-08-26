@@ -24,54 +24,6 @@
 namespace utils {
     namespace {
         constexpr DWORD kInitialPathBufferSize = MAX_PATH + 1;
-        constexpr wchar_t kBinDirectoryName[] = L"Bin";
-        constexpr wchar_t kBuildingBlocksDirectoryName[] = L"BuildingBlocks";
-
-        bool EqualsIgnoreCase(const std::wstring &lhs, const wchar_t *rhs) {
-            if (!rhs) {
-                return false;
-            }
-
-            size_t index = 0;
-            while (index < lhs.size() && rhs[index] != L'\0') {
-                if (towlower(lhs[index]) != towlower(rhs[index])) {
-                    return false;
-                }
-                ++index;
-            }
-
-            return index == lhs.size() && rhs[index] == L'\0';
-        }
-
-        std::filesystem::path GetExecutableDirectoryPath(const std::filesystem::path &executablePath) {
-            if (executablePath.empty()) {
-                return {};
-            }
-
-            return executablePath.has_filename() ? executablePath.parent_path() : executablePath;
-        }
-
-        std::filesystem::path GetGameDirectoryFromExecutablePath(
-                const std::filesystem::path &executablePath) {
-            const std::filesystem::path executableDir = GetExecutableDirectoryPath(executablePath);
-            if (executableDir.empty()) {
-                return {};
-            }
-
-            const std::wstring leaf = executableDir.filename().wstring();
-            if ((EqualsIgnoreCase(leaf, kBinDirectoryName) ||
-                 EqualsIgnoreCase(leaf, kBuildingBlocksDirectoryName)) &&
-                executableDir.has_parent_path()) {
-                return executableDir.parent_path().lexically_normal();
-            }
-
-            return executableDir.lexically_normal();
-        }
-
-        std::filesystem::path NormalizePathIfPresent(const std::filesystem::path &path) {
-            return path.empty() ? std::filesystem::path() : path.lexically_normal();
-        }
-
         template <typename CharT, typename Api>
         std::basic_string<CharT> CallResizableWin32PathApi(Api api) {
             std::vector<CharT> buffer(kInitialPathBufferSize, CharT{});
@@ -106,22 +58,6 @@ namespace utils {
 
                 buffer.assign(buffer.size() * 2, CharT{});
             }
-        }
-
-        RuntimeLayout BuildRuntimeLayout(const std::filesystem::path &gameDirectory,
-                                         const std::filesystem::path &runtimeDirectory,
-                                         const RuntimeLayoutNames &names) {
-            RuntimeLayout layout;
-            layout.game_directory = NormalizePathIfPresent(gameDirectory);
-            layout.runtime_directory = NormalizePathIfPresent(runtimeDirectory);
-            layout.mods_directory = (layout.runtime_directory / names.mods_directory).lexically_normal();
-            layout.packages_directory =
-                (layout.runtime_directory / names.packages_directory).lexically_normal();
-            layout.crash_dumps_directory =
-                (layout.runtime_directory / names.crash_dumps_directory).lexically_normal();
-            layout.fault_log_path =
-                (layout.runtime_directory / names.fault_log_file).lexically_normal();
-            return layout;
         }
 
         std::wstring FoldPathCaseW(std::wstring path) {
@@ -887,92 +823,6 @@ std::wstring GetParentDirectoryW(const std::wstring &path) {
 
     std::string GetExecutablePathUtf8() {
         return Utf16ToUtf8(GetExecutablePathW());
-    }
-
-    // ========================================================================
-    // Runtime layout resolution
-    // ========================================================================
-
-    RuntimeLayout ResolveRuntimeLayoutFromExecutable(const std::filesystem::path &executablePath,
-                                                     const RuntimeLayoutNames &names) {
-        if (executablePath.empty()) {
-            return {};
-        }
-
-        const std::filesystem::path gameDirectory =
-            GetGameDirectoryFromExecutablePath(executablePath);
-        if (gameDirectory.empty()) {
-            return {};
-        }
-
-        return BuildRuntimeLayout(gameDirectory,
-                                  gameDirectory / names.runtime_directory,
-                                  names);
-    }
-
-    RuntimeLayout ResolveRuntimeLayoutFromRuntimeDirectory(const std::filesystem::path &runtimeDirectory,
-                                                           const RuntimeLayoutNames &names) {
-        if (runtimeDirectory.empty()) {
-            return {};
-        }
-
-        const std::filesystem::path normalizedRuntimeDirectory = runtimeDirectory.lexically_normal();
-        std::filesystem::path gameDirectory;
-        if (normalizedRuntimeDirectory.has_parent_path()) {
-            gameDirectory = normalizedRuntimeDirectory.parent_path().lexically_normal();
-        }
-
-        return BuildRuntimeLayout(gameDirectory, normalizedRuntimeDirectory, names);
-    }
-
-    RuntimeLayout ResolveRuntimeLayoutFromModsDirectory(const std::filesystem::path &modsDirectory,
-                                                        const RuntimeLayoutNames &names) {
-        if (modsDirectory.empty()) {
-            return {};
-        }
-
-        const std::filesystem::path normalizedModsDirectory = modsDirectory.lexically_normal();
-        if (normalizedModsDirectory.empty()) {
-            return {};
-        }
-
-        std::filesystem::path runtimeDirectory;
-        if (normalizedModsDirectory.has_filename() &&
-            EqualsIgnoreCase(normalizedModsDirectory.filename().wstring(), names.mods_directory.c_str()) &&
-            normalizedModsDirectory.has_parent_path()) {
-            runtimeDirectory = normalizedModsDirectory.parent_path().lexically_normal();
-            RuntimeLayout layout = ResolveRuntimeLayoutFromRuntimeDirectory(runtimeDirectory, names);
-            layout.mods_directory = normalizedModsDirectory;
-            return layout;
-        }
-
-        RuntimeLayout layout = GetRuntimeLayout(names);
-        if (layout.runtime_directory.empty()) {
-            if (normalizedModsDirectory.has_parent_path()) {
-                runtimeDirectory = normalizedModsDirectory.parent_path().lexically_normal();
-            } else {
-                runtimeDirectory = normalizedModsDirectory;
-            }
-            layout = ResolveRuntimeLayoutFromRuntimeDirectory(runtimeDirectory, names);
-        }
-        layout.mods_directory = normalizedModsDirectory;
-        return layout;
-    }
-
-    RuntimeLayout GetRuntimeLayout(const RuntimeLayoutNames &names) {
-        const std::wstring executablePath = GetExecutablePathW();
-        if (!executablePath.empty()) {
-            return ResolveRuntimeLayoutFromExecutable(std::filesystem::path(executablePath), names);
-        }
-
-        const std::wstring currentDirectory = GetCurrentDirectoryW();
-        if (currentDirectory.empty()) {
-            return {};
-        }
-
-        return ResolveRuntimeLayoutFromRuntimeDirectory(
-            std::filesystem::path(currentDirectory) / names.runtime_directory,
-            names);
     }
 
     // ========================================================================
