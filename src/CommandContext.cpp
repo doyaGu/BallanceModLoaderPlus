@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <new>
 
 #include <utf8.h>
 
@@ -157,8 +158,8 @@ bool CommandContext::CommandKeyEqual::operator()(const char *lhs, const std::str
     return EqualsCommandKey(rhs, lhs);
 }
 
-bool CommandContext::RegisterCommand(ICommand *cmd) {
-    if (!cmd)
+bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd) {
+    if (!registrar || !cmd)
         return false;
 
     const auto name = cmd->GetName();
@@ -167,37 +168,62 @@ bool CommandContext::RegisterCommand(ICommand *cmd) {
         return false;
     }
 
-    const std::string nameKey = NormalizeCommandKey(name.c_str());
-    auto [it, inserted] = m_CommandMap.emplace(nameKey, cmd);
-    if (!inserted) {
+    std::string nameKey = NormalizeCommandName(name.c_str());
+    if (m_CommandMap.find(nameKey) != m_CommandMap.end()) {
         Logger::GetDefault()->Error("Command %s has already been registered.", name.c_str());
         return false;
     }
-    m_Commands.push_back(cmd);
 
+    std::string aliasKey;
     const auto alias = cmd->GetAlias();
     if (!alias.empty()) {
         if (!IsValidCommandAlias(alias.c_str())) {
             Logger::GetDefault()->Error("Command alias %s is invalid.", alias.c_str());
-            m_CommandMap.erase(nameKey);
-            m_Commands.pop_back();
             return false;
-        } else {
-            auto aliasIt = m_CommandMap.find(alias.c_str());
-            if (aliasIt == m_CommandMap.end()) {
-                if (!CommandKeyEqual{}(nameKey, alias.c_str())) {
-                    m_CommandMap.emplace(NormalizeCommandKey(alias.c_str()), cmd);
-                }
-            } else {
-                Logger::GetDefault()->Warn("Command Alias Conflict: %s is redefined.", alias.c_str());
+        }
+
+        aliasKey = NormalizeCommandName(alias.c_str());
+        if (aliasKey == nameKey || m_CommandMap.find(aliasKey) != m_CommandMap.end()) {
+            Logger::GetDefault()->Warn("Command Alias Conflict: %s is redefined.", alias.c_str());
+            aliasKey.clear();
+        }
+    }
+
+    Entry entry;
+    entry.Command = cmd;
+    entry.Registrar = registrar;
+    entry.Name = name;
+    entry.NameKey = nameKey;
+    entry.AliasKey = aliasKey;
+
+    try {
+        const auto [nameIt, nameInserted] = m_CommandMap.emplace(nameKey, cmd);
+        if (!nameInserted)
+            return false;
+
+        if (!aliasKey.empty()) {
+            const bool aliasInserted = m_CommandMap.emplace(aliasKey, cmd).second;
+            if (!aliasInserted) {
+                m_CommandMap.erase(nameIt);
+                return false;
             }
         }
+
+        const auto position = std::lower_bound(
+            m_Commands.begin(), m_Commands.end(), name,
+            [](const Entry &item, const std::string &value) { return item.Name < value; });
+        m_Commands.insert(position, std::move(entry));
+    } catch (const std::bad_alloc &) {
+        m_CommandMap.erase(nameKey);
+        if (!aliasKey.empty())
+            m_CommandMap.erase(aliasKey);
+        return false;
     }
 
     return true;
 }
 
-std::string CommandContext::NormalizeCommandKey(const char *name) {
+std::string CommandContext::NormalizeCommandName(const char *name) {
     if (!name || name[0] == '\0')
         return {};
 
@@ -218,25 +244,48 @@ std::string CommandContext::NormalizeCommandKey(const char *name) {
     return normalized;
 }
 
-bool CommandContext::UnregisterCommand(const char *name) {
+CommandContext::UnregisterResult CommandContext::UnregisterCommand(const void *registrar,
+                                                                   const char *name) {
     if (!name || name[0] == '\0')
-        return false;
+        return UnregisterResult::InvalidName;
 
     const auto it = m_CommandMap.find(name);
     if (it == m_CommandMap.end())
-        return false;
+        return UnregisterResult::NotFound;
 
     auto *cmd = it->second;
-    for (auto eraseIt = m_CommandMap.begin(); eraseIt != m_CommandMap.end();) {
-        if (eraseIt->second == cmd) {
-            eraseIt = m_CommandMap.erase(eraseIt);
-        } else {
-            ++eraseIt;
-        }
+    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
+                                    [cmd](const Entry &item) { return item.Command == cmd; });
+    if (entry == m_Commands.end())
+        return UnregisterResult::InternalError;
+    if (!registrar || entry->Registrar != registrar)
+        return UnregisterResult::AccessDenied;
+
+    m_CommandMap.erase(entry->NameKey);
+    if (!entry->AliasKey.empty())
+        m_CommandMap.erase(entry->AliasKey);
+    m_Commands.erase(entry);
+    return UnregisterResult::Success;
+}
+
+void CommandContext::UnregisterCommands(const void *registrar) {
+    if (!registrar)
+        return;
+
+    for (const Entry &entry : m_Commands) {
+        if (entry.Registrar != registrar)
+            continue;
+
+        m_CommandMap.erase(entry.NameKey);
+        if (!entry.AliasKey.empty())
+            m_CommandMap.erase(entry.AliasKey);
     }
 
-    m_Commands.erase(std::remove(m_Commands.begin(), m_Commands.end(), cmd), m_Commands.end());
-    return true;
+    m_Commands.erase(std::remove_if(m_Commands.begin(), m_Commands.end(),
+                                    [registrar](const Entry &entry) {
+                                        return entry.Registrar == registrar;
+                                    }),
+                     m_Commands.end());
 }
 
 size_t CommandContext::GetCommandCount() const {
@@ -246,7 +295,7 @@ size_t CommandContext::GetCommandCount() const {
 ICommand *CommandContext::GetCommandByIndex(size_t index) const {
     if (index >= m_Commands.size())
         return nullptr;
-    return m_Commands[index];
+    return m_Commands[index].Command;
 }
 
 ICommand *CommandContext::GetCommandByName(const char *name) const {
@@ -258,11 +307,6 @@ ICommand *CommandContext::GetCommandByName(const char *name) const {
         return nullptr;
 
     return it->second;
-}
-
-void CommandContext::SortCommands() {
-    std::sort(m_Commands.begin(), m_Commands.end(),
-          [](ICommand *a, ICommand *b) { return a->GetName() < b->GetName(); });
 }
 
 void CommandContext::ClearCommands() {

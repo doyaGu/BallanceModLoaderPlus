@@ -67,6 +67,15 @@ protected:
         return cmd;
     }
 
+    bool Register(ICommand *command, const void *registrar = nullptr) {
+        return ctx->RegisterCommand(registrar ? registrar : this, command);
+    }
+
+    BML::CommandContext::UnregisterResult Unregister(const char *name,
+                                                     const void *registrar = nullptr) {
+        return ctx->UnregisterCommand(registrar ? registrar : this, name);
+    }
+
     BML::CommandContext *ctx = nullptr;
     std::vector<TestCommand *> ownedCommands;
 };
@@ -74,26 +83,31 @@ protected:
 // Registration
 TEST_F(CommandContextTest, RegisterCommand) {
     auto *cmd = MakeCommand("test");
-    EXPECT_TRUE(ctx->RegisterCommand(cmd));
+    EXPECT_TRUE(Register(cmd));
     EXPECT_EQ(1u, ctx->GetCommandCount());
 }
 
 TEST_F(CommandContextTest, RegisterNullCommand) {
-    EXPECT_FALSE(ctx->RegisterCommand(nullptr));
+    EXPECT_FALSE(Register(nullptr));
+    EXPECT_EQ(0u, ctx->GetCommandCount());
+}
+
+TEST_F(CommandContextTest, RegisterRequiresRegistrar) {
+    EXPECT_FALSE(ctx->RegisterCommand(nullptr, MakeCommand("test")));
     EXPECT_EQ(0u, ctx->GetCommandCount());
 }
 
 TEST_F(CommandContextTest, RegisterDuplicateName) {
     auto *cmd1 = MakeCommand("test");
     auto *cmd2 = MakeCommand("test");
-    EXPECT_TRUE(ctx->RegisterCommand(cmd1));
-    EXPECT_FALSE(ctx->RegisterCommand(cmd2));
+    EXPECT_TRUE(Register(cmd1));
+    EXPECT_FALSE(Register(cmd2));
     EXPECT_EQ(1u, ctx->GetCommandCount());
 }
 
 TEST_F(CommandContextTest, RegisterWithAlias) {
     auto *cmd = MakeCommand("teleport", "tp");
-    EXPECT_TRUE(ctx->RegisterCommand(cmd));
+    EXPECT_TRUE(Register(cmd));
 
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("teleport"));
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("tp"));
@@ -102,8 +116,8 @@ TEST_F(CommandContextTest, RegisterWithAlias) {
 TEST_F(CommandContextTest, RegisterWithSymbolAlias) {
     auto *cmd = MakeCommand("help", "?");
     auto *punctuationCmd = MakeCommand("repeat", "!");
-    EXPECT_TRUE(ctx->RegisterCommand(cmd));
-    EXPECT_TRUE(ctx->RegisterCommand(punctuationCmd));
+    EXPECT_TRUE(Register(cmd));
+    EXPECT_TRUE(Register(punctuationCmd));
 
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("help"));
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("?"));
@@ -114,7 +128,7 @@ TEST_F(CommandContextTest, RegisterWithSymbolAlias) {
 TEST_F(CommandContextTest, RegisterRejectsInvalidAliasWithoutAddingCommand) {
     auto *cmd = MakeCommand("teleport", "bad alias");
 
-    EXPECT_FALSE(ctx->RegisterCommand(cmd));
+    EXPECT_FALSE(Register(cmd));
     EXPECT_EQ(0u, ctx->GetCommandCount());
     EXPECT_EQ(nullptr, ctx->GetCommandByName("teleport"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("bad alias"));
@@ -124,46 +138,57 @@ TEST_F(CommandContextTest, RegisterRejectsCaseInsensitiveDuplicateName) {
     auto *cmd1 = MakeCommand("Teleport");
     auto *cmd2 = MakeCommand("teleport");
 
-    EXPECT_TRUE(ctx->RegisterCommand(cmd1));
-    EXPECT_FALSE(ctx->RegisterCommand(cmd2));
+    EXPECT_TRUE(Register(cmd1));
+    EXPECT_FALSE(Register(cmd2));
+}
+
+TEST_F(CommandContextTest, AliasConflictKeepsCommandRegisteredByName) {
+    auto *first = MakeCommand("teleport", "tp");
+    auto *second = MakeCommand("teleport-home", "tp");
+
+    ASSERT_TRUE(Register(first));
+    ASSERT_TRUE(Register(second));
+
+    EXPECT_EQ(static_cast<ICommand *>(first), ctx->GetCommandByName("tp"));
+    EXPECT_EQ(static_cast<ICommand *>(second), ctx->GetCommandByName("teleport-home"));
 }
 
 // Name validation
 TEST_F(CommandContextTest, InvalidCommandNames) {
     // Starts with digit
     auto *cmd1 = MakeCommand("1test");
-    EXPECT_FALSE(ctx->RegisterCommand(cmd1));
+    EXPECT_FALSE(Register(cmd1));
 
     // Starts with special char
     auto *cmd2 = MakeCommand("!test");
-    EXPECT_FALSE(ctx->RegisterCommand(cmd2));
+    EXPECT_FALSE(Register(cmd2));
 
     // Empty name
     auto *cmd3 = MakeCommand("");
-    EXPECT_FALSE(ctx->RegisterCommand(cmd3));
+    EXPECT_FALSE(Register(cmd3));
 }
 
 TEST_F(CommandContextTest, ValidCommandNames) {
     auto *cmd = MakeCommand("MyCommand123");
-    EXPECT_TRUE(ctx->RegisterCommand(cmd));
+    EXPECT_TRUE(Register(cmd));
 
     auto *underscored = MakeCommand("_debug");
-    EXPECT_TRUE(ctx->RegisterCommand(underscored));
+    EXPECT_TRUE(Register(underscored));
 
     auto *dashed = MakeCommand("mod-command");
-    EXPECT_TRUE(ctx->RegisterCommand(dashed));
+    EXPECT_TRUE(Register(dashed));
 
     auto *dotted = MakeCommand("mod.command");
-    EXPECT_TRUE(ctx->RegisterCommand(dotted));
+    EXPECT_TRUE(Register(dotted));
 
     auto *utf8Named = MakeCommand("\xE6\xB5\x8B\xE8\xAF\x95");
-    EXPECT_TRUE(ctx->RegisterCommand(utf8Named));
+    EXPECT_TRUE(Register(utf8Named));
 }
 
 // Lookup
 TEST_F(CommandContextTest, GetCommandByName) {
     auto *cmd = MakeCommand("hello");
-    ctx->RegisterCommand(cmd);
+    Register(cmd);
 
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("hello"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("nonexistent"));
@@ -173,7 +198,7 @@ TEST_F(CommandContextTest, GetCommandByName) {
 
 TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitive) {
     auto *cmd = MakeCommand("Teleport", "Tp");
-    ASSERT_TRUE(ctx->RegisterCommand(cmd));
+    ASSERT_TRUE(Register(cmd));
 
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("teleport"));
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("TELEPORT"));
@@ -183,7 +208,7 @@ TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitive) {
 
 TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitiveForUtf8) {
     auto *cmd = MakeCommand("\xC3\x84pfel");
-    ASSERT_TRUE(ctx->RegisterCommand(cmd));
+    ASSERT_TRUE(Register(cmd));
 
     EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("\xC3\xA4PFEL"));
 }
@@ -191,8 +216,8 @@ TEST_F(CommandContextTest, GetCommandByNameIsCaseInsensitiveForUtf8) {
 TEST_F(CommandContextTest, GetCommandByIndex) {
     auto *cmd1 = MakeCommand("aaa");
     auto *cmd2 = MakeCommand("bbb");
-    ctx->RegisterCommand(cmd1);
-    ctx->RegisterCommand(cmd2);
+    Register(cmd1);
+    Register(cmd2);
 
     EXPECT_EQ(static_cast<ICommand *>(cmd1), ctx->GetCommandByIndex(0));
     EXPECT_EQ(static_cast<ICommand *>(cmd2), ctx->GetCommandByIndex(1));
@@ -202,9 +227,9 @@ TEST_F(CommandContextTest, GetCommandByIndex) {
 // Unregistration
 TEST_F(CommandContextTest, UnregisterCommand) {
     auto *cmd = MakeCommand("test");
-    ctx->RegisterCommand(cmd);
+    Register(cmd);
 
-    EXPECT_TRUE(ctx->UnregisterCommand("test"));
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::Success, Unregister("test"));
     EXPECT_EQ(0u, ctx->GetCommandCount());
     EXPECT_EQ(nullptr, ctx->GetCommandByName("test"));
 }
@@ -212,13 +237,13 @@ TEST_F(CommandContextTest, UnregisterCommand) {
 TEST_F(CommandContextTest, UnregisterAllowsReplacementWithoutOldLookup) {
     auto *oldCmd = MakeCommand("reload-smoke", "rs");
     auto *newCmd = MakeCommand("reload-smoke", "rs2");
-    ASSERT_TRUE(ctx->RegisterCommand(oldCmd));
+    ASSERT_TRUE(Register(oldCmd));
 
-    EXPECT_TRUE(ctx->UnregisterCommand("reload-smoke"));
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::Success, Unregister("reload-smoke"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("reload-smoke"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("rs"));
 
-    ASSERT_TRUE(ctx->RegisterCommand(newCmd));
+    ASSERT_TRUE(Register(newCmd));
     EXPECT_EQ(static_cast<ICommand *>(newCmd), ctx->GetCommandByName("reload-smoke"));
     EXPECT_EQ(static_cast<ICommand *>(newCmd), ctx->GetCommandByName("rs2"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("rs"));
@@ -227,37 +252,65 @@ TEST_F(CommandContextTest, UnregisterAllowsReplacementWithoutOldLookup) {
 
 TEST_F(CommandContextTest, UnregisterRemovesAlias) {
     auto *cmd = MakeCommand("teleport", "tp");
-    ctx->RegisterCommand(cmd);
+    Register(cmd);
 
-    ctx->UnregisterCommand("teleport");
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::Success, Unregister("teleport"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("tp"));
 }
 
 TEST_F(CommandContextTest, UnregisterIsCaseInsensitive) {
     auto *cmd = MakeCommand("Teleport", "Tp");
-    ASSERT_TRUE(ctx->RegisterCommand(cmd));
+    ASSERT_TRUE(Register(cmd));
 
-    EXPECT_TRUE(ctx->UnregisterCommand("teleport"));
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::Success, Unregister("teleport"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("Teleport"));
     EXPECT_EQ(nullptr, ctx->GetCommandByName("tp"));
 }
 
 TEST_F(CommandContextTest, UnregisterNonexistent) {
-    EXPECT_FALSE(ctx->UnregisterCommand("nonexistent"));
-    EXPECT_FALSE(ctx->UnregisterCommand(nullptr));
-    EXPECT_FALSE(ctx->UnregisterCommand(""));
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::NotFound, Unregister("nonexistent"));
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::InvalidName, Unregister(nullptr));
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::InvalidName, Unregister(""));
+}
+
+TEST_F(CommandContextTest, OnlyRegistrarCanUnregisterCommand) {
+    int otherRegistrar = 0;
+    auto *cmd = MakeCommand("teleport", "tp");
+    ASSERT_TRUE(Register(cmd));
+
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::AccessDenied,
+              Unregister("tp", &otherRegistrar));
+    EXPECT_EQ(static_cast<ICommand *>(cmd), ctx->GetCommandByName("teleport"));
+    EXPECT_EQ(BML::CommandContext::UnregisterResult::Success, Unregister("tp"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("teleport"));
+}
+
+TEST_F(CommandContextTest, UnregisterCommandsRemovesOnlyRegistrarCommands) {
+    int otherRegistrar = 0;
+    auto *first = MakeCommand("first", "f");
+    auto *second = MakeCommand("second", "s");
+    auto *other = MakeCommand("other", "o");
+    ASSERT_TRUE(Register(first));
+    ASSERT_TRUE(Register(second));
+    ASSERT_TRUE(Register(other, &otherRegistrar));
+
+    ctx->UnregisterCommands(this);
+
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("first"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("f"));
+    EXPECT_EQ(nullptr, ctx->GetCommandByName("second"));
+    EXPECT_EQ(static_cast<ICommand *>(other), ctx->GetCommandByName("o"));
+    EXPECT_EQ(1u, ctx->GetCommandCount());
 }
 
 // Sort
-TEST_F(CommandContextTest, SortCommands) {
+TEST_F(CommandContextTest, CommandsStaySortedAfterRegistration) {
     auto *cmd1 = MakeCommand("zzz");
     auto *cmd2 = MakeCommand("aaa");
     auto *cmd3 = MakeCommand("mmm");
-    ctx->RegisterCommand(cmd1);
-    ctx->RegisterCommand(cmd2);
-    ctx->RegisterCommand(cmd3);
-
-    ctx->SortCommands();
+    Register(cmd1);
+    Register(cmd2);
+    Register(cmd3);
 
     EXPECT_EQ(static_cast<ICommand *>(cmd2), ctx->GetCommandByIndex(0)); // aaa
     EXPECT_EQ(static_cast<ICommand *>(cmd3), ctx->GetCommandByIndex(1)); // mmm
@@ -266,8 +319,8 @@ TEST_F(CommandContextTest, SortCommands) {
 
 // Clear
 TEST_F(CommandContextTest, ClearCommands) {
-    ctx->RegisterCommand(MakeCommand("aaa"));
-    ctx->RegisterCommand(MakeCommand("bbb"));
+    Register(MakeCommand("aaa"));
+    Register(MakeCommand("bbb"));
 
     ctx->ClearCommands();
     EXPECT_EQ(0u, ctx->GetCommandCount());

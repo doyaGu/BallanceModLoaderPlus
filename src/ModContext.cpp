@@ -495,8 +495,6 @@ bool ModContext::InitMods() {
         for (Config *config : m_Configs)
             SaveConfig(config);
 
-        m_CommandContext.SortCommands();
-
         OnLoadGame();
 
 #if BML_ENABLE_ANGELSCRIPT
@@ -601,9 +599,8 @@ void ModContext::DeactivateActiveMods() {
         m_CallbackMap.clear();
         m_Configs.clear();
         m_ConfigMap.clear();
-        m_CommandOwnerMap.clear();
+        m_CommandContext.ClearCommands();
     }
-    m_CommandContext.ClearCommands();
     m_ActiveMods.clear();
 }
 
@@ -883,16 +880,10 @@ int ModContext::ClearDependencies(IMod *mod) {
 void ModContext::RegisterCommand(ICommand *cmd) {
     // Taken before the lock: this is a virtual the Mod calls across the DLL
     // boundary, so the return address is in whichever module is registering.
-    void *const owner = utils::GetModuleFromAddress(_ReturnAddress());
+    void *const registrar = utils::GetModuleFromAddress(_ReturnAddress());
 
     std::lock_guard<std::mutex> lock(m_Mutex);
-    if (m_CommandContext.RegisterCommand(cmd)) {
-        try {
-            m_CommandOwnerMap[cmd] = owner;
-        } catch (const std::bad_alloc &) {
-            // The command is registered either way. Without an owner recorded it
-            // simply cannot be unregistered again, which is the old behaviour.
-        }
+    if (m_CommandContext.RegisterCommand(registrar, cmd)) {
         return;
     }
 
@@ -914,23 +905,21 @@ int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    // Resolved through the command table so that the name is matched the way the
-    // console matches it, which also lets an alias name the command.
-    ICommand *cmd = m_CommandContext.GetCommandByName(name);
-    if (!cmd)
-        return BML_ERROR_NOT_FOUND;
-
-    const auto owner = m_CommandOwnerMap.find(cmd);
-    if (!caller || owner == m_CommandOwnerMap.end() || owner->second != caller) {
-        m_Logger->Error("Refused to unregister command '%s': it belongs to another module.", name);
-        return BML_ERROR_ACCESS_DENIED;
+    switch (m_CommandContext.UnregisterCommand(caller, name)) {
+        case BML::CommandContext::UnregisterResult::Success:
+            return BML_OK;
+        case BML::CommandContext::UnregisterResult::InvalidName:
+            return BML_ERROR_INVALID_PARAMETER;
+        case BML::CommandContext::UnregisterResult::NotFound:
+            return BML_ERROR_NOT_FOUND;
+        case BML::CommandContext::UnregisterResult::AccessDenied:
+            m_Logger->Error("Refused to unregister command '%s': it belongs to another module.", name);
+            return BML_ERROR_ACCESS_DENIED;
+        case BML::CommandContext::UnregisterResult::InternalError:
+            return BML_ERROR_FAIL;
     }
 
-    if (!m_CommandContext.UnregisterCommand(name))
-        return BML_ERROR_FAIL;
-
-    m_CommandOwnerMap.erase(owner);
-    return BML_OK;
+    return BML_ERROR_FAIL;
 }
 
 int ModContext::GetCommandCount() const {

@@ -1769,8 +1769,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
     if (liveRuntimeLoaded) {
         if (state.Snapshot.CommitEntry.RootDirectory == state.Snapshot.CompileEntry.RootDirectory)
             state.Snapshot.KeepStagedRoot();
-        if (m_Context)
-            m_Context->GetCommandContext().SortCommands();
         FenceCallbacksForCurrentFrame();
         state.Prepared = false;
         state.Committed = true;
@@ -1819,8 +1817,6 @@ ScriptModReloadResult ScriptMod::CommitReloadCandidate(ScriptModReloadCandidate 
                                                      &rollbackRuntimeFailureFields);
 
     if (rollbackLoaded) {
-        if (m_Context)
-            m_Context->GetCommandContext().SortCommands();
         FenceCallbacksForCurrentFrame();
         ScriptDiagnostic failure = reloadDiagnostic;
         failure.Phase = ScriptDiagnosticPhase::Runtime;
@@ -1885,8 +1881,6 @@ ScriptModReloadResult ScriptMod::RollbackCommittedCandidate(ScriptModReloadCandi
                                                      false,
                                                      &rollbackRuntimeFailureFields);
     if (rollbackLoaded) {
-        if (m_Context)
-            m_Context->GetCommandContext().SortCommands();
         FenceCallbacksForCurrentFrame();
         state.RolledBack = true;
         result.Success = true;

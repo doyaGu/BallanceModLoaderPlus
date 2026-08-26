@@ -440,11 +440,6 @@ private:
     std::string m_ConfigDirUtf8;
 
     BML::CommandContext m_CommandContext;
-    // Which module registered each command, so that only that module can take it
-    // away again. Written on every registration rather than only the first, so an
-    // address reused by a later command is attributed to whoever registered that
-    // one. Guarded by m_Mutex.
-    std::unordered_map<const ICommand *, void *> m_CommandOwnerMap;
     BML::DataShare *m_DataShare = nullptr;
 
     FILE *m_Logfile = nullptr;

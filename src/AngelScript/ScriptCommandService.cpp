@@ -2,8 +2,6 @@
 
 #include "ScriptCommandService.h"
 
-#include <algorithm>
-#include <cctype>
 #include <new>
 #include <utility>
 #include <vector>
@@ -64,13 +62,6 @@ struct CommandCallArgs {
     ScriptCommandEventView *Event = nullptr;
     ScriptCommandCompletion *Completion = nullptr;
 };
-
-static std::string NormalizeCommandName(const std::string &name) {
-    std::string normalized = name;
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-    return normalized;
-}
 
 static bool IsCommandExecuteSignature(asIScriptFunction *callback) {
     const ScriptFunctionParam params[] = {
@@ -311,6 +302,50 @@ static void ReleaseScriptCommandObject(ScriptCommandEntry &entry) {
         entry.CompleteMethod = nullptr;
         entry.OwnsFunctionRefs = false;
     }
+}
+
+static ScriptCommandRef *RegisterCommandEntry(
+    const std::shared_ptr<ScriptCommandServiceState> &state,
+    const std::string &key,
+    ScriptCommandEntry &&entry) {
+    const unsigned int generation = entry.Generation;
+    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(state, key, generation);
+    if (!ref) {
+        ReleaseScriptCommandObject(entry);
+        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to create command reference."));
+        return nullptr;
+    }
+
+    ICommand *command = entry.Command.get();
+    ScriptCommandEntry *stored = nullptr;
+    try {
+        auto [position, inserted] = state->Commands.emplace(key, std::move(entry));
+        if (!inserted) {
+            ref->Release();
+            ReleaseScriptCommandObject(entry);
+            return nullptr;
+        }
+        stored = &position->second;
+    } catch (const std::bad_alloc &) {
+        ref->Release();
+        ReleaseScriptCommandObject(entry);
+        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Unable to retain registered command."));
+        return nullptr;
+    }
+
+    if (!state->Context->GetCommandContext().RegisterCommand(state.get(), command)) {
+        const std::string commandName = stored->Name;
+        ReleaseScriptCommandObject(*stored);
+        state->Commands.erase(key);
+        ref->Release();
+        state->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
+            "Command registration failed: " + commandName));
+        return nullptr;
+    }
+
+    return ref;
 }
 
 static void FinishCommandCall(const std::shared_ptr<ScriptCommandServiceState> &state, const std::string &key) {
@@ -581,7 +616,7 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
     if (!ValidateCommandNames(m_State->Owner, entry))
         return nullptr;
 
-    const std::string key = NormalizeCommandName(entry.Name);
+    const std::string key = CommandContext::NormalizeCommandName(entry.Name.c_str());
     if (m_State->Commands.find(key) != m_State->Commands.end()) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             "Command name is already registered by this script mod: " + entry.Name));
@@ -617,26 +652,7 @@ ScriptCommandRef *ScriptCommandService::Register(asIScriptObject *command) {
         return nullptr;
     }
 
-    const unsigned int generation = entry.Generation;
-    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
-    if (!ref) {
-        ReleaseScriptCommandObject(entry);
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Unable to create command reference."));
-        return nullptr;
-    }
-
-    ICommand *nativeCommand = entry.Command.get();
-    if (!m_State->Context->GetCommandContext().RegisterCommand(nativeCommand)) {
-        ref->Release();
-        ReleaseScriptCommandObject(entry);
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Command registration failed: " + entry.Name));
-        return nullptr;
-    }
-
-    m_State->Commands.emplace(key, std::move(entry));
-    return ref;
+    return RegisterCommandEntry(m_State, key, std::move(entry));
 }
 
 ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &definition,
@@ -669,7 +685,7 @@ ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &
     if (!ValidateCommandNames(m_State->Owner, entry))
         return nullptr;
 
-    const std::string key = NormalizeCommandName(entry.Name);
+    const std::string key = CommandContext::NormalizeCommandName(entry.Name.c_str());
     if (m_State->Commands.find(key) != m_State->Commands.end()) {
         m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
             "Command name is already registered by this script mod: " + entry.Name));
@@ -701,37 +717,23 @@ ScriptCommandRef *ScriptCommandService::Register(const ScriptCommandDefinition &
         return nullptr;
     }
 
-    const unsigned int generation = entry.Generation;
-    ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
-    if (!ref) {
-        ReleaseScriptCommandObject(entry);
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Unable to create command reference."));
-        return nullptr;
-    }
-
-    ICommand *nativeCommand = entry.Command.get();
-    if (!m_State->Context->GetCommandContext().RegisterCommand(nativeCommand)) {
-        ref->Release();
-        ReleaseScriptCommandObject(entry);
-        m_State->Owner->RecordScriptDiagnostic(MakeScriptDiagnostic(ScriptDiagnosticPhase::Runtime,
-            "Command registration failed: " + entry.Name));
-        return nullptr;
-    }
-
-    m_State->Commands.emplace(key, std::move(entry));
-    return ref;
+    return RegisterCommandEntry(m_State, key, std::move(entry));
 }
 
 bool ScriptCommandService::Unregister(const std::string &name) {
     if (!m_State || !m_State->Context)
         return false;
-    const std::string key = NormalizeCommandName(name);
+    const std::string key = CommandContext::NormalizeCommandName(name.c_str());
     auto it = m_State->Commands.find(key);
     if (it == m_State->Commands.end())
         return false;
 
-    m_State->Context->GetCommandContext().UnregisterCommand(it->second.Name.c_str());
+    const auto result = m_State->Context->GetCommandContext().UnregisterCommand(
+        m_State.get(), it->second.Name.c_str());
+    if (result != CommandContext::UnregisterResult::Success &&
+        result != CommandContext::UnregisterResult::NotFound) {
+        return false;
+    }
     if (it->second.ActiveCalls > 0) {
         it->second.PendingUnregister = true;
         return true;
@@ -747,9 +749,10 @@ void ScriptCommandService::Release(ScriptDiagnostic *) {
 
     std::shared_ptr<ScriptCommandServiceState> releasedState = m_State;
     releasedState->Active = false;
+    if (releasedState->Context) {
+        releasedState->Context->GetCommandContext().UnregisterCommands(releasedState.get());
+    }
     for (auto &entry : releasedState->Commands) {
-        if (releasedState->Context)
-            releasedState->Context->GetCommandContext().UnregisterCommand(entry.second.Name.c_str());
         ReleaseScriptCommandObject(entry.second);
     }
     releasedState->Commands.clear();
@@ -776,7 +779,7 @@ ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(const std::stri
     entry.Generation = m_State->NextGeneration++;
     entry.TestExecute = std::move(execute);
 
-    const std::string key = NormalizeCommandName(entry.Name);
+    const std::string key = CommandContext::NormalizeCommandName(entry.Name.c_str());
     const unsigned int generation = entry.Generation;
     ScriptCommandRef *ref = new (std::nothrow) ScriptCommandRef(m_State, key, generation);
     if (!ref)
@@ -787,7 +790,7 @@ ScriptCommandRef *ScriptCommandService::AddTestCommandForRelease(const std::stri
 
 bool ScriptCommandService::InvokeTestCommandForRelease(const std::string &name,
                                                        const std::vector<std::string> &args) {
-    return InvokeTestCommand(m_State, NormalizeCommandName(name), args);
+    return InvokeTestCommand(m_State, CommandContext::NormalizeCommandName(name.c_str()), args);
 }
 #endif
 

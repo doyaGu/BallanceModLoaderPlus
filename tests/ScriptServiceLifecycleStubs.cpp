@@ -25,7 +25,7 @@ const char *CKAngelScriptAdapter::StatusName(CKAS_STATUS) {
 
 namespace BML {
 
-bool CommandContext::RegisterCommand(ICommand *) {
+bool CommandContext::RegisterCommand(const void *, ICommand *) {
     return false;
 }
 
@@ -37,9 +37,20 @@ bool CommandContext::IsValidCommandName(const char *name) {
     return name && name[0] != '\0';
 }
 
-bool CommandContext::UnregisterCommand(const char *) {
-    return false;
+std::string CommandContext::NormalizeCommandName(const char *name) {
+    std::string normalized = name ? name : "";
+    for (char &ch : normalized) {
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    }
+    return normalized;
 }
+
+CommandContext::UnregisterResult CommandContext::UnregisterCommand(const void *, const char *) {
+    return UnregisterResult::NotFound;
+}
+
+void CommandContext::UnregisterCommands(const void *) {}
 
 ScriptCommandEventView::ScriptCommandEventView(ScriptCommandEventPhase,
                                                ICommand *,

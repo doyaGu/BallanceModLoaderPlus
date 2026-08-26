@@ -13,6 +13,14 @@ namespace BML {
 
     class CommandContext {
     public:
+        enum class UnregisterResult {
+            Success,
+            InvalidName,
+            NotFound,
+            AccessDenied,
+            InternalError,
+        };
+
         CommandContext();
 
         CommandContext(const CommandContext &rhs) = delete;
@@ -23,14 +31,14 @@ namespace BML {
         CommandContext &operator=(const CommandContext &rhs) = delete;
         CommandContext &operator=(CommandContext &&rhs) noexcept = delete;
 
-        bool RegisterCommand(ICommand *cmd);
-        bool UnregisterCommand(const char *name);
+        bool RegisterCommand(const void *registrar, ICommand *cmd);
+        UnregisterResult UnregisterCommand(const void *registrar, const char *name);
+        void UnregisterCommands(const void *registrar);
 
         size_t GetCommandCount() const;
         ICommand *GetCommandByIndex(size_t index) const;
         ICommand *GetCommandByName(const char *name) const;
 
-        void SortCommands();
         void ClearCommands();
 
         const char *GetVariable(const char *key) const;
@@ -55,8 +63,17 @@ namespace BML {
         static std::vector<std::string> ParseCommandLine(const char *cmd);
         static bool IsValidCommandAlias(const char *alias);
         static bool IsValidCommandName(const char *name);
+        static std::string NormalizeCommandName(const char *name);
 
     private:
+        struct Entry {
+            ICommand *Command = nullptr;
+            const void *Registrar = nullptr;
+            std::string Name;
+            std::string NameKey;
+            std::string AliasKey;
+        };
+
         struct CommandKeyHash {
             using is_transparent = void;
 
@@ -72,9 +89,7 @@ namespace BML {
             bool operator()(const char *lhs, const std::string &rhs) const noexcept;
         };
 
-        static std::string NormalizeCommandKey(const char *name);
-
-        std::vector<ICommand *> m_Commands;
+        std::vector<Entry> m_Commands;
         typedef std::unordered_map<std::string, ICommand *, CommandKeyHash, CommandKeyEqual>
             CommandMap;
         CommandMap m_CommandMap;
