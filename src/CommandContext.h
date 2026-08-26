@@ -41,10 +41,6 @@ namespace BML {
 
         void ClearCommands();
 
-        const char *GetVariable(const char *key) const;
-        bool AddVariable(const char *key, const char *value);
-        bool RemoveVariable(const char *key);
-
         bool SetOutputCallback(CommandOutputCallback callback, void *userdata);
         void ClearOutputCallback();
 
@@ -58,7 +54,6 @@ namespace BML {
         }
 
         static char *AllocPrintfV(const char *format, va_list args);
-        static char *AllocPrintf(const char *format, ...);
 
         static std::vector<std::string> ParseCommandLine(const char *cmd);
         static bool IsValidCommandAlias(const char *alias);
@@ -93,9 +88,6 @@ namespace BML {
         typedef std::unordered_map<std::string, ICommand *, CommandKeyHash, CommandKeyEqual>
             CommandMap;
         CommandMap m_CommandMap;
-        typedef std::unordered_map<std::string, std::string> VariableMap;
-        VariableMap m_Variables;
-
         CommandOutputCallback m_OutputCallback = nullptr;
         void *m_OutputCallbackData = nullptr;
     };

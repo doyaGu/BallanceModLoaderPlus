@@ -314,41 +314,6 @@ void CommandContext::ClearCommands() {
     m_Commands.clear();
 }
 
-const char *CommandContext::GetVariable(const char *key) const {
-    if (!key || key[0] == '\0')
-        return nullptr;
-
-    auto it = m_Variables.find(key);
-    if (it == m_Variables.end())
-        return nullptr;
-    return it->second.c_str();
-}
-
-bool CommandContext::AddVariable(const char *key, const char *value) {
-    if (!key || key[0] == '\0')
-        return false;
-
-    if (!value)
-        value = "";
-
-    bool inserted;
-    VariableMap::iterator it;
-    std::tie(it, inserted) = m_Variables.insert({key, value});
-    return inserted;
-}
-
-bool CommandContext::RemoveVariable(const char *key) {
-    if (!key || key[0] == '\0')
-        return false;
-
-    auto it = m_Variables.find(key);
-    if (it == m_Variables.end())
-        return false;
-
-    m_Variables.erase(it);
-    return true;
-}
-
 bool CommandContext::SetOutputCallback(CommandOutputCallback callback, void *userdata) {
     if (!callback || m_OutputCallback)
         return false;
@@ -384,14 +349,6 @@ char *CommandContext::AllocPrintfV(const char *format, va_list args) {
     const size_t bufferSize = message.size() + 1;
     auto *string = new char[bufferSize];
     std::memcpy(string, message.c_str(), bufferSize);
-    return string;
-}
-
-char *CommandContext::AllocPrintf(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    char *string = AllocPrintfV(format, args);
-    va_end(args);
     return string;
 }
 

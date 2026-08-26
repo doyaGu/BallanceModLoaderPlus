@@ -327,45 +327,6 @@ TEST_F(CommandContextTest, ClearCommands) {
     EXPECT_EQ(nullptr, ctx->GetCommandByName("aaa"));
 }
 
-// Variables
-TEST_F(CommandContextTest, VariableLifecycle) {
-    EXPECT_TRUE(ctx->AddVariable("key", "value"));
-    EXPECT_STREQ("value", ctx->GetVariable("key"));
-
-    // Duplicate insert fails
-    EXPECT_FALSE(ctx->AddVariable("key", "other"));
-    EXPECT_STREQ("value", ctx->GetVariable("key"));
-
-    EXPECT_TRUE(ctx->RemoveVariable("key"));
-    EXPECT_EQ(nullptr, ctx->GetVariable("key"));
-}
-
-TEST_F(CommandContextTest, VariableNullHandling) {
-    EXPECT_FALSE(ctx->AddVariable(nullptr, "val"));
-    EXPECT_FALSE(ctx->AddVariable("", "val"));
-    EXPECT_EQ(nullptr, ctx->GetVariable(nullptr));
-    EXPECT_EQ(nullptr, ctx->GetVariable(""));
-    EXPECT_FALSE(ctx->RemoveVariable(nullptr));
-}
-
-TEST_F(CommandContextTest, VariableNullValue) {
-    // Null value should be stored as empty string
-    EXPECT_TRUE(ctx->AddVariable("key", nullptr));
-    EXPECT_STREQ("", ctx->GetVariable("key"));
-}
-
-TEST_F(CommandContextTest, AllocPrintfHandlesNullAndFormatsText) {
-    char *empty = BML::CommandContext::AllocPrintf(nullptr);
-    ASSERT_NE(empty, nullptr);
-    EXPECT_STREQ("", empty);
-    delete[] empty;
-
-    char *formatted = BML::CommandContext::AllocPrintf("%s %d", "value", 42);
-    ASSERT_NE(formatted, nullptr);
-    EXPECT_STREQ("value 42", formatted);
-    delete[] formatted;
-}
-
 // Output callback
 TEST_F(CommandContextTest, OutputCallback) {
     std::string captured;
