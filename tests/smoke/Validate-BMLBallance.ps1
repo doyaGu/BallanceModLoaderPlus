@@ -290,8 +290,8 @@ $legacyNativeSmokeFixtures = @(
     [pscustomobject]@{
         FileName = 'DebugUtilities.bmodp'
         ModId = 'DebugUtilities'
-        ExpectedSha256 = '452039D194A9E9620E381EA1F29BE735DEC2EF38BAC8F75746558FE9F80127E9'
-        LoadNeedle = 'Loading Mod DebugUtilities[Debug Utilities] v0.3.1'
+        ExpectedSha256 = 'B5CB4C2EC69CF3EC26D0BFF46B5F1B446303F4893E3C3EFA3E90CF96D7A1D954'
+        LoadNeedle = 'Loading Mod DebugUtilities[Debug Utilities] v0.3.2'
     },
     [pscustomobject]@{
         FileName = 'TravelMode.bmodp'
