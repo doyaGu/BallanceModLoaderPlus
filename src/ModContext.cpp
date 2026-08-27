@@ -182,7 +182,8 @@ ModContext::ModContext(CKContext *context) {
     if (m_DataShare) m_DataShare->AddRef();
 #if BML_ENABLE_ANGELSCRIPT
     m_ScriptDevTools = std::make_unique<BML::ScriptDevToolsService>(this);
-    m_ScriptHotReload = std::make_unique<BML::ScriptModHotReloadService>(this);
+    m_ScriptHotReload = std::make_unique<BML::ScriptModHotReloadService>(this, *m_ScriptDevTools);
+    m_ScriptDevTools->SetHotReload(*m_ScriptHotReload);
 #endif
     g_ModContext = this;
 }
@@ -2254,60 +2255,6 @@ void ModContext::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
     RegisterScriptModDependencies(mod, oldDefinition);
 }
 
-bool ModContext::QueueScriptModReload(const std::string &id,
-                                      const BML::ScriptModReloadOptions &options,
-                                      std::string &message) {
-    if (!m_ScriptHotReload) {
-        message = "Script hot reload service is unavailable.";
-        return false;
-    }
-    return m_ScriptHotReload->QueueReload(id, options, message);
-}
-
-bool ModContext::QueueScriptLibraryReload(const std::string &id,
-                                          const std::string &version,
-                                          const BML::ScriptModReloadOptions &options,
-                                          std::string &message) {
-    if (!m_ScriptHotReload) {
-        message = "Script hot reload service is unavailable.";
-        return false;
-    }
-    return m_ScriptHotReload->QueueReloadLibrary(id, version, options, message);
-}
-
-size_t ModContext::QueueAllScriptModReloads(const BML::ScriptModReloadOptions &options) {
-    return m_ScriptHotReload ? m_ScriptHotReload->QueueReloadAll(options) : 0;
-}
-
-bool ModContext::SetScriptHotReloadAutomatic(bool enabled) {
-    return m_ScriptHotReload && m_ScriptHotReload->SetAutomaticEnabled(enabled);
-}
-
-bool ModContext::SetScriptHotReloadWatching(bool enabled) {
-    return SetScriptHotReloadAutomatic(enabled);
-}
-
-std::string ModContext::GetScriptHotReloadStatus() const {
-    return m_ScriptHotReload ? m_ScriptHotReload->GetStatus() : "script hot reload: unavailable";
-}
-
-void ModContext::RenderScriptDevToolsPanel() {
-    if (m_ScriptDevTools)
-        m_ScriptDevTools->RenderPanel();
-}
-
-void ModContext::PublishScriptDevLogEvent(const char *level, const char *endpoint, const std::string &message) {
-    if (m_ScriptDevTools)
-        m_ScriptDevTools->PublishLogLine(level, endpoint, message);
-}
-
-void ModContext::PublishScriptDevDiagnostic(BML::ScriptDevEventSeverity severity,
-                                            const std::string &code,
-                                            const std::string &modId,
-                                            const BML::ScriptDiagnostic &diagnostic) {
-    if (m_ScriptDevTools)
-        m_ScriptDevTools->PublishDiagnostic(severity, code, modId, diagnostic);
-}
 #endif
 
 bool ModContext::UnloadMod(const std::string &id) {

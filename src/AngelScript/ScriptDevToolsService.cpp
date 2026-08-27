@@ -18,6 +18,7 @@
 #include "ScriptLibraryRegistry.h"
 #include "ScriptLibraryServices.h"
 #include "ScriptLibraryTools.h"
+#include "ScriptModHotReloadService.h"
 #include "ScriptModRuntime.h"
 #include "ScriptSourceSnapshotBuilder.h"
 #include "Utils/PathUtils.h"
@@ -760,8 +761,8 @@ void ScriptDevToolsService::ExecuteAction(const ScriptDevAction &action) {
         ExecuteReloadAllAction(action);
         break;
     case ScriptDevActionKind::Watch:
-        if (m_Context) {
-            m_Context->SetScriptHotReloadWatching(action.WatchEnabled);
+        if (m_HotReload) {
+            m_HotReload->SetAutomaticEnabled(action.WatchEnabled);
             PublishEvent(ScriptDevEventSeverity::Info,
                          "ScriptWatchChanged",
                          "",
@@ -787,10 +788,10 @@ void ScriptDevToolsService::ExecuteAction(const ScriptDevAction &action) {
 }
 
 void ScriptDevToolsService::ExecuteReloadAction(const ScriptDevAction &action) {
-    if (!m_Context)
+    if (!m_HotReload)
         return;
     std::string message;
-    const bool queued = m_Context->QueueScriptModReload(action.ModId, action.ReloadOptions, message);
+    const bool queued = m_HotReload->QueueReload(action.ModId, action.ReloadOptions, message);
     if (!queued) {
         PublishEvent(ScriptDevEventSeverity::Warn,
                      action.ReloadOptions.DryRun ? "ScriptReloadDryRunRejected" : "ScriptReloadRejected",
@@ -804,10 +805,10 @@ void ScriptDevToolsService::ExecuteReloadAction(const ScriptDevAction &action) {
 }
 
 void ScriptDevToolsService::ExecuteReloadAllAction(const ScriptDevAction &action) {
-    if (!m_Context)
+    if (!m_HotReload)
         return;
 
-    const size_t count = m_Context->QueueAllScriptModReloads(action.ReloadOptions);
+    const size_t count = m_HotReload->QueueReloadAll(action.ReloadOptions);
     PublishEvent(ScriptDevEventSeverity::Info,
                  action.ReloadOptions.DryRun ? "ScriptReloadDryRunAllQueued" : "ScriptReloadAllQueued",
                  "all",
@@ -990,7 +991,7 @@ uint64_t ScriptDevToolsService::GetDroppedEventCount() const {
 ScriptDevStatusSnapshot ScriptDevToolsService::GetStatusSnapshot() {
     RefreshSnapshotsIfNeeded(false);
     ScriptDevStatusSnapshot status;
-    status.HotReloadStatus = m_Context ? m_Context->GetScriptHotReloadStatus() : "script hot reload: unavailable";
+    status.HotReloadStatus = m_HotReload ? m_HotReload->GetStatus() : "script hot reload: unavailable";
     status.ModCount = m_Snapshots.size();
     for (const auto &snapshot : m_Snapshots) {
         if (snapshot.State == "loaded")
@@ -1437,7 +1438,7 @@ std::vector<std::string> ScriptDevToolsService::HandleCommand(const std::vector<
                 return {"Usage: script reload-lib <id> <version> [--dry-run]"};
         }
         std::string message;
-        if (!m_Context || !m_Context->QueueScriptLibraryReload(args[2], args[3], options, message))
+        if (!m_HotReload || !m_HotReload->QueueReloadLibrary(args[2], args[3], options, message))
             return {message.empty() ? "Script library reload could not be queued." : message};
         return {message};
     }

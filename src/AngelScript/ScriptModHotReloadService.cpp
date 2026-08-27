@@ -269,7 +269,7 @@ private:
 };
 
 ScriptDevToolsService *ScriptModReloadOperation::DevTools() const {
-    return m_Service.m_Context ? m_Service.m_Context->GetScriptDevTools() : nullptr;
+    return m_Service.m_DevTools;
 }
 
 void ScriptModReloadOperation::PublishBlocked(const std::string &message,
@@ -351,8 +351,8 @@ bool ScriptModReloadOperation::Run(std::chrono::steady_clock::time_point now) {
     return true;
 }
 
-ScriptModHotReloadService::ScriptModHotReloadService(ModContext *context)
-    : m_Context(context) {
+ScriptModHotReloadService::ScriptModHotReloadService(ModContext *context, ScriptDevToolsService &devTools)
+    : m_Context(context), m_DevTools(&devTools) {
 }
 
 ScriptModHotReloadService::~ScriptModHotReloadService() {
@@ -425,8 +425,8 @@ void ScriptModHotReloadService::Process() {
         automaticOptions.Automatic = true;
         std::vector<ScriptLibraryReloadPackage> changedLibraryPackages;
         if (watcherDroppedEvents != m_LastWatcherDroppedEvents) {
-            if (m_Context && m_Context->GetScriptDevTools()) {
-                m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+            if (m_DevTools) {
+                m_DevTools->PublishEvent(ScriptDevEventSeverity::Warn,
                                                              "ScriptWatchOverflow",
                                                              "",
                                                              "watch",
@@ -713,8 +713,8 @@ void ScriptModHotReloadService::RebuildWatches() {
             continue;
         if (m_Watcher.Watch(entry.second.Root, entry.second.Recursive)) {
             m_ActiveWatches.emplace(entry.first, entry.second);
-        } else if (m_Context && m_Context->GetScriptDevTools()) {
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+        } else if (m_DevTools) {
+            m_DevTools->PublishEvent(ScriptDevEventSeverity::Warn,
                                                          "ScriptWatchFailed",
                                                          "",
                                                          "watch",
@@ -759,12 +759,12 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
     pending.LastBlockedNotice = {};
     pending.BlockedRetryCount = 0;
     pending.Reason = reason;
-    if (m_Context && m_Context->GetScriptDevTools()) {
+    if (m_DevTools) {
         if (replaced) {
             std::vector<ScriptDevEventField> fields;
             AppendReloadRequestFields(fields, previous.Reason, previous.Options, "previous");
             AppendReloadRequestFields(fields, reason, options);
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+            m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptReloadPendingReplaced",
                                                          id,
                                                          "reload",
@@ -773,7 +773,7 @@ void ScriptModHotReloadService::QueueReloadNow(ScriptMod *mod,
                                                          fields);
         }
         const bool dryRun = options.DryRun;
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+        m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                      dryRun ? "ScriptReloadDryRunQueued" : "ScriptReloadQueued",
                                                      id,
                                                      "reload",
@@ -796,11 +796,11 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
         existingIt != m_Pending.end() &&
         !existingIt->second.Options.Automatic &&
         !existingIt->second.Options.DryRun) {
-        if (m_Context && m_Context->GetScriptDevTools()) {
+        if (m_DevTools) {
             std::vector<ScriptDevEventField> fields = {{"reason", reason},
                                                        {"pendingReason", existingIt->second.Reason}};
             AppendReloadOptionFields(fields, existingIt->second.Options, "pending", false, true);
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+            m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                          "ScriptReloadAutoCoalesced",
                                                          id,
                                                          "reload",
@@ -817,9 +817,9 @@ void ScriptModHotReloadService::QueueReloadDebounced(ScriptMod *mod,
     pending.LastBlockedNotice = {};
     pending.BlockedRetryCount = 0;
     pending.Reason = reason;
-    if (m_Context && m_Context->GetScriptDevTools()) {
+    if (m_DevTools) {
         const bool dryRun = options.DryRun;
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+        m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                      dryRun ? "ScriptReloadDryRunQueued" : "ScriptReloadQueued",
                                                      id,
                                                      "reload",
@@ -867,7 +867,7 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
     pending.BlockedRetryCount = 0;
     pending.Reason = MakeLibraryPendingReason(reason, pending.Packages);
 
-    if (m_Context && m_Context->GetScriptDevTools()) {
+    if (m_DevTools) {
         if (replaced) {
             std::vector<ScriptDevEventField> fields;
             AppendReloadRequestFields(fields, previous.Reason, previous.Options, "previous", false);
@@ -875,7 +875,7 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
             AppendReloadRequestFields(fields, pending.Reason, options, std::string(), false);
             fields.push_back({"packages", FormatLibraryPackageList(pending.Packages)});
             const bool merged = packageAdded && previous.Packages.size() != pending.Packages.size();
-            m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+            m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                          merged ? "ScriptLibraryReloadPendingMerged"
                                                                 : "ScriptLibraryReloadPendingReplaced",
                                                          key,
@@ -885,7 +885,7 @@ void ScriptModHotReloadService::QueueLibraryReloadNow(const std::string &id,
                                                                 : "Pending script library reload was replaced by a newer request.",
                                                          fields);
         }
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+        m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                      options.DryRun ? "ScriptLibraryReloadDryRunQueued" : "ScriptLibraryReloadQueued",
                                                      key,
                                                      "reload",
@@ -930,12 +930,12 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::vector<Sc
                     continue;
                 }
                 coalesced = true;
-                if (m_Context && m_Context->GetScriptDevTools()) {
+                if (m_DevTools) {
                     std::vector<ScriptDevEventField> fields = {{"reason", reason},
                                                                {"pendingReason", entry.second.Reason},
                                                                {"package", packageKey}};
                     AppendReloadOptionFields(fields, entry.second.Options, "pending", false, false);
-                    m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+                    m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                                  "ScriptLibraryReloadAutoCoalesced",
                                                                  packageKey,
                                                                  "reload",
@@ -987,8 +987,8 @@ void ScriptModHotReloadService::QueueLibraryReloadDebounced(const std::vector<Sc
     pending.BlockedRetryCount = 0;
     pending.Reason = MakeLibraryPendingReason(reason, pending.Packages);
 
-    if (m_Context && m_Context->GetScriptDevTools()) {
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Info,
+    if (m_DevTools) {
+        m_DevTools->PublishEvent(ScriptDevEventSeverity::Info,
                                                      options.DryRun ? "ScriptLibraryReloadDryRunQueued" : "ScriptLibraryReloadQueued",
                                                      key,
                                                      "reload",
@@ -1199,7 +1199,7 @@ void ScriptModHotReloadService::PublishReloadResult(const std::string &id,
         }
     }
     SendReloadResultMessage(m_Context, id, options, result);
-    if (m_Context && m_Context->GetScriptDevTools()) {
+    if (m_DevTools) {
         const bool rolledBack = !result.Success && ReloadResultRolledBack(result);
         const char *code = "ScriptReloadRejected";
         if (options.DryRun)
@@ -1212,7 +1212,7 @@ void ScriptModHotReloadService::PublishReloadResult(const std::string &id,
         const std::string successMessage = !result.Diagnostic.empty()
                                                ? result.Diagnostic
                                                : (options.DryRun ? "Script reload dry-run passed." : "Script reload committed.");
-        m_Context->GetScriptDevTools()->PublishEvent(result.Success ? ScriptDevEventSeverity::Info : ScriptDevEventSeverity::Warn,
+        m_DevTools->PublishEvent(result.Success ? ScriptDevEventSeverity::Info : ScriptDevEventSeverity::Warn,
                                                      code,
                                                      id,
                                                      "reload",
@@ -1286,7 +1286,7 @@ private:
 };
 
 ScriptDevToolsService *ScriptLibraryReloadOperation::DevTools() const {
-    return m_Service.m_Context ? m_Service.m_Context->GetScriptDevTools() : nullptr;
+    return m_Service.m_DevTools;
 }
 
 void ScriptLibraryReloadOperation::PublishNoConsumers() {
@@ -1706,8 +1706,8 @@ void ScriptModHotReloadService::PublishNewModRestartRequired(const ScriptFileWat
     const std::string message = "New script mod entry detected; restart is required to load it.";
     if (m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Warn("%s %s", message.c_str(), source.c_str());
-    if (m_Context && m_Context->GetScriptDevTools()) {
-        m_Context->GetScriptDevTools()->PublishEvent(ScriptDevEventSeverity::Warn,
+    if (m_DevTools) {
+        m_DevTools->PublishEvent(ScriptDevEventSeverity::Warn,
                                                      "ScriptModRestartRequired",
                                                      "",
                                                      "watch",

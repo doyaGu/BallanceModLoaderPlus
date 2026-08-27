@@ -36,10 +36,7 @@ struct ScriptModDefinition;
 struct ScriptModLoadCandidate;
 class ScriptDevToolsService;
 class ScriptModHotReloadService;
-struct ScriptModReloadOptions;
 struct ScriptModReloadDiagnosticField;
-struct ScriptDiagnostic;
-enum class ScriptDevEventSeverity;
 #endif
 }
 
@@ -98,24 +95,7 @@ public:
     void RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
                                            const std::string &currentId,
                                            const BML::ScriptModDefinition &oldDefinition);
-    bool QueueScriptModReload(const std::string &id,
-                              const BML::ScriptModReloadOptions &options,
-                              std::string &message);
-    bool QueueScriptLibraryReload(const std::string &id,
-                                  const std::string &version,
-                                  const BML::ScriptModReloadOptions &options,
-                                  std::string &message);
-    size_t QueueAllScriptModReloads(const BML::ScriptModReloadOptions &options);
-    bool SetScriptHotReloadAutomatic(bool enabled);
-    bool SetScriptHotReloadWatching(bool enabled);
-    std::string GetScriptHotReloadStatus() const;
     BML::ScriptDevToolsService *GetScriptDevTools() const { return m_ScriptDevTools.get(); }
-    void RenderScriptDevToolsPanel();
-    void PublishScriptDevLogEvent(const char *level, const char *endpoint, const std::string &message);
-    void PublishScriptDevDiagnostic(BML::ScriptDevEventSeverity severity,
-                                    const std::string &code,
-                                    const std::string &modId,
-                                    const BML::ScriptDiagnostic &diagnostic);
 #endif
 
     int GetModCount() override;

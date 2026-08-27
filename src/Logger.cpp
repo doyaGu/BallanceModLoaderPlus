@@ -4,6 +4,10 @@
 #include <string>
 #include <vector>
 
+#if BML_ENABLE_ANGELSCRIPT
+#include "AngelScript/ScriptDevToolsService.h"
+#endif
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -86,7 +90,9 @@ void Logger::Log(const char *level, const char *fmt, va_list args) {
     }
 
 #if BML_ENABLE_ANGELSCRIPT
-    if (ctx)
-        ctx->PublishScriptDevLogEvent(level, m_ModName, message);
+    if (ctx) {
+        if (auto *devTools = ctx->GetScriptDevTools())
+            devTools->PublishLogLine(level, m_ModName, message);
+    }
 #endif
 }

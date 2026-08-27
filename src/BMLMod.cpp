@@ -20,6 +20,9 @@
 #include "PathUtils.h"
 #include "EventHook.h"
 #include "BuiltinCapabilities.h"
+#if BML_ENABLE_ANGELSCRIPT
+#include "AngelScript/ScriptDevToolsService.h"
+#endif
 
 namespace ExecuteBB {
     void Init();
@@ -253,8 +256,10 @@ void BMLMod::OnProcess() {
     OnProcess_Menu();
     OnProcess_CommandBar();
 #if BML_ENABLE_ANGELSCRIPT
-    if (auto *context = BML_GetModContext())
-        context->RenderScriptDevToolsPanel();
+    if (auto *context = BML_GetModContext()) {
+        if (auto *devTools = context->GetScriptDevTools())
+            devTools->RenderPanel();
+    }
 #endif
 
 #ifndef NDEBUG

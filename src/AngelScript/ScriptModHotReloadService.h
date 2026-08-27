@@ -17,6 +17,7 @@ namespace BML {
 
 class ScriptLibraryReloadOperation;
 class ScriptModReloadOperation;
+class ScriptDevToolsService;
 
 struct ScriptLibraryReloadPackage {
     std::string Id;
@@ -25,7 +26,7 @@ struct ScriptLibraryReloadPackage {
 
 class ScriptModHotReloadService {
 public:
-    explicit ScriptModHotReloadService(ModContext *context);
+    ScriptModHotReloadService(ModContext *context, ScriptDevToolsService &devTools);
     ~ScriptModHotReloadService();
 
     void RegisterMod(ScriptMod *mod);
@@ -41,9 +42,6 @@ public:
                             std::string &message);
     size_t QueueReloadAll(const ScriptModReloadOptions &options);
     bool SetAutomaticEnabled(bool enabled);
-    bool SetWatchingEnabled(bool enabled) { return SetAutomaticEnabled(enabled); }
-    bool IsAutomaticEnabled() const { return m_AutomaticEnabled; }
-    bool IsWatchingEnabled() const { return m_AutomaticEnabled; }
     std::string GetStatus() const;
 
 private:
@@ -130,7 +128,9 @@ private:
                              const ScriptModReloadResult &result);
     void PublishNewModRestartRequired(const ScriptFileWatcherWin32::Event &event);
 
+    // Both pointers are non-owning; ModContext outlives this object and its dev tools.
     ModContext *m_Context = nullptr;
+    ScriptDevToolsService *m_DevTools = nullptr;
     bool m_Started = false;
     bool m_AutomaticEnabled = true;
     std::vector<ModRecord> m_Mods;

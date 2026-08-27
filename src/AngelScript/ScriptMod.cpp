@@ -1403,10 +1403,12 @@ void ScriptMod::Record(const ScriptDiagnostic &diagnostic) {
     m_State.Record(rewritten);
     TouchModGeneration();
     if (m_Context && !rewritten.Message.empty() && rewritten.Message != "Export call succeeded.") {
-        m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Info,
-                                              "ScriptDiagnostic",
-                                              GetID() ? GetID() : "",
-                                              rewritten);
+        if (auto *devTools = m_Context->GetScriptDevTools()) {
+            devTools->PublishDiagnostic(ScriptDevEventSeverity::Info,
+                                        "ScriptDiagnostic",
+                                        GetID() ? GetID() : "",
+                                        rewritten);
+        }
     }
 }
 
@@ -1420,12 +1422,14 @@ void ScriptMod::Fail(const ScriptDiagnostic &diagnostic) {
     m_State.Fail(rewritten);
     TouchModGeneration();
     if (m_Context) {
-        m_Context->PublishScriptDevDiagnostic(ScriptDevEventSeverity::Error,
-                                              rewritten.Phase == ScriptDiagnosticPhase::Callback
-                                                  ? "ScriptCallbackFailed"
-                                                  : "ScriptModFailed",
-                                              GetID() ? GetID() : "",
-                                              rewritten);
+        if (auto *devTools = m_Context->GetScriptDevTools()) {
+            devTools->PublishDiagnostic(ScriptDevEventSeverity::Error,
+                                        rewritten.Phase == ScriptDiagnosticPhase::Callback
+                                            ? "ScriptCallbackFailed"
+                                            : "ScriptModFailed",
+                                        GetID() ? GetID() : "",
+                                        rewritten);
+        }
     }
     if (m_Context && m_Context->GetLogger())
         m_Context->GetLogger()->Error("Script mod %s failed: %s", GetID(), m_State.GetLastDiagnosticText().c_str());

@@ -16,6 +16,8 @@ class ModContext;
 
 namespace BML {
 
+class ScriptModHotReloadService;
+
 struct ScriptDependencySnapshot {
     std::string Id;
     std::string MinVersion;
@@ -129,6 +131,8 @@ public:
     explicit ScriptDevToolsService(ModContext *context);
     ~ScriptDevToolsService() override;
 
+    void SetHotReload(ScriptModHotReloadService &hotReload) { m_HotReload = &hotReload; }
+
     void ProcessActions();
     void RenderPanel();
 
@@ -213,7 +217,9 @@ private:
     void CopyLogMessageToClipboard(const ScriptDevEvent &event) const;
     void DrawBottomBar(const ScriptModSnapshot *selected);
 
+    // ModContext owns both objects and connects them before either is used.
     ModContext *m_Context = nullptr;
+    ScriptModHotReloadService *m_HotReload = nullptr;
 
     mutable std::mutex m_EventMutex;
     ScriptDevEventRingBuffer m_EventStore;
