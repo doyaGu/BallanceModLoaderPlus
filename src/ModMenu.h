@@ -88,7 +88,7 @@ protected:
     Property *GetVisibleProperty(int index) const;
     const PendingPropertyState *FindPendingState(Property *property) const;
     PendingPropertyState &GetOrCreatePendingState(Property *property, IProperty::PropertyType type);
-    void SyncVisiblePageToPending();
+    void SyncPageToPending(int pageIndex);
     void LoadOriginalValues();
     void SaveChanges();
     void RevertChanges();

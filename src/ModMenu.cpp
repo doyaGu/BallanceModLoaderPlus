@@ -410,8 +410,8 @@ void ModOptionPage::OnClose() {
     m_HasPendingChanges = false;
 }
 
-void ModOptionPage::OnPageChanged(int /*newPage*/, int /*oldPage*/) {
-    SyncVisiblePageToPending();
+void ModOptionPage::OnPageChanged(int /*newPage*/, int oldPage) {
+    SyncPageToPending(oldPage);
     FlushBuffers();
     LoadOriginalValues();
 }
@@ -459,12 +459,13 @@ ModOptionPage::PendingPropertyState &ModOptionPage::GetOrCreatePendingState(Prop
     return state;
 }
 
-void ModOptionPage::SyncVisiblePageToPending() {
-    if (!m_Category)
+void ModOptionPage::SyncPageToPending(int pageIndex) {
+    if (!m_Category || pageIndex < 0)
         return;
 
+    const int propertyStartIndex = pageIndex * PROPERTY_SLOTS;
     for (int i = 0; i < PROPERTY_SLOTS; ++i) {
-        Property *property = GetVisibleProperty(i);
+        Property *property = m_Category->GetProperty(propertyStartIndex + i);
         if (!property)
             continue;
 
@@ -605,7 +606,7 @@ void ModOptionPage::SaveChanges() {
     if (!m_Category)
         return;
 
-    SyncVisiblePageToPending();
+    SyncPageToPending(GetPage());
 
     for (const auto &entry : m_PendingValues) {
         Property *property = entry.first;
