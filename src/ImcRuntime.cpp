@@ -1259,6 +1259,7 @@ int ImcRuntime::GetSubscriptionDroppedCount(BML_ImcClient client,
     m_State->ReleaseClientRef(owned);
     return status;
 }
+
 int ImcRuntime::Publish(BML_ImcClient client, BML_ImcTopicId topicId,
                         const BML_ImcMessage *message, size_t *outDelivered) {
     auto operation = m_State->LockOperation();
@@ -1526,6 +1527,7 @@ void ImcRuntime::CleanupOwner(const std::string &ownerId) {
             m_State->ReleaseClientRef(client);
     }
 }
+
 void ImcRuntime::Shutdown() {
     if (!m_State || m_State->ShuttingDown.exchange(true, std::memory_order_acq_rel))
         return;
@@ -1640,6 +1642,7 @@ int ImcRuntime::GetTopicSubscriberCount(BML_ImcClient client, BML_ImcTopicId top
     m_State->ReleaseClientRef(owned);
     return BML_OK;
 }
+
 int ImcRuntime::GetStats(BML_ImcClient client, BML_ImcStats *outStats) {
     auto *owned = m_State->AcquireClient(client);
     if (!owned)
