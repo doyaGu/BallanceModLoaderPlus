@@ -338,10 +338,10 @@ add_bml_test(SRTimerTest
         ${BML_SOURCE_DIR}/SRTimer.cpp
 )
 
-add_bml_test(RuntimeStateTest
+add_bml_test(GameSessionTest
         SOURCES
-        RuntimeStateTest.cpp
-        ${BML_SOURCE_DIR}/RuntimeState.cpp
+        GameSessionTest.cpp
+        ${BML_SOURCE_DIR}/GameSession.cpp
 )
 
 add_bml_test(CommandContextTest

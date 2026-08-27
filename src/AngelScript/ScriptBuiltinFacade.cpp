@@ -219,8 +219,8 @@ RuntimeState GetRuntimeState() {
     ModContext *context = RequireRuntimeContext();
     if (!context)
         return {};
-    const BML::RuntimeStateSnapshot state = context->ReadRuntimeState();
-    return {state.InGame, state.InLevel, state.Paused, state.Playing,
+    const BML::GameSessionSnapshot session = context->ReadGameSession();
+    return {session.IsInGame(), session.IsInLevel(), session.IsPaused(), session.IsPlaying(),
             context->IsCheatEnabled()};
 }
 

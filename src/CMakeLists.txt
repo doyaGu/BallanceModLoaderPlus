@@ -113,7 +113,7 @@ set(BML_PRIVATE_HEADERS
         ModContext.h
         LegacyModVersion.h
         BuiltinCapabilities.h
-        RuntimeState.h
+        GameSession.h
 
         BMLMod.h
         NewBallTypeMod.h
@@ -153,7 +153,7 @@ set(BML_SOURCES
         ModContext.cpp
         BuiltinCapabilities.cpp
         Interfaces.cpp
-        RuntimeState.cpp
+        GameSession.cpp
 
         IMod.cpp
         BMLMod.cpp

@@ -19,7 +19,7 @@
 #include "HookUtils.h"
 #include "ImcRuntime.h"
 #include "ModInvocationGate.h"
-#include "RuntimeState.h"
+#include "GameSession.h"
 
 // The ids themselves are public, since BML_GetLoaderPath takes them. This name
 // stays for the loader's own call sites and for the script binding.
@@ -224,11 +224,11 @@ public:
 
     void ExitGame() override;
 
-    BML::RuntimeStateSnapshot ReadRuntimeState() const noexcept { return m_RuntimeState.Read(); }
-    bool IsIngame() override { return ReadRuntimeState().InGame; }
-    bool IsInLevel() const { return ReadRuntimeState().InLevel; }
-    bool IsPaused() override { return ReadRuntimeState().Paused; }
-    bool IsPlaying() override { return ReadRuntimeState().Playing; }
+    BML::GameSessionSnapshot ReadGameSession() const noexcept { return m_GameSession.Read(); }
+    bool IsIngame() override { return ReadGameSession().IsInGame(); }
+    bool IsInLevel() const { return ReadGameSession().IsInLevel(); }
+    bool IsPaused() override { return ReadGameSession().IsPaused(); }
+    bool IsPlaying() override { return ReadGameSession().IsPlaying(); }
 
     void OpenModsMenu();
     void CloseModsMenu();
@@ -399,7 +399,7 @@ private:
     void AddDataPath(const char *path);
     bool CanScheduleTimer() const;
     int m_Flags = 0;
-    BML::RuntimeState m_RuntimeState;
+    BML::GameSession m_GameSession;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;
     bool m_AngelScriptBindingsRegistered = false;

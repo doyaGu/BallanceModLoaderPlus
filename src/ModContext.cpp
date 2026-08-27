@@ -1440,12 +1440,12 @@ void ModContext::OnPostLoadLevel() {
 
 void ModContext::OnStartLevel() {
     BroadcastMessage("StartLevel", &IMod::OnStartLevel);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::EnterLevel);
+    m_GameSession.ActivateLevel();
 }
 
 void ModContext::OnPreResetLevel() {
     BroadcastMessage("PreResetLevel", &IMod::OnPreResetLevel);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
+    m_GameSession.BeginTransition();
 }
 
 void ModContext::OnPostResetLevel() {
@@ -1454,12 +1454,12 @@ void ModContext::OnPostResetLevel() {
 
 void ModContext::OnPauseLevel() {
     BroadcastMessage("PauseLevel", &IMod::OnPauseLevel);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::Pause);
+    m_GameSession.PauseLevel();
 }
 
 void ModContext::OnUnpauseLevel() {
     BroadcastMessage("UnpauseLevel", &IMod::OnUnpauseLevel);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::Resume);
+    m_GameSession.ResumeLevel();
 }
 
 void ModContext::OnPreExitLevel() {
@@ -1468,7 +1468,7 @@ void ModContext::OnPreExitLevel() {
 
 void ModContext::OnPostExitLevel() {
     BroadcastMessage("PostExitLevel", &IMod::OnPostExitLevel);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
+    m_GameSession.ReturnToFrontEnd();
 }
 
 void ModContext::OnPreNextLevel() {
@@ -1477,12 +1477,12 @@ void ModContext::OnPreNextLevel() {
 
 void ModContext::OnPostNextLevel() {
     BroadcastMessage("PostNextLevel", &IMod::OnPostNextLevel);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
+    m_GameSession.BeginTransition();
 }
 
 void ModContext::OnDead() {
     BroadcastMessage("Dead", &IMod::OnDead);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
+    m_GameSession.ReturnToFrontEnd();
 }
 
 void ModContext::OnPreEndLevel() {
@@ -1491,7 +1491,7 @@ void ModContext::OnPreEndLevel() {
 
 void ModContext::OnPostEndLevel() {
     BroadcastMessage("PostEndLevel", &IMod::OnPostEndLevel);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveGame);
+    m_GameSession.ReturnToFrontEnd();
 }
 
 void ModContext::OnCounterActive() {
@@ -1532,7 +1532,7 @@ void ModContext::OnPostCheckpointReached() {
 
 void ModContext::OnLevelFinish() {
     BroadcastMessage("LevelFinish", &IMod::OnLevelFinish);
-    m_RuntimeState.Apply(BML::RuntimeStateTransition::LeaveLevel);
+    m_GameSession.BeginTransition();
 }
 
 void ModContext::OnGameOver() {

@@ -54,11 +54,11 @@ int RuntimeReadState(BML_RuntimeState *out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     return Serve([out](ModContext &context) {
-        const BML::RuntimeStateSnapshot state = context.ReadRuntimeState();
-        out->InGame = state.InGame ? 1 : 0;
-        out->InLevel = state.InLevel ? 1 : 0;
-        out->Paused = state.Paused ? 1 : 0;
-        out->Playing = state.Playing ? 1 : 0;
+        const BML::GameSessionSnapshot session = context.ReadGameSession();
+        out->InGame = session.IsInGame() ? 1 : 0;
+        out->InLevel = session.IsInLevel() ? 1 : 0;
+        out->Paused = session.IsPaused() ? 1 : 0;
+        out->Playing = session.IsPlaying() ? 1 : 0;
         out->CheatEnabled = context.IsCheatEnabled() ? 1 : 0;
         return BML_OK;
     });
