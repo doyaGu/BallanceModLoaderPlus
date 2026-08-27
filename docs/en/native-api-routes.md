@@ -55,8 +55,8 @@ Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
 at an engine object.
 
-The script side reaches five of these capabilities: `BML::Runtime`,
-`BML::Gameplay`, `BML::UI`, `BML::Events`, and `BML::Speedrun`. `BML::Scene` is
+The script side reaches four of these capabilities: `BML::Runtime`,
+`BML::Gameplay`, `BML::UI`, and `BML::Speedrun`. `BML::Scene` is
 native-only. The script `BML::Speedrun` is not the interface projected as it
 stands: it is spelled `SetTimerVisible`, `StartTimer`, `PauseTimer`,
 `ResetTimer`, and `GetElapsedTime`, and it returns the value or nothing rather
@@ -83,7 +83,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Level state, energy, checkpoints, reset points, level catalog | `GetArrayByName` plus `CKDataArray` column reads | `Gameplay::ReadLevel`, `ReadEnergy`, `ReadCheckpoints`, `ReadResetpoints`, `ReadCatalog` | The interface struct. It already knows the column order of the game's arrays, which is the part that is easy to get wrong. The collection reads copy the whole collection, so they belong in setup or a level change rather than in a frame. |
 | In-game message board | `SendIngameMessage` | `UI::AddMessage`, `UI::ClearMessages` | Either. Only the facade can clear the board. |
 | HUD parts, mods menu, map menu | none | `UI::SetHUDMode`, `ShowTitle`, `ShowFPS`, `OpenModsMenu`, `CloseModsMenu`, `OpenMapMenu`, `CloseMapMenu` | The interface struct only. |
-| Loader events | the `IMessageReceiver` virtuals on `IMod` | `Events::Stream` | Either, and they carry the same events. The virtuals run inside the loader's dispatch and need an `IMod` subclass. The stream is a queue you drain yourself, which suits code that is not an `IMod`, code that treats every kind the same way, and code that would rather buffer than react at once. |
+| Loader events | the `IMessageReceiver` virtuals on `IMod` | none | Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred. |
 | Cheat mode | `EnableCheat` to set, `IsCheatEnabled` to read | `Runtime::ReadState` reads it | Read either, set through the frozen C++. |
 | Console commands | `RegisterCommand` plus an `ICommand` subclass | none | Frozen C++ to register. Removing one again is a C export, `BML_UnregisterCommand`, because `IBML` could not grow the function. |
 | Configuration | `IMod::GetConfig` plus `IConfig` and `IProperty` | none | Frozen C++ only. |
@@ -116,9 +116,8 @@ Three differences do show through:
   struct call is a direct call into the loader on the calling thread, so nothing
   is queued and there is nothing to wait for, which is why `Runtime::ReadState`
   works from `OnProcess`. `BML::Gameplay`, `BML::Scene`, and `BML::UI` touch the
-  game's arrays, its objects, and the UI the loader draws, and `BML::Events`
-  keeps queues that carry no locks, so all four answer `BML_ERROR_WRONG_THREAD`
-  when called from any other thread. `BML::Runtime` and `BML::Speedrun` do not
+  game's arrays, its objects, and the UI the loader draws, so all three answer
+  `BML_ERROR_WRONG_THREAD` when called from any other thread. `BML::Runtime` and `BML::Speedrun` do not
   refuse another thread, but they are meant for the game thread too. Before the
   loader has loaded its mods every one of them answers `BML_ERROR_FAIL`.
 

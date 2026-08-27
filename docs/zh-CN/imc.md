@@ -140,9 +140,9 @@ Client 和 Provider 都关联一个 Mod Owner。BML 会在 Mod 卸载时撤销�
 ## 哪些内容不该定义成接口
 
 不要为 Loader 已经提供的能力定义 `.imc` 接口。它的运行状态、场景查找、Gameplay
-数据、UI、事件和 Speedrun 计时器都是 interface struct，分别写作 `BML::Runtime`、
-`BML::Scene`、`BML::Gameplay`、`BML::UI`、`BML::Events` 和 `BML::Speedrun`。这些
-直接调用即可；只有能力确实由你的 Mod 拥有时，才定义接口。
+数据、UI 和 Speedrun 计时器都是 interface struct，分别写作 `BML::Runtime`、
+`BML::Scene`、`BML::Gameplay`、`BML::UI` 和 `BML::Speedrun`。Loader 事件通过
+Mod 回调到达。只有能力确实由你的 Mod 拥有时，才定义接口。
 
 ## 性能特征
 

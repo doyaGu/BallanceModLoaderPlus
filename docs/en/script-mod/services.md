@@ -139,9 +139,8 @@ if (runtime.InLevel && BML::Gameplay::ReadLevel(level) == BML::ERROR_OK) {
 
 Catalog and checkpoint reads return complete script-owned arrays. Retain a
 snapshot while its source is stable instead of rebuilding it every frame.
-`BML::Events::Stream` yields immutable event snapshots in hook order. Poll only
-when work is ready to consume events, handle `BML::ERROR_NOT_FOUND` as an empty
-stream, and monitor `GetDroppedCount` for queue loss.
+Loader events arrive synchronously through `OnGameEvent`. Copy only the state a
+mod needs to retain; there is no script-side event queue to open or poll.
 
 ## Timers
 

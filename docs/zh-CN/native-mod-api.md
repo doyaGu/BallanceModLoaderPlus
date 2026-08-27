@@ -65,7 +65,6 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带内联 C++ 包装 |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
-| `Events.h`, `EventKinds.h` | 经由 interface struct 取得的 Loader 事件队列，以及事件种类码 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
 | `Gui.h`, `Gui/*.h` | `BGui` Virtools 实体/行为 UI 封装 |
 | `InputHook.h` | 键盘、鼠标、手柄状态与可配对的输入屏蔽令牌 |
@@ -90,14 +89,9 @@ BML 版本要求，并可按需重写以下回调：
 在它里面绘制，不能放在 `OnRender` 中。参见[三种 UI 接口](#ui)。
 
 `OnRender` 每次收到一个 `CK_RENDER_FLAGS`；原生 API 没有分别命名的
-“渲染前/渲染后”回调。需要解耦的事件消费方可以使用
-`BML::Events::Stream`，它覆盖游戏流程、对象/脚本加载、物理、命令、配置和
-作弊状态事件。
-
-轮询前应先打开事件流。`Poll` 只有在从队列中取出事件时才返回 `BML_OK`；
-已打开但没有待处理事件时返回 `BML_ERROR_NOT_FOUND`，事件流未打开时返回
-`BML_ERROR_INVALID_HANDLE`。每次轮询都会先重置输出事件，未成功取得事件时
-输出仍保持默认值。
+“渲染前/渲染后”回调。Loader 通知通过上面列出的 `IMod` 和
+`IMessageReceiver` 虚函数同步到达。需要延后处理时，Mod 应在回调中复制所需
+数据并放入自己拥有的队列。
 
 ## `IBML` 服务
 
@@ -194,7 +188,6 @@ void MyMod::OnUnload() {
 - `BML::Gameplay`：关卡、能量、目录、检查点和重置点。
 - `BML::UI`：消息板、Mod/地图菜单和 HUD。
 - `BML::Speedrun`：共享 Speedrun 计时器。
-- `BML::Events`：Loader 事件队列。
 
 版本规则写在 `Interface.h` 里：结构体只能在末尾追加成员并提升次版本号，而
 `BML_IFACE_HAS` 用来询问正在运行的 Loader 有没有某个比 Mod 编译时的头文件更晚

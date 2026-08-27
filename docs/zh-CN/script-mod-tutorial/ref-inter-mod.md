@@ -19,15 +19,10 @@ if (BML::Gameplay::ReadCheckpoints(checkpoints) == BML::ERROR_OK) {
     CKObject@ checkpoint = checkpoints[i].BorrowObject();
   }
 }
-
-BML::Events::Stream@ events;
-if (BML::Events::Open(events, 256) == BML::ERROR_OK) {
-  // 在 OnProcess 中 Poll；用完后 Close。
-}
 ```
 
-可用的内置命名空间包括 `BML::Runtime`、`BML::Gameplay`、`BML::UI`、
-`BML::Events` 和 `BML::Speedrun`。Virtools 场景查找和对象标识应使用
+可用的内置命名空间包括 `BML::Runtime`、`BML::Gameplay`、`BML::UI` 和
+`BML::Speedrun`。Virtools 场景查找和对象标识应使用
 CKAngelScript 的 `Scene` 命名空间及其可重新验证的引用类型。其中 Runtime
 状态、时钟和分数读取直接返回 Loader 进程内状态的值，不经过任何传输层，
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
@@ -39,10 +34,8 @@ CKAngelScript 的 `Scene` 命名空间及其可重新验证的引用类型。其
 每次调用都会重新读取源数据并创建快照，因此数据稳定时应复用已返回的数组，
 不要每帧重复构建。
 
-`BML::Events::Stream` 按 Hook 顺序提供不可变事件快照。仅当 `Poll` 返回
-`BML::ERROR_OK` 时读取事件；`BML::ERROR_NOT_FOUND` 表示流当前为空，其他状态
-表示流未打开（`BML::ERROR_INVALID_HANDLE`）或复制事件失败
-（`BML::ERROR_OUT_OF_MEMORY`）。`GetDroppedCount` 统计队列容量和背压造成的丢失。
+Loader 事件通过 `OnGameEvent` 同步回调到达。需要跨回调保留信息时，只复制
+Mod 后续真正需要的状态；脚本侧没有需要打开或轮询的事件队列。
 
 两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。

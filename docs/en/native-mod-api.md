@@ -69,7 +69,6 @@ and deploy the Mod under `ModLoader/Mods`.
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with inline C++ wrappers |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
-| `Events.h`, `EventKinds.h` | The loader event queue, reached through an interface struct, and the event kind codes |
 | `Bui.h` | Ballance-style ImGui widgets |
 | `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
 | `InputHook.h` | Keyboard, mouse, controller state, and paired input-block tokens |
@@ -96,15 +95,10 @@ every ImGui and `Bui` control from it, and never from `OnRender`. See
 [Three UI surfaces](#three-ui-surfaces).
 
 `OnRender` receives one `CK_RENDER_FLAGS` value. The native API does not expose
-separately named before-render and after-render callbacks. Consumers that need
-decoupled notifications can use `BML::Events::Stream`, which covers game flow,
-object and script loading, physics, commands, configuration, and cheat-state
-events.
-
-Open the stream before polling it. `Poll` returns `BML_OK` only when it removes
-an event from the queue, `BML_ERROR_NOT_FOUND` while an open stream has no
-queued event, and `BML_ERROR_INVALID_HANDLE` when the stream is not open. The
-output event is reset before every poll, including unsuccessful polls.
+separately named before-render and after-render callbacks. Loader notifications
+arrive synchronously through the `IMod` and `IMessageReceiver` virtuals listed
+above. A mod that needs deferred handling should copy the data it needs into a
+queue it owns.
 
 ## `IBML` services
 
@@ -214,8 +208,7 @@ checks in:
 - `BML::Scene` for object information, transforms, and named lookup;
 - `BML::Gameplay` for level, energy, catalog, checkpoint, and reset data;
 - `BML::UI` for the message board, mod/map menus, and HUD;
-- `BML::Speedrun` for the shared speedrun timer;
-- `BML::Events` for the loader event queue.
+- `BML::Speedrun` for the shared speedrun timer.
 
 `Interface.h` documents the version rules: a struct grows only by appending a
 member and bumping its minor version, and `BML_IFACE_HAS` asks whether the

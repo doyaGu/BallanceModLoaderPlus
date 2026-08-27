@@ -41,8 +41,8 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。
 
-这些能力在脚本侧有五个够得着：`BML::Runtime`、`BML::Gameplay`、`BML::UI`、
-`BML::Events`、`BML::Speedrun`。只有 `BML::Scene` 只在原生侧。脚本侧的
+这些能力在脚本侧有四个够得着：`BML::Runtime`、`BML::Gameplay`、`BML::UI`、
+`BML::Speedrun`。只有 `BML::Scene` 只在原生侧。脚本侧的
 `BML::Speedrun` 目前并不是原接口的投射：它的写法是 `SetTimerVisible`、
 `StartTimer`、`PauseTimer`、`ResetTimer`、`GetElapsedTime`，返回的是值或者什么都不
 返回，而不是状态码。脚本侧的投射是手写的，与 interface struct 之间没有任何校验，
@@ -66,7 +66,7 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 关卡状态、能量、检查点、重置点、关卡目录 | `GetArrayByName` 加 `CKDataArray` 按列读取 | `Gameplay::ReadLevel`、`ReadEnergy`、`ReadCheckpoints`、`ReadResetpoints`、`ReadCatalog` | 走 interface struct。它已经知道游戏那些数组的列顺序，而这正是最容易写错的部分。集合类读取会整份拷贝，属于初始化或换关时做的事，不适合每帧调用。 |
 | 游戏内消息板 | `SendIngameMessage` | `UI::AddMessage`、`UI::ClearMessages` | 两者皆可。清空消息板只有门面能做。 |
 | HUD 各部分、Mod 菜单、地图菜单 | 无 | `UI::SetHUDMode`、`ShowTitle`、`ShowFPS`、`OpenModsMenu`、`CloseModsMenu`、`OpenMapMenu`、`CloseMapMenu` | 只有 interface struct。 |
-| Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | `Events::Stream` | 两者皆可，事件内容相同。虚函数在 Loader 的派发过程内执行，且要求继承 `IMod`。流是一个自己排空的队列，适合不是 `IMod` 的代码、对所有事件一律处理的代码，以及宁愿先缓冲而不是当场响应的代码。 |
+| Loader 事件 | `IMod` 上的 `IMessageReceiver` 虚函数 | 无 | 处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。 |
 | 作弊模式 | 写用 `EnableCheat`，读用 `IsCheatEnabled` | `Runtime::ReadState` 可读 | 读两者皆可，写走旧式 C++。 |
 | 控制台命令 | `RegisterCommand` 加 `ICommand` 子类 | 无 | 注册走旧式 C++。注销是 C 导出 `BML_UnregisterCommand`，因为 `IBML` 已经无法再加函数。 |
 | 配置 | `IMod::GetConfig` 加 `IConfig`、`IProperty` | 无 | 只有旧式 C++。 |
@@ -96,8 +96,8 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 - **线程。** 旧式 C++ 接口只能在游戏线程上用。interface struct 的调用是在调用线程上
   直接进入 Loader，不入队、也没有什么要等，这就是 `Runtime::ReadState` 能在
   `OnProcess` 里用的原因。`BML::Gameplay`、`BML::Scene`、`BML::UI` 触碰的是游戏的
-  数组、游戏对象和 Loader 自己绘制的界面，`BML::Events` 的队列不带锁，因此这四个从
-  别的线程调用一律返回 `BML_ERROR_WRONG_THREAD`。`BML::Runtime` 和 `BML::Speedrun`
+  数组、游戏对象和 Loader 自己绘制的界面，因此这三个从别的线程调用一律返回
+  `BML_ERROR_WRONG_THREAD`。`BML::Runtime` 和 `BML::Speedrun`
   不拒绝其他线程，但同样是给游戏线程用的。在 Loader 加载完 Mod 之前，它们全都返回
   `BML_ERROR_FAIL`。
 
