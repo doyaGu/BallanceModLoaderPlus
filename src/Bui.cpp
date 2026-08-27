@@ -611,7 +611,9 @@ namespace Bui {
     };
 
     TextOverflowMode GetButtonTextOverflowMode(ButtonType type) {
-        return type == BUTTON_LEVEL ? TextOverflowMarqueeWhenActive : TextOverflowEllipsis;
+        return type == BUTTON_MAIN || type == BUTTON_LEVEL
+            ? TextOverflowMarqueeWhenActive
+            : TextOverflowEllipsis;
     }
 
     ImRect GetButtonTextRect(const ImRect &bb, ButtonType type) {
