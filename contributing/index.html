@@ -1152,11 +1152,11 @@ For Ninja, enter an x86 Native Tools environment, omit <code>-A Win32</code>, ad
 <code>-DCMAKE_BUILD_TYPE=Release</code> for the release build.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">cmake</span> <span class="n">-S</span> <span class="p">.</span> <span class="n">-B</span> <span class="n">build-dev</span> <span class="p">`</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  <span class="n">-A</span> <span class="n">Win32</span> <span class="p">`</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  <span class="n">-DVIRTOOLS_SDK_PATH</span><span class="p">=</span><span class="s2">&quot;&lt;path-to-Virtools-SDK-2.1&gt;&quot;</span> <span class="p">`</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  <span class="n">-DCKANGELSCRIPT_ROOT</span><span class="p">=</span><span class="s2">&quot;&lt;path-to-CKAngelScript&gt;&quot;</span> <span class="p">`</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  <span class="n">-DVIRTOOLS_SDK_PATH</span><span class="p">=</span><span class="s2">"&lt;path-to-Virtools-SDK-2.1&gt;"</span> <span class="p">`</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  <span class="n">-DCKANGELSCRIPT_ROOT</span><span class="p">=</span><span class="s2">"&lt;path-to-CKAngelScript&gt;"</span> <span class="p">`</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  <span class="n">-DBML_ENABLE_ANGELSCRIPT</span><span class="p">=</span><span class="n">ON</span> <span class="p">`</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  <span class="n">-DBML_BUILD_TESTS</span><span class="p">=</span><span class="n">ON</span> <span class="p">`</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  <span class="n">-DCMAKE_INSTALL_PREFIX</span><span class="p">=</span><span class="s2">&quot;&lt;absolute-path-to-install-dev&gt;&quot;</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  <span class="n">-DCMAKE_INSTALL_PREFIX</span><span class="p">=</span><span class="s2">"&lt;absolute-path-to-install-dev&gt;"</span>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">Debug</span>
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">ctest</span> <span class="p">-</span><span class="n">-test-dir</span> <span class="n">build-dev</span> <span class="n">-C</span> <span class="n">Debug</span> <span class="p">-</span><span class="n">-output-on-failure</span>
@@ -1180,8 +1180,8 @@ loading, or script hosting also require a Player smoke run.</p>
 <p>Set <code>BML_BALLANCE_ROOT</code> or pass <code>-BallanceRoot</code> to the smoke script:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">smoke</span><span class="p">/</span><span class="n">Validate-BMLBallance</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  <span class="n">-BallanceRoot</span> <span class="s2">&quot;&lt;Ballance-root&gt;&quot;</span> <span class="p">`</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  <span class="n">-BuildDll</span> <span class="s2">&quot;build-dev/bin/Debug/BMLPlus.dll&quot;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance-root&gt;"</span> <span class="p">`</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/Debug/BMLPlus.dll"</span>
 </code></pre></div>
 <p>Close any existing Player process before replacing a loaded DLL. The script
 backs up the installed loader, installs smoke assets, starts Player, validates

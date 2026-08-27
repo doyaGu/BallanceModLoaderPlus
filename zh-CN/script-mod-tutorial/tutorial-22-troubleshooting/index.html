@@ -2347,7 +2347,7 @@
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kt">void</span><span class="w"> </span><span class="nf">OnProcess</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">processLogged</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;OnProcess first frame&quot;</span><span class="p">);</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">"OnProcess first frame"</span><span class="p">);</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">        </span><span class="n">processLogged</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="c1">// ... 其余代码</span>
@@ -2406,9 +2406,9 @@
 </code></pre></div>
 <p><strong>一次编译失败的日志示例</strong>：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>[ModLoader/INFO]: Loading Mod hello.script[Hello Mod] v1.0.0 by Tutorial
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>[ModLoader/ERROR]: Failed to compile script mod &#39;HelloMod.mod.as&#39;
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>[ModLoader/ERROR]: (line 5, col 1): Expected &#39;;&#39;
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>[ModLoader/ERROR]: (line 8, col 12): &#39;logger&#39; is not declared
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>[ModLoader/ERROR]: Failed to compile script mod 'HelloMod.mod.as'
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>[ModLoader/ERROR]: (line 5, col 1): Expected ';'
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>[ModLoader/ERROR]: (line 8, col 12): 'logger' is not declared
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>[ModLoader/INFO]: BML script mod summary: loaded=0 failed=1
 </code></pre></div>
 <p>第二条及之后的 ERROR 可能是第一条的连锁结果。修复第一条后重启，后续错误往往自动消失。</p>
@@ -2508,13 +2508,13 @@
 </tbody>
 </table>
 <p>编译错误示例：
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[ModLoader/ERROR]: Failed to compile script mod &#39;HelloMod.mod.as&#39;
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>[ModLoader/ERROR]: (line 5, col 1): Expected &#39;;&#39;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[ModLoader/ERROR]: Failed to compile script mod 'HelloMod.mod.as'
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>[ModLoader/ERROR]: (line 5, col 1): Expected ';'
 </code></pre></div></p>
 <p>运行时错误示例：
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>[hello.script/INFO]: === OnLoad entered ===
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>... (进入关卡后)
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>[ModLoader/ERROR]: Null pointer access in script &#39;HelloMod.mod.as&#39; at line 45
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>[ModLoader/ERROR]: Null pointer access in script 'HelloMod.mod.as' at line 45
 </code></pre></div></p>
 <hr />
 <h2 id="_5">热重载失败<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
@@ -2534,27 +2534,27 @@ CK/游戏世界对象。BML+ 只能恢复自己持有的脚本资源，不能撤
 <hr />
 <h2 id="angelscript">常见 AngelScript 语法错误<a class="headerlink" href="#angelscript" title="Permanent link">&para;</a></h2>
 <h3 id="_6">缺少分号<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>[ModLoader/ERROR]: (line 5, col 1): Expected &#39;;&#39;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>[ModLoader/ERROR]: (line 5, col 1): Expected ';'
 </code></pre></div>
 <p>看到 <code>Expected ';'</code> 时去看<strong>报错行的上一行</strong>末尾，编译器直到读到下一行才发现少了分号。</p>
 <h3 id="_7">未声明的变量<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>[ModLoader/ERROR]: (line 10, col 5): &#39;couner&#39; is not declared
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>[ModLoader/ERROR]: (line 10, col 5): 'couner' is not declared
 </code></pre></div>
 <p>拼写错误或忘记声明。AngelScript 区分大小写。</p>
 <h3 id="_8">句柄类型不匹配（缺少 @）<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[ModLoader/ERROR]: (line 8, col 12): Can&#39;t implicitly convert from &#39;CK3dEntity@&#39; to &#39;CK3dEntity&#39;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[ModLoader/ERROR]: (line 8, col 12): Can't implicitly convert from 'CK3dEntity@' to 'CK3dEntity'
 </code></pre></div>
 <p>返回句柄类型的函数，接收变量也要加 <code>@</code>：<code>CK3dEntity@ entity = ...</code></p>
 <h3 id="_9">句柄判空写法错误<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>[ModLoader/ERROR]: (line 12, col 16): No matching operator that takes the types &#39;CK3dEntity@&#39; and &#39;const int&#39;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>[ModLoader/ERROR]: (line 12, col 16): No matching operator that takes the types 'CK3dEntity@' and 'const int'
 </code></pre></div>
 <p>句柄判空用 <code>is</code> / <code>!is</code>，不用 <code>==</code> / <code>!=</code>：<code>if (entity !is null)</code></p>
 <h3 id="_10">回调签名不匹配<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>[ModLoader/WARN]: No matching signatures to &#39;OnLoad(const BML::ModContext&amp;in)&#39;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>[ModLoader/WARN]: No matching signatures to 'OnLoad(const BML::ModContext&amp;in)'
 </code></pre></div>
 <p>不会编译失败，但回调不会被调用。签名必须精确：<code>void OnLoad(const BML::ModContext &amp;in ctx)</code>。缺少 <code>const</code>、缺少 <code>&amp;in</code>、多余参数都会导致不匹配。</p>
 <h3 id="in-inout">&amp;in 与 &amp;inout 混用<a class="headerlink" href="#in-inout" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>[ModLoader/ERROR]: (line 30, col 5): No matching signatures to &#39;BML::CommandCompletionCallback&#39;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>[ModLoader/ERROR]: (line 30, col 5): No matching signatures to 'BML::CommandCompletionCallback'
 </code></pre></div>
 <p>补全回调第三个参数必须是 <code>BML::CommandCompletion &amp;inout</code>，不是 <code>&amp;in</code>。</p>
 <hr />
@@ -2598,8 +2598,8 @@ CK/游戏世界对象。BML+ 只能恢复自己持有的脚本资源，不能撤
 <li>确认 <code>showWindow</code> 变量为 <code>true</code></li>
 <li><code>ImGui::End()</code> 必须在 <code>if (ImGui::Begin(...))</code> 的<strong>外面</strong>：</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ImGui</span><span class="o">::</span><span class="n">Begin</span><span class="p">(</span><span class="s">&quot;Window&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="n">ImGui</span><span class="o">::</span><span class="n">TextUnformatted</span><span class="p">(</span><span class="s">&quot;content&quot;</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ImGui</span><span class="o">::</span><span class="n">Begin</span><span class="p">(</span><span class="s">"Window"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="n">ImGui</span><span class="o">::</span><span class="n">TextUnformatted</span><span class="p">(</span><span class="s">"content"</span><span class="p">);</span>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="p">}</span>
 <a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">ImGui</span><span class="o">::</span><span class="n">End</span><span class="p">();</span><span class="w">  </span><span class="c1">// 必须在 if 外面</span>
 </code></pre></div>
@@ -2629,9 +2629,9 @@ CK/游戏世界对象。BML+ 只能恢复自己持有的脚本资源，不能撤
 <li><strong>关卡切换后重新查找</strong>：旧句柄在新关卡中无效，每次进关需要重新获取</li>
 </ul>
 <p>添加诊断日志定位具体原因：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">CKGroup</span><span class="err">@</span><span class="w"> </span><span class="n">checkpoints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowGroupByName</span><span class="p">(</span><span class="s">&quot;PC_Checkpoints&quot;</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">CKGroup</span><span class="err">@</span><span class="w"> </span><span class="n">checkpoints</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">BorrowGroupByName</span><span class="p">(</span><span class="s">"PC_Checkpoints"</span><span class="p">);</span>
 <a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">checkpoints</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">null</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;PC_Checkpoints not found, IsInLevel=&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">IsInLevel</span><span class="p">);</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">"PC_Checkpoints not found, IsInLevel="</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ctx</span><span class="p">.</span><span class="n">IsInLevel</span><span class="p">);</span>
 <a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>如果日志显示 <code>IsInLevel=false</code>，说明查找时机太早。</p>

@@ -1042,8 +1042,8 @@ frozen in C++, is a C export.</p>
 <p>Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
 at an engine object.</p>
-<p>The script side reaches five of these capabilities: <code>BML::Runtime</code>,
-<code>BML::Gameplay</code>, <code>BML::UI</code>, <code>BML::Events</code>, and <code>BML::Speedrun</code>. <code>BML::Scene</code> is
+<p>The script side reaches four of these capabilities: <code>BML::Runtime</code>,
+<code>BML::Gameplay</code>, <code>BML::UI</code>, and <code>BML::Speedrun</code>. <code>BML::Scene</code> is
 native-only. The script <code>BML::Speedrun</code> is not the interface projected as it
 stands: it is spelled <code>SetTimerVisible</code>, <code>StartTimer</code>, <code>PauseTimer</code>,
 <code>ResetTimer</code>, and <code>GetElapsedTime</code>, and it returns the value or nothing rather
@@ -1128,8 +1128,8 @@ declared in the header of the same name under <code>include/BML/</code>; the res
 <tr>
 <td>Loader events</td>
 <td>the <code>IMessageReceiver</code> virtuals on <code>IMod</code></td>
-<td><code>Events::Stream</code></td>
-<td>Either, and they carry the same events. The virtuals run inside the loader's dispatch and need an <code>IMod</code> subclass. The stream is a queue you drain yourself, which suits code that is not an <code>IMod</code>, code that treats every kind the same way, and code that would rather buffer than react at once.</td>
+<td>none</td>
+<td>Handle the synchronous callback. Copy the required data into mod-owned storage if work must be deferred.</td>
 </tr>
 <tr>
 <td>Cheat mode</td>
@@ -1212,9 +1212,8 @@ reads, so there is no second copy of anything and nothing to keep in sync. <code
   struct call is a direct call into the loader on the calling thread, so nothing
   is queued and there is nothing to wait for, which is why <code>Runtime::ReadState</code>
   works from <code>OnProcess</code>. <code>BML::Gameplay</code>, <code>BML::Scene</code>, and <code>BML::UI</code> touch the
-  game's arrays, its objects, and the UI the loader draws, and <code>BML::Events</code>
-  keeps queues that carry no locks, so all four answer <code>BML_ERROR_WRONG_THREAD</code>
-  when called from any other thread. <code>BML::Runtime</code> and <code>BML::Speedrun</code> do not
+  game's arrays, its objects, and the UI the loader draws, so all three answer
+  <code>BML_ERROR_WRONG_THREAD</code> when called from any other thread. <code>BML::Runtime</code> and <code>BML::Speedrun</code> do not
   refuse another thread, but they are meant for the game thread too. Before the
   loader has loaded its mods every one of them answers <code>BML_ERROR_FAIL</code>.</li>
 </ul>

@@ -1100,22 +1100,22 @@ diagnostic. Native-only BML+ features remain available when the script host
 cannot start.</p>
 <h2 id="create-the-first-mod">Create the first mod<a class="headerlink" href="#create-the-first-mod" title="Permanent link">&para;</a></h2>
 <p>Open PowerShell in <code>ModLoader/Mods</code> and let the SDK personalize the template:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1&quot;</span> <span class="p">`</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">&quot;yourname.my-mod&quot;</span> <span class="n">-Name</span> <span class="s2">&quot;My Mod&quot;</span> <span class="n">-Author</span> <span class="s2">&quot;Your Name&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/New-BMLScriptMod.ps1"</span> <span class="p">`</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="n">-Id</span> <span class="s2">"yourname.my-mod"</span> <span class="n">-Name</span> <span class="s2">"My Mod"</span> <span class="n">-Author</span> <span class="s2">"Your Name"</span>
 </code></pre></div>
 <p>The command derives a safe class and entry filename from the id and refuses to
 overwrite an existing directory. Copying <code>templates/script-mod-template</code>
 manually remains supported. The underlying entry is deliberately small:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">&quot;example.hello.script&quot;</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">         </span><span class="n">name</span><span class="o">=</span><span class="s">&quot;Hello Script&quot;</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">         </span><span class="n">version</span><span class="o">=</span><span class="s">&quot;1.0.0&quot;</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">&quot;Your Name&quot;</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">         </span><span class="n">description</span><span class="o">=</span><span class="s">&quot;Minimal BML+ script mod&quot;</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">         </span><span class="n">bml</span><span class="o">=</span><span class="s">&quot;0.3.13&quot;</span><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">[</span><span class="n">bml</span><span class="p">.</span><span class="n">mod</span><span class="w"> </span><span class="n">id</span><span class="o">=</span><span class="s">"example.hello.script"</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">         </span><span class="n">name</span><span class="o">=</span><span class="s">"Hello Script"</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">         </span><span class="n">version</span><span class="o">=</span><span class="s">"1.0.0"</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">         </span><span class="n">author</span><span class="o">=</span><span class="s">"Your Name"</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">         </span><span class="n">description</span><span class="o">=</span><span class="s">"Minimal BML+ script mod"</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">         </span><span class="n">bml</span><span class="o">=</span><span class="s">"0.3.13"</span><span class="p">]</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="k">class</span><span class="w"> </span><span class="nc">HelloScript</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">OnLoad</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ModContext</span><span class="w"> </span><span class="o">&amp;</span><span class="n">in</span><span class="w"> </span><span class="n">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">&quot;Hello Script loaded&quot;</span><span class="p">);</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">&quot;Hello from your first script mod!&quot;</span><span class="p">);</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">        </span><span class="n">ctx</span><span class="p">.</span><span class="n">LogInfo</span><span class="p">(</span><span class="s">"Hello Script loaded"</span><span class="p">);</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">UI</span><span class="o">::</span><span class="n">AddMessage</span><span class="p">(</span><span class="s">"Hello from your first script mod!"</span><span class="p">);</span>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
 </code></pre></div>
@@ -1188,8 +1188,8 @@ Saving a loaded source queues a reload. Adding a new mod, changing its id, or
 changing its dependency graph still requires a Player restart. Zip packages
 use manual reload and are intended for distribution testing.</p>
 <p>Run the SDK tool from the Mod directory:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">Set-Location</span> <span class="s2">&quot;&lt;Ballance&gt;/ModLoader/Mods/MyScriptMod&quot;</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">&amp;</span> <span class="s2">&quot;&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1&quot;</span> <span class="n">-Force</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">Set-Location</span> <span class="s2">"&lt;Ballance&gt;/ModLoader/Mods/MyScriptMod"</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">&amp;</span> <span class="s2">"&lt;BML-SDK&gt;/scripts/Pack-BMLScriptMod.ps1"</span> <span class="n">-Force</span>
 </code></pre></div>
 <p>It writes <code>dist/MyScriptMod.zip</code>. <code>-Source</code> and <code>-Output</code> remain available for
 automation. The default package excludes editor settings, version-control

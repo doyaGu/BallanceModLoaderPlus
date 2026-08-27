@@ -1926,8 +1926,8 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 或者某个已冻结在 C++ 里的操作的反向操作，走 C 导出。</p>
 <p>冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。</p>
-<p>这些能力在脚本侧有五个够得着：<code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code>、
-<code>BML::Events</code>、<code>BML::Speedrun</code>。只有 <code>BML::Scene</code> 只在原生侧。脚本侧的
+<p>这些能力在脚本侧有四个够得着：<code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code>、
+<code>BML::Speedrun</code>。只有 <code>BML::Scene</code> 只在原生侧。脚本侧的
 <code>BML::Speedrun</code> 目前并不是原接口的投射：它的写法是 <code>SetTimerVisible</code>、
 <code>StartTimer</code>、<code>PauseTimer</code>、<code>ResetTimer</code>、<code>GetElapsedTime</code>，返回的是值或者什么都不
 返回，而不是状态码。脚本侧的投射是手写的，与 interface struct 之间没有任何校验，
@@ -2009,8 +2009,8 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 <tr>
 <td>Loader 事件</td>
 <td><code>IMod</code> 上的 <code>IMessageReceiver</code> 虚函数</td>
-<td><code>Events::Stream</code></td>
-<td>两者皆可，事件内容相同。虚函数在 Loader 的派发过程内执行，且要求继承 <code>IMod</code>。流是一个自己排空的队列，适合不是 <code>IMod</code> 的代码、对所有事件一律处理的代码，以及宁愿先缓冲而不是当场响应的代码。</td>
+<td>无</td>
+<td>处理同步回调；需要延后执行时，把必要数据复制到 Mod 自己拥有的存储中。</td>
 </tr>
 <tr>
 <td>作弊模式</td>
@@ -2090,8 +2090,8 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 <li><strong>线程。</strong> 旧式 C++ 接口只能在游戏线程上用。interface struct 的调用是在调用线程上
   直接进入 Loader，不入队、也没有什么要等，这就是 <code>Runtime::ReadState</code> 能在
   <code>OnProcess</code> 里用的原因。<code>BML::Gameplay</code>、<code>BML::Scene</code>、<code>BML::UI</code> 触碰的是游戏的
-  数组、游戏对象和 Loader 自己绘制的界面，<code>BML::Events</code> 的队列不带锁，因此这四个从
-  别的线程调用一律返回 <code>BML_ERROR_WRONG_THREAD</code>。<code>BML::Runtime</code> 和 <code>BML::Speedrun</code>
+  数组、游戏对象和 Loader 自己绘制的界面，因此这三个从别的线程调用一律返回
+  <code>BML_ERROR_WRONG_THREAD</code>。<code>BML::Runtime</code> 和 <code>BML::Speedrun</code>
   不拒绝其他线程，但同样是给游戏线程用的。在 Loader 加载完 Mod 之前，它们全都返回
   <code>BML_ERROR_FAIL</code>。</li>
 </ul>

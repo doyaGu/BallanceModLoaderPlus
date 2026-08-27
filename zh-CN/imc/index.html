@@ -2182,9 +2182,9 @@ Subscription 独立的有界队列。</p>
 释放等编程错误，不是可恢复的路由失败。</p>
 <h2 id="_5">哪些内容不该定义成接口<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>不要为 Loader 已经提供的能力定义 <code>.imc</code> 接口。它的运行状态、场景查找、Gameplay
-数据、UI、事件和 Speedrun 计时器都是 interface struct，分别写作 <code>BML::Runtime</code>、
-<code>BML::Scene</code>、<code>BML::Gameplay</code>、<code>BML::UI</code>、<code>BML::Events</code> 和 <code>BML::Speedrun</code>。这些
-直接调用即可；只有能力确实由你的 Mod 拥有时，才定义接口。</p>
+数据、UI 和 Speedrun 计时器都是 interface struct，分别写作 <code>BML::Runtime</code>、
+<code>BML::Scene</code>、<code>BML::Gameplay</code>、<code>BML::UI</code> 和 <code>BML::Speedrun</code>。Loader 事件通过
+Mod 回调到达。只有能力确实由你的 Mod 拥有时，才定义接口。</p>
 <h2 id="_6">性能特征<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <p>生成的 Client 只解析一次名称，之后复用数字路由 ID。小载荷使用内联存储；直接调用
 线程 RPC 不经过队列；游戏线程任务使用有界队列和每帧 Pump 预算；Topic 发布具有

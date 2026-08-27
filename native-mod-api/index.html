@@ -1216,11 +1216,11 @@ installed <code>include/BML</code> directory defines the supported native API.</
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">public</span><span class="o">:</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{}</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetID</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;MyMod&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetVersion</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;1.0.0&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetName</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;My Mod&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetAuthor</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;Author&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetDescription</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;Example&quot;</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetID</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">"MyMod"</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetVersion</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">"1.0.0"</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetName</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">"My Mod"</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetAuthor</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">"Author"</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">GetDescription</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s">"Example"</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="n">DECLARE_BML_VERSION</span><span class="p">;</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">};</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
@@ -1308,10 +1308,6 @@ and deploy the Mod under <code>ModLoader/Mods</code>.</p>
 <td>IMC C/C++ runtime and wire format</td>
 </tr>
 <tr>
-<td><code>Events.h</code>, <code>EventKinds.h</code></td>
-<td>The loader event queue, reached through an interface struct, and the event kind codes</td>
-</tr>
-<tr>
 <td><code>Bui.h</code></td>
 <td>Ballance-style ImGui widgets</td>
 </tr>
@@ -1354,14 +1350,10 @@ callbacks it needs:</p>
 every ImGui and <code>Bui</code> control from it, and never from <code>OnRender</code>. See
 <a href="#three-ui-surfaces">Three UI surfaces</a>.</p>
 <p><code>OnRender</code> receives one <code>CK_RENDER_FLAGS</code> value. The native API does not expose
-separately named before-render and after-render callbacks. Consumers that need
-decoupled notifications can use <code>BML::Events::Stream</code>, which covers game flow,
-object and script loading, physics, commands, configuration, and cheat-state
-events.</p>
-<p>Open the stream before polling it. <code>Poll</code> returns <code>BML_OK</code> only when it removes
-an event from the queue, <code>BML_ERROR_NOT_FOUND</code> while an open stream has no
-queued event, and <code>BML_ERROR_INVALID_HANDLE</code> when the stream is not open. The
-output event is reset before every poll, including unsuccessful polls.</p>
+separately named before-render and after-render callbacks. Loader notifications
+arrive synchronously through the <code>IMod</code> and <code>IMessageReceiver</code> virtuals listed
+above. A mod that needs deferred handling should copy the data it needs into a
+queue it owns.</p>
 <h2 id="ibml-services"><code>IBML</code> services<a class="headerlink" href="#ibml-services" title="Permanent link">&para;</a></h2>
 <p><code>IBML</code> is the main loader service passed to a mod. It provides:</p>
 <ul>
@@ -1394,8 +1386,8 @@ callback return <code>false</code> instead.</p>
 usual place because it runs while <code>BMLEntry</code> creates the mod and before any
 <code>OnLoad</code> callback:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">explicit</span><span class="w"> </span><span class="n">MyMod</span><span class="p">(</span><span class="n">IBML</span><span class="w"> </span><span class="o">*</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">IMod</span><span class="p">(</span><span class="n">bml</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">&quot;RequiredMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">&quot;OptionalMod&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="n">AddDependency</span><span class="p">(</span><span class="s">"RequiredMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="n">AddOptionalDependency</span><span class="p">(</span><span class="s">"OptionalMod"</span><span class="p">,</span><span class="w"> </span><span class="n">BMLVersion</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">}</span>
 </code></pre></div>
 <p>BML orders mods so installed dependencies receive <code>OnLoad</code> before their
@@ -1420,7 +1412,7 @@ name.</p>
 <p><code>IBML</code> has no unregister function, so removing a command goes through
 <code>BML_UnregisterCommand</code> in <code>BML.h</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">MyMod::OnUnload</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_UnregisterCommand</span><span class="p">(</span><span class="s">&quot;mycmd&quot;</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML_UnregisterCommand</span><span class="p">(</span><span class="s">"mycmd"</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="k">delete</span><span class="w"> </span><span class="n">m_Command</span><span class="p">;</span><span class="w">  </span><span class="c1">// only now is deleting it safe</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
 </code></pre></div>
@@ -1448,8 +1440,7 @@ checks in:</p>
 <li><code>BML::Scene</code> for object information, transforms, and named lookup;</li>
 <li><code>BML::Gameplay</code> for level, energy, catalog, checkpoint, and reset data;</li>
 <li><code>BML::UI</code> for the message board, mod/map menus, and HUD;</li>
-<li><code>BML::Speedrun</code> for the shared speedrun timer;</li>
-<li><code>BML::Events</code> for the loader event queue.</li>
+<li><code>BML::Speedrun</code> for the shared speedrun timer.</li>
 </ul>
 <p><code>Interface.h</code> documents the version rules: a struct grows only by appending a
 member and bumping its minor version, and <code>BML_IFACE_HAS</code> asks whether the
@@ -1511,7 +1502,7 @@ same key is set or removed or when the instance is destroyed. Use
 <code>BML_DataShare_CopyEx</code> when a stable copy is required.</p>
 <h2 id="where-the-loader-and-your-mod-live">Where the loader and your mod live<a class="headerlink" href="#where-the-loader-and-your-mod-live" title="Permanent link">&para;</a></h2>
 <p><code>BML.h</code> answers both questions a mod has about the file system:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// The loader&#39;s own directories. Borrowed, valid for the process, never freed.</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// The loader's own directories. Borrowed, valid for the process, never freed.</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">loaderDir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BML_GetLoaderPathUtf8</span><span class="p">(</span><span class="n">BML_DIR_LOADER</span><span class="p">);</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">// Your own installation directory. Allocated, so release it.</span>

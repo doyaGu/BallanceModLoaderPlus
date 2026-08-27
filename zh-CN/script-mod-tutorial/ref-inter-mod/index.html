@@ -1868,14 +1868,9 @@
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="n">CKObject</span><span class="err">@</span><span class="w"> </span><span class="n">checkpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">checkpoints</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">BorrowObject</span><span class="p">();</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="p">}</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">}</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">BML</span><span class="o">::</span><span class="n">Events</span><span class="o">::</span><span class="n">Stream</span><span class="err">@</span><span class="w"> </span><span class="n">events</span><span class="p">;</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Events</span><span class="o">::</span><span class="n">Open</span><span class="p">(</span><span class="n">events</span><span class="p">,</span><span class="w"> </span><span class="mi">256</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML</span><span class="o">::</span><span class="n">ERROR_OK</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="c1">// 在 OnProcess 中 Poll；用完后 Close。</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="p">}</span>
 </code></pre></div>
-<p>可用的内置命名空间包括 <code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code>、
-<code>BML::Events</code> 和 <code>BML::Speedrun</code>。Virtools 场景查找和对象标识应使用
+<p>可用的内置命名空间包括 <code>BML::Runtime</code>、<code>BML::Gameplay</code>、<code>BML::UI</code> 和
+<code>BML::Speedrun</code>。Virtools 场景查找和对象标识应使用
 CKAngelScript 的 <code>Scene</code> 命名空间及其可重新验证的引用类型。其中 Runtime
 状态、时钟和分数读取直接返回 Loader 进程内状态的值，不经过任何传输层，
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
@@ -1886,10 +1881,8 @@ CKAngelScript 的 <code>Scene</code> 命名空间及其可重新验证的引用�
 快照；读取失败时输出句柄为 <code>null</code>，不需要游标、<code>Next</code> 循环或显式 <code>Close</code>。
 每次调用都会重新读取源数据并创建快照，因此数据稳定时应复用已返回的数组，
 不要每帧重复构建。</p>
-<p><code>BML::Events::Stream</code> 按 Hook 顺序提供不可变事件快照。仅当 <code>Poll</code> 返回
-<code>BML::ERROR_OK</code> 时读取事件；<code>BML::ERROR_NOT_FOUND</code> 表示流当前为空，其他状态
-表示流未打开（<code>BML::ERROR_INVALID_HANDLE</code>）或复制事件失败
-（<code>BML::ERROR_OUT_OF_MEMORY</code>）。<code>GetDroppedCount</code> 统计队列容量和背压造成的丢失。</p>
+<p>Loader 事件通过 <code>OnGameEvent</code> 同步回调到达。需要跨回调保留信息时，只复制
+Mod 后续真正需要的状态；脚本侧没有需要打开或轮询的事件队列。</p>
 <p>两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。</p>
 <h2 id="imc-provider">何时需要原生 IMC Provider<a class="headerlink" href="#imc-provider" title="Permanent link">&para;</a></h2>

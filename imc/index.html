@@ -1312,9 +1312,9 @@ other caller-thread handler is using it.</p>
 error, not as a recoverable route failure.</p>
 <h2 id="what-does-not-belong-in-an-interface">What does not belong in an interface<a class="headerlink" href="#what-does-not-belong-in-an-interface" title="Permanent link">&para;</a></h2>
 <p>Do not define an <code>.imc</code> interface for something the loader already serves. Its
-runtime state, scene lookups, gameplay data, UI, events, and speedrun timer are
-interface structs, spelled <code>BML::Runtime</code>, <code>BML::Scene</code>, <code>BML::Gameplay</code>,
-<code>BML::UI</code>, <code>BML::Events</code>, and <code>BML::Speedrun</code>. Call those directly and define an
+runtime state, scene lookups, gameplay data, UI, and speedrun timer are interface
+structs, spelled <code>BML::Runtime</code>, <code>BML::Scene</code>, <code>BML::Gameplay</code>, <code>BML::UI</code>, and
+<code>BML::Speedrun</code>. Loader events arrive through the mod callbacks. Define an
 interface only for a capability your own mod owns.</p>
 <h2 id="performance-characteristics">Performance characteristics<a class="headerlink" href="#performance-characteristics" title="Permanent link">&para;</a></h2>
 <p>Generated clients resolve names once and reuse numeric route IDs. Small
