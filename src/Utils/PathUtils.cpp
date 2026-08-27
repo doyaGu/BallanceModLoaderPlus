@@ -1164,6 +1164,26 @@ std::wstring GetParentDirectoryW(const std::wstring &path) {
         return files;
     }
 
+    bool ListFilePathsRecursiveW(const std::wstring &dir, std::vector<std::wstring> &files) {
+        files.clear();
+        if (!DirectoryExistsW(dir))
+            return false;
+
+        std::error_code ec;
+        for (std::filesystem::recursive_directory_iterator it(dir, ec), end;
+             it != end && !ec;
+             it.increment(ec)) {
+            if (it->is_regular_file(ec))
+                files.push_back(it->path().wstring());
+        }
+
+        if (!ec)
+            return true;
+
+        files.clear();
+        return false;
+    }
+
     std::vector<std::string> ListDirectoriesA(const std::string &dir, const std::string &pattern) {
         auto wideDirs = ListDirectoriesW(AnsiToUtf16(dir), AnsiToUtf16(pattern));
         std::vector<std::string> directories;

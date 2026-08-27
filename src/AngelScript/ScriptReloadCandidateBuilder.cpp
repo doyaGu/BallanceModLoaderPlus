@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cwchar>
-#include <filesystem>
-#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -79,46 +77,24 @@ static bool CopyScriptSourceSnapshotContentsW(const std::wstring &source,
     if (source.empty() || dest.empty())
         return false;
 
-    std::error_code ec;
-    const std::filesystem::path sourcePath(source);
-    const std::filesystem::path destPath(dest);
-
-    std::filesystem::create_directories(destPath, ec);
-    if (ec)
+    if (!utils::CreateFileTreeW(dest))
         return false;
 
-    for (std::filesystem::recursive_directory_iterator it(sourcePath, ec), end;
-         it != end && !ec;
-         it.increment(ec)) {
-        const std::filesystem::path relative = it->path().lexically_relative(sourcePath);
-        const std::filesystem::path target = destPath / relative;
-        if (it->is_directory(ec)) {
-            if (ec)
-                return false;
-            std::filesystem::create_directories(target, ec);
-            if (ec)
-                return false;
+    std::vector<std::wstring> sourceFiles;
+    if (!utils::ListFilePathsRecursiveW(source, sourceFiles))
+        return false;
+
+    for (const std::wstring &sourceFile : sourceFiles) {
+        if (!EndsWithInsensitiveW(sourceFile, L".as"))
             continue;
-        }
-        if (!it->is_regular_file(ec)) {
-            if (ec)
-                return false;
-            continue;
-        }
-        if (!EndsWithInsensitiveW(it->path().wstring(), L".as"))
-            continue;
-        std::filesystem::create_directories(target.parent_path(), ec);
-        if (ec)
-            return false;
-        std::filesystem::copy_file(it->path(),
-                                   target,
-                                   std::filesystem::copy_options::overwrite_existing,
-                                   ec);
-        if (ec)
+
+        const std::wstring relative = utils::MakeRelativePathW(sourceFile, source);
+        const std::wstring target = utils::CombinePathW(dest, relative);
+        if (relative.empty() || !utils::CopyFileW(sourceFile, target))
             return false;
     }
 
-    return !ec;
+    return true;
 }
 
 static std::wstring MakeReloadSnapshotRoot(const ScriptModEntry &entry) {

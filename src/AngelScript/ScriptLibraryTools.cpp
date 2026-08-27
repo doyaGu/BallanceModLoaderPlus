@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
-#include <filesystem>
 #include <set>
+#include <vector>
 
 #include "ScriptSourceSnapshotBuilder.h"
 #include "Utils/CryptoUtils.h"
@@ -61,17 +61,14 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
         return false;
     }
 
-    std::error_code ec;
+    std::vector<std::wstring> packageFiles;
+    if (!utils::ListFilePathsRecursiveW(package.RootDirectory, packageFiles)) {
+        AddError(report, "failed to enumerate package source.");
+        return false;
+    }
+
     std::set<std::string> sections;
-    for (std::filesystem::recursive_directory_iterator it(package.RootDirectory, ec), end;
-         it != end && !ec;
-         it.increment(ec)) {
-        if (!it->is_regular_file(ec)) {
-            if (ec)
-                break;
-            continue;
-        }
-        const std::wstring path = it->path().wstring();
+    for (const std::wstring &path : packageFiles) {
         const std::string logicalPathUtf8 = utils::Utf16ToUtf8(path);
         if (!utils::EndsWith(logicalPathUtf8, ".as", false))
             continue;
@@ -177,10 +174,6 @@ bool BuildScriptLibraryPackageCheckReport(const ScriptLibraryRegistry &registry,
         }
     }
 
-    if (ec) {
-        AddError(report, "failed to enumerate package source.");
-        return false;
-    }
     std::sort(report.Files.begin(), report.Files.end(), [](const ScriptLibraryToolFileReport &left,
                                                            const ScriptLibraryToolFileReport &right) {
         return FoldVirtualSectionKey(left.VirtualSection) < FoldVirtualSectionKey(right.VirtualSection);

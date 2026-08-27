@@ -503,6 +503,25 @@ TEST_F(PathUtilsTest, DirectoryListing) {
     EXPECT_TRUE(std::find(dirs.begin(), dirs.end(), "subdir2") != dirs.end());
 }
 
+TEST_F(PathUtilsTest, RecursiveFileListing) {
+    const std::wstring topFile = CreateTestFileW(L"top.txt");
+    const std::wstring nestedDirectory = utils::CombinePathW(testDirW, L"nested\\deeper");
+    ASSERT_TRUE(utils::CreateFileTreeW(nestedDirectory));
+    const std::wstring nestedFile = utils::CombinePathW(nestedDirectory, L"nested.as");
+    ASSERT_TRUE(utils::WriteTextFileW(nestedFile, L"test"));
+    ASSERT_TRUE(utils::CreateDirectoryW(utils::CombinePathW(testDirW, L"empty")));
+
+    std::vector<std::wstring> files;
+    ASSERT_TRUE(utils::ListFilePathsRecursiveW(testDirW, files));
+    EXPECT_EQ(2u, files.size());
+    EXPECT_NE(files.end(), std::find(files.begin(), files.end(), topFile));
+    EXPECT_NE(files.end(), std::find(files.begin(), files.end(), nestedFile));
+
+    files.push_back(L"stale");
+    EXPECT_FALSE(utils::ListFilePathsRecursiveW(utils::CombinePathW(testDirW, L"missing"), files));
+    EXPECT_TRUE(files.empty());
+}
+
 // Main function that runs all the tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

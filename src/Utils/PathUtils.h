@@ -228,6 +228,7 @@ namespace utils {
     std::vector<std::string> ListFilesA(const std::string &dir, const std::string &pattern = "*");
     std::vector<std::wstring> ListFilesW(const std::wstring &dir, const std::wstring &pattern = L"*");
     std::vector<std::string> ListFilesUtf8(const std::string &dir, const std::string &pattern = "*");
+    bool ListFilePathsRecursiveW(const std::wstring &dir, std::vector<std::wstring> &files);
 
     std::vector<std::string> ListDirectoriesA(const std::string &dir, const std::string &pattern = "*");
     std::vector<std::wstring> ListDirectoriesW(const std::wstring &dir, const std::wstring &pattern = L"*");

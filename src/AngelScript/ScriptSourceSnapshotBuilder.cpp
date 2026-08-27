@@ -4,7 +4,6 @@
 #include <cctype>
 #include <cwchar>
 #include <cwctype>
-#include <filesystem>
 #include <io.h>
 #include <set>
 #include <sstream>
@@ -155,33 +154,24 @@ bool AddScriptSourceDirectory(const std::wstring &root,
     if (root.empty() || !utils::DirectoryExistsW(root))
         return true;
 
-    std::error_code ec;
     std::vector<std::wstring> sourcePaths;
-    for (std::filesystem::recursive_directory_iterator it(root, ec), end;
-         it != end && !ec;
-         it.increment(ec)) {
-        if (!it->is_regular_file(ec)) {
-            if (ec)
-                break;
-            continue;
-        }
-        const std::wstring path = it->path().wstring();
-        if (!EndsWithInsensitiveW(path, L".as"))
-            continue;
-        if (!includeModEntries &&
-            IsScriptModEntryName(utils::GetFileNameW(path).c_str()) &&
-            FoldPathKeyW(path) != FoldPathKeyW(entryPath)) {
-            continue;
-        }
-        sourcePaths.push_back(path);
-    }
-
-    if (ec) {
+    if (!utils::ListFilePathsRecursiveW(root, sourcePaths)) {
         diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
                                           "Failed to enumerate script source snapshot directory.");
         diagnostic.EntryPath = utils::Utf16ToUtf8(root);
         return false;
     }
+
+    sourcePaths.erase(std::remove_if(sourcePaths.begin(), sourcePaths.end(), [&](const std::wstring &path) {
+        if (!EndsWithInsensitiveW(path, L".as"))
+            return true;
+        if (!includeModEntries &&
+            IsScriptModEntryName(utils::GetFileNameW(path).c_str()) &&
+            FoldPathKeyW(path) != FoldPathKeyW(entryPath)) {
+            return true;
+        }
+        return false;
+    }), sourcePaths.end());
     std::sort(sourcePaths.begin(), sourcePaths.end(), [&](const std::wstring &left,
                                                           const std::wstring &right) {
         const std::string leftSection = FoldSectionKey(ToScriptSectionNameUtf8(left, sectionRoot));
@@ -370,17 +360,15 @@ bool ScriptLibrarySourceCache::CapturePackage(const ScriptLibraryRegistry &regis
         return false;
     }
 
-    std::error_code ec;
-    for (std::filesystem::recursive_directory_iterator it(package.RootDirectory, ec), end;
-         it != end && !ec;
-         it.increment(ec)) {
-        if (!it->is_regular_file(ec)) {
-            if (ec)
-                break;
-            continue;
-        }
+    std::vector<std::wstring> packageFiles;
+    if (!utils::ListFilePathsRecursiveW(package.RootDirectory, packageFiles)) {
+        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
+                                          "Failed to enumerate script library package while capturing batch source.");
+        diagnostic.EntryPath = utils::Utf16ToUtf8(package.RootDirectory);
+        return false;
+    }
 
-        const std::wstring path = it->path().wstring();
+    for (const std::wstring &path : packageFiles) {
         if (!EndsWithInsensitiveW(path, L".as"))
             continue;
 
@@ -413,13 +401,6 @@ bool ScriptLibrarySourceCache::CapturePackage(const ScriptLibraryRegistry &regis
             return false;
         }
         m_Files[FoldPathKeyW(finalPath)] = std::move(code);
-    }
-
-    if (ec) {
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::Entry,
-                                          "Failed to enumerate script library package while capturing batch source.");
-        diagnostic.EntryPath = utils::Utf16ToUtf8(package.RootDirectory);
-        return false;
     }
     m_CapturedPackages.insert(packageKey);
     return true;
