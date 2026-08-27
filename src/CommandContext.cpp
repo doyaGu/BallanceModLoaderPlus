@@ -309,6 +309,12 @@ ICommand *CommandContext::GetCommandByName(const char *name) const {
     return it->second;
 }
 
+bool CommandContext::SetCheatEnabled(bool enabled) noexcept {
+    const bool changed = m_CheatEnabled != enabled;
+    m_CheatEnabled = enabled;
+    return changed;
+}
+
 void CommandContext::ClearCommands() {
     m_CommandMap.clear();
     m_Commands.clear();

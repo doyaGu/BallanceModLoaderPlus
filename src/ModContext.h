@@ -235,7 +235,7 @@ public:
     void OpenMapMenu();
     void CloseMapMenu();
 
-    bool IsCheatEnabled() override { return ReadRuntimeState().CheatEnabled; }
+    bool IsCheatEnabled() override { return m_CommandContext.IsCheatEnabled(); }
     void EnableCheat(bool enable) override;
 
     void SendIngameMessage(const char *msg) override;

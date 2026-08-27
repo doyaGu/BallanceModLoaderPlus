@@ -1274,7 +1274,7 @@ void ModContext::CloseMapMenu() {
 }
 
 void ModContext::EnableCheat(bool enable) {
-    if (m_RuntimeState.SetCheatEnabled(enable)) {
+    if (m_CommandContext.SetCheatEnabled(enable)) {
         BroadcastCallback(&IMod::OnCheatEnabled, enable);
     }
 }

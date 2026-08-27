@@ -8,14 +8,12 @@ void ExpectState(const BML::RuntimeState &state,
                  bool inGame,
                  bool inLevel,
                  bool paused,
-                 bool playing,
-                 bool cheatEnabled = false) {
+                 bool playing) {
     const BML::RuntimeStateSnapshot snapshot = state.Read();
     EXPECT_EQ(inGame, snapshot.InGame);
     EXPECT_EQ(inLevel, snapshot.InLevel);
     EXPECT_EQ(paused, snapshot.Paused);
     EXPECT_EQ(playing, snapshot.Playing);
-    EXPECT_EQ(cheatEnabled, snapshot.CheatEnabled);
 }
 
 TEST(RuntimeStateTest, InitialStateIsInactive) {
@@ -64,19 +62,6 @@ TEST(RuntimeStateTest, EnterLevelClearsPausedStateFromPreviousGame) {
     state.Apply(BML::RuntimeStateTransition::EnterLevel);
 
     ExpectState(state, true, true, false, true);
-}
-
-TEST(RuntimeStateTest, CheatUpdatesAreIdempotentAndIndependent) {
-    BML::RuntimeState state;
-    state.Apply(BML::RuntimeStateTransition::EnterLevel);
-
-    EXPECT_TRUE(state.SetCheatEnabled(true));
-    EXPECT_FALSE(state.SetCheatEnabled(true));
-    ExpectState(state, true, true, false, true, true);
-
-    EXPECT_TRUE(state.SetCheatEnabled(false));
-    EXPECT_FALSE(state.SetCheatEnabled(false));
-    ExpectState(state, true, true, false, true, false);
 }
 
 TEST(RuntimeStateTest, RepeatedTransitionsAreStable) {

@@ -59,7 +59,7 @@ int RuntimeReadState(BML_RuntimeState *out) {
         out->InLevel = state.InLevel ? 1 : 0;
         out->Paused = state.Paused ? 1 : 0;
         out->Playing = state.Playing ? 1 : 0;
-        out->CheatEnabled = state.CheatEnabled ? 1 : 0;
+        out->CheatEnabled = context.IsCheatEnabled() ? 1 : 0;
         return BML_OK;
     });
 }

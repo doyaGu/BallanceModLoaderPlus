@@ -39,6 +39,9 @@ namespace BML {
         ICommand *GetCommandByIndex(size_t index) const;
         ICommand *GetCommandByName(const char *name) const;
 
+        bool IsCheatEnabled() const noexcept { return m_CheatEnabled; }
+        bool SetCheatEnabled(bool enabled) noexcept;
+
         void ClearCommands();
 
         bool SetOutputCallback(CommandOutputCallback callback, void *userdata);
@@ -88,6 +91,7 @@ namespace BML {
         typedef std::unordered_map<std::string, ICommand *, CommandKeyHash, CommandKeyEqual>
             CommandMap;
         CommandMap m_CommandMap;
+        bool m_CheatEnabled = false;
         CommandOutputCallback m_OutputCallback = nullptr;
         void *m_OutputCallbackData = nullptr;
     };

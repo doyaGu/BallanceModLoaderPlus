@@ -10,7 +10,6 @@ RuntimeStateSnapshot RuntimeState::Read() const noexcept {
         IsSet(LevelActive) && !paused,
         paused,
         inGame && !paused,
-        IsSet(CheatEnabled),
     };
 }
 
@@ -35,12 +34,6 @@ void RuntimeState::Apply(RuntimeStateTransition transition) noexcept {
             Set(Paused, false);
             break;
     }
-}
-
-bool RuntimeState::SetCheatEnabled(bool enabled) noexcept {
-    const bool changed = IsSet(CheatEnabled) != enabled;
-    Set(CheatEnabled, enabled);
-    return changed;
 }
 
 bool RuntimeState::IsSet(Bit bit) const noexcept {

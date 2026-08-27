@@ -327,6 +327,18 @@ TEST_F(CommandContextTest, ClearCommands) {
     EXPECT_EQ(nullptr, ctx->GetCommandByName("aaa"));
 }
 
+TEST_F(CommandContextTest, CheatPolicyChangesAreIdempotent) {
+    EXPECT_FALSE(ctx->IsCheatEnabled());
+
+    EXPECT_TRUE(ctx->SetCheatEnabled(true));
+    EXPECT_TRUE(ctx->IsCheatEnabled());
+    EXPECT_FALSE(ctx->SetCheatEnabled(true));
+
+    EXPECT_TRUE(ctx->SetCheatEnabled(false));
+    EXPECT_FALSE(ctx->IsCheatEnabled());
+    EXPECT_FALSE(ctx->SetCheatEnabled(false));
+}
+
 // Output callback
 TEST_F(CommandContextTest, OutputCallback) {
     std::string captured;

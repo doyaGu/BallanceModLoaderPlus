@@ -221,7 +221,7 @@ RuntimeState GetRuntimeState() {
         return {};
     const BML::RuntimeStateSnapshot state = context->ReadRuntimeState();
     return {state.InGame, state.InLevel, state.Paused, state.Playing,
-            state.CheatEnabled};
+            context->IsCheatEnabled()};
 }
 
 ClockState GetRuntimeClock() {
