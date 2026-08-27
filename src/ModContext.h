@@ -16,6 +16,7 @@
 #include "Config.h"
 #include "DataShare.hpp"
 #include "CommandContext.h"
+#include "CKIdentityRegistry.h"
 #include "HookUtils.h"
 #include "ImcRuntime.h"
 #include "ModInvocationGate.h"
@@ -225,6 +226,7 @@ public:
     void ExitGame() override;
 
     BML::GameSessionSnapshot ReadGameSession() const noexcept { return m_GameSession.Read(); }
+    BML::CKIdentityRegistry &ObjectIdentities() noexcept { return m_ObjectIdentities; }
     bool IsIngame() override { return ReadGameSession().IsInGame(); }
     bool IsInLevel() const { return ReadGameSession().IsInLevel(); }
     bool IsPaused() override { return ReadGameSession().IsPaused(); }
@@ -400,6 +402,7 @@ private:
     bool CanScheduleTimer() const;
     int m_Flags = 0;
     BML::GameSession m_GameSession;
+    BML::CKIdentityRegistry m_ObjectIdentities;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;
     bool m_AngelScriptBindingsRegistered = false;

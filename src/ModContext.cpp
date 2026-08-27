@@ -174,7 +174,7 @@ CKRenderContext *BML_GetRenderContext() {
     return g_ModContext ? g_ModContext->GetRenderContext() : nullptr;
 }
 
-ModContext::ModContext(CKContext *context) {
+ModContext::ModContext(CKContext *context) : m_ObjectIdentities(context) {
     assert(context != nullptr);
     m_ImcRuntime.SetInvocationGate(&m_ModInvocationGate);
     m_CKContext = context;

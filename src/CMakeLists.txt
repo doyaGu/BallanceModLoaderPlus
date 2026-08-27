@@ -113,6 +113,7 @@ set(BML_PRIVATE_HEADERS
         ModContext.h
         LegacyModVersion.h
         BuiltinCapabilities.h
+        CKIdentityRegistry.h
         GameSession.h
 
         BMLMod.h
@@ -152,6 +153,7 @@ set(BML_SOURCES
         ModManager.cpp
         ModContext.cpp
         BuiltinCapabilities.cpp
+        CKIdentityRegistry.cpp
         Interfaces.cpp
         GameSession.cpp
 

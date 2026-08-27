@@ -1,9 +1,7 @@
 #include "BuiltinCapabilities.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <cstring>
-#include <limits>
 #include <memory>
 #include <new>
 #include <string>
@@ -11,94 +9,24 @@
 #include <utility>
 #include <vector>
 
-#include "BML/Gameplay.h"
 #include "BML/TypeConvert.h"
-#include "BML/Scene.h"
 
 #include "BMLMod.h"
+#include "CKIdentityRegistry.h"
 #include "Logger.h"
 #include "ModContext.h"
 
 namespace {
 
-constexpr uint32_t kVirtoolsObjectDomain = BML_OBJECT_DOMAIN_VIRTOOLS;
-
-// CK_ID slots can be reused. A reference therefore carries the generation that
-// was current when it was emitted, and deletion callbacks erase the slot before
-// a replacement object can inherit it.
-class ObjectReferences {
-public:
-    BML_ObjectRef Make(CKObject *object) {
-        if (!object || object->GetID() == 0)
-            return {};
-
-        const uint32_t slot = static_cast<uint32_t>(object->GetID());
-        Entry &entry = m_Entries[slot];
-        if (entry.Identity != object)
-            entry = {object, NextGeneration()};
-        return {kVirtoolsObjectDomain, slot, entry.Generation};
-    }
-
-    CKObject *Resolve(ModContext *context, BML_ObjectRef reference) const {
-        if (!context || !context->GetCKContext() || reference.Domain != kVirtoolsObjectDomain ||
-            reference.Slot == 0 || reference.Generation == 0) {
-            return nullptr;
-        }
-        CKObject *current = context->GetCKContext()->GetObject(static_cast<CK_ID>(reference.Slot));
-        const auto entry = m_Entries.find(reference.Slot);
-        return current && !current->IsToBeDeleted() && entry != m_Entries.end() &&
-                       entry->second.Generation == reference.Generation &&
-                       entry->second.Identity == current
-                   ? current
-                   : nullptr;
-    }
-
-    void Invalidate(const CK_ID *ids, int count) {
-        if (!ids || count <= 0)
-            return;
-        for (int index = 0; index < count; ++index)
-            m_Entries.erase(static_cast<uint32_t>(ids[index]));
-    }
-
-    void InvalidateAll() { m_Entries.clear(); }
-
-private:
-    struct Entry {
-        CKObject *Identity = nullptr;
-        uint32_t Generation = 0;
-    };
-
-    uint32_t NextGeneration() {
-        const uint32_t generation = m_NextGeneration;
-        m_NextGeneration = m_NextGeneration == (std::numeric_limits<uint32_t>::max)()
-                               ? 1
-                               : m_NextGeneration + 1;
-        return generation;
-    }
-
-    std::unordered_map<uint32_t, Entry> m_Entries;
-    uint32_t m_NextGeneration = 1;
-};
-
 class BuiltinCapabilities {
 public:
-    explicit BuiltinCapabilities(BMLMod &mod) : m_Mod(mod) {}
+    BuiltinCapabilities(BMLMod &mod, BML::CKIdentityRegistry &identities)
+        : m_Mod(mod), m_Identities(identities) {}
 
     ModContext *Context() const { return GetContext(); }
 
-    BML_ObjectRef MakeObjectRef(CKObject *object) {
-        return m_ObjectReferences.Make(object);
-    }
-
-    CKObject *ResolveObjectRef(BML_ObjectRef reference) const {
-        return m_ObjectReferences.Resolve(GetContext(), reference);
-    }
-
-    void InvalidateObjectRefs(const CK_ID *ids, int count) { m_ObjectReferences.Invalidate(ids, count); }
-    void InvalidateAllObjectRefs() { m_ObjectReferences.InvalidateAll(); }
-
     int ReadSceneObject(BML_ObjectRef reference, BML_SceneObjectInfo &out) {
-        CKObject *object = m_ObjectReferences.Resolve(GetContext(), reference);
+        CKObject *object = m_Identities.Resolve(reference);
         if (!object)
             return BML_ERROR_OBJECT_INVALID;
         out.Id = static_cast<int>(object->GetID());
@@ -110,7 +38,7 @@ public:
     }
 
     int ReadSceneEntityTransform(BML_ObjectRef reference, BML_SceneEntityTransform &out) {
-        auto *entity = dynamic_cast<CK3dEntity *>(m_ObjectReferences.Resolve(GetContext(), reference));
+        auto *entity = dynamic_cast<CK3dEntity *>(m_Identities.Resolve(reference));
         if (!entity)
             return BML_ERROR_OBJECT_INVALID;
         VxVector position, scale;
@@ -118,7 +46,7 @@ public:
         entity->GetScale(&scale);
         out.Position = BML::Convert::ToVec3(position);
         out.Scale = BML::Convert::ToVec3(scale);
-        out.Parent = m_ObjectReferences.Make(entity->GetParent());
+        out.Parent = m_Identities.Make(entity->GetParent());
         out.ChildCount = entity->GetChildrenCount();
         return BML_OK;
     }
@@ -127,7 +55,7 @@ public:
         ModContext *context = GetContext();
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
-        out = m_ObjectReferences.Make(context->GetCKContext()->GetObjectByName(const_cast<char *>(name)));
+        out = m_Identities.Make(context->GetCKContext()->GetObjectByName(const_cast<char *>(name)));
         return BML_OK;
     }
 
@@ -135,7 +63,7 @@ public:
         ModContext *context = GetContext();
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
-        out = m_ObjectReferences.Make(context->GetCKContext()->GetObjectByNameAndClass(
+        out = m_Identities.Make(context->GetCKContext()->GetObjectByNameAndClass(
             const_cast<char *>(name), static_cast<CK_CLASSID>(classId)));
         return BML_OK;
     }
@@ -150,7 +78,7 @@ public:
             !ReadValue(array, 0, 5, points))
             return BML_ERROR_UNAVAILABLE;
         out.Id = id;
-        out.ActiveBall = m_ObjectReferences.Make(ReadObject(array, 0, 1));
+        out.ActiveBall = m_Identities.Make(ReadObject(array, 0, 1));
         out.ResetMatrix = BML::Convert::ToMat4(matrix);
         out.Points = points;
         return BML_OK;
@@ -207,7 +135,7 @@ public:
         if (!ReadMatrix(array, row, 0, matrix))
             return BML_ERROR_UNAVAILABLE;
         out.Matrix = BML::Convert::ToMat4(matrix);
-        out.Object = m_ObjectReferences.Make(ReadObject(array, row, 1));
+        out.Object = m_Identities.Make(ReadObject(array, row, 1));
         return BML_OK;
     }
 
@@ -222,7 +150,7 @@ public:
         const int row = RowIndex(array, index);
         if (row < 0)
             return BML_ERROR_NOT_FOUND;
-        out.Object = m_ObjectReferences.Make(ReadObject(array, row, 0));
+        out.Object = m_Identities.Make(ReadObject(array, row, 0));
         return BML_OK;
     }
 
@@ -340,7 +268,7 @@ private:
     }
 
     BMLMod &m_Mod;
-    ObjectReferences m_ObjectReferences;
+    BML::CKIdentityRegistry &m_Identities;
 };
 
 std::unordered_map<BMLMod *, std::unique_ptr<BuiltinCapabilities>> g_Capabilities;
@@ -356,10 +284,11 @@ BuiltinCapabilities *Find(ModContext &context) {
 
 } // namespace
 
-void RegisterBuiltinCapabilities(BMLMod &mod, ILogger *logger) {
+void RegisterBuiltinCapabilities(BMLMod &mod, BML::CKIdentityRegistry &identities,
+                                 ILogger *logger) {
     UnregisterBuiltinCapabilities(mod);
     try {
-        g_Capabilities.emplace(&mod, std::make_unique<BuiltinCapabilities>(mod));
+        g_Capabilities.emplace(&mod, std::make_unique<BuiltinCapabilities>(mod, identities));
     } catch (const std::bad_alloc &) {
         if (logger)
             logger->Warn("Failed to register the built-in capabilities: %s",
@@ -369,26 +298,6 @@ void RegisterBuiltinCapabilities(BMLMod &mod, ILogger *logger) {
 
 void UnregisterBuiltinCapabilities(BMLMod &mod) {
     g_Capabilities.erase(&mod);
-}
-
-void InvalidateBuiltinObjectRefs(ModContext &context, const CK_ID *ids, int count) {
-    if (BuiltinCapabilities *capabilities = Find(context))
-        capabilities->InvalidateObjectRefs(ids, count);
-}
-
-void InvalidateAllBuiltinObjectRefs(ModContext &context) {
-    if (BuiltinCapabilities *capabilities = Find(context))
-        capabilities->InvalidateAllObjectRefs();
-}
-
-BML_ObjectRef MakeBuiltinObjectRef(ModContext &context, CKObject *object) {
-    BuiltinCapabilities *capabilities = Find(context);
-    return capabilities ? capabilities->MakeObjectRef(object) : BML_ObjectRef{};
-}
-
-CKObject *ResolveBuiltinObjectRef(ModContext &context, BML_ObjectRef reference) {
-    BuiltinCapabilities *capabilities = Find(context);
-    return capabilities ? capabilities->ResolveObjectRef(reference) : nullptr;
 }
 
 // Every interface thunk and every script binding reaches these reads through

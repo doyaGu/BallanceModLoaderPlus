@@ -344,6 +344,13 @@ add_bml_test(GameSessionTest
         ${BML_SOURCE_DIR}/GameSession.cpp
 )
 
+add_bml_test(CKIdentityRegistryTest
+        SOURCES
+        CKIdentityRegistryTest.cpp
+        ${BML_SOURCE_DIR}/CKIdentityRegistry.cpp
+)
+target_include_directories(CKIdentityRegistryTest PRIVATE "${VIRTOOLS_SDK_INCLUDE_DIR}")
+
 add_bml_test(CommandContextTest
         SOURCES
         CommandContextTest.cpp

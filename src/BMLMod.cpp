@@ -168,7 +168,8 @@ void BMLMod::OnLoad() {
     // Apply initial FPS update frequency setting
     SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
 
-    RegisterBuiltinCapabilities(*this, GetLogger());
+    if (ModContext *context = GetRuntimeContext())
+        RegisterBuiltinCapabilities(*this, context->ObjectIdentities(), GetLogger());
 }
 
 void BMLMod::OnUnload() {
