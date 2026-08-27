@@ -6,7 +6,6 @@
 add_library(BML_HashUtils STATIC
     HashUtils.h
     HashUtils.cpp
-    Crc16.h
 )
 
 target_include_directories(BML_HashUtils PUBLIC
