@@ -87,6 +87,9 @@ CKERROR ModManager::PostProcess() {
     if (!m_ModContext || !m_ModContext->IsInited() || !m_RenderContext)
         return CK_OK;
 
+    // The scope covers the whole frame so that whatever a mod draws goes to the loader's
+    // context, but the physics, mod, and input work below is not drawing and still has to
+    // run on a frame that has no context to draw into.
     Overlay::ImGuiContextScope scope;
 
     PhysicsPostProcess();
@@ -97,24 +100,27 @@ CKERROR ModManager::PostProcess() {
     if (!inputHook)
         return CK_OK;
 
-    ImGuiIO &io = ImGui::GetIO();
+    if (scope.IsActive()) {
+        ImGuiIO &io = ImGui::GetIO();
 
-    static bool cursorVisibilityChanged = false;
-    if (io.WantCaptureMouse) {
-        if (!inputHook->GetCursorVisibility()) {
-            inputHook->ShowCursor(TRUE);
-            cursorVisibilityChanged = true;
-        }
-    } else {
-        if (cursorVisibilityChanged) {
-            if (inputHook->GetCursorVisibility()) {
-                inputHook->ShowCursor(FALSE);
-                cursorVisibilityChanged = false;
+        static bool cursorVisibilityChanged = false;
+        if (io.WantCaptureMouse) {
+            if (!inputHook->GetCursorVisibility()) {
+                inputHook->ShowCursor(TRUE);
+                cursorVisibilityChanged = true;
+            }
+        } else {
+            if (cursorVisibilityChanged) {
+                if (inputHook->GetCursorVisibility()) {
+                    inputHook->ShowCursor(FALSE);
+                    cursorVisibilityChanged = false;
+                }
             }
         }
+
+        Overlay::ImGuiRender();
     }
 
-    Overlay::ImGuiRender();
     inputHook->Process();
     return CK_OK;
 }

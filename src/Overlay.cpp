@@ -31,6 +31,8 @@ namespace Overlay {
 
     LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         ImGuiContextScope scope;
+        if (!scope.IsActive())
+            return 0;
 
         if (msg == WM_IME_COMPOSITION) {
             if (lParam & GCS_RESULTSTR) {
@@ -53,6 +55,8 @@ namespace Overlay {
 
     LRESULT OnWndProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         ImGuiContextScope scope;
+        if (!scope.IsActive())
+            return 0;
 
         return ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
     }
@@ -173,8 +177,19 @@ namespace Overlay {
     }
 
     void ImGuiDestroyContext() {
-        ImGuiContextScope scope;
-        ImGui::DestroyContext();
+        ImGuiContext *context = g_ImGuiContext;
+        if (!context)
+            return;
+
+        // The message hooks live until DLL_PROCESS_DETACH, which is long after the
+        // context dies, so clear the pointer they reach the context through before
+        // freeing it. They then see an inactive overlay instead of freed memory.
+        g_ImGuiContext = nullptr;
+        g_ImGuiReady = false;
+        g_RenderReady = false;
+        g_NewFrame = false;
+
+        ImGui::DestroyContext(context);
     }
 
     bool ImGuiInitPlatform(CKContext *context) {

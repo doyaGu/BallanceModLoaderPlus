@@ -11,25 +11,35 @@ namespace Overlay {
     bool IsImGuiFrameActive();
     bool IsImGuiRenderReady();
 
+    // Switches to the loader's ImGui context for as long as it lives, and switches
+    // back on the way out. The loader has no context before ImGuiCreateContext and
+    // none after ImGuiDestroyContext, so the scope does nothing at all in those
+    // windows and IsActive reports false. Code inside a scope must not touch ImGui
+    // unless the scope is active.
     class ImGuiContextScope {
     public:
-        explicit ImGuiContextScope(ImGuiContext *context = nullptr) {
-            m_ImGuiContext = (context != nullptr) ? context : ImGui::GetCurrentContext();
-            ImGui::SetCurrentContext(GetImGuiContext());
+        ImGuiContextScope()
+            : m_PreviousContext(ImGui::GetCurrentContext()), m_Active(GetImGuiContext() != nullptr) {
+            if (m_Active)
+                ImGui::SetCurrentContext(GetImGuiContext());
         }
 
         ImGuiContextScope(const ImGuiContextScope &rhs) = delete;
         ImGuiContextScope(ImGuiContextScope &&rhs) noexcept = delete;
 
         ~ImGuiContextScope() {
-            ImGui::SetCurrentContext(m_ImGuiContext);
+            if (m_Active)
+                ImGui::SetCurrentContext(m_PreviousContext);
         }
 
         ImGuiContextScope &operator=(const ImGuiContextScope &rhs) = delete;
         ImGuiContextScope &operator=(ImGuiContextScope &&rhs) noexcept = delete;
 
+        bool IsActive() const { return m_Active; }
+
     private:
-        ImGuiContext *m_ImGuiContext;
+        ImGuiContext *m_PreviousContext;
+        bool m_Active;
     };
 
     bool ImGuiInstallWin32Hooks();
