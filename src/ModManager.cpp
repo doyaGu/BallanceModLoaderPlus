@@ -15,8 +15,7 @@ ModManager::~ModManager() {
 }
 
 CKERROR ModManager::OnCKInit() {
-    m_ModContext->Init();
-    return CK_OK;
+    return m_ModContext->Init() ? CK_OK : CKERR_NOTINITIALIZED;
 }
 
 CKERROR ModManager::OnCKEnd() {

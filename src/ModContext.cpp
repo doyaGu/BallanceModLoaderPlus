@@ -1611,8 +1611,11 @@ void ModContext::ShutdownLogger() {
 
     Logger::SetDefault(nullptr);
     delete m_Logger;
-    if (m_Logfile)
+    m_Logger = nullptr;
+    if (m_Logfile) {
         fclose(m_Logfile);
+        m_Logfile = nullptr;
+    }
 }
 
 extern bool HookObjectLoad();
