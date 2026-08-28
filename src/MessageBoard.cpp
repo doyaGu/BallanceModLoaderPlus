@@ -168,28 +168,39 @@ bool MessageBoard::HasVisibleContent() const {
     return m_DisplayMessageCount > 0;
 }
 
-float MessageBoard::CalculateContentHeight(float wrapWidth) const {
+MessageBoard::FrameLayout MessageBoard::CaptureFrameLayout() const {
+    const ImGuiStyle &style = ImGui::GetStyle();
+    return {
+        (style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : 0.0f,
+        (style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : 0.0f,
+        m_LineSpacingOverride ? m_CustomLineSpacing : std::max(0.0f, style.ItemSpacing.y),
+        std::max(0.0f, style.ScrollbarSize),
+        std::max(0.0f, style.ItemInnerSpacing.x * 0.5f),
+    };
+}
+
+float MessageBoard::CalculateContentHeight(float wrapWidth, const FrameLayout &layout) const {
     float contentHeight = 0.0f;
     int visibleCount = 0;
 
     for (int i = 0; i < m_MessageCount; i++) {
         const MessageUnit &msg = MessageAt(i);
         if (ShouldShowMessage(msg)) {
-            contentHeight += msg.GetTextHeight(wrapWidth, m_MessageGap, m_TabColumns);
+            contentHeight += msg.GetTextHeight(wrapWidth, layout.messageGap, m_TabColumns);
             visibleCount++;
         }
     }
 
     if (visibleCount > 1)
-        contentHeight += m_MessageGap * (visibleCount - 1);
+        contentHeight += layout.messageGap * (visibleCount - 1);
 
     // Return pure content height (no padding)
     return std::max(contentHeight, ImGui::GetTextLineHeightWithSpacing());
 }
 
-float MessageBoard::CalculateDisplayHeight(float contentHeight) const {
+float MessageBoard::CalculateDisplayHeight(float contentHeight, const FrameLayout &layout) {
     // Add padding to content height to get total display height needed
-    return contentHeight + m_PadY * 2.0f;
+    return contentHeight + layout.padY * 2.0f;
 }
 
 // =============================================================================
@@ -197,15 +208,8 @@ float MessageBoard::CalculateDisplayHeight(float contentHeight) const {
 // =============================================================================
 
 void MessageBoard::OnPreBegin() {
-    // Pre-read style values BEFORE pushing style overrides
-    const ImGuiStyle &style = ImGui::GetStyle();
-
-    m_PadX = (style.WindowPadding.x > 0.0f) ? style.WindowPadding.x : 0.0f;
-    m_PadY = (style.WindowPadding.y > 0.0f) ? style.WindowPadding.y : 0.0f;
-    const float styleGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f;
-    m_MessageGap = m_LineSpacingOverride ? m_CustomLineSpacing : styleGap;
-    m_ScrollbarW = (style.ScrollbarSize > 0.0f) ? style.ScrollbarSize : 0.0f;
-    m_ScrollbarPad = (style.ItemInnerSpacing.x > 0.0f) ? (style.ItemInnerSpacing.x * 0.5f) : 0.0f;
+    m_FrameLayout = CaptureFrameLayout();
+    const FrameLayout &layout = *m_FrameLayout;
 
     // Push style overrides
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -217,11 +221,11 @@ void MessageBoard::OnPreBegin() {
 
     const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
     const float windowWidth = vpSize.x * 0.96f;
-    const float wrapWidth = windowWidth - m_PadX * 2.0f;
+    const float wrapWidth = windowWidth - layout.padX * 2.0f;
     const float maxDisplayHeight = vpSize.y * 0.8f;
 
-    const float contentHeight = CalculateContentHeight(wrapWidth);
-    const float displayHeight = CalculateDisplayHeight(contentHeight);
+    const float contentHeight = CalculateContentHeight(wrapWidth, layout);
+    const float displayHeight = CalculateDisplayHeight(contentHeight, layout);
     float windowHeight = std::min(displayHeight, maxDisplayHeight);
 
     const float bottomAnchor = vpSize.y * 0.9f;
@@ -233,9 +237,10 @@ void MessageBoard::OnPreBegin() {
 }
 
 void MessageBoard::OnDraw() {
-    if (!HasVisibleContent()) {
+    if (!HasVisibleContent() || !m_FrameLayout) {
         return;
     }
+    const FrameLayout &layout = *m_FrameLayout;
 
     // Keep messages on top in normal mode; when command bar is visible,
     // allow the command bar to overlay the message board if they overlap.
@@ -244,26 +249,26 @@ void MessageBoard::OnDraw() {
 
     const ImVec2 contentPos = ImGui::GetCursorScreenPos();
     const ImVec2 contentSize = ImGui::GetContentRegionAvail();
-    const float baseWrapWidth = contentSize.x - m_PadX * 2.0f;
+    const float baseWrapWidth = contentSize.x - layout.padX * 2.0f;
 
     // Calculate content dimensions for scrolling
-    float contentHeightNoSB = CalculateContentHeight(baseWrapWidth);
-    const float availableContentHeight = contentSize.y - m_PadY * 2.0f;
+    float contentHeightNoSB = CalculateContentHeight(baseWrapWidth, layout);
+    const float availableContentHeight = contentSize.y - layout.padY * 2.0f;
 
     // Determine if a scrollbar is needed when command bar is visible.
     bool needsScrollbar = m_IsCommandBarVisible && (contentHeightNoSB > availableContentHeight);
     float wrapWidth = baseWrapWidth;
     float contentHeight = contentHeightNoSB;
     if (needsScrollbar) {
-        wrapWidth = std::max(0.0f, baseWrapWidth - (m_ScrollbarW + m_ScrollbarPad * 2.0f));
-        contentHeight = CalculateContentHeight(wrapWidth); // recompute since wrap width shrinks
+        wrapWidth = std::max(0.0f, baseWrapWidth - (layout.scrollbarWidth + layout.scrollbarPadding * 2.0f));
+        contentHeight = CalculateContentHeight(wrapWidth, layout); // recompute since wrap width shrinks
     }
 
     // Handle scrolling when command bar is visible
     if (m_IsCommandBarVisible) {
         if (needsScrollbar) {
             UpdateScrollBounds(contentHeight, availableContentHeight);
-            HandleScrolling(availableContentHeight);
+            HandleScrolling(availableContentHeight, layout);
         } else {
             m_ScrollY = 0.0f;
             m_MaxScrollY = 0.0f;
@@ -272,26 +277,26 @@ void MessageBoard::OnDraw() {
     }
 
     ImDrawList *drawList = ImGui::GetWindowDrawList();
-    const ImVec2 contentStart = ImVec2(contentPos.x + m_PadX, contentPos.y + m_PadY);
+    const ImVec2 contentStart(contentPos.x + layout.padX, contentPos.y + layout.padY);
 
-    ImVec2 startPos = ImVec2(contentStart.x, contentStart.y - m_ScrollY);
+    const ImVec2 startPos(contentStart.x, contentStart.y - m_ScrollY);
     // Set up clipping for content area
-    const ImVec2 clipMin = ImVec2(contentPos.x + m_PadX, contentPos.y + m_PadY);
-    const ImVec2 clipMax = ImVec2(
-        contentPos.x + contentSize.x - m_PadX - (m_IsCommandBarVisible && needsScrollbar ? (m_ScrollbarW + m_ScrollbarPad * 2.0f) : 0.0f),
-        contentPos.y + contentSize.y - m_PadY
+    const ImVec2 clipMin(contentPos.x + layout.padX, contentPos.y + layout.padY);
+    const ImVec2 clipMax(
+        contentPos.x + contentSize.x - layout.padX - (m_IsCommandBarVisible && needsScrollbar ? (layout.scrollbarWidth + layout.scrollbarPadding * 2.0f) : 0.0f),
+        contentPos.y + contentSize.y - layout.padY
     );
     drawList->PushClipRect(clipMin, clipMax, true);
 
-    RenderMessages(drawList, startPos, wrapWidth);
+    RenderMessages(drawList, startPos, wrapWidth, layout);
 
     drawList->PopClipRect();
     if (m_IsCommandBarVisible && needsScrollbar && m_MaxScrollY > 0.0f) {
-        DrawScrollIndicators(drawList, contentPos, contentSize, contentHeight, availableContentHeight);
+        DrawScrollIndicators(drawList, contentPos, contentSize, contentHeight, availableContentHeight, layout);
     }
 }
 
-void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth) {
+void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth, const FrameLayout &layout) {
     ImVec4 bgColorBase = m_HasCustomMessageBg ? m_MessageBgColor : Bui::GetMenuColor();
 
     // Prepare visible indices (display order: newest first) and cached heights
@@ -306,7 +311,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
         if (!shouldShow)
             continue;
         indices.push_back(i);
-        heights.push_back(msg.GetTextHeight(wrapWidth, m_MessageGap, m_TabColumns));
+        heights.push_back(msg.GetTextHeight(wrapWidth, layout.messageGap, m_TabColumns));
     }
 
     const int n = (int)indices.size();
@@ -323,7 +328,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
         offsets[j] = acc;
         const float h = heights[j];
         bottoms[j] = acc + h;                 // bottom Y (relative)
-        acc += h + m_MessageGap;              // advance incl. gap (gap after last is harmless)
+        acc += h + layout.messageGap;          // advance incl. gap (gap after last is harmless)
     }
 
     // Determine visible index range against current clip rect
@@ -342,7 +347,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
     // Register the logical content extent once. Visibility is already determined by
     // the variable-height offsets above, so an ImGuiListClipper would only repeat it.
     ImGui::SetCursorScreenPos(startPos);
-    ImGui::Dummy(ImVec2(wrapWidth, std::max(0.0f, acc - m_MessageGap)));
+    ImGui::Dummy(ImVec2(wrapWidth, std::max(0.0f, acc - layout.messageGap)));
 
     for (int j = begin; j < end; ++j) {
         const int i = indices[j];
@@ -356,23 +361,23 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
             if (finalAlpha > 0.0f) {
                 const ImVec4 bg(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
                 drawList->AddRectFilled(
-                    ImVec2(pos.x - m_PadX * 0.5f, pos.y - m_PadY * 0.25f),
-                    ImVec2(pos.x + wrapWidth + m_PadX * 0.5f, pos.y + msgHeight + m_PadY * 0.25f),
+                    ImVec2(pos.x - layout.padX * 0.5f, pos.y - layout.padY * 0.25f),
+                    ImVec2(pos.x + wrapWidth + layout.padX * 0.5f, pos.y + msgHeight + layout.padY * 0.25f),
                     ImGui::GetColorU32(bg)
                 );
             }
 
-            DrawMessageText(drawList, msg, pos, wrapWidth, alpha);
+            DrawMessageText(drawList, msg, pos, wrapWidth, alpha, layout);
         }
     }
 }
 
-void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &startPos, float wrapWidth, float alpha) {
+void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &startPos, float wrapWidth, float alpha, const FrameLayout &layout) {
     AnsiText::TextOptions drawOptions;
     drawOptions.font = ImGui::GetFont();
     drawOptions.wrapWidth = wrapWidth;
     drawOptions.alpha = alpha;
-    drawOptions.lineSpacing = m_MessageGap;
+    drawOptions.lineSpacing = layout.messageGap;
     drawOptions.tabColumns = m_TabColumns;
     AnsiText::Renderer::DrawText(drawList, message.ansiText, startPos, drawOptions);
 }
@@ -381,16 +386,15 @@ void MessageBoard::DrawMessageText(ImDrawList *drawList, const MessageUnit &mess
 // Scrolling System
 // =============================================================================
 
-void MessageBoard::HandleScrolling(float visibleHeight) {
+void MessageBoard::HandleScrolling(float visibleHeight, const FrameLayout &layout) {
     if (!m_IsCommandBarVisible || m_MaxScrollY <= 0.0f) return;
 
     const ImGuiIO &io = ImGui::GetIO();
 
     // Mouse wheel scrolling
     if (ImGui::IsWindowHovered() && io.MouseWheel != 0.0f) {
-        const ImGuiStyle &st = ImGui::GetStyle();
         const float fontPixelSize = ImGui::GetFontSize();
-        const float scrollSpeed = (fontPixelSize + st.ItemSpacing.y) * 3.0f;
+        const float scrollSpeed = (fontPixelSize + layout.messageGap) * 3.0f;
         SetScrollYClamped(m_ScrollY - io.MouseWheel * scrollSpeed);
     }
 
@@ -424,17 +428,17 @@ void MessageBoard::InvalidateLayoutCache() {
     }
 }
 
-void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight) {
+void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight, const FrameLayout &layout) {
     if (m_MaxScrollY <= 0.0f) return;
 
     // Scrollbar background
     const ImVec2 scrollbarStart = ImVec2(
-        contentPos.x + contentSize.x - m_ScrollbarW - m_ScrollbarPad,
-        contentPos.y + m_PadY + m_ScrollbarPad
+        contentPos.x + contentSize.x - layout.scrollbarWidth - layout.scrollbarPadding,
+        contentPos.y + layout.padY + layout.scrollbarPadding
     );
     const ImVec2 scrollbarEnd = ImVec2(
-        contentPos.x + contentSize.x - m_ScrollbarPad,
-        contentPos.y + contentSize.y - m_PadY - m_ScrollbarPad
+        contentPos.x + contentSize.x - layout.scrollbarPadding,
+        contentPos.y + contentSize.y - layout.padY - layout.scrollbarPadding
     );
 
     drawList->AddRectFilled(scrollbarStart, scrollbarEnd, IM_COL32(60, 60, 60, 100));
@@ -455,14 +459,14 @@ void MessageBoard::DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &cont
         const std::string scrollText = FormatScrollPercent(contentHeight, visibleHeight);
         const ImVec2 textSize = ImGui::CalcTextSize(scrollText.c_str());
         const ImVec2 textPos = ImVec2(
-            contentPos.x + contentSize.x - textSize.x - m_ScrollbarW - m_ScrollbarPad - m_PadX,
-            contentPos.y + m_PadY * 0.5f
+            contentPos.x + contentSize.x - textSize.x - layout.scrollbarWidth - layout.scrollbarPadding - layout.padX,
+            contentPos.y + layout.padY * 0.5f
         );
 
         // Text background
         drawList->AddRectFilled(
-            ImVec2(textPos.x - m_PadX * 0.25f, textPos.y - m_PadY * 0.25f),
-            ImVec2(textPos.x + textSize.x + m_PadX * 0.25f, textPos.y + textSize.y + m_PadY * 0.25f),
+            ImVec2(textPos.x - layout.padX * 0.25f, textPos.y - layout.padY * 0.25f),
+            ImVec2(textPos.x + textSize.x + layout.padX * 0.25f, textPos.y + textSize.y + layout.padY * 0.25f),
             IM_COL32(0, 0, 0, 150)
         );
 
@@ -559,6 +563,7 @@ void MessageBoard::AddMessageInternal(MessageUnit message) {
 void MessageBoard::OnPostEnd() {
     ImGui::PopStyleColor();
     ImGui::PopStyleVar(3);
+    m_FrameLayout.reset();
 
     // Update timers
     CKStats stats;
@@ -655,13 +660,10 @@ void MessageBoard::SetLineSpacing(float spacing) {
         if (!m_LineSpacingOverride || std::abs(m_CustomLineSpacing - clamped) > 0.01f) {
             m_LineSpacingOverride = true;
             m_CustomLineSpacing = clamped;
-            m_MessageGap = clamped;
             InvalidateLayoutCache();
         }
     } else if (m_LineSpacingOverride) {
         m_LineSpacingOverride = false;
-        const ImGuiStyle &style = ImGui::GetStyle();
-        m_MessageGap = (style.ItemSpacing.y > 0.0f) ? style.ItemSpacing.y : 0.0f;
         InvalidateLayoutCache();
     }
 }

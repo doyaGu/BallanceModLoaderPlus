@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <optional>
 
 #include "BML/Bui.h"
 
@@ -133,6 +134,14 @@ protected:
     void OnPostEnd() override;
 
 private:
+    struct FrameLayout {
+        float padX;
+        float padY;
+        float messageGap;
+        float scrollbarWidth;
+        float scrollbarPadding;
+    };
+
     // Visibility and state
     bool ShouldShowMessage(const MessageUnit &msg) const;
     float GetMessageAlpha(const MessageUnit &msg) const;
@@ -140,19 +149,20 @@ private:
     bool HasVisibleContent() const;
 
     // Layout calculation
-    float CalculateContentHeight(float wrapWidth) const;
-    float CalculateDisplayHeight(float contentHeight) const;
+    FrameLayout CaptureFrameLayout() const;
+    float CalculateContentHeight(float wrapWidth, const FrameLayout &layout) const;
+    static float CalculateDisplayHeight(float contentHeight, const FrameLayout &layout);
 
     // Rendering
-    void RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth);
-    void DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &pos, float wrapWidth, float alpha);
-    void DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight);
+    void RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth, const FrameLayout &layout);
+    void DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &pos, float wrapWidth, float alpha, const FrameLayout &layout);
+    void DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight, const FrameLayout &layout);
 
     // Core operations
     void UpdateTimers(float deltaTime);
     void AddMessageInternal(const char *msg);
     void AddMessageInternal(MessageUnit message);
-    void HandleScrolling(float visibleHeight);
+    void HandleScrolling(float visibleHeight, const FrameLayout &layout);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
     void InvalidateLayoutCache();
     MessageUnit &MessageAt(int logicalIndex);
@@ -176,14 +186,10 @@ private:
     float m_MaxScrollY = 0.0f;
     bool m_ScrollToBottom = true;
 
-    // Style-derived layout cache
-    float m_PadX = 8.0f;         // Content area horizontal padding
-    float m_PadY = 8.0f;         // Content area vertical padding
-    float m_MessageGap = 4.0f;   // Spacing between message blocks
+    // Style-derived values captured before this window overrides the ImGui style.
+    std::optional<FrameLayout> m_FrameLayout;
     bool m_LineSpacingOverride = false;
     float m_CustomLineSpacing = 0.0f;
-    float m_ScrollbarW = 8.0f;   // Scrollbar width
-    float m_ScrollbarPad = 2.0f; // Scrollbar edge padding
     float m_ScrollEpsilon = 0.5f; // Scrollbar tolerance for bottom checks
 
     // Configurable behavior
