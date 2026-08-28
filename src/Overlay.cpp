@@ -25,8 +25,8 @@ namespace Overlay {
 
     HWND g_hWnd = nullptr;
     ImGuiContext *g_ImGuiContext = nullptr;
-    bool g_ImGuiReady = false;
-    bool g_RenderReady = false;
+    bool g_RendererInitialized = false;
+    bool g_DrawDataReady = false;
     bool g_NewFrame = false;
 
     LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -149,7 +149,7 @@ namespace Overlay {
     }
 
     bool IsImGuiReady() {
-        return g_ImGuiReady;
+        return g_RendererInitialized;
     }
 
     bool IsImGuiFrameActive() {
@@ -181,8 +181,8 @@ namespace Overlay {
         // context dies, so clear the pointer they reach the context through before
         // freeing it. They then see an inactive overlay instead of freed memory.
         g_ImGuiContext = nullptr;
-        g_ImGuiReady = false;
-        g_RenderReady = false;
+        g_RendererInitialized = false;
+        g_DrawDataReady = false;
         g_NewFrame = false;
 
         ImGui::DestroyContext(context);
@@ -204,8 +204,8 @@ namespace Overlay {
         if (!ImGui_ImplCK2_Init(context))
             return false;
 
-        g_RenderReady = false;
-        g_ImGuiReady = true;
+        g_DrawDataReady = false;
+        g_RendererInitialized = true;
 
         return true;
     }
@@ -216,8 +216,6 @@ namespace Overlay {
         ImGui_ImplWin32_Shutdown();
 
         g_hWnd = nullptr;
-        g_RenderReady = false;
-        g_ImGuiReady = false;
     }
 
     void ImGuiShutdownRenderer(CKContext *context) {
@@ -225,13 +223,13 @@ namespace Overlay {
 
         ImGui_ImplCK2_Shutdown();
 
-        g_RenderReady = false;
-        g_ImGuiReady = false;
+        g_DrawDataReady = false;
+        g_RendererInitialized = false;
     }
 
     void ImGuiNewFrame() {
-        if (g_ImGuiReady && !g_NewFrame) {
-            g_RenderReady = false;
+        if (g_RendererInitialized && !g_NewFrame) {
+            g_DrawDataReady = false;
 
             ImGui_ImplWin32_NewFrame();
             ImGui_ImplCK2_NewFrame();
@@ -252,12 +250,12 @@ namespace Overlay {
         if (g_NewFrame) {
             ImGui::Render();
             g_NewFrame = false;
-            g_RenderReady = true;
+            g_DrawDataReady = true;
         }
     }
 
     void ImGuiOnRender() {
-        if (g_RenderReady) {
+        if (g_DrawDataReady) {
             ImGuiContextScope scope;
             ImGui_ImplCK2_RenderDrawData(ImGui::GetDrawData());
         }
