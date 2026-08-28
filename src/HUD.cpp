@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cassert>
 #include <algorithm>
+#include <limits>
 #include <unordered_map>
 
 #include "AnsiPalette.h"
@@ -64,16 +65,29 @@ HUDElement &HUDElement::SetAnchor(AnchorPoint anchor) {
 }
 
 HUDElement &HUDElement::SetOffsetPixels(float x, float y) {
-    HUDOffset newOffset(x, y, CoordinateType::Pixels);
-    if (m_Offset.x == newOffset.x && m_Offset.y == newOffset.y && m_Offset.type == newOffset.type) return *this;
-    m_Offset = newOffset;
+    SetOffsetType(CoordinateType::Pixels);
+    SetOffsetValues(x, y);
     return *this;
 }
 
 HUDElement &HUDElement::SetOffsetNormalized(float x, float y) {
-    HUDOffset newOffset(x, y, CoordinateType::Normalized);
-    if (m_Offset.x == newOffset.x && m_Offset.y == newOffset.y && m_Offset.type == newOffset.type) return *this;
-    m_Offset = newOffset;
+    SetOffsetType(CoordinateType::Normalized);
+    SetOffsetValues(x, y);
+    return *this;
+}
+
+HUDElement &HUDElement::SetOffsetValues(float x, float y) {
+    if (m_Offset.x == x && m_Offset.y == y)
+        return *this;
+    m_Offset.x = x;
+    m_Offset.y = y;
+    return *this;
+}
+
+HUDElement &HUDElement::SetOffsetType(CoordinateType type) {
+    if (m_Offset.type == type)
+        return *this;
+    m_Offset.type = type;
     return *this;
 }
 
@@ -134,21 +148,8 @@ void HUDElement::ClearAnimations() {
 void HUDElement::UpdateAnimations(float deltaTime) {
     for (auto &anim : m_Animations) {
         anim.Update(deltaTime);
-
-        // Apply animation to element properties
-        const float value = anim.GetCurrentValue();
-        switch (anim.property) {
-        case HUDAnimation::Alpha:
-            SetLocalAlpha(value);
-            break;
-        case HUDAnimation::PositionX:
-            SetOffsetPixels(value, m_Offset.y);
-            break;
-        case HUDAnimation::PositionY:
-            SetOffsetPixels(m_Offset.x, value);
-            break;
-            // Add more property cases as needed
-        }
+        if (!ApplyAnimated(anim.property, anim.GetCurrentValue()))
+            anim.finished = true;
     }
 
     // Remove finished animations
@@ -156,6 +157,22 @@ void HUDElement::UpdateAnimations(float deltaTime) {
         std::remove_if(m_Animations.begin(), m_Animations.end(),
                        [](const HUDAnimation &anim) { return anim.IsFinished(); }),
         m_Animations.end());
+}
+
+bool HUDElement::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
+    switch (property) {
+    case HUDAnimation::Alpha:
+        SetLocalAlpha(value);
+        return true;
+    case HUDAnimation::PositionX:
+        SetOffsetValues(value, m_Offset.y);
+        return true;
+    case HUDAnimation::PositionY:
+        SetOffsetValues(m_Offset.x, value);
+        return true;
+    default:
+        return false;
+    }
 }
 
 bool HUDElement::HasActiveAnimations() const {
@@ -333,6 +350,14 @@ HUDText &HUDText::SetScale(float scale) {
     return *this;
 }
 
+bool HUDText::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
+    if (property == HUDAnimation::Scale) {
+        SetScale(value);
+        return true;
+    }
+    return HUDElement::ApplyAnimated(property, value);
+}
+
 HUDText &HUDText::SetWrapWidthPx(float px) {
     if (m_WrapWidthPx == px) return *this;
     m_WrapWidthPx = px;
@@ -449,6 +474,16 @@ float HUDText::ResolveWrapWidth(const ImVec2 &viewportSize) const {
 HUDImage::HUDImage(ImTextureID texture, float width, float height)
     : HUDElement(), m_Texture(texture), m_Width(width), m_Height(height) {}
 
+bool HUDImage::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
+    if (property == HUDAnimation::Color) {
+        const double color = std::clamp(static_cast<double>(value), 0.0,
+                                        static_cast<double>(std::numeric_limits<ImU32>::max()));
+        SetTint(static_cast<ImU32>(color));
+        return true;
+    }
+    return HUDElement::ApplyAnimated(property, value);
+}
+
 void HUDImage::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || !drawList || !m_Texture) return;
     DrawAt(drawList, ResolveDrawPosition(viewportSize), viewportSize, m_InheritedAlpha * m_LocalAlpha);
@@ -488,6 +523,16 @@ void HUDImage::FromIni(const IniFile &ini, const std::string &section) {
 // HUDProgressBar Implementation
 HUDProgressBar::HUDProgressBar(float width, float height)
     : HUDElement(), m_Width(width), m_Height(height) {}
+
+bool HUDProgressBar::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
+    if (property == HUDAnimation::Color) {
+        const double color = std::clamp(static_cast<double>(value), 0.0,
+                                        static_cast<double>(std::numeric_limits<ImU32>::max()));
+        SetColors(m_BgColor, static_cast<ImU32>(color));
+        return true;
+    }
+    return HUDElement::ApplyAnimated(property, value);
+}
 
 void HUDProgressBar::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || !drawList) return;

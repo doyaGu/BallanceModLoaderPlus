@@ -135,6 +135,8 @@ public:
 
     HUDElement &SetOffsetPixels(float x, float y);
     HUDElement &SetOffsetNormalized(float x, float y);
+    HUDElement &SetOffsetValues(float x, float y);
+    HUDElement &SetOffsetType(CoordinateType type);
     HUDElement &SetOffset(const HUDOffset &offset) { m_Offset = offset; return *this;}
     const HUDOffset &GetOffset() const { return m_Offset; }
 
@@ -193,6 +195,7 @@ public:
     void ClearAnimations();
     void UpdateAnimations(float deltaTime);
     bool HasActiveAnimations() const;
+    virtual bool ApplyAnimated(HUDAnimation::PropertyType property, float value);
 
     // Serialization support
     virtual void ToIni(IniFile &ini, const std::string &section) const;
@@ -306,6 +309,7 @@ public:
     void FromIni(const IniFile &ini, const std::string &section) override;
 
     // Override virtual methods
+    bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
@@ -355,6 +359,7 @@ public:
     void ToIni(IniFile &ini, const std::string &section) const override;
     void FromIni(const IniFile &ini, const std::string &section) override;
 
+    bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
@@ -383,6 +388,7 @@ public:
     void ToIni(IniFile &ini, const std::string &section) const override;
     void FromIni(const IniFile &ini, const std::string &section) override;
 
+    bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
