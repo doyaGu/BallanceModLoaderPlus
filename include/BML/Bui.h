@@ -626,6 +626,19 @@ namespace Bui {
         Menu *m_Menu;
     };
 
+    template <typename MenuType>
+    class TypedPage : public Page {
+    public:
+        using Page::Page;
+
+    protected:
+        MenuType *Menu() const {
+            static_assert(std::is_base_of_v<Bui::Menu, MenuType>,
+                          "MenuType must inherit from Bui::Menu");
+            return static_cast<MenuType *>(m_Menu);
+        }
+    };
+
     // A set of Pages and the way back through them, for a Mod whose menu is more than
     // one screen. The Menu owns the pages it is given and destroys them with itself, so
     // hold the raw pointer CreatePage hands back rather than another owner; CreatePage

@@ -42,9 +42,9 @@ struct MapEntry {
     }
 };
 
-class MapListPage : public Bui::Page {
+class MapListPage : public Bui::TypedPage<MapMenu> {
 public:
-    MapListPage(): Page("Custom Maps") {}
+    MapListPage(): TypedPage("Custom Maps") {}
 
     void OnPostBegin() override;
     void OnPreEnd() override;

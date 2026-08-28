@@ -295,7 +295,7 @@ bool MapMenu::IsSupportedFileType(const std::wstring &path) {
 void MapListPage::OnPostBegin() {
     Bui::Title(m_Title.c_str(), 0.07f);
 
-    auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
+    auto *maps = Menu()->GetCurrentMaps();
     if (!maps || maps->children.empty()) {
         m_Count = 0;
         return;
@@ -342,7 +342,7 @@ void MapListPage::OnPostBegin() {
 }
 
 void MapListPage::OnPreEnd() {
-    auto *mapMenu = dynamic_cast<MapMenu *>(m_Menu);
+    auto *mapMenu = Menu();
     if (!mapMenu) {
         Page::OnPreEnd();
         return;
@@ -360,11 +360,7 @@ void MapListPage::OnPreEnd() {
         return;
     }
 
-    if (m_Menu) {
-        m_Menu->OpenPrevPage();
-    } else {
-        Close();
-    }
+    mapMenu->OpenPrevPage();
 }
 
 void MapListPage::OnDraw() {
@@ -381,7 +377,7 @@ void MapListPage::OnDraw() {
             return OnDrawEntry(m_MapSearchResult[n + index], &v);
         }, 0.4031f, 0.23f, 0.06f, 10);
     } else {
-        auto *currentMaps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
+        auto *currentMaps = Menu()->GetCurrentMaps();
         const auto &maps = currentMaps->children;
         Bui::Entries([&](size_t index) {
             if (n + index >= maps.size())
@@ -394,12 +390,12 @@ void MapListPage::OnDraw() {
 void MapListPage::OnPostEnd() {
     if (m_ShouldClose) {
         m_ShouldClose = false;
-        auto *maps = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
+        auto *maps = Menu()->GetCurrentMaps();
         if (maps && maps->parent) {
-            dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(maps->parent);
+            Menu()->SetCurrentMaps(maps->parent);
             Show();
         } else {
-            m_Menu->OpenPrevPage();
+            Menu()->OpenPrevPage();
         }
 
         SetPage(0);
@@ -444,7 +440,7 @@ void MapListPage::OnSearchMaps() {
         }
 
         // Depth-first traversal starting at current maps to search across subfolders
-        auto *root = dynamic_cast<MapMenu *>(m_Menu)->GetCurrentMaps();
+        auto *root = Menu()->GetCurrentMaps();
         if (!root) {
             onig_free(reg);
             return;
@@ -510,15 +506,15 @@ bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
     if (entry->type == MAP_ENTRY_FILE) {
         if (Bui::LevelButton(entry->name.c_str(), v)) {
             // Reset to root before loading map to close the menu properly
-            dynamic_cast<MapMenu *>(m_Menu)->ResetCurrentMaps();
-            dynamic_cast<MapMenu *>(m_Menu)->LoadMap(entry->path);
+            Menu()->ResetCurrentMaps();
+            Menu()->LoadMap(entry->path);
             m_ShouldClose = true;
         }
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 165, 0, 255)); // Orange Color for directory
 
         if (Bui::LevelButton(entry->name.c_str(), v)) {
-            dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(entry);
+            Menu()->SetCurrentMaps(entry);
             // When entering a folder from search or normal list, reset to first page and clear search
             SetPage(0);
             ClearSearch();
@@ -529,7 +525,7 @@ bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
 
     ImGui::PopFont();
 
-    if (dynamic_cast<MapMenu *>(m_Menu)->ShouldShowTooltip() && ImGui::IsItemHovered()) {
+    if (Menu()->ShouldShowTooltip() && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", entry->name.c_str());
     }
 
