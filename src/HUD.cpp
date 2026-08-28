@@ -51,6 +51,10 @@ void HUDAnimation::Update(float deltaTime) {
 
 HUDElement::HUDElement() = default;
 
+std::shared_ptr<HUDElement> HUDElement::Clone() const {
+    return std::make_shared<HUDElement>(*this);
+}
+
 HUDElement &HUDElement::SetVisible(bool visible) {
     if (m_Visible == visible) return *this;
     m_Visible = visible;
@@ -350,6 +354,10 @@ HUDText &HUDText::SetScale(float scale) {
     return *this;
 }
 
+std::shared_ptr<HUDElement> HUDText::Clone() const {
+    return std::make_shared<HUDText>(*this);
+}
+
 bool HUDText::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
     if (property == HUDAnimation::Scale) {
         SetScale(value);
@@ -474,6 +482,10 @@ float HUDText::ResolveWrapWidth(const ImVec2 &viewportSize) const {
 HUDImage::HUDImage(ImTextureID texture, float width, float height)
     : HUDElement(), m_Texture(texture), m_Width(width), m_Height(height) {}
 
+std::shared_ptr<HUDElement> HUDImage::Clone() const {
+    return std::make_shared<HUDImage>(*this);
+}
+
 bool HUDImage::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
     if (property == HUDAnimation::Color) {
         const double color = std::clamp(static_cast<double>(value), 0.0,
@@ -523,6 +535,10 @@ void HUDImage::FromIni(const IniFile &ini, const std::string &section) {
 // HUDProgressBar Implementation
 HUDProgressBar::HUDProgressBar(float width, float height)
     : HUDElement(), m_Width(width), m_Height(height) {}
+
+std::shared_ptr<HUDElement> HUDProgressBar::Clone() const {
+    return std::make_shared<HUDProgressBar>(*this);
+}
 
 bool HUDProgressBar::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
     if (property == HUDAnimation::Color) {
@@ -591,6 +607,10 @@ void HUDProgressBar::FromIni(const IniFile &ini, const std::string &section) {
 HUDSpacer::HUDSpacer(float width, float height)
     : HUDElement(), m_Width(width), m_Height(height) {}
 
+std::shared_ptr<HUDElement> HUDSpacer::Clone() const {
+    return std::make_shared<HUDSpacer>(*this);
+}
+
 ImVec2 HUDSpacer::GetElementSize(const ImVec2 &viewportSize) const {
     return {m_Width, m_Height};
 }
@@ -614,6 +634,37 @@ void HUDSpacer::FromIni(const IniFile &ini, const std::string &section) {
 
 HUDContainer::HUDContainer(HUDLayoutKind kind, int gridCols)
     : HUDElement(), m_Kind(kind), m_GridCols(gridCols > 0 ? gridCols : 1) {}
+
+std::shared_ptr<HUDElement> HUDContainer::Clone() const {
+    auto clone = std::make_shared<HUDContainer>(*this);
+    clone->m_Children.clear();
+    clone->m_NamedChildren.clear();
+
+    std::unordered_map<const HUDElement *, std::shared_ptr<HUDElement>> clonedChildren;
+    clonedChildren.reserve(m_Children.size());
+    clone->m_Children.reserve(m_Children.size());
+    for (const auto &child : m_Children) {
+        if (!child) {
+            clone->m_Children.push_back(nullptr);
+            continue;
+        }
+
+        auto childClone = child->Clone();
+        clonedChildren.emplace(child.get(), childClone);
+        clone->m_Children.push_back(std::move(childClone));
+    }
+
+    for (const auto &[name, weakChild] : m_NamedChildren) {
+        if (const auto child = weakChild.lock()) {
+            const auto it = clonedChildren.find(child.get());
+            if (it != clonedChildren.end())
+                clone->m_NamedChildren.emplace(name, it->second);
+        }
+    }
+
+    clone->InvalidateSizeCache();
+    return clone;
+}
 
 std::shared_ptr<HUDText> HUDContainer::AddChild(const char *text) {
     auto child = std::make_shared<HUDText>(text);
@@ -1358,7 +1409,7 @@ std::shared_ptr<HUDElement> HUD::CreateElementFromType(const std::string &type) 
     } else if (type == "spacer") {
         return std::make_shared<HUDSpacer>();
     } else {
-        return std::make_shared<HUDElement>(); // Base element
+        return std::make_shared<HUDElement>();
     }
 }
 
@@ -1605,35 +1656,5 @@ void HUD::CleanupElementReferences(const std::shared_ptr<HUDElement> &element) {
 }
 
 std::shared_ptr<HUDElement> HUD::CloneElement(const std::shared_ptr<const HUDElement> &src) {
-    if (!src) return nullptr;
-
-    std::shared_ptr<HUDElement> clone;
-
-    const auto textSrc = HUDCast<const HUDText>(src);
-    if (textSrc) {
-        auto textClone = std::make_shared<HUDText>(textSrc->GetText());
-        textClone->SetScale(textSrc->GetScale());
-        textClone->SetWrapWidthPx(textSrc->GetWrapWidthPx());
-        textClone->SetWrapWidthFrac(textSrc->GetWrapWidthFrac());
-        textClone->SetTabColumns(textSrc->GetTabColumns());
-        clone = textClone;
-    } else {
-        clone = std::make_shared<HUDElement>();
-    }
-
-    clone->SetAnchor(src->GetAnchor());
-    clone->SetOffset(src->GetOffset());
-    clone->SetVisible(src->IsVisible());
-    clone->SetPage(src->GetPage());
-
-    if (src->IsPanelEnabled()) {
-        clone->EnablePanel(true);
-        clone->SetPanelBgColor(src->GetPanelBgColor());
-        clone->SetPanelBorderColor(src->GetPanelBorderColor());
-        clone->SetPanelPadding(src->GetPanelPadding());
-        clone->SetPanelBorderThickness(src->GetPanelBorderThickness());
-        clone->SetPanelRounding(src->GetPanelRounding());
-    }
-
-    return clone;
+    return src ? src->Clone() : nullptr;
 }

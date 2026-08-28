@@ -202,6 +202,7 @@ public:
     virtual void FromIni(const IniFile &ini, const std::string &section);
 
     // Virtual interface
+    virtual std::shared_ptr<HUDElement> Clone() const;
     virtual void Draw(ImDrawList *drawList, const ImVec2 &viewportSize);
     virtual void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha);
     virtual ImVec2 GetElementSize(const ImVec2 &viewportSize) const { return {0, 0}; }
@@ -309,6 +310,7 @@ public:
     void FromIni(const IniFile &ini, const std::string &section) override;
 
     // Override virtual methods
+    std::shared_ptr<HUDElement> Clone() const override;
     bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
@@ -359,6 +361,7 @@ public:
     void ToIni(IniFile &ini, const std::string &section) const override;
     void FromIni(const IniFile &ini, const std::string &section) override;
 
+    std::shared_ptr<HUDElement> Clone() const override;
     bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
@@ -388,6 +391,7 @@ public:
     void ToIni(IniFile &ini, const std::string &section) const override;
     void FromIni(const IniFile &ini, const std::string &section) override;
 
+    std::shared_ptr<HUDElement> Clone() const override;
     bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
@@ -414,6 +418,7 @@ public:
     void ToIni(IniFile &ini, const std::string &section) const override;
     void FromIni(const IniFile &ini, const std::string &section) override;
 
+    std::shared_ptr<HUDElement> Clone() const override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override {}
     void DrawAt(ImDrawList *, const ImVec2 &, const ImVec2 &, float) override {}
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
@@ -562,6 +567,7 @@ public:
     void FromIni(const IniFile &ini, const std::string &section) override;
 
     // Virtual overrides
+    std::shared_ptr<HUDElement> Clone() const override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
