@@ -951,14 +951,17 @@ int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
 }
 
 int ModContext::GetCommandCount() const {
+    std::lock_guard<std::mutex> lock(m_Mutex);
     return static_cast<int>(m_CommandContext.GetCommandCount());
 }
 
 ICommand *ModContext::GetCommand(int index) const {
+    std::lock_guard<std::mutex> lock(m_Mutex);
     return m_CommandContext.GetCommandByIndex(index);
 }
 
 ICommand *ModContext::FindCommand(const char *name) const {
+    std::lock_guard<std::mutex> lock(m_Mutex);
     return m_CommandContext.GetCommandByName(name);
 }
 
