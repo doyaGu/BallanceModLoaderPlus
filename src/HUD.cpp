@@ -508,8 +508,6 @@ std::shared_ptr<HUDElement> HUDContainer::Clone() const {
     clone->m_Children.clear();
     clone->m_NamedChildren.clear();
 
-    std::unordered_map<const HUDElement *, std::shared_ptr<HUDElement>> clonedChildren;
-    clonedChildren.reserve(m_Children.size());
     clone->m_Children.reserve(m_Children.size());
     for (const auto &child : m_Children) {
         if (!child) {
@@ -518,16 +516,12 @@ std::shared_ptr<HUDElement> HUDContainer::Clone() const {
         }
 
         auto childClone = child->Clone();
-        clonedChildren.emplace(child.get(), childClone);
         clone->m_Children.push_back(std::move(childClone));
     }
 
-    for (const auto &[name, weakChild] : m_NamedChildren) {
-        if (const auto child = weakChild.lock()) {
-            const auto it = clonedChildren.find(child.get());
-            if (it != clonedChildren.end())
-                clone->m_NamedChildren.emplace(name, it->second);
-        }
+    for (const auto &[name, index] : m_NamedChildren) {
+        if (index < clone->m_Children.size())
+            clone->m_NamedChildren.emplace(name, index);
     }
 
     clone->InvalidateSizeCache();
@@ -543,68 +537,52 @@ std::shared_ptr<HUDText> HUDContainer::AddChild(const char *text) {
 
 std::shared_ptr<HUDText> HUDContainer::AddChildNamed(const std::string &name, const char *text) {
     auto child = std::make_shared<HUDText>(text);
+    m_NamedChildren[name] = m_Children.size();
     m_Children.push_back(child);
-    m_NamedChildren[name] = child;
     InvalidateSizeCache();
     return child;
 }
 
 std::shared_ptr<HUDImage> HUDContainer::AddImageChild(const std::string &name, ImTextureID texture, float width, float height) {
     auto child = std::make_shared<HUDImage>(texture, width, height);
+    m_NamedChildren[name] = m_Children.size();
     m_Children.push_back(child);
-    m_NamedChildren[name] = child;
     InvalidateSizeCache();
     return child;
 }
 
 std::shared_ptr<HUDProgressBar> HUDContainer::AddProgressBarChild(const std::string &name, float width, float height) {
     auto child = std::make_shared<HUDProgressBar>(width, height);
+    m_NamedChildren[name] = m_Children.size();
     m_Children.push_back(child);
-    m_NamedChildren[name] = child;
     InvalidateSizeCache();
     return child;
 }
 
 std::shared_ptr<HUDSpacer> HUDContainer::AddSpacerChild(const std::string &name, float width, float height) {
     auto child = std::make_shared<HUDSpacer>(width, height);
+    m_NamedChildren[name] = m_Children.size();
     m_Children.push_back(child);
-    m_NamedChildren[name] = child;
     InvalidateSizeCache();
     return child;
 }
 
 std::shared_ptr<HUDElement> HUDContainer::FindChild(const std::string &name) {
     const auto it = m_NamedChildren.find(name);
-    if (it != m_NamedChildren.end()) {
-        return it->second.lock();
-    }
-    return nullptr;
+    return it != m_NamedChildren.end() && it->second < m_Children.size()
+        ? m_Children[it->second]
+        : nullptr;
 }
 
 bool HUDContainer::RemoveChild(const std::string &name) {
     const auto it = m_NamedChildren.find(name);
     if (it == m_NamedChildren.end()) return false;
-
-    const auto element = it->second.lock();
-    if (!element) {
-        m_NamedChildren.erase(it);
-        return false;
-    }
-
-    m_NamedChildren.erase(it);
-
-    const auto cit = std::find(m_Children.begin(), m_Children.end(), element);
-    if (cit != m_Children.end()) {
-        m_Children.erase(cit);
-        InvalidateSizeCache();
-        return true;
-    }
-    return false;
+    return DetachChild(it->second) != nullptr;
 }
 
 std::shared_ptr<HUDContainer> HUDContainer::AddContainerChild(HUDLayoutKind kind, const std::string &name, int gridCols) {
     auto container = std::make_shared<HUDContainer>(kind, gridCols);
-    m_NamedChildren[name] = container;
+    m_NamedChildren[name] = m_Children.size();
     m_Children.push_back(container);
     InvalidateSizeCache();
     return container;
@@ -613,30 +591,34 @@ std::shared_ptr<HUDContainer> HUDContainer::AddContainerChild(HUDLayoutKind kind
 std::shared_ptr<HUDElement> HUDContainer::StealChild(const std::string &name) {
     const auto it = m_NamedChildren.find(name);
     if (it == m_NamedChildren.end()) return nullptr;
-
-    auto element = it->second.lock();
-    if (!element) {
-        m_NamedChildren.erase(it);
-        return nullptr;
-    }
-
-    m_NamedChildren.erase(it);
-
-    const auto cit = std::find(m_Children.begin(), m_Children.end(), element);
-    if (cit != m_Children.end()) {
-        m_Children.erase(cit);
-        InvalidateSizeCache();
-        return element;
-    }
-    return nullptr;
+    return DetachChild(it->second);
 }
 
 void HUDContainer::InsertChild(const std::shared_ptr<HUDElement> &element, const std::string &name) {
     if (element) {
-        m_NamedChildren[name] = element;
+        m_NamedChildren[name] = m_Children.size();
         m_Children.push_back(element);
         InvalidateSizeCache();
     }
+}
+
+std::shared_ptr<HUDElement> HUDContainer::DetachChild(size_t index) {
+    if (index >= m_Children.size())
+        return nullptr;
+
+    std::shared_ptr<HUDElement> element = std::move(m_Children[index]);
+    m_Children.erase(m_Children.begin() + static_cast<std::ptrdiff_t>(index));
+    for (auto it = m_NamedChildren.begin(); it != m_NamedChildren.end();) {
+        if (it->second == index) {
+            it = m_NamedChildren.erase(it);
+        } else {
+            if (it->second > index)
+                --it->second;
+            ++it;
+        }
+    }
+    InvalidateSizeCache();
+    return element;
 }
 
 HUDContainer &HUDContainer::SetSpacing(float px) {
@@ -1062,64 +1044,56 @@ std::shared_ptr<HUDSpacer> HUD::AddSpacer(const std::string &name, float width, 
 bool HUD::RemoveElement(const std::shared_ptr<HUDElement> &element) {
     if (!element) return false;
 
-    CleanupElementReferences(element);
-
     const auto it = std::find(m_Elements.begin(), m_Elements.end(), element);
-    if (it != m_Elements.end()) {
-        m_Elements.erase(it);
-        return true;
-    }
-    return false;
+    return it != m_Elements.end() &&
+           DetachElement(static_cast<size_t>(std::distance(m_Elements.begin(), it))) != nullptr;
 }
 
 std::shared_ptr<HUDElement> HUD::GetOrCreate(const std::string &id) {
-    const auto it = m_Named.find(id);
-    if (it != m_Named.end()) {
-        if (auto element = it->second.lock()) {
-            return element;
-        }
-        // Weak pointer expired, remove it
-        m_Named.erase(it);
-    }
+    if (auto element = Find(id))
+        return element;
 
     auto element = AddText("", AnchorPoint::TopLeft);
-    m_Named[id] = element;
+    m_Named[id] = m_Elements.size() - 1;
     return element;
 }
 
 std::shared_ptr<HUDElement> HUD::Find(const std::string &id) const {
     const auto it = m_Named.find(id);
-    if (it != m_Named.end()) {
-        return it->second.lock();
-    }
-    return nullptr;
+    return it != m_Named.end() && it->second < m_Elements.size()
+        ? m_Elements[it->second]
+        : nullptr;
 }
 
 bool HUD::Remove(const std::string &id) {
     const auto it = m_Named.find(id);
     if (it == m_Named.end()) return false;
-
-    const auto element = it->second.lock();
-    m_Named.erase(it);
-
-    if (element) {
-        return RemoveElement(element);
-    }
-    return false;
+    return DetachElement(it->second) != nullptr;
 }
 
 std::vector<std::string> HUD::ListIds() const {
     std::vector<std::string> ids;
     ids.reserve(m_Named.size());
     for (const auto &pair : m_Named) {
-        if (!pair.second.expired()) {
+        if (pair.second < m_Elements.size()) {
             ids.push_back(pair.first);
         }
     }
     return ids;
 }
 
-void HUD::Register(const std::string &id, const std::shared_ptr<HUDElement> &e) { m_Named[id] = e; }
+void HUD::Register(const std::string &id, const std::shared_ptr<HUDElement> &element) {
+    if (!element)
+        return;
+
+    auto it = std::find(m_Elements.begin(), m_Elements.end(), element);
+    if (it == m_Elements.end()) {
+        m_Elements.push_back(element);
+        m_Named[id] = m_Elements.size() - 1;
+    } else {
+        m_Named[id] = static_cast<size_t>(std::distance(m_Elements.begin(), it));
+    }
+}
 
 // Path resolution helpers (updated for shared_ptr)
 std::shared_ptr<HUDElement> HUD::FindByPath(const std::string &path) {
@@ -1168,9 +1142,7 @@ std::shared_ptr<HUDElement> HUD::ResolveAbsolutePath(const std::vector<std::stri
     if (segments.size() == 1) return nullptr;
 
     // Start from root namespace by name
-    auto it = m_Named.find(segments[1]);
-    if (it == m_Named.end()) return nullptr;
-    auto current = it->second.lock();
+    auto current = Find(segments[1]);
     if (!current) return nullptr;
 
     for (size_t i = 2; i < segments.size(); ++i) {
@@ -1192,23 +1164,20 @@ std::shared_ptr<HUDElement> HUD::ResolveRelativePath(const std::vector<std::stri
 
     const std::string &first = segments[0];
     if (!first.empty()) {
-        const auto directIt = m_Named.find(first);
-        if (directIt != m_Named.end()) {
-            if (auto root = directIt->second.lock()) {
-                if (segments.size() == 1) {
-                    return root;
-                }
-                if (auto resolved = DescendPath(root, segments, 1)) {
-                    return resolved;
-                }
+        if (auto root = Find(first)) {
+            if (segments.size() == 1) {
+                return root;
+            }
+            if (auto resolved = DescendPath(root, segments, 1)) {
+                return resolved;
             }
         }
     }
 
     std::shared_ptr<HUDElement> match;
-    for (const auto &[rootName, weakRoot] : m_Named) {
-        auto root = weakRoot.lock();
-        if (!root) continue;
+    for (const auto &[rootName, index] : m_Named) {
+        if (index >= m_Elements.size()) continue;
+        const auto &root = m_Elements[index];
 
         auto element = DescendPath(root, segments, 0);
         if (!element) continue;
@@ -1269,7 +1238,7 @@ std::shared_ptr<HUDContainer> HUD::EnsureContainerPath(const std::string &path, 
     }
 
     auto container = std::make_shared<HUDContainer>(defaultKindForNew);
-    m_Named[path] = container;
+    m_Named[path] = m_Elements.size();
     m_Elements.push_back(container);
     return container;
 }
@@ -1277,21 +1246,7 @@ std::shared_ptr<HUDContainer> HUD::EnsureContainerPath(const std::string &path, 
 std::shared_ptr<HUDElement> HUD::StealByPath(const std::string &path) {
     auto it = m_Named.find(path);
     if (it == m_Named.end()) return nullptr;
-
-    auto element = it->second.lock();
-    if (!element) {
-        m_Named.erase(it);
-        return nullptr;
-    }
-
-    m_Named.erase(it);
-
-    auto eit = std::find(m_Elements.begin(), m_Elements.end(), element);
-    if (eit != m_Elements.end()) {
-        m_Elements.erase(eit);
-        return element;
-    }
-    return nullptr;
+    return DetachElement(it->second);
 }
 
 void HUD::AttachToContainer(const std::shared_ptr<HUDContainer> &dest, const std::shared_ptr<HUDElement> &element, const std::string &childName) {
@@ -1301,10 +1256,7 @@ void HUD::AttachToContainer(const std::shared_ptr<HUDContainer> &dest, const std
 }
 
 void HUD::AttachToRoot(const std::shared_ptr<HUDElement> &element, const std::string &name) {
-    if (element) {
-        m_Named[name] = element;
-        m_Elements.push_back(element);
-    }
+    Register(name, element);
 }
 
 void HUD::SetAutoCreatePolicyMode(const std::string &mode) {
@@ -1359,14 +1311,22 @@ void HUD::ApplyStyle(HUDElement &e) {
     }
 }
 
-void HUD::CleanupElementReferences(const std::shared_ptr<HUDElement> &element) {
+std::shared_ptr<HUDElement> HUD::DetachElement(size_t index) {
+    if (index >= m_Elements.size())
+        return nullptr;
+
+    std::shared_ptr<HUDElement> element = std::move(m_Elements[index]);
+    m_Elements.erase(m_Elements.begin() + static_cast<std::ptrdiff_t>(index));
     for (auto it = m_Named.begin(); it != m_Named.end();) {
-        if (it->second.lock() == element) {
+        if (it->second == index) {
             it = m_Named.erase(it);
         } else {
+            if (it->second > index)
+                --it->second;
             ++it;
         }
     }
+    return element;
 }
 
 std::shared_ptr<HUDElement> HUD::CloneElement(const std::shared_ptr<const HUDElement> &src) {

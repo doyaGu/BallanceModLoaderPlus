@@ -537,7 +537,7 @@ public:
     // Container access
     size_t GetChildCount() const { return m_Children.size(); }
     std::shared_ptr<HUDElement> GetChild(size_t index) const;
-    const std::unordered_map<std::string, std::weak_ptr<HUDElement>> &GetNamedChildren() const { return m_NamedChildren; }
+    const std::unordered_map<std::string, size_t> &GetNamedChildren() const { return m_NamedChildren; }
 
     // Virtual overrides
     std::shared_ptr<HUDElement> Clone() const override;
@@ -562,7 +562,7 @@ private:
     float m_FadeSpeed = 3.0f;
 
     std::vector<std::shared_ptr<HUDElement>> m_Children;
-    std::unordered_map<std::string, std::weak_ptr<HUDElement>> m_NamedChildren;
+    std::unordered_map<std::string, size_t> m_NamedChildren;
 
     // Performance optimization - size caching
     mutable bool m_SizeCacheDirty = true;
@@ -575,6 +575,7 @@ private:
     void LayoutHorizontal(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &contentSize, float alphaMul);
     void LayoutGrid(ImDrawList *drawList, const ImVec2 &viewportSize, const ImVec2 &origin, const ImVec2 &contentSize, float alphaMul);
     void InvalidateSizeCache() { m_SizeCacheDirty = true; }
+    std::shared_ptr<HUDElement> DetachChild(size_t index);
 };
 
 class HUD : public Bui::Window {
@@ -644,7 +645,7 @@ public:
 
 private:
     std::vector<std::shared_ptr<HUDElement>> m_Elements;
-    std::unordered_map<std::string, std::weak_ptr<HUDElement>> m_Named;
+    std::unordered_map<std::string, size_t> m_Named;
     std::string m_ActivePage;
     CreatePolicy m_CreatePolicy;
     std::unordered_map<std::string, std::string> m_PageDefaultContainers;
@@ -659,7 +660,7 @@ private:
 
     // Internal helpers
     void ApplyStyle(HUDElement &e);
-    void CleanupElementReferences(const std::shared_ptr<HUDElement> &element);
+    std::shared_ptr<HUDElement> DetachElement(size_t index);
 };
 
 #endif // BML_HUD_H
