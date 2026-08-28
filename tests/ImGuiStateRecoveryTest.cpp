@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "ImGuiStateRecovery.h"
+#include "Overlay.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -34,34 +34,28 @@ private:
     ImGuiContext *m_Context = nullptr;
 };
 
-void BeginScriptWindow(const void *owner, const char *name) {
-    BML::ScriptImGuiCallState call;
-    BML::BeginScriptImGuiCall(call, owner);
+void BeginScriptWindow(Overlay::ScriptImGuiState &state, const char *name) {
+    Overlay::ScriptImGuiCallScope call(state);
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowSize(ImVec2(200.0f, 120.0f));
     ImGui::Begin(name, nullptr, ImGuiWindowFlags_NoSavedSettings);
-    BML::EndScriptImGuiCall(call);
 }
 
-void StartScriptWindowMove(const void *owner) {
-    BML::ScriptImGuiCallState call;
-    BML::BeginScriptImGuiCall(call, owner);
+void StartScriptWindowMove(Overlay::ScriptImGuiState &state) {
+    Overlay::ScriptImGuiCallScope call(state);
     ImGui::StartMouseMovingWindow(ImGui::GetCurrentWindow());
-    BML::EndScriptImGuiCall(call);
 }
 
-void EndScriptWindow(const void *owner) {
-    BML::ScriptImGuiCallState call;
-    BML::BeginScriptImGuiCall(call, owner);
+void EndScriptWindow(Overlay::ScriptImGuiState &state) {
+    Overlay::ScriptImGuiCallScope call(state);
     ImGui::End();
-    BML::EndScriptImGuiCall(call);
 }
 
 } // namespace
 
 TEST(ImGuiStateRecoveryTest, DoesNotReleaseUnownedMouseCapture) {
     ScopedImGuiContext context;
-    int scriptOwner = 0;
+    Overlay::ScriptImGuiState scriptState;
 
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -77,7 +71,7 @@ TEST(ImGuiStateRecoveryTest, DoesNotReleaseUnownedMouseCapture) {
     ImGuiContext &g = *ImGui::GetCurrentContext();
     ASSERT_NE(g.ActiveId, 0u);
 
-    EXPECT_FALSE(BML::ReleaseStaleImGuiMouseCapture(&scriptOwner));
+    EXPECT_FALSE(scriptState.Release());
     EXPECT_NE(g.ActiveId, 0u);
     EXPECT_TRUE(io.MouseDownOwned[0]);
     EXPECT_TRUE(io.WantCaptureMouse);
@@ -90,12 +84,12 @@ TEST(ImGuiStateRecoveryTest, DoesNotReleaseUnownedMouseCapture) {
 
 TEST(ImGuiStateRecoveryTest, ReleasesOnlyMatchingScriptOwnerMouseCapture) {
     ScopedImGuiContext context;
-    int scriptOwner = 0;
-    int otherOwner = 0;
+    Overlay::ScriptImGuiState scriptState;
+    Overlay::ScriptImGuiState otherState;
 
     ImGui::NewFrame();
-    BeginScriptWindow(&scriptOwner, "ScriptWindow");
-    StartScriptWindowMove(&scriptOwner);
+    BeginScriptWindow(scriptState, "ScriptWindow");
+    StartScriptWindowMove(scriptState);
 
     ImGuiIO &io = ImGui::GetIO();
     io.MouseDown[0] = true;
@@ -108,12 +102,12 @@ TEST(ImGuiStateRecoveryTest, ReleasesOnlyMatchingScriptOwnerMouseCapture) {
     ASSERT_NE(g.ActiveId, 0u);
     ASSERT_NE(g.MovingWindow, nullptr);
 
-    EXPECT_FALSE(BML::ReleaseStaleImGuiMouseCapture(&otherOwner));
+    EXPECT_FALSE(otherState.Release());
     EXPECT_NE(g.ActiveId, 0u);
     EXPECT_NE(g.MovingWindow, nullptr);
     EXPECT_TRUE(io.MouseDownOwned[0]);
 
-    EXPECT_TRUE(BML::ReleaseStaleImGuiMouseCapture(&scriptOwner));
+    EXPECT_TRUE(scriptState.Release());
     EXPECT_EQ(g.ActiveId, 0u);
     EXPECT_EQ(g.MovingWindow, nullptr);
     EXPECT_FALSE(io.MouseDownOwned[0]);
@@ -127,14 +121,14 @@ TEST(ImGuiStateRecoveryTest, ReleasesOnlyMatchingScriptOwnerMouseCapture) {
 
 TEST(ImGuiStateRecoveryTest, ScriptEndDoesNotMakeParentWindowOwned) {
     ScopedImGuiContext context;
-    int scriptOwner = 0;
+    Overlay::ScriptImGuiState scriptState;
 
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowSize(ImVec2(200.0f, 120.0f));
     ImGui::Begin("NativeParentWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
-    BeginScriptWindow(&scriptOwner, "ScriptChildWindow");
-    EndScriptWindow(&scriptOwner);
+    BeginScriptWindow(scriptState, "ScriptChildWindow");
+    EndScriptWindow(scriptState);
 
     ImGui::StartMouseMovingWindow(ImGui::GetCurrentWindow());
     ImGuiIO &io = ImGui::GetIO();
@@ -145,7 +139,7 @@ TEST(ImGuiStateRecoveryTest, ScriptEndDoesNotMakeParentWindowOwned) {
     ASSERT_NE(g.ActiveId, 0u);
     ASSERT_NE(g.MovingWindow, nullptr);
 
-    EXPECT_FALSE(BML::ReleaseStaleImGuiMouseCapture(&scriptOwner));
+    EXPECT_FALSE(scriptState.Release());
     EXPECT_NE(g.ActiveId, 0u);
     EXPECT_NE(g.MovingWindow, nullptr);
     EXPECT_TRUE(io.MouseDownOwned[0]);
@@ -159,22 +153,22 @@ TEST(ImGuiStateRecoveryTest, ScriptEndDoesNotMakeParentWindowOwned) {
 
 TEST(ImGuiStateRecoveryTest, ReleasesMatchingScriptNextFrameMouseCaptureOverride) {
     ScopedImGuiContext context;
-    int scriptOwner = 0;
-    int otherOwner = 0;
+    Overlay::ScriptImGuiState scriptState;
+    Overlay::ScriptImGuiState otherState;
 
     ImGui::NewFrame();
-    BML::ScriptImGuiCallState call;
-    BML::BeginScriptImGuiCall(call, &scriptOwner);
-    ImGui::SetNextFrameWantCaptureMouse(true);
-    BML::EndScriptImGuiCall(call);
+    {
+        Overlay::ScriptImGuiCallScope call(scriptState);
+        ImGui::SetNextFrameWantCaptureMouse(true);
+    }
 
     ImGuiContext &g = *ImGui::GetCurrentContext();
     ASSERT_EQ(g.WantCaptureMouseNextFrame, 1);
 
-    EXPECT_FALSE(BML::ReleaseStaleImGuiMouseCapture(&otherOwner));
+    EXPECT_FALSE(otherState.Release());
     EXPECT_EQ(g.WantCaptureMouseNextFrame, 1);
 
-    EXPECT_TRUE(BML::ReleaseStaleImGuiMouseCapture(&scriptOwner));
+    EXPECT_TRUE(scriptState.Release());
     EXPECT_EQ(g.WantCaptureMouseNextFrame, -1);
 
     ImGui::Render();
@@ -182,11 +176,11 @@ TEST(ImGuiStateRecoveryTest, ReleasesMatchingScriptNextFrameMouseCaptureOverride
 
 TEST(ImGuiStateRecoveryTest, ReleasesMatchingScriptHoveredWindowCapture) {
     ScopedImGuiContext context;
-    int scriptOwner = 0;
-    int otherOwner = 0;
+    Overlay::ScriptImGuiState scriptState;
+    Overlay::ScriptImGuiState otherState;
 
     ImGui::NewFrame();
-    BeginScriptWindow(&scriptOwner, "ScriptHoverWindow");
+    BeginScriptWindow(scriptState, "ScriptHoverWindow");
 
     ImGuiContext &g = *ImGui::GetCurrentContext();
     ImGuiWindow *scriptWindow = ImGui::GetCurrentWindow();
@@ -199,11 +193,11 @@ TEST(ImGuiStateRecoveryTest, ReleasesMatchingScriptHoveredWindowCapture) {
     io.WantCaptureMouse = true;
     io.WantCaptureMouseUnlessPopupClose = true;
 
-    EXPECT_FALSE(BML::ReleaseStaleImGuiMouseCapture(&otherOwner));
+    EXPECT_FALSE(otherState.Release());
     EXPECT_EQ(g.HoveredWindow, scriptWindow);
     EXPECT_TRUE(io.WantCaptureMouse);
 
-    EXPECT_TRUE(BML::ReleaseStaleImGuiMouseCapture(&scriptOwner));
+    EXPECT_TRUE(scriptState.Release());
     EXPECT_EQ(g.HoveredWindow, nullptr);
     EXPECT_EQ(g.HoveredWindowUnderMovingWindow, nullptr);
     EXPECT_EQ(g.HoveredWindowBeforeClear, nullptr);
@@ -216,10 +210,10 @@ TEST(ImGuiStateRecoveryTest, ReleasesMatchingScriptHoveredWindowCapture) {
 
 TEST(ImGuiStateRecoveryTest, PreservesPopupAndNonMouseCaptureState) {
     ScopedImGuiContext context;
-    int scriptOwner = 0;
+    Overlay::ScriptImGuiState scriptState;
 
     ImGui::NewFrame();
-    BeginScriptWindow(&scriptOwner, "ScriptWindowWithPopup");
+    BeginScriptWindow(scriptState, "ScriptWindowWithPopup");
     ImGui::OpenPopup("ScriptTransientPopup");
 
     ImGuiContext &g = *ImGui::GetCurrentContext();
@@ -232,7 +226,7 @@ TEST(ImGuiStateRecoveryTest, PreservesPopupAndNonMouseCaptureState) {
     io.WantCaptureKeyboard = true;
     io.WantTextInput = true;
 
-    EXPECT_FALSE(BML::ReleaseStaleImGuiMouseCapture(&scriptOwner));
+    EXPECT_FALSE(scriptState.Release());
     EXPECT_GT(g.OpenPopupStack.Size, 0);
     EXPECT_EQ(g.BeginPopupStack.Size, 0);
     EXPECT_EQ(g.WantCaptureKeyboardNextFrame, 1);

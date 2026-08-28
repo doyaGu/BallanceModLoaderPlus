@@ -138,7 +138,7 @@ void ScriptModReloadTransaction::DeactivateCurrentRuntime() {
 
     m_Mod.ReleaseScriptServices();
     m_Mod.ReleaseScriptMethodHandles();
-    m_Mod.ReleaseScriptImGuiInput();
+    m_Mod.ReleaseScriptImGuiState();
     m_Mod.m_State.MarkLoaded(false);
 }
 

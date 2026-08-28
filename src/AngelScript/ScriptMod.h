@@ -11,6 +11,7 @@
 
 #include "BML/ICommand.h"
 #include "BML/IMod.h"
+#include "Overlay.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"
 #include "ScriptCommandService.h"
@@ -187,6 +188,7 @@ public:
     const ScriptModDefinition &GetDefinition() const { return m_Definition; }
     const ScriptModEntry &GetEntry() const { return m_Entry; }
     ModContext *GetModContext() const { return m_Context; }
+    Overlay::ScriptImGuiState &GetScriptImGuiState() { return m_ScriptImGuiState; }
     std::string GetRootDirectoryUtf8() const;
     std::string ResolveResourcePathUtf8(const std::string &relativePath) const;
     bool ModFileExistsUtf8(const std::string &relativePath) const;
@@ -345,7 +347,7 @@ private:
     void ScheduleFailureCleanup();
     bool ReleaseScriptServices();
     bool ReleaseScriptMethodHandles();
-    void ReleaseScriptImGuiInput();
+    void ReleaseScriptImGuiState();
     bool ReleaseRuntime();
     bool ReleaseRuntimeOnly(ScriptModRuntime &runtime);
     bool RebindServices();
@@ -378,6 +380,7 @@ private:
     ScriptDataShareService m_DataShareRequests;
     ScriptHookBlockService m_HookBlocks;
     ScriptModState m_State;
+    Overlay::ScriptImGuiState m_ScriptImGuiState;
     bool m_InLoadCallback = false;
     mutable std::mutex m_ReloadMutex;
     mutable int m_ActiveScriptCalls = 0;

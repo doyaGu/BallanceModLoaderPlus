@@ -317,7 +317,7 @@ target_compile_definitions(AnsiTextTest PRIVATE IMGUI_EXPORT)
 add_bml_test(ImGuiStateRecoveryTest
         SOURCES
         ImGuiStateRecoveryTest.cpp
-        ${BML_SOURCE_DIR}/ImGuiStateRecovery.cpp
+        ${BML_SOURCE_DIR}/OverlayScriptImGui.cpp
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
