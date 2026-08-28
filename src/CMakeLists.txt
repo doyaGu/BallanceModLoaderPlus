@@ -163,6 +163,7 @@ set(BML_SOURCES
         Commands.cpp
 
         HUD.cpp
+        HUDAnimation.cpp
         FpsCounter.cpp
         SRTimer.cpp
         RealTimer.cpp

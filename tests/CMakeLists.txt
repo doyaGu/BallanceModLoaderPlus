@@ -332,6 +332,16 @@ add_bml_test(FpsCounterTest
         ${BML_SOURCE_DIR}/FpsCounter.cpp
 )
 
+add_bml_test(HUDAnimationTest
+        SOURCES
+        HUDAnimationTest.cpp
+        ${BML_SOURCE_DIR}/HUDAnimation.cpp
+        DEPENDENCIES
+        VirtoolsSDK::CK2
+        VirtoolsSDK::VxMath
+)
+target_include_directories(HUDAnimationTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
+
 add_bml_test(SRTimerTest
         SOURCES
         SRTimerTest.cpp

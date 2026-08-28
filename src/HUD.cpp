@@ -3,45 +3,9 @@
 #include <cmath>
 #include <cassert>
 #include <algorithm>
-#include <limits>
 #include <unordered_map>
 
 #include "AnsiPalette.h"
-
-// =============================================================================
-// Animation Implementation
-// =============================================================================
-
-float EaseFunction(float t, EasingType type) {
-    switch (type) {
-    case EasingType::Linear:
-        return t;
-    case EasingType::EaseIn:
-        return t * t;
-    case EasingType::EaseOut:
-        return 1.0f - (1.0f - t) * (1.0f - t);
-    case EasingType::EaseInOut:
-        return t < 0.5f ? 2.0f * t * t : 1.0f - 2.0f * (1.0f - t) * (1.0f - t);
-    default:
-        return t;
-    }
-}
-
-float HUDAnimation::GetCurrentValue() const {
-    if (duration <= 0.0f) return endValue;
-    float t = std::clamp(elapsed / duration, 0.0f, 1.0f);
-    float easedT = EaseFunction(t, easing);
-    return startValue + (endValue - startValue) * easedT;
-}
-
-void HUDAnimation::Update(float deltaTime) {
-    if (finished) return;
-    elapsed += deltaTime;
-    if (elapsed >= duration) {
-        elapsed = duration;
-        finished = true;
-    }
-}
 
 // =============================================================================
 // HUDElement Implementation
@@ -149,7 +113,10 @@ void HUDElement::ClearAnimations() {
 void HUDElement::UpdateAnimations(float deltaTime) {
     for (auto &anim : m_Animations) {
         anim.Update(deltaTime);
-        if (!ApplyAnimated(anim.property, anim.GetCurrentValue()))
+        const bool applied = anim.property == HUDAnimation::Color
+            ? ApplyAnimatedColor(anim.property, anim.GetCurrentColor())
+            : ApplyAnimated(anim.property, anim.GetCurrentValue());
+        if (!applied)
             anim.finished = true;
     }
 
@@ -174,6 +141,10 @@ bool HUDElement::ApplyAnimated(HUDAnimation::PropertyType property, float value)
     default:
         return false;
     }
+}
+
+bool HUDElement::ApplyAnimatedColor(HUDAnimation::PropertyType, ImU32) {
+    return false;
 }
 
 bool HUDElement::HasActiveAnimations() const {
@@ -405,14 +376,12 @@ std::shared_ptr<HUDElement> HUDImage::Clone() const {
     return std::make_shared<HUDImage>(*this);
 }
 
-bool HUDImage::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
+bool HUDImage::ApplyAnimatedColor(HUDAnimation::PropertyType property, ImU32 value) {
     if (property == HUDAnimation::Color) {
-        const double color = std::clamp(static_cast<double>(value), 0.0,
-                                        static_cast<double>(std::numeric_limits<ImU32>::max()));
-        SetTint(static_cast<ImU32>(color));
+        SetTint(value);
         return true;
     }
-    return HUDElement::ApplyAnimated(property, value);
+    return HUDElement::ApplyAnimatedColor(property, value);
 }
 
 void HUDImage::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
@@ -444,14 +413,12 @@ std::shared_ptr<HUDElement> HUDProgressBar::Clone() const {
     return std::make_shared<HUDProgressBar>(*this);
 }
 
-bool HUDProgressBar::ApplyAnimated(HUDAnimation::PropertyType property, float value) {
+bool HUDProgressBar::ApplyAnimatedColor(HUDAnimation::PropertyType property, ImU32 value) {
     if (property == HUDAnimation::Color) {
-        const double color = std::clamp(static_cast<double>(value), 0.0,
-                                        static_cast<double>(std::numeric_limits<ImU32>::max()));
-        SetColors(m_BgColor, static_cast<ImU32>(color));
+        SetColors(m_BgColor, value);
         return true;
     }
-    return HUDElement::ApplyAnimated(property, value);
+    return HUDElement::ApplyAnimatedColor(property, value);
 }
 
 void HUDProgressBar::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {

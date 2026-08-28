@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <type_traits>
@@ -103,15 +104,25 @@ struct HUDAnimation {
     PropertyType property;
     float startValue;
     float endValue;
+    ImU32 startColor = 0;
+    ImU32 endColor = 0;
     float duration;
     float elapsed = 0.0f;
     EasingType easing = EasingType::Linear;
     bool finished = false;
 
     HUDAnimation(PropertyType prop, float start, float end, float dur, EasingType ease = EasingType::Linear)
-        : property(prop), startValue(start), endValue(end), duration(dur), easing(ease) {}
+        : property(prop), startValue(start), endValue(end), duration(dur), easing(ease) {
+        if (prop == Color)
+            throw std::invalid_argument("Color animations require ImU32 endpoints");
+    }
+
+    HUDAnimation(ImU32 start, ImU32 end, float dur, EasingType ease = EasingType::Linear)
+        : property(Color), startValue(0.0f), endValue(0.0f), startColor(start), endColor(end),
+          duration(dur), easing(ease) {}
 
     float GetCurrentValue() const;
+    ImU32 GetCurrentColor() const;
     void Update(float deltaTime);
     bool IsFinished() const { return finished; }
 };
@@ -195,6 +206,7 @@ public:
     void UpdateAnimations(float deltaTime);
     bool HasActiveAnimations() const;
     virtual bool ApplyAnimated(HUDAnimation::PropertyType property, float value);
+    virtual bool ApplyAnimatedColor(HUDAnimation::PropertyType property, ImU32 value);
 
     // Virtual interface
     virtual std::shared_ptr<HUDElement> Clone() const;
@@ -345,7 +357,7 @@ public:
     ImU32 GetTint() const { return m_Tint; }
 
     std::shared_ptr<HUDElement> Clone() const override;
-    bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
+    bool ApplyAnimatedColor(HUDAnimation::PropertyType property, ImU32 value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
@@ -372,7 +384,7 @@ public:
     ImVec2 GetSize() const { return {m_Width, m_Height}; }
 
     std::shared_ptr<HUDElement> Clone() const override;
-    bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
+    bool ApplyAnimatedColor(HUDAnimation::PropertyType property, ImU32 value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
     void DrawAt(ImDrawList *drawList, const ImVec2 &pos, const ImVec2 &viewportSize, float alpha) override;
     ImVec2 GetElementSize(const ImVec2 &viewportSize) const override;
