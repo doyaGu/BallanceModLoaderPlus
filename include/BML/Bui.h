@@ -709,7 +709,11 @@ namespace Bui {
             Page *page = it->second.get();
 
             if (m_CurrentPage == page) {
-                Close();
+                CloseCurrentPage();
+                while (!m_PageStack.empty()) m_PageStack.pop();
+                m_Pages.erase(it);
+                OnClose();
+                return true;
             } else {
                 // Clean up the stack, remove all occurrences of this page
                 std::stack<Page *> tempStack;
