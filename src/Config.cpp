@@ -7,14 +7,20 @@
 
 #include "StringUtils.h"
 
-Config::Config(IMod *mod) : m_Mod(mod), m_ModName("Unknown"), m_ModVersion("Unknown") {
-    if (!mod)
+Config::Config(IMod *mod) : m_Mod(mod) {
+    if (mod) {
+        const char *id = mod->GetID();
+        if (id)
+            m_ModID = id;
+    }
+}
+
+void Config::SnapshotModMetadata() {
+    if (!m_Mod)
         return;
-    if (const char *id = mod->GetID())
-        m_ModID = id;
-    if (const char *name = mod->GetName())
+    if (const char *name = m_Mod->GetName())
         m_ModName = name;
-    if (const char *version = mod->GetVersion())
+    if (const char *version = m_Mod->GetVersion())
         m_ModVersion = version;
 }
 

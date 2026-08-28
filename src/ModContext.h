@@ -144,7 +144,7 @@ public:
     bool RemoveConfig(Config *config);
     Config *GetConfig(IMod *mod);
     bool LoadConfig(Config *config);
-    bool SaveConfig(Config *config);
+    bool SaveConfig(Config *config, bool snapshotModMetadata = true);
 
     ILogger *GetLogger() const {return m_Logger; }
     FILE *GetLogFile() const { return m_Logfile; }
@@ -419,6 +419,7 @@ private:
     bool ResolveDependencies();
 
     void FillCallbackMap(IMod *mod);
+    void SnapshotConfigMetadata();
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
     void DeactivateActiveMods(bool dispatchPendingNotifications);
     void RollbackModActivation();

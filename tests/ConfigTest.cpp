@@ -479,6 +479,12 @@ TEST_F(ConfigTest, FileIO) {
 
 TEST_F(ConfigTest, SaveUsesSnapshottedModMetadata) {
     const wchar_t *filename = L"test_config_metadata.cfg";
+    mockMod->nameReadCount = 0;
+    mockMod->versionReadCount = 0;
+    config->SnapshotModMetadata();
+    EXPECT_EQ(1, mockMod->nameReadCount);
+    EXPECT_EQ(1, mockMod->versionReadCount);
+
     mockMod->idReadCount = 0;
     mockMod->nameReadCount = 0;
     mockMod->versionReadCount = 0;

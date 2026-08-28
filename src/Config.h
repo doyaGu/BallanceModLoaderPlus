@@ -113,6 +113,7 @@ public:
 
     IMod *GetMod() const { return m_Mod; }
     const std::string &GetModID() const { return m_ModID; }
+    void SnapshotModMetadata();
 
     size_t GetCategoryCount() const { return m_Categories.size(); }
     Category *GetCategory(size_t i);
@@ -137,8 +138,8 @@ private:
 
     IMod *m_Mod;
     std::string m_ModID;
-    std::string m_ModName;
-    std::string m_ModVersion;
+    std::string m_ModName = "Unknown";
+    std::string m_ModVersion = "Unknown";
     bool m_Dirty = false;
     std::vector<PendingNotification> m_PendingNotifications;
 

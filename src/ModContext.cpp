@@ -581,6 +581,7 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
     // Deliver them before the first OnUnload so teardown remains the final callback.
     // Activation rollback deliberately suppresses callbacks from incomplete OnLoad
     // implementations and only persists their final values below.
+    SnapshotConfigMetadata();
     if (dispatchPendingNotifications)
         FlushConfigChanges();
 
@@ -1145,7 +1146,7 @@ bool ModContext::RemoveConfig(Config *config) {
         mod->m_Config = nullptr;
 
     try {
-        if (!SaveConfig(removed.get()) && m_Logger)
+        if (!SaveConfig(removed.get(), !AreFlagsSet(BML_MODS_SHUTTING_DOWN)) && m_Logger)
             m_Logger->Error("Failed to save config for mod %s during removal", modId.c_str());
     } catch (const std::exception &e) {
         if (m_Logger)
@@ -1188,9 +1189,12 @@ bool ModContext::LoadConfig(Config *config) {
     return config->Load(configPath.c_str());
 }
 
-bool ModContext::SaveConfig(Config *config) {
+bool ModContext::SaveConfig(Config *config, bool snapshotModMetadata) {
     if (!config)
         return false;
+
+    if (snapshotModMetadata)
+        config->SnapshotModMetadata();
 
     const std::string &modId = config->GetModID();
     if (modId.empty())
@@ -1199,6 +1203,35 @@ bool ModContext::SaveConfig(Config *config) {
     std::wstring configPath = m_LoaderDir;
     configPath.append(L"\\Configs\\").append(utils::ToWString(modId)).append(L".cfg");
     return config->Save(configPath.c_str());
+}
+
+void ModContext::SnapshotConfigMetadata() {
+    std::vector<Config *> configs;
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        configs.reserve(m_Configs.size());
+        for (const auto &config : m_Configs)
+            configs.push_back(config.get());
+    }
+
+    for (Config *config : configs) {
+        if (!config)
+            continue;
+        try {
+            config->SnapshotModMetadata();
+        } catch (const std::exception &e) {
+            if (m_Logger) {
+                m_Logger->Error("Exception while snapshotting config metadata for mod %s: %s",
+                                config->GetModID().empty() ? "<unknown>" : config->GetModID().c_str(),
+                                e.what());
+            }
+        } catch (...) {
+            if (m_Logger) {
+                m_Logger->Error("Unknown exception while snapshotting config metadata for mod %s",
+                                config->GetModID().empty() ? "<unknown>" : config->GetModID().c_str());
+            }
+        }
+    }
 }
 
 void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
@@ -1239,7 +1272,7 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
         if (saveAll || config->IsDirty()) {
             const char *modId = config->GetModID().empty() ? "<unknown>" : config->GetModID().c_str();
             try {
-                if (!SaveConfig(config) && m_Logger) {
+                if (!SaveConfig(config, dispatchNotifications) && m_Logger) {
                     m_Logger->Error("Failed to save config for mod %s",
                                     modId);
                 }

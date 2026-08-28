@@ -191,12 +191,13 @@ public:
     virtual void OnLoad() {}
 
     // Runs once at shutdown, for every Mod that loaded, in the reverse of the
-    // order they loaded in. This is the final callback into the Mod. The loader
-    // tears the Mod's IMC state down right after it returns, saves the configs once
-    // every Mod has been through, and ignores any timer scheduled from here. A
-    // config write here is saved but does not cause a later OnModifyConfig callback.
-    // Commands cannot be withdrawn, so do not delete anything the loader still
-    // points at.
+    // order they loaded in. This is the final event callback into the Mod; the
+    // loader may still read the stable identity metadata promised above while it
+    // detaches registrations. It tears the Mod's IMC state down right after this
+    // returns, saves the configs once every Mod has been through, and ignores any
+    // timer scheduled from here. A config write here is saved but does not cause a
+    // later OnModifyConfig callback. Commands cannot be withdrawn, so do not delete
+    // anything the loader still points at.
     virtual void OnUnload() {}
 
     // Runs during the loader's config flush after IProperty::SetString or one of its
