@@ -339,43 +339,30 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
     begin = std::clamp(begin, 0, n);
     end = std::clamp(end, begin, n);
 
-    // Use ImGuiListClipper to iterate the visible range (for correctness and consistency with other code)
-    ImGuiListClipper clipper;
-    // Anchor clipper cursor to our content start so its internal math stays consistent
+    // Register the logical content extent once. Visibility is already determined by
+    // the variable-height offsets above, so an ImGuiListClipper would only repeat it.
     ImGui::SetCursorScreenPos(startPos);
-    clipper.Begin(n, 1.0f); // items_height non-zero to skip measurement path
-    clipper.IncludeItemsByIndex(begin, end);
-    while (clipper.Step()) {
-        // Draw only our intended [begin, end) range to preserve behavior
-        const int ds = ImMax(clipper.DisplayStart, begin);
-        const int de = ImMin(clipper.DisplayEnd, end);
-        for (int j = ds; j < de; ++j) {
-            const int i = indices[j];
-            const MessageUnit &msg = m_Messages[i];
-            const float msgHeight = heights[j];
-            ImVec2 pos = ImVec2(startPos.x, startPos.y + offsets[j]);
+    ImGui::Dummy(ImVec2(wrapWidth, std::max(0.0f, acc - m_MessageGap)));
 
-            // Keep ImGui cursor in sync with the draw position so nested clippers work while scrolling.
-            ImGui::SetCursorScreenPos(pos);
+    for (int j = begin; j < end; ++j) {
+        const int i = indices[j];
+        const MessageUnit &msg = m_Messages[i];
+        const float msgHeight = heights[j];
+        const ImVec2 pos(startPos.x, startPos.y + offsets[j]);
 
-            const float alpha = GetMessageAlpha(msg);
-            if (alpha > 0.0f) {
-                const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
-                if (finalAlpha > 0.0f) {
-                    const ImVec4 bg = ImVec4(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
-                    drawList->AddRectFilled(
-                        ImVec2(pos.x - m_PadX * 0.5f, pos.y - m_PadY * 0.25f),
-                        ImVec2(pos.x + wrapWidth + m_PadX * 0.5f, pos.y + msgHeight + m_PadY * 0.25f),
-                        ImGui::GetColorU32(bg)
-                    );
-                }
-
-                // Text
-                DrawMessageText(drawList, msg, pos, wrapWidth, alpha);
+        const float alpha = GetMessageAlpha(msg);
+        if (alpha > 0.0f) {
+            const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);
+            if (finalAlpha > 0.0f) {
+                const ImVec4 bg(bgColorBase.x, bgColorBase.y, bgColorBase.z, finalAlpha);
+                drawList->AddRectFilled(
+                    ImVec2(pos.x - m_PadX * 0.5f, pos.y - m_PadY * 0.25f),
+                    ImVec2(pos.x + wrapWidth + m_PadX * 0.5f, pos.y + msgHeight + m_PadY * 0.25f),
+                    ImGui::GetColorU32(bg)
+                );
             }
 
-            // Feed clipper a logical item advance (height + gap). We don't rely on its cursor for drawing.
-            ImGui::ItemSize(ImVec2(0.0f, msgHeight + m_MessageGap));
+            DrawMessageText(drawList, msg, pos, wrapWidth, alpha);
         }
     }
 }
