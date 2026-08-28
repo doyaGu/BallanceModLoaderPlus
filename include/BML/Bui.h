@@ -656,18 +656,18 @@ namespace Bui {
     //
     // Render draws only the page open now, so a Mod calls it once a frame and lets the
     // Menu pick. Nothing is drawn between Close and the next Open, and nothing is drawn
-    // either when Open was given a name that is not there, since the Menu is then left
-    // with no page and OnOpen never runs. A page whose OnOpen returned false stays
-    // hidden while still being the page the Menu considers open.
+    // either when Open was given a name that is not there; Open then returns false,
+    // leaves the Menu with no page, and does not run OnOpen. A page whose OnOpen
+    // returned false stays hidden while still being the page the Menu considers open.
     //
     // OpenPage does not hide the page it leaves, since only the current one is drawn
     // anyway, so a page returned to by OpenPrevPage sees OnOpen again but not OnShow.
     // Put what has to happen on every visit in OnOpen.
     //
-    // The history holds 32 pages and quietly stops growing after that, which loses the
-    // way back to the deepest ones but not the pages themselves. RemovePage takes a page
-    // out of the history as well, and when the page being removed is the current one it
-    // closes that page and drops the whole history with it.
+    // The history holds 32 pages. OpenPage returns false instead of navigating when it
+    // cannot remember the current page. RemovePage takes a page out of the history as
+    // well, and when the page being removed is the current one it closes that page and
+    // drops the whole history with it.
     class Menu {
     public:
         Menu() = default;
@@ -712,21 +712,21 @@ namespace Bui {
             if (m_CurrentPage == page) {
                 CloseCurrentPage();
                 while (!m_PageStack.empty()) m_PageStack.pop();
-            }
-
-            // Clean up the stack, remove all occurrences of this page
-            std::stack<Page *> tempStack;
-            while (!m_PageStack.empty()) {
-                Page *stackPage = m_PageStack.top();
-                m_PageStack.pop();
-                if (stackPage != page) {
-                    tempStack.push(stackPage);
+            } else {
+                // Clean up the stack, remove all occurrences of this page
+                std::stack<Page *> tempStack;
+                while (!m_PageStack.empty()) {
+                    Page *stackPage = m_PageStack.top();
+                    m_PageStack.pop();
+                    if (stackPage != page) {
+                        tempStack.push(stackPage);
+                    }
                 }
-            }
-            // Rebuild stack without the removed page
-            while (!tempStack.empty()) {
-                m_PageStack.push(tempStack.top());
-                tempStack.pop();
+                // Rebuild stack without the removed page
+                while (!tempStack.empty()) {
+                    m_PageStack.push(tempStack.top());
+                    tempStack.pop();
+                }
             }
 
             m_Pages.erase(it);
@@ -743,7 +743,7 @@ namespace Bui {
             Page *page = GetPage(name);
             if (!page) return false;
 
-            PushPage(m_CurrentPage);
+            if (!PushPage(m_CurrentPage)) return false;
             m_CurrentPage = page;
             m_CurrentPage->Open();
             return true;
@@ -771,18 +771,18 @@ namespace Bui {
         }
 
         // Menu operations
-        void Open(const std::string &name) {
+        bool Open(const std::string &name) {
             // Clear navigation history when opening a new menu session
             while (!m_PageStack.empty()) m_PageStack.pop();
             CloseCurrentPage();
 
             Page *page = GetPage(name);
-            if (page) {
-                m_CurrentPage = page;
-                m_CurrentPage->Open();
-                OnOpen();
-            }
-            // Note: If page is not found, menu is left in inactive state
+            if (!page) return false;
+
+            m_CurrentPage = page;
+            m_CurrentPage->Open();
+            OnOpen();
+            return true;
         }
 
         void Close() {
@@ -805,10 +805,11 @@ namespace Bui {
     protected:
         static constexpr size_t MAX_NAVIGATION_DEPTH = 32;
 
-        void PushPage(Page *page) {
-            if (page && m_PageStack.size() < MAX_NAVIGATION_DEPTH) {
-                m_PageStack.push(page);
-            }
+        bool PushPage(Page *page) {
+            if (!page) return true;
+            if (m_PageStack.size() >= MAX_NAVIGATION_DEPTH) return false;
+            m_PageStack.push(page);
+            return true;
         }
 
         Page *PopPage() {
