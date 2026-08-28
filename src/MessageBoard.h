@@ -156,7 +156,6 @@ private:
 
     // Utilities
     void SetScrollYClamped(float y);
-    void SyncScrollBottomFlag();
 
     // Message storage
     std::vector<MessageUnit> m_Messages;
@@ -194,4 +193,3 @@ private:
 };
 
 #endif // BML_MESSAGEBOARD_H
-

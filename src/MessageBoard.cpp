@@ -496,10 +496,6 @@ void MessageBoard::SetScrollYClamped(float y) {
     m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - m_ScrollEpsilon);
 }
 
-void MessageBoard::SyncScrollBottomFlag() {
-    m_ScrollToBottom = (m_ScrollY >= m_MaxScrollY - m_ScrollEpsilon);
-}
-
 std::string MessageBoard::FormatScrollPercent(float contentHeight, float visibleHeight) const {
     const ScrollMetrics m = GetScrollMetrics(contentHeight, visibleHeight);
     const float pct = (m.maxScroll > 0.0f) ? (m.scrollRatio * 100.0f) : 0.0f;

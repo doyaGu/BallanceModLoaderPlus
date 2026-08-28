@@ -9,7 +9,6 @@ namespace Overlay {
     ImGuiContext *GetImGuiContext();
     bool IsImGuiReady();
     bool IsImGuiFrameActive();
-    bool IsImGuiRenderReady();
 
     // Switches to the loader's ImGui context for as long as it lives, and switches
     // back on the way out. The loader has no context before ImGuiCreateContext and
