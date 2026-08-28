@@ -45,7 +45,6 @@ class HUDContainer;
 class HUDImage;
 class HUDProgressBar;
 class HUDSpacer;
-class IniFile;
 
 // Type identification system
 enum class HUDTypeId : uint8_t {
@@ -197,10 +196,6 @@ public:
     bool HasActiveAnimations() const;
     virtual bool ApplyAnimated(HUDAnimation::PropertyType property, float value);
 
-    // Serialization support
-    virtual void ToIni(IniFile &ini, const std::string &section) const;
-    virtual void FromIni(const IniFile &ini, const std::string &section);
-
     // Virtual interface
     virtual std::shared_ptr<HUDElement> Clone() const;
     virtual void Draw(ImDrawList *drawList, const ImVec2 &viewportSize);
@@ -305,10 +300,6 @@ public:
         return *this;
     }
 
-    // Serialization
-    void ToIni(IniFile &ini, const std::string &section) const override;
-    void FromIni(const IniFile &ini, const std::string &section) override;
-
     // Override virtual methods
     std::shared_ptr<HUDElement> Clone() const override;
     bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
@@ -358,9 +349,6 @@ public:
     ImVec2 GetSize() const { return {m_Width, m_Height}; }
     ImU32 GetTint() const { return m_Tint; }
 
-    void ToIni(IniFile &ini, const std::string &section) const override;
-    void FromIni(const IniFile &ini, const std::string &section) override;
-
     std::shared_ptr<HUDElement> Clone() const override;
     bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
@@ -388,9 +376,6 @@ public:
     float GetProgress() const { return (m_Max - m_Min) > 0 ? (m_Value - m_Min) / (m_Max - m_Min) : 0.0f; }
     ImVec2 GetSize() const { return {m_Width, m_Height}; }
 
-    void ToIni(IniFile &ini, const std::string &section) const override;
-    void FromIni(const IniFile &ini, const std::string &section) override;
-
     std::shared_ptr<HUDElement> Clone() const override;
     bool ApplyAnimated(HUDAnimation::PropertyType property, float value) override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
@@ -414,9 +399,6 @@ public:
 
     HUDSpacer& SetSize(float width, float height) { m_Width = width; m_Height = height; MarkDirty(); return *this; }
     ImVec2 GetSize() const { return {m_Width, m_Height}; }
-
-    void ToIni(IniFile &ini, const std::string &section) const override;
-    void FromIni(const IniFile &ini, const std::string &section) override;
 
     std::shared_ptr<HUDElement> Clone() const override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override {}
@@ -562,10 +544,6 @@ public:
     std::shared_ptr<HUDElement> GetChild(size_t index) const;
     const std::unordered_map<std::string, std::weak_ptr<HUDElement>> &GetNamedChildren() const { return m_NamedChildren; }
 
-    // Serialization
-    void ToIni(IniFile &ini, const std::string &section) const override;
-    void FromIni(const IniFile &ini, const std::string &section) override;
-
     // Virtual overrides
     std::shared_ptr<HUDElement> Clone() const override;
     void Draw(ImDrawList *drawList, const ImVec2 &viewportSize) override;
@@ -666,12 +644,6 @@ public:
     void SetStyle(const HUDStyle &style) { m_Style = style; }
     const HUDStyle &GetStyle() const { return m_Style; }
 
-    // Serialization system
-    bool SaveLayoutToFile(const std::string &filePath) const;
-    bool LoadLayoutFromFile(const std::string &filePath);
-    void SaveLayoutToIni(IniFile &ini) const;
-    void LoadLayoutFromIni(const IniFile &ini);
-
     // Utility
     static std::shared_ptr<HUDElement> CloneElement(const std::shared_ptr<const HUDElement> &src) ;
 
@@ -693,7 +665,6 @@ private:
     // Internal helpers
     void ApplyStyle(HUDElement &e);
     void CleanupElementReferences(const std::shared_ptr<HUDElement> &element);
-    static std::shared_ptr<HUDElement> CreateElementFromType(const std::string &type);
 };
 
 #endif // BML_HUD_H

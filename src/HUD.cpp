@@ -7,8 +7,6 @@
 #include <unordered_map>
 
 #include "AnsiPalette.h"
-#include "IniFile.h"
-#include "StringUtils.h"
 
 // =============================================================================
 // Animation Implementation
@@ -183,65 +181,6 @@ bool HUDElement::HasActiveAnimations() const {
     return !m_Animations.empty();
 }
 
-void HUDElement::ToIni(IniFile &ini, const std::string &section) const {
-    ini.SetValue(section, "type", "element");
-    ini.SetValue(section, "visible", m_Visible ? "true" : "false");
-    ini.SetValue(section, "anchor", std::to_string(static_cast<int>(m_Anchor)));
-    ini.SetValue(section, "offset_x", std::to_string(m_Offset.x));
-    ini.SetValue(section, "offset_y", std::to_string(m_Offset.y));
-    ini.SetValue(section, "offset_type", m_Offset.type == CoordinateType::Pixels ? "pixels" : "normalized");
-    ini.SetValue(section, "page", m_Page);
-    ini.SetValue(section, "local_alpha", std::to_string(m_LocalAlpha));
-
-    if (m_DrawPanel) {
-        ini.SetValue(section, "panel_enabled", "true");
-        ini.SetValue(section, "panel_bg", std::to_string(m_PanelBg));
-        ini.SetValue(section, "panel_border", std::to_string(m_PanelBorder));
-        ini.SetValue(section, "panel_padding", std::to_string(m_PanelPaddingPx));
-        ini.SetValue(section, "panel_border_thickness", std::to_string(m_PanelBorderThickness));
-        ini.SetValue(section, "panel_rounding", std::to_string(m_PanelRounding));
-    }
-}
-
-// Safe numeric parsers - return fallback on malformed input
-static int SafeStoi(const std::string &s, int fallback = 0) {
-    try { return std::stoi(s); } catch (...) { return fallback; }
-}
-static float SafeStof(const std::string &s, float fallback = 0.0f) {
-    try { return std::stof(s); } catch (...) { return fallback; }
-}
-static unsigned long SafeStoul(const std::string &s, unsigned long fallback = 0) {
-    try { return std::stoul(s); } catch (...) { return fallback; }
-}
-
-void HUDElement::FromIni(const IniFile &ini, const std::string &section) {
-    SetVisible(ini.GetValue(section, "visible", "true") == "true");
-    SetAnchor(static_cast<AnchorPoint>(SafeStoi(ini.GetValue(section, "anchor", "0"))));
-
-    const float offsetX = SafeStof(ini.GetValue(section, "offset_x", "0"));
-    const float offsetY = SafeStof(ini.GetValue(section, "offset_y", "0"));
-    const std::string offsetType = ini.GetValue(section, "offset_type", "pixels");
-
-    if (offsetType == "normalized") {
-        SetOffsetNormalized(offsetX, offsetY);
-    } else {
-        SetOffsetPixels(offsetX, offsetY);
-    }
-
-    SetPage(ini.GetValue(section, "page"));
-    SetLocalAlpha(SafeStof(ini.GetValue(section, "local_alpha", "1.0"), 1.0f));
-
-    if (ini.GetValue(section, "panel_enabled") == "true") {
-        EnablePanel(true);
-        SetPanelBgColor(SafeStoul(ini.GetValue(section, "panel_bg", std::to_string(m_PanelBg))));
-        SetPanelBorderColor(SafeStoul(ini.GetValue(section, "panel_border", std::to_string(m_PanelBorder))));
-        SetPanelPadding(SafeStof(ini.GetValue(section, "panel_padding", std::to_string(m_PanelPaddingPx))));
-        SetPanelBorderThickness(
-            SafeStof(ini.GetValue(section, "panel_border_thickness", std::to_string(m_PanelBorderThickness))));
-        SetPanelRounding(SafeStof(ini.GetValue(section, "panel_rounding", std::to_string(m_PanelRounding))));
-    }
-}
-
 ImVec2 HUDElement::ResolveDrawPosition(const ImVec2 &viewportSize) const {
     const ImVec2 elementSize = GetElementSize(viewportSize);
     ImVec2 pos = CalculatePosition(elementSize, viewportSize);
@@ -388,25 +327,6 @@ HUDText &HUDText::SetTabColumns(int columns) {
     return *this;
 }
 
-void HUDText::ToIni(IniFile &ini, const std::string &section) const {
-    HUDElement::ToIni(ini, section);
-    ini.SetValue(section, "type", "text");
-    ini.SetValue(section, "text", GetText());
-    ini.SetValue(section, "scale", std::to_string(m_Scale));
-    ini.SetValue(section, "wrap_width_px", std::to_string(m_WrapWidthPx));
-    ini.SetValue(section, "wrap_width_frac", std::to_string(m_WrapWidthFrac));
-    ini.SetValue(section, "tab_columns", std::to_string(m_TabColumns));
-}
-
-void HUDText::FromIni(const IniFile &ini, const std::string &section) {
-    HUDElement::FromIni(ini, section);
-    SetText(ini.GetValue(section, "text").c_str());
-    SetScale(SafeStof(ini.GetValue(section, "scale", std::to_string(m_Scale)), m_Scale));
-    SetWrapWidthPx(SafeStof(ini.GetValue(section, "wrap_width_px", std::to_string(m_WrapWidthPx)), m_WrapWidthPx));
-    SetWrapWidthFrac(SafeStof(ini.GetValue(section, "wrap_width_frac", std::to_string(m_WrapWidthFrac)), m_WrapWidthFrac));
-    SetTabColumns(SafeStoi(ini.GetValue(section, "tab_columns", std::to_string(m_TabColumns)), m_TabColumns));
-}
-
 void HUDText::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
     if (!m_Visible || m_AnsiText.IsEmpty() || !drawList) return;
     DrawAt(drawList, ResolveDrawPosition(viewportSize), viewportSize, m_InheritedAlpha * m_LocalAlpha);
@@ -517,21 +437,6 @@ ImVec2 HUDImage::GetElementSize(const ImVec2 &viewportSize) const {
     return {m_Width, m_Height};
 }
 
-void HUDImage::ToIni(IniFile &ini, const std::string &section) const {
-    HUDElement::ToIni(ini, section);
-    ini.SetValue(section, "type", "image");
-    ini.SetValue(section, "width", std::to_string(m_Width));
-    ini.SetValue(section, "height", std::to_string(m_Height));
-    ini.SetValue(section, "tint", std::to_string(m_Tint));
-}
-
-void HUDImage::FromIni(const IniFile &ini, const std::string &section) {
-    HUDElement::FromIni(ini, section);
-    SetSize(SafeStof(ini.GetValue(section, "width", std::to_string(m_Width)), m_Width),
-            SafeStof(ini.GetValue(section, "height", std::to_string(m_Height)), m_Height));
-    SetTint(SafeStoul(ini.GetValue(section, "tint", std::to_string(m_Tint)), m_Tint));
-}
-
 // HUDProgressBar Implementation
 HUDProgressBar::HUDProgressBar(float width, float height)
     : HUDElement(), m_Width(width), m_Height(height) {}
@@ -580,29 +485,6 @@ ImVec2 HUDProgressBar::GetElementSize(const ImVec2 &viewportSize) const {
     return {m_Width, m_Height};
 }
 
-void HUDProgressBar::ToIni(IniFile &ini, const std::string &section) const {
-    HUDElement::ToIni(ini, section);
-    ini.SetValue(section, "type", "progressbar");
-    ini.SetValue(section, "width", std::to_string(m_Width));
-    ini.SetValue(section, "height", std::to_string(m_Height));
-    ini.SetValue(section, "value", std::to_string(m_Value));
-    ini.SetValue(section, "min", std::to_string(m_Min));
-    ini.SetValue(section, "max", std::to_string(m_Max));
-    ini.SetValue(section, "bg_color", std::to_string(m_BgColor));
-    ini.SetValue(section, "fill_color", std::to_string(m_FillColor));
-}
-
-void HUDProgressBar::FromIni(const IniFile &ini, const std::string &section) {
-    HUDElement::FromIni(ini, section);
-    SetSize(SafeStof(ini.GetValue(section, "width", std::to_string(m_Width)), m_Width),
-            SafeStof(ini.GetValue(section, "height", std::to_string(m_Height)), m_Height));
-    SetRange(SafeStof(ini.GetValue(section, "min", std::to_string(m_Min)), m_Min),
-             SafeStof(ini.GetValue(section, "max", std::to_string(m_Max)), m_Max));
-    SetValue(SafeStof(ini.GetValue(section, "value", std::to_string(m_Value)), m_Value));
-    SetColors(SafeStoul(ini.GetValue(section, "bg_color", std::to_string(m_BgColor)), m_BgColor),
-              SafeStoul(ini.GetValue(section, "fill_color", std::to_string(m_FillColor)), m_FillColor));
-}
-
 // HUDSpacer Implementation
 HUDSpacer::HUDSpacer(float width, float height)
     : HUDElement(), m_Width(width), m_Height(height) {}
@@ -613,19 +495,6 @@ std::shared_ptr<HUDElement> HUDSpacer::Clone() const {
 
 ImVec2 HUDSpacer::GetElementSize(const ImVec2 &viewportSize) const {
     return {m_Width, m_Height};
-}
-
-void HUDSpacer::ToIni(IniFile &ini, const std::string &section) const {
-    HUDElement::ToIni(ini, section);
-    ini.SetValue(section, "type", "spacer");
-    ini.SetValue(section, "width", std::to_string(m_Width));
-    ini.SetValue(section, "height", std::to_string(m_Height));
-}
-
-void HUDSpacer::FromIni(const IniFile &ini, const std::string &section) {
-    HUDElement::FromIni(ini, section);
-    SetSize(std::stof(ini.GetValue(section, "width", std::to_string(m_Width))),
-            std::stof(ini.GetValue(section, "height", std::to_string(m_Height))));
 }
 
 // =============================================================================
@@ -789,77 +658,6 @@ HUDContainer &HUDContainer::SetGridCols(int cols) {
 
 std::shared_ptr<HUDElement> HUDContainer::GetChild(size_t index) const {
     return (index < m_Children.size()) ? m_Children[index] : nullptr;
-}
-
-void HUDContainer::ToIni(IniFile &ini, const std::string &section) const {
-    HUDElement::ToIni(ini, section);
-    ini.SetValue(section, "type", "container");
-    ini.SetValue(section, "layout_kind", std::to_string(static_cast<int>(m_Kind)));
-    ini.SetValue(section, "grid_cols", std::to_string(m_GridCols));
-    ini.SetValue(section, "spacing", std::to_string(m_SpacingPx));
-    ini.SetValue(section, "align_x", std::to_string(static_cast<int>(m_AlignX)));
-    ini.SetValue(section, "align_y", std::to_string(static_cast<int>(m_AlignY)));
-    ini.SetValue(section, "cell_align_x", std::to_string(static_cast<int>(m_CellAlignX)));
-    ini.SetValue(section, "cell_align_y", std::to_string(static_cast<int>(m_CellAlignY)));
-
-    if (m_ClipEnabled) {
-        ini.SetValue(section, "clip_enabled", "true");
-        ini.SetValue(section, "clip_padding", std::to_string(m_ClipPaddingPx));
-    }
-
-    if (m_FadeEnabled) {
-        ini.SetValue(section, "fade_enabled", "true");
-        ini.SetValue(section, "fade_alpha", std::to_string(m_Alpha));
-        ini.SetValue(section, "fade_target", std::to_string(m_FadeTarget));
-        ini.SetValue(section, "fade_speed", std::to_string(m_FadeSpeed));
-    }
-
-    // Save children - only save named children to maintain relationship
-    std::vector<std::pair<std::string, std::shared_ptr<HUDElement>>> validChildren;
-    for (const auto &[name, weakChild] : m_NamedChildren) {
-        if (auto child = weakChild.lock()) {
-            validChildren.emplace_back(name, child);
-        }
-    }
-
-    ini.SetValue(section, "child_count", std::to_string(validChildren.size()));
-    int childIndex = 0;
-    for (const auto &[name, child] : validChildren) {
-        std::string childKey = "child_";
-        childKey.append(std::to_string(childIndex)).append("_name");
-        std::string childSectionKey = "child_";
-        childSectionKey.append(std::to_string(childIndex)).append("_section");
-        std::string childSection = section;
-        childSection.append("_child_").append(name);
-
-        ini.SetValue(section, childKey, name);
-        ini.SetValue(section, childSectionKey, childSection);
-        child->ToIni(ini, childSection);
-        childIndex++;
-    }
-}
-
-void HUDContainer::FromIni(const IniFile &ini, const std::string &section) {
-    HUDElement::FromIni(ini, section);
-    m_Kind = static_cast<HUDLayoutKind>(SafeStoi(ini.GetValue(section, "layout_kind", "0")));
-    SetGridCols(SafeStoi(ini.GetValue(section, "grid_cols", std::to_string(m_GridCols)), m_GridCols));
-    SetSpacing(SafeStof(ini.GetValue(section, "spacing", std::to_string(m_SpacingPx)), m_SpacingPx));
-    SetAlignX(static_cast<AlignX>(SafeStoi(ini.GetValue(section, "align_x", "0"))));
-    SetAlignY(static_cast<AlignY>(SafeStoi(ini.GetValue(section, "align_y", "0"))));
-    SetCellAlignX(static_cast<AlignX>(SafeStoi(ini.GetValue(section, "cell_align_x", "0"))));
-    SetCellAlignY(static_cast<AlignY>(SafeStoi(ini.GetValue(section, "cell_align_y", "0"))));
-
-    if (ini.GetValue(section, "clip_enabled") == "true") {
-        EnableClip(true);
-        SetClipPadding(SafeStof(ini.GetValue(section, "clip_padding", std::to_string(m_ClipPaddingPx)), m_ClipPaddingPx));
-    }
-
-    if (ini.GetValue(section, "fade_enabled") == "true") {
-        EnableFade(true);
-        SetAlpha(SafeStof(ini.GetValue(section, "fade_alpha", std::to_string(m_Alpha)), m_Alpha));
-        SetFadeTarget(SafeStof(ini.GetValue(section, "fade_target", std::to_string(m_FadeTarget)), m_FadeTarget));
-        SetFadeSpeed(SafeStof(ini.GetValue(section, "fade_speed", std::to_string(m_FadeSpeed)), m_FadeSpeed));
-    }
 }
 
 void HUDContainer::Draw(ImDrawList *drawList, const ImVec2 &viewportSize) {
@@ -1323,95 +1121,6 @@ std::vector<std::string> HUD::ListIds() const {
 }
 
 void HUD::Register(const std::string &id, const std::shared_ptr<HUDElement> &e) { m_Named[id] = e; }
-
-// Serialization implementation
-bool HUD::SaveLayoutToFile(const std::string &filePath) const {
-    IniFile ini;
-    SaveLayoutToIni(ini);
-    return ini.WriteToFile(utils::Utf8ToUtf16(filePath));
-}
-
-bool HUD::LoadLayoutFromFile(const std::string &filePath) {
-    IniFile ini;
-    if (!ini.ParseFromFile(utils::Utf8ToUtf16(filePath))) {
-        return false;
-    }
-    LoadLayoutFromIni(ini);
-    return true;
-}
-
-void HUD::SaveLayoutToIni(IniFile &ini) const {
-    // Save global settings
-    ini.SetValue("hud", "active_page", m_ActivePage);
-
-    // Count valid named elements
-    std::vector<std::pair<std::string, std::shared_ptr<HUDElement>>> validElements;
-    for (const auto &[name, weakElement] : m_Named) {
-        if (auto element = weakElement.lock()) {
-            validElements.emplace_back(name, element);
-        }
-    }
-
-    ini.SetValue("hud", "element_count", std::to_string(validElements.size()));
-
-    // Save each named element
-    int elementIndex = 0;
-    for (const auto &[name, element] : validElements) {
-        std::string elementKey = "element_" + std::to_string(elementIndex) + "_name";
-        std::string sectionKey = "element_" + std::to_string(elementIndex) + "_section";
-        std::string section = "element_" + name;
-
-        ini.SetValue("hud", elementKey, name);
-        ini.SetValue("hud", sectionKey, section);
-        element->ToIni(ini, section);
-        elementIndex++;
-    }
-}
-
-void HUD::LoadLayoutFromIni(const IniFile &ini) {
-    // Clear existing elements
-    m_Elements.clear();
-    m_Named.clear();
-
-    // Load global settings
-    SetActivePage(ini.GetValue("hud", "active_page"));
-
-    // Load elements
-    int elementCount = SafeStoi(ini.GetValue("hud", "element_count", "0"));
-    for (int i = 0; i < elementCount; i++) {
-        std::string elementKey = "element_" + std::to_string(i) + "_name";
-        std::string sectionKey = "element_" + std::to_string(i) + "_section";
-
-        std::string name = ini.GetValue("hud", elementKey);
-        std::string section = ini.GetValue("hud", sectionKey);
-
-        if (name.empty() || section.empty()) continue;
-
-        std::string type = ini.GetValue(section, "type");
-        auto element = CreateElementFromType(type);
-        if (element) {
-            element->FromIni(ini, section);
-            m_Named[name] = element;
-            m_Elements.push_back(element);
-        }
-    }
-}
-
-std::shared_ptr<HUDElement> HUD::CreateElementFromType(const std::string &type) {
-    if (type == "text") {
-        return std::make_shared<HUDText>();
-    } else if (type == "container") {
-        return std::make_shared<HUDContainer>();
-    } else if (type == "image") {
-        return std::make_shared<HUDImage>();
-    } else if (type == "progressbar") {
-        return std::make_shared<HUDProgressBar>();
-    } else if (type == "spacer") {
-        return std::make_shared<HUDSpacer>();
-    } else {
-        return std::make_shared<HUDElement>();
-    }
-}
 
 // Path resolution helpers (updated for shared_ptr)
 std::shared_ptr<HUDElement> HUD::FindByPath(const std::string &path) {
