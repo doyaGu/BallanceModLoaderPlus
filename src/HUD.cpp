@@ -1497,15 +1497,21 @@ std::shared_ptr<HUDElement> HUD::ResolveRelativePath(const std::vector<std::stri
         }
     }
 
+    std::shared_ptr<HUDElement> match;
     for (const auto &[rootName, weakRoot] : m_Named) {
         auto root = weakRoot.lock();
         if (!root) continue;
 
-        if (auto element = DescendPath(root, segments, 0)) {
-            return element;
-        }
+        auto element = DescendPath(root, segments, 0);
+        if (!element) continue;
+
+        // A relative path has no root context. Reject ambiguous matches instead
+        // of selecting whichever unordered_map entry happens to be visited first.
+        if (match && match != element)
+            return nullptr;
+        match = std::move(element);
     }
-    return nullptr;
+    return match;
 }
 
 std::shared_ptr<HUDElement> HUD::DescendPath(const std::shared_ptr<HUDElement> &start, const std::vector<std::string> &segments, size_t from) const {
