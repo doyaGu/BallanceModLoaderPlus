@@ -419,8 +419,8 @@ private:
     bool ResolveDependencies();
 
     void FillCallbackMap(IMod *mod);
-    void FlushConfigChanges(bool saveAll = false);
-    void DeactivateActiveMods();
+    void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
+    void DeactivateActiveMods(bool dispatchPendingNotifications);
     void RollbackModActivation();
 
     void AddDataPath(const char *path);

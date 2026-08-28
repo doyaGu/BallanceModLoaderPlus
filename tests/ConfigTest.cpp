@@ -87,9 +87,18 @@ class MockMod : public IMod {
 public:
     explicit MockMod(IBML *bml) : IMod(bml) {}
 
-    const char *GetID() override { return "MockMod"; }
-    const char *GetName() override { return "MockModName"; }
-    const char *GetVersion() override { return "1.0"; }
+    const char *GetID() override {
+        ++idReadCount;
+        return "MockMod";
+    }
+    const char *GetName() override {
+        ++nameReadCount;
+        return "MockModName";
+    }
+    const char *GetVersion() override {
+        ++versionReadCount;
+        return "1.0";
+    }
     const char *GetAuthor() override { return "Tester"; }
 
     const char *GetDescription() override {
@@ -106,6 +115,9 @@ public:
     }
 
     std::atomic<int> modifiedCount{0};
+    std::atomic<int> idReadCount{0};
+    std::atomic<int> nameReadCount{0};
+    std::atomic<int> versionReadCount{0};
     std::string lastCategory;
     std::string lastKey;
     IProperty *lastProp = nullptr;
@@ -463,6 +475,20 @@ TEST_F(ConfigTest, FileIO) {
     EXPECT_FALSE(config->Load(nullptr));
     EXPECT_FALSE(config->Load(L""));
     EXPECT_FALSE(config->Load(L"nonexistent_file.cfg"));
+}
+
+TEST_F(ConfigTest, SaveUsesSnapshottedModMetadata) {
+    const wchar_t *filename = L"test_config_metadata.cfg";
+    mockMod->idReadCount = 0;
+    mockMod->nameReadCount = 0;
+    mockMod->versionReadCount = 0;
+
+    ASSERT_TRUE(config->Save(filename));
+    EXPECT_EQ(0, mockMod->idReadCount);
+    EXPECT_EQ(0, mockMod->nameReadCount);
+    EXPECT_EQ(0, mockMod->versionReadCount);
+
+    _wremove(filename);
 }
 
 // Performance test

@@ -191,10 +191,12 @@ public:
     virtual void OnLoad() {}
 
     // Runs once at shutdown, for every Mod that loaded, in the reverse of the
-    // order they loaded in. The loader tears the Mod's IMC state down right after
-    // it returns, saves the configs once every Mod has been through, and ignores
-    // any timer scheduled from here. Commands cannot be withdrawn, so do not
-    // delete anything the loader still points at.
+    // order they loaded in. This is the final callback into the Mod. The loader
+    // tears the Mod's IMC state down right after it returns, saves the configs once
+    // every Mod has been through, and ignores any timer scheduled from here. A
+    // config write here is saved but does not cause a later OnModifyConfig callback.
+    // Commands cannot be withdrawn, so do not delete anything the loader still
+    // points at.
     virtual void OnUnload() {}
 
     // Runs during the loader's config flush after IProperty::SetString or one of its
@@ -202,7 +204,8 @@ public:
     // but writes to the same property in one frame are coalesced into one callback
     // carrying the latest value. A write made from this callback is queued for a
     // later flush instead of calling recursively. The loader also flushes after
-    // OnLoad and OnUnload because those phases have no following normal frame.
+    // OnLoad and immediately before normal teardown. Writes made from OnUnload are
+    // persisted without another callback because OnUnload is the final callback.
     // Loading a config file uses the SetDefault functions and does not queue this
     // callback. prop is the property that changed and already carries the new value.
     virtual void OnModifyConfig(const char *category, const char *key, IProperty *prop) {}

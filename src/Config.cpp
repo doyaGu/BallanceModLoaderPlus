@@ -7,7 +7,16 @@
 
 #include "StringUtils.h"
 
-Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod ? mod->GetID() : "") {}
+Config::Config(IMod *mod) : m_Mod(mod), m_ModName("Unknown"), m_ModVersion("Unknown") {
+    if (!mod)
+        return;
+    if (const char *id = mod->GetID())
+        m_ModID = id;
+    if (const char *name = mod->GetName())
+        m_ModName = name;
+    if (const char *version = mod->GetVersion())
+        m_ModVersion = version;
+}
 
 Config::~Config() {
     for (Category *cate : m_Categories) {
@@ -176,8 +185,8 @@ bool Config::Save(const wchar_t *path) {
         }
     }
 
-    out << "# Configuration File for Mod: " << (m_Mod ? m_Mod->GetName() : "Unknown")
-        << " - " << (m_Mod ? m_Mod->GetVersion() : "Unknown") << std::endl << std::endl;
+    out << "# Configuration File for Mod: " << m_ModName
+        << " - " << m_ModVersion << std::endl << std::endl;
 
     for (auto *category : m_Categories) {
         if (!category || category->GetPropertyCount() == 0)

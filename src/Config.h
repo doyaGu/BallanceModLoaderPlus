@@ -112,6 +112,7 @@ public:
     ~Config() override;
 
     IMod *GetMod() const { return m_Mod; }
+    const std::string &GetModID() const { return m_ModID; }
 
     size_t GetCategoryCount() const { return m_Categories.size(); }
     Category *GetCategory(size_t i);
@@ -136,6 +137,8 @@ private:
 
     IMod *m_Mod;
     std::string m_ModID;
+    std::string m_ModName;
+    std::string m_ModVersion;
     bool m_Dirty = false;
     std::vector<PendingNotification> m_PendingNotifications;
 

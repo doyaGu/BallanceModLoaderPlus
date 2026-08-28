@@ -571,12 +571,19 @@ void ModContext::ShutdownMods() {
 
     // Wait for concurrent callbacks before unloading their owning Mod objects.
     auto invocationLock = m_ModInvocationGate.LockMutation();
-    DeactivateActiveMods();
+    DeactivateActiveMods(true);
 
     ClearFlags(BML_MODS_INITED);
 }
 
-void ModContext::DeactivateActiveMods() {
+void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
+    // A normal shutdown still owes Mods notifications queued by the last frame.
+    // Deliver them before the first OnUnload so teardown remains the final callback.
+    // Activation rollback deliberately suppresses callbacks from incomplete OnLoad
+    // implementations and only persists their final values below.
+    if (dispatchPendingNotifications)
+        FlushConfigChanges();
+
     for (auto rit = m_ActiveMods.rbegin(); rit != m_ActiveMods.rend(); ++rit) {
         IMod *mod = *rit;
         try {
@@ -590,10 +597,10 @@ void ModContext::DeactivateActiveMods() {
         }
     }
 
-    // OnUnload may change configuration. Deliver those deferred notifications and
-    // persist their final values while every Mod and its auxiliary services are
-    // still alive; there is no later frame in which the normal flush can run.
-    FlushConfigChanges(true);
+    // OnUnload may change configuration, but it is the Mod's final callback. Drain
+    // those notifications without dispatching them, and persist the final values
+    // without calling back into Mod metadata.
+    FlushConfigChanges(true, false);
 
     for (auto rit = m_ActiveMods.rbegin(); rit != m_ActiveMods.rend(); ++rit) {
         IMod *mod = *rit;
@@ -632,7 +639,7 @@ void ModContext::RollbackModActivation() {
         m_ScriptHotReload->Stop();
 #endif
     auto invocationLock = m_ModInvocationGate.LockMutation();
-    DeactivateActiveMods();
+    DeactivateActiveMods(false);
 
     // A throwing OnLoad may leave an IMC client behind before the Mod becomes
     // active. Active owners were already cleaned by DeactivateActiveMods.
@@ -1184,16 +1191,16 @@ bool ModContext::SaveConfig(Config *config) {
     if (!config)
         return false;
 
-    IMod *mod = config->GetMod();
-    if (!mod)
+    const std::string &modId = config->GetModID();
+    if (modId.empty())
         return false;
 
     std::wstring configPath = m_LoaderDir;
-    configPath.append(L"\\Configs\\").append(utils::ToWString(mod->GetID())).append(L".cfg");
+    configPath.append(L"\\Configs\\").append(utils::ToWString(modId)).append(L".cfg");
     return config->Save(configPath.c_str());
 }
 
-void ModContext::FlushConfigChanges(bool saveAll) {
+void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
     auto invocationLock = LockModInvocation();
     std::vector<Config *> configs;
     {
@@ -1209,7 +1216,7 @@ void ModContext::FlushConfigChanges(bool saveAll) {
 
         IMod *mod = config->GetMod();
         std::vector<Config::PendingNotification> notifications = config->TakePendingNotifications();
-        if (mod) {
+        if (dispatchNotifications && mod) {
             for (const auto &notification : notifications) {
                 try {
                     mod->OnModifyConfig(
@@ -1229,20 +1236,21 @@ void ModContext::FlushConfigChanges(bool saveAll) {
         }
 
         if (saveAll || config->IsDirty()) {
+            const char *modId = config->GetModID().empty() ? "<unknown>" : config->GetModID().c_str();
             try {
                 if (!SaveConfig(config) && m_Logger) {
                     m_Logger->Error("Failed to save config for mod %s",
-                                    mod && mod->GetID() ? mod->GetID() : "<unknown>");
+                                    modId);
                 }
             } catch (const std::exception &e) {
                 if (m_Logger) {
                     m_Logger->Error("Exception while saving config for mod %s: %s",
-                                    mod && mod->GetID() ? mod->GetID() : "<unknown>", e.what());
+                                    modId, e.what());
                 }
             } catch (...) {
                 if (m_Logger) {
                     m_Logger->Error("Unknown exception while saving config for mod %s",
-                                    mod && mod->GetID() ? mod->GetID() : "<unknown>");
+                                    modId);
                 }
             }
         }
