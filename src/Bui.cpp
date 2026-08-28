@@ -909,6 +909,18 @@ namespace Bui {
     }
 
     bool KeyButton(const char *label, bool *toggled, ImGuiKeyChord *key_chord) {
+        constexpr float kLabelLeftInsetRatio = 0.1055f;
+        constexpr float kLabelRightInsetRatio = 0.5195f;
+        constexpr float kChordLeftInsetRatio = 0.5625f;
+        constexpr float kChordRightInsetRatio = 0.0195f;
+        constexpr float kHighlightLeftInsetRatio = 0.155f;
+        constexpr float kHighlightWidthRatio = 0.145f;
+        constexpr float kHighlightHeightRatio = 0.039f;
+        constexpr float kHighlightUvMinX = 0.005f;
+        constexpr float kHighlightUvMinY = 0.3850f;
+        constexpr float kHighlightUvMaxX = 0.4320f;
+        constexpr float kHighlightUvMaxY = 0.4500f;
+
         ImGuiWindow *window = ImGui::GetCurrentWindow();
         if (window->SkipItems)
             return false;
@@ -942,13 +954,15 @@ namespace Bui {
 
         AddButtonImage(drawList, bb, BUTTON_KEY, hovered);
 
-        float xl1 = size.x * 0.1055f, xr1 = size.x * 0.5195f;
+        const float xl1 = size.x * kLabelLeftInsetRatio;
+        const float xr1 = size.x * kLabelRightInsetRatio;
         const ImVec2 min1(bb.Min.x + xl1, bb.Min.y);
         const ImVec2 max1(bb.Max.x - xr1, bb.Max.y);
         RenderEllipsisText(drawList, min1, max1, label, &textSize, style.ButtonTextAlign, &bb);
 
         if (*key_chord != 0) {
-            float xl2 = size.x * 0.5625f, xr2 = size.x * 0.0195f;
+            const float xl2 = size.x * kChordLeftInsetRatio;
+            const float xr2 = size.x * kChordRightInsetRatio;
             const ImVec2 min2(bb.Min.x + xl2, bb.Min.y);
             const ImVec2 max2(bb.Max.x - xr2, bb.Max.y);
 
@@ -959,13 +973,13 @@ namespace Bui {
         }
 
         if (*toggled) {
-            ImVec2 vpSize = ImGui::GetMainViewport()->Size;
-            const ImVec2 size0(vpSize.x * 0.145f, vpSize.y * 0.039f);
-            const ImVec2 min0(bb.Min.x + vpSize.x * 0.155f, bb.Min.y);
+            const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
+            const ImVec2 size0(vpSize.x * kHighlightWidthRatio, vpSize.y * kHighlightHeightRatio);
+            const ImVec2 min0(bb.Min.x + vpSize.x * kHighlightLeftInsetRatio, bb.Min.y);
             const ImVec2 max0(min0.x + size0.x, min0.y + size0.y);
 
-            const ImVec2 uv0(0.005f, 0.3850f);
-            const ImVec2 uv1(0.4320f, 0.4500f);
+            const ImVec2 uv0(kHighlightUvMinX, kHighlightUvMinY);
+            const ImVec2 uv1(kHighlightUvMaxX, kHighlightUvMaxY);
 
             drawList->AddImage(g_Materials[MATERIAL_KEYS_HIGHLIGHT], min0, max0, uv0, uv1);
         }
