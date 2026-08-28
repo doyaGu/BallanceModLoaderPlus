@@ -1,12 +1,13 @@
 // One command for the loader's command bar, which the player opens with the / key.
 // A Mod derives from this, allocates one instance, and hands it to
 // IBML::RegisterCommand from OnLoad. The loader keeps the pointer, never deletes
-// it, and has no way to take it back, so allocate it once and let it live for the
-// whole process; this class has no virtual destructor either.
+// it, and BML_UnregisterCommand is the only way to take it back; this class has no
+// virtual destructor, so the Mod still owns and deletes the concrete object.
 //
-// The loader asks the three name functions again on every listing and every Tab
-// press, so return the same text each time and build it cheaply. GetName, GetAlias,
-// and GetDescription return std::string by value and Execute takes a
+// The loader snapshots the name, alias, description, and cheat flag during
+// registration. Return stable metadata: later changes are deliberately not reflected
+// until the command is unregistered and registered again. GetName, GetAlias, and
+// GetDescription return std::string by value and Execute takes a
 // std::vector<std::string>, so a Mod implementing this is tied to the standard
 // library the loader was built with, which is why the loader and its Mods have to
 // use the same MSVC runtime.

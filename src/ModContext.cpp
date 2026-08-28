@@ -909,8 +909,13 @@ void ModContext::RegisterCommand(ICommand *cmd) {
     // boundary, so the return address is in whichever module is registering.
     void *const registrar = ModuleFromAddress(_ReturnAddress());
 
-    std::lock_guard<std::mutex> lock(m_Mutex);
-    if (m_CommandContext.RegisterCommand(registrar, cmd)) {
+    if (!IsMainThread()) {
+        if (m_Logger)
+            m_Logger->Error("RegisterCommand must run on the game thread.");
+        return;
+    }
+
+    if (RegisterOwnedCommand(registrar, cmd)) {
         return;
     }
 
@@ -924,15 +929,39 @@ void ModContext::RegisterCommand(ICommand *cmd) {
         cmd->GetName().c_str());
 }
 
+bool ModContext::RegisterOwnedCommand(const void *registrar, ICommand *command) {
+    if (!IsMainThread() || !registrar || !command)
+        return false;
+
+    BML::CommandContext::CommandInfo info;
+    info.Name = command->GetName();
+    info.Alias = command->GetAlias();
+    info.Description = command->GetDescription();
+    info.Cheat = command->IsCheat();
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_CommandContext.RegisterCommand(registrar, command, std::move(info));
+}
+
+BML::CommandContext::UnregisterResult ModContext::UnregisterOwnedCommand(
+    const void *registrar, const char *name) {
+    if (!IsMainThread() || m_CommandInvocationGate.IsCallActiveOnCurrentThread())
+        return BML::CommandContext::UnregisterResult::Busy;
+
+    auto invocationLock = m_CommandInvocationGate.LockMutation();
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_CommandContext.UnregisterCommand(registrar, name);
+}
+
 int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
     if (!name || name[0] == '\0')
         return BML_ERROR_INVALID_PARAMETER;
+    if (!IsMainThread())
+        return BML_ERROR_WRONG_THREAD;
 
     void *const caller = ModuleFromAddress(callerAddress);
 
-    std::lock_guard<std::mutex> lock(m_Mutex);
-
-    switch (m_CommandContext.UnregisterCommand(caller, name)) {
+    switch (UnregisterOwnedCommand(caller, name)) {
         case BML::CommandContext::UnregisterResult::Success:
             return BML_OK;
         case BML::CommandContext::UnregisterResult::InvalidName:
@@ -942,6 +971,8 @@ int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
         case BML::CommandContext::UnregisterResult::AccessDenied:
             m_Logger->Error("Refused to unregister command '%s': it belongs to another module.", name);
             return BML_ERROR_ACCESS_DENIED;
+        case BML::CommandContext::UnregisterResult::Busy:
+            return BML_ERROR_BUSY;
         case BML::CommandContext::UnregisterResult::InternalError:
             return BML_ERROR_FAIL;
     }
@@ -950,22 +981,64 @@ int ModContext::UnregisterCommand(const void *callerAddress, const char *name) {
 }
 
 int ModContext::GetCommandCount() const {
+    if (!IsMainThread())
+        return 0;
     std::lock_guard<std::mutex> lock(m_Mutex);
     return static_cast<int>(m_CommandContext.GetCommandCount());
 }
 
 ICommand *ModContext::GetCommand(int index) const {
+    if (!IsMainThread())
+        return nullptr;
     std::lock_guard<std::mutex> lock(m_Mutex);
     return m_CommandContext.GetCommandByIndex(index);
 }
 
 ICommand *ModContext::FindCommand(const char *name) const {
+    if (!IsMainThread())
+        return nullptr;
     std::lock_guard<std::mutex> lock(m_Mutex);
     return m_CommandContext.GetCommandByName(name);
 }
 
+std::vector<BML::CommandContext::CommandInfo> ModContext::GetCommandSnapshot() const {
+    if (!IsMainThread())
+        return {};
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_CommandContext.GetCommandSnapshot();
+}
+
+bool ModContext::GetCommandInfo(int index, BML::CommandContext::CommandInfo &info) const {
+    if (!IsMainThread() || index < 0)
+        return false;
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_CommandContext.GetCommandInfoByIndex(static_cast<size_t>(index), info);
+}
+
+bool ModContext::FindCommandInfo(
+    const char *name, BML::CommandContext::CommandInfo &info) const {
+    if (!IsMainThread())
+        return false;
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_CommandContext.GetCommandInfoByName(name, info);
+}
+
+std::vector<std::string> ModContext::CompleteCommand(
+    const char *name, const std::vector<std::string> &args) {
+    if (!IsMainThread() || !name || name[0] == '\0')
+        return {};
+
+    auto invocationLock = m_CommandInvocationGate.LockCall();
+    ICommand *command = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        command = m_CommandContext.GetCommandByName(name);
+    }
+    return command ? command->GetTabCompletion(this, args) : std::vector<std::string>();
+}
+
 void ModContext::ExecuteCommand(const char *cmd) {
-    if (!cmd || cmd[0] == '\0')
+    if (!IsMainThread() || !cmd || cmd[0] == '\0')
         return;
 
     const auto args = CommandContext::ParseCommandLine(cmd);
@@ -974,7 +1047,12 @@ void ModContext::ExecuteCommand(const char *cmd) {
         return;
     }
 
-    ICommand *command = FindCommand(args[0].c_str());
+    auto invocationLock = m_CommandInvocationGate.LockCall();
+    ICommand *command = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        command = m_CommandContext.GetCommandByName(args[0].c_str());
+    }
     if (!command) {
         m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
         return;

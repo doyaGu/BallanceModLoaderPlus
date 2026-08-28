@@ -19,6 +19,15 @@ ICommand *ModContext::FindCommand(const char *) const {
     return nullptr;
 }
 
+bool ModContext::GetCommandInfo(int, BML::CommandContext::CommandInfo &) const {
+    return false;
+}
+
+bool ModContext::FindCommandInfo(
+    const char *, BML::CommandContext::CommandInfo &) const {
+    return false;
+}
+
 const char *CKAngelScriptAdapter::StatusName(CKAS_STATUS) {
     return "CKAS_TEST";
 }

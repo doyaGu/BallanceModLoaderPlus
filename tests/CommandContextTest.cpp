@@ -87,6 +87,35 @@ TEST_F(CommandContextTest, RegisterCommand) {
     EXPECT_EQ(1u, ctx->GetCommandCount());
 }
 
+TEST_F(CommandContextTest, CommandSnapshotCopiesSortedMetadata) {
+    auto *second = MakeCommand("zeta", "z");
+    auto *first = MakeCommand("alpha", "a");
+    ASSERT_TRUE(Register(second));
+    ASSERT_TRUE(Register(first));
+
+    const auto snapshot = ctx->GetCommandSnapshot();
+    ASSERT_EQ(2u, snapshot.size());
+    EXPECT_EQ("alpha", snapshot[0].Name);
+    EXPECT_EQ("a", snapshot[0].Alias);
+    EXPECT_EQ("Test command", snapshot[0].Description);
+    EXPECT_FALSE(snapshot[0].Cheat);
+    EXPECT_EQ("zeta", snapshot[1].Name);
+    EXPECT_EQ("z", snapshot[1].Alias);
+}
+
+TEST_F(CommandContextTest, CommandInfoLookupDoesNotExposeRegistryEntry) {
+    auto *command = MakeCommand("teleport", "tp");
+    ASSERT_TRUE(Register(command));
+
+    BML::CommandContext::CommandInfo info;
+    ASSERT_TRUE(ctx->GetCommandInfoByName("TP", info));
+    EXPECT_EQ("teleport", info.Name);
+    EXPECT_EQ("tp", info.Alias);
+    ASSERT_TRUE(ctx->GetCommandInfoByIndex(0, info));
+    EXPECT_EQ("teleport", info.Name);
+    EXPECT_FALSE(ctx->GetCommandInfoByIndex(1, info));
+}
+
 TEST_F(CommandContextTest, RegisterNullCommand) {
     EXPECT_FALSE(Register(nullptr));
     EXPECT_EQ(0u, ctx->GetCommandCount());

@@ -96,7 +96,8 @@ public:
     // only after BML_UnregisterCommand returns BML_OK. A command that is not
     // unregistered must remain alive for the whole process lifetime.
     // Registration is silent on success and only logs on failure. It fails for
-    // a null command, an invalid name or alias, and an already registered name.
+    // a null command, an invalid name or alias, an already registered name, and a
+    // call outside the game thread. Metadata is copied during this call.
     virtual void RegisterCommand(ICommand *cmd) = 0;
 
     // SetIC records the object's current state as the initial condition of the
@@ -189,7 +190,8 @@ public:
     // a registered alias, returning null when there is no such command. The index
     // GetCommand takes is a position in that shared table, which the loader sorts by
     // name once every Mod has loaded and re-sorts when a script Mod reloads, so look
-    // an index up and use it, do not store it.
+    // an index up and use it, do not store it. These three legacy raw-pointer reads
+    // are game-thread-only; outside that thread they return an empty result.
     virtual int GetCommandCount() const = 0;
     virtual ICommand *GetCommand(int index) const = 0;
     virtual ICommand *FindCommand(const char *name) const = 0;
@@ -203,7 +205,8 @@ public:
     // the command name and its arguments. It reports an unknown command, an empty
     // line, and a cheat command refused because cheats are off by writing an ingame
     // message, and returns nothing either way, so a caller cannot tell success from
-    // failure. Call FindCommand first when that matters.
+    // failure. Call FindCommand first when that matters. This is game-thread-only;
+    // a call from another thread is ignored.
     virtual void ExecuteCommand(const char *cmd) = 0;
 
     // Declares that mod needs another Mod, at dependencyId's version or newer. The

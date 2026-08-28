@@ -13,11 +13,19 @@ namespace BML {
 
     class CommandContext {
     public:
+        struct CommandInfo {
+            std::string Name;
+            std::string Alias;
+            std::string Description;
+            bool Cheat = false;
+        };
+
         enum class UnregisterResult {
             Success,
             InvalidName,
             NotFound,
             AccessDenied,
+            Busy,
             InternalError,
         };
 
@@ -32,12 +40,16 @@ namespace BML {
         CommandContext &operator=(CommandContext &&rhs) noexcept = delete;
 
         bool RegisterCommand(const void *registrar, ICommand *cmd);
+        bool RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info);
         UnregisterResult UnregisterCommand(const void *registrar, const char *name);
         void UnregisterCommands(const void *registrar);
 
         size_t GetCommandCount() const;
         ICommand *GetCommandByIndex(size_t index) const;
         ICommand *GetCommandByName(const char *name) const;
+        std::vector<CommandInfo> GetCommandSnapshot() const;
+        bool GetCommandInfoByIndex(size_t index, CommandInfo &info) const;
+        bool GetCommandInfoByName(const char *name, CommandInfo &info) const;
 
         bool IsCheatEnabled() const noexcept { return m_CheatEnabled; }
         bool SetCheatEnabled(bool enabled) noexcept;
@@ -67,7 +79,7 @@ namespace BML {
         struct Entry {
             ICommand *Command = nullptr;
             const void *Registrar = nullptr;
-            std::string Name;
+            CommandInfo Info;
             std::string NameKey;
             std::string AliasKey;
         };

@@ -431,17 +431,13 @@ void CommandBar::RecordHistoryEntry(const std::string &entry) {
 }
 
 void CommandBar::CollectCommandCandidates(const char *cmdStart, int cmdLength) {
-    const int count = BML_GetModContext()->GetCommandCount();
-    for (int i = 0; i < count; ++i) {
-        ICommand *cmd = BML_GetModContext()->GetCommand(i);
-        if (!cmd)
-            continue;
-
-        const std::string name = NormalizeCandidateEncoding(cmd->GetName());
+    const auto commands = BML_GetModContext()->GetCommandSnapshot();
+    for (const auto &command : commands) {
+        const std::string name = NormalizeCandidateEncoding(command.Name);
         if (!name.empty() && utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
             m_Candidates.Add(name);
 
-        const std::string alias = NormalizeCandidateEncoding(cmd->GetAlias());
+        const std::string alias = NormalizeCandidateEncoding(command.Alias);
         if (!alias.empty() && utf8ncasecmp(alias.c_str(), cmdStart, cmdLength) == 0)
             m_Candidates.Add(alias);
     }
@@ -455,11 +451,8 @@ void CommandBar::CollectArgumentCandidates(const char *wordStart, int wordLength
     if (args.empty())
         return;
 
-    ICommand *cmd = BML_GetModContext()->FindCommand(args[0].c_str());
-    if (!cmd)
-        return;
-
-    for (const std::string &rawCandidate : cmd->GetTabCompletion(BML_GetModContext(), args)) {
+    for (const std::string &rawCandidate :
+         BML_GetModContext()->CompleteCommand(args[0].c_str(), args)) {
         const std::string candidate = NormalizeCandidateEncoding(rawCandidate);
         if (!candidate.empty() && utf8ncasecmp(candidate.c_str(), wordStart, wordLength) == 0)
             m_Candidates.Add(candidate);

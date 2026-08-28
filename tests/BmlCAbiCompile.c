@@ -30,7 +30,8 @@ void BML_TestCAbiModRoot(void) {
 int BML_TestCAbiUnregisterCommand(const char *name) {
     const int result = BML_UnregisterCommand(name);
     if (result == BML_ERROR_NOT_FOUND || result == BML_ERROR_ACCESS_DENIED ||
-        result == BML_ERROR_INVALID_PARAMETER)
+        result == BML_ERROR_INVALID_PARAMETER || result == BML_ERROR_WRONG_THREAD ||
+        result == BML_ERROR_BUSY)
         return 0;
     return result == BML_OK;
 }

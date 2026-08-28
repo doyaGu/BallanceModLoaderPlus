@@ -162,7 +162,19 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd) {
     if (!registrar || !cmd)
         return false;
 
-    const auto name = cmd->GetName();
+    CommandInfo info;
+    info.Name = cmd->GetName();
+    info.Alias = cmd->GetAlias();
+    info.Description = cmd->GetDescription();
+    info.Cheat = cmd->IsCheat();
+    return RegisterCommand(registrar, cmd, std::move(info));
+}
+
+bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd, CommandInfo info) {
+    if (!registrar || !cmd)
+        return false;
+
+    const std::string name = info.Name;
     if (!IsValidCommandName(name.c_str())) {
         Logger::GetDefault()->Error("Command name %s is invalid.", name.c_str());
         return false;
@@ -175,7 +187,7 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd) {
     }
 
     std::string aliasKey;
-    const auto alias = cmd->GetAlias();
+    const std::string alias = info.Alias;
     if (!alias.empty()) {
         if (!IsValidCommandAlias(alias.c_str())) {
             Logger::GetDefault()->Error("Command alias %s is invalid.", alias.c_str());
@@ -192,7 +204,7 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd) {
     Entry entry;
     entry.Command = cmd;
     entry.Registrar = registrar;
-    entry.Name = name;
+    entry.Info = std::move(info);
     entry.NameKey = nameKey;
     entry.AliasKey = aliasKey;
 
@@ -211,7 +223,7 @@ bool CommandContext::RegisterCommand(const void *registrar, ICommand *cmd) {
 
         const auto position = std::lower_bound(
             m_Commands.begin(), m_Commands.end(), name,
-            [](const Entry &item, const std::string &value) { return item.Name < value; });
+            [](const Entry &item, const std::string &value) { return item.Info.Name < value; });
         m_Commands.insert(position, std::move(entry));
     } catch (const std::bad_alloc &) {
         m_CommandMap.erase(nameKey);
@@ -307,6 +319,37 @@ ICommand *CommandContext::GetCommandByName(const char *name) const {
         return nullptr;
 
     return it->second;
+}
+
+std::vector<CommandContext::CommandInfo> CommandContext::GetCommandSnapshot() const {
+    std::vector<CommandInfo> snapshot;
+    snapshot.reserve(m_Commands.size());
+    for (const Entry &entry : m_Commands)
+        snapshot.push_back(entry.Info);
+    return snapshot;
+}
+
+bool CommandContext::GetCommandInfoByIndex(size_t index, CommandInfo &info) const {
+    if (index >= m_Commands.size())
+        return false;
+    info = m_Commands[index].Info;
+    return true;
+}
+
+bool CommandContext::GetCommandInfoByName(const char *name, CommandInfo &info) const {
+    ICommand *command = GetCommandByName(name);
+    if (!command)
+        return false;
+
+    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
+                                    [command](const Entry &item) {
+                                        return item.Command == command;
+                                    });
+    if (entry == m_Commands.end())
+        return false;
+
+    info = entry->Info;
+    return true;
 }
 
 bool CommandContext::SetCheatEnabled(bool enabled) noexcept {

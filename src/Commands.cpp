@@ -29,16 +29,15 @@ void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
 }
 
 void CommandHelp::Execute(IBML *bml, const std::vector<std::string> &args) {
-    const int cmdCount = bml->GetCommandCount();
-    bml->SendIngameMessage((std::to_string(cmdCount) + " Existing Commands:").data());
-    for (int i = 0; i < cmdCount; i++) {
-        ICommand *cmd = bml->GetCommand(i);
-        std::string str = std::string("\t") + cmd->GetName();
-        if (!cmd->GetAlias().empty())
-            str += "(" + cmd->GetAlias() + ")";
-        if (cmd->IsCheat())
+    const auto commands = BML_GetModContext()->GetCommandSnapshot();
+    bml->SendIngameMessage((std::to_string(commands.size()) + " Existing Commands:").data());
+    for (const auto &command : commands) {
+        std::string str = std::string("\t") + command.Name;
+        if (!command.Alias.empty())
+            str += "(" + command.Alias + ")";
+        if (command.Cheat)
             str += "[Cheat]";
-        str += ": " + cmd->GetDescription();
+        str += ": " + command.Description;
         bml->SendIngameMessage(str.data());
     }
 }

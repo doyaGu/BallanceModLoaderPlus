@@ -335,6 +335,9 @@ static ScriptCommandRef *RegisterCommandEntry(
         return nullptr;
     }
 
+    // Script commands have their own ActiveCalls/PendingUnregister lifetime
+    // protocol, including self-unregistration from Execute, so they keep using the
+    // script service's registrar directly.
     if (!state->Context->GetCommandContext().RegisterCommand(state.get(), command)) {
         const std::string commandName = stored->Name;
         ReleaseScriptCommandObject(*stored);

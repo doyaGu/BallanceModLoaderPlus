@@ -109,12 +109,14 @@ BML_EXPORT char *BML_GetModRootUtf8(const char *modId);
 // Unlike the other int-returning functions in this header this one says why it
 // refused: BML_OK, BML_ERROR_INVALID_PARAMETER for a null or empty name,
 // BML_ERROR_NOT_FOUND when no command answers to that name, BML_ERROR_ACCESS_DENIED
-// when one does but belongs to another module, and BML_ERROR_FAIL before the loader
-// has initialized.
+// when one does but belongs to another module, BML_ERROR_WRONG_THREAD outside the
+// game thread, BML_ERROR_BUSY while that command is being executed or asked for
+// completions, and BML_ERROR_FAIL before the loader has initialized.
 //
 // The command object stays the Mod's to delete, and deleting it is only safe once
 // this has answered BML_OK. Call it from the game thread, which is the thread
-// commands run on; this does not wait for one that is executing.
+// commands run on. A re-entrant attempt from the command itself is refused rather
+// than allowing the object to delete itself while one of its methods is active.
 BML_EXPORT int BML_UnregisterCommand(const char *name);
 
 // The loader's heap. A Mod needs these only for memory that crosses the boundary,

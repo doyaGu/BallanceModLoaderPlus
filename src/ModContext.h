@@ -134,6 +134,11 @@ public:
     ICommand *GetCommand(int index) const override;
     ICommand *FindCommand(const char *name) const override;
     void ExecuteCommand(const char *cmd) override;
+    std::vector<BML::CommandContext::CommandInfo> GetCommandSnapshot() const;
+    bool GetCommandInfo(int index, BML::CommandContext::CommandInfo &info) const;
+    bool FindCommandInfo(const char *name, BML::CommandContext::CommandInfo &info) const;
+    std::vector<std::string> CompleteCommand(
+        const char *name, const std::vector<std::string> &args);
 
     Config *AddConfig(std::unique_ptr<Config> config);
     bool RemoveConfig(Config *config);
@@ -405,6 +410,9 @@ private:
     bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
     bool UnregisterMod(IMod *mod);
     IMod *FindModLocked(const std::string &id) const;
+    bool RegisterOwnedCommand(const void *registrar, ICommand *command);
+    BML::CommandContext::UnregisterResult UnregisterOwnedCommand(
+        const void *registrar, const char *name);
 
     int EvaluateDependencies(IMod *mod, std::string *diagnostic) const;
     int EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const;
@@ -500,6 +508,7 @@ private:
     // indices. m_Mutex protects dependencies, configs, commands, and callbacks.
     mutable std::shared_mutex m_ModRegistryMutex;
     mutable BML::ModInvocationGate m_ModInvocationGate;
+    mutable BML::ModInvocationGate m_CommandInvocationGate;
     mutable std::mutex m_Mutex;
 };
 

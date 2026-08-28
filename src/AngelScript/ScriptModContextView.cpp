@@ -537,27 +537,28 @@ int ScriptModContextView::GetCommandCount() const {
 }
 
 std::string ScriptModContextView::GetCommandName(int index) const {
-    ICommand *command = m_Context ? m_Context->GetCommand(index) : nullptr;
-    return command ? command->GetName() : "";
+    CommandContext::CommandInfo info;
+    return m_Context && m_Context->GetCommandInfo(index, info) ? info.Name : "";
 }
 
 std::string ScriptModContextView::GetCommandAlias(int index) const {
-    ICommand *command = m_Context ? m_Context->GetCommand(index) : nullptr;
-    return command ? command->GetAlias() : "";
+    CommandContext::CommandInfo info;
+    return m_Context && m_Context->GetCommandInfo(index, info) ? info.Alias : "";
 }
 
 std::string ScriptModContextView::GetCommandDescription(int index) const {
-    ICommand *command = m_Context ? m_Context->GetCommand(index) : nullptr;
-    return command ? command->GetDescription() : "";
+    CommandContext::CommandInfo info;
+    return m_Context && m_Context->GetCommandInfo(index, info) ? info.Description : "";
 }
 
 bool ScriptModContextView::HasCommand(const std::string &name) const {
-    return m_Context && m_Context->FindCommand(name.c_str()) != nullptr;
+    CommandContext::CommandInfo info;
+    return m_Context && m_Context->FindCommandInfo(name.c_str(), info);
 }
 
 bool ScriptModContextView::IsCommandCheat(const std::string &name) const {
-    ICommand *command = m_Context ? m_Context->FindCommand(name.c_str()) : nullptr;
-    return command && command->IsCheat();
+    CommandContext::CommandInfo info;
+    return m_Context && m_Context->FindCommandInfo(name.c_str(), info) && info.Cheat;
 }
 
 int ScriptModContextView::GetGlobalModCount() const {
