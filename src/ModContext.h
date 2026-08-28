@@ -404,6 +404,7 @@ private:
 
     bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
     bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
+    IMod *FindModLocked(const std::string &id) const;
 
     int EvaluateDependencies(IMod *mod, std::string *diagnostic) const;
     int EvaluateActivationDependencies(IMod *mod, std::string *diagnostic) const;
@@ -477,8 +478,7 @@ private:
 
     std::vector<IMod *> m_Mods;
     std::vector<IMod *> m_ActiveMods;
-    typedef std::unordered_map<std::string, IMod *> ModMap;
-    ModMap m_ModMap;
+    std::unordered_map<std::string, size_t> m_ModIndex;
 
     std::unordered_map<IMod*, std::vector<ModDependency>> m_ModDependencies;
 

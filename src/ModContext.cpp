@@ -668,10 +668,14 @@ IMod *ModContext::FindMod(const char *id) const {
         return nullptr;
 
     std::shared_lock<std::shared_mutex> lock(m_ModRegistryMutex);
-    auto iter = m_ModMap.find(id);
-    if (iter == m_ModMap.end())
-        return nullptr;
-    return iter->second;
+    return FindModLocked(id);
+}
+
+IMod *ModContext::FindModLocked(const std::string &id) const {
+    const auto entry = m_ModIndex.find(id);
+    return entry != m_ModIndex.end() && entry->second < m_Mods.size()
+        ? m_Mods[entry->second]
+        : nullptr;
 }
 
 int ModContext::RegisterDependency(IMod *mod, const char *dependencyId, int major, int minor, int patch) {
@@ -754,9 +758,7 @@ int ModContext::EvaluateDependencies(IMod *mod, std::string *diagnostic) const {
         {
             std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
             for (auto &dependency : dependencies) {
-                const auto found = m_ModMap.find(dependency.Id);
-                if (found != m_ModMap.end())
-                    dependency.Mod = found->second;
+                dependency.Mod = FindModLocked(dependency.Id);
             }
         }
 
@@ -821,9 +823,9 @@ int ModContext::EvaluateActivationDependencies(IMod *mod, std::string *diagnosti
     for (const ModDependency &dependency : dependencies->second) {
         if (dependency.optional || !dependency.id || !*dependency.id)
             continue;
-        const auto registered = m_ModMap.find(dependency.id);
-        if (registered == m_ModMap.end() ||
-            std::find(m_ActiveMods.begin(), m_ActiveMods.end(), registered->second) == m_ActiveMods.end()) {
+        IMod *registered = FindModLocked(dependency.id);
+        if (!registered ||
+            std::find(m_ActiveMods.begin(), m_ActiveMods.end(), registered) == m_ActiveMods.end()) {
             if (diagnostic)
                 *diagnostic = "required dependency '" + std::string(dependency.id) + "' did not initialize.";
             return 0;
@@ -1217,11 +1219,9 @@ std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const ch
 
     std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
-    const auto entry = m_ModMap.find(modId);
-    if (entry == m_ModMap.end() || !entry->second)
+    IMod *mod = FindModLocked(modId);
+    if (!mod)
         return {};
-
-    IMod *mod = entry->second;
 
     // A native Mod lives wherever its DLL was loaded from.
     const auto handle = m_ModToDllHandleMap.find(mod);
@@ -2367,21 +2367,24 @@ bool ModContext::PromoteFailedScriptModPlaceholder(BML::ScriptMod *mod,
 
     {
         std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
-        auto oldIt = m_ModMap.find(oldId);
-        if (oldIt == m_ModMap.end() || oldIt->second != mod) {
+        auto oldIt = m_ModIndex.find(oldId);
+        if (oldIt == m_ModIndex.end() || oldIt->second >= m_Mods.size() ||
+            m_Mods[oldIt->second] != mod) {
             diagnostic = "Script mod failed-load recovery lost its placeholder registration.";
             return false;
         }
 
-        auto newIt = m_ModMap.find(candidate.Id);
-        if (newIt != m_ModMap.end() && newIt->second != mod) {
+        auto newIt = m_ModIndex.find(candidate.Id);
+        if (newIt != m_ModIndex.end() &&
+            (newIt->second >= m_Mods.size() || m_Mods[newIt->second] != mod)) {
             diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
             return false;
         }
 
         if (candidate.Id != oldId) {
-            m_ModMap.erase(oldIt);
-            m_ModMap.emplace(candidate.Id, mod);
+            const size_t index = oldIt->second;
+            m_ModIndex.erase(oldIt);
+            m_ModIndex.emplace(candidate.Id, index);
         }
     }
 
@@ -2398,14 +2401,19 @@ void ModContext::RestoreFailedScriptModPlaceholder(BML::ScriptMod *mod,
 
     {
         std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        const auto position = std::find(m_Mods.begin(), m_Mods.end(), mod);
+        if (position == m_Mods.end())
+            return;
+        const size_t index = static_cast<size_t>(std::distance(m_Mods.begin(), position));
+
         if (!currentId.empty()) {
-            auto currentIt = m_ModMap.find(currentId);
-            if (currentIt != m_ModMap.end() && currentIt->second == mod)
-                m_ModMap.erase(currentIt);
+            auto currentIt = m_ModIndex.find(currentId);
+            if (currentIt != m_ModIndex.end() && currentIt->second == index)
+                m_ModIndex.erase(currentIt);
         }
 
         if (!oldDefinition.Id.empty())
-            m_ModMap[oldDefinition.Id] = mod;
+            m_ModIndex[oldDefinition.Id] = index;
     }
 
     ClearDependencies(mod);
@@ -2424,10 +2432,9 @@ bool ModContext::UnloadMod(const std::string &id) {
     std::shared_ptr<void> dllHandle;
     {
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
-        auto it = m_ModMap.find(id);
-        if (it == m_ModMap.end())
+        mod = FindModLocked(id);
+        if (!mod)
             return false;
-        mod = it->second;
         auto dit = m_ModToDllHandleMap.find(mod);
         if (dit != m_ModToDllHandleMap.end())
             dllHandle = dit->second;
@@ -2490,14 +2497,20 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
     std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
 
     // Reject duplicates
-    if (m_ModMap.find(modId) != m_ModMap.end()) {
+    if (m_ModIndex.find(modId) != m_ModIndex.end()) {
         m_Logger->Error("Mod registration failed: duplicate id %s.", modId.c_str());
         return false;
     }
 
-    // Record the mod in our registries
+    // Record the mod in our registries.  Roll the vector back if allocating
+    // the index entry fails so both views keep the same membership.
     m_Mods.push_back(mod);
-    m_ModMap.emplace(modId, mod);
+    try {
+        m_ModIndex.emplace(modId, m_Mods.size() - 1);
+    } catch (...) {
+        m_Mods.pop_back();
+        throw;
+    }
 
     // If there is a real DLL handle, wire up the handle <-> mod mappings
     if (dllHandle) {
@@ -2528,8 +2541,9 @@ std::string ModContext::GetNativeImcOwnerId(
     if (bmlModule && callerModule == bmlModule) {
         if (!requestedOwnerId || !*requestedOwnerId || !m_BMLMod)
             return {};
-        const auto requested = m_ModMap.find(requestedOwnerId);
-        return requested != m_ModMap.end() && requested->second == m_BMLMod
+        const auto requested = m_ModIndex.find(requestedOwnerId);
+        return requested != m_ModIndex.end() && requested->second < m_Mods.size() &&
+                       m_Mods[requested->second] == m_BMLMod
                    ? requested->first
                    : std::string();
     }
@@ -2539,10 +2553,10 @@ std::string ModContext::GetNativeImcOwnerId(
         return {};
 
     if (requestedOwnerId && *requestedOwnerId) {
-        const auto requested = m_ModMap.find(requestedOwnerId);
-        if (requested == m_ModMap.end() || !requested->second ||
+        const auto requested = m_ModIndex.find(requestedOwnerId);
+        if (requested == m_ModIndex.end() || requested->second >= m_Mods.size() ||
             std::find(owners->second.begin(), owners->second.end(),
-                      requested->second) == owners->second.end())
+                      m_Mods[requested->second]) == owners->second.end())
             return {};
         return requested->first;
     }
@@ -2551,10 +2565,10 @@ std::string ModContext::GetNativeImcOwnerId(
         return {};
 
     IMod *owner = owners->second.front();
-    const auto id = std::find_if(m_ModMap.begin(), m_ModMap.end(), [owner](const auto &entry) {
-        return entry.second == owner;
+    const auto id = std::find_if(m_ModIndex.begin(), m_ModIndex.end(), [&](const auto &entry) {
+        return entry.second < m_Mods.size() && m_Mods[entry.second] == owner;
     });
-    return id == m_ModMap.end() ? std::string() : id->first;
+    return id == m_ModIndex.end() ? std::string() : id->first;
 }
 
 bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
@@ -2614,16 +2628,19 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
                 vec.erase(std::remove(vec.begin(), vec.end(), mod), vec.end());
             }
 
-            // Remove from mod map
-            auto it = m_ModMap.find(modId);
-            if (it != m_ModMap.end()) {
-                m_ModMap.erase(it);
-            }
-
-            // Remove from mod vector
             auto oit = std::find(m_Mods.begin(), m_Mods.end(), mod);
             if (oit != m_Mods.end()) {
+                const size_t removedIndex = static_cast<size_t>(std::distance(m_Mods.begin(), oit));
                 m_Mods.erase(oit);
+                for (auto indexIt = m_ModIndex.begin(); indexIt != m_ModIndex.end();) {
+                    if (indexIt->second == removedIndex) {
+                        indexIt = m_ModIndex.erase(indexIt);
+                    } else {
+                        if (indexIt->second > removedIndex)
+                            --indexIt->second;
+                        ++indexIt;
+                    }
+                }
             }
 
             m_ActiveMods.erase(std::remove(m_ActiveMods.begin(), m_ActiveMods.end(), mod),
@@ -2660,8 +2677,10 @@ bool ModContext::ResolveDependencies() {
     // Build a stable position map to keep deterministic ordering for nodes with the same in-degree
     std::unordered_map<std::string, size_t> pos;
     std::unordered_map<std::string, IMod *> modMap;
+    std::unordered_map<IMod *, std::string> idsByMod;
     pos.reserve(m_Mods.size());
     modMap.reserve(m_Mods.size());
+    idsByMod.reserve(m_Mods.size());
 
     for (size_t i = 0; i < m_Mods.size(); ++i) {
         IMod *m = m_Mods[i];
@@ -2673,6 +2692,7 @@ bool ModContext::ResolveDependencies() {
         std::string id = m->GetID();
         pos[id] = i;
         modMap[id] = m;
+        idsByMod[m] = id;
     }
 
     // adj: dependency -> [dependents]
@@ -2768,6 +2788,9 @@ bool ModContext::ResolveDependencies() {
     }
 
     m_Mods.swap(sorted);
+    m_ModIndex.clear();
+    for (size_t i = 0; i < m_Mods.size(); ++i)
+        m_ModIndex.emplace(idsByMod.at(m_Mods[i]), i);
     return true;
 }
 
