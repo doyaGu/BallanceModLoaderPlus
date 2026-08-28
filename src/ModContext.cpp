@@ -588,7 +588,15 @@ void ModContext::DeactivateActiveMods() {
             if (m_Logger)
                 m_Logger->Error("Unknown exception in a Mod unload callback.");
         }
+    }
 
+    // OnUnload may change configuration. Deliver those deferred notifications and
+    // persist their final values while every Mod and its auxiliary services are
+    // still alive; there is no later frame in which the normal flush can run.
+    FlushConfigChanges(true);
+
+    for (auto rit = m_ActiveMods.rbegin(); rit != m_ActiveMods.rend(); ++rit) {
+        IMod *mod = *rit;
         try {
             m_ImcRuntime.CleanupOwner(mod->GetID());
         } catch (...) {
@@ -607,18 +615,6 @@ void ModContext::DeactivateActiveMods() {
     } catch (...) {
         if (m_Logger)
             m_Logger->Error("Failed to clean Mod timers during shutdown.");
-    }
-
-    for (auto rit = m_Configs.rbegin(); rit != m_Configs.rend(); ++rit) {
-        try {
-            SaveConfig(rit->get());
-        } catch (const std::exception &e) {
-            if (m_Logger)
-                m_Logger->Error("Exception while saving a Mod config during shutdown: %s", e.what());
-        } catch (...) {
-            if (m_Logger)
-                m_Logger->Error("Unknown exception while saving a Mod config during shutdown.");
-        }
     }
 
     {
