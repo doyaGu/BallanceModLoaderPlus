@@ -291,6 +291,15 @@ TEST_F(ConfigTest, ModificationNotification) {
 
     // Set initial value
     prop->SetString("Initial");
+    EXPECT_EQ(0, mockMod->modifiedCount);
+    EXPECT_TRUE(config->IsDirty());
+
+    auto notifications = config->TakePendingNotifications();
+    ASSERT_EQ(1u, notifications.size());
+    mockMod->OnModifyConfig(
+        notifications[0].Category.c_str(),
+        notifications[0].Key.c_str(),
+        notifications[0].ChangedProperty);
     EXPECT_EQ(1, mockMod->modifiedCount);
     EXPECT_EQ("TestCategory", mockMod->lastCategory);
     EXPECT_EQ("TestProp", mockMod->lastKey);
@@ -302,7 +311,15 @@ TEST_F(ConfigTest, ModificationNotification) {
 
     // Setting different value should trigger notification
     prop->SetString("Changed");
+    prop->SetString("Changed Again");
+    notifications = config->TakePendingNotifications();
+    ASSERT_EQ(1u, notifications.size());
+    mockMod->OnModifyConfig(
+        notifications[0].Category.c_str(),
+        notifications[0].Key.c_str(),
+        notifications[0].ChangedProperty);
     EXPECT_EQ(2, mockMod->modifiedCount);
+    EXPECT_STREQ("Changed Again", prop->GetString());
 
     // Test with null mod (shouldn't crash)
     Config *nullModConfig = new Config(nullptr);

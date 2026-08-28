@@ -98,6 +98,12 @@ class Config : public IConfig {
     friend class Property;
 
 public:
+    struct PendingNotification {
+        std::string Category;
+        std::string Key;
+        Property *ChangedProperty = nullptr;
+    };
+
     explicit Config(IMod *mod);
     ~Config() override;
 
@@ -117,9 +123,17 @@ public:
     bool Load(const wchar_t *path);
     bool Save(const wchar_t *path);
 
+    bool IsDirty() const { return m_Dirty; }
+    std::vector<PendingNotification> TakePendingNotifications();
+
 private:
+    void MarkDirty() { m_Dirty = true; }
+    void QueueNotification(Property *property, const std::string &category, const std::string &key);
+
     IMod *m_Mod;
     std::string m_ModID;
+    bool m_Dirty = false;
+    std::vector<PendingNotification> m_PendingNotifications;
 
     std::vector<Category *> m_Categories;
     std::unordered_map<std::string, Category *> m_CategoryMap;

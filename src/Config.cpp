@@ -5,9 +5,6 @@
 #include <cstring>
 #include <sstream>
 
-#ifndef BML_TEST
-#include "ModContext.h"
-#endif
 #include "StringUtils.h"
 
 Config::Config(IMod *mod) : m_Mod(mod), m_ModID(mod ? mod->GetID() : "") {}
@@ -242,7 +239,28 @@ bool Config::Save(const wchar_t *path) {
     std::string buf = out.str();
     bool success = (fwrite(buf.c_str(), sizeof(char), buf.size(), fp) == buf.size());
     fclose(fp);
+    if (success)
+        m_Dirty = false;
     return success;
+}
+
+std::vector<Config::PendingNotification> Config::TakePendingNotifications() {
+    std::vector<PendingNotification> pending;
+    pending.swap(m_PendingNotifications);
+    return pending;
+}
+
+void Config::QueueNotification(Property *property, const std::string &category, const std::string &key) {
+    if (!property)
+        return;
+
+    const auto existing = std::find_if(
+        m_PendingNotifications.begin(), m_PendingNotifications.end(),
+        [property](const PendingNotification &notification) {
+            return notification.ChangedProperty == property;
+        });
+    if (existing == m_PendingNotifications.end())
+        m_PendingNotifications.push_back({category, key, property});
 }
 
 bool Config::HasCategory(const char *category) {
@@ -582,14 +600,9 @@ CKKEYBOARD *Property::GetKeyPtr() {
 }
 
 void Property::SetModified() {
-    if (m_Config && m_Config->GetMod()) {
-#ifndef BML_TEST
-        ModContext *context = BML_GetModContext();
-#endif
-        m_Config->GetMod()->OnModifyConfig(m_Category.c_str(), m_Key.c_str(), this);
-#ifndef BML_TEST
-        if (context)
-            context->SaveConfig(m_Config);
-#endif
-    }
+    if (!m_Config)
+        return;
+
+    m_Config->MarkDirty();
+    m_Config->QueueNotification(this, m_Category, m_Key);
 }

@@ -410,6 +410,7 @@ private:
     bool ResolveDependencies();
 
     void FillCallbackMap(IMod *mod);
+    void FlushConfigChanges(bool saveAll = false);
     void DeactivateActiveMods();
     void RollbackModActivation();
 

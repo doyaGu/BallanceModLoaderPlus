@@ -19,8 +19,11 @@
 // a property holding an integer returns 0.0f rather than that number. Read with the
 // getter that matches the type the Mod declared.
 //
-// Everything here is for the game thread. Nothing is locked, and a write reaches
-// the Mod's OnModifyConfig and the file on disk before it returns.
+// Everything here is for the game thread. Nothing is locked. A write changes the
+// in-memory value immediately, then queues the owning Mod's OnModifyConfig callback
+// and persistence for the end of the current frame. Repeated writes to one property
+// in a frame produce one callback with the latest value, and each dirty config is
+// written once after its callbacks run.
 #ifndef BML_ICONFIG_H
 #define BML_ICONFIG_H
 
@@ -45,10 +48,10 @@ public:
 
     // Writes the value and makes that the property's type, replacing whatever type
     // it had. Each one does nothing at all when the value and the type are already
-    // what is being written; otherwise it calls the owning Mod's OnModifyConfig and
-    // saves the whole config file before returning, so this is a write to disk and
-    // not just to memory. Do not call one every frame. SetString treats a null
-    // value as an empty string.
+    // what is being written; otherwise it queues the owning Mod's OnModifyConfig
+    // callback and a config save for the end of the current frame. The in-memory
+    // value is visible immediately, but the callback is deliberately not re-entrant.
+    // SetString treats a null value as an empty string.
     virtual void SetString(const char *value) = 0;
     virtual void SetBoolean(bool value) = 0;
     virtual void SetInteger(int value) = 0;

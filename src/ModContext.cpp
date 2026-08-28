@@ -520,8 +520,7 @@ bool ModContext::InitMods() {
         }
 #endif
 
-        for (Config *config : m_Configs)
-            SaveConfig(config);
+        FlushConfigChanges(true);
 
         OnLoadGame();
 
@@ -1086,6 +1085,60 @@ bool ModContext::SaveConfig(Config *config) {
     return config->Save(configPath.c_str());
 }
 
+void ModContext::FlushConfigChanges(bool saveAll) {
+    auto invocationLock = LockModInvocation();
+    std::vector<Config *> configs;
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        configs = m_Configs;
+    }
+
+    for (Config *config : configs) {
+        if (!config)
+            continue;
+
+        IMod *mod = config->GetMod();
+        std::vector<Config::PendingNotification> notifications = config->TakePendingNotifications();
+        if (mod) {
+            for (const auto &notification : notifications) {
+                try {
+                    mod->OnModifyConfig(
+                        notification.Category.c_str(),
+                        notification.Key.c_str(),
+                        notification.ChangedProperty);
+                } catch (const std::exception &e) {
+                    if (m_Logger) {
+                        m_Logger->Error("Exception in mod %s config callback: %s",
+                                        mod->GetID(), e.what());
+                    }
+                } catch (...) {
+                    if (m_Logger)
+                        m_Logger->Error("Unknown exception in mod %s config callback", mod->GetID());
+                }
+            }
+        }
+
+        if (saveAll || config->IsDirty()) {
+            try {
+                if (!SaveConfig(config) && m_Logger) {
+                    m_Logger->Error("Failed to save config for mod %s",
+                                    mod && mod->GetID() ? mod->GetID() : "<unknown>");
+                }
+            } catch (const std::exception &e) {
+                if (m_Logger) {
+                    m_Logger->Error("Exception while saving config for mod %s: %s",
+                                    mod && mod->GetID() ? mod->GetID() : "<unknown>", e.what());
+                }
+            } catch (...) {
+                if (m_Logger) {
+                    m_Logger->Error("Unknown exception while saving config for mod %s",
+                                    mod && mod->GetID() ? mod->GetID() : "<unknown>");
+                }
+            }
+        }
+    }
+}
+
 const wchar_t *ModContext::GetDirectory(DirectoryType type) {
     switch (type) {
     case BML_DIR_WORKING:
@@ -1403,6 +1456,7 @@ void ModContext::OnProcess() {
     m_ImcRuntime.Pump();
     Timer::ProcessAll(m_TimeManager->GetMainTickCount(), m_TimeManager->GetAbsoluteTime() / 1000.0f);
     BroadcastCallback(&IMod::OnProcess);
+    FlushConfigChanges();
 }
 
 void ModContext::OnRender(CKRenderContext *dev) {
