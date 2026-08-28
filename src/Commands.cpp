@@ -341,7 +341,6 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             if (!pc) { bml->SendIngameMessage("[hud] parent container not found\n"); return; }
             HUDLayoutKind kind = (args[1] == std::string("hstack")) ? HUDLayoutKind::Horizontal : HUDLayoutKind::Vertical;
             c = pc->AddContainerChild(kind, childName, 1);
-            hud.Register(id, c);
         }
         bml->SendIngameMessage(((std::string("[hud] ") + args[1] + " '") + id + "' created\n").c_str());
         return;
@@ -358,7 +357,6 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
             auto pc = HUDCast<HUDContainer>(pe);
             if (!pc) { bml->SendIngameMessage("[hud] parent container not found\n"); return; }
             c = pc->AddContainerChild(HUDLayoutKind::Grid, childName, cols);
-            hud.Register(id, c);
         }
         bml->SendIngameMessage(("[hud] grid '" + id + "' created\n").c_str());
         return;

@@ -611,6 +611,8 @@ public:
     std::shared_ptr<HUDElement> Find(const std::string &id) const;
     bool Remove(const std::string &id);
     std::vector<std::string> ListIds() const;
+    // Names an element that is already attached to the root. Nested elements are
+    // addressed through their container path and are never promoted to roots.
     void Register(const std::string &id, const std::shared_ptr<HUDElement> &e);
 
     // Path-based operations

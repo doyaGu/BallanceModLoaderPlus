@@ -1086,13 +1086,11 @@ void HUD::Register(const std::string &id, const std::shared_ptr<HUDElement> &ele
     if (!element)
         return;
 
-    auto it = std::find(m_Elements.begin(), m_Elements.end(), element);
-    if (it == m_Elements.end()) {
-        m_Elements.push_back(element);
-        m_Named[id] = m_Elements.size() - 1;
-    } else {
-        m_Named[id] = static_cast<size_t>(std::distance(m_Elements.begin(), it));
-    }
+    const auto it = std::find(m_Elements.begin(), m_Elements.end(), element);
+    if (it == m_Elements.end())
+        return;
+
+    m_Named[id] = static_cast<size_t>(std::distance(m_Elements.begin(), it));
 }
 
 // Path resolution helpers (updated for shared_ptr)
@@ -1117,7 +1115,7 @@ std::vector<std::string> HUD::SplitPath(const std::string &path) {
     std::string current;
 
     for (char ch : path) {
-        if (ch == '/') {
+        if (ch == '/' || ch == '.') {
             segments.push_back(current);
             current.clear();
         } else {
@@ -1232,21 +1230,51 @@ std::shared_ptr<HUDElement> HUD::GetOrCreateChild(const std::string &containerId
 }
 
 std::shared_ptr<HUDContainer> HUD::EnsureContainerPath(const std::string &path, HUDLayoutKind defaultKindForNew) {
-    auto existing = Find(path);
+    auto existing = FindByPath(path);
     if (auto container = HUDCast<HUDContainer>(existing)) {
         return container;
     }
 
+    if (path.empty())
+        return nullptr;
+
+    std::string rootName = path;
+    const size_t separator = path.find_last_of("/.");
+    if (separator != std::string::npos && separator + 1 < path.size()) {
+        if (separator == 0 && path[0] == '/') {
+            rootName = path.substr(1);
+        } else {
+            const std::string parentPath = path.substr(0, separator);
+            const std::string childName = path.substr(separator + 1);
+            auto parent = EnsureContainerPath(parentPath, defaultKindForNew);
+            if (!parent)
+                return nullptr;
+            return parent->AddContainerChild(defaultKindForNew, childName, 1);
+        }
+    }
+
     auto container = std::make_shared<HUDContainer>(defaultKindForNew);
-    m_Named[path] = m_Elements.size();
+    m_Named[rootName] = m_Elements.size();
     m_Elements.push_back(container);
     return container;
 }
 
 std::shared_ptr<HUDElement> HUD::StealByPath(const std::string &path) {
     auto it = m_Named.find(path);
-    if (it == m_Named.end()) return nullptr;
-    return DetachElement(it->second);
+    if (it != m_Named.end())
+        return DetachElement(it->second);
+
+    const size_t separator = path.find_last_of("/.");
+    if (separator == std::string::npos || separator + 1 >= path.size())
+        return nullptr;
+
+    if (separator == 0 && path[0] == '/') {
+        const auto root = m_Named.find(path.substr(1));
+        return root != m_Named.end() ? DetachElement(root->second) : nullptr;
+    }
+
+    auto parent = HUDCast<HUDContainer>(FindByPath(path.substr(0, separator)));
+    return parent ? parent->StealChild(path.substr(separator + 1)) : nullptr;
 }
 
 void HUD::AttachToContainer(const std::shared_ptr<HUDContainer> &dest, const std::shared_ptr<HUDElement> &element, const std::string &childName) {
@@ -1256,6 +1284,10 @@ void HUD::AttachToContainer(const std::shared_ptr<HUDContainer> &dest, const std
 }
 
 void HUD::AttachToRoot(const std::shared_ptr<HUDElement> &element, const std::string &name) {
+    if (!element)
+        return;
+    if (std::find(m_Elements.begin(), m_Elements.end(), element) == m_Elements.end())
+        m_Elements.push_back(element);
     Register(name, element);
 }
 
