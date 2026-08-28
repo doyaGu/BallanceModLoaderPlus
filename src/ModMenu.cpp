@@ -1,5 +1,7 @@
 #include "ModMenu.h"
 
+#include "BuiInternal.h"
+
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -126,11 +128,11 @@ void ModMenu::Init() {
 }
 
 void ModMenu::OnOpen() {
-    Bui::BlockKeyboardInput();
+    Bui::BlockKeyboardInput(this);
 }
 
 void ModMenu::OnClose() {
-    Bui::TransitionToScriptAndUnblock("Menu_Options");
+    Bui::TransitionToScriptAndUnblock("Menu_Options", this);
 }
 
 Config *ModMenu::GetConfig(IMod *mod) {

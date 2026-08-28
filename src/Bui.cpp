@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <unordered_set>
 
 #include "CKMessageManager.h"
 #include "CKPathManager.h"
@@ -21,7 +22,71 @@
 
 namespace Bui {
     static uint64_t g_KeyboardInputBlockToken = 0;
-    static unsigned int g_KeyboardInputBlockUsers = 0;
+    static unsigned int g_AnonymousKeyboardInputBlockUsers = 0;
+    static std::unordered_set<const void *> g_KeyboardInputBlockOwners;
+    static std::unordered_set<uint64_t> g_PendingKeyboardInputBlockReleases;
+
+    static bool HasKeyboardInputBlockUsers() {
+        return g_AnonymousKeyboardInputBlockUsers != 0 || !g_KeyboardInputBlockOwners.empty();
+    }
+
+    static bool AcquireKeyboardInputBlock() {
+        if (g_KeyboardInputBlockToken != 0)
+            return true;
+
+        auto *ctx = BML_GetModContext();
+        if (!ctx)
+            return false;
+        if (auto *input = ctx->GetInputManager())
+            g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
+        return g_KeyboardInputBlockToken != 0;
+    }
+
+    static void ReleaseKeyboardInputBlockAfterKeysUp() {
+        if (HasKeyboardInputBlockUsers())
+            return;
+
+        auto *mod = BML_GetModContext();
+        if (!mod)
+            return;
+
+        const uint64_t token = g_KeyboardInputBlockToken;
+        g_KeyboardInputBlockToken = 0;
+        if (token == 0)
+            return;
+
+        g_PendingKeyboardInputBlockReleases.insert(token);
+        mod->AddTimerLoop(1ul, [mod, token] {
+            if (g_PendingKeyboardInputBlockReleases.find(token) == g_PendingKeyboardInputBlockReleases.end())
+                return false;
+
+            auto *input = mod->GetInputManager();
+            if (!input)
+                return false;
+            if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
+                return true;
+
+            input->ReleaseBlock(token);
+            g_PendingKeyboardInputBlockReleases.erase(token);
+            return false;
+        });
+    }
+
+    static void ResetKeyboardInputBlocks() {
+        if (auto *ctx = BML_GetModContext()) {
+            if (auto *input = ctx->GetInputManager()) {
+                if (g_KeyboardInputBlockToken != 0)
+                    input->ReleaseBlock(g_KeyboardInputBlockToken);
+                for (uint64_t token : g_PendingKeyboardInputBlockReleases)
+                    input->ReleaseBlock(token);
+            }
+        }
+
+        g_KeyboardInputBlockToken = 0;
+        g_AnonymousKeyboardInputBlockUsers = 0;
+        g_KeyboardInputBlockOwners.clear();
+        g_PendingKeyboardInputBlockReleases.clear();
+    }
 
     enum TextureType {
         TEXTURE_BUTTON_DESELECT,
@@ -272,6 +337,7 @@ namespace Bui {
     }
 
     void CleanupResources(CKContext *context) {
+        ResetKeyboardInputBlocks();
         if (!context) return;
 
         for (auto &tex : g_Textures) {
@@ -1337,17 +1403,19 @@ namespace Bui {
     }
 
     void BlockKeyboardInput() {
-        auto *ctx = BML_GetModContext();
-        if (!ctx) return;
-        if (g_KeyboardInputBlockUsers > 0) {
-            ++g_KeyboardInputBlockUsers;
+        if (AcquireKeyboardInputBlock())
+            ++g_AnonymousKeyboardInputBlockUsers;
+    }
+
+    void BlockKeyboardInput(const void *owner) {
+        if (!owner) {
+            BlockKeyboardInput();
             return;
         }
-
-        if (auto *input = ctx->GetInputManager())
-            g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
-        if (g_KeyboardInputBlockToken != 0)
-            g_KeyboardInputBlockUsers = 1;
+        if (g_KeyboardInputBlockOwners.find(owner) != g_KeyboardInputBlockOwners.end())
+            return;
+        if (AcquireKeyboardInputBlock())
+            g_KeyboardInputBlockOwners.insert(owner);
     }
 
     void ActivateScript(const char *scriptName) {
@@ -1361,31 +1429,30 @@ namespace Bui {
     }
 
     void UnblockKeyboardAfterRelease() {
-        auto *mod = BML_GetModContext();
-        if (!mod) return;
-
-        if (g_KeyboardInputBlockUsers == 0)
+        if (g_AnonymousKeyboardInputBlockUsers == 0)
             return;
-        if (--g_KeyboardInputBlockUsers > 0)
-            return;
+        --g_AnonymousKeyboardInputBlockUsers;
+        ReleaseKeyboardInputBlockAfterKeysUp();
+    }
 
-        const uint64_t token = g_KeyboardInputBlockToken;
-        g_KeyboardInputBlockToken = 0;
-        if (token == 0) return;
-        mod->AddTimerLoop(1ul, [mod, token] {
-            auto *input = mod->GetInputManager();
-            if (!input)
-                return false;
-            if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
-                return true; // keep waiting while keys are down
-            input->ReleaseBlock(token);
-            return false; // stop loop
-        });
+    void UnblockKeyboardAfterRelease(const void *owner) {
+        if (!owner) {
+            UnblockKeyboardAfterRelease();
+            return;
+        }
+        if (g_KeyboardInputBlockOwners.erase(owner) == 0)
+            return;
+        ReleaseKeyboardInputBlockAfterKeysUp();
     }
 
     void TransitionToScriptAndUnblock(const char *scriptName) {
         ActivateScript(scriptName);
         UnblockKeyboardAfterRelease();
+    }
+
+    void TransitionToScriptAndUnblock(const char *scriptName, const void *owner) {
+        ActivateScript(scriptName);
+        UnblockKeyboardAfterRelease(owner);
     }
 
     void Title(const char *text, float y, float scale, ImU32 color) {

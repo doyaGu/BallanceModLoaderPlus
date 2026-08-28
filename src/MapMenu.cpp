@@ -1,5 +1,7 @@
 #include "MapMenu.h"
 
+#include "BuiInternal.h"
+
 #include <io.h>
 
 #include <oniguruma.h>
@@ -70,7 +72,7 @@ void MapMenu::SetMaxDepth(int depth) {
 }
 
 void MapMenu::OnOpen() {
-    Bui::BlockKeyboardInput();
+    Bui::BlockKeyboardInput(this);
 }
 
 void MapMenu::OnClose() {
@@ -83,9 +85,9 @@ void MapMenu::OnClose() {
 
 void MapMenu::OnClose(bool backToMenu) {
     if (backToMenu)
-        Bui::TransitionToScriptAndUnblock("Menu_Start");
+        Bui::TransitionToScriptAndUnblock("Menu_Start", this);
     else
-        Bui::UnblockKeyboardAfterRelease();
+        Bui::UnblockKeyboardAfterRelease(this);
 }
 
 void MapMenu::LoadMap(const std::wstring &path) {

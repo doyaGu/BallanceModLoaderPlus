@@ -392,10 +392,10 @@ namespace Bui {
     // waits, one game frame at a time, until Escape and Enter are both up, so the press
     // that left the menu is over before the game can act on it.
     //
-    // The underlying block is shared by the whole loader and reference-counted.
-    // Every successful BlockKeyboardInput call must have one matching
-    // UnblockKeyboardAfterRelease call. Overlapping menus therefore keep the keyboard
-    // blocked until the last one closes; an unmatched close is ignored.
+    // The underlying block is shared by the whole loader and reference-counted. Every
+    // successful public BlockKeyboardInput call has one anonymous share and must have
+    // one matching UnblockKeyboardAfterRelease call. Loader-owned menus use separate
+    // owner shares, so an unmatched public close cannot release a menu's block.
     //
     // ActivateScript starts one of the game's own scripts by name, the way the game's
     // menu buttons move from one screen to the next, and does nothing when there is no
@@ -654,10 +654,10 @@ namespace Bui {
     // TransitionToScriptAndUnblock above.
     //
     // Render draws only the page open now, so a Mod calls it once a frame and lets the
-    // Menu pick. Nothing is drawn between Close and the next Open, and nothing is drawn
-    // either when Open was given a name that is not there; Open then returns false,
-    // leaves the Menu with no page, and does not run OnOpen. A page whose OnOpen
-    // returned false stays hidden while still being the page the Menu considers open.
+    // Menu pick. Nothing is drawn between Close and the next Open. When Open is given a
+    // name that is not there it returns false without changing the current session or
+    // running OnOpen. A page whose OnOpen returned false stays hidden while still being
+    // the page the Menu considers open.
     //
     // OpenPage does not hide the page it leaves, since only the current one is drawn
     // anyway, so a page returned to by OpenPrevPage sees OnOpen again but not OnShow.
@@ -709,8 +709,7 @@ namespace Bui {
             Page *page = it->second.get();
 
             if (m_CurrentPage == page) {
-                CloseCurrentPage();
-                while (!m_PageStack.empty()) m_PageStack.pop();
+                Close();
             } else {
                 // Clean up the stack, remove all occurrences of this page
                 std::stack<Page *> tempStack;
@@ -771,25 +770,28 @@ namespace Bui {
 
         // Menu operations
         bool Open(const std::string &name) {
+            Page *page = GetPage(name);
+            if (!page) return false;
+
+            const bool alreadyOpen = m_CurrentPage != nullptr;
             // Clear navigation history when opening a new menu session
             while (!m_PageStack.empty()) m_PageStack.pop();
             CloseCurrentPage();
 
-            Page *page = GetPage(name);
-            if (!page) return false;
-
             m_CurrentPage = page;
             m_CurrentPage->Open();
-            OnOpen();
+            if (!alreadyOpen)
+                OnOpen();
             return true;
         }
 
         void Close() {
+            if (!m_CurrentPage)
+                return;
             CloseCurrentPage();
             while (!m_PageStack.empty()) {
                 m_PageStack.pop();
             }
-            m_CurrentPage = nullptr;
             OnClose();
         }
 

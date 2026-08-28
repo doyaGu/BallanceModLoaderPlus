@@ -1,5 +1,7 @@
 #include "CommandBar.h"
 
+#include "BuiInternal.h"
+
 #include <cctype>
 #include <cstdint>
 #include <cstring>
@@ -488,15 +490,19 @@ void CommandBar::ReplaceCurrentToken(ImGuiInputTextCallbackData *data, const cha
 
 void CommandBar::ToggleCommandBar(bool on) {
     if (on) {
+        if (IsVisible())
+            return;
         Show();
         m_Buffer.clear();
-        Bui::BlockKeyboardInput();
+        Bui::BlockKeyboardInput(this);
         m_HistoryIndex = static_cast<int>(m_History.size());
     } else {
+        if (!IsVisible())
+            return;
         Hide();
         ImGui::SetWindowFocus(nullptr);
         m_Buffer.clear();
-        Bui::UnblockKeyboardAfterRelease();
+        Bui::UnblockKeyboardAfterRelease(this);
     }
 }
 
