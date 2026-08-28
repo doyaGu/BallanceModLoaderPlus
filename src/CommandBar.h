@@ -41,9 +41,6 @@ public:
     static void StripLine(const char *&lineStart, const char *&lineEnd);
     static int FirstToken(const char *tokenStart, const char *&tokenEnd);
     static int LastToken(const char *&tokenStart, const char *tokenEnd);
-    static std::vector<std::string> MakeArgs(const char *line);
-    // Build args from a substring range [begin, end) without looking at trailing text
-    static std::vector<std::string> MakeArgsRange(const char *begin, const char *end);
 
 private:
     std::wstring GetHistoryPath() const;

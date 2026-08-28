@@ -9,6 +9,7 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "BML/ICommand.h"
+#include "CommandContext.h"
 #include "ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -308,7 +309,10 @@ void CommandBar::CollectCommandCandidates(const char *cmdStart, int cmdLength) {
 }
 
 void CommandBar::CollectArgumentCandidates(const char *wordStart, int wordLength, const char *cmdStart, const char *lineEnd) {
-    const auto args = MakeArgsRange(cmdStart, lineEnd);
+    const std::string commandLine(cmdStart, lineEnd);
+    auto args = BML::CommandContext::ParseCommandLine(commandLine.c_str());
+    if (!commandLine.empty() && std::isspace(static_cast<unsigned char>(commandLine.back())))
+        args.emplace_back();
     if (args.empty())
         return;
 
@@ -628,66 +632,4 @@ int CommandBar::LastToken(const char *&tokenStart, const char *tokenEnd) {
     }
 
     return tokenEnd - tokenStart;
-}
-
-std::vector<std::string> CommandBar::MakeArgs(const char *line) {
-    if (!line || line[0] == '\0')
-        return {};
-
-    size_t size = utf8size(line);
-    char *buf = new char[size + 1];
-    utf8ncpy(buf, line, size);
-    buf[size] = '\0';
-
-    std::vector<std::string> args;
-
-    char *lp = buf;
-    char *rp = lp;
-    char *end = lp + size;
-    utf8_int32_t cp, temp;
-    utf8codepoint(rp, &cp);
-    while (rp != end) {
-        if (std::isspace(static_cast<unsigned char>(*rp)) || *rp == '\0') {
-            const size_t len = rp - lp;
-            if (len != 0) {
-                const char bk = *rp;
-                *rp = '\0';
-                args.emplace_back(lp);
-                *rp = bk;
-            }
-
-            if (*rp != '\0') {
-                while (std::isspace(static_cast<unsigned char>(*rp)))
-                    ++rp;
-                --rp;
-            }
-
-            lp = utf8codepoint(rp, &temp);
-            if (std::isspace(static_cast<unsigned char>(*rp)) && *lp == '\0') {
-                args.emplace_back("");
-                break;
-            }
-        }
-
-        rp = utf8codepoint(rp, &cp);
-    }
-
-    delete[] buf;
-
-    return args;
-}
-
-std::vector<std::string> CommandBar::MakeArgsRange(const char *begin, const char *end) {
-    if (!begin || !end || begin >= end)
-        return {};
-
-    const size_t size = static_cast<size_t>(end - begin);
-    char *buf = new char[size + 1];
-    // Copy bytes as-is and NUL-terminate; downstream parser will handle tokenization
-    memcpy(buf, begin, size);
-    buf[size] = '\0';
-
-    auto args = MakeArgs(buf);
-    delete[] buf;
-    return args;
 }
