@@ -709,9 +709,10 @@ namespace Bui {
             Page *page = it->second.get();
 
             if (m_CurrentPage == page) {
+                std::unique_ptr<Page> removed = std::move(it->second);
+                m_Pages.erase(it);
                 CloseCurrentPage();
                 while (!m_PageStack.empty()) m_PageStack.pop();
-                m_Pages.erase(it);
                 OnClose();
                 return true;
             } else {
@@ -767,8 +768,9 @@ namespace Bui {
 
         void CloseCurrentPage() {
             if (m_CurrentPage) {
-                m_CurrentPage->Close();
+                Page *page = m_CurrentPage;
                 m_CurrentPage = nullptr;
+                page->Close();
             }
         }
 
