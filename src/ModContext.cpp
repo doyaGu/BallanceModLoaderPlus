@@ -1224,9 +1224,12 @@ std::wstring ModContext::GetModRootDirectory(const void *callerAddress, const ch
         return {};
 
     // A native Mod lives wherever its DLL was loaded from.
-    const auto handle = m_ModToDllHandleMap.find(mod);
-    if (handle != m_ModToDllHandleMap.end() && handle->second)
-        return ModuleDirectory(static_cast<HMODULE>(handle->second.get()));
+    const auto association = m_NativeDllByMod.find(mod);
+    if (association != m_NativeDllByMod.end()) {
+        const auto dll = m_NativeDlls.find(association->second);
+        if (dll != m_NativeDlls.end() && dll->second.Handle)
+            return ModuleDirectory(static_cast<HMODULE>(dll->second.Handle.get()));
+    }
 
 #if BML_ENABLE_ANGELSCRIPT
     // A script Mod has no DLL of its own; its root is the directory it was scanned
@@ -1978,8 +1981,6 @@ std::shared_ptr<void> ModContext::LoadLib(const wchar_t *path) {
     if (!path || path[0] == '\0')
         return nullptr;
 
-    std::shared_ptr<void> dllHandlePtr;
-
     HMODULE dllHandle = ::LoadLibraryExW(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!dllHandle) {
         const DWORD error = ::GetLastError();
@@ -1991,44 +1992,25 @@ std::shared_ptr<void> ModContext::LoadLib(const wchar_t *path) {
         return nullptr;
     }
 
-    bool inserted;
-    DllHandleMap::iterator it;
-    std::tie(it, inserted) = m_DllHandleMap.insert({dllHandle, std::weak_ptr<void>()});
-    if (!inserted) {
-        dllHandlePtr = it->second.lock();
-        if (dllHandlePtr) {
-            ::FreeLibrary(dllHandle);
-        }
-    }
-
-    if (!dllHandlePtr) {
-        dllHandlePtr = std::shared_ptr<void>(dllHandle, [](void *ptr) {
-            ::FreeLibrary(static_cast<HMODULE>(ptr));
-        });
-        it->second = dllHandlePtr;
-    }
-
-    return dllHandlePtr;
+    return std::shared_ptr<void>(dllHandle, [](void *ptr) {
+        ::FreeLibrary(static_cast<HMODULE>(ptr));
+    });
 }
 
 bool ModContext::UnloadLib(void *dllHandle) {
-    auto it = m_DllHandleToModsMap.find(dllHandle);
-    if (it == m_DllHandleToModsMap.end())
-        return false;
-
-    std::vector<IMod *> mods = it->second;
-    for (auto *mod : mods) {
-        auto handleIt = m_ModToDllHandleMap.find(mod);
-        std::shared_ptr<void> modDllHandle;
-        if (handleIt != m_ModToDllHandleMap.end())
-            modDllHandle = handleIt->second;
-
-        UnregisterMod(mod, modDllHandle);
+    std::vector<IMod *> mods;
+    {
+        std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        const auto dll = m_NativeDlls.find(dllHandle);
+        if (dll == m_NativeDlls.end())
+            return false;
+        mods = dll->second.Mods;
     }
 
-    m_DllHandleToModsMap.erase(dllHandle);
-    m_DllHandleMap.erase(dllHandle);
-    return true;
+    bool success = true;
+    for (IMod *mod : mods)
+        success = UnregisterMod(mod) && success;
+    return success;
 }
 
 void ModContext::DestroyNativeMod(void *dllHandle, IMod *mod, const char *modLabel) noexcept {
@@ -2429,18 +2411,14 @@ bool ModContext::UnloadMod(const std::string &id) {
         return false;
     }
     IMod *mod = nullptr;
-    std::shared_ptr<void> dllHandle;
     {
         std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
         mod = FindModLocked(id);
         if (!mod)
             return false;
-        auto dit = m_ModToDllHandleMap.find(mod);
-        if (dit != m_ModToDllHandleMap.end())
-            dllHandle = dit->second;
     }
 
-    if (!UnregisterMod(mod, dllHandle)) {
+    if (!UnregisterMod(mod)) {
         m_Logger->Error("Failed to unload mod %s.", id.c_str());
         return false;
     }
@@ -2501,6 +2479,10 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         m_Logger->Error("Mod registration failed: duplicate id %s.", modId.c_str());
         return false;
     }
+    if (std::find(m_Mods.begin(), m_Mods.end(), mod) != m_Mods.end()) {
+        m_Logger->Error("Mod registration failed: the Mod pointer is already registered.");
+        return false;
+    }
 
     // Record the mod in our registries.  Roll the vector back if allocating
     // the index entry fails so both views keep the same membership.
@@ -2512,15 +2494,39 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         throw;
     }
 
-    // If there is a real DLL handle, wire up the handle <-> mod mappings
+    // A registered DLL owns its handle once, regardless of how many Mods it
+    // exports.  The reverse table is only an index into this registry.
     if (dllHandle) {
-        m_ModToDllHandleMap[mod] = dllHandle;
-
         void *raw = dllHandle.get();
-        m_DllHandleToModsMap[raw].push_back(mod);
+        try {
+            auto [dllEntry, insertedDll] = m_NativeDlls.try_emplace(raw);
+            if (insertedDll)
+                dllEntry->second.Handle = dllHandle;
+            dllEntry->second.Mods.push_back(mod);
 
-        // Keep a weak reference so we can check liveness without owning it
-        m_DllHandleMap[raw] = dllHandle;
+            const auto [association, insertedAssociation] = m_NativeDllByMod.emplace(mod, raw);
+            if (!insertedAssociation) {
+                dllEntry->second.Mods.pop_back();
+                if (insertedDll)
+                    m_NativeDlls.erase(dllEntry);
+                m_ModIndex.erase(modId);
+                m_Mods.pop_back();
+                m_Logger->Error("Mod registration failed: the Mod pointer is already registered.");
+                return false;
+            }
+        } catch (...) {
+            m_NativeDllByMod.erase(mod);
+            const auto dllEntry = m_NativeDlls.find(raw);
+            if (dllEntry != m_NativeDlls.end()) {
+                auto &mods = dllEntry->second.Mods;
+                mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
+                if (mods.empty())
+                    m_NativeDlls.erase(dllEntry);
+            }
+            m_ModIndex.erase(modId);
+            m_Mods.pop_back();
+            throw;
+        }
     }
 
     return true;
@@ -2548,30 +2554,30 @@ std::string ModContext::GetNativeImcOwnerId(
                    : std::string();
     }
 
-    const auto owners = m_DllHandleToModsMap.find(callerModule);
-    if (owners == m_DllHandleToModsMap.end())
+    const auto owners = m_NativeDlls.find(callerModule);
+    if (owners == m_NativeDlls.end())
         return {};
 
     if (requestedOwnerId && *requestedOwnerId) {
         const auto requested = m_ModIndex.find(requestedOwnerId);
         if (requested == m_ModIndex.end() || requested->second >= m_Mods.size() ||
-            std::find(owners->second.begin(), owners->second.end(),
-                      m_Mods[requested->second]) == owners->second.end())
+            std::find(owners->second.Mods.begin(), owners->second.Mods.end(),
+                      m_Mods[requested->second]) == owners->second.Mods.end())
             return {};
         return requested->first;
     }
 
-    if (owners->second.size() != 1 || !owners->second.front())
+    if (owners->second.Mods.size() != 1 || !owners->second.Mods.front())
         return {};
 
-    IMod *owner = owners->second.front();
+    IMod *owner = owners->second.Mods.front();
     const auto id = std::find_if(m_ModIndex.begin(), m_ModIndex.end(), [&](const auto &entry) {
         return entry.second < m_Mods.size() && m_Mods[entry.second] == owner;
     });
     return id == m_ModIndex.end() ? std::string() : id->first;
 }
 
-bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) {
+bool ModContext::UnregisterMod(IMod *mod) {
     if (!mod) {
         return false;
     }
@@ -2600,12 +2606,15 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
                 m_ScriptHotReload->UnregisterMod(scriptMod);
         }
 #endif
-        std::shared_ptr<void> ownedDllHandle = dllHandle;
-        if (!ownedDllHandle) {
+        std::shared_ptr<void> ownedDllHandle;
+        {
             std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
-            const auto handleIt = m_ModToDllHandleMap.find(mod);
-            if (handleIt != m_ModToDllHandleMap.end())
-                ownedDllHandle = handleIt->second;
+            const auto association = m_NativeDllByMod.find(mod);
+            if (association != m_NativeDllByMod.end()) {
+                const auto dll = m_NativeDlls.find(association->second);
+                if (dll != m_NativeDlls.end())
+                    ownedDllHandle = dll->second.Handle;
+            }
         }
 
         // Config persistence needs the live Mod id, so detach and destroy the
@@ -2617,7 +2626,6 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
         }
 
         void *rawDllHandle = ownedDllHandle.get();
-        bool dllHandleStillHasMods = false;
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
             std::unique_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
@@ -2648,19 +2656,16 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
 
             m_ModDependencies.erase(mod);
 
-            m_ModToDllHandleMap.erase(mod);
-
-            if (rawDllHandle) {
-                auto mit = m_DllHandleToModsMap.find(rawDllHandle);
-                if (mit != m_DllHandleToModsMap.end()) {
-                    auto &mods = mit->second;
+            const auto association = m_NativeDllByMod.find(mod);
+            if (association != m_NativeDllByMod.end()) {
+                auto dll = m_NativeDlls.find(association->second);
+                if (dll != m_NativeDlls.end()) {
+                    auto &mods = dll->second.Mods;
                     mods.erase(std::remove(mods.begin(), mods.end(), mod), mods.end());
-                    dllHandleStillHasMods = !mods.empty();
                     if (mods.empty())
-                        m_DllHandleToModsMap.erase(mit);
+                        m_NativeDlls.erase(dll);
                 }
-                if (!dllHandleStillHasMods)
-                    m_DllHandleMap.erase(rawDllHandle);
+                m_NativeDllByMod.erase(association);
             }
         }
 

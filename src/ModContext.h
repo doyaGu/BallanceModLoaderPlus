@@ -403,7 +403,7 @@ private:
     void RegisterBuiltinMods();
 
     bool RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
-    bool UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle = nullptr);
+    bool UnregisterMod(IMod *mod);
     IMod *FindModLocked(const std::string &id) const;
 
     int EvaluateDependencies(IMod *mod, std::string *diagnostic) const;
@@ -467,14 +467,12 @@ private:
     std::unique_ptr<BML::ScriptModHotReloadService> m_ScriptHotReload;
 #endif
 
-    typedef std::unordered_map<IMod *, std::shared_ptr<void>> ModToDllHandleMap;
-    ModToDllHandleMap m_ModToDllHandleMap;
-
-    typedef std::unordered_map<void *, std::vector<IMod *>> DllHandleToModsMap;
-    DllHandleToModsMap m_DllHandleToModsMap;
-
-    typedef std::unordered_map<void *, std::weak_ptr<void>> DllHandleMap;
-    DllHandleMap m_DllHandleMap;
+    struct NativeDllRegistration {
+        std::shared_ptr<void> Handle;
+        std::vector<IMod *> Mods;
+    };
+    std::unordered_map<void *, NativeDllRegistration> m_NativeDlls;
+    std::unordered_map<IMod *, void *> m_NativeDllByMod;
 
     std::vector<IMod *> m_Mods;
     std::vector<IMod *> m_ActiveMods;
