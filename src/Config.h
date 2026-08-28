@@ -16,6 +16,8 @@ class Property : public IProperty {
     friend class Category;
 
 public:
+    using Value = std::variant<bool, int, float, std::string>;
+
     Property() = default;
     Property(Config *config, std::string category, std::string key);
     ~Property() = default;
@@ -45,6 +47,8 @@ public:
     void SetDefaultKey(CKKEYBOARD value) override;
 
     PropertyType GetType() override { return m_Type; }
+    const Value &GetValue() const { return m_Value; }
+    void SetValue(const Value &value);
     size_t GetHash() const;
 
     void CopyValue(Property *o);
@@ -57,7 +61,7 @@ public:
     void SetModified();
 
 private:
-    std::variant<bool, int, float, std::string> m_Value = 0;
+    Value m_Value = 0;
     PropertyType m_Type = INTEGER;
     size_t m_Hash = 0;
     std::string m_Comment;

@@ -124,6 +124,7 @@ set(BML_PRIVATE_HEADERS
         FpsCounter.h
         SRTimer.h
         RealTimer.h
+        BuiInternal.h
         ModMenu.h
         MapMenu.h
         CommandBar.h
@@ -310,6 +311,7 @@ set(IMGUI_HEADERS
         ${IMGUI_SOURCE_DIR}/imstb_textedit.h
         ${IMGUI_SOURCE_DIR}/imstb_truetype.h
         ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.h
+        ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
         ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.h
 )
 
@@ -320,6 +322,7 @@ set(IMGUI_SOURCES
         ${IMGUI_SOURCE_DIR}/imgui_demo.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
         ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+        ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.cpp
 )
 

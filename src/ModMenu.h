@@ -1,12 +1,8 @@
 #ifndef BML_MODMENU_H
 #define BML_MODMENU_H
 
-#include <cstdint>
-#include <array>
-#include <memory>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "BML/Bui.h"
 
@@ -65,31 +61,16 @@ public:
     void OnPreEnd() override;
     bool OnOpen() override;
     void OnClose() override;
-    void OnPageChanged(int newPage, int oldPage) override;
 
 protected:
     struct PendingPropertyState {
-        IProperty::PropertyType type = IProperty::NONE;
-        std::string originalString;
-        std::string currentString;
-        int originalInt = 0;
-        int currentInt = 0;
-        float originalFloat = 0.0f;
-        float currentFloat = 0.0f;
-        bool originalBool = false;
-        bool currentBool = false;
-        ImGuiKeyChord originalKeyChord = static_cast<ImGuiKeyChord>(0);
-        ImGuiKeyChord currentKeyChord = static_cast<ImGuiKeyChord>(0);
+        Property::Value original;
+        Property::Value current;
     };
 
     static constexpr int PROPERTY_SLOTS = 4;
-    void FlushBuffers();
-    int GetPropertyStartIndex() const;
-    Property *GetVisibleProperty(int index) const;
-    const PendingPropertyState *FindPendingState(Property *property) const;
-    PendingPropertyState &GetOrCreatePendingState(Property *property, IProperty::PropertyType type);
-    void SyncPageToPending(int pageIndex);
-    void LoadOriginalValues();
+    PendingPropertyState &GetOrCreatePendingState(Property *property);
+    bool DrawEditor(Property *property, Property::Value &value);
     void SaveChanges();
     void RevertChanges();
     bool HasPendingChanges() const;
@@ -97,28 +78,9 @@ protected:
     static void ShowCommentBox(const Property *property);
 
     Category *m_Category = nullptr;
+    Property *m_KeyCaptureProperty = nullptr;
     bool m_HasPendingChanges = false;
     std::unordered_map<Property *, PendingPropertyState> m_PendingValues;
-
-    static constexpr size_t BUFFER_SIZE = 4096;
-
-    // Current working values
-    char m_Buffers[PROPERTY_SLOTS][BUFFER_SIZE] = {};
-    size_t m_BufferHashes[PROPERTY_SLOTS] = {};
-    bool m_KeyToggled[PROPERTY_SLOTS] = {};
-    ImGuiKeyChord m_KeyChord[PROPERTY_SLOTS] = {};
-    std::uint8_t m_IntFlags[PROPERTY_SLOTS] = {};
-    std::uint8_t m_FloatFlags[PROPERTY_SLOTS] = {};
-    int m_IntValues[PROPERTY_SLOTS] = {};
-    float m_FloatValues[PROPERTY_SLOTS] = {};
-    bool m_BoolValues[PROPERTY_SLOTS] = {};
-
-    // Original values
-    char m_OriginalBuffers[PROPERTY_SLOTS][BUFFER_SIZE] = {};
-    int m_OriginalIntValues[PROPERTY_SLOTS] = {};
-    float m_OriginalFloatValues[PROPERTY_SLOTS] = {};
-    bool m_OriginalBoolValues[PROPERTY_SLOTS] = {};
-    ImGuiKeyChord m_OriginalKeyChord[PROPERTY_SLOTS] = {};
 };
 
 #endif // BML_MODMENU_H

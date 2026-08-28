@@ -486,6 +486,28 @@ void Property::SetKey(CKKEYBOARD value) {
     }
 }
 
+void Property::SetValue(const Value &value) {
+    switch (m_Type) {
+    case STRING:
+        SetString(std::get<std::string>(value).c_str());
+        break;
+    case BOOLEAN:
+        SetBoolean(std::get<bool>(value));
+        break;
+    case INTEGER:
+        SetInteger(std::get<int>(value));
+        break;
+    case KEY:
+        SetKey(static_cast<CKKEYBOARD>(std::get<int>(value)));
+        break;
+    case FLOAT:
+        SetFloat(std::get<float>(value));
+        break;
+    default:
+        break;
+    }
+}
+
 void Property::SetDefaultString(const char *value) {
     if (!value)
         value = "";

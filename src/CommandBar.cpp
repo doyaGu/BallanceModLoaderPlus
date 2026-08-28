@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include <utf8.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include "BML/ICommand.h"
 #include "BML/InputHook.h"
@@ -99,7 +100,8 @@ namespace {
     }
 }
 
-CommandBar::CommandBar() : Window("CommandBar"), m_Buffer(65535, '\0') {
+CommandBar::CommandBar() : Window("CommandBar") {
+    m_Buffer.reserve(65535);
     Hide();
 }
 
@@ -149,11 +151,10 @@ void CommandBar::OnDraw() {
                                                    ImGuiInputTextFlags_CallbackCompletion |
                                                    ImGuiInputTextFlags_CallbackHistory |
                                                    ImGuiInputTextFlags_CallbackAlways |
-                                                   ImGuiInputTextFlags_CallbackResize |
                                                    ImGuiInputTextFlags_CallbackEdit;
-    if (ImGui::InputText("##CmdBar", &m_Buffer[0], m_Buffer.capacity() + 1, InputTextFlags, &TextEditCallback, this)) {
-        if (m_Buffer[0] != '\0') {
-            const std::string commandLine(m_Buffer.c_str());
+    if (ImGui::InputText("##CmdBar", &m_Buffer, InputTextFlags, &TextEditCallback, this)) {
+        if (!m_Buffer.empty()) {
+            const std::string commandLine = m_Buffer;
             RecordHistoryEntry(commandLine);
             BML_GetModContext()->ExecuteCommand(commandLine.c_str());
         }
@@ -373,7 +374,7 @@ void CommandBar::ToggleCommandBar(bool on) {
     auto *context = BML_GetModContext();
     if (on) {
         Show();
-        m_Buffer[0] = '\0';
+        m_Buffer.clear();
         if (m_InputBlockToken == 0) {
             if (auto *input = context->GetInputManager())
                 m_InputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
@@ -384,7 +385,7 @@ void CommandBar::ToggleCommandBar(bool on) {
         m_InputBlockToken = 0;
         Hide();
         ImGui::SetWindowFocus(nullptr);
-        m_Buffer[0] = '\0';
+        m_Buffer.clear();
         context->AddTimerLoop(1ul, [context, releaseToken] {
             auto *input = context->GetInputManager();
             if (!input)
@@ -576,13 +577,6 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
             }
 
             m_CursorPos = data->CursorPos;
-        }
-        break;
-        case ImGuiInputTextFlags_CallbackResize: {
-            // Resize string callback
-            IM_ASSERT(data->Buf == m_Buffer.c_str());
-            m_Buffer.resize(data->BufTextLen);
-            data->Buf = &m_Buffer[0];
         }
         break;
         case ImGuiInputTextFlags_CallbackEdit: {

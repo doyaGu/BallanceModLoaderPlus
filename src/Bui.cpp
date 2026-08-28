@@ -11,9 +11,11 @@
 #include "CKGroup.h"
 
 #include "imgui_internal.h"
+#include "misc/cpp/imgui_stdlib.h"
 
 #include "BML/InputHook.h"
 
+#include "BuiInternal.h"
 #include "ModContext.h"
 #include "Overlay.h"
 
@@ -1105,7 +1107,8 @@ namespace Bui {
         return changed;
     }
 
-    bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data) {
+    template <typename DrawInput>
+    bool InputTextButtonImpl(const char *label, DrawInput &&drawInput) {
         ImGuiWindow *window = ImGui::GetCurrentWindow();
         if (window->SkipItems)
             return false;
@@ -1143,7 +1146,7 @@ namespace Bui {
         ImGui::SetNextItemWidth(size.x * 0.6f);
 
         ImGui::PushID(label);
-        bool changed = ImGui::InputText("##InputText", buf, buf_size, flags, callback, user_data);
+        bool changed = drawInput();
         ImGui::PopID();
 
         ImGui::PopStyleColor();
@@ -1153,6 +1156,18 @@ namespace Bui {
         ImGui::EndGroup();
 
         return changed;
+    }
+
+    bool InputTextButton(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data) {
+        return InputTextButtonImpl(label, [&] {
+            return ImGui::InputText("##InputText", buf, buf_size, flags, callback, user_data);
+        });
+    }
+
+    bool InputTextButton(const char *label, std::string *value, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *userData) {
+        return InputTextButtonImpl(label, [&] {
+            return ImGui::InputText("##InputText", value, flags, callback, userData);
+        });
     }
 
     bool InputFloatButton(const char *label, float *v, float step, float step_fast, const char *format, ImGuiInputTextFlags flags) {

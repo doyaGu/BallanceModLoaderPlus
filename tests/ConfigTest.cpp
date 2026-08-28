@@ -241,6 +241,24 @@ TEST_F(ConfigTest, PropertyValues) {
     EXPECT_EQ(static_cast<CKKEYBOARD>(0), strProp->GetKey());
 }
 
+TEST_F(ConfigTest, VariantValueKeepsIntegerAndKeySemanticsDistinct) {
+    auto *intProp = static_cast<Property *>(config->GetProperty("TestCategory", "IntProp"));
+    intProp->SetDefaultInteger(10);
+    EXPECT_EQ(Property::Value{10}, intProp->GetValue());
+
+    intProp->SetValue(Property::Value{20});
+    EXPECT_EQ(IProperty::INTEGER, intProp->GetType());
+    EXPECT_EQ(20, intProp->GetInteger());
+
+    auto *keyProp = static_cast<Property *>(config->GetProperty("TestCategory", "KeyProp"));
+    keyProp->SetDefaultKey(static_cast<CKKEYBOARD>(30));
+    EXPECT_EQ(Property::Value{30}, keyProp->GetValue());
+
+    keyProp->SetValue(Property::Value{40});
+    EXPECT_EQ(IProperty::KEY, keyProp->GetType());
+    EXPECT_EQ(static_cast<CKKEYBOARD>(40), keyProp->GetKey());
+}
+
 // Default values
 TEST_F(ConfigTest, DefaultValues) {
     // String default
