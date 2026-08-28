@@ -433,6 +433,7 @@ void MessageBoard::InvalidateLayoutCache() {
         m.cachedHeight = -1.0f;
         m.cachedWrapWidth = -1.0f;
         m.cachedLineSpacing = -1.0f;
+        m.cachedFontPixels = -1.0f;
     }
 }
 
