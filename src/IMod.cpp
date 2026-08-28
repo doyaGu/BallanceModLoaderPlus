@@ -1,4 +1,7 @@
 #include "BML/IMod.h"
+
+#include <memory>
+
 #include "Logger.h"
 #include "Config.h"
 #include "ModContext.h"
@@ -11,9 +14,8 @@ ILogger *IMod::GetLogger() {
 
 IConfig *IMod::GetConfig() {
     if (m_Config == nullptr) {
-        auto *config = new Config(this);
-        m_Config = config;
-        BML_GetModContext()->AddConfig(config);
+        auto config = std::make_unique<Config>(this);
+        m_Config = BML_GetModContext()->AddConfig(std::move(config));
     }
     return m_Config;
 }
@@ -21,7 +23,6 @@ IConfig *IMod::GetConfig() {
 IMod::~IMod() {
     if (m_Logger)
         delete m_Logger;
-    if (m_Config)
-        delete m_Config;
+    m_Config = nullptr;
     m_BML->ClearDependencies(this);
 }

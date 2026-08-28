@@ -135,7 +135,7 @@ public:
     ICommand *FindCommand(const char *name) const override;
     void ExecuteCommand(const char *cmd) override;
 
-    bool AddConfig(Config *config);
+    Config *AddConfig(std::unique_ptr<Config> config);
     bool RemoveConfig(Config *config);
     Config *GetConfig(IMod *mod);
     bool LoadConfig(Config *config);
@@ -482,9 +482,8 @@ private:
 
     std::unordered_map<IMod*, std::vector<ModDependency>> m_ModDependencies;
 
-    std::vector<Config *> m_Configs;
-    typedef std::unordered_map<std::string, Config *> ConfigMap;
-    ConfigMap m_ConfigMap;
+    std::vector<std::unique_ptr<Config>> m_Configs;
+    std::unordered_map<std::string, size_t> m_ConfigIndex;
 
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 

@@ -611,7 +611,7 @@ void ModContext::DeactivateActiveMods() {
 
     for (auto rit = m_Configs.rbegin(); rit != m_Configs.rend(); ++rit) {
         try {
-            SaveConfig(*rit);
+            SaveConfig(rit->get());
         } catch (const std::exception &e) {
             if (m_Logger)
                 m_Logger->Error("Exception while saving a Mod config during shutdown: %s", e.what());
@@ -624,8 +624,6 @@ void ModContext::DeactivateActiveMods() {
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
         m_CallbackMap.clear();
-        m_Configs.clear();
-        m_ConfigMap.clear();
         m_CommandContext.ClearCommands();
     }
     m_ActiveMods.clear();
@@ -1000,33 +998,38 @@ void ModContext::ExecuteCommand(const char *cmd) {
     }
 }
 
-bool ModContext::AddConfig(Config *config) {
-    std::lock_guard<std::mutex> lock(m_Mutex);
-
+Config *ModContext::AddConfig(std::unique_ptr<Config> config) {
     if (!config)
-        return false;
+        return nullptr;
 
     IMod *mod = config->GetMod();
     if (!mod)
-        return false;
+        return nullptr;
 
-    bool inserted;
-    ConfigMap::iterator it;
-    std::tie(it, inserted) = m_ConfigMap.insert({mod->GetID(), config});
-    if (!inserted) {
-        m_Logger->Error("Can not add duplicate config for %s.", mod->GetID());
-        return false;
+    const std::string modId = mod->GetID();
+    Config *rawConfig = config.get();
+    LoadConfig(rawConfig);
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    if (m_ConfigIndex.find(modId) != m_ConfigIndex.end()) {
+        if (m_Logger)
+            m_Logger->Error("Can not add duplicate config for %s.", modId.c_str());
+        return nullptr;
     }
 
-    LoadConfig(config);
-    m_Configs.push_back(config);
+    const size_t index = m_Configs.size();
+    m_Configs.push_back(std::move(config));
+    try {
+        m_ConfigIndex.emplace(modId, index);
+    } catch (...) {
+        m_Configs.pop_back();
+        throw;
+    }
 
-    return true;
+    return rawConfig;
 }
 
 bool ModContext::RemoveConfig(Config *config) {
-    std::lock_guard<std::mutex> lock(m_Mutex);
-
     if (!config)
         return false;
 
@@ -1034,11 +1037,40 @@ bool ModContext::RemoveConfig(Config *config) {
     if (!mod)
         return false;
 
-    auto it = m_ConfigMap.find(mod->GetID());
-    if (it != m_ConfigMap.end()) {
-        SaveConfig(config);
-        m_Configs.erase(std::remove(m_Configs.begin(), m_Configs.end(), it->second), m_Configs.end());
-        m_ConfigMap.erase(it);
+    const std::string modId = mod->GetID();
+    std::unique_ptr<Config> removed;
+    {
+        std::lock_guard<std::mutex> lock(m_Mutex);
+        auto it = m_ConfigIndex.find(modId);
+        if (it == m_ConfigIndex.end() || it->second >= m_Configs.size() ||
+            m_Configs[it->second].get() != config) {
+            return false;
+        }
+
+        const size_t index = it->second;
+        removed = std::move(m_Configs[index]);
+        m_Configs.erase(m_Configs.begin() + static_cast<std::ptrdiff_t>(index));
+        m_ConfigIndex.erase(it);
+        for (auto &entry : m_ConfigIndex) {
+            if (entry.second > index)
+                --entry.second;
+        }
+    }
+
+    if (mod->m_Config == config)
+        mod->m_Config = nullptr;
+
+    try {
+        if (!SaveConfig(removed.get()) && m_Logger)
+            m_Logger->Error("Failed to save config for mod %s during removal", modId.c_str());
+    } catch (const std::exception &e) {
+        if (m_Logger)
+            m_Logger->Error("Exception while saving config for mod %s during removal: %s",
+                            modId.c_str(), e.what());
+    } catch (...) {
+        if (m_Logger)
+            m_Logger->Error("Unknown exception while saving config for mod %s during removal",
+                            modId.c_str());
     }
 
     return true;
@@ -1053,10 +1085,10 @@ Config *ModContext::GetConfig(IMod *mod) {
     const std::string modId = mod->GetID();
 
     std::lock_guard<std::mutex> lock(m_Mutex);
-    auto it = m_ConfigMap.find(modId);
-    if (it == m_ConfigMap.end())
+    auto it = m_ConfigIndex.find(modId);
+    if (it == m_ConfigIndex.end() || it->second >= m_Configs.size())
         return nullptr;
-    return it->second;
+    return m_Configs[it->second].get();
 }
 
 bool ModContext::LoadConfig(Config *config) {
@@ -1090,7 +1122,9 @@ void ModContext::FlushConfigChanges(bool saveAll) {
     std::vector<Config *> configs;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        configs = m_Configs;
+        configs.reserve(m_Configs.size());
+        for (const auto &config : m_Configs)
+            configs.push_back(config.get());
     }
 
     for (Config *config : configs) {
@@ -2072,6 +2106,8 @@ IMod *ModContext::LoadMod(const std::wstring &path) {
     }
 
     if (!RegisterMod(mod, dllHandle)) {
+        if (Config *config = GetConfig(mod))
+            RemoveConfig(config);
         DestroyNativeMod(dllHandle.get(), mod, modPath.c_str());
         return nullptr;
     }
@@ -2089,8 +2125,11 @@ IMod *ModContext::LoadScriptMod(const BML::ScriptModLoadCandidate &candidate) {
     }
 
     IMod *mod = scriptMod.get();
-    if (!RegisterMod(mod))
+    if (!RegisterMod(mod)) {
+        if (Config *config = GetConfig(mod))
+            RemoveConfig(config);
         return nullptr;
+    }
 
     RegisterScriptModDependencies(mod, loadResult.Definition);
     m_ScriptMods.push_back(std::move(scriptMod));
@@ -2553,6 +2592,14 @@ bool ModContext::UnregisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle
             const auto handleIt = m_ModToDllHandleMap.find(mod);
             if (handleIt != m_ModToDllHandleMap.end())
                 ownedDllHandle = handleIt->second;
+        }
+
+        // Config persistence needs the live Mod id, so detach and destroy the
+        // loader-owned config before the Mod instance or its DLL goes away.
+        if (Config *config = GetConfig(mod); config && !RemoveConfig(config)) {
+            if (m_Logger)
+                m_Logger->Error("Failed to detach config before unloading mod %s.", modIdCopy.c_str());
+            return false;
         }
 
         void *rawDllHandle = ownedDllHandle.get();

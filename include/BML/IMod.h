@@ -29,6 +29,8 @@
 #include "BML/ILogger.h"
 #include "BML/IConfig.h"
 
+class ModContext;
+
 // A three-part version, ordered by major, then minor, then patch. The default
 // constructor takes the version of the SDK headers it is compiled against, which
 // is what makes DECLARE_BML_VERSION work.
@@ -263,12 +265,12 @@ public:
     virtual void OnPostCommandExecute(ICommand *command, const std::vector<std::string> &args) {}
 
 protected:
-    // Both are created on the first call and owned by this object, so do not delete
-    // what they return. GetLogger writes to the loader's log with this Mod's id as
-    // the prefix. The first GetConfig call reads Configs\<id>.cfg from the loader
-    // directory, so call it from OnLoad or later, and reach for the SetDefault
-    // functions on the properties rather than the Set ones, which would overwrite
-    // what the player saved.
+    // Both are created on the first call, so do not delete what they return.
+    // GetLogger is owned by this object and writes to the loader's log with this
+    // Mod's id as the prefix. GetConfig is owned by the loader until the Mod is
+    // unregistered. Its first call reads Configs\<id>.cfg from the loader directory,
+    // so call it from OnLoad or later, and reach for the SetDefault functions on the
+    // properties rather than the Set ones, which would overwrite what the player saved.
     virtual ILogger *GetLogger() final;
     virtual IConfig *GetConfig() final;
 
@@ -310,6 +312,8 @@ protected:
     IBML *m_BML = nullptr;
 
 private:
+    friend class ModContext;
+
     ILogger *m_Logger = nullptr;
     IConfig *m_Config = nullptr;
 };
