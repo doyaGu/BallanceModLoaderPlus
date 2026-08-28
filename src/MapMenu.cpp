@@ -495,7 +495,7 @@ bool MapListPage::OnDrawEntry(MapEntry *entry, bool *v) {
             m_ShouldClose = true;
         }
     } else {
-        ImGui::PushStyleColor(ImGuiCol_Text, 0xFFFFA500); // Orange Color for directory
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 165, 0, 255)); // Orange Color for directory
 
         if (Bui::LevelButton(entry->name.c_str(), v)) {
             dynamic_cast<MapMenu *>(m_Menu)->SetCurrentMaps(entry);
