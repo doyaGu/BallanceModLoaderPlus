@@ -64,13 +64,14 @@ public:
 
 protected:
     struct PendingPropertyState {
+        IProperty::PropertyType type = IProperty::NONE;
         Property::Value original;
         Property::Value current;
     };
 
     static constexpr int PROPERTY_SLOTS = 4;
     PendingPropertyState &GetOrCreatePendingState(Property *property);
-    bool DrawEditor(Property *property, Property::Value &value);
+    bool DrawEditor(Property *property, IProperty::PropertyType type, Property::Value &value);
     void SaveChanges();
     void RevertChanges();
     bool HasPendingChanges() const;

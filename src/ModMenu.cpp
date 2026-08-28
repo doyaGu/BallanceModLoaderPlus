@@ -1,7 +1,5 @@
 #include "ModMenu.h"
 
-#include "BuiInternal.h"
-
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -79,6 +77,23 @@ namespace {
 
         const char *id = mod->GetID();
         return id ? id : "";
+    }
+
+    Property::Value SnapshotPropertyValue(Property *property, IProperty::PropertyType type) {
+        switch (type) {
+        case IProperty::STRING:
+            return std::string(property->GetString());
+        case IProperty::BOOLEAN:
+            return property->GetBoolean();
+        case IProperty::INTEGER:
+            return property->GetInteger();
+        case IProperty::KEY:
+            return static_cast<int>(property->GetKey());
+        case IProperty::FLOAT:
+            return property->GetFloat();
+        default:
+            return 0;
+        }
     }
 
     void RefreshFontList() {
@@ -310,7 +325,7 @@ void ModOptionPage::OnDraw() {
 
         ImGui::PushID(property);
         PendingPropertyState &state = GetOrCreatePendingState(property);
-        DrawEditor(property, state.current);
+        DrawEditor(property, state.type, state.current);
 
         ImGui::PopID();
 
@@ -374,17 +389,21 @@ void ModOptionPage::OnClose() {
 
 ModOptionPage::PendingPropertyState &ModOptionPage::GetOrCreatePendingState(Property *property) {
     auto [it, inserted] = m_PendingValues.try_emplace(property);
-    if (inserted) {
-        it->second.original = property->GetValue();
+    const IProperty::PropertyType type = property->GetType();
+    if (inserted || it->second.type != type) {
+        if (m_KeyCaptureProperty == property)
+            m_KeyCaptureProperty = nullptr;
+        it->second.type = type;
+        it->second.original = SnapshotPropertyValue(property, type);
         it->second.current = it->second.original;
     }
     return it->second;
 }
 
-bool ModOptionPage::DrawEditor(Property *property, Property::Value &value) {
+bool ModOptionPage::DrawEditor(Property *property, IProperty::PropertyType type, Property::Value &value) {
     const Property::Value previous = value;
 
-    switch (property->GetType()) {
+    switch (type) {
         case IProperty::STRING: {
             std::string &text = std::get<std::string>(value);
             auto *modMenu = Menu();
@@ -442,7 +461,7 @@ void ModOptionPage::SaveChanges() {
     for (const auto &entry : m_PendingValues) {
         Property *property = entry.first;
         const PendingPropertyState &state = entry.second;
-        if (!property || state.current == state.original)
+        if (!property || property->GetType() != state.type || state.current == state.original)
             continue;
 
         property->SetValue(state.current);
@@ -464,7 +483,9 @@ void ModOptionPage::RevertChanges() {
 
 bool ModOptionPage::HasPendingChanges() const {
     for (const auto &entry : m_PendingValues) {
-        if (entry.second.current != entry.second.original)
+        Property *property = entry.first;
+        if (property && property->GetType() == entry.second.type &&
+            entry.second.current != entry.second.original)
             return true;
     }
 
