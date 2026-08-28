@@ -1,6 +1,8 @@
 #ifndef BML_BMLMOD_H
 #define BML_BMLMOD_H
 
+#include <cstddef>
+
 #include "BML/IMod.h"
 #include "BML/IBML.h"
 #include "BML/DataShare.h"
@@ -103,6 +105,27 @@ public:
 
 private:
     friend class EventHookRegistrar;
+
+    enum ApplyWhen : unsigned {
+        OnDemand = 0,
+        Startup = 1U << 0,
+        OnChange = 1U << 1,
+        OnLevelInit = 1U << 2,
+    };
+
+    struct Setting {
+        const char *category;
+        const char *key;
+        IProperty *BMLMod::*property;
+        void (*apply)(BMLMod &mod, IProperty *property);
+        unsigned when;
+        bool requiresIngame;
+    };
+
+    static const Setting *GetSettings(size_t &count);
+    void BindSettings();
+    void ApplySettings(ApplyWhen when);
+    void ApplySetting(const Setting &setting, IProperty *property);
 
     void InitConfigs();
     void InitGUI();

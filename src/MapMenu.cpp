@@ -53,9 +53,20 @@ MapMenu::~MapMenu() {
 }
 
 void MapMenu::Init() {
-    CreatePage<MapListPage>();
+    m_ListPage = CreatePage<MapListPage>();
+    m_Initialized = true;
 
     RefreshMaps();
+}
+
+void MapMenu::SetMaxDepth(int depth) {
+    depth = std::max(1, depth);
+    if (m_MaxDepth == depth)
+        return;
+
+    m_MaxDepth = depth;
+    if (m_Initialized)
+        RefreshMaps();
 }
 
 void MapMenu::OnOpen() {
@@ -121,6 +132,8 @@ void MapMenu::RefreshMaps() {
     try {
         if (ExploreMaps(newMaps, m_MaxDepth)) {
             // Only replace if successful
+            if (m_ListPage)
+                m_ListPage->ResetForMapRefresh();
             delete m_Maps;
             m_Maps = newMaps;
             ResetCurrentMaps();
@@ -391,6 +404,13 @@ void MapListPage::OnPostEnd() {
 
         SetPage(0);
     }
+}
+
+void MapListPage::ResetForMapRefresh() {
+    ClearSearch();
+    m_ShouldClose = false;
+    m_Count = 0;
+    SetPage(0);
 }
 
 bool MapListPage::IsSearching() const {

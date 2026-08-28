@@ -50,6 +50,7 @@ public:
     void OnPreEnd() override;
     void OnDraw() override;
     void OnPostEnd() override;
+    void ResetForMapRefresh();
 
 private:
     bool IsSearching() const;
@@ -88,7 +89,7 @@ public:
     void SetShowTooltip(bool show) { m_ShowTooltip = show; }
 
     int GetMaxDepth() const { return m_MaxDepth; }
-    void SetMaxDepth(int depth) { m_MaxDepth = depth; }
+    void SetMaxDepth(int depth);
 
 private:
     bool ExploreMaps(MapEntry *maps, int depth = 8);
@@ -96,8 +97,10 @@ private:
 
     BMLMod *m_Mod;
     bool m_MapLoaded = false;
+    bool m_Initialized = false;
     bool m_ShowTooltip = false;
     int m_MaxDepth = 8;
+    MapListPage *m_ListPage = nullptr;
     MapEntry *m_Maps = nullptr;
     MapEntry *m_Current = nullptr;
 };

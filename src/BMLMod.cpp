@@ -35,6 +35,151 @@ ModContext *BMLMod::GetRuntimeContext() const {
     return dynamic_cast<ModContext *>(m_BML);
 }
 
+const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
+    static const Setting settings[] = {
+        {"GUI", "FontFilename", &BMLMod::m_FontFilename, nullptr, OnDemand, false},
+        {"GUI", "FontSize", &BMLMod::m_FontSize, nullptr, OnDemand, false},
+        {"GUI", "FontRanges", &BMLMod::m_FontRanges, nullptr, OnDemand, false},
+        {"GUI", "EnableSecondaryFont", &BMLMod::m_EnableSecondaryFont, nullptr, OnDemand, false},
+        {"GUI", "SecondaryFontFilename", &BMLMod::m_SecondaryFontFilename, nullptr, OnDemand, false},
+        {"GUI", "SecondaryFontSize", &BMLMod::m_SecondaryFontSize, nullptr, OnDemand, false},
+        {"GUI", "SecondaryFontRanges", &BMLMod::m_SecondaryFontRanges, nullptr, OnDemand, false},
+        {"GUI", "EnableIniSettings", &BMLMod::m_EnableIniSettings, nullptr, OnDemand, false},
+
+        {"HUD", "ShowTitle", &BMLMod::m_ShowTitle,
+         [](BMLMod &mod, IProperty *property) { mod.ShowTitle(property->GetBoolean()); },
+         OnChange, false},
+        {"HUD", "ShowFPS", &BMLMod::m_ShowFPS,
+         [](BMLMod &mod, IProperty *property) { mod.ShowFPS(property->GetBoolean()); },
+         OnChange, false},
+        {"HUD", "ShowSRTimer", &BMLMod::m_ShowSR,
+         [](BMLMod &mod, IProperty *property) { mod.ShowSRTimer(property->GetBoolean()); },
+         OnChange | OnLevelInit, true},
+        {"HUD", "FPSUpdateFrequency", &BMLMod::m_FPSUpdateFrequency,
+         [](BMLMod &mod, IProperty *property) {
+             mod.SetFPSUpdateFrequency(static_cast<uint32_t>(std::max(1, property->GetInteger())));
+         },
+         Startup | OnChange, false},
+
+        {"Graphics", "UnlockFrameRate", &BMLMod::m_UnlockFPS,
+         [](BMLMod &mod, IProperty *) { mod.ApplyFrameRateSettings(); },
+         OnChange | OnLevelInit, false},
+        {"Graphics", "SetMaxFrameRate", &BMLMod::m_FPSLimit,
+         [](BMLMod &mod, IProperty *property) {
+             if (mod.m_UnlockFPS->GetBoolean())
+                 return;
+             const int limit = property->GetInteger();
+             if (limit > 0)
+                 mod.AdjustFrameRate(false, static_cast<float>(limit));
+             else
+                 mod.AdjustFrameRate(true);
+         },
+         OnChange, false},
+        {"Graphics", "WidescreenFix", &BMLMod::m_WidescreenFix,
+         [](BMLMod &, IProperty *property) { RenderHook::EnableWidescreenFix(property->GetBoolean()); },
+         Startup | OnChange, false},
+
+        {"Tweak", "LanternAlphaTest", &BMLMod::m_LanternAlphaTest,
+         [](BMLMod &mod, IProperty *property) {
+             CKMaterial *material = mod.m_BML->GetMaterialByName("Laterne_Verlauf");
+             if (!material)
+                 return;
+
+             CKBOOL enabled = property->GetBoolean();
+             material->EnableAlphaTest(enabled);
+             VXCMPFUNC function = VXCMP_GREATEREQUAL;
+             material->SetAlphaFunc(function);
+             int reference = 0;
+             material->SetAlphaRef(reference);
+         },
+         OnChange, false},
+        {"Tweak", "FixLifeBallFreeze", &BMLMod::m_FixLifeBall, nullptr, OnDemand, false},
+        {"Tweak", "Overclock", &BMLMod::m_Overclock,
+         [](BMLMod &mod, IProperty *property) {
+             const int target = property->GetBoolean() ? 1 : 0;
+             for (int i = 0; i < 3; ++i) {
+                 if (!mod.m_OverclockLinks[i] || !mod.m_OverclockLinkIO[i][target]) {
+                     mod.GetLogger()->Warn("Overclock is unavailable for the current gameplay scripts");
+                     return;
+                 }
+             }
+
+             for (int i = 0; i < 3; ++i)
+                 mod.m_OverclockLinks[i]->SetOutBehaviorIO(mod.m_OverclockLinkIO[i][target]);
+         },
+         OnChange, true},
+
+        {"CommandBar", "MessageDuration", &BMLMod::m_MsgDuration,
+         [](BMLMod &mod, IProperty *property) {
+             mod.m_MessageBoard.SetMaxTimer(std::max(2000.0f, property->GetFloat() * 1000.0f));
+         },
+         Startup | OnChange, false},
+        {"CommandBar", "TabColumns", &BMLMod::m_MsgTabColumns,
+         [](BMLMod &mod, IProperty *property) {
+             mod.m_MessageBoard.SetTabColumns(std::max(1, property->GetInteger()));
+         },
+         Startup | OnChange, false},
+        {"CommandBar", "LineSpacing", &BMLMod::m_MsgLineSpacing,
+         [](BMLMod &mod, IProperty *property) { mod.m_MessageBoard.SetLineSpacing(property->GetFloat()); },
+         Startup | OnChange, false},
+        {"CommandBar", "MessageBackgroundAlpha", &BMLMod::m_MsgBackgroundAlpha,
+         [](BMLMod &mod, IProperty *property) {
+             mod.m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
+         },
+         Startup | OnChange, false},
+        {"CommandBar", "WindowBackgroundAlpha", &BMLMod::m_WindowBackgroundAlpha,
+         [](BMLMod &mod, IProperty *property) {
+             mod.m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
+         },
+         Startup | OnChange, false},
+        {"CommandBar", "FadeMaxAlpha", &BMLMod::m_MsgFadeMaxAlpha,
+         [](BMLMod &mod, IProperty *property) {
+             mod.m_MessageBoard.SetFadeMaxAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
+         },
+         Startup | OnChange, false},
+
+        {"CustomMap", "LevelNumber", &BMLMod::m_CustomMapNumber, nullptr, OnDemand, false},
+        {"CustomMap", "ShowTooltip", &BMLMod::m_CustomMapTooltip,
+         [](BMLMod &mod, IProperty *property) { mod.m_MapMenu.SetShowTooltip(property->GetBoolean()); },
+         Startup | OnChange, false},
+        {"CustomMap", "MaxDepth", &BMLMod::m_CustomMapMaxDepth,
+         [](BMLMod &mod, IProperty *property) { mod.m_MapMenu.SetMaxDepth(property->GetInteger()); },
+         Startup | OnChange, false},
+    };
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 27,
+                  "Every built-in config property must have one settings-table entry");
+
+    count = sizeof(settings) / sizeof(settings[0]);
+    return settings;
+}
+
+void BMLMod::BindSettings() {
+    size_t count = 0;
+    const Setting *settings = GetSettings(count);
+    IConfig *config = GetConfig();
+    for (size_t i = 0; i < count; ++i)
+        this->*settings[i].property = config->GetProperty(settings[i].category, settings[i].key);
+}
+
+void BMLMod::ApplySetting(const Setting &setting, IProperty *property) {
+    if (!setting.apply || !property)
+        return;
+    if (setting.requiresIngame && (!m_BML || !m_BML->IsIngame()))
+        return;
+
+    setting.apply(*this, property);
+}
+
+void BMLMod::ApplySettings(ApplyWhen when) {
+    size_t count = 0;
+    const Setting *settings = GetSettings(count);
+    for (size_t i = 0; i < count; ++i) {
+        if ((settings[i].when & static_cast<unsigned>(when)) == 0)
+            continue;
+        ApplySetting(settings[i], this->*settings[i].property);
+    }
+}
+
 static ImFont *LoadFont(const char *filename, float size, const char *ranges, bool merge = false) {
     ImGuiIO &io = ImGui::GetIO();
 
@@ -139,6 +284,7 @@ void BMLMod::OnLoad() {
     ExecuteBB::Init();
 
     InitConfigs();
+    ApplySettings(Startup);
     InitGUI();
 
     auto &cc = BML_GetModContext()->GetCommandContext();
@@ -154,8 +300,6 @@ void BMLMod::OnLoad() {
 
     m_CommandBar.LoadHistory();
 
-    RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
-
     // Setup default HUD elements
     SetupDefaultHUDElements();
 
@@ -164,9 +308,6 @@ void BMLMod::OnLoad() {
     m_HUDFpsElement = m_HUD.Find("fps");
     m_HUDSRElement = m_HUD.Find("sr");
     m_HUDCheatElement = m_HUD.Find("cheat");
-
-    // Apply initial FPS update frequency setting
-    SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
 
     if (ModContext *context = GetRuntimeContext())
         RegisterBuiltinCapabilities(*this, context->ObjectIdentities(), GetLogger());
@@ -239,7 +380,7 @@ void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
     if (!strcmp(script->GetName(), "Levelinit_build"))
         OnEditScript_Levelinit_build(script);
 
-    if (m_FixLifeBall) {
+    if (m_FixLifeBall->GetBoolean()) {
         if (!strcmp(script->GetName(), "P_Extra_Life_Particle_Blob Script") ||
             !strcmp(script->GetName(), "P_Extra_Life_Particle_Fizz Script"))
             OnEditScript_ExtraLife_Fix(script);
@@ -273,65 +414,20 @@ void BMLMod::OnProcess() {
 }
 
 void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
-    if (prop == m_UnlockFPS) {
-        if (prop->GetBoolean()) {
-            AdjustFrameRate(false, 0);
-        } else {
-            const int val = m_FPSLimit->GetInteger();
-            if (val > 0)
-                AdjustFrameRate(false, static_cast<float>(val));
-            else
-                AdjustFrameRate(true);
-        }
-    } else if (prop == m_FPSLimit && !m_UnlockFPS->GetBoolean()) {
-        const int val = prop->GetInteger();
-        if (val > 0)
-            AdjustFrameRate(false, static_cast<float>(val));
-        else
-            AdjustFrameRate(true);
-    } else if (prop == m_ShowTitle) {
-        ShowTitle(m_ShowTitle->GetBoolean());
-    } else if (prop == m_ShowFPS) {
-        ShowFPS(m_ShowFPS->GetBoolean());
-    } else if (prop == m_ShowSR && m_BML->IsIngame()) {
-        ShowSRTimer(m_ShowSR->GetBoolean());
-    } else if (prop == m_FPSUpdateFrequency) {
-        SetFPSUpdateFrequency(m_FPSUpdateFrequency->GetInteger());
-    } else if (prop == m_WidescreenFix) {
-        RenderHook::EnableWidescreenFix(m_WidescreenFix->GetBoolean());
-    } else if (prop == m_LanternAlphaTest) {
-        CKMaterial *mat = m_BML->GetMaterialByName("Laterne_Verlauf");
-        if (mat) {
-            CKBOOL atest = m_LanternAlphaTest->GetBoolean();
-            mat->EnableAlphaTest(atest);
+    if (!prop)
+        return;
 
-            VXCMPFUNC afunc = VXCMP_GREATEREQUAL;
-            mat->SetAlphaFunc(afunc);
+    size_t count = 0;
+    const Setting *settings = GetSettings(count);
+    for (size_t i = 0; i < count; ++i) {
+        const Setting &setting = settings[i];
+        if ((setting.when & OnChange) == 0 || this->*setting.property != prop)
+            continue;
+        if (!utils::CStringEqual(setting.category, category) || !utils::CStringEqual(setting.key, key))
+            continue;
 
-            int ref = 0;
-            mat->SetAlphaRef(ref);
-        }
-    } else if (prop == m_Overclock) {
-        for (int i = 0; i < 3; i++)
-            m_OverclockLinks[i]->SetOutBehaviorIO(m_OverclockLinkIO[i][m_Overclock->GetBoolean()]);
-    } else if (prop == m_MsgDuration) {
-        const float timer = m_MsgDuration->GetFloat() * 1000;
-        m_MessageBoard.SetMaxTimer(timer);
-        if (timer < 2000) {
-            m_MsgDuration->SetFloat(2.0f);
-        }
-    } else if (prop == m_MsgTabColumns) {
-        m_MessageBoard.SetTabColumns(std::max(1, m_MsgTabColumns->GetInteger()));
-    } else if (prop == m_MsgLineSpacing) {
-        m_MessageBoard.SetLineSpacing(m_MsgLineSpacing->GetFloat());
-    } else if (prop == m_MsgBackgroundAlpha) {
-        m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(m_MsgBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
-    } else if (prop == m_WindowBackgroundAlpha) {
-        m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(m_WindowBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
-    } else if (prop == m_MsgFadeMaxAlpha) {
-        m_MessageBoard.SetFadeMaxAlpha(std::clamp(m_MsgFadeMaxAlpha->GetFloat(), 0.0f, 1.0f));
-    } else if (prop == m_CustomMapTooltip) {
-        m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
+        ApplySetting(setting, prop);
+        return;
     }
 }
 
@@ -352,10 +448,9 @@ void BMLMod::OnExitGame() {
 }
 
 void BMLMod::OnStartLevel() {
-    ApplyFrameRateSettings();
+    ApplySettings(OnLevelInit);
 
     ResetSRTimer();
-    ShowSRTimer(m_ShowSR->GetBoolean());
     SetParamValue(m_LoadCustom, FALSE);
 }
 
@@ -507,136 +602,103 @@ void BMLMod::SetHUD(int mode) {
 }
 
 void BMLMod::InitConfigs() {
+    BindSettings();
+
     GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
-    m_FontFilename = GetConfig()->GetProperty("GUI", "FontFilename");
     m_FontFilename->SetComment("The filename of TrueType font (the font filename should end with .ttf or .otf)");
     m_FontFilename->SetDefaultString("unifont.otf");
 
-    m_FontSize = GetConfig()->GetProperty("GUI", "FontSize");
     m_FontSize->SetComment("The size of font (pixel).");
     m_FontSize->SetDefaultFloat(32.0f);
 
-    m_FontRanges = GetConfig()->GetProperty("GUI", "FontRanges");
     m_FontRanges->SetComment("The Unicode ranges of font glyph."
                              " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
     m_FontRanges->SetDefaultString("ChineseFull");
 
-    m_EnableSecondaryFont = GetConfig()->GetProperty("GUI", "EnableSecondaryFont");
     m_EnableSecondaryFont->SetComment("Enable secondary font.");
     m_EnableSecondaryFont->SetDefaultBoolean(false);
 
-    m_SecondaryFontFilename = GetConfig()->GetProperty("GUI", "SecondaryFontFilename");
     m_SecondaryFontFilename->SetComment("The filename of secondary font (the font filename should end with .ttf or .otf)");
     m_SecondaryFontFilename->SetDefaultString("unifont.otf");
 
-    m_SecondaryFontSize = GetConfig()->GetProperty("GUI", "SecondaryFontSize");
     m_SecondaryFontSize->SetComment("The size of secondary font (pixel).");
     m_SecondaryFontSize->SetDefaultFloat(32.0f);
 
-    m_SecondaryFontRanges = GetConfig()->GetProperty("GUI", "SecondaryFontRanges");
     m_SecondaryFontRanges->SetComment("The Unicode ranges of secondary font glyph."
                                       " To display Chinese characters correctly, this option should be set to Chinese or ChineseFull");
     m_SecondaryFontRanges->SetDefaultString("ChineseFull");
 
-    m_EnableIniSettings = GetConfig()->GetProperty("GUI", "EnableIniSettings");
     m_EnableIniSettings->SetComment("Enable loading and saving ImGui settings.");
     m_EnableIniSettings->SetDefaultBoolean(true);
 
     GetConfig()->SetCategoryComment("HUD", "HUD Settings");
 
-    m_ShowTitle = GetConfig()->GetProperty("HUD", "ShowTitle");
     m_ShowTitle->SetComment("Show BML Title at top");
     m_ShowTitle->SetDefaultBoolean(true);
 
-    m_ShowFPS = GetConfig()->GetProperty("HUD", "ShowFPS");
     m_ShowFPS->SetComment("Show FPS at top-left corner");
     m_ShowFPS->SetDefaultBoolean(true);
 
-    m_ShowSR = GetConfig()->GetProperty("HUD", "ShowSRTimer");
     m_ShowSR->SetComment("Show SR Timer above Time Score");
     m_ShowSR->SetDefaultBoolean(true);
 
-    m_FPSUpdateFrequency = GetConfig()->GetProperty("HUD", "FPSUpdateFrequency");
     m_FPSUpdateFrequency->SetComment("FPS counter update frequency in frames (higher values = less frequent updates, better performance)");
     m_FPSUpdateFrequency->SetDefaultInteger(30);
 
     GetConfig()->SetCategoryComment("Graphics", "Graphics Settings");
 
-    m_UnlockFPS = GetConfig()->GetProperty("Graphics", "UnlockFrameRate");
     m_UnlockFPS->SetComment("Unlock Frame Rate Limitation");
     m_UnlockFPS->SetDefaultBoolean(false);
 
-    m_FPSLimit = GetConfig()->GetProperty("Graphics", "SetMaxFrameRate");
     m_FPSLimit->SetComment("Set Frame Rate Limitation, this option will not work if frame rate is unlocked. Set to 0 will turn on VSync");
     m_FPSLimit->SetDefaultInteger(0);
 
-    m_WidescreenFix = GetConfig()->GetProperty("Graphics", "WidescreenFix");
     m_WidescreenFix->SetComment("Improve widescreen resolutions support");
     m_WidescreenFix->SetDefaultBoolean(false);
 
     GetConfig()->SetCategoryComment("Tweak", "Tweak Settings");
 
-    m_LanternAlphaTest = GetConfig()->GetProperty("Tweak", "LanternAlphaTest");
     m_LanternAlphaTest->SetComment("Enable alpha test for lantern material, this option can increase FPS");
     m_LanternAlphaTest->SetDefaultBoolean(true);
 
-    m_FixLifeBall = GetConfig()->GetProperty("Tweak", "FixLifeBallFreeze");
     m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
     m_FixLifeBall->SetDefaultBoolean(true);
 
-    m_Overclock = GetConfig()->GetProperty("Tweak", "Overclock");
     m_Overclock->SetComment("Remove delay of spawn / respawn");
     m_Overclock->SetDefaultBoolean(false);
 
     GetConfig()->SetCategoryComment("CommandBar", "Command Bar Settings");
 
-    m_MsgDuration = GetConfig()->GetProperty("CommandBar", "MessageDuration");
     m_MsgDuration->SetComment("Maximum visible time of each notification message, in seconds (default: 6)");
     m_MsgDuration->SetDefaultFloat(6);
-    m_MessageBoard.SetMaxTimer(m_MsgDuration->GetFloat() * 1000);
 
-    m_MsgTabColumns = GetConfig()->GetProperty("CommandBar", "TabColumns");
     m_MsgTabColumns->SetComment("Tab width in columns for message wrapping (1..64, default: 4)");
     m_MsgTabColumns->SetDefaultInteger(4);
-    m_MessageBoard.SetTabColumns(std::max(1, m_MsgTabColumns->GetInteger()));
 
-    m_MsgLineSpacing = GetConfig()->GetProperty("CommandBar", "LineSpacing");
     m_MsgLineSpacing->SetComment("Line spacing between wrapped lines in messages (-1 to follow ImGui style).");
     m_MsgLineSpacing->SetDefaultFloat(-1.0f);
-    m_MessageBoard.SetLineSpacing(m_MsgLineSpacing->GetFloat());
 
-    m_MsgBackgroundAlpha = GetConfig()->GetProperty("CommandBar", "MessageBackgroundAlpha");
     m_MsgBackgroundAlpha->SetComment("Alpha scale for message backgrounds (0..1, default: 0.80)");
     m_MsgBackgroundAlpha->SetDefaultFloat(0.80f);
-    m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(m_MsgBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
 
-    m_WindowBackgroundAlpha = GetConfig()->GetProperty("CommandBar", "WindowBackgroundAlpha");
     m_WindowBackgroundAlpha->SetComment("Alpha scale for message window background (0..1, default: 1.0)");
     m_WindowBackgroundAlpha->SetDefaultFloat(1.0f);
-    m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(m_WindowBackgroundAlpha->GetFloat(), 0.0f, 1.0f));
 
-    m_MsgFadeMaxAlpha = GetConfig()->GetProperty("CommandBar", "FadeMaxAlpha");
     m_MsgFadeMaxAlpha->SetComment("Maximum text/background alpha in notifications (0..1, default: 1.0)");
     m_MsgFadeMaxAlpha->SetDefaultFloat(1.0f);
-    m_MessageBoard.SetFadeMaxAlpha(std::clamp(m_MsgFadeMaxAlpha->GetFloat(), 0.0f, 1.0f));
 
     GetConfig()->SetCategoryComment("CustomMap", "Custom Map Settings");
 
-    m_CustomMapNumber = GetConfig()->GetProperty("CustomMap", "LevelNumber");
     m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
                                   " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
     m_CustomMapNumber->SetDefaultInteger(0);
 
-    m_CustomMapTooltip = GetConfig()->GetProperty("CustomMap", "ShowTooltip");
     m_CustomMapTooltip->SetComment("Show custom map's full name in tooltip");
     m_CustomMapTooltip->SetDefaultBoolean(false);
-    m_MapMenu.SetShowTooltip(m_CustomMapTooltip->GetBoolean());
 
-    m_CustomMapMaxDepth = GetConfig()->GetProperty("CustomMap", "MaxDepth");
     m_CustomMapMaxDepth->SetComment("The max depth of the nested subdirectories.");
     m_CustomMapMaxDepth->SetDefaultInteger(8);
-    m_MapMenu.SetMaxDepth(m_CustomMapMaxDepth->GetInteger());
 }
 
 void BMLMod::InitGUI() {
