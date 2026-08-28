@@ -1,7 +1,6 @@
 #ifndef BML_COMMANDBAR_H
 #define BML_COMMANDBAR_H
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -58,7 +57,6 @@ private:
     ImVec2 m_WindowSize;
     bool m_VisiblePrev = false;
     bool m_ShowHints = false;
-    uint64_t m_InputBlockToken = 0;
     std::string m_Buffer;
     int m_CursorPos = 0;
     int m_HistoryIndex = -1;

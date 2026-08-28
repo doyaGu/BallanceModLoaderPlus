@@ -9,8 +9,6 @@
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "BML/ICommand.h"
-#include "BML/InputHook.h"
-
 #include "ModContext.h"
 #include "PathUtils.h"
 #include "StringUtils.h"
@@ -246,13 +244,6 @@ void CommandBar::OnShow() {
 
 void CommandBar::OnHide() {
     m_VisiblePrev = true;
-    if (m_InputBlockToken != 0) {
-        if (auto *context = BML_GetModContext()) {
-            if (auto *input = context->GetInputManager())
-                input->ReleaseBlock(m_InputBlockToken);
-        }
-        m_InputBlockToken = 0;
-    }
 }
 
 void CommandBar::PrintHistory() {
@@ -371,30 +362,16 @@ void CommandBar::SyncCandidatePageFromIndex() {
 }
 
 void CommandBar::ToggleCommandBar(bool on) {
-    auto *context = BML_GetModContext();
     if (on) {
         Show();
         m_Buffer.clear();
-        if (m_InputBlockToken == 0) {
-            if (auto *input = context->GetInputManager())
-                m_InputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
-        }
+        Bui::BlockKeyboardInput();
         m_HistoryIndex = static_cast<int>(m_History.size());
     } else {
-        const uint64_t releaseToken = m_InputBlockToken;
-        m_InputBlockToken = 0;
         Hide();
         ImGui::SetWindowFocus(nullptr);
         m_Buffer.clear();
-        context->AddTimerLoop(1ul, [context, releaseToken] {
-            auto *input = context->GetInputManager();
-            if (!input)
-                return false;
-            if (input->oIsKeyDown(CKKEY_ESCAPE) || input->oIsKeyDown(CKKEY_RETURN))
-                return true;
-            input->ReleaseBlock(releaseToken);
-            return false;
-        });
+        Bui::UnblockKeyboardAfterRelease();
     }
 }
 
