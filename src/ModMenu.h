@@ -30,17 +30,17 @@ private:
     Category *m_CurrentCategory = nullptr;
 };
 
-class ModListPage : public Bui::Page {
+class ModListPage : public Bui::TypedPage<ModMenu> {
 public:
-    explicit ModListPage() : Bui::Page("Mod List") {}
+    explicit ModListPage() : Bui::TypedPage<ModMenu>("Mod List") {}
 
     void OnPostBegin() override;
     void OnDraw() override;
 };
 
-class ModPage : public Bui::Page {
+class ModPage : public Bui::TypedPage<ModMenu> {
 public:
-    explicit ModPage() : Bui::Page("Mod Page") {}
+    explicit ModPage() : Bui::TypedPage<ModMenu>("Mod Page") {}
 
     void OnPostBegin() override;
     void OnDraw() override;
@@ -52,9 +52,9 @@ protected:
     char m_TextBuf[1024] = {};
 };
 
-class ModOptionPage : public Bui::Page {
+class ModOptionPage : public Bui::TypedPage<ModMenu> {
 public:
-    explicit ModOptionPage() : Bui::Page("Mod Options") {}
+    explicit ModOptionPage() : Bui::TypedPage<ModMenu>("Mod Options") {}
 
     void OnPostBegin() override;
     void OnDraw() override;

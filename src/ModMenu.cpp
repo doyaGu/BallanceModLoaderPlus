@@ -160,8 +160,8 @@ void ModListPage::OnDraw() {
         ImGui::PopID();
 
         if (clicked) {
-            dynamic_cast<ModMenu *>(m_Menu)->SetCurrentMod(mod);
-            m_Menu->OpenPage("Mod Page");
+            Menu()->SetCurrentMod(mod);
+            Menu()->OpenPage("Mod Page");
         }
         return true;
     }, 0.35f, 0.24f, 0.14f, 4);
@@ -176,7 +176,7 @@ void ModPage::OnPostBegin() {
 
     ImGui::Dummy(Bui::CoordToPixel(ImVec2(1.0f, 0.1f)));
 
-    auto *mod = dynamic_cast<ModMenu *>(m_Menu)->GetCurrentMod();
+    auto *mod = Menu()->GetCurrentMod();
 
     Bui::WrappedText(mod->GetName(), titleWidth, titleX, 1.2f);
 
@@ -234,8 +234,8 @@ void ModPage::OnDraw() {
         ImGui::PopID();
 
         if (clicked) {
-            dynamic_cast<ModMenu *>(m_Menu)->SetCurrentCategory(category);
-            m_Menu->OpenPage("Mod Options");
+            Menu()->SetCurrentCategory(category);
+            Menu()->OpenPage("Mod Options");
         }
 
         if (ImGui::IsItemHovered()) {
@@ -339,8 +339,8 @@ void ModOptionPage::OnPreEnd() {
         });
     } else {
         if (Bui::NavBack()) {
-            if (m_Menu) {
-                m_Menu->OpenPrevPage();
+            if (auto *menu = Menu()) {
+                menu->OpenPrevPage();
             } else {
                 Close();
             }
@@ -351,7 +351,7 @@ void ModOptionPage::OnPreEnd() {
 bool ModOptionPage::OnOpen() {
     RefreshFontList();
 
-    m_Category = dynamic_cast<ModMenu *>(m_Menu)->GetCurrentCategory();
+    m_Category = Menu()->GetCurrentCategory();
     if (!m_Category)
         return false;
 
@@ -385,7 +385,7 @@ bool ModOptionPage::DrawEditor(Property *property, Property::Value &value) {
     switch (property->GetType()) {
         case IProperty::STRING: {
             std::string &text = std::get<std::string>(value);
-            auto *modMenu = dynamic_cast<ModMenu *>(m_Menu);
+            auto *modMenu = Menu();
             IMod *currentMod = modMenu ? modMenu->GetCurrentMod() : nullptr;
 
             if (IsBmlFontFilenameProperty(currentMod, m_Category, property)) {
