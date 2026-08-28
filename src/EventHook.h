@@ -16,6 +16,9 @@ public:
     void RegisterGameplayEvents(CKBehavior *script);
 
 private:
+    void ClearOverclockPatch();
+    void RejectOverclockPatch(const char *reason);
+
     BMLMod &m_Mod;
     IBML &m_BML;
     IMessageReceiver &m_Receiver;

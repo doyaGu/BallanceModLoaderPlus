@@ -28,6 +28,19 @@ CKBehavior *CreateEventHook(CKBehavior *script, Receiver &receiver) {
 EventHookRegistrar::EventHookRegistrar(BMLMod &mod, IBML &bml)
     : m_Mod(mod), m_BML(bml), m_Receiver(bml) {}
 
+void EventHookRegistrar::ClearOverclockPatch() {
+    for (int i = 0; i < 3; ++i) {
+        m_Mod.m_OverclockLinks[i] = nullptr;
+        m_Mod.m_OverclockLinkIO[i][0] = nullptr;
+        m_Mod.m_OverclockLinkIO[i][1] = nullptr;
+    }
+}
+
+void EventHookRegistrar::RejectOverclockPatch(const char *reason) {
+    ClearOverclockPatch();
+    m_Mod.GetLogger()->Error("Overclock script patch is unavailable: %s", reason);
+}
+
 void EventHookRegistrar::RegisterBaseEventHandler(CKBehavior *script) {
     CKBehavior *som = FindFirstBB(script, "Switch On Message", false, 2, 11, 11, 0);
 
@@ -126,16 +139,35 @@ void EventHookRegistrar::RegisterGameplayIngame(CKBehavior *script) {
 
     m_Mod.m_CurLevel = m_BML.GetArrayByName("CurrentLevel");
 
-    CKBehavior *ballMgr = FindFirstBB(script, "BallManager");
-    CKBehavior *deactBall = FindFirstBB(ballMgr, "Deactivate Ball");
-    CKBehavior *pieces = FindFirstBB(deactBall, "reset Ballpieces");
-    m_Mod.m_OverclockLinks[0] = FindNextLink(deactBall, pieces);
-    CKBehavior *unphy = FindNextBB(deactBall, FindNextBB(deactBall, m_Mod.m_OverclockLinks[0]->GetOutBehaviorIO()->GetOwner()));
-    m_Mod.m_OverclockLinkIO[0][1] = unphy->GetInput(1);
+    ClearOverclockPatch();
 
-    CKBehavior *newBall = FindFirstBB(ballMgr, "New Ball");
-    CKBehavior *physicsNewBall = FindFirstBB(newBall, "physicalize new Ball");
-    m_Mod.m_OverclockLinks[1] = FindPreviousLink(newBall, FindPreviousBB(newBall, FindPreviousBB(newBall, FindPreviousBB(newBall, physicsNewBall))));
+    CKBehavior *ballMgr = FindFirstBB(script, "BallManager");
+    CKBehavior *deactBall = ballMgr ? FindFirstBB(ballMgr, "Deactivate Ball") : nullptr;
+    CKBehavior *pieces = deactBall ? FindFirstBB(deactBall, "reset Ballpieces") : nullptr;
+    CKBehaviorLink *deactivateLink = pieces ? FindNextLink(deactBall, pieces) : nullptr;
+    CKBehaviorIO *deactivateTarget = deactivateLink ? deactivateLink->GetOutBehaviorIO() : nullptr;
+    CKBehavior *afterPieces = deactivateTarget ? deactivateTarget->GetOwner() : nullptr;
+    CKBehavior *beforeUnphysicalize = afterPieces ? FindNextBB(deactBall, afterPieces) : nullptr;
+    CKBehavior *unphysicalize = beforeUnphysicalize ? FindNextBB(deactBall, beforeUnphysicalize) : nullptr;
+
+    CKBehavior *newBall = ballMgr ? FindFirstBB(ballMgr, "New Ball") : nullptr;
+    CKBehavior *physicsNewBall = newBall ? FindFirstBB(newBall, "physicalize new Ball") : nullptr;
+    CKBehavior *previous = physicsNewBall ? FindPreviousBB(newBall, physicsNewBall) : nullptr;
+    previous = previous ? FindPreviousBB(newBall, previous) : nullptr;
+    previous = previous ? FindPreviousBB(newBall, previous) : nullptr;
+    CKBehaviorLink *newBallLink = previous ? FindPreviousLink(newBall, previous) : nullptr;
+
+    if (!deactivateLink || !unphysicalize || unphysicalize->GetInputCount() <= 1 ||
+        !newBallLink || !physicsNewBall || physicsNewBall->GetInputCount() == 0) {
+        RejectOverclockPatch("Gameplay_Ingame does not match the expected vanilla script graph");
+        return;
+    }
+
+    // Keep these results staged until the Gameplay_Energy graph completes the
+    // three-link patch. No graph edge is modified while the patch is partial.
+    m_Mod.m_OverclockLinks[0] = deactivateLink;
+    m_Mod.m_OverclockLinkIO[0][1] = unphysicalize->GetInput(1);
+    m_Mod.m_OverclockLinks[1] = newBallLink;
     m_Mod.m_OverclockLinkIO[1][1] = physicsNewBall->GetInput(0);
 }
 
@@ -168,13 +200,34 @@ void EventHookRegistrar::RegisterGameplayEnergy(CKBehavior *script) {
     InsertBB(script, FindNextLink(script, ep, "Show"), CreateEventHook<&Receiver::OnExtraPoint>(script, m_Receiver));
 
     CKBehavior *delay = FindFirstBB(script, "Delayer");
-    m_Mod.m_OverclockLinks[2] = FindPreviousLink(script, delay);
-    CKBehaviorLink *link = FindNextLink(script, delay);
-    m_Mod.m_OverclockLinkIO[2][1] = link->GetOutBehaviorIO();
+    CKBehaviorLink *energyLink = delay ? FindPreviousLink(script, delay) : nullptr;
+    CKBehaviorLink *afterDelay = delay ? FindNextLink(script, delay) : nullptr;
+    CKBehaviorIO *energyTarget = afterDelay ? afterDelay->GetOutBehaviorIO() : nullptr;
 
-    for (int i = 0; i < 3; i++) {
-        m_Mod.m_OverclockLinkIO[i][0] = m_Mod.m_OverclockLinks[i]->GetOutBehaviorIO();
-        if (m_Mod.m_Overclock->GetBoolean())
+    if (!m_Mod.m_OverclockLinks[0] || !m_Mod.m_OverclockLinks[1] ||
+        !m_Mod.m_OverclockLinkIO[0][1] || !m_Mod.m_OverclockLinkIO[1][1] ||
+        !energyLink || !energyTarget) {
+        RejectOverclockPatch("the gameplay scripts do not match the expected vanilla graph");
+        return;
+    }
+
+    CKBehaviorIO *originalTargets[3] = {
+        m_Mod.m_OverclockLinks[0]->GetOutBehaviorIO(),
+        m_Mod.m_OverclockLinks[1]->GetOutBehaviorIO(),
+        energyLink->GetOutBehaviorIO(),
+    };
+    if (!originalTargets[0] || !originalTargets[1] || !originalTargets[2]) {
+        RejectOverclockPatch("an expected gameplay link has no target");
+        return;
+    }
+
+    m_Mod.m_OverclockLinks[2] = energyLink;
+    m_Mod.m_OverclockLinkIO[2][1] = energyTarget;
+    for (int i = 0; i < 3; i++)
+        m_Mod.m_OverclockLinkIO[i][0] = originalTargets[i];
+
+    if (m_Mod.m_Overclock->GetBoolean()) {
+        for (int i = 0; i < 3; i++)
             m_Mod.m_OverclockLinks[i]->SetOutBehaviorIO(m_Mod.m_OverclockLinkIO[i][1]);
     }
 }
