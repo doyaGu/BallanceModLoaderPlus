@@ -486,6 +486,18 @@ private:
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 
     const std::thread::id m_MainThreadId = std::this_thread::get_id();
+
+    // Mod synchronization protocol:
+    // 1. Acquire the invocation gate before either registry lock when a task
+    //    needs both object lifetime protection and registry state.
+    // 2. When both mutex families are needed, acquire m_Mutex before
+    //    m_ModRegistryMutex and release them in reverse order.
+    // 3. Never call a Mod virtual method while m_Mutex or
+    //    m_ModRegistryMutex is held. Copy the required state, unlock, and then
+    //    invoke external code while the invocation gate keeps objects alive.
+    //
+    // m_ModRegistryMutex protects the Mod/DLL owner registries and their
+    // indices. m_Mutex protects dependencies, configs, commands, and callbacks.
     mutable std::shared_mutex m_ModRegistryMutex;
     mutable BML::ModInvocationGate m_ModInvocationGate;
     mutable std::mutex m_Mutex;
