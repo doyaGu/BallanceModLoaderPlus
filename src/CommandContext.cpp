@@ -321,6 +321,24 @@ ICommand *CommandContext::GetCommandByName(const char *name) const {
     return it->second;
 }
 
+bool CommandContext::GetCommandInvocation(const char *name, ICommand *&command, CommandInfo &info) const {
+    command = GetCommandByName(name);
+    if (!command)
+        return false;
+
+    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
+                                    [command](const Entry &item) {
+                                        return item.Command == command;
+                                    });
+    if (entry == m_Commands.end()) {
+        command = nullptr;
+        return false;
+    }
+
+    info = entry->Info;
+    return true;
+}
+
 std::vector<CommandContext::CommandInfo> CommandContext::GetCommandSnapshot() const {
     std::vector<CommandInfo> snapshot;
     snapshot.reserve(m_Commands.size());
@@ -337,19 +355,8 @@ bool CommandContext::GetCommandInfoByIndex(size_t index, CommandInfo &info) cons
 }
 
 bool CommandContext::GetCommandInfoByName(const char *name, CommandInfo &info) const {
-    ICommand *command = GetCommandByName(name);
-    if (!command)
-        return false;
-
-    const auto entry = std::find_if(m_Commands.begin(), m_Commands.end(),
-                                    [command](const Entry &item) {
-                                        return item.Command == command;
-                                    });
-    if (entry == m_Commands.end())
-        return false;
-
-    info = entry->Info;
-    return true;
+    ICommand *command = nullptr;
+    return GetCommandInvocation(name, command, info);
 }
 
 bool CommandContext::SetCheatEnabled(bool enabled) noexcept {

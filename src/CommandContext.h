@@ -47,6 +47,7 @@ namespace BML {
         size_t GetCommandCount() const;
         ICommand *GetCommandByIndex(size_t index) const;
         ICommand *GetCommandByName(const char *name) const;
+        bool GetCommandInvocation(const char *name, ICommand *&command, CommandInfo &info) const;
         std::vector<CommandInfo> GetCommandSnapshot() const;
         bool GetCommandInfoByIndex(size_t index, CommandInfo &info) const;
         bool GetCommandInfoByName(const char *name, CommandInfo &info) const;

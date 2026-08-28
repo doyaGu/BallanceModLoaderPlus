@@ -31,7 +31,8 @@ public:
     std::string GetName() override { return m_Name; }
     std::string GetAlias() override { return m_Alias; }
     std::string GetDescription() override { return "Test command"; }
-    bool IsCheat() override { return false; }
+    bool IsCheat() override { return m_Cheat; }
+    void SetCheat(bool cheat) { m_Cheat = cheat; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override {
         m_LastArgs = args;
         m_ExecuteCount++;
@@ -46,6 +47,7 @@ public:
 private:
     std::string m_Name;
     std::string m_Alias;
+    bool m_Cheat = false;
 };
 
 class CommandContextTest : public ::testing::Test {
@@ -114,6 +116,19 @@ TEST_F(CommandContextTest, CommandInfoLookupDoesNotExposeRegistryEntry) {
     ASSERT_TRUE(ctx->GetCommandInfoByIndex(0, info));
     EXPECT_EQ("teleport", info.Name);
     EXPECT_FALSE(ctx->GetCommandInfoByIndex(1, info));
+}
+
+TEST_F(CommandContextTest, InvocationUsesRegisteredMetadataSnapshot) {
+    auto *command = MakeCommand("teleport", "tp");
+    command->SetCheat(true);
+    ASSERT_TRUE(Register(command));
+    command->SetCheat(false);
+
+    ICommand *resolved = nullptr;
+    BML::CommandContext::CommandInfo info;
+    ASSERT_TRUE(ctx->GetCommandInvocation("TP", resolved, info));
+    EXPECT_EQ(command, resolved);
+    EXPECT_TRUE(info.Cheat);
 }
 
 TEST_F(CommandContextTest, RegisterNullCommand) {

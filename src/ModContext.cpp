@@ -1052,16 +1052,17 @@ void ModContext::ExecuteCommand(const char *cmd) {
 
     auto invocationLock = m_CommandInvocationGate.LockCall();
     ICommand *command = nullptr;
+    BML::CommandContext::CommandInfo commandInfo;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        command = m_CommandContext.GetCommandByName(args[0].c_str());
+        m_CommandContext.GetCommandInvocation(args[0].c_str(), command, commandInfo);
     }
     if (!command) {
         m_BMLMod->AddIngameMessage(("Error: Unknown Command " + args[0]).c_str());
         return;
     }
 
-    if (command->IsCheat() && !IsCheatEnabled()) {
+    if (commandInfo.Cheat && !IsCheatEnabled()) {
         m_BMLMod->AddIngameMessage(("Error: Can not execute cheat command " + args[0]).c_str());
         return;
     }
