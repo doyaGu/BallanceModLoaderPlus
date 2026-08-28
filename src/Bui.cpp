@@ -21,6 +21,7 @@
 
 namespace Bui {
     static uint64_t g_KeyboardInputBlockToken = 0;
+    static unsigned int g_KeyboardInputBlockUsers = 0;
 
     enum TextureType {
         TEXTURE_BUTTON_DESELECT,
@@ -1338,10 +1339,15 @@ namespace Bui {
     void BlockKeyboardInput() {
         auto *ctx = BML_GetModContext();
         if (!ctx) return;
-        if (g_KeyboardInputBlockToken == 0) {
-            if (auto *input = ctx->GetInputManager())
-                g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
+        if (g_KeyboardInputBlockUsers > 0) {
+            ++g_KeyboardInputBlockUsers;
+            return;
         }
+
+        if (auto *input = ctx->GetInputManager())
+            g_KeyboardInputBlockToken = input->AcquireBlock(InputHook::INPUT_BLOCK_KEYBOARD);
+        if (g_KeyboardInputBlockToken != 0)
+            g_KeyboardInputBlockUsers = 1;
     }
 
     void ActivateScript(const char *scriptName) {
@@ -1357,6 +1363,12 @@ namespace Bui {
     void UnblockKeyboardAfterRelease() {
         auto *mod = BML_GetModContext();
         if (!mod) return;
+
+        if (g_KeyboardInputBlockUsers == 0)
+            return;
+        if (--g_KeyboardInputBlockUsers > 0)
+            return;
+
         const uint64_t token = g_KeyboardInputBlockToken;
         g_KeyboardInputBlockToken = 0;
         if (token == 0) return;

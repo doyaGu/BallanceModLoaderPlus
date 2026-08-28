@@ -392,11 +392,10 @@ namespace Bui {
     // waits, one game frame at a time, until Escape and Enter are both up, so the press
     // that left the menu is over before the game can act on it.
     //
-    // The block is one for the whole loader rather than one per Mod. BlockKeyboardInput
-    // does nothing while a block is already up, and UnblockKeyboardAfterRelease
-    // releases whichever block is up, so two Mods with menus open at once interfere.
-    // Take it when the Mod's own menu opens and give it back when that menu closes, and
-    // do not hold it across anything else.
+    // The underlying block is shared by the whole loader and reference-counted.
+    // Every successful BlockKeyboardInput call must have one matching
+    // UnblockKeyboardAfterRelease call. Overlapping menus therefore keep the keyboard
+    // blocked until the last one closes; an unmatched close is ignored.
     //
     // ActivateScript starts one of the game's own scripts by name, the way the game's
     // menu buttons move from one screen to the next, and does nothing when there is no
