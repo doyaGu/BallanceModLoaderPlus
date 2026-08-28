@@ -1049,7 +1049,12 @@ Config *ModContext::GetConfig(IMod *mod) {
     if (!mod)
         return nullptr;
 
-    auto it = m_ConfigMap.find(mod->GetID());
+    // Resolve the key before taking the registry mutex: GetID is a virtual call
+    // into the Mod and may legally call back into the loader.
+    const std::string modId = mod->GetID();
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    auto it = m_ConfigMap.find(modId);
     if (it == m_ConfigMap.end())
         return nullptr;
     return it->second;
