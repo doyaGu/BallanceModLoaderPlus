@@ -108,6 +108,9 @@ namespace AnsiText {
     AnsiString::AnsiString(const char *text) { SetText(text); }
     AnsiString::AnsiString(const std::string &text) { SetText(text); }
     AnsiString::AnsiString(std::string &&text) { SetText(std::move(text)); }
+    AnsiString::AnsiString(std::string &&text, const ConsoleColor &initialColor) {
+        SetText(std::move(text), initialColor);
+    }
 
     void AnsiString::RebindSegmentsPointers(const char *oldBase, const char *newBase) {
         if (!oldBase || !newBase) return;
@@ -219,10 +222,20 @@ namespace AnsiText {
         }
     }
 
-    void AnsiString::AssignAndParse(std::string &&text) {
+    void AnsiString::SetText(std::string &&text, const ConsoleColor &initialColor) {
+        if (text.empty()) { Clear(); return; }
+        if (utf8valid(reinterpret_cast<const utf8_int8_t *>(text.c_str())) == nullptr) {
+            AssignAndParse(std::move(text), initialColor);
+        } else {
+            std::wstring w = utils::AnsiToUtf16(text.c_str());
+            AssignAndParse(utils::Utf16ToUtf8(w), initialColor);
+        }
+    }
+
+    void AnsiString::AssignAndParse(std::string &&text, const ConsoleColor &initialColor) {
         m_OriginalText = std::move(text);
         m_Segments.clear();
-        ParseAnsiEscapeCodes();
+        ParseAnsiEscapeCodes(initialColor);
     }
 
     void AnsiString::Clear() {
@@ -233,7 +246,7 @@ namespace AnsiText {
         m_HasReverse = false;
     }
 
-    void AnsiString::ParseAnsiEscapeCodes() {
+    void AnsiString::ParseAnsiEscapeCodes(const ConsoleColor &initialColor) {
         m_Segments.clear();
 
         if (m_OriginalText.empty())
@@ -256,13 +269,13 @@ namespace AnsiText {
         // The input has already been normalized to UTF-8. Treating raw 0x9B as
         // 8-bit CSI here would collide with valid UTF-8 continuation bytes.
         if (std::memchr(start, 0x1B, (size_t)(end - start)) == nullptr) {
-            m_Segments.emplace_back(start, end, ConsoleColor());
+            m_Segments.emplace_back(start, end, initialColor);
             return;
         }
 
         // General parser with zero-copy segments
         m_Segments.reserve(8);
-        ConsoleColor currentColor;
+        ConsoleColor currentColor = initialColor;
         const char *p = start;
         const char *segStart = start;
 

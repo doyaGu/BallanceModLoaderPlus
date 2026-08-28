@@ -97,6 +97,7 @@ namespace AnsiText {
         explicit AnsiString(const char *text);
         explicit AnsiString(const std::string &text);
         explicit AnsiString(std::string &&text);
+        AnsiString(std::string &&text, const ConsoleColor &initialColor);
 
         AnsiString(const AnsiString &other);
         AnsiString &operator=(const AnsiString &other);
@@ -106,6 +107,7 @@ namespace AnsiText {
         void SetText(const char *text);
         void SetText(const std::string &text);
         void SetText(std::string &&text);
+        void SetText(std::string &&text, const ConsoleColor &initialColor);
 
         const std::string &GetOriginalText() const { return m_OriginalText; }
         const std::vector<TextSegment> &GetSegments() const { return m_Segments; }
@@ -123,8 +125,8 @@ namespace AnsiText {
         bool m_HasTrueColorBG = false; // Any 48;2;r;g;b background used
         bool m_HasReverse = false;     // Any SGR 7 encountered (conservative)
 
-        void ParseAnsiEscapeCodes();
-        void AssignAndParse(std::string &&text);
+        void ParseAnsiEscapeCodes(const ConsoleColor &initialColor = {});
+        void AssignAndParse(std::string &&text, const ConsoleColor &initialColor = {});
         void RebindSegmentsPointers(const char *oldBase, const char *newBase);
         static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
                                                   bool *out_hasAnsi256Bg = nullptr, bool *out_hasTrueColorBg = nullptr, bool *out_hasReverse = nullptr);

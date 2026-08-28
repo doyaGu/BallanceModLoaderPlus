@@ -20,6 +20,9 @@ MessageBoard::MessageUnit::MessageUnit(const char *msg, float timer) : timer(tim
     }
 }
 
+MessageBoard::MessageUnit::MessageUnit(std::string msg, float timer, ImU32 color)
+    : ansiText(std::move(msg), ConsoleColor(color)), timer(timer) {}
+
 void MessageBoard::MessageUnit::SetMessage(const char *msg) {
     if (!msg) return;
 
@@ -526,6 +529,10 @@ void MessageBoard::AddMessageInternal(const char *msg) {
     if (msg[0] == '\0')
         msg = "\n"; // treat empty messages as newlines
 
+    AddMessageInternal(MessageUnit(msg, m_MaxTimer));
+}
+
+void MessageBoard::AddMessageInternal(MessageUnit message) {
     // Update display count
     if (m_MessageCount == static_cast<int>(m_Messages.size()) && m_Messages[m_MessageCount - 1].GetTimer() > 0) {
         --m_DisplayMessageCount;
@@ -538,7 +545,7 @@ void MessageBoard::AddMessageInternal(const char *msg) {
     }
 
     // Add new message
-    m_Messages[0] = MessageUnit(msg, m_MaxTimer);
+    m_Messages[0] = std::move(message);
 
     if (m_MessageCount < static_cast<int>(m_Messages.size())) {
         ++m_MessageCount;
@@ -593,12 +600,9 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
     if (!formatted)
         return;
 
-    const ImU32 r = (color >> IM_COL32_R_SHIFT) & 0xFF;
-    const ImU32 g = (color >> IM_COL32_G_SHIFT) & 0xFF;
-    const ImU32 b = (color >> IM_COL32_B_SHIFT) & 0xFF;
-
-    std::string coloredBuffer = "\033[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + message + "\033[0m";
-    AddMessage(coloredBuffer.c_str());
+    if (message.empty())
+        message = "\n";
+    AddMessageInternal(MessageUnit(std::move(message), m_MaxTimer, color));
 }
 
 void MessageBoard::ClearMessages() {

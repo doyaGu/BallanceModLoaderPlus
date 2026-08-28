@@ -42,6 +42,7 @@ public:
 
         MessageUnit() = default;
         MessageUnit(const char *msg, float timer);
+        MessageUnit(std::string msg, float timer, ImU32 color);
 
         MessageUnit(MessageUnit &&other) noexcept = default;
         MessageUnit &operator=(MessageUnit &&other) noexcept = default;
@@ -150,6 +151,7 @@ private:
     // Core operations
     void UpdateTimers(float deltaTime);
     void AddMessageInternal(const char *msg);
+    void AddMessageInternal(MessageUnit message);
     void HandleScrolling(float visibleHeight);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
     void InvalidateLayoutCache();

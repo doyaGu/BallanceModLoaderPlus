@@ -120,6 +120,15 @@ TEST(AnsiTextTest, EscSgrSequencesStillSplitSegments) {
     EXPECT_EQ(segments[1].color, AnsiText::ConsoleColor());
 }
 
+TEST(AnsiTextTest, InitialForegroundPreservesPackedAlphaWithoutEscapeText) {
+    const ImU32 color = IM_COL32(12, 34, 56, 78);
+    AnsiText::AnsiString text(std::string("colored"), AnsiText::ConsoleColor(color));
+
+    ASSERT_EQ(text.GetOriginalText(), "colored");
+    ASSERT_EQ(text.GetSegments().size(), 1u);
+    EXPECT_EQ(text.GetSegments()[0].color.foreground, color);
+}
+
 TEST(AnsiTextTest, MoveAssignmentRebindsShortStringSegmentsToDestinationBuffer) {
     AnsiText::AnsiString source("Connecting...");
     AnsiText::AnsiString dest("placeholder");
