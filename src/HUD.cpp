@@ -56,7 +56,6 @@ std::shared_ptr<HUDElement> HUDElement::Clone() const {
 HUDElement &HUDElement::SetVisible(bool visible) {
     if (m_Visible == visible) return *this;
     m_Visible = visible;
-    MarkDirty();
     return *this;
 }
 

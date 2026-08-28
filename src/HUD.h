@@ -232,10 +232,6 @@ protected:
     // Utility methods
     static float ValidateScale(float scale);
     static float ValidatePadding(float padding);
-    void MarkDirty() { m_IsDirty = true; }
-
-private:
-    mutable bool m_IsDirty = true;
 };
 
 template <typename T>
@@ -328,7 +324,6 @@ private:
 
     void Invalidate() {
         ++m_TextVersion;
-        MarkDirty();
     }
 
     ImVec2 CalculateAnsiTextSize(const ImVec2 &viewportSize) const;
@@ -341,8 +336,8 @@ public:
 
     HUDTypeId GetTypeId() const override { return HUDTypeId::Image; }
 
-    HUDImage &SetTexture(ImTextureID texture) { m_Texture = texture; MarkDirty(); return *this; }
-    HUDImage &SetSize(float width, float height) { m_Width = width; m_Height = height; MarkDirty(); return *this; }
+    HUDImage &SetTexture(ImTextureID texture) { m_Texture = texture; return *this; }
+    HUDImage &SetSize(float width, float height) { m_Width = width; m_Height = height; return *this; }
     HUDImage &SetTint(ImU32 tint) { m_Tint = tint; return *this; }
 
     ImTextureID GetTexture() const { return m_Texture; }
@@ -369,7 +364,7 @@ public:
 
     HUDProgressBar &SetValue(float value) { m_Value = std::clamp(value, m_Min, m_Max); return *this; }
     HUDProgressBar &SetRange(float min, float max) { m_Min = min; m_Max = max; SetValue(m_Value); return *this; }
-    HUDProgressBar &SetSize(float width, float height) { m_Width = width; m_Height = height; MarkDirty(); return *this; }
+    HUDProgressBar &SetSize(float width, float height) { m_Width = width; m_Height = height; return *this; }
     HUDProgressBar &SetColors(ImU32 bg, ImU32 fill) { m_BgColor = bg; m_FillColor = fill; return *this; }
 
     float GetValue() const { return m_Value; }
@@ -397,7 +392,7 @@ public:
 
     HUDTypeId GetTypeId() const override { return HUDTypeId::Spacer; }
 
-    HUDSpacer& SetSize(float width, float height) { m_Width = width; m_Height = height; MarkDirty(); return *this; }
+    HUDSpacer& SetSize(float width, float height) { m_Width = width; m_Height = height; return *this; }
     ImVec2 GetSize() const { return {m_Width, m_Height}; }
 
     std::shared_ptr<HUDElement> Clone() const override;
