@@ -154,7 +154,7 @@ float MessageBoard::GetMessageAlpha(const MessageUnit &msg) const {
 int MessageBoard::CountVisibleMessages() const {
     int count = 0;
     for (int i = 0; i < m_MessageCount; i++) {
-        if (ShouldShowMessage(m_Messages[i])) {
+        if (ShouldShowMessage(MessageAt(i))) {
             count++;
         }
     }
@@ -173,7 +173,7 @@ float MessageBoard::CalculateContentHeight(float wrapWidth) const {
     int visibleCount = 0;
 
     for (int i = 0; i < m_MessageCount; i++) {
-        const MessageUnit &msg = m_Messages[i];
+        const MessageUnit &msg = MessageAt(i);
         if (ShouldShowMessage(msg)) {
             contentHeight += msg.GetTextHeight(wrapWidth, m_MessageGap, m_TabColumns);
             visibleCount++;
@@ -301,7 +301,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
     heights.reserve(m_MessageCount);
 
     for (int i = m_MessageCount - 1; i >= 0; --i) {
-        const MessageUnit &msg = m_Messages[i];
+        const MessageUnit &msg = MessageAt(i);
         const bool shouldShow = m_IsCommandBarVisible || ShouldShowMessage(msg);
         if (!shouldShow)
             continue;
@@ -346,7 +346,7 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
 
     for (int j = begin; j < end; ++j) {
         const int i = indices[j];
-        const MessageUnit &msg = m_Messages[i];
+        const MessageUnit &msg = MessageAt(i);
         const float msgHeight = heights[j];
         const ImVec2 pos(startPos.x, startPos.y + offsets[j]);
 
@@ -499,12 +499,23 @@ std::string MessageBoard::FormatScrollPercent(float contentHeight, float visible
 // Message Management
 // =============================================================================
 
+MessageBoard::MessageUnit &MessageBoard::MessageAt(int logicalIndex) {
+    const int capacity = static_cast<int>(m_Messages.size());
+    return m_Messages[(m_MessageHead + logicalIndex) % capacity];
+}
+
+const MessageBoard::MessageUnit &MessageBoard::MessageAt(int logicalIndex) const {
+    const int capacity = static_cast<int>(m_Messages.size());
+    return m_Messages[(m_MessageHead + logicalIndex) % capacity];
+}
+
 void MessageBoard::UpdateTimers(float deltaTime) {
     for (int i = 0; i < m_MessageCount; i++) {
-        if (m_Messages[i].timer > 0.0f) {
-            m_Messages[i].timer -= deltaTime;
-            if (m_Messages[i].timer <= 0.0f) {
-                m_Messages[i].timer = 0.0f;
+        MessageUnit &message = MessageAt(i);
+        if (message.timer > 0.0f) {
+            message.timer -= deltaTime;
+            if (message.timer <= 0.0f) {
+                message.timer = 0.0f;
                 --m_DisplayMessageCount;
             }
         }
@@ -521,21 +532,20 @@ void MessageBoard::AddMessageInternal(const char *msg) {
 }
 
 void MessageBoard::AddMessageInternal(MessageUnit message) {
+    const int capacity = static_cast<int>(m_Messages.size());
+
     // Update display count
-    if (m_MessageCount == static_cast<int>(m_Messages.size()) && m_Messages[m_MessageCount - 1].GetTimer() > 0) {
+    if (m_MessageCount == capacity && MessageAt(m_MessageCount - 1).GetTimer() > 0) {
         --m_DisplayMessageCount;
     }
 
-    // Shift messages
-    const int shiftCount = std::min(m_MessageCount, static_cast<int>(m_Messages.size()) - 1);
-    for (int i = shiftCount - 1; i >= 0; i--) {
-        m_Messages[i + 1] = std::move(m_Messages[i]);
-    }
+    if (m_MessageCount > 0)
+        m_MessageHead = (m_MessageHead + capacity - 1) % capacity;
 
     // Add new message
-    m_Messages[0] = std::move(message);
+    m_Messages[m_MessageHead] = std::move(message);
 
-    if (m_MessageCount < static_cast<int>(m_Messages.size())) {
+    if (m_MessageCount < capacity) {
         ++m_MessageCount;
     }
     ++m_DisplayMessageCount;
@@ -595,6 +605,7 @@ void MessageBoard::PrintfColored(ImU32 color, const char *format, ...) {
 
 void MessageBoard::ClearMessages() {
     m_MessageCount = 0;
+    m_MessageHead = 0;
     m_DisplayMessageCount = 0;
     for (auto &message : m_Messages) {
         message.Reset();
@@ -604,13 +615,19 @@ void MessageBoard::ClearMessages() {
 void MessageBoard::ResizeMessages(int size) {
     if (size < 1) return;
 
-    m_Messages.resize(size);
-    m_MessageCount = std::min(m_MessageCount, size);
+    const int retainedCount = std::min(m_MessageCount, size);
+    std::vector<MessageUnit> resized(static_cast<size_t>(size));
+    for (int i = 0; i < retainedCount; ++i) {
+        resized[i] = std::move(MessageAt(i));
+    }
+    m_Messages.swap(resized);
+    m_MessageCount = retainedCount;
+    m_MessageHead = 0;
 
     // Recount displayed messages since truncation may have removed active-timer entries
     int displayed = 0;
     for (int i = 0; i < m_MessageCount; ++i) {
-        if (m_Messages[i].timer > 0.0f)
+        if (MessageAt(i).timer > 0.0f)
             ++displayed;
     }
     m_DisplayMessageCount = displayed;

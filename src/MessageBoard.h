@@ -155,6 +155,8 @@ private:
     void HandleScrolling(float visibleHeight);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
     void InvalidateLayoutCache();
+    MessageUnit &MessageAt(int logicalIndex);
+    const MessageUnit &MessageAt(int logicalIndex) const;
 
     // Utilities
     void SetScrollYClamped(float y);
@@ -162,6 +164,7 @@ private:
     // Message storage
     std::vector<MessageUnit> m_Messages;
     int m_MessageCount = 0;
+    int m_MessageHead = 0;
     int m_DisplayMessageCount = 0;
 
     // Configuration
