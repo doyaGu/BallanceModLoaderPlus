@@ -197,12 +197,14 @@ public:
     // delete anything the loader still points at.
     virtual void OnUnload() {}
 
-    // Runs from inside IProperty::SetString and its siblings, straight away and on
-    // the setting thread, whenever one of them changes a value or its type. That
-    // includes the Mod's own calls, so setting another value from in here calls
-    // this again. It does not run while the loader reads the config file at
-    // startup, because that path uses the SetDefault functions. prop is the
-    // property that changed and already carries the new value.
+    // Runs during the loader's config flush after IProperty::SetString or one of its
+    // siblings changes a value or its type. The in-memory value changes immediately,
+    // but writes to the same property in one frame are coalesced into one callback
+    // carrying the latest value. A write made from this callback is queued for a
+    // later flush instead of calling recursively. The loader also flushes after
+    // OnLoad and OnUnload because those phases have no following normal frame.
+    // Loading a config file uses the SetDefault functions and does not queue this
+    // callback. prop is the property that changed and already carries the new value.
     virtual void OnModifyConfig(const char *category, const char *key, IProperty *prop) {}
 
     // Every time one of the game's scripts runs the Object Load building block,
