@@ -2083,13 +2083,62 @@ void ModContext::ProcessScriptModQueuedCallbacks() {
     }
 }
 
+std::vector<ModContext::RegisteredModSnapshot> ModContext::SnapshotModRegistry() const {
+    struct PendingModSnapshot {
+        IMod *Mod = nullptr;
+        std::vector<ModDependencySnapshot> Dependencies;
+    };
+
+    auto invocationLock = LockModInvocation();
+    std::vector<PendingModSnapshot> pending;
+    {
+        std::lock_guard<std::mutex> dependencyLock(m_Mutex);
+        std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+        pending.reserve(m_Mods.size());
+        for (IMod *registered : m_Mods) {
+            PendingModSnapshot item;
+            item.Mod = registered;
+
+            const auto dependencies = m_ModDependencies.find(registered);
+            if (dependencies != m_ModDependencies.end()) {
+                item.Dependencies.reserve(dependencies->second.size());
+                for (const ModDependency &dependency : dependencies->second) {
+                    if (dependency.id && *dependency.id) {
+                        item.Dependencies.push_back({
+                            dependency.id,
+                            dependency.minVersion,
+                            dependency.optional != 0,
+                        });
+                    }
+                }
+            }
+            pending.push_back(std::move(item));
+        }
+    }
+
+    std::vector<RegisteredModSnapshot> snapshot;
+    snapshot.reserve(pending.size());
+    for (auto &item : pending) {
+        if (!item.Mod)
+            continue;
+
+        const char *id = item.Mod->GetID();
+        const char *version = item.Mod->GetVersion();
+        snapshot.push_back({
+            item.Mod,
+            id ? id : "",
+            version ? version : "",
+            BML::IsFailedScriptMod(item.Mod),
+            std::move(item.Dependencies),
+        });
+    }
+    return snapshot;
+}
+
 bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
                                                      const BML::ScriptModDefinition &candidate,
                                                      std::string &diagnostic,
                                                      std::vector<BML::ScriptModReloadDiagnosticField> *fields) const {
-    auto invocationLock = LockModInvocation();
-    std::lock_guard<std::mutex> dependencyLock(m_Mutex);
-    std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
     auto addField = [&](const std::string &key, const std::string &value) {
         if (fields)
             fields->push_back({key, value});
@@ -2109,16 +2158,32 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         return false;
     }
 
-    const char *currentId = const_cast<BML::ScriptMod *>(mod)->GetID();
+    const std::vector<RegisteredModSnapshot> registry = SnapshotModRegistry();
+    const auto findById = [&registry](const std::string &id) {
+        return std::find_if(registry.begin(), registry.end(), [&id](const RegisteredModSnapshot &entry) {
+            return entry.Id == id;
+        });
+    };
+    const auto current = std::find_if(
+        registry.begin(), registry.end(), [mod](const RegisteredModSnapshot &entry) {
+            return entry.Identity == mod;
+        });
+    if (current == registry.end()) {
+        diagnostic = "Script mod reload target is not registered.";
+        addField("boundary", "reload_target");
+        addField("action", "restart_required");
+        return false;
+    }
+
     if (candidate.Id.empty()) {
         diagnostic = "Script mod reload candidate has an empty id.";
         addField("boundary", "mod_identity");
         addField("action", "fix_metadata");
         return false;
     }
-    if (currentId && candidate.Id != currentId) {
-        auto existing = m_ModMap.find(candidate.Id);
-        if (existing != m_ModMap.end() && existing->second != mod) {
+    if (candidate.Id != current->Id) {
+        const auto existing = findById(candidate.Id);
+        if (existing != registry.end() && existing->Identity != mod) {
             diagnostic = "Script mod failed-load recovery id '" + candidate.Id + "' conflicts with an already registered mod.";
             addField("boundary", "mod_identity");
             addField("conflict", candidate.Id);
@@ -2130,8 +2195,8 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
     for (const auto &dependency : candidate.Dependencies) {
         if (dependency.Id.empty())
             continue;
-        auto dependencyIt = m_ModMap.find(dependency.Id);
-        if (dependencyIt == m_ModMap.end()) {
+        const auto dependencyIt = findById(dependency.Id);
+        if (dependencyIt == registry.end()) {
             if (!dependency.Optional) {
                 diagnostic = "Script mod reload dependency '" + dependency.Id + "' is missing. "
                              "Hot reload only refreshes already registered script mods; it does not discover or load new dependency graph nodes. "
@@ -2142,17 +2207,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             continue;
         }
 
-        IMod *dependencyMod = dependencyIt->second;
-        if (!dependencyMod) {
-            if (!dependency.Optional) {
-                diagnostic = "Script mod reload dependency '" + dependency.Id + "' is unavailable.";
-                addDependencyBoundary(dependency, "restart_or_reload_dependency");
-                return false;
-            }
-            continue;
-        }
-#if BML_ENABLE_ANGELSCRIPT
-        if (BML::IsFailedScriptMod(dependencyMod)) {
+        if (dependencyIt->Failed) {
             if (!dependency.Optional) {
                 diagnostic = "Script mod reload dependency '" + dependency.Id + "' is failed. "
                              "Hot reload does not repair or cascade reload required dependencies; fix and reload the dependency first, or restart.";
@@ -2161,8 +2216,7 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
             }
             continue;
         }
-#endif
-        const BMLVersion have = BML::ParseLegacyModVersion(dependencyMod->GetVersion());
+        const BMLVersion have = BML::ParseLegacyModVersion(dependencyIt->Version.c_str());
         if (have < dependency.MinVersion && !dependency.Optional) {
             diagnostic = "Script mod reload dependency '" + dependency.Id + "' is older than required. "
                          "Hot reload does not cascade reload dependencies; update/reload that dependency first, or restart.";
@@ -2178,21 +2232,20 @@ bool ModContext::ValidateScriptModReloadDependencies(const BML::ScriptMod *mod,
         addField("action", "fix_metadata");
         return false;
     }
-    for (const auto &entry : m_ModDependencies) {
-        IMod *dependent = entry.first;
-        if (!dependent || dependent == mod)
+    for (const RegisteredModSnapshot &dependent : registry) {
+        if (dependent.Identity == mod)
             continue;
 
-        for (const auto &dependency : entry.second) {
-            if (!dependency.id || std::string(dependency.id) != candidate.Id)
+        for (const ModDependencySnapshot &dependency : dependent.Dependencies) {
+            if (dependency.Id != candidate.Id)
                 continue;
-            if (!dependency.optional && candidateVersion < dependency.minVersion) {
+            if (!dependency.Optional && candidateVersion < dependency.MinVersion) {
                 diagnostic = "Script mod reload version would no longer satisfy dependent mod '";
-                diagnostic += dependent->GetID() ? dependent->GetID() : "";
+                diagnostic += dependent.Id;
                 diagnostic += "'. Hot reload does not cascade reload dependent mods; restart or reload dependent mods explicitly.";
                 addField("boundary", "dependent_compatibility");
                 addField("cascade", "false");
-                addField("dependent", dependent->GetID() ? dependent->GetID() : "");
+                addField("dependent", dependent.Id);
                 addField("action", "restart_or_reload_dependents_explicitly");
                 return false;
             }

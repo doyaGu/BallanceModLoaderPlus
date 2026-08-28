@@ -369,6 +369,21 @@ private:
 
     size_t ExploreMods(const std::wstring &path, std::vector<std::wstring> &mods);
 #if BML_ENABLE_ANGELSCRIPT
+    struct ModDependencySnapshot {
+        std::string Id;
+        BMLVersion MinVersion;
+        bool Optional = false;
+    };
+
+    struct RegisteredModSnapshot {
+        const IMod *Identity = nullptr;
+        std::string Id;
+        std::string Version;
+        bool Failed = false;
+        std::vector<ModDependencySnapshot> Dependencies;
+    };
+
+    std::vector<RegisteredModSnapshot> SnapshotModRegistry() const;
     size_t ExploreScriptMods(const std::wstring &path, std::vector<BML::ScriptModLoadCandidate> &candidates);
 #endif
 
