@@ -99,6 +99,146 @@ namespace {
     }
 }
 
+bool CommandBar::CandidateState::Add(const std::string &candidate) {
+    if (!utils::AppendUnique(m_Items, candidate))
+        return false;
+
+    m_PageStarts.clear();
+    m_Selected = -1;
+    m_HintsVisible = false;
+    return true;
+}
+
+void CommandBar::CandidateState::Clear() {
+    m_Items.clear();
+    m_PageStarts.clear();
+    m_Index = 0;
+    m_Page = 0;
+    m_Selected = -1;
+    m_HintsVisible = false;
+}
+
+void CommandBar::CandidateState::BuildPages(float maxWidth) {
+    m_PageStarts.clear();
+    m_Page = 0;
+    if (m_Items.empty()) {
+        m_Index = 0;
+        return;
+    }
+
+    const float separatorWidth = ImGui::CalcTextSize(" | ").x;
+    const float pagerWidth = ImGui::CalcTextSize("< ").x;
+    float width = -separatorWidth;
+    m_PageStarts.push_back(0);
+
+    for (int i = 0; i < static_cast<int>(m_Items.size()); ++i) {
+        const float itemWidth = ImGui::CalcTextSize(m_Items[i].c_str()).x;
+        width += itemWidth + separatorWidth;
+        if (width > maxWidth && i > m_PageStarts.back()) {
+            m_PageStarts.push_back(i);
+            width = itemWidth + pagerWidth * 2.0f;
+        }
+    }
+
+    m_Index = std::clamp(m_Index, 0, static_cast<int>(m_Items.size()) - 1);
+    SyncPageFromIndex();
+}
+
+void CommandBar::CandidateState::SyncPageFromIndex() {
+    for (int i = static_cast<int>(m_PageStarts.size()); i-- > 0;) {
+        if (m_Index >= m_PageStarts[i]) {
+            m_Page = i;
+            return;
+        }
+    }
+    m_Page = 0;
+}
+
+void CommandBar::CandidateState::Next() {
+    if (m_Items.empty())
+        return;
+
+    m_Index = (m_Index + 1) % static_cast<int>(m_Items.size());
+    SyncPageFromIndex();
+}
+
+void CommandBar::CandidateState::Previous() {
+    if (m_Items.empty())
+        return;
+
+    if (m_Index == 0)
+        m_Index = static_cast<int>(m_Items.size());
+    --m_Index;
+    SyncPageFromIndex();
+}
+
+void CommandBar::CandidateState::NextPage() {
+    if (m_Items.empty() || m_PageStarts.empty())
+        return;
+    if (m_PageStarts.size() == 1) {
+        m_Index = static_cast<int>(m_Items.size()) - 1;
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_PageStarts.size());
+    const int nextPage = (m_Page + 1) % pageCount;
+    const int nextIndex = nextPage > 0 ? m_PageStarts[nextPage] - 1 : static_cast<int>(m_Items.size()) - 1;
+    if (m_Index == nextIndex) {
+        m_Index = m_PageStarts[nextPage];
+        m_Page = nextPage;
+    } else {
+        m_Index = nextIndex;
+    }
+}
+
+void CommandBar::CandidateState::PreviousPage() {
+    if (m_Items.empty() || m_PageStarts.empty())
+        return;
+    if (m_PageStarts.size() == 1) {
+        m_Index = 0;
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_PageStarts.size());
+    const int previousPage = m_Page > 0 ? m_Page - 1 : pageCount - 1;
+    const int previousIndex = m_PageStarts[m_Page];
+    if (m_Index == previousIndex) {
+        m_Index = m_Page > 0 ? m_PageStarts[previousPage + 1] - 1 : static_cast<int>(m_Items.size()) - 1;
+        m_Page = previousPage;
+    } else {
+        m_Index = previousIndex;
+    }
+}
+
+void CommandBar::CandidateState::ShowHints() {
+    m_HintsVisible = !m_Items.empty() && !m_PageStarts.empty();
+}
+
+void CommandBar::CandidateState::SelectCurrent() {
+    if (m_Items.empty())
+        return;
+    m_Selected = m_Index;
+    m_HintsVisible = false;
+}
+
+int CommandBar::CandidateState::PageBegin() const {
+    return m_PageStarts.empty() ? 0 : m_PageStarts[m_Page];
+}
+
+int CommandBar::CandidateState::PageEnd() const {
+    if (m_PageStarts.empty())
+        return 0;
+    return m_Page + 1 < static_cast<int>(m_PageStarts.size())
+        ? m_PageStarts[m_Page + 1]
+        : static_cast<int>(m_Items.size());
+}
+
+const std::string *CommandBar::CandidateState::Selected() const {
+    return m_Selected >= 0 && m_Selected < static_cast<int>(m_Items.size())
+        ? &m_Items[m_Selected]
+        : nullptr;
+}
+
 CommandBar::CommandBar() : Window("CommandBar") {
     m_Buffer.reserve(65535);
     Hide();
@@ -160,25 +300,25 @@ void CommandBar::OnDraw() {
         ToggleCommandBar(false);
     }
 
-    if (m_ShowHints) {
+    if (m_Candidates.AreHintsVisible()) {
         if (ImGui::BeginChild("##CmdHints")) {
             constexpr ImVec4 SelectedColor = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 
-            if (m_CandidatePage != 0) {
+            if (m_Candidates.CurrentPage() != 0) {
                 ImGui::TextUnformatted("< ");
                 ImGui::SameLine(0, 0);
             }
 
-            const int n = m_CandidatePage != m_CandidatePages.size() - 1 ?
-                m_CandidatePages[m_CandidatePage + 1] : (int) m_Candidates.size();
-            for (int i = m_CandidatePages[m_CandidatePage]; i < n; ++i) {
-                if (i != m_CandidatePages[m_CandidatePage]) {
+            const int begin = m_Candidates.PageBegin();
+            const int end = m_Candidates.PageEnd();
+            for (int i = begin; i < end; ++i) {
+                if (i != begin) {
                     ImGui::SameLine(0, 0);
                     ImGui::TextUnformatted(" | ");
                     ImGui::SameLine(0, 0);
                 }
 
-                if (i != m_CandidateIndex) {
+                if (i != m_Candidates.CurrentIndex()) {
                     ImGui::Text("%s", m_Candidates[i].c_str());
                 } else {
                     const auto str = m_Candidates[i].c_str();
@@ -193,7 +333,7 @@ void CommandBar::OnDraw() {
                 }
             }
 
-            if (n != (int) m_Candidates.size()) {
+            if (end != static_cast<int>(m_Candidates.Size())) {
                 ImGui::SameLine(0, 0);
                 ImGui::TextUnformatted(" >");
             }
@@ -211,8 +351,7 @@ void CommandBar::OnDraw() {
             }
 
             if (ImGui::IsKeyPressed(ImGuiKey_Enter, false)) {
-                m_CandidateSelected = m_CandidateIndex;
-                m_ShowHints = false;
+                m_Candidates.SelectCurrent();
             }
 
             if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
@@ -221,8 +360,8 @@ void CommandBar::OnDraw() {
         }
         ImGui::EndChild();
     } else {
-        if (!m_Candidates.empty()) {
-            m_ShowHints = true;
+        if (!m_Candidates.Empty()) {
+            m_Candidates.ShowHints();
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -300,11 +439,11 @@ void CommandBar::CollectCommandCandidates(const char *cmdStart, int cmdLength) {
 
         const std::string name = NormalizeCandidateEncoding(cmd->GetName());
         if (!name.empty() && utf8ncasecmp(name.c_str(), cmdStart, cmdLength) == 0)
-            utils::AppendUnique(m_Candidates, name);
+            m_Candidates.Add(name);
 
         const std::string alias = NormalizeCandidateEncoding(cmd->GetAlias());
         if (!alias.empty() && utf8ncasecmp(alias.c_str(), cmdStart, cmdLength) == 0)
-            utils::AppendUnique(m_Candidates, alias);
+            m_Candidates.Add(alias);
     }
 }
 
@@ -323,7 +462,7 @@ void CommandBar::CollectArgumentCandidates(const char *wordStart, int wordLength
     for (const std::string &rawCandidate : cmd->GetTabCompletion(BML_GetModContext(), args)) {
         const std::string candidate = NormalizeCandidateEncoding(rawCandidate);
         if (!candidate.empty() && utf8ncasecmp(candidate.c_str(), wordStart, wordLength) == 0)
-            utils::AppendUnique(m_Candidates, candidate);
+            m_Candidates.Add(candidate);
     }
 }
 
@@ -354,17 +493,6 @@ void CommandBar::ReplaceCurrentToken(ImGuiInputTextCallbackData *data, const cha
         data->InsertChars(deletePos + insertLength, " ");
 }
 
-void CommandBar::SyncCandidatePageFromIndex() {
-    for (int i = static_cast<int>(m_CandidatePages.size() - 1); i >= 0; --i) {
-        if (m_CandidateIndex >= m_CandidatePages[i]) {
-            m_CandidatePage = i;
-            return;
-        }
-    }
-
-    m_CandidatePage = 0;
-}
-
 void CommandBar::ToggleCommandBar(bool on) {
     if (on) {
         Show();
@@ -380,77 +508,27 @@ void CommandBar::ToggleCommandBar(bool on) {
 }
 
 void CommandBar::NextCandidate() {
-    m_CandidateIndex = (m_CandidateIndex + 1) % (int) m_Candidates.size();
-    SyncCandidatePageFromIndex();
+    m_Candidates.Next();
 }
 
 void CommandBar::PrevCandidate() {
-    if (m_CandidateIndex == 0)
-        m_CandidateIndex = (int) m_Candidates.size();
-    m_CandidateIndex = (m_CandidateIndex - 1) % (int) m_Candidates.size();
-    SyncCandidatePageFromIndex();
+    m_Candidates.Previous();
 }
 
 void CommandBar::NextPageOfCandidates() {
-    if (m_CandidatePages.size() == 1) {
-        m_CandidateIndex = (int) m_Candidates.size() - 1;
-    } else {
-        const int nextPage = (m_CandidatePage + 1) % (int) m_CandidatePages.size();
-        const int nextIndex = nextPage > 0 ? m_CandidatePages[nextPage] - 1 : (int) m_Candidates.size() - 1;
-        if (m_CandidateIndex == nextIndex) {
-            m_CandidateIndex = m_CandidatePages[nextPage];
-            m_CandidatePage = nextPage;
-        } else {
-            m_CandidateIndex = nextIndex;
-        }
-    }
+    m_Candidates.NextPage();
 }
 
 void CommandBar::PrevPageOfCandidates() {
-    if (m_CandidatePages.size() == 1) {
-        m_CandidateIndex = 0;
-    } else {
-        const int prevPage = m_CandidatePage > 0 ? (m_CandidatePage - 1) % (int) m_CandidatePages.size() : (int) m_CandidatePages.size() - 1;
-        const int prevIndex = m_CandidatePages[m_CandidatePage];
-        if (m_CandidateIndex == prevIndex) {
-            m_CandidateIndex = m_CandidatePage > 0 ? m_CandidatePages[prevPage + 1] - 1 : (int) m_Candidates.size() - 1;
-            m_CandidatePage = prevPage;
-        } else {
-            m_CandidateIndex = prevIndex;
-        }
-    }
+    m_Candidates.PreviousPage();
 }
 
 void CommandBar::InvalidateCandidates() {
-    m_CandidateSelected = -1;
-    m_CandidateIndex = 0;
-    m_CandidatePage = 0;
-    m_CandidatePages.clear();
-    m_Candidates.clear();
-
-    m_ShowHints = false;
+    m_Candidates.Clear();
 }
 
 void CommandBar::GenerateCandidatePages() {
-    if (m_Candidates.empty())
-        return;
-
-    const float sep = ImGui::CalcTextSize(" | ").x;
-    const float pager = ImGui::CalcTextSize("< ").x;
-    const float max = m_WindowSize.x;
-    float width = -sep;
-
-    m_CandidatePages.clear();
-    m_CandidatePages.push_back(0); // Start the first page
-
-    for (int i = 0; i < (int) m_Candidates.size(); ++i) {
-        const ImVec2 size = ImGui::CalcTextSize(m_Candidates[i].c_str());
-        width += size.x + sep;
-        if (width > max) {
-            m_CandidatePages.push_back(i); // Start a new page
-            width = size.x + pager * 2;
-        }
-    }
+    m_Candidates.BuildPages(m_WindowSize.x);
 }
 
 size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
@@ -461,7 +539,7 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
     const char *rawLineEnd = lineEnd;
     StripLine(lineStart, lineEnd);
 
-    if (m_Candidates.empty()) {
+    if (m_Candidates.Empty()) {
         bool completeCmd = true;
         const char *cmdEnd = lineEnd;
         const char *cmdStart;
@@ -487,7 +565,7 @@ size_t CommandBar::OnCompletion(const char *lineStart, const char *lineEnd) {
         NextCandidate();
     }
 
-    return m_Candidates.size();
+    return m_Candidates.Size();
 }
 
 int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
@@ -495,15 +573,15 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         case ImGuiInputTextFlags_CallbackCompletion: {
             OnCompletion(data->Buf, data->Buf + data->CursorPos);
 
-            if (m_Candidates.size() == 1) {
+            if (m_Candidates.Size() == 1) {
                 ReplaceCurrentToken(data, m_Candidates[0].c_str());
-            } else if (m_Candidates.size() > 1) {
+            } else if (m_Candidates.Size() > 1) {
                 int matchLen = 0;
                 for (;;) {
                     int c = 0;
                     bool allCandidatesMatches = true;
-                    for (size_t i = 0; i < m_Candidates.size() && allCandidatesMatches; i++) {
-                        auto &candidate = m_Candidates[i];
+                    for (size_t i = 0; i < m_Candidates.Size() && allCandidatesMatches; i++) {
+                        const std::string &candidate = m_Candidates[i];
                         if (i == 0)
                             c = toupper(static_cast<unsigned char>(candidate[matchLen]));
                         else if (c == 0 || c != toupper(static_cast<unsigned char>(candidate[matchLen])))
@@ -521,7 +599,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         }
         break;
         case ImGuiInputTextFlags_CallbackHistory: {
-            if (!m_Candidates.empty()) {
+            if (!m_Candidates.Empty()) {
                 InvalidateCandidates();
             }
 
@@ -545,12 +623,9 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         }
         break;
         case ImGuiInputTextFlags_CallbackAlways: {
-            if (!m_Candidates.empty()) {
-                if (m_CandidateSelected != -1) {
-                    ReplaceCurrentToken(data, m_Candidates[m_CandidateSelected].c_str());
-
-                    InvalidateCandidates();
-                }
+            if (const std::string *selected = m_Candidates.Selected()) {
+                ReplaceCurrentToken(data, selected->c_str());
+                InvalidateCandidates();
             }
 
             if (m_CursorPos != data->CursorPos) {
@@ -561,7 +636,7 @@ int CommandBar::OnTextEdit(ImGuiInputTextCallbackData *data) {
         }
         break;
         case ImGuiInputTextFlags_CallbackEdit: {
-            if (!m_Candidates.empty()) {
+            if (!m_Candidates.Empty()) {
                 InvalidateCandidates();
             }
         }
