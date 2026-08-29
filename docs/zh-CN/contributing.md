@@ -116,7 +116,7 @@ powershell -ExecutionPolicy Bypass `
 | 插件入口或引擎拦截 | `src/BML.cpp`、`src/Hooks/`、`src/Virtools/HookBlock.cpp` | Win32 构建，以及覆盖该回调或 Hook 的 Player 冒烟测试 |
 | CK 生命周期和回调时序 | `src/Loader/ModManager.*` | 定向生命周期测试和 Player 冒烟测试 |
 | Mod 发现、依赖顺序、服务或关闭 | `src/Loader/ModContext.*` | 对应 Loader/依赖测试和原生/脚本冒烟覆盖 |
-| HUD、菜单、命令栏或内建行为 | `src/BMLMod.*`、`src/HUD/`、`src/Console/`、`src/Config/`、`src/CustomMaps/`、`src/Gameplay/`、`src/UI/` | 定向 UI/服务测试和 Player 画面/输入冒烟测试 |
+| HUD、菜单、命令栏或内建行为 | `src/Mods/BMLMod.*`、`src/HUD/`、`src/Console/`、`src/CustomMaps/`、`src/Gameplay/`、`src/UI/` | 定向 UI/服务测试和 Player 画面/输入冒烟测试 |
 | 旧式原生 SDK 或 CMake 消费端行为 | `include/BML/`、`cmake/` | ABI/编译测试、模板配置构建和安装后 SDK 检查 |
 | IMC 运行时 | `src/Imc/ImcApi.cpp`、`src/Imc/ImcRuntime.*` | IMC 运行时/兼容性测试和原生 IMC 冒烟测试 |
 | 内建 interface struct 或其背后的读取实现 | `include/BML/Interface.h`、`src/Api/Interfaces.cpp`、`src/Api/BuiltinCapabilities.*` | 定向 interface 测试、C ABI 编译测试和原生冒烟测试 |
