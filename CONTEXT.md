@@ -16,6 +16,10 @@ _Avoid_: CommandBar, MessageBoard, console UI
 The loader's in-game status and custom overlay surface, comprising the HUD tree, title, FPS display, speedrun timer, cheat indicator, HUD command, and their configuration. One Built-in Loader Mod owns one Built-in HUD.
 _Avoid_: HUD window, HUD host, HUD service
 
+**Built-in Custom Maps**:
+The loader's custom-map feature, comprising map discovery, map selection, temporary map preparation, game-script bindings, level selection, and its configuration. One Built-in Loader Mod owns one Built-in Custom Maps Module.
+_Avoid_: map menu, map loader, custom map service
+
 ## Example dialogue
 
 > **Developer:** Should command history be saved by the Built-in Loader Mod?
@@ -25,3 +29,7 @@ _Avoid_: HUD window, HUD host, HUD service
 > **Developer:** Should the Built-in Loader Mod update the speedrun timer and HUD elements itself?
 >
 > **Domain expert:** No. Those belong to the Built-in HUD; the Built-in Loader Mod only forwards game lifecycle events.
+
+> **Developer:** Should the Built-in Loader Mod know which Virtools parameters a custom map load changes?
+>
+> **Domain expert:** No. Those bindings and the loading sequence belong to Built-in Custom Maps; the Built-in Loader Mod only forwards the relevant object, script, and game lifecycle events.
