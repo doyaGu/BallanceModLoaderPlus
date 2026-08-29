@@ -20,6 +20,14 @@ _Avoid_: HUD window, HUD host, HUD service
 The loader's custom-map feature, comprising map discovery, map selection, temporary map preparation, game-script bindings, level selection, and its configuration. One Built-in Loader Mod owns one Built-in Custom Maps Module.
 _Avoid_: map menu, map loader, custom map service
 
+**Built-in Gameplay Tweaks**:
+The loader's configurable game corrections, comprising the lantern alpha-test option, life-ball freeze fix, overclock patch, and their Virtools script bindings. One Built-in Loader Mod owns one Built-in Gameplay Tweaks Module.
+_Avoid_: script patches, tweak settings, gameplay fixes
+
+**Built-in Game Event Hooks**:
+The loader-owned Virtools script adapters that translate game and menu transitions into Mod lifecycle and gameplay callbacks. One Built-in Loader Mod owns one Built-in Game Event Hooks Module.
+_Avoid_: EventHookRegistrar, callback patches, event bridge
+
 ## Example dialogue
 
 > **Developer:** Should command history be saved by the Built-in Loader Mod?
@@ -33,3 +41,7 @@ _Avoid_: map menu, map loader, custom map service
 > **Developer:** Should the Built-in Loader Mod know which Virtools parameters a custom map load changes?
 >
 > **Domain expert:** No. Those bindings and the loading sequence belong to Built-in Custom Maps; the Built-in Loader Mod only forwards the relevant object, script, and game lifecycle events.
+
+> **Developer:** Does the Overclock graph state belong to Built-in Game Event Hooks because both inspect gameplay scripts?
+>
+> **Domain expert:** No. Built-in Game Event Hooks only translate game transitions into callbacks. Overclock and the other configurable corrections belong to Built-in Gameplay Tweaks.
