@@ -11,7 +11,7 @@
 
 #include "BML/TypeConvert.h"
 
-#include "BMLMod.h"
+#include "Mods/BMLMod.h"
 #include "Virtools/CKIdentityRegistry.h"
 #include "Logging/Logger.h"
 #include "Loader/ModContext.h"

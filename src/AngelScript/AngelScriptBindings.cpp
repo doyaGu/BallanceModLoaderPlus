@@ -29,7 +29,7 @@
 #include "AngelScript/generated/BMLImGuiAngelScriptBindings.h"
 #include "AngelScriptImGuiBindings.h"
 #include "BML/ExecuteBB.h"
-#include "BMLMod.h"
+#include "Mods/BMLMod.h"
 #include "CKAngelScriptAdapter.h"
 #include "ScriptApiSurface.h"
 #include "ScriptAvailabilityLogLimiter.h"

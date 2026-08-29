@@ -1,4 +1,4 @@
-#include "Gameplay/NewBallTypeMod.h"
+#include "Mods/NewBallTypeMod.h"
 
 #include "BML/IBML.h"
 #include "BML/ExecuteBB.h"

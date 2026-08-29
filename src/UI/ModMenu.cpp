@@ -1,4 +1,4 @@
-#include "Config/ModMenu.h"
+#include "UI/ModMenu.h"
 
 #include <algorithm>
 #include <set>

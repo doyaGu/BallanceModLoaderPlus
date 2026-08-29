@@ -38,8 +38,8 @@
 #include "PathUtils.h"
 
 // Builtin Mods
-#include "BMLMod.h"
-#include "Gameplay/NewBallTypeMod.h"
+#include "Mods/BMLMod.h"
+#include "Mods/NewBallTypeMod.h"
 
 using namespace BML;
 

@@ -1,4 +1,4 @@
-#include "BMLMod.h"
+#include "Mods/BMLMod.h"
 
 #include <map>
 #include <algorithm>

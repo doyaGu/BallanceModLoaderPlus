@@ -108,13 +108,18 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/BMLAll.h
 )
 
-set(BML_ROOT_PRIVATE_HEADERS
-        BMLMod.h
-)
-
 set(BML_ROOT_SOURCES
         BML.cpp
-        BMLMod.cpp
+)
+
+set(BML_MODS_PRIVATE_HEADERS
+        Mods/BMLMod.h
+        Mods/NewBallTypeMod.h
+)
+
+set(BML_MODS_SOURCES
+        Mods/BMLMod.cpp
+        Mods/NewBallTypeMod.cpp
 )
 
 set(BML_LOADER_PRIVATE_HEADERS
@@ -162,13 +167,11 @@ set(BML_LOGGING_SOURCES
 set(BML_CONFIG_PRIVATE_HEADERS
         Config/Config.h
         Config/ConfigStore.h
-        Config/ModMenu.h
 )
 
 set(BML_CONFIG_SOURCES
         Config/Config.cpp
         Config/ConfigStore.cpp
-        Config/ModMenu.cpp
 )
 
 set(BML_CONSOLE_PRIVATE_HEADERS
@@ -220,14 +223,12 @@ set(BML_GAMEPLAY_PRIVATE_HEADERS
         Gameplay/GameEventHooks.h
         Gameplay/GameplayTweaks.h
         Gameplay/GameSession.h
-        Gameplay/NewBallTypeMod.h
 )
 
 set(BML_GAMEPLAY_SOURCES
         Gameplay/GameEventHooks.cpp
         Gameplay/GameplayTweaks.cpp
         Gameplay/GameSession.cpp
-        Gameplay/NewBallTypeMod.cpp
 )
 
 set(BML_IMC_PRIVATE_HEADERS
@@ -244,6 +245,7 @@ set(BML_UI_PRIVATE_HEADERS
         UI/AnsiPalette.h
         UI/AnsiText.h
         UI/BuiInternal.h
+        UI/ModMenu.h
         UI/Overlay.h
 )
 
@@ -251,6 +253,7 @@ set(BML_UI_SOURCES
         UI/AnsiPalette.cpp
         UI/AnsiText.cpp
         UI/Bui.cpp
+        UI/ModMenu.cpp
         UI/Overlay.cpp
         UI/OverlayScriptImGui.cpp
         UI/Gui/Button.cpp
@@ -291,7 +294,7 @@ set(BML_VIRTOOLS_SOURCES
 )
 
 set(BML_PRIVATE_HEADERS
-        ${BML_ROOT_PRIVATE_HEADERS}
+        ${BML_MODS_PRIVATE_HEADERS}
         ${BML_LOADER_PRIVATE_HEADERS}
         ${BML_API_PRIVATE_HEADERS}
         ${BML_DATA_SHARE_PRIVATE_HEADERS}
@@ -309,6 +312,7 @@ set(BML_PRIVATE_HEADERS
 
 set(BML_SOURCES
         ${BML_ROOT_SOURCES}
+        ${BML_MODS_SOURCES}
         ${BML_LOADER_SOURCES}
         ${BML_API_SOURCES}
         ${BML_DATA_SHARE_SOURCES}

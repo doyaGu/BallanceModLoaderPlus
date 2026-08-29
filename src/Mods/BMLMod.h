@@ -6,12 +6,12 @@
 #include "BML/IMod.h"
 #include "BML/IBML.h"
 
-#include "Config/ModMenu.h"
 #include "Console/Console.h"
 #include "CustomMaps/CustomMaps.h"
 #include "Gameplay/GameEventHooks.h"
 #include "Gameplay/GameplayTweaks.h"
 #include "HUD/HUDRuntime.h"
+#include "UI/ModMenu.h"
 
 class ModContext;
 
