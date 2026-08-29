@@ -6,8 +6,8 @@
 #include <new>
 #include <string>
 
-#include "ModContext.h"
-#include "Overlay.h"
+#include "Loader/ModContext.h"
+#include "UI/Overlay.h"
 #include "ScriptMod.h"
 #include "ScriptModRuntime.h"
 

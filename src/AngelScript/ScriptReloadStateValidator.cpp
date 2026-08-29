@@ -3,7 +3,7 @@
 #include <new>
 #include <utility>
 
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "ScriptStateMigration.h"
 
 namespace BML {

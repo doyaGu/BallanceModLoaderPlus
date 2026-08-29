@@ -108,115 +108,220 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/BMLAll.h
 )
 
-set(BML_PRIVATE_HEADERS
-        ModManager.h
-        ModContext.h
-        LegacyModVersion.h
-        BuiltinCapabilities.h
-        CKIdentityRegistry.h
-        GameSession.h
-
+set(BML_ROOT_PRIVATE_HEADERS
         BMLMod.h
-        Console.h
-        CustomMaps.h
-        GameEventHooks.h
-        GameplayTweaks.h
-        HUDRuntime.h
-        NewBallTypeMod.h
-        Commands.h
+)
 
-        HUD.h
-        FpsCounter.h
-        SRTimer.h
-        RealTimer.h
-        BuiInternal.h
-        ModMenu.h
-        MapMenu.h
-        CommandBar.h
-        MessageBoard.h
-        AnsiPalette.h
-        AnsiText.h
+set(BML_ROOT_SOURCES
+        BML.cpp
+        BMLMod.cpp
+)
 
-        Overlay.h
+set(BML_LOADER_PRIVATE_HEADERS
+        Loader/LegacyModVersion.h
+        Loader/ModContext.h
+        Loader/ModInvocationGate.h
+        Loader/ModManager.h
+        Loader/NativeModRegistry.h
+)
 
-        RenderHook.h
-        ImcPrimitives.h
-        ImcRuntime.h
-        CommandContext.h
-        DataShare.hpp
-        Logger.h
-        Config.h
-        ConfigStore.h
-        NativeModRegistry.h
-        MapCatalog.h
+set(BML_LOADER_SOURCES
+        Loader/ModContext.cpp
+        Loader/ModManager.cpp
+        Loader/NativeModRegistry.cpp
+)
+
+set(BML_API_PRIVATE_HEADERS
+        Api/BuiltinCapabilities.h
+)
+
+set(BML_API_SOURCES
+        Api/BmlApi.cpp
+        Api/BuiltinCapabilities.cpp
+        Api/Errors.cpp
+        Api/IMod.cpp
+        Api/Interfaces.cpp
+)
+
+set(BML_DATA_SHARE_PRIVATE_HEADERS
+        DataShare/DataShare.hpp
+)
+
+set(BML_DATA_SHARE_SOURCES
+        DataShare/DataShare.cpp
+)
+
+set(BML_LOGGING_PRIVATE_HEADERS
+        Logging/Logger.h
+)
+
+set(BML_LOGGING_SOURCES
+        Logging/Logger.cpp
+)
+
+set(BML_CONFIG_PRIVATE_HEADERS
+        Config/Config.h
+        Config/ConfigStore.h
+        Config/ModMenu.h
+)
+
+set(BML_CONFIG_SOURCES
+        Config/Config.cpp
+        Config/ConfigStore.cpp
+        Config/ModMenu.cpp
+)
+
+set(BML_CONSOLE_PRIVATE_HEADERS
+        Console/CommandBar.h
+        Console/CommandContext.h
+        Console/Commands.h
+        Console/Console.h
+        Console/MessageBoard.h
+)
+
+set(BML_CONSOLE_SOURCES
+        Console/CommandBar.cpp
+        Console/CommandContext.cpp
+        Console/Commands.cpp
+        Console/Console.cpp
+        Console/MessageBoard.cpp
+)
+
+set(BML_HUD_PRIVATE_HEADERS
+        HUD/FpsCounter.h
+        HUD/HUD.h
+        HUD/HUDRuntime.h
+        HUD/RealTimer.h
+        HUD/SRTimer.h
+)
+
+set(BML_HUD_SOURCES
+        HUD/FpsCounter.cpp
+        HUD/HUD.cpp
+        HUD/HUDAnimation.cpp
+        HUD/HUDRuntime.cpp
+        HUD/RealTimer.cpp
+        HUD/SRTimer.cpp
+)
+
+set(BML_CUSTOM_MAPS_PRIVATE_HEADERS
+        CustomMaps/CustomMaps.h
+        CustomMaps/MapCatalog.h
+        CustomMaps/MapMenu.h
+)
+
+set(BML_CUSTOM_MAPS_SOURCES
+        CustomMaps/CustomMaps.cpp
+        CustomMaps/MapCatalog.cpp
+        CustomMaps/MapMenu.cpp
+)
+
+set(BML_GAMEPLAY_PRIVATE_HEADERS
+        Gameplay/GameEventHooks.h
+        Gameplay/GameplayTweaks.h
+        Gameplay/GameSession.h
+        Gameplay/NewBallTypeMod.h
+)
+
+set(BML_GAMEPLAY_SOURCES
+        Gameplay/GameEventHooks.cpp
+        Gameplay/GameplayTweaks.cpp
+        Gameplay/GameSession.cpp
+        Gameplay/NewBallTypeMod.cpp
+)
+
+set(BML_IMC_PRIVATE_HEADERS
+        Imc/ImcPrimitives.h
+        Imc/ImcRuntime.h
+)
+
+set(BML_IMC_SOURCES
+        Imc/ImcApi.cpp
+        Imc/ImcRuntime.cpp
+)
+
+set(BML_UI_PRIVATE_HEADERS
+        UI/AnsiPalette.h
+        UI/AnsiText.h
+        UI/BuiInternal.h
+        UI/Overlay.h
+)
+
+set(BML_UI_SOURCES
+        UI/AnsiPalette.cpp
+        UI/AnsiText.cpp
+        UI/Bui.cpp
+        UI/Overlay.cpp
+        UI/OverlayScriptImGui.cpp
+        UI/Gui/Button.cpp
+        UI/Gui/Element.cpp
+        UI/Gui/Gui.cpp
+        UI/Gui/Input.cpp
+        UI/Gui/KeyInput.cpp
+        UI/Gui/Label.cpp
+        UI/Gui/Panel.cpp
+        UI/Gui/Text.cpp
+)
+
+set(BML_HOOK_PRIVATE_HEADERS
+        Hooks/CKRasterizer.h
+        Hooks/CKRasterizerEnums.h
+        Hooks/CKRasterizerTypes.h
+        Hooks/Macros.h
+        Hooks/RenderHook.h
+        Hooks/VTables.h
+)
+
+set(BML_HOOK_SOURCES
+        Hooks/InputHook.cpp
+        Hooks/ObjectLoadHook.cpp
+        Hooks/PhysicsHook.cpp
+        Hooks/RenderHook.cpp
+)
+
+set(BML_VIRTOOLS_PRIVATE_HEADERS
+        Virtools/CKIdentityRegistry.h
+)
+
+set(BML_VIRTOOLS_SOURCES
+        Virtools/CKIdentityRegistry.cpp
+        Virtools/ExecuteBB.cpp
+        Virtools/HookBlock.cpp
+        Virtools/ScriptHelper.cpp
+)
+
+set(BML_PRIVATE_HEADERS
+        ${BML_ROOT_PRIVATE_HEADERS}
+        ${BML_LOADER_PRIVATE_HEADERS}
+        ${BML_API_PRIVATE_HEADERS}
+        ${BML_DATA_SHARE_PRIVATE_HEADERS}
+        ${BML_LOGGING_PRIVATE_HEADERS}
+        ${BML_CONFIG_PRIVATE_HEADERS}
+        ${BML_CONSOLE_PRIVATE_HEADERS}
+        ${BML_HUD_PRIVATE_HEADERS}
+        ${BML_CUSTOM_MAPS_PRIVATE_HEADERS}
+        ${BML_GAMEPLAY_PRIVATE_HEADERS}
+        ${BML_IMC_PRIVATE_HEADERS}
+        ${BML_UI_PRIVATE_HEADERS}
+        ${BML_HOOK_PRIVATE_HEADERS}
+        ${BML_VIRTOOLS_PRIVATE_HEADERS}
 )
 
 set(BML_SOURCES
-        BML.cpp
-        BmlApi.cpp
-        Errors.cpp
-
-        HookBlock.cpp
-        ModManager.cpp
-        ModContext.cpp
-        BuiltinCapabilities.cpp
-        CKIdentityRegistry.cpp
-        Interfaces.cpp
-        GameSession.cpp
-
-        IMod.cpp
-        BMLMod.cpp
-        Console.cpp
-        CustomMaps.cpp
-        GameEventHooks.cpp
-        GameplayTweaks.cpp
-        HUDRuntime.cpp
-        NewBallTypeMod.cpp
-        Commands.cpp
-
-        HUD.cpp
-        HUDAnimation.cpp
-        FpsCounter.cpp
-        SRTimer.cpp
-        RealTimer.cpp
-        ModMenu.cpp
-        MapMenu.cpp
-        MapCatalog.cpp
-        CommandBar.cpp
-        MessageBoard.cpp
-        AnsiPalette.cpp
-        AnsiText.cpp
-        OverlayScriptImGui.cpp
-
-        Gui/Element.cpp
-        Gui/Text.cpp
-        Gui/Panel.cpp
-        Gui/Label.cpp
-        Gui/Button.cpp
-        Gui/Input.cpp
-        Gui/KeyInput.cpp
-        Gui/Gui.cpp
-
-        Overlay.cpp
-        Bui.cpp
-
-        RenderHook.cpp
-        InputHook.cpp
-        ObjectLoadHook.cpp
-        PhysicsHook.cpp
-
-        ExecuteBB.cpp
-        ScriptHelper.cpp
-
-        CommandContext.cpp
-        ImcApi.cpp
-        ImcRuntime.cpp
-        DataShare.cpp
-        Logger.cpp
-        Config.cpp
-        ConfigStore.cpp
-        NativeModRegistry.cpp
-
+        ${BML_ROOT_SOURCES}
+        ${BML_LOADER_SOURCES}
+        ${BML_API_SOURCES}
+        ${BML_DATA_SHARE_SOURCES}
+        ${BML_LOGGING_SOURCES}
+        ${BML_CONFIG_SOURCES}
+        ${BML_CONSOLE_SOURCES}
+        ${BML_HUD_SOURCES}
+        ${BML_CUSTOM_MAPS_SOURCES}
+        ${BML_GAMEPLAY_SOURCES}
+        ${BML_IMC_SOURCES}
+        ${BML_UI_SOURCES}
+        ${BML_HOOK_SOURCES}
+        ${BML_VIRTOOLS_SOURCES}
         BML.rc
 )
 
@@ -326,7 +431,7 @@ set(IMGUI_HEADERS
         ${IMGUI_SOURCE_DIR}/imstb_truetype.h
         ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.h
         ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.h
 )
 
 set(IMGUI_SOURCES
@@ -337,7 +442,7 @@ set(IMGUI_SOURCES
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
         ${IMGUI_SOURCE_DIR}/backends/imgui_impl_win32.cpp
         ${IMGUI_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/imgui_impl_ck2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/UI/imgui_impl_ck2.cpp
 )
 
 add_library(BML SHARED

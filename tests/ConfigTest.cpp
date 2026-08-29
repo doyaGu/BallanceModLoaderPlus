@@ -7,9 +7,9 @@
 
 #include "BML/IMod.h"
 
-#include "Config.h"
-#include "ConfigStore.h"
-#include "Logger.h"
+#include "Config/Config.h"
+#include "Config/ConfigStore.h"
+#include "Logging/Logger.h"
 
 Logger *Logger::m_DefaultLogger = nullptr;
 

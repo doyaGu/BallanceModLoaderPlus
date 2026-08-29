@@ -6,8 +6,8 @@
 #include <sstream>
 #include <utility>
 
-#include "Logger.h"
-#include "ModContext.h"
+#include "Logging/Logger.h"
+#include "Loader/ModContext.h"
 #include "ScriptDevToolsService.h"
 #include "ScriptLibraryServices.h"
 #include "ScriptModHotReloadPathFilter.h"

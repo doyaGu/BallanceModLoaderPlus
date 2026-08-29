@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "ScriptLibraryServices.h"
 #include "ScriptModDefinitionBuilder.h"
 #include "ScriptSourceSnapshotBuilder.h"

@@ -1,6 +1,6 @@
 #include "AngelScriptBindings.h"
 
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 
 #include <string>
 
@@ -43,7 +43,7 @@
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
-#include "Overlay.h"
+#include "UI/Overlay.h"
 
 static constexpr const char *kExtensionName = "BML";
 static constexpr CKDWORD kRegistrationRetryTicks = 300;

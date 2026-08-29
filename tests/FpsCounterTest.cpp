@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "FpsCounter.h"
+#include "HUD/FpsCounter.h"
 
 class FpsCounterTest : public ::testing::Test {
 protected:

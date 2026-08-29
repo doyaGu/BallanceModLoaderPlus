@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "CKIdentityRegistry.h"
+#include "Virtools/CKIdentityRegistry.h"
 
 #include "CKGlobals.h"
 #include "CKObject.h"

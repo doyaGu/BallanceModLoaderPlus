@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "BML/IConfig.h"
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "ScriptDevToolsService.h"
 #include "ScriptModReloadCandidateInternal.h"
 #include "ScriptModReloadTransaction.h"

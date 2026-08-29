@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "NativeModRegistry.h"
+#include "Loader/NativeModRegistry.h"
 
 namespace {
 std::shared_ptr<void> BorrowedHandle(void *handle) {

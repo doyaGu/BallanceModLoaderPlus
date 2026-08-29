@@ -4,7 +4,7 @@
 
 #include "BML/IMod.h"
 #include "BML/ILogger.h"
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "ScriptFacadeAccess.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"

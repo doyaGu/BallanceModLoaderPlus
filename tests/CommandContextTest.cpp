@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "CommandContext.h"
-#include "Logger.h"
+#include "Console/CommandContext.h"
+#include "Logging/Logger.h"
 
 // Stub Logger for test builds
 Logger *Logger::m_DefaultLogger = nullptr;

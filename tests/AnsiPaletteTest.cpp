@@ -4,7 +4,7 @@
 #include <vector>
 #include <cwchar>
 
-#include "AnsiPalette.h"
+#include "UI/AnsiPalette.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 

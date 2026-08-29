@@ -3,8 +3,8 @@
 #include <cfloat>
 #include <string>
 
-#include "AnsiPalette.h"
-#include "AnsiText.h"
+#include "UI/AnsiPalette.h"
+#include "UI/AnsiText.h"
 #include "PathUtils.h"
 
 namespace {

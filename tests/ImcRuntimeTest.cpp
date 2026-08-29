@@ -1,5 +1,5 @@
-#include "ImcRuntime.h"
-#include "ModInvocationGate.h"
+#include "Imc/ImcRuntime.h"
+#include "Loader/ModInvocationGate.h"
 
 #include <gtest/gtest.h>
 

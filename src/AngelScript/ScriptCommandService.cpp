@@ -6,10 +6,10 @@
 #include <utility>
 #include <vector>
 
-#include "CommandContext.h"
+#include "Console/CommandContext.h"
 #include "ScriptAngelScriptHandle.h"
 #include "ScriptFunctionSupport.h"
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "ScriptCallbackEvents.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"

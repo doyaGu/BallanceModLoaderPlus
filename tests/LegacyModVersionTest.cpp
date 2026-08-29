@@ -1,4 +1,4 @@
-#include "LegacyModVersion.h"
+#include "Loader/LegacyModVersion.h"
 
 #include <limits>
 

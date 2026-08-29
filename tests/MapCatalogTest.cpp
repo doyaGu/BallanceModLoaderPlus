@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 #include <windows.h>
 
-#include "MapCatalog.h"
+#include "CustomMaps/MapCatalog.h"
 
 namespace {
 

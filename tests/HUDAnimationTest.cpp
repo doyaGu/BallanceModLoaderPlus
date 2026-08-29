@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "HUD.h"
+#include "HUD/HUD.h"
 
 TEST(HUDAnimationTest, ColorEndpointsRemainExact) {
     const ImU32 start = IM_COL32(255, 0, 0, 255);

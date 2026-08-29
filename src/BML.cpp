@@ -7,9 +7,9 @@
 
 #include "CKContext.h"
 
-#include "ModManager.h"
-#include "RenderHook.h"
-#include "Overlay.h"
+#include "Loader/ModManager.h"
+#include "Hooks/RenderHook.h"
+#include "UI/Overlay.h"
 #include "HookUtils.h"
 
 CKERROR CreateModManager(CKContext *context) {

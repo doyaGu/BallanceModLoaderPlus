@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "BML/ILogger.h"
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "ScriptAngelScriptHandle.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"

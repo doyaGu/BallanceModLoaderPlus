@@ -1,7 +1,7 @@
 #include "ScriptLibraryServices.h"
 
 #include "BML/Defines.h"
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "Utils/PathUtils.h"
 #include "Utils/StringUtils.h"
 

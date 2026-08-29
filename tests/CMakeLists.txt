@@ -240,10 +240,10 @@ add_bml_test(PathUtilsTest
 add_bml_test(ConfigTest
         SOURCES
         ConfigTest.cpp
-        ${BML_SOURCE_DIR}/Config.cpp
-        ${BML_SOURCE_DIR}/Config.h
-        ${BML_SOURCE_DIR}/ConfigStore.cpp
-        ${BML_SOURCE_DIR}/ConfigStore.h
+        ${BML_SOURCE_DIR}/Config/Config.cpp
+        ${BML_SOURCE_DIR}/Config/Config.h
+        ${BML_SOURCE_DIR}/Config/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/Config/ConfigStore.h
         DEPENDENCIES
         BMLUtils
         VirtoolsSDK::CK2
@@ -253,8 +253,8 @@ add_bml_test(ConfigTest
 add_bml_test(NativeModRegistryTest
         SOURCES
         NativeModRegistryTest.cpp
-        ${BML_SOURCE_DIR}/NativeModRegistry.cpp
-        ${BML_SOURCE_DIR}/NativeModRegistry.h
+        ${BML_SOURCE_DIR}/Loader/NativeModRegistry.cpp
+        ${BML_SOURCE_DIR}/Loader/NativeModRegistry.h
 )
 
 add_bml_test(InterfaceHeaderTest
@@ -315,7 +315,7 @@ endif ()
 add_bml_test(AnsiPaletteTest
         SOURCES
         AnsiPaletteTest.cpp
-        ${BML_SOURCE_DIR}/AnsiPalette.cpp
+        ${BML_SOURCE_DIR}/UI/AnsiPalette.cpp
         DEPENDENCIES
         BMLUtils
 )
@@ -325,8 +325,8 @@ target_include_directories(AnsiPaletteTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 add_bml_test(AnsiTextTest
         SOURCES
         AnsiTextTest.cpp
-        ${BML_SOURCE_DIR}/AnsiText.cpp
-        ${BML_SOURCE_DIR}/AnsiPalette.cpp
+        ${BML_SOURCE_DIR}/UI/AnsiText.cpp
+        ${BML_SOURCE_DIR}/UI/AnsiPalette.cpp
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
@@ -340,7 +340,7 @@ target_compile_definitions(AnsiTextTest PRIVATE IMGUI_EXPORT)
 add_bml_test(ImGuiStateRecoveryTest
         SOURCES
         ImGuiStateRecoveryTest.cpp
-        ${BML_SOURCE_DIR}/OverlayScriptImGui.cpp
+        ${BML_SOURCE_DIR}/UI/OverlayScriptImGui.cpp
         ${IMGUI_SOURCE_DIR}/imgui.cpp
         ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
         ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
@@ -352,13 +352,13 @@ target_compile_definitions(ImGuiStateRecoveryTest PRIVATE IMGUI_EXPORT)
 add_bml_test(FpsCounterTest
         SOURCES
         FpsCounterTest.cpp
-        ${BML_SOURCE_DIR}/FpsCounter.cpp
+        ${BML_SOURCE_DIR}/HUD/FpsCounter.cpp
 )
 
 add_bml_test(HUDAnimationTest
         SOURCES
         HUDAnimationTest.cpp
-        ${BML_SOURCE_DIR}/HUDAnimation.cpp
+        ${BML_SOURCE_DIR}/HUD/HUDAnimation.cpp
         DEPENDENCIES
         VirtoolsSDK::CK2
         VirtoolsSDK::VxMath
@@ -368,8 +368,8 @@ target_include_directories(HUDAnimationTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 add_bml_test(MapCatalogTest
         SOURCES
         MapCatalogTest.cpp
-        ${BML_SOURCE_DIR}/MapCatalog.cpp
-        ${BML_SOURCE_DIR}/MapCatalog.h
+        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
+        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
         DEPENDENCIES
         BMLUtils
 )
@@ -377,8 +377,8 @@ add_bml_test(MapCatalogTest
 add_bml_test(MapMenuStateTest
         SOURCES
         MapMenuStateTest.cpp
-        ${BML_SOURCE_DIR}/MapCatalog.cpp
-        ${BML_SOURCE_DIR}/MapCatalog.h
+        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.cpp
+        ${BML_SOURCE_DIR}/CustomMaps/MapCatalog.h
         DEPENDENCIES
         BMLUtils
 )
@@ -390,26 +390,26 @@ target_include_directories(MapMenuStateTest BEFORE PRIVATE
 add_bml_test(SRTimerTest
         SOURCES
         SRTimerTest.cpp
-        ${BML_SOURCE_DIR}/SRTimer.cpp
+        ${BML_SOURCE_DIR}/HUD/SRTimer.cpp
 )
 
 add_bml_test(GameSessionTest
         SOURCES
         GameSessionTest.cpp
-        ${BML_SOURCE_DIR}/GameSession.cpp
+        ${BML_SOURCE_DIR}/Gameplay/GameSession.cpp
 )
 
 add_bml_test(CKIdentityRegistryTest
         SOURCES
         CKIdentityRegistryTest.cpp
-        ${BML_SOURCE_DIR}/CKIdentityRegistry.cpp
+        ${BML_SOURCE_DIR}/Virtools/CKIdentityRegistry.cpp
 )
 target_include_directories(CKIdentityRegistryTest PRIVATE "${VIRTOOLS_SDK_INCLUDE_DIR}")
 
 add_bml_test(CommandContextTest
         SOURCES
         CommandContextTest.cpp
-        ${BML_SOURCE_DIR}/CommandContext.cpp
+        ${BML_SOURCE_DIR}/Console/CommandContext.cpp
         DEPENDENCIES
         BMLUtils
 )
@@ -417,7 +417,7 @@ add_bml_test(CommandContextTest
 add_bml_test(DataShareTest
         SOURCES
         DataShareTest.cpp
-        ${BML_SOURCE_DIR}/DataShare.cpp
+        ${BML_SOURCE_DIR}/DataShare/DataShare.cpp
 )
 
 if (BML_WITH_ANGELSCRIPT)
@@ -447,7 +447,7 @@ if (BML_WITH_ANGELSCRIPT)
             ${BML_SOURCE_DIR}/AngelScript/ScriptFunctionSupport.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptStringInterop.cpp
             ${BML_SOURCE_DIR}/AngelScript/ScriptTimerService.cpp
-            ${BML_SOURCE_DIR}/DataShare.cpp
+            ${BML_SOURCE_DIR}/DataShare/DataShare.cpp
     )
     target_compile_options(ScriptServiceLifecycleTest PRIVATE
             $<$<CXX_COMPILER_ID:MSVC>:/Gy>
@@ -545,7 +545,7 @@ add_bml_test(ModInvocationGateTest
 add_bml_test(ImcErrorTest
         SOURCES
         ImcErrorTest.cpp
-        ${BML_SOURCE_DIR}/Errors.cpp
+        ${BML_SOURCE_DIR}/Api/Errors.cpp
 )
 
 add_bml_test(ImcHeadersTest
@@ -562,7 +562,7 @@ add_bml_test(TypeConvertTest
 add_bml_test(ImcRuntimeTest
         SOURCES
         ImcRuntimeTest.cpp
-        ${BML_SOURCE_DIR}/ImcRuntime.cpp
+        ${BML_SOURCE_DIR}/Imc/ImcRuntime.cpp
 )
 
 add_bml_test(ImcWireTest
@@ -578,7 +578,7 @@ add_dependencies(ImcGeneratedClientTest BML_ImcSampleApiGeneration)
 add_bml_test(ImcGeneratedRuntimeIntegrationTest
         SOURCES
         ImcGeneratedRuntimeIntegrationTest.cpp
-        ${BML_SOURCE_DIR}/ImcRuntime.cpp
+        ${BML_SOURCE_DIR}/Imc/ImcRuntime.cpp
 )
 target_include_directories(ImcGeneratedRuntimeIntegrationTest PRIVATE "${BML_IMC_SAMPLE_GENERATED_DIR}")
 add_dependencies(ImcGeneratedRuntimeIntegrationTest BML_ImcSampleApiGeneration)

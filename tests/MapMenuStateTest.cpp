@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "MapMenu.h"
+#include "CustomMaps/MapMenu.h"
 
 namespace {
 

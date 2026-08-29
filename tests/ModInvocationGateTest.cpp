@@ -1,4 +1,4 @@
-#include "ModInvocationGate.h"
+#include "Loader/ModInvocationGate.h"
 
 #include <atomic>
 #include <chrono>

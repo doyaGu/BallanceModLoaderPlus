@@ -2,8 +2,8 @@
 #include "AngelScript/ScriptCallbackEvents.h"
 #include "AngelScript/ScriptMod.h"
 #include "AngelScript/ScriptModRuntime.h"
-#include "CommandContext.h"
-#include "ModContext.h"
+#include "Console/CommandContext.h"
+#include "Loader/ModContext.h"
 
 IMod::~IMod() = default;
 

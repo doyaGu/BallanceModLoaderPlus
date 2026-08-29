@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "GameSession.h"
+#include "Gameplay/GameSession.h"
 
 namespace {
 

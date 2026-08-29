@@ -10,12 +10,12 @@
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"
 
-#include "ModContext.h"
-#include "RenderHook.h"
-#include "AnsiPalette.h"
+#include "Loader/ModContext.h"
+#include "Hooks/RenderHook.h"
+#include "UI/AnsiPalette.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
-#include "BuiltinCapabilities.h"
+#include "Api/BuiltinCapabilities.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptDevToolsService.h"
 #endif

@@ -10,8 +10,8 @@
 
 #include "BML/Gameplay.h"
 
-#include "BuiltinCapabilities.h"
-#include "ModContext.h"
+#include "Api/BuiltinCapabilities.h"
+#include "Loader/ModContext.h"
 #include "ScriptMod.h"
 #include "ScriptModRuntime.h"
 #include "ScriptFunctionSupport.h"

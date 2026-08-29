@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ModContext.h"
+#include "Loader/ModContext.h"
 #include "ScriptAngelScriptHandle.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"

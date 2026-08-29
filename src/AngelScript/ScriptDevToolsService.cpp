@@ -13,8 +13,8 @@
 #include "imgui.h"
 
 #include "CKAngelScriptAdapter.h"
-#include "LegacyModVersion.h"
-#include "ModContext.h"
+#include "Loader/LegacyModVersion.h"
+#include "Loader/ModContext.h"
 #include "ScriptLibraryRegistry.h"
 #include "ScriptLibraryServices.h"
 #include "ScriptLibraryTools.h"

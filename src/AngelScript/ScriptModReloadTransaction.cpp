@@ -3,8 +3,8 @@
 #include <new>
 #include <utility>
 
-#include "Logger.h"
-#include "ModContext.h"
+#include "Logging/Logger.h"
+#include "Loader/ModContext.h"
 #include "ScriptDevToolsService.h"
 #include "ScriptStateMigration.h"
 #include "Utils/PathUtils.h"
