@@ -242,6 +242,8 @@ add_bml_test(ConfigTest
         ConfigTest.cpp
         ${BML_SOURCE_DIR}/Config.cpp
         ${BML_SOURCE_DIR}/Config.h
+        ${BML_SOURCE_DIR}/ConfigStore.cpp
+        ${BML_SOURCE_DIR}/ConfigStore.h
         DEPENDENCIES
         BMLUtils
         VirtoolsSDK::CK2

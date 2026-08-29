@@ -14,6 +14,7 @@
 #include "BML/IMod.h"
 
 #include "Config.h"
+#include "ConfigStore.h"
 #include "DataShare.hpp"
 #include "CommandContext.h"
 #include "CKIdentityRegistry.h"
@@ -489,8 +490,7 @@ private:
 
     std::unordered_map<IMod*, std::vector<ModDependency>> m_ModDependencies;
 
-    std::vector<std::unique_ptr<Config>> m_Configs;
-    std::unordered_map<std::string, size_t> m_ConfigIndex;
+    ConfigStore m_ConfigStore;
 
     std::unordered_map<void *, std::vector<IMod *>> m_CallbackMap;
 

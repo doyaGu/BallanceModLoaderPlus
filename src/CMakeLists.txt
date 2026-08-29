@@ -142,6 +142,7 @@ set(BML_PRIVATE_HEADERS
         DataShare.hpp
         Logger.h
         Config.h
+        ConfigStore.h
 )
 
 set(BML_SOURCES
@@ -202,6 +203,7 @@ set(BML_SOURCES
         DataShare.cpp
         Logger.cpp
         Config.cpp
+        ConfigStore.cpp
 
         BML.rc
 )

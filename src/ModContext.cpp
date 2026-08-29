@@ -1096,22 +1096,12 @@ Config *ModContext::AddConfig(std::unique_ptr<Config> config) {
     LoadConfig(rawConfig);
 
     std::lock_guard<std::mutex> lock(m_Mutex);
-    if (m_ConfigIndex.find(modId) != m_ConfigIndex.end()) {
+    if (m_ConfigStore.Contains(modId)) {
         if (m_Logger)
             m_Logger->Error("Can not add duplicate config for %s.", modId.c_str());
         return nullptr;
     }
-
-    const size_t index = m_Configs.size();
-    m_Configs.push_back(std::move(config));
-    try {
-        m_ConfigIndex.emplace(modId, index);
-    } catch (...) {
-        m_Configs.pop_back();
-        throw;
-    }
-
-    return rawConfig;
+    return m_ConfigStore.Add(modId, mod, std::move(config));
 }
 
 bool ModContext::RemoveConfig(Config *config) {
@@ -1126,20 +1116,9 @@ bool ModContext::RemoveConfig(Config *config) {
     std::unique_ptr<Config> removed;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        auto it = m_ConfigIndex.find(modId);
-        if (it == m_ConfigIndex.end() || it->second >= m_Configs.size() ||
-            m_Configs[it->second].get() != config) {
+        removed = m_ConfigStore.Remove(modId, mod, config);
+        if (!removed)
             return false;
-        }
-
-        const size_t index = it->second;
-        removed = std::move(m_Configs[index]);
-        m_Configs.erase(m_Configs.begin() + static_cast<std::ptrdiff_t>(index));
-        m_ConfigIndex.erase(it);
-        for (auto &entry : m_ConfigIndex) {
-            if (entry.second > index)
-                --entry.second;
-        }
     }
 
     if (mod->m_Config == config)
@@ -1170,10 +1149,7 @@ Config *ModContext::GetConfig(IMod *mod) {
     const std::string modId = mod->GetID();
 
     std::lock_guard<std::mutex> lock(m_Mutex);
-    auto it = m_ConfigIndex.find(modId);
-    if (it == m_ConfigIndex.end() || it->second >= m_Configs.size())
-        return nullptr;
-    return m_Configs[it->second].get();
+    return m_ConfigStore.Find(modId, mod);
 }
 
 bool ModContext::LoadConfig(Config *config) {
@@ -1209,9 +1185,7 @@ void ModContext::SnapshotConfigMetadata() {
     std::vector<Config *> configs;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        configs.reserve(m_Configs.size());
-        for (const auto &config : m_Configs)
-            configs.push_back(config.get());
+        configs = m_ConfigStore.Snapshot();
     }
 
     for (Config *config : configs) {
@@ -1239,9 +1213,7 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
     std::vector<Config *> configs;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        configs.reserve(m_Configs.size());
-        for (const auto &config : m_Configs)
-            configs.push_back(config.get());
+        configs = m_ConfigStore.Snapshot();
     }
 
     for (Config *config : configs) {

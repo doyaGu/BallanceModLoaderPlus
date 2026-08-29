@@ -8,6 +8,7 @@
 #include "BML/IMod.h"
 
 #include "Config.h"
+#include "ConfigStore.h"
 #include "Logger.h"
 
 Logger *Logger::m_DefaultLogger = nullptr;
@@ -149,6 +150,40 @@ TEST_F(ConfigTest, ConstructionDestruction) {
     Config *nullModConfig = new Config(nullptr);
     EXPECT_EQ(nullptr, nullModConfig->GetMod());
     delete nullModConfig;
+}
+
+TEST(ConfigStoreTest, FindRejectsDifferentOwnerWithSameModId) {
+    MockMod registered(nullptr);
+    MockMod duplicate(nullptr);
+    ConfigStore store;
+
+    auto config = std::make_unique<Config>(&registered);
+    Config *registeredConfig = config.get();
+    ASSERT_EQ(store.Add("MockMod", &registered, std::move(config)), registeredConfig);
+
+    EXPECT_EQ(store.Find("MockMod", &registered), registeredConfig);
+    EXPECT_EQ(store.Find("MockMod", &duplicate), nullptr);
+}
+
+TEST(ConfigStoreTest, RemovalMaintainsOwnerIdentityAndRemainingIndices) {
+    MockMod first(nullptr);
+    MockMod second(nullptr);
+    ConfigStore store;
+
+    auto firstConfig = std::make_unique<Config>(&first);
+    auto secondConfig = std::make_unique<Config>(&second);
+    Config *firstRaw = firstConfig.get();
+    Config *secondRaw = secondConfig.get();
+    ASSERT_EQ(store.Add("first", &first, std::move(firstConfig)), firstRaw);
+    ASSERT_EQ(store.Add("second", &second, std::move(secondConfig)), secondRaw);
+
+    EXPECT_EQ(store.Remove("first", &second, firstRaw), nullptr);
+    EXPECT_EQ(store.Find("first", &first), firstRaw);
+
+    std::unique_ptr<Config> removed = store.Remove("first", &first, firstRaw);
+    ASSERT_EQ(removed.get(), firstRaw);
+    EXPECT_EQ(store.Find("first", &first), nullptr);
+    EXPECT_EQ(store.Find("second", &second), secondRaw);
 }
 
 // Category management
