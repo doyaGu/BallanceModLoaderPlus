@@ -245,6 +245,7 @@ set(BML_UI_PRIVATE_HEADERS
         UI/AnsiPalette.h
         UI/AnsiText.h
         UI/BuiInternal.h
+        UI/GameFontCatalog.h
         UI/ModMenu.h
         UI/Overlay.h
 )
@@ -253,6 +254,7 @@ set(BML_UI_SOURCES
         UI/AnsiPalette.cpp
         UI/AnsiText.cpp
         UI/Bui.cpp
+        UI/GameFontCatalog.cpp
         UI/ModMenu.cpp
         UI/Overlay.cpp
         UI/OverlayScriptImGui.cpp
@@ -283,14 +285,18 @@ set(BML_HOOK_SOURCES
 )
 
 set(BML_VIRTOOLS_PRIVATE_HEADERS
+        Virtools/BehaviorGraphRecipes.h
         Virtools/CKIdentityRegistry.h
+        Virtools/VirtoolsActions.h
 )
 
 set(BML_VIRTOOLS_SOURCES
+        Virtools/BehaviorGraphRecipes.cpp
         Virtools/CKIdentityRegistry.cpp
         Virtools/ExecuteBB.cpp
         Virtools/HookBlock.cpp
         Virtools/ScriptHelper.cpp
+        Virtools/VirtoolsActions.cpp
 )
 
 set(BML_PRIVATE_HEADERS

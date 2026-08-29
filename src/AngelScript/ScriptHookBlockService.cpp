@@ -8,11 +8,11 @@
 
 #include <angelscript.h>
 
-#include "BML/ExecuteBB.h"
 #include "BML/ScriptHelper.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
+#include "Virtools/BehaviorGraphRecipes.h"
 
 namespace BML {
 
@@ -51,7 +51,7 @@ static std::string DefaultHookBlockName(unsigned int id) {
 }
 
 static void SetHookBlockNativeCallback(CKBehavior *block,
-                                       ExecuteBB::CKBehaviorCallback callback,
+                                       BehaviorGraphRecipes::BehaviorCallback callback,
                                        void *arg) {
     if (!block || block->GetLocalParameterCount() < 2)
         return;
@@ -209,7 +209,7 @@ static void ReleaseHookBlockCallback(ScriptHookBlockEntry &entry) {
 }
 
 static void ClearHookBlockNativeCallback(ScriptHookBlockEntry &entry) {
-    ExecuteBB::CKBehaviorCallback callback = nullptr;
+    BehaviorGraphRecipes::BehaviorCallback callback = nullptr;
     void *arg = nullptr;
     SetHookBlockNativeCallback(entry.Block, callback, arg);
 }
@@ -371,11 +371,11 @@ static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
     entry->Callback = callback;
     callback->AddRef();
 
-    entry->Block = ExecuteBB::CreateHookBlock(ownerScript,
-                                              ScriptHookBlockCallback,
-                                              entry.get(),
-                                              inputCount,
-                                              outputCount);
+    entry->Block = BehaviorGraphRecipes::AddHookBlock(ownerScript,
+                                                       ScriptHookBlockCallback,
+                                                       entry.get(),
+                                                       inputCount,
+                                                       outputCount);
     if (!entry->Block) {
         ReleaseHookBlockCallback(*entry);
         RecordHookBlockDiagnostic(state, "HookBlock creation failed.");

@@ -23,6 +23,8 @@
 #include "Imc/ImcRuntime.h"
 #include "Loader/ModInvocationGate.h"
 #include "Gameplay/GameSession.h"
+#include "UI/GameFontCatalog.h"
+#include "Virtools/VirtoolsActions.h"
 
 // The ids themselves are public, since BML_GetLoaderPath takes them. This name
 // stays for the loader's own call sites and for the script binding.
@@ -234,6 +236,10 @@ public:
 
     BML::GameSessionSnapshot ReadGameSession() const noexcept { return m_GameSession.Read(); }
     BML::CKIdentityRegistry &ObjectIdentities() noexcept { return m_ObjectIdentities; }
+    BML::VirtoolsActions &GetVirtoolsActions() noexcept { return m_VirtoolsActions; }
+    const BML::VirtoolsActions &GetVirtoolsActions() const noexcept { return m_VirtoolsActions; }
+    BML::GameFontCatalog &GetGameFonts() noexcept { return m_GameFonts; }
+    const BML::GameFontCatalog &GetGameFonts() const noexcept { return m_GameFonts; }
     bool IsIngame() override { return ReadGameSession().IsInGame(); }
     bool IsInLevel() const { return ReadGameSession().IsInLevel(); }
     bool IsPaused() override { return ReadGameSession().IsPaused(); }
@@ -431,6 +437,8 @@ private:
     int m_Flags = 0;
     BML::GameSession m_GameSession;
     BML::CKIdentityRegistry m_ObjectIdentities;
+    BML::VirtoolsActions m_VirtoolsActions;
+    BML::GameFontCatalog m_GameFonts;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;
     bool m_AngelScriptBindingsRegistered = false;

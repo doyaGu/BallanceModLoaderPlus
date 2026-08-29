@@ -3,11 +3,11 @@
 #include <cstring>
 #include <vector>
 
-#include "BML/ExecuteBB.h"
 #include "BML/IBML.h"
 #include "BML/ILogger.h"
 #include "BML/IMessageReceiver.h"
 #include "BML/ScriptHelper.h"
+#include "Virtools/BehaviorGraphRecipes.h"
 
 using namespace ScriptHelper;
 
@@ -23,7 +23,7 @@ int Dispatch(const CKBehaviorContext *, void *argument) {
 
 template<void (Receiver::*Method)()>
 CKBehavior *CreateEventHook(CKBehavior *script, Receiver &receiver) {
-    return ExecuteBB::CreateHookBlock(script, &Dispatch<Method>, &receiver);
+    return BML::BehaviorGraphRecipes::AddHookBlock(script, &Dispatch<Method>, &receiver);
 }
 
 CKBehavior *Follow(CKBehavior *graph, CKBehavior *behavior, int count) {

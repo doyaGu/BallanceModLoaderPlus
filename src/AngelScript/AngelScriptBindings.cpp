@@ -28,7 +28,6 @@
 
 #include "AngelScript/generated/BMLImGuiAngelScriptBindings.h"
 #include "AngelScriptImGuiBindings.h"
-#include "BML/ExecuteBB.h"
 #include "Mods/BMLMod.h"
 #include "CKAngelScriptAdapter.h"
 #include "ScriptApiSurface.h"
@@ -43,6 +42,9 @@
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
+#include "UI/GameFontCatalog.h"
+#include "Virtools/BehaviorGraphRecipes.h"
+#include "Virtools/VirtoolsActions.h"
 #include "UI/Overlay.h"
 
 static constexpr const char *kExtensionName = "BML";
@@ -791,14 +793,14 @@ struct BMLAS_ObjectLoadOptions {
 };
 
 struct BMLAS_Text2DDefinition {
-    int Font = ExecuteBB::NOFONT;
+    int Font = static_cast<int>(BML::GameFont::None);
     std::string Text;
-    int Align = ALIGN_CENTER;
+    int Align = 0;
     BMLAS_VxRect Margin = {2.0f, 2.0f, 2.0f, 2.0f};
     Vx2DVector Offset = Vx2DVector(0.0f, 0.0f);
     Vx2DVector ParagraphIndent = Vx2DVector(0.0f, 0.0f);
     float CaretSize = 0.1f;
-    int Flags = TEXT_SCREEN;
+    int Flags = 1;
 };
 
 struct BMLAS_BallTypeDefinition {
@@ -1271,31 +1273,27 @@ static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions
     if (!RequireLoadedContext(ctx))
         return BMLAS_CreateObjectLoadResult(nullptr, false, 0, {});
 
-    std::pair<XObjectArray *, CKObject *> result = ExecuteBB::ObjectLoad(options.File.c_str(),
-                                                                         options.Rename,
-                                                                         options.MasterName.c_str(),
-                                                                         static_cast<CK_CLASSID>(options.FilterClass),
-                                                                         options.AddToScene ? TRUE : FALSE,
-                                                                         options.ReuseMeshes ? TRUE : FALSE,
-                                                                         options.ReuseMaterials ? TRUE : FALSE,
-                                                                         options.Dynamic ? TRUE : FALSE);
-    std::vector<CK_ID> objectIds;
-    if (result.first) {
-        objectIds.reserve(static_cast<std::size_t>(result.first->Size()));
-        for (CK_ID *id = result.first->Begin(); id != result.first->End(); ++id) {
-            objectIds.push_back(*id);
-        }
-    }
-
-    const CK_ID mainObjectId = result.second ? result.second->GetID() : 0;
-    const bool success = result.first != nullptr || result.second != nullptr;
-    return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), success, mainObjectId, std::move(objectIds));
+    BML::BehaviorGraphRecipes::ObjectLoadDefinition definition;
+    definition.File = options.File;
+    definition.Rename = options.Rename;
+    definition.MasterName = options.MasterName;
+    definition.FilterClass = static_cast<CK_CLASSID>(options.FilterClass);
+    definition.AddToScene = options.AddToScene ? TRUE : FALSE;
+    definition.ReuseMeshes = options.ReuseMeshes ? TRUE : FALSE;
+    definition.ReuseMaterials = options.ReuseMaterials ? TRUE : FALSE;
+    definition.Dynamic = options.Dynamic ? TRUE : FALSE;
+    BML::ObjectLoadResult result = ctx->GetVirtoolsActions().LoadObjects(definition);
+    const bool success = result && (result.HasObjectArray || result.MasterObject != 0);
+    return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), success,
+                                        result.MasterObject, std::move(result.Objects));
 }
 
-static ExecuteBB::FontType BMLAS_ToFontType(int value) {
-    if (value < ExecuteBB::NOFONT || value > ExecuteBB::GAMEFONT_CREDITS_BIG)
-        return ExecuteBB::NOFONT;
-    return static_cast<ExecuteBB::FontType>(value);
+static BML::GameFont BMLAS_ToGameFont(int value) {
+    if (value < static_cast<int>(BML::GameFont::None) ||
+        value > static_cast<int>(BML::GameFont::CreditsBig)) {
+        return BML::GameFont::None;
+    }
+    return static_cast<BML::GameFont>(value);
 }
 
 static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
@@ -1309,18 +1307,19 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
     if (!ownerScript || !target || !RequireLoadedContext(ctx))
         return nullptr;
 
-    return ExecuteBB::Create2DText(ownerScript,
-                                   target,
-                                   BMLAS_ToFontType(definition.Font),
-                                   definition.Text.c_str(),
-                                   definition.Align,
-                                   definition.Margin.ToNative(),
-                                   definition.Offset,
-                                   definition.ParagraphIndent,
-                                   backgroundMaterial,
-                                   definition.CaretSize,
-                                   caretMaterial,
-                                   definition.Flags);
+    BML::BehaviorGraphRecipes::Text2DDefinition recipe;
+    recipe.Target = target;
+    recipe.FontIndex = ctx->GetGameFonts().Resolve(BMLAS_ToGameFont(definition.Font));
+    recipe.Text = definition.Text;
+    recipe.Alignment = definition.Align;
+    recipe.Margin = definition.Margin.ToNative();
+    recipe.Offset = definition.Offset;
+    recipe.ParagraphIndentation = definition.ParagraphIndent;
+    recipe.BackgroundMaterial = backgroundMaterial;
+    recipe.CaretSize = definition.CaretSize;
+    recipe.CaretMaterial = caretMaterial;
+    recipe.Flags = definition.Flags;
+    return BML::BehaviorGraphRecipes::Add2DText(ownerScript, recipe);
 }
 
 static CKBehavior *BMLAS_Text_Create2DTextDefaultMaterials(CKBehavior *ownerScript,
@@ -1490,9 +1489,40 @@ static bool BMLAS_CK_SetDataArrayFloat(CKDataArray *array, int row, int column, 
     return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
 }
 
-static bool BMLAS_Physics_HasTarget(CK3dEntity *target) {
-    ModContext *ctx = nullptr;
-    return target && RequireLoadedContext(ctx);
+static BML::BehaviorGraphRecipes::PhysicalizeDefinition BMLAS_PhysicalizeRecipe(
+    CK3dEntity *target, const BMLAS_PhysicalizeDefinition &definition) {
+    BML::BehaviorGraphRecipes::PhysicalizeDefinition recipe;
+    recipe.Target = target;
+    recipe.Fixed = definition.Fixed;
+    recipe.Friction = definition.Friction;
+    recipe.Elasticity = definition.Elasticity;
+    recipe.Mass = definition.Mass;
+    recipe.CollisionGroup = definition.CollisionGroup;
+    recipe.StartFrozen = definition.StartFrozen;
+    recipe.EnableCollision = definition.EnableCollision;
+    recipe.CalculateMassCenter = definition.CalcMassCenter;
+    recipe.LinearDamping = definition.LinearDamp;
+    recipe.RotationalDamping = definition.RotDamp;
+    recipe.CollisionSurface = definition.CollisionSurface;
+    recipe.MassCenter = definition.MassCenter;
+    return recipe;
+}
+
+static BML::BehaviorGraphRecipes::ForceDefinition BMLAS_ForceRecipe(
+    CK3dEntity *target, const VxVector &position, CK3dEntity *positionReference,
+    const VxVector &direction, CK3dEntity *directionReference, float magnitude) {
+    BML::BehaviorGraphRecipes::ForceDefinition recipe;
+    recipe.Target = target;
+    recipe.Position = position;
+    recipe.PositionReference = positionReference;
+    recipe.Direction = direction;
+    recipe.DirectionReference = directionReference;
+    recipe.Magnitude = magnitude;
+    return recipe;
+}
+
+static bool BMLAS_Physics_HasTarget(CK3dEntity *target, ModContext *&context) {
+    return target && RequireLoadedContext(context);
 }
 
 static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
@@ -1500,14 +1530,11 @@ static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
                                             CKMesh *mesh) {
     if (RejectRestrictedHostCall("Physics::PhysicalizeConvex"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::PhysicalizeConvex(target, definition.Fixed, definition.Friction, definition.Elasticity,
-                                 definition.Mass, definition.CollisionGroup.c_str(), definition.StartFrozen,
-                                 definition.EnableCollision, definition.CalcMassCenter, definition.LinearDamp,
-                                 definition.RotDamp, definition.CollisionSurface.c_str(), definition.MassCenter,
-                                 mesh);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().PhysicalizeConvex(
+        BMLAS_PhysicalizeRecipe(target, definition), mesh));
 }
 
 static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
@@ -1516,14 +1543,11 @@ static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
                                           float radius) {
     if (RejectRestrictedHostCall("Physics::PhysicalizeBall"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::PhysicalizeBall(target, definition.Fixed, definition.Friction, definition.Elasticity,
-                               definition.Mass, definition.CollisionGroup.c_str(), definition.StartFrozen,
-                               definition.EnableCollision, definition.CalcMassCenter, definition.LinearDamp,
-                               definition.RotDamp, definition.CollisionSurface.c_str(), definition.MassCenter,
-                               center, radius);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().PhysicalizeBall(
+        BMLAS_PhysicalizeRecipe(target, definition), center, radius));
 }
 
 static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
@@ -1531,23 +1555,20 @@ static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
                                              CKMesh *mesh) {
     if (RejectRestrictedHostCall("Physics::PhysicalizeConcave"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::PhysicalizeConcave(target, definition.Fixed, definition.Friction, definition.Elasticity,
-                                  definition.Mass, definition.CollisionGroup.c_str(), definition.StartFrozen,
-                                  definition.EnableCollision, definition.CalcMassCenter, definition.LinearDamp,
-                                  definition.RotDamp, definition.CollisionSurface.c_str(), definition.MassCenter,
-                                  mesh);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().PhysicalizeConcave(
+        BMLAS_PhysicalizeRecipe(target, definition), mesh));
 }
 
 static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
     if (RejectRestrictedHostCall("Physics::Unphysicalize"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::Unphysicalize(target);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().Unphysicalize(target));
 }
 
 static bool BMLAS_Physics_SetForce(CK3dEntity *target,
@@ -1558,19 +1579,20 @@ static bool BMLAS_Physics_SetForce(CK3dEntity *target,
                                    float force) {
     if (RejectRestrictedHostCall("Physics::SetForce"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::SetPhysicsForce(target, position, positionReference, direction, directionReference, force);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().SetPhysicsForce(
+        BMLAS_ForceRecipe(target, position, positionReference, direction, directionReference, force)));
 }
 
 static bool BMLAS_Physics_ClearForce(CK3dEntity *target) {
     if (RejectRestrictedHostCall("Physics::ClearForce"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::UnsetPhysicsForce(target);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().UnsetPhysicsForce(target));
 }
 
 static bool BMLAS_Physics_Impulse(CK3dEntity *target,
@@ -1581,19 +1603,20 @@ static bool BMLAS_Physics_Impulse(CK3dEntity *target,
                                   float impulse) {
     if (RejectRestrictedHostCall("Physics::Impulse"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::PhysicsImpulse(target, position, positionReference, direction, directionReference, impulse);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().PhysicsImpulse(
+        BMLAS_ForceRecipe(target, position, positionReference, direction, directionReference, impulse)));
 }
 
 static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
     if (RejectRestrictedHostCall("Physics::WakeUp"))
         return false;
-    if (!BMLAS_Physics_HasTarget(target))
+    ModContext *context = nullptr;
+    if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    ExecuteBB::PhysicsWakeUp(target);
-    return true;
+    return static_cast<bool>(context->GetVirtoolsActions().PhysicsWakeUp(target));
 }
 
 static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {
@@ -3261,14 +3284,14 @@ static const ScriptUiEnumValueRegistration kUiButtonTypeRegistrations[] = {
 };
 
 static const ScriptUiEnumValueRegistration kFontTypeRegistrations[] = {
-    {"FONT_NONE", ExecuteBB::NOFONT, "BML::FONT_NONE"},
-    {"FONT_GAME_NORMAL", ExecuteBB::GAMEFONT_01, "BML::FONT_GAME_NORMAL"},
-    {"FONT_GAME_LARGE", ExecuteBB::GAMEFONT_02, "BML::FONT_GAME_LARGE"},
-    {"FONT_GAME_SMALL", ExecuteBB::GAMEFONT_03, "BML::FONT_GAME_SMALL"},
-    {"FONT_GAME_SMALL_GRAY", ExecuteBB::GAMEFONT_03A, "BML::FONT_GAME_SMALL_GRAY"},
-    {"FONT_GAME_HUGE", ExecuteBB::GAMEFONT_04, "BML::FONT_GAME_HUGE"},
-    {"FONT_CREDITS_SMALL", ExecuteBB::GAMEFONT_CREDITS_SMALL, "BML::FONT_CREDITS_SMALL"},
-    {"FONT_CREDITS_BIG", ExecuteBB::GAMEFONT_CREDITS_BIG, "BML::FONT_CREDITS_BIG"},
+    {"FONT_NONE", static_cast<int>(BML::GameFont::None), "BML::FONT_NONE"},
+    {"FONT_GAME_NORMAL", static_cast<int>(BML::GameFont::Normal), "BML::FONT_GAME_NORMAL"},
+    {"FONT_GAME_LARGE", static_cast<int>(BML::GameFont::Large), "BML::FONT_GAME_LARGE"},
+    {"FONT_GAME_SMALL", static_cast<int>(BML::GameFont::Small), "BML::FONT_GAME_SMALL"},
+    {"FONT_GAME_SMALL_GRAY", static_cast<int>(BML::GameFont::SmallGray), "BML::FONT_GAME_SMALL_GRAY"},
+    {"FONT_GAME_HUGE", static_cast<int>(BML::GameFont::Huge), "BML::FONT_GAME_HUGE"},
+    {"FONT_CREDITS_SMALL", static_cast<int>(BML::GameFont::CreditsSmall), "BML::FONT_CREDITS_SMALL"},
+    {"FONT_CREDITS_BIG", static_cast<int>(BML::GameFont::CreditsBig), "BML::FONT_CREDITS_BIG"},
 };
 
 static const ScriptUiFunctionRegistration kUiFunctionRegistrations[] = {

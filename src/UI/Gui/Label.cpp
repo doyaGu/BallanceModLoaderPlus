@@ -2,16 +2,16 @@
 
 #include "BML/ScriptHelper.h"
 #include "Loader/ModContext.h"
-
-namespace ExecuteBB {
-    int GetFont(FontType type);
-    FontType GetFontType(int font);
-}
+#include "Virtools/BehaviorGraphRecipes.h"
 
 using namespace BGui;
 
 Label::Label(const char *name) : Element(name) {
-    m_Text2d = ExecuteBB::Create2DText(BML_GetModContext()->GetScriptByName("Level_Init"), m_2dEntity);
+    ModContext *context = BML_GetModContext();
+    BML::BehaviorGraphRecipes::Text2DDefinition definition;
+    definition.Target = m_2dEntity;
+    definition.FontIndex = context->GetGameFonts().Resolve(BML::GameFont::None);
+    m_Text2d = BML::BehaviorGraphRecipes::Add2DText(context->GetScriptByName("Level_Init"), definition);
 }
 
 Label::~Label() {
@@ -29,12 +29,16 @@ void Label::SetText(const char *text) {
 }
 
 ExecuteBB::FontType Label::GetFont() {
-    return ExecuteBB::GetFontType(
-        ScriptHelper::GetParamValue<int>(m_Text2d->GetInputParameter(0)->GetRealSource()));
+    ModContext *context = BML_GetModContext();
+    const int font = ScriptHelper::GetParamValue<int>(m_Text2d->GetInputParameter(0)->GetRealSource());
+    return static_cast<ExecuteBB::FontType>(context->GetGameFonts().Identify(font));
 }
 
 void Label::SetFont(ExecuteBB::FontType font) {
-    ScriptHelper::SetParamValue(m_Text2d->GetInputParameter(0)->GetRealSource(), ExecuteBB::GetFont(font));
+    ModContext *context = BML_GetModContext();
+    const BML::GameFont gameFont = static_cast<BML::GameFont>(font);
+    ScriptHelper::SetParamValue(m_Text2d->GetInputParameter(0)->GetRealSource(),
+                                context->GetGameFonts().Resolve(gameFont));
 }
 
 void Label::SetAlignment(int align) {

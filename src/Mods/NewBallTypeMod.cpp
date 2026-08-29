@@ -1,10 +1,12 @@
 #include "Mods/NewBallTypeMod.h"
 
 #include "BML/IBML.h"
-#include "BML/ExecuteBB.h"
 #include "BML/ScriptHelper.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/Narratives.h"
+
+#include "Loader/ModContext.h"
+#include "Virtools/BehaviorGraphRecipes.h"
 
 using namespace ScriptHelper;
 
@@ -140,9 +142,27 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     m_AllBalls = m_BML->GetGroupByName("All_Balls");
     std::string path = "3D Entities\\";
     CK3dEntity *ballMF = m_BML->Get3dEntityByName("Balls_MF");
+    ModContext *context = dynamic_cast<ModContext *>(m_BML);
+    if (!context) {
+        GetLogger()->Error("Cannot load registered ball types without the loader runtime context");
+        return;
+    }
 
     for (BallTypeInfo &info: m_BallTypes) {
-        XObjectArray *objects = ExecuteBB::ObjectLoad((path + info.m_File).c_str(), false).first;
+        BML::BehaviorGraphRecipes::ObjectLoadDefinition definition;
+        definition.File = path + info.m_File;
+        definition.Rename = false;
+        BML::ObjectLoadResult objects = context->GetVirtoolsActions().LoadObjects(definition);
+        if (!objects) {
+            GetLogger()->Error("Cannot load ball type %s: %s", info.m_Name.c_str(),
+                               BML::DescribeVirtoolsActionError(objects.Status.Error));
+            return;
+        }
+        if (!objects.HasObjectArray) {
+            GetLogger()->Error("Cannot load ball type %s: Object Load returned no object array",
+                               info.m_Name.c_str());
+            return;
+        }
 
         std::string allGroup = "All_" + info.m_ObjName;
         std::string piecesGroup = info.m_ObjName + "_Pieces";
@@ -150,8 +170,8 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
         std::string explosion = "Ball_Explosion_" + info.m_Name;
         std::string reset = "Ball_ResetPieces_" + info.m_Name;
 
-        for (CK_ID *id = objects->Begin(); id != objects->End(); id++) {
-            CKObject *obj = m_BML->GetCKContext()->GetObject(*id);
+        for (CK_ID id : objects.Objects) {
+            CKObject *obj = m_BML->GetCKContext()->GetObject(id);
             const char *name = obj->GetName();
             if (name) {
                 if (allGroup == name)
@@ -477,11 +497,19 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
         CKParameter *ballName = CreateParamString(graph, "Pin", info.m_ObjName.c_str());
         sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(ballName);
         CKBehavior *newPhy;
+        const BML::BehaviorGraphRecipes::PhysicalizeDefinition definition;
         if (info.m_Radius > 0) {
-            newPhy = ExecuteBB::CreatePhysicalizeBall(graph);
-            SetParamValue(newPhy->GetInputParameter(12)->GetDirectSource(), info.m_Radius);
+            newPhy = BML::BehaviorGraphRecipes::AddPhysicalizeBall(
+                graph, definition, VxVector(0.0f, 0.0f, 0.0f), info.m_Radius);
         } else {
-            newPhy = ExecuteBB::CreatePhysicalizeConvex(graph);
+            newPhy = BML::BehaviorGraphRecipes::AddPhysicalizeConvex(graph, definition);
+        }
+
+        if (!newPhy) {
+            GetLogger()->Error("Cannot add the Physicalize recipe for ball type %s", info.m_Name.c_str());
+            return;
+        }
+        if (info.m_Radius <= 0) {
             newPhy->GetInputParameter(11)->SetDirectSource(op->GetOutputParameter(0));
         }
 

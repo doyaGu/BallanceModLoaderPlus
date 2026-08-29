@@ -5,7 +5,6 @@
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
-#include "BML/ExecuteBB.h"
 #include "BML/ScriptHelper.h"
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"
@@ -13,17 +12,14 @@
 #include "Loader/ModContext.h"
 #include "Hooks/RenderHook.h"
 #include "UI/AnsiPalette.h"
+#include "UI/GameFontCatalog.h"
+#include "Virtools/BehaviorGraphRecipes.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 #include "Api/BuiltinCapabilities.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptDevToolsService.h"
 #endif
-
-namespace ExecuteBB {
-    void Init();
-    void InitFont(FontType type, int fontIndex);
-}
 
 using namespace ScriptHelper;
 
@@ -168,7 +164,14 @@ void BMLMod::OnLoad() {
         return BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
     });
 
-    ExecuteBB::Init();
+    if (ModContext *context = GetRuntimeContext()) {
+        const BML::VirtoolsActionResult status =
+            context->GetVirtoolsActions().Bind(context->GetScriptByName("Level_Init"));
+        if (!status) {
+            GetLogger()->Error("Cannot bind Virtools Actions: %s",
+                               BML::DescribeVirtoolsActionError(status.Error));
+        }
+    }
 
     InitConfigs();
     ApplySettings(Startup);
@@ -513,19 +516,22 @@ void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
             return true;
         }, "TT CreateFontEx");
 
-        std::map<std::string, ExecuteBB::FontType> fontid;
-        fontid["GameFont_01"] = ExecuteBB::GAMEFONT_01;
-        fontid["GameFont_02"] = ExecuteBB::GAMEFONT_02;
-        fontid["GameFont_03"] = ExecuteBB::GAMEFONT_03;
-        fontid["GameFont_03a"] = ExecuteBB::GAMEFONT_03A;
-        fontid["GameFont_04"] = ExecuteBB::GAMEFONT_04;
-        fontid["GameFont_Credits_Small"] = ExecuteBB::GAMEFONT_CREDITS_SMALL;
-        fontid["GameFont_Credits_Big"] = ExecuteBB::GAMEFONT_CREDITS_BIG;
+        std::map<std::string, BML::GameFont> fontid;
+        fontid["GameFont_01"] = BML::GameFont::Normal;
+        fontid["GameFont_02"] = BML::GameFont::Large;
+        fontid["GameFont_03"] = BML::GameFont::Small;
+        fontid["GameFont_03a"] = BML::GameFont::SmallGray;
+        fontid["GameFont_04"] = BML::GameFont::Huge;
+        fontid["GameFont_Credits_Small"] = BML::GameFont::CreditsSmall;
+        fontid["GameFont_Credits_Big"] = BML::GameFont::CreditsBig;
 
         for (int i = 0; i < 7; i++) {
             int font = 0;
             bbs[i]->GetOutputParameterValue(0, &font);
-            ExecuteBB::InitFont(fontid[static_cast<const char *>(bbs[i]->GetInputParameterReadDataPtr(0))], font);
+            if (ModContext *context = GetRuntimeContext()) {
+                context->GetGameFonts().Bind(
+                    fontid[static_cast<const char *>(bbs[i]->GetInputParameterReadDataPtr(0))], font);
+            }
         }
     });
 }
@@ -618,10 +624,11 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     CreateLink(graph, down_sop, graph->GetOutput(4), 5);
     FindNextLink(script, graph, nullptr, 3, 0)->SetInBehaviorIO(graph->GetOutput(4));
 
-    CKBehavior *modsmenu = ExecuteBB::CreateHookBlock(script, [](const CKBehaviorContext *, void *) -> int {
-        BML_GetModContext()->OpenModsMenu();
-        return CKBR_OK;
-    });
+    CKBehavior *modsmenu = BML::BehaviorGraphRecipes::AddHookBlock(
+        script, [](const CKBehaviorContext *, void *) -> int {
+            BML_GetModContext()->OpenModsMenu();
+            return CKBR_OK;
+        });
     CKBehavior *exit = FindFirstBB(script, "Exit", false, 1, 0);
     CreateLink(script, graph, modsmenu, 3, 0);
     CreateLink(script, modsmenu, exit, 0, 0);

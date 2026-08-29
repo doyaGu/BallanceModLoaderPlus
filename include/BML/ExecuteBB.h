@@ -1,3 +1,7 @@
+// This is the exported v0.3 compatibility interface. Existing native Mods can keep
+// using it; loader implementation code uses its lifecycle-owned action and graph-recipe
+// modules instead, while these functions adapt the legacy calls to those modules.
+//
 // Building blocks called from C++. Some of what Ballance does exists only as a Virtools
 // building block, physicalizing an object and loading an NMO among them, with no function
 // in the SDK behind it, and the way to get at those from a Mod is to build the block and

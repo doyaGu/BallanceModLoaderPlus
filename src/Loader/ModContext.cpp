@@ -272,6 +272,8 @@ void ModContext::Shutdown() {
     }
 
     m_ImcRuntime.Shutdown();
+    m_VirtoolsActions.Reset();
+    m_GameFonts.Reset();
 
 #if BML_ENABLE_ANGELSCRIPT
     BML_UnregisterAngelScriptBindings(this);
