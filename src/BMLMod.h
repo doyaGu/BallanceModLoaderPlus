@@ -7,12 +7,10 @@
 #include "BML/IBML.h"
 #include "BML/DataShare.h"
 
-#include "HUD.h"
-#include "FpsCounter.h"
-#include "SRTimer.h"
 #include "ModMenu.h"
 #include "MapMenu.h"
 #include "BuiltinConsole.h"
+#include "BuiltinHUD.h"
 
 class EventHookRegistrar;
 class ModContext;
@@ -84,7 +82,7 @@ public:
     int GetHUD();
     void SetHUD(int mode);
 
-    HUD &GetHUDWindow() { return m_HUD; }
+    HUD &GetHUDWindow() { return m_HUD.GetWindow(); }
 
     // Built-in HUD element controls
     void ShowTitle(bool show);
@@ -136,15 +134,9 @@ private:
     void OnEditScript_Levelinit_build(CKBehavior *script);
     void OnEditScript_ExtraLife_Fix(CKBehavior *script);
 
-    void OnProcess_HUD();
     void OnProcess_Menu();
 
     void OnResize();
-
-    // HUD builtin methods
-    void SetupDefaultHUDElements();
-    void UpdateTimerDisplay();
-    void UpdateCheatState();
 
     BML_DataShare *m_DataShare = nullptr;
 
@@ -155,21 +147,10 @@ private:
     VxRect m_OldWindowRect;
     VxRect m_WindowRect;
 
-    HUD m_HUD;
+    BuiltinHUD m_HUD;
     ModMenu m_ModMenu;
     MapMenu m_MapMenu;
     BuiltinConsole m_Console;
-
-    // HUD builtin components
-    FpsCounter m_FPSCounter;
-    SRTimer m_SRTimer;
-    bool m_LastCheatState = false;
-
-    // Cached HUD element references for performance
-    std::shared_ptr<HUDElement> m_HUDTitleElement;
-    std::shared_ptr<HUDElement> m_HUDFpsElement;
-    std::shared_ptr<HUDElement> m_HUDSRElement;
-    std::shared_ptr<HUDElement> m_HUDCheatElement;
 
     std::string m_ImGuiIniFilename;
     std::string m_ImGuiLogFilename;

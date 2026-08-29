@@ -118,6 +118,7 @@ set(BML_PRIVATE_HEADERS
 
         BMLMod.h
         BuiltinConsole.h
+        BuiltinHUD.h
         NewBallTypeMod.h
         Commands.h
 
@@ -164,6 +165,7 @@ set(BML_SOURCES
         IMod.cpp
         BMLMod.cpp
         BuiltinConsole.cpp
+        BuiltinHUD.cpp
         NewBallTypeMod.cpp
         Commands.cpp
 

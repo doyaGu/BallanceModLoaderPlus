@@ -259,14 +259,7 @@ void BMLMod::OnLoad() {
     InitGUI();
     m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), this);
 
-    // Setup default HUD elements
-    SetupDefaultHUDElements();
-
-    // Cache HUD element references for performance
-    m_HUDTitleElement = m_HUD.Find("title");
-    m_HUDFpsElement = m_HUD.Find("fps");
-    m_HUDSRElement = m_HUD.Find("sr");
-    m_HUDCheatElement = m_HUD.Find("cheat");
+    m_HUD.OnLoad(m_ShowTitle->GetBoolean(), m_ShowFPS->GetBoolean());
 
     if (ModContext *context = GetRuntimeContext())
         RegisterBuiltinCapabilities(*this, context->ObjectIdentities(), GetLogger());
@@ -276,6 +269,7 @@ void BMLMod::OnUnload() {
     UnregisterBuiltinCapabilities(*this);
 
     m_Console.OnUnload();
+    m_HUD.OnUnload();
 
     Bui::CleanupResources(m_CKContext);
 
@@ -289,12 +283,6 @@ void BMLMod::OnUnload() {
     m_ExitStart = nullptr;
     m_TimeManager = nullptr;
     m_RenderContext = nullptr;
-
-    // Clear cached HUD element references
-    m_HUDTitleElement = nullptr;
-    m_HUDFpsElement = nullptr;
-    m_HUDSRElement = nullptr;
-    m_HUDCheatElement = nullptr;
 
     // Clear containers
     m_WindowRect = VxRect();
@@ -350,7 +338,9 @@ void BMLMod::OnProcess() {
         OnResize();
     }
 
-    OnProcess_HUD();
+    m_HUD.OnProcess(ImGui::GetIO().DeltaTime,
+                    m_TimeManager->GetLastDeltaTime(),
+                    BML_GetModContext()->IsCheatEnabled());
     OnProcess_Menu();
     m_Console.OnProcess();
 #if BML_ENABLE_ANGELSCRIPT
@@ -391,8 +381,7 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 }
 
 void BMLMod::OnPreStartMenu() {
-    ShowTitle(m_ShowTitle->GetBoolean());
-    ShowFPS(m_ShowFPS->GetBoolean());
+    m_HUD.RestorePrimaryVisibility(m_ShowTitle->GetBoolean(), m_ShowFPS->GetBoolean());
 }
 
 void BMLMod::OnPostStartMenu() {
@@ -414,23 +403,23 @@ void BMLMod::OnStartLevel() {
 }
 
 void BMLMod::OnPostExitLevel() {
-    ShowSRTimer(false);
+    m_HUD.EndLevel();
 }
 
 void BMLMod::OnPauseLevel() {
-    PauseSRTimer();
+    m_HUD.PauseSRTimer();
 }
 
 void BMLMod::OnUnpauseLevel() {
-    StartSRTimer();
+    m_HUD.StartSRTimer();
 }
 
 void BMLMod::OnCounterActive() {
-    StartSRTimer();
+    m_HUD.StartSRTimer();
 }
 
 void BMLMod::OnCounterInactive() {
-    PauseSRTimer();
+    m_HUD.PauseSRTimer();
 }
 
 void BMLMod::AddIngameMessage(const char *msg) {
@@ -871,24 +860,6 @@ void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
     if (dt) dt->SetDirectSource(CreateParamValue<float>(script, "DeltaTime", CKPGUID_FLOAT, 20.0f));
 }
 
-void BMLMod::OnProcess_HUD() {
-    // Update builtin timers
-    m_FPSCounter.Update(ImGui::GetIO().DeltaTime);
-    m_SRTimer.Update(m_TimeManager->GetLastDeltaTime());
-
-    // Update displays and states
-    UpdateCheatState();
-    UpdateTimerDisplay();
-
-    // Clear dirty flags after display updates
-    if (m_FPSCounter.IsDirty()) m_FPSCounter.ClearDirty();
-    if (m_SRTimer.IsDirty()) m_SRTimer.ClearDirty();
-
-    // Process and render HUD
-    m_HUD.OnProcess();
-    m_HUD.Render();
-}
-
 void BMLMod::OnProcess_Menu() {
     if (m_Level01 && m_Level01->IsVisible()) {
         const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
@@ -927,116 +898,34 @@ void BMLMod::OnResize() {
     style.FontScaleMain = m_WindowRect.GetHeight() / 1200.0f;
 }
 
-// HUD Builtin implementations
-void BMLMod::SetupDefaultHUDElements() {
-    // Create BML title (top-center)
-    auto title = m_HUD.AddText("title", "BML Plus " BML_VERSION, AnchorPoint::TopCenter);
-    title->SetScale(1.2f);
-    title->SetVisible(m_ShowTitle->GetBoolean());  // Set initial visibility from config
-
-    // Create FPS counter (top-left)
-    auto fps = m_HUD.AddText("fps", "FPS: 60", AnchorPoint::TopLeft);
-    fps->SetVisible(m_ShowFPS->GetBoolean());  // Set initial visibility from config
-
-    // Create SR timer stack (bottom-left)
-    auto sr = m_HUD.AddVStack("sr", AnchorPoint::BottomLeft);
-    sr->SetOffsetNormalized(0.03f, -0.155f);
-    sr->SetVisible(false);
-
-    // Add label and value children to the SR timer container
-    sr->AddChildNamed("label", "SR Timer");
-    sr->AddChildNamed("value", "  00:00:00.000");
-
-    // Create cheat mode indicator (bottom-center)
-    auto cheat = m_HUD.AddText("cheat", "\x1b[38;2;255;200;60mCheat Mode Enabled\x1b[0m", AnchorPoint::BottomCenter);
-    cheat->SetOffsetNormalized(0.0f, -0.12f);  // 12% from bottom
-    cheat->SetVisible(false);  // Hidden by default, shown when cheat mode is active
-
-    // Initialize timer displays with initial values
-    UpdateTimerDisplay();
-}
-
-void BMLMod::UpdateTimerDisplay() {
-    // Update FPS display when visible and dirty (or force during initialization)
-    if (m_HUDFpsElement) {
-        if (auto textElement = HUDCast<HUDText>(m_HUDFpsElement)) {
-            if (m_HUDFpsElement->IsVisible() && (m_FPSCounter.IsDirty() || strlen(textElement->GetText()) == 0)) {
-                textElement->SetText(m_FPSCounter.GetFormattedFps());
-            }
-        }
-    }
-
-    // Update SR timer display when visible and dirty (or force during initialization)
-    if (m_HUDSRElement) {
-        if (m_HUDSRElement->IsVisible()) {
-            auto container = HUDCast<HUDContainer>(m_HUDSRElement);
-            if (container) {
-                auto value = container->FindChild("value");
-                if (value) {
-                    if (auto textElement = HUDCast<HUDText>(value)) {
-                        if (m_SRTimer.IsDirty() || strcmp(textElement->GetText(), "  00:00:00.000") == 0) {
-                            textElement->SetText(m_SRTimer.GetFormattedTime());
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-void BMLMod::UpdateCheatState() {
-    const bool cheatNow = BML_GetModContext()->IsCheatEnabled();
-    const bool cheatDirty = (cheatNow != m_LastCheatState);
-
-    if (cheatDirty) {
-        m_LastCheatState = cheatNow;
-        if (m_HUDCheatElement) {
-            m_HUDCheatElement->SetVisible(cheatNow);
-        }
-    }
-}
-
 void BMLMod::ShowTitle(bool show) {
-    if (m_HUDTitleElement) {
-        m_HUDTitleElement->SetVisible(show);
-    }
+    m_HUD.ShowTitle(show);
 }
 
 void BMLMod::ShowFPS(bool show) {
-    if (m_HUDFpsElement) {
-        m_HUDFpsElement->SetVisible(show);
-    }
+    m_HUD.ShowFPS(show);
 }
 
 void BMLMod::ShowSRTimer(bool show) {
-    if (m_HUDSRElement) {
-        m_HUDSRElement->SetVisible(show);
-    }
+    m_HUD.ShowSRTimer(show);
 }
 
 void BMLMod::StartSRTimer() {
-    m_SRTimer.Start();
-    if (auto c = HUDCast<HUDContainer>(m_HUDSRElement)) {
-        if (c->IsFadeEnabled()) c->SetFadeTarget(1.0f);
-    }
+    m_HUD.StartSRTimer();
 }
 
 void BMLMod::PauseSRTimer() {
-    m_SRTimer.Pause();
-    if (auto c = HUDCast<HUDContainer>(m_HUDSRElement)) {
-        if (c->IsFadeEnabled()) c->SetFadeTarget(0.5f);
-    }
+    m_HUD.PauseSRTimer();
 }
 
 void BMLMod::ResetSRTimer() {
-    m_SRTimer.Reset();
+    m_HUD.ResetSRTimer();
 }
 
 float BMLMod::GetSRTime() const {
-    return m_SRTimer.GetTime();
+    return m_HUD.GetSRTime();
 }
 
 void BMLMod::SetFPSUpdateFrequency(uint32_t frames) {
-    if (m_FPSCounter.GetUpdateFrequency() == (frames > 0 ? frames : 1)) return;
-    m_FPSCounter.SetUpdateFrequency(frames);
+    m_HUD.SetFPSUpdateFrequency(frames);
 }
