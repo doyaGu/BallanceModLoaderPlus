@@ -344,6 +344,15 @@ add_bml_test(HUDAnimationTest
 )
 target_include_directories(HUDAnimationTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 
+add_bml_test(MapCatalogTest
+        SOURCES
+        MapCatalogTest.cpp
+        ${BML_SOURCE_DIR}/MapCatalog.cpp
+        ${BML_SOURCE_DIR}/MapCatalog.h
+        DEPENDENCIES
+        BMLUtils
+)
+
 add_bml_test(SRTimerTest
         SOURCES
         SRTimerTest.cpp
