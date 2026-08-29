@@ -1,5 +1,5 @@
-#ifndef BML_BUILTINCUSTOMMAPS_H
-#define BML_BUILTINCUSTOMMAPS_H
+#ifndef BML_CUSTOMMAPS_H
+#define BML_CUSTOMMAPS_H
 
 #include <string>
 
@@ -16,13 +16,13 @@ class ILogger;
 class IProperty;
 struct BML_DataShare;
 
-class BuiltinCustomMaps {
+class CustomMaps {
 public:
-    BuiltinCustomMaps();
-    ~BuiltinCustomMaps();
+    CustomMaps();
+    ~CustomMaps();
 
-    BuiltinCustomMaps(const BuiltinCustomMaps &) = delete;
-    BuiltinCustomMaps &operator=(const BuiltinCustomMaps &) = delete;
+    CustomMaps(const CustomMaps &) = delete;
+    CustomMaps &operator=(const CustomMaps &) = delete;
 
     void InitConfig(IConfig &config);
     void ApplyConfig();
@@ -69,4 +69,4 @@ private:
     CKDataArray *m_CurrentLevel = nullptr;
 };
 
-#endif // BML_BUILTINCUSTOMMAPS_H
+#endif // BML_CUSTOMMAPS_H

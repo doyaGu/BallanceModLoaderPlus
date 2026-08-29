@@ -117,9 +117,11 @@ set(BML_PRIVATE_HEADERS
         GameSession.h
 
         BMLMod.h
-        BuiltinConsole.h
-        BuiltinCustomMaps.h
-        BuiltinHUD.h
+        Console.h
+        CustomMaps.h
+        GameEventHooks.h
+        GameplayTweaks.h
+        HUDRuntime.h
         NewBallTypeMod.h
         Commands.h
 
@@ -134,7 +136,6 @@ set(BML_PRIVATE_HEADERS
         MessageBoard.h
         AnsiPalette.h
         AnsiText.h
-        EventHook.h
 
         Overlay.h
 
@@ -165,9 +166,11 @@ set(BML_SOURCES
 
         IMod.cpp
         BMLMod.cpp
-        BuiltinConsole.cpp
-        BuiltinCustomMaps.cpp
-        BuiltinHUD.cpp
+        Console.cpp
+        CustomMaps.cpp
+        GameEventHooks.cpp
+        GameplayTweaks.cpp
+        HUDRuntime.cpp
         NewBallTypeMod.cpp
         Commands.cpp
 
@@ -183,7 +186,6 @@ set(BML_SOURCES
         MessageBoard.cpp
         AnsiPalette.cpp
         AnsiText.cpp
-        EventHook.cpp
         OverlayScriptImGui.cpp
 
         Gui/Element.cpp

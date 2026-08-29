@@ -3,8 +3,8 @@
 
 #include "BML/ICommand.h"
 
-class BuiltinConsole;
-class BuiltinHUD;
+class Console;
+class HUDRuntime;
 
 class CommandBML : public ICommand {
 public:
@@ -72,7 +72,7 @@ public:
 
 class CommandClear : public ICommand {
 public:
-    explicit CommandClear(BuiltinConsole *console) : m_Console(console) {}
+    explicit CommandClear(Console *console) : m_Console(console) {}
 
     std::string GetName() override { return "clear"; }
     std::string GetAlias() override { return ""; }
@@ -82,12 +82,12 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
 
 private:
-    BuiltinConsole *m_Console;
+    Console *m_Console;
 };
 
 class CommandHistory : public ICommand {
 public:
-    explicit CommandHistory(BuiltinConsole *console) : m_Console(console) {}
+    explicit CommandHistory(Console *console) : m_Console(console) {}
 
     std::string GetName() override { return "history"; }
     std::string GetAlias() override { return ""; }
@@ -101,7 +101,7 @@ public:
     }
 
 private:
-    BuiltinConsole *m_Console;
+    Console *m_Console;
 };
 
 class CommandExit : public ICommand {
@@ -118,7 +118,7 @@ public:
 
 class CommandHUD : public ICommand {
 public:
-    explicit CommandHUD(BuiltinHUD *hud);
+    explicit CommandHUD(HUDRuntime *hud);
 
     std::string GetName() override { return "hud"; }
     std::string GetAlias() override { return ""; }
@@ -128,7 +128,7 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
 
 private:
-    BuiltinHUD *m_HUD;
+    HUDRuntime *m_HUD;
     int m_State;
 };
 

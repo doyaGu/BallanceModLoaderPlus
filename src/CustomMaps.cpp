@@ -1,4 +1,4 @@
-#include "BuiltinCustomMaps.h"
+#include "CustomMaps.h"
 
 #include <algorithm>
 #include <cstring>
@@ -22,14 +22,14 @@ namespace {
 constexpr const char *CUSTOM_MAP_NAME_KEY = "CustomMapName";
 }
 
-BuiltinCustomMaps::BuiltinCustomMaps()
+CustomMaps::CustomMaps()
     : m_Menu([this](const std::wstring &path) { return LoadMap(path); }) {}
 
-BuiltinCustomMaps::~BuiltinCustomMaps() {
+CustomMaps::~CustomMaps() {
     ReleaseDataShare();
 }
 
-void BuiltinCustomMaps::InitConfig(IConfig &config) {
+void CustomMaps::InitConfig(IConfig &config) {
     m_LevelNumber = config.GetProperty("CustomMap", "LevelNumber");
     m_ShowTooltip = config.GetProperty("CustomMap", "ShowTooltip");
     m_MaxDepth = config.GetProperty("CustomMap", "MaxDepth");
@@ -48,14 +48,14 @@ void BuiltinCustomMaps::InitConfig(IConfig &config) {
     m_MaxDepth->SetDefaultInteger(8);
 }
 
-void BuiltinCustomMaps::ApplyConfig() {
+void CustomMaps::ApplyConfig() {
     if (m_ShowTooltip)
         m_Menu.SetShowTooltip(m_ShowTooltip->GetBoolean());
     if (m_MaxDepth)
         m_Menu.SetMaxDepth(m_MaxDepth->GetInteger());
 }
 
-bool BuiltinCustomMaps::OnModifyConfig(const char *category, const char *key, IProperty *property) {
+bool CustomMaps::OnModifyConfig(const char *category, const char *key, IProperty *property) {
     if (!property || std::strcmp(category ? category : "", "CustomMap") != 0)
         return false;
 
@@ -70,8 +70,8 @@ bool BuiltinCustomMaps::OnModifyConfig(const char *category, const char *key, IP
     return property == m_LevelNumber && std::strcmp(key ? key : "", "LevelNumber") == 0;
 }
 
-void BuiltinCustomMaps::OnLoad(IBML &bml, ILogger &logger,
-                               const std::wstring &loaderDirectory, const std::wstring &tempDirectory) {
+void CustomMaps::OnLoad(IBML &bml, ILogger &logger,
+                        const std::wstring &loaderDirectory, const std::wstring &tempDirectory) {
     m_BML = &bml;
     m_CKContext = bml.GetCKContext();
     m_Logger = &logger;
@@ -84,7 +84,7 @@ void BuiltinCustomMaps::OnLoad(IBML &bml, ILogger &logger,
     m_Menu.Init(utils::CombinePathW(loaderDirectory, L"Maps"), logger);
 }
 
-void BuiltinCustomMaps::OnUnload() {
+void CustomMaps::OnUnload() {
     m_Menu.Shutdown();
     ReleaseDataShare();
 
@@ -95,7 +95,7 @@ void BuiltinCustomMaps::OnUnload() {
     m_BML = nullptr;
 }
 
-void BuiltinCustomMaps::OnLoadObject(const char *filename) {
+void CustomMaps::OnLoadObject(const char *filename) {
     if (!filename || std::strcmp(filename, "3D Entities\\Menu.nmo") != 0 || !m_BML)
         return;
 
@@ -107,7 +107,7 @@ void BuiltinCustomMaps::OnLoadObject(const char *filename) {
         m_Logger->Warn("Custom map menu entry is unavailable in the current Menu.nmo");
 }
 
-void BuiltinCustomMaps::OnLoadScript(CKBehavior *script) {
+void CustomMaps::OnLoadScript(CKBehavior *script) {
     if (!script || !script->GetName())
         return;
 
@@ -122,7 +122,7 @@ void BuiltinCustomMaps::OnLoadScript(CKBehavior *script) {
         PatchLevelLoader(script);
 }
 
-void BuiltinCustomMaps::OnProcess() {
+void CustomMaps::OnProcess() {
     if (m_LevelButton && m_ExitStart && m_LevelButton->IsVisible()) {
         const ImVec2 &viewportSize = ImGui::GetMainViewport()->Size;
 
@@ -154,26 +154,26 @@ void BuiltinCustomMaps::OnProcess() {
     m_Menu.Render();
 }
 
-void BuiltinCustomMaps::OnStartLevel() {
+void CustomMaps::OnStartLevel() {
     if (m_LoadCustom)
         SetParamValue(m_LoadCustom, FALSE);
     ClearLoadMetadata();
 }
 
-void BuiltinCustomMaps::OnExitGame() {
+void CustomMaps::OnExitGame() {
     ClearLoadMetadata();
     ResetScriptBindings();
 }
 
-bool BuiltinCustomMaps::Open() {
+bool CustomMaps::Open() {
     return m_Menu.Open("Custom Maps");
 }
 
-bool BuiltinCustomMaps::Close() {
+bool CustomMaps::Close() {
     return m_Menu.Close();
 }
 
-bool BuiltinCustomMaps::LoadMap(const std::wstring &path) {
+bool CustomMaps::LoadMap(const std::wstring &path) {
     bool loadMutationStarted = false;
     try {
         if (path.empty()) {
@@ -266,7 +266,7 @@ bool BuiltinCustomMaps::LoadMap(const std::wstring &path) {
     return false;
 }
 
-std::string BuiltinCustomMaps::CreateTempMapFile(const std::wstring &path) const {
+std::string CustomMaps::CreateTempMapFile(const std::wstring &path) const {
     if (path.empty() || !utils::FileExistsW(path) || m_TempDirectory.empty())
         return {};
 
@@ -290,7 +290,7 @@ std::string BuiltinCustomMaps::CreateTempMapFile(const std::wstring &path) const
     return utils::Utf16ToAnsi(destination);
 }
 
-void BuiltinCustomMaps::PatchLevelLoader(CKBehavior *script) {
+void CustomMaps::PatchLevelLoader(CKBehavior *script) {
     CKBehavior *loadLevel = FindFirstBB(script, "Load LevelXX");
     CKBehaviorLink *inputLink = loadLevel && loadLevel->GetInputCount() > 0
                                     ? FindNextLink(loadLevel, loadLevel->GetInput(0))
@@ -337,7 +337,7 @@ void BuiltinCustomMaps::PatchLevelLoader(CKBehavior *script) {
     m_LevelRow = levelRow;
 }
 
-void BuiltinCustomMaps::ClearLoadMetadata() {
+void CustomMaps::ClearLoadMetadata() {
     if (!m_MetadataPublished)
         return;
 
@@ -346,7 +346,7 @@ void BuiltinCustomMaps::ClearLoadMetadata() {
     m_MetadataPublished = false;
 }
 
-void BuiltinCustomMaps::ReleaseDataShare() {
+void CustomMaps::ReleaseDataShare() {
     ClearLoadMetadata();
     if (!m_DataShare)
         return;
@@ -355,7 +355,7 @@ void BuiltinCustomMaps::ReleaseDataShare() {
     m_DataShare = nullptr;
 }
 
-void BuiltinCustomMaps::ResetScriptBindings() {
+void CustomMaps::ResetScriptBindings() {
     m_LevelButton = nullptr;
     m_ExitStart = nullptr;
     m_LoadCustom = nullptr;

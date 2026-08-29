@@ -7,11 +7,12 @@
 #include "BML/IBML.h"
 
 #include "ModMenu.h"
-#include "BuiltinConsole.h"
-#include "BuiltinCustomMaps.h"
-#include "BuiltinHUD.h"
+#include "Console.h"
+#include "CustomMaps.h"
+#include "GameEventHooks.h"
+#include "GameplayTweaks.h"
+#include "HUDRuntime.h"
 
-class EventHookRegistrar;
 class ModContext;
 
 class BMLMod : public IMod {
@@ -85,8 +86,6 @@ public:
     float GetSRTime() const;
 
 private:
-    friend class EventHookRegistrar;
-
     enum ApplyWhen : unsigned {
         OnDemand = 0,
         Startup = 1U << 0,
@@ -111,14 +110,8 @@ private:
     void InitConfigs();
     void InitGUI();
 
-    void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
     void OnEditScript_Menu_OptionsMenu(CKBehavior *script);
-    void OnEditScript_Gameplay_Ingame(CKBehavior *script);
-    void OnEditScript_Gameplay_Energy(CKBehavior *script);
-    void OnEditScript_Gameplay_Events(CKBehavior *script);
-    void OnEditScript_Levelinit_build(CKBehavior *script);
-    void OnEditScript_ExtraLife_Fix(CKBehavior *script);
 
     void OnProcess_Menu();
 
@@ -131,10 +124,12 @@ private:
     VxRect m_OldWindowRect;
     VxRect m_WindowRect;
 
-    BuiltinHUD m_HUD;
+    HUDRuntime m_HUD;
     ModMenu m_ModMenu;
-    BuiltinCustomMaps m_CustomMaps;
-    BuiltinConsole m_Console;
+    CustomMaps m_CustomMaps;
+    GameEventHooks m_GameEventHooks;
+    GameplayTweaks m_GameplayTweaks;
+    Console m_Console;
 
     std::string m_ImGuiIniFilename;
     std::string m_ImGuiLogFilename;
@@ -156,12 +151,6 @@ private:
     IProperty *m_FPSLimit = nullptr;
     IProperty *m_WidescreenFix = nullptr;
 
-    IProperty *m_LanternAlphaTest = nullptr;
-    IProperty *m_FixLifeBall = nullptr;
-    IProperty *m_Overclock = nullptr;
-
-    CKBehaviorLink *m_OverclockLinks[3] = {};
-    CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
 };
 
 #endif // BML_BMLMOD_H

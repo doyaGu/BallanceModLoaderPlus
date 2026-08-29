@@ -1,4 +1,4 @@
-#include "BuiltinConsole.h"
+#include "Console.h"
 
 #include <algorithm>
 
@@ -7,35 +7,35 @@
 #include "BML/ILogger.h"
 
 #include "AnsiText.h"
-#include "BuiltinHUD.h"
+#include "HUDRuntime.h"
 #include "CommandContext.h"
 #include "Commands.h"
 #include "StringUtils.h"
 
-const BuiltinConsole::Setting *BuiltinConsole::GetSettings(size_t &count) {
+const Console::Setting *Console::GetSettings(size_t &count) {
     static const Setting settings[] = {
-        {"MessageDuration", &BuiltinConsole::m_MessageDuration,
-         [](BuiltinConsole &console, IProperty *property) {
+        {"MessageDuration", &Console::m_MessageDuration,
+         [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetMaxTimer(std::max(2000.0f, property->GetFloat() * 1000.0f));
          }},
-        {"TabColumns", &BuiltinConsole::m_TabColumns,
-         [](BuiltinConsole &console, IProperty *property) {
+        {"TabColumns", &Console::m_TabColumns,
+         [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetTabColumns(std::max(1, property->GetInteger()));
          }},
-        {"LineSpacing", &BuiltinConsole::m_LineSpacing,
-         [](BuiltinConsole &console, IProperty *property) {
+        {"LineSpacing", &Console::m_LineSpacing,
+         [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetLineSpacing(property->GetFloat());
          }},
-        {"MessageBackgroundAlpha", &BuiltinConsole::m_MessageBackgroundAlpha,
-         [](BuiltinConsole &console, IProperty *property) {
+        {"MessageBackgroundAlpha", &Console::m_MessageBackgroundAlpha,
+         [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
-        {"WindowBackgroundAlpha", &BuiltinConsole::m_WindowBackgroundAlpha,
-         [](BuiltinConsole &console, IProperty *property) {
+        {"WindowBackgroundAlpha", &Console::m_WindowBackgroundAlpha,
+         [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
-        {"FadeMaxAlpha", &BuiltinConsole::m_FadeMaxAlpha,
-         [](BuiltinConsole &console, IProperty *property) {
+        {"FadeMaxAlpha", &Console::m_FadeMaxAlpha,
+         [](Console &console, IProperty *property) {
              console.m_MessageBoard.SetFadeMaxAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
          }},
     };
@@ -46,7 +46,7 @@ const BuiltinConsole::Setting *BuiltinConsole::GetSettings(size_t &count) {
     return settings;
 }
 
-void BuiltinConsole::InitConfig(IConfig &config) {
+void Console::InitConfig(IConfig &config) {
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -74,7 +74,7 @@ void BuiltinConsole::InitConfig(IConfig &config) {
     m_FadeMaxAlpha->SetDefaultFloat(1.0f);
 }
 
-void BuiltinConsole::ApplyConfig() {
+void Console::ApplyConfig() {
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -82,7 +82,7 @@ void BuiltinConsole::ApplyConfig() {
     }
 }
 
-bool BuiltinConsole::OnModifyConfig(const char *category, const char *key, IProperty *property) {
+bool Console::OnModifyConfig(const char *category, const char *key, IProperty *property) {
     if (!property || !utils::CStringEqual(category, "CommandBar")) {
         return false;
     }
@@ -102,13 +102,13 @@ bool BuiltinConsole::OnModifyConfig(const char *category, const char *key, IProp
     return false;
 }
 
-void BuiltinConsole::ApplySetting(const Setting &setting, IProperty *property) {
+void Console::ApplySetting(const Setting &setting, IProperty *property) {
     if (setting.apply && property) {
         setting.apply(*this, property);
     }
 }
 
-void BuiltinConsole::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BuiltinHUD &hud) {
+void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud) {
     m_Commands = &commands;
     m_Logger = &logger;
 
@@ -122,7 +122,7 @@ void BuiltinConsole::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &l
     m_CommandBar.LoadHistory();
 }
 
-void BuiltinConsole::OnUnload() {
+void Console::OnUnload() {
     if (m_OutputCallbackInstalled && m_Commands) {
         m_Commands->ClearOutputCallback();
     }
@@ -133,7 +133,7 @@ void BuiltinConsole::OnUnload() {
     m_Commands = nullptr;
 }
 
-void BuiltinConsole::OnProcess() {
+void Console::OnProcess() {
     const bool visible = m_CommandBar.IsVisible();
     if (!visible && ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
         if (m_Logger) {
@@ -147,7 +147,7 @@ void BuiltinConsole::OnProcess() {
     m_CommandBar.Render();
 }
 
-void BuiltinConsole::AddMessage(const char *message) {
+void Console::AddMessage(const char *message) {
     m_MessageBoard.Show();
     m_MessageBoard.AddMessage(message);
 
@@ -157,30 +157,30 @@ void BuiltinConsole::AddMessage(const char *message) {
     }
 }
 
-void BuiltinConsole::ClearMessages() {
+void Console::ClearMessages() {
     m_MessageBoard.ClearMessages();
 }
 
-void BuiltinConsole::PrintHistory() {
+void Console::PrintHistory() {
     m_CommandBar.PrintHistory();
 }
 
-void BuiltinConsole::ClearHistory() {
+void Console::ClearHistory() {
     m_CommandBar.ClearHistory();
 }
 
-void BuiltinConsole::ExecuteHistory(int index) {
+void Console::ExecuteHistory(int index) {
     m_CommandBar.ExecuteHistory(index);
 }
 
-void BuiltinConsole::OnCommandOutput(const char *message, void *userdata) {
-    auto *console = static_cast<BuiltinConsole *>(userdata);
+void Console::OnCommandOutput(const char *message, void *userdata) {
+    auto *console = static_cast<Console *>(userdata);
     if (console) {
         console->AddMessage(message);
     }
 }
 
-void BuiltinConsole::RegisterCommands(IBML &bml, BuiltinHUD &hud) {
+void Console::RegisterCommands(IBML &bml, HUDRuntime &hud) {
     bml.RegisterCommand(new CommandBML());
     bml.RegisterCommand(new CommandHelp());
     bml.RegisterCommand(new CommandCheat());

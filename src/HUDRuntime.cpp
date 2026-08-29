@@ -1,4 +1,4 @@
-#include "BuiltinHUD.h"
+#include "HUDRuntime.h"
 
 #include <algorithm>
 #include <cstring>
@@ -7,19 +7,19 @@
 #include "BML/IConfig.h"
 #include "BML/Version.h"
 
-const BuiltinHUD::Setting *BuiltinHUD::GetSettings(size_t &count) {
+const HUDRuntime::Setting *HUDRuntime::GetSettings(size_t &count) {
     static const Setting settings[] = {
-        {"ShowTitle", &BuiltinHUD::m_ShowTitle,
-         [](BuiltinHUD &hud, IProperty *property) { hud.ShowTitle(property->GetBoolean()); },
+        {"ShowTitle", &HUDRuntime::m_ShowTitle,
+         [](HUDRuntime &hud, IProperty *property) { hud.ShowTitle(property->GetBoolean()); },
          OnChange, false},
-        {"ShowFPS", &BuiltinHUD::m_ShowFPS,
-         [](BuiltinHUD &hud, IProperty *property) { hud.ShowFPS(property->GetBoolean()); },
+        {"ShowFPS", &HUDRuntime::m_ShowFPS,
+         [](HUDRuntime &hud, IProperty *property) { hud.ShowFPS(property->GetBoolean()); },
          OnChange, false},
-        {"ShowSRTimer", &BuiltinHUD::m_ShowSRTimer,
-         [](BuiltinHUD &hud, IProperty *property) { hud.ShowSRTimer(property->GetBoolean()); },
+        {"ShowSRTimer", &HUDRuntime::m_ShowSRTimer,
+         [](HUDRuntime &hud, IProperty *property) { hud.ShowSRTimer(property->GetBoolean()); },
          OnChange | OnLevelInit, true},
-        {"FPSUpdateFrequency", &BuiltinHUD::m_FPSUpdateFrequency,
-         [](BuiltinHUD &hud, IProperty *property) {
+        {"FPSUpdateFrequency", &HUDRuntime::m_FPSUpdateFrequency,
+         [](HUDRuntime &hud, IProperty *property) {
              hud.SetFPSUpdateFrequency(static_cast<uint32_t>(std::max(1, property->GetInteger())));
          },
          Startup | OnChange, false},
@@ -31,7 +31,7 @@ const BuiltinHUD::Setting *BuiltinHUD::GetSettings(size_t &count) {
     return settings;
 }
 
-void BuiltinHUD::InitConfig(IConfig &config) {
+void HUDRuntime::InitConfig(IConfig &config) {
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -54,11 +54,11 @@ void BuiltinHUD::InitConfig(IConfig &config) {
     m_FPSUpdateFrequency->SetDefaultInteger(30);
 }
 
-void BuiltinHUD::ApplyConfig() {
+void HUDRuntime::ApplyConfig() {
     ApplySettings(Startup);
 }
 
-bool BuiltinHUD::OnModifyConfig(const char *category, const char *key, IProperty *property) {
+bool HUDRuntime::OnModifyConfig(const char *category, const char *key, IProperty *property) {
     if (!property || std::strcmp(category ? category : "", "HUD") != 0) {
         return false;
     }
@@ -81,7 +81,7 @@ bool BuiltinHUD::OnModifyConfig(const char *category, const char *key, IProperty
     return false;
 }
 
-void BuiltinHUD::ApplySettings(ApplyWhen when) {
+void HUDRuntime::ApplySettings(ApplyWhen when) {
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -91,7 +91,7 @@ void BuiltinHUD::ApplySettings(ApplyWhen when) {
     }
 }
 
-void BuiltinHUD::ApplySetting(const Setting &setting, IProperty *property) {
+void HUDRuntime::ApplySetting(const Setting &setting, IProperty *property) {
     if (!setting.apply || !property) {
         return;
     }
@@ -102,7 +102,7 @@ void BuiltinHUD::ApplySetting(const Setting &setting, IProperty *property) {
     setting.apply(*this, property);
 }
 
-void BuiltinHUD::OnLoad(IBML &bml) {
+void HUDRuntime::OnLoad(IBML &bml) {
     m_BML = &bml;
     m_LastCheatState = false;
 
@@ -129,7 +129,7 @@ void BuiltinHUD::OnLoad(IBML &bml) {
     UpdateTimerDisplay();
 }
 
-void BuiltinHUD::OnUnload() {
+void HUDRuntime::OnUnload() {
     m_TitleElement = nullptr;
     m_FPSElement = nullptr;
     m_SRElement = nullptr;
@@ -137,7 +137,7 @@ void BuiltinHUD::OnUnload() {
     m_BML = nullptr;
 }
 
-void BuiltinHUD::OnProcess(float frameDeltaSeconds, float gameDeltaMilliseconds) {
+void HUDRuntime::OnProcess(float frameDeltaSeconds, float gameDeltaMilliseconds) {
     m_FPSCounter.Update(frameDeltaSeconds);
     m_SRTimer.Update(gameDeltaMilliseconds);
 
@@ -151,21 +151,21 @@ void BuiltinHUD::OnProcess(float frameDeltaSeconds, float gameDeltaMilliseconds)
     m_Window.Render();
 }
 
-void BuiltinHUD::OnMenuStart() {
+void HUDRuntime::OnMenuStart() {
     ShowTitle(m_ShowTitle->GetBoolean());
     ShowFPS(m_ShowFPS->GetBoolean());
 }
 
-void BuiltinHUD::OnLevelStart() {
+void HUDRuntime::OnLevelStart() {
     ApplySettings(OnLevelInit);
     ResetSRTimer();
 }
 
-void BuiltinHUD::OnLevelExit() {
+void HUDRuntime::OnLevelExit() {
     ShowSRTimer(false);
 }
 
-int BuiltinHUD::GetMode() const {
+int HUDRuntime::GetMode() const {
     int mode = 0;
     if (m_ShowTitle && m_ShowTitle->GetBoolean()) mode |= HUD_TITLE;
     if (m_ShowFPS && m_ShowFPS->GetBoolean()) mode |= HUD_FPS;
@@ -173,7 +173,7 @@ int BuiltinHUD::GetMode() const {
     return mode;
 }
 
-void BuiltinHUD::SetMode(int mode) {
+void HUDRuntime::SetMode(int mode) {
     if (m_ShowTitle) {
         m_ShowTitle->SetBoolean((mode & HUD_TITLE) != 0);
         ShowTitle(m_ShowTitle->GetBoolean());
@@ -188,54 +188,54 @@ void BuiltinHUD::SetMode(int mode) {
     }
 }
 
-void BuiltinHUD::ShowTitle(bool show) {
+void HUDRuntime::ShowTitle(bool show) {
     if (m_TitleElement) {
         m_TitleElement->SetVisible(show);
     }
 }
 
-void BuiltinHUD::ShowFPS(bool show) {
+void HUDRuntime::ShowFPS(bool show) {
     if (m_FPSElement) {
         m_FPSElement->SetVisible(show);
     }
 }
 
-void BuiltinHUD::ShowSRTimer(bool show) {
+void HUDRuntime::ShowSRTimer(bool show) {
     if (m_SRElement) {
         m_SRElement->SetVisible(show);
     }
 }
 
-void BuiltinHUD::StartSRTimer() {
+void HUDRuntime::StartSRTimer() {
     m_SRTimer.Start();
     if (auto container = HUDCast<HUDContainer>(m_SRElement)) {
         if (container->IsFadeEnabled()) container->SetFadeTarget(1.0f);
     }
 }
 
-void BuiltinHUD::PauseSRTimer() {
+void HUDRuntime::PauseSRTimer() {
     m_SRTimer.Pause();
     if (auto container = HUDCast<HUDContainer>(m_SRElement)) {
         if (container->IsFadeEnabled()) container->SetFadeTarget(0.5f);
     }
 }
 
-void BuiltinHUD::ResetSRTimer() {
+void HUDRuntime::ResetSRTimer() {
     m_SRTimer.Reset();
 }
 
-float BuiltinHUD::GetSRTime() const {
+float HUDRuntime::GetSRTime() const {
     return m_SRTimer.GetTime();
 }
 
-void BuiltinHUD::SetFPSUpdateFrequency(uint32_t frames) {
+void HUDRuntime::SetFPSUpdateFrequency(uint32_t frames) {
     const uint32_t normalized = frames > 0 ? frames : 1;
     if (m_FPSCounter.GetUpdateFrequency() != normalized) {
         m_FPSCounter.SetUpdateFrequency(normalized);
     }
 }
 
-void BuiltinHUD::UpdateTimerDisplay() {
+void HUDRuntime::UpdateTimerDisplay() {
     if (m_FPSElement) {
         if (auto textElement = HUDCast<HUDText>(m_FPSElement)) {
             if (m_FPSElement->IsVisible() &&
@@ -258,7 +258,7 @@ void BuiltinHUD::UpdateTimerDisplay() {
     }
 }
 
-void BuiltinHUD::UpdateCheatState(bool cheatEnabled) {
+void HUDRuntime::UpdateCheatState(bool cheatEnabled) {
     if (cheatEnabled == m_LastCheatState) {
         return;
     }

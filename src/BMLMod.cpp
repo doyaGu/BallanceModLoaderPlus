@@ -15,7 +15,6 @@
 #include "AnsiPalette.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
-#include "EventHook.h"
 #include "BuiltinCapabilities.h"
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptDevToolsService.h"
@@ -61,38 +60,8 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
          [](BMLMod &, IProperty *property) { RenderHook::EnableWidescreenFix(property->GetBoolean()); },
          Startup | OnChange, false},
 
-        {"Tweak", "LanternAlphaTest", &BMLMod::m_LanternAlphaTest,
-         [](BMLMod &mod, IProperty *property) {
-             CKMaterial *material = mod.m_BML->GetMaterialByName("Laterne_Verlauf");
-             if (!material)
-                 return;
-
-             CKBOOL enabled = property->GetBoolean();
-             material->EnableAlphaTest(enabled);
-             VXCMPFUNC function = VXCMP_GREATEREQUAL;
-             material->SetAlphaFunc(function);
-             int reference = 0;
-             material->SetAlphaRef(reference);
-         },
-         OnChange, false},
-        {"Tweak", "FixLifeBallFreeze", &BMLMod::m_FixLifeBall, nullptr, OnDemand, false},
-        {"Tweak", "Overclock", &BMLMod::m_Overclock,
-         [](BMLMod &mod, IProperty *property) {
-             const int target = property->GetBoolean() ? 1 : 0;
-             for (int i = 0; i < 3; ++i) {
-                 if (!mod.m_OverclockLinks[i] || !mod.m_OverclockLinkIO[i][target]) {
-                     mod.GetLogger()->Warn("Overclock is unavailable for the current gameplay scripts");
-                     return;
-                 }
-             }
-
-             for (int i = 0; i < 3; ++i)
-                 mod.m_OverclockLinks[i]->SetOutBehaviorIO(mod.m_OverclockLinkIO[i][target]);
-         },
-         OnChange, true},
-
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 14,
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 11,
                   "Every BMLMod-owned config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
@@ -207,6 +176,8 @@ void BMLMod::OnLoad() {
     m_Console.ApplyConfig();
     m_CustomMaps.ApplyConfig();
     InitGUI();
+    m_GameEventHooks.OnLoad(*m_BML, *GetLogger());
+    m_GameplayTweaks.OnLoad(*m_BML, *GetLogger());
     m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), m_HUD);
 
     m_HUD.OnLoad(*m_BML);
@@ -221,6 +192,8 @@ void BMLMod::OnUnload() {
     m_Console.OnUnload();
     m_HUD.OnUnload();
     m_CustomMaps.OnUnload();
+    m_GameplayTweaks.OnUnload();
+    m_GameEventHooks.OnUnload();
 
     Bui::CleanupResources(m_CKContext);
 
@@ -251,33 +224,16 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
 
 void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
     m_CustomMaps.OnLoadScript(script);
-
-    if (!strcmp(script->GetName(), "Event_handler"))
-        OnEditScript_Base_EventHandler(script);
+    // Gameplay_Energy ordering is intentional: the Overclock patch must see
+    // the BallOff hook already inserted before it chooses the Delayer link.
+    m_GameEventHooks.OnLoadScript(script);
+    m_GameplayTweaks.OnLoadScript(script);
 
     if (!strcmp(script->GetName(), "Menu_Init"))
         OnEditScript_Menu_MenuInit(script);
 
     if (!strcmp(script->GetName(), "Menu_Options"))
         OnEditScript_Menu_OptionsMenu(script);
-
-    if (!strcmp(script->GetName(), "Gameplay_Ingame"))
-        OnEditScript_Gameplay_Ingame(script);
-
-    if (!strcmp(script->GetName(), "Gameplay_Energy"))
-        OnEditScript_Gameplay_Energy(script);
-
-    if (!strcmp(script->GetName(), "Gameplay_Events"))
-        OnEditScript_Gameplay_Events(script);
-
-    if (!strcmp(script->GetName(), "Levelinit_build"))
-        OnEditScript_Levelinit_build(script);
-
-    if (m_FixLifeBall->GetBoolean()) {
-        if (!strcmp(script->GetName(), "P_Extra_Life_Particle_Blob Script") ||
-            !strcmp(script->GetName(), "P_Extra_Life_Particle_Fizz Script"))
-            OnEditScript_ExtraLife_Fix(script);
-    }
 }
 
 void BMLMod::OnProcess() {
@@ -319,6 +275,9 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     if (m_CustomMaps.OnModifyConfig(category, key, prop))
         return;
 
+    if (m_GameplayTweaks.OnModifyConfig(category, key, prop))
+        return;
+
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -343,6 +302,7 @@ void BMLMod::OnPostStartMenu() {
 
 void BMLMod::OnExitGame() {
     m_CustomMaps.OnExitGame();
+    m_GameplayTweaks.OnExitGame();
 #ifndef NDEBUG
     m_ShowImGuiDemo = false;
 #endif
@@ -456,6 +416,7 @@ void BMLMod::InitConfigs() {
     m_HUD.InitConfig(*GetConfig());
     m_Console.InitConfig(*GetConfig());
     m_CustomMaps.InitConfig(*GetConfig());
+    m_GameplayTweaks.InitConfig(*GetConfig());
 
     GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
@@ -495,17 +456,6 @@ void BMLMod::InitConfigs() {
 
     m_WidescreenFix->SetComment("Improve widescreen resolutions support");
     m_WidescreenFix->SetDefaultBoolean(false);
-
-    GetConfig()->SetCategoryComment("Tweak", "Tweak Settings");
-
-    m_LanternAlphaTest->SetComment("Enable alpha test for lantern material, this option can increase FPS");
-    m_LanternAlphaTest->SetDefaultBoolean(true);
-
-    m_FixLifeBall->SetComment("Game won't freeze when picking up life balls");
-    m_FixLifeBall->SetDefaultBoolean(true);
-
-    m_Overclock->SetComment("Remove delay of spawn / respawn");
-    m_Overclock->SetDefaultBoolean(false);
 
 }
 
@@ -549,12 +499,6 @@ void BMLMod::InitGUI() {
     } else {
         GetLogger()->Error("Built-in Custom Maps requires the loader runtime context");
     }
-}
-
-void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
-    if (!m_BML) return;
-    EventHookRegistrar registrar(*this, *m_BML);
-    registrar.RegisterBaseEventHandler(script);
 }
 
 void BMLMod::OnEditScript_Menu_MenuInit(CKBehavior *script) {
@@ -693,47 +637,6 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     }, "Secure Key");
 
     GetLogger()->Info("Mods Button inserted");
-}
-
-void BMLMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
-    if (!m_BML) return;
-    EventHookRegistrar registrar(*this, *m_BML);
-    registrar.RegisterGameplayIngame(script);
-}
-
-void BMLMod::OnEditScript_Gameplay_Energy(CKBehavior *script) {
-    if (!m_BML) return;
-    EventHookRegistrar registrar(*this, *m_BML);
-    registrar.RegisterGameplayEnergy(script);
-}
-
-void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
-    if (!m_BML) return;
-    EventHookRegistrar registrar(*this, *m_BML);
-    registrar.RegisterGameplayEvents(script);
-}
-
-void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
-    CKBehavior *smat = FindFirstBB(script, "set Mapping and Textures");
-    if (!smat) return;
-    CKBehavior *sml = FindFirstBB(smat, "Set Mat Laterne");
-    if (!sml) return;
-    CKBehavior *sat = FindFirstBB(sml, "Set Alpha Test");
-    if (!sat) return;
-
-    CKParameter *sate = sat->GetInputParameter(0)->GetDirectSource();
-    if (sate) {
-        CKBOOL atest = m_LanternAlphaTest->GetBoolean();
-        sate->SetValue(&atest);
-    }
-}
-
-void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
-    CKBehavior *emitter = FindFirstBB(script, "SphericalParticleSystem");
-    auto *rtm = emitter->CreateInputParameter("Real-Time Mode", CKPGUID_BOOL);
-    if (rtm) rtm->SetDirectSource(CreateParamValue<CKBOOL>(script, "Real-Time Mode", CKPGUID_BOOL, 1));
-    auto *dt = emitter->CreateInputParameter("DeltaTime", CKPGUID_FLOAT);
-    if (dt) dt->SetDirectSource(CreateParamValue<float>(script, "DeltaTime", CKPGUID_FLOAT, 20.0f));
 }
 
 void BMLMod::OnProcess_Menu() {

@@ -1,5 +1,5 @@
-#ifndef BML_BUILTINHUD_H
-#define BML_BUILTINHUD_H
+#ifndef BML_HUDRUNTIME_H
+#define BML_HUDRUNTIME_H
 
 #include <cstddef>
 #include <cstdint>
@@ -20,7 +20,7 @@ enum HudTypes {
     HUD_SR = 4,
 };
 
-class BuiltinHUD {
+class HUDRuntime {
 public:
     void InitConfig(IConfig &config);
     void ApplyConfig();
@@ -60,8 +60,8 @@ private:
 
     struct Setting {
         const char *key;
-        IProperty *BuiltinHUD::*property;
-        void (*apply)(BuiltinHUD &hud, IProperty *property);
+        IProperty *HUDRuntime::*property;
+        void (*apply)(HUDRuntime &hud, IProperty *property);
         unsigned when;
         bool requiresIngame;
     };
@@ -90,4 +90,4 @@ private:
     IProperty *m_FPSUpdateFrequency = nullptr;
 };
 
-#endif // BML_BUILTINHUD_H
+#endif // BML_HUDRUNTIME_H

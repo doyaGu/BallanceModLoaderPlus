@@ -5,8 +5,8 @@
 
 #include "BML/IBML.h"
 #include "BML/BML.h"
-#include "BuiltinConsole.h"
-#include "BuiltinHUD.h"
+#include "Console.h"
+#include "HUDRuntime.h"
 
 #include "ModContext.h"
 #if BML_ENABLE_ANGELSCRIPT
@@ -188,7 +188,7 @@ void CommandExit::Execute(IBML *bml, const std::vector<std::string> &args) {
     bml->ExitGame();
 }
 
-CommandHUD::CommandHUD(BuiltinHUD *hud) : m_HUD(hud) {
+CommandHUD::CommandHUD(HUDRuntime *hud) : m_HUD(hud) {
     m_State = m_HUD->GetMode();
 }
 

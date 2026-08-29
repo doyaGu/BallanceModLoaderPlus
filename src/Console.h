@@ -1,12 +1,12 @@
-#ifndef BML_BUILTINCONSOLE_H
-#define BML_BUILTINCONSOLE_H
+#ifndef BML_CONSOLE_H
+#define BML_CONSOLE_H
 
 #include <cstddef>
 
 #include "CommandBar.h"
 #include "MessageBoard.h"
 
-class BuiltinHUD;
+class HUDRuntime;
 class IBML;
 class IConfig;
 class ILogger;
@@ -16,13 +16,13 @@ namespace BML {
     class CommandContext;
 }
 
-class BuiltinConsole {
+class Console {
 public:
     void InitConfig(IConfig &config);
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BuiltinHUD &hud);
+    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud);
     void OnUnload();
     void OnProcess();
 
@@ -36,15 +36,15 @@ public:
 private:
     struct Setting {
         const char *key;
-        IProperty *BuiltinConsole::*property;
-        void (*apply)(BuiltinConsole &console, IProperty *property);
+        IProperty *Console::*property;
+        void (*apply)(Console &console, IProperty *property);
     };
 
     static const Setting *GetSettings(size_t &count);
     void ApplySetting(const Setting &setting, IProperty *property);
 
     static void OnCommandOutput(const char *message, void *userdata);
-    void RegisterCommands(IBML &bml, BuiltinHUD &hud);
+    void RegisterCommands(IBML &bml, HUDRuntime &hud);
 
     BML::CommandContext *m_Commands = nullptr;
     ILogger *m_Logger = nullptr;
@@ -60,4 +60,4 @@ private:
     IProperty *m_FadeMaxAlpha = nullptr;
 };
 
-#endif // BML_BUILTINCONSOLE_H
+#endif // BML_CONSOLE_H
