@@ -254,6 +254,20 @@ add_bml_test(InterfaceHeaderTest
         SOURCES InterfaceHeaderTest.cpp
 )
 
+add_bml_test(BuiMenuTest
+        SOURCES
+        BuiMenuTest.cpp
+        ${IMGUI_SOURCE_DIR}/imgui.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_draw.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_tables.cpp
+        ${IMGUI_SOURCE_DIR}/imgui_widgets.cpp
+)
+target_include_directories(BuiMenuTest BEFORE PRIVATE
+        ${IMGUI_SOURCE_DIR}
+        ${VIRTOOLS_SDK_INCLUDE_DIR}
+)
+target_compile_definitions(BuiMenuTest PRIVATE IMGUI_EXPORT)
+
 add_bml_test(InterfaceStructOffsetsTest
         SOURCES
         InterfaceStructOffsetsTest.cpp
@@ -351,6 +365,19 @@ add_bml_test(MapCatalogTest
         ${BML_SOURCE_DIR}/MapCatalog.h
         DEPENDENCIES
         BMLUtils
+)
+
+add_bml_test(MapMenuStateTest
+        SOURCES
+        MapMenuStateTest.cpp
+        ${BML_SOURCE_DIR}/MapCatalog.cpp
+        ${BML_SOURCE_DIR}/MapCatalog.h
+        DEPENDENCIES
+        BMLUtils
+)
+target_include_directories(MapMenuStateTest BEFORE PRIVATE
+        ${IMGUI_SOURCE_DIR}
+        ${VIRTOOLS_SDK_INCLUDE_DIR}
 )
 
 add_bml_test(SRTimerTest

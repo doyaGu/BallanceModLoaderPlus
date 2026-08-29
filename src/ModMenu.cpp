@@ -136,36 +136,33 @@ namespace {
 #endif
 }
 
+ModMenu::ModMenu()
+    : m_Routes(
+          [owner = this]() { Bui::BlockKeyboardInput(owner); },
+          [owner = this]() {
+              Bui::TransitionToScriptAndUnblock("Menu_Options", owner);
+          }) {}
+
 void ModMenu::Init() {
-    CreatePage<ModListPage>();
-    CreatePage<ModPage>();
-    CreatePage<ModOptionPage>();
+    m_Routes.CreatePage<ModListPage>("Mod List", m_State);
+    m_Routes.CreatePage<ModPage>("Mod Page", m_State);
+    m_Routes.CreatePage<ModOptionPage>("Mod Options", m_State);
 }
 
-void ModMenu::OnOpen() {
-    Bui::BlockKeyboardInput(this);
-}
-
-void ModMenu::OnClose() {
-    Bui::TransitionToScriptAndUnblock("Menu_Options", this);
-}
-
-Config *ModMenu::GetConfig(IMod *mod) {
+Config *ModMenuState::GetConfig(IMod *mod) const {
     return BML_GetModContext()->GetConfig(mod);
 }
 
-void ModListPage::OnPostBegin() {
-    Bui::Title(m_Title.c_str());
-
+Bui::PageAction ModListPage::OnFrame() {
+    Bui::Title("Mod List");
     const int count = BML_GetModContext()->GetModCount();
-    SetPageCount(Bui::CalcPageCount(count, 4));
+    m_Pagination.Update(count, 4);
 
-    if (Bui::CanPrevPage(m_PageIndex) && Bui::NavLeft()) PrevPage();
-    if (Bui::CanNextPage(m_PageIndex, count, 4) && Bui::NavRight()) NextPage();
-}
+    if (m_Pagination.CanPrevious() && Bui::NavLeft()) m_Pagination.Previous();
+    if (m_Pagination.CanNext() && Bui::NavRight()) m_Pagination.Next();
 
-void ModListPage::OnDraw() {
-    const int n = GetPage() * 4;
+    Bui::PageAction action;
+    const int n = m_Pagination.GetFirstItem();
 
     Bui::Entries([&](size_t index) {
         IMod *mod = BML_GetModContext()->GetMod(static_cast<int>(n + index));
@@ -177,14 +174,18 @@ void ModListPage::OnDraw() {
         ImGui::PopID();
 
         if (clicked) {
-            Menu()->SetCurrentMod(mod);
-            Menu()->OpenPage("Mod Page");
+            m_State.SelectMod(mod);
+            action = Bui::PageAction::Push("Mod Page");
         }
         return true;
     }, 0.35f, 0.24f, 0.14f, 4);
+
+    if (action.IsNone() && Bui::NavBack())
+        action = Bui::PageAction::Back();
+    return action;
 }
 
-void ModPage::OnPostBegin() {
+Bui::PageAction ModPage::OnFrame() {
     const auto menuPos = Bui::GetMenuPos();
     const auto menuSize = Bui::GetMenuSize();
 
@@ -193,7 +194,9 @@ void ModPage::OnPostBegin() {
 
     ImGui::Dummy(Bui::CoordToPixel(ImVec2(1.0f, 0.1f)));
 
-    auto *mod = Menu()->GetCurrentMod();
+    auto *mod = m_State.GetCurrentMod();
+    if (!mod)
+        return Bui::PageAction::Back();
 
     Bui::WrappedText(mod->GetName(), titleWidth, titleX, 1.2f);
 
@@ -222,56 +225,51 @@ void ModPage::OnPostBegin() {
 
     Bui::WrappedText(mod->GetDescription(), titleWidth, titleX);
 
-    m_Config = ModMenu::GetConfig(mod);
-    if (!m_Config)
-        return;
+    m_Config = m_State.GetConfig(mod);
+    const int count = m_Config ? static_cast<int>(m_Config->GetCategoryCount()) : 0;
+    m_Pagination.Update(count, 4);
 
-    int count = (int) m_Config->GetCategoryCount();
-    SetPageCount(Bui::CalcPageCount(count, 4));
-}
-
-void ModPage::OnDraw() {
-    if (!m_Config)
-        return;
-
+    Bui::PageAction action;
     bool v = true;
-    const int n = GetPage() * 4;
+    const int n = m_Pagination.GetFirstItem();
 
-    Bui::Entries([&](size_t index) {
-        Category *category = m_Config->GetCategory(static_cast<int>(n + index));
-        if (!category)
-            return false;
+    if (m_Config) {
+        Bui::Entries([&](size_t index) {
+            Category *category = m_Config->GetCategory(static_cast<int>(n + index));
+            if (!category)
+                return false;
 
-        const char *name = category->GetName();
-        if (!name)
+            const char *name = category->GetName();
+            if (!name)
+                return true;
+
+            ImGui::PushID(category);
+            const bool clicked = Bui::LevelButton(name, &v);
+            ImGui::PopID();
+
+            if (clicked) {
+                m_State.SelectCategory(category);
+                action = Bui::PageAction::Push("Mod Options");
+            }
+
+            if (ImGui::IsItemHovered()) {
+                ShowCommentBox(category);
+            }
             return true;
-
-        ImGui::PushID(category);
-        const bool clicked = Bui::LevelButton(name, &v);
-        ImGui::PopID();
-
-        if (clicked) {
-            Menu()->SetCurrentCategory(category);
-            Menu()->OpenPage("Mod Options");
-        }
-
-        if (ImGui::IsItemHovered()) {
-            ShowCommentBox(category);
-        }
-        return true;
-    }, 0.4031f, 0.5f, 0.06f, 4);
-
-    const int totalCategories = m_Config ? (int)m_Config->GetCategoryCount() : 0;
-
-    if (Bui::CanPrevPage(m_PageIndex) &&
-        Bui::NavLeft(0.35f, 0.59f)) {
-        PrevPage();
+        }, 0.4031f, 0.5f, 0.06f, 4);
     }
 
-    if (Bui::CanNextPage(m_PageIndex, totalCategories, 4) &&
-        Bui::NavRight(0.6138f, 0.59f)) {
-        NextPage();
+    if (m_Pagination.CanPrevious() && Bui::NavLeft(0.35f, 0.59f)) {
+        m_Pagination.Previous();
     }
+
+    if (m_Pagination.CanNext() && Bui::NavRight(0.6138f, 0.59f)) {
+        m_Pagination.Next();
+    }
+
+    if (action.IsNone() && Bui::NavBack())
+        action = Bui::PageAction::Back();
+    return action;
 }
 
 void ModPage::ShowCommentBox(Category *category) {
@@ -296,23 +294,32 @@ void ModPage::ShowCommentBox(Category *category) {
     ImGui::PopStyleColor();
 }
 
-void ModOptionPage::OnPostBegin() {
-    Bui::Title(m_Name.c_str(), 0.13f, 1.5f,  m_HasPendingChanges ? IM_COL32(255, 255, 128, 255) : IM_COL32_WHITE);
+void ModOptionPage::OnEnter(Bui::PageEnterReason) {
+    RefreshFontList();
+    m_Category = m_State.GetCurrentCategory();
+    m_PendingValues.clear();
+    m_KeyCaptureProperty = nullptr;
+    m_HasPendingChanges = false;
+    m_Pagination.Reset();
 
-    // Navigation
-    const int totalProps = m_Category ? (int)m_Category->GetPropertyCount() : 0;
-    if (Bui::CanPrevPage(m_PageIndex) && Bui::NavLeft()) PrevPage();
-    if (Bui::CanNextPage(m_PageIndex, totalProps, PROPERTY_SLOTS) && Bui::NavRight()) NextPage();
-
-    // Update pending changes status
-    m_HasPendingChanges = HasPendingChanges();
+    if (m_Category)
+        m_Pagination.Update(static_cast<int>(m_Category->GetPropertyCount()), PROPERTY_SLOTS);
 }
 
-void ModOptionPage::OnDraw() {
+Bui::PageAction ModOptionPage::OnFrame() {
     if (!m_Category)
-        return;
+        return Bui::PageAction::Back();
 
-    const int n = GetPage() * PROPERTY_SLOTS;
+    m_HasPendingChanges = HasPendingChanges();
+    Bui::Title("Mod Options", 0.13f, 1.5f,
+               m_HasPendingChanges ? IM_COL32(255, 255, 128, 255) : IM_COL32_WHITE);
+
+    const int totalProps = static_cast<int>(m_Category->GetPropertyCount());
+    m_Pagination.Update(totalProps, PROPERTY_SLOTS);
+    if (m_Pagination.CanPrevious() && Bui::NavLeft()) m_Pagination.Previous();
+    if (m_Pagination.CanNext() && Bui::NavRight()) m_Pagination.Next();
+
+    const int n = m_Pagination.GetFirstItem();
 
     Bui::Entries([&](size_t index) {
         Property *property = m_Category->GetProperty(static_cast<int>(n + index));
@@ -337,10 +344,6 @@ void ModOptionPage::OnDraw() {
     }, 0.35f, 0.24f, 0.14f, PROPERTY_SLOTS);
 
     m_HasPendingChanges = HasPendingChanges();
-}
-
-void ModOptionPage::OnPreEnd() {
-    // Show save/revert buttons if there are pending changes
     if (m_HasPendingChanges) {
         const float x = Bui::GetButtonSizeInCoord(Bui::BUTTON_SMALL).x;
         Bui::At(0.5f - (x + 0.04f), 0.85f, [&]() {
@@ -354,34 +357,14 @@ void ModOptionPage::OnPreEnd() {
                 RevertChanges();
             }
         });
-    } else {
-        if (Bui::NavBack()) {
-            if (auto *menu = Menu()) {
-                menu->OpenPrevPage();
-            } else {
-                Close();
-            }
-        }
+    } else if (Bui::NavBack()) {
+        return Bui::PageAction::Back();
     }
+
+    return Bui::PageAction::None();
 }
 
-bool ModOptionPage::OnOpen() {
-    RefreshFontList();
-
-    m_Category = Menu()->GetCurrentCategory();
-    if (!m_Category)
-        return false;
-
-    int count = static_cast<int>(m_Category->GetPropertyCount());
-    SetPageCount(Bui::CalcPageCount(count, PROPERTY_SLOTS));
-
-    m_PendingValues.clear();
-    m_KeyCaptureProperty = nullptr;
-    m_HasPendingChanges = false;
-    return true;
-}
-
-void ModOptionPage::OnClose() {
+void ModOptionPage::OnLeave(Bui::PageLeaveReason) {
     m_PendingValues.clear();
     m_KeyCaptureProperty = nullptr;
     m_HasPendingChanges = false;
@@ -406,8 +389,7 @@ bool ModOptionPage::DrawEditor(Property *property, IProperty::PropertyType type,
     switch (type) {
         case IProperty::STRING: {
             std::string &text = std::get<std::string>(value);
-            auto *modMenu = Menu();
-            IMod *currentMod = modMenu ? modMenu->GetCurrentMod() : nullptr;
+            IMod *currentMod = m_State.GetCurrentMod();
 
             if (IsBmlFontFilenameProperty(currentMod, m_Category, property)) {
                 std::string customFont;

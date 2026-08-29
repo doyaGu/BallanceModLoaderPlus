@@ -4,105 +4,105 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <cstdint>
+#include <functional>
+#include <utility>
 
 #include "BML/Bui.h"
+#include "MapCatalog.h"
 
 class BMLMod;
-class MapMenu;
 
-enum MapEntryType {
-    MAP_ENTRY_DIR,
-    MAP_ENTRY_FILE,
-};
-
-struct MapEntry {
-    MapEntry *parent = nullptr;
-    MapEntryType type;
-    std::string name;
-    std::wstring path;
-    std::vector<MapEntry *> children;
-    bool m_BeingDeleted = false;
-
-    explicit MapEntry(MapEntry *parent, MapEntryType entryType) : parent(parent), type(entryType) {}
-
-    ~MapEntry();
-
-    bool operator<(const MapEntry &rhs) const;
-
-    bool operator>(const MapEntry &rhs) const {
-        return rhs < *this;
-    }
-
-    bool operator<=(const MapEntry &rhs) const {
-        return !(rhs < *this);
-    }
-
-    bool operator>=(const MapEntry &rhs) const {
-        return !(*this < rhs);
-    }
-};
-
-class MapListPage : public Bui::TypedPage<MapMenu> {
+class MapMenuState {
 public:
-    MapListPage(): TypedPage("Custom Maps") {}
+    using MapLoader = std::function<bool(const std::wstring &)>;
 
-    void OnPostBegin() override;
-    void OnPreEnd() override;
-    void OnDraw() override;
-    void OnPostEnd() override;
-    void ResetForMapRefresh();
+    explicit MapMenuState(BMLMod *mod);
+    explicit MapMenuState(MapLoader loader)
+        : m_LoadMap(std::move(loader)), m_Current(m_Catalog.GetRoot()) {}
+
+    bool LoadMap(const std::wstring &path) {
+        m_MapLoaded = false;
+        if (!m_LoadMap || !m_LoadMap(path))
+            return false;
+        m_MapLoaded = true;
+        return true;
+    }
+
+    Bui::PageAction SelectMap(const std::wstring &path) {
+        if (!LoadMap(path))
+            return Bui::PageAction::None();
+        ResetCurrentMaps();
+        return Bui::PageAction::Close();
+    }
+
+    void RefreshMaps();
+
+    MapEntry *GetCurrentMaps() const { return m_Current; }
+    void SetCurrentMaps(MapEntry *entry) { m_Current = entry; }
+    void ResetCurrentMaps() { m_Current = m_Catalog.GetRoot(); }
+    uint64_t GetCatalogRevision() const { return m_CatalogRevision; }
+
+    bool ShouldShowTooltip() const { return m_ShowTooltip; }
+    void SetShowTooltip(bool show) { m_ShowTooltip = show; }
+    bool SetMaxDepth(int depth);
+    bool TakeMapLoaded() {
+        const bool loaded = m_MapLoaded;
+        m_MapLoaded = false;
+        return loaded;
+    }
 
 private:
+    MapLoader m_LoadMap;
+    bool m_MapLoaded = false;
+    bool m_ShowTooltip = false;
+    int m_MaxDepth = 8;
+    MapCatalog m_Catalog;
+    MapEntry *m_Current;
+    uint64_t m_CatalogRevision = 0;
+};
+
+class MapListPage : public Bui::Page {
+public:
+    explicit MapListPage(MapMenuState &state) : m_State(state) {}
+
+    Bui::PageAction OnFrame() override;
+
+private:
+    void SyncCatalog();
     bool IsSearching() const;
     void ClearSearch();
     void OnSearchMaps();
     // Draw by direct entry pointer (used for both normal list and recursive search results)
-    bool OnDrawEntry(MapEntry *entry, bool *v);
+    bool OnDrawEntry(MapEntry *entry, bool *v, Bui::PageAction &action);
 
-    bool m_ShouldClose = false;
+    MapMenuState &m_State;
+    Bui::Pagination m_Pagination;
+    uint64_t m_CatalogRevision = 0;
     int m_Count = 0;
     char m_MapSearchBuf[1024] = {};
     // Store pointers to entries to support recursive results across subfolders
     std::vector<MapEntry *> m_MapSearchResult;
 };
 
-class MapMenu : public Bui::Menu {
+class MapMenu {
 public:
     explicit MapMenu(BMLMod *mod);
 
-    ~MapMenu() override;
-
     void Init();
 
-    void OnOpen() override;
-    void OnClose() override;
-    void OnClose(bool backToMenu);
+    bool Open(const std::string &id) { return m_Routes.Open(id); }
+    bool Close() { return m_Routes.Close(); }
+    bool Render() { return m_Routes.Render(); }
 
-    void LoadMap(const std::wstring &path);
-    MapEntry *GetMaps() const { return m_Maps; }
-    MapEntry *GetCurrentMaps() const { return m_Current; }
-    void SetCurrentMaps(MapEntry *entry) { m_Current = entry; }
-    void ResetCurrentMaps() { m_Current = m_Maps; }
-    void RefreshMaps();
-
-    bool ShouldShowTooltip() const { return m_ShowTooltip; }
-    void SetShowTooltip(bool show) { m_ShowTooltip = show; }
-
-    int GetMaxDepth() const { return m_MaxDepth; }
+    void SetShowTooltip(bool show) { m_State.SetShowTooltip(show); }
     void SetMaxDepth(int depth);
 
 private:
-    bool ExploreMaps(MapEntry *maps, int depth = 8);
-    static bool IsSupportedFileType(const std::wstring &path);
-
-    BMLMod *m_Mod;
-    bool m_MapLoaded = false;
+    // Routes is declared last so its Pages are destroyed before their state.
+    MapMenuState m_State;
     bool m_Initialized = false;
-    bool m_ShowTooltip = false;
-    int m_MaxDepth = 8;
-    MapListPage *m_ListPage = nullptr;
-    MapEntry *m_Maps = nullptr;
-    MapEntry *m_Current = nullptr;
+    Bui::Menu m_Routes;
 };
 
 #endif // BML_MAPMENU_H

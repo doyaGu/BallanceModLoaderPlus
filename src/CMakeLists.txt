@@ -143,6 +143,7 @@ set(BML_PRIVATE_HEADERS
         Logger.h
         Config.h
         ConfigStore.h
+        MapCatalog.h
 )
 
 set(BML_SOURCES
@@ -170,6 +171,7 @@ set(BML_SOURCES
         RealTimer.cpp
         ModMenu.cpp
         MapMenu.cpp
+        MapCatalog.cpp
         CommandBar.cpp
         MessageBoard.cpp
         AnsiPalette.cpp

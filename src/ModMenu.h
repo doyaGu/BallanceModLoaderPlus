@@ -8,59 +8,69 @@
 
 #include "Config.h"
 
-class ModMenu;
-
-class ModMenu : public Bui::Menu {
+class ModMenuState {
 public:
-    void Init();
-
     IMod *GetCurrentMod() const { return m_CurrentMod; }
-    void SetCurrentMod(IMod *mod) { m_CurrentMod = mod; }
+    void SelectMod(IMod *mod) { m_CurrentMod = mod; }
 
     Category *GetCurrentCategory() const { return m_CurrentCategory; }
-    void SetCurrentCategory(Category *category) { m_CurrentCategory = category; }
+    void SelectCategory(Category *category) { m_CurrentCategory = category; }
 
-    void OnOpen() override;
-    void OnClose() override;
-
-    static Config *GetConfig(IMod *mod);
+    Config *GetConfig(IMod *mod) const;
 
 private:
     IMod *m_CurrentMod = nullptr;
     Category *m_CurrentCategory = nullptr;
 };
 
-class ModListPage : public Bui::TypedPage<ModMenu> {
+class ModMenu {
 public:
-    explicit ModListPage() : Bui::TypedPage<ModMenu>("Mod List") {}
+    ModMenu();
+    void Init();
 
-    void OnPostBegin() override;
-    void OnDraw() override;
+    bool Open(const std::string &id) { return m_Routes.Open(id); }
+    bool Close() { return m_Routes.Close(); }
+    bool Render() { return m_Routes.Render(); }
+
+private:
+    // Routes is declared last so its Pages are destroyed before their state.
+    ModMenuState m_State;
+    Bui::Menu m_Routes;
 };
 
-class ModPage : public Bui::TypedPage<ModMenu> {
+class ModListPage : public Bui::Page {
 public:
-    explicit ModPage() : Bui::TypedPage<ModMenu>("Mod Page") {}
+    explicit ModListPage(ModMenuState &state) : m_State(state) {}
 
-    void OnPostBegin() override;
-    void OnDraw() override;
+    Bui::PageAction OnFrame() override;
+
+private:
+    ModMenuState &m_State;
+    Bui::Pagination m_Pagination;
+};
+
+class ModPage : public Bui::Page {
+public:
+    explicit ModPage(ModMenuState &state) : m_State(state) {}
+
+    Bui::PageAction OnFrame() override;
 
 protected:
     static void ShowCommentBox(Category *category);
 
+    ModMenuState &m_State;
+    Bui::Pagination m_Pagination;
     Config *m_Config = nullptr;
     char m_TextBuf[1024] = {};
 };
 
-class ModOptionPage : public Bui::TypedPage<ModMenu> {
+class ModOptionPage : public Bui::Page {
 public:
-    explicit ModOptionPage() : Bui::TypedPage<ModMenu>("Mod Options") {}
+    explicit ModOptionPage(ModMenuState &state) : m_State(state) {}
 
-    void OnPostBegin() override;
-    void OnDraw() override;
-    void OnPreEnd() override;
-    bool OnOpen() override;
-    void OnClose() override;
+    void OnEnter(Bui::PageEnterReason reason) override;
+    Bui::PageAction OnFrame() override;
+    void OnLeave(Bui::PageLeaveReason reason) override;
 
 protected:
     struct PendingPropertyState {
@@ -78,6 +88,8 @@ protected:
 
     static void ShowCommentBox(const Property *property);
 
+    ModMenuState &m_State;
+    Bui::Pagination m_Pagination;
     Category *m_Category = nullptr;
     Property *m_KeyCaptureProperty = nullptr;
     bool m_HasPendingChanges = false;

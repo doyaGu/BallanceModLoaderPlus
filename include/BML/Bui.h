@@ -26,12 +26,15 @@
 #ifndef BML_BUI_H
 #define BML_BUI_H
 
-#include <cassert>
-#include <string>
-#include <stack>
+#include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <memory>
+#include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "imgui.h"
 
@@ -353,8 +356,7 @@ namespace Bui {
     // not call it.
     //
     // Call one only when the move it stands for is possible, since it draws the arrow
-    // as well as reading it. The Page class does that with CanPrevPage and CanNextPage
-    // below.
+    // as well as reading it. Pagination below keeps the corresponding list state.
     BML_EXPORT bool NavLeft(float x = 0.36f, float y = 0.124f);
     BML_EXPORT bool NavRight(float x = 0.6038f, float y = 0.124f);
     BML_EXPORT bool NavBack(float x = 0.4031f, float y = 0.85f);
@@ -424,15 +426,16 @@ namespace Bui {
     // UI CLASSES
     // =============================================================================
     //
-    // Three optional classes for a Mod with more than one screen: Window is an ImGui
-    // window that remembers whether it is shown, Page is a Window laid out like one of
-    // the game's menu screens, and Menu holds a set of Pages and the way back through
-    // them. They are header-only, so a Mod using them compiles their code into itself
-    // rather than calling into the loader, and nothing here is needed to draw with the
-    // functions above.
+    // Three optional building blocks sit above the drawing functions: Window is a
+    // standalone ImGui window with a shown flag, Page is the content and lifecycle of
+    // one menu route, and Menu owns, renders, and navigates a set of Pages. Page does
+    // not inherit Window and cannot open or close itself. These classes are header-only,
+    // so a Mod using them compiles their code into itself rather than calling into the
+    // loader, and none of them is needed to use the drawing functions above.
     //
     // All of them are only touched from IMod::OnProcess, like the rest of the header:
-    // Render is what a Mod calls there, and it is what runs OnDraw.
+    // Window::Render or Menu::Render is what a Mod calls there; they run OnDraw or the
+    // current Page's OnFrame respectively.
 
     // An ImGui window with a shown flag, drawn by calling Render once a frame. Render
     // does nothing while hidden, so a Mod calls it unconditionally and switches with
@@ -527,319 +530,465 @@ namespace Bui {
         bool m_ShouldHide;
     };
 
-    // A Window set up as one of the game's menu screens: no decoration, no background,
-    // fixed over the whole viewport, so what shows is whatever OnDraw puts there over
-    // the game. It draws its own title through Title, its own page arrows through
-    // NavLeft and NavRight when the page count calls for them, and its own Back through
-    // NavBack, which means a page reacts to PageUp, PageDown, and Escape without asking.
-    // A derived class writes OnDraw and gets the rest.
-    //
-    // A Page starts hidden, so Open is what shows it. Open runs OnOpen first and stays
-    // hidden if that returns false, which is how a page refuses to appear.
-    //
-    // The page numbering here is the page a list is showing, not a screen of the menu.
-    // SetPageCount is where a Mod says how many there are, from its own count of entries
-    // and CalcPageCount, and it has to be set before the arrows appear at all. SetPage
-    // clamps to that count and runs OnPageChanged when the number really moves;
-    // NextPage and PrevPage are that with 1 added or taken away.
-    //
-    // Back closes the page: with a Menu it goes to the page before, without one it
-    // hides this page and runs OnClose. SetMenu is what puts a page under a Menu, and
-    // Menu::CreatePage does it already.
-    class Page : public Window {
+    // Pagination is local list state, independent of a Menu route. Update recalculates
+    // the number of pages and clamps the current index when a list changes. It invokes
+    // no callback, so changing pages cannot mutate the Menu lifecycle reentrantly.
+    class Pagination {
     public:
-        explicit Page(std::string name) : Window(std::move(name)), m_Title(m_Name), m_Menu(nullptr) { Hide(); }
-        Page(std::string name, std::string title) : Window(std::move(name)), m_Title(std::move(title)), m_Menu(nullptr) { Hide(); }
-
-        // Properties
-        const std::string &GetTitle() const { return m_Title; }
-        void SetTitle(const std::string &title) { m_Title = title; }
-
-        // Menu integration
-        Menu *GetMenu() const { return m_Menu; }
-        void SetMenu(Menu *menu) { m_Menu = menu; }
-
-        // Page navigation
-        int GetPage() const { return m_PageIndex; }
-        int GetPageCount() const { return m_PageCount; }
-
-        void SetPage(int page) {
-            page = std::max(0, std::min(page, m_PageCount - 1));
-            if (m_PageIndex != page) {
-                int oldPage = m_PageIndex;
-                m_PageIndex = page;
-                OnPageChanged(m_PageIndex, oldPage);
-            }
-        }
-
-        void NextPage() { SetPage(m_PageIndex + 1); }
-        void PrevPage() { SetPage(m_PageIndex - 1); }
-
-        void SetPageCount(int count) {
-            m_PageCount = std::max(0, count);
+        void Update(int itemCount, int pageSize) {
+            m_PageSize = pageSize > 0 ? pageSize : 1;
+            m_PageCount = pageSize > 0 ? CalcPageCount(itemCount, pageSize) : 0;
             if (m_PageCount == 0) {
                 m_PageIndex = 0;
-            } else if (m_PageIndex >= m_PageCount) {
-                SetPage(m_PageCount - 1);
+            } else {
+                m_PageIndex = std::min(m_PageIndex, m_PageCount - 1);
             }
         }
 
-        // Page operations
-        void Open() { if (OnOpen()) Show(); }
-        void Close() { Hide(); OnClose(); }
+        int GetPage() const { return m_PageIndex; }
+        int GetPageCount() const { return m_PageCount; }
+        int GetFirstItem() const { return m_PageIndex * m_PageSize; }
+        bool CanPrevious() const { return m_PageIndex > 0; }
+        bool CanNext() const { return m_PageIndex + 1 < m_PageCount; }
 
-        // Window overrides
-        ImGuiWindowFlags GetFlags() override {
-            return ImGuiWindowFlags_NoDecoration |
-                   ImGuiWindowFlags_NoBackground |
-                   ImGuiWindowFlags_NoMove |
-                   ImGuiWindowFlags_NoScrollWithMouse |
-                   ImGuiWindowFlags_NoBringToFrontOnFocus |
-                   ImGuiWindowFlags_NoSavedSettings;
+        bool SetPage(int page) {
+            const int next = m_PageCount == 0
+                ? 0
+                : std::max(0, std::min(page, m_PageCount - 1));
+            if (next == m_PageIndex)
+                return false;
+            m_PageIndex = next;
+            return true;
         }
 
-        void OnPreBegin() override {
-            const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Appearing);
-            ImGui::SetNextWindowSize(ImVec2(vpSize.x, vpSize.y), ImGuiCond_Appearing);
-        }
+        bool Previous() { return SetPage(m_PageIndex - 1); }
+        bool Next() { return SetPage(m_PageIndex + 1); }
+        bool Reset() { return SetPage(0); }
 
-        void OnPostBegin() override {
-            Title(m_Title.c_str());
-
-            // Navigation
-            if (m_PageIndex > 0 && NavLeft()) PrevPage();
-            if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 && NavRight()) NextPage();
-        }
-
-        void OnPreEnd() override;
-
-        virtual bool OnOpen() { return true; }
-        virtual void OnClose() {}
-        virtual void OnPageChanged(int newPage, int oldPage) {}
-
-    protected:
-        std::string m_Title;
+    private:
         int m_PageIndex = 0;
         int m_PageCount = 0;
-        Menu *m_Menu;
+        int m_PageSize = 1;
     };
 
-    template <typename MenuType>
-    class TypedPage : public Page {
+    enum class PageEnterReason {
+        Open,
+        Push,
+        Replace,
+        Back,
+    };
+
+    enum class PageLeaveReason {
+        Open,
+        Push,
+        Replace,
+        Back,
+        Close,
+        Remove,
+    };
+
+    // OnFrame returns one action instead of calling back into the Menu. The Menu
+    // interprets it only after OnFrame and ImGui::End have completed, so navigation
+    // never destroys or re-enters a Page while that Page is drawing.
+    class PageAction {
     public:
-        using Page::Page;
+        PageAction() = default;
+
+        static PageAction None() { return {}; }
+        static PageAction Open(std::string target) { return PageAction(Type::Open, std::move(target)); }
+        static PageAction Push(std::string target) { return PageAction(Type::Push, std::move(target)); }
+        static PageAction Replace(std::string target) { return PageAction(Type::Replace, std::move(target)); }
+        static PageAction Back() { return PageAction(Type::Back); }
+        static PageAction Close() { return PageAction(Type::Close); }
+        static PageAction RemoveSelf() { return PageAction(Type::RemoveSelf); }
+
+        bool IsNone() const { return m_Type == Type::None; }
+
+    private:
+        enum class Type {
+            None,
+            Open,
+            Push,
+            Replace,
+            Back,
+            Close,
+            RemoveSelf,
+        };
+
+        explicit PageAction(Type type) : m_Type(type) {}
+        PageAction(Type type, std::string target)
+            : m_Type(type), m_Target(std::move(target)) {}
+
+        Type m_Type = Type::None;
+        std::string m_Target;
+
+        friend class Menu;
+    };
+
+    // A Page is content, not a Window and not a Menu controller. OnEnter and OnLeave
+    // are lifecycle notifications; only OnFrame can request navigation. There is no
+    // independent visibility state: a Page is visible exactly when its Menu route is
+    // current. A Page that needs application state receives that state through its
+    // constructor rather than retrieving an untyped Menu owner from this base class.
+    class Page {
+    public:
+        Page() = default;
+        virtual ~Page() = default;
+
+        Page(const Page &) = delete;
+        Page &operator=(const Page &) = delete;
 
     protected:
-        MenuType *Menu() const {
-            static_assert(std::is_base_of_v<Bui::Menu, MenuType>,
-                          "MenuType must inherit from Bui::Menu");
-            return static_cast<MenuType *>(m_Menu);
-        }
+        virtual void OnEnter(PageEnterReason) {}
+        virtual PageAction OnFrame() = 0;
+        virtual void OnLeave(PageLeaveReason) {}
+
+    private:
+        friend class Menu;
     };
 
-    // A set of Pages and the way back through them, for a Mod whose menu is more than
-    // one screen. The Menu owns the pages it is given and destroys them with itself, so
-    // hold the raw pointer CreatePage hands back rather than another owner; CreatePage
-    // builds the page, ties it to this Menu, and registers it in one go, which is the
-    // way to add one. A name already taken is refused, and CreatePage then returns null
-    // with the page already destroyed.
+    // Menu is the sole lifecycle controller for its Pages. The registry uniquely owns
+    // each Page; current and history contain only route ids. Direct registry or route
+    // mutation while OnEnter, OnFrame, OnLeave, or a session callback is running
+    // returns false. OnFrame's returned action is applied after drawing. History is
+    // capped at 32 routes, and an operation that would exceed it returns false without
+    // leaving the current Page.
     //
-    // Open starts a session on the named page and forgets any history; OpenPage goes to
-    // another page and remembers the one it left; OpenPrevPage closes the current page
-    // and returns to the remembered one, or, when there is none left, runs OnClose and
-    // returns false, which is the menu closing because the player went back past the
-    // first screen. Close ends the session from the Mod's own side. OnOpen and OnClose
-    // are where the Mod takes and gives back the keyboard, with BlockKeyboardInput and
-    // TransitionToScriptAndUnblock above.
-    //
-    // Render draws only the page open now, so a Mod calls it once a frame and lets the
-    // Menu pick. Nothing is drawn between Close and the next Open. When Open is given a
-    // name that is not there it returns false without changing the current session or
-    // running OnOpen. A page whose OnOpen returned false stays hidden while still being
-    // the page the Menu considers open.
-    //
-    // OpenPage does not hide the page it leaves, since only the current one is drawn
-    // anyway, so a page returned to by OpenPrevPage sees OnOpen again but not OnShow.
-    // Put what has to happen on every visit in OnOpen.
-    //
-    // The history holds 32 pages. OpenPage returns false instead of navigating when it
-    // cannot remember the current page. RemovePage takes a page out of the history as
-    // well, and when the page being removed is the current one it closes that page and
-    // drops the whole history with it.
-    class Menu {
+    // Menu is final so ownership is composed rather than inherited: declare the state
+    // Pages refer to before the Menu member, and C++ then destroys Menu and its Pages
+    // before that state. Destroying an open Menu sends OnLeave(Close) and then invokes
+    // its close callback, preserving the same lifecycle pairing as an explicit Close.
+    class Menu final {
     public:
-        Menu() = default;
+        using SessionCallback = std::function<void()>;
 
-        virtual ~Menu() = default;
+        explicit Menu(SessionCallback onOpen = {}, SessionCallback onClose = {})
+            : m_WindowId("##BuiMenu/" +
+                         std::to_string(reinterpret_cast<std::uintptr_t>(this))),
+              m_OnOpen(std::move(onOpen)), m_OnClose(std::move(onClose)) {}
+        ~Menu() { Shutdown(); }
 
-        // Page management
-        bool AddPage(std::unique_ptr<Page> page) {
-            if (!page) return false;
+        Menu(const Menu &) = delete;
+        Menu &operator=(const Menu &) = delete;
 
-            const std::string &name = page->GetName();
-            if (m_Pages.find(name) != m_Pages.end()) return false;
-
-            m_Pages[name] = std::move(page);
-            return true;
-        }
-
-        // Template factory method for creating pages
-        template <typename PageType, typename... Args>
-        PageType *CreatePage(Args &&... args) {
-            static_assert(std::is_base_of_v<Page, PageType>, "PageType must inherit from Page");
-
-            auto page = std::make_unique<PageType>(std::forward<Args>(args)...);
-            PageType *pagePtr = page.get();
-
-            // Set menu association after construction
-            pagePtr->SetMenu(this);
-
-            if (AddPage(std::move(page))) {
-                return pagePtr;
-            }
-
-            return nullptr;
-        }
-
-        bool RemovePage(const std::string &name) {
-            const auto it = m_Pages.find(name);
-            if (it == m_Pages.end()) return false;
-
-            Page *page = it->second.get();
-
-            if (m_CurrentPage == page) {
-                std::unique_ptr<Page> removed = std::move(it->second);
-                m_Pages.erase(it);
-                CloseCurrentPage();
-                while (!m_PageStack.empty()) m_PageStack.pop();
-                OnClose();
-                return true;
-            } else {
-                // Clean up the stack, remove all occurrences of this page
-                std::stack<Page *> tempStack;
-                while (!m_PageStack.empty()) {
-                    Page *stackPage = m_PageStack.top();
-                    m_PageStack.pop();
-                    if (stackPage != page) {
-                        tempStack.push(stackPage);
-                    }
-                }
-                // Rebuild stack without the removed page
-                while (!tempStack.empty()) {
-                    m_PageStack.push(tempStack.top());
-                    tempStack.pop();
-                }
-            }
-
-            m_Pages.erase(it);
-            return true;
-        }
-
-        Page *GetPage(const std::string &name) {
-            const auto it = m_Pages.find(name);
-            return (it != m_Pages.end()) ? it->second.get() : nullptr;
-        }
-
-        // Navigation
-        bool OpenPage(const std::string &name) {
-            Page *page = GetPage(name);
-            if (!page) return false;
-
-            if (!PushPage(m_CurrentPage)) return false;
-            m_CurrentPage = page;
-            m_CurrentPage->Open();
-            return true;
-        }
-
-        bool OpenPrevPage() {
-            assert(m_CurrentPage != nullptr);
-            CloseCurrentPage();
-            Page *page = PopPage();
-            m_CurrentPage = page;
-            if (m_CurrentPage) {
-                m_CurrentPage->Open();
-                return true;
-            } else {
-                OnClose();
+        // The registry owns each Page under a non-empty route id. Registration fails
+        // for null Pages, duplicate ids, or attempts made from a lifecycle callback.
+        bool AddPage(std::string id, std::unique_ptr<Page> page) {
+            if (m_Dispatching || id.empty() || !page || m_Pages.find(id) != m_Pages.end())
                 return false;
-            }
-        }
-
-        void CloseCurrentPage() {
-            if (m_CurrentPage) {
-                Page *page = m_CurrentPage;
-                m_CurrentPage = nullptr;
-                page->Close();
-            }
-        }
-
-        // Menu operations
-        bool Open(const std::string &name) {
-            Page *page = GetPage(name);
-            if (!page) return false;
-
-            const bool alreadyOpen = m_CurrentPage != nullptr;
-            // Clear navigation history when opening a new menu session
-            while (!m_PageStack.empty()) m_PageStack.pop();
-            CloseCurrentPage();
-
-            m_CurrentPage = page;
-            m_CurrentPage->Open();
-            if (!alreadyOpen)
-                OnOpen();
+            m_Pages.emplace(std::move(id), std::move(page));
             return true;
         }
 
-        void Close() {
-            if (!m_CurrentPage)
-                return;
-            CloseCurrentPage();
-            while (!m_PageStack.empty()) {
-                m_PageStack.pop();
+        template <typename PageType, typename... Args>
+        bool CreatePage(std::string id, Args &&... args) {
+            static_assert(std::is_base_of_v<Page, PageType>, "PageType must inherit from Page");
+            return AddPage(std::move(id),
+                           std::make_unique<PageType>(std::forward<Args>(args)...));
+        }
+
+        bool HasPage(const std::string &id) const {
+            return m_Pages.find(id) != m_Pages.end();
+        }
+
+        bool IsCurrentPage(const std::string &id) const {
+            return m_CurrentPage == id;
+        }
+
+        bool IsOpen() const { return !m_CurrentPage.empty(); }
+
+        // Open starts a root route and clears history. Push remembers the current
+        // route, Replace changes it without touching history, and Back restores the
+        // most recently pushed route or closes when none remains. All operations
+        // return false without changing the route if their request is invalid.
+        bool RemovePage(const std::string &id) {
+            return Mutate([&]() { return Remove(id); });
+        }
+
+        bool Open(const std::string &id) {
+            return Mutate([&]() {
+                return Activate(id, PageLeaveReason::Open,
+                                PageEnterReason::Open, true, false);
+            });
+        }
+
+        bool Push(const std::string &id) {
+            return Mutate([&]() {
+                return Activate(id, PageLeaveReason::Push,
+                                PageEnterReason::Push, false, true);
+            });
+        }
+
+        bool Replace(const std::string &id) {
+            return Mutate([&]() {
+                return Activate(id, PageLeaveReason::Replace,
+                                PageEnterReason::Replace, false, false);
+            });
+        }
+
+        bool Back() { return Mutate([&]() { return NavigateBack(); }); }
+        bool Close() { return Mutate([&]() { return CloseMenu(); }); }
+
+        // Draw the current route once during IMod::OnProcess. A closed Menu is a
+        // successful no-op. False means rendering was re-entered, the registry was
+        // inconsistent, or OnFrame returned an action that could not be applied.
+        bool Render() {
+            if (m_Dispatching)
+                return false;
+            if (m_CurrentPage.empty())
+                return true;
+
+            const auto it = m_Pages.find(m_CurrentPage);
+            if (it == m_Pages.end())
+                return false;
+
+            const std::string pageId = m_CurrentPage;
+            Page *page = it->second.get();
+            const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(vpSize.x, vpSize.y));
+
+            constexpr ImGuiWindowFlags flags =
+                ImGuiWindowFlags_NoDecoration |
+                ImGuiWindowFlags_NoBackground |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoScrollWithMouse |
+                ImGuiWindowFlags_NoBringToFrontOnFocus |
+                ImGuiWindowFlags_NoSavedSettings;
+
+            const bool drawContents = ImGui::Begin(m_WindowId.c_str(), nullptr, flags);
+            PageAction action;
+            try {
+                if (drawContents) {
+                    ImGuiIdGuard idGuard(page);
+                    DispatchGuard guard(m_Dispatching);
+                    action = page->OnFrame();
+                }
+            } catch (...) {
+                ImGui::End();
+                throw;
             }
-            OnClose();
-        }
+            ImGui::End();
 
-        void Render() {
-            if (m_CurrentPage) m_CurrentPage->Render();
+            return action.IsNone() || ApplyFrameAction(pageId, std::move(action));
         }
-
-        // Virtual interface
-        virtual void OnOpen() = 0;
-        virtual void OnClose() = 0;
 
     protected:
         static constexpr size_t MAX_NAVIGATION_DEPTH = 32;
 
-        bool PushPage(Page *page) {
-            if (!page) return true;
-            if (m_PageStack.size() >= MAX_NAVIGATION_DEPTH) return false;
-            m_PageStack.push(page);
+    private:
+        struct ImGuiIdGuard {
+            explicit ImGuiIdGuard(const void *id) { ImGui::PushID(id); }
+            ~ImGuiIdGuard() { ImGui::PopID(); }
+
+            ImGuiIdGuard(const ImGuiIdGuard &) = delete;
+            ImGuiIdGuard &operator=(const ImGuiIdGuard &) = delete;
+        };
+
+        struct DispatchGuard {
+            explicit DispatchGuard(bool &dispatching) : Dispatching(dispatching) {
+                Dispatching = true;
+            }
+
+            ~DispatchGuard() { Dispatching = false; }
+
+            DispatchGuard(const DispatchGuard &) = delete;
+            DispatchGuard &operator=(const DispatchGuard &) = delete;
+
+            bool &Dispatching;
+        };
+
+        template <typename Operation>
+        bool Mutate(Operation &&operation) {
+            if (m_Dispatching)
+                return false;
+
+            DispatchGuard guard(m_Dispatching);
+            bool success = false;
+            try {
+                success = operation();
+            } catch (...) {
+                try {
+                    SynchronizeSession();
+                } catch (...) {
+                }
+                throw;
+            }
+            SynchronizeSession();
+            return success;
+        }
+
+        bool ApplyFrameAction(const std::string &pageId, PageAction action) {
+            switch (action.m_Type) {
+            case PageAction::Type::None:
+                return true;
+            case PageAction::Type::Open:
+                return Open(action.m_Target);
+            case PageAction::Type::Push:
+                return Push(action.m_Target);
+            case PageAction::Type::Replace:
+                return Replace(action.m_Target);
+            case PageAction::Type::Back:
+                return Back();
+            case PageAction::Type::Close:
+                return Close();
+            case PageAction::Type::RemoveSelf:
+                return RemovePage(pageId);
+            }
+            return false;
+        }
+
+        bool Activate(const std::string &target,
+                      PageLeaveReason leaveReason,
+                      PageEnterReason enterReason,
+                      bool clearHistory,
+                      bool pushCurrent) {
+            if (target.empty() || !HasPage(target))
+                return false;
+            if (pushCurrent && !m_CurrentPage.empty() &&
+                m_PageStack.size() >= MAX_NAVIGATION_DEPTH)
+                return false;
+
+            const std::string previous = m_CurrentPage;
+            LeaveCurrent(leaveReason);
+
+            m_CurrentPage = target;
+            try {
+                EnterCurrent(enterReason);
+            } catch (...) {
+                m_CurrentPage.clear();
+                m_PageStack.clear();
+                throw;
+            }
+
+            if (clearHistory)
+                m_PageStack.clear();
+            if (pushCurrent && !previous.empty() && HasPage(previous))
+                m_PageStack.push_back(previous);
             return true;
         }
 
-        Page *PopPage() {
-            if (m_PageStack.empty()) return nullptr;
-            Page *page = m_PageStack.top();
-            m_PageStack.pop();
-            return page;
+        bool NavigateBack() {
+            if (m_CurrentPage.empty())
+                return false;
+
+            LeaveCurrent(PageLeaveReason::Back);
+
+            while (!m_PageStack.empty()) {
+                std::string target = std::move(m_PageStack.back());
+                m_PageStack.pop_back();
+                if (!HasPage(target))
+                    continue;
+                m_CurrentPage = std::move(target);
+                try {
+                    EnterCurrent(PageEnterReason::Back);
+                } catch (...) {
+                    m_CurrentPage.clear();
+                    m_PageStack.clear();
+                    throw;
+                }
+                return true;
+            }
+            return true;
         }
 
-        Page *m_CurrentPage = nullptr;
-        std::stack<Page *> m_PageStack;
-        std::unordered_map<std::string, std::unique_ptr<Page>> m_Pages;
-    };
+        bool CloseMenu() {
+            if (m_CurrentPage.empty())
+                return false;
+            LeaveCurrent(PageLeaveReason::Close);
+            m_PageStack.clear();
+            return true;
+        }
 
-    inline void Page::OnPreEnd() {
-        if (NavBack()) {
-            if (m_Menu) {
-                m_Menu->OpenPrevPage();
-            } else {
-                Close();
+        bool Remove(const std::string &target) {
+            const auto it = m_Pages.find(target);
+            if (it == m_Pages.end())
+                return false;
+
+            if (m_CurrentPage != target) {
+                m_PageStack.erase(
+                    std::remove(m_PageStack.begin(), m_PageStack.end(), target),
+                    m_PageStack.end());
+                m_Pages.erase(it);
+                return true;
+            }
+
+            it->second->OnLeave(PageLeaveReason::Remove);
+            m_CurrentPage.clear();
+            m_PageStack.clear();
+            m_Pages.erase(it);
+            return true;
+        }
+
+        void LeaveCurrent(PageLeaveReason reason) {
+            if (m_CurrentPage.empty())
+                return;
+            const auto it = m_Pages.find(m_CurrentPage);
+            if (it != m_Pages.end())
+                it->second->OnLeave(reason);
+            m_CurrentPage.clear();
+        }
+
+        void EnterCurrent(PageEnterReason reason) {
+            const auto it = m_Pages.find(m_CurrentPage);
+            if (it == m_Pages.end()) {
+                m_CurrentPage.clear();
+                return;
+            }
+            it->second->OnEnter(reason);
+        }
+
+        void SynchronizeSession() {
+            const bool active = !m_CurrentPage.empty();
+            if (active && !m_SessionOpen) {
+                m_SessionOpen = true;
+                if (m_OnOpen)
+                    m_OnOpen();
+            } else if (!active && m_SessionOpen) {
+                m_SessionOpen = false;
+                if (m_OnClose)
+                    m_OnClose();
             }
         }
-    }
+
+        void Shutdown() noexcept {
+            m_Dispatching = true;
+
+            if (!m_CurrentPage.empty()) {
+                const auto it = m_Pages.find(m_CurrentPage);
+                if (it != m_Pages.end()) {
+                    try {
+                        it->second->OnLeave(PageLeaveReason::Close);
+                    } catch (...) {
+                    }
+                }
+            }
+
+            m_CurrentPage.clear();
+            m_PageStack.clear();
+
+            if (m_SessionOpen) {
+                m_SessionOpen = false;
+                if (m_OnClose) {
+                    try {
+                        m_OnClose();
+                    } catch (...) {
+                    }
+                }
+            }
+
+            m_Pages.clear();
+        }
+
+        std::string m_CurrentPage;
+        std::string m_WindowId;
+        SessionCallback m_OnOpen;
+        SessionCallback m_OnClose;
+        bool m_SessionOpen = false;
+        bool m_Dispatching = false;
+        std::vector<std::string> m_PageStack;
+        std::unordered_map<std::string, std::unique_ptr<Page>> m_Pages;
+    };
 }
 
 #endif // BML_BUI_H
