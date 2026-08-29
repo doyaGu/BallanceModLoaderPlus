@@ -152,7 +152,7 @@ void BuiltinConsole::AddMessage(const char *message) {
 
     if (m_Logger) {
         const std::string logMessage = utils::StripAnsiCodes(message);
-        m_Logger->Info(logMessage.c_str());
+        m_Logger->Info("%s", logMessage.c_str());
     }
 }
 
