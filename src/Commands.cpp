@@ -6,6 +6,7 @@
 #include "BML/IBML.h"
 #include "BML/BML.h"
 #include "BMLMod.h"
+#include "BuiltinConsole.h"
 
 #include "ModContext.h"
 #if BML_ENABLE_ANGELSCRIPT
@@ -166,19 +167,19 @@ bool CommandEcho::ApplyBackslashCTrunc(std::string &s) {
 }
 
 void CommandClear::Execute(IBML *bml, const std::vector<std::string> &args) {
-    m_BMLMod->ClearIngameMessages();
+    m_Console->ClearMessages();
 }
 
 void CommandHistory::Execute(IBML *bml, const std::vector<std::string> &args) {
     if (args.size() == 1) {
-        m_BMLMod->PrintHistory();
+        m_Console->PrintHistory();
     } else if (args.size() == 2) {
         if (args[1] == "clear") {
-            m_BMLMod->ClearHistory();
+            m_Console->ClearHistory();
         } else {
             int i = ParseInteger(args[1]);
             if (i != 0)
-                m_BMLMod->ExecuteHistory(i + 1);
+                m_Console->ExecuteHistory(i + 1);
         }
     }
 }

@@ -14,7 +14,6 @@
 
 #include "ModContext.h"
 #include "RenderHook.h"
-#include "Commands.h"
 #include "AnsiPalette.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
@@ -111,30 +110,30 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
 
         {"CommandBar", "MessageDuration", &BMLMod::m_MsgDuration,
          [](BMLMod &mod, IProperty *property) {
-             mod.m_MessageBoard.SetMaxTimer(std::max(2000.0f, property->GetFloat() * 1000.0f));
+             mod.m_Console.SetMessageDuration(property->GetFloat());
          },
          Startup | OnChange, false},
         {"CommandBar", "TabColumns", &BMLMod::m_MsgTabColumns,
          [](BMLMod &mod, IProperty *property) {
-             mod.m_MessageBoard.SetTabColumns(std::max(1, property->GetInteger()));
+             mod.m_Console.SetTabColumns(property->GetInteger());
          },
          Startup | OnChange, false},
         {"CommandBar", "LineSpacing", &BMLMod::m_MsgLineSpacing,
-         [](BMLMod &mod, IProperty *property) { mod.m_MessageBoard.SetLineSpacing(property->GetFloat()); },
+         [](BMLMod &mod, IProperty *property) { mod.m_Console.SetLineSpacing(property->GetFloat()); },
          Startup | OnChange, false},
         {"CommandBar", "MessageBackgroundAlpha", &BMLMod::m_MsgBackgroundAlpha,
          [](BMLMod &mod, IProperty *property) {
-             mod.m_MessageBoard.SetMessageBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
+             mod.m_Console.SetMessageBackgroundAlpha(property->GetFloat());
          },
          Startup | OnChange, false},
         {"CommandBar", "WindowBackgroundAlpha", &BMLMod::m_WindowBackgroundAlpha,
          [](BMLMod &mod, IProperty *property) {
-             mod.m_MessageBoard.SetWindowBackgroundAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
+             mod.m_Console.SetWindowBackgroundAlpha(property->GetFloat());
          },
          Startup | OnChange, false},
         {"CommandBar", "FadeMaxAlpha", &BMLMod::m_MsgFadeMaxAlpha,
          [](BMLMod &mod, IProperty *property) {
-             mod.m_MessageBoard.SetFadeMaxAlpha(std::clamp(property->GetFloat(), 0.0f, 1.0f));
+             mod.m_Console.SetFadeMaxAlpha(property->GetFloat());
          },
          Startup | OnChange, false},
 
@@ -286,19 +285,7 @@ void BMLMod::OnLoad() {
     InitConfigs();
     ApplySettings(Startup);
     InitGUI();
-
-    auto &cc = BML_GetModContext()->GetCommandContext();
-    cc.SetOutputCallback([](const char *msg, void *userdata) {
-        auto *mod = static_cast<BMLMod *>(userdata);
-        mod->AddIngameMessage(msg);
-    }, this);
-
-    RegisterCommands();
-
-    // Ensure a sample palette file exists for user customization
-    AnsiText::Renderer::DefaultPalette().SaveSampleIfMissing();
-
-    m_CommandBar.LoadHistory();
+    m_Console.OnLoad(*m_BML, *GetLogger(), this);
 
     // Setup default HUD elements
     SetupDefaultHUDElements();
@@ -316,12 +303,9 @@ void BMLMod::OnLoad() {
 void BMLMod::OnUnload() {
     UnregisterBuiltinCapabilities(*this);
 
-    m_CommandBar.SaveHistory();
+    m_Console.OnUnload();
 
     Bui::CleanupResources(m_CKContext);
-
-    auto &cc = BML_GetModContext()->GetCommandContext();
-    cc.ClearOutputCallback();
 
     if (m_EnableIniSettings->GetBoolean()) {
         ImGui::SaveIniSettingsToDisk(m_ImGuiIniFilename.c_str());
@@ -396,7 +380,7 @@ void BMLMod::OnProcess() {
 
     OnProcess_HUD();
     OnProcess_Menu();
-    OnProcess_CommandBar();
+    m_Console.OnProcess();
 #if BML_ENABLE_ANGELSCRIPT
     if (auto *context = BML_GetModContext()) {
         if (auto *devTools = context->GetScriptDevTools())
@@ -475,15 +459,11 @@ void BMLMod::OnCounterInactive() {
 }
 
 void BMLMod::AddIngameMessage(const char *msg) {
-    m_MessageBoard.Show();
-    m_MessageBoard.AddMessage(msg);
-
-    std::string logMsg = utils::StripAnsiCodes(msg);
-    GetLogger()->Info(logMsg.c_str());
+    m_Console.AddMessage(msg);
 }
 
 void BMLMod::ClearIngameMessages() {
-    m_MessageBoard.ClearMessages();
+    m_Console.ClearMessages();
 }
 
 void BMLMod::OpenModsMenu() {
@@ -565,15 +545,15 @@ void BMLMod::AdjustFrameRate(bool sync, float limit) {
 }
 
 void BMLMod::PrintHistory() {
-    m_CommandBar.PrintHistory();
+    m_Console.PrintHistory();
 }
 
 void BMLMod::ClearHistory() {
-    m_CommandBar.ClearHistory();
+    m_Console.ClearHistory();
 }
 
 void BMLMod::ExecuteHistory(int index) {
-    m_CommandBar.ExecuteHistory(index);
+    m_Console.ExecuteHistory(index);
 }
 
 int BMLMod::GetHUD() {
@@ -735,19 +715,6 @@ void BMLMod::InitGUI() {
 
     m_ModMenu.Init();
     m_MapMenu.Init();
-}
-
-void BMLMod::RegisterCommands() {
-    m_BML->RegisterCommand(new CommandBML());
-    m_BML->RegisterCommand(new CommandHelp());
-    m_BML->RegisterCommand(new CommandCheat());
-    m_BML->RegisterCommand(new CommandEcho());
-    m_BML->RegisterCommand(new CommandClear(this));
-    m_BML->RegisterCommand(new CommandHistory(this));
-    m_BML->RegisterCommand(new CommandExit());
-    m_BML->RegisterCommand(new CommandHUD(this));
-    m_BML->RegisterCommand(new CommandPalette());
-    m_BML->RegisterCommand(new CommandScript());
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
@@ -964,19 +931,6 @@ void BMLMod::OnProcess_HUD() {
     // Process and render HUD
     m_HUD.OnProcess();
     m_HUD.Render();
-}
-
-void BMLMod::OnProcess_CommandBar() {
-    bool visible = m_CommandBar.IsVisible();
-    if (!visible && ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
-        GetLogger()->Info("Toggle Command Bar");
-        m_CommandBar.ToggleCommandBar();
-    }
-
-    m_MessageBoard.SetCommandBarVisible(visible);
-    m_MessageBoard.Render();
-
-    m_CommandBar.Render();
 }
 
 void BMLMod::OnProcess_Menu() {

@@ -4,6 +4,7 @@
 #include "BML/ICommand.h"
 
 class BMLMod;
+class BuiltinConsole;
 
 class CommandBML : public ICommand {
 public:
@@ -71,7 +72,7 @@ public:
 
 class CommandClear : public ICommand {
 public:
-    explicit CommandClear(BMLMod *mod) : m_BMLMod(mod) {}
+    explicit CommandClear(BuiltinConsole *console) : m_Console(console) {}
 
     std::string GetName() override { return "clear"; }
     std::string GetAlias() override { return ""; }
@@ -81,12 +82,12 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
 
 private:
-    BMLMod *m_BMLMod;
+    BuiltinConsole *m_Console;
 };
 
 class CommandHistory : public ICommand {
 public:
-    explicit CommandHistory(BMLMod *mod) : m_BMLMod(mod) {}
+    explicit CommandHistory(BuiltinConsole *console) : m_Console(console) {}
 
     std::string GetName() override { return "history"; }
     std::string GetAlias() override { return ""; }
@@ -100,7 +101,7 @@ public:
     }
 
 private:
-    BMLMod *m_BMLMod;
+    BuiltinConsole *m_Console;
 };
 
 class CommandExit : public ICommand {

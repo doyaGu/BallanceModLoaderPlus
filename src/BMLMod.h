@@ -12,8 +12,7 @@
 #include "SRTimer.h"
 #include "ModMenu.h"
 #include "MapMenu.h"
-#include "CommandBar.h"
-#include "MessageBoard.h"
+#include "BuiltinConsole.h"
 
 class EventHookRegistrar;
 class ModContext;
@@ -87,8 +86,6 @@ public:
 
     HUD &GetHUDWindow() { return m_HUD; }
 
-    MessageBoard &GetMessageBoard() { return m_MessageBoard; }
-
     // Built-in HUD element controls
     void ShowTitle(bool show);
     void ShowFPS(bool show);
@@ -129,7 +126,6 @@ private:
 
     void InitConfigs();
     void InitGUI();
-    void RegisterCommands();
 
     void OnEditScript_Base_EventHandler(CKBehavior *script);
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
@@ -141,7 +137,6 @@ private:
     void OnEditScript_ExtraLife_Fix(CKBehavior *script);
 
     void OnProcess_HUD();
-    void OnProcess_CommandBar();
     void OnProcess_Menu();
 
     void OnResize();
@@ -163,8 +158,7 @@ private:
     HUD m_HUD;
     ModMenu m_ModMenu;
     MapMenu m_MapMenu;
-    CommandBar m_CommandBar;
-    MessageBoard m_MessageBoard;
+    BuiltinConsole m_Console;
 
     // HUD builtin components
     FpsCounter m_FPSCounter;
