@@ -15,6 +15,7 @@
 
 #include "Config.h"
 #include "ConfigStore.h"
+#include "NativeModRegistry.h"
 #include "DataShare.hpp"
 #include "CommandContext.h"
 #include "CKIdentityRegistry.h"
@@ -477,12 +478,7 @@ private:
     std::unique_ptr<BML::ScriptModHotReloadService> m_ScriptHotReload;
 #endif
 
-    struct NativeDllRegistration {
-        std::shared_ptr<void> Handle;
-        std::vector<IMod *> Mods;
-    };
-    std::unordered_map<void *, NativeDllRegistration> m_NativeDlls;
-    std::unordered_map<IMod *, void *> m_NativeDllByMod;
+    NativeModRegistry m_NativeModRegistry;
 
     std::vector<IMod *> m_Mods;
     std::vector<IMod *> m_ActiveMods;

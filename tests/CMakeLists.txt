@@ -250,6 +250,13 @@ add_bml_test(ConfigTest
         VirtoolsSDK::VxMath
 )
 
+add_bml_test(NativeModRegistryTest
+        SOURCES
+        NativeModRegistryTest.cpp
+        ${BML_SOURCE_DIR}/NativeModRegistry.cpp
+        ${BML_SOURCE_DIR}/NativeModRegistry.h
+)
+
 add_bml_test(InterfaceHeaderTest
         SOURCES InterfaceHeaderTest.cpp
 )

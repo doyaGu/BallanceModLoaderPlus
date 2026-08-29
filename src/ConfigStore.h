@@ -22,13 +22,8 @@ public:
     std::vector<Config *> Snapshot() const;
 
 private:
-    struct IndexEntry {
-        IMod *Owner = nullptr;
-        size_t Position = 0;
-    };
-
     std::vector<std::unique_ptr<Config>> m_Configs;
-    std::unordered_map<std::string, IndexEntry> m_Index;
+    std::unordered_map<std::string, size_t> m_Index;
 };
 
 #endif // BML_CONFIGSTORE_H

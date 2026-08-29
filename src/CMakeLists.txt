@@ -143,6 +143,7 @@ set(BML_PRIVATE_HEADERS
         Logger.h
         Config.h
         ConfigStore.h
+        NativeModRegistry.h
         MapCatalog.h
 )
 
@@ -206,6 +207,7 @@ set(BML_SOURCES
         Logger.cpp
         Config.cpp
         ConfigStore.cpp
+        NativeModRegistry.cpp
 
         BML.rc
 )

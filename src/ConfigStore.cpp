@@ -14,7 +14,7 @@ Config *ConfigStore::Add(const std::string &modId, IMod *owner, std::unique_ptr<
     const size_t position = m_Configs.size();
     m_Configs.push_back(std::move(config));
     try {
-        const bool inserted = m_Index.emplace(modId, IndexEntry{owner, position}).second;
+        const bool inserted = m_Index.emplace(modId, position).second;
         if (!inserted) {
             m_Configs.pop_back();
             return nullptr;
@@ -29,30 +29,30 @@ Config *ConfigStore::Add(const std::string &modId, IMod *owner, std::unique_ptr<
 std::unique_ptr<Config> ConfigStore::Remove(
     const std::string &modId, IMod *owner, Config *config) {
     const auto it = m_Index.find(modId);
-    if (it == m_Index.end() || it->second.Owner != owner ||
-        it->second.Position >= m_Configs.size() ||
-        m_Configs[it->second.Position].get() != config) {
+    if (it == m_Index.end() || it->second >= m_Configs.size() ||
+        m_Configs[it->second].get() != config ||
+        m_Configs[it->second]->GetMod() != owner) {
         return nullptr;
     }
 
-    const size_t position = it->second.Position;
+    const size_t position = it->second;
     std::unique_ptr<Config> removed = std::move(m_Configs[position]);
     m_Configs.erase(m_Configs.begin() + static_cast<std::ptrdiff_t>(position));
     m_Index.erase(it);
     for (auto &entry : m_Index) {
-        if (entry.second.Position > position)
-            --entry.second.Position;
+        if (entry.second > position)
+            --entry.second;
     }
     return removed;
 }
 
 Config *ConfigStore::Find(const std::string &modId, const IMod *owner) const {
     const auto it = m_Index.find(modId);
-    if (it == m_Index.end() || it->second.Owner != owner ||
-        it->second.Position >= m_Configs.size()) {
+    if (it == m_Index.end() || it->second >= m_Configs.size() ||
+        m_Configs[it->second]->GetMod() != owner) {
         return nullptr;
     }
-    return m_Configs[it->second.Position].get();
+    return m_Configs[it->second].get();
 }
 
 std::vector<Config *> ConfigStore::Snapshot() const {
