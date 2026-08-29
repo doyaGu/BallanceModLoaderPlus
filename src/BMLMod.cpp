@@ -108,35 +108,6 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
          },
          OnChange, true},
 
-        {"CommandBar", "MessageDuration", &BMLMod::m_MsgDuration,
-         [](BMLMod &mod, IProperty *property) {
-             mod.m_Console.SetMessageDuration(property->GetFloat());
-         },
-         Startup | OnChange, false},
-        {"CommandBar", "TabColumns", &BMLMod::m_MsgTabColumns,
-         [](BMLMod &mod, IProperty *property) {
-             mod.m_Console.SetTabColumns(property->GetInteger());
-         },
-         Startup | OnChange, false},
-        {"CommandBar", "LineSpacing", &BMLMod::m_MsgLineSpacing,
-         [](BMLMod &mod, IProperty *property) { mod.m_Console.SetLineSpacing(property->GetFloat()); },
-         Startup | OnChange, false},
-        {"CommandBar", "MessageBackgroundAlpha", &BMLMod::m_MsgBackgroundAlpha,
-         [](BMLMod &mod, IProperty *property) {
-             mod.m_Console.SetMessageBackgroundAlpha(property->GetFloat());
-         },
-         Startup | OnChange, false},
-        {"CommandBar", "WindowBackgroundAlpha", &BMLMod::m_WindowBackgroundAlpha,
-         [](BMLMod &mod, IProperty *property) {
-             mod.m_Console.SetWindowBackgroundAlpha(property->GetFloat());
-         },
-         Startup | OnChange, false},
-        {"CommandBar", "FadeMaxAlpha", &BMLMod::m_MsgFadeMaxAlpha,
-         [](BMLMod &mod, IProperty *property) {
-             mod.m_Console.SetFadeMaxAlpha(property->GetFloat());
-         },
-         Startup | OnChange, false},
-
         {"CustomMap", "LevelNumber", &BMLMod::m_CustomMapNumber, nullptr, OnDemand, false},
         {"CustomMap", "ShowTooltip", &BMLMod::m_CustomMapTooltip,
          [](BMLMod &mod, IProperty *property) { mod.m_MapMenu.SetShowTooltip(property->GetBoolean()); },
@@ -145,8 +116,8 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
          [](BMLMod &mod, IProperty *property) { mod.m_MapMenu.SetMaxDepth(property->GetInteger()); },
          Startup | OnChange, false},
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 27,
-                  "Every built-in config property must have one settings-table entry");
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 21,
+                  "Every BMLMod-owned config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
     return settings;
@@ -284,6 +255,7 @@ void BMLMod::OnLoad() {
 
     InitConfigs();
     ApplySettings(Startup);
+    m_Console.ApplyConfig();
     InitGUI();
     m_Console.OnLoad(*m_BML, *GetLogger(), this);
 
@@ -399,6 +371,9 @@ void BMLMod::OnProcess() {
 
 void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
     if (!prop)
+        return;
+
+    if (m_Console.OnModifyConfig(category, key, prop))
         return;
 
     size_t count = 0;
@@ -583,6 +558,7 @@ void BMLMod::SetHUD(int mode) {
 
 void BMLMod::InitConfigs() {
     BindSettings();
+    m_Console.InitConfig(*GetConfig());
 
     GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
@@ -647,26 +623,6 @@ void BMLMod::InitConfigs() {
 
     m_Overclock->SetComment("Remove delay of spawn / respawn");
     m_Overclock->SetDefaultBoolean(false);
-
-    GetConfig()->SetCategoryComment("CommandBar", "Command Bar Settings");
-
-    m_MsgDuration->SetComment("Maximum visible time of each notification message, in seconds (default: 6)");
-    m_MsgDuration->SetDefaultFloat(6);
-
-    m_MsgTabColumns->SetComment("Tab width in columns for message wrapping (1..64, default: 4)");
-    m_MsgTabColumns->SetDefaultInteger(4);
-
-    m_MsgLineSpacing->SetComment("Line spacing between wrapped lines in messages (-1 to follow ImGui style).");
-    m_MsgLineSpacing->SetDefaultFloat(-1.0f);
-
-    m_MsgBackgroundAlpha->SetComment("Alpha scale for message backgrounds (0..1, default: 0.80)");
-    m_MsgBackgroundAlpha->SetDefaultFloat(0.80f);
-
-    m_WindowBackgroundAlpha->SetComment("Alpha scale for message window background (0..1, default: 1.0)");
-    m_WindowBackgroundAlpha->SetDefaultFloat(1.0f);
-
-    m_MsgFadeMaxAlpha->SetComment("Maximum text/background alpha in notifications (0..1, default: 1.0)");
-    m_MsgFadeMaxAlpha->SetDefaultFloat(1.0f);
 
     GetConfig()->SetCategoryComment("CustomMap", "Custom Map Settings");
 
