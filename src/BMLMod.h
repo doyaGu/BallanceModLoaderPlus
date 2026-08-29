@@ -15,12 +15,6 @@
 class EventHookRegistrar;
 class ModContext;
 
-enum HudTypes {
-    HUD_TITLE = 1,
-    HUD_FPS = 2,
-    HUD_SR = 4,
-};
-
 class BMLMod : public IMod {
 public:
     explicit BMLMod(IBML *bml) : IMod(bml), m_MapMenu(this) {}
@@ -95,9 +89,6 @@ public:
     void ResetSRTimer();
     float GetSRTime() const;
 
-    // FPS controls
-    void SetFPSUpdateFrequency(uint32_t frames);
-
 private:
     friend class EventHookRegistrar;
 
@@ -167,11 +158,6 @@ private:
     IProperty *m_SecondaryFontSize = nullptr;
     IProperty *m_SecondaryFontRanges = nullptr;
     IProperty *m_EnableIniSettings = nullptr;
-
-    IProperty *m_ShowTitle = nullptr;
-    IProperty *m_ShowFPS = nullptr;
-    IProperty *m_ShowSR = nullptr;
-    IProperty *m_FPSUpdateFrequency = nullptr;
 
     IProperty *m_UnlockFPS = nullptr;
     IProperty *m_FPSLimit = nullptr;

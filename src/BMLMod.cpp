@@ -45,21 +45,6 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
         {"GUI", "SecondaryFontRanges", &BMLMod::m_SecondaryFontRanges, nullptr, OnDemand, false},
         {"GUI", "EnableIniSettings", &BMLMod::m_EnableIniSettings, nullptr, OnDemand, false},
 
-        {"HUD", "ShowTitle", &BMLMod::m_ShowTitle,
-         [](BMLMod &mod, IProperty *property) { mod.ShowTitle(property->GetBoolean()); },
-         OnChange, false},
-        {"HUD", "ShowFPS", &BMLMod::m_ShowFPS,
-         [](BMLMod &mod, IProperty *property) { mod.ShowFPS(property->GetBoolean()); },
-         OnChange, false},
-        {"HUD", "ShowSRTimer", &BMLMod::m_ShowSR,
-         [](BMLMod &mod, IProperty *property) { mod.ShowSRTimer(property->GetBoolean()); },
-         OnChange | OnLevelInit, true},
-        {"HUD", "FPSUpdateFrequency", &BMLMod::m_FPSUpdateFrequency,
-         [](BMLMod &mod, IProperty *property) {
-             mod.SetFPSUpdateFrequency(static_cast<uint32_t>(std::max(1, property->GetInteger())));
-         },
-         Startup | OnChange, false},
-
         {"Graphics", "UnlockFrameRate", &BMLMod::m_UnlockFPS,
          [](BMLMod &mod, IProperty *) { mod.ApplyFrameRateSettings(); },
          OnChange | OnLevelInit, false},
@@ -116,7 +101,7 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
          [](BMLMod &mod, IProperty *property) { mod.m_MapMenu.SetMaxDepth(property->GetInteger()); },
          Startup | OnChange, false},
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 21,
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 17,
                   "Every BMLMod-owned config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
@@ -255,11 +240,12 @@ void BMLMod::OnLoad() {
 
     InitConfigs();
     ApplySettings(Startup);
+    m_HUD.ApplyConfig();
     m_Console.ApplyConfig();
     InitGUI();
     m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), this);
 
-    m_HUD.OnLoad(m_ShowTitle->GetBoolean(), m_ShowFPS->GetBoolean());
+    m_HUD.OnLoad(*m_BML);
 
     if (ModContext *context = GetRuntimeContext())
         RegisterBuiltinCapabilities(*this, context->ObjectIdentities(), GetLogger());
@@ -338,9 +324,7 @@ void BMLMod::OnProcess() {
         OnResize();
     }
 
-    m_HUD.OnProcess(ImGui::GetIO().DeltaTime,
-                    m_TimeManager->GetLastDeltaTime(),
-                    BML_GetModContext()->IsCheatEnabled());
+    m_HUD.OnProcess(ImGui::GetIO().DeltaTime, m_TimeManager->GetLastDeltaTime());
     OnProcess_Menu();
     m_Console.OnProcess();
 #if BML_ENABLE_ANGELSCRIPT
@@ -366,6 +350,9 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     if (m_Console.OnModifyConfig(category, key, prop))
         return;
 
+    if (m_HUD.OnModifyConfig(category, key, prop))
+        return;
+
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -381,7 +368,7 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
 }
 
 void BMLMod::OnPreStartMenu() {
-    m_HUD.RestorePrimaryVisibility(m_ShowTitle->GetBoolean(), m_ShowFPS->GetBoolean());
+    m_HUD.OnMenuStart();
 }
 
 void BMLMod::OnPostStartMenu() {
@@ -398,12 +385,12 @@ void BMLMod::OnExitGame() {
 void BMLMod::OnStartLevel() {
     ApplySettings(OnLevelInit);
 
-    ResetSRTimer();
+    m_HUD.OnLevelStart();
     SetParamValue(m_LoadCustom, FALSE);
 }
 
 void BMLMod::OnPostExitLevel() {
-    m_HUD.EndLevel();
+    m_HUD.OnLevelExit();
 }
 
 void BMLMod::OnPauseLevel() {
@@ -521,32 +508,16 @@ void BMLMod::ExecuteHistory(int index) {
 }
 
 int BMLMod::GetHUD() {
-    int code = 0;
-    if (m_ShowTitle->GetBoolean()) {
-        code |= HUD_TITLE;
-    }
-    if (m_ShowFPS->GetBoolean()) {
-        code |= HUD_FPS;
-    }
-    if (m_ShowSR->GetBoolean()) {
-        code |= HUD_SR;
-    }
-    return code;
+    return m_HUD.GetMode();
 }
 
 void BMLMod::SetHUD(int mode) {
-    m_ShowTitle->SetBoolean((mode & HUD_TITLE) != 0);
-    ShowTitle(m_ShowTitle->GetBoolean());
-
-    m_ShowFPS->SetBoolean((mode & HUD_FPS) != 0);
-    ShowFPS(m_ShowFPS->GetBoolean());
-
-    m_ShowSR->SetBoolean((mode & HUD_SR) != 0);
-    ShowSRTimer(m_ShowSR->GetBoolean());
+    m_HUD.SetMode(mode);
 }
 
 void BMLMod::InitConfigs() {
     BindSettings();
+    m_HUD.InitConfig(*GetConfig());
     m_Console.InitConfig(*GetConfig());
 
     GetConfig()->SetCategoryComment("GUI", "GUI Settings");
@@ -576,20 +547,6 @@ void BMLMod::InitConfigs() {
 
     m_EnableIniSettings->SetComment("Enable loading and saving ImGui settings.");
     m_EnableIniSettings->SetDefaultBoolean(true);
-
-    GetConfig()->SetCategoryComment("HUD", "HUD Settings");
-
-    m_ShowTitle->SetComment("Show BML Title at top");
-    m_ShowTitle->SetDefaultBoolean(true);
-
-    m_ShowFPS->SetComment("Show FPS at top-left corner");
-    m_ShowFPS->SetDefaultBoolean(true);
-
-    m_ShowSR->SetComment("Show SR Timer above Time Score");
-    m_ShowSR->SetDefaultBoolean(true);
-
-    m_FPSUpdateFrequency->SetComment("FPS counter update frequency in frames (higher values = less frequent updates, better performance)");
-    m_FPSUpdateFrequency->SetDefaultInteger(30);
 
     GetConfig()->SetCategoryComment("Graphics", "Graphics Settings");
 
@@ -924,8 +881,4 @@ void BMLMod::ResetSRTimer() {
 
 float BMLMod::GetSRTime() const {
     return m_HUD.GetSRTime();
-}
-
-void BMLMod::SetFPSUpdateFrequency(uint32_t frames) {
-    m_HUD.SetFPSUpdateFrequency(frames);
 }
