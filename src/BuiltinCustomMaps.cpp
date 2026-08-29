@@ -25,6 +25,10 @@ constexpr const char *CUSTOM_MAP_NAME_KEY = "CustomMapName";
 BuiltinCustomMaps::BuiltinCustomMaps()
     : m_Menu([this](const std::wstring &path) { return LoadMap(path); }) {}
 
+BuiltinCustomMaps::~BuiltinCustomMaps() {
+    ReleaseDataShare();
+}
+
 void BuiltinCustomMaps::InitConfig(IConfig &config) {
     m_LevelNumber = config.GetProperty("CustomMap", "LevelNumber");
     m_ShowTooltip = config.GetProperty("CustomMap", "ShowTooltip");
@@ -72,6 +76,7 @@ void BuiltinCustomMaps::OnLoad(IBML &bml, ILogger &logger,
     m_CKContext = bml.GetCKContext();
     m_Logger = &logger;
     m_TempDirectory = tempDirectory;
+    ReleaseDataShare();
     m_DataShare = BML_GetDataShare(nullptr);
     if (!m_DataShare)
         m_Logger->Error("Failed to acquire the loader data share for custom maps");
@@ -81,11 +86,7 @@ void BuiltinCustomMaps::OnLoad(IBML &bml, ILogger &logger,
 
 void BuiltinCustomMaps::OnUnload() {
     m_Menu.Shutdown();
-    ClearLoadMetadata();
-    if (m_DataShare) {
-        BML_DataShare_Release(m_DataShare);
-        m_DataShare = nullptr;
-    }
+    ReleaseDataShare();
 
     ResetScriptBindings();
     m_TempDirectory.clear();
@@ -173,6 +174,7 @@ bool BuiltinCustomMaps::Close() {
 }
 
 bool BuiltinCustomMaps::LoadMap(const std::wstring &path) {
+    bool loadMutationStarted = false;
     try {
         if (path.empty()) {
             if (m_Logger)
@@ -224,12 +226,15 @@ bool BuiltinCustomMaps::LoadMap(const std::wstring &path) {
             ClearLoadMetadata();
             return false;
         }
+        m_MetadataPublished = true;
+
         int level = m_LevelNumber->GetInteger();
         if (level < 1 || level > 13) {
             static std::mt19937 rng(std::random_device{}());
             level = std::uniform_int_distribution<int>(2, 11)(rng);
         }
 
+        loadMutationStarted = true;
         SetParamString(m_MapFile, filename.c_str());
         SetParamValue(m_LoadCustom, TRUE);
         m_CurrentLevel->SetElementValue(0, 0, &level);
@@ -251,6 +256,12 @@ bool BuiltinCustomMaps::LoadMap(const std::wstring &path) {
             m_Logger->Error("Unknown exception loading custom map");
     }
 
+    if (loadMutationStarted && m_LoadCustom) {
+        try {
+            SetParamValue(m_LoadCustom, FALSE);
+        } catch (...) {
+        }
+    }
     ClearLoadMetadata();
     return false;
 }
@@ -327,8 +338,21 @@ void BuiltinCustomMaps::PatchLevelLoader(CKBehavior *script) {
 }
 
 void BuiltinCustomMaps::ClearLoadMetadata() {
-    if (m_DataShare)
+    if (!m_MetadataPublished)
+        return;
+
+    if (m_DataShare && BML_DataShare_Has(m_DataShare, CUSTOM_MAP_NAME_KEY))
         BML_DataShare_Remove(m_DataShare, CUSTOM_MAP_NAME_KEY);
+    m_MetadataPublished = false;
+}
+
+void BuiltinCustomMaps::ReleaseDataShare() {
+    ClearLoadMetadata();
+    if (!m_DataShare)
+        return;
+
+    BML_DataShare_Release(m_DataShare);
+    m_DataShare = nullptr;
 }
 
 void BuiltinCustomMaps::ResetScriptBindings() {

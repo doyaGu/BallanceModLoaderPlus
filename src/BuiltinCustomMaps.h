@@ -19,6 +19,7 @@ struct BML_DataShare;
 class BuiltinCustomMaps {
 public:
     BuiltinCustomMaps();
+    ~BuiltinCustomMaps();
 
     BuiltinCustomMaps(const BuiltinCustomMaps &) = delete;
     BuiltinCustomMaps &operator=(const BuiltinCustomMaps &) = delete;
@@ -44,12 +45,14 @@ private:
     std::string CreateTempMapFile(const std::wstring &path) const;
     void PatchLevelLoader(CKBehavior *script);
     void ClearLoadMetadata();
+    void ReleaseDataShare();
     void ResetScriptBindings();
 
     IBML *m_BML = nullptr;
     CKContext *m_CKContext = nullptr;
     ILogger *m_Logger = nullptr;
     BML_DataShare *m_DataShare = nullptr;
+    bool m_MetadataPublished = false;
     std::wstring m_TempDirectory;
 
     MapMenu m_Menu;
