@@ -114,6 +114,13 @@ set_tests_properties(ImcCompatibilityIntegrationTest PROPERTIES
         LABELS "imc;codegen;compatibility")
 
 add_test(
+        NAME ExecuteBBArchitectureTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ExecuteBBArchitectureTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+)
+set_tests_properties(ExecuteBBArchitectureTest PROPERTIES LABELS "architecture;legacy-native")
+
+add_test(
         NAME BmlModCmakeTest
         COMMAND "${CMAKE_COMMAND}"
                 "-DBML_MOD_CMAKE=${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
@@ -321,6 +328,12 @@ add_bml_test(AnsiPaletteTest
 )
 # Need ImGui headers for AnsiPalette
 target_include_directories(AnsiPaletteTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
+
+add_bml_test(GameFontCatalogTest
+        SOURCES
+        GameFontCatalogTest.cpp
+        ${BML_SOURCE_DIR}/UI/GameFontCatalog.cpp
+)
 
 add_bml_test(AnsiTextTest
         SOURCES
