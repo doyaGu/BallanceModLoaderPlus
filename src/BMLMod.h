@@ -5,11 +5,10 @@
 
 #include "BML/IMod.h"
 #include "BML/IBML.h"
-#include "BML/DataShare.h"
 
 #include "ModMenu.h"
-#include "MapMenu.h"
 #include "BuiltinConsole.h"
+#include "BuiltinCustomMaps.h"
 #include "BuiltinHUD.h"
 
 class EventHookRegistrar;
@@ -17,7 +16,7 @@ class ModContext;
 
 class BMLMod : public IMod {
 public:
-    explicit BMLMod(IBML *bml) : IMod(bml), m_MapMenu(this) {}
+    explicit BMLMod(IBML *bml) : IMod(bml) {}
 
     // The builtin capabilities read the BML mod's bound runtime, never the
     // ambient BML_GetModContext() singleton.
@@ -61,8 +60,6 @@ public:
 
     void OpenMapMenu();
     void CloseMapMenu();
-
-    void LoadMap(const std::wstring &path);
 
     int GetHSScore();
 
@@ -127,8 +124,6 @@ private:
 
     void OnResize();
 
-    BML_DataShare *m_DataShare = nullptr;
-
     CKContext *m_CKContext = nullptr;
     CKRenderContext *m_RenderContext = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
@@ -138,7 +133,7 @@ private:
 
     BuiltinHUD m_HUD;
     ModMenu m_ModMenu;
-    MapMenu m_MapMenu;
+    BuiltinCustomMaps m_CustomMaps;
     BuiltinConsole m_Console;
 
     std::string m_ImGuiIniFilename;
@@ -164,17 +159,6 @@ private:
     IProperty *m_LanternAlphaTest = nullptr;
     IProperty *m_FixLifeBall = nullptr;
     IProperty *m_Overclock = nullptr;
-
-    IProperty *m_CustomMapNumber = nullptr;
-    IProperty *m_CustomMapTooltip = nullptr;
-    IProperty *m_CustomMapMaxDepth = nullptr;
-
-    CK2dEntity *m_Level01 = nullptr;
-    CKBehavior *m_ExitStart = nullptr;
-    CKParameter *m_LoadCustom = nullptr;
-    CKParameter *m_MapFile = nullptr;
-    CKParameter *m_LevelRow = nullptr;
-    CKDataArray *m_CurLevel = nullptr;
 
     CKBehaviorLink *m_OverclockLinks[3] = {};
     CKBehaviorIO *m_OverclockLinkIO[3][2] = {};

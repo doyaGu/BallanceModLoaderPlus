@@ -2,13 +2,11 @@
 
 #include <map>
 #include <algorithm>
-#include <random>
 
 #include "BML/Bui.h"
 #include "BML/Gui.h"
 #include "BML/ExecuteBB.h"
 #include "BML/ScriptHelper.h"
-#include "BML/Guids/Logics.h"
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/TT_Toolbox_RT.h"
 
@@ -93,15 +91,8 @@ const BMLMod::Setting *BMLMod::GetSettings(size_t &count) {
          },
          OnChange, true},
 
-        {"CustomMap", "LevelNumber", &BMLMod::m_CustomMapNumber, nullptr, OnDemand, false},
-        {"CustomMap", "ShowTooltip", &BMLMod::m_CustomMapTooltip,
-         [](BMLMod &mod, IProperty *property) { mod.m_MapMenu.SetShowTooltip(property->GetBoolean()); },
-         Startup | OnChange, false},
-        {"CustomMap", "MaxDepth", &BMLMod::m_CustomMapMaxDepth,
-         [](BMLMod &mod, IProperty *property) { mod.m_MapMenu.SetMaxDepth(property->GetInteger()); },
-         Startup | OnChange, false},
     };
-    static_assert(sizeof(settings) / sizeof(settings[0]) == 17,
+    static_assert(sizeof(settings) / sizeof(settings[0]) == 14,
                   "Every BMLMod-owned config property must have one settings-table entry");
 
     count = sizeof(settings) / sizeof(settings[0]);
@@ -197,35 +188,7 @@ static ImFont *LoadFont(const char *filename, float size, const char *ranges, bo
     return font;
 }
 
-static std::string CreateTempMapFile(const std::wstring &path) {
-    if (path.empty() || !utils::FileExistsW(path))
-        return "";
-
-    std::wstring fileName = utils::GetFileNameW(path);
-    std::wstring fileNameWithoutExt = utils::RemoveExtensionW(fileName);
-    std::wstring extension = utils::GetExtensionW(path);
-
-    size_t hash = utils::HashString(fileNameWithoutExt);
-
-    std::wstring tempDir = BML_GetModContext()->GetDirectory(BML_DIR_TEMP);
-    std::wstring mapsDir = utils::CombinePathW(tempDir, L"Maps");
-
-    if (!utils::DirectoryExistsW(mapsDir))
-        utils::CreateDirectoryW(mapsDir);
-
-    wchar_t hashStr[9];
-    swprintf(hashStr, sizeof(hashStr) / sizeof(wchar_t), L"%08X", static_cast<unsigned int>(hash));
-
-    std::wstring destPath = utils::CombinePathW(mapsDir, std::wstring(hashStr) + extension);
-
-    if (!utils::CopyFileW(path, destPath))
-        return "";
-
-    return utils::Utf16ToAnsi(destPath);
-}
-
 void BMLMod::OnLoad() {
-    m_DataShare = BML_GetDataShare(nullptr);
     m_CKContext = m_BML->GetCKContext();
     m_RenderContext = m_BML->GetRenderContext();
     m_TimeManager = m_BML->GetTimeManager();
@@ -242,6 +205,7 @@ void BMLMod::OnLoad() {
     ApplySettings(Startup);
     m_HUD.ApplyConfig();
     m_Console.ApplyConfig();
+    m_CustomMaps.ApplyConfig();
     InitGUI();
     m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), m_HUD);
 
@@ -256,6 +220,7 @@ void BMLMod::OnUnload() {
 
     m_Console.OnUnload();
     m_HUD.OnUnload();
+    m_CustomMaps.OnUnload();
 
     Bui::CleanupResources(m_CKContext);
 
@@ -265,8 +230,6 @@ void BMLMod::OnUnload() {
 
 
     // Reset pointers to prevent use-after-free
-    m_Level01 = nullptr;
-    m_ExitStart = nullptr;
     m_TimeManager = nullptr;
     m_RenderContext = nullptr;
 
@@ -278,17 +241,17 @@ void BMLMod::OnUnload() {
 void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
                           CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
                           XObjectArray *objArray, CKObject *masterObj) {
+    m_CustomMaps.OnLoadObject(filename);
+
     if (!strcmp(filename, "3D Entities\\Menu.nmo")) {
         BGui::Gui::InitMaterials();
         Bui::InitSounds(m_CKContext);
-
-        m_Level01 = m_BML->Get2dEntityByName("M_Start_But_01");
-        CKBehavior *menuMain = m_BML->GetScriptByName("Menu_Start");
-        m_ExitStart = FindFirstBB(menuMain, "Exit");
     }
 }
 
 void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
+    m_CustomMaps.OnLoadScript(script);
+
     if (!strcmp(script->GetName(), "Event_handler"))
         OnEditScript_Base_EventHandler(script);
 
@@ -353,6 +316,9 @@ void BMLMod::OnModifyConfig(const char *category, const char *key, IProperty *pr
     if (m_HUD.OnModifyConfig(category, key, prop))
         return;
 
+    if (m_CustomMaps.OnModifyConfig(category, key, prop))
+        return;
+
     size_t count = 0;
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
@@ -376,7 +342,7 @@ void BMLMod::OnPostStartMenu() {
 }
 
 void BMLMod::OnExitGame() {
-    m_Level01 = nullptr;
+    m_CustomMaps.OnExitGame();
 #ifndef NDEBUG
     m_ShowImGuiDemo = false;
 #endif
@@ -386,7 +352,7 @@ void BMLMod::OnStartLevel() {
     ApplySettings(OnLevelInit);
 
     m_HUD.OnLevelStart();
-    SetParamValue(m_LoadCustom, FALSE);
+    m_CustomMaps.OnStartLevel();
 }
 
 void BMLMod::OnPostExitLevel() {
@@ -426,41 +392,11 @@ void BMLMod::CloseModsMenu() {
 }
 
 void BMLMod::OpenMapMenu() {
-    m_MapMenu.Open("Custom Maps");
+    m_CustomMaps.Open();
 }
 
 void BMLMod::CloseMapMenu() {
-    m_MapMenu.Close();
-}
-
-void BMLMod::LoadMap(const std::wstring &path) {
-    if (path.empty())
-        return;
-
-    std::string filename = CreateTempMapFile(path);
-    SetParamString(m_MapFile, filename.c_str());
-    SetParamValue(m_LoadCustom, TRUE);
-    int level = m_CustomMapNumber->GetInteger();
-    if (level < 1 || level > 13) {
-        static std::mt19937 s_Rng(std::random_device{}());
-        level = std::uniform_int_distribution<int>(2, 11)(s_Rng);
-    }
-    m_CurLevel->SetElementValue(0, 0, &level);
-    level--;
-    SetParamValue(m_LevelRow, level);
-
-    std::string mapPath = utils::ToString(path);
-    BML_DataShare_Set(m_DataShare, "CustomMapName", mapPath.c_str(), mapPath.size() + 1);
-
-    CKMessageManager *mm = m_CKContext->GetMessageManager();
-    CKMessageType loadLevel = mm->AddMessageType((CKSTRING) "Load Level");
-    CKMessageType loadMenu = mm->AddMessageType((CKSTRING) "Menu_Load");
-
-    mm->SendMessageSingle(loadLevel, m_CKContext->GetCurrentLevel());
-    mm->SendMessageSingle(loadMenu, m_BML->GetGroupByName("All_Sound"));
-    m_BML->Get2dEntityByName("M_BlackScreen")->Show(CKHIDE);
-    m_ExitStart->ActivateInput(0);
-    m_ExitStart->Activate();
+    m_CustomMaps.Close();
 }
 
 int BMLMod::GetHSScore() {
@@ -519,6 +455,7 @@ void BMLMod::InitConfigs() {
     BindSettings();
     m_HUD.InitConfig(*GetConfig());
     m_Console.InitConfig(*GetConfig());
+    m_CustomMaps.InitConfig(*GetConfig());
 
     GetConfig()->SetCategoryComment("GUI", "GUI Settings");
 
@@ -570,17 +507,6 @@ void BMLMod::InitConfigs() {
     m_Overclock->SetComment("Remove delay of spawn / respawn");
     m_Overclock->SetDefaultBoolean(false);
 
-    GetConfig()->SetCategoryComment("CustomMap", "Custom Map Settings");
-
-    m_CustomMapNumber->SetComment("Level number to use for custom maps (affects level bonus and sky textures)."
-                                  " Must be in the range of 1~13; 0 to randomly select one between 2 and 11");
-    m_CustomMapNumber->SetDefaultInteger(0);
-
-    m_CustomMapTooltip->SetComment("Show custom map's full name in tooltip");
-    m_CustomMapTooltip->SetDefaultBoolean(false);
-
-    m_CustomMapMaxDepth->SetComment("The max depth of the nested subdirectories.");
-    m_CustomMapMaxDepth->SetDefaultInteger(8);
 }
 
 void BMLMod::InitGUI() {
@@ -616,7 +542,13 @@ void BMLMod::InitGUI() {
     Bui::InitMaterials(m_CKContext);
 
     m_ModMenu.Init();
-    m_MapMenu.Init();
+    if (ModContext *context = GetRuntimeContext()) {
+        m_CustomMaps.OnLoad(*m_BML, *GetLogger(),
+                            context->GetDirectory(BML_DIR_LOADER),
+                            context->GetDirectory(BML_DIR_TEMP));
+    } else {
+        GetLogger()->Error("Built-in Custom Maps requires the loader runtime context");
+    }
 }
 
 void BMLMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
@@ -782,19 +714,6 @@ void BMLMod::OnEditScript_Gameplay_Events(CKBehavior *script) {
 }
 
 void BMLMod::OnEditScript_Levelinit_build(CKBehavior *script) {
-    CKBehavior *loadLevel = FindFirstBB(script, "Load LevelXX");
-    CKBehaviorLink *inLink = FindNextLink(loadLevel, loadLevel->GetInput(0));
-    CKBehavior *op = FindNextBB(loadLevel, inLink->GetOutBehaviorIO()->GetOwner());
-    m_LevelRow = op->GetOutputParameter(0)->GetDestination(0);
-    CKBehavior *objLoad = FindFirstBB(loadLevel, "Object Load");
-    CKBehavior *bin = CreateBB(loadLevel, VT_LOGICS_BINARYSWITCH);
-    CreateLink(loadLevel, loadLevel->GetInput(0), bin, 0);
-    m_LoadCustom = CreateLocalParameter(loadLevel, "Custom Level", CKPGUID_BOOL);
-    bin->GetInputParameter(0)->SetDirectSource(m_LoadCustom);
-    inLink->SetInBehaviorIO(bin->GetOutput(1));
-    CreateLink(loadLevel, bin, objLoad);
-    m_MapFile = objLoad->GetInputParameter(0)->GetDirectSource();
-
     CKBehavior *smat = FindFirstBB(script, "set Mapping and Textures");
     if (!smat) return;
     CKBehavior *sml = FindFirstBB(smat, "Set Mat Laterne");
@@ -818,36 +737,8 @@ void BMLMod::OnEditScript_ExtraLife_Fix(CKBehavior *script) {
 }
 
 void BMLMod::OnProcess_Menu() {
-    if (m_Level01 && m_Level01->IsVisible()) {
-        const ImVec2 &vpSize = ImGui::GetMainViewport()->Size;
-
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        ImGui::SetNextWindowPos(ImVec2(vpSize.x * 0.6238f, vpSize.y * 0.4f));
-
-        constexpr ImGuiWindowFlags ButtonFlags = ImGuiWindowFlags_NoDecoration |
-                                                 ImGuiWindowFlags_NoBackground |
-                                                 ImGuiWindowFlags_NoMove |
-                                                 ImGuiWindowFlags_NoNav |
-                                                 ImGuiWindowFlags_AlwaysAutoResize |
-                                                 ImGuiWindowFlags_NoFocusOnAppearing |
-                                                 ImGuiWindowFlags_NoBringToFrontOnFocus |
-                                                 ImGuiWindowFlags_NoSavedSettings;
-
-        if (ImGui::Begin("Button_Custom_Maps", nullptr, ButtonFlags)) {
-            if (Bui::RightButton("Enter_Custom_Maps")) {
-                m_ExitStart->ActivateInput(0);
-                m_ExitStart->Activate();
-                OpenMapMenu();
-            }
-        }
-        ImGui::End();
-
-        ImGui::PopStyleVar(2);
-    }
-
     m_ModMenu.Render();
-    m_MapMenu.Render();
+    m_CustomMaps.OnProcess();
 }
 
 void BMLMod::OnResize() {

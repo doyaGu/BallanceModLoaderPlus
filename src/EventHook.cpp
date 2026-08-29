@@ -137,8 +137,6 @@ void EventHookRegistrar::RegisterGameplayIngame(CKBehavior *script) {
     CreateLink(ballonoff, bon, CreateEventHook<&Receiver::OnBallNavActive>(ballonoff, m_Receiver), 0, 0);
     CreateLink(ballonoff, boff, CreateEventHook<&Receiver::OnBallNavInactive>(ballonoff, m_Receiver), 0, 0);
 
-    m_Mod.m_CurLevel = m_BML.GetArrayByName("CurrentLevel");
-
     ClearOverclockPatch();
 
     CKBehavior *ballMgr = FindFirstBB(script, "BallManager");

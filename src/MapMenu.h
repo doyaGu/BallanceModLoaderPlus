@@ -11,13 +11,12 @@
 #include "BML/Bui.h"
 #include "MapCatalog.h"
 
-class BMLMod;
+class ILogger;
 
 class MapMenuState {
 public:
     using MapLoader = std::function<bool(const std::wstring &)>;
 
-    explicit MapMenuState(BMLMod *mod);
     explicit MapMenuState(MapLoader loader)
         : m_LoadMap(std::move(loader)), m_Current(m_Catalog.GetRoot()) {}
 
@@ -36,6 +35,7 @@ public:
         return Bui::PageAction::Close();
     }
 
+    void BindCatalog(std::wstring mapsDirectory, ILogger &logger);
     void RefreshMaps();
 
     MapEntry *GetCurrentMaps() const { return m_Current; }
@@ -45,6 +45,7 @@ public:
 
     bool ShouldShowTooltip() const { return m_ShowTooltip; }
     void SetShowTooltip(bool show) { m_ShowTooltip = show; }
+    ILogger *GetLogger() const { return m_Logger; }
     bool SetMaxDepth(int depth);
     bool TakeMapLoaded() {
         const bool loaded = m_MapLoaded;
@@ -57,6 +58,8 @@ private:
     bool m_MapLoaded = false;
     bool m_ShowTooltip = false;
     int m_MaxDepth = 8;
+    std::wstring m_MapsDirectory;
+    ILogger *m_Logger = nullptr;
     MapCatalog m_Catalog;
     MapEntry *m_Current;
     uint64_t m_CatalogRevision = 0;
@@ -87,11 +90,13 @@ private:
 
 class MapMenu {
 public:
-    explicit MapMenu(BMLMod *mod);
+    explicit MapMenu(MapMenuState::MapLoader loader);
+    ~MapMenu();
 
-    void Init();
+    void Init(const std::wstring &mapsDirectory, ILogger &logger);
+    void Shutdown();
 
-    bool Open(const std::string &id) { return m_Routes.Open(id); }
+    bool Open(const std::string &id) { return m_Active && !m_ShuttingDown && m_Routes.Open(id); }
     bool Close() { return m_Routes.Close(); }
     bool Render() { return m_Routes.Render(); }
 
@@ -102,6 +107,8 @@ private:
     // Routes is declared last so its Pages are destroyed before their state.
     MapMenuState m_State;
     bool m_Initialized = false;
+    bool m_Active = false;
+    bool m_ShuttingDown = false;
     Bui::Menu m_Routes;
 };
 

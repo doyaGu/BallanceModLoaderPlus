@@ -5,65 +5,58 @@
 #include <oniguruma.h>
 
 #include "BML/InputHook.h"
+#include "BML/ILogger.h"
 #include "BML/ScriptHelper.h"
 
-#include "ModContext.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 
-#include "BMLMod.h"
-
 using namespace ScriptHelper;
 
-MapMenuState::MapMenuState(BMLMod *mod)
-    : MapMenuState([mod](const std::wstring &path) {
-          if (!mod) {
-              BML_GetModContext()->GetLogger()->Error("Attempted to load a map without a loader");
-              return false;
-          }
-
-          if (path.empty()) {
-              BML_GetModContext()->GetLogger()->Error("Attempted to load empty map path");
-              return false;
-          }
-
-          if (!utils::FileExistsW(path)) {
-              BML_GetModContext()->GetLogger()->Error(
-                  "Map file does not exist: %s", utils::Utf16ToUtf8(path).c_str());
-              return false;
-          }
-
-          try {
-              mod->LoadMap(path);
-              return true;
-          } catch (const std::exception &e) {
-              BML_GetModContext()->GetLogger()->Error("Exception loading map: %s", e.what());
-          } catch (...) {
-              BML_GetModContext()->GetLogger()->Error("Unknown exception loading map");
-          }
-          return false;
-      }) {}
-
-MapMenu::MapMenu(BMLMod *mod)
-    : m_State(mod),
+MapMenu::MapMenu(MapMenuState::MapLoader loader)
+    : m_State(std::move(loader)),
       m_Routes(
           [owner = this]() { Bui::BlockKeyboardInput(owner); },
           [state = &m_State, owner = this]() {
+              if (owner->m_ShuttingDown) {
+                  Bui::UnblockKeyboardAfterRelease(owner);
+                  return;
+              }
               if (state->TakeMapLoaded())
                   Bui::UnblockKeyboardAfterRelease(owner);
               else
                   Bui::TransitionToScriptAndUnblock("Menu_Start", owner);
           }) {}
 
-void MapMenu::Init() {
-    m_Routes.CreatePage<MapListPage>("Custom Maps", m_State);
-    m_Initialized = true;
+MapMenu::~MapMenu() {
+    Shutdown();
+}
 
+void MapMenu::Init(const std::wstring &mapsDirectory, ILogger &logger) {
+    m_State.BindCatalog(mapsDirectory, logger);
+    if (!m_Initialized) {
+        if (!m_Routes.CreatePage<MapListPage>("Custom Maps", m_State)) {
+            logger.Error("Failed to initialize the custom maps page");
+            return;
+        }
+        m_Initialized = true;
+    }
+
+    m_Active = true;
     m_State.RefreshMaps();
 }
 
+void MapMenu::Shutdown() {
+    if (!m_Active || m_ShuttingDown)
+        return;
+    m_ShuttingDown = true;
+    m_Routes.Close();
+    m_ShuttingDown = false;
+    m_Active = false;
+}
+
 void MapMenu::SetMaxDepth(int depth) {
-    if (m_State.SetMaxDepth(depth) && m_Initialized)
+    if (m_State.SetMaxDepth(depth) && m_Active)
         m_State.RefreshMaps();
 }
 
@@ -76,26 +69,31 @@ bool MapMenuState::SetMaxDepth(int depth) {
     return true;
 }
 
+void MapMenuState::BindCatalog(std::wstring mapsDirectory, ILogger &logger) {
+    m_MapsDirectory = std::move(mapsDirectory);
+    m_Logger = &logger;
+}
+
 void MapMenuState::RefreshMaps() {
-    std::wstring path = BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
-    path.append(L"\\Maps");
+    const bool directoryExists = utils::DirectoryExistsW(m_MapsDirectory);
 
-    ILogger *logger = BML_GetModContext()->GetLogger();
-    const bool directoryExists = utils::DirectoryExistsW(path);
-
-    if (!m_Catalog.Refresh(path, m_MaxDepth, logger)) {
-        logger->Error("Failed to refresh maps directory: %s", utils::Utf16ToUtf8(path).c_str());
+    if (!m_Catalog.Refresh(m_MapsDirectory, m_MaxDepth, m_Logger)) {
+        if (m_Logger) {
+            m_Logger->Error("Failed to refresh maps directory: %s",
+                            utils::Utf16ToUtf8(m_MapsDirectory).c_str());
+        }
         return;
     }
 
-    if (!directoryExists) {
-        logger->Info("Maps directory does not exist: %s", utils::Utf16ToUtf8(path).c_str());
+    if (!directoryExists && m_Logger) {
+        m_Logger->Info("Maps directory does not exist: %s",
+                       utils::Utf16ToUtf8(m_MapsDirectory).c_str());
     }
 
     ++m_CatalogRevision;
     ResetCurrentMaps();
-    if (directoryExists && m_Catalog.GetRoot()->children.empty())
-        logger->Warn("No maps found in directory");
+    if (directoryExists && m_Catalog.GetRoot()->children.empty() && m_Logger)
+        m_Logger->Warn("No maps found in directory");
 }
 
 void MapListPage::SyncCatalog() {
@@ -136,7 +134,8 @@ Bui::PageAction MapListPage::OnFrame() {
                     return *lhs < *rhs;
                 });
             } catch (...) {
-                BML_GetModContext()->GetLogger()->Error("Failed to sort current directory entries");
+                if (ILogger *logger = m_State.GetLogger())
+                    logger->Error("Failed to sort current directory entries");
             }
         }
 
@@ -218,7 +217,8 @@ void MapListPage::OnSearchMaps() {
         if (r != ONIG_NORMAL) {
             char s[ONIG_MAX_ERROR_MESSAGE_LEN];
             onig_error_code_to_str((UChar *) s, r, &einfo);
-            BML_GetModContext()->GetLogger()->Error(s);
+            if (ILogger *logger = m_State.GetLogger())
+                logger->Error("%s", s);
             return;
         }
 
@@ -251,7 +251,8 @@ void MapListPage::OnSearchMaps() {
                 } else if (r != ONIG_MISMATCH) {
                     char s[ONIG_MAX_ERROR_MESSAGE_LEN];
                     onig_error_code_to_str((UChar *) s, r);
-                    BML_GetModContext()->GetLogger()->Error(s);
+                    if (ILogger *logger = m_State.GetLogger())
+                        logger->Error("%s", s);
                 }
 
                 if (child->type == MAP_ENTRY_DIR) {
@@ -276,7 +277,8 @@ void MapListPage::OnSearchMaps() {
                 return utils::CompareString(a->name, b->name) < 0;
             });
         } catch (...) {
-            BML_GetModContext()->GetLogger()->Error("Failed to sort search results");
+            if (ILogger *logger = m_State.GetLogger())
+                logger->Error("Failed to sort search results");
         }
     }
 }
