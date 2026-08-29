@@ -1,6 +1,7 @@
 #include "GameEventHooks.h"
 
 #include <cstring>
+#include <vector>
 
 #include "BML/ExecuteBB.h"
 #include "BML/IBML.h"
@@ -137,6 +138,13 @@ void GameEventHooks::PatchBaseEventHandler(CKBehavior *script) {
     CKBehavior *onDead = dead ? FindEndOfChain(script, dead) : nullptr;
 
     CKBehavior *highscore = FindFirstBB(script, "Highscore");
+    std::vector<CKBehavior *> highscoreActivators;
+    if (highscore) {
+        FindBB(highscore, [&](CKBehavior *behavior) {
+            highscoreActivators.push_back(behavior);
+            return true;
+        }, "Activate Script");
+    }
     CKBehavior *endLevel = branch(10);
     CKBehaviorLink *preEndLevel = endLevel ? FindNextLink(script, endLevel) : nullptr;
 
@@ -144,8 +152,14 @@ void GameEventHooks::PatchBaseEventHandler(CKBehavior *script) {
         !preLoadLevel || !postLoadLevel || !onStartLevel ||
         !preResetLevel || !postResetLevel || !onPauseLevel || !onUnpauseLevel ||
         !preExitLevel || !postExitLevel || !preNextLevel || !postNextLevel ||
-        !onDead || !highscore || !preEndLevel) {
+        !onDead || !highscore || highscoreActivators.empty() || !preEndLevel) {
         RejectPatch("Event_handler", "the script does not match the expected vanilla graph");
+        return;
+    }
+
+    CKBehaviorIO *highscoreOutput = highscore->CreateOutput("Out");
+    if (!highscoreOutput) {
+        RejectPatch("Event_handler", "the Highscore output could not be created");
         return;
     }
 
@@ -171,14 +185,12 @@ void GameEventHooks::PatchBaseEventHandler(CKBehavior *script) {
     InsertBB(script, postNextLevel, CreateEventHook<&Receiver::OnPostNextLevel>(script, *m_Receiver));
     CreateLink(script, onDead, CreateEventHook<&Receiver::OnDead>(script, *m_Receiver));
 
-    highscore->AddOutput("Out");
-    FindBB(highscore, [highscore](CKBehavior *behavior) {
-        CreateLink(highscore, behavior, highscore->GetOutput(0));
-        return true;
-    }, "Activate Script");
+    for (CKBehavior *activator : highscoreActivators)
+        CreateLink(highscore, activator, highscoreOutput);
 
     InsertBB(script, preEndLevel, CreateEventHook<&Receiver::OnPreEndLevel>(script, *m_Receiver));
-    CreateLink(script, highscore, CreateEventHook<&Receiver::OnPostEndLevel>(script, *m_Receiver));
+    CreateLink(script, highscoreOutput,
+               CreateEventHook<&Receiver::OnPostEndLevel>(script, *m_Receiver));
 }
 
 void GameEventHooks::PatchGameplayIngame(CKBehavior *script) {
