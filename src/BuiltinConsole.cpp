@@ -7,8 +7,8 @@
 #include "BML/ILogger.h"
 
 #include "AnsiText.h"
+#include "CommandContext.h"
 #include "Commands.h"
-#include "ModContext.h"
 #include "StringUtils.h"
 
 const BuiltinConsole::Setting *BuiltinConsole::GetSettings(size_t &count) {
@@ -107,12 +107,13 @@ void BuiltinConsole::ApplySetting(const Setting &setting, IProperty *property) {
     }
 }
 
-void BuiltinConsole::OnLoad(IBML &bml, ILogger &logger, BMLMod *hudOwner) {
-    m_Context = dynamic_cast<ModContext *>(&bml);
+void BuiltinConsole::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BMLMod *hudOwner) {
+    m_Commands = &commands;
     m_Logger = &logger;
 
-    if (m_Context) {
-        m_Context->GetCommandContext().SetOutputCallback(&OnCommandOutput, this);
+    m_OutputCallbackInstalled = m_Commands->SetOutputCallback(&OnCommandOutput, this);
+    if (!m_OutputCallbackInstalled) {
+        m_Logger->Warn("Could not register the built-in console output callback");
     }
 
     RegisterCommands(bml, hudOwner);
@@ -121,13 +122,14 @@ void BuiltinConsole::OnLoad(IBML &bml, ILogger &logger, BMLMod *hudOwner) {
 }
 
 void BuiltinConsole::OnUnload() {
-    if (m_Context) {
-        m_Context->GetCommandContext().ClearOutputCallback();
+    if (m_OutputCallbackInstalled && m_Commands) {
+        m_Commands->ClearOutputCallback();
     }
 
     m_CommandBar.SaveHistory();
+    m_OutputCallbackInstalled = false;
     m_Logger = nullptr;
-    m_Context = nullptr;
+    m_Commands = nullptr;
 }
 
 void BuiltinConsole::OnProcess() {

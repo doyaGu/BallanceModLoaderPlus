@@ -11,7 +11,10 @@ class IBML;
 class IConfig;
 class ILogger;
 class IProperty;
-class ModContext;
+
+namespace BML {
+    class CommandContext;
+}
 
 class BuiltinConsole {
 public:
@@ -19,7 +22,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, ILogger &logger, BMLMod *hudOwner);
+    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BMLMod *hudOwner);
     void OnUnload();
     void OnProcess();
 
@@ -43,8 +46,9 @@ private:
     static void OnCommandOutput(const char *message, void *userdata);
     void RegisterCommands(IBML &bml, BMLMod *hudOwner);
 
-    ModContext *m_Context = nullptr;
+    BML::CommandContext *m_Commands = nullptr;
     ILogger *m_Logger = nullptr;
+    bool m_OutputCallbackInstalled = false;
     CommandBar m_CommandBar;
     MessageBoard m_MessageBoard;
 

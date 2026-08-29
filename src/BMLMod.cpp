@@ -257,7 +257,7 @@ void BMLMod::OnLoad() {
     ApplySettings(Startup);
     m_Console.ApplyConfig();
     InitGUI();
-    m_Console.OnLoad(*m_BML, *GetLogger(), this);
+    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), this);
 
     // Setup default HUD elements
     SetupDefaultHUDElements();
