@@ -121,6 +121,7 @@ specified.
 | Change | Owner | Minimum focused validation |
 | --- | --- | --- |
 | Plugin entry or engine interception | `src/BML.cpp`, `src/Hooks/`, `src/Virtools/HookBlock.cpp` | Win32 build plus Player smoke test for the affected callback or hook |
+| Synchronous Building Block actions or behavior-graph recipes | `src/Virtools/VirtoolsActions.*`, `src/Virtools/BehaviorGraphRecipes.*`, `src/Virtools/ExecuteBB.cpp` | Architecture test, legacy export ABI test, Win32 build, and affected Player smoke test |
 | CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
 | Mod discovery, dependency order, services, or shutdown | `src/Loader/ModContext.*` | Relevant loader/dependency tests and native/script smoke coverage |
 | HUD, menus, command bar, or built-in behavior | `src/Mods/BMLMod.*`, `src/HUD/`, `src/Console/`, `src/CustomMaps/`, `src/Gameplay/`, `src/UI/` | Focused UI/service tests and Player visual/input smoke test |

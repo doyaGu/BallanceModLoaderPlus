@@ -28,6 +28,18 @@ _Avoid_: script patches, tweak settings, gameplay fixes
 The loader-owned Virtools script adapters that translate game and menu transitions into Mod lifecycle and gameplay callbacks. One Built-in Loader Mod owns one Built-in Game Event Hooks Module.
 _Avoid_: EventHookRegistrar, callback patches, event bridge
 
+**Virtools Actions**:
+The loader-owned synchronous execution of Virtools Building Blocks used as actions from C++. The module binds its private blocks to one owner script, validates their lifetime and game-thread use, and returns explicit execution status. One loader runtime owns one Virtools Actions module.
+_Avoid_: ExecuteBB globals, cached BB pointers, Building Block singleton
+
+**Behavior Graph Recipes**:
+The loader-owned construction rules for adding a configured Building Block to a Virtools behavior graph. A recipe owns the GUID, parameter schema, and local settings; the caller supplies the owner script and wires the returned block into the graph.
+_Avoid_: BB factory, CreateBB helpers, pin-index helpers
+
+**Legacy ExecuteBB Adapter**:
+The exported v0.3 compatibility interface that translates existing `ExecuteBB` calls into Virtools Actions or Behavior Graph Recipes. New loader implementation code does not call this adapter.
+_Avoid_: ExecuteBB runtime, Building Block module
+
 ## Source layout
 
 The private source tree follows these runtime concepts instead of collecting unrelated code under generic `Core`, `Runtime`, or `Builtin` directories:
@@ -39,7 +51,7 @@ The private source tree follows these runtime concepts instead of collecting unr
 - `src/Console/`, `src/HUD/`, and `src/CustomMaps/` contain the Built-in Console, Built-in HUD, and Built-in Custom Maps modules respectively.
 - `src/Gameplay/` contains the loader-owned game session, game event hooks, and gameplay tweaks.
 - `src/Config/`, `src/DataShare/`, `src/Imc/`, and `src/Logging/` each keep one cross-cutting runtime concern local.
-- `src/UI/`, `src/Hooks/`, and `src/Virtools/` contain concrete UI such as the Mod menu, process/engine hooks, and Virtools graph/object adapters.
+- `src/UI/`, `src/Hooks/`, and `src/Virtools/` contain concrete UI such as the Mod menu, process/engine hooks, Virtools Actions, Behavior Graph Recipes, and the Legacy ExecuteBB Adapter.
 - `src/AngelScript/` and `src/Utils/` remain independently navigable implementation families.
 
 Private includes use these directory names explicitly, so a caller reveals which module interface it crosses.

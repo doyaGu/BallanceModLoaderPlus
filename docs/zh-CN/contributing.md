@@ -114,6 +114,7 @@ powershell -ExecutionPolicy Bypass `
 | 修改目标 | 负责区域 | 最小定向验证 |
 | --- | --- | --- |
 | 插件入口或引擎拦截 | `src/BML.cpp`、`src/Hooks/`、`src/Virtools/HookBlock.cpp` | Win32 构建，以及覆盖该回调或 Hook 的 Player 冒烟测试 |
+| 同步 Building Block 动作或行为图 recipe | `src/Virtools/VirtoolsActions.*`、`src/Virtools/BehaviorGraphRecipes.*`、`src/Virtools/ExecuteBB.cpp` | 架构测试、旧式导出 ABI 测试、Win32 构建和受影响的 Player 冒烟测试 |
 | CK 生命周期和回调时序 | `src/Loader/ModManager.*` | 定向生命周期测试和 Player 冒烟测试 |
 | Mod 发现、依赖顺序、服务或关闭 | `src/Loader/ModContext.*` | 对应 Loader/依赖测试和原生/脚本冒烟覆盖 |
 | HUD、菜单、命令栏或内建行为 | `src/Mods/BMLMod.*`、`src/HUD/`、`src/Console/`、`src/CustomMaps/`、`src/Gameplay/`、`src/UI/` | 定向 UI/服务测试和 Player 画面/输入冒烟测试 |

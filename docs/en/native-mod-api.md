@@ -72,7 +72,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | `Bui.h` | Ballance-style ImGui widgets |
 | `Gui.h`, `Gui/*.h` | `BGui` wrappers around Virtools entities and behaviours |
 | `InputHook.h` | Keyboard, mouse, controller state, and paired input-block tokens |
-| `ExecuteBB.h` | Execute or create common Building Blocks |
+| `ExecuteBB.h` | v0.3 compatibility interface for executing or creating common Building Blocks |
 | `ScriptHelper.h` | Find, connect, insert, and remove behaviour nodes and parameters |
 | `Guids.h`, `Guids/*.h` | Virtools and Ballance Building Block GUIDs |
 

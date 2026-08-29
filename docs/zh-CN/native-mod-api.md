@@ -68,7 +68,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `Bui.h` | Ballance 风格 ImGui 控件 |
 | `Gui.h`, `Gui/*.h` | `BGui` Virtools 实体/行为 UI 封装 |
 | `InputHook.h` | 键盘、鼠标、手柄状态与可配对的输入屏蔽令牌 |
-| `ExecuteBB.h` | 执行或创建常用 Building Block |
+| `ExecuteBB.h` | 用于执行或创建常用 Building Block 的 v0.3 兼容接口 |
 | `ScriptHelper.h` | 查找、连接、插入和删除行为图节点与参数 |
 | `Guids.h`, `Guids/*.h` | Virtools 与 Ballance Building Block GUID 集合 |
 
