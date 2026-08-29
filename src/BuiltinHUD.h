@@ -46,12 +46,11 @@ public:
     void ResetSRTimer();
     float GetSRTime() const;
 
-    void SetFPSUpdateFrequency(uint32_t frames);
-
 private:
     friend class CommandHUD;
 
     HUD &GetWindow() { return m_Window; }
+    void SetFPSUpdateFrequency(uint32_t frames);
 
     enum ApplyWhen : unsigned {
         Startup = 1U << 0,
