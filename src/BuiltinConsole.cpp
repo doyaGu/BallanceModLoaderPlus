@@ -7,6 +7,7 @@
 #include "BML/ILogger.h"
 
 #include "AnsiText.h"
+#include "BuiltinHUD.h"
 #include "CommandContext.h"
 #include "Commands.h"
 #include "StringUtils.h"
@@ -107,7 +108,7 @@ void BuiltinConsole::ApplySetting(const Setting &setting, IProperty *property) {
     }
 }
 
-void BuiltinConsole::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BMLMod *hudOwner) {
+void BuiltinConsole::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BuiltinHUD &hud) {
     m_Commands = &commands;
     m_Logger = &logger;
 
@@ -116,7 +117,7 @@ void BuiltinConsole::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &l
         m_Logger->Warn("Could not register the built-in console output callback");
     }
 
-    RegisterCommands(bml, hudOwner);
+    RegisterCommands(bml, hud);
     AnsiText::Renderer::DefaultPalette().SaveSampleIfMissing();
     m_CommandBar.LoadHistory();
 }
@@ -179,7 +180,7 @@ void BuiltinConsole::OnCommandOutput(const char *message, void *userdata) {
     }
 }
 
-void BuiltinConsole::RegisterCommands(IBML &bml, BMLMod *hudOwner) {
+void BuiltinConsole::RegisterCommands(IBML &bml, BuiltinHUD &hud) {
     bml.RegisterCommand(new CommandBML());
     bml.RegisterCommand(new CommandHelp());
     bml.RegisterCommand(new CommandCheat());
@@ -187,7 +188,7 @@ void BuiltinConsole::RegisterCommands(IBML &bml, BMLMod *hudOwner) {
     bml.RegisterCommand(new CommandClear(this));
     bml.RegisterCommand(new CommandHistory(this));
     bml.RegisterCommand(new CommandExit());
-    bml.RegisterCommand(new CommandHUD(hudOwner));
+    bml.RegisterCommand(new CommandHUD(&hud));
     bml.RegisterCommand(new CommandPalette());
     bml.RegisterCommand(new CommandScript());
 }

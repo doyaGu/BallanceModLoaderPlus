@@ -5,8 +5,8 @@
 
 #include "BML/IBML.h"
 #include "BML/BML.h"
-#include "BMLMod.h"
 #include "BuiltinConsole.h"
+#include "BuiltinHUD.h"
 
 #include "ModContext.h"
 #if BML_ENABLE_ANGELSCRIPT
@@ -188,8 +188,8 @@ void CommandExit::Execute(IBML *bml, const std::vector<std::string> &args) {
     bml->ExitGame();
 }
 
-CommandHUD::CommandHUD(BMLMod *mod) : m_BMLMod(mod) {
-    m_State = m_BMLMod->GetHUD();
+CommandHUD::CommandHUD(BuiltinHUD *hud) : m_HUD(hud) {
+    m_State = m_HUD->GetMode();
 }
 
 static AnchorPoint ParseAnchor(const std::string &s, bool &ok) {
@@ -282,25 +282,25 @@ void CommandHUD::Execute(IBML *bml, const std::vector<std::string> &args) {
     // Basic toggles preserved
     if (args.size() == 2 && (args[1] == "on" || args[1] == "off")) {
         if (ParseBoolean(args[1])) {
-            m_BMLMod->SetHUD(m_State);
+            m_HUD->SetMode(m_State);
         } else {
-            m_State = m_BMLMod->GetHUD();
-            m_BMLMod->SetHUD(0);
+            m_State = m_HUD->GetMode();
+            m_HUD->SetMode(0);
         }
         return;
     }
     if (args.size() == 3 && (args[1] == "title" || args[1] == "fps" || args[1] == "sr")) {
-        int state = m_BMLMod->GetHUD();
+        int state = m_HUD->GetMode();
         const bool on = ParseBoolean(args[2]);
         if (args[1] == "title") state = on ? (state | HUD_TITLE) : (state & ~HUD_TITLE);
         else if (args[1] == "fps") state = on ? (state | HUD_FPS) : (state & ~HUD_FPS);
         else if (args[1] == "sr") state = on ? (state | HUD_SR) : (state & ~HUD_SR);
-        m_BMLMod->SetHUD(state);
+        m_HUD->SetMode(state);
         return;
     }
 
     // TUI-like custom text management
-    HUD &hud = m_BMLMod->GetHUDWindow();
+    HUD &hud = m_HUD->GetWindow();
     if (args.size() >= 3 && args[1] == "add") {
         const std::string &id = args[2];
         size_t dot = id.find('.');

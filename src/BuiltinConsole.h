@@ -6,7 +6,7 @@
 #include "CommandBar.h"
 #include "MessageBoard.h"
 
-class BMLMod;
+class BuiltinHUD;
 class IBML;
 class IConfig;
 class ILogger;
@@ -22,7 +22,7 @@ public:
     void ApplyConfig();
     bool OnModifyConfig(const char *category, const char *key, IProperty *property);
 
-    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BMLMod *hudOwner);
+    void OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, BuiltinHUD &hud);
     void OnUnload();
     void OnProcess();
 
@@ -44,7 +44,7 @@ private:
     void ApplySetting(const Setting &setting, IProperty *property);
 
     static void OnCommandOutput(const char *message, void *userdata);
-    void RegisterCommands(IBML &bml, BMLMod *hudOwner);
+    void RegisterCommands(IBML &bml, BuiltinHUD &hud);
 
     BML::CommandContext *m_Commands = nullptr;
     ILogger *m_Logger = nullptr;

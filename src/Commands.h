@@ -3,8 +3,8 @@
 
 #include "BML/ICommand.h"
 
-class BMLMod;
 class BuiltinConsole;
+class BuiltinHUD;
 
 class CommandBML : public ICommand {
 public:
@@ -118,7 +118,7 @@ public:
 
 class CommandHUD : public ICommand {
 public:
-    explicit CommandHUD(BMLMod *mod);
+    explicit CommandHUD(BuiltinHUD *hud);
 
     std::string GetName() override { return "hud"; }
     std::string GetAlias() override { return ""; }
@@ -128,7 +128,7 @@ public:
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override;
 
 private:
-    BMLMod *m_BMLMod;
+    BuiltinHUD *m_HUD;
     int m_State;
 };
 

@@ -76,8 +76,6 @@ public:
     int GetHUD();
     void SetHUD(int mode);
 
-    HUD &GetHUDWindow() { return m_HUD.GetWindow(); }
-
     // Built-in HUD element controls
     void ShowTitle(bool show);
     void ShowFPS(bool show);

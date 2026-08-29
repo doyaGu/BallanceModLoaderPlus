@@ -12,6 +12,7 @@
 class IBML;
 class IConfig;
 class IProperty;
+class CommandHUD;
 
 enum HudTypes {
     HUD_TITLE = 1,
@@ -47,9 +48,11 @@ public:
 
     void SetFPSUpdateFrequency(uint32_t frames);
 
+private:
+    friend class CommandHUD;
+
     HUD &GetWindow() { return m_Window; }
 
-private:
     enum ApplyWhen : unsigned {
         Startup = 1U << 0,
         OnChange = 1U << 1,

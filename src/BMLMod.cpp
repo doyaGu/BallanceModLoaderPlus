@@ -243,7 +243,7 @@ void BMLMod::OnLoad() {
     m_HUD.ApplyConfig();
     m_Console.ApplyConfig();
     InitGUI();
-    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), this);
+    m_Console.OnLoad(*m_BML, BML_GetModContext()->GetCommandContext(), *GetLogger(), m_HUD);
 
     m_HUD.OnLoad(*m_BML);
 
