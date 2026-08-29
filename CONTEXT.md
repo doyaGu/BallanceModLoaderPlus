@@ -28,6 +28,21 @@ _Avoid_: script patches, tweak settings, gameplay fixes
 The loader-owned Virtools script adapters that translate game and menu transitions into Mod lifecycle and gameplay callbacks. One Built-in Loader Mod owns one Built-in Game Event Hooks Module.
 _Avoid_: EventHookRegistrar, callback patches, event bridge
 
+## Source layout
+
+The private source tree follows these runtime concepts instead of collecting unrelated code under generic `Core`, `Runtime`, or `Builtin` directories:
+
+- `src/BML.cpp` and `src/BMLMod.*` are composition roots. They show how the loader and its built-in Mod assemble the deeper modules.
+- `src/Loader/` owns Mod discovery, registration, invocation, lifecycle, and CK manager integration.
+- `src/Api/` adapts the public BML interfaces to loader-owned implementations.
+- `src/Console/`, `src/HUD/`, and `src/CustomMaps/` contain the Built-in Console, Built-in HUD, and Built-in Custom Maps modules respectively.
+- `src/Gameplay/` contains the loader-owned game session, game event hooks, gameplay tweaks, and the bundled new-ball-type Mod.
+- `src/Config/`, `src/DataShare/`, `src/Imc/`, and `src/Logging/` each keep one cross-cutting runtime concern local.
+- `src/UI/`, `src/Hooks/`, and `src/Virtools/` contain reusable UI implementation, process/engine hooks, and Virtools graph/object adapters.
+- `src/AngelScript/` and `src/Utils/` remain independently navigable implementation families.
+
+Private includes use these directory names explicitly, so a caller reveals which module interface it crosses.
+
 ## Example dialogue
 
 > **Developer:** Should command history be saved by the Built-in Loader Mod?

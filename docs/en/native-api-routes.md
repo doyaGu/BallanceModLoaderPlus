@@ -19,7 +19,7 @@ with virtual functions, and a mod calls them across a DLL boundary. A call
 through a virtual function is a jump to a slot number that was fixed when the
 mod was compiled, so adding, removing, or reordering a virtual function moves
 every slot after it and every already built `.bmodp` calls the wrong one. The
-loader pins those slot numbers with static assertions in `src/ModContext.cpp`
+loader pins those slot numbers with static assertions in `src/Loader/ModContext.cpp`
 and compares its exported symbol set against
 `tests/abi/legacy-native-exports-x86-msvc.txt` on every build. These interfaces
 are therefore frozen for the current release line: nothing new can be added to
