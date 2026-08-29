@@ -17,4 +17,3 @@ _Avoid_: CommandBar, MessageBoard, console UI
 > **Developer:** Should command history be saved by the Built-in Loader Mod?
 >
 > **Domain expert:** No. Command history belongs to the Built-in Console; the Built-in Loader Mod only tells it when loading and unloading occur.
-
