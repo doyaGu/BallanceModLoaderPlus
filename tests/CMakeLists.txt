@@ -599,6 +599,7 @@ set_tests_properties(ImcGeneratedRuntimeIntegrationTest PROPERTIES
         LABELS "imc;integration;performance")
 
 add_subdirectory(smoke)
+add_subdirectory(player)
 if (BML_BUILD_UPDATER)
     add_subdirectory(updater)
 endif ()
