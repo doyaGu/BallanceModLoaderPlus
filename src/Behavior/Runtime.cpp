@@ -133,6 +133,34 @@ private:
     CKBehavior *m_SavedCurrent;
 };
 
+class BehaviorExecutionScope final {
+public:
+    BehaviorExecutionScope(CKContext *context, CKBehavior *behavior,
+                           const CKBehaviorContext *frame)
+        : m_BehaviorContext(context, behavior, frame), m_Context(context),
+          m_SavedDeferDestroy(context->m_DeferDestroyObjects) {
+        m_Context->m_DeferDestroyObjects = TRUE;
+    }
+
+    ~BehaviorExecutionScope() {
+        m_Context->m_DeferDestroyObjects = m_SavedDeferDestroy;
+    }
+
+private:
+    BehaviorContextScope m_BehaviorContext;
+    CKContext *m_Context;
+    CKDWORD m_SavedDeferDestroy;
+};
+
+class FlagScope final {
+public:
+    explicit FlagScope(bool &flag) : m_Flag(flag) { m_Flag = true; }
+    ~FlagScope() { m_Flag = false; }
+
+private:
+    bool &m_Flag;
+};
+
 class BehaviorInternals final : public CKBehavior {
 public:
     static BehaviorBlockData *BlockData(CKBehavior *behavior) {
@@ -365,44 +393,90 @@ Instance::~Instance() {
 }
 
 Instance::Instance(Instance &&other) noexcept
-    : m_Runtime(std::exchange(other.m_Runtime, nullptr)),
+    : m_Access(std::move(other.m_Access)),
       m_Id(std::exchange(other.m_Id, 0)) {}
 
 Instance &Instance::operator=(Instance &&other) noexcept {
     if (this == &other)
         return *this;
     Reset();
-    m_Runtime = std::exchange(other.m_Runtime, nullptr);
+    m_Access = std::move(other.m_Access);
     m_Id = std::exchange(other.m_Id, 0);
     return *this;
 }
 
+Instance::operator bool() const noexcept {
+    std::shared_ptr<Access> access = m_Access.lock();
+    if (!access || m_Id == 0)
+        return false;
+    std::lock_guard<std::mutex> lock(access->Mutex);
+    return access->Owner != nullptr;
+}
+
 CKBehavior *Instance::Get() const {
-    if (!m_Runtime || !m_Runtime->ReadyStatus())
+    std::shared_ptr<Access> access = m_Access.lock();
+    if (!access)
         return nullptr;
-    const Runtime::Record *record = m_Runtime->FindRecord(*this);
-    return record ? m_Runtime->ResolveBehavior(*record) : nullptr;
+    std::lock_guard<std::mutex> lock(access->Mutex);
+    Runtime *runtime = access->Owner;
+    if (!runtime || !runtime->ReadyStatus())
+        return nullptr;
+    const Runtime::Record *record = runtime->FindRecord(*this);
+    return record ? runtime->ResolveBehavior(*record) : nullptr;
 }
 
 std::uint64_t Instance::LayoutGeneration() const {
-    if (!m_Runtime || !m_Runtime->ReadyStatus())
+    std::shared_ptr<Access> access = m_Access.lock();
+    if (!access)
         return 0;
-    const Runtime::Record *record = m_Runtime->FindRecord(*this);
+    std::lock_guard<std::mutex> lock(access->Mutex);
+    Runtime *runtime = access->Owner;
+    if (!runtime || !runtime->ReadyStatus())
+        return 0;
+    const Runtime::Record *record = runtime->FindRecord(*this);
     return record ? record->LayoutGeneration : 0;
 }
 
 void Instance::Reset() {
-    if (m_Runtime && m_Id)
-        m_Runtime->RequestRelease(m_Id);
-    m_Runtime = nullptr;
-    m_Id = 0;
+    std::shared_ptr<Access> access = m_Access.lock();
+    const std::uint64_t id = std::exchange(m_Id, 0);
+    m_Access.reset();
+    if (!access || !id)
+        return;
+    std::lock_guard<std::mutex> lock(access->Mutex);
+    if (access->Owner)
+        access->Owner->RequestRelease(id);
 }
 
 Runtime::Runtime(CKContext *context)
-    : m_Context(context), m_Thread(std::this_thread::get_id()) {}
+    : m_Context(context), m_Thread(std::this_thread::get_id()),
+      m_Access(std::make_shared<Instance::Access>()),
+      m_SharedBindings(AcquireSharedBindings(context)) {
+    m_Access->Owner = this;
+}
 
 Runtime::~Runtime() {
-    ResetWorld();
+    {
+        std::lock_guard<std::mutex> lock(m_Access->Mutex);
+        m_Access->Owner = nullptr;
+    }
+    Close();
+}
+
+std::shared_ptr<Runtime::SharedBindings>
+Runtime::AcquireSharedBindings(CKContext *context) {
+    if (!context)
+        return {};
+    static std::mutex registryMutex;
+    // A live Runtime anchors the state. Weak registry entries cannot retain a
+    // dead CKContext or leak its object stamps into a later context at the
+    // same address.
+    static std::unordered_map<CKContext *, std::weak_ptr<SharedBindings>> registry;
+    std::lock_guard<std::mutex> lock(registryMutex);
+    std::shared_ptr<SharedBindings> bindings = registry[context].lock();
+    if (!bindings)
+        registry[context] = bindings = std::make_shared<SharedBindings>();
+    return bindings;
 }
 
 Status Runtime::ReadyStatus() const {
@@ -494,7 +568,7 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
     const std::uint64_t instanceId = record.Id;
     result.Descriptor = Describe(behavior, record.LayoutGeneration);
     m_Records.emplace(instanceId, std::move(record));
-    result.Handle = Instance(this, instanceId);
+    result.Handle = Instance(m_Access, instanceId);
     return result;
 }
 
@@ -1489,7 +1563,8 @@ Status Runtime::ApplyBindings(CKBehavior *behavior, const Spec &spec,
 }
 
 int Runtime::SourceReferenceCount(CKParameter *source,
-                                  CKBehavior *ignoredBehavior) const {
+                                  CKBehavior *ignoredBehavior,
+                                  const std::vector<ObjectStamp> *ignoredInputs) const {
     if (!m_Context || !source || source->IsToBeDeleted())
         return 0;
 
@@ -1501,7 +1576,14 @@ int Runtime::SourceReferenceCount(CKParameter *source,
         CKObject *object = *it;
         auto *input = object && !object->IsToBeDeleted()
             ? static_cast<CKParameterIn *>(object) : nullptr;
-        if (input && (!ignoredBehavior || input->GetOwner() != ignoredBehavior) &&
+        const bool ignoredInput = input && ignoredInputs &&
+            std::any_of(ignoredInputs->begin(), ignoredInputs->end(),
+                        [&](ObjectStamp candidate) {
+                            return candidate.Address == input &&
+                                   candidate.Id == input->GetID();
+                        });
+        if (input && !ignoredInput &&
+            (!ignoredBehavior || input->GetOwner() != ignoredBehavior) &&
             input->GetRealSource() == source) {
             ++references;
         }
@@ -1550,12 +1632,24 @@ void Runtime::PruneOwnedOperations(CKBehavior *behavior, Record &record) {
     }
 }
 
-void Runtime::PruneOwnedBindings() {
-    for (auto &[instanceId, record] : m_Records) {
-        (void) instanceId;
+void Runtime::SweepRecords() {
+    for (auto it = m_Records.begin(); it != m_Records.end();) {
+        Record &record = it->second;
         CKBehavior *behavior = ResolveBehavior(record);
+        if (!behavior) {
+            if (record.Running) {
+                record.Expired = true;
+                record.Task = false;
+                ++it;
+            } else {
+                QueueDestroy(record);
+                it = m_Records.erase(it);
+            }
+            continue;
+        }
         PruneOwnedSources(behavior, record);
         PruneOwnedOperations(behavior, record);
+        ++it;
     }
 }
 
@@ -1998,6 +2092,9 @@ bool Runtime::IsTaskActive(const Instance &instance) const {
 void Runtime::ProcessTasks(const CKBehaviorContext *frame) {
     if (!ReadyStatus())
         return;
+    if (m_ProcessingTasks)
+        return;
+    FlagScope processing(m_ProcessingTasks);
     std::vector<std::uint64_t> tasks;
     tasks.reserve(m_Records.size());
     for (const auto &[instanceId, record] : m_Records) {
@@ -2021,14 +2118,18 @@ void Runtime::ProcessTasks(const CKBehaviorContext *frame) {
 void Runtime::ProcessFrame() {
     if (!ReadyStatus())
         return;
+    if (m_ProcessingFrame)
+        return;
+    FlagScope processing(m_ProcessingFrame);
     DrainDeferredReleases();
     ProcessTasks(&m_Context->m_BehaviorContext);
-    PruneOwnedBindings();
+    SweepRecords();
+    AdoptSharedBindings();
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (pending.Frames > 0)
             --pending.Frames;
     }
-    DestroyReady(false);
+    DestroyReady(DestroyMode::Ready);
 }
 
 RunResult Runtime::Execute(std::uint64_t instanceId, int input, bool activateInput,
@@ -2112,10 +2213,12 @@ RunResult Runtime::Execute(std::uint64_t instanceId, int input, bool activateInp
     const bool releaseRequested = record->ReleaseRequested;
     const bool forceDestroy = record->ForceDestroy;
     if (releaseRequested) {
+        result.State = RunState::Completed;
+        record->Task = false;
         QueueDestroy(*record, forceDestroy);
         m_Records.erase(instanceId);
         if (forceDestroy)
-            DestroyReady(true);
+            DestroyReady(DestroyMode::Reset);
     }
     return result;
 }
@@ -2123,7 +2226,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId, int input, bool activateInp
 int Runtime::ExecuteNative(CKBehavior *behavior, const CKBehaviorContext *frame) const {
     if (!behavior || !m_Context)
         return CKBR_BEHAVIORERROR;
-    BehaviorContextScope scope(m_Context, behavior, frame);
+    BehaviorExecutionScope scope(m_Context, behavior, frame);
     return behavior->Execute(m_Context->m_BehaviorContext.DeltaTime);
 }
 
@@ -2141,13 +2244,13 @@ Status Runtime::Reacquire(std::uint64_t instanceId, CKBehavior *behavior,
 }
 
 Runtime::Record *Runtime::FindRecord(const Instance &instance) {
-    if (instance.m_Runtime != this || !instance.m_Id)
+    if (instance.m_Access.lock() != m_Access || !instance.m_Id)
         return nullptr;
     return FindRecord(instance.m_Id);
 }
 
 const Runtime::Record *Runtime::FindRecord(const Instance &instance) const {
-    if (instance.m_Runtime != this || !instance.m_Id)
+    if (instance.m_Access.lock() != m_Access || !instance.m_Id)
         return nullptr;
     return FindRecord(instance.m_Id);
 }
@@ -2261,16 +2364,35 @@ void Runtime::QueueOperationDestroy(OwnedOperation operation, int frames) {
     m_PendingDestroy.push_back(std::move(pending));
 }
 
-void Runtime::DestroyReady(bool force) {
+void Runtime::AdoptSharedBindings() {
+    if (!m_SharedBindings || m_SharedBindings->Pending.empty())
+        return;
+    m_PendingDestroy.splice(m_PendingDestroy.end(), m_SharedBindings->Pending);
+}
+
+void Runtime::Close() {
+    if (!m_Context || m_Thread != std::this_thread::get_id())
+        return;
+    DrainDeferredReleases();
+    for (auto it = m_Records.begin(); it != m_Records.end();) {
+        QueueDestroy(it->second);
+        it = m_Records.erase(it);
+    }
+    DestroyReady(DestroyMode::Close);
+}
+
+void Runtime::DestroyReady(DestroyMode mode) {
+    const bool requestedForce = mode == DestroyMode::Reset;
     if (m_Destroying) {
-        m_ForceDestroyPending = m_ForceDestroyPending || force;
+        m_ForceDestroyPending = m_ForceDestroyPending || requestedForce;
         return;
     }
     m_Destroying = true;
-    force = force || std::exchange(m_ForceDestroyPending, false);
+    const bool force = requestedForce || std::exchange(m_ForceDestroyPending, false);
+    const bool closing = mode == DestroyMode::Close;
     auto it = m_PendingDestroy.begin();
     while (it != m_PendingDestroy.end()) {
-        if (!force && it->Frames > 0) {
+        if (!force && !closing && it->Frames > 0) {
             ++it;
             continue;
         }
@@ -2281,6 +2403,17 @@ void Runtime::DestroyReady(bool force) {
         };
         CKBehavior *behavior = resolveBehavior();
         if (behavior && it->DestroyBehavior) {
+            auto rememberInput = [&](CKParameterIn *input) {
+                const ObjectStamp stamp = CaptureObject(input);
+                if (stamp.Id != 0 &&
+                    std::find(it->IgnoredInputs.begin(), it->IgnoredInputs.end(),
+                              stamp) == it->IgnoredInputs.end()) {
+                    it->IgnoredInputs.push_back(stamp);
+                }
+            };
+            rememberInput(behavior->GetTargetParameter());
+            for (int i = 0; i < behavior->GetInputParameterCount(); ++i)
+                rememberInput(behavior->GetInputParameter(i));
             behavior->Activate(FALSE, FALSE);
             if (it->Reset)
                 (void) CallCallback(behavior, CKM_BEHAVIORRESET, nullptr);
@@ -2295,6 +2428,7 @@ void Runtime::DestroyReady(bool force) {
 
         PendingDestroy retained;
         retained.Frames = 1;
+        retained.IgnoredInputs = it->IgnoredInputs;
         if (!force) {
             CKBehavior *ignoredBehavior = it->DestroyBehavior ? behavior : nullptr;
             for (auto source = it->Sources.begin(); source != it->Sources.end();) {
@@ -2302,7 +2436,8 @@ void Runtime::DestroyReady(bool force) {
                 auto *parameter = object && CKIsChildClassOf(object, CKCID_PARAMETER)
                     ? static_cast<CKParameter *>(object) : nullptr;
                 if (parameter &&
-                    SourceReferenceCount(parameter, ignoredBehavior) != 0) {
+                    SourceReferenceCount(parameter, ignoredBehavior,
+                                         &it->IgnoredInputs) != 0) {
                     retained.Sources.push_back(*source);
                     source = it->Sources.erase(source);
                 } else {
@@ -2317,7 +2452,8 @@ void Runtime::DestroyReady(bool force) {
                     ? static_cast<CKParameterOperation *>(object) : nullptr;
                 const bool referenced = parameterOperation &&
                     SourceReferenceCount(parameterOperation->GetOutParameter(),
-                                         ignoredBehavior) != 0;
+                                         ignoredBehavior,
+                                         &it->IgnoredInputs) != 0;
                 if (referenced) {
                     if (it->DestroyBehavior)
                         DetachOperation(*operation);
@@ -2373,12 +2509,18 @@ void Runtime::DestroyReady(bool force) {
                 m_Context->DestroyObject(object);
         }
         it = m_PendingDestroy.erase(it);
-        if (!retained.Sources.empty() || !retained.Operations.empty())
-            m_PendingDestroy.push_back(std::move(retained));
+        if (!retained.Sources.empty() || !retained.Operations.empty()) {
+            if (closing && m_SharedBindings)
+                m_SharedBindings->Pending.push_back(std::move(retained));
+            else
+                m_PendingDestroy.push_back(std::move(retained));
+        }
     }
     m_Destroying = false;
-    if (m_ForceDestroyPending)
-        DestroyReady(true);
+    if (m_ForceDestroyPending) {
+        AdoptSharedBindings();
+        DestroyReady(DestroyMode::Reset);
+    }
 }
 
 void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
@@ -2386,6 +2528,7 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         return;
     if (!ReadyStatus())
         return;
+    AdoptSharedBindings();
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (ContainsId(ids, count, pending.Behavior.Id)) {
             pending.Behavior = {};
@@ -2461,6 +2604,7 @@ void Runtime::ResetWorld() {
     if (!m_Context || m_Thread != std::this_thread::get_id())
         return;
     DrainDeferredReleases();
+    AdoptSharedBindings();
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (pending.Behavior.Id != 0)
             pending.Reset = true;
@@ -2477,7 +2621,7 @@ void Runtime::ResetWorld() {
         QueueDestroy(record, true);
         it = m_Records.erase(it);
     }
-    DestroyReady(true);
+    DestroyReady(DestroyMode::Reset);
 }
 
 const char *DescribeError(Error error) {

@@ -8,6 +8,7 @@
 #include "Behavior/Text2D.h"
 #include "BML/Guids/physics_RT.h"
 
+#include <memory>
 #include <sstream>
 #include <utility>
 
@@ -38,10 +39,60 @@ int ProbeExecution(const CKBehaviorContext *context, void *argument) {
     return probe->Calls == 1 ? probe->FirstResult : CKBR_OK;
 }
 
+struct RecursivePumpProbe {
+    Runtime *Owner = nullptr;
+    int Calls = 0;
+};
+
+int ProbeRecursivePump(const CKBehaviorContext *, void *argument) {
+    auto *probe = static_cast<RecursivePumpProbe *>(argument);
+    if (!probe || !probe->Owner)
+        return CKBR_BEHAVIORERROR;
+    ++probe->Calls;
+    if (probe->Calls == 2)
+        probe->Owner->ProcessFrame();
+    return probe->Calls < 3 ? CKBR_BEHAVIORERROR_RETRY : CKBR_OK;
+}
+
+struct ReentrantReleaseProbe {
+    Instance *Handle = nullptr;
+    int Calls = 0;
+};
+
+int ProbeReentrantRelease(const CKBehaviorContext *, void *argument) {
+    auto *probe = static_cast<ReentrantReleaseProbe *>(argument);
+    if (!probe || !probe->Handle)
+        return CKBR_BEHAVIORERROR;
+    ++probe->Calls;
+    probe->Handle->Reset();
+    return CKBR_ACTIVATENEXTFRAME;
+}
+
+struct SelfDeleteProbe {
+    CK_ID BehaviorId = 0;
+    int Calls = 0;
+    bool Deferred = false;
+    bool Requested = false;
+};
+
+int ProbeSelfDelete(const CKBehaviorContext *context, void *argument) {
+    auto *probe = static_cast<SelfDeleteProbe *>(argument);
+    if (!probe || !context || !context->Context || !context->Behavior)
+        return CKBR_BEHAVIORERROR;
+    ++probe->Calls;
+    probe->BehaviorId = context->Behavior->GetID();
+    probe->Deferred = context->Context->m_DeferDestroyObjects != FALSE;
+    if (probe->Deferred) {
+        probe->Requested = context->Context->DestroyObject(context->Behavior) == CK_OK;
+    }
+    return CKBR_OK;
+}
+
 struct ContextSnapshot {
     CKBehaviorContext Context;
     CKBehaviorManager *Manager = nullptr;
     CKBehavior *CurrentBehavior = nullptr;
+    CKDWORD DeferDestroyObjects = FALSE;
 };
 
 ContextSnapshot CaptureContext(CKContext *context) {
@@ -50,6 +101,7 @@ ContextSnapshot CaptureContext(CKContext *context) {
     snapshot.Manager = context->GetBehaviorManager();
     snapshot.CurrentBehavior = snapshot.Manager
         ? snapshot.Manager->m_CurrentBehavior : nullptr;
+    snapshot.DeferDestroyObjects = context->m_DeferDestroyObjects;
     return snapshot;
 }
 
@@ -70,6 +122,7 @@ bool ContextRestored(CKContext *context, const ContextSnapshot &snapshot) {
            left.CallbackMessage == right.CallbackMessage &&
            left.CallbackArg == right.CallbackArg &&
            context->GetBehaviorManager() == snapshot.Manager &&
+           context->m_DeferDestroyObjects == snapshot.DeferDestroyObjects &&
            (!snapshot.Manager ||
             snapshot.Manager->m_CurrentBehavior == snapshot.CurrentBehavior);
 }
@@ -169,6 +222,15 @@ public:
         case State::RetryResume: ResumeRetry(); break;
         case State::BreakStart: StartBreak(); break;
         case State::BreakResume: ResumeBreak(); break;
+        case State::RecursivePumpStart: StartRecursivePump(); break;
+        case State::RecursivePumpResume1:
+        case State::RecursivePumpResume2: ResumeRecursivePump(); break;
+        case State::ReentrantReleaseStart: StartReentrantRelease(); break;
+        case State::ReentrantReleaseCleanup1:
+        case State::ReentrantReleaseCleanup2: CleanupReentrantRelease(); break;
+        case State::SelfDeleteStart: StartSelfDelete(); break;
+        case State::SelfDeleteWait1:
+        case State::SelfDeleteWait2: WaitForSelfDelete(); break;
         case State::OperationCreate: CreateSharedOperation(); break;
         case State::OperationShared1:
         case State::OperationShared2:
@@ -177,6 +239,11 @@ public:
         case State::OperationCleanup1:
         case State::OperationCleanup2:
         case State::OperationCleanup3: AdvanceOperationCleanup(); break;
+        case State::RuntimeCloseStart: StartRuntimeClose(); break;
+        case State::RuntimeCloseRelease: ReleaseRuntimeCloseConsumer(); break;
+        case State::RuntimeCloseCleanup1:
+        case State::RuntimeCloseCleanup2:
+        case State::RuntimeCloseCleanup3: AdvanceRuntimeCloseCleanup(); break;
         case State::GraphOwnership: CheckGraphOwnership(); break;
         case State::Complete: break;
         }
@@ -202,6 +269,15 @@ private:
         RetryResume,
         BreakStart,
         BreakResume,
+        RecursivePumpStart,
+        RecursivePumpResume1,
+        RecursivePumpResume2,
+        ReentrantReleaseStart,
+        ReentrantReleaseCleanup1,
+        ReentrantReleaseCleanup2,
+        SelfDeleteStart,
+        SelfDeleteWait1,
+        SelfDeleteWait2,
         OperationCreate,
         OperationShared1,
         OperationShared2,
@@ -210,6 +286,11 @@ private:
         OperationCleanup1,
         OperationCleanup2,
         OperationCleanup3,
+        RuntimeCloseStart,
+        RuntimeCloseRelease,
+        RuntimeCloseCleanup1,
+        RuntimeCloseCleanup2,
+        RuntimeCloseCleanup3,
         GraphOwnership,
         Complete,
     };
@@ -368,7 +449,7 @@ private:
             m_Owner, HookBlock::Make(ProbeExecution, &m_Breakpoint));
         if (!created) {
             Fail("break-create");
-            m_State = State::OperationCreate;
+            m_State = State::RecursivePumpStart;
             return;
         }
         m_BreakInstance = std::move(created.Handle);
@@ -392,6 +473,111 @@ private:
             Fail("break-semantics");
         }
         m_BreakInstance.Reset();
+        m_State = State::RecursivePumpStart;
+    }
+
+    void StartRecursivePump() {
+        m_RecursivePump.Owner = &m_Runtime;
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, HookBlock::Make(ProbeRecursivePump, &m_RecursivePump));
+        if (!created) {
+            Fail("recursive-pump-create");
+            m_State = State::ReentrantReleaseStart;
+            return;
+        }
+        m_RecursivePumpInstance = std::move(created.Handle);
+        RunResult first = WithContextCheck("recursive-pump-start-context-restore", [&] {
+            return m_Runtime.StartTask(
+                m_RecursivePumpInstance, Slot::At(SlotKind::Input, 0));
+        });
+        if (first.State != RunState::Continuing ||
+            !m_Runtime.IsTaskActive(m_RecursivePumpInstance)) {
+            Fail("recursive-pump-start");
+        }
+        m_State = State::RecursivePumpResume1;
+    }
+
+    void ResumeRecursivePump() {
+        ProcessRuntimeFrame("recursive-pump-context-restore");
+        if (m_State == State::RecursivePumpResume1) {
+            m_State = State::RecursivePumpResume2;
+            return;
+        }
+        if (m_RecursivePump.Calls != 3 ||
+            m_Runtime.IsTaskActive(m_RecursivePumpInstance)) {
+            Fail("recursive-pump-semantics");
+        }
+        m_RecursivePumpInstance.Reset();
+        m_State = State::ReentrantReleaseStart;
+    }
+
+    void StartReentrantRelease() {
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, HookBlock::Make(
+                ProbeReentrantRelease, &m_ReentrantRelease));
+        if (!created) {
+            Fail("reentrant-release-create");
+            m_State = State::SelfDeleteStart;
+            return;
+        }
+        m_ReentrantReleaseInstance = std::move(created.Handle);
+        m_ReentrantRelease.Handle = &m_ReentrantReleaseInstance;
+        CKBehavior *behavior = m_ReentrantReleaseInstance.Get();
+        m_ReentrantReleaseId = behavior ? behavior->GetID() : 0;
+        RunResult run = WithContextCheck("reentrant-release-context-restore", [&] {
+            return m_Runtime.Pulse(
+                m_ReentrantReleaseInstance, Slot::At(SlotKind::Input, 0));
+        });
+        if (m_ReentrantRelease.Calls != 1 || m_ReentrantReleaseInstance ||
+            run.State != RunState::Completed || !m_ReentrantReleaseId) {
+            Fail("reentrant-release-result");
+        }
+        m_State = State::ReentrantReleaseCleanup1;
+    }
+
+    void CleanupReentrantRelease() {
+        ProcessRuntimeFrame("reentrant-release-cleanup-context-restore");
+        if (m_State == State::ReentrantReleaseCleanup1) {
+            m_State = State::ReentrantReleaseCleanup2;
+            return;
+        }
+        if (m_Context->GetObject(m_ReentrantReleaseId) != nullptr)
+            Fail("reentrant-release-retained");
+        m_State = State::SelfDeleteStart;
+    }
+
+    void StartSelfDelete() {
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, HookBlock::Make(ProbeSelfDelete, &m_SelfDelete));
+        if (!created) {
+            Fail("self-delete-create");
+            m_State = State::OperationCreate;
+            return;
+        }
+        m_SelfDeleteInstance = std::move(created.Handle);
+        RunResult run = WithContextCheck("self-delete-context-restore", [&] {
+            return m_Runtime.Pulse(
+                m_SelfDeleteInstance, Slot::At(SlotKind::Input, 0));
+        });
+        if (!run || m_SelfDelete.Calls != 1 || !m_SelfDelete.Deferred ||
+            !m_SelfDelete.Requested || !m_SelfDelete.BehaviorId) {
+            Fail("self-delete-not-deferred");
+            m_SelfDeleteInstance.Reset();
+        }
+        m_State = State::SelfDeleteWait1;
+    }
+
+    void WaitForSelfDelete() {
+        ProcessRuntimeFrame("self-delete-frame-context-restore");
+        if (m_State == State::SelfDeleteWait1) {
+            m_State = State::SelfDeleteWait2;
+            return;
+        }
+        if (m_Context->GetObject(m_SelfDelete.BehaviorId) != nullptr ||
+            m_SelfDeleteInstance.Get() != nullptr) {
+            Fail("self-delete-retained");
+        }
+        m_SelfDeleteInstance.Reset();
         m_State = State::OperationCreate;
     }
 
@@ -410,8 +596,10 @@ private:
         CreateResult operation = m_Runtime.Instantiate(
             m_Owner, PhysicsForceWithOperation(m_Owner, addition));
         m_OperationInstance = std::move(operation.Handle);
-        CKParameterIn *magnitude = operation && m_OperationInstance.Get()
-            ? m_OperationInstance.Get()->GetInputParameter(4) : nullptr;
+        CKBehavior *producerBehavior = m_OperationInstance.Get();
+        m_OperationProducerId = producerBehavior ? producerBehavior->GetID() : 0;
+        CKParameterIn *magnitude = operation && producerBehavior
+            ? producerBehavior->GetInputParameter(4) : nullptr;
         m_OperationOutput = magnitude ? magnitude->GetDirectSource() : nullptr;
         CKObject *operationObject = m_OperationOutput
             ? m_OperationOutput->GetOwner() : nullptr;
@@ -436,6 +624,7 @@ private:
             Value::From(CKPGUID_FLOAT, replacement));
         if (!consumer || !rebound)
             Fail("operation-bind");
+        m_OperationInstance.Reset();
         m_State = State::OperationShared1;
     }
 
@@ -449,7 +638,8 @@ private:
         } else {
             const bool retained = m_Context->GetObject(m_OperationId) != nullptr &&
                 m_ConsumerMagnitude &&
-                m_ConsumerMagnitude->GetDirectSource() == m_OperationOutput;
+                m_ConsumerMagnitude->GetDirectSource() == m_OperationOutput &&
+                m_Context->GetObject(m_OperationProducerId) == nullptr;
             if (!retained)
                 Fail("operation-shared");
             m_State = State::OperationRelease;
@@ -478,8 +668,78 @@ private:
             if (m_Context->GetObject(m_OperationId) != nullptr)
                 Fail("operation-retained");
             m_OperationOutput = nullptr;
-            m_OperationInstance.Reset();
             m_ConsumerInstance.Reset();
+            m_State = State::RuntimeCloseStart;
+        }
+    }
+
+    void StartRuntimeClose() {
+        m_ClosingRuntime = std::make_unique<Runtime>(m_Context);
+        CreateResult operation = m_ClosingRuntime->Instantiate(
+            m_Owner, PhysicsForceWithOperation(m_Owner, m_Addition));
+        m_ClosingProducerInstance = std::move(operation.Handle);
+        CKBehavior *producer = m_ClosingProducerInstance.Get();
+        m_ClosingProducerId = producer ? producer->GetID() : 0;
+        CKParameterIn *magnitude = operation && producer
+            ? producer->GetInputParameter(4) : nullptr;
+        m_ClosingOutput = magnitude ? magnitude->GetDirectSource() : nullptr;
+        CKObject *operationObject = m_ClosingOutput
+            ? m_ClosingOutput->GetOwner() : nullptr;
+        m_ClosingOperationId = operationObject &&
+            CKIsChildClassOf(operationObject, CKCID_PARAMETEROPERATION)
+            ? operationObject->GetID() : 0;
+
+        CreateResult consumer = m_ConsumerRuntime.Instantiate(
+            m_Owner, PhysicsForceWithSource(m_Owner, m_ClosingOutput));
+        m_ClosingConsumerInstance = std::move(consumer.Handle);
+        m_ClosingConsumerMagnitude = consumer && m_ClosingConsumerInstance.Get()
+            ? m_ClosingConsumerInstance.Get()->GetInputParameter(4) : nullptr;
+        if (!operation || !consumer || !m_ClosingProducerId ||
+            !m_ClosingOperationId || !m_ClosingConsumerMagnitude) {
+            Fail("runtime-close-create");
+        }
+
+        m_ClosingRuntime.reset();
+        const bool producerClosed =
+            m_Context->GetObject(m_ClosingProducerId) == nullptr;
+        const bool handleExpired = !m_ClosingProducerInstance &&
+            m_ClosingProducerInstance.Get() == nullptr &&
+            m_ClosingProducerInstance.LayoutGeneration() == 0;
+        const bool sharedOperationSurvived =
+            m_Context->GetObject(m_ClosingOperationId) != nullptr &&
+            m_ClosingConsumerMagnitude &&
+            m_ClosingConsumerMagnitude->GetDirectSource() == m_ClosingOutput;
+        m_ClosingProducerInstance.Reset();
+        if (!producerClosed || !handleExpired || !sharedOperationSurvived)
+            Fail("runtime-close-shared");
+        m_State = State::RuntimeCloseRelease;
+    }
+
+    void ReleaseRuntimeCloseConsumer() {
+        const float replacement = 11.0f;
+        Status rebound = m_ConsumerRuntime.SetInput(
+            m_ClosingConsumerInstance,
+            Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
+            Value::From(CKPGUID_FLOAT, replacement));
+        if (!rebound || !m_ClosingConsumerMagnitude ||
+            m_ClosingConsumerMagnitude->GetDirectSource() == m_ClosingOutput) {
+            Fail("runtime-close-rebind");
+        }
+        m_State = State::RuntimeCloseCleanup1;
+    }
+
+    void AdvanceRuntimeCloseCleanup() {
+        ProcessRuntimeFrame("runtime-close-main-context-restore");
+        ProcessConsumerFrame("runtime-close-consumer-context-restore");
+        if (m_State == State::RuntimeCloseCleanup1) {
+            m_State = State::RuntimeCloseCleanup2;
+        } else if (m_State == State::RuntimeCloseCleanup2) {
+            m_State = State::RuntimeCloseCleanup3;
+        } else {
+            if (m_Context->GetObject(m_ClosingOperationId) != nullptr)
+                Fail("runtime-close-retained");
+            m_ClosingOutput = nullptr;
+            m_ClosingConsumerInstance.Reset();
             m_State = State::GraphOwnership;
         }
     }
@@ -544,14 +804,29 @@ private:
     std::ostringstream m_Failures;
     ExecutionProbe m_Retry;
     ExecutionProbe m_Breakpoint;
+    RecursivePumpProbe m_RecursivePump;
+    ReentrantReleaseProbe m_ReentrantRelease;
+    SelfDeleteProbe m_SelfDelete;
     Instance m_RetryInstance;
     Instance m_BreakInstance;
+    Instance m_RecursivePumpInstance;
+    Instance m_ReentrantReleaseInstance;
+    Instance m_SelfDeleteInstance;
     Instance m_OperationInstance;
     Instance m_ConsumerInstance;
+    std::unique_ptr<Runtime> m_ClosingRuntime;
+    Instance m_ClosingProducerInstance;
+    Instance m_ClosingConsumerInstance;
+    CK_ID m_ReentrantReleaseId = 0;
     CKGUID m_Addition = CKGUID();
     CKParameter *m_OperationOutput = nullptr;
     CKParameterIn *m_ConsumerMagnitude = nullptr;
     CK_ID m_OperationId = 0;
+    CK_ID m_OperationProducerId = 0;
+    CKParameter *m_ClosingOutput = nullptr;
+    CKParameterIn *m_ClosingConsumerMagnitude = nullptr;
+    CK_ID m_ClosingOperationId = 0;
+    CK_ID m_ClosingProducerId = 0;
 };
 
 BehaviorRuntimeProbe::BehaviorRuntimeProbe(CKContext *context, CK3dObject *owner)

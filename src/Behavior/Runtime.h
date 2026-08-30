@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -292,15 +293,20 @@ public:
     Instance(Instance &&other) noexcept;
     Instance &operator=(Instance &&other) noexcept;
 
-    [[nodiscard]] explicit operator bool() const noexcept { return m_Runtime && m_Id != 0; }
+    [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] CKBehavior *Get() const;
     [[nodiscard]] std::uint64_t LayoutGeneration() const;
     void Reset();
 
 private:
-    Instance(Runtime *runtime, std::uint64_t id) : m_Runtime(runtime), m_Id(id) {}
+    struct Access {
+        std::mutex Mutex;
+        Runtime *Owner = nullptr;
+    };
 
-    Runtime *m_Runtime = nullptr;
+    Instance(std::shared_ptr<Access> access, std::uint64_t id)
+        : m_Access(std::move(access)), m_Id(id) {}
+    std::weak_ptr<Access> m_Access;
     std::uint64_t m_Id = 0;
 
     friend class Runtime;
@@ -430,12 +436,25 @@ private:
         ObjectStamp Parent;
         std::vector<ObjectStamp> Sources;
         std::vector<OwnedOperation> Operations;
+        std::vector<ObjectStamp> IgnoredInputs;
         int Frames = 2;
         bool DestroyBehavior = false;
         bool GraphResident = false;
         bool Created = false;
         bool Attached = false;
         bool Reset = false;
+    };
+
+    struct SharedBindings {
+        // Sources and operations may outlive the Runtime that created them
+        // when another input in the same CKContext still consumes them.
+        std::list<PendingDestroy> Pending;
+    };
+
+    enum class DestroyMode {
+        Ready,
+        Close,
+        Reset,
     };
 
     [[nodiscard]] Status ReadyStatus() const;
@@ -470,11 +489,12 @@ private:
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
                                             const Spec &spec, Record &record);
     [[nodiscard]] int SourceReferenceCount(
-        CKParameter *source, CKBehavior *ignoredBehavior = nullptr) const;
+        CKParameter *source, CKBehavior *ignoredBehavior = nullptr,
+        const std::vector<ObjectStamp> *ignoredInputs = nullptr) const;
     [[nodiscard]] bool IsSourceReferenced(CKParameter *source) const;
     void PruneOwnedSources(CKBehavior *behavior, Record &record);
     void PruneOwnedOperations(CKBehavior *behavior, Record &record);
-    void PruneOwnedBindings();
+    void SweepRecords();
     void DetachOperation(OwnedOperation &operation);
     [[nodiscard]] Status Configure(CKBehavior *behavior,
                                            CKBeObject *owner, CKBehavior *parent,
@@ -495,7 +515,11 @@ private:
     void QueueSourceDestroy(ObjectStamp source, int frames = 2);
     void QueueOperationDestroy(OwnedOperation operation, int frames = 2);
     void DrainDeferredReleases();
-    void DestroyReady(bool force);
+    void AdoptSharedBindings();
+    void Close();
+    void DestroyReady(DestroyMode mode);
+    [[nodiscard]] static std::shared_ptr<SharedBindings>
+    AcquireSharedBindings(CKContext *context);
 
     CKContext *m_Context = nullptr;
     std::thread::id m_Thread;
@@ -506,6 +530,10 @@ private:
     bool m_ForceDestroyPending = false;
     std::mutex m_DeferredMutex;
     std::vector<std::uint64_t> m_DeferredReleases;
+    std::shared_ptr<Instance::Access> m_Access;
+    std::shared_ptr<SharedBindings> m_SharedBindings;
+    bool m_ProcessingFrame = false;
+    bool m_ProcessingTasks = false;
 
     friend class Instance;
 };
