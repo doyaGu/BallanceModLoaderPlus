@@ -1,25 +1,22 @@
 // This is the exported v0.3 compatibility interface. Existing native Mods can keep
-// using it; loader implementation code uses its lifecycle-owned action and graph-recipe
-// modules instead, while these functions adapt the legacy calls to those modules.
+// using it; loader implementation code uses its Prototype-driven Behavior Runtime,
+// while these functions only translate the legacy calls to that runtime.
 //
 // Building blocks called from C++. Some of what Ballance does exists only as a Virtools
 // building block, physicalizing an object and loading an NMO among them, with no function
 // in the SDK behind it, and the way to get at those from a Mod is to build the block and
 // run it. That is what this namespace does, and it comes in two halves.
 //
-// The functions with a plain name do the thing at once. Each keeps one block of its own,
-// created by the loader inside the game's Level_Init script while the game starts, and a
-// call writes that block's parameters and executes it there and then, before returning.
-// So the work happens outside any script's flow, on the thread that called, which has to
-// be the game thread. There is one block per action for the whole loader, so these are
-// not reentrant: do not call one from inside a callback of the same one, and do not call
-// them from a thread of the Mod's own. Before the loader has built them, which is
-// anything earlier than the game's own scripts loading, they do nothing at all and
-// report nothing.
+// The functions with a plain name configure an independent instance from the requested
+// Prototype and execute it immediately. Work still happens outside script flow and must
+// run on the game thread. A block that asks to continue on the next frame is no longer
+// mistaken for a generic failure, although this old void interface cannot expose a task
+// handle. Physics Force is persistent by target so Create and Shutdown use the same
+// instance and its local native handle.
 //
 // The Create functions build a block instead of running one, inside the script passed as
-// the first argument, with every parameter given a source of its own, and hand it back
-// for the Mod to use: wire it into the script, or set what is wanted and call
+// the first argument from its live configured layout, and hand it back for the Mod to
+// use: wire it into the script, or set what is wanted and call
 // ActivateInput then Execute as the direct functions do. The block belongs to the script
 // from then on, meaning it is destroyed with the level, and ScriptHelper.h is what reads
 // and writes its parameters afterwards.

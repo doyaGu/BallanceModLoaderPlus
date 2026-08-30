@@ -7,7 +7,7 @@
 // VT_<plugin>_<block> for a block, a CKPGUID_ for the type of a parameter. The plugin
 // names are the Virtools ones, so a block found in Virtools Dev is looked up in the header
 // for the plugin it came from, and BML/Guids/Hooks.h holds the one block that is the
-// loader's own, the hook block ExecuteBB::CreateHookBlock builds.
+// loader's own, the Hook preset and legacy ExecuteBB::CreateHookBlock build.
 //
 // Include the one header a Mod needs rather than this file. A GUID being listed says only
 // that the block exists in Virtools, not that the game has that plugin loaded:

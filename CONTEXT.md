@@ -28,16 +28,21 @@ _Avoid_: script patches, tweak settings, gameplay fixes
 The loader-owned Virtools script adapters that translate game and menu transitions into Mod lifecycle and gameplay callbacks. One Built-in Loader Mod owns one Built-in Game Event Hooks Module.
 _Avoid_: EventHookRegistrar, callback patches, event bridge
 
-**Virtools Actions**:
-The loader-owned synchronous execution of Virtools Building Blocks used as actions from C++. The module binds its private blocks to one owner script, validates their lifetime and game-thread use, and returns explicit execution status. One loader runtime owns one Virtools Actions module.
-_Avoid_: ExecuteBB globals, cached BB pointers, Building Block singleton
+**Virtools Behavior Runtime**:
+The loader-owned deep module that resolves any Building Block Prototype, creates a configured instance, reflects its live layout, binds parameter values or sources, runs its callback lifecycle, and distinguishes immediate, persistent, graph-resident, and cross-frame execution. Settings are applied before final input binding because they may rebuild the instance layout. One loader runtime owns one Virtools Behavior Runtime.
+Resolved slots carry the configured instance identity and layout generation; a settings callback or execution makes old slot handles stale instead of silently retargeting an ordinal. Literal sources are independent, runtime-owned CK parameters rather than extra behavior or parent locals. Normal release is delayed past native manager callbacks and sends DETACH/DELETE without misusing RESET; world reset explicitly closes retained state before invalidating CK identities.
+_Avoid_: action cache, BB singleton, fixed pin table, synchronous-function wrapper
 
-**Behavior Graph Recipes**:
-The loader-owned construction rules for adding a configured Building Block to a Virtools behavior graph. A recipe owns the GUID, parameter schema, and local settings; the caller supplies the owner script and wires the returned block into the graph.
-_Avoid_: BB factory, CreateBB helpers, pin-index helpers
+**Ballance Behavior Presets**:
+Thin declarative mappings from Ballance's known Building Blocks to `BehaviorSpec`. A preset contains only the Prototype GUID, selectors, defaults, and setting stages; all creation, ownership, callback, execution, and destruction behavior remains in the Virtools Behavior Runtime.
+_Avoid_: graph recipe, BB implementation, action module
+
+**Physics Force Sessions**:
+The target-identity-indexed persistent instances of Virtools Physics Force. Create and Shutdown use the same configured instance because the Building Block stores its native handle in a local parameter. Replacement and shutdown wait until a later physics epoch because the Building Block may retain its `CKBehavior` in a pre-simulation callback before writing that handle.
+_Avoid_: force action cache, independent Set/Unset calls
 
 **Legacy ExecuteBB Adapter**:
-The exported v0.3 compatibility interface that translates existing `ExecuteBB` calls into Virtools Actions or Behavior Graph Recipes. New loader implementation code does not call this adapter.
+The exported v0.3 compatibility interface that translates existing `ExecuteBB` calls into Behavior Specs and delegates them to the Virtools Behavior Runtime. New loader implementation code does not call this adapter.
 _Avoid_: ExecuteBB runtime, Building Block module
 
 ## Source layout
@@ -51,7 +56,7 @@ The private source tree follows these runtime concepts instead of collecting unr
 - `src/Console/`, `src/HUD/`, and `src/CustomMaps/` contain the Built-in Console, Built-in HUD, and Built-in Custom Maps modules respectively.
 - `src/Gameplay/` contains the loader-owned game session, game event hooks, and gameplay tweaks.
 - `src/Config/`, `src/DataShare/`, `src/Imc/`, and `src/Logging/` each keep one cross-cutting runtime concern local.
-- `src/UI/`, `src/Hooks/`, and `src/Virtools/` contain concrete UI such as the Mod menu, process/engine hooks, Virtools Actions, Behavior Graph Recipes, and the Legacy ExecuteBB Adapter.
+- `src/UI/`, `src/Hooks/`, and `src/Virtools/` contain concrete UI such as the Mod menu, process/engine hooks, the Virtools Behavior Runtime, Ballance Behavior Presets, Physics Force Sessions, and the Legacy ExecuteBB Adapter.
 - `src/AngelScript/` and `src/Utils/` remain independently navigable implementation families.
 
 Private includes use these directory names explicitly, so a caller reveals which module interface it crosses.
