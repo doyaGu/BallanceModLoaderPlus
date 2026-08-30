@@ -13,7 +13,7 @@
 #include "Hooks/RenderHook.h"
 #include "UI/AnsiPalette.h"
 #include "UI/GameFontCatalog.h"
-#include "Virtools/BallanceBehaviorPresets.h"
+#include "Behavior/HookBlock.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 #include "Api/BuiltinCapabilities.h"
@@ -177,7 +177,7 @@ void BMLMod::OnLoad() {
     m_HUD.OnLoad(*m_BML);
 
     if (ModContext *context = GetRuntimeContext())
-        RegisterBuiltinCapabilities(*this, context->ObjectIdentities(), GetLogger());
+        RegisterBuiltinCapabilities(*this, context->ObjectRefs(), GetLogger());
 }
 
 void BMLMod::OnUnload() {
@@ -615,12 +615,12 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     CreateLink(graph, down_sop, graph->GetOutput(4), 5);
     FindNextLink(script, graph, nullptr, 3, 0)->SetInBehaviorIO(graph->GetOutput(4));
 
-    BML::Virtools::GraphBlockResult hook = GetRuntimeContext()->GetBehaviorRuntime().AddToGraph(
-        script, BML::Virtools::Presets::Hook([](const CKBehaviorContext *, void *) -> int {
+    BML::Behavior::AttachResult hook = GetRuntimeContext()->Behaviors().AddToGraph(
+        script, BML::Behavior::HookBlock::Make([](const CKBehaviorContext *, void *) -> int {
             BML_GetModContext()->OpenModsMenu();
             return CKBR_OK;
         }));
-    CKBehavior *modsmenu = hook ? hook.Behavior : nullptr;
+    CKBehavior *modsmenu = hook ? hook.Block : nullptr;
     CKBehavior *exit = FindFirstBB(script, "Exit", false, 1, 0);
     CreateLink(script, graph, modsmenu, 3, 0);
     CreateLink(script, modsmenu, exit, 0, 0);

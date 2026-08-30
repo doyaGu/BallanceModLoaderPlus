@@ -8,15 +8,13 @@
 // Vectors and matrices are numbers and nothing more, so TypeConvert.h converts between these
 // and the Virtools types, VxVector and VxMatrix, for a Mod on the C++ side.
 //
-// A BML_ObjectRef is how one of the game's objects is named across the boundary, and it is
-// deliberately not a pointer or a bare CK_ID: those are recycled, so an old one would come
-// back pointing at whatever took its place. Only whoever made a reference can resolve it,
-// which for the loader's own interfaces means turning it back into the CKObject it stood
-// for, or into nothing if that object is gone. Treat it as opaque: a zero Domain is null,
-// two references are the same object when all three fields match, and resolving one that
-// has gone stale answers BML_ERROR_OBJECT_INVALID rather than something wrong. They are
-// good for this run of the process only, so a reference is not something to write to a file
-// or to hold across a level change.
+// A BML_ObjectRef is how a loader interface names one of the game's objects without exposing
+// a CK pointer or a recycled bare CK_ID. The interface that issued it is its only resolver and
+// invalidates it on the normal CK deletion and world-reset lifecycle. Treat it as opaque: a
+// zero Domain is null, all three fields participate in equality, and an invalid reference
+// answers BML_ERROR_OBJECT_INVALID. It is good for this process and current world only, so do
+// not persist it or hold it across a level change. CK objects deliberately destroyed with
+// CK_DESTROY_NONOTIFY are not eligible for this cross-interface lifetime contract.
 #ifndef BML_TYPES_H
 #define BML_TYPES_H
 
@@ -26,7 +24,7 @@ BML_BEGIN_CDECLS
 
 #define BML_OBJECT_DOMAIN_VIRTOOLS 1u
 
-/* An owner-issued object identity.  A zero Domain denotes null.  Slot and
+/* An interface-issued object reference. A zero Domain denotes null. Slot and
  * Generation are opaque to consumers and never encode a CK pointer. */
 typedef struct BML_ObjectRef {
     uint32_t Domain;

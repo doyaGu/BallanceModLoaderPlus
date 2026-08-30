@@ -176,9 +176,9 @@ CKRenderContext *BML_GetRenderContext() {
 }
 
 ModContext::ModContext(CKContext *context)
-    : m_ObjectIdentities(context), m_BehaviorRuntime(context, m_ObjectIdentities),
-      m_PhysicsForceSessions(m_BehaviorRuntime, m_ObjectIdentities),
-      m_LegacyExecuteBB(m_BehaviorRuntime, m_PhysicsForceSessions) {
+    : m_ObjectRefs(context), m_Behaviors(context),
+      m_PhysicsForce(context, m_Behaviors),
+      m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);
     m_ImcRuntime.SetInvocationGate(&m_ModInvocationGate);
     m_CKContext = context;
@@ -318,28 +318,26 @@ void ModContext::Shutdown() {
 }
 
 void ModContext::ResetVirtoolsWorld() {
-    // CKIdentityRegistry is deliberately last: the preceding owners need live
-    // identities to send native Shutdown/DETACH/DELETE events and release
-    // runtime-owned parameter sources.
-    m_LegacyExecuteBB.Reset();
-    m_PhysicsForceSessions.Reset();
-    m_BehaviorRuntime.ResetWorld();
-    m_ObjectIdentities.ResetWorld();
+    // Runtime owners close native state first. Public object references belong
+    // to the API seam and are reset only after internal teardown is complete.
+    m_ExecuteBB.Reset();
+    m_PhysicsForce.Reset();
+    m_Behaviors.ResetWorld();
+    m_ObjectRefs.Reset();
 }
 
 void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
-    // Sessions must still be able to resolve their native target state; the
-    // runtime must still be able to resolve owned blocks and parameter
-    // sources. Identity invalidation is therefore deliberately last.
-    m_PhysicsForceSessions.ObjectsToBeDeleted(ids, count);
-    m_BehaviorRuntime.ObjectsToBeDeleted(ids, count);
-    m_ObjectIdentities.Invalidate(ids, count);
+    // Runtime owners observe the deletion first; public references are the
+    // final observer because they do not participate in native teardown.
+    m_PhysicsForce.ObjectsToBeDeleted(ids, count);
+    m_Behaviors.ObjectsToBeDeleted(ids, count);
+    m_ObjectRefs.Invalidate(ids, count);
 }
 
 void ModContext::ProcessVirtoolsFrame() {
-    m_PhysicsForceSessions.ProcessFrame();
-    m_BehaviorRuntime.ProcessFrame();
-    m_LegacyExecuteBB.ProcessFrame();
+    m_PhysicsForce.ProcessFrame();
+    m_Behaviors.ProcessFrame();
+    m_ExecuteBB.ProcessFrame();
 }
 
 bool ModContext::LoadMods() {

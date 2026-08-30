@@ -13,7 +13,7 @@
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "Loader/ModContext.h"
-#include "Virtools/BallanceBehaviorPresets.h"
+#include "Behavior/HookBlock.h"
 
 namespace BML {
 
@@ -52,7 +52,7 @@ static std::string DefaultHookBlockName(unsigned int id) {
 }
 
 static void SetHookBlockNativeCallback(CKBehavior *block,
-                                       Virtools::Presets::HookCallback callback,
+                                       Behavior::HookBlock::Callback callback,
                                        void *arg) {
     if (!block || block->GetLocalParameterCount() < 2)
         return;
@@ -210,7 +210,7 @@ static void ReleaseHookBlockCallback(ScriptHookBlockEntry &entry) {
 }
 
 static void ClearHookBlockNativeCallback(ScriptHookBlockEntry &entry) {
-    Virtools::Presets::HookCallback callback = nullptr;
+    Behavior::HookBlock::Callback callback = nullptr;
     void *arg = nullptr;
     SetHookBlockNativeCallback(entry.Block, callback, arg);
 }
@@ -372,10 +372,10 @@ static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
     entry->Callback = callback;
     callback->AddRef();
 
-    Virtools::GraphBlockResult created = state->Context->GetBehaviorRuntime().AddToGraph(
-        ownerScript, Virtools::Presets::Hook(
+    Behavior::AttachResult created = state->Context->Behaviors().AddToGraph(
+        ownerScript, Behavior::HookBlock::Make(
             ScriptHookBlockCallback, entry.get(), inputCount, outputCount));
-    entry->Block = created ? created.Behavior : nullptr;
+    entry->Block = created ? created.Block : nullptr;
     if (!entry->Block) {
         ReleaseHookBlockCallback(*entry);
         RecordHookBlockDiagnostic(state, "HookBlock creation failed.");

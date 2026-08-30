@@ -1,6 +1,5 @@
-// This is the exported v0.3 compatibility interface. Existing native Mods can keep
-// using it; loader implementation code uses its Prototype-driven Behavior Runtime,
-// while these functions only translate the legacy calls to that runtime.
+// This is the exported v0.3 interface. Existing native Mods can keep using it; its
+// implementation translates these calls to the Prototype-driven Behavior Runtime.
 //
 // Building blocks called from C++. Some of what Ballance does exists only as a Virtools
 // building block, physicalizing an object and loading an NMO among them, with no function

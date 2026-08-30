@@ -8,7 +8,7 @@
 #include "BML/IMessageReceiver.h"
 #include "BML/ScriptHelper.h"
 #include "Loader/ModContext.h"
-#include "Virtools/BallanceBehaviorPresets.h"
+#include "Behavior/HookBlock.h"
 
 using namespace ScriptHelper;
 
@@ -27,9 +27,9 @@ CKBehavior *CreateEventHook(CKBehavior *script, Receiver &receiver) {
     ModContext *context = BML_GetModContext();
     if (!context)
         return nullptr;
-    BML::Virtools::GraphBlockResult created = context->GetBehaviorRuntime().AddToGraph(
-        script, BML::Virtools::Presets::Hook(&Dispatch<Method>, &receiver));
-    return created ? created.Behavior : nullptr;
+    BML::Behavior::AttachResult created = context->Behaviors().AddToGraph(
+        script, BML::Behavior::HookBlock::Make(&Dispatch<Method>, &receiver));
+    return created ? created.Block : nullptr;
 }
 
 CKBehavior *Follow(CKBehavior *graph, CKBehavior *behavior, int count) {

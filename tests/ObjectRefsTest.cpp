@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "Virtools/CKIdentityRegistry.h"
+#include "Api/ObjectRefs.h"
 
 #include "CKGlobals.h"
 #include "CKObject.h"
@@ -59,16 +59,16 @@ CKERROR CKObject::Copy(CKObject &, CKDependenciesContext &) { return CK_OK; }
 
 namespace {
 
-class CKIdentityRegistryTest : public ::testing::Test {
+class ObjectRefsTest : public ::testing::Test {
 protected:
     void SetUp() override {
         g_CurrentObjects.fill(nullptr);
         m_Context = reinterpret_cast<CKContext *>(this);
-        m_Identities = std::make_unique<BML::CKIdentityRegistry>(m_Context);
+        m_Refs = std::make_unique<BML::ObjectRefs>(m_Context);
     }
 
     void TearDown() override {
-        m_Identities.reset();
+        m_Refs.reset();
         g_CurrentObjects.fill(nullptr);
     }
 
@@ -80,34 +80,34 @@ protected:
     }
 
     CKContext *m_Context = nullptr;
-    std::unique_ptr<BML::CKIdentityRegistry> m_Identities;
+    std::unique_ptr<BML::ObjectRefs> m_Refs;
 };
 
-TEST_F(CKIdentityRegistryTest, NullObjectsAndReferencesStayNull) {
-    EXPECT_EQ(m_Identities->Make(nullptr).Domain, 0u);
-    EXPECT_EQ(m_Identities->Resolve({}), nullptr);
+TEST_F(ObjectRefsTest, NullObjectsAndReferencesStayNull) {
+    EXPECT_EQ(m_Refs->Issue(nullptr).Domain, 0u);
+    EXPECT_EQ(m_Refs->Resolve({}), nullptr);
 }
 
-TEST_F(CKIdentityRegistryTest, MakeRejectsObjectsOutsideTheCurrentWorld) {
+TEST_F(ObjectRefsTest, IssueRejectsObjectsOutsideTheCurrentWorld) {
     FakeObject unpublished(17, m_Context);
-    EXPECT_EQ(m_Identities->Make(unpublished.Get()).Domain, 0u);
+    EXPECT_EQ(m_Refs->Issue(unpublished.Get()).Domain, 0u);
 
     FakeObject foreign(23, reinterpret_cast<CKContext *>(static_cast<uintptr_t>(1)));
     Publish(foreign);
-    EXPECT_EQ(m_Identities->Make(foreign.Get()).Domain, 0u);
+    EXPECT_EQ(m_Refs->Issue(foreign.Get()).Domain, 0u);
 
     FakeObject deleting(29, m_Context);
     CKObject *object = Publish(deleting);
     object->ModifyObjectFlags(CK_OBJECT_TOBEDELETED, 0);
-    EXPECT_EQ(m_Identities->Make(object).Domain, 0u);
+    EXPECT_EQ(m_Refs->Issue(object).Domain, 0u);
 }
 
-TEST_F(CKIdentityRegistryTest, RepeatedMakeKeepsExactIdentity) {
+TEST_F(ObjectRefsTest, RepeatedIssueKeepsExactReference) {
     FakeObject source(17, m_Context);
     CKObject *object = Publish(source);
 
-    const BML_ObjectRef first = m_Identities->Make(object);
-    const BML_ObjectRef second = m_Identities->Make(object);
+    const BML_ObjectRef first = m_Refs->Issue(object);
+    const BML_ObjectRef second = m_Refs->Issue(object);
 
     EXPECT_EQ(first.Domain, BML_OBJECT_DOMAIN_VIRTOOLS);
     EXPECT_EQ(first.Slot, 17u);
@@ -115,83 +115,83 @@ TEST_F(CKIdentityRegistryTest, RepeatedMakeKeepsExactIdentity) {
     EXPECT_EQ(second.Domain, first.Domain);
     EXPECT_EQ(second.Slot, first.Slot);
     EXPECT_EQ(second.Generation, first.Generation);
-    EXPECT_EQ(m_Identities->Resolve(first), object);
+    EXPECT_EQ(m_Refs->Resolve(first), object);
 }
 
-TEST_F(CKIdentityRegistryTest, DeletionInvalidatesOnlyNamedSlots) {
+TEST_F(ObjectRefsTest, DeletionInvalidatesOnlyNamedSlots) {
     FakeObject firstSource(17, m_Context);
     FakeObject secondSource(23, m_Context);
     CKObject *firstObject = Publish(firstSource);
     CKObject *secondObject = Publish(secondSource);
 
-    const BML_ObjectRef first = m_Identities->Make(firstObject);
-    const BML_ObjectRef second = m_Identities->Make(secondObject);
+    const BML_ObjectRef first = m_Refs->Issue(firstObject);
+    const BML_ObjectRef second = m_Refs->Issue(secondObject);
     const CK_ID deleted = firstObject->GetID();
-    m_Identities->Invalidate(&deleted, 1);
+    m_Refs->Invalidate(&deleted, 1);
 
-    EXPECT_EQ(m_Identities->Resolve(first), nullptr);
-    EXPECT_EQ(m_Identities->Resolve(second), secondObject);
+    EXPECT_EQ(m_Refs->Resolve(first), nullptr);
+    EXPECT_EQ(m_Refs->Resolve(second), secondObject);
 }
 
-TEST_F(CKIdentityRegistryTest, WorldResetInvalidatesEveryReference) {
+TEST_F(ObjectRefsTest, WorldResetInvalidatesEveryReference) {
     FakeObject firstSource(17, m_Context);
     FakeObject secondSource(23, m_Context);
-    const BML_ObjectRef first = m_Identities->Make(Publish(firstSource));
-    const BML_ObjectRef second = m_Identities->Make(Publish(secondSource));
+    const BML_ObjectRef first = m_Refs->Issue(Publish(firstSource));
+    const BML_ObjectRef second = m_Refs->Issue(Publish(secondSource));
 
-    m_Identities->ResetWorld();
+    m_Refs->Reset();
 
-    EXPECT_EQ(m_Identities->Resolve(first), nullptr);
-    EXPECT_EQ(m_Identities->Resolve(second), nullptr);
+    EXPECT_EQ(m_Refs->Resolve(first), nullptr);
+    EXPECT_EQ(m_Refs->Resolve(second), nullptr);
 }
 
-TEST_F(CKIdentityRegistryTest, ResolveRejectsWrongDomainSerialAndDeletingObject) {
+TEST_F(ObjectRefsTest, ResolveRejectsWrongDomainGenerationAndDeletingObject) {
     FakeObject source(17, m_Context);
     CKObject *object = Publish(source);
-    const BML_ObjectRef reference = m_Identities->Make(object);
+    const BML_ObjectRef reference = m_Refs->Issue(object);
 
     BML_ObjectRef wrongDomain = reference;
     wrongDomain.Domain += 1;
-    EXPECT_EQ(m_Identities->Resolve(wrongDomain), nullptr);
+    EXPECT_EQ(m_Refs->Resolve(wrongDomain), nullptr);
 
     BML_ObjectRef wrongSerial = reference;
     wrongSerial.Generation += 1;
     if (wrongSerial.Generation == 0)
         wrongSerial.Generation = 1;
-    EXPECT_EQ(m_Identities->Resolve(wrongSerial), nullptr);
+    EXPECT_EQ(m_Refs->Resolve(wrongSerial), nullptr);
 
     object->ModifyObjectFlags(CK_OBJECT_TOBEDELETED, 0);
-    EXPECT_EQ(m_Identities->Resolve(reference), nullptr);
+    EXPECT_EQ(m_Refs->Resolve(reference), nullptr);
 }
 
-TEST_F(CKIdentityRegistryTest, CurrentObjectMustStillMatchTheIssuedIdentity) {
+TEST_F(ObjectRefsTest, CurrentObjectMustStillMatchTheIssuedReference) {
     FakeObject firstSource(17, m_Context);
     FakeObject replacementSource(17, m_Context);
     CKObject *firstObject = Publish(firstSource);
-    const BML_ObjectRef first = m_Identities->Make(firstObject);
+    const BML_ObjectRef first = m_Refs->Issue(firstObject);
 
     CKObject *replacement = Publish(replacementSource);
-    EXPECT_EQ(m_Identities->Resolve(first), nullptr);
+    EXPECT_EQ(m_Refs->Resolve(first), nullptr);
 
-    const BML_ObjectRef second = m_Identities->Make(replacement);
+    const BML_ObjectRef second = m_Refs->Issue(replacement);
     EXPECT_NE(second.Generation, first.Generation);
-    EXPECT_EQ(m_Identities->Resolve(second), replacement);
+    EXPECT_EQ(m_Refs->Resolve(second), replacement);
 }
 
-TEST_F(CKIdentityRegistryTest, ResolveHotPathMeetsReleaseBudget) {
+TEST_F(ObjectRefsTest, ResolveHotPathMeetsReleaseBudget) {
 #ifndef NDEBUG
     GTEST_SKIP() << "Performance gate runs only in Release builds";
 #else
     FakeObject source(17, m_Context);
     CKObject *object = Publish(source);
-    const BML_ObjectRef reference = m_Identities->Make(object);
+    const BML_ObjectRef reference = m_Refs->Issue(object);
     ASSERT_NE(reference.Domain, 0u);
 
     constexpr size_t kIterations = 1'000'000;
     uintptr_t observed = 0;
     const auto start = std::chrono::steady_clock::now();
     for (size_t index = 0; index < kIterations; ++index)
-        observed += reinterpret_cast<uintptr_t>(m_Identities->Resolve(reference));
+        observed += reinterpret_cast<uintptr_t>(m_Refs->Resolve(reference));
     const auto elapsed = std::chrono::steady_clock::now() - start;
 
     EXPECT_NE(observed, 0u);

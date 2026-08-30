@@ -2,18 +2,18 @@
 
 #include "BML/ScriptHelper.h"
 #include "Loader/ModContext.h"
-#include "Virtools/BallanceBehaviorPresets.h"
+#include "Behavior/Text2D.h"
 
 using namespace BGui;
 
 Label::Label(const char *name) : Element(name) {
     ModContext *context = BML_GetModContext();
-    BML::Virtools::Presets::Text2DOptions definition;
+    BML::Behavior::Text2D::Options definition;
     definition.Target = m_2dEntity;
     definition.FontIndex = context->GetGameFonts().Resolve(BML::GameFont::None);
-    BML::Virtools::GraphBlockResult created = context->GetBehaviorRuntime().AddToGraph(
-        context->GetScriptByName("Level_Init"), BML::Virtools::Presets::Text2D(definition));
-    m_Text2d = created ? created.Behavior : nullptr;
+    BML::Behavior::AttachResult created = context->Behaviors().AddToGraph(
+        context->GetScriptByName("Level_Init"), BML::Behavior::Text2D::Make(definition));
+    m_Text2d = created ? created.Block : nullptr;
 }
 
 Label::~Label() {

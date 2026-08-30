@@ -138,14 +138,19 @@ set(BML_LOADER_SOURCES
 
 set(BML_API_PRIVATE_HEADERS
         Api/BuiltinCapabilities.h
+        Api/ExecuteBBAdapter.h
+        Api/ObjectRefs.h
 )
 
 set(BML_API_SOURCES
         Api/BmlApi.cpp
         Api/BuiltinCapabilities.cpp
         Api/Errors.cpp
+        Api/ExecuteBB.cpp
+        Api/ExecuteBBAdapter.cpp
         Api/IMod.cpp
         Api/Interfaces.cpp
+        Api/ObjectRefs.cpp
 )
 
 set(BML_DATA_SHARE_PRIVATE_HEADERS
@@ -284,22 +289,31 @@ set(BML_HOOK_SOURCES
         Hooks/RenderHook.cpp
 )
 
-set(BML_VIRTOOLS_PRIVATE_HEADERS
-        Virtools/BallanceBehaviorPresets.h
-        Virtools/BehaviorRuntime.h
-        Virtools/CKIdentityRegistry.h
-        Virtools/LegacyExecuteBBAdapter.h
-        Virtools/PhysicsForceSessions.h
+set(BML_BEHAVIOR_PRIVATE_HEADERS
+        Behavior/HookBlock.h
+        Behavior/ObjectLoad.h
+        Behavior/Physicalize.h
+        Behavior/PhysicsForce.h
+        Behavior/PhysicsImpulse.h
+        Behavior/PhysicsWakeUp.h
+        Behavior/Runtime.h
+        Behavior/SendMessage.h
+        Behavior/Text2D.h
+)
+
+set(BML_BEHAVIOR_SOURCES
+        Behavior/HookBlock.cpp
+        Behavior/ObjectLoad.cpp
+        Behavior/Physicalize.cpp
+        Behavior/PhysicsForce.cpp
+        Behavior/PhysicsImpulse.cpp
+        Behavior/PhysicsWakeUp.cpp
+        Behavior/Runtime.cpp
+        Behavior/SendMessage.cpp
+        Behavior/Text2D.cpp
 )
 
 set(BML_VIRTOOLS_SOURCES
-        Virtools/BallanceBehaviorPresets.cpp
-        Virtools/BehaviorRuntime.cpp
-        Virtools/CKIdentityRegistry.cpp
-        Virtools/ExecuteBB.cpp
-        Virtools/LegacyExecuteBBAdapter.cpp
-        Virtools/PhysicsForceSessions.cpp
-        Virtools/HookBlock.cpp
         Virtools/ScriptHelper.cpp
 )
 
@@ -317,7 +331,7 @@ set(BML_PRIVATE_HEADERS
         ${BML_IMC_PRIVATE_HEADERS}
         ${BML_UI_PRIVATE_HEADERS}
         ${BML_HOOK_PRIVATE_HEADERS}
-        ${BML_VIRTOOLS_PRIVATE_HEADERS}
+        ${BML_BEHAVIOR_PRIVATE_HEADERS}
 )
 
 set(BML_SOURCES
@@ -335,6 +349,7 @@ set(BML_SOURCES
         ${BML_IMC_SOURCES}
         ${BML_UI_SOURCES}
         ${BML_HOOK_SOURCES}
+        ${BML_BEHAVIOR_SOURCES}
         ${BML_VIRTOOLS_SOURCES}
         BML.rc
 )

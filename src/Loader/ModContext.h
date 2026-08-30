@@ -18,15 +18,15 @@
 #include "Loader/NativeModRegistry.h"
 #include "DataShare/DataShare.hpp"
 #include "Console/CommandContext.h"
-#include "Virtools/CKIdentityRegistry.h"
+#include "Api/ObjectRefs.h"
 #include "HookUtils.h"
 #include "Imc/ImcRuntime.h"
 #include "Loader/ModInvocationGate.h"
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
-#include "Virtools/BehaviorRuntime.h"
-#include "Virtools/LegacyExecuteBBAdapter.h"
-#include "Virtools/PhysicsForceSessions.h"
+#include "Behavior/Runtime.h"
+#include "Api/ExecuteBBAdapter.h"
+#include "Behavior/PhysicsForce.h"
 
 // The ids themselves are public, since BML_GetLoaderPath takes them. This name
 // stays for the loader's own call sites and for the script binding.
@@ -237,11 +237,13 @@ public:
     void ExitGame() override;
 
     BML::GameSessionSnapshot ReadGameSession() const noexcept { return m_GameSession.Read(); }
-    BML::CKIdentityRegistry &ObjectIdentities() noexcept { return m_ObjectIdentities; }
-    BML::Virtools::BehaviorRuntime &GetBehaviorRuntime() noexcept { return m_BehaviorRuntime; }
-    const BML::Virtools::BehaviorRuntime &GetBehaviorRuntime() const noexcept { return m_BehaviorRuntime; }
-    BML::Virtools::LegacyExecuteBBAdapter &GetLegacyExecuteBB() noexcept { return m_LegacyExecuteBB; }
-    BML::Virtools::PhysicsForceSessions &GetPhysicsForceSessions() noexcept { return m_PhysicsForceSessions; }
+    BML::ObjectRefs &ObjectRefs() noexcept { return m_ObjectRefs; }
+    BML::Behavior::Runtime &Behaviors() noexcept { return m_Behaviors; }
+    const BML::Behavior::Runtime &Behaviors() const noexcept { return m_Behaviors; }
+    BML::ExecuteBBAdapter &ExecuteBB() noexcept { return m_ExecuteBB; }
+    BML::Behavior::PhysicsForce::Sessions &PhysicsForce() noexcept {
+        return m_PhysicsForce;
+    }
     void VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count);
     void ProcessVirtoolsFrame();
     void ResetVirtoolsWorld();
@@ -443,10 +445,10 @@ private:
     bool CanScheduleTimer() const;
     int m_Flags = 0;
     BML::GameSession m_GameSession;
-    BML::CKIdentityRegistry m_ObjectIdentities;
-    BML::Virtools::BehaviorRuntime m_BehaviorRuntime;
-    BML::Virtools::PhysicsForceSessions m_PhysicsForceSessions;
-    BML::Virtools::LegacyExecuteBBAdapter m_LegacyExecuteBB;
+    BML::ObjectRefs m_ObjectRefs;
+    BML::Behavior::Runtime m_Behaviors;
+    BML::Behavior::PhysicsForce::Sessions m_PhysicsForce;
+    BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;

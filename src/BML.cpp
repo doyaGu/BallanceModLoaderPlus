@@ -7,6 +7,7 @@
 
 #include "CKContext.h"
 
+#include "Behavior/HookBlock.h"
 #include "Loader/ModManager.h"
 #include "Hooks/RenderHook.h"
 #include "UI/Overlay.h"
@@ -53,7 +54,7 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
 PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
 
 void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
-    RegisterBehavior(reg, FillBehaviorHookBlockDecl);
+    BML::Behavior::HookBlock::Register(reg);
 }
 
 static LPVOID g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;

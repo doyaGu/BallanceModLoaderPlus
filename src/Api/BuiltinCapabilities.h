@@ -12,16 +12,16 @@ class ILogger;
 class ModContext;
 
 namespace BML {
-class CKIdentityRegistry;
+class ObjectRefs;
 }
 
 /* Registers the reads behind the loader's own interface structs. */
-void RegisterBuiltinCapabilities(BMLMod &mod, BML::CKIdentityRegistry &identities,
-                                 ILogger *logger);
+void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects,
+                                  ILogger *logger);
 void UnregisterBuiltinCapabilities(BMLMod &mod);
 
-/* The scene interface in Scene.h answers out of these. CK object identity is
- * borrowed from CKIdentityRegistry, so these reads no longer own it. */
+/* The scene interface in Scene.h answers out of these. Opaque CK references
+ * are owned by the API seam rather than by the gameplay reads. */
 int ReadBuiltinSceneObject(ModContext &context, BML_ObjectRef object, BML_SceneObjectInfo &out);
 int ReadBuiltinSceneEntityTransform(ModContext &context, BML_ObjectRef object,
                                     BML_SceneEntityTransform &out);

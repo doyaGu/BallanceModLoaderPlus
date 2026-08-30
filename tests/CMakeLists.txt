@@ -114,11 +114,11 @@ set_tests_properties(ImcCompatibilityIntegrationTest PROPERTIES
         LABELS "imc;codegen;compatibility")
 
 add_test(
-        NAME ExecuteBBArchitectureTest
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ExecuteBBArchitectureTest.py"
+        NAME ExecuteBBDepsTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ExecuteBBDepsTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
 )
-set_tests_properties(ExecuteBBArchitectureTest PROPERTIES LABELS "architecture;legacy-native")
+set_tests_properties(ExecuteBBDepsTest PROPERTIES LABELS "architecture;legacy-native")
 
 add_test(
         NAME BmlModCmakeTest
@@ -412,12 +412,12 @@ add_bml_test(GameSessionTest
         ${BML_SOURCE_DIR}/Gameplay/GameSession.cpp
 )
 
-add_bml_test(CKIdentityRegistryTest
+add_bml_test(ObjectRefsTest
         SOURCES
-        CKIdentityRegistryTest.cpp
-        ${BML_SOURCE_DIR}/Virtools/CKIdentityRegistry.cpp
+        ObjectRefsTest.cpp
+        ${BML_SOURCE_DIR}/Api/ObjectRefs.cpp
 )
-target_include_directories(CKIdentityRegistryTest PRIVATE "${VIRTOOLS_SDK_INCLUDE_DIR}")
+target_include_directories(ObjectRefsTest PRIVATE "${VIRTOOLS_SDK_INCLUDE_DIR}")
 
 add_bml_test(CommandContextTest
         SOURCES

@@ -43,7 +43,12 @@
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
 #include "UI/GameFontCatalog.h"
-#include "Virtools/BallanceBehaviorPresets.h"
+#include "Behavior/ObjectLoad.h"
+#include "Behavior/Physicalize.h"
+#include "Behavior/PhysicsForce.h"
+#include "Behavior/PhysicsImpulse.h"
+#include "Behavior/PhysicsWakeUp.h"
+#include "Behavior/Text2D.h"
 #include "UI/Overlay.h"
 
 static constexpr const char *kExtensionName = "BML";
@@ -1272,22 +1277,21 @@ static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions
     if (!RequireLoadedContext(ctx))
         return BMLAS_CreateObjectLoadResult(nullptr, false, 0, {});
 
-    BML::Virtools::Presets::ObjectLoadOptions definition;
+    BML::Behavior::ObjectLoad::Options definition;
     definition.File = options.File;
-    definition.Rename = options.Rename;
     definition.MasterName = options.MasterName;
     definition.FilterClass = static_cast<CK_CLASSID>(options.FilterClass);
     definition.AddToScene = options.AddToScene ? TRUE : FALSE;
     definition.ReuseMeshes = options.ReuseMeshes ? TRUE : FALSE;
     definition.ReuseMaterials = options.ReuseMaterials ? TRUE : FALSE;
     definition.Dynamic = options.Dynamic ? TRUE : FALSE;
-    BML::Virtools::InstanceResult load = ctx->GetBehaviorRuntime().Instantiate(
-        nullptr, BML::Virtools::Presets::ObjectLoad(definition));
+    BML::Behavior::CreateResult load = ctx->Behaviors().Instantiate(
+        nullptr, BML::Behavior::ObjectLoad::Make(definition));
     if (!load)
         return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), false, 0, {});
-    BML::Virtools::ExecutionResult executed = ctx->GetBehaviorRuntime().Pulse(
-        load.Instance, BML::Virtools::SlotSelector::At(BML::Virtools::BehaviorSlotKind::Input, 0));
-    CKBehavior *loader = load.Instance.Get();
+    BML::Behavior::RunResult executed = ctx->Behaviors().Pulse(
+        load.Handle, BML::Behavior::Slot::At(BML::Behavior::SlotKind::Input, 0));
+    CKBehavior *loader = load.Handle.Get();
     XObjectArray *loaded = executed && loader
         ? *static_cast<XObjectArray **>(loader->GetOutputParameterWriteDataPtr(0)) : nullptr;
     CKObject *master = executed && loader && loader->GetOutputParameterCount() > 1
@@ -1295,11 +1299,11 @@ static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions
     std::vector<CK_ID> objects;
     static unsigned int loadCount = 0;
     if (loaded) {
-        const unsigned int suffix = definition.Rename ? ++loadCount : loadCount;
+        const unsigned int suffix = options.Rename ? ++loadCount : loadCount;
         objects.reserve(static_cast<std::size_t>(loaded->Size()));
         for (CK_ID *id = loaded->Begin(); id != loaded->End(); ++id) {
             objects.push_back(*id);
-            if (!definition.Rename)
+            if (!options.Rename)
                 continue;
             if (CKObject *object = ctx->GetCKContext()->GetObject(*id);
                 object && CKIsChildClassOf(object, CKCID_BEOBJECT)) {
@@ -1333,7 +1337,7 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
     if (!ownerScript || !target || !RequireLoadedContext(ctx))
         return nullptr;
 
-    BML::Virtools::Presets::Text2DOptions recipe;
+    BML::Behavior::Text2D::Options recipe;
     recipe.Target = target;
     recipe.FontIndex = ctx->GetGameFonts().Resolve(BMLAS_ToGameFont(definition.Font));
     recipe.Text = definition.Text;
@@ -1345,9 +1349,9 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
     recipe.CaretSize = definition.CaretSize;
     recipe.CaretMaterial = caretMaterial;
     recipe.Flags = definition.Flags;
-    BML::Virtools::GraphBlockResult created = ctx->GetBehaviorRuntime().AddToGraph(
-        ownerScript, BML::Virtools::Presets::Text2D(recipe));
-    return created ? created.Behavior : nullptr;
+    BML::Behavior::AttachResult created = ctx->Behaviors().AddToGraph(
+        ownerScript, BML::Behavior::Text2D::Make(recipe));
+    return created ? created.Block : nullptr;
 }
 
 static CKBehavior *BMLAS_Text_Create2DTextDefaultMaterials(CKBehavior *ownerScript,
@@ -1517,9 +1521,9 @@ static bool BMLAS_CK_SetDataArrayFloat(CKDataArray *array, int row, int column, 
     return BMLAS_CK_HasDataArrayCell(array, row, column) && array->SetElementValue(row, column, &value) != 0;
 }
 
-static BML::Virtools::Presets::PhysicalizeOptions BMLAS_PhysicalizePreset(
+static BML::Behavior::Physicalize::Options BMLAS_MakePhysicalizeOptions(
     CK3dEntity *target, const BMLAS_PhysicalizeDefinition &definition) {
-    BML::Virtools::Presets::PhysicalizeOptions recipe;
+    BML::Behavior::Physicalize::Options recipe;
     recipe.Target = target;
     recipe.Fixed = definition.Fixed;
     recipe.Friction = definition.Friction;
@@ -1536,10 +1540,11 @@ static BML::Virtools::Presets::PhysicalizeOptions BMLAS_PhysicalizePreset(
     return recipe;
 }
 
-static BML::Virtools::Presets::ForceOptions BMLAS_ForcePreset(
+template <typename Options>
+static Options BMLAS_MakeForceOptions(
     CK3dEntity *target, const VxVector &position, CK3dEntity *positionReference,
     const VxVector &direction, CK3dEntity *directionReference, float magnitude) {
-    BML::Virtools::Presets::ForceOptions recipe;
+    Options recipe;
     recipe.Target = target;
     recipe.Position = position;
     recipe.PositionReference = positionReference;
@@ -1554,13 +1559,13 @@ static bool BMLAS_Physics_HasTarget(CK3dEntity *target, ModContext *&context) {
 }
 
 static bool BMLAS_RunBehavior(ModContext &context, CKBeObject *owner,
-                              const BML::Virtools::BehaviorSpec &spec, int input = 0) {
-    BML::Virtools::InstanceResult created = context.GetBehaviorRuntime().Instantiate(owner, spec);
+                              const BML::Behavior::Spec &spec, int input = 0) {
+    BML::Behavior::CreateResult created = context.Behaviors().Instantiate(owner, spec);
     if (!created)
         return false;
-    BML::Virtools::ExecutionResult result = context.GetBehaviorRuntime().Pulse(
-        created.Instance, BML::Virtools::SlotSelector::At(BML::Virtools::BehaviorSlotKind::Input, input));
-    return result && result.State == BML::Virtools::ExecutionState::Completed;
+    BML::Behavior::RunResult result = context.Behaviors().Pulse(
+        created.Handle, BML::Behavior::Slot::At(BML::Behavior::SlotKind::Input, input));
+    return result && result.State == BML::Behavior::RunState::Completed;
 }
 
 static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
@@ -1571,8 +1576,8 @@ static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return BMLAS_RunBehavior(*context, target, BML::Virtools::Presets::PhysicalizeConvex(
-        BMLAS_PhysicalizePreset(target, definition), mesh));
+    return BMLAS_RunBehavior(*context, target, BML::Behavior::Physicalize::Convex(
+        BMLAS_MakePhysicalizeOptions(target, definition), mesh));
 }
 
 static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
@@ -1584,8 +1589,8 @@ static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return BMLAS_RunBehavior(*context, target, BML::Virtools::Presets::PhysicalizeBall(
-        BMLAS_PhysicalizePreset(target, definition), center, radius));
+    return BMLAS_RunBehavior(*context, target, BML::Behavior::Physicalize::Ball(
+        BMLAS_MakePhysicalizeOptions(target, definition), center, radius));
 }
 
 static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
@@ -1596,8 +1601,8 @@ static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return BMLAS_RunBehavior(*context, target, BML::Virtools::Presets::PhysicalizeConcave(
-        BMLAS_PhysicalizePreset(target, definition), mesh));
+    return BMLAS_RunBehavior(*context, target, BML::Behavior::Physicalize::Concave(
+        BMLAS_MakePhysicalizeOptions(target, definition), mesh));
 }
 
 static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
@@ -1606,8 +1611,8 @@ static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return BMLAS_RunBehavior(*context, target, BML::Virtools::Presets::PhysicalizeConvex(
-        BMLAS_PhysicalizePreset(target, BMLAS_PhysicalizeDefinition())), 1);
+    return BMLAS_RunBehavior(*context, target, BML::Behavior::Physicalize::Convex(
+        BMLAS_MakePhysicalizeOptions(target, BMLAS_PhysicalizeDefinition())), 1);
 }
 
 static bool BMLAS_Physics_SetForce(CK3dEntity *target,
@@ -1621,8 +1626,9 @@ static bool BMLAS_Physics_SetForce(CK3dEntity *target,
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return static_cast<bool>(context->GetPhysicsForceSessions().Set(
-        BMLAS_ForcePreset(target, position, positionReference, direction, directionReference, force)));
+    return static_cast<bool>(context->PhysicsForce().Set(
+        BMLAS_MakeForceOptions<BML::Behavior::PhysicsForce::Options>(
+            target, position, positionReference, direction, directionReference, force)));
 }
 
 static bool BMLAS_Physics_ClearForce(CK3dEntity *target) {
@@ -1631,7 +1637,7 @@ static bool BMLAS_Physics_ClearForce(CK3dEntity *target) {
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return static_cast<bool>(context->GetPhysicsForceSessions().Clear(target));
+    return static_cast<bool>(context->PhysicsForce().Clear(target));
 }
 
 static bool BMLAS_Physics_Impulse(CK3dEntity *target,
@@ -1645,8 +1651,9 @@ static bool BMLAS_Physics_Impulse(CK3dEntity *target,
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return BMLAS_RunBehavior(*context, target, BML::Virtools::Presets::PhysicsImpulse(
-        BMLAS_ForcePreset(target, position, positionReference, direction, directionReference, impulse)));
+    return BMLAS_RunBehavior(*context, target, BML::Behavior::PhysicsImpulse::Make(
+        BMLAS_MakeForceOptions<BML::Behavior::PhysicsImpulse::Options>(
+            target, position, positionReference, direction, directionReference, impulse)));
 }
 
 static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
@@ -1655,7 +1662,8 @@ static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return BMLAS_RunBehavior(*context, target, BML::Virtools::Presets::PhysicsWakeUp(target));
+    return BMLAS_RunBehavior(
+        *context, target, BML::Behavior::PhysicsWakeUp::Make(target));
 }
 
 static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {

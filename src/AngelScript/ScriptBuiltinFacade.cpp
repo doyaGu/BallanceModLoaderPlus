@@ -279,7 +279,7 @@ ModContext *GetActiveScriptContext() {
 CKObject *ResolveScriptObject(const BML_ObjectRef &reference) {
     ModContext *context = GetActiveScriptContext();
     return context && reference.Domain != 0
-               ? context->ObjectIdentities().Resolve(reference)
+               ? context->ObjectRefs().Resolve(reference)
                : nullptr;
 }
 

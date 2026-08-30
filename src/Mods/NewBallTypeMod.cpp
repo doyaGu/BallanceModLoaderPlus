@@ -6,7 +6,8 @@
 #include "BML/Guids/Narratives.h"
 
 #include "Loader/ModContext.h"
-#include "Virtools/BallanceBehaviorPresets.h"
+#include "Behavior/ObjectLoad.h"
+#include "Behavior/Physicalize.h"
 
 using namespace ScriptHelper;
 
@@ -149,19 +150,18 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     }
 
     for (BallTypeInfo &info: m_BallTypes) {
-        BML::Virtools::Presets::ObjectLoadOptions definition;
+        BML::Behavior::ObjectLoad::Options definition;
         definition.File = path + info.m_File;
-        definition.Rename = false;
-        BML::Virtools::InstanceResult load = context->GetBehaviorRuntime().Instantiate(
-            nullptr, BML::Virtools::Presets::ObjectLoad(definition));
+        BML::Behavior::CreateResult load = context->Behaviors().Instantiate(
+            nullptr, BML::Behavior::ObjectLoad::Make(definition));
         if (!load) {
             GetLogger()->Error("Cannot load ball type %s: %s", info.m_Name.c_str(),
-                               load.Status.Message.c_str());
+                               load.Outcome.Message.c_str());
             return;
         }
-        BML::Virtools::ExecutionResult executed = context->GetBehaviorRuntime().Pulse(
-            load.Instance, BML::Virtools::SlotSelector::At(BML::Virtools::BehaviorSlotKind::Input, 0));
-        CKBehavior *loader = load.Instance.Get();
+        BML::Behavior::RunResult executed = context->Behaviors().Pulse(
+            load.Handle, BML::Behavior::Slot::At(BML::Behavior::SlotKind::Input, 0));
+        CKBehavior *loader = load.Handle.Get();
         XObjectArray *objects = executed && loader
             ? *static_cast<XObjectArray **>(loader->GetOutputParameterWriteDataPtr(0)) : nullptr;
         if (!objects) {
@@ -503,30 +503,30 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
         CKParameter *ballName = CreateParamString(graph, "Pin", info.m_ObjName.c_str());
         sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(ballName);
         CKBehavior *newPhy;
-        BML::Virtools::Presets::PhysicalizeOptions definition;
-        BML::Virtools::BehaviorSpec spec = info.m_Radius > 0
-            ? BML::Virtools::Presets::PhysicalizeBall(
+        BML::Behavior::Physicalize::Options definition;
+        BML::Behavior::Spec spec = info.m_Radius > 0
+            ? BML::Behavior::Physicalize::Ball(
                 definition, VxVector(0.0f, 0.0f, 0.0f), info.m_Radius)
-            : BML::Virtools::Presets::PhysicalizeConvex(definition);
+            : BML::Behavior::Physicalize::Convex(definition);
         spec.TargetShared(CKPGUID_3DENTITY, physicalize->GetTargetParameter());
         for (int i = 0; i < 11; ++i) {
-            spec.Input(BML::Virtools::SlotSelector::At(
-                           BML::Virtools::BehaviorSlotKind::InputParameter, i),
-                       BML::Virtools::ParameterValue::SharedSource(
+            spec.Input(BML::Behavior::Slot::At(
+                           BML::Behavior::SlotKind::InputParameter, i),
+                       BML::Behavior::Value::SharedSource(
                            physicalize->GetInputParameter(i)));
         }
         if (info.m_Radius > 0) {
-            // The radius remains the preset's literal; the position follows the graph input.
+            // The radius remains literal; the position follows the graph input.
         } else {
-            spec.Input(BML::Virtools::SlotSelector::At(
-                           BML::Virtools::BehaviorSlotKind::InputParameter, 11, CKPGUID_MESH),
-                       BML::Virtools::ParameterValue::DirectSource(op->GetOutputParameter(0)));
+            spec.Input(BML::Behavior::Slot::At(
+                           BML::Behavior::SlotKind::InputParameter, 11, CKPGUID_MESH),
+                       BML::Behavior::Value::DirectSource(op->GetOutputParameter(0)));
         }
         auto *context = dynamic_cast<ModContext *>(m_BML);
-        BML::Virtools::GraphBlockResult created = context
-            ? context->GetBehaviorRuntime().AddToGraph(graph, spec)
-            : BML::Virtools::GraphBlockResult{};
-        newPhy = created ? created.Behavior : nullptr;
+        BML::Behavior::AttachResult created = context
+            ? context->Behaviors().AddToGraph(graph, spec)
+            : BML::Behavior::AttachResult{};
+        newPhy = created ? created.Block : nullptr;
 
         if (!newPhy) {
             GetLogger()->Error("Cannot add the Physicalize block for ball type %s", info.m_Name.c_str());

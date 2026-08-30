@@ -12,7 +12,7 @@
 #include "BML/TypeConvert.h"
 
 #include "Mods/BMLMod.h"
-#include "Virtools/CKIdentityRegistry.h"
+#include "Api/ObjectRefs.h"
 #include "Logging/Logger.h"
 #include "Loader/ModContext.h"
 
@@ -20,13 +20,13 @@ namespace {
 
 class BuiltinCapabilities {
 public:
-    BuiltinCapabilities(BMLMod &mod, BML::CKIdentityRegistry &identities)
-        : m_Mod(mod), m_Identities(identities) {}
+    BuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects)
+        : m_Mod(mod), m_Objects(objects) {}
 
     ModContext *Context() const { return GetContext(); }
 
     int ReadSceneObject(BML_ObjectRef reference, BML_SceneObjectInfo &out) {
-        CKObject *object = m_Identities.Resolve(reference);
+        CKObject *object = m_Objects.Resolve(reference);
         if (!object)
             return BML_ERROR_OBJECT_INVALID;
         out.Id = static_cast<int>(object->GetID());
@@ -38,7 +38,7 @@ public:
     }
 
     int ReadSceneEntityTransform(BML_ObjectRef reference, BML_SceneEntityTransform &out) {
-        auto *entity = dynamic_cast<CK3dEntity *>(m_Identities.Resolve(reference));
+        auto *entity = dynamic_cast<CK3dEntity *>(m_Objects.Resolve(reference));
         if (!entity)
             return BML_ERROR_OBJECT_INVALID;
         VxVector position, scale;
@@ -46,7 +46,7 @@ public:
         entity->GetScale(&scale);
         out.Position = BML::Convert::ToVec3(position);
         out.Scale = BML::Convert::ToVec3(scale);
-        out.Parent = m_Identities.Make(entity->GetParent());
+        out.Parent = m_Objects.Issue(entity->GetParent());
         out.ChildCount = entity->GetChildrenCount();
         return BML_OK;
     }
@@ -55,7 +55,7 @@ public:
         ModContext *context = GetContext();
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
-        out = m_Identities.Make(context->GetCKContext()->GetObjectByName(const_cast<char *>(name)));
+        out = m_Objects.Issue(context->GetCKContext()->GetObjectByName(const_cast<char *>(name)));
         return BML_OK;
     }
 
@@ -63,7 +63,7 @@ public:
         ModContext *context = GetContext();
         if (!context || !context->GetCKContext())
             return BML_ERROR_UNAVAILABLE;
-        out = m_Identities.Make(context->GetCKContext()->GetObjectByNameAndClass(
+        out = m_Objects.Issue(context->GetCKContext()->GetObjectByNameAndClass(
             const_cast<char *>(name), static_cast<CK_CLASSID>(classId)));
         return BML_OK;
     }
@@ -78,7 +78,7 @@ public:
             !ReadValue(array, 0, 5, points))
             return BML_ERROR_UNAVAILABLE;
         out.Id = id;
-        out.ActiveBall = m_Identities.Make(ReadObject(array, 0, 1));
+        out.ActiveBall = m_Objects.Issue(ReadObject(array, 0, 1));
         out.ResetMatrix = BML::Convert::ToMat4(matrix);
         out.Points = points;
         return BML_OK;
@@ -135,7 +135,7 @@ public:
         if (!ReadMatrix(array, row, 0, matrix))
             return BML_ERROR_UNAVAILABLE;
         out.Matrix = BML::Convert::ToMat4(matrix);
-        out.Object = m_Identities.Make(ReadObject(array, row, 1));
+        out.Object = m_Objects.Issue(ReadObject(array, row, 1));
         return BML_OK;
     }
 
@@ -150,7 +150,7 @@ public:
         const int row = RowIndex(array, index);
         if (row < 0)
             return BML_ERROR_NOT_FOUND;
-        out.Object = m_Identities.Make(ReadObject(array, row, 0));
+        out.Object = m_Objects.Issue(ReadObject(array, row, 0));
         return BML_OK;
     }
 
@@ -268,7 +268,7 @@ private:
     }
 
     BMLMod &m_Mod;
-    BML::CKIdentityRegistry &m_Identities;
+    BML::ObjectRefs &m_Objects;
 };
 
 std::unordered_map<BMLMod *, std::unique_ptr<BuiltinCapabilities>> g_Capabilities;
@@ -284,11 +284,11 @@ BuiltinCapabilities *Find(ModContext &context) {
 
 } // namespace
 
-void RegisterBuiltinCapabilities(BMLMod &mod, BML::CKIdentityRegistry &identities,
+void RegisterBuiltinCapabilities(BMLMod &mod, BML::ObjectRefs &objects,
                                  ILogger *logger) {
     UnregisterBuiltinCapabilities(mod);
     try {
-        g_Capabilities.emplace(&mod, std::make_unique<BuiltinCapabilities>(mod, identities));
+        g_Capabilities.emplace(&mod, std::make_unique<BuiltinCapabilities>(mod, objects));
     } catch (const std::bad_alloc &) {
         if (logger)
             logger->Warn("Failed to register the built-in capabilities: %s",
