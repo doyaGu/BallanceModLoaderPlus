@@ -900,8 +900,11 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
 
     const bool literalValue = value.Kind() != ValueKind::DirectSource &&
                               value.Kind() != ValueKind::SharedSource;
-    if (literalValue && oldOwned && oldDirect && oldDirect->GetGUID() == input->GetGUID())
+    if (literalValue && oldOwned && oldDirect &&
+        oldDirect->GetGUID() == input->GetGUID() &&
+        SourceReferenceCount(oldDirect) == 1) {
         return ApplyValue(oldDirect, value);
+    }
 
     if (value.Kind() == ValueKind::DirectSource) {
         CKObject *sourceObject = value.ParameterSourceId()
@@ -944,7 +947,7 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
         record.OwnedSources.push_back(CaptureObject(literal));
     }
 
-    if (oldOwned) {
+    if (oldOwned && !IsSourceReferenced(oldDirect)) {
         QueueSourceDestroy(oldRef);
         record.OwnedSources.erase(owned);
     }
@@ -1198,7 +1201,8 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
     auto previousLiteral = std::find_if(
         record.OwnedSources.begin(), record.OwnedSources.end(),
         [&](ObjectStamp candidate) { return candidate == previousRef; });
-    if (previousLiteral != record.OwnedSources.end()) {
+    if (previousLiteral != record.OwnedSources.end() &&
+        !IsSourceReferenced(previousSource)) {
         QueueSourceDestroy(*previousLiteral);
         record.OwnedSources.erase(previousLiteral);
     }
@@ -1211,7 +1215,8 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
                 ? static_cast<CKParameterOperation *>(object) : nullptr;
             return candidateOperation && candidateOperation->GetOutParameter() == previousSource;
         });
-    if (previousOperation != record.OwnedOperations.end()) {
+    if (previousOperation != record.OwnedOperations.end() &&
+        !IsSourceReferenced(previousSource)) {
         DetachOperation(*previousOperation);
         QueueOperationDestroy(std::move(*previousOperation));
         record.OwnedOperations.erase(previousOperation);
@@ -1483,24 +1488,39 @@ Status Runtime::ApplyBindings(CKBehavior *behavior, const Spec &spec,
     return {};
 }
 
+int Runtime::SourceReferenceCount(CKParameter *source,
+                                  CKBehavior *ignoredBehavior) const {
+    if (!m_Context || !source || source->IsToBeDeleted())
+        return 0;
+
+    int references = 0;
+    const XObjectPointerArray &inputs =
+        m_Context->GetObjectListByType(CKCID_PARAMETERIN, TRUE);
+    for (XObjectPointerArray::ConstIterator it = inputs.Begin();
+         it != inputs.End(); ++it) {
+        CKObject *object = *it;
+        auto *input = object && !object->IsToBeDeleted()
+            ? static_cast<CKParameterIn *>(object) : nullptr;
+        if (input && (!ignoredBehavior || input->GetOwner() != ignoredBehavior) &&
+            input->GetRealSource() == source) {
+            ++references;
+        }
+    }
+    return references;
+}
+
+bool Runtime::IsSourceReferenced(CKParameter *source) const {
+    return SourceReferenceCount(source) != 0;
+}
+
 void Runtime::PruneOwnedSources(CKBehavior *behavior, Record &record) {
     if (!behavior)
         return;
-    std::vector<ObjectStamp> referenced;
-    if (CKParameterIn *target = behavior->GetTargetParameter()) {
-        if (CKParameter *source = target->GetDirectSource())
-            referenced.push_back(CaptureObject(source));
-    }
-    for (int i = 0; i < behavior->GetInputParameterCount(); ++i) {
-        CKParameterIn *input = behavior->GetInputParameter(i);
-        if (input) {
-            if (CKParameter *source = input->GetDirectSource())
-                referenced.push_back(CaptureObject(source));
-        }
-    }
     for (auto it = record.OwnedSources.begin(); it != record.OwnedSources.end();) {
-        const bool used = std::any_of(referenced.begin(), referenced.end(),
-                                      [&](ObjectStamp ref) { return ref == *it; });
+        CKObject *object = ResolveObject(*it);
+        auto *source = object && CKIsChildClassOf(object, CKCID_PARAMETER)
+            ? static_cast<CKParameter *>(object) : nullptr;
+        const bool used = source && IsSourceReferenced(source);
         if (used) {
             ++it;
         } else {
@@ -1513,25 +1533,13 @@ void Runtime::PruneOwnedSources(CKBehavior *behavior, Record &record) {
 void Runtime::PruneOwnedOperations(CKBehavior *behavior, Record &record) {
     if (!behavior)
         return;
-    std::vector<CKParameter *> referenced;
-    if (CKParameterIn *target = behavior->GetTargetParameter()) {
-        if (CKParameter *source = target->GetDirectSource())
-            referenced.push_back(source);
-    }
-    for (int i = 0; i < behavior->GetInputParameterCount(); ++i) {
-        if (CKParameterIn *input = behavior->GetInputParameter(i)) {
-            if (CKParameter *source = input->GetDirectSource())
-                referenced.push_back(source);
-        }
-    }
     for (auto it = record.OwnedOperations.begin();
          it != record.OwnedOperations.end();) {
         CKObject *object = ResolveObject(it->Operation);
         auto *operation = object && CKIsChildClassOf(object, CKCID_PARAMETEROPERATION)
             ? static_cast<CKParameterOperation *>(object) : nullptr;
         const bool used = operation &&
-            std::find(referenced.begin(), referenced.end(), operation->GetOutParameter()) !=
-                referenced.end();
+            IsSourceReferenced(operation->GetOutParameter());
         if (used) {
             ++it;
         } else {
@@ -1539,6 +1547,15 @@ void Runtime::PruneOwnedOperations(CKBehavior *behavior, Record &record) {
             QueueOperationDestroy(std::move(*it));
             it = record.OwnedOperations.erase(it);
         }
+    }
+}
+
+void Runtime::PruneOwnedBindings() {
+    for (auto &[instanceId, record] : m_Records) {
+        (void) instanceId;
+        CKBehavior *behavior = ResolveBehavior(record);
+        PruneOwnedSources(behavior, record);
+        PruneOwnedOperations(behavior, record);
     }
 }
 
@@ -2006,6 +2023,7 @@ void Runtime::ProcessFrame() {
         return;
     DrainDeferredReleases();
     ProcessTasks(&m_Context->m_BehaviorContext);
+    PruneOwnedBindings();
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (pending.Frames > 0)
             --pending.Frames;
@@ -2262,8 +2280,6 @@ void Runtime::DestroyReady(bool force) {
                 ? static_cast<CKBehavior *>(object) : nullptr;
         };
         CKBehavior *behavior = resolveBehavior();
-        std::vector<ObjectStamp> sources = std::move(it->Sources);
-        it->Sources.clear();
         if (behavior && it->DestroyBehavior) {
             behavior->Activate(FALSE, FALSE);
             if (it->Reset)
@@ -2276,6 +2292,45 @@ void Runtime::DestroyReady(bool force) {
                 (void) CallCallback(behavior, CKM_BEHAVIORDELETE, nullptr);
         }
         behavior = resolveBehavior();
+
+        PendingDestroy retained;
+        retained.Frames = 1;
+        if (!force) {
+            CKBehavior *ignoredBehavior = it->DestroyBehavior ? behavior : nullptr;
+            for (auto source = it->Sources.begin(); source != it->Sources.end();) {
+                CKObject *object = ResolveObject(*source);
+                auto *parameter = object && CKIsChildClassOf(object, CKCID_PARAMETER)
+                    ? static_cast<CKParameter *>(object) : nullptr;
+                if (parameter &&
+                    SourceReferenceCount(parameter, ignoredBehavior) != 0) {
+                    retained.Sources.push_back(*source);
+                    source = it->Sources.erase(source);
+                } else {
+                    ++source;
+                }
+            }
+            for (auto operation = it->Operations.begin();
+                 operation != it->Operations.end();) {
+                CKObject *object = ResolveObject(operation->Operation);
+                auto *parameterOperation = object &&
+                    CKIsChildClassOf(object, CKCID_PARAMETEROPERATION)
+                    ? static_cast<CKParameterOperation *>(object) : nullptr;
+                const bool referenced = parameterOperation &&
+                    SourceReferenceCount(parameterOperation->GetOutParameter(),
+                                         ignoredBehavior) != 0;
+                if (referenced) {
+                    if (it->DestroyBehavior)
+                        DetachOperation(*operation);
+                    retained.Operations.push_back(std::move(*operation));
+                    operation = it->Operations.erase(operation);
+                } else {
+                    ++operation;
+                }
+            }
+        }
+
+        std::vector<ObjectStamp> sources = std::move(it->Sources);
+        it->Sources.clear();
         for (OwnedOperation &pendingOperation : it->Operations) {
             sources.insert(sources.end(), pendingOperation.Sources.begin(),
                            pendingOperation.Sources.end());
@@ -2318,6 +2373,8 @@ void Runtime::DestroyReady(bool force) {
                 m_Context->DestroyObject(object);
         }
         it = m_PendingDestroy.erase(it);
+        if (!retained.Sources.empty() || !retained.Operations.empty())
+            m_PendingDestroy.push_back(std::move(retained));
     }
     m_Destroying = false;
     if (m_ForceDestroyPending)
