@@ -2089,23 +2089,28 @@ API 文件。</p>
 </thead>
 <tbody>
 <tr>
-<td>插件入口或引擎拦截</td>
-<td><code>src/BML.cpp</code>、<code>src/HookBlock.cpp</code>、<code>src/*Hook.cpp</code></td>
-<td>Win32 构建，以及覆盖该回调或 Hook 的 Player 冒烟测试</td>
+<td>插件入口、Hook Block 注册或引擎拦截</td>
+<td><code>src/BML.cpp</code>、<code>src/Behavior/HookBlock.*</code>、<code>src/Hooks/</code></td>
+<td>Win32 构建，以及覆盖该回调或 Hook 的真实 Player 场景</td>
+</tr>
+<tr>
+<td>Building Block Prototype 配置、执行或行为图插入</td>
+<td><code>src/Behavior/Runtime.*</code>、对应的 <code>src/Behavior/&lt;BuildingBlock&gt;.*</code> 模块、<code>src/Api/ExecuteBB.cpp</code></td>
+<td>依赖测试、导出 ABI 测试、Win32 构建和受影响的 Player 测试</td>
 </tr>
 <tr>
 <td>CK 生命周期和回调时序</td>
-<td><code>src/ModManager.*</code></td>
+<td><code>src/Loader/ModManager.*</code></td>
 <td>定向生命周期测试和 Player 冒烟测试</td>
 </tr>
 <tr>
 <td>Mod 发现、依赖顺序、服务或关闭</td>
-<td><code>src/ModContext.*</code></td>
+<td><code>src/Loader/ModContext.*</code></td>
 <td>对应 Loader/依赖测试和原生/脚本冒烟覆盖</td>
 </tr>
 <tr>
 <td>HUD、菜单、命令栏或内建行为</td>
-<td><code>src/BMLMod.*</code>、<code>src/Overlay.*</code>、<code>src/Bui.cpp</code>、<code>src/Gui/</code></td>
+<td><code>src/Mods/BMLMod.*</code>、<code>src/HUD/</code>、<code>src/Console/</code>、<code>src/CustomMaps/</code>、<code>src/Gameplay/</code>、<code>src/UI/</code></td>
 <td>定向 UI/服务测试和 Player 画面/输入冒烟测试</td>
 </tr>
 <tr>
@@ -2115,13 +2120,18 @@ API 文件。</p>
 </tr>
 <tr>
 <td>IMC 运行时</td>
-<td><code>src/ImcApi.cpp</code>、<code>src/ImcRuntime.*</code></td>
+<td><code>src/Imc/ImcApi.cpp</code>、<code>src/Imc/ImcRuntime.*</code></td>
 <td>IMC 运行时/兼容性测试和原生 IMC 冒烟测试</td>
 </tr>
 <tr>
 <td>内建 interface struct 或其背后的读取实现</td>
-<td><code>include/BML/Interface.h</code>、<code>src/Interfaces.cpp</code>、<code>src/BuiltinCapabilities.*</code></td>
+<td><code>include/BML/Interface.h</code>、<code>src/Api/Interfaces.cpp</code>、<code>src/Api/BuiltinCapabilities.*</code></td>
 <td>定向 interface 测试、C ABI 编译测试和原生冒烟测试</td>
+</tr>
+<tr>
+<td>C/脚本 seam 的不透明 CK 对象引用</td>
+<td><code>include/BML/Types.h</code>、<code>src/Api/ObjectRefs.*</code></td>
+<td><code>ObjectRefsTest</code>、C ABI/IMC 编译测试；删除时序改变时再做 Player 生命周期测试</td>
 </tr>
 <tr>
 <td>IMC 代码生成器或其示例接口</td>

@@ -1904,7 +1904,7 @@ struct；要把接口发布给别的 Mod，走 IMC。</p>
 <p><code>IBML</code>、<code>IMod</code>、<code>IMessageReceiver</code>、<code>IConfig</code>、<code>ICommand</code> 都是带虚函数的 C++ 类，
 而 Mod 是跨 DLL 边界调用它们的。虚函数调用跳转到的槽位号在 Mod 编译时就已固定，
 因此新增、删除或重排任何一个虚函数都会移动它之后的全部槽位，已经构建好的
-<code>.bmodp</code> 会调到错误的函数上。Loader 用 <code>src/ModContext.cpp</code> 里的静态断言钉住这些
+<code>.bmodp</code> 会调到错误的函数上。Loader 用 <code>src/Loader/ModContext.cpp</code> 里的静态断言钉住这些
 槽位号，并在每次构建时把导出符号集与
 <code>tests/abi/legacy-native-exports-x86-msvc.txt</code> 比对。所以这些接口在当前发布线上是
 冻结的：不能再往里加东西。</p>

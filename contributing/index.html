@@ -1198,23 +1198,28 @@ specified.</p>
 </thead>
 <tbody>
 <tr>
-<td>Plugin entry or engine interception</td>
-<td><code>src/BML.cpp</code>, <code>src/HookBlock.cpp</code>, <code>src/*Hook.cpp</code></td>
-<td>Win32 build plus Player smoke test for the affected callback or hook</td>
+<td>Plugin entry, Hook Block registration, or engine interception</td>
+<td><code>src/BML.cpp</code>, <code>src/Behavior/HookBlock.*</code>, <code>src/Hooks/</code></td>
+<td>Win32 build plus the affected real Player scenario</td>
+</tr>
+<tr>
+<td>Building Block Prototype configuration, execution, or graph insertion</td>
+<td><code>src/Behavior/Runtime.*</code>, the affected <code>src/Behavior/&lt;BuildingBlock&gt;.*</code> module, <code>src/Api/ExecuteBB.cpp</code></td>
+<td>Dependency test, exported ABI test, Win32 build, and affected Player test</td>
 </tr>
 <tr>
 <td>CK lifecycle and callback timing</td>
-<td><code>src/ModManager.*</code></td>
+<td><code>src/Loader/ModManager.*</code></td>
 <td>Focused lifecycle tests and Player smoke test</td>
 </tr>
 <tr>
 <td>Mod discovery, dependency order, services, or shutdown</td>
-<td><code>src/ModContext.*</code></td>
+<td><code>src/Loader/ModContext.*</code></td>
 <td>Relevant loader/dependency tests and native/script smoke coverage</td>
 </tr>
 <tr>
 <td>HUD, menus, command bar, or built-in behavior</td>
-<td><code>src/BMLMod.*</code>, <code>src/Overlay.*</code>, <code>src/Bui.cpp</code>, <code>src/Gui/</code></td>
+<td><code>src/Mods/BMLMod.*</code>, <code>src/HUD/</code>, <code>src/Console/</code>, <code>src/CustomMaps/</code>, <code>src/Gameplay/</code>, <code>src/UI/</code></td>
 <td>Focused UI/service tests and Player visual/input smoke test</td>
 </tr>
 <tr>
@@ -1224,13 +1229,18 @@ specified.</p>
 </tr>
 <tr>
 <td>IMC runtime</td>
-<td><code>src/ImcApi.cpp</code>, <code>src/ImcRuntime.*</code></td>
+<td><code>src/Imc/ImcApi.cpp</code>, <code>src/Imc/ImcRuntime.*</code></td>
 <td>IMC runtime/compatibility tests and native IMC smoke test</td>
 </tr>
 <tr>
 <td>Built-in interface struct or the reads behind it</td>
-<td><code>include/BML/Interface.h</code>, <code>src/Interfaces.cpp</code>, <code>src/BuiltinCapabilities.*</code></td>
+<td><code>include/BML/Interface.h</code>, <code>src/Api/Interfaces.cpp</code>, <code>src/Api/BuiltinCapabilities.*</code></td>
 <td>Focused interface tests, the C ABI compile test, and native smoke test</td>
+</tr>
+<tr>
+<td>Opaque CK object references at the C/script seam</td>
+<td><code>include/BML/Types.h</code>, <code>src/Api/ObjectRefs.*</code></td>
+<td><code>ObjectRefsTest</code>, C ABI/IMC compile tests, and a Player lifecycle test when deletion timing changes</td>
 </tr>
 <tr>
 <td>IMC code generator or its sample interface</td>
