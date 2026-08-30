@@ -2,14 +2,14 @@
 
 #include "Loader/ModContext.h"
 #include "UI/GameFontCatalog.h"
-#include "Virtools/BehaviorGraphRecipes.h"
-#include "Virtools/VirtoolsActions.h"
+#include "Virtools/BallanceBehaviorPresets.h"
+#include "Virtools/LegacyExecuteBBAdapter.h"
 
 namespace {
 
-BML::VirtoolsActions *GetActions() {
+BML::Virtools::LegacyExecuteBBAdapter *GetAdapter() {
     ModContext *context = BML_GetModContext();
-    return context ? &context->GetVirtoolsActions() : nullptr;
+    return context ? &context->GetLegacyExecuteBB() : nullptr;
 }
 
 BML::GameFont ToGameFont(ExecuteBB::FontType font) {
@@ -25,12 +25,12 @@ int ResolveFont(ExecuteBB::FontType font) {
     return context ? context->GetGameFonts().Resolve(ToGameFont(font)) : static_cast<int>(font);
 }
 
-BML::BehaviorGraphRecipes::PhysicalizeDefinition MakePhysicalizeDefinition(
+BML::Virtools::Presets::PhysicalizeOptions MakePhysicalizeOptions(
     CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
     const char *collisionGroup, CKBOOL startFrozen, CKBOOL enableCollision,
     CKBOOL calculateMassCenter, float linearDamping, float rotationalDamping,
     const char *collisionSurface, VxVector massCenter) {
-    BML::BehaviorGraphRecipes::PhysicalizeDefinition definition;
+    BML::Virtools::Presets::PhysicalizeOptions definition;
     definition.Target = target;
     definition.Fixed = fixed;
     definition.Friction = friction;
@@ -47,10 +47,10 @@ BML::BehaviorGraphRecipes::PhysicalizeDefinition MakePhysicalizeDefinition(
     return definition;
 }
 
-BML::BehaviorGraphRecipes::ForceDefinition MakeForceDefinition(
+BML::Virtools::Presets::ForceOptions MakeForceOptions(
     CK3dEntity *target, VxVector position, CK3dEntity *positionReference,
     VxVector direction, CK3dEntity *directionReference, float magnitude) {
-    BML::BehaviorGraphRecipes::ForceDefinition definition;
+    BML::Virtools::Presets::ForceOptions definition;
     definition.Target = target;
     definition.Position = position;
     definition.PositionReference = positionReference;
@@ -60,10 +60,10 @@ BML::BehaviorGraphRecipes::ForceDefinition MakeForceDefinition(
     return definition;
 }
 
-BML::BehaviorGraphRecipes::ObjectLoadDefinition MakeObjectLoadDefinition(
+BML::Virtools::Presets::ObjectLoadOptions MakeObjectLoadOptions(
     const char *file, bool rename, const char *masterName, CK_CLASSID filter,
     CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic) {
-    BML::BehaviorGraphRecipes::ObjectLoadDefinition definition;
+    BML::Virtools::Presets::ObjectLoadOptions definition;
     definition.File = file ? file : "";
     definition.Rename = rename;
     definition.MasterName = masterName ? masterName : "";
@@ -83,77 +83,79 @@ void PhysicalizeConvex(CK3dEntity *target, CKBOOL fixed, float friction, float e
                        const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                        float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                        CKMesh *mesh) {
-    if (BML::VirtoolsActions *actions = GetActions()) {
-        actions->PhysicalizeConvex(MakePhysicalizeDefinition(
-            target, fixed, friction, elasticity, mass, collGroup, startFrozen, enableColl,
-            calcMassCenter, linearDamp, rotDamp, collSurface, massCenter), mesh);
-    }
+    if (auto *adapter = GetAdapter())
+        adapter->Run(target, BML::Virtools::Presets::PhysicalizeConvex(
+            MakePhysicalizeOptions(target, fixed, friction, elasticity, mass, collGroup,
+                                   startFrozen, enableColl, calcMassCenter, linearDamp,
+                                   rotDamp, collSurface, massCenter), mesh));
 }
 
 void PhysicalizeBall(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
                      const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                      float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                      VxVector ballCenter, float ballRadius) {
-    if (BML::VirtoolsActions *actions = GetActions()) {
-        actions->PhysicalizeBall(MakePhysicalizeDefinition(
-            target, fixed, friction, elasticity, mass, collGroup, startFrozen, enableColl,
-            calcMassCenter, linearDamp, rotDamp, collSurface, massCenter), ballCenter, ballRadius);
-    }
+    if (auto *adapter = GetAdapter())
+        adapter->Run(target, BML::Virtools::Presets::PhysicalizeBall(
+            MakePhysicalizeOptions(target, fixed, friction, elasticity, mass, collGroup,
+                                   startFrozen, enableColl, calcMassCenter, linearDamp,
+                                   rotDamp, collSurface, massCenter), ballCenter, ballRadius));
 }
 
 void PhysicalizeConcave(CK3dEntity *target, CKBOOL fixed, float friction, float elasticity, float mass,
                         const char *collGroup, CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                         float linearDamp, float rotDamp, const char *collSurface, VxVector massCenter,
                         CKMesh *mesh) {
-    if (BML::VirtoolsActions *actions = GetActions()) {
-        actions->PhysicalizeConcave(MakePhysicalizeDefinition(
-            target, fixed, friction, elasticity, mass, collGroup, startFrozen, enableColl,
-            calcMassCenter, linearDamp, rotDamp, collSurface, massCenter), mesh);
-    }
+    if (auto *adapter = GetAdapter())
+        adapter->Run(target, BML::Virtools::Presets::PhysicalizeConcave(
+            MakePhysicalizeOptions(target, fixed, friction, elasticity, mass, collGroup,
+                                   startFrozen, enableColl, calcMassCenter, linearDamp,
+                                   rotDamp, collSurface, massCenter), mesh));
 }
 
 void Unphysicalize(CK3dEntity *target) {
-    if (BML::VirtoolsActions *actions = GetActions())
-        actions->Unphysicalize(target);
+    if (auto *adapter = GetAdapter())
+        adapter->Run(target, BML::Virtools::Presets::PhysicalizeConvex(
+            MakePhysicalizeOptions(target, FALSE, 0.7f, 0.4f, 1.0f, "", FALSE,
+                                   TRUE, FALSE, 0.1f, 0.1f, "", VxVector())), 1);
 }
 
 void SetPhysicsForce(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
                      VxVector direction, CK3dEntity *directionRef, float force) {
-    if (BML::VirtoolsActions *actions = GetActions())
-        actions->SetPhysicsForce(MakeForceDefinition(target, position, posRef, direction, directionRef, force));
+    if (auto *adapter = GetAdapter())
+        adapter->SetPhysicsForce(MakeForceOptions(target, position, posRef, direction, directionRef, force));
 }
 
 void UnsetPhysicsForce(CK3dEntity *target) {
-    if (BML::VirtoolsActions *actions = GetActions())
-        actions->UnsetPhysicsForce(target);
+    if (auto *adapter = GetAdapter())
+        adapter->UnsetPhysicsForce(target);
 }
 
 void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
                     VxVector direction, CK3dEntity *dirRef, float impulse) {
-    if (BML::VirtoolsActions *actions = GetActions())
-        actions->PhysicsImpulse(MakeForceDefinition(target, position, posRef, direction, dirRef, impulse));
+    if (auto *adapter = GetAdapter())
+        adapter->Run(target, BML::Virtools::Presets::PhysicsImpulse(
+            MakeForceOptions(target, position, posRef, direction, dirRef, impulse)));
 }
 
 void PhysicsWakeUp(CK3dEntity *target) {
-    if (BML::VirtoolsActions *actions = GetActions())
-        actions->PhysicsWakeUp(target);
+    if (auto *adapter = GetAdapter())
+        adapter->Run(target, BML::Virtools::Presets::PhysicsWakeUp(target));
 }
 
 std::pair<XObjectArray *, CKObject *> ObjectLoad(const char *file, bool rename, const char *mastername,
                                                   CK_CLASSID filter, CKBOOL addToScene, CKBOOL reuseMesh,
                                                   CKBOOL reuseMtl, CKBOOL dynamic) {
-    BML::VirtoolsActions *actions = GetActions();
-    return actions
-        ? BML::LegacyVirtoolsActions::LoadObjects(
-              *actions, MakeObjectLoadDefinition(file, rename, mastername, filter,
-                                                 addToScene, reuseMesh, reuseMtl, dynamic))
+    auto *adapter = GetAdapter();
+    return adapter
+        ? adapter->LoadObjects(MakeObjectLoadOptions(file, rename, mastername, filter,
+                                                    addToScene, reuseMesh, reuseMtl, dynamic))
         : std::make_pair(nullptr, nullptr);
 }
 
 CKBehavior *Create2DText(CKBehavior *script, CK2dEntity *target, FontType font, const char *text,
                          int align, VxRect margin, Vx2DVector offset, Vx2DVector pindent,
                          CKMaterial *bgmat, float caretsize, CKMaterial *caretmat, int flags) {
-    BML::BehaviorGraphRecipes::Text2DDefinition definition;
+    BML::Virtools::Presets::Text2DOptions definition;
     definition.Target = target;
     definition.FontIndex = ResolveFont(font);
     definition.Text = text ? text : "";
@@ -165,7 +167,8 @@ CKBehavior *Create2DText(CKBehavior *script, CK2dEntity *target, FontType font, 
     definition.CaretSize = caretsize;
     definition.CaretMaterial = caretmat;
     definition.Flags = flags;
-    return BML::BehaviorGraphRecipes::Add2DText(script, definition);
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::Text2D(definition)) : nullptr;
 }
 
 CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target, CKBOOL fixed,
@@ -173,10 +176,11 @@ CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target, CKBO
                                     CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                                     float linearDamp, float rotDamp, const char *collSurface,
                                     VxVector massCenter, CKMesh *mesh) {
-    return BML::BehaviorGraphRecipes::AddPhysicalizeConvex(
-        script, MakePhysicalizeDefinition(target, fixed, friction, elasticity, mass, collGroup,
-                                          startFrozen, enableColl, calcMassCenter, linearDamp,
-                                          rotDamp, collSurface, massCenter), mesh);
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::PhysicalizeConvex(
+        MakePhysicalizeOptions(target, fixed, friction, elasticity, mass, collGroup,
+                               startFrozen, enableColl, calcMassCenter, linearDamp,
+                               rotDamp, collSurface, massCenter), mesh)) : nullptr;
 }
 
 CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target, CKBOOL fixed,
@@ -184,10 +188,11 @@ CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target, CKBOOL
                                   CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                                   float linearDamp, float rotDamp, const char *collSurface,
                                   VxVector massCenter, VxVector ballCenter, float ballRadius) {
-    return BML::BehaviorGraphRecipes::AddPhysicalizeBall(
-        script, MakePhysicalizeDefinition(target, fixed, friction, elasticity, mass, collGroup,
-                                          startFrozen, enableColl, calcMassCenter, linearDamp,
-                                          rotDamp, collSurface, massCenter), ballCenter, ballRadius);
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::PhysicalizeBall(
+        MakePhysicalizeOptions(target, fixed, friction, elasticity, mass, collGroup,
+                               startFrozen, enableColl, calcMassCenter, linearDamp,
+                               rotDamp, collSurface, massCenter), ballCenter, ballRadius)) : nullptr;
 }
 
 CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKBOOL fixed,
@@ -195,45 +200,53 @@ CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKB
                                      CKBOOL startFrozen, CKBOOL enableColl, CKBOOL calcMassCenter,
                                      float linearDamp, float rotDamp, const char *collSurface,
                                      VxVector massCenter, CKMesh *mesh) {
-    return BML::BehaviorGraphRecipes::AddPhysicalizeConcave(
-        script, MakePhysicalizeDefinition(target, fixed, friction, elasticity, mass, collGroup,
-                                          startFrozen, enableColl, calcMassCenter, linearDamp,
-                                          rotDamp, collSurface, massCenter), mesh);
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::PhysicalizeConcave(
+        MakePhysicalizeOptions(target, fixed, friction, elasticity, mass, collGroup,
+                               startFrozen, enableColl, calcMassCenter, linearDamp,
+                               rotDamp, collSurface, massCenter), mesh)) : nullptr;
 }
 
 CKBehavior *CreateSetPhysicsForce(CKBehavior *script, CK3dEntity *target, VxVector position,
                                   CK3dEntity *posRef, VxVector direction,
                                   CK3dEntity *directionRef, float force) {
-    return BML::BehaviorGraphRecipes::AddPhysicsForce(
-        script, MakeForceDefinition(target, position, posRef, direction, directionRef, force));
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::PhysicsForce(
+        MakeForceOptions(target, position, posRef, direction, directionRef, force))) : nullptr;
 }
 
 CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target, VxVector position,
                                  CK3dEntity *posRef, VxVector direction, CK3dEntity *dirRef,
                                  float impulse) {
-    return BML::BehaviorGraphRecipes::AddPhysicsImpulse(
-        script, MakeForceDefinition(target, position, posRef, direction, dirRef, impulse));
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::PhysicsImpulse(
+        MakeForceOptions(target, position, posRef, direction, dirRef, impulse))) : nullptr;
 }
 
 CKBehavior *CreatePhysicsWakeUp(CKBehavior *script, CK3dEntity *target) {
-    return BML::BehaviorGraphRecipes::AddPhysicsWakeUp(script, target);
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::PhysicsWakeUp(target)) : nullptr;
 }
 
 CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file, const char *mastername,
                              CK_CLASSID filter, CKBOOL addToScene, CKBOOL reuseMesh,
                              CKBOOL reuseMtl, CKBOOL dynamic) {
-    return BML::BehaviorGraphRecipes::AddObjectLoad(
-        script, MakeObjectLoadDefinition(file, false, mastername, filter,
-                                         addToScene, reuseMesh, reuseMtl, dynamic));
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::ObjectLoad(
+        MakeObjectLoadOptions(file, false, mastername, filter,
+                              addToScene, reuseMesh, reuseMtl, dynamic))) : nullptr;
 }
 
 CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest) {
-    return BML::BehaviorGraphRecipes::AddSendMessage(script, msg, dest);
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::SendMessage(msg, dest)) : nullptr;
 }
 
 CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, void *arg,
                             int inCount, int outCount) {
-    return BML::BehaviorGraphRecipes::AddHookBlock(script, callback, arg, inCount, outCount);
+    auto *adapter = GetAdapter();
+    return adapter ? adapter->AddToGraph(script, BML::Virtools::Presets::Hook(
+        callback, arg, inCount, outCount)) : nullptr;
 }
 
 } // namespace ExecuteBB

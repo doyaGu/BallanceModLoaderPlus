@@ -175,7 +175,10 @@ CKRenderContext *BML_GetRenderContext() {
     return g_ModContext ? g_ModContext->GetRenderContext() : nullptr;
 }
 
-ModContext::ModContext(CKContext *context) : m_ObjectIdentities(context) {
+ModContext::ModContext(CKContext *context)
+    : m_ObjectIdentities(context), m_BehaviorRuntime(context, m_ObjectIdentities),
+      m_PhysicsForceSessions(m_BehaviorRuntime, m_ObjectIdentities),
+      m_LegacyExecuteBB(m_BehaviorRuntime, m_PhysicsForceSessions) {
     assert(context != nullptr);
     m_ImcRuntime.SetInvocationGate(&m_ModInvocationGate);
     m_CKContext = context;
@@ -272,7 +275,7 @@ void ModContext::Shutdown() {
     }
 
     m_ImcRuntime.Shutdown();
-    m_VirtoolsActions.Reset();
+    ResetVirtoolsWorld();
     m_GameFonts.Reset();
 
 #if BML_ENABLE_ANGELSCRIPT
@@ -312,6 +315,31 @@ void ModContext::Shutdown() {
     ShutdownLogger();
 
     ClearFlags(BML_INITED);
+}
+
+void ModContext::ResetVirtoolsWorld() {
+    // CKIdentityRegistry is deliberately last: the preceding owners need live
+    // identities to send native Shutdown/DETACH/DELETE events and release
+    // runtime-owned parameter sources.
+    m_LegacyExecuteBB.Reset();
+    m_PhysicsForceSessions.Reset();
+    m_BehaviorRuntime.ResetWorld();
+    m_ObjectIdentities.ResetWorld();
+}
+
+void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
+    // Sessions must still be able to resolve their native target state; the
+    // runtime must still be able to resolve owned blocks and parameter
+    // sources. Identity invalidation is therefore deliberately last.
+    m_PhysicsForceSessions.ObjectsToBeDeleted(ids, count);
+    m_BehaviorRuntime.ObjectsToBeDeleted(ids, count);
+    m_ObjectIdentities.Invalidate(ids, count);
+}
+
+void ModContext::ProcessVirtoolsFrame() {
+    m_PhysicsForceSessions.ProcessFrame();
+    m_BehaviorRuntime.ProcessFrame();
+    m_LegacyExecuteBB.ProcessFrame();
 }
 
 bool ModContext::LoadMods() {

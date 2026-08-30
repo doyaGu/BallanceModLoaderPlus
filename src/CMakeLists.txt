@@ -285,18 +285,22 @@ set(BML_HOOK_SOURCES
 )
 
 set(BML_VIRTOOLS_PRIVATE_HEADERS
-        Virtools/BehaviorGraphRecipes.h
+        Virtools/BallanceBehaviorPresets.h
+        Virtools/BehaviorRuntime.h
         Virtools/CKIdentityRegistry.h
-        Virtools/VirtoolsActions.h
+        Virtools/LegacyExecuteBBAdapter.h
+        Virtools/PhysicsForceSessions.h
 )
 
 set(BML_VIRTOOLS_SOURCES
-        Virtools/BehaviorGraphRecipes.cpp
+        Virtools/BallanceBehaviorPresets.cpp
+        Virtools/BehaviorRuntime.cpp
         Virtools/CKIdentityRegistry.cpp
         Virtools/ExecuteBB.cpp
+        Virtools/LegacyExecuteBBAdapter.cpp
+        Virtools/PhysicsForceSessions.cpp
         Virtools/HookBlock.cpp
         Virtools/ScriptHelper.cpp
-        Virtools/VirtoolsActions.cpp
 )
 
 set(BML_PRIVATE_HEADERS

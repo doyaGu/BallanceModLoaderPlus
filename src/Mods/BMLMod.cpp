@@ -13,7 +13,7 @@
 #include "Hooks/RenderHook.h"
 #include "UI/AnsiPalette.h"
 #include "UI/GameFontCatalog.h"
-#include "Virtools/BehaviorGraphRecipes.h"
+#include "Virtools/BallanceBehaviorPresets.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
 #include "Api/BuiltinCapabilities.h"
@@ -163,15 +163,6 @@ void BMLMod::OnLoad() {
     AnsiPalette::SetLoaderDirProvider([]() -> std::wstring {
         return BML_GetModContext()->GetDirectory(BML_DIR_LOADER);
     });
-
-    if (ModContext *context = GetRuntimeContext()) {
-        const BML::VirtoolsActionResult status =
-            context->GetVirtoolsActions().Bind(context->GetScriptByName("Level_Init"));
-        if (!status) {
-            GetLogger()->Error("Cannot bind Virtools Actions: %s",
-                               BML::DescribeVirtoolsActionError(status.Error));
-        }
-    }
 
     InitConfigs();
     ApplySettings(Startup);
@@ -624,11 +615,12 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     CreateLink(graph, down_sop, graph->GetOutput(4), 5);
     FindNextLink(script, graph, nullptr, 3, 0)->SetInBehaviorIO(graph->GetOutput(4));
 
-    CKBehavior *modsmenu = BML::BehaviorGraphRecipes::AddHookBlock(
-        script, [](const CKBehaviorContext *, void *) -> int {
+    BML::Virtools::GraphBlockResult hook = GetRuntimeContext()->GetBehaviorRuntime().AddToGraph(
+        script, BML::Virtools::Presets::Hook([](const CKBehaviorContext *, void *) -> int {
             BML_GetModContext()->OpenModsMenu();
             return CKBR_OK;
-        });
+        }));
+    CKBehavior *modsmenu = hook ? hook.Behavior : nullptr;
     CKBehavior *exit = FindFirstBB(script, "Exit", false, 1, 0);
     CreateLink(script, graph, modsmenu, 3, 0);
     CreateLink(script, modsmenu, exit, 0, 0);

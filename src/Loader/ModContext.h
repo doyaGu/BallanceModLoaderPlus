@@ -24,7 +24,9 @@
 #include "Loader/ModInvocationGate.h"
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
-#include "Virtools/VirtoolsActions.h"
+#include "Virtools/BehaviorRuntime.h"
+#include "Virtools/LegacyExecuteBBAdapter.h"
+#include "Virtools/PhysicsForceSessions.h"
 
 // The ids themselves are public, since BML_GetLoaderPath takes them. This name
 // stays for the loader's own call sites and for the script binding.
@@ -236,8 +238,13 @@ public:
 
     BML::GameSessionSnapshot ReadGameSession() const noexcept { return m_GameSession.Read(); }
     BML::CKIdentityRegistry &ObjectIdentities() noexcept { return m_ObjectIdentities; }
-    BML::VirtoolsActions &GetVirtoolsActions() noexcept { return m_VirtoolsActions; }
-    const BML::VirtoolsActions &GetVirtoolsActions() const noexcept { return m_VirtoolsActions; }
+    BML::Virtools::BehaviorRuntime &GetBehaviorRuntime() noexcept { return m_BehaviorRuntime; }
+    const BML::Virtools::BehaviorRuntime &GetBehaviorRuntime() const noexcept { return m_BehaviorRuntime; }
+    BML::Virtools::LegacyExecuteBBAdapter &GetLegacyExecuteBB() noexcept { return m_LegacyExecuteBB; }
+    BML::Virtools::PhysicsForceSessions &GetPhysicsForceSessions() noexcept { return m_PhysicsForceSessions; }
+    void VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count);
+    void ProcessVirtoolsFrame();
+    void ResetVirtoolsWorld();
     BML::GameFontCatalog &GetGameFonts() noexcept { return m_GameFonts; }
     const BML::GameFontCatalog &GetGameFonts() const noexcept { return m_GameFonts; }
     bool IsIngame() override { return ReadGameSession().IsInGame(); }
@@ -437,7 +444,9 @@ private:
     int m_Flags = 0;
     BML::GameSession m_GameSession;
     BML::CKIdentityRegistry m_ObjectIdentities;
-    BML::VirtoolsActions m_VirtoolsActions;
+    BML::Virtools::BehaviorRuntime m_BehaviorRuntime;
+    BML::Virtools::PhysicsForceSessions m_PhysicsForceSessions;
+    BML::Virtools::LegacyExecuteBBAdapter m_LegacyExecuteBB;
     BML::GameFontCatalog m_GameFonts;
 #if BML_ENABLE_ANGELSCRIPT
     bool m_AngelScriptExtensionRegistered = false;

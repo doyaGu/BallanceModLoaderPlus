@@ -7,7 +7,8 @@
 #include "BML/ILogger.h"
 #include "BML/IMessageReceiver.h"
 #include "BML/ScriptHelper.h"
-#include "Virtools/BehaviorGraphRecipes.h"
+#include "Loader/ModContext.h"
+#include "Virtools/BallanceBehaviorPresets.h"
 
 using namespace ScriptHelper;
 
@@ -23,7 +24,12 @@ int Dispatch(const CKBehaviorContext *, void *argument) {
 
 template<void (Receiver::*Method)()>
 CKBehavior *CreateEventHook(CKBehavior *script, Receiver &receiver) {
-    return BML::BehaviorGraphRecipes::AddHookBlock(script, &Dispatch<Method>, &receiver);
+    ModContext *context = BML_GetModContext();
+    if (!context)
+        return nullptr;
+    BML::Virtools::GraphBlockResult created = context->GetBehaviorRuntime().AddToGraph(
+        script, BML::Virtools::Presets::Hook(&Dispatch<Method>, &receiver));
+    return created ? created.Behavior : nullptr;
 }
 
 CKBehavior *Follow(CKBehavior *graph, CKBehavior *behavior, int count) {

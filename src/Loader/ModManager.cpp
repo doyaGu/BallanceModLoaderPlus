@@ -40,8 +40,6 @@ CKERROR ModManager::OnCKPlay() {
 }
 
 CKERROR ModManager::OnCKReset() {
-    if (m_ModContext)
-        m_ModContext->ObjectIdentities().ResetWorld();
     if (m_Context->GetCurrentLevel() != nullptr && m_RenderContext) {
         Overlay::ImGuiContextScope scope;
         Overlay::ImGuiEndFrame();
@@ -53,19 +51,21 @@ CKERROR ModManager::OnCKReset() {
 
         m_RenderContext = nullptr;
     }
+    if (m_ModContext)
+        m_ModContext->ResetVirtoolsWorld();
 
     return CK_OK;
 }
 
 CKERROR ModManager::PreClearAll() {
     if (m_ModContext)
-        m_ModContext->ObjectIdentities().ResetWorld();
+        m_ModContext->ResetVirtoolsWorld();
     return CK_OK;
 }
 
 CKERROR ModManager::SequenceToBeDeleted(CK_ID *objids, int count) {
     if (m_ModContext)
-        m_ModContext->ObjectIdentities().Invalidate(objids, count);
+        m_ModContext->VirtoolsObjectsToBeDeleted(objids, count);
     return CK_OK;
 }
 
@@ -92,6 +92,8 @@ CKERROR ModManager::PostProcess() {
     Overlay::ImGuiContextScope scope;
 
     PhysicsPostProcess();
+
+    m_ModContext->ProcessVirtoolsFrame();
 
     m_ModContext->OnProcess();
 
