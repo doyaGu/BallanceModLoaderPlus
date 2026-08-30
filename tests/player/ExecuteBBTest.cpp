@@ -138,8 +138,7 @@ private:
     static constexpr auto kGameplaySettleTime = std::chrono::milliseconds(500);
     static constexpr auto kWorldSettleTime = std::chrono::milliseconds(250);
     static constexpr auto kPhysicalizationSettleTime = std::chrono::milliseconds(500);
-    static constexpr auto kPositiveForceTime = std::chrono::milliseconds(1000);
-    static constexpr auto kReverseForceTime = std::chrono::milliseconds(1500);
+    static constexpr auto kForceObservationTimeout = std::chrono::seconds(5);
     static constexpr auto kReleaseObservationTime = std::chrono::milliseconds(250);
     static constexpr auto kStopDelay = std::chrono::milliseconds(100);
 
@@ -324,10 +323,17 @@ private:
     }
 
     void Pull() {
-        if (!PhaseDone(kPositiveForceTime))
+        if (!BodyPositionIsFinite()) {
+            Finish(false, "invalid-positive-force-position");
             return;
+        }
 
         m_PushedX = ReadX();
+        if (m_PushedX - m_PushStartX <= kMinimumTravel) {
+            if (PhaseDone(kForceObservationTimeout))
+                Finish(false, "positive-force-no-motion");
+            return;
+        }
         ExecuteBB::SetPhysicsForce(m_Body, VxVector(), nullptr,
                                    VxVector(-1.0f, 0.0f, 0.0f), nullptr,
                                    kForceMagnitude);
@@ -335,10 +341,17 @@ private:
     }
 
     void Release() {
-        if (!PhaseDone(kReverseForceTime))
+        if (!BodyPositionIsFinite()) {
+            Finish(false, "invalid-reverse-force-position");
             return;
+        }
 
         m_PulledX = ReadX();
+        if (m_PushedX - m_PulledX <= kMinimumTravel) {
+            if (PhaseDone(kForceObservationTimeout))
+                Finish(false, "reverse-force-no-motion");
+            return;
+        }
         ExecuteBB::UnsetPhysicsForce(m_Body);
         m_ForceSet = false;
         ExecuteBB::Unphysicalize(m_Body);
