@@ -25,8 +25,8 @@ Spec Make(const Options &options) {
                Value::From(CKPGUID_PERCENTAGE, options.CaretSize))
         .Input(Slot::At(SlotKind::InputParameter, 8, CKPGUID_MATERIAL),
                Value::Object(CKPGUID_MATERIAL, options.CaretMaterial))
-        .Local(Slot::At(SlotKind::Local, 0, CKGUID()),
-               Value::UntypedRaw(&options.Flags, sizeof(options.Flags)));
+        .Setting(Slot::At(SlotKind::Setting, 0, CKPGUID_TEXTPROPERTIES),
+                 Value::From(CKPGUID_TEXTPROPERTIES, options.Flags));
     return spec;
 }
 

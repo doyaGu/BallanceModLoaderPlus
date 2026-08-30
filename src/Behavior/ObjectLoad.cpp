@@ -18,8 +18,8 @@ Spec Make(const Options &options) {
                Value::From(CKPGUID_BOOL, options.ReuseMeshes))
         .Input(Slot::At(SlotKind::InputParameter, 5, CKPGUID_BOOL),
                Value::From(CKPGUID_BOOL, options.ReuseMaterials))
-        .Local(Slot::At(SlotKind::Local, 0, CKPGUID_BOOL),
-               Value::From(CKPGUID_BOOL, options.Dynamic));
+        .Setting(Slot::At(SlotKind::Setting, 0, CKPGUID_BOOL),
+                 Value::From(CKPGUID_BOOL, options.Dynamic));
     return spec;
 }
 

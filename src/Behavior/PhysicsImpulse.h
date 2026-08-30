@@ -12,6 +12,8 @@ struct Options {
     VxVector Direction{0.0f, 0.0f, 0.0f};
     CK3dEntity *DirectionReference = nullptr;
     float Magnitude = 0.0f;
+    CKBOOL DirectionAsPoint = FALSE;
+    CKBOOL ConstantForce = FALSE;
 };
 
 Spec Make(const Options &options);

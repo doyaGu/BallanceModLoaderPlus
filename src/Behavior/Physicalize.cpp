@@ -30,9 +30,11 @@ Spec Base(const Options &options) {
                Value::From(CKPGUID_FLOAT, options.RotationalDamping))
         .Input(Slot::At(SlotKind::InputParameter, 10, CKPGUID_STRING),
                Value::String(options.CollisionSurface))
-        // The BB exposes settings in the native local array before Mass Center.
-        .Local(Slot::At(SlotKind::Local, 3, CKPGUID_VECTOR),
-               Value::From(CKPGUID_VECTOR, options.MassCenter));
+        // Physicalize declares Shift Mass Center with DeclareSetting. It is
+        // consumed at execution time, but must still travel through the
+        // settings lifecycle instead of the ordinary-local shortcut.
+        .Setting(Slot::At(SlotKind::Setting, 3, CKPGUID_VECTOR),
+                 Value::From(CKPGUID_VECTOR, options.MassCenter));
     return spec;
 }
 
@@ -40,7 +42,17 @@ Spec Base(const Options &options) {
 
 Spec Convex(const Options &options, CKMesh *mesh) {
     Spec spec = Base(options);
-    spec.Input(Slot::At(SlotKind::InputParameter, 11, CKPGUID_MESH),
+    const int convex = 1;
+    const int ball = 0;
+    const int concave = 0;
+    spec.Setting(Slot::At(SlotKind::Setting, 0, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, convex))
+        .Setting(Slot::At(SlotKind::Setting, 1, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, ball))
+        .Setting(Slot::At(SlotKind::Setting, 2, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, concave))
+        .RefreshLayout()
+        .Input(Slot::At(SlotKind::InputParameter, 11, CKPGUID_MESH),
                Value::Object(CKPGUID_MESH, mesh));
     return spec;
 }
@@ -49,10 +61,13 @@ Spec Ball(const Options &options, VxVector center, float radius) {
     Spec spec = Base(options);
     const int convex = 0;
     const int ball = 1;
-    spec.Setting(Slot::At(SlotKind::Setting, 0, CKGUID()),
-                 Value::UntypedRaw(&convex, sizeof(convex)))
-        .Setting(Slot::At(SlotKind::Setting, 1, CKGUID()),
-                 Value::UntypedRaw(&ball, sizeof(ball)))
+    const int concave = 0;
+    spec.Setting(Slot::At(SlotKind::Setting, 0, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, convex))
+        .Setting(Slot::At(SlotKind::Setting, 1, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, ball))
+        .Setting(Slot::At(SlotKind::Setting, 2, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, concave))
         .RefreshLayout()
         .Input(Slot::At(SlotKind::InputParameter, 11, CKPGUID_VECTOR),
                Value::From(CKPGUID_VECTOR, center))
@@ -64,11 +79,14 @@ Spec Ball(const Options &options, VxVector center, float radius) {
 Spec Concave(const Options &options, CKMesh *mesh) {
     Spec spec = Base(options);
     const int convex = 0;
+    const int ball = 0;
     const int concave = 1;
-    spec.Setting(Slot::At(SlotKind::Setting, 0, CKGUID()),
-                 Value::UntypedRaw(&convex, sizeof(convex)))
-        .Setting(Slot::At(SlotKind::Setting, 2, CKGUID()),
-                 Value::UntypedRaw(&concave, sizeof(concave)))
+    spec.Setting(Slot::At(SlotKind::Setting, 0, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, convex))
+        .Setting(Slot::At(SlotKind::Setting, 1, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, ball))
+        .Setting(Slot::At(SlotKind::Setting, 2, CKPGUID_INT),
+                 Value::From(CKPGUID_INT, concave))
         .RefreshLayout()
         .Input(Slot::At(SlotKind::InputParameter, 11, CKPGUID_MESH),
                Value::Object(CKPGUID_MESH, mesh));
