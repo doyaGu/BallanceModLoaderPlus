@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <memory>
 
 namespace {
 
@@ -70,6 +71,9 @@ public:
         case Phase::World:
             CreateBody();
             break;
+        case Phase::RuntimeProbe:
+            AdvanceRuntimeProbe();
+            break;
         case Phase::Body:
             Push();
             break;
@@ -115,6 +119,7 @@ private:
         LevelMenu,
         Loading,
         World,
+        RuntimeProbe,
         Body,
         Push,
         Pull,
@@ -272,10 +277,23 @@ private:
         m_Body->SetPosition(&origin);
         m_InitialX = ReadX();
 
-        const BehaviorRuntimeProbeResult runtimeProbe =
-            RunBehaviorRuntimeProbe(context, m_Body);
-        m_RuntimeProbePassed = runtimeProbe.Passed;
-        m_RuntimeProbeDetail = runtimeProbe.Detail;
+        m_RuntimeProbe = std::make_unique<BehaviorRuntimeProbe>(context, m_Body);
+        SetPhase(Phase::RuntimeProbe);
+    }
+
+    void AdvanceRuntimeProbe() {
+        if (!m_RuntimeProbe) {
+            Finish(false, "runtime-probe-missing");
+            return;
+        }
+        m_RuntimeProbe->Advance(m_TotalFrames);
+        if (!m_RuntimeProbe->Done())
+            return;
+
+        const BehaviorRuntimeProbeResult result = m_RuntimeProbe->Result();
+        m_RuntimeProbePassed = result.Passed;
+        m_RuntimeProbeDetail = result.Detail;
+        m_RuntimeProbe.reset();
         if (!m_RuntimeProbePassed) {
             Finish(false, "runtime-probe-failed");
             return;
@@ -394,6 +412,7 @@ private:
     }
 
     void DestroyBody() {
+        m_RuntimeProbe.reset();
         if (!m_Body)
             return;
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
@@ -429,6 +448,7 @@ private:
 
     Phase m_Phase = Phase::Menu;
     CK3dObject *m_Body = nullptr;
+    std::unique_ptr<BehaviorRuntimeProbe> m_RuntimeProbe;
     const char *m_Reason = "not-completed";
     const char *m_MenuError = "menu-timeout";
     int m_TotalFrames = 0;
