@@ -120,14 +120,15 @@ specified.
 
 | Change | Owner | Minimum focused validation |
 | --- | --- | --- |
-| Plugin entry or engine interception | `src/BML.cpp`, `src/Hooks/`, `src/Virtools/HookBlock.cpp` | Win32 build plus Player smoke test for the affected callback or hook |
-| Building Block Prototype configuration, execution, or graph insertion | `src/Virtools/BehaviorRuntime.*`, `src/Virtools/BallanceBehaviorPresets.*`, `src/Virtools/ExecuteBB.cpp` | Architecture test, legacy export ABI test, Win32 build, and affected Player smoke test |
+| Plugin entry, Hook Block registration, or engine interception | `src/BML.cpp`, `src/Behavior/HookBlock.*`, `src/Hooks/` | Win32 build plus the affected real Player scenario |
+| Building Block Prototype configuration, execution, or graph insertion | `src/Behavior/Runtime.*`, the affected `src/Behavior/<BuildingBlock>.*` module, `src/Api/ExecuteBB.cpp` | Dependency test, exported ABI test, Win32 build, and affected Player test |
 | CK lifecycle and callback timing | `src/Loader/ModManager.*` | Focused lifecycle tests and Player smoke test |
 | Mod discovery, dependency order, services, or shutdown | `src/Loader/ModContext.*` | Relevant loader/dependency tests and native/script smoke coverage |
 | HUD, menus, command bar, or built-in behavior | `src/Mods/BMLMod.*`, `src/HUD/`, `src/Console/`, `src/CustomMaps/`, `src/Gameplay/`, `src/UI/` | Focused UI/service tests and Player visual/input smoke test |
 | Legacy native SDK or CMake consumer behavior | `include/BML/`, `cmake/` | ABI/compile tests, template configure/build, and installed SDK check |
 | IMC runtime | `src/Imc/ImcApi.cpp`, `src/Imc/ImcRuntime.*` | IMC runtime/compatibility tests and native IMC smoke test |
 | Built-in interface struct or the reads behind it | `include/BML/Interface.h`, `src/Api/Interfaces.cpp`, `src/Api/BuiltinCapabilities.*` | Focused interface tests, the C ABI compile test, and native smoke test |
+| Opaque CK object references at the C/script seam | `include/BML/Types.h`, `src/Api/ObjectRefs.*` | `ObjectRefsTest`, C ABI/IMC compile tests, and a Player lifecycle test when deletion timing changes |
 | IMC code generator or its sample interface | `tools/imc_codegen.py`, `tests/imc/` | Generator check, compatibility test, and review of interface, lock, and header together |
 | Script discovery, binding, execution, or reload | `src/AngelScript/`, `docs/api/` | Focused script tests, API stub check, and script-capable Player smoke test |
 | Public docs or release layout | `docs/`, `src/CMakeLists.txt`, `scripts/Package-BMLRelease.ps1` | Both strict MkDocs builds, CMake install, and SDK stage validation |
