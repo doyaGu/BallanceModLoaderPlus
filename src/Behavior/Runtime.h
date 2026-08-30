@@ -23,8 +23,8 @@ enum class SlotKind {
     InputParameter,
     OutputParameter,
     // Virtools stores settings in the same native local-parameter array as
-    // ordinary locals. Local addresses that complete array by native index;
-    // Setting is an additional filtered view for configuration stages.
+    // ordinary locals. Setting exposes the filtered settings view, while
+    // Local exposes only non-setting entries and retains their native index.
     Setting,
     Local,
     Target,

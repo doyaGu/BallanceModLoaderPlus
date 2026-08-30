@@ -598,12 +598,17 @@ Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
     for (int nativeIndex = 0; nativeIndex < behavior->GetLocalParameterCount(); ++nativeIndex) {
         CKParameterLocal *parameter = behavior->GetLocalParameter(nativeIndex);
         const bool setting = behavior->IsLocalParameterSetting(nativeIndex) != FALSE;
-        layout.Slots.push_back({SlotKind::Local, nativeIndex, nativeIndex,
-                                parameter && parameter->GetName() ? parameter->GetName() : "",
-                                parameter ? parameter->GetGUID() : CKGUID(),
-                                parameter ? parameter->GetDataSize() : 0});
         if (setting) {
             layout.Slots.push_back({SlotKind::Setting, settingIndex++, nativeIndex,
+                                    parameter && parameter->GetName() ? parameter->GetName() : "",
+                                    parameter ? parameter->GetGUID() : CKGUID(),
+                                    parameter ? parameter->GetDataSize() : 0});
+        } else {
+            // A setting lives in CKBehavior's native local array, but it is not
+            // an ordinary local: changing it requires SETTINGSEDITED and may
+            // rebuild the rest of the layout. Exposing it twice lets callers
+            // bypass that lifecycle through SetLocal.
+            layout.Slots.push_back({SlotKind::Local, nativeIndex, nativeIndex,
                                     parameter && parameter->GetName() ? parameter->GetName() : "",
                                     parameter ? parameter->GetGUID() : CKGUID(),
                                     parameter ? parameter->GetDataSize() : 0});
@@ -1778,6 +1783,7 @@ Status Runtime::SetInput(Instance &instance,
     }
     status = BindInput(behavior, *record, slot.Slot, value);
     PruneOwnedSources(behavior, *record);
+    PruneOwnedOperations(behavior, *record);
     return status;
 }
 
