@@ -577,8 +577,10 @@ if (-not $SkipPlayer) {
         }
     }
     if ($NativeImcSmokeMod) {
-        $scriptGameplaySnapshotPattern = 'BML gameplay snapshot: status=0 count=[1-9][0-9]* values=true'
-        Add-SmokeCheck $checks 'script-gameplay-snapshot' (Test-SmokeTextMatches $modLogText $scriptGameplaySnapshotPattern) $scriptGameplaySnapshotPattern
+        if (-not $SkipScriptSmoke) {
+            $scriptGameplaySnapshotPattern = 'BML gameplay snapshot: status=0 count=[1-9][0-9]* values=true'
+            Add-SmokeCheck $checks 'script-gameplay-snapshot' (Test-SmokeTextMatches $modLogText $scriptGameplaySnapshotPattern) $scriptGameplaySnapshotPattern
+        }
         Add-SmokeCheck $checks 'native-imc-interfaces' (Test-SmokeTextContains $modLogText 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true imc=true') 'BML native IMC smoke: runtime=true scene=true gameplay=true ui=true speedrun=true imc=true'
         Add-SmokeCheck $checks 'native-exit-callback' (Test-SmokeTextContains $modLogText 'BML native IMC smoke exit callback: received=true passed=true') 'BML native IMC smoke exit callback: received=true passed=true'
         Add-SmokeCheck $checks 'native-imc-unload' (Test-SmokeTextContains $modLogText 'BML native IMC smoke unloaded') 'BML native IMC smoke unloaded'
