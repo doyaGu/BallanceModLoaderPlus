@@ -39,6 +39,22 @@ int ProbeExecution(const CKBehaviorContext *context, void *argument) {
     return probe->Calls == 1 ? probe->FirstResult : CKBR_OK;
 }
 
+CKBehaviorLink *CreateBehaviorLink(CKContext *context, CKBehaviorIO *source,
+                                   CKBehaviorIO *destination, int delay) {
+    auto *link = static_cast<CKBehaviorLink *>(context->CreateObject(
+        CKCID_BEHAVIORLINK, nullptr, CK_OBJECTCREATION_DYNAMIC));
+    if (!link)
+        return nullptr;
+    if (link->SetInBehaviorIO(source) != CK_OK ||
+        link->SetOutBehaviorIO(destination) != CK_OK) {
+        context->DestroyObject(link);
+        return nullptr;
+    }
+    link->SetInitialActivationDelay(delay);
+    link->SetActivationDelay(delay);
+    return link;
+}
+
 struct RecursivePumpProbe {
     Runtime *Owner = nullptr;
     int Calls = 0;
@@ -244,6 +260,11 @@ public:
         case State::RuntimeCloseCleanup1:
         case State::RuntimeCloseCleanup2:
         case State::RuntimeCloseCleanup3: AdvanceRuntimeCloseCleanup(); break;
+        case State::GraphSchedulerStart: StartGraphScheduler(); break;
+        case State::GraphSchedulerWaitFirst:
+        case State::GraphSchedulerWaitSecond:
+        case State::GraphSchedulerWaitThird: ObserveGraphScheduler(); break;
+        case State::GraphSchedulerCleanup: CleanupGraphScheduler(); break;
         case State::GraphOwnership: CheckGraphOwnership(); break;
         case State::Complete: break;
         }
@@ -291,6 +312,11 @@ private:
         RuntimeCloseCleanup1,
         RuntimeCloseCleanup2,
         RuntimeCloseCleanup3,
+        GraphSchedulerStart,
+        GraphSchedulerWaitFirst,
+        GraphSchedulerWaitSecond,
+        GraphSchedulerWaitThird,
+        GraphSchedulerCleanup,
         GraphOwnership,
         Complete,
     };
@@ -740,8 +766,165 @@ private:
                 Fail("runtime-close-retained");
             m_ClosingOutput = nullptr;
             m_ClosingConsumerInstance.Reset();
-            m_State = State::GraphOwnership;
+            m_State = State::GraphSchedulerStart;
         }
+    }
+
+    void StartGraphScheduler() {
+        m_Graph = static_cast<CKBehavior *>(m_Context->CreateObject(
+            CKCID_BEHAVIOR, nullptr, CK_OBJECTCREATION_DYNAMIC));
+        if (!m_Graph) {
+            Fail("graph-scheduler-create");
+            m_State = State::GraphOwnership;
+            return;
+        }
+        m_Graph->UseGraph();
+        m_Graph->SetType(CKBEHAVIORTYPE_SCRIPT);
+        CKBehaviorIO *graphInput = m_Graph->CreateInput("In");
+        CKBehaviorIO *graphOutput = m_Graph->CreateOutput("Out");
+        CKScene *scene = m_Context->GetCurrentScene();
+        if (!graphInput || !graphOutput || !scene ||
+            m_Owner->AddScript(m_Graph) != CK_OK) {
+            Fail("graph-scheduler-script");
+            m_Context->DestroyObject(m_Graph);
+            m_Graph = nullptr;
+            m_State = State::GraphOwnership;
+            return;
+        }
+
+        AttachResult immediateSource = m_Runtime.AddToGraph(
+            m_Graph, HookBlock::Make(ProbeExecution, &m_GraphImmediateSource, 1, 1));
+        AttachResult immediateDestination = m_Runtime.AddToGraph(
+            m_Graph, HookBlock::Make(ProbeExecution, &m_GraphImmediateDestination, 1, 0));
+        AttachResult delayedDestination = m_Runtime.AddToGraph(
+            m_Graph, HookBlock::Make(ProbeExecution, &m_GraphDelayedDestination, 1, 1));
+        m_GraphImmediateSource.Behavior = immediateSource.Block;
+        m_GraphImmediateDestination.Behavior = immediateDestination.Block;
+        m_GraphDelayedDestination.Behavior = delayedDestination.Block;
+        m_GraphImmediateSource.Context = m_Context;
+        m_GraphImmediateDestination.Context = m_Context;
+        m_GraphDelayedDestination.Context = m_Context;
+
+        const bool blocksReady = immediateSource && immediateDestination &&
+            delayedDestination && immediateSource.Block->GetInput(0) &&
+            immediateSource.Block->GetOutput(0) &&
+            immediateDestination.Block->GetInput(0) &&
+            delayedDestination.Block->GetInput(0) &&
+            delayedDestination.Block->GetOutput(0);
+        if (blocksReady) {
+            m_GraphEntryLink = CreateBehaviorLink(
+                m_Context, graphInput, immediateSource.Block->GetInput(0), 0);
+            m_GraphImmediateLink = CreateBehaviorLink(
+                m_Context, immediateSource.Block->GetOutput(0),
+                immediateDestination.Block->GetInput(0), 0);
+            m_GraphDelayedLink = CreateBehaviorLink(
+                m_Context, immediateSource.Block->GetOutput(0),
+                delayedDestination.Block->GetInput(0), 2);
+            m_GraphExitLink = CreateBehaviorLink(
+                m_Context, delayedDestination.Block->GetOutput(0), graphOutput, 0);
+        }
+        auto addLink = [&](CKBehaviorLink *&link) {
+            if (link && m_Graph->AddSubBehaviorLink(link) == CK_OK)
+                return true;
+            if (link)
+                m_Context->DestroyObject(link);
+            link = nullptr;
+            return false;
+        };
+        bool linksReady = true;
+        linksReady = addLink(m_GraphEntryLink) && linksReady;
+        linksReady = addLink(m_GraphImmediateLink) && linksReady;
+        linksReady = addLink(m_GraphDelayedLink) && linksReady;
+        linksReady = addLink(m_GraphExitLink) && linksReady;
+        if (!blocksReady || !linksReady) {
+            Fail("graph-scheduler-setup");
+            m_State = State::GraphSchedulerCleanup;
+            return;
+        }
+
+        scene->Activate(m_Graph, TRUE);
+        m_GraphStartFrame = m_LastPlayerFrame;
+        m_State = State::GraphSchedulerWaitFirst;
+    }
+
+    void ObserveGraphScheduler() {
+        if (m_State == State::GraphSchedulerWaitFirst) {
+            if (m_GraphImmediateSource.Calls == 0 &&
+                m_LastPlayerFrame - m_GraphStartFrame <= 3) {
+                return;
+            }
+            const bool firstFrame = m_GraphImmediateSource.Calls == 1 &&
+                m_GraphImmediateDestination.Calls == 1 &&
+                m_GraphDelayedDestination.Calls == 0 && m_Graph->IsActive();
+            const bool contextsMatched = m_GraphImmediateSource.ContextMatched &&
+                m_GraphImmediateDestination.ContextMatched;
+            if (!firstFrame || !contextsMatched)
+                Fail("graph-scheduler-immediate");
+            m_State = State::GraphSchedulerWaitSecond;
+            return;
+        }
+        if (m_State == State::GraphSchedulerWaitSecond) {
+            if (m_GraphDelayedDestination.Calls != 0 || !m_Graph->IsActive())
+                Fail("graph-scheduler-delay-pending");
+            m_State = State::GraphSchedulerWaitThird;
+            return;
+        }
+        if (m_GraphDelayedDestination.Calls != 1 ||
+            !m_GraphDelayedDestination.ContextMatched || m_Graph->IsActive() ||
+            !m_Graph->GetOutput(0)->IsActive())
+            Fail("graph-scheduler-delay-complete");
+        m_State = State::GraphSchedulerCleanup;
+    }
+
+    void CleanupGraphScheduler() {
+        if (!m_Graph) {
+            m_State = State::GraphOwnership;
+            return;
+        }
+        const CK_ID entryLinkId = m_GraphEntryLink
+            ? m_GraphEntryLink->GetID() : 0;
+        const CK_ID immediateLinkId = m_GraphImmediateLink
+            ? m_GraphImmediateLink->GetID() : 0;
+        const CK_ID delayedLinkId = m_GraphDelayedLink
+            ? m_GraphDelayedLink->GetID() : 0;
+        const CK_ID exitLinkId = m_GraphExitLink
+            ? m_GraphExitLink->GetID() : 0;
+        const CK_ID sourceId = m_GraphImmediateSource.Behavior
+            ? m_GraphImmediateSource.Behavior->GetID() : 0;
+        const CK_ID immediateDestinationId = m_GraphImmediateDestination.Behavior
+            ? m_GraphImmediateDestination.Behavior->GetID() : 0;
+        const CK_ID delayedDestinationId = m_GraphDelayedDestination.Behavior
+            ? m_GraphDelayedDestination.Behavior->GetID() : 0;
+        const ContextSnapshot before = CaptureContext(m_Context);
+        m_Runtime.ResetWorld();
+        if (!ContextRestored(m_Context, before))
+            Fail("graph-scheduler-reset-context");
+        const bool graphClean = m_Graph->GetSubBehaviorCount() == 0 &&
+            m_Graph->GetSubBehaviorLinkCount() == 0 &&
+            (!entryLinkId || m_Context->GetObject(entryLinkId) == nullptr) &&
+            (!immediateLinkId || m_Context->GetObject(immediateLinkId) == nullptr) &&
+            (!delayedLinkId || m_Context->GetObject(delayedLinkId) == nullptr) &&
+            (!exitLinkId || m_Context->GetObject(exitLinkId) == nullptr) &&
+            (!sourceId || m_Context->GetObject(sourceId) == nullptr) &&
+            (!immediateDestinationId ||
+             m_Context->GetObject(immediateDestinationId) == nullptr) &&
+            (!delayedDestinationId ||
+             m_Context->GetObject(delayedDestinationId) == nullptr);
+        if (!graphClean)
+            Fail("graph-link-cleanup");
+        m_GraphEntryLink = nullptr;
+        m_GraphImmediateLink = nullptr;
+        m_GraphDelayedLink = nullptr;
+        m_GraphExitLink = nullptr;
+        m_GraphImmediateSource.Behavior = nullptr;
+        m_GraphImmediateDestination.Behavior = nullptr;
+        m_GraphDelayedDestination.Behavior = nullptr;
+        if (CKScene *scene = m_Context->GetCurrentScene())
+            scene->DeActivate(m_Graph);
+        (void) m_Owner->RemoveScript(m_Graph->GetID());
+        m_Context->DestroyObject(m_Graph);
+        m_Graph = nullptr;
+        m_State = State::GraphOwnership;
     }
 
     void CheckGraphOwnership() {
@@ -807,6 +990,9 @@ private:
     RecursivePumpProbe m_RecursivePump;
     ReentrantReleaseProbe m_ReentrantRelease;
     SelfDeleteProbe m_SelfDelete;
+    ExecutionProbe m_GraphImmediateSource;
+    ExecutionProbe m_GraphImmediateDestination;
+    ExecutionProbe m_GraphDelayedDestination;
     Instance m_RetryInstance;
     Instance m_BreakInstance;
     Instance m_RecursivePumpInstance;
@@ -827,6 +1013,12 @@ private:
     CKParameterIn *m_ClosingConsumerMagnitude = nullptr;
     CK_ID m_ClosingOperationId = 0;
     CK_ID m_ClosingProducerId = 0;
+    CKBehavior *m_Graph = nullptr;
+    CKBehaviorLink *m_GraphEntryLink = nullptr;
+    CKBehaviorLink *m_GraphImmediateLink = nullptr;
+    CKBehaviorLink *m_GraphDelayedLink = nullptr;
+    CKBehaviorLink *m_GraphExitLink = nullptr;
+    int m_GraphStartFrame = -1;
 };
 
 BehaviorRuntimeProbe::BehaviorRuntimeProbe(CKContext *context, CK3dObject *owner)

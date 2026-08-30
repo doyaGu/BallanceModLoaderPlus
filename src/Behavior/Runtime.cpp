@@ -594,8 +594,11 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
     result.Outcome = ReadyStatus();
     if (!result.Outcome)
         return result;
-    if (!parent || parent->GetCKContext() != m_Context) {
-        result.Outcome = Failure(Error::OwnerInvalid, "Parent graph is invalid or belongs to another CKContext.");
+    if (!parent || parent->GetCKContext() != m_Context ||
+        parent->IsToBeDeleted() || parent->IsUsingFunction()) {
+        result.Outcome = Failure(
+            Error::OwnerInvalid,
+            "Parent graph is invalid, retiring, or belongs to another CKContext.");
         return result;
     }
 
@@ -2364,6 +2367,25 @@ void Runtime::QueueOperationDestroy(OwnedOperation operation, int frames) {
     m_PendingDestroy.push_back(std::move(pending));
 }
 
+void Runtime::DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior) {
+    if (!parent || !behavior)
+        return;
+    for (int i = parent->GetSubBehaviorLinkCount() - 1; i >= 0; --i) {
+        CKBehaviorLink *link = parent->GetSubBehaviorLink(i);
+        if (!link)
+            continue;
+        CKBehaviorIO *source = link->GetInBehaviorIO();
+        CKBehaviorIO *destination = link->GetOutBehaviorIO();
+        if ((!source || source->GetOwner() != behavior) &&
+            (!destination || destination->GetOwner() != behavior)) {
+            continue;
+        }
+        link = parent->RemoveSubBehaviorLink(i);
+        if (link)
+            m_Context->DestroyObject(link);
+    }
+}
+
 void Runtime::AdoptSharedBindings() {
     if (!m_SharedBindings || m_SharedBindings->Pending.empty())
         return;
@@ -2495,8 +2517,11 @@ void Runtime::DestroyReady(DestroyMode mode) {
             behavior = resolveBehavior();
             if (behavior && it->GraphResident) {
                 CKObject *parentObject = ResolveObject(it->Parent);
-                if (parentObject && CKIsChildClassOf(parentObject, CKCID_BEHAVIOR))
-                    static_cast<CKBehavior *>(parentObject)->RemoveSubBehavior(behavior);
+                if (parentObject && CKIsChildClassOf(parentObject, CKCID_BEHAVIOR)) {
+                    auto *parent = static_cast<CKBehavior *>(parentObject);
+                    DestroyConnectedLinks(parent, behavior);
+                    parent->RemoveSubBehavior(behavior);
+                }
             }
             behavior = resolveBehavior();
             if (behavior) {

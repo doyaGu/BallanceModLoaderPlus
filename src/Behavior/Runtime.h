@@ -514,6 +514,7 @@ private:
     void QueueDestroy(Record &record, bool reset = false);
     void QueueSourceDestroy(ObjectStamp source, int frames = 2);
     void QueueOperationDestroy(OwnedOperation operation, int frames = 2);
+    void DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior);
     void DrainDeferredReleases();
     void AdoptSharedBindings();
     void Close();
