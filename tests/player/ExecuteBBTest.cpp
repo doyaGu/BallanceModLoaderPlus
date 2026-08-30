@@ -4,6 +4,8 @@
 #include <BML/IMod.h>
 #include <BML/ScriptHelper.h>
 
+#include "BehaviorRuntimeProbe.h"
+
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -270,6 +272,15 @@ private:
         m_Body->SetPosition(&origin);
         m_InitialX = ReadX();
 
+        const BehaviorRuntimeProbeResult runtimeProbe =
+            RunBehaviorRuntimeProbe(context, m_Body);
+        m_RuntimeProbePassed = runtimeProbe.Passed;
+        m_RuntimeProbeDetail = runtimeProbe.Detail;
+        if (!m_RuntimeProbePassed) {
+            Finish(false, "runtime-probe-failed");
+            return;
+        }
+
         ExecuteBB::PhysicalizeBall(
             m_Body, FALSE, 0.0f, 0.0f, 1.0f, "", FALSE, FALSE, FALSE,
             0.0f, 0.0f, "", VxVector(), VxVector(), 2.0f);
@@ -331,7 +342,8 @@ private:
                             pushTravel > kMinimumTravel &&
                             pullTravel > kMinimumTravel &&
                             std::fabs(m_ReleasedX - kReleasedX) <= kReleaseTolerance &&
-                            m_PhysicalizeSeen && m_UnphysicalizeSeen;
+                            m_PhysicalizeSeen && m_UnphysicalizeSeen &&
+                            m_RuntimeProbePassed;
         Finish(passed, passed ? "completed" : "result-mismatch");
     }
 
@@ -366,14 +378,17 @@ private:
             "ExecuteBB test: status=%s reason=%s x0=%.6f push_start=%.6f "
             "pushed=%.6f pulled=%.6f released=%.6f "
             "physicalize_event=%s unphysicalize_event=%s menu_opened=%s "
-            "level_chosen=%s control_ready=%s frames=%d",
+            "level_chosen=%s control_ready=%s runtime_probe=%s "
+            "runtime_detail=%s frames=%d",
             m_Passed ? "pass" : "fail", m_Reason, m_InitialX, m_PushStartX,
             m_PushedX, m_PulledX, m_ReleasedX,
             m_PhysicalizeSeen ? "true" : "false",
             m_UnphysicalizeSeen ? "true" : "false",
             m_LevelMenuOpened ? "true" : "false",
             m_LevelChosen ? "true" : "false",
-            m_ControlReady ? "true" : "false", m_TotalFrames);
+            m_ControlReady ? "true" : "false",
+            m_RuntimeProbePassed ? "true" : "false",
+            m_RuntimeProbeDetail.c_str(), m_TotalFrames);
         m_Done = true;
         m_BML->ExitGame();
     }
@@ -432,8 +447,10 @@ private:
     bool m_LevelChosen = false;
     bool m_LevelStarted = false;
     bool m_ControlReady = false;
+    bool m_RuntimeProbePassed = false;
     bool m_Passed = false;
     bool m_Done = false;
+    std::string m_RuntimeProbeDetail = "not-run";
     std::chrono::steady_clock::time_point m_MenuStartedAt{};
     std::chrono::steady_clock::time_point m_LevelStartedAt{};
     std::chrono::steady_clock::time_point m_ControlReadyAt{};

@@ -148,7 +148,7 @@ try {
     $restored = $true
 }
 
-$outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) frames=(?<frames>[0-9]+)'
+$outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) runtime_probe=(?<runtimeProbe>true|false) runtime_detail=(?<runtimeDetail>\S+) frames=(?<frames>[0-9]+)'
 $outcome = [regex]::Match($testLog, $outcomePattern)
 $postStartIndex = $testLog.IndexOf('On Message PostStartMenu')
 $preLoadIndex = $testLog.IndexOf('On Message PreLoadLevel')
@@ -161,6 +161,9 @@ $checks = [ordered]@{
         $outcome.Groups['menuOpened'].Value -eq 'true' -and
         $outcome.Groups['levelChosen'].Value -eq 'true'
     TestPassed = $outcome.Success -and $outcome.Groups['status'].Value -eq 'pass'
+    RuntimeProbe = $outcome.Success -and
+        $outcome.Groups['runtimeProbe'].Value -eq 'true' -and
+        $outcome.Groups['runtimeDetail'].Value -eq 'complete'
     ExitCallback = $testLog.Contains('ExecuteBB test exit: status=pass')
     CleanExecuteBB = -not $testLog.Contains('ExecuteBB::')
     CleanPostProcess = -not $playerRunLog.Contains('Error : PostProcess')
@@ -203,6 +206,8 @@ $result = [pscustomobject]@{
             LevelMenuOpened = $outcome.Groups['menuOpened'].Value -eq 'true'
             LevelChosen = $outcome.Groups['levelChosen'].Value -eq 'true'
             ControlReady = $outcome.Groups['controlReady'].Value -eq 'true'
+            RuntimeProbe = $outcome.Groups['runtimeProbe'].Value -eq 'true'
+            RuntimeDetail = $outcome.Groups['runtimeDetail'].Value
             Frames = [int]$outcome.Groups['frames'].Value
         }
     } else { $null })
