@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -276,6 +277,14 @@ struct Status {
     explicit operator bool() const noexcept { return Code == Error::None; }
 };
 
+struct ObjectRef {
+    std::uint32_t Domain = 0;
+    std::uint32_t Slot = 0;
+    std::uint32_t Generation = 0;
+
+    [[nodiscard]] bool IsNull() const noexcept { return Domain == 0; }
+};
+
 enum class RunState {
     Completed,
     Pending,
@@ -351,7 +360,9 @@ struct CallResult {
 
 class Runtime final {
 public:
-    explicit Runtime(CKContext *context);
+    explicit Runtime(
+        CKContext *context,
+        std::function<ObjectRef(const void *)> issueObjectRef = {});
     ~Runtime();
     Runtime(const Runtime &) = delete;
     Runtime &operator=(const Runtime &) = delete;
@@ -536,6 +547,7 @@ private:
     AcquireSharedBindings(CKContext *context);
 
     CKContext *m_Context = nullptr;
+    std::function<ObjectRef(const void *)> m_IssueObjectRef;
     std::thread::id m_Thread;
     std::uint64_t m_NextInstanceId = 1;
     std::uint64_t m_Frame = 0;

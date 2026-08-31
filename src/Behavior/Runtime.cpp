@@ -257,6 +257,21 @@ public:
             return result;
         }
 
+        for (int index = 0; index < behavior->GetOutputParameterCount(); ++index) {
+            CKParameterOut *parameter = behavior->GetOutputParameter(index);
+            PoutInfo info;
+            if (!parameter || !GetPoutInfo(parameter, info)) {
+                result.Executed = false;
+                result.Fault = {
+                    ExecutionError::UnsupportedPout, CKBR_PARAMETERERROR,
+                    parameter
+                        ? std::string("Pout '") + SafeName(parameter) +
+                              "' has an unsupported type."
+                        : "A Pout is unavailable before Behavior execution."};
+                return result;
+            }
+        }
+
         result.Kind = behavior->IsUsingFunction()
             ? BehaviorKind::Function : BehaviorKind::Graph;
         ++record->LayoutGeneration;
@@ -277,13 +292,14 @@ public:
         return result;
     }
 
-    bool CaptureOutputs(std::vector<ExecutionOutput> &outputs,
-                        ExecutionFault &fault) override {
+    bool ReadOutputs(std::vector<ExecutionOutput> &activeOutputs,
+                     std::vector<Pout> &pouts,
+                     ExecutionFault &fault) override {
         Record *record = m_Runtime.FindRecord(m_InstanceId);
         CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
         if (!record || !behavior) {
-            fault = {ExecutionError::CaptureFailed, CKBR_BEHAVIORERROR,
-                     "Behavior disappeared before active outputs were captured."};
+            fault = {ExecutionError::OutputUnavailable, CKBR_BEHAVIORERROR,
+                     "Behavior disappeared before its outputs were read."};
             return false;
         }
         for (int index = 0; index < behavior->GetOutputCount(); ++index) {
@@ -291,7 +307,114 @@ public:
                 continue;
             CKBehaviorIO *io = behavior->GetOutput(index);
             const std::string name = io && io->GetName() ? io->GetName() : "";
-            outputs.push_back({index, name, Occurrence(behavior, index, name, false)});
+            activeOutputs.push_back(
+                {index, name, Occurrence(behavior, index, name, false)});
+        }
+
+        for (int index = 0; index < behavior->GetOutputParameterCount(); ++index) {
+            CKParameterOut *parameter = behavior->GetOutputParameter(index);
+            if (!parameter) {
+                return Fail(
+                    ExecutionError::PoutReadFailed, CKBR_PARAMETERERROR,
+                    "A Pout disappeared before the Outcome was read.",
+                    fault);
+            }
+
+            PoutInfo info;
+            if (!GetPoutInfo(parameter, info)) {
+                return Fail(
+                    ExecutionError::UnsupportedPout, CKBR_PARAMETERERROR,
+                    std::string("Pout '") + SafeName(parameter) +
+                        "' acquired an unsupported type during execution.",
+                    fault);
+            }
+
+            Pout value;
+            value.Index = index;
+            value.Name = parameter->GetName() ? parameter->GetName() : "";
+            value.Occurrence = PoutOccurrence(behavior, index, value.Name);
+            const CKGUID type = parameter->GetGUID();
+            value.TypeGuid1 = static_cast<std::uint32_t>(type.d1);
+            value.TypeGuid2 = static_cast<std::uint32_t>(type.d2);
+            value.Kind = info.Kind;
+            if (info.Kind == PoutKind::Utf8) {
+                const int size = parameter->GetStringValue(nullptr, FALSE);
+                if (size < 0) {
+                    return Fail(
+                        ExecutionError::PoutReadFailed, size,
+                        std::string("Pout '") + SafeName(parameter) +
+                            "' could not be read.",
+                        fault);
+                }
+                std::vector<char> text(
+                    static_cast<std::size_t>(size) + 1u, '\0');
+                if (size > 0 &&
+                    parameter->GetStringValue(text.data(), FALSE) < 0) {
+                    return Fail(
+                        ExecutionError::PoutReadFailed, CKBR_PARAMETERERROR,
+                        std::string("Pout '") + SafeName(parameter) +
+                            "' changed while it was being read.",
+                        fault);
+                }
+                if (size > 0)
+                    value.Text.assign(text.data());
+            } else if (info.Kind == PoutKind::Object) {
+                CKObject *object = parameter->GetValueObject(FALSE);
+                if (object) {
+                    if (!m_Runtime.m_IssueObjectRef) {
+                        return Fail(
+                            ExecutionError::PoutReadFailed,
+                            CKBR_PARAMETERERROR,
+                            "An object Pout cannot be retained without ObjectRefs.",
+                            fault);
+                    }
+                    const ObjectRef reference = m_Runtime.m_IssueObjectRef(object);
+                    if (reference.IsNull()) {
+                        return Fail(
+                            ExecutionError::PoutReadFailed,
+                            CKBR_PARAMETERERROR,
+                            "ObjectRefs rejected an object Pout.",
+                            fault);
+                    }
+                    value.ObjectDomain = reference.Domain;
+                    value.ObjectSlot = reference.Slot;
+                    value.ObjectGeneration = reference.Generation;
+                }
+            } else {
+                const int size = parameter->GetDataSize();
+                if (size < 0 || static_cast<std::size_t>(size) !=
+                                    info.Size ||
+                    info.Size > sizeof(value.Components)) {
+                    return Fail(
+                        ExecutionError::PoutReadFailed, CKBR_PARAMETERERROR,
+                        std::string("Pout '") + SafeName(parameter) +
+                            "' has an invalid value size.",
+                        fault);
+                }
+                std::array<std::byte, sizeof(value.Components)> bytes{};
+                const CKERROR error = parameter->GetValue(bytes.data(), FALSE);
+                if (error != CK_OK) {
+                    return Fail(
+                        ExecutionError::PoutReadFailed, error,
+                        std::string("Pout '") + SafeName(parameter) +
+                            "' could not be read.",
+                        fault);
+                }
+                if (info.Kind == PoutKind::Bool ||
+                    info.Kind == PoutKind::Int32) {
+                    std::memcpy(&value.Int32, bytes.data(), sizeof(value.Int32));
+                    if (info.Kind == PoutKind::Bool)
+                        value.Int32 = value.Int32 != 0 ? 1 : 0;
+                } else if (info.Kind == PoutKind::Float32) {
+                    std::memcpy(&value.Float32, bytes.data(), sizeof(value.Float32));
+                } else {
+                    value.ComponentCount =
+                        static_cast<std::uint32_t>(info.Size / sizeof(float));
+                    std::memcpy(value.Components.data(), bytes.data(),
+                                info.Size);
+                }
+            }
+            pouts.push_back(std::move(value));
         }
         return true;
     }
@@ -301,8 +424,8 @@ public:
         Record *record = m_Runtime.FindRecord(m_InstanceId);
         CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
         if (!record || !behavior) {
-            fault = {ExecutionError::CaptureFailed, CKBR_BEHAVIORERROR,
-                     "Behavior disappeared before captured outputs were cleared."};
+            fault = {ExecutionError::OutputUnavailable, CKBR_BEHAVIORERROR,
+                     "Behavior disappeared before its active outputs were cleared."};
             return false;
         }
         for (const ExecutionOutput &output : outputs) {
@@ -313,6 +436,61 @@ public:
     }
 
 private:
+    struct PoutInfo {
+        PoutKind Kind = PoutKind::Int32;
+        std::size_t Size = 0;
+    };
+
+    bool ObjectDerived(CKParameter *parameter) const {
+        if (!parameter)
+            return false;
+        CKParameterManager *manager = m_Runtime.m_Context
+            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
+        return manager && manager->IsDerivedFrom(parameter->GetGUID(),
+                                                  CKPGUID_OBJECT) != FALSE;
+    }
+
+    bool GetPoutInfo(CKParameter *parameter, PoutInfo &info) const {
+        if (!parameter)
+            return false;
+        const CKGUID type = parameter->GetGUID();
+        if (ObjectDerived(parameter))
+            info = {PoutKind::Object, 0};
+        else if (type == CKPGUID_BOOL)
+            info = {PoutKind::Bool, sizeof(CKBOOL)};
+        else if (type == CKPGUID_INT)
+            info = {PoutKind::Int32, sizeof(int)};
+        else if (type == CKPGUID_FLOAT)
+            info = {PoutKind::Float32, sizeof(float)};
+        else if (type == CKPGUID_STRING)
+            info = {PoutKind::Utf8, 0};
+        else if (type == CKPGUID_2DVECTOR)
+            info = {PoutKind::Vec2, sizeof(Vx2DVector)};
+        else if (type == CKPGUID_VECTOR)
+            info = {PoutKind::Vec3, sizeof(VxVector)};
+        else if (type == CKPGUID_QUATERNION)
+            info = {PoutKind::Quaternion, sizeof(VxQuaternion)};
+        else if (type == CKPGUID_EULERANGLES)
+            info = {PoutKind::Euler, sizeof(float) * 3};
+        else if (type == CKPGUID_RECT)
+            info = {PoutKind::Rect, sizeof(VxRect)};
+        else if (type == CKPGUID_COLOR)
+            info = {PoutKind::Color, sizeof(VxColor)};
+        else if (type == CKPGUID_BOX)
+            info = {PoutKind::Box, sizeof(VxBbox)};
+        else if (type == CKPGUID_MATRIX)
+            info = {PoutKind::Mat4, sizeof(VxMatrix)};
+        else
+            return false;
+        return true;
+    }
+
+    static bool Fail(ExecutionError code, int nativeCode,
+                     std::string message, ExecutionFault &fault) {
+        fault = {code, nativeCode, std::move(message)};
+        return false;
+    }
+
     static int Occurrence(CKBehavior *behavior, int index,
                           const std::string &name, bool input = true) {
         int occurrence = 0;
@@ -320,6 +498,18 @@ private:
             CKBehaviorIO *io = input
                 ? behavior->GetInput(current) : behavior->GetOutput(current);
             const char *candidate = io ? io->GetName() : nullptr;
+            if ((candidate ? candidate : "") == name)
+                ++occurrence;
+        }
+        return occurrence;
+    }
+
+    static int PoutOccurrence(CKBehavior *behavior, int index,
+                              const std::string &name) {
+        int occurrence = 0;
+        for (int current = 0; current < index; ++current) {
+            CKParameterOut *parameter = behavior->GetOutputParameter(current);
+            const char *candidate = parameter ? parameter->GetName() : nullptr;
             if ((candidate ? candidate : "") == name)
                 ++occurrence;
         }
@@ -949,8 +1139,10 @@ void Instance::Reset() {
         access->Owner->RequestRelease(id);
 }
 
-Runtime::Runtime(CKContext *context)
-    : m_Context(context), m_Thread(std::this_thread::get_id()),
+Runtime::Runtime(CKContext *context,
+                 std::function<ObjectRef(const void *)> issueObjectRef)
+    : m_Context(context), m_IssueObjectRef(std::move(issueObjectRef)),
+      m_Thread(std::this_thread::get_id()),
       m_Access(std::make_shared<Instance::Access>()),
       m_SharedBindings(AcquireSharedBindings(context)) {
     m_Access->Owner = this;

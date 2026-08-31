@@ -1,4 +1,5 @@
 #include "Behavior/Execution.h"
+#include "Behavior/OutcomeStore.h"
 
 #include <algorithm>
 #include <utility>
@@ -59,7 +60,13 @@ OutcomeRetention OutcomeRetention::Ignore() {
 }
 
 Execution::Execution(OutcomeRetention retention)
-    : m_Retention(retention) {}
+    : m_Outcomes(std::make_shared<OutcomeStore>(retention)) {}
+
+Execution::Execution(std::shared_ptr<OutcomeStore> outcomes)
+    : m_Outcomes(std::move(outcomes)) {
+    if (!m_Outcomes)
+        m_Outcomes = std::make_shared<OutcomeStore>(OutcomeRetention::Signals());
+}
 
 ExecutionResult Execution::Pulse(const ExecutionInput &input, std::uint64_t frame,
                                  ExecutionAdapter &adapter) {
@@ -155,18 +162,29 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
     m_LastFrame = frame;
 
     NativeExecution native = adapter.Execute();
+    if (!native.Executed) {
+        if (!native.Fault)
+            native.Fault = Fault(
+                ExecutionError::InvalidState,
+                "Behavior execution was rejected before the native call.");
+        FailBeforeExecute(native.Fault);
+        return {AdmissionState::Failed, native.Fault, std::nullopt};
+    }
     ExecutionOutcome outcome;
     outcome.Sequence = m_NextSequence++;
     outcome.Frame = frame;
     outcome.ReturnCode = native.ReturnCode;
 
-    ExecutionFault captureFault;
+    ExecutionFault outputFault;
     if (!native.Fault &&
-        !adapter.CaptureOutputs(outcome.ActiveOutputs, captureFault)) {
-        if (!captureFault)
-            captureFault = Fault(ExecutionError::CaptureFailed,
-                                 "Active behavior outputs could not be captured.");
-        native.Fault = captureFault;
+        !adapter.ReadOutputs(outcome.ActiveOutputs, outcome.Pouts,
+                             outputFault)) {
+        if (!outputFault)
+            outputFault = Fault(
+                ExecutionError::PoutReadFailed,
+                "Behavior outputs could not be copied into the Outcome.");
+        native.Fault = outputFault;
+        outcome.Pouts.clear();
     }
 
     if (!outcome.ActiveOutputs.empty()) {
@@ -174,8 +192,8 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
         if (!adapter.ClearOutputs(outcome.ActiveOutputs, clearFault) &&
             !native.Fault) {
             if (!clearFault)
-                clearFault = Fault(ExecutionError::CaptureFailed,
-                                   "Captured behavior outputs could not be cleared.");
+                clearFault = Fault(ExecutionError::OutputUnavailable,
+                                   "Active Behavior outputs could not be cleared.");
             native.Fault = clearFault;
         }
     }
@@ -280,33 +298,7 @@ bool Execution::NeedsFrame() const noexcept {
 }
 
 std::vector<ExecutionOutcome> Execution::Drain() {
-    std::vector<ExecutionOutcome> drained;
-    drained.reserve(m_Outcomes.size() + (m_Latest ? 1u : 0u) +
-                    (m_LastError ? 1u : 0u) +
-                    (m_TerminalOutcome ? 1u : 0u));
-    for (ExecutionOutcome &outcome : m_Outcomes)
-        drained.push_back(std::move(outcome));
-    m_Outcomes.clear();
-    if (m_Latest)
-        drained.push_back(std::move(*m_Latest));
-    if (m_LastError)
-        drained.push_back(std::move(*m_LastError));
-    if (m_TerminalOutcome)
-        drained.push_back(std::move(*m_TerminalOutcome));
-    m_Latest.reset();
-    m_LastError.reset();
-    m_TerminalOutcome.reset();
-    std::sort(drained.begin(), drained.end(),
-              [](const ExecutionOutcome &left, const ExecutionOutcome &right) {
-                  return left.Sequence < right.Sequence;
-              });
-    drained.erase(
-        std::unique(drained.begin(), drained.end(),
-                    [](const ExecutionOutcome &left, const ExecutionOutcome &right) {
-                        return left.Sequence == right.Sequence;
-                    }),
-        drained.end());
-    return drained;
+    return m_Outcomes->Drain();
 }
 
 bool Execution::Queue(const ExecutionInput &input) {
@@ -326,69 +318,15 @@ void Execution::FailBeforeExecute(ExecutionFault fault) noexcept {
     m_State = ExecutionState::Failed;
 }
 
-bool Execution::ShouldRetain(const ExecutionOutcome &outcome) const noexcept {
-    switch (m_Retention.Kind) {
-    case RetentionKind::Signals:
-        return outcome.Sequence == 1 || !outcome.ActiveOutputs.empty() ||
-               outcome.Terminal || static_cast<bool>(outcome.Fault);
-    case RetentionKind::EachFrame:
-        return true;
-    case RetentionKind::Latest:
-    case RetentionKind::Ignore:
-        return false;
-    }
-    return false;
-}
-
 void Execution::Retain(ExecutionOutcome outcome) {
-    if (m_Retention.Kind == RetentionKind::Latest) {
-        if (outcome.Terminal) {
-            StoreTerminal(std::move(outcome));
-        } else if (outcome.Fault) {
-            m_LastError = std::move(outcome);
-        } else {
-            m_Latest = std::move(outcome);
-        }
+    OutcomeRetainResult result = m_Outcomes->Retain(std::move(outcome));
+    if (!result.Overflowed)
         return;
-    }
-
-    if (m_Retention.Kind == RetentionKind::Ignore) {
-        if (outcome.Terminal)
-            StoreTerminal(std::move(outcome));
-        else if (outcome.Fault)
-            m_LastError = std::move(outcome);
-        return;
-    }
-
-    if (!ShouldRetain(outcome))
-        return;
-
-    if (m_Outcomes.size() < m_Retention.Capacity) {
-        m_Outcomes.push_back(std::move(outcome));
-        return;
-    }
-
-    ExecutionOutcome terminal = outcome;
-    terminal.Terminal = true;
-    terminal.NativeContinuation = false;
-    terminal.QueuedInput = false;
-    terminal.Overflow = OutcomeOverflow{1, m_Retention.Kind,
-                                        m_Retention.Capacity,
-                                        terminal.Fault};
-    terminal.Fault = Fault(
-        ExecutionError::OutcomeQueueFull,
-        "Behavior outcome retention is full; execution was stopped.",
-        outcome.ReturnCode);
-    m_TerminalError = terminal.Fault;
+    m_TerminalError = std::move(result.TerminalFault);
     m_Managed = false;
     m_NativeContinuation = false;
     m_QueuedInputs.clear();
     m_State = ExecutionState::Closing;
-    StoreTerminal(std::move(terminal));
-}
-
-void Execution::StoreTerminal(ExecutionOutcome outcome) {
-    m_TerminalOutcome = std::move(outcome);
 }
 
 } // namespace BML::Behavior

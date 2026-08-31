@@ -176,7 +176,15 @@ CKRenderContext *BML_GetRenderContext() {
 }
 
 ModContext::ModContext(CKContext *context)
-    : m_ObjectRefs(context), m_Behaviors(context),
+    : m_ObjectRefs(context),
+      m_Behaviors(context, [this](const void *object) {
+          if (!object)
+              return BML::Behavior::ObjectRef{};
+          const BML_ObjectRef reference = m_ObjectRefs.Issue(
+              const_cast<CKObject *>(static_cast<const CKObject *>(object)));
+          return BML::Behavior::ObjectRef{
+              reference.Domain, reference.Slot, reference.Generation};
+      }),
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);

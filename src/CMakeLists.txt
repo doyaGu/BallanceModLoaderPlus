@@ -293,6 +293,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Callback.h
         Behavior/Execution.h
         Behavior/Lifecycle.h
+        Behavior/OutcomeStore.h
         Behavior/HookBlock.h
         Behavior/ObjectLoad.h
         Behavior/Physicalize.h
@@ -308,6 +309,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Callback.cpp
         Behavior/Execution.cpp
         Behavior/Lifecycle.cpp
+        Behavior/OutcomeStore.cpp
         Behavior/HookBlock.cpp
         Behavior/ObjectLoad.cpp
         Behavior/Physicalize.cpp

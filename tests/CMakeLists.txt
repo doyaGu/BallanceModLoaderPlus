@@ -235,6 +235,7 @@ add_bml_test(BehaviorExecutionTest
         SOURCES
         BehaviorExecutionTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
+        ${BML_SOURCE_DIR}/Behavior/OutcomeStore.cpp
 )
 
 add_bml_test(BehaviorLifecycleTest

@@ -1,4 +1,5 @@
 #include "Behavior/Execution.h"
+#include "Behavior/OutcomeStore.h"
 
 #include <algorithm>
 #include <deque>
@@ -106,17 +107,27 @@ public:
         return result;
     }
 
-    bool CaptureOutputs(std::vector<ExecutionOutput> &outputs,
-                        ExecutionFault &) override {
+    bool ReadOutputs(std::vector<ExecutionOutput> &activeOutputs,
+                     std::vector<Pout> &pouts,
+                     ExecutionFault &fault) override {
         for (int index = 0; index < static_cast<int>(Outputs.size()); ++index) {
             if (Outputs[index].Active)
-                outputs.push_back({index, Outputs[index].Name, 0});
+                activeOutputs.push_back({index, Outputs[index].Name, 0});
+        }
+        pouts = Pouts;
+        if (OnRead)
+            OnRead(pouts);
+        if (ReadFailure) {
+            fault = *ReadFailure;
+            return false;
         }
         return true;
     }
 
     bool ClearOutputs(const std::vector<ExecutionOutput> &outputs,
                       ExecutionFault &) override {
+        if (OnClear)
+            OnClear(outputs);
         for (const ExecutionOutput &output : outputs)
             Outputs[output.Index].Active = false;
         return true;
@@ -140,6 +151,10 @@ public:
     std::vector<int> Activated;
     std::deque<NativeExecution> Native;
     std::function<void()> OnExecute;
+    std::vector<Pout> Pouts;
+    std::optional<ExecutionFault> ReadFailure;
+    std::function<void(std::vector<Pout> &)> OnRead;
+    std::function<void(const std::vector<ExecutionOutput> &)> OnClear;
 };
 
 NativeExecution FunctionResult(int code, bool retry = false,
@@ -432,6 +447,117 @@ TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {
     EXPECT_EQ(execution.State(), ExecutionState::Closing);
     execution.MarkClosed();
     EXPECT_EQ(execution.State(), ExecutionState::Closed);
+}
+
+TEST(BehaviorExecution, ReadsActiveOutAndPoutBeforeClearingTheOut) {
+    Execution execution;
+    FakeExecutionAdapter adapter;
+    adapter.Outputs[0].Active = true;
+    Pout value;
+    value.Index = 0;
+    value.Name = "Value";
+    value.TypeGuid1 = 0x5a5716fd;
+    value.TypeGuid2 = 0x44e276d7;
+    value.Kind = PoutKind::Int32;
+    value.Int32 = 42;
+    adapter.Pouts.push_back(value);
+    adapter.OnClear = [&](const std::vector<ExecutionOutput> &) {
+        ASSERT_EQ(adapter.Pouts.size(), 1u);
+        EXPECT_EQ(adapter.Pouts[0].Int32, 42);
+    };
+
+    ExecutionResult result =
+        execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
+    ASSERT_TRUE(result.Outcome);
+    ASSERT_EQ(result.Outcome->ActiveOutputs.size(), 1u);
+    ASSERT_EQ(result.Outcome->Pouts.size(), 1u);
+    EXPECT_EQ(result.Outcome->Pouts[0].Int32, 42);
+    EXPECT_FALSE(adapter.Outputs[0].Active);
+}
+
+TEST(BehaviorExecution, PoutValuesAreOwnedAndKeepNameOccurrences) {
+    Execution execution;
+    FakeExecutionAdapter adapter;
+    Pout first;
+    first.Index = 0;
+    first.Name = "Value";
+    first.Occurrence = 0;
+    first.Kind = PoutKind::Utf8;
+    first.Text = "first";
+    Pout second = first;
+    second.Index = 1;
+    second.Occurrence = 1;
+    second.Text = "second";
+    adapter.Pouts = {first, second};
+
+    ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
+    adapter.Pouts[0].Text = "mutated";
+    auto outcomes = execution.Drain();
+    ASSERT_EQ(outcomes.size(), 1u);
+    ASSERT_EQ(outcomes[0].Pouts.size(), 2u);
+    EXPECT_EQ(outcomes[0].Pouts[0].Text, "first");
+    EXPECT_EQ(outcomes[0].Pouts[1].Occurrence, 1);
+    EXPECT_EQ(outcomes[0].Pouts[1].Text, "second");
+}
+
+TEST(BehaviorExecution, UnsupportedPoutBeforeExecuteCreatesNoOutcome) {
+    Execution execution;
+    FakeExecutionAdapter adapter;
+    NativeExecution rejected;
+    rejected.Executed = false;
+    rejected.Fault = {ExecutionError::UnsupportedPout, 1,
+                      "unsupported Pout"};
+    adapter.Native.push_back(rejected);
+
+    ExecutionResult result =
+        execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
+    EXPECT_EQ(result.State, AdmissionState::Failed);
+    EXPECT_EQ(result.Fault.Code, ExecutionError::UnsupportedPout);
+    EXPECT_EQ(execution.NextSequence(), 1u);
+    EXPECT_TRUE(execution.Drain().empty());
+}
+
+TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
+    Execution execution;
+    FakeExecutionAdapter adapter;
+    adapter.Outputs[0].Active = true;
+    adapter.Pouts.push_back(Pout{});
+    adapter.ReadFailure = {ExecutionError::UnsupportedPout, 2,
+                           "dynamic Pout type"};
+
+    ExecutionResult result =
+        execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
+    ASSERT_TRUE(result.Outcome);
+    EXPECT_EQ(result.Outcome->Sequence, 1u);
+    EXPECT_TRUE(result.Outcome->Terminal);
+    EXPECT_EQ(result.Outcome->Fault.Code, ExecutionError::UnsupportedPout);
+    ASSERT_EQ(result.Outcome->ActiveOutputs.size(), 1u);
+    EXPECT_TRUE(result.Outcome->Pouts.empty());
+    EXPECT_EQ(execution.NextSequence(), 2u);
+}
+
+TEST(BehaviorExecution, OutcomeStoreReadsWithoutConsumingThenConsumesExactly) {
+    auto outcomes =
+        std::make_shared<OutcomeStore>(OutcomeRetention::EachFrame(4));
+    Execution execution(outcomes);
+    FakeExecutionAdapter adapter;
+    adapter.Native.push_back(FunctionResult(1, true));
+    adapter.Native.push_back(FunctionResult(0));
+
+    ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
+    ASSERT_TRUE(execution.Step(2, adapter));
+    const auto firstRead = outcomes->Read();
+    const auto secondRead = outcomes->Read();
+    ASSERT_EQ(firstRead.size(), 2u);
+    EXPECT_EQ(secondRead.size(), firstRead.size());
+    EXPECT_EQ(secondRead[0].Sequence, firstRead[0].Sequence);
+
+    const std::array<std::uint64_t, 2> wrong{1, 3};
+    EXPECT_FALSE(outcomes->Consume(wrong));
+    EXPECT_EQ(outcomes->Read().size(), 2u);
+    const std::array<std::uint64_t, 2> exact{1, 2};
+    EXPECT_TRUE(outcomes->Consume(exact));
+    EXPECT_TRUE(outcomes->Read().empty());
 }
 
 } // namespace

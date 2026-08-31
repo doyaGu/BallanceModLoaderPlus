@@ -3,7 +3,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <optional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,7 +29,9 @@ enum class ExecutionError {
     ActivationFailed,
     NativeFailed,
     UnsupportedBreak,
-    CaptureFailed,
+    OutputUnavailable,
+    UnsupportedPout,
+    PoutReadFailed,
     OutcomeQueueFull,
     Cancelled,
 };
@@ -74,6 +78,39 @@ struct ExecutionOutput {
     int Occurrence = 0;
 };
 
+enum class PoutKind : std::uint32_t {
+    Bool,
+    Int32,
+    Float32,
+    Utf8,
+    Vec2,
+    Vec3,
+    Quaternion,
+    Euler,
+    Rect,
+    Color,
+    Box,
+    Mat4,
+    Object,
+};
+
+struct Pout {
+    int Index = -1;
+    std::string Name;
+    int Occurrence = 0;
+    std::uint32_t TypeGuid1 = 0;
+    std::uint32_t TypeGuid2 = 0;
+    PoutKind Kind = PoutKind::Int32;
+    std::int32_t Int32 = 0;
+    float Float32 = 0.0f;
+    std::array<float, 16> Components{};
+    std::uint32_t ComponentCount = 0;
+    std::string Text;
+    std::uint32_t ObjectDomain = 0;
+    std::uint32_t ObjectSlot = 0;
+    std::uint32_t ObjectGeneration = 0;
+};
+
 enum class BehaviorKind {
     Function,
     Graph,
@@ -87,6 +124,7 @@ struct NativeExecution {
     bool Error = false;
     bool Break = false;
     ExecutionFault Fault;
+    bool Executed = true;
 };
 
 class ExecutionAdapter {
@@ -97,8 +135,9 @@ public:
                          ExecutionFault &fault) = 0;
     virtual bool Activate(const ResolvedInput &input, ExecutionFault &fault) = 0;
     virtual NativeExecution Execute() = 0;
-    virtual bool CaptureOutputs(std::vector<ExecutionOutput> &outputs,
-                                ExecutionFault &fault) = 0;
+    virtual bool ReadOutputs(std::vector<ExecutionOutput> &activeOutputs,
+                             std::vector<Pout> &pouts,
+                             ExecutionFault &fault) = 0;
     virtual bool ClearOutputs(const std::vector<ExecutionOutput> &outputs,
                               ExecutionFault &fault) = 0;
 };
@@ -136,6 +175,7 @@ struct ExecutionOutcome {
     bool Terminal = false;
     ExecutionFault Fault;
     std::vector<ExecutionOutput> ActiveOutputs;
+    std::vector<Pout> Pouts;
     std::optional<OutcomeOverflow> Overflow;
 };
 
@@ -158,6 +198,7 @@ struct ExecutionResult {
 class Execution final {
 public:
     explicit Execution(OutcomeRetention retention = OutcomeRetention::Signals());
+    explicit Execution(std::shared_ptr<class OutcomeStore> outcomes);
 
     ExecutionResult Pulse(const ExecutionInput &input, std::uint64_t frame,
                           ExecutionAdapter &adapter);
@@ -179,6 +220,9 @@ public:
         return m_NextSequence;
     }
     [[nodiscard]] std::vector<ExecutionOutcome> Drain();
+    [[nodiscard]] const std::shared_ptr<class OutcomeStore> &Outcomes() const noexcept {
+        return m_Outcomes;
+    }
 
 private:
     ExecutionResult Admit(const ExecutionInput &input, std::uint64_t frame,
@@ -187,10 +231,7 @@ private:
     bool Queue(const ExecutionInput &input);
     void FailBeforeExecute(ExecutionFault fault) noexcept;
     void Retain(ExecutionOutcome outcome);
-    void StoreTerminal(ExecutionOutcome outcome);
-    [[nodiscard]] bool ShouldRetain(const ExecutionOutcome &outcome) const noexcept;
 
-    OutcomeRetention m_Retention;
     ExecutionState m_State = ExecutionState::Idle;
     bool m_Managed = false;
     bool m_NativeContinuation = false;
@@ -198,10 +239,7 @@ private:
     std::uint64_t m_LastFrame = static_cast<std::uint64_t>(-1);
     std::uint64_t m_NextSequence = 1;
     std::vector<ExecutionInput> m_QueuedInputs;
-    std::vector<ExecutionOutcome> m_Outcomes;
-    std::optional<ExecutionOutcome> m_Latest;
-    std::optional<ExecutionOutcome> m_LastError;
-    std::optional<ExecutionOutcome> m_TerminalOutcome;
+    std::shared_ptr<class OutcomeStore> m_Outcomes;
     ExecutionFault m_TerminalError;
 };
 
