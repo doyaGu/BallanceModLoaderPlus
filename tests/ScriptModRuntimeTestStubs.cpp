@@ -46,6 +46,8 @@ void BMLImGuiASEndCallbackRecovery(BMLImGuiASCallbackRecoveryScope *scope, const
         scope->End(modId, phase);
 }
 
+void Overlay::ScriptImGuiCallScope::End() {}
+
 namespace BML {
 
 const char *ScriptMod::GetID() {

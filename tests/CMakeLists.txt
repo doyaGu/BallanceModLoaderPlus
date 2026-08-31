@@ -27,6 +27,7 @@ function(add_bml_test test_name)
     if (BML_WITH_ANGELSCRIPT)
         target_include_directories(${test_name} PRIVATE
                 "${BML_SOURCE_DIR}/AngelScript"
+                "${IMGUI_SOURCE_DIR}"
                 "${VIRTOOLS_SDK_INCLUDE_DIR}"
                 "${CKANGELSCRIPT_INCLUDE_DIR}"
                 "${CKANGELSCRIPT_ANGELSCRIPT_INCLUDE_DIR}"

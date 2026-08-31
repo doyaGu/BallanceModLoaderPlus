@@ -2831,6 +2831,7 @@ void Runtime::QueueDestroy(Record &record) {
     pending.Sources = std::move(record.OwnedSources);
     pending.Operations = std::move(record.OwnedOperations);
     pending.KeepAlive = std::move(record.KeepAlive);
+    pending.Frames = 0;
     pending.DestroyBehavior = true;
     pending.GraphResident = record.NativeLifecycle.Ledger().Placed;
     m_PendingDestroy.push_back(std::move(pending));
@@ -3162,6 +3163,8 @@ Status Runtime::Close(CKBehavior *behavior) {
         record.Protocol.RequestClose();
         record.NativeLifecycle.RequestClose();
         CloseCallbacks(record);
+        DrainCloseQueue();
+        DestroyReady(DestroyMode::Ready);
         return {};
     }
     return Failure(Error::InvalidState,

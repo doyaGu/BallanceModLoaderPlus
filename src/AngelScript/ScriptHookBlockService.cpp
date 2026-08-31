@@ -5,6 +5,7 @@
 #include <new>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <angelscript.h>
 
@@ -36,11 +37,11 @@ struct ScriptHookBlockEntry {
     CKBehaviorLink *CreatedLink = nullptr;
     CKBehaviorIO *OriginalEndpoint = nullptr;
     HookBlockPatchEndpoint PatchedEndpoint = HookBlockPatchEndpoint::None;
-    asIScriptFunction *Callback = nullptr;
+    asIScriptFunction *Callback = nullptr; // Borrowed from Binding's plan state.
+    std::shared_ptr<Behavior::HookBlock::Binding> Binding;
     bool Enabled = true;
     bool AutoActivateOutputs = true;
-    int ActiveCalls = 0;
-    bool PendingUninstall = false;
+    bool Retiring = false;
 };
 
 static bool IsIndexInRange(int index, int count) {
@@ -49,16 +50,6 @@ static bool IsIndexInRange(int index, int count) {
 
 static std::string DefaultHookBlockName(unsigned int id) {
     return std::string("BML Script Hook ") + std::to_string(id);
-}
-
-static void SetHookBlockNativeCallback(CKBehavior *block,
-                                       Behavior::HookBlock::Callback callback,
-                                       void *arg) {
-    if (!block || block->GetLocalParameterCount() < 2)
-        return;
-
-    block->SetLocalParameterValue(0, &callback);
-    block->SetLocalParameterValue(1, &arg);
 }
 
 static void SetHookBlockAutoActivateOutputs(CKBehavior *block, bool enabled) {
@@ -184,6 +175,7 @@ public:
     unsigned int NextId = 1;
     unsigned int NextGeneration = 1;
     std::unordered_map<unsigned int, std::unique_ptr<ScriptHookBlockEntry>> Entries;
+    std::vector<std::pair<unsigned int, unsigned int>> Retirements;
 };
 
 namespace {
@@ -198,26 +190,15 @@ static void FailHookBlockCallback(const std::shared_ptr<ScriptHookBlockServiceSt
                                   ScriptHookBlockEntry &entry,
                                   const ScriptDiagnostic &diagnostic) {
     entry.Enabled = false;
+    if (entry.Binding)
+        entry.Binding->CloseAdmission();
     if (state && state->Owner)
         state->Owner->SetLoadFailure(diagnostic);
 }
 
-static void ReleaseHookBlockCallback(ScriptHookBlockEntry &entry) {
-    if (entry.Callback) {
-        entry.Callback->Release();
-        entry.Callback = nullptr;
-    }
-}
-
-static void ClearHookBlockNativeCallback(ScriptHookBlockEntry &entry) {
-    Behavior::HookBlock::Callback callback = nullptr;
-    void *arg = nullptr;
-    SetHookBlockNativeCallback(entry.Block, callback, arg);
-}
-
-static void RestoreHookBlockGraph(ScriptHookBlockEntry &entry) {
-    ClearHookBlockNativeCallback(entry);
-
+static bool RestoreHookBlockGraph(
+    const std::shared_ptr<ScriptHookBlockServiceState> &state,
+    ScriptHookBlockEntry &entry) {
     if (entry.PatchedLink && entry.OriginalEndpoint) {
         if (entry.PatchedEndpoint == HookBlockPatchEndpoint::Out)
             entry.PatchedLink->SetOutBehaviorIO(entry.OriginalEndpoint);
@@ -227,8 +208,20 @@ static void RestoreHookBlockGraph(ScriptHookBlockEntry &entry) {
 
     if (entry.OwnerScript && entry.CreatedLink)
         ScriptHelper::DeleteLink(entry.OwnerScript, entry.CreatedLink);
-    if (entry.OwnerScript && entry.Block)
-        ScriptHelper::DeleteBB(entry.OwnerScript, entry.Block);
+
+    bool closed = true;
+    if (entry.Block) {
+        if (state && state->Context) {
+            Behavior::Status status = state->Context->Behaviors().Close(entry.Block);
+            closed = static_cast<bool>(status);
+            if (!closed)
+                RecordHookBlockDiagnostic(state, status.Message);
+        } else {
+            closed = false;
+        }
+    }
+    if (!closed && entry.Binding)
+        closed = entry.Binding->RetireAtSafePoint();
 
     entry.PatchedLink = nullptr;
     entry.CreatedLink = nullptr;
@@ -236,6 +229,9 @@ static void RestoreHookBlockGraph(ScriptHookBlockEntry &entry) {
     entry.PatchedEndpoint = HookBlockPatchEndpoint::None;
     entry.Block = nullptr;
     entry.OwnerScript = nullptr;
+    entry.Callback = nullptr;
+    entry.Binding.reset();
+    return closed;
 }
 
 static bool RetireHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceState> &state,
@@ -249,17 +245,31 @@ static bool RetireHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceSta
         return false;
 
     ScriptHookBlockEntry &entry = *it->second;
-    if (entry.ActiveCalls > 0) {
-        entry.PendingUninstall = true;
-        entry.Enabled = false;
-        ClearHookBlockNativeCallback(entry);
+    if (entry.Retiring)
         return true;
-    }
-
-    RestoreHookBlockGraph(entry);
-    ReleaseHookBlockCallback(entry);
-    state->Entries.erase(it);
+    entry.Retiring = true;
+    entry.Enabled = false;
+    if (entry.Binding)
+        entry.Binding->CloseAdmission();
+    state->Retirements.emplace_back(id, generation);
     return true;
+}
+
+static void ProcessHookBlockRetirements(
+    const std::shared_ptr<ScriptHookBlockServiceState> &state) {
+    if (!state || state->Retirements.empty())
+        return;
+    std::vector<std::pair<unsigned int, unsigned int>> retirements;
+    retirements.swap(state->Retirements);
+    for (const auto &[id, generation] : retirements) {
+        auto it = state->Entries.find(id);
+        if (it == state->Entries.end() || !it->second ||
+            it->second->Generation != generation) {
+            continue;
+        }
+        (void) RestoreHookBlockGraph(state, *it->second);
+        state->Entries.erase(it);
+    }
 }
 
 static ScriptHookBlockEntry *ResolveHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceState> &state,
@@ -268,7 +278,8 @@ static ScriptHookBlockEntry *ResolveHookBlockEntry(const std::shared_ptr<ScriptH
     if (!state || !state->Active)
         return nullptr;
     auto it = state->Entries.find(id);
-    if (it == state->Entries.end() || !it->second || it->second->Generation != generation)
+    if (it == state->Entries.end() || !it->second ||
+        it->second->Generation != generation || it->second->Retiring)
         return nullptr;
     return it->second.get();
 }
@@ -298,19 +309,10 @@ static int RunScriptHookBlockCallback(const CKBehaviorContext *context, void *ar
     call.ReadResult = ReadHookBlockResult;
     call.UserData = &args;
 
-    ++entry->ActiveCalls;
     ScriptDiagnostic diagnostic;
     const bool ok = ExecuteScriptFunction(call, diagnostic);
     if (!ok)
         FailHookBlockCallback(state, *entry, diagnostic);
-
-    if (entry->ActiveCalls > 0)
-        --entry->ActiveCalls;
-    const bool pendingUninstall = entry->PendingUninstall && entry->ActiveCalls == 0;
-    const unsigned int id = entry->Id;
-    const unsigned int generation = entry->Generation;
-    if (pendingUninstall)
-        RetireHookBlockEntry(state, id, generation);
 
     return ok ? args.Result : CKBR_OK;
 }
@@ -324,6 +326,16 @@ static int ScriptHookBlockCallback(const CKBehaviorContext *context, void *arg) 
     }
 }
 
+static void RetainScriptHookBlockFunction(void *value) {
+    if (value)
+        static_cast<asIScriptFunction *>(value)->AddRef();
+}
+
+static void ReleaseScriptHookBlockFunction(void *value) {
+    if (value)
+        static_cast<asIScriptFunction *>(value)->Release();
+}
+
 static ScriptHookBlockRef *RegisterHookBlockEntry(const std::shared_ptr<ScriptHookBlockServiceState> &state,
                                                   std::unique_ptr<ScriptHookBlockEntry> entry) {
     if (!state || !entry)
@@ -332,8 +344,9 @@ static ScriptHookBlockRef *RegisterHookBlockEntry(const std::shared_ptr<ScriptHo
     const unsigned int generation = entry->Generation;
     ScriptHookBlockRef *ref = new (std::nothrow) ScriptHookBlockRef(state, id, generation);
     if (!ref) {
-        RestoreHookBlockGraph(*entry);
-        ReleaseHookBlockCallback(*entry);
+        if (entry->Binding)
+            entry->Binding->CloseAdmission();
+        (void) RestoreHookBlockGraph(state, *entry);
         RecordHookBlockDiagnostic(state, "Unable to create HookBlock reference.");
         return nullptr;
     }
@@ -370,14 +383,23 @@ static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
     entry->Name = name.empty() ? DefaultHookBlockName(entry->Id) : name;
     entry->OwnerScript = ownerScript;
     entry->Callback = callback;
-    callback->AddRef();
+    Behavior::PlanCallbackState callbackState =
+        Behavior::PlanCallbackState::Retained(
+            callback, RetainScriptHookBlockFunction,
+            ReleaseScriptHookBlockFunction);
+    entry->Binding = Behavior::HookBlock::Bind(
+        std::move(callbackState), ScriptHookBlockCallback, entry.get());
+    if (!entry->Binding) {
+        RecordHookBlockDiagnostic(state, "HookBlock callback binding failed.");
+        return nullptr;
+    }
 
     Behavior::AttachResult created = state->Context->Behaviors().AddToGraph(
         ownerScript, Behavior::HookBlock::Make(
-            ScriptHookBlockCallback, entry.get(), inputCount, outputCount));
+            entry->Binding, inputCount, outputCount));
     entry->Block = created ? created.Block : nullptr;
     if (!entry->Block) {
-        ReleaseHookBlockCallback(*entry);
+        entry->Binding->CloseAdmission();
         RecordHookBlockDiagnostic(state, "HookBlock creation failed.");
         return nullptr;
     }
@@ -569,8 +591,7 @@ ScriptHookBlockRef *ScriptHookBlockService::InsertAfter(CKBehavior *ownerScript,
     if (!continuation || link->SetOutBehaviorIO(entry->Block->GetInput(0)) != CK_OK) {
         if (continuation)
             ScriptHelper::DeleteLink(ownerScript, continuation);
-        RestoreHookBlockGraph(*entry);
-        ReleaseHookBlockCallback(*entry);
+        (void) RestoreHookBlockGraph(m_State, *entry);
         RecordHookBlockDiagnostic(m_State, "InsertHookBlockAfter failed to rewire the behavior link.");
         return nullptr;
     }
@@ -605,8 +626,7 @@ ScriptHookBlockRef *ScriptHookBlockService::InsertBefore(CKBehavior *ownerScript
     if (!prefix || link->SetInBehaviorIO(entry->Block->GetOutput(0)) != CK_OK) {
         if (prefix)
             ScriptHelper::DeleteLink(ownerScript, prefix);
-        RestoreHookBlockGraph(*entry);
-        ReleaseHookBlockCallback(*entry);
+        (void) RestoreHookBlockGraph(m_State, *entry);
         RecordHookBlockDiagnostic(m_State, "InsertHookBlockBefore failed to rewire the behavior link.");
         return nullptr;
     }
@@ -642,8 +662,7 @@ ScriptHookBlockRef *ScriptHookBlockService::InsertBetween(CKBehavior *ownerScrip
     if (!continuation || link->SetOutBehaviorIO(entry->Block->GetInput(0)) != CK_OK) {
         if (continuation)
             ScriptHelper::DeleteLink(ownerScript, continuation);
-        RestoreHookBlockGraph(*entry);
-        ReleaseHookBlockCallback(*entry);
+        (void) RestoreHookBlockGraph(m_State, *entry);
         RecordHookBlockDiagnostic(m_State, "InsertHookBlockBetween failed to rewire the behavior link.");
         return nullptr;
     }
@@ -661,19 +680,31 @@ void ScriptHookBlockService::Release(ScriptDiagnostic *) {
 
     std::shared_ptr<ScriptHookBlockServiceState> releasedState = m_State;
     releasedState->Active = false;
-    while (!releasedState->Entries.empty()) {
-        auto it = releasedState->Entries.begin();
-        if (it->second) {
-            RestoreHookBlockGraph(*it->second);
-            ReleaseHookBlockCallback(*it->second);
-        }
-        releasedState->Entries.erase(it);
+    for (auto &[id, entry] : releasedState->Entries) {
+        if (!entry)
+            continue;
+        entry->Enabled = false;
+        entry->Retiring = true;
+        if (entry->Binding)
+            entry->Binding->CloseAdmission();
+        releasedState->Retirements.emplace_back(id, entry->Generation);
     }
+    ProcessHookBlockRetirements(releasedState);
     m_State.reset();
 }
 
+void ScriptHookBlockService::ProcessFrame() {
+    ProcessHookBlockRetirements(m_State);
+}
+
 size_t ScriptHookBlockService::GetActiveCount() const {
-    return m_State && m_State->Active ? m_State->Entries.size() : 0;
+    if (!m_State || !m_State->Active)
+        return 0;
+    return static_cast<size_t>(std::count_if(
+        m_State->Entries.begin(), m_State->Entries.end(),
+        [](const auto &entry) {
+            return entry.second && !entry.second->Retiring;
+        }));
 }
 
 } // namespace BML

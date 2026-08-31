@@ -98,6 +98,7 @@ public:
                                       int sourceOutput,
                                       int targetInput);
     void Release(ScriptDiagnostic *diagnostic = nullptr);
+    void ProcessFrame();
     size_t GetActiveCount() const;
 
 private:

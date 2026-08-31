@@ -1243,6 +1243,7 @@ ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockBetween(CKBehavior *ownerScr
 }
 
 void ScriptMod::ProcessQueuedScriptServiceCallbacks() {
+    m_HookBlocks.ProcessFrame();
     m_DataShareRequests.ProcessQueuedCallbacks();
 }
 
