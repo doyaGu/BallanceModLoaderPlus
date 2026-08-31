@@ -103,7 +103,7 @@ bool Sessions::HasNativeController(Session &session) const {
 RunResult Sessions::Accepted(const char *message) {
     Status status;
     status.Message = message ? message : "";
-    return {std::move(status), RunState::Suspended, CKBR_OK, {}};
+    return {std::move(status), RunState::Pending, CKBR_OK, {}};
 }
 
 RunResult Sessions::Create(const StoredOptions &stored) {
@@ -217,8 +217,8 @@ void Sessions::ProcessFrame() {
 
         RunResult shutdown = m_Runtime.Pulse(
             session.Block, Slot::At(SlotKind::Input, 1));
-        if (!shutdown || shutdown.State == RunState::Continuing ||
-            shutdown.State == RunState::Suspended) {
+        if (!shutdown || shutdown.State == RunState::Pending ||
+            shutdown.State == RunState::Queued) {
             session.CloseAfterEpoch = m_PhysicsEpoch + 1;
             return true;
         }

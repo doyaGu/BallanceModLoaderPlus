@@ -13,8 +13,8 @@ Behavior::RunResult ExecuteBBAdapter::Run(
                 CKBR_BEHAVIORERROR, {}};
     Behavior::RunResult result = m_Runtime.StartTask(
         created.Handle, Behavior::Slot::At(Behavior::SlotKind::Input, input));
-    if (result.State == Behavior::RunState::Continuing ||
-        result.State == Behavior::RunState::Suspended)
+    if (result.State == Behavior::RunState::Pending ||
+        result.State == Behavior::RunState::Queued)
         m_Tasks.push_back(std::move(created.Handle));
     return result;
 }

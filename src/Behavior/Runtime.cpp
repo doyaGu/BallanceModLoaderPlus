@@ -184,6 +184,171 @@ CKDWORD CallbackMaskForMessage(CKDWORD message) {
 
 } // namespace
 
+class Runtime::NativeAdapter final : public ExecutionAdapter {
+public:
+    NativeAdapter(Runtime &runtime, std::uint64_t instanceId,
+                  const CKBehaviorContext *frame)
+        : m_Runtime(runtime), m_InstanceId(instanceId), m_Frame(frame) {}
+
+    bool Resolve(const ExecutionInput &input, ResolvedInput &resolved,
+                 ExecutionFault &fault) override {
+        Record *record = m_Runtime.FindRecord(m_InstanceId);
+        CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
+        if (!record || !behavior) {
+            fault = {ExecutionError::InvalidState, CKBR_BEHAVIORERROR,
+                     "Behavior instance has expired."};
+            return false;
+        }
+
+        if (input.Selector == InputSelector::Index) {
+            if (input.LayoutGeneration != record->LayoutGeneration) {
+                fault = {ExecutionError::LayoutStale, CKBR_PARAMETERERROR,
+                         "Queued behavior input belongs to an older live layout."};
+                return false;
+            }
+            if (input.Index < 0 || input.Index >= behavior->GetInputCount()) {
+                fault = {ExecutionError::SelectorNotFound, CKBR_PARAMETERERROR,
+                         "Behavior input index no longer exists."};
+                return false;
+            }
+            resolved.Index = input.Index;
+            CKBehaviorIO *io = behavior->GetInput(input.Index);
+            resolved.Name = io && io->GetName() ? io->GetName() : "";
+            resolved.Occurrence = Occurrence(behavior, input.Index, resolved.Name);
+            return true;
+        }
+
+        Slot selector = input.RequireUnique
+            ? Slot::Named(SlotKind::Input, input.Name)
+            : Slot::OccurrenceOf(SlotKind::Input, input.Name, input.Occurrence);
+        SlotInfo slot;
+        Status status = m_Runtime.Resolve(behavior, selector, slot);
+        if (!status) {
+            fault = FromStatus(status);
+            return false;
+        }
+        resolved.Index = slot.NativeIndex;
+        resolved.Name = slot.Name;
+        resolved.Occurrence = input.Occurrence;
+        return true;
+    }
+
+    bool Activate(const ResolvedInput &input, ExecutionFault &fault) override {
+        Record *record = m_Runtime.FindRecord(m_InstanceId);
+        CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
+        if (!record || !behavior || input.Index < 0 ||
+            input.Index >= behavior->GetInputCount()) {
+            fault = {ExecutionError::ActivationFailed, CKBR_PARAMETERERROR,
+                     "Resolved behavior input is no longer valid."};
+            return false;
+        }
+        behavior->Activate(TRUE, FALSE);
+        behavior->ActivateInput(input.Index, TRUE);
+        return true;
+    }
+
+    NativeExecution Execute() override {
+        NativeExecution result;
+        Record *record = m_Runtime.FindRecord(m_InstanceId);
+        CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
+        if (!record || !behavior) {
+            result.Fault = {ExecutionError::InvalidState, CKBR_BEHAVIORERROR,
+                            "Behavior instance disappeared before execution."};
+            return result;
+        }
+
+        result.Kind = behavior->IsUsingFunction()
+            ? BehaviorKind::Function : BehaviorKind::Graph;
+        ++record->LayoutGeneration;
+        result.ReturnCode = m_Runtime.ExecuteNative(behavior, m_Frame);
+        result.Retry = HasContinuation(result.ReturnCode);
+        result.Error = IsExecutionError(result.ReturnCode);
+        result.Break = result.ReturnCode == CKBR_BREAK;
+
+        record = m_Runtime.FindRecord(m_InstanceId);
+        if (!record || record->Expired ||
+            m_Runtime.ResolveBehavior(*record) != behavior) {
+            result.Fault = {ExecutionError::NativeFailed, result.ReturnCode,
+                            "Building Block destroyed itself during execution."};
+            return result;
+        }
+        if (result.Kind == BehaviorKind::Graph)
+            result.Active = behavior->IsActive() != FALSE;
+        return result;
+    }
+
+    bool CaptureOutputs(std::vector<ExecutionOutput> &outputs,
+                        ExecutionFault &fault) override {
+        Record *record = m_Runtime.FindRecord(m_InstanceId);
+        CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
+        if (!record || !behavior) {
+            fault = {ExecutionError::CaptureFailed, CKBR_BEHAVIORERROR,
+                     "Behavior disappeared before active outputs were captured."};
+            return false;
+        }
+        for (int index = 0; index < behavior->GetOutputCount(); ++index) {
+            if (!behavior->IsOutputActive(index))
+                continue;
+            CKBehaviorIO *io = behavior->GetOutput(index);
+            const std::string name = io && io->GetName() ? io->GetName() : "";
+            outputs.push_back({index, name, Occurrence(behavior, index, name, false)});
+        }
+        return true;
+    }
+
+    bool ClearOutputs(const std::vector<ExecutionOutput> &outputs,
+                      ExecutionFault &fault) override {
+        Record *record = m_Runtime.FindRecord(m_InstanceId);
+        CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
+        if (!record || !behavior) {
+            fault = {ExecutionError::CaptureFailed, CKBR_BEHAVIORERROR,
+                     "Behavior disappeared before captured outputs were cleared."};
+            return false;
+        }
+        for (const ExecutionOutput &output : outputs) {
+            if (output.Index >= 0 && output.Index < behavior->GetOutputCount())
+                behavior->ActivateOutput(output.Index, FALSE);
+        }
+        return true;
+    }
+
+private:
+    static int Occurrence(CKBehavior *behavior, int index,
+                          const std::string &name, bool input = true) {
+        int occurrence = 0;
+        for (int current = 0; current < index; ++current) {
+            CKBehaviorIO *io = input
+                ? behavior->GetInput(current) : behavior->GetOutput(current);
+            const char *candidate = io ? io->GetName() : nullptr;
+            if ((candidate ? candidate : "") == name)
+                ++occurrence;
+        }
+        return occurrence;
+    }
+
+    static ExecutionFault FromStatus(const Status &status) {
+        ExecutionError code = ExecutionError::InvalidState;
+        switch (status.Code) {
+        case Error::SlotNotFound:
+            code = ExecutionError::SelectorNotFound;
+            break;
+        case Error::AmbiguousSlot:
+            code = ExecutionError::SelectorAmbiguous;
+            break;
+        case Error::StaleLayout:
+            code = ExecutionError::LayoutStale;
+            break;
+        default:
+            break;
+        }
+        return {code, status.BehaviorResult, status.Message};
+    }
+
+    Runtime &m_Runtime;
+    std::uint64_t m_InstanceId;
+    const CKBehaviorContext *m_Frame;
+};
+
 Slot Slot::At(SlotKind kind, int index, CKGUID expectedType) {
     Slot selector;
     selector.Kind = kind;
@@ -388,6 +553,11 @@ Spec &Spec::AddOutput(std::string name) {
     return *this;
 }
 
+Spec &Spec::Outcomes(OutcomeRetention retention) {
+    m_OutcomeRetention = retention;
+    return *this;
+}
+
 Instance::~Instance() {
     Reset();
 }
@@ -559,6 +729,7 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
     Record record;
     record.Id = m_NextInstanceId++;
     record.Behavior = CaptureObject(behavior);
+    record.Protocol = Execution(spec.m_OutcomeRetention);
     result.Outcome = Configure(behavior, owner, nullptr, spec, frame, record);
     if (!result.Outcome) {
         QueueDestroy(record);
@@ -582,7 +753,24 @@ CallResult Runtime::Call(CKBeObject *owner, const Spec &spec,
         return result;
     result.Descriptor = std::move(created.Descriptor);
     result.Handle = std::move(created.Handle);
-    result.Run = Pulse(result.Handle, input, frame);
+    Slot entry = input;
+    entry.Kind = SlotKind::Input;
+    SlotRef slot;
+    Status resolved = Resolve(result.Handle, entry, slot);
+    Record *record = resolved ? FindRecord(result.Handle) : nullptr;
+    if (!resolved || !record) {
+        result.Run = {resolved ? Failure(Error::InvalidState,
+                                         "Behavior instance has expired.")
+                                      : std::move(resolved),
+                      RunState::Failed, CKBR_PARAMETERERROR, {}};
+    } else {
+        const ExecutionInput activation = entry.UsesName()
+            ? ExecutionInput::Named(entry.Name, entry.Occurrence,
+                                    entry.RequireUnique)
+            : ExecutionInput::At(slot.Slot.NativeIndex,
+                                 record->LayoutGeneration);
+        result.Run = Execute(record->Id, &activation, true, frame);
+    }
     if (!result.Run)
         result.Outcome = result.Run.Outcome;
     return result;
@@ -612,6 +800,7 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
     record.Behavior = CaptureObject(behavior);
     record.Parent = CaptureObject(parent);
     record.GraphResident = true;
+    record.Protocol = Execution(spec.m_OutcomeRetention);
     result.Outcome = Configure(behavior, parent->GetOwner(), parent, spec, frame, record);
     if (!result.Outcome) {
         QueueDestroy(record);
@@ -1640,9 +1829,11 @@ void Runtime::SweepRecords() {
         Record &record = it->second;
         CKBehavior *behavior = ResolveBehavior(record);
         if (!behavior) {
-            if (record.Running) {
+            if (record.Protocol.State() == ExecutionState::Running) {
                 record.Expired = true;
-                record.Task = false;
+                record.Protocol.RequestClose({
+                    ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
+                    "Behavior object was deleted during execution."});
                 ++it;
             } else {
                 QueueDestroy(record);
@@ -1885,9 +2076,9 @@ Status Runtime::SetInput(Instance &instance,
     if (record->Poisoned)
         return Failure(Error::InvalidState,
                        "Behavior instance requires a complete successful reconfiguration.");
-    if (record->Running || record->Task)
+    if (record->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState,
-                       "Cannot rebind an input while the instance is executing or managed.");
+                       "Inputs can only be rebound while the instance is idle.");
     Status status = ValidateSlot(*record, slot);
     if (!status)
         return status;
@@ -1921,9 +2112,9 @@ Status Runtime::SetLocal(Instance &instance,
     if (record->Poisoned)
         return Failure(Error::InvalidState,
                        "Behavior instance requires a complete successful reconfiguration.");
-    if (record->Running || record->Task)
+    if (record->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState,
-                       "Cannot edit a local while the instance is executing or managed.");
+                       "Locals can only be edited while the instance is idle.");
     Status status = ValidateSlot(*record, slot);
     if (!status)
         return status;
@@ -1941,9 +2132,9 @@ Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
     CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
     if (!record || !behavior)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Running || record->Task)
+    if (record->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState,
-                       "Cannot reconfigure while the instance is executing or managed.");
+                       "Reconfiguration requires an idle behavior instance.");
     if (spec.Prototype() != behavior->GetPrototypeGuid())
         return Failure(Error::InvalidState,
                        "Reconfiguration spec names a different Building Block Prototype.");
@@ -2035,7 +2226,14 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
     Status status = Resolve(instance, entry, slot);
     if (!status)
         return {std::move(status), RunState::Failed, CKBR_PARAMETERERROR, {}};
-    return Pulse(instance, slot, frame);
+    Record *record = FindRecord(instance);
+    if (!record)
+        return {Failure(Error::InvalidState, "Behavior instance has expired."),
+                RunState::Failed, CKBR_BEHAVIORERROR, {}};
+    const ExecutionInput activation = entry.UsesName()
+        ? ExecutionInput::Named(entry.Name, entry.Occurrence, entry.RequireUnique)
+        : ExecutionInput::At(slot.Slot.NativeIndex, record->LayoutGeneration);
+    return Execute(record->Id, &activation, false, frame);
 }
 
 RunResult Runtime::Pulse(Instance &instance,
@@ -2059,7 +2257,9 @@ RunResult Runtime::Pulse(Instance &instance,
     if (input.Slot.Kind != SlotKind::Input)
         return {Failure(Error::InvalidState, "Resolved slot is not a behavior input."),
                 RunState::Failed, CKBR_PARAMETERERROR, {}};
-    return Execute(record->Id, input.Slot.NativeIndex, true, frame);
+    const ExecutionInput activation = ExecutionInput::At(
+        input.Slot.NativeIndex, input.LayoutGeneration);
+    return Execute(record->Id, &activation, false, frame);
 }
 
 RunResult Runtime::Step(Instance &instance, const CKBehaviorContext *frame) {
@@ -2074,22 +2274,87 @@ RunResult Runtime::Step(Instance &instance, const CKBehaviorContext *frame) {
         return {Failure(Error::InvalidState,
                         "Behavior instance requires a complete successful reconfiguration."),
                 RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    return Execute(record->Id, -1, false, frame);
+    return Execute(record->Id, nullptr, false, frame);
 }
 
 RunResult Runtime::StartTask(Instance &instance, const Slot &input,
                                            const CKBehaviorContext *frame) {
-    RunResult result = Pulse(instance, input, frame);
-    if (Record *record = FindRecord(instance))
-        record->Task = result.State == RunState::Continuing || result.State == RunState::Suspended;
-    return result;
+    return Pulse(instance, input, frame);
+}
+
+Status Runtime::Continue(Instance &instance) {
+    Status ready = ReadyStatus();
+    if (!ready)
+        return ready;
+    Record *record = FindRecord(instance);
+    if (!record)
+        return Failure(Error::InvalidState, "Behavior instance has expired.");
+    if (record->Protocol.State() != ExecutionState::Pending)
+        return Failure(Error::InvalidState,
+                       "Only a pending behavior instance can be continued.");
+    record->Protocol.Continue();
+    return {};
 }
 
 bool Runtime::IsTaskActive(const Instance &instance) const {
     if (!ReadyStatus())
         return false;
     const Record *record = FindRecord(instance);
-    return record && record->Task;
+    return record && record->Protocol.NeedsFrame();
+}
+
+ExecutionState Runtime::State(const Instance &instance) const {
+    if (!ReadyStatus())
+        return ExecutionState::Closed;
+    const Record *record = FindRecord(instance);
+    return record ? record->Protocol.State() : ExecutionState::Closed;
+}
+
+std::vector<ExecutionOutcome> Runtime::Drain(Instance &instance) {
+    if (!ReadyStatus())
+        return {};
+    Record *record = FindRecord(instance);
+    return record ? record->Protocol.Drain() : std::vector<ExecutionOutcome>{};
+}
+
+Status Runtime::TerminalError(const Instance &instance) const {
+    Status ready = ReadyStatus();
+    if (!ready)
+        return ready;
+    const Record *record = FindRecord(instance);
+    if (!record)
+        return Failure(Error::InvalidState, "Behavior instance has expired.");
+    const ExecutionFault &fault = record->Protocol.TerminalError();
+    if (!fault)
+        return {};
+    Error error = Error::ExecutionFailed;
+    switch (fault.Code) {
+    case ExecutionError::UnsupportedBreak:
+        error = Error::UnsupportedBreak;
+        break;
+    case ExecutionError::OutcomeQueueFull:
+        error = Error::OutcomeQueueFull;
+        break;
+    case ExecutionError::Cancelled:
+        error = Error::ExecutionCancelled;
+        break;
+    case ExecutionError::LayoutStale:
+        error = Error::StaleLayout;
+        break;
+    case ExecutionError::SelectorNotFound:
+        error = Error::SlotNotFound;
+        break;
+    case ExecutionError::SelectorAmbiguous:
+        error = Error::AmbiguousSlot;
+        break;
+    case ExecutionError::InvalidState:
+        error = Error::InvalidState;
+        break;
+    default:
+        break;
+    }
+    return Failure(error, fault.Message, CK_OK, fault.NativeCode,
+                   Phase::Execution);
 }
 
 void Runtime::ProcessTasks(const CKBehaviorContext *frame) {
@@ -2101,20 +2366,14 @@ void Runtime::ProcessTasks(const CKBehaviorContext *frame) {
     std::vector<std::uint64_t> tasks;
     tasks.reserve(m_Records.size());
     for (const auto &[instanceId, record] : m_Records) {
-        if (record.Task)
+        if (record.Protocol.NeedsFrame())
             tasks.push_back(instanceId);
     }
     for (std::uint64_t instanceId : tasks) {
         auto it = m_Records.find(instanceId);
-        if (it == m_Records.end() || !it->second.Task)
+        if (it == m_Records.end() || !it->second.Protocol.NeedsFrame())
             continue;
-        RunResult result = Execute(instanceId, -1, false, frame);
-        it = m_Records.find(instanceId);
-        if (it != m_Records.end() &&
-            result.State != RunState::Continuing &&
-            result.State != RunState::Suspended) {
-            it->second.Task = false;
-        }
+        (void) Execute(instanceId, nullptr, false, frame);
     }
 }
 
@@ -2124,6 +2383,7 @@ void Runtime::ProcessFrame() {
     if (m_ProcessingFrame)
         return;
     FlagScope processing(m_ProcessingFrame);
+    ++m_Frame;
     DrainDeferredReleases();
     ProcessTasks(&m_Context->m_BehaviorContext);
     SweepRecords();
@@ -2135,8 +2395,9 @@ void Runtime::ProcessFrame() {
     DestroyReady(DestroyMode::Ready);
 }
 
-RunResult Runtime::Execute(std::uint64_t instanceId, int input, bool activateInput,
-                                         const CKBehaviorContext *frame) {
+RunResult Runtime::Execute(std::uint64_t instanceId,
+                           const ExecutionInput *input, bool once,
+                           const CKBehaviorContext *frame) {
     Record *record = FindRecord(instanceId);
     CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
     if (!record || !behavior)
@@ -2149,75 +2410,86 @@ RunResult Runtime::Execute(std::uint64_t instanceId, int input, bool activateInp
                         CK_OK, CKBR_OK, Phase::Execution,
                         prototypeGuid),
                 RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    if (record->Running)
-        return {Failure(Error::InvalidState,
-                        "Behavior instance execution is reentrant.", CK_OK, CKBR_OK,
-                        Phase::Execution, prototypeGuid),
-                RunState::Failed, CKBR_LOCKED, {}};
+    NativeAdapter adapter(*this, instanceId, frame);
+    ExecutionResult executed = input
+        ? (once ? record->Protocol.Call(*input, m_Frame, adapter)
+                : record->Protocol.Pulse(*input, m_Frame, adapter))
+        : record->Protocol.Step(m_Frame, adapter);
 
-    if (activateInput) {
-        behavior->Activate(TRUE, TRUE);
-        for (int i = 0; i < behavior->GetInputCount(); ++i)
-            behavior->ActivateInput(i, i == input ? TRUE : FALSE);
+    RunResult result;
+    if (executed.State == AdmissionState::Queued) {
+        result.State = RunState::Queued;
+    } else if (executed.State == AdmissionState::Failed) {
+        result.State = RunState::Failed;
     }
 
-    record->Running = true;
-    ++record->LayoutGeneration;
-    const int returnCode = ExecuteNative(behavior, frame);
+    if (executed.Outcome) {
+        result.ReturnCode = executed.Outcome->ReturnCode;
+        result.Outcome.BehaviorResult = executed.Outcome->ReturnCode;
+        for (const ExecutionOutput &output : executed.Outcome->ActiveOutputs)
+            result.ActiveOutputs.push_back(output.Index);
+    }
+
+    if (executed.Fault) {
+        Error error = Error::ExecutionFailed;
+        switch (executed.Fault.Code) {
+        case ExecutionError::SelectorNotFound:
+            error = Error::SlotNotFound;
+            break;
+        case ExecutionError::SelectorAmbiguous:
+            error = Error::AmbiguousSlot;
+            break;
+        case ExecutionError::LayoutStale:
+            error = Error::StaleLayout;
+            break;
+        case ExecutionError::UnsupportedBreak:
+            error = Error::UnsupportedBreak;
+            break;
+        case ExecutionError::OutcomeQueueFull:
+            error = Error::OutcomeQueueFull;
+            break;
+        case ExecutionError::Cancelled:
+            error = Error::ExecutionCancelled;
+            break;
+        case ExecutionError::InvalidState:
+            error = Error::InvalidState;
+            break;
+        default:
+            break;
+        }
+        result.Outcome = Failure(error, executed.Fault.Message, CK_OK,
+                                 executed.Fault.NativeCode,
+                                 Phase::Execution, prototypeGuid);
+    }
+
     record = FindRecord(instanceId);
-    if (!record) {
-        return {Failure(Error::InvalidState,
-                        "Building Block record disappeared during execution.", CK_OK,
-                        returnCode, Phase::Execution,
-                        prototypeGuid),
-                RunState::Failed, returnCode, {}};
+    if (!record)
+        return result;
+
+    const ExecutionState state = record->Protocol.State();
+    if (executed.State == AdmissionState::Executed) {
+        if (state == ExecutionState::Pending)
+            result.State = RunState::Pending;
+        else if (state == ExecutionState::Failed ||
+                 state == ExecutionState::Closing ||
+                 state == ExecutionState::Closed)
+            result.State = RunState::Failed;
+        else
+            result.State = RunState::Completed;
     }
-    record->Running = false;
 
     if (record->Expired || ResolveBehavior(*record) != behavior) {
-        record->Task = false;
         for (ObjectStamp source : record->OwnedSources)
             QueueSourceDestroy(source);
         for (OwnedOperation &operation : record->OwnedOperations)
             QueueOperationDestroy(std::move(operation));
         m_Records.erase(instanceId);
-        return {Failure(Error::InvalidState,
-                        "Building Block destroyed itself during execution.", CK_OK,
-                        returnCode, Phase::Execution),
-                RunState::Failed, returnCode, {}};
-    }
-
-    RunResult result;
-    result.ReturnCode = returnCode;
-    result.Outcome.BehaviorResult = returnCode;
-    for (int i = 0; i < behavior->GetOutputCount(); ++i) {
-        if (behavior->IsOutputActive(i))
-            result.ActiveOutputs.push_back(i);
-        behavior->ActivateOutput(i, FALSE);
-    }
-    for (int i = 0; i < behavior->GetInputCount(); ++i)
-        behavior->ActivateInput(i, FALSE);
-
-    if (IsExecutionError(returnCode)) {
-        result.Outcome = Failure(Error::ExecutionFailed,
-                                "Building Block execution returned an error.", CK_OK,
-                                returnCode, Phase::Execution,
-                                prototypeGuid);
-        result.State = HasContinuation(returnCode)
-            ? RunState::Continuing : RunState::Failed;
-    } else if (returnCode == CKBR_BREAK) {
-        result.State = RunState::Suspended;
-    } else if (HasContinuation(returnCode)) {
-        result.State = RunState::Continuing;
-    } else {
-        result.State = RunState::Completed;
+        return result;
     }
 
     const bool releaseRequested = record->ReleaseRequested;
     const bool forceDestroy = record->ForceDestroy;
     if (releaseRequested) {
-        result.State = RunState::Completed;
-        record->Task = false;
         QueueDestroy(*record, forceDestroy);
         m_Records.erase(instanceId);
         if (forceDestroy)
@@ -2316,9 +2588,9 @@ void Runtime::Release(std::uint64_t instanceId) {
     auto it = m_Records.find(instanceId);
     if (it == m_Records.end())
         return;
-    if (it->second.Running) {
+    if (it->second.Protocol.State() == ExecutionState::Running) {
         it->second.ReleaseRequested = true;
-        it->second.Task = false;
+        it->second.Protocol.RequestClose();
         return;
     }
     QueueDestroy(it->second);
@@ -2326,7 +2598,7 @@ void Runtime::Release(std::uint64_t instanceId) {
 }
 
 void Runtime::QueueDestroy(Record &record, bool reset) {
-    record.Task = false;
+    record.Protocol.RequestClose();
     CKBehavior *behavior = ResolveBehavior(record);
     if (behavior)
         behavior->Activate(FALSE, FALSE);
@@ -2344,6 +2616,7 @@ void Runtime::QueueDestroy(Record &record, bool reset) {
     record.Placed = false;
     record.Created = false;
     record.Attached = false;
+    record.Protocol.MarkClosed();
 }
 
 void Runtime::QueueSourceDestroy(ObjectStamp source, int frames) {
@@ -2607,9 +2880,11 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             ++it;
             continue;
         }
-        if (it->second.Running) {
+        if (it->second.Protocol.State() == ExecutionState::Running) {
             it->second.Expired = true;
-            it->second.Task = false;
+            it->second.Protocol.RequestClose({
+                ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
+                "Behavior object was deleted during execution."});
             it->second.Created = false;
             it->second.Attached = false;
             ++it;
@@ -2636,10 +2911,12 @@ void Runtime::ResetWorld() {
     }
     for (auto it = m_Records.begin(); it != m_Records.end();) {
         Record &record = it->second;
-        if (record.Running) {
+        if (record.Protocol.State() == ExecutionState::Running) {
             record.ReleaseRequested = true;
             record.ForceDestroy = true;
-            record.Task = false;
+            record.Protocol.RequestClose({
+                ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
+                "World reset cancelled behavior execution."});
             ++it;
             continue;
         }
@@ -2670,6 +2947,9 @@ const char *DescribeError(Error error) {
     case Error::InvalidState: return "invalid state";
     case Error::ExecutionFailed: return "execution failed";
     case Error::OperationInvalid: return "invalid parameter operation";
+    case Error::UnsupportedBreak: return "unsupported break";
+    case Error::OutcomeQueueFull: return "outcome queue full";
+    case Error::ExecutionCancelled: return "execution cancelled";
     }
     return "unknown";
 }

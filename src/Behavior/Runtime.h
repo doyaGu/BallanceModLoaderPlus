@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "CKAll.h"
+#include "Behavior/Execution.h"
 
 namespace BML::Behavior {
 
@@ -171,6 +172,7 @@ public:
     Spec &Local(Slot slot, Value value);
     Spec &AddInput(std::string name);
     Spec &AddOutput(std::string name);
+    Spec &Outcomes(OutcomeRetention retention);
 
     [[nodiscard]] CKGUID Prototype() const noexcept { return m_Prototype; }
 
@@ -195,6 +197,7 @@ private:
     std::vector<Binding> m_Locals;
     std::vector<std::string> m_AddedInputs;
     std::vector<std::string> m_AddedOutputs;
+    OutcomeRetention m_OutcomeRetention = OutcomeRetention::Signals();
 
     friend class Runtime;
 };
@@ -219,6 +222,9 @@ enum class Error {
     InvalidState,
     ExecutionFailed,
     OperationInvalid,
+    UnsupportedBreak,
+    OutcomeQueueFull,
+    ExecutionCancelled,
 };
 
 enum class Phase {
@@ -268,8 +274,8 @@ struct Status {
 
 enum class RunState {
     Completed,
-    Continuing,
-    Suspended,
+    Pending,
+    Queued,
     Failed,
 };
 
@@ -388,7 +394,11 @@ public:
     RunResult Step(Instance &instance, const CKBehaviorContext *frame = nullptr);
     RunResult StartTask(Instance &instance, const Slot &input,
                               const CKBehaviorContext *frame = nullptr);
+    Status Continue(Instance &instance);
     [[nodiscard]] bool IsTaskActive(const Instance &instance) const;
+    [[nodiscard]] ExecutionState State(const Instance &instance) const;
+    [[nodiscard]] std::vector<ExecutionOutcome> Drain(Instance &instance);
+    [[nodiscard]] Status TerminalError(const Instance &instance) const;
     void ProcessTasks(const CKBehaviorContext *frame = nullptr);
     void ProcessFrame();
 
@@ -421,12 +431,11 @@ private:
         bool Placed = false;
         bool Created = false;
         bool Attached = false;
-        bool Running = false;
-        bool Task = false;
         bool Expired = false;
         bool Poisoned = false;
         bool ReleaseRequested = false;
         bool ForceDestroy = false;
+        Execution Protocol;
         std::vector<ObjectStamp> OwnedSources;
         std::vector<OwnedOperation> OwnedOperations;
     };
@@ -503,9 +512,10 @@ private:
                                            Record &record);
     [[nodiscard]] Status CallCallback(CKBehavior *behavior, CKDWORD message,
                                               const CKBehaviorContext *frame) const;
-    [[nodiscard]] RunResult Execute(std::uint64_t instanceId, int input,
-                                           bool activateInput,
-                                           const CKBehaviorContext *frame);
+    class NativeAdapter;
+    [[nodiscard]] RunResult Execute(std::uint64_t instanceId,
+                                    const ExecutionInput *input, bool once,
+                                    const CKBehaviorContext *frame);
     [[nodiscard]] int ExecuteNative(CKBehavior *behavior, const CKBehaviorContext *frame) const;
     [[nodiscard]] Status Reacquire(std::uint64_t instanceId, CKBehavior *behavior,
                                            Record *&record);
@@ -525,6 +535,7 @@ private:
     CKContext *m_Context = nullptr;
     std::thread::id m_Thread;
     std::uint64_t m_NextInstanceId = 1;
+    std::uint64_t m_Frame = 0;
     std::unordered_map<std::uint64_t, Record> m_Records;
     std::list<PendingDestroy> m_PendingDestroy;
     bool m_Destroying = false;
