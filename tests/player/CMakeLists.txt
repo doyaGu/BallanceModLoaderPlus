@@ -18,6 +18,24 @@ set_target_properties(BehaviorLifecycleFixture PROPERTIES
         FOLDER "Tests/Player"
 )
 
+add_library(BehaviorTransportFixture SHARED
+        BehaviorTransportFixture.cpp
+        BehaviorTransportFixtureApi.h
+)
+target_compile_features(BehaviorTransportFixture PRIVATE cxx_std_20)
+target_include_directories(BehaviorTransportFixture PRIVATE
+        ${VIRTOOLS_SDK_INCLUDE_DIR}
+)
+target_link_libraries(BehaviorTransportFixture PRIVATE
+        VirtoolsSDK::CK2
+        VirtoolsSDK::VxMath
+)
+set_target_properties(BehaviorTransportFixture PROPERTIES
+        PREFIX ""
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        FOLDER "Tests/Player"
+)
+
 if (NOT TARGET BML::BML)
     add_library(BML::BML ALIAS BML)
 endif ()
@@ -34,6 +52,7 @@ bml_add_mod(ExecuteBBTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/ObjectLoad.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/OutcomeStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Physicalize.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsImpulse.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
@@ -41,6 +60,15 @@ bml_add_mod(ExecuteBBTest
 )
 target_include_directories(ExecuteBBTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
 set_target_properties(ExecuteBBTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        FOLDER "Tests/Player"
+)
+
+bml_add_mod(BehaviorTransportTest
+        BehaviorTransportTest.cpp
+        BehaviorTransportFixtureApi.h
+)
+set_target_properties(BehaviorTransportTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         FOLDER "Tests/Player"
 )

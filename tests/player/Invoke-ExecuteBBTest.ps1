@@ -8,6 +8,10 @@ param(
 
     [string]$FixtureDll,
 
+    [string]$TransportMod,
+
+    [string]$TransportFixture,
+
     [string]$ScriptMod,
 
     [string]$ArtifactsDirectory,
@@ -106,6 +110,12 @@ if (-not $TestMod) {
 if (-not $FixtureDll) {
     $FixtureDll = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\BehaviorLifecycleFixture.dll'
 }
+if (-not $TransportMod) {
+    $TransportMod = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\BehaviorTransportTest.bmodp'
+}
+if (-not $TransportFixture) {
+    $TransportFixture = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\BehaviorTransportFixture.dll'
+}
 if (-not $ScriptMod) {
     $ScriptMod = Join-Path $PSScriptRoot 'BehaviorLifecycleScript.mod.as'
 }
@@ -115,12 +125,14 @@ $playerPath = Join-Path $ballanceRootFull 'Bin\Player.exe'
 $installedDll = Join-Path $ballanceRootFull 'BuildingBlocks\BMLPlus.dll'
 $installedTestMod = Join-Path $ballanceRootFull 'ModLoader\Mods\ExecuteBBTest.bmodp'
 $installedFixture = Join-Path $ballanceRootFull 'BuildingBlocks\BehaviorLifecycleFixture.dll'
+$installedTransportMod = Join-Path $ballanceRootFull 'ModLoader\Mods\BehaviorTransportTest.bmodp'
+$installedTransportFixture = Join-Path $ballanceRootFull 'BuildingBlocks\BehaviorTransportFixture.dll'
 $installedScriptMod = Join-Path $ballanceRootFull 'ModLoader\Mods\BehaviorLifecycleScript.mod.as'
 $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
 $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 
 foreach ($path in @($ballanceRootFull, $playerPath, $BuildDll, $TestMod,
-                     $FixtureDll, $ScriptMod)) {
+                     $FixtureDll, $TransportMod, $TransportFixture, $ScriptMod)) {
     Assert-BMLPath -Path $path -Type $(if ($path -eq $ballanceRootFull) { 'Container' } else { 'Leaf' })
 }
 
@@ -149,6 +161,8 @@ $artifacts = @(
     [pscustomobject]@{ Path = $installedDll; Backup = "$installedDll.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedTestMod; Backup = "$installedTestMod.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedFixture; Backup = "$installedFixture.test-bak-$timestamp" },
+    [pscustomobject]@{ Path = $installedTransportMod; Backup = "$installedTransportMod.test-bak-$timestamp" },
+    [pscustomobject]@{ Path = $installedTransportFixture; Backup = "$installedTransportFixture.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedScriptMod; Backup = "$installedScriptMod.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $modLoaderLog; Backup = "$modLoaderLog.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $playerLog; Backup = "$playerLog.test-bak-$timestamp" }
@@ -165,6 +179,8 @@ $testModHash = Get-BMLOptionalHash $TestMod
 $installedHashBefore = Get-BMLOptionalHash $installedDll
 $installedTestModHashBefore = Get-BMLOptionalHash $installedTestMod
 $installedFixtureHashBefore = Get-BMLOptionalHash $installedFixture
+$installedTransportModHashBefore = Get-BMLOptionalHash $installedTransportMod
+$installedTransportFixtureHashBefore = Get-BMLOptionalHash $installedTransportFixture
 $installedScriptModHashBefore = Get-BMLOptionalHash $installedScriptMod
 $modLoaderLogHashBefore = Get-BMLOptionalHash $modLoaderLog
 $playerLogHashBefore = Get-BMLOptionalHash $playerLog
@@ -179,6 +195,8 @@ try {
     Copy-TestFile -Source $BuildDll -Destination $installedDll
     Copy-TestFile -Source $TestMod -Destination $installedTestMod
     Copy-TestFile -Source $FixtureDll -Destination $installedFixture
+    Copy-TestFile -Source $TransportMod -Destination $installedTransportMod
+    Copy-TestFile -Source $TransportFixture -Destination $installedTransportFixture
     Copy-TestFile -Source $ScriptMod -Destination $installedScriptMod
     foreach ($logPath in @($modLoaderLog, $playerLog)) {
         if (Test-Path -LiteralPath $logPath) {
@@ -238,6 +256,8 @@ try {
 
 $outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) runtime_probe=(?<runtimeProbe>true|false) lifecycle_probe=(?<lifecycleProbe>true|false) script_hook_retirement=(?<scriptHookRetirement>true|false) runtime_detail=(?<runtimeDetail>\S+) frames=(?<frames>[0-9]+)'
 $outcome = [regex]::Match($testLog, $outcomePattern)
+$transportPattern = 'Behavior transport: status=(?<status>pass|fail) reason=(?<reason>\S+) transport=(?<transport>true|false) wire=(?<wire>true|false) object_ref=(?<objectRef>true|false) session_after_reset=(?<session>true|false)'
+$transport = [regex]::Match($testLog, $transportPattern)
 $postStartIndex = $testLog.IndexOf('On Message PostStartMenu')
 $preLoadIndex = $testLog.IndexOf('On Message PreLoadLevel')
 $postLoadIndex = $testLog.IndexOf('On Message PostLoadLevel')
@@ -259,6 +279,14 @@ $checks = [ordered]@{
         $testLog.Contains('ScriptHookRetirement installed=true') -and
         ([regex]::Matches($testLog, 'ScriptHookRetirement callback=1 uninstall=true').Count -eq 1) -and
         $testLog.Contains('ScriptHookRetirement retired=true callbacks=1')
+    BehaviorTransportProbe = $transport.Success -and
+        $transport.Groups['status'].Value -eq 'pass' -and
+        $transport.Groups['transport'].Value -eq 'true' -and
+        $transport.Groups['session'].Value -eq 'true'
+    OutcomeWire = $transport.Success -and
+        $transport.Groups['wire'].Value -eq 'true'
+    CaptureTimeObjectRef = $transport.Success -and
+        $transport.Groups['objectRef'].Value -eq 'true'
     ExitCallback = $testLog.Contains('ExecuteBB test exit: status=pass')
     CleanExecuteBB = -not $testLog.Contains('ExecuteBB::')
     CleanPostProcess = -not $playerRunLog.Contains('Error : PostProcess')
@@ -273,6 +301,8 @@ $checks = [ordered]@{
         (Get-BMLOptionalHash $installedDll) -eq $installedHashBefore -and
         (Get-BMLOptionalHash $installedTestMod) -eq $installedTestModHashBefore -and
         (Get-BMLOptionalHash $installedFixture) -eq $installedFixtureHashBefore -and
+        (Get-BMLOptionalHash $installedTransportMod) -eq $installedTransportModHashBefore -and
+        (Get-BMLOptionalHash $installedTransportFixture) -eq $installedTransportFixtureHashBefore -and
         (Get-BMLOptionalHash $installedScriptMod) -eq $installedScriptModHashBefore -and
         (Get-BMLOptionalHash $modLoaderLog) -eq $modLoaderLogHashBefore -and
         (Get-BMLOptionalHash $playerLog) -eq $playerLogHashBefore
@@ -288,6 +318,8 @@ $result = [pscustomobject]@{
     SourceHash = $sourceHash
     TestModHash = $testModHash
     FixtureHash = Get-BMLOptionalHash $FixtureDll
+    TransportModHash = Get-BMLOptionalHash $TransportMod
+    TransportFixtureHash = Get-BMLOptionalHash $TransportFixture
     ScriptModHash = Get-BMLOptionalHash $ScriptMod
     ArtifactsDirectory = $artifactsDirectoryFull
     Screenshot = $screenshotPath
