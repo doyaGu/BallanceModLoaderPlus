@@ -10,14 +10,15 @@ int Run(const CKBehaviorContext &context) {
     for (int i = 0; i < behavior->GetInputCount(); ++i)
         behavior->ActivateInput(i, FALSE);
 
-    int result = CKBR_OK;
-    Callback callback = nullptr;
-    behavior->GetLocalParameterValue(0, &callback);
-    if (callback) {
-        void *argument = nullptr;
-        behavior->GetLocalParameterValue(1, &argument);
-        result = callback(&context, argument);
-    }
+    Binding *binding = nullptr;
+    behavior->GetLocalParameterValue(0, &binding);
+    CallbackCall call;
+    if (binding)
+        call = binding->Invoke(&context);
+    if (!call.Invoked)
+        return CKBR_OK;
+    if (call.Fault)
+        return call.ReturnCode;
 
     CKBOOL autoActivateOutputs = TRUE;
     if (behavior->GetLocalParameterCount() > 2)
@@ -26,7 +27,7 @@ int Run(const CKBehaviorContext &context) {
         for (int i = 0; i < behavior->GetOutputCount(); ++i)
             behavior->ActivateOutput(i);
     }
-    return result;
+    return call.ReturnCode;
 }
 
 CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
@@ -34,7 +35,7 @@ CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
     if (!created)
         return CKERR_OUTOFMEMORY;
 
-    created->DeclareLocalParameter("Callback", CKPGUID_POINTER);
+    created->DeclareLocalParameter("Callback Binding", CKPGUID_POINTER);
     created->DeclareLocalParameter("Argument", CKPGUID_POINTER);
     created->DeclareLocalParameter("Auto Activate Outputs", CKPGUID_BOOL);
     created->SetBehaviorFlags(static_cast<CK_BEHAVIOR_FLAGS>(
@@ -61,22 +62,82 @@ CKObjectDeclaration *Declaration() {
 
 } // namespace
 
-Spec Make(Callback callback, void *argument, int inputCount, int outputCount) {
+Binding::Binding(PlanCallbackState state, Callback callback, void *argument)
+    : m_State(std::move(state)), m_Lease(m_State.OpenLease()),
+      m_Callback(callback), m_Argument(argument) {}
+
+Binding::~Binding() {
+    CloseAdmission();
+    (void) RetireAtSafePoint();
+}
+
+CallbackCall Binding::Invoke(const CKBehaviorContext *context) noexcept {
+    if (!m_Callback)
+        return {false, CKBR_OK, {}};
+    CallbackCall call = InvokeCallback(
+        m_Lease, CKBR_BEHAVIORERROR,
+        [&] { return m_Callback(context, m_Argument); });
+    if (call.Fault) {
+        std::lock_guard<std::mutex> lock(m_DiagnosticMutex);
+        if (!m_Diagnostic)
+            m_Diagnostic = call.Fault;
+    }
+    return call;
+}
+
+void Binding::CloseAdmission() noexcept {
+    (void) m_Lease.Close();
+}
+
+bool Binding::RetireAtSafePoint() noexcept {
+    CloseAdmission();
+    m_State.Retire();
+    return m_State.Collect();
+}
+
+CallbackLeaseState Binding::State() const noexcept {
+    return m_Lease.State();
+}
+
+CallbackFault Binding::Diagnostic() const {
+    std::lock_guard<std::mutex> lock(m_DiagnosticMutex);
+    return m_Diagnostic;
+}
+
+std::shared_ptr<Binding> Bind(Callback callback, void *argument) {
+    return Bind(PlanCallbackState::Static(argument), callback, argument);
+}
+
+std::shared_ptr<Binding> Bind(PlanCallbackState state, Callback callback,
+                              void *argument) {
+    if (!callback)
+        return {};
+    return std::make_shared<Binding>(std::move(state), callback, argument);
+}
+
+Spec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount) {
     Spec spec(HOOKS_HOOKBLOCK_GUID);
-    if (!callback || inputCount < 0 || outputCount < 0)
+    if (!binding || inputCount < 0 || outputCount < 0)
         return Spec();
     CKBOOL autoActivate = TRUE;
+    Binding *nativeBinding = binding.get();
+    void *argument = binding->Argument();
     spec.Local(Slot::At(SlotKind::Local, 0, CKPGUID_POINTER),
-               Value::From(CKPGUID_POINTER, callback))
+               Value::From(CKPGUID_POINTER, nativeBinding))
         .Local(Slot::At(SlotKind::Local, 1, CKPGUID_POINTER),
                Value::From(CKPGUID_POINTER, argument))
         .Local(Slot::At(SlotKind::Local, 2, CKPGUID_BOOL),
-               Value::From(CKPGUID_BOOL, autoActivate));
+               Value::From(CKPGUID_BOOL, autoActivate))
+        .KeepAlive(std::move(binding));
     for (int i = 0; i < inputCount; ++i)
         spec.AddInput("In " + std::to_string(i));
     for (int i = 0; i < outputCount; ++i)
         spec.AddOutput("Out " + std::to_string(i));
     return spec;
+}
+
+Spec Make(Callback callback, void *argument, int inputCount, int outputCount) {
+    return Make(Bind(callback, argument), inputCount, outputCount);
 }
 
 void Register(XObjectDeclarationArray *registry) {

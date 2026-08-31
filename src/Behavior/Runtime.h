@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "CKAll.h"
+#include "Behavior/Callback.h"
 #include "Behavior/Execution.h"
 #include "Behavior/Lifecycle.h"
 
@@ -174,6 +175,7 @@ public:
     Spec &AddInput(std::string name);
     Spec &AddOutput(std::string name);
     Spec &Outcomes(OutcomeRetention retention);
+    Spec &KeepAlive(std::shared_ptr<CallbackResource> resource);
 
     [[nodiscard]] CKGUID Prototype() const noexcept { return m_Prototype; }
 
@@ -198,6 +200,7 @@ private:
     std::vector<Binding> m_Locals;
     std::vector<std::string> m_AddedInputs;
     std::vector<std::string> m_AddedOutputs;
+    std::vector<std::shared_ptr<CallbackResource>> m_KeepAlive;
     OutcomeRetention m_OutcomeRetention = OutcomeRetention::Signals();
 
     friend class Runtime;
@@ -436,6 +439,7 @@ private:
         Execution Protocol;
         std::vector<ObjectStamp> OwnedSources;
         std::vector<OwnedOperation> OwnedOperations;
+        std::vector<std::shared_ptr<CallbackResource>> KeepAlive;
     };
 
     struct PendingDestroy {
@@ -444,6 +448,7 @@ private:
         std::vector<ObjectStamp> Sources;
         std::vector<OwnedOperation> Operations;
         std::vector<ObjectStamp> IgnoredInputs;
+        std::vector<std::shared_ptr<CallbackResource>> KeepAlive;
         int Frames = 2;
         bool DestroyBehavior = false;
         bool GraphResident = false;
@@ -523,6 +528,7 @@ private:
     void DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior);
     void DrainDeferredReleases();
     void DrainCloseQueue(bool force = false);
+    static void CloseCallbacks(Record &record) noexcept;
     void AdoptSharedBindings();
     void Close();
     void DestroyReady(DestroyMode mode);

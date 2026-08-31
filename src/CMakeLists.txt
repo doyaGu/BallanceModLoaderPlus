@@ -290,6 +290,7 @@ set(BML_HOOK_SOURCES
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
+        Behavior/Callback.h
         Behavior/Execution.h
         Behavior/Lifecycle.h
         Behavior/HookBlock.h
@@ -304,6 +305,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
 )
 
 set(BML_BEHAVIOR_SOURCES
+        Behavior/Callback.cpp
         Behavior/Execution.cpp
         Behavior/Lifecycle.cpp
         Behavior/HookBlock.cpp

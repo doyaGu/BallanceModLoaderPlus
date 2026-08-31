@@ -596,6 +596,7 @@ public:
     }
 
     bool DisconnectAndDestroy(LifecycleFault &) override {
+        Runtime::CloseCallbacks(m_Record);
         m_Runtime.QueueDestroy(m_Record);
         return true;
     }
@@ -888,6 +889,12 @@ Spec &Spec::Outcomes(OutcomeRetention retention) {
     return *this;
 }
 
+Spec &Spec::KeepAlive(std::shared_ptr<CallbackResource> resource) {
+    if (resource)
+        m_KeepAlive.push_back(std::move(resource));
+    return *this;
+}
+
 Instance::~Instance() {
     Reset();
 }
@@ -1059,6 +1066,7 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
     Record record;
     record.Id = m_NextInstanceId++;
     record.Behavior = CaptureObject(behavior);
+    record.KeepAlive = spec.m_KeepAlive;
     record.Protocol = Execution(spec.m_OutcomeRetention);
     result.Outcome = Configure(behavior, owner, nullptr, spec, frame, record);
     if (!result.Outcome)
@@ -1128,6 +1136,7 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
     record.Behavior = CaptureObject(behavior);
     record.Parent = CaptureObject(parent);
     record.GraphResident = true;
+    record.KeepAlive = spec.m_KeepAlive;
     record.Protocol = Execution(spec.m_OutcomeRetention);
     result.Outcome = Configure(behavior, parent->GetOwner(), parent, spec, frame, record);
     if (!result.Outcome)
@@ -2159,6 +2168,7 @@ void Runtime::SweepRecords() {
                 ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
                 "Behavior object was deleted during execution."});
             record.NativeLifecycle.RequestClose();
+            CloseCallbacks(record);
             continue;
         }
         PruneOwnedSources(behavior, record);
@@ -2811,6 +2821,7 @@ void Runtime::Release(std::uint64_t instanceId) {
         return;
     it->second.Protocol.RequestClose();
     it->second.NativeLifecycle.RequestClose();
+    CloseCallbacks(it->second);
 }
 
 void Runtime::QueueDestroy(Record &record) {
@@ -2819,9 +2830,17 @@ void Runtime::QueueDestroy(Record &record) {
     pending.Parent = record.Parent;
     pending.Sources = std::move(record.OwnedSources);
     pending.Operations = std::move(record.OwnedOperations);
+    pending.KeepAlive = std::move(record.KeepAlive);
     pending.DestroyBehavior = true;
     pending.GraphResident = record.NativeLifecycle.Ledger().Placed;
     m_PendingDestroy.push_back(std::move(pending));
+}
+
+void Runtime::CloseCallbacks(Record &record) noexcept {
+    for (const std::shared_ptr<CallbackResource> &resource : record.KeepAlive) {
+        if (resource)
+            resource->CloseAdmission();
+    }
 }
 
 void Runtime::DrainCloseQueue(bool force) {
@@ -2895,6 +2914,7 @@ void Runtime::Close() {
     for (auto &[instanceId, record] : m_Records) {
         record.Protocol.RequestClose();
         record.NativeLifecycle.RequestClose();
+        CloseCallbacks(record);
     }
     DrainCloseQueue();
     DestroyReady(DestroyMode::Close);
@@ -3021,8 +3041,13 @@ void Runtime::DestroyReady(DestroyMode mode) {
             if (CKObject *object = ResolveObject(source))
                 m_Context->DestroyObject(object);
         }
+        for (std::shared_ptr<CallbackResource> &resource : it->KeepAlive) {
+            if (resource && !resource->RetireAtSafePoint())
+                retained.KeepAlive.push_back(std::move(resource));
+        }
         it = m_PendingDestroy.erase(it);
-        if (!retained.Sources.empty() || !retained.Operations.empty()) {
+        if (!retained.Sources.empty() || !retained.Operations.empty() ||
+            !retained.KeepAlive.empty()) {
             if (closing && m_SharedBindings)
                 m_SharedBindings->Pending.push_back(std::move(retained));
             else
@@ -3098,6 +3123,7 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
             "Behavior object or parent graph was deleted."});
         it->second.NativeLifecycle.RequestClose();
+        CloseCallbacks(it->second);
         ++it;
     }
 }
@@ -3112,6 +3138,7 @@ void Runtime::ResetWorld() {
             ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
             "World reset cancelled behavior execution."});
         record.NativeLifecycle.RequestClose(true);
+        CloseCallbacks(record);
     }
     DrainCloseQueue(true);
 }
@@ -3134,6 +3161,7 @@ Status Runtime::Close(CKBehavior *behavior) {
         }
         record.Protocol.RequestClose();
         record.NativeLifecycle.RequestClose();
+        CloseCallbacks(record);
         return {};
     }
     return Failure(Error::InvalidState,
