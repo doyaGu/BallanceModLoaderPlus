@@ -249,6 +249,28 @@ TEST(BehaviorExecution, FunctionUsesRetryAndGraphUsesNativeActivity) {
     EXPECT_EQ(graph.State(), ExecutionState::Idle);
 }
 
+TEST(BehaviorExecution, CallRequiresExplicitContinueWithoutRepeatingFirstInput) {
+    Execution execution;
+    FakeExecutionAdapter adapter;
+    adapter.Native.push_back(FunctionResult(1, true));
+    adapter.Native.push_back(FunctionResult(0));
+
+    ExecutionResult first = execution.Call(
+        ExecutionInput::At(0, 1), 7, adapter);
+    ASSERT_EQ(first.State, AdmissionState::Executed);
+    EXPECT_EQ(execution.State(), ExecutionState::Pending);
+    EXPECT_FALSE(execution.Managed());
+    EXPECT_FALSE(execution.NeedsFrame());
+    ASSERT_EQ(adapter.Activated.size(), 1u);
+
+    execution.Continue();
+    EXPECT_TRUE(execution.NeedsFrame());
+    ASSERT_TRUE(execution.Step(8, adapter));
+    EXPECT_EQ(execution.State(), ExecutionState::Idle);
+    EXPECT_EQ(adapter.Calls, 2);
+    EXPECT_EQ(adapter.Activated.size(), 1u);
+}
+
 TEST(BehaviorExecution, RetryErrorContinuesButFatalAndBreakClose) {
     Execution retry;
     FakeExecutionAdapter retryAdapter;
@@ -381,6 +403,20 @@ TEST(BehaviorExecution, FullOutcomeQueueUsesIndependentTerminalSlot) {
     EXPECT_EQ(outcomes[1].Fault.Code, ExecutionError::OutcomeQueueFull);
     ASSERT_TRUE(outcomes[1].Overflow);
     EXPECT_EQ(outcomes[1].Overflow->Capacity, 1u);
+}
+
+TEST(BehaviorExecution, QueueFullPreservesTheDroppedNativeFault) {
+    Execution execution(OutcomeRetention::EachFrame(0));
+    FakeExecutionAdapter adapter;
+    adapter.Native.push_back(FunctionResult(10, false, true));
+
+    ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
+    auto outcomes = execution.Drain();
+    ASSERT_EQ(outcomes.size(), 1u);
+    ASSERT_TRUE(outcomes[0].Overflow);
+    EXPECT_EQ(outcomes[0].Fault.Code, ExecutionError::OutcomeQueueFull);
+    EXPECT_EQ(outcomes[0].Overflow->Cause.Code, ExecutionError::NativeFailed);
+    EXPECT_EQ(outcomes[0].Overflow->Cause.NativeCode, 10);
 }
 
 TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {

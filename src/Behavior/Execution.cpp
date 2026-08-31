@@ -155,8 +155,6 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
     m_LastFrame = frame;
 
     NativeExecution native = adapter.Execute();
-    m_Executed = true;
-
     ExecutionOutcome outcome;
     outcome.Sequence = m_NextSequence++;
     outcome.Frame = frame;
@@ -375,7 +373,8 @@ void Execution::Retain(ExecutionOutcome outcome) {
     terminal.NativeContinuation = false;
     terminal.QueuedInput = false;
     terminal.Overflow = OutcomeOverflow{1, m_Retention.Kind,
-                                        m_Retention.Capacity};
+                                        m_Retention.Capacity,
+                                        terminal.Fault};
     terminal.Fault = Fault(
         ExecutionError::OutcomeQueueFull,
         "Behavior outcome retention is full; execution was stopped.",

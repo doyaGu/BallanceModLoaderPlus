@@ -124,6 +124,7 @@ struct OutcomeOverflow {
     std::size_t Dropped = 0;
     RetentionKind Policy = RetentionKind::Signals;
     std::size_t Capacity = 0;
+    ExecutionFault Cause;
 };
 
 struct ExecutionOutcome {
@@ -194,7 +195,6 @@ private:
     bool m_Managed = false;
     bool m_NativeContinuation = false;
     bool m_CloseRequested = false;
-    bool m_Executed = false;
     std::uint64_t m_LastFrame = static_cast<std::uint64_t>(-1);
     std::uint64_t m_NextSequence = 1;
     std::vector<ExecutionInput> m_QueuedInputs;
