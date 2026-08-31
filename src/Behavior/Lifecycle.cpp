@@ -19,6 +19,32 @@ void SupplyFault(LifecycleFault &fault, LifecycleError code,
 
 } // namespace
 
+Lifecycle::Lifecycle(Lifecycle &&other) noexcept {
+    *this = std::move(other);
+}
+
+Lifecycle &Lifecycle::operator=(Lifecycle &&other) noexcept {
+    if (this == &other)
+        return *this;
+    m_State = other.m_State;
+    m_Ledger = other.m_Ledger;
+    m_TerminalError = std::move(other.m_TerminalError);
+    m_Identity = std::move(other.m_Identity);
+    m_HasIdentity = other.m_HasIdentity;
+    m_CloseRequested.store(
+        other.m_CloseRequested.load(std::memory_order_acquire),
+        std::memory_order_release);
+    m_ResetRequested.store(
+        other.m_ResetRequested.load(std::memory_order_acquire),
+        std::memory_order_release);
+    other.m_State = LifecycleState::Closed;
+    other.m_Ledger = {};
+    other.m_HasIdentity = false;
+    other.m_CloseRequested.store(false, std::memory_order_release);
+    other.m_ResetRequested.store(false, std::memory_order_release);
+    return *this;
+}
+
 bool Lifecycle::Configure(const LifecyclePlan &plan,
                           LifecycleAdapter &adapter) {
     if (m_State != LifecycleState::New) {
@@ -135,7 +161,7 @@ bool Lifecycle::Configure(const LifecyclePlan &plan,
 }
 
 bool Lifecycle::RefreshAfterCallback(LifecycleAdapter &adapter,
-                                     const LifecycleIdentity &identity,
+                                     LifecycleIdentity &identity,
                                      LifecycleLayout &layout,
                                      LifecycleFault &fault) {
     if (!adapter.Revalidate(identity, fault)) {
@@ -148,6 +174,13 @@ bool Lifecycle::RefreshAfterCallback(LifecycleAdapter &adapter,
                     "Behavior layout could not be reflected after a callback.");
         return false;
     }
+    LifecycleIdentity refreshed;
+    if (!adapter.CaptureIdentity(refreshed, fault)) {
+        SupplyFault(fault, LifecycleError::IdentityChanged,
+                    "Behavior identity could not be recaptured after layout reflection.");
+        return false;
+    }
+    identity = std::move(refreshed);
     if (CloseRequested()) {
         fault = Fault(LifecycleError::Cancelled,
                       "Behavior lifecycle was closed by a native callback.");
@@ -158,7 +191,7 @@ bool Lifecycle::RefreshAfterCallback(LifecycleAdapter &adapter,
 
 bool Lifecycle::InvokeConfigured(LifecycleAdapter &adapter,
                                  LifecycleCallback callback,
-                                 const LifecycleIdentity &identity,
+                                 LifecycleIdentity &identity,
                                  LifecycleLayout &layout,
                                  LifecycleFault &fault,
                                  bool *completed) {

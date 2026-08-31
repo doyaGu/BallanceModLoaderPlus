@@ -349,6 +349,336 @@ private:
     const CKBehaviorContext *m_Frame;
 };
 
+class Runtime::NativeLifecycleAdapter final : public LifecycleAdapter {
+public:
+    NativeLifecycleAdapter(Runtime &runtime, Record &record,
+                           CKBeObject *owner, CKBehavior *parent,
+                           const Spec *spec,
+                           const CKBehaviorContext *frame)
+        : m_Runtime(runtime), m_Record(record),
+          m_Owner(runtime.CaptureObject(owner)),
+          m_Parent(runtime.CaptureObject(parent)),
+          m_Spec(spec), m_Frame(frame) {}
+
+    bool InitializeAndReflect(LifecycleLayout &layout,
+                              LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior)
+            return false;
+        CKBehaviorPrototype *prototype = behavior->GetPrototype();
+        if (!prototype) {
+            return Fail(Failure(Error::PrototypeNotFound,
+                                "Building Block Prototype is unavailable.",
+                                CK_OK, CKBR_OK, Phase::Initialization,
+                                behavior->GetPrototypeGuid()),
+                        LifecycleError::InitializationFailed, fault);
+        }
+        Status status = m_Runtime.EnsurePrototypeLayout(behavior, prototype, false);
+        if (!status)
+            return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
+        layout.Generation = m_Record.LayoutGeneration;
+        return true;
+    }
+
+    bool WriteSettingStage(std::size_t stage,
+                           const LifecycleLayout &,
+                           LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior)
+            return false;
+        if (!m_Spec || stage >= m_Spec->m_SettingStages.size()) {
+            return Fail(Failure(Error::InvalidState,
+                                "Behavior Setting stage does not exist."),
+                        LifecycleError::SettingFailed, fault);
+        }
+        for (const Spec::Binding &binding : m_Spec->m_SettingStages[stage]) {
+            SlotInfo slot;
+            Status status = m_Runtime.Resolve(behavior, binding.Target, slot);
+            if (!status) {
+                return Fail(Annotate(std::move(status), Phase::Settings,
+                                     behavior->GetPrototypeGuid(),
+                                     &binding.Target),
+                            LifecycleError::SettingFailed, fault);
+            }
+            status = m_Runtime.ApplyValue(
+                m_Runtime.ResolveParameter(behavior, slot), binding.Source);
+            if (!status) {
+                return Fail(Annotate(std::move(status), Phase::Settings,
+                                     behavior->GetPrototypeGuid(),
+                                     &binding.Target),
+                            LifecycleError::SettingFailed, fault);
+            }
+        }
+        return true;
+    }
+
+    bool AlignRelationsAndPlace(LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior || !m_Spec)
+            return false;
+        CKBeObject *owner = Owner(fault);
+        if (m_Owner.Id != 0 && !owner)
+            return false;
+
+        if (owner) {
+            CKERROR ownerError = behavior->SetOwner(owner, FALSE);
+            if (ownerError == CK_OK)
+                ownerError = behavior->SetSubBehaviorOwner(owner, FALSE);
+            if (ownerError != CK_OK) {
+                return Fail(Failure(Error::OwnerInvalid,
+                                    "Failed to align Building Block owner tree.",
+                                    ownerError, CKBR_OK, Phase::OwnerBinding,
+                                    behavior->GetPrototypeGuid()),
+                            LifecycleError::RelationFailed, fault);
+            }
+        }
+
+        Status status = m_Runtime.BindTarget(behavior, owner, *m_Spec, m_Record);
+        if (!status)
+            return Fail(std::move(status), LifecycleError::RelationFailed, fault);
+        status = m_Runtime.EnsurePrototypeDefaults(
+            behavior, behavior->GetPrototype(), m_Record);
+        if (!status)
+            return Fail(std::move(status), LifecycleError::RelationFailed, fault);
+
+        CKBehavior *parent = Parent(fault);
+        if (m_Parent.Id != 0 && !parent)
+            return false;
+        if (parent) {
+            const CKERROR addError = parent->AddSubBehavior(behavior);
+            if (addError != CK_OK) {
+                return Fail(Failure(Error::OwnerInvalid,
+                                    "Failed to add Building Block to parent graph.",
+                                    addError, CKBR_OK, Phase::OwnerBinding,
+                                    behavior->GetPrototypeGuid()),
+                            LifecycleError::RelationFailed, fault);
+            }
+        }
+        return true;
+    }
+
+    bool CaptureIdentity(LifecycleIdentity &identity,
+                         LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior)
+            return false;
+
+        identity = {};
+        identity.Behavior = Convert(m_Runtime.CaptureObject(behavior));
+        CKBehaviorPrototype *prototype = behavior->GetPrototype();
+        const CKGUID guid = behavior->GetPrototypeGuid();
+        identity.Prototype = {
+            (static_cast<std::uint64_t>(guid.d1) << 32u) ^
+                static_cast<std::uint32_t>(guid.d2),
+            reinterpret_cast<std::uintptr_t>(prototype)};
+        identity.Owner = Convert(m_Runtime.CaptureObject(behavior->GetOwner()));
+        identity.Parent = Convert(m_Runtime.CaptureObject(behavior->GetParent()));
+        identity.Target = Convert(
+            m_Runtime.CaptureObject(behavior->GetTargetParameter()));
+
+        auto appendSource = [&](CKParameterIn *input) {
+            CKParameter *source = input ? input->GetRealSource() : nullptr;
+            identity.Sources.push_back(
+                Convert(m_Runtime.CaptureObject(source)));
+        };
+        if (behavior->GetTargetParameter())
+            appendSource(behavior->GetTargetParameter());
+        for (int index = 0; index < behavior->GetInputParameterCount(); ++index)
+            appendSource(behavior->GetInputParameter(index));
+        return true;
+    }
+
+    bool Invoke(LifecycleCallback callback, LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior)
+            return false;
+        Status status = m_Runtime.CallCallback(
+            behavior, Message(callback), m_Frame);
+        if (!status)
+            return Fail(std::move(status), LifecycleError::CallbackFailed, fault);
+        return true;
+    }
+
+    bool Revalidate(const LifecycleIdentity &identity,
+                    LifecycleFault &fault) override {
+        LifecycleIdentity current;
+        if (!CaptureIdentity(current, fault))
+            return false;
+        if (current == identity)
+            return true;
+        CKBehavior *behavior = m_Runtime.ResolveBehavior(m_Record);
+        return Fail(Failure(
+                        Error::InvalidState,
+                        "A native callback changed the Behavior, Prototype, owner, parent, target, or parameter-source identity.",
+                        CK_OK, CKBR_OK, Phase::LifecycleCallback,
+                        behavior ? behavior->GetPrototypeGuid() : CKGUID()),
+                    LifecycleError::IdentityChanged, fault);
+    }
+
+    bool Reflect(LifecycleLayout &layout, LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior)
+            return false;
+        CKBehaviorPrototype *prototype = behavior->GetPrototype();
+        if (!prototype) {
+            return Fail(Failure(Error::PrototypeNotFound,
+                                "Building Block Prototype disappeared after callback."),
+                        LifecycleError::LayoutFailed, fault);
+        }
+        Status status = m_Runtime.EnsurePrototypeLayout(behavior, prototype, true);
+        if (!status)
+            return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
+        layout.Generation = ++m_Record.LayoutGeneration;
+        return true;
+    }
+
+    bool ApplyBindings(LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior || !m_Spec)
+            return false;
+        for (const std::string &name : m_Spec->m_AddedInputs) {
+            if (!behavior->CreateInput(const_cast<CKSTRING>(name.c_str()))) {
+                return Fail(Failure(Error::CreateFailed,
+                                    "Failed to add a Building Block input."),
+                            LifecycleError::BindingFailed, fault);
+            }
+        }
+        for (const std::string &name : m_Spec->m_AddedOutputs) {
+            if (!behavior->CreateOutput(const_cast<CKSTRING>(name.c_str()))) {
+                return Fail(Failure(Error::CreateFailed,
+                                    "Failed to add a Building Block output."),
+                            LifecycleError::BindingFailed, fault);
+            }
+        }
+        Status status = m_Runtime.ApplyBindings(behavior, *m_Spec, m_Record);
+        if (!status)
+            return Fail(std::move(status), LifecycleError::BindingFailed, fault);
+        return true;
+    }
+
+    bool ReconcileBindings(const LifecycleLayout &,
+                           LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior || !m_Spec)
+            return false;
+        auto validate = [&](const Slot &selector) {
+            SlotInfo slot;
+            Status status = m_Runtime.Resolve(behavior, selector, slot);
+            if (!status) {
+                Fail(Annotate(std::move(status), Phase::ParameterBinding,
+                              behavior->GetPrototypeGuid(), &selector),
+                     LifecycleError::BindingFailed, fault);
+                return false;
+            }
+            return true;
+        };
+        for (const Spec::Binding &binding : m_Spec->m_Inputs) {
+            if (!validate(binding.Target))
+                return false;
+        }
+        for (const Spec::OperationBinding &binding : m_Spec->m_Operations) {
+            if (!validate(binding.Target))
+                return false;
+        }
+        for (const Spec::Binding &binding : m_Spec->m_Locals) {
+            if (!validate(binding.Target))
+                return false;
+        }
+        m_Runtime.PruneOwnedSources(behavior, m_Record);
+        m_Runtime.PruneOwnedOperations(behavior, m_Record);
+        return true;
+    }
+
+    bool Deactivate(LifecycleFault &) override {
+        if (CKBehavior *behavior = m_Runtime.ResolveBehavior(m_Record))
+            behavior->Activate(FALSE, FALSE);
+        return true;
+    }
+
+    bool DisconnectAndDestroy(LifecycleFault &) override {
+        m_Runtime.QueueDestroy(m_Record);
+        return true;
+    }
+
+    [[nodiscard]] const Status &LastStatus() const noexcept {
+        return m_LastStatus;
+    }
+
+private:
+    static LifecycleObject Convert(ObjectStamp stamp) {
+        return {static_cast<std::uint64_t>(stamp.Id),
+                reinterpret_cast<std::uintptr_t>(stamp.Address)};
+    }
+
+    static CKDWORD Message(LifecycleCallback callback) {
+        switch (callback) {
+        case LifecycleCallback::Create: return CKM_BEHAVIORCREATE;
+        case LifecycleCallback::Attach: return CKM_BEHAVIORATTACH;
+        case LifecycleCallback::SettingsEdited: return CKM_BEHAVIORSETTINGSEDITED;
+        case LifecycleCallback::Edited: return CKM_BEHAVIOREDITED;
+        case LifecycleCallback::Reset: return CKM_BEHAVIORRESET;
+        case LifecycleCallback::Detach: return CKM_BEHAVIORDETACH;
+        case LifecycleCallback::Delete: return CKM_BEHAVIORDELETE;
+        }
+        return 0;
+    }
+
+    bool Fail(Status status, LifecycleError code,
+              LifecycleFault &fault) {
+        if (m_LastStatus)
+            m_LastStatus = status;
+        fault = {code,
+                 status.CkError != CK_OK
+                     ? static_cast<int>(status.CkError)
+                     : status.BehaviorResult,
+                 status.Message};
+        return false;
+    }
+
+    CKBehavior *Behavior(LifecycleFault &fault) {
+        CKBehavior *behavior = m_Runtime.ResolveBehavior(m_Record);
+        if (behavior)
+            return behavior;
+        Fail(Failure(Error::InvalidState,
+                     "Building Block disappeared during native lifecycle processing.",
+                     CK_OK, CKBR_BEHAVIORERROR, Phase::LifecycleCallback),
+             LifecycleError::IdentityChanged, fault);
+        return nullptr;
+    }
+
+    CKBeObject *Owner(LifecycleFault &fault) {
+        if (m_Owner.Id == 0)
+            return nullptr;
+        CKObject *object = m_Runtime.ResolveObject(m_Owner);
+        if (object && CKIsChildClassOf(object, CKCID_BEOBJECT))
+            return static_cast<CKBeObject *>(object);
+        Fail(Failure(Error::OwnerInvalid,
+                     "Building Block owner disappeared before configuration."),
+             LifecycleError::IdentityChanged, fault);
+        return nullptr;
+    }
+
+    CKBehavior *Parent(LifecycleFault &fault) {
+        if (m_Parent.Id == 0)
+            return nullptr;
+        CKObject *object = m_Runtime.ResolveObject(m_Parent);
+        if (object && CKIsChildClassOf(object, CKCID_BEHAVIOR))
+            return static_cast<CKBehavior *>(object);
+        Fail(Failure(Error::OwnerInvalid,
+                     "Parent graph disappeared before configuration."),
+             LifecycleError::IdentityChanged, fault);
+        return nullptr;
+    }
+
+    Runtime &m_Runtime;
+    Record &m_Record;
+    ObjectStamp m_Owner;
+    ObjectStamp m_Parent;
+    const Spec *m_Spec;
+    const CKBehaviorContext *m_Frame;
+    Status m_LastStatus;
+};
+
 Slot Slot::At(SlotKind kind, int index, CKGUID expectedType) {
     Slot selector;
     selector.Kind = kind;
@@ -731,10 +1061,8 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
     record.Behavior = CaptureObject(behavior);
     record.Protocol = Execution(spec.m_OutcomeRetention);
     result.Outcome = Configure(behavior, owner, nullptr, spec, frame, record);
-    if (!result.Outcome) {
-        QueueDestroy(record);
+    if (!result.Outcome)
         return result;
-    }
 
     const std::uint64_t instanceId = record.Id;
     result.Descriptor = Describe(behavior, record.LayoutGeneration);
@@ -802,10 +1130,8 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
     record.GraphResident = true;
     record.Protocol = Execution(spec.m_OutcomeRetention);
     result.Outcome = Configure(behavior, parent->GetOwner(), parent, spec, frame, record);
-    if (!result.Outcome) {
-        QueueDestroy(record);
+    if (!result.Outcome)
         return result;
-    }
 
     result.Block = behavior;
     result.Descriptor = Describe(behavior, record.LayoutGeneration);
@@ -1825,25 +2151,18 @@ void Runtime::PruneOwnedOperations(CKBehavior *behavior, Record &record) {
 }
 
 void Runtime::SweepRecords() {
-    for (auto it = m_Records.begin(); it != m_Records.end();) {
-        Record &record = it->second;
+    for (auto &[instanceId, record] : m_Records) {
         CKBehavior *behavior = ResolveBehavior(record);
         if (!behavior) {
-            if (record.Protocol.State() == ExecutionState::Running) {
-                record.Expired = true;
-                record.Protocol.RequestClose({
-                    ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
-                    "Behavior object was deleted during execution."});
-                ++it;
-            } else {
-                QueueDestroy(record);
-                it = m_Records.erase(it);
-            }
+            record.Expired = true;
+            record.Protocol.RequestClose({
+                ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
+                "Behavior object was deleted during execution."});
+            record.NativeLifecycle.RequestClose();
             continue;
         }
         PruneOwnedSources(behavior, record);
         PruneOwnedOperations(behavior, record);
-        ++it;
     }
 }
 
@@ -1877,144 +2196,51 @@ Status Runtime::Configure(CKBehavior *behavior,
                                           Record &record) {
     if (!behavior)
         return Failure(Error::InvalidState, "Behavior configuration target is invalid.");
-    CKBehaviorPrototype *prototype = behavior->GetPrototype();
-    if (!prototype)
-        return Failure(Error::PrototypeNotFound, "Building Block Prototype is unavailable.");
+    LifecyclePlan plan;
+    plan.HasOwner = owner != nullptr;
+    plan.SettingStages.reserve(spec.m_SettingStages.size());
+    for (const std::vector<Spec::Binding> &stage : spec.m_SettingStages)
+        plan.SettingStages.push_back(!stage.empty());
 
-    Status status = EnsurePrototypeLayout(behavior, prototype, false);
-    if (!status)
-        return status;
+    NativeLifecycleAdapter adapter(*this, record, owner, parent, &spec, frame);
+    if (record.NativeLifecycle.Configure(plan, adapter))
+        return {};
+    if (!adapter.LastStatus())
+        return adapter.LastStatus();
 
-    if (owner) {
-        const CKERROR ownerError = behavior->SetOwner(owner, FALSE);
-        if (ownerError != CK_OK)
-            return Failure(Error::OwnerInvalid,
-                           "Failed to assign Building Block owner.", ownerError,
-                           CKBR_OK, Phase::OwnerBinding,
-                           behavior->GetPrototypeGuid());
+    const LifecycleFault &fault = record.NativeLifecycle.TerminalError();
+    Error error = Error::InvalidState;
+    Phase phase = Phase::LifecycleCallback;
+    switch (fault.Code) {
+    case LifecycleError::InitializationFailed:
+    case LifecycleError::LayoutFailed:
+        error = Error::InitFailed;
+        phase = Phase::Initialization;
+        break;
+    case LifecycleError::SettingFailed:
+        error = Error::ValueWriteFailed;
+        phase = Phase::Settings;
+        break;
+    case LifecycleError::RelationFailed:
+        error = Error::OwnerInvalid;
+        phase = Phase::OwnerBinding;
+        break;
+    case LifecycleError::CallbackFailed:
+        error = Error::CallbackFailed;
+        break;
+    case LifecycleError::BindingFailed:
+        error = Error::SourceInvalid;
+        phase = Phase::ParameterBinding;
+        break;
+    default:
+        break;
     }
-    status = BindTarget(behavior, owner, spec, record);
-    if (!status)
-        return status;
-    status = EnsurePrototypeDefaults(behavior, prototype, record);
-    if (!status)
-        return status;
-
-    const std::vector<Spec::Binding> &initialSettings = spec.m_SettingStages.front();
-    for (const Spec::Binding &binding : initialSettings) {
-        SlotInfo slot;
-        status = Resolve(behavior, binding.Target, slot);
-        if (!status)
-            return Annotate(std::move(status), Phase::Settings,
-                            behavior->GetPrototypeGuid(), &binding.Target);
-        status = ApplyValue(ResolveParameter(behavior, slot), binding.Source);
-        if (!status)
-            return Annotate(std::move(status), Phase::Settings,
-                            behavior->GetPrototypeGuid(), &binding.Target);
-    }
-
-    if (parent) {
-        const CKERROR addError = parent->AddSubBehavior(behavior);
-        if (addError != CK_OK)
-            return Failure(Error::OwnerInvalid,
-                           "Failed to add Building Block to parent graph.", addError);
-        record.Placed = true;
-    }
-
-    record.Created = true;
-    ++record.LayoutGeneration;
-    status = CallCallback(behavior, CKM_BEHAVIORCREATE, frame);
-    if (!status)
-        return status;
-    status = EnsurePrototypeLayout(behavior, prototype, true);
-    if (!status)
-        return status;
-    status = BindTarget(behavior, owner, spec, record);
-    if (!status)
-        return status;
-    status = EnsurePrototypeDefaults(behavior, prototype, record);
-    if (!status)
-        return status;
-    if (owner) {
-        record.Attached = true;
-        ++record.LayoutGeneration;
-        status = CallCallback(behavior, CKM_BEHAVIORATTACH, frame);
-        if (!status)
-            return status;
-        status = EnsurePrototypeLayout(behavior, prototype, true);
-        if (!status)
-            return status;
-        status = BindTarget(behavior, owner, spec, record);
-        if (!status)
-            return status;
-        status = EnsurePrototypeDefaults(behavior, prototype, record);
-        if (!status)
-            return status;
-    }
-
-    for (std::size_t stageIndex = 0; stageIndex < spec.m_SettingStages.size(); ++stageIndex) {
-        const std::vector<Spec::Binding> &stage = spec.m_SettingStages[stageIndex];
-        if (stageIndex != 0) {
-            for (const Spec::Binding &binding : stage) {
-                SlotInfo slot;
-                status = Resolve(behavior, binding.Target, slot);
-                if (!status)
-                    return Annotate(std::move(status), Phase::Settings,
-                                    behavior->GetPrototypeGuid(), &binding.Target);
-                status = ApplyValue(ResolveParameter(behavior, slot), binding.Source);
-                if (!status)
-                    return Annotate(std::move(status), Phase::Settings,
-                                    behavior->GetPrototypeGuid(), &binding.Target);
-            }
-        }
-        if (stage.empty())
-            continue;
-        ++record.LayoutGeneration;
-        status = CallCallback(behavior, CKM_BEHAVIORSETTINGSEDITED, frame);
-        if (!status)
-            return status;
-        status = EnsurePrototypeLayout(behavior, prototype, true);
-        if (!status)
-            return status;
-        status = BindTarget(behavior, owner, spec, record);
-        if (!status)
-            return status;
-        status = EnsurePrototypeDefaults(behavior, prototype, record);
-        if (!status)
-            return status;
-    }
-
-    for (const std::string &name : spec.m_AddedInputs) {
-        if (!behavior->CreateInput(const_cast<CKSTRING>(name.c_str())))
-            return Failure(Error::CreateFailed, "Failed to add a Building Block input.");
-    }
-    for (const std::string &name : spec.m_AddedOutputs) {
-        if (!behavior->CreateOutput(const_cast<CKSTRING>(name.c_str())))
-            return Failure(Error::CreateFailed, "Failed to add a Building Block output.");
-    }
-    status = ApplyBindings(behavior, spec, record);
-    if (!status)
-        return status;
-
-    ++record.LayoutGeneration;
-    status = CallCallback(behavior, CKM_BEHAVIOREDITED, frame);
-    if (!status)
-        return status;
-    status = EnsurePrototypeLayout(behavior, prototype, true);
-    if (!status)
-        return status;
-    status = BindTarget(behavior, owner, spec, record);
-    if (!status)
-        return status;
-    status = EnsurePrototypeDefaults(behavior, prototype, record);
-    if (!status)
-        return status;
-    status = ApplyBindings(behavior, spec, record);
-    if (!status)
-        return status;
-    PruneOwnedSources(behavior, record);
-    PruneOwnedOperations(behavior, record);
-    return {};
+    return Failure(error,
+                   fault.Message.empty()
+                       ? "Behavior native lifecycle configuration failed."
+                       : fault.Message,
+                   CK_OK, fault.NativeCode, phase,
+                   behavior->GetPrototypeGuid());
 }
 
 Status Runtime::CallCallback(CKBehavior *behavior, CKDWORD message,
@@ -2385,8 +2611,11 @@ void Runtime::ProcessFrame() {
     FlagScope processing(m_ProcessingFrame);
     ++m_Frame;
     DrainDeferredReleases();
+    SweepRecords();
+    DrainCloseQueue();
     ProcessTasks(&m_Context->m_BehaviorContext);
     SweepRecords();
+    DrainCloseQueue();
     AdoptSharedBindings();
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (pending.Frames > 0)
@@ -2487,14 +2716,6 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
         return result;
     }
 
-    const bool releaseRequested = record->ReleaseRequested;
-    const bool forceDestroy = record->ForceDestroy;
-    if (releaseRequested) {
-        QueueDestroy(*record, forceDestroy);
-        m_Records.erase(instanceId);
-        if (forceDestroy)
-            DestroyReady(DestroyMode::Reset);
-    }
     return result;
 }
 
@@ -2588,35 +2809,37 @@ void Runtime::Release(std::uint64_t instanceId) {
     auto it = m_Records.find(instanceId);
     if (it == m_Records.end())
         return;
-    if (it->second.Protocol.State() == ExecutionState::Running) {
-        it->second.ReleaseRequested = true;
-        it->second.Protocol.RequestClose();
-        return;
-    }
-    QueueDestroy(it->second);
-    m_Records.erase(it);
+    it->second.Protocol.RequestClose();
+    it->second.NativeLifecycle.RequestClose();
 }
 
-void Runtime::QueueDestroy(Record &record, bool reset) {
-    record.Protocol.RequestClose();
-    CKBehavior *behavior = ResolveBehavior(record);
-    if (behavior)
-        behavior->Activate(FALSE, FALSE);
+void Runtime::QueueDestroy(Record &record) {
     PendingDestroy pending;
     pending.Behavior = record.Behavior;
     pending.Parent = record.Parent;
     pending.Sources = std::move(record.OwnedSources);
     pending.Operations = std::move(record.OwnedOperations);
     pending.DestroyBehavior = true;
-    pending.GraphResident = record.Placed;
-    pending.Created = record.Created;
-    pending.Attached = record.Attached;
-    pending.Reset = reset;
+    pending.GraphResident = record.NativeLifecycle.Ledger().Placed;
     m_PendingDestroy.push_back(std::move(pending));
-    record.Placed = false;
-    record.Created = false;
-    record.Attached = false;
-    record.Protocol.MarkClosed();
+}
+
+void Runtime::DrainCloseQueue(bool force) {
+    for (auto it = m_Records.begin(); it != m_Records.end();) {
+        Record &record = it->second;
+        if (!record.NativeLifecycle.CloseRequested() ||
+            record.Protocol.State() == ExecutionState::Running) {
+            ++it;
+            continue;
+        }
+        NativeLifecycleAdapter adapter(*this, record, nullptr, nullptr,
+                                       nullptr, nullptr);
+        (void) record.NativeLifecycle.Drain(adapter);
+        record.Protocol.MarkClosed();
+        it = m_Records.erase(it);
+    }
+    if (force)
+        DestroyReady(DestroyMode::Reset);
 }
 
 void Runtime::QueueSourceDestroy(ObjectStamp source, int frames) {
@@ -2669,10 +2892,11 @@ void Runtime::Close() {
     if (!m_Context || m_Thread != std::this_thread::get_id())
         return;
     DrainDeferredReleases();
-    for (auto it = m_Records.begin(); it != m_Records.end();) {
-        QueueDestroy(it->second);
-        it = m_Records.erase(it);
+    for (auto &[instanceId, record] : m_Records) {
+        record.Protocol.RequestClose();
+        record.NativeLifecycle.RequestClose();
     }
+    DrainCloseQueue();
     DestroyReady(DestroyMode::Close);
 }
 
@@ -2709,15 +2933,6 @@ void Runtime::DestroyReady(DestroyMode mode) {
             rememberInput(behavior->GetTargetParameter());
             for (int i = 0; i < behavior->GetInputParameterCount(); ++i)
                 rememberInput(behavior->GetInputParameter(i));
-            behavior->Activate(FALSE, FALSE);
-            if (it->Reset)
-                (void) CallCallback(behavior, CKM_BEHAVIORRESET, nullptr);
-            behavior = resolveBehavior();
-            if (behavior && it->Attached)
-                (void) CallCallback(behavior, CKM_BEHAVIORDETACH, nullptr);
-            behavior = resolveBehavior();
-            if (behavior && it->Created)
-                (void) CallCallback(behavior, CKM_BEHAVIORDELETE, nullptr);
         }
         behavior = resolveBehavior();
 
@@ -2830,8 +3045,6 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (ContainsId(ids, count, pending.Behavior.Id)) {
             pending.Behavior = {};
-            pending.Created = false;
-            pending.Attached = false;
             pending.GraphResident = false;
         }
         pending.Sources.erase(
@@ -2880,23 +3093,12 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             ++it;
             continue;
         }
-        if (it->second.Protocol.State() == ExecutionState::Running) {
-            it->second.Expired = true;
-            it->second.Protocol.RequestClose({
-                ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
-                "Behavior object was deleted during execution."});
-            it->second.Created = false;
-            it->second.Attached = false;
-            ++it;
-            continue;
-        }
-        for (ObjectStamp source : it->second.OwnedSources) {
-            if (!ContainsId(ids, count, source.Id))
-                QueueSourceDestroy(source);
-        }
-        for (OwnedOperation &operation : it->second.OwnedOperations)
-            QueueOperationDestroy(std::move(operation));
-        it = m_Records.erase(it);
+        it->second.Expired = true;
+        it->second.Protocol.RequestClose({
+            ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
+            "Behavior object or parent graph was deleted."});
+        it->second.NativeLifecycle.RequestClose();
+        ++it;
     }
 }
 
@@ -2905,25 +3107,37 @@ void Runtime::ResetWorld() {
         return;
     DrainDeferredReleases();
     AdoptSharedBindings();
-    for (PendingDestroy &pending : m_PendingDestroy) {
-        if (pending.Behavior.Id != 0)
-            pending.Reset = true;
+    for (auto &[instanceId, record] : m_Records) {
+        record.Protocol.RequestClose({
+            ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
+            "World reset cancelled behavior execution."});
+        record.NativeLifecycle.RequestClose(true);
     }
-    for (auto it = m_Records.begin(); it != m_Records.end();) {
-        Record &record = it->second;
-        if (record.Protocol.State() == ExecutionState::Running) {
-            record.ReleaseRequested = true;
-            record.ForceDestroy = true;
-            record.Protocol.RequestClose({
-                ExecutionError::Cancelled, CKBR_BEHAVIORERROR,
-                "World reset cancelled behavior execution."});
-            ++it;
+    DrainCloseQueue(true);
+}
+
+Status Runtime::Close(CKBehavior *behavior) {
+    Status ready = ReadyStatus();
+    if (!ready)
+        return ready;
+    if (!behavior)
+        return Failure(Error::InvalidState,
+                       "Cannot close a null graph-resident Building Block.");
+
+    for (auto &[instanceId, record] : m_Records) {
+        if (ResolveBehavior(record) != behavior)
             continue;
+        if (!record.GraphResident) {
+            return Failure(
+                Error::InvalidState,
+                "Runtime::Close only accepts Runtime-owned graph nodes.");
         }
-        QueueDestroy(record, true);
-        it = m_Records.erase(it);
+        record.Protocol.RequestClose();
+        record.NativeLifecycle.RequestClose();
+        return {};
     }
-    DestroyReady(DestroyMode::Reset);
+    return Failure(Error::InvalidState,
+                   "Building Block is not owned by this Behavior Runtime.");
 }
 
 const char *DescribeError(Error error) {

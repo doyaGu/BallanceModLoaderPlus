@@ -119,6 +119,10 @@ public:
 class Lifecycle final {
 public:
     Lifecycle() = default;
+    Lifecycle(const Lifecycle &) = delete;
+    Lifecycle &operator=(const Lifecycle &) = delete;
+    Lifecycle(Lifecycle &&other) noexcept;
+    Lifecycle &operator=(Lifecycle &&other) noexcept;
 
     bool Configure(const LifecyclePlan &plan, LifecycleAdapter &adapter);
 
@@ -140,12 +144,12 @@ public:
 
 private:
     bool RefreshAfterCallback(LifecycleAdapter &adapter,
-                              const LifecycleIdentity &identity,
+                              LifecycleIdentity &identity,
                               LifecycleLayout &layout,
                               LifecycleFault &fault);
     bool InvokeConfigured(LifecycleAdapter &adapter,
                           LifecycleCallback callback,
-                          const LifecycleIdentity &identity,
+                          LifecycleIdentity &identity,
                           LifecycleLayout &layout,
                           LifecycleFault &fault,
                           bool *completed = nullptr);

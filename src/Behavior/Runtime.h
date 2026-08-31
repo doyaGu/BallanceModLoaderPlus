@@ -16,6 +16,7 @@
 
 #include "CKAll.h"
 #include "Behavior/Execution.h"
+#include "Behavior/Lifecycle.h"
 
 namespace BML::Behavior {
 
@@ -404,6 +405,7 @@ public:
 
     void ObjectsToBeDeleted(const CK_ID *ids, int count);
     void ResetWorld();
+    Status Close(CKBehavior *behavior);
 
 private:
     struct ObjectStamp {
@@ -428,13 +430,9 @@ private:
         std::uint64_t Id = 0;
         std::uint64_t LayoutGeneration = 1;
         bool GraphResident = false;
-        bool Placed = false;
-        bool Created = false;
-        bool Attached = false;
         bool Expired = false;
         bool Poisoned = false;
-        bool ReleaseRequested = false;
-        bool ForceDestroy = false;
+        Lifecycle NativeLifecycle;
         Execution Protocol;
         std::vector<ObjectStamp> OwnedSources;
         std::vector<OwnedOperation> OwnedOperations;
@@ -449,9 +447,6 @@ private:
         int Frames = 2;
         bool DestroyBehavior = false;
         bool GraphResident = false;
-        bool Created = false;
-        bool Attached = false;
-        bool Reset = false;
     };
 
     struct SharedBindings {
@@ -513,6 +508,7 @@ private:
     [[nodiscard]] Status CallCallback(CKBehavior *behavior, CKDWORD message,
                                               const CKBehaviorContext *frame) const;
     class NativeAdapter;
+    class NativeLifecycleAdapter;
     [[nodiscard]] RunResult Execute(std::uint64_t instanceId,
                                     const ExecutionInput *input, bool once,
                                     const CKBehaviorContext *frame);
@@ -521,11 +517,12 @@ private:
                                            Record *&record);
     void RequestRelease(std::uint64_t instanceId);
     void Release(std::uint64_t instanceId);
-    void QueueDestroy(Record &record, bool reset = false);
+    void QueueDestroy(Record &record);
     void QueueSourceDestroy(ObjectStamp source, int frames = 2);
     void QueueOperationDestroy(OwnedOperation operation, int frames = 2);
     void DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior);
     void DrainDeferredReleases();
+    void DrainCloseQueue(bool force = false);
     void AdoptSharedBindings();
     void Close();
     void DestroyReady(DestroyMode mode);
