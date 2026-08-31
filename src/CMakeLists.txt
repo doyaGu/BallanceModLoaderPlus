@@ -290,6 +290,7 @@ set(BML_HOOK_SOURCES
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
+        Behavior/Execution.h
         Behavior/HookBlock.h
         Behavior/ObjectLoad.h
         Behavior/Physicalize.h
@@ -302,6 +303,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
 )
 
 set(BML_BEHAVIOR_SOURCES
+        Behavior/Execution.cpp
         Behavior/HookBlock.cpp
         Behavior/ObjectLoad.cpp
         Behavior/Physicalize.cpp
