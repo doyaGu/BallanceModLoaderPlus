@@ -25,6 +25,7 @@
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
 #include "Behavior/Runtime.h"
+#include "Behavior/Authoring.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/PhysicsForce.h"
 
@@ -109,6 +110,9 @@ public:
     IMod *GetMod(int index) override;
     IMod *FindMod(const char *id) const override;
     std::string GetNativeImcOwnerId(
+        const void *callerAddress,
+        const char *requestedOwnerId = nullptr) const;
+    std::string GetNativeModOwnerId(
         const void *callerAddress,
         const char *requestedOwnerId = nullptr) const;
     BML::ModInvocationGate::CallLock LockModInvocation() const { return m_ModInvocationGate.LockCall(); }
@@ -240,6 +244,9 @@ public:
     BML::ObjectRefs &ObjectRefs() noexcept { return m_ObjectRefs; }
     BML::Behavior::Runtime &Behaviors() noexcept { return m_Behaviors; }
     const BML::Behavior::Runtime &Behaviors() const noexcept { return m_Behaviors; }
+    BML::Behavior::Authoring &BehaviorAuthoring() noexcept {
+        return m_BehaviorAuthoring;
+    }
     BML::ExecuteBBAdapter &ExecuteBB() noexcept { return m_ExecuteBB; }
     BML::Behavior::PhysicsForce::Sessions &PhysicsForce() noexcept {
         return m_PhysicsForce;
@@ -447,6 +454,7 @@ private:
     BML::GameSession m_GameSession;
     BML::ObjectRefs m_ObjectRefs;
     BML::Behavior::Runtime m_Behaviors;
+    BML::Behavior::Authoring m_BehaviorAuthoring;
     BML::Behavior::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;

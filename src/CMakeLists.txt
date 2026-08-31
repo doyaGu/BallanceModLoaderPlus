@@ -290,6 +290,7 @@ set(BML_HOOK_SOURCES
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
+        Behavior/Authoring.h
         Behavior/Callback.h
         Behavior/Execution.h
         Behavior/Lifecycle.h
@@ -306,6 +307,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
 )
 
 set(BML_BEHAVIOR_SOURCES
+        Behavior/Authoring.cpp
         Behavior/Callback.cpp
         Behavior/Execution.cpp
         Behavior/Lifecycle.cpp

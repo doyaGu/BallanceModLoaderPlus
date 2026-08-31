@@ -2745,6 +2745,11 @@ std::vector<ExecutionOutcome> Runtime::Drain(Instance &instance) {
     return record ? record->Protocol.Drain() : std::vector<ExecutionOutcome>{};
 }
 
+std::shared_ptr<OutcomeStore> Runtime::Outcomes(const Instance &instance) const {
+    const Record *record = FindRecord(instance);
+    return record ? record->Protocol.Outcomes() : nullptr;
+}
+
 Status Runtime::TerminalError(const Instance &instance) const {
     Status ready = ReadyStatus();
     if (!ready)
@@ -2826,6 +2831,16 @@ void Runtime::ProcessFrame() {
     DestroyReady(DestroyMode::Ready);
 }
 
+void Runtime::ClosePending() {
+    if (!ReadyStatus())
+        return;
+    DrainDeferredReleases();
+    SweepRecords();
+    DrainCloseQueue();
+    AdoptSharedBindings();
+    DestroyReady(DestroyMode::Ready);
+}
+
 RunResult Runtime::Execute(std::uint64_t instanceId,
                            const ExecutionInput *input, bool once,
                            const CKBehaviorContext *frame) {
@@ -2875,6 +2890,13 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
             break;
         case ExecutionError::UnsupportedBreak:
             error = Error::UnsupportedBreak;
+            break;
+        case ExecutionError::UnsupportedPout:
+            error = Error::UnsupportedPout;
+            break;
+        case ExecutionError::PoutReadFailed:
+        case ExecutionError::OutputUnavailable:
+            error = Error::PoutUnavailable;
             break;
         case ExecutionError::OutcomeQueueFull:
             error = Error::OutcomeQueueFull;

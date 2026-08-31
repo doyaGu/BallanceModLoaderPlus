@@ -228,6 +228,8 @@ enum class Error {
     ExecutionFailed,
     OperationInvalid,
     UnsupportedBreak,
+    UnsupportedPout,
+    PoutUnavailable,
     OutcomeQueueFull,
     ExecutionCancelled,
 };
@@ -413,9 +415,12 @@ public:
     [[nodiscard]] bool IsTaskActive(const Instance &instance) const;
     [[nodiscard]] ExecutionState State(const Instance &instance) const;
     [[nodiscard]] std::vector<ExecutionOutcome> Drain(Instance &instance);
+    [[nodiscard]] std::shared_ptr<OutcomeStore> Outcomes(
+        const Instance &instance) const;
     [[nodiscard]] Status TerminalError(const Instance &instance) const;
     void ProcessTasks(const CKBehaviorContext *frame = nullptr);
     void ProcessFrame();
+    void ClosePending();
 
     void ObjectsToBeDeleted(const CK_ID *ids, int count);
     void ResetWorld();

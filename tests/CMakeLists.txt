@@ -238,6 +238,18 @@ add_bml_test(BehaviorExecutionTest
         ${BML_SOURCE_DIR}/Behavior/OutcomeStore.cpp
 )
 
+add_bml_test(BehaviorAuthoringTest
+        SOURCES
+        BehaviorAuthoringTest.cpp
+        BehaviorAuthoringTestStubs.cpp
+        ${BML_SOURCE_DIR}/Behavior/Authoring.cpp
+        ${BML_SOURCE_DIR}/Behavior/Execution.cpp
+        ${BML_SOURCE_DIR}/Behavior/OutcomeStore.cpp
+)
+target_include_directories(BehaviorAuthoringTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+)
+
 add_bml_test(BehaviorLifecycleTest
         SOURCES
         BehaviorLifecycleTest.cpp

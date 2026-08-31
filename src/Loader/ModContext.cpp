@@ -185,6 +185,7 @@ ModContext::ModContext(CKContext *context)
           return BML::Behavior::ObjectRef{
               reference.Domain, reference.Slot, reference.Generation};
       }),
+      m_BehaviorAuthoring(m_Behaviors),
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);
@@ -330,6 +331,7 @@ void ModContext::ResetVirtoolsWorld() {
     // to the API seam and are reset only after internal teardown is complete.
     m_ExecuteBB.Reset();
     m_PhysicsForce.Reset();
+    m_BehaviorAuthoring.ResetWorld();
     m_Behaviors.ResetWorld();
     m_ObjectRefs.Reset();
 }
@@ -345,6 +347,7 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
 void ModContext::ProcessVirtoolsFrame() {
     m_PhysicsForce.ProcessFrame();
     m_Behaviors.ProcessFrame();
+    m_BehaviorAuthoring.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
 }
 
@@ -633,6 +636,13 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
             if (m_Logger)
                 m_Logger->Error("Unknown exception in a Mod unload callback.");
         }
+        try {
+            m_BehaviorAuthoring.RetireOwner(mod->GetID());
+        } catch (...) {
+            if (m_Logger)
+                m_Logger->Error(
+                    "Failed to retire Behavior state for a Mod during shutdown.");
+        }
     }
 
     // OnUnload may change configuration, but it is the Mod's final callback. Drain
@@ -644,6 +654,7 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
         IMod *mod = *rit;
         try {
             m_ImcRuntime.CleanupOwner(mod->GetID());
+            m_BehaviorAuthoring.RetireOwner(mod->GetID());
         } catch (...) {
             if (m_Logger)
                 m_Logger->Error("Failed to clean IMC state for a Mod during shutdown.");
@@ -2633,10 +2644,25 @@ bool ModContext::RegisterMod(IMod *mod, const std::shared_ptr<void> &dllHandle) 
         }
     }
 
+    if (!m_BehaviorAuthoring.RegisterOwner(modId)) {
+        if (dllHandle)
+            (void) m_NativeModRegistry.Remove(modId);
+        m_ModIndex.erase(modId);
+        m_Mods.pop_back();
+        m_Logger->Error("Mod registration failed: cannot register Behavior owner %s.",
+                        modId.c_str());
+        return false;
+    }
+
     return true;
 }
 
 std::string ModContext::GetNativeImcOwnerId(
+    const void *callerAddress, const char *requestedOwnerId) const {
+    return GetNativeModOwnerId(callerAddress, requestedOwnerId);
+}
+
+std::string ModContext::GetNativeModOwnerId(
     const void *callerAddress, const char *requestedOwnerId) const {
     if (!callerAddress)
         return {};
@@ -2702,6 +2728,7 @@ bool ModContext::UnregisterMod(IMod *mod) {
                 return false;
             modIdCopy = id->first;
         }
+        m_BehaviorAuthoring.RetireOwner(modIdCopy);
         m_ImcRuntime.CleanupOwner(modIdCopy);
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
