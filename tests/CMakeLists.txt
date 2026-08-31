@@ -236,6 +236,12 @@ add_bml_test(BehaviorExecutionTest
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
 )
 
+add_bml_test(BehaviorLifecycleTest
+        SOURCES
+        BehaviorLifecycleTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Lifecycle.cpp
+)
+
 add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp
