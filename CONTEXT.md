@@ -30,7 +30,7 @@ _Avoid_: EventHookRegistrar, callback patches, event bridge
 
 **Behavior Authoring**:
 The public `bml.behavior` interface through which a Native Mod creates a Session, describes a Block from a Virtools Prototype, and obtains a Run as a Call, Task, or Instance. A Block names its Target, Setting stages, Pins, Locals, and Outcome retention. A Run exposes Pulse/Continue state and owns copied Outcomes containing the active Outs and Pout parameter values observed for each native Execute. Object-valued Pouts hold a `BML_ObjectRef` issued while the value still names a live CK object; draining an Outcome never reads the original CK parameter or object again. Sessions belong to one Native Mod generation, survive a world reset, and stop admitting work when that owner retires.
-`BML::Behavior::Authoring` is the private owner/session/run coordinator behind this interface. It is not a second Behavior model: it lowers the public description to the private Behavior Runtime and preserves Outcomes after the native Instance has closed.
+`BML::Behavior::Sessions` owns the owner-scoped Session and Run records behind this interface. It is not a second Behavior model: it delegates each native Instance to Behavior Runtime and preserves Outcomes after that Instance has closed.
 _Avoid_: Behavior transport, Behavior service, execution facade, codec, object snapshotter, preflight capture
 
 **Behavior Runtime**:
@@ -64,7 +64,7 @@ The private source tree follows these runtime concepts instead of collecting unr
 - `src/Mods/` contains concrete bundled `IMod` implementations. `BMLMod` assembles the built-in modules, while `NewBallTypeMod` is an independent bundled Mod.
 - `src/Loader/` owns Mod discovery, registration, invocation, lifecycle, and CK manager integration.
 - `src/Api/` adapts the public BML interfaces to loader-owned implementations, including Behavior Authoring, Object References, the `ExecuteBB` facade, and its stateful adapter.
-- `src/Behavior/` contains the private Behavior Authoring coordinator, the shared Behavior Runtime, and one module per concrete Building Block (`HookBlock`, `ObjectLoad`, `Physicalize`, `PhysicsForce`, `PhysicsImpulse`, `PhysicsWakeUp`, `SendMessage`, and `Text2D`). Physics Force keeps its persistent session implementation beside its spec. These modules depend on CK infrastructure but never on `Loader` or `Api`; the Runtime never depends on a concrete Building Block.
+- `src/Behavior/` contains owner-scoped Behavior Sessions, the shared Behavior Runtime, and one module per concrete Building Block (`HookBlock`, `ObjectLoad`, `Physicalize`, `PhysicsForce`, `PhysicsImpulse`, `PhysicsWakeUp`, `SendMessage`, and `Text2D`). Physics Force keeps its persistent session implementation beside its spec. These modules depend on CK infrastructure but never on `Loader` or `Api`; the Runtime never depends on a concrete Building Block.
 - `src/Console/`, `src/HUD/`, and `src/CustomMaps/` contain the Built-in Console, Built-in HUD, and Built-in Custom Maps modules respectively.
 - `src/Gameplay/` contains the loader-owned game session, game event hooks, and gameplay tweaks.
 - `src/Config/`, `src/DataShare/`, `src/Imc/`, and `src/Logging/` each keep one cross-cutting runtime concern local.

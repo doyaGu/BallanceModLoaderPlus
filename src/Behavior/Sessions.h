@@ -1,5 +1,5 @@
-#ifndef BML_BEHAVIOR_AUTHORING_H
-#define BML_BEHAVIOR_AUTHORING_H
+#ifndef BML_BEHAVIOR_SESSIONS_H
+#define BML_BEHAVIOR_SESSIONS_H
 
 #include <cstdint>
 #include <memory>
@@ -42,9 +42,11 @@ struct OpenRun {
     }
 };
 
-class Authoring final {
+// Owns the public Session and Run aggregates for every active Mod generation.
+// Runtime remains responsible for each native Behavior Instance.
+class Sessions final {
 public:
-    explicit Authoring(Runtime &runtime);
+    explicit Sessions(Runtime &runtime);
 
     std::uint64_t RegisterOwner(std::string ownerId);
     void RetireOwner(const std::string &ownerId);
@@ -119,4 +121,4 @@ private:
 
 } // namespace BML::Behavior
 
-#endif // BML_BEHAVIOR_AUTHORING_H
+#endif // BML_BEHAVIOR_SESSIONS_H

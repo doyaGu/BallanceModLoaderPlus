@@ -1,4 +1,4 @@
-#include "Behavior/Authoring.h"
+#include "Behavior/Sessions.h"
 
 #include <limits>
 #include <utility>
@@ -19,10 +19,10 @@ RunResult FailedRun(Error error, std::string message) {
 
 } // namespace
 
-Authoring::Authoring(Runtime &runtime)
+Sessions::Sessions(Runtime &runtime)
     : m_Runtime(runtime), m_Thread(std::this_thread::get_id()) {}
 
-std::uint64_t Authoring::RegisterOwner(std::string ownerId) {
+std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
     if (ownerId.empty() || std::this_thread::get_id() != m_Thread)
         return 0;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -38,7 +38,7 @@ std::uint64_t Authoring::RegisterOwner(std::string ownerId) {
     return generation;
 }
 
-void Authoring::RetireOwner(const std::string &ownerId) {
+void Sessions::RetireOwner(const std::string &ownerId) {
     if (std::this_thread::get_id() != m_Thread)
         return;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -48,7 +48,7 @@ void Authoring::RetireOwner(const std::string &ownerId) {
     CloseOwner(ownerId, owner->second.Generation);
 }
 
-Status Authoring::OpenSession(const std::string &ownerId,
+Status Sessions::OpenSession(const std::string &ownerId,
                               std::uintptr_t &sessionId) {
     sessionId = 0;
     Status ready = Ready();
@@ -66,7 +66,7 @@ Status Authoring::OpenSession(const std::string &ownerId,
     return {};
 }
 
-void Authoring::CloseSession(std::uintptr_t sessionId) {
+void Sessions::CloseSession(std::uintptr_t sessionId) {
     if (!sessionId)
         return;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -84,7 +84,7 @@ void Authoring::CloseSession(std::uintptr_t sessionId) {
     m_Sessions.erase(session);
 }
 
-OpenRun Authoring::Call(std::uintptr_t sessionId, CKBeObject *owner,
+OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
                         const Spec &block, const Slot &input) {
     Status ready = Ready();
     if (!ready)
@@ -115,7 +115,7 @@ OpenRun Authoring::Call(std::uintptr_t sessionId, CKBeObject *owner,
     return AddRun(session, RunKind::Call, std::move(called.Handle), std::move(result));
 }
 
-OpenRun Authoring::Start(std::uintptr_t sessionId, CKBeObject *owner,
+OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
                          const Spec &block, const Slot &input) {
     Status ready = Ready();
     if (!ready)
@@ -149,7 +149,7 @@ OpenRun Authoring::Start(std::uintptr_t sessionId, CKBeObject *owner,
     return AddRun(session, RunKind::Task, std::move(created.Handle), std::move(result));
 }
 
-OpenRun Authoring::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
+OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
                          const Spec &block) {
     Status ready = Ready();
     if (!ready)
@@ -178,7 +178,7 @@ OpenRun Authoring::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
     return AddRun(session, RunKind::Instance, std::move(created.Handle), std::move(result));
 }
 
-RunResult Authoring::Continue(std::uintptr_t runId) {
+RunResult Sessions::Continue(std::uintptr_t runId) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), RunState::Failed, CKBR_BEHAVIORERROR, {}};
@@ -198,7 +198,7 @@ RunResult Authoring::Continue(std::uintptr_t runId) {
     return {std::move(status), run->Info.State, CKBR_OK, {}};
 }
 
-RunResult Authoring::Pulse(std::uintptr_t runId, const Slot &input) {
+RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), RunState::Failed, CKBR_BEHAVIORERROR, {}};
@@ -224,7 +224,7 @@ RunResult Authoring::Pulse(std::uintptr_t runId, const Slot &input) {
     return result;
 }
 
-Status Authoring::ReadRun(std::uintptr_t runId, RunInfo &info) const {
+Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::shared_ptr<const Run> run = FindRun(runId);
     if (!run)
@@ -242,13 +242,13 @@ Status Authoring::ReadRun(std::uintptr_t runId, RunInfo &info) const {
     return {};
 }
 
-std::shared_ptr<OutcomeStore> Authoring::Outcomes(std::uintptr_t runId) const {
+std::shared_ptr<OutcomeStore> Sessions::Outcomes(std::uintptr_t runId) const {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::shared_ptr<const Run> run = FindRun(runId);
     return run ? run->Outcome : nullptr;
 }
 
-void Authoring::CloseRun(std::uintptr_t runId) {
+void Sessions::CloseRun(std::uintptr_t runId) {
     if (!runId)
         return;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -259,7 +259,7 @@ void Authoring::CloseRun(std::uintptr_t runId) {
     m_Runs.erase(run);
 }
 
-void Authoring::ProcessFrame() {
+void Sessions::ProcessFrame() {
     if (std::this_thread::get_id() != m_Thread)
         return;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -284,7 +284,7 @@ void Authoring::ProcessFrame() {
     m_Runtime.ClosePending();
 }
 
-void Authoring::ResetWorld() {
+void Sessions::ResetWorld() {
     if (std::this_thread::get_id() != m_Thread)
         return;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -295,14 +295,14 @@ void Authoring::ResetWorld() {
     m_Runtime.ClosePending();
 }
 
-Status Authoring::Ready() const {
+Status Sessions::Ready() const {
     return std::this_thread::get_id() == m_Thread
         ? Status{}
         : Fail(Error::WrongThread,
                "Behavior authoring is only available on the game thread.");
 }
 
-std::uintptr_t Authoring::NextId() {
+std::uintptr_t Sessions::NextId() {
     if (m_NextId == 0 || m_NextId ==
             (std::numeric_limits<std::uintptr_t>::max)()) {
         return 0;
@@ -310,34 +310,34 @@ std::uintptr_t Authoring::NextId() {
     return m_NextId++;
 }
 
-Authoring::Session *Authoring::FindSession(std::uintptr_t sessionId) {
+Sessions::Session *Sessions::FindSession(std::uintptr_t sessionId) {
     const auto session = m_Sessions.find(sessionId);
     return session == m_Sessions.end() ? nullptr : &session->second;
 }
 
-const Authoring::Session *Authoring::FindSession(std::uintptr_t sessionId) const {
+const Sessions::Session *Sessions::FindSession(std::uintptr_t sessionId) const {
     const auto session = m_Sessions.find(sessionId);
     return session == m_Sessions.end() ? nullptr : &session->second;
 }
 
-std::shared_ptr<Authoring::Run> Authoring::FindRun(std::uintptr_t runId) {
+std::shared_ptr<Sessions::Run> Sessions::FindRun(std::uintptr_t runId) {
     const auto run = m_Runs.find(runId);
     return run == m_Runs.end() ? nullptr : run->second;
 }
 
-std::shared_ptr<const Authoring::Run> Authoring::FindRun(
+std::shared_ptr<const Sessions::Run> Sessions::FindRun(
     std::uintptr_t runId) const {
     const auto run = m_Runs.find(runId);
     return run == m_Runs.end() ? nullptr : run->second;
 }
 
-bool Authoring::SessionIsActive(const Session &session) const {
+bool Sessions::SessionIsActive(const Session &session) const {
     const auto owner = m_Owners.find(session.OwnerId);
     return owner != m_Owners.end() && owner->second.State == OwnerState::Active &&
            owner->second.Generation == session.OwnerGeneration;
 }
 
-OpenRun Authoring::AddRun(const Session &session, RunKind kind,
+OpenRun Sessions::AddRun(const Session &session, RunKind kind,
                           Instance block, RunResult result) {
     std::shared_ptr<OutcomeStore> outcomes = m_Runtime.Outcomes(block);
     const bool nativeExecuted = outcomes && !outcomes->Read().empty();
@@ -378,16 +378,16 @@ OpenRun Authoring::AddRun(const Session &session, RunKind kind,
     return {std::move(admitted), id, stored->second->Info};
 }
 
-void Authoring::CloseNative(Run &run) {
+void Sessions::CloseNative(Run &run) {
     run.Block.Reset();
 }
 
-void Authoring::QueueClose(std::shared_ptr<Run> run) {
+void Sessions::QueueClose(std::shared_ptr<Run> run) {
     if (run)
         m_CloseQueue.push_back(std::move(run));
 }
 
-void Authoring::CloseQueuedRuns() {
+void Sessions::CloseQueuedRuns() {
     for (const std::shared_ptr<Run> &run : m_CloseQueue) {
         if (run)
             run->Block.Reset();
@@ -395,7 +395,7 @@ void Authoring::CloseQueuedRuns() {
     m_CloseQueue.clear();
 }
 
-void Authoring::CloseOwner(const std::string &ownerId,
+void Sessions::CloseOwner(const std::string &ownerId,
                            std::uint64_t generation) {
     auto owner = m_Owners.find(ownerId);
     if (owner == m_Owners.end() || owner->second.Generation != generation)

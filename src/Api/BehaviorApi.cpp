@@ -12,14 +12,14 @@
 #include <vector>
 
 #include "BML/ImcWire.hpp"
-#include "Behavior/Authoring.h"
+#include "Behavior/Sessions.h"
 #include "Behavior/OutcomeStore.h"
 #include "Loader/ModContext.h"
 
 namespace {
 
 using BML::Behavior::AdmissionState;
-using BML::Behavior::Authoring;
+using BML::Behavior::Sessions;
 using BML::Behavior::Error;
 using BML::Behavior::ExecutionError;
 using BML::Behavior::ExecutionOutcome;
@@ -592,7 +592,7 @@ int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
         if (owner.empty() || (!requested.empty() && owner != requested))
             return BML_ERROR_ACCESS_DENIED;
         std::uintptr_t id = 0;
-        Status result = context->BehaviorAuthoring().OpenSession(owner, id);
+        Status result = context->BehaviorSessions().OpenSession(owner, id);
         WriteStatus(status, result);
         if (!result)
             return ResultCode(result);
@@ -608,7 +608,7 @@ int BML_BEHAVIOR_CALL CloseSession(BML_BehaviorSession session) {
         ModContext *context = BML_GetModContext();
         if (!context)
             return BML_ERROR_FROZEN;
-        context->BehaviorAuthoring().CloseSession(SessionId(session));
+        context->BehaviorSessions().CloseSession(SessionId(session));
         return BML_OK;
     });
 }
@@ -650,12 +650,12 @@ int OpenRunEntry(OpenKind kind, BML_BehaviorSession session,
         return BML_ERROR_INVALID_PARAMETER;
     }
 
-    Authoring &authoring = context->BehaviorAuthoring();
+    Sessions &sessions = context->BehaviorSessions();
     const auto opened = kind == OpenKind::Call
-        ? authoring.Call(SessionId(session), owner, definition, in)
+        ? sessions.Call(SessionId(session), owner, definition, in)
         : kind == OpenKind::Start
-            ? authoring.Start(SessionId(session), owner, definition, in)
-            : authoring.Spawn(SessionId(session), owner, definition);
+            ? sessions.Start(SessionId(session), owner, definition, in)
+            : sessions.Spawn(SessionId(session), owner, definition);
     return OpenRunResult(opened, outRun, info, status);
 }
 
@@ -705,10 +705,10 @@ int BML_BEHAVIOR_CALL Continue(BML_BehaviorRun run,
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
-        RunResult result = context->BehaviorAuthoring().Continue(RunId(run));
+        RunResult result = context->BehaviorSessions().Continue(RunId(run));
         WriteStatus(status, result.Outcome);
         RunInfo current;
-        const Status read = context->BehaviorAuthoring().ReadRun(RunId(run), current);
+        const Status read = context->BehaviorSessions().ReadRun(RunId(run), current);
         if (read)
             WriteRunInfo(info, current);
         return ResultCode(result.Outcome);
@@ -734,7 +734,7 @@ int BML_BEHAVIOR_CALL Pulse(BML_BehaviorRun run,
             WriteStatus(status, readStatus);
             return BML_ERROR_INVALID_PARAMETER;
         }
-        RunResult result = context->BehaviorAuthoring().Pulse(RunId(run), in);
+        RunResult result = context->BehaviorSessions().Pulse(RunId(run), in);
         WriteStatus(status, result.Outcome);
         if (result.Admission == AdmissionState::Failed)
             return ResultCode(result.Outcome);
@@ -742,7 +742,7 @@ int BML_BEHAVIOR_CALL Pulse(BML_BehaviorRun run,
             ? BML_BEHAVIOR_ADMISSION_QUEUED
             : BML_BEHAVIOR_ADMISSION_EXECUTED;
         RunInfo current;
-        if (context->BehaviorAuthoring().ReadRun(RunId(run), current))
+        if (context->BehaviorSessions().ReadRun(RunId(run), current))
             WriteRunInfo(info, current);
         return BML_OK;
     });
@@ -760,7 +760,7 @@ int BML_BEHAVIOR_CALL ReadRun(BML_BehaviorRun run,
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
         RunInfo current;
-        Status result = context->BehaviorAuthoring().ReadRun(RunId(run), current);
+        Status result = context->BehaviorSessions().ReadRun(RunId(run), current);
         WriteStatus(status, result);
         if (!result)
             return ResultCode(result);
@@ -975,7 +975,7 @@ int BML_BEHAVIOR_CALL DrainOutcomes(
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
         std::shared_ptr<BML::Behavior::OutcomeStore> store =
-            context->BehaviorAuthoring().Outcomes(RunId(run));
+            context->BehaviorSessions().Outcomes(RunId(run));
         if (!store)
             return BML_ERROR_INVALID_HANDLE;
 
@@ -1012,7 +1012,7 @@ int BML_BEHAVIOR_CALL CloseRun(BML_BehaviorRun run) {
         ModContext *context = BML_GetModContext();
         if (!context)
             return BML_ERROR_FROZEN;
-        context->BehaviorAuthoring().CloseRun(RunId(run));
+        context->BehaviorSessions().CloseRun(RunId(run));
         return BML_OK;
     });
 }

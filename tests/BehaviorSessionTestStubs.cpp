@@ -36,33 +36,33 @@ Runtime::~Runtime() = default;
 CreateResult Runtime::Instantiate(CKBeObject *, const Spec &,
                                   const CKBehaviorContext *) {
     return {{Error::ContextExpired, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
-             "No CKContext is present in the Authoring golden test."},
+             "No CKContext is present in the Session golden test."},
             {}, {}};
 }
 
 CallResult Runtime::Call(CKBeObject *, const Spec &, const Slot &,
                          const CKBehaviorContext *) {
     return {{Error::ContextExpired, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
-             "No CKContext is present in the Authoring golden test."},
+             "No CKContext is present in the Session golden test."},
             {}, {}, {}};
 }
 
 RunResult Runtime::StartTask(Instance &, const Slot &,
                              const CKBehaviorContext *) {
     return {{Error::ContextExpired, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
-             "No CKContext is present in the Authoring golden test."},
+             "No CKContext is present in the Session golden test."},
             RunState::Failed, CKBR_BEHAVIORERROR, {}};
 }
 
 Status Runtime::Continue(Instance &) {
     return {Error::ContextExpired, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
-            "No CKContext is present in the Authoring golden test."};
+            "No CKContext is present in the Session golden test."};
 }
 
 RunResult Runtime::Pulse(Instance &, const Slot &,
                          const CKBehaviorContext *) {
     return {{Error::ContextExpired, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
-             "No CKContext is present in the Authoring golden test."},
+             "No CKContext is present in the Session golden test."},
             RunState::Failed, CKBR_BEHAVIORERROR, {}};
 }
 

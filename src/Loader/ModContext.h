@@ -25,7 +25,7 @@
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
 #include "Behavior/Runtime.h"
-#include "Behavior/Authoring.h"
+#include "Behavior/Sessions.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/PhysicsForce.h"
 
@@ -244,8 +244,8 @@ public:
     BML::ObjectRefs &ObjectRefs() noexcept { return m_ObjectRefs; }
     BML::Behavior::Runtime &Behaviors() noexcept { return m_Behaviors; }
     const BML::Behavior::Runtime &Behaviors() const noexcept { return m_Behaviors; }
-    BML::Behavior::Authoring &BehaviorAuthoring() noexcept {
-        return m_BehaviorAuthoring;
+    BML::Behavior::Sessions &BehaviorSessions() noexcept {
+        return m_BehaviorSessions;
     }
     BML::ExecuteBBAdapter &ExecuteBB() noexcept { return m_ExecuteBB; }
     BML::Behavior::PhysicsForce::Sessions &PhysicsForce() noexcept {
@@ -454,7 +454,7 @@ private:
     BML::GameSession m_GameSession;
     BML::ObjectRefs m_ObjectRefs;
     BML::Behavior::Runtime m_Behaviors;
-    BML::Behavior::Authoring m_BehaviorAuthoring;
+    BML::Behavior::Sessions m_BehaviorSessions;
     BML::Behavior::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;
