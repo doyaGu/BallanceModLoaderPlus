@@ -578,7 +578,17 @@ ScriptHookBlockRef *ScriptHookBlockService::InsertAfter(CKBehavior *ownerScript,
         return nullptr;
     CKBehaviorLink *link = FindNextLink(ownerScript, source, nullptr, sourceOutput, targetInput);
     if (!link) {
-        RecordHookBlockDiagnostic(m_State, "InsertHookBlockAfter could not find a matching outgoing behavior link.");
+        const char *ownerName = ownerScript && ownerScript->GetName()
+            ? ownerScript->GetName() : "<null>";
+        const char *sourceName = source && source->GetName()
+            ? source->GetName() : "<null>";
+        RecordHookBlockDiagnostic(
+            m_State,
+            std::string("InsertHookBlockAfter could not find a matching outgoing behavior link: owner=") +
+                ownerName + " source=" + sourceName + " links=" +
+                std::to_string(ownerScript ? ownerScript->GetSubBehaviorLinkCount() : 0) +
+                " outputs=" +
+                std::to_string(source ? source->GetOutputCount() : 0) + ".");
         return nullptr;
     }
 

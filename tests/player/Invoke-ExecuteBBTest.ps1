@@ -6,6 +6,12 @@ param(
 
     [string]$TestMod,
 
+    [string]$FixtureDll,
+
+    [string]$ScriptMod,
+
+    [string]$ArtifactsDirectory,
+
     [ValidateRange(10, 600)]
     [int]$TimeoutSeconds = 120
 )
@@ -37,6 +43,55 @@ function Copy-TestFile {
     }
 }
 
+function Save-WindowScreenshot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Diagnostics.Process]$Process,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Destination
+    )
+
+    if (-not ('BMLPlayerWindowCapture' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class BMLPlayerWindowCapture {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Rect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr window, out Rect rect);
+}
+'@
+    }
+    Add-Type -AssemblyName System.Drawing
+    $Process.Refresh()
+    $handle = $Process.MainWindowHandle
+    if ($handle -eq [IntPtr]::Zero) {
+        return $false
+    }
+    $rect = New-Object BMLPlayerWindowCapture+Rect
+    if (-not [BMLPlayerWindowCapture]::GetWindowRect($handle, [ref]$rect)) {
+        return $false
+    }
+    $width = $rect.Right - $rect.Left
+    $height = $rect.Bottom - $rect.Top
+    if ($width -le 0 -or $height -le 0) {
+        return $false
+    }
+    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+        $bitmap.Save($Destination, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+    return (Test-Path -LiteralPath $Destination) -and
+        (Get-Item -LiteralPath $Destination).Length -gt 0
+}
+
 if (-not $BallanceRoot) {
     throw 'Ballance root is required. Pass -BallanceRoot or set BML_BALLANCE_ROOT.'
 }
@@ -48,15 +103,24 @@ if (-not $BuildDll) {
 if (-not $TestMod) {
     $TestMod = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\ExecuteBBTest.bmodp'
 }
+if (-not $FixtureDll) {
+    $FixtureDll = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\BehaviorLifecycleFixture.dll'
+}
+if (-not $ScriptMod) {
+    $ScriptMod = Join-Path $PSScriptRoot 'BehaviorLifecycleScript.mod.as'
+}
 
 $ballanceRootFull = [System.IO.Path]::GetFullPath($BallanceRoot)
 $playerPath = Join-Path $ballanceRootFull 'Bin\Player.exe'
 $installedDll = Join-Path $ballanceRootFull 'BuildingBlocks\BMLPlus.dll'
 $installedTestMod = Join-Path $ballanceRootFull 'ModLoader\Mods\ExecuteBBTest.bmodp'
+$installedFixture = Join-Path $ballanceRootFull 'BuildingBlocks\BehaviorLifecycleFixture.dll'
+$installedScriptMod = Join-Path $ballanceRootFull 'ModLoader\Mods\BehaviorLifecycleScript.mod.as'
 $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
 $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 
-foreach ($path in @($ballanceRootFull, $playerPath, $BuildDll, $TestMod)) {
+foreach ($path in @($ballanceRootFull, $playerPath, $BuildDll, $TestMod,
+                     $FixtureDll, $ScriptMod)) {
     Assert-BMLPath -Path $path -Type $(if ($path -eq $ballanceRootFull) { 'Container' } else { 'Leaf' })
 }
 
@@ -73,9 +137,19 @@ if ($runningTarget.Count -gt 0) {
 }
 
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+if (-not $ArtifactsDirectory) {
+    $ArtifactsDirectory = Join-Path $layout.RepoRoot "build-dev\player-lifecycle-$timestamp"
+}
+$artifactsDirectoryFull = [System.IO.Path]::GetFullPath($ArtifactsDirectory)
+New-Item -ItemType Directory -Path $artifactsDirectoryFull -Force | Out-Null
+$screenshotPath = Join-Path $artifactsDirectoryFull 'Player-window.png'
+$tracePath = Join-Path $artifactsDirectoryFull 'ModLoader-trace.log'
+$playerTracePath = Join-Path $artifactsDirectoryFull 'Player-trace.log'
 $artifacts = @(
     [pscustomobject]@{ Path = $installedDll; Backup = "$installedDll.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedTestMod; Backup = "$installedTestMod.test-bak-$timestamp" },
+    [pscustomobject]@{ Path = $installedFixture; Backup = "$installedFixture.test-bak-$timestamp" },
+    [pscustomobject]@{ Path = $installedScriptMod; Backup = "$installedScriptMod.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $modLoaderLog; Backup = "$modLoaderLog.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $playerLog; Backup = "$playerLog.test-bak-$timestamp" }
 )
@@ -85,10 +159,13 @@ $timedOut = $false
 $testLog = ''
 $playerRunLog = ''
 $restored = $false
+$screenshotCaptured = $false
 $sourceHash = Get-BMLOptionalHash $BuildDll
 $testModHash = Get-BMLOptionalHash $TestMod
 $installedHashBefore = Get-BMLOptionalHash $installedDll
 $installedTestModHashBefore = Get-BMLOptionalHash $installedTestMod
+$installedFixtureHashBefore = Get-BMLOptionalHash $installedFixture
+$installedScriptModHashBefore = Get-BMLOptionalHash $installedScriptMod
 $modLoaderLogHashBefore = Get-BMLOptionalHash $modLoaderLog
 $playerLogHashBefore = Get-BMLOptionalHash $playerLog
 
@@ -101,6 +178,8 @@ try {
 
     Copy-TestFile -Source $BuildDll -Destination $installedDll
     Copy-TestFile -Source $TestMod -Destination $installedTestMod
+    Copy-TestFile -Source $FixtureDll -Destination $installedFixture
+    Copy-TestFile -Source $ScriptMod -Destination $installedScriptMod
     foreach ($logPath in @($modLoaderLog, $playerLog)) {
         if (Test-Path -LiteralPath $logPath) {
             Remove-Item -LiteralPath $logPath -Force
@@ -114,6 +193,13 @@ try {
     while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 100
         $process.Refresh()
+        if (-not $screenshotCaptured) {
+            $visibleLog = [string]::Join("`n", @(Get-BMLTextIfExists $modLoaderLog))
+            if ($visibleLog.Contains('On Message StartLevel')) {
+                $screenshotCaptured = Save-WindowScreenshot `
+                    -Process $process -Destination $screenshotPath
+            }
+        }
     }
     if (-not $process.HasExited) {
         $timedOut = $true
@@ -123,6 +209,8 @@ try {
     $playerExitCode = $process.ExitCode
     $testLog = [string]::Join("`n", @(Get-BMLTextIfExists $modLoaderLog))
     $playerRunLog = [string]::Join("`n", @(Get-BMLTextIfExists $playerLog))
+    Set-Content -LiteralPath $tracePath -Value $testLog -Encoding UTF8
+    Set-Content -LiteralPath $playerTracePath -Value $playerRunLog -Encoding UTF8
 } finally {
     if ($null -ne $process) {
         try {
@@ -148,7 +236,7 @@ try {
     $restored = $true
 }
 
-$outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) runtime_probe=(?<runtimeProbe>true|false) runtime_detail=(?<runtimeDetail>\S+) frames=(?<frames>[0-9]+)'
+$outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) runtime_probe=(?<runtimeProbe>true|false) lifecycle_probe=(?<lifecycleProbe>true|false) script_hook_retirement=(?<scriptHookRetirement>true|false) runtime_detail=(?<runtimeDetail>\S+) frames=(?<frames>[0-9]+)'
 $outcome = [regex]::Match($testLog, $outcomePattern)
 $postStartIndex = $testLog.IndexOf('On Message PostStartMenu')
 $preLoadIndex = $testLog.IndexOf('On Message PreLoadLevel')
@@ -164,16 +252,28 @@ $checks = [ordered]@{
     RuntimeProbe = $outcome.Success -and
         $outcome.Groups['runtimeProbe'].Value -eq 'true' -and
         $outcome.Groups['runtimeDetail'].Value -eq 'complete'
+    LifecycleProbe = $outcome.Success -and
+        $outcome.Groups['lifecycleProbe'].Value -eq 'true'
+    ScriptHookRetirement = $outcome.Success -and
+        $outcome.Groups['scriptHookRetirement'].Value -eq 'true' -and
+        $testLog.Contains('ScriptHookRetirement installed=true') -and
+        ([regex]::Matches($testLog, 'ScriptHookRetirement callback=1 uninstall=true').Count -eq 1) -and
+        $testLog.Contains('ScriptHookRetirement retired=true callbacks=1')
     ExitCallback = $testLog.Contains('ExecuteBB test exit: status=pass')
     CleanExecuteBB = -not $testLog.Contains('ExecuteBB::')
     CleanPostProcess = -not $playerRunLog.Contains('Error : PostProcess')
     CleanModLoad = -not $testLog.Contains('Failed to load ')
     CleanShutdown = $testLog.Contains('Goodbye!')
     NaturalLevelFlow = $naturalLevelFlow
+    ScreenshotCaptured = $screenshotCaptured -and
+        (Test-Path -LiteralPath $screenshotPath) -and
+        (Get-Item -LiteralPath $screenshotPath).Length -gt 0
     PlayerExited = -not $timedOut -and $playerExitCode -eq 0
     InstallRestored = $restored -and
         (Get-BMLOptionalHash $installedDll) -eq $installedHashBefore -and
         (Get-BMLOptionalHash $installedTestMod) -eq $installedTestModHashBefore -and
+        (Get-BMLOptionalHash $installedFixture) -eq $installedFixtureHashBefore -and
+        (Get-BMLOptionalHash $installedScriptMod) -eq $installedScriptModHashBefore -and
         (Get-BMLOptionalHash $modLoaderLog) -eq $modLoaderLogHashBefore -and
         (Get-BMLOptionalHash $playerLog) -eq $playerLogHashBefore
 }
@@ -187,6 +287,11 @@ $result = [pscustomobject]@{
     PlayerTimedOut = $timedOut
     SourceHash = $sourceHash
     TestModHash = $testModHash
+    FixtureHash = Get-BMLOptionalHash $FixtureDll
+    ScriptModHash = Get-BMLOptionalHash $ScriptMod
+    ArtifactsDirectory = $artifactsDirectoryFull
+    Screenshot = $screenshotPath
+    Trace = $tracePath
     InstalledHashBefore = $installedHashBefore
     InstalledHashAfter = Get-BMLOptionalHash $installedDll
     InstalledTestModHashBefore = $installedTestModHashBefore
@@ -207,6 +312,8 @@ $result = [pscustomobject]@{
             LevelChosen = $outcome.Groups['levelChosen'].Value -eq 'true'
             ControlReady = $outcome.Groups['controlReady'].Value -eq 'true'
             RuntimeProbe = $outcome.Groups['runtimeProbe'].Value -eq 'true'
+            LifecycleProbe = $outcome.Groups['lifecycleProbe'].Value -eq 'true'
+            ScriptHookRetirement = $outcome.Groups['scriptHookRetirement'].Value -eq 'true'
             RuntimeDetail = $outcome.Groups['runtimeDetail'].Value
             Frames = [int]$outcome.Groups['frames'].Value
         }

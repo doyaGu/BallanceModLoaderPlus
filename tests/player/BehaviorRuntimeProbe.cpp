@@ -1,4 +1,10 @@
 #include "BehaviorRuntimeProbe.h"
+#include "BehaviorLifecycleFixtureApi.h"
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 
 #include "Behavior/HookBlock.h"
 #include "Behavior/ObjectLoad.h"
@@ -10,6 +16,7 @@
 #include "BML/Guids/physics_RT.h"
 
 #include <memory>
+#include <initializer_list>
 #include <sstream>
 #include <utility>
 
@@ -38,6 +45,11 @@ int ProbeExecution(const CKBehaviorContext *context, void *argument) {
                             context->Behavior == probe->Behavior &&
                             manager && manager->m_CurrentBehavior == probe->Behavior;
     return probe->Calls == 1 ? probe->FirstResult : CKBR_OK;
+}
+
+int CloseLifecycleFixture(CKBehavior *behavior, void *argument) {
+    auto *runtime = static_cast<Runtime *>(argument);
+    return runtime && runtime->Close(behavior) ? 1 : 0;
 }
 
 CKBehaviorLink *CreateBehaviorLink(CKContext *context, CKBehaviorIO *source,
@@ -316,6 +328,7 @@ public:
         case State::GraphSchedulerWaitThird: ObserveGraphScheduler(); break;
         case State::GraphSchedulerCleanup: CleanupGraphScheduler(); break;
         case State::GraphOwnership: CheckGraphOwnership(); break;
+        case State::LifecycleFixture: CheckLifecycleFixture(); break;
         case State::Complete: break;
         }
     }
@@ -325,6 +338,7 @@ public:
     [[nodiscard]] BehaviorRuntimeProbeResult Result() const {
         BehaviorRuntimeProbeResult result;
         result.Detail = m_Failures.str();
+        result.LifecyclePassed = m_LifecyclePassed;
         result.Passed = Done() && result.Detail.empty();
         if (result.Passed)
             result.Detail = "complete";
@@ -383,6 +397,7 @@ private:
         GraphSchedulerWaitThird,
         GraphSchedulerCleanup,
         GraphOwnership,
+        LifecycleFixture,
         Complete,
     };
 
@@ -1322,7 +1337,7 @@ private:
             CKCID_BEHAVIOR, nullptr, CK_OBJECTCREATION_DYNAMIC));
         if (!graph) {
             Fail("graph-create");
-            Finish();
+            m_State = State::LifecycleFixture;
             return;
         }
 
@@ -1363,6 +1378,189 @@ private:
         if (!placed || !cleaned)
             Fail("graph-ownership");
         m_Context->DestroyObject(graph);
+        m_State = State::LifecycleFixture;
+    }
+
+    void CheckLifecycleFixture() {
+        HMODULE module = ::GetModuleHandleA("BehaviorLifecycleFixture.dll");
+        auto resetTrace = module ? reinterpret_cast<BMLLifecycleFixtureResetTraceFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureResetTrace")) : nullptr;
+        auto setMode = module ? reinterpret_cast<BMLLifecycleFixtureSetModeFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureSetMode")) : nullptr;
+        auto setCloseHook = module
+            ? reinterpret_cast<BMLLifecycleFixtureSetCloseHookFn>(
+                  ::GetProcAddress(module, "BMLLifecycleFixtureSetCloseHook"))
+            : nullptr;
+        auto readTrace = module ? reinterpret_cast<BMLLifecycleFixtureReadTraceFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureReadTrace")) : nullptr;
+        if (!resetTrace || !setMode || !setCloseHook || !readTrace) {
+            Fail("lifecycle-fixture-exports");
+            Finish();
+            return;
+        }
+
+        auto makeGraph = [&]() -> CKBehavior * {
+            auto *graph = static_cast<CKBehavior *>(m_Context->CreateObject(
+                CKCID_BEHAVIOR, nullptr, CK_OBJECTCREATION_DYNAMIC));
+            if (!graph)
+                return nullptr;
+            graph->UseGraph();
+            if (graph->SetOwner(m_Owner, FALSE) != CK_OK ||
+                !graph->CreateInput("In") || !graph->CreateOutput("Out")) {
+                m_Context->DestroyObject(graph);
+                return nullptr;
+            }
+            return graph;
+        };
+        auto makeSpec = [&]() {
+            const int setting = 42;
+            const int source = 9;
+            Spec spec(BML_LIFECYCLE_FIXTURE_GUID);
+            spec.Setting(Slot::Named(SlotKind::Setting, "Value", CKPGUID_INT),
+                         Value::From(CKPGUID_INT, setting))
+                .Input(Slot::Named(SlotKind::InputParameter, "Source", CKPGUID_INT),
+                       Value::From(CKPGUID_INT, source));
+            return spec;
+        };
+        auto addLinks = [&](CKBehavior *graph, CKBehavior *block) {
+            if (!graph || !block || !graph->GetInput(0) || !graph->GetOutput(0) ||
+                !block->GetInput(0) || !block->GetOutput(0)) {
+                return false;
+            }
+            CKBehaviorLink *entry = CreateBehaviorLink(
+                m_Context, graph->GetInput(0), block->GetInput(0), 0);
+            CKBehaviorLink *exit = CreateBehaviorLink(
+                m_Context, block->GetOutput(0), graph->GetOutput(0), 0);
+            bool entryAdded = false;
+            bool exitAdded = false;
+            if (entry)
+                entryAdded = graph->AddSubBehaviorLink(entry) == CK_OK;
+            if (exit)
+                exitAdded = graph->AddSubBehaviorLink(exit) == CK_OK;
+            if (!entryAdded || !exitAdded) {
+                if (entryAdded)
+                    entry = graph->RemoveSubBehaviorLink(entry);
+                if (exitAdded)
+                    exit = graph->RemoveSubBehaviorLink(exit);
+                if (entry)
+                    m_Context->DestroyObject(entry);
+                if (exit)
+                    m_Context->DestroyObject(exit);
+                return false;
+            }
+            return true;
+        };
+        auto read = [&]() {
+            BMLLifecycleFixtureTrace trace;
+            trace.Size = sizeof(trace);
+            if (!readTrace(&trace))
+                trace.EventCount = 0;
+            return trace;
+        };
+        auto messagesAre = [](const BMLLifecycleFixtureTrace &trace,
+                              std::initializer_list<CKDWORD> messages) {
+            if (trace.EventCount != messages.size())
+                return false;
+            std::size_t index = 0;
+            for (CKDWORD message : messages) {
+                if (trace.Events[index++].Message != message)
+                    return false;
+            }
+            return true;
+        };
+        auto teardownVisible = [](const BMLLifecycleFixtureTrace &trace,
+                                  CKDWORD message) {
+            for (std::uint32_t index = 0; index < trace.EventCount; ++index) {
+                const BMLLifecycleFixtureEvent &event = trace.Events[index];
+                if (event.Message == message) {
+                    return event.OwnerVisible && event.ParentVisible &&
+                           event.LinkVisible && event.SourceVisible;
+                }
+            }
+            return false;
+        };
+
+        bool normalPassed = false;
+        resetTrace();
+        setMode(BMLLifecycleFixtureMode::Normal);
+        setCloseHook(nullptr, nullptr);
+        CKBehavior *normalGraph = makeGraph();
+        AttachResult normal = normalGraph
+            ? m_Runtime.AddToGraph(normalGraph, makeSpec()) : AttachResult{};
+        int normalized = 0;
+        if (normal && normal.Block)
+            normal.Block->GetLocalParameterValue(0, &normalized);
+        const bool normalLinks = normal && addLinks(normalGraph, normal.Block);
+        const Status normalClose = normal
+            ? m_Runtime.Close(normal.Block) : Status{};
+        const BMLLifecycleFixtureTrace normalTrace = read();
+        normalPassed = normal && normalLinks && normalClose && normalized == 77 &&
+            normalTrace.SettingsEditedObserved == 42 &&
+            normalTrace.FinalNormalizedValue == 77 &&
+            messagesAre(normalTrace,
+                        {CKM_BEHAVIORCREATE, CKM_BEHAVIORATTACH,
+                         CKM_BEHAVIORSETTINGSEDITED, CKM_BEHAVIOREDITED,
+                         CKM_BEHAVIORDETACH, CKM_BEHAVIORDELETE}) &&
+            teardownVisible(normalTrace, CKM_BEHAVIORDETACH) &&
+            teardownVisible(normalTrace, CKM_BEHAVIORDELETE) &&
+            normalGraph && normalGraph->GetSubBehaviorCount() == 0 &&
+            normalGraph->GetSubBehaviorLinkCount() == 0;
+        if (normalGraph)
+            m_Context->DestroyObject(normalGraph);
+
+        bool resetPassed = false;
+        resetTrace();
+        CKBehavior *resetGraph = makeGraph();
+        AttachResult resetBlock = resetGraph
+            ? m_Runtime.AddToGraph(resetGraph, makeSpec()) : AttachResult{};
+        const bool resetLinks = resetBlock &&
+            addLinks(resetGraph, resetBlock.Block);
+        m_Runtime.ResetWorld();
+        const BMLLifecycleFixtureTrace resetResult = read();
+        resetPassed = resetBlock && resetLinks &&
+            messagesAre(resetResult,
+                        {CKM_BEHAVIORCREATE, CKM_BEHAVIORATTACH,
+                         CKM_BEHAVIORSETTINGSEDITED, CKM_BEHAVIOREDITED,
+                         CKM_BEHAVIORRESET, CKM_BEHAVIORDETACH,
+                         CKM_BEHAVIORDELETE}) &&
+            teardownVisible(resetResult, CKM_BEHAVIORRESET) &&
+            teardownVisible(resetResult, CKM_BEHAVIORDETACH) &&
+            teardownVisible(resetResult, CKM_BEHAVIORDELETE) &&
+            resetGraph && resetGraph->GetSubBehaviorCount() == 0 &&
+            resetGraph->GetSubBehaviorLinkCount() == 0;
+        if (resetGraph)
+            m_Context->DestroyObject(resetGraph);
+
+        resetTrace();
+        setMode(BMLLifecycleFixtureMode::CloseOnEdited);
+        setCloseHook(CloseLifecycleFixture, &m_Runtime);
+        CKBehavior *selfCloseGraph = makeGraph();
+        AttachResult selfClosed = selfCloseGraph
+            ? m_Runtime.AddToGraph(selfCloseGraph, makeSpec()) : AttachResult{};
+        m_Runtime.ProcessFrame();
+        const BMLLifecycleFixtureTrace selfCloseTrace = read();
+        const bool selfClosePassed = !selfClosed &&
+            selfCloseTrace.CloseHookCalls == 1 &&
+            selfCloseTrace.CloseHookAccepted == 1 &&
+            messagesAre(selfCloseTrace,
+                        {CKM_BEHAVIORCREATE, CKM_BEHAVIORATTACH,
+                         CKM_BEHAVIORSETTINGSEDITED, CKM_BEHAVIOREDITED,
+                         CKM_BEHAVIORDETACH, CKM_BEHAVIORDELETE}) &&
+            selfCloseGraph && selfCloseGraph->GetSubBehaviorCount() == 0;
+        setCloseHook(nullptr, nullptr);
+        setMode(BMLLifecycleFixtureMode::Normal);
+        if (selfCloseGraph)
+            m_Context->DestroyObject(selfCloseGraph);
+
+        m_LifecyclePassed = normalPassed && resetPassed && selfClosePassed;
+        if (!m_LifecyclePassed) {
+            if (!normalPassed)
+                Fail("lifecycle-normal");
+            if (!resetPassed)
+                Fail("lifecycle-reset");
+            if (!selfClosePassed)
+                Fail("lifecycle-self-close");
+        }
         Finish();
     }
 
@@ -1427,6 +1625,7 @@ private:
     CKBehaviorLink *m_DetachedExitLink = nullptr;
     int m_DetachedGraphFrames = 0;
     int m_GraphStartFrame = -1;
+    bool m_LifecyclePassed = false;
 };
 
 BehaviorRuntimeProbe::BehaviorRuntimeProbe(CKContext *context, CK3dObject *owner)

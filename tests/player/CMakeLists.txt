@@ -1,5 +1,23 @@
 include("${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake")
 
+add_library(BehaviorLifecycleFixture SHARED
+        BehaviorLifecycleFixture.cpp
+        BehaviorLifecycleFixtureApi.h
+)
+target_compile_features(BehaviorLifecycleFixture PRIVATE cxx_std_20)
+target_include_directories(BehaviorLifecycleFixture PRIVATE
+        ${VIRTOOLS_SDK_INCLUDE_DIR}
+)
+target_link_libraries(BehaviorLifecycleFixture PRIVATE
+        VirtoolsSDK::CK2
+        VirtoolsSDK::VxMath
+)
+set_target_properties(BehaviorLifecycleFixture PROPERTIES
+        PREFIX ""
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        FOLDER "Tests/Player"
+)
+
 if (NOT TARGET BML::BML)
     add_library(BML::BML ALIAS BML)
 endif ()
@@ -10,7 +28,10 @@ bml_add_mod(ExecuteBBTest
         ExecuteBBTest.cpp
         BehaviorRuntimeProbe.cpp
         BehaviorRuntimeProbe.h
+        BehaviorLifecycleFixtureApi.h
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Callback.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Execution.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/ObjectLoad.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Physicalize.cpp

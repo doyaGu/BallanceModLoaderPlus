@@ -476,15 +476,9 @@ public:
         identity.Target = Convert(
             m_Runtime.CaptureObject(behavior->GetTargetParameter()));
 
-        auto appendSource = [&](CKParameterIn *input) {
-            CKParameter *source = input ? input->GetRealSource() : nullptr;
-            identity.Sources.push_back(
-                Convert(m_Runtime.CaptureObject(source)));
-        };
-        if (behavior->GetTargetParameter())
-            appendSource(behavior->GetTargetParameter());
-        for (int index = 0; index < behavior->GetInputParameterCount(); ++index)
-            appendSource(behavior->GetInputParameter(index));
+        CKParameterIn *target = behavior->GetTargetParameter();
+        identity.Sources.push_back(Convert(m_Runtime.CaptureObject(
+            target ? target->GetRealSource() : nullptr)));
         return true;
     }
 
@@ -2206,6 +2200,12 @@ Status Runtime::Configure(CKBehavior *behavior,
                                           Record &record) {
     if (!behavior)
         return Failure(Error::InvalidState, "Behavior configuration target is invalid.");
+    struct ConfiguringScope final {
+        std::vector<Record *> &Stack;
+        explicit ConfiguringScope(std::vector<Record *> &stack, Record &record)
+            : Stack(stack) { Stack.push_back(&record); }
+        ~ConfiguringScope() { Stack.pop_back(); }
+    } configuring(m_ConfiguringRecords, record);
     LifecyclePlan plan;
     plan.HasOwner = owner != nullptr;
     plan.SettingStages.reserve(spec.m_SettingStages.size());
@@ -3151,6 +3151,17 @@ Status Runtime::Close(CKBehavior *behavior) {
     if (!behavior)
         return Failure(Error::InvalidState,
                        "Cannot close a null graph-resident Building Block.");
+
+    for (auto it = m_ConfiguringRecords.rbegin();
+         it != m_ConfiguringRecords.rend(); ++it) {
+        Record *record = *it;
+        if (!record || ResolveBehavior(*record) != behavior)
+            continue;
+        record->Protocol.RequestClose();
+        record->NativeLifecycle.RequestClose();
+        CloseCallbacks(*record);
+        return {};
+    }
 
     for (auto &[instanceId, record] : m_Records) {
         if (ResolveBehavior(record) != behavior)

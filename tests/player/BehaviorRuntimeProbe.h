@@ -9,6 +9,7 @@ class CKContext;
 
 struct BehaviorRuntimeProbeResult {
     bool Passed = false;
+    bool LifecyclePassed = false;
     std::string Detail;
 };
 

@@ -549,6 +549,7 @@ private:
     std::shared_ptr<SharedBindings> m_SharedBindings;
     bool m_ProcessingFrame = false;
     bool m_ProcessingTasks = false;
+    std::vector<Record *> m_ConfiguringRecords;
 
     friend class Instance;
 };
