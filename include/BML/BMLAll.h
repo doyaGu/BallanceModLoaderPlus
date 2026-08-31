@@ -24,6 +24,7 @@
 #include "BML/IMod.h"
 #include "BML/DataShare.h"
 #include "BML/Types.h"
+#include "BML/Behavior.h"
 #include "BML/Imc.h"
 #include "BML/ImcWire.hpp"
 #include "BML/ImcCpp.hpp"

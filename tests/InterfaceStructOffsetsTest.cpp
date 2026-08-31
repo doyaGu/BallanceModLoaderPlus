@@ -8,6 +8,7 @@
 //
 // Offsets are the x86 MSVC layout, the only platform the loader ships on.
 #include "BML/Gameplay.h"
+#include "BML/Behavior.h"
 #include "BML/Interface.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
@@ -52,6 +53,21 @@ TEST(InterfaceStructOffsets, RuntimeInterface) {
     EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadClock, 16);
     EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadScore, 20);
     ExpectGrowthRules<BML_RuntimeInterface>("bml.runtime", 24, 0, BML_RUNTIME_INTERFACE_MINOR);
+}
+
+TEST(InterfaceStructOffsets, BehaviorInterface) {
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, OpenSession, 12);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, CloseSession, 16);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Call, 20);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Start, 24);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Spawn, 28);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Continue, 32);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Pulse, 36);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadRun, 40);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, DrainOutcomes, 44);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, CloseRun, 48);
+    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 52, 0,
+                                             BML_BEHAVIOR_INTERFACE_MINOR);
 }
 
 TEST(InterfaceStructOffsets, SceneInterface) {

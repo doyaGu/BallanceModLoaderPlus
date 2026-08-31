@@ -44,6 +44,8 @@ const char *BML_GetErrorString(int errorCode) {
             return "Requested state cannot be read right now";
         case BML_ERROR_OBJECT_INVALID:
             return "Object reference is stale or names the wrong kind of object";
+        case BML_ERROR_BUFFER_TOO_SMALL:
+            return "Caller buffer is too small for the complete result";
 
         /* Mod-specific error codes */
         case BML_ERROR_MOD_LOAD_FAILED:

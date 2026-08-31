@@ -158,6 +158,7 @@
 #define BML_ERROR_VERSION_MISMATCH           (-17)  /**< Interface exists, but not in the requested major version */
 #define BML_ERROR_UNAVAILABLE                (-18)  /**< Requested state exists, but cannot be read in this state */
 #define BML_ERROR_OBJECT_INVALID             (-19)  /**< Object reference is stale, or names the wrong kind of object */
+#define BML_ERROR_BUFFER_TOO_SMALL           (-20)  /**< Caller buffer cannot hold the complete result */
 
 /* Mod-specific error codes */
 #define BML_ERROR_MOD_LOAD_FAILED           (-100) /**< Failed to load mod */

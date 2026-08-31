@@ -43,6 +43,38 @@ typedef struct BML_Vec3 {
     float z;
 } BML_Vec3;
 
+typedef struct BML_Quaternion {
+    float x;
+    float y;
+    float z;
+    float w;
+} BML_Quaternion;
+
+typedef struct BML_Euler {
+    float x;
+    float y;
+    float z;
+} BML_Euler;
+
+typedef struct BML_Rect {
+    float left;
+    float top;
+    float right;
+    float bottom;
+} BML_Rect;
+
+typedef struct BML_Color {
+    float r;
+    float g;
+    float b;
+    float a;
+} BML_Color;
+
+typedef struct BML_Box {
+    BML_Vec3 Min;
+    BML_Vec3 Max;
+} BML_Box;
+
 /* Always row-major m[row][column].  Matrix conversion is element-wise; the
  * object representation of a host math type is never part of this ABI. */
 typedef struct BML_Mat4 {

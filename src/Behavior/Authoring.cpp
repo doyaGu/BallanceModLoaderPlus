@@ -133,6 +133,11 @@ OpenRun Authoring::Start(std::uintptr_t sessionId, CKBeObject *owner,
     if (!created)
         return {std::move(created.Outcome), 0, {}};
     RunResult result = m_Runtime.StartTask(created.Handle, input);
+    if (result.State == RunState::Pending || result.State == RunState::Queued) {
+        Status continued = m_Runtime.Continue(created.Handle);
+        if (!continued && result.Outcome)
+            result.Outcome = std::move(continued);
+    }
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Session *current = FindSession(session.Id);
     if (!current || current->OwnerGeneration != session.OwnerGeneration) {
@@ -206,6 +211,11 @@ RunResult Authoring::Pulse(std::uintptr_t runId, const Slot &input) {
                              "Pulse requires a live Task or Instance Run.");
     }
     RunResult result = m_Runtime.Pulse(run->Block, input);
+    if (result.State == RunState::Pending || result.State == RunState::Queued) {
+        Status continued = m_Runtime.Continue(run->Block);
+        if (!continued && result.Outcome)
+            result.Outcome = std::move(continued);
+    }
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         run->Info.LastStatus = result.Outcome;
@@ -256,7 +266,7 @@ void Authoring::ProcessFrame() {
     CloseQueuedRuns();
     for (auto &[id, entry] : m_Runs) {
         Run &run = *entry;
-        if (!run.Block || run.Info.Kind == RunKind::Instance)
+        if (!run.Block)
             continue;
         const ExecutionState state = m_Runtime.State(run.Block);
         if (state == ExecutionState::Pending || state == ExecutionState::Running)
@@ -264,7 +274,11 @@ void Authoring::ProcessFrame() {
         else {
             run.Info.State = state == ExecutionState::Failed
                 ? RunState::Failed : RunState::Completed;
-            CloseNative(run);
+            if (run.Info.Kind != RunKind::Instance ||
+                state == ExecutionState::Failed ||
+                state == ExecutionState::Closing ||
+                state == ExecutionState::Closed)
+                CloseNative(run);
         }
     }
     m_Runtime.ClosePending();

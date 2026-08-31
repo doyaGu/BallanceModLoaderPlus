@@ -25,4 +25,6 @@ TEST(ImcErrorTest, ReturnsInterfaceErrorStrings) {
                  "Requested state cannot be read right now");
     EXPECT_STREQ(BML_GetErrorString(BML_ERROR_OBJECT_INVALID),
                  "Object reference is stale or names the wrong kind of object");
+    EXPECT_STREQ(BML_GetErrorString(BML_ERROR_BUFFER_TOO_SMALL),
+                 "Caller buffer is too small for the complete result");
 }

@@ -171,6 +171,7 @@ struct ExecutionOutcome {
     std::uint64_t Frame = 0;
     int ReturnCode = 0;
     bool NativeContinuation = false;
+    bool GraphActive = false;
     bool QueuedInput = false;
     bool Terminal = false;
     ExecutionFault Fault;

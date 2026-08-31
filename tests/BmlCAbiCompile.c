@@ -1,4 +1,5 @@
 #include "BML/BML.h"
+#include "BML/Behavior.h"
 #include "BML/Gameplay.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
@@ -6,6 +7,28 @@
 #include "BML/UI.h"
 
 #include <string.h>
+
+#define BML_C_ABI_ASSERT(name, expression) typedef char name[(expression) ? 1 : -1]
+
+BML_C_ABI_ASSERT(BmlBehaviorGuidSize, sizeof(BML_BehaviorGuid) == 8u);
+BML_C_ABI_ASSERT(BmlBehaviorStatusSize, sizeof(BML_BehaviorStatus) == 296u);
+BML_C_ABI_ASSERT(BmlBehaviorOutcomeSize, sizeof(BML_BehaviorOutcomeHeader) == 64u);
+BML_C_ABI_ASSERT(BmlBehaviorOutSize, sizeof(BML_BehaviorOutRecord) == 20u);
+BML_C_ABI_ASSERT(BmlBehaviorPoutSize, sizeof(BML_BehaviorPoutRecord) == 40u);
+BML_C_ABI_ASSERT(BmlBehaviorDiagnosticSize,
+                 sizeof(BML_BehaviorDiagnosticRecord) == 44u);
+
+#if UINTPTR_MAX == UINT32_MAX
+BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
+BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 108u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 76u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 52u);
+#else
+BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
+BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 96u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 104u);
+#endif
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
     BML_FreeStringArray(strings, count);
@@ -158,4 +181,22 @@ int BML_TestCAbiUIInterface(const char *message) {
     if (ui->SetHUDMode(hud.Mode | BML_UI_HUD_TITLE | BML_UI_HUD_FPS | BML_UI_HUD_SR) != BML_OK)
         return 0;
     return ui->ShowTitle(0) == BML_OK && ui->ShowFPS(1) == BML_OK;
+}
+
+int BML_TestCAbiBehaviorInterface(BML_BehaviorRun run) {
+    const void *found = NULL;
+    const BML_BehaviorInterface *behavior = NULL;
+    BML_BehaviorStatus status = {sizeof(status)};
+    uint32_t outcomeCount = 0;
+    uint32_t payloadSize = 0;
+
+    if (BML_GetInterface(BML_BEHAVIOR_INTERFACE_ID,
+                         BML_BEHAVIOR_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    behavior = (const BML_BehaviorInterface *) found;
+    if (!BML_IFACE_HAS(behavior, BML_BehaviorInterface, CloseRun))
+        return 0;
+    return behavior->DrainOutcomes(run, NULL, 0, sizeof(BML_BehaviorOutcomeHeader),
+                                   NULL, 0, &outcomeCount, &payloadSize,
+                                   &status) == BML_ERROR_BUFFER_TOO_SMALL;
 }

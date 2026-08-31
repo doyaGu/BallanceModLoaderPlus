@@ -248,7 +248,11 @@ TEST(BehaviorExecution, FunctionUsesRetryAndGraphUsesNativeActivity) {
     FakeExecutionAdapter functionAdapter;
     functionAdapter.Native.push_back(FunctionResult(7, true));
     functionAdapter.Native.push_back(FunctionResult(0));
-    ASSERT_TRUE(function.Pulse(ExecutionInput::At(0, 1), 1, functionAdapter));
+    const ExecutionResult functionFirst =
+        function.Pulse(ExecutionInput::At(0, 1), 1, functionAdapter);
+    ASSERT_TRUE(functionFirst);
+    ASSERT_TRUE(functionFirst.Outcome);
+    EXPECT_FALSE(functionFirst.Outcome->GraphActive);
     EXPECT_EQ(function.State(), ExecutionState::Pending);
     ASSERT_TRUE(function.Step(2, functionAdapter));
     EXPECT_EQ(function.State(), ExecutionState::Idle);
@@ -258,7 +262,11 @@ TEST(BehaviorExecution, FunctionUsesRetryAndGraphUsesNativeActivity) {
     graphAdapter.Kind = BehaviorKind::Graph;
     graphAdapter.Native.push_back(GraphResult(0, true));
     graphAdapter.Native.push_back(GraphResult(0, false));
-    ASSERT_TRUE(graph.Pulse(ExecutionInput::At(0, 1), 1, graphAdapter));
+    const ExecutionResult graphFirst =
+        graph.Pulse(ExecutionInput::At(0, 1), 1, graphAdapter);
+    ASSERT_TRUE(graphFirst);
+    ASSERT_TRUE(graphFirst.Outcome);
+    EXPECT_TRUE(graphFirst.Outcome->GraphActive);
     EXPECT_EQ(graph.State(), ExecutionState::Pending);
     ASSERT_TRUE(graph.Step(2, graphAdapter));
     EXPECT_EQ(graph.State(), ExecutionState::Idle);

@@ -299,6 +299,7 @@ struct RunResult {
     RunState State = RunState::Completed;
     int ReturnCode = CKBR_OK;
     std::vector<int> ActiveOutputs;
+    AdmissionState Admission = AdmissionState::Failed;
 
     explicit operator bool() const noexcept { return static_cast<bool>(Outcome); }
 };

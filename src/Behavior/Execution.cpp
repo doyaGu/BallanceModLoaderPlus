@@ -225,6 +225,7 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
     }
 
     outcome.NativeContinuation = m_NativeContinuation;
+    outcome.GraphActive = native.Kind == BehaviorKind::Graph && native.Active;
     outcome.QueuedInput = !m_QueuedInputs.empty();
 
     if (fatal) {
@@ -234,6 +235,7 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
         m_TerminalError = outcome.Fault;
         m_State = ExecutionState::Failed;
         outcome.NativeContinuation = false;
+        outcome.GraphActive = false;
         outcome.QueuedInput = false;
         outcome.Terminal = true;
     } else if (m_CloseRequested) {
@@ -247,6 +249,7 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
         m_QueuedInputs.clear();
         m_State = ExecutionState::Closing;
         outcome.NativeContinuation = false;
+        outcome.GraphActive = false;
         outcome.QueuedInput = false;
         outcome.Terminal = true;
         if (!outcome.Fault)

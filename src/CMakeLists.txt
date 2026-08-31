@@ -89,6 +89,7 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/ImcWire.hpp
         ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
         ${BML_INCLUDE_DIR}/BML/TypeConvert.h
+        ${BML_INCLUDE_DIR}/BML/Behavior.h
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h
         ${BML_INCLUDE_DIR}/BML/Gameplay.h
@@ -137,12 +138,14 @@ set(BML_LOADER_SOURCES
 )
 
 set(BML_API_PRIVATE_HEADERS
+        Api/BehaviorApi.h
         Api/BuiltinCapabilities.h
         Api/ExecuteBBAdapter.h
         Api/ObjectRefs.h
 )
 
 set(BML_API_SOURCES
+        Api/BehaviorApi.cpp
         Api/BmlApi.cpp
         Api/BuiltinCapabilities.cpp
         Api/Errors.cpp

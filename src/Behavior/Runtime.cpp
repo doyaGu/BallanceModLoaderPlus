@@ -446,8 +446,34 @@ private:
             return false;
         CKParameterManager *manager = m_Runtime.m_Context
             ? m_Runtime.m_Context->GetParameterManager() : nullptr;
-        return manager && manager->IsDerivedFrom(parameter->GetGUID(),
-                                                  CKPGUID_OBJECT) != FALSE;
+        return parameter->GetGUID() == CKPGUID_OBJECT ||
+               (manager && manager->IsDerivedFrom(parameter->GetGUID(),
+                                                   CKPGUID_OBJECT) != FALSE);
+    }
+
+    bool PlainDerived(CKGUID type, CKGUID base, std::size_t size) const {
+        if (type == base)
+            return true;
+        CKParameterManager *manager = m_Runtime.m_Context
+            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
+        if (!manager || !manager->IsDerivedFrom(type, base))
+            return false;
+        CKParameterTypeDesc *description =
+            manager->GetParameterTypeDescription(type);
+        return description && description->DefaultSize == size &&
+               !description->CreateDefaultFunction &&
+               !description->DeleteFunction &&
+               !description->CopyFunction &&
+               !description->SaveLoadFunction &&
+               !description->CheckFunction;
+    }
+
+    bool TextDerived(CKGUID type) const {
+        if (type == CKPGUID_STRING)
+            return true;
+        CKParameterManager *manager = m_Runtime.m_Context
+            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
+        return manager && manager->IsDerivedFrom(type, CKPGUID_STRING);
     }
 
     bool GetPoutInfo(CKParameter *parameter, PoutInfo &info) const {
@@ -456,29 +482,29 @@ private:
         const CKGUID type = parameter->GetGUID();
         if (ObjectDerived(parameter))
             info = {PoutKind::Object, 0};
-        else if (type == CKPGUID_BOOL)
+        else if (PlainDerived(type, CKPGUID_BOOL, sizeof(CKBOOL)))
             info = {PoutKind::Bool, sizeof(CKBOOL)};
-        else if (type == CKPGUID_INT)
+        else if (PlainDerived(type, CKPGUID_INT, sizeof(int)))
             info = {PoutKind::Int32, sizeof(int)};
-        else if (type == CKPGUID_FLOAT)
+        else if (PlainDerived(type, CKPGUID_FLOAT, sizeof(float)))
             info = {PoutKind::Float32, sizeof(float)};
-        else if (type == CKPGUID_STRING)
+        else if (TextDerived(type))
             info = {PoutKind::Utf8, 0};
-        else if (type == CKPGUID_2DVECTOR)
+        else if (PlainDerived(type, CKPGUID_2DVECTOR, sizeof(Vx2DVector)))
             info = {PoutKind::Vec2, sizeof(Vx2DVector)};
-        else if (type == CKPGUID_VECTOR)
+        else if (PlainDerived(type, CKPGUID_VECTOR, sizeof(VxVector)))
             info = {PoutKind::Vec3, sizeof(VxVector)};
-        else if (type == CKPGUID_QUATERNION)
+        else if (PlainDerived(type, CKPGUID_QUATERNION, sizeof(VxQuaternion)))
             info = {PoutKind::Quaternion, sizeof(VxQuaternion)};
-        else if (type == CKPGUID_EULERANGLES)
+        else if (PlainDerived(type, CKPGUID_EULERANGLES, sizeof(float) * 3))
             info = {PoutKind::Euler, sizeof(float) * 3};
-        else if (type == CKPGUID_RECT)
+        else if (PlainDerived(type, CKPGUID_RECT, sizeof(VxRect)))
             info = {PoutKind::Rect, sizeof(VxRect)};
-        else if (type == CKPGUID_COLOR)
+        else if (PlainDerived(type, CKPGUID_COLOR, sizeof(VxColor)))
             info = {PoutKind::Color, sizeof(VxColor)};
-        else if (type == CKPGUID_BOX)
+        else if (PlainDerived(type, CKPGUID_BOX, sizeof(VxBbox)))
             info = {PoutKind::Box, sizeof(VxBbox)};
-        else if (type == CKPGUID_MATRIX)
+        else if (PlainDerived(type, CKPGUID_MATRIX, sizeof(VxMatrix)))
             info = {PoutKind::Mat4, sizeof(VxMatrix)};
         else
             return false;
@@ -2863,6 +2889,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
         : record->Protocol.Step(m_Frame, adapter);
 
     RunResult result;
+    result.Admission = executed.State;
     if (executed.State == AdmissionState::Queued) {
         result.State = RunState::Queued;
     } else if (executed.State == AdmissionState::Failed) {

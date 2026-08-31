@@ -6,6 +6,7 @@
 // right. Adding an interface means a struct here plus one row in kInterfaces; the
 // rules for changing one that already shipped are in Interface.h.
 #include "BML/Gameplay.h"
+#include "BML/Behavior.h"
 #include "BML/Interface.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
@@ -17,6 +18,7 @@
 #include <limits>
 
 #include "Api/BuiltinCapabilities.h"
+#include "Api/BehaviorApi.h"
 #include "Loader/ModContext.h"
 
 namespace {
@@ -361,6 +363,8 @@ struct InterfaceEntry {
 };
 
 const InterfaceEntry kInterfaces[] = {
+    {BML_BEHAVIOR_INTERFACE_ID, BML_BEHAVIOR_INTERFACE_MAJOR,
+     &BML::Api::BehaviorInterface()},
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
     {BML_RUNTIME_INTERFACE_ID, BML_RUNTIME_INTERFACE_MAJOR, &kRuntimeInterface},
     {BML_SCENE_INTERFACE_ID, BML_SCENE_INTERFACE_MAJOR, &kSceneInterface},
