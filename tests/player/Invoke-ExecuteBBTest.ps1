@@ -47,55 +47,6 @@ function Copy-TestFile {
     }
 }
 
-function Save-WindowScreenshot {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.Diagnostics.Process]$Process,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Destination
-    )
-
-    if (-not ('BMLPlayerWindowCapture' -as [type])) {
-        Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class BMLPlayerWindowCapture {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct Rect { public int Left, Top, Right, Bottom; }
-    [DllImport("user32.dll")]
-    public static extern bool GetWindowRect(IntPtr window, out Rect rect);
-}
-'@
-    }
-    Add-Type -AssemblyName System.Drawing
-    $Process.Refresh()
-    $handle = $Process.MainWindowHandle
-    if ($handle -eq [IntPtr]::Zero) {
-        return $false
-    }
-    $rect = New-Object BMLPlayerWindowCapture+Rect
-    if (-not [BMLPlayerWindowCapture]::GetWindowRect($handle, [ref]$rect)) {
-        return $false
-    }
-    $width = $rect.Right - $rect.Left
-    $height = $rect.Bottom - $rect.Top
-    if ($width -le 0 -or $height -le 0) {
-        return $false
-    }
-    $bitmap = New-Object System.Drawing.Bitmap($width, $height)
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    try {
-        $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
-        $bitmap.Save($Destination, [System.Drawing.Imaging.ImageFormat]::Png)
-    } finally {
-        $graphics.Dispose()
-        $bitmap.Dispose()
-    }
-    return (Test-Path -LiteralPath $Destination) -and
-        (Get-Item -LiteralPath $Destination).Length -gt 0
-}
-
 if (-not $BallanceRoot) {
     throw 'Ballance root is required. Pass -BallanceRoot or set BML_BALLANCE_ROOT.'
 }
@@ -104,17 +55,18 @@ $layout = Get-BMLProjectLayout
 if (-not $BuildDll) {
     $BuildDll = Join-Path $layout.DefaultReleaseBin 'BMLPlus.dll'
 }
+$releaseBin = Split-Path -Parent ([System.IO.Path]::GetFullPath($BuildDll))
 if (-not $TestMod) {
-    $TestMod = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\ExecuteBBTest.bmodp'
+    $TestMod = Join-Path $releaseBin 'ExecuteBBTest.bmodp'
 }
 if (-not $FixtureDll) {
-    $FixtureDll = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\BehaviorLifecycleFixture.dll'
+    $FixtureDll = Join-Path $releaseBin 'BehaviorLifecycleFixture.dll'
 }
 if (-not $TransportMod) {
-    $TransportMod = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\BehaviorTransportTest.bmodp'
+    $TransportMod = Join-Path $releaseBin 'BehaviorTransportTest.bmodp'
 }
 if (-not $TransportFixture) {
-    $TransportFixture = Join-Path $layout.RepoRoot 'build-dev\bin\RelWithDebInfo\BehaviorTransportFixture.dll'
+    $TransportFixture = Join-Path $releaseBin 'BehaviorTransportFixture.dll'
 }
 if (-not $ScriptMod) {
     $ScriptMod = Join-Path $PSScriptRoot 'BehaviorLifecycleScript.mod.as'
@@ -155,6 +107,7 @@ if (-not $ArtifactsDirectory) {
 $artifactsDirectoryFull = [System.IO.Path]::GetFullPath($ArtifactsDirectory)
 New-Item -ItemType Directory -Path $artifactsDirectoryFull -Force | Out-Null
 $screenshotPath = Join-Path $artifactsDirectoryFull 'Player-window.png'
+$framePath = Join-Path $artifactsDirectoryFull 'Player-frame.bmp'
 $tracePath = Join-Path $artifactsDirectoryFull 'ModLoader-trace.log'
 $playerTracePath = Join-Path $artifactsDirectoryFull 'Player-trace.log'
 $artifacts = @(
@@ -174,6 +127,8 @@ $testLog = ''
 $playerRunLog = ''
 $restored = $false
 $screenshotCaptured = $false
+$playerWindowActivated = $false
+$windowShell = $null
 $sourceHash = Get-BMLOptionalHash $BuildDll
 $testModHash = Get-BMLOptionalHash $TestMod
 $installedHashBefore = Get-BMLOptionalHash $installedDll
@@ -184,8 +139,12 @@ $installedTransportFixtureHashBefore = Get-BMLOptionalHash $installedTransportFi
 $installedScriptModHashBefore = Get-BMLOptionalHash $installedScriptMod
 $modLoaderLogHashBefore = Get-BMLOptionalHash $modLoaderLog
 $playerLogHashBefore = Get-BMLOptionalHash $playerLog
+$previousFramePath = [Environment]::GetEnvironmentVariable(
+    'BML_PLAYER_FRAME_PATH', 'Process')
 
 try {
+    [Environment]::SetEnvironmentVariable(
+        'BML_PLAYER_FRAME_PATH', $framePath, 'Process')
     foreach ($artifact in $artifacts) {
         if (Test-Path -LiteralPath $artifact.Path) {
             Copy-TestFile -Source $artifact.Path -Destination $artifact.Backup
@@ -207,17 +166,21 @@ try {
     $process = Start-Process -FilePath $playerPath `
         -WorkingDirectory (Split-Path -Parent $playerPath) -PassThru
 
+    $windowShell = New-Object -ComObject WScript.Shell
+    for ($attempt = 0; $attempt -lt 100 -and -not $process.HasExited; ++$attempt) {
+        Start-Sleep -Milliseconds 100
+        $process.Refresh()
+        if ($process.MainWindowHandle -ne [IntPtr]::Zero -and
+            $windowShell.AppActivate($process.Id)) {
+            $playerWindowActivated = $true
+            break
+        }
+    }
+
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 100
         $process.Refresh()
-        if (-not $screenshotCaptured) {
-            $visibleLog = [string]::Join("`n", @(Get-BMLTextIfExists $modLoaderLog))
-            if ($visibleLog.Contains('On Message StartLevel')) {
-                $screenshotCaptured = Save-WindowScreenshot `
-                    -Process $process -Destination $screenshotPath
-            }
-        }
     }
     if (-not $process.HasExited) {
         $timedOut = $true
@@ -227,9 +190,26 @@ try {
     $playerExitCode = $process.ExitCode
     $testLog = [string]::Join("`n", @(Get-BMLTextIfExists $modLoaderLog))
     $playerRunLog = [string]::Join("`n", @(Get-BMLTextIfExists $playerLog))
+    if (Test-Path -LiteralPath $framePath) {
+        Add-Type -AssemblyName System.Drawing
+        $frame = [System.Drawing.Image]::FromFile($framePath)
+        try {
+            $frame.Save($screenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        } finally {
+            $frame.Dispose()
+        }
+        $screenshotCaptured = (Test-Path -LiteralPath $screenshotPath) -and
+            (Get-Item -LiteralPath $screenshotPath).Length -gt 0
+    }
     Set-Content -LiteralPath $tracePath -Value $testLog -Encoding UTF8
     Set-Content -LiteralPath $playerTracePath -Value $playerRunLog -Encoding UTF8
 } finally {
+    [Environment]::SetEnvironmentVariable(
+        'BML_PLAYER_FRAME_PATH', $previousFramePath, 'Process')
+    if ($null -ne $windowShell) {
+        [Runtime.InteropServices.Marshal]::ReleaseComObject($windowShell) |
+            Out-Null
+    }
     if ($null -ne $process) {
         try {
             $process.Refresh()
@@ -265,6 +245,7 @@ $startLevelIndex = $testLog.IndexOf('On Message StartLevel')
 $naturalLevelFlow = $postStartIndex -ge 0 -and $preLoadIndex -gt $postStartIndex -and
                     $postLoadIndex -gt $preLoadIndex -and $startLevelIndex -gt $postLoadIndex
 $checks = [ordered]@{
+    PlayerWindowVisible = $playerWindowActivated
     MenuFlow = $outcome.Success -and
         $outcome.Groups['menuOpened'].Value -eq 'true' -and
         $outcome.Groups['levelChosen'].Value -eq 'true'
@@ -294,6 +275,7 @@ $checks = [ordered]@{
     CleanShutdown = $testLog.Contains('Goodbye!')
     NaturalLevelFlow = $naturalLevelFlow
     ScreenshotCaptured = $screenshotCaptured -and
+        $testLog.Contains('Player frame: captured=true') -and
         (Test-Path -LiteralPath $screenshotPath) -and
         (Get-Item -LiteralPath $screenshotPath).Length -gt 0
     PlayerExited = -not $timedOut -and $playerExitCode -eq 0
@@ -312,7 +294,7 @@ $failedChecks = @($checks.GetEnumerator() | Where-Object { -not $_.Value } | For
 $result = [pscustomobject]@{
     Status = $(if ($failedChecks.Count -eq 0) { 'pass' } else { 'fail' })
     BallanceRoot = $ballanceRootFull
-    Visible = $true
+    Visible = $playerWindowActivated
     PlayerExitCode = $playerExitCode
     PlayerTimedOut = $timedOut
     SourceHash = $sourceHash
