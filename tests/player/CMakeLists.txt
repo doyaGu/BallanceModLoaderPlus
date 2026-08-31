@@ -10,6 +10,7 @@ bml_add_mod(ExecuteBBTest
         ExecuteBBTest.cpp
         BehaviorRuntimeProbe.cpp
         BehaviorRuntimeProbe.h
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Execution.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/ObjectLoad.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Physicalize.cpp

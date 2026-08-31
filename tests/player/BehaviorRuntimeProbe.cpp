@@ -6,6 +6,7 @@
 #include "Behavior/PhysicsImpulse.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Text2D.h"
+#include "BML/Guids/Logics.h"
 #include "BML/Guids/physics_RT.h"
 
 #include <memory>
@@ -59,6 +60,40 @@ struct RecursivePumpProbe {
     Runtime *Owner = nullptr;
     int Calls = 0;
 };
+
+struct ReentrantPulseProbe {
+    Runtime *Owner = nullptr;
+    Instance *Handle = nullptr;
+    int Calls = 0;
+    bool Queued = false;
+};
+
+int ProbeReentrantPulse(const CKBehaviorContext *, void *argument) {
+    auto *probe = static_cast<ReentrantPulseProbe *>(argument);
+    if (!probe || !probe->Owner || !probe->Handle)
+        return CKBR_BEHAVIORERROR;
+    ++probe->Calls;
+    if (probe->Calls == 1) {
+        RunResult queued = probe->Owner->Pulse(
+            *probe->Handle, Slot::Named(SlotKind::Input, "In 1"));
+        probe->Queued = queued.State == RunState::Queued;
+    }
+    return CKBR_OK;
+}
+
+struct CountedExecutionProbe {
+    int Calls = 0;
+    int CompleteAfter = 1;
+};
+
+int ProbeCountedExecution(const CKBehaviorContext *, void *argument) {
+    auto *probe = static_cast<CountedExecutionProbe *>(argument);
+    if (!probe)
+        return CKBR_BEHAVIORERROR;
+    ++probe->Calls;
+    return probe->Calls < probe->CompleteAfter
+        ? CKBR_ACTIVATENEXTFRAME : CKBR_OK;
+}
 
 int ProbeRecursivePump(const CKBehaviorContext *, void *argument) {
     auto *probe = static_cast<RecursivePumpProbe *>(argument);
@@ -238,6 +273,21 @@ public:
         case State::RetryResume: ResumeRetry(); break;
         case State::BreakStart: StartBreak(); break;
         case State::BreakResume: ResumeBreak(); break;
+        case State::WaitAllStart: StartWaitAll(); break;
+        case State::WaitAllResume: ResumeWaitAll(); break;
+        case State::TerminalPulseStart: StartTerminalPulse(); break;
+        case State::TerminalPulseResume: ResumeTerminalPulse(); break;
+        case State::ReentrantPulseStart: StartReentrantPulse(); break;
+        case State::ReentrantPulseResume: ResumeReentrantPulse(); break;
+        case State::OutcomeLatestStart: StartLatestOutcomes(); break;
+        case State::OutcomeLatestResume1:
+        case State::OutcomeLatestResume2:
+        case State::OutcomeLatestResume3: ResumeLatestOutcomes(); break;
+        case State::OutcomeFullStart: StartFullOutcomes(); break;
+        case State::OutcomeFullCheck: CheckFullOutcomes(); break;
+        case State::OutcomeFullStopped: CheckFullOutcomesStopped(); break;
+        case State::DetachedGraphStart: StartDetachedGraph(); break;
+        case State::DetachedGraphWait: ObserveDetachedGraph(); break;
         case State::RecursivePumpStart: StartRecursivePump(); break;
         case State::RecursivePumpResume1:
         case State::RecursivePumpResume2: ResumeRecursivePump(); break;
@@ -290,6 +340,21 @@ private:
         RetryResume,
         BreakStart,
         BreakResume,
+        WaitAllStart,
+        WaitAllResume,
+        TerminalPulseStart,
+        TerminalPulseResume,
+        ReentrantPulseStart,
+        ReentrantPulseResume,
+        OutcomeLatestStart,
+        OutcomeLatestResume1,
+        OutcomeLatestResume2,
+        OutcomeLatestResume3,
+        OutcomeFullStart,
+        OutcomeFullCheck,
+        OutcomeFullStopped,
+        DetachedGraphStart,
+        DetachedGraphWait,
         RecursivePumpStart,
         RecursivePumpResume1,
         RecursivePumpResume2,
@@ -450,7 +515,7 @@ private:
                 m_RetryInstance, Slot::At(SlotKind::Input, 0));
         });
         const bool firstOk = first.ReturnCode == CKBR_BEHAVIORERROR_RETRY &&
-                             first.State == RunState::Continuing &&
+                             first.State == RunState::Pending &&
                              first.ActiveOutputs.size() == 2 &&
                              m_Runtime.IsTaskActive(m_RetryInstance);
         if (!firstOk)
@@ -475,7 +540,7 @@ private:
             m_Owner, HookBlock::Make(ProbeExecution, &m_Breakpoint));
         if (!created) {
             Fail("break-create");
-            m_State = State::RecursivePumpStart;
+            m_State = State::WaitAllStart;
             return;
         }
         m_BreakInstance = std::move(created.Handle);
@@ -484,21 +549,333 @@ private:
             return m_Runtime.StartTask(
                 m_BreakInstance, Slot::At(SlotKind::Input, 0));
         });
-        const bool suspended = first.ReturnCode == CKBR_BREAK &&
-                               first.State == RunState::Suspended &&
-                               m_Runtime.IsTaskActive(m_BreakInstance);
-        if (!suspended)
+        const Status terminal = m_Runtime.TerminalError(m_BreakInstance);
+        const bool rejected = first.ReturnCode == CKBR_BREAK &&
+                              first.State == RunState::Failed &&
+                              !m_Runtime.IsTaskActive(m_BreakInstance) &&
+                              terminal.Code == Error::UnsupportedBreak;
+        if (!rejected)
             Fail("break-start");
         m_State = State::BreakResume;
     }
 
     void ResumeBreak() {
         ProcessRuntimeFrame("break-frame-context-restore");
-        if (m_Breakpoint.Calls != 2 || !m_Breakpoint.ContextMatched ||
+        if (m_Breakpoint.Calls != 1 || !m_Breakpoint.ContextMatched ||
             m_Runtime.IsTaskActive(m_BreakInstance)) {
             Fail("break-semantics");
         }
         m_BreakInstance.Reset();
+        m_State = State::WaitAllStart;
+    }
+
+    void StartWaitAll() {
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, Spec(VT_LOGICS_WAITFORALL));
+        if (!created) {
+            Fail("wait-all-create");
+            m_State = State::TerminalPulseStart;
+            return;
+        }
+        m_WaitAllInstance = std::move(created.Handle);
+        RunResult first = WithContextCheck("wait-all-first-context-restore", [&] {
+            return m_Runtime.Pulse(
+                m_WaitAllInstance,
+                Slot::Named(SlotKind::Input, "In 0"));
+        });
+        CKBehavior *behavior = m_WaitAllInstance.Get();
+        RunResult second = WithContextCheck("wait-all-second-context-restore", [&] {
+            return m_Runtime.Pulse(
+                m_WaitAllInstance,
+                Slot::Named(SlotKind::Input, "In 1"));
+        });
+        const std::vector<ExecutionOutcome> firstOutcomes =
+            m_Runtime.Drain(m_WaitAllInstance);
+        const bool firstPending = first.State == RunState::Pending &&
+            second.State == RunState::Queued && behavior &&
+            behavior->IsInputActive(0) && !behavior->IsInputActive(1) &&
+            m_Runtime.IsTaskActive(m_WaitAllInstance) &&
+            firstOutcomes.size() == 1 &&
+            firstOutcomes[0].Sequence == 1 &&
+            firstOutcomes[0].NativeContinuation &&
+            !firstOutcomes[0].QueuedInput;
+        if (!firstPending)
+            Fail("wait-all-first");
+        m_State = State::WaitAllResume;
+    }
+
+    void ResumeWaitAll() {
+        ProcessRuntimeFrame("wait-all-frame-context-restore");
+        CKBehavior *behavior = m_WaitAllInstance.Get();
+        const std::vector<ExecutionOutcome> outcomes =
+            m_Runtime.Drain(m_WaitAllInstance);
+        const bool completed = behavior && !behavior->IsInputActive(0) &&
+            !behavior->IsInputActive(1) && !behavior->IsOutputActive(0) &&
+            !m_Runtime.IsTaskActive(m_WaitAllInstance) &&
+            m_Runtime.State(m_WaitAllInstance) == ExecutionState::Idle &&
+            outcomes.size() == 1 && outcomes[0].Sequence == 2 &&
+            outcomes[0].Terminal && outcomes[0].ActiveOutputs.size() == 1 &&
+            outcomes[0].ActiveOutputs[0].Name == "Out";
+        if (!completed)
+            Fail("wait-all-complete");
+        m_WaitAllInstance.Reset();
+        m_State = State::TerminalPulseStart;
+    }
+
+    void StartTerminalPulse() {
+        m_TerminalPulse.Context = m_Context;
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, HookBlock::Make(ProbeExecution, &m_TerminalPulse));
+        if (!created) {
+            Fail("terminal-pulse-create");
+            m_State = State::ReentrantPulseStart;
+            return;
+        }
+        m_TerminalPulseInstance = std::move(created.Handle);
+        m_TerminalPulse.Behavior = m_TerminalPulseInstance.Get();
+        RunResult first = m_Runtime.Pulse(
+            m_TerminalPulseInstance,
+            Slot::Named(SlotKind::Input, "In 0"));
+        RunResult second = m_Runtime.Pulse(
+            m_TerminalPulseInstance,
+            Slot::Named(SlotKind::Input, "In 0"));
+        if (first.State != RunState::Completed ||
+            second.State != RunState::Queued || m_TerminalPulse.Calls != 1 ||
+            m_Runtime.State(m_TerminalPulseInstance) != ExecutionState::Pending) {
+            Fail("terminal-pulse-queued");
+        }
+        m_State = State::TerminalPulseResume;
+    }
+
+    void ResumeTerminalPulse() {
+        ProcessRuntimeFrame("terminal-pulse-context-restore");
+        const std::vector<ExecutionOutcome> outcomes =
+            m_Runtime.Drain(m_TerminalPulseInstance);
+        if (m_TerminalPulse.Calls != 2 || !m_TerminalPulse.ContextMatched ||
+            m_Runtime.State(m_TerminalPulseInstance) != ExecutionState::Idle ||
+            outcomes.size() != 2 || outcomes[0].Sequence != 1 ||
+            outcomes[1].Sequence != 2 || !outcomes[1].Terminal) {
+            Fail("terminal-pulse-complete");
+        }
+        m_TerminalPulseInstance.Reset();
+        m_State = State::ReentrantPulseStart;
+    }
+
+    void StartReentrantPulse() {
+        m_ReentrantPulse.Owner = &m_Runtime;
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner,
+            HookBlock::Make(ProbeReentrantPulse, &m_ReentrantPulse, 2, 1));
+        if (!created) {
+            Fail("reentrant-pulse-create");
+            m_State = State::OutcomeLatestStart;
+            return;
+        }
+        m_ReentrantPulseInstance = std::move(created.Handle);
+        m_ReentrantPulse.Handle = &m_ReentrantPulseInstance;
+        RunResult first = WithContextCheck("reentrant-pulse-context-restore", [&] {
+            return m_Runtime.Pulse(
+                m_ReentrantPulseInstance,
+                Slot::Named(SlotKind::Input, "In 0"));
+        });
+        if (first.State != RunState::Pending || !m_ReentrantPulse.Queued ||
+            m_ReentrantPulse.Calls != 1 ||
+            !m_Runtime.IsTaskActive(m_ReentrantPulseInstance)) {
+            Fail("reentrant-pulse-first");
+        }
+        m_State = State::ReentrantPulseResume;
+    }
+
+    void ResumeReentrantPulse() {
+        ProcessRuntimeFrame("reentrant-pulse-frame-context-restore");
+        if (m_ReentrantPulse.Calls != 2 ||
+            m_Runtime.IsTaskActive(m_ReentrantPulseInstance) ||
+            m_Runtime.State(m_ReentrantPulseInstance) != ExecutionState::Idle) {
+            Fail("reentrant-pulse-complete");
+        }
+        m_ReentrantPulse.Handle = nullptr;
+        m_ReentrantPulseInstance.Reset();
+        m_State = State::OutcomeLatestStart;
+    }
+
+    void StartLatestOutcomes() {
+        m_LatestOutcomes.CompleteAfter = 4;
+        Spec spec = HookBlock::Make(
+            ProbeCountedExecution, &m_LatestOutcomes, 1, 0);
+        spec.Outcomes(OutcomeRetention::Latest());
+        CreateResult created = m_Runtime.Instantiate(m_Owner, spec);
+        if (!created) {
+            Fail("outcome-latest-create");
+            m_State = State::OutcomeFullStart;
+            return;
+        }
+        m_LatestOutcomeInstance = std::move(created.Handle);
+        RunResult first = m_Runtime.StartTask(
+            m_LatestOutcomeInstance,
+            Slot::Named(SlotKind::Input, "In 0"));
+        if (first.State != RunState::Pending)
+            Fail("outcome-latest-start");
+        m_State = State::OutcomeLatestResume1;
+    }
+
+    void ResumeLatestOutcomes() {
+        ProcessRuntimeFrame("outcome-latest-context-restore");
+        if (m_State == State::OutcomeLatestResume1) {
+            m_State = State::OutcomeLatestResume2;
+            return;
+        }
+        if (m_State == State::OutcomeLatestResume2) {
+            m_State = State::OutcomeLatestResume3;
+            return;
+        }
+        const std::vector<ExecutionOutcome> outcomes =
+            m_Runtime.Drain(m_LatestOutcomeInstance);
+        if (m_LatestOutcomes.Calls != 4 || outcomes.size() != 2 ||
+            outcomes[0].Sequence != 3 || outcomes[1].Sequence != 4 ||
+            !outcomes[1].Terminal ||
+            m_Runtime.IsTaskActive(m_LatestOutcomeInstance)) {
+            Fail("outcome-latest-sequence");
+        }
+        m_LatestOutcomeInstance.Reset();
+        m_State = State::OutcomeFullStart;
+    }
+
+    void StartFullOutcomes() {
+        m_FullOutcomes.CompleteAfter = 10;
+        Spec spec = HookBlock::Make(
+            ProbeCountedExecution, &m_FullOutcomes, 1, 0);
+        spec.Outcomes(OutcomeRetention::EachFrame(1));
+        CreateResult created = m_Runtime.Instantiate(m_Owner, spec);
+        if (!created) {
+            Fail("outcome-full-create");
+            m_State = State::DetachedGraphStart;
+            return;
+        }
+        m_FullOutcomeInstance = std::move(created.Handle);
+        RunResult first = m_Runtime.StartTask(
+            m_FullOutcomeInstance,
+            Slot::Named(SlotKind::Input, "In 0"));
+        if (first.State != RunState::Pending)
+            Fail("outcome-full-start");
+        m_State = State::OutcomeFullCheck;
+    }
+
+    void CheckFullOutcomes() {
+        ProcessRuntimeFrame("outcome-full-context-restore");
+        const Status terminal = m_Runtime.TerminalError(m_FullOutcomeInstance);
+        const std::vector<ExecutionOutcome> outcomes =
+            m_Runtime.Drain(m_FullOutcomeInstance);
+        const bool full = m_FullOutcomes.Calls == 2 &&
+            m_Runtime.State(m_FullOutcomeInstance) == ExecutionState::Closing &&
+            !m_Runtime.IsTaskActive(m_FullOutcomeInstance) &&
+            terminal.Code == Error::OutcomeQueueFull && outcomes.size() == 2 &&
+            outcomes[0].Sequence == 1 && outcomes[1].Sequence == 2 &&
+            outcomes[1].Fault.Code == ExecutionError::OutcomeQueueFull &&
+            outcomes[1].Overflow && outcomes[1].Overflow->Capacity == 1;
+        if (!full)
+            Fail("outcome-full-terminal");
+        m_State = State::OutcomeFullStopped;
+    }
+
+    void CheckFullOutcomesStopped() {
+        ProcessRuntimeFrame("outcome-full-stopped-context-restore");
+        if (m_FullOutcomes.Calls != 2)
+            Fail("outcome-full-rescheduled");
+        m_FullOutcomeInstance.Reset();
+        m_State = State::DetachedGraphStart;
+    }
+
+    void StartDetachedGraph() {
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner,
+            HookBlock::Make(ProbeExecution, &m_DetachedOuter, 1, 1));
+        if (!created) {
+            Fail("detached-graph-create");
+            m_State = State::RecursivePumpStart;
+            return;
+        }
+        m_DetachedGraphInstance = std::move(created.Handle);
+        m_DetachedGraph = m_DetachedGraphInstance.Get();
+        if (!m_DetachedGraph) {
+            Fail("detached-graph-missing");
+            m_State = State::RecursivePumpStart;
+            return;
+        }
+        m_DetachedGraph->UseGraph();
+
+        m_DetachedSource.Context = m_Context;
+        m_DetachedDestination.Context = m_Context;
+        AttachResult source = m_Runtime.AddToGraph(
+            m_DetachedGraph,
+            HookBlock::Make(ProbeExecution, &m_DetachedSource, 1, 1));
+        AttachResult destination = m_Runtime.AddToGraph(
+            m_DetachedGraph,
+            HookBlock::Make(ProbeExecution, &m_DetachedDestination, 1, 1));
+        m_DetachedSource.Behavior = source.Block;
+        m_DetachedDestination.Behavior = destination.Block;
+        if (source && destination) {
+            m_DetachedEntryLink = CreateBehaviorLink(
+                m_Context, m_DetachedGraph->GetInput(0),
+                source.Block->GetInput(0), 0);
+            m_DetachedDelayLink = CreateBehaviorLink(
+                m_Context, source.Block->GetOutput(0),
+                destination.Block->GetInput(0), 2);
+            m_DetachedExitLink = CreateBehaviorLink(
+                m_Context, destination.Block->GetOutput(0),
+                m_DetachedGraph->GetOutput(0), 0);
+        }
+        auto add = [&](CKBehaviorLink *link) {
+            return link &&
+                m_DetachedGraph->AddSubBehaviorLink(link) == CK_OK;
+        };
+        if (!source || !destination || !add(m_DetachedEntryLink) ||
+            !add(m_DetachedDelayLink) || !add(m_DetachedExitLink)) {
+            Fail("detached-graph-setup");
+            m_Runtime.ResetWorld();
+            m_State = State::RecursivePumpStart;
+            return;
+        }
+
+        RunResult first = WithContextCheck("detached-graph-context-restore", [&] {
+            return m_Runtime.StartTask(
+                m_DetachedGraphInstance,
+                Slot::Named(SlotKind::Input, "In 0"));
+        });
+        const std::vector<ExecutionOutcome> firstOutcomes =
+            m_Runtime.Drain(m_DetachedGraphInstance);
+        if (first.ReturnCode != CKBR_OK || first.State != RunState::Pending ||
+            !m_Runtime.IsTaskActive(m_DetachedGraphInstance) ||
+            firstOutcomes.size() != 1 ||
+            !firstOutcomes[0].NativeContinuation) {
+            Fail("detached-graph-native-continuation");
+        }
+        m_DetachedGraphFrames = 0;
+        m_State = State::DetachedGraphWait;
+    }
+
+    void ObserveDetachedGraph() {
+        ProcessRuntimeFrame("detached-graph-frame-context-restore");
+        ++m_DetachedGraphFrames;
+        if (m_DetachedDestination.Calls == 0 && m_DetachedGraphFrames < 4)
+            return;
+
+        const std::vector<ExecutionOutcome> outcomes =
+            m_Runtime.Drain(m_DetachedGraphInstance);
+        const bool completed = m_DetachedSource.Calls == 1 &&
+            m_DetachedDestination.Calls == 1 &&
+            m_DetachedSource.ContextMatched &&
+            m_DetachedDestination.ContextMatched &&
+            !m_Runtime.IsTaskActive(m_DetachedGraphInstance) &&
+            m_Runtime.State(m_DetachedGraphInstance) == ExecutionState::Idle &&
+            !outcomes.empty() && outcomes.back().Terminal &&
+            outcomes.back().ActiveOutputs.size() == 1;
+        if (!completed)
+            Fail("detached-graph-complete");
+        m_Runtime.ResetWorld();
+        m_DetachedGraph = nullptr;
+        m_DetachedEntryLink = nullptr;
+        m_DetachedDelayLink = nullptr;
+        m_DetachedExitLink = nullptr;
         m_State = State::RecursivePumpStart;
     }
 
@@ -516,7 +893,7 @@ private:
             return m_Runtime.StartTask(
                 m_RecursivePumpInstance, Slot::At(SlotKind::Input, 0));
         });
-        if (first.State != RunState::Continuing ||
+        if (first.State != RunState::Pending ||
             !m_Runtime.IsTaskActive(m_RecursivePumpInstance)) {
             Fail("recursive-pump-start");
         }
@@ -555,7 +932,9 @@ private:
                 m_ReentrantReleaseInstance, Slot::At(SlotKind::Input, 0));
         });
         if (m_ReentrantRelease.Calls != 1 || m_ReentrantReleaseInstance ||
-            run.State != RunState::Completed || !m_ReentrantReleaseId) {
+            run.State != RunState::Failed ||
+            run.Outcome.Code != Error::ExecutionCancelled ||
+            !m_ReentrantReleaseId) {
             Fail("reentrant-release-result");
         }
         m_State = State::ReentrantReleaseCleanup1;
@@ -585,9 +964,20 @@ private:
             return m_Runtime.Pulse(
                 m_SelfDeleteInstance, Slot::At(SlotKind::Input, 0));
         });
-        if (!run || m_SelfDelete.Calls != 1 || !m_SelfDelete.Deferred ||
-            !m_SelfDelete.Requested || !m_SelfDelete.BehaviorId) {
+        if (run.State != RunState::Completed)
+            Fail("self-delete-run-state");
+        if (run.Outcome.Code != Error::None)
+            Fail("self-delete-run-error");
+        if (m_SelfDelete.Calls != 1)
+            Fail("self-delete-call-count");
+        if (!m_SelfDelete.Deferred)
             Fail("self-delete-not-deferred");
+        if (!m_SelfDelete.Requested)
+            Fail("self-delete-not-requested");
+        if (!m_SelfDelete.BehaviorId)
+            Fail("self-delete-no-id");
+        if (m_SelfDelete.Calls != 1 || !m_SelfDelete.Deferred ||
+            !m_SelfDelete.Requested || !m_SelfDelete.BehaviorId) {
             m_SelfDeleteInstance.Reset();
         }
         m_State = State::SelfDeleteWait1;
@@ -987,14 +1377,27 @@ private:
     std::ostringstream m_Failures;
     ExecutionProbe m_Retry;
     ExecutionProbe m_Breakpoint;
+    ExecutionProbe m_TerminalPulse;
+    ReentrantPulseProbe m_ReentrantPulse;
+    CountedExecutionProbe m_LatestOutcomes;
+    CountedExecutionProbe m_FullOutcomes;
     RecursivePumpProbe m_RecursivePump;
     ReentrantReleaseProbe m_ReentrantRelease;
     SelfDeleteProbe m_SelfDelete;
     ExecutionProbe m_GraphImmediateSource;
     ExecutionProbe m_GraphImmediateDestination;
     ExecutionProbe m_GraphDelayedDestination;
+    ExecutionProbe m_DetachedOuter;
+    ExecutionProbe m_DetachedSource;
+    ExecutionProbe m_DetachedDestination;
     Instance m_RetryInstance;
     Instance m_BreakInstance;
+    Instance m_WaitAllInstance;
+    Instance m_TerminalPulseInstance;
+    Instance m_ReentrantPulseInstance;
+    Instance m_LatestOutcomeInstance;
+    Instance m_FullOutcomeInstance;
+    Instance m_DetachedGraphInstance;
     Instance m_RecursivePumpInstance;
     Instance m_ReentrantReleaseInstance;
     Instance m_SelfDeleteInstance;
@@ -1018,6 +1421,11 @@ private:
     CKBehaviorLink *m_GraphImmediateLink = nullptr;
     CKBehaviorLink *m_GraphDelayedLink = nullptr;
     CKBehaviorLink *m_GraphExitLink = nullptr;
+    CKBehavior *m_DetachedGraph = nullptr;
+    CKBehaviorLink *m_DetachedEntryLink = nullptr;
+    CKBehaviorLink *m_DetachedDelayLink = nullptr;
+    CKBehaviorLink *m_DetachedExitLink = nullptr;
+    int m_DetachedGraphFrames = 0;
     int m_GraphStartFrame = -1;
 };
 
