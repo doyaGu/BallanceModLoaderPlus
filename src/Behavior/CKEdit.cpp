@@ -977,8 +977,12 @@ Status CKEdit::Close(Patch &patch) {
 std::uint64_t CKEdit::TopologyFingerprint(CKBehavior *graph) const {
     if (!graph)
         return 0;
-    const auto found = m_Topology.find(
-        static_cast<std::uint32_t>(graph->GetID()));
+    const std::uint64_t graphId =
+        static_cast<std::uint32_t>(graph->GetID());
+    const auto active = m_Active.find(graphId);
+    if (active == m_Active.end() || active->second.empty())
+        return 0;
+    const auto found = m_Topology.find(graphId);
     return found == m_Topology.end() ? 0 : found->second.Fingerprint();
 }
 
