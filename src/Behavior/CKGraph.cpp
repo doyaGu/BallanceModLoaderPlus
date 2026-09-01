@@ -173,10 +173,11 @@ public:
             return Failure(Error::InvalidState,
                            "The inspected Behavior node is stale.");
         out = m_Runtime.Describe(behavior);
-        return out.Prototype.IsValid()
-            ? Status{} : Failure(Error::LayoutUnavailable,
-                                 "The Behavior layout is unavailable.",
-                                 Phase::StaticLayout);
+        // A script graph created by an author has no prototype GUID, but its
+        // boundary and data layout are still native CKBehavior state.  A
+        // prototype identifies a reusable BB; it is not a prerequisite for
+        // inspecting a live graph.
+        return {};
     }
 
     Status ReadValue(const NativeRef &node, const Slot &slot,
