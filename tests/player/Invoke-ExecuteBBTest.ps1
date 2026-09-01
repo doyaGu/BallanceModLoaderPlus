@@ -6,6 +6,8 @@ param(
 
     [string]$TestMod,
 
+    [string]$RuntimeSemanticsMod,
+
     [string]$FixtureDll,
 
     [string]$TransportMod,
@@ -61,6 +63,9 @@ $releaseBin = Split-Path -Parent ([System.IO.Path]::GetFullPath($BuildDll))
 if (-not $TestMod) {
     $TestMod = Join-Path $releaseBin 'ExecuteBBTest.bmodp'
 }
+if (-not $RuntimeSemanticsMod) {
+    $RuntimeSemanticsMod = Join-Path $releaseBin 'BehaviorRuntimeSemanticsTest.bmodp'
+}
 if (-not $FixtureDll) {
     $FixtureDll = Join-Path $releaseBin 'BehaviorLifecycleFixture.dll'
 }
@@ -81,6 +86,7 @@ $ballanceRootFull = [System.IO.Path]::GetFullPath($BallanceRoot)
 $playerPath = Join-Path $ballanceRootFull 'Bin\Player.exe'
 $installedDll = Join-Path $ballanceRootFull 'BuildingBlocks\BMLPlus.dll'
 $installedTestMod = Join-Path $ballanceRootFull 'ModLoader\Mods\ExecuteBBTest.bmodp'
+$installedRuntimeSemanticsMod = Join-Path $ballanceRootFull 'ModLoader\Mods\BehaviorRuntimeSemanticsTest.bmodp'
 $installedFixture = Join-Path $ballanceRootFull 'BuildingBlocks\BehaviorLifecycleFixture.dll'
 $installedTransportMod = Join-Path $ballanceRootFull 'ModLoader\Mods\BehaviorTransportTest.bmodp'
 $installedPatchMod = Join-Path $ballanceRootFull 'ModLoader\Mods\BehaviorPatchTest.bmodp'
@@ -90,7 +96,8 @@ $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
 $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 
 foreach ($path in @($ballanceRootFull, $playerPath, $BuildDll, $TestMod,
-                     $FixtureDll, $TransportMod, $PatchMod, $TransportFixture,
+                     $RuntimeSemanticsMod, $FixtureDll, $TransportMod, $PatchMod,
+                     $TransportFixture,
                      $ScriptMod)) {
     Assert-BMLPath -Path $path -Type $(if ($path -eq $ballanceRootFull) { 'Container' } else { 'Leaf' })
 }
@@ -120,6 +127,7 @@ $playerTracePath = Join-Path $artifactsDirectoryFull 'Player-trace.log'
 $artifacts = @(
     [pscustomobject]@{ Path = $installedDll; Backup = "$installedDll.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedTestMod; Backup = "$installedTestMod.test-bak-$timestamp" },
+    [pscustomobject]@{ Path = $installedRuntimeSemanticsMod; Backup = "$installedRuntimeSemanticsMod.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedFixture; Backup = "$installedFixture.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedTransportMod; Backup = "$installedTransportMod.test-bak-$timestamp" },
     [pscustomobject]@{ Path = $installedPatchMod; Backup = "$installedPatchMod.test-bak-$timestamp" },
@@ -139,8 +147,10 @@ $playerWindowActivated = $false
 $windowShell = $null
 $sourceHash = Get-BMLOptionalHash $BuildDll
 $testModHash = Get-BMLOptionalHash $TestMod
+$runtimeSemanticsModHash = Get-BMLOptionalHash $RuntimeSemanticsMod
 $installedHashBefore = Get-BMLOptionalHash $installedDll
 $installedTestModHashBefore = Get-BMLOptionalHash $installedTestMod
+$installedRuntimeSemanticsModHashBefore = Get-BMLOptionalHash $installedRuntimeSemanticsMod
 $installedFixtureHashBefore = Get-BMLOptionalHash $installedFixture
 $installedTransportModHashBefore = Get-BMLOptionalHash $installedTransportMod
 $installedPatchModHashBefore = Get-BMLOptionalHash $installedPatchMod
@@ -162,6 +172,7 @@ try {
 
     Copy-TestFile -Source $BuildDll -Destination $installedDll
     Copy-TestFile -Source $TestMod -Destination $installedTestMod
+    Copy-TestFile -Source $RuntimeSemanticsMod -Destination $installedRuntimeSemanticsMod
     Copy-TestFile -Source $FixtureDll -Destination $installedFixture
     Copy-TestFile -Source $TransportMod -Destination $installedTransportMod
     Copy-TestFile -Source $PatchMod -Destination $installedPatchMod
@@ -250,6 +261,8 @@ $transportPattern = 'Behavior transport: status=(?<status>pass|fail) reason=(?<r
 $transport = [regex]::Match($testLog, $transportPattern)
 $patchPattern = 'Behavior patch: status=(?<status>pass|fail) reason=(?<reason>\S+) module=(?<module>true|false) apply=(?<apply>true|false) execute=(?<execute>true|false) close=(?<close>true|false) restore=(?<restore>true|false) reset=(?<reset>true|false) deletion=(?<deletion>true|false) retirement=(?<retirement>true|false)'
 $patch = [regex]::Match($testLog, $patchPattern)
+$runtimeSemanticsPattern = 'Behavior runtime semantics: status=(?<status>pass|fail) lifecycle=(?<lifecycle>true|false) additive_edit=(?<additiveEdit>true|false) detail=(?<detail>\S+)'
+$runtimeSemantics = [regex]::Match($testLog, $runtimeSemanticsPattern)
 $postStartIndex = $testLog.IndexOf('On Message PostStartMenu')
 $preLoadIndex = $testLog.IndexOf('On Message PreLoadLevel')
 $postLoadIndex = $testLog.IndexOf('On Message PostLoadLevel')
@@ -265,6 +278,11 @@ $checks = [ordered]@{
     RuntimeProbe = $outcome.Success -and
         $outcome.Groups['runtimeProbe'].Value -eq 'true' -and
         $outcome.Groups['runtimeDetail'].Value -eq 'complete'
+    RuntimeSemanticsFixture = $runtimeSemantics.Success -and
+        $runtimeSemantics.Groups['status'].Value -eq 'pass' -and
+        $runtimeSemantics.Groups['lifecycle'].Value -eq 'true' -and
+        $runtimeSemantics.Groups['additiveEdit'].Value -eq 'true' -and
+        $runtimeSemantics.Groups['detail'].Value -eq 'complete'
     LifecycleProbe = $outcome.Success -and
         $outcome.Groups['lifecycleProbe'].Value -eq 'true'
     AdditiveEditProbe = $outcome.Success -and
@@ -317,6 +335,7 @@ $checks = [ordered]@{
     InstallRestored = $restored -and
         (Get-BMLOptionalHash $installedDll) -eq $installedHashBefore -and
         (Get-BMLOptionalHash $installedTestMod) -eq $installedTestModHashBefore -and
+        (Get-BMLOptionalHash $installedRuntimeSemanticsMod) -eq $installedRuntimeSemanticsModHashBefore -and
         (Get-BMLOptionalHash $installedFixture) -eq $installedFixtureHashBefore -and
         (Get-BMLOptionalHash $installedTransportMod) -eq $installedTransportModHashBefore -and
         (Get-BMLOptionalHash $installedPatchMod) -eq $installedPatchModHashBefore -and
@@ -335,6 +354,7 @@ $result = [pscustomobject]@{
     PlayerTimedOut = $timedOut
     SourceHash = $sourceHash
     TestModHash = $testModHash
+    RuntimeSemanticsModHash = $runtimeSemanticsModHash
     FixtureHash = Get-BMLOptionalHash $FixtureDll
     TransportModHash = Get-BMLOptionalHash $TransportMod
     PatchModHash = Get-BMLOptionalHash $PatchMod
@@ -347,6 +367,8 @@ $result = [pscustomobject]@{
     InstalledHashAfter = Get-BMLOptionalHash $installedDll
     InstalledTestModHashBefore = $installedTestModHashBefore
     InstalledTestModHashAfter = Get-BMLOptionalHash $installedTestMod
+    InstalledRuntimeSemanticsModHashBefore = $installedRuntimeSemanticsModHashBefore
+    InstalledRuntimeSemanticsModHashAfter = Get-BMLOptionalHash $installedRuntimeSemanticsMod
     Checks = [pscustomobject]$checks
     FailedChecks = $failedChecks
     Outcome = $(if ($outcome.Success) {

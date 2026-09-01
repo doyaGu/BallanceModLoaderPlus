@@ -4,10 +4,7 @@
 #include <BML/IMod.h>
 #include <BML/ScriptHelper.h>
 
-#include "BehaviorRuntimeProbe.h"
-
-#include "Behavior/HookBlock.h"
-#include "Behavior/Runtime.h"
+#include "BehaviorRuntimeSemanticsApi.h"
 
 #ifndef DIRECTDRAW_VERSION
 #define DIRECTDRAW_VERSION 0x0700
@@ -26,15 +23,14 @@
 
 namespace {
 
-struct ScriptHookSourceProbe {
-    int Calls = 0;
-};
-
-int RunScriptHookSource(const CKBehaviorContext *, void *argument) {
-    auto *probe = static_cast<ScriptHookSourceProbe *>(argument);
-    if (!probe)
+int RunScriptHookSource(const CKBehaviorContext &context) {
+    CKBehavior *behavior = context.Behavior;
+    if (!behavior)
         return CKBR_BEHAVIORERROR;
-    ++probe->Calls;
+    for (int index = 0; index < behavior->GetInputCount(); ++index)
+        behavior->ActivateInput(index, FALSE);
+    for (int index = 0; index < behavior->GetOutputCount(); ++index)
+        behavior->ActivateOutput(index);
     return CKBR_OK;
 }
 
@@ -532,7 +528,7 @@ private:
         m_Body->SetPosition(&origin);
         m_InitialX = ReadX();
 
-        m_RuntimeProbe = std::make_unique<BehaviorRuntimeProbe>(context, m_Body);
+
         SetPhase(Phase::RuntimeProbe);
     }
 
@@ -541,7 +537,7 @@ private:
         if (!context)
             return false;
 
-        m_ScriptHookRuntime = std::make_unique<BML::Behavior::Runtime>(context);
+
         m_ScriptHookGraph = static_cast<CKBehavior *>(context->CreateObject(
             CKCID_BEHAVIOR,
             const_cast<char *>("__BML_ScriptHook_Fixture"),
@@ -555,15 +551,20 @@ private:
         if (!input || !output)
             return false;
 
-        BML::Behavior::AttachResult source = m_ScriptHookRuntime->AddToGraph(
-            m_ScriptHookGraph,
-            BML::Behavior::HookBlock::Make(
-                RunScriptHookSource, &m_ScriptHookSource, 1, 1));
-        m_ScriptHookSourceBlock = source.Block;
-        if (!source || !m_ScriptHookSourceBlock)
+        m_ScriptHookSourceBlock = CKBehavior::Cast(context->CreateObject(
+            CKCID_BEHAVIOR,
+            const_cast<char *>("__BML_ScriptHook_Source"),
+            CK_OBJECTCREATION_DYNAMIC));
+        if (!m_ScriptHookSourceBlock)
             return false;
-        m_ScriptHookSourceBlock->SetName(
-            const_cast<char *>("__BML_ScriptHook_Source"));
+        m_ScriptHookSourceBlock->UseFunction();
+        m_ScriptHookSourceBlock->SetType(CKBEHAVIORTYPE_BASE);
+        m_ScriptHookSourceBlock->SetFunction(RunScriptHookSource);
+        m_ScriptHookSourceBlock->CreateInput("In");
+        m_ScriptHookSourceBlock->CreateOutput("Out");
+        if (m_ScriptHookGraph->AddSubBehavior(m_ScriptHookSourceBlock) !=
+            CK_OK)
+            return false;
 
         auto createLink = [&](CKBehaviorIO *from, CKBehaviorIO *to) {
             auto *link = static_cast<CKBehaviorLink *>(context->CreateObject(
@@ -606,7 +607,7 @@ private:
     }
 
     void AdvanceScriptHook() {
-        if (!m_ScriptHookGraph || !m_ScriptHookRuntime) {
+        if (!m_ScriptHookGraph) {
             Finish(false, "script-hook-graph-missing");
             return;
         }
@@ -651,22 +652,32 @@ private:
     }
 
     void AdvanceRuntimeProbe() {
-        if (!m_RuntimeProbe) {
-            Finish(false, "runtime-probe-missing");
+        HMODULE module = ::GetModuleHandleA(
+            "BehaviorRuntimeSemanticsTest.bmodp");
+        const auto read = module
+            ? reinterpret_cast<BMLBehaviorRuntimeSemanticsReadFn>(
+                  ::GetProcAddress(module,
+                                   "BMLBehaviorRuntimeSemanticsRead"))
+            : nullptr;
+        if (!read) {
+            if (PhaseDone(std::chrono::seconds(2)))
+                Finish(false, "runtime-semantics-missing");
             return;
         }
-        m_RuntimeProbe->Advance(m_TotalFrames);
-        if (!m_RuntimeProbe->Done())
+        BMLBehaviorRuntimeSemanticsResult result;
+        if (!read(&result)) {
+            Finish(false, "runtime-semantics-read");
             return;
-
-        const BehaviorRuntimeProbeResult result = m_RuntimeProbe->Result();
-        m_RuntimeProbePassed = result.Passed;
-        m_LifecycleProbePassed = result.LifecyclePassed;
-        m_AdditiveEditProbePassed = result.AdditiveEditPassed;
+        }
+        if (result.State == BML_BEHAVIOR_RUNTIME_SEMANTICS_PENDING)
+            return;
+        m_RuntimeProbePassed =
+            result.State == BML_BEHAVIOR_RUNTIME_SEMANTICS_PASSED;
+        m_LifecycleProbePassed = result.LifecyclePassed != 0;
+        m_AdditiveEditProbePassed = result.AdditiveEditPassed != 0;
         m_RuntimeProbeDetail = result.Detail;
-        m_RuntimeProbe.reset();
         if (!m_RuntimeProbePassed) {
-            Finish(false, "runtime-probe-failed");
+            Finish(false, "runtime-semantics-failed");
             return;
         }
 
@@ -803,7 +814,6 @@ private:
     }
 
     void DestroyBody() {
-        m_RuntimeProbe.reset();
         DestroyScriptHookGraph();
         if (!m_Body)
             return;
@@ -815,15 +825,23 @@ private:
 
     void DestroyScriptHookGraph() {
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
-        if (m_ScriptHookRuntime)
-            m_ScriptHookRuntime->ResetWorld();
-        m_ScriptHookRuntime.reset();
-        m_ScriptHookSourceBlock = nullptr;
         if (context && m_ScriptHookGraph) {
             if (CKScene *scene = context->GetCurrentScene())
                 scene->DeActivate(m_ScriptHookGraph);
+            while (m_ScriptHookGraph->GetSubBehaviorLinkCount() > 0) {
+                CKBehaviorLink *link = m_ScriptHookGraph->RemoveSubBehaviorLink(
+                    m_ScriptHookGraph->GetSubBehaviorLinkCount() - 1);
+                if (link)
+                    context->DestroyObject(link);
+            }
+            if (m_ScriptHookSourceBlock) {
+                m_ScriptHookGraph->RemoveSubBehavior(
+                    m_ScriptHookSourceBlock);
+                context->DestroyObject(m_ScriptHookSourceBlock);
+            }
             context->DestroyObject(m_ScriptHookGraph);
         }
+        m_ScriptHookSourceBlock = nullptr;
         m_ScriptHookGraph = nullptr;
     }
 
@@ -854,11 +872,8 @@ private:
 
     Phase m_Phase = Phase::Menu;
     CK3dObject *m_Body = nullptr;
-    std::unique_ptr<BehaviorRuntimeProbe> m_RuntimeProbe;
-    std::unique_ptr<BML::Behavior::Runtime> m_ScriptHookRuntime;
     CKBehavior *m_ScriptHookGraph = nullptr;
     CKBehavior *m_ScriptHookSourceBlock = nullptr;
-    ScriptHookSourceProbe m_ScriptHookSource;
     const char *m_Reason = "not-completed";
     const char *m_MenuError = "menu-timeout";
     int m_TotalFrames = 0;

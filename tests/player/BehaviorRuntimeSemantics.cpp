@@ -1,4 +1,4 @@
-#include "BehaviorRuntimeProbe.h"
+#include "BehaviorRuntimeSemantics.h"
 #include "BehaviorLifecycleFixtureApi.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -298,7 +298,7 @@ Spec PhysicsForceWithMagnitude(CK3dObject *owner, float magnitude) {
 
 } // namespace
 
-class BehaviorRuntimeProbe::Impl final {
+class BehaviorRuntimeSemantics::Impl final {
 public:
     Impl(CKContext *context, CK3dObject *owner)
         : m_Context(context), m_Owner(owner), m_Runtime(context),
@@ -397,8 +397,8 @@ public:
 
     [[nodiscard]] bool Done() const { return m_State == State::Complete; }
 
-    [[nodiscard]] BehaviorRuntimeProbeResult Result() const {
-        BehaviorRuntimeProbeResult result;
+    [[nodiscard]] BehaviorRuntimeSemanticsResult Result() const {
+        BehaviorRuntimeSemanticsResult result;
         result.Detail = m_Failures.str();
         result.LifecyclePassed = m_LifecyclePassed;
         result.AdditiveEditPassed = m_AdditiveEditPassed;
@@ -2233,19 +2233,19 @@ private:
     bool m_LifecyclePassed = false;
 };
 
-BehaviorRuntimeProbe::BehaviorRuntimeProbe(CKContext *context, CK3dObject *owner)
+BehaviorRuntimeSemantics::BehaviorRuntimeSemantics(CKContext *context, CK3dObject *owner)
     : m_Impl(std::make_unique<Impl>(context, owner)) {}
 
-BehaviorRuntimeProbe::~BehaviorRuntimeProbe() = default;
+BehaviorRuntimeSemantics::~BehaviorRuntimeSemantics() = default;
 
-void BehaviorRuntimeProbe::Advance(int playerFrame) {
+void BehaviorRuntimeSemantics::Advance(int playerFrame) {
     m_Impl->Advance(playerFrame);
 }
 
-bool BehaviorRuntimeProbe::Done() const {
+bool BehaviorRuntimeSemantics::Done() const {
     return m_Impl->Done();
 }
 
-BehaviorRuntimeProbeResult BehaviorRuntimeProbe::Result() const {
+BehaviorRuntimeSemanticsResult BehaviorRuntimeSemantics::Result() const {
     return m_Impl->Result();
 }

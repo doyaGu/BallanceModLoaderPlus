@@ -40,13 +40,23 @@ if (NOT TARGET BML::BML)
     add_library(BML::BML ALIAS BML)
 endif ()
 
-# This Mod is loaded by Ballance Player. It exercises the public adapter and
-# CK2 semantics through private sources recompiled into this fixture.
-# It does not prove that those sources are wired into the Loader composition.
 bml_add_mod(ExecuteBBTest
         ExecuteBBTest.cpp
-        BehaviorRuntimeProbe.cpp
-        BehaviorRuntimeProbe.h
+        BehaviorRuntimeSemanticsApi.h
+        BehaviorLifecycleFixtureApi.h
+)
+set_target_properties(ExecuteBBTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        FOLDER "Tests/Player"
+)
+
+# This fixture exercises CK2 semantics through private sources recompiled into
+# the Mod. It is deliberately separate from production-composition probes.
+bml_add_mod(BehaviorRuntimeSemanticsTest
+        BehaviorRuntimeSemanticsTest.cpp
+        BehaviorRuntimeSemantics.cpp
+        BehaviorRuntimeSemantics.h
+        BehaviorRuntimeSemanticsApi.h
         BehaviorLifecycleFixtureApi.h
         ${PROJECT_SOURCE_DIR}/src/Behavior/Callback.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKEdit.cpp
@@ -66,8 +76,10 @@ bml_add_mod(ExecuteBBTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Text2D.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
 )
-target_include_directories(ExecuteBBTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
-set_target_properties(ExecuteBBTest PROPERTIES
+target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
+)
+set_target_properties(BehaviorRuntimeSemanticsTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         FOLDER "Tests/Player"
 )
