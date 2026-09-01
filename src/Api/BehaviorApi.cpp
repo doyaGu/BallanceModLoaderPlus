@@ -27,6 +27,9 @@ using BML::Behavior::OutcomeRetention;
 using BML::Behavior::Phase;
 using BML::Behavior::Pout;
 using BML::Behavior::PoutKind;
+using BML::Behavior::PrototypeInfo;
+using BML::Behavior::PrototypeQuery;
+using BML::Behavior::PrototypeRef;
 using BML::Behavior::RunInfo;
 using BML::Behavior::RunKind;
 using BML::Behavior::RunResult;
@@ -36,10 +39,21 @@ using BML::Behavior::SlotKind;
 using BML::Behavior::Spec;
 using BML::Behavior::Status;
 using BML::Behavior::Value;
+using BML::Behavior::Layout;
+using BML::Behavior::ManagerRequirement;
+namespace Parameter = BML::Behavior::Parameter;
 
 template <typename T>
 bool HasStructSize(const T *value) noexcept {
     return value && value->StructSize >= sizeof(T);
+}
+
+bool FitsStrided(std::size_t count, std::size_t stride,
+                 std::size_t recordSize) noexcept {
+    return count == 0 ||
+        (stride != 0 && count - 1 <=
+            ((std::numeric_limits<std::size_t>::max)() - recordSize) /
+                stride);
 }
 
 bool IsUtf8(const char *data, std::size_t size) noexcept {
@@ -111,6 +125,8 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::ContextExpired:
     case Error::OwnerInvalid: return BML_BEHAVIOR_ERROR_OWNER_UNAVAILABLE;
     case Error::PrototypeNotFound: return BML_BEHAVIOR_ERROR_PROTOTYPE_NOT_FOUND;
+    case Error::PrototypeChanged: return BML_BEHAVIOR_ERROR_PROTOTYPE_CHANGED;
+    case Error::PrototypeLoadFailed: return BML_BEHAVIOR_ERROR_PROTOTYPE_LOAD_FAILED;
     case Error::RequiredManagerMissing: return BML_BEHAVIOR_ERROR_REQUIRED_MANAGER_MISSING;
     case Error::CreateFailed: return BML_BEHAVIOR_ERROR_CREATION_FAILED;
     case Error::InitFailed: return BML_BEHAVIOR_ERROR_INITIALIZATION_FAILED;
@@ -119,11 +135,15 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::SlotNotFound: return BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND;
     case Error::AmbiguousSlot: return BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS;
     case Error::StaleLayout: return BML_BEHAVIOR_ERROR_LAYOUT_CHANGED;
+    case Error::LayoutUnavailable: return BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE;
     case Error::TypeMismatch: return BML_BEHAVIOR_ERROR_TYPE_MISMATCH;
+    case Error::ParameterTypeUnavailable: return BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNAVAILABLE;
+    case Error::ParameterTypeUnsupported: return BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED;
     case Error::ValueWriteFailed:
     case Error::SourceInvalid:
     case Error::OperationInvalid: return BML_BEHAVIOR_ERROR_VALUE_INVALID;
-    case Error::InvalidState: return BML_BEHAVIOR_ERROR_STATE_INVALID;
+    case Error::InvalidState:
+    case Error::Unavailable: return BML_BEHAVIOR_ERROR_STATE_INVALID;
     case Error::UnsupportedBreak: return BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED;
     case Error::UnsupportedPout: return BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED;
     case Error::PoutUnavailable: return BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE;
@@ -251,41 +271,40 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
         return false;
     }
     CKParameterManager *parameters = context.GetParameterManager();
-    const auto plainValueType = [&](CKGUID base, std::size_t size) {
-        if (type == base)
-            return true;
-        if (!parameters || !parameters->IsDerivedFrom(type, base))
-            return false;
-        CKParameterTypeDesc *description =
-            parameters->GetParameterTypeDescription(type);
-        return description && description->DefaultSize == size &&
-               !description->CreateDefaultFunction &&
-               !description->DeleteFunction &&
-               !description->CopyFunction &&
-               !description->SaveLoadFunction &&
-               !description->CheckFunction;
-    };
-    const auto textType = [&] {
-        return type == CKPGUID_STRING ||
-               (parameters && parameters->IsDerivedFrom(type, CKPGUID_STRING));
-    };
+    const BML::Behavior::Parameter::Type parameterType =
+        BML::Behavior::Parameter::Describe(parameters, type);
+    if (!parameterType.Valid) {
+        status = {Error::ParameterTypeUnavailable,
+                  CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                  "The Virtools parameter type is not registered."};
+        status.Details.Stage = Phase::ParameterBinding;
+        status.Details.ActualType = type;
+        return false;
+    }
+    if (!parameterType.Supported()) {
+        status = {Error::ParameterTypeUnsupported,
+                  CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                  "The Virtools parameter type has no supported author-facing value form."};
+        status.Details.Stage = Phase::ParameterBinding;
+        status.Details.ActualType = type;
+        return false;
+    }
     const auto typeMatchesKind = [&] {
+        using Form = BML::Behavior::Parameter::Form;
         switch (from.Kind) {
-        case BML_BEHAVIOR_VALUE_BOOL: return plainValueType(CKPGUID_BOOL, sizeof(CKBOOL));
-        case BML_BEHAVIOR_VALUE_INT32: return plainValueType(CKPGUID_INT, sizeof(std::int32_t));
-        case BML_BEHAVIOR_VALUE_FLOAT32: return plainValueType(CKPGUID_FLOAT, sizeof(float));
-        case BML_BEHAVIOR_VALUE_UTF8: return textType();
-        case BML_BEHAVIOR_VALUE_VEC2: return plainValueType(CKPGUID_2DVECTOR, sizeof(BML_Vec2));
-        case BML_BEHAVIOR_VALUE_VEC3: return plainValueType(CKPGUID_VECTOR, sizeof(BML_Vec3));
-        case BML_BEHAVIOR_VALUE_QUATERNION: return plainValueType(CKPGUID_QUATERNION, sizeof(BML_Quaternion));
-        case BML_BEHAVIOR_VALUE_EULER: return plainValueType(CKPGUID_EULERANGLES, sizeof(BML_Euler));
-        case BML_BEHAVIOR_VALUE_RECT: return plainValueType(CKPGUID_RECT, sizeof(BML_Rect));
-        case BML_BEHAVIOR_VALUE_COLOR: return plainValueType(CKPGUID_COLOR, sizeof(BML_Color));
-        case BML_BEHAVIOR_VALUE_BOX: return plainValueType(CKPGUID_BOX, sizeof(BML_Box));
-        case BML_BEHAVIOR_VALUE_MAT4: return plainValueType(CKPGUID_MATRIX, sizeof(BML_Mat4));
-        case BML_BEHAVIOR_VALUE_OBJECT:
-            return type == CKPGUID_OBJECT ||
-                   (parameters && parameters->IsDerivedFrom(type, CKPGUID_OBJECT));
+        case BML_BEHAVIOR_VALUE_BOOL: return parameterType.ValueForm == Form::Bool;
+        case BML_BEHAVIOR_VALUE_INT32: return parameterType.ValueForm == Form::Int32;
+        case BML_BEHAVIOR_VALUE_FLOAT32: return parameterType.ValueForm == Form::Float32;
+        case BML_BEHAVIOR_VALUE_UTF8: return parameterType.ValueForm == Form::Utf8;
+        case BML_BEHAVIOR_VALUE_VEC2: return parameterType.ValueForm == Form::Vec2;
+        case BML_BEHAVIOR_VALUE_VEC3: return parameterType.ValueForm == Form::Vec3;
+        case BML_BEHAVIOR_VALUE_QUATERNION: return parameterType.ValueForm == Form::Quaternion;
+        case BML_BEHAVIOR_VALUE_EULER: return parameterType.ValueForm == Form::Euler;
+        case BML_BEHAVIOR_VALUE_RECT: return parameterType.ValueForm == Form::Rect;
+        case BML_BEHAVIOR_VALUE_COLOR: return parameterType.ValueForm == Form::Color;
+        case BML_BEHAVIOR_VALUE_BOX: return parameterType.ValueForm == Form::Box;
+        case BML_BEHAVIOR_VALUE_MAT4: return parameterType.ValueForm == Form::Mat4;
+        case BML_BEHAVIOR_VALUE_OBJECT: return parameterType.ValueForm == Form::Object;
         default: return false;
         }
     };
@@ -389,7 +408,10 @@ bool ReadBindings(const BML_BehaviorBinding *bindings, std::uint32_t count,
 
 bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
                Spec &to, Status &status) {
-    if (from.StructSize < sizeof(from) ||
+    constexpr std::size_t kVersion1Size =
+        offsetof(BML_BehaviorBlock, Outcomes) +
+        sizeof(BML_BehaviorRetention);
+    if (from.StructSize < kVersion1Size ||
         from.Target.StructSize < sizeof(from.Target) ||
         from.Outcomes.StructSize < sizeof(from.Outcomes)) {
         status = InvalidValue("The Behavior Block has an unsupported StructSize.");
@@ -403,6 +425,10 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
     }
 
     to = Spec(Guid(from.Prototype));
+    if (from.StructSize >=
+        offsetof(BML_BehaviorBlock, PrototypeGeneration) +
+            sizeof(from.PrototypeGeneration))
+        to.PrototypeGeneration(from.PrototypeGeneration);
     switch (from.Target.Kind) {
     case BML_BEHAVIOR_TARGET_OWNER:
         to.TargetOwner();
@@ -554,6 +580,8 @@ int ResultCode(const Status &status) noexcept {
         return BML_ERROR_WRONG_THREAD;
     if (status.Code == Error::InvalidState)
         return BML_ERROR_INVALID_HANDLE;
+    if (status.Code == Error::Unavailable)
+        return BML_ERROR_UNAVAILABLE;
     if (status.Code == Error::OwnerInvalid || status.Code == Error::ContextExpired)
         return BML_ERROR_OBJECT_INVALID;
     return status ? BML_OK : BML_ERROR_FAIL;
@@ -986,6 +1014,9 @@ int BML_BEHAVIOR_CALL DrainOutcomes(
         }
         if (batch.Headers.size() > UINT32_MAX || batch.Payload.size() > UINT32_MAX)
             return BML_ERROR_OUT_OF_MEMORY;
+        if (!FitsStrided(batch.Headers.size(), headerStride,
+                         sizeof(BML_BehaviorOutcomeHeader)))
+            return BML_ERROR_OUT_OF_MEMORY;
         *outHeaderCount = static_cast<std::uint32_t>(batch.Headers.size());
         *outPayloadSize = static_cast<std::uint32_t>(batch.Payload.size());
         WriteStatus(status, {});
@@ -1017,6 +1048,359 @@ int BML_BEHAVIOR_CALL CloseRun(BML_BehaviorRun run) {
     });
 }
 
+class BehaviorPayload final {
+public:
+    template <typename T>
+    bool Reserve(std::size_t count, std::uint32_t &offset) {
+        if (!Align(alignof(T)) || count > UINT32_MAX / sizeof(T))
+            return false;
+        const std::size_t size = count * sizeof(T);
+        if (m_Bytes.size() > UINT32_MAX ||
+            size > UINT32_MAX - m_Bytes.size())
+            return false;
+        offset = static_cast<std::uint32_t>(m_Bytes.size());
+        m_Bytes.resize(m_Bytes.size() + size, 0);
+        return true;
+    }
+
+    template <typename T>
+    void Store(std::uint32_t offset, std::size_t index, const T &record) {
+        std::memcpy(m_Bytes.data() + offset + index * sizeof(T),
+                    &record, sizeof(record));
+    }
+
+    bool Text(const std::string &value, BML_BehaviorText &text) {
+        if (value.size() > UINT32_MAX || m_Bytes.size() > UINT32_MAX ||
+            value.size() > UINT32_MAX - m_Bytes.size())
+            return false;
+        text.Offset = static_cast<std::uint32_t>(m_Bytes.size());
+        text.Length = static_cast<std::uint32_t>(value.size());
+        m_Bytes.insert(m_Bytes.end(), value.begin(), value.end());
+        return true;
+    }
+
+    [[nodiscard]] const std::vector<std::uint8_t> &Bytes() const noexcept {
+        return m_Bytes;
+    }
+
+private:
+    bool Align(std::size_t alignment) {
+        const std::size_t remainder = m_Bytes.size() % alignment;
+        if (!remainder)
+            return true;
+        const std::size_t padding = alignment - remainder;
+        if (m_Bytes.size() > UINT32_MAX ||
+            padding > UINT32_MAX - m_Bytes.size())
+            return false;
+        m_Bytes.insert(m_Bytes.end(), padding, 0);
+        return true;
+    }
+
+    std::vector<std::uint8_t> m_Bytes;
+};
+
+std::uint32_t PublicValueKind(Parameter::Form form) noexcept {
+    switch (form) {
+    case Parameter::Form::Bool: return BML_BEHAVIOR_VALUE_BOOL;
+    case Parameter::Form::Int32: return BML_BEHAVIOR_VALUE_INT32;
+    case Parameter::Form::Float32: return BML_BEHAVIOR_VALUE_FLOAT32;
+    case Parameter::Form::Utf8: return BML_BEHAVIOR_VALUE_UTF8;
+    case Parameter::Form::Vec2: return BML_BEHAVIOR_VALUE_VEC2;
+    case Parameter::Form::Vec3: return BML_BEHAVIOR_VALUE_VEC3;
+    case Parameter::Form::Quaternion: return BML_BEHAVIOR_VALUE_QUATERNION;
+    case Parameter::Form::Euler: return BML_BEHAVIOR_VALUE_EULER;
+    case Parameter::Form::Rect: return BML_BEHAVIOR_VALUE_RECT;
+    case Parameter::Form::Color: return BML_BEHAVIOR_VALUE_COLOR;
+    case Parameter::Form::Box: return BML_BEHAVIOR_VALUE_BOX;
+    case Parameter::Form::Mat4: return BML_BEHAVIOR_VALUE_MAT4;
+    case Parameter::Form::Object: return BML_BEHAVIOR_VALUE_OBJECT;
+    case Parameter::Form::Unsupported: return 0;
+    }
+    return 0;
+}
+
+std::uint32_t PublicSlotKind(SlotKind kind) noexcept {
+    switch (kind) {
+    case SlotKind::Input: return BML_BEHAVIOR_SLOT_IN;
+    case SlotKind::Output: return BML_BEHAVIOR_SLOT_OUT;
+    case SlotKind::InputParameter: return BML_BEHAVIOR_SLOT_PIN;
+    case SlotKind::OutputParameter: return BML_BEHAVIOR_SLOT_POUT;
+    case SlotKind::Setting: return BML_BEHAVIOR_SLOT_SETTING;
+    case SlotKind::Local: return BML_BEHAVIOR_SLOT_LOCAL;
+    case SlotKind::Target: return BML_BEHAVIOR_SLOT_TARGET;
+    }
+    return 0;
+}
+
+bool AddManagers(const std::vector<ManagerRequirement> &managers,
+                 BehaviorPayload &payload, std::uint32_t &offset,
+                 std::uint32_t &count) {
+    if (managers.size() > UINT32_MAX)
+        return false;
+    count = static_cast<std::uint32_t>(managers.size());
+    if (managers.empty())
+        return true;
+    if (!payload.Reserve<BML_BehaviorManagerInfo>(managers.size(), offset))
+        return false;
+    for (std::size_t index = 0; index < managers.size(); ++index) {
+        BML_BehaviorManagerInfo manager{};
+        manager.StructSize = sizeof(manager);
+        manager.Guid = Guid(managers[index].Guid);
+        manager.Available = managers[index].Available ? 1u : 0u;
+        payload.Store(offset, index, manager);
+    }
+    return true;
+}
+
+bool AddPrototype(const PrototypeInfo &prototype, BehaviorPayload &payload,
+                  BML_BehaviorPrototypeInfo &record) {
+    record = {};
+    record.StructSize = sizeof(record);
+    record.Ref.StructSize = sizeof(record.Ref);
+    record.Ref.Prototype = Guid(prototype.Ref.Guid);
+    record.Ref.Generation = prototype.Ref.Generation;
+    record.Provider = Guid(prototype.Provider.Guid);
+    record.Version = prototype.Version;
+    record.CompatibleClass = prototype.CompatibleClass;
+    return payload.Text(prototype.Name, record.Name) &&
+           payload.Text(prototype.Category, record.Category) &&
+           payload.Text(prototype.Provider.Name, record.ProviderName) &&
+           payload.Text(prototype.Author, record.Author) &&
+           payload.Text(prototype.Description, record.Description) &&
+           AddManagers(prototype.Managers, payload, record.ManagerOffset,
+                       record.ManagerCount);
+}
+
+bool ReadPrototypeQuery(const BML_BehaviorPrototypeQuery &from,
+                        PrototypeQuery &to, Status &status) {
+    constexpr std::uint32_t kKnownMatch =
+        BML_BEHAVIOR_MATCH_PROTOTYPE | BML_BEHAVIOR_MATCH_NAME |
+        BML_BEHAVIOR_MATCH_CATEGORY | BML_BEHAVIOR_MATCH_PROVIDER |
+        BML_BEHAVIOR_MATCH_PROVIDER_GUID |
+        BML_BEHAVIOR_MATCH_COMPATIBLE_CLASS |
+        BML_BEHAVIOR_MATCH_REQUIRED_MANAGERS;
+    if (from.StructSize < sizeof(from) || (from.Match & ~kKnownMatch) ||
+        from.Reserved != 0) {
+        status = InvalidValue("The Behavior Prototype query is malformed.");
+        return false;
+    }
+    to.MatchGuid = (from.Match & BML_BEHAVIOR_MATCH_PROTOTYPE) != 0;
+    to.Guid = Guid(from.Prototype);
+    to.MatchName = (from.Match & BML_BEHAVIOR_MATCH_NAME) != 0;
+    to.MatchCategory = (from.Match & BML_BEHAVIOR_MATCH_CATEGORY) != 0;
+    to.MatchProvider = (from.Match & BML_BEHAVIOR_MATCH_PROVIDER) != 0;
+    to.MatchProviderGuid =
+        (from.Match & BML_BEHAVIOR_MATCH_PROVIDER_GUID) != 0;
+    to.ProviderGuid = Guid(from.ProviderGuid);
+    to.MatchCompatibleClass =
+        (from.Match & BML_BEHAVIOR_MATCH_COMPATIBLE_CLASS) != 0;
+    to.CompatibleClass = from.CompatibleClass;
+    if ((to.MatchName && !ReadString(from.Name, to.Name)) ||
+        (to.MatchCategory && !ReadString(from.Category, to.Category)) ||
+        (to.MatchProvider && !ReadString(from.Provider, to.Provider)) ||
+        (to.MatchCompatibleClass && from.CompatibleClass <= 0)) {
+        status = InvalidValue("A Behavior Prototype query filter is invalid.");
+        return false;
+    }
+    const bool matchManagers =
+        (from.Match & BML_BEHAVIOR_MATCH_REQUIRED_MANAGERS) != 0;
+    if ((!matchManagers && from.RequiredManagerCount) ||
+        (matchManagers && from.RequiredManagerCount &&
+         !from.RequiredManagers)) {
+        status = InvalidValue(
+            "The Behavior Prototype manager filter is invalid.");
+        return false;
+    }
+    if (matchManagers) {
+        to.RequiredManagers.reserve(from.RequiredManagerCount);
+        for (std::uint32_t index = 0; index < from.RequiredManagerCount; ++index)
+            to.RequiredManagers.push_back(Guid(from.RequiredManagers[index]));
+    }
+    return true;
+}
+
+bool AddLayout(const Layout &from, BehaviorPayload &payload,
+               BML_BehaviorLayout &record) {
+    record = {};
+    record.StructSize = sizeof(record);
+    record.Origin = from.Origin == BML::Behavior::LayoutOrigin::Declared
+        ? BML_BEHAVIOR_LAYOUT_DECLARED : BML_BEHAVIOR_LAYOUT_LIVE;
+    record.Prototype.StructSize = sizeof(record.Prototype);
+    record.Prototype.Prototype = Guid(from.Prototype);
+    record.Prototype.Generation = from.ProviderGeneration;
+    record.LayoutGeneration = from.Generation;
+    record.Kind = from.Kind == BML::Behavior::BehaviorKind::Graph
+        ? BML_BEHAVIOR_PROTOTYPE_GRAPH : BML_BEHAVIOR_PROTOTYPE_FUNCTION;
+    if (from.MaterializedNow)
+        record.Flags |= BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW;
+    record.CompatibleClass = from.CompatibleClass;
+    record.PrototypeFlags = from.PrototypeFlags;
+    record.BehaviorFlags = from.BehaviorFlags;
+    record.TargetType = Guid(from.TargetType);
+    if (!payload.Text(from.PrototypeName, record.Name) ||
+        !payload.Text(from.Category, record.Category) ||
+        !payload.Text(from.ProviderName, record.ProviderName) ||
+        !payload.Text(from.Author, record.Author) ||
+        !payload.Text(from.Description, record.Description) ||
+        !AddManagers(from.Managers, payload, record.ManagerOffset,
+                     record.ManagerCount))
+        return false;
+    if (from.Slots.size() > UINT32_MAX)
+        return false;
+    record.SlotCount = static_cast<std::uint32_t>(from.Slots.size());
+    if (from.Slots.empty())
+        return true;
+    if (!payload.Reserve<BML_BehaviorSlotRecord>(
+            from.Slots.size(), record.SlotOffset))
+        return false;
+    for (std::size_t index = 0; index < from.Slots.size(); ++index) {
+        const BML::Behavior::SlotInfo &slot = from.Slots[index];
+        BML_BehaviorSlotRecord output{};
+        output.StructSize = sizeof(output);
+        output.Kind = PublicSlotKind(slot.Kind);
+        if (slot.Dynamic)
+            output.Flags |= BML_BEHAVIOR_SLOT_DYNAMIC;
+        output.ValueKind = PublicValueKind(slot.ValueForm);
+        if (output.ValueKind)
+            output.Flags |= BML_BEHAVIOR_SLOT_VALUE_SUPPORTED;
+        output.Index = slot.Index;
+        output.Occurrence = slot.Occurrence;
+        output.Type = Guid(slot.Type);
+        if (!payload.Text(slot.Name, output.Name) ||
+            !payload.Text(slot.TypeName, output.TypeName))
+            return false;
+        payload.Store(record.SlotOffset, index, output);
+    }
+    return true;
+}
+
+int BML_BEHAVIOR_CALL FindPrototypes(
+    BML_BehaviorSession session, const BML_BehaviorPrototypeQuery *query,
+    BML_BehaviorPrototypeInfo *prototypes, std::uint32_t prototypeCapacity,
+    std::uint32_t prototypeStride, void *payload,
+    std::uint32_t payloadCapacity, std::uint32_t *outPrototypeCount,
+    std::uint32_t *outPayloadSize, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!session || !query || !outPrototypeCount || !outPayloadSize ||
+            (status && !HasStructSize(status)) ||
+            (prototypeCapacity &&
+             (!prototypes || prototypeStride < sizeof(*prototypes))) ||
+            (payloadCapacity && !payload))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        PrototypeQuery requested;
+        Status result;
+        if (!ReadPrototypeQuery(*query, requested, result)) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        std::vector<PrototypeInfo> found;
+        result = context->BehaviorSessions().FindPrototypes(
+            SessionId(session), requested, found);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+
+        BehaviorPayload wire;
+        std::vector<BML_BehaviorPrototypeInfo> records(found.size());
+        for (std::size_t index = 0; index < found.size(); ++index) {
+            if (!AddPrototype(found[index], wire, records[index]))
+                return BML_ERROR_OUT_OF_MEMORY;
+        }
+        if (records.size() > UINT32_MAX || wire.Bytes().size() > UINT32_MAX)
+            return BML_ERROR_OUT_OF_MEMORY;
+        if (!FitsStrided(records.size(), prototypeStride,
+                         sizeof(BML_BehaviorPrototypeInfo)))
+            return BML_ERROR_OUT_OF_MEMORY;
+        *outPrototypeCount = static_cast<std::uint32_t>(records.size());
+        *outPayloadSize = static_cast<std::uint32_t>(wire.Bytes().size());
+        if (prototypeCapacity < records.size() ||
+            payloadCapacity < wire.Bytes().size())
+            return BML_ERROR_BUFFER_TOO_SMALL;
+
+        auto *recordBytes = reinterpret_cast<std::uint8_t *>(prototypes);
+        for (std::size_t index = 0; index < records.size(); ++index)
+            std::memcpy(recordBytes + index * prototypeStride,
+                        &records[index], sizeof(records[index]));
+        if (!wire.Bytes().empty())
+            std::memcpy(payload, wire.Bytes().data(), wire.Bytes().size());
+        return BML_OK;
+    });
+}
+
+int WriteLayoutResult(const Layout &source, BML_BehaviorLayout *layout,
+                      void *payload, std::uint32_t payloadCapacity,
+                      std::uint32_t *outPayloadSize) {
+    BehaviorPayload wire;
+    BML_BehaviorLayout record{};
+    if (!AddLayout(source, wire, record) || wire.Bytes().size() > UINT32_MAX)
+        return BML_ERROR_OUT_OF_MEMORY;
+    *outPayloadSize = static_cast<std::uint32_t>(wire.Bytes().size());
+    if (payloadCapacity < wire.Bytes().size())
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    *layout = record;
+    if (!wire.Bytes().empty())
+        std::memcpy(payload, wire.Bytes().data(), wire.Bytes().size());
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReadDeclaredLayout(
+    BML_BehaviorSession session, const BML_BehaviorPrototypeRef *prototype,
+    BML_BehaviorLayout *layout, void *payload,
+    std::uint32_t payloadCapacity, std::uint32_t *outPayloadSize,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!session || !HasStructSize(prototype) || !HasStructSize(layout) ||
+            !outPayloadSize || (status && !HasStructSize(status)) ||
+            (payloadCapacity && !payload))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        Layout source;
+        Status result = context->BehaviorSessions().ReadDeclaredLayout(
+            SessionId(session),
+            PrototypeRef{Guid(prototype->Prototype), prototype->Generation},
+            source);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        return WriteLayoutResult(source, layout, payload, payloadCapacity,
+                                 outPayloadSize);
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadLiveLayout(
+    BML_BehaviorRun run, BML_BehaviorLayout *layout, void *payload,
+    std::uint32_t payloadCapacity, std::uint32_t *outPayloadSize,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!run || !HasStructSize(layout) || !outPayloadSize ||
+            (status && !HasStructSize(status)) ||
+            (payloadCapacity && !payload))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        Layout source;
+        Status result = context->BehaviorSessions().ReadLiveLayout(
+            RunId(run), source);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        return WriteLayoutResult(source, layout, payload, payloadCapacity,
+                                 outPayloadSize);
+    });
+}
+
 const BML_BehaviorInterface kBehaviorInterface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -1031,6 +1415,9 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReadRun,
     &DrainOutcomes,
     &CloseRun,
+    &FindPrototypes,
+    &ReadDeclaredLayout,
+    &ReadLiveLayout,
 };
 
 } // namespace

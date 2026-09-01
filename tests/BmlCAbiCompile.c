@@ -17,17 +17,41 @@ BML_C_ABI_ASSERT(BmlBehaviorOutSize, sizeof(BML_BehaviorOutRecord) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorPoutSize, sizeof(BML_BehaviorPoutRecord) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorDiagnosticSize,
                  sizeof(BML_BehaviorDiagnosticRecord) == 44u);
+BML_C_ABI_ASSERT(BmlBehaviorPrototypeRefSize,
+                 sizeof(BML_BehaviorPrototypeRef) == 24u);
+BML_C_ABI_ASSERT(BmlBehaviorManagerInfoSize,
+                 sizeof(BML_BehaviorManagerInfo) == 16u);
+BML_C_ABI_ASSERT(BmlBehaviorPrototypeInfoSize,
+                 sizeof(BML_BehaviorPrototypeInfo) == 96u);
+BML_C_ABI_ASSERT(BmlBehaviorSlotRecordSize,
+                 sizeof(BML_BehaviorSlotRecord) == 48u);
+BML_C_ABI_ASSERT(BmlBehaviorLayoutSize,
+                 sizeof(BML_BehaviorLayout) == 128u);
 
 #if UINTPTR_MAX == UINT32_MAX
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 108u);
-BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 76u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 52u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockV1Size,
+                 offsetof(BML_BehaviorBlock, Outcomes) +
+                     sizeof(BML_BehaviorRetention) == 76u);
+BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
+                 offsetof(BML_BehaviorBlock, PrototypeGeneration) == 80u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 88u);
+BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
+                 sizeof(BML_BehaviorPrototypeQuery) == 64u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 64u);
 #else
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
-BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 96u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 104u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockV1Size,
+                 offsetof(BML_BehaviorBlock, Outcomes) +
+                     sizeof(BML_BehaviorRetention) == 96u);
+BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
+                 offsetof(BML_BehaviorBlock, PrototypeGeneration) == 96u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 104u);
+BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
+                 sizeof(BML_BehaviorPrototypeQuery) == 96u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 128u);
 #endif
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
@@ -195,6 +219,9 @@ int BML_TestCAbiBehaviorInterface(BML_BehaviorRun run) {
         return 0;
     behavior = (const BML_BehaviorInterface *) found;
     if (!BML_IFACE_HAS(behavior, BML_BehaviorInterface, CloseRun))
+        return 0;
+    if (behavior->Header.MinorVersion >= 1 &&
+        !BML_IFACE_HAS(behavior, BML_BehaviorInterface, ReadLiveLayout))
         return 0;
     return behavior->DrainOutcomes(run, NULL, 0, sizeof(BML_BehaviorOutcomeHeader),
                                    NULL, 0, &outcomeCount, &payloadSize,

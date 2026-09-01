@@ -177,6 +177,7 @@ CKRenderContext *BML_GetRenderContext() {
 
 ModContext::ModContext(CKContext *context)
     : m_ObjectRefs(context),
+      m_BehaviorPrototypes(BML::Behavior::MakeCKPrototypeSource(context)),
       m_Behaviors(context, [this](const void *object) {
           if (!object)
               return BML::Behavior::ObjectRef{};
@@ -184,8 +185,8 @@ ModContext::ModContext(CKContext *context)
               const_cast<CKObject *>(static_cast<const CKObject *>(object)));
           return BML::Behavior::ObjectRef{
               reference.Domain, reference.Slot, reference.Generation};
-      }),
-      m_BehaviorSessions(m_Behaviors),
+      }, &m_BehaviorPrototypes),
+      m_BehaviorSessions(m_Behaviors, &m_BehaviorPrototypes),
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);
@@ -345,6 +346,7 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
 }
 
 void ModContext::ProcessVirtoolsFrame() {
+    m_BehaviorPrototypes.ProcessFrame();
     m_PhysicsForce.ProcessFrame();
     m_Behaviors.ProcessFrame();
     m_BehaviorSessions.ProcessFrame();

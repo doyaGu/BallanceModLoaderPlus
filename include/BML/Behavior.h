@@ -17,7 +17,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 0u
+#define BML_BEHAVIOR_INTERFACE_MINOR 1u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 
 BML_BEGIN_CDECLS
@@ -36,6 +36,13 @@ typedef struct BML_BehaviorString {
     const char *Data;
     uint32_t Length;
 } BML_BehaviorString;
+
+// Text returned inside a caller-owned payload buffer. Offset is relative to
+// the first payload byte and Length excludes any terminator.
+typedef struct BML_BehaviorText {
+    uint32_t Offset;
+    uint32_t Length;
+} BML_BehaviorText;
 
 typedef enum BML_BehaviorSelectorKind {
     BML_BEHAVIOR_SELECTOR_INDEX = 1,
@@ -139,6 +146,9 @@ typedef struct BML_BehaviorBlock {
     const BML_BehaviorBinding *Locals;
     uint32_t LocalCount;
     BML_BehaviorRetention Outcomes;
+    // Zero preserves v1.0's current-provider behavior. A nonzero generation
+    // pins the Prototype provider selected by FindPrototypes.
+    uint64_t PrototypeGeneration;
 } BML_BehaviorBlock;
 
 typedef enum BML_BehaviorError {
@@ -161,7 +171,12 @@ typedef enum BML_BehaviorError {
     BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED = 16,
     BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE = 17,
     BML_BEHAVIOR_ERROR_OUTCOME_LIMIT_REACHED = 18,
-    BML_BEHAVIOR_ERROR_CANCELLED = 19
+    BML_BEHAVIOR_ERROR_CANCELLED = 19,
+    BML_BEHAVIOR_ERROR_PROTOTYPE_CHANGED = 20,
+    BML_BEHAVIOR_ERROR_PROTOTYPE_LOAD_FAILED = 21,
+    BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE = 22,
+    BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNAVAILABLE = 23,
+    BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED = 24
 } BML_BehaviorError;
 
 typedef enum BML_BehaviorPhase {
@@ -274,6 +289,122 @@ typedef struct BML_BehaviorDiagnosticRecord {
     uint32_t MessageLength;
 } BML_BehaviorDiagnosticRecord;
 
+// Prototype discovery names one provider registration, not only a GUID.
+// Generation is process-local and never denotes a CK pointer or DLL handle.
+typedef struct BML_BehaviorPrototypeRef {
+    uint32_t StructSize;
+    BML_BehaviorGuid Prototype;
+    uint64_t Generation;
+} BML_BehaviorPrototypeRef;
+
+typedef enum BML_BehaviorPrototypeMatch {
+    BML_BEHAVIOR_MATCH_PROTOTYPE = 1u << 0,
+    BML_BEHAVIOR_MATCH_NAME = 1u << 1,
+    BML_BEHAVIOR_MATCH_CATEGORY = 1u << 2,
+    BML_BEHAVIOR_MATCH_PROVIDER = 1u << 3,
+    BML_BEHAVIOR_MATCH_PROVIDER_GUID = 1u << 4,
+    BML_BEHAVIOR_MATCH_COMPATIBLE_CLASS = 1u << 5,
+    BML_BEHAVIOR_MATCH_REQUIRED_MANAGERS = 1u << 6
+} BML_BehaviorPrototypeMatch;
+
+typedef struct BML_BehaviorPrototypeQuery {
+    uint32_t StructSize;
+    uint32_t Match;
+    BML_BehaviorGuid Prototype;
+    BML_BehaviorString Name;
+    BML_BehaviorString Category;
+    BML_BehaviorString Provider;
+    BML_BehaviorGuid ProviderGuid;
+    int32_t CompatibleClass;
+    uint32_t Reserved;
+    const BML_BehaviorGuid *RequiredManagers;
+    uint32_t RequiredManagerCount;
+} BML_BehaviorPrototypeQuery;
+
+typedef struct BML_BehaviorManagerInfo {
+    uint32_t StructSize;
+    BML_BehaviorGuid Guid;
+    uint32_t Available;
+} BML_BehaviorManagerInfo;
+
+typedef struct BML_BehaviorPrototypeInfo {
+    uint32_t StructSize;
+    BML_BehaviorPrototypeRef Ref;
+    BML_BehaviorGuid Provider;
+    uint32_t Version;
+    int32_t CompatibleClass;
+    BML_BehaviorText Name;
+    BML_BehaviorText Category;
+    BML_BehaviorText ProviderName;
+    BML_BehaviorText Author;
+    BML_BehaviorText Description;
+    uint32_t ManagerOffset;
+    uint32_t ManagerCount;
+} BML_BehaviorPrototypeInfo;
+
+typedef enum BML_BehaviorLayoutOrigin {
+    BML_BEHAVIOR_LAYOUT_DECLARED = 1,
+    BML_BEHAVIOR_LAYOUT_LIVE = 2
+} BML_BehaviorLayoutOrigin;
+
+typedef enum BML_BehaviorPrototypeKind {
+    BML_BEHAVIOR_PROTOTYPE_FUNCTION = 1,
+    BML_BEHAVIOR_PROTOTYPE_GRAPH = 2
+} BML_BehaviorPrototypeKind;
+
+typedef enum BML_BehaviorSlotKind {
+    BML_BEHAVIOR_SLOT_IN = 1,
+    BML_BEHAVIOR_SLOT_OUT = 2,
+    BML_BEHAVIOR_SLOT_PIN = 3,
+    BML_BEHAVIOR_SLOT_POUT = 4,
+    BML_BEHAVIOR_SLOT_SETTING = 5,
+    BML_BEHAVIOR_SLOT_LOCAL = 6,
+    BML_BEHAVIOR_SLOT_TARGET = 7
+} BML_BehaviorSlotKind;
+
+typedef enum BML_BehaviorSlotFlags {
+    BML_BEHAVIOR_SLOT_DYNAMIC = 1u << 0,
+    BML_BEHAVIOR_SLOT_VALUE_SUPPORTED = 1u << 1
+} BML_BehaviorSlotFlags;
+
+typedef enum BML_BehaviorLayoutFlags {
+    BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW = 1u << 0
+} BML_BehaviorLayoutFlags;
+
+typedef struct BML_BehaviorSlotRecord {
+    uint32_t StructSize;
+    uint32_t Kind;
+    uint32_t Flags;
+    int32_t Index;
+    int32_t Occurrence;
+    BML_BehaviorGuid Type;
+    uint32_t ValueKind;
+    BML_BehaviorText Name;
+    BML_BehaviorText TypeName;
+} BML_BehaviorSlotRecord;
+
+typedef struct BML_BehaviorLayout {
+    uint32_t StructSize;
+    uint32_t Origin;
+    BML_BehaviorPrototypeRef Prototype;
+    uint64_t LayoutGeneration;
+    uint32_t Kind;
+    uint32_t Flags;
+    int32_t CompatibleClass;
+    uint32_t PrototypeFlags;
+    uint32_t BehaviorFlags;
+    BML_BehaviorGuid TargetType;
+    BML_BehaviorText Name;
+    BML_BehaviorText Category;
+    BML_BehaviorText ProviderName;
+    BML_BehaviorText Author;
+    BML_BehaviorText Description;
+    uint32_t ManagerOffset;
+    uint32_t ManagerCount;
+    uint32_t SlotOffset;
+    uint32_t SlotCount;
+} BML_BehaviorLayout;
+
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
 
@@ -322,6 +453,35 @@ typedef struct BML_BehaviorInterface {
                                            uint32_t *outPayloadSize,
                                            BML_BehaviorStatus *status);
     int (BML_BEHAVIOR_CALL *CloseRun)(BML_BehaviorRun run);
+    // Discovery and Layout reads use an all-or-nothing caller-buffer protocol.
+    // On BML_ERROR_BUFFER_TOO_SMALL they report the complete required counts
+    // and payload size without writing a partial record or payload.
+    int (BML_BEHAVIOR_CALL *FindPrototypes)(
+        BML_BehaviorSession session,
+        const BML_BehaviorPrototypeQuery *query,
+        BML_BehaviorPrototypeInfo *prototypes,
+        uint32_t prototypeCapacity,
+        uint32_t prototypeStride,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPrototypeCount,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadDeclaredLayout)(
+        BML_BehaviorSession session,
+        const BML_BehaviorPrototypeRef *prototype,
+        BML_BehaviorLayout *layout,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadLiveLayout)(
+        BML_BehaviorRun run,
+        BML_BehaviorLayout *layout,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 #pragma pack(pop)
