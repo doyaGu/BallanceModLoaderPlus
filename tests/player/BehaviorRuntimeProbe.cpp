@@ -1558,7 +1558,8 @@ private:
             added, "Extra Pout", CKPGUID_INT);
 
         edit.Flow(edit.Entry("Start"), sourceNode.In("In"));
-        edit.Flow(sourceNode.Out("Out"), added.In("In"));
+        edit.Flow(sourceNode.Out("Out"), added.In("In"), 0,
+                  Cycle::Confirmed);
         edit.Flow(added.Out("Out"), edit.Exit("Done"));
         edit.Flow(sourceCycleOut, addedCycleIn, 0, Cycle::Confirmed);
         edit.Flow(addedCycleOut, sourceCycleIn, 0, Cycle::Confirmed);
