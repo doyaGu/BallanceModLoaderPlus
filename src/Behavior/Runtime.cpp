@@ -972,41 +972,6 @@ private:
     Status m_LastStatus;
 };
 
-Slot Slot::At(SlotKind kind, int index, CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.Index = index;
-    selector.ExpectedType = expectedType;
-    return selector;
-}
-
-Slot Slot::Named(SlotKind kind, std::string name, CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.Name = std::move(name);
-    selector.ExpectedType = expectedType;
-    selector.RequireUnique = true;
-    return selector;
-}
-
-Slot Slot::OccurrenceOf(SlotKind kind, std::string name, int occurrence,
-                                        CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.Name = std::move(name);
-    selector.Occurrence = occurrence;
-    selector.ExpectedType = expectedType;
-    return selector;
-}
-
-Slot Slot::Only(SlotKind kind, CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.RequireOnly = true;
-    selector.ExpectedType = expectedType;
-    return selector;
-}
-
 Operation &Operation::Result(CKGUID type) {
     m_ResultType = type;
     return *this;
@@ -3750,6 +3715,16 @@ const char *DescribeError(Error error) {
     case Error::ExecutionCancelled: return "execution cancelled";
     case Error::DetachedUnsupported: return "detached execution unsupported";
     case Error::ObserverUnavailable: return "observer unavailable";
+    case Error::GraphChanged: return "graph changed";
+    case Error::InvalidGraphLocality: return "invalid graph locality";
+    case Error::InvalidDelay: return "invalid Link delay";
+    case Error::UnconfirmedSameFrameCycle:
+        return "unconfirmed same-frame cycle";
+    case Error::SharedSourceCycle: return "shared-source cycle";
+    case Error::PushCycle: return "Pout destination cycle";
+    case Error::InterfaceUnsupported: return "interface change unsupported";
+    case Error::OrderingTargetMismatch: return "ordering target mismatch";
+    case Error::OverlayOrderCycle: return "overlay order cycle";
     }
     return "unknown";
 }
@@ -3768,6 +3743,7 @@ const char *DescribePhase(Phase phase) {
     case Phase::LifecycleCallback: return "lifecycle callback";
     case Phase::ParameterBinding: return "parameter binding";
     case Phase::Execution: return "execution";
+    case Phase::Edit: return "edit";
     case Phase::Teardown: return "teardown";
     }
     return "unknown";

@@ -42,6 +42,12 @@ enum class Error {
     DetachedUnsupported,
     ObserverUnavailable,
     GraphChanged,
+    InvalidGraphLocality,
+    InvalidDelay,
+    UnconfirmedSameFrameCycle,
+    SharedSourceCycle,
+    PushCycle,
+    InterfaceUnsupported,
     OrderingTargetMismatch,
     OverlayOrderCycle,
 };
@@ -59,6 +65,7 @@ enum class Phase {
     LifecycleCallback,
     ParameterBinding,
     Execution,
+    Edit,
     Teardown,
 };
 

@@ -299,6 +299,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/ObjectRef.h
         Behavior/PrototypeCatalog.h
         Behavior/Execution.h
+        Behavior/Edit.h
         Behavior/Lifecycle.h
         Behavior/Layout.h
         Behavior/FrameStore.h
@@ -323,7 +324,9 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/CKGraph.cpp
         Behavior/CKPrototypeSource.cpp
         Behavior/Execution.cpp
+        Behavior/Edit.cpp
         Behavior/Lifecycle.cpp
+        Behavior/Layout.cpp
         Behavior/FrameStore.cpp
         Behavior/Parameter.cpp
         Behavior/PrototypeCatalog.cpp
