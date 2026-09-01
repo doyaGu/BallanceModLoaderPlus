@@ -19,9 +19,15 @@ RunResult FailedRun(Error error, std::string message) {
 
 } // namespace
 
-Sessions::Sessions(Runtime &runtime, PrototypeCatalog *catalog)
-    : m_Runtime(runtime), m_Catalog(catalog),
+Sessions::Sessions(Runtime &runtime, PrototypeCatalog *catalog,
+                   std::unique_ptr<GraphSource> graph)
+    : m_Runtime(runtime), m_Catalog(catalog), m_Graph(std::move(graph)),
       m_Thread(std::this_thread::get_id()) {}
+
+Sessions::~Sessions() {
+    ResetWorld();
+    CollectWatches();
+}
 
 std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
     if (ownerId.empty() || std::this_thread::get_id() != m_Thread)
@@ -82,6 +88,14 @@ void Sessions::CloseSession(std::uintptr_t sessionId) {
         QueueClose(std::move(run->second));
         run = m_Runs.erase(run);
     }
+    for (auto watch = m_Watches.begin(); watch != m_Watches.end();) {
+        if (watch->second.SessionId != sessionId) {
+            ++watch;
+            continue;
+        }
+        QueueWatch(std::move(watch->second.Value));
+        watch = m_Watches.erase(watch);
+    }
     m_Sessions.erase(session);
 }
 
@@ -113,7 +127,8 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
         return {Fail(Error::InvalidState,
                      "The Behavior session closed during Call."), 0, {}};
     }
-    return AddRun(session, RunKind::Call, std::move(called.Handle), std::move(result));
+    return AddRun(session, RunKind::Call, std::move(called.Handle),
+                  std::move(result), called.UnverifiedDetached);
 }
 
 OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
@@ -147,7 +162,8 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
         return {Fail(Error::InvalidState,
                      "The Behavior session closed during Start."), 0, {}};
     }
-    return AddRun(session, RunKind::Task, std::move(created.Handle), std::move(result));
+    return AddRun(session, RunKind::Task, std::move(created.Handle),
+                  std::move(result), created.UnverifiedDetached);
 }
 
 OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
@@ -176,7 +192,8 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
         return {Fail(Error::InvalidState,
                      "The Behavior session closed during Spawn."), 0, {}};
     }
-    return AddRun(session, RunKind::Instance, std::move(created.Handle), std::move(result));
+    return AddRun(session, RunKind::Instance, std::move(created.Handle),
+                  std::move(result), created.UnverifiedDetached);
 }
 
 RunResult Sessions::Continue(std::uintptr_t runId) {
@@ -290,6 +307,122 @@ Status Sessions::ReadLiveLayout(std::uintptr_t runId, Layout &out) const {
     return m_Runtime.Describe(run->Block, out);
 }
 
+Status Sessions::ReadGraph(std::uintptr_t sessionId, void *root,
+                           GraphView view, GraphModel &out) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    Session *session = FindSession(sessionId);
+    if (!session || !SessionIsActive(*session))
+        return Fail(Error::InvalidState,
+                    "Behavior Session is stale or retiring.");
+    if (!m_Graph)
+        return Fail(Error::Unavailable,
+                    "Behavior graph inspection is unavailable.");
+    NativeRef reference;
+    Status status = m_Graph->Refer(root, reference);
+    return status ? m_Graph->Read(reference, view, out) : status;
+}
+
+Status Sessions::ReadNodeLayout(std::uintptr_t sessionId, void *node,
+                                Layout &out) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    Session *session = FindSession(sessionId);
+    if (!session || !SessionIsActive(*session))
+        return Fail(Error::InvalidState,
+                    "Behavior Session is stale or retiring.");
+    if (!m_Graph)
+        return Fail(Error::Unavailable,
+                    "Behavior graph inspection is unavailable.");
+    NativeRef reference;
+    Status status = m_Graph->Refer(node, reference);
+    return status ? m_Graph->ReadLayout(reference, out) : status;
+}
+
+Status Sessions::ReadGraphValue(std::uintptr_t sessionId, void *node,
+                                const Slot &slot, ReadMode mode,
+                                GraphValue &out) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    Session *session = FindSession(sessionId);
+    if (!session || !SessionIsActive(*session))
+        return Fail(Error::InvalidState,
+                    "Behavior Session is stale or retiring.");
+    if (!m_Graph)
+        return Fail(Error::Unavailable,
+                    "Behavior graph inspection is unavailable.");
+    NativeRef reference;
+    Status status = m_Graph->Refer(node, reference);
+    return status ? m_Graph->ReadValue(reference, slot, mode, out) : status;
+}
+
+Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
+                           WatchSpec spec, PlanCallbackState state,
+                           WatchBinding::Function callback,
+                           std::uintptr_t &watchId) {
+    watchId = 0;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    Session *session = FindSession(sessionId);
+    if (!session || !SessionIsActive(*session))
+        return Fail(Error::InvalidState,
+                    "Behavior Session is stale or retiring.");
+    if (!m_Graph)
+        return Fail(Error::Unavailable,
+                    "Behavior graph observation is unavailable.");
+    if (spec.Kind == WatchKind::ExactValueChanged)
+        return Fail(
+            Error::ObserverUnavailable,
+            "CK2.1 does not provide a portable exact parameter-change observer.");
+
+    Status status;
+    if (root) {
+        status = m_Graph->Refer(root, spec.Root);
+        if (!status)
+            return status;
+    }
+    if (node) {
+        status = m_Graph->Refer(node, spec.Node);
+        if (!status)
+            return status;
+    }
+    std::shared_ptr<Watch> watch;
+    status = Watch::Open(*m_Graph, std::move(spec), std::move(state),
+                         std::move(callback), watch);
+    if (!status)
+        return status;
+    const std::uintptr_t id = NextId();
+    if (!id) {
+        watch->Close();
+        QueueWatch(std::move(watch));
+        return Fail(Error::InvalidState, "Behavior Watch ids are exhausted.");
+    }
+    m_Watches.emplace(
+        id, OwnedWatch{id, session->Id, session->OwnerId,
+                       session->OwnerGeneration, std::move(watch)});
+    watchId = id;
+    return {};
+}
+
+void Sessions::CloseWatch(std::uintptr_t watchId) {
+    if (!watchId)
+        return;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    auto watch = m_Watches.find(watchId);
+    if (watch == m_Watches.end())
+        return;
+    QueueWatch(std::move(watch->second.Value));
+    m_Watches.erase(watch);
+}
+
 std::shared_ptr<FrameStore> Sessions::Frames(std::uintptr_t runId) const {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::shared_ptr<const Run> run = FindRun(runId);
@@ -310,26 +443,58 @@ void Sessions::CloseRun(std::uintptr_t runId) {
 void Sessions::ProcessFrame() {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    CloseQueuedRuns();
-    for (auto &[id, entry] : m_Runs) {
-        Run &run = *entry;
-        if (!run.Block)
-            continue;
-        const ExecutionState state = m_Runtime.State(run.Block);
-        if (state == ExecutionState::Pending || state == ExecutionState::Running)
-            run.Info.State = RunState::Pending;
-        else {
-            run.Info.State = state == ExecutionState::Failed
-                ? RunState::Failed : RunState::Completed;
-            if (run.Info.Kind != RunKind::Instance ||
-                state == ExecutionState::Failed ||
-                state == ExecutionState::Closing ||
-                state == ExecutionState::Closed)
-                CloseNative(run);
+    std::uint64_t frame = 0;
+    std::vector<std::pair<std::uintptr_t, std::shared_ptr<Watch>>> watches;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        frame = ++m_Frame;
+        CloseQueuedRuns();
+        for (auto &[id, entry] : m_Runs) {
+            Run &run = *entry;
+            if (!run.Block)
+                continue;
+            const ExecutionState state = m_Runtime.State(run.Block);
+            if (state == ExecutionState::Pending ||
+                state == ExecutionState::Running) {
+                run.Info.State = RunState::Pending;
+            } else {
+                run.Info.State = state == ExecutionState::Failed
+                    ? RunState::Failed : RunState::Completed;
+                if (run.Info.Kind != RunKind::Instance ||
+                    state == ExecutionState::Failed ||
+                    state == ExecutionState::Closing ||
+                    state == ExecutionState::Closed)
+                    CloseNative(run);
+            }
+        }
+        watches.reserve(m_Watches.size());
+        for (const auto &[id, watch] : m_Watches)
+            watches.emplace_back(id, watch.Value);
+    }
+
+    for (const auto &[id, watch] : watches) {
+        {
+            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+            const auto current = m_Watches.find(id);
+            if (current == m_Watches.end() || current->second.Value != watch)
+                continue;
+        }
+        Status status = watch->Poll(frame);
+        if (!status || !watch->IsOpen()) {
+            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+            const auto current = m_Watches.find(id);
+            if (current != m_Watches.end() &&
+                current->second.Value == watch) {
+                QueueWatch(std::move(current->second.Value));
+                m_Watches.erase(current);
+            }
         }
     }
-    m_Runtime.ClosePending();
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        CollectWatches();
+        m_Runtime.ClosePending();
+    }
 }
 
 void Sessions::ResetWorld() {
@@ -339,7 +504,11 @@ void Sessions::ResetWorld() {
     for (auto &[id, run] : m_Runs)
         QueueClose(std::move(run));
     m_Runs.clear();
+    for (auto &[id, watch] : m_Watches)
+        QueueWatch(std::move(watch.Value));
+    m_Watches.clear();
     CloseQueuedRuns();
+    CollectWatches();
     m_Runtime.ClosePending();
 }
 
@@ -386,7 +555,8 @@ bool Sessions::SessionIsActive(const Session &session) const {
 }
 
 OpenRun Sessions::AddRun(const Session &session, RunKind kind,
-                          Instance block, RunResult result) {
+                          Instance block, RunResult result,
+                          bool unverifiedDetached) {
     std::shared_ptr<FrameStore> frames = m_Runtime.Frames(block);
     const bool nativeExecuted = frames && !frames->Read().empty();
     if (!result && !nativeExecuted) {
@@ -409,6 +579,7 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     run->Info.Kind = kind;
     run->Info.State = result.State;
     run->Info.LastStatus = result.Detail;
+    run->Info.UnverifiedDetached = unverifiedDetached;
     run->Block = std::move(block);
     run->Frames = std::move(frames);
     auto [stored, inserted] = m_Runs.emplace(id, std::move(run));
@@ -465,10 +636,37 @@ void Sessions::CloseOwner(const std::string &ownerId,
         else
             ++session;
     }
+    for (auto watch = m_Watches.begin(); watch != m_Watches.end();) {
+        if (watch->second.OwnerId != ownerId ||
+            watch->second.OwnerGeneration != generation) {
+            ++watch;
+            continue;
+        }
+        QueueWatch(std::move(watch->second.Value));
+        watch = m_Watches.erase(watch);
+    }
     owner->second.State = OwnerState::Draining;
     CloseQueuedRuns();
+    CollectWatches();
     m_Runtime.ClosePending();
     owner->second.State = OwnerState::Released;
+}
+
+void Sessions::QueueWatch(std::shared_ptr<Watch> watch) {
+    if (!watch)
+        return;
+    watch->Close();
+    m_ClosingWatches.push_back(std::move(watch));
+}
+
+void Sessions::CollectWatches() {
+    for (auto watch = m_ClosingWatches.begin();
+         watch != m_ClosingWatches.end();) {
+        if ((*watch)->RetireAtSafePoint())
+            watch = m_ClosingWatches.erase(watch);
+        else
+            ++watch;
+    }
 }
 
 } // namespace BML::Behavior

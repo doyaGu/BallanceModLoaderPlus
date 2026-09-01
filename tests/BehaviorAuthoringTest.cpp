@@ -31,6 +31,10 @@ struct FakeState {
     bool LayoutUnavailable = false;
     bool MalformedLayout = false;
     bool NullRun = false;
+    std::uint32_t GraphView = 0;
+    int WatchCloses = 0;
+    BML_BehaviorWatchSpec WatchSpec{};
+    BML_BehaviorWatchFunction WatchFunction{};
     std::vector<BML_ObjectRef> RunOwners;
     std::vector<const BML_BehaviorBlock *> Blocks;
 };
@@ -327,6 +331,146 @@ int BML_BEHAVIOR_CALL ReadLiveLayout(
     return BML_ERROR_NOT_IMPLEMENTED;
 }
 
+std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
+                                       BML_BehaviorGraph &graph) {
+    const std::uint32_t nodeOffset = 0;
+    const std::uint32_t linkOffset = sizeof(BML_BehaviorGraphNode);
+    const std::uint32_t portOffset = linkOffset +
+        sizeof(BML_BehaviorGraphLink);
+    std::vector<std::uint8_t> payload(
+        portOffset + sizeof(BML_BehaviorGraphPort));
+
+    BML_BehaviorGraphNode node{};
+    node.StructSize = sizeof(node);
+    node.Id = 101;
+    node.Object = root;
+    node.Prototype = {21, 22};
+    node.Priority = 7;
+    node.Active = 1;
+    node.PortOffset = portOffset;
+    node.PortCount = 1;
+    node.Name.Offset = static_cast<std::uint32_t>(payload.size());
+    node.Name.Length = 4;
+    payload.insert(payload.end(), {'R', 'o', 'o', 't'});
+
+    BML_BehaviorGraphPort port{};
+    port.StructSize = sizeof(port);
+    port.Node = node.Id;
+    port.Kind = BML_BEHAVIOR_SLOT_IN;
+    port.Index = 0;
+    port.Active = 1;
+    port.Name.Offset = static_cast<std::uint32_t>(payload.size());
+    port.Name.Length = 3;
+    payload.insert(payload.end(), {'R', 'u', 'n'});
+
+    BML_BehaviorGraphLink link{};
+    link.StructSize = sizeof(link);
+    link.Id = 201;
+    link.Object = {31, 32, 33};
+    link.SourceNode = node.Id;
+    link.SourceKind = BML_BEHAVIOR_SLOT_OUT;
+    link.SourceIndex = 0;
+    link.TargetNode = node.Id;
+    link.TargetKind = BML_BEHAVIOR_SLOT_IN;
+    link.TargetIndex = 0;
+    link.InitialDelay = 2;
+    link.RemainingDelay = 1;
+    link.Pending = BML_BEHAVIOR_UNKNOWN;
+
+    std::memcpy(payload.data() + nodeOffset, &node, sizeof(node));
+    std::memcpy(payload.data() + linkOffset, &link, sizeof(link));
+    std::memcpy(payload.data() + portOffset, &port, sizeof(port));
+
+    graph = {};
+    graph.StructSize = sizeof(graph);
+    graph.View = g_State.GraphView;
+    graph.Root = root;
+    graph.Generation = 5;
+    graph.Fingerprint = 0x713;
+    graph.NodeOffset = nodeOffset;
+    graph.NodeCount = 1;
+    graph.LinkOffset = linkOffset;
+    graph.LinkCount = 1;
+    return payload;
+}
+
+int BML_BEHAVIOR_CALL InspectGraph(
+    BML_BehaviorSession, BML_ObjectRef root, std::uint32_t view,
+    BML_BehaviorGraph *graph, void *payload, std::uint32_t payloadCapacity,
+    std::uint32_t *payloadSize, BML_BehaviorStatus *status) {
+    g_State.GraphView = view;
+    BML_BehaviorGraph wire{};
+    const std::vector<std::uint8_t> bytes = GraphPayload(root, wire);
+    *payloadSize = static_cast<std::uint32_t>(bytes.size());
+    Success(status);
+    if (payloadCapacity < bytes.size())
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    *graph = wire;
+    if (!bytes.empty())
+        std::memcpy(payload, bytes.data(), bytes.size());
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReadNodeLayout(
+    BML_BehaviorSession, BML_ObjectRef, BML_BehaviorLayout *, void *,
+    std::uint32_t, std::uint32_t *, BML_BehaviorStatus *) {
+    return BML_ERROR_NOT_IMPLEMENTED;
+}
+
+int BML_BEHAVIOR_CALL ReadGraphValue(
+    BML_BehaviorSession, BML_ObjectRef, std::uint32_t,
+    const BML_BehaviorSelector *slot, std::uint32_t,
+    BML_BehaviorGraphValue *value, void *payload,
+    std::uint32_t payloadCapacity, std::uint32_t *payloadSize,
+    BML_BehaviorStatus *status) {
+    Success(status);
+    const std::string_view name(
+        slot->Name.Data ? slot->Name.Data : "", slot->Name.Length);
+    *value = {};
+    value->StructSize = sizeof(*value);
+    value->Type = {CKPGUID_INT.d1, CKPGUID_INT.d2};
+    if (name == "Computed") {
+        value->State = BML_BEHAVIOR_VALUE_INDETERMINATE;
+        value->Relation = BML_BEHAVIOR_VALUE_OPERATION;
+        *payloadSize = 0;
+        return BML_OK;
+    }
+    value->State = BML_BEHAVIOR_VALUE_AVAILABLE;
+    value->Relation = BML_BEHAVIOR_VALUE_STORED;
+    value->Kind = BML_BEHAVIOR_VALUE_INT32;
+    value->ValueOffset = 0;
+    value->ValueSize = 4;
+    *payloadSize = 4;
+    if (payloadCapacity < 4)
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    const std::uint8_t bytes[] = {42, 0, 0, 0};
+    std::memcpy(payload, bytes, sizeof(bytes));
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL OpenWatch(
+    BML_BehaviorSession, const BML_BehaviorWatchSpec *spec,
+    const BML_BehaviorWatchFunction *callback,
+    BML_BehaviorWatch *watch, BML_BehaviorStatus *status) {
+    Success(status);
+    if (spec->Kind == BML_BEHAVIOR_WATCH_EXACT_VALUE)
+        return BML_ERROR_UNAVAILABLE;
+    g_State.WatchSpec = *spec;
+    g_State.WatchFunction = *callback;
+    if (callback->Retain)
+        callback->Retain(callback->State);
+    *watch = reinterpret_cast<BML_BehaviorWatch>(3);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL CloseWatch(BML_BehaviorWatch) {
+    ++g_State.WatchCloses;
+    if (g_State.WatchFunction.Release)
+        g_State.WatchFunction.Release(g_State.WatchFunction.State);
+    g_State.WatchFunction = {};
+    return BML_OK;
+}
+
 BML_BehaviorInterface g_Interface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -344,6 +488,11 @@ BML_BehaviorInterface g_Interface = {
     &FindPrototypes,
     &ReadDeclaredLayout,
     &ReadLiveLayout,
+    &InspectGraph,
+    &ReadNodeLayout,
+    &ReadGraphValue,
+    &OpenWatch,
+    &CloseWatch,
 };
 
 } // namespace
@@ -612,4 +761,131 @@ TEST(BehaviorAuthoring, ContainsMalformedRunResults) {
     EXPECT_FALSE(malformed);
     EXPECT_EQ(malformed.Code(), BML_ERROR_MALFORMED_MESSAGE);
     EXPECT_EQ(g_State.RunCloses, 1);
+}
+
+TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    const BML_ObjectRef root{41, 42, 43};
+
+    auto inspected = session.Inspect(root);
+    ASSERT_TRUE(inspected) << inspected.Detail().Message;
+    Graph graph = std::move(inspected).Value();
+    EXPECT_EQ(graph.Mode(), View::Logical);
+    EXPECT_EQ(graph.Root().Domain, root.Domain);
+    EXPECT_EQ(graph.Generation(), 5u);
+    EXPECT_EQ(graph.Fingerprint(), 0x713u);
+    ASSERT_EQ(graph.Nodes().size(), 1u);
+    const Node *node = graph.Find("Root");
+    ASSERT_NE(node, nullptr);
+    EXPECT_EQ(node->Prototype, Guid(CKGUID(21, 22)));
+    EXPECT_TRUE(node->Active);
+    ASSERT_EQ(node->Ports.size(), 1u);
+    EXPECT_EQ(node->Ports[0].Name, "Run");
+    EXPECT_TRUE(node->Ports[0].Active);
+    ASSERT_EQ(graph.Links().size(), 1u);
+    EXPECT_EQ(graph.Links()[0].Source.Node, 101u);
+    EXPECT_EQ(graph.Links()[0].Source.Kind, BML_BEHAVIOR_SLOT_OUT);
+    EXPECT_EQ(graph.Links()[0].Target.Kind, BML_BEHAVIOR_SLOT_IN);
+    EXPECT_EQ(graph.Links()[0].InitialDelay, 2);
+    EXPECT_EQ(graph.Links()[0].RemainingDelay, 1);
+    EXPECT_EQ(graph.Links()[0].Pending, TruthValue::Unknown);
+
+    auto live = graph.Live();
+    ASSERT_TRUE(live);
+    EXPECT_EQ(live.Value().Mode(), View::Live);
+    EXPECT_EQ(g_State.GraphView, BML_BEHAVIOR_GRAPH_LIVE);
+}
+
+TEST(BehaviorAuthoring, ReadsStoredAndOperationBackedValuesNonForcing) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    Graph graph = std::move(inspected).Value();
+    const BML_ObjectRef node = graph.Nodes().front().Object;
+
+    auto stored = graph.Read(pin(node, "Value"));
+    ASSERT_TRUE(stored);
+    EXPECT_EQ(stored.Value().State, ObservationState::Available);
+    EXPECT_EQ(stored.Value().Source, Relation::Stored);
+    ASSERT_TRUE(stored.Value().Kind.has_value());
+    EXPECT_EQ(*stored.Value().Kind, ValueKind::Int32);
+    ASSERT_NE(std::get_if<std::int32_t>(&stored.Value().Data), nullptr);
+    EXPECT_EQ(*std::get_if<std::int32_t>(&stored.Value().Data), 42);
+
+    auto computed = graph.Read(pin(node, "Computed"));
+    ASSERT_TRUE(computed);
+    EXPECT_EQ(computed.Value().State, ObservationState::Indeterminate);
+    EXPECT_EQ(computed.Value().Source, Relation::Operation);
+    EXPECT_FALSE(computed.Value().Kind.has_value());
+}
+
+TEST(BehaviorAuthoring, OwnsWatchCallbackAndReportsDomainChanges) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    Graph graph = std::move(inspected).Value();
+    std::vector<Change> changes;
+
+    {
+        auto watched = graph.Watch(
+            graphChanged, [&](const Change &change) {
+                changes.push_back(change);
+            });
+        ASSERT_TRUE(watched) << watched.Detail().Message;
+        EXPECT_EQ(g_State.WatchSpec.Kind, BML_BEHAVIOR_WATCH_GRAPH);
+        EXPECT_EQ(g_State.WatchSpec.View, BML_BEHAVIOR_GRAPH_LOGICAL);
+
+        BML_BehaviorWatchEvent event{};
+        Init(&event);
+        event.Kind = BML_BEHAVIOR_WATCH_GRAPH;
+        event.Sequence = 3;
+        event.Frame = 17;
+        event.Before = 0x11;
+        event.After = 0x22;
+        Init(&event.PreviousValue);
+        Init(&event.PreviousValue.Value);
+        event.PreviousValue.State = BML_BEHAVIOR_VALUE_UNSUPPORTED;
+        event.PreviousValue.Relation = BML_BEHAVIOR_VALUE_STORED;
+        Init(&event.CurrentValue);
+        Init(&event.CurrentValue.Value);
+        event.CurrentValue.State = BML_BEHAVIOR_VALUE_UNSUPPORTED;
+        event.CurrentValue.Relation = BML_BEHAVIOR_VALUE_STORED;
+        ASSERT_NE(g_State.WatchFunction.Invoke, nullptr);
+        g_State.WatchFunction.Invoke(g_State.WatchFunction.State, &event);
+        ASSERT_EQ(changes.size(), 1u);
+        EXPECT_EQ(changes[0].Kind, ChangeKind::Graph);
+        EXPECT_EQ(changes[0].Sequence, 3u);
+        EXPECT_EQ(changes[0].GameFrame, 17u);
+        EXPECT_EQ(changes[0].Before, 0x11u);
+        EXPECT_EQ(changes[0].After, 0x22u);
+    }
+    EXPECT_EQ(g_State.WatchCloses, 1);
+    EXPECT_EQ(g_State.WatchFunction.Invoke, nullptr);
+}
+
+TEST(BehaviorAuthoring, RejectsExactWatchWhenTheProviderCannotObserveIt) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    Graph graph = std::move(inspected).Value();
+
+    auto watched = graph.Watch(
+        exact(pin(graph.Nodes().front().Object, "Value")),
+        [](const Change &) {});
+    EXPECT_FALSE(watched);
+    EXPECT_EQ(watched.Code(), BML_ERROR_UNAVAILABLE);
+    EXPECT_EQ(g_State.WatchCloses, 0);
+    EXPECT_EQ(g_State.WatchFunction.Invoke, nullptr);
 }

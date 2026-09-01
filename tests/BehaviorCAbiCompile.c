@@ -28,6 +28,16 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRecordSize,
                         sizeof(BML_BehaviorSlotRecord) == 48u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorLayoutSize,
                         sizeof(BML_BehaviorLayout) == 128u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphPortSize,
+                        sizeof(BML_BehaviorGraphPort) == 40u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphNodeSize,
+                        sizeof(BML_BehaviorGraphNode) == 72u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphLinkSize,
+                        sizeof(BML_BehaviorGraphLink) == 80u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphSize,
+                        sizeof(BML_BehaviorGraph) == 56u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphValueSize,
+                        sizeof(BML_BehaviorGraphValue) == 32u);
 
 #if UINTPTR_MAX == UINT32_MAX
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSelectorSize,
@@ -42,7 +52,15 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 64u);
+                        sizeof(BML_BehaviorInterface) == 84u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchValueSize,
+                        sizeof(BML_BehaviorWatchValue) == 92u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchEventSize,
+                        sizeof(BML_BehaviorWatchEvent) == 224u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchFunctionSize,
+                        sizeof(BML_BehaviorWatchFunction) == 20u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchSpecSize,
+                        sizeof(BML_BehaviorWatchSpec) == 68u);
 #else
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSelectorSize,
                         sizeof(BML_BehaviorSelector) == 32u);
@@ -56,7 +74,15 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 128u);
+                        sizeof(BML_BehaviorInterface) == 168u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchValueSize,
+                        sizeof(BML_BehaviorWatchValue) == 96u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchEventSize,
+                        sizeof(BML_BehaviorWatchEvent) == 232u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchFunctionSize,
+                        sizeof(BML_BehaviorWatchFunction) == 40u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchSpecSize,
+                        sizeof(BML_BehaviorWatchSpec) == 80u);
 #endif
 
 static int BML_BEHAVIOR_CALL BehaviorOpenSessionSignature(

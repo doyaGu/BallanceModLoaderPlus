@@ -10,16 +10,20 @@
 #include "CKAll.h"
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <new>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -321,6 +325,7 @@ enum class Admission : std::uint32_t {
 struct RunInfo {
     RunKind Kind = RunKind::Instance;
     RunState State = RunState::Completed;
+    bool UnverifiedDetached = false;
     Status Detail;
 };
 
@@ -397,6 +402,240 @@ struct Prototype {
         : Id(id), Generation(generation) {}
 };
 
+enum class View : std::uint32_t {
+    Logical = BML_BEHAVIOR_GRAPH_LOGICAL,
+    Live = BML_BEHAVIOR_GRAPH_LIVE,
+};
+
+enum class TruthValue : std::uint32_t {
+    No = BML_BEHAVIOR_FALSE,
+    Yes = BML_BEHAVIOR_TRUE,
+    Unknown = BML_BEHAVIOR_UNKNOWN,
+};
+
+enum class ObservationState : std::uint32_t {
+    Available = BML_BEHAVIOR_VALUE_AVAILABLE,
+    Indeterminate = BML_BEHAVIOR_VALUE_INDETERMINATE,
+    Unsupported = BML_BEHAVIOR_VALUE_UNSUPPORTED,
+};
+
+enum class Relation : std::uint32_t {
+    Stored = BML_BEHAVIOR_VALUE_STORED,
+    Direct = BML_BEHAVIOR_VALUE_DIRECT,
+    Shared = BML_BEHAVIOR_VALUE_SHARED,
+    Operation = BML_BEHAVIOR_VALUE_OPERATION,
+};
+
+struct ObservedValue {
+    ObservationState State = ObservationState::Unsupported;
+    Relation Source = Relation::Stored;
+    Guid Type;
+    std::optional<ValueKind> Kind;
+    PoutData Data;
+};
+
+struct Port {
+    std::uint64_t Node = 0;
+    std::uint32_t Kind = 0;
+    std::int32_t Index = -1;
+    std::int32_t Occurrence = 0;
+    bool Active = false;
+    std::string Name;
+};
+
+struct Node {
+    std::uint64_t Id = 0;
+    BML_ObjectRef Object{};
+    std::uint64_t Parent = 0;
+    Guid Prototype;
+    std::int32_t Priority = 0;
+    bool Active = false;
+    std::string Name;
+    std::vector<Port> Ports;
+};
+
+struct Endpoint {
+    std::uint64_t Node = 0;
+    std::uint32_t Kind = 0;
+    std::int32_t Index = -1;
+};
+
+struct Link {
+    std::uint64_t Id = 0;
+    BML_ObjectRef Object{};
+    Endpoint Source;
+    Endpoint Target;
+    std::int32_t InitialDelay = 0;
+    std::int32_t RemainingDelay = 0;
+    TruthValue Pending = TruthValue::Unknown;
+};
+
+struct ValueRef {
+    BML_ObjectRef Node{};
+    std::uint32_t Kind = BML_BEHAVIOR_SLOT_PIN;
+    Selector Slot;
+};
+
+inline ValueRef pin(BML_ObjectRef node, Selector slot) {
+    return {node, BML_BEHAVIOR_SLOT_PIN, std::move(slot)};
+}
+inline ValueRef pin(BML_ObjectRef node, std::string_view name) {
+    return pin(node, Selector::Unique(name));
+}
+inline ValueRef pout(BML_ObjectRef node, Selector slot) {
+    return {node, BML_BEHAVIOR_SLOT_POUT, std::move(slot)};
+}
+inline ValueRef pout(BML_ObjectRef node, std::string_view name) {
+    return pout(node, Selector::Unique(name));
+}
+inline ValueRef local(BML_ObjectRef node, Selector slot) {
+    return {node, BML_BEHAVIOR_SLOT_LOCAL, std::move(slot)};
+}
+inline ValueRef local(BML_ObjectRef node, std::string_view name) {
+    return local(node, Selector::Unique(name));
+}
+inline ValueRef setting(BML_ObjectRef node, Selector slot) {
+    return {node, BML_BEHAVIOR_SLOT_SETTING, std::move(slot)};
+}
+inline ValueRef setting(BML_ObjectRef node, std::string_view name) {
+    return setting(node, Selector::Unique(name));
+}
+inline ValueRef target(BML_ObjectRef node) {
+    return {node, BML_BEHAVIOR_SLOT_TARGET, Selector::Only()};
+}
+
+struct GraphChanged {};
+inline constexpr GraphChanged graphChanged{};
+
+struct LayoutChanged {
+    BML_ObjectRef Node{};
+};
+inline LayoutChanged layoutChanged(BML_ObjectRef node) { return {node}; }
+
+struct Sampled {
+    ValueRef Value;
+};
+inline Sampled sampled(ValueRef value) { return {std::move(value)}; }
+
+struct Exact {
+    ValueRef Value;
+};
+inline Exact exact(ValueRef value) { return {std::move(value)}; }
+
+enum class ChangeKind : std::uint32_t {
+    Graph = BML_BEHAVIOR_WATCH_GRAPH,
+    Layout = BML_BEHAVIOR_WATCH_LAYOUT,
+    SampledValue = BML_BEHAVIOR_WATCH_SAMPLED_VALUE,
+    ExactValue = BML_BEHAVIOR_WATCH_EXACT_VALUE,
+};
+
+struct Change {
+    ChangeKind Kind = ChangeKind::Graph;
+    std::uint64_t Sequence = 0;
+    std::uint64_t GameFrame = 0;
+    std::uint64_t Before = 0;
+    std::uint64_t After = 0;
+    ObservedValue PreviousValue;
+    ObservedValue CurrentValue;
+};
+
+namespace Detail { struct SessionState; }
+
+class Watch {
+public:
+    Watch() = default;
+    ~Watch() { Close(); }
+    Watch(const Watch &) = delete;
+    Watch &operator=(const Watch &) = delete;
+    Watch(Watch &&other) noexcept
+        : m_Api(std::exchange(other.m_Api, nullptr)),
+          m_Handle(std::exchange(other.m_Handle, nullptr)) {}
+    Watch &operator=(Watch &&other) noexcept {
+        if (this != &other) {
+            Close();
+            m_Api = std::exchange(other.m_Api, nullptr);
+            m_Handle = std::exchange(other.m_Handle, nullptr);
+        }
+        return *this;
+    }
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return m_Api && m_Handle;
+    }
+    void Close() noexcept {
+        if (m_Api && m_Handle)
+            (void) m_Api->CloseWatch(m_Handle);
+        m_Api = nullptr;
+        m_Handle = nullptr;
+    }
+
+private:
+    Watch(const BML_BehaviorInterface *api, BML_BehaviorWatch handle)
+        : m_Api(api), m_Handle(handle) {}
+    const BML_BehaviorInterface *m_Api = nullptr;
+    BML_BehaviorWatch m_Handle = nullptr;
+
+    friend class Graph;
+};
+
+class Graph {
+public:
+    [[nodiscard]] View Mode() const noexcept { return m_View; }
+    [[nodiscard]] BML_ObjectRef Root() const noexcept { return m_Root; }
+    [[nodiscard]] std::uint64_t Generation() const noexcept {
+        return m_Generation;
+    }
+    [[nodiscard]] std::uint64_t Fingerprint() const noexcept {
+        return m_Fingerprint;
+    }
+    [[nodiscard]] const std::vector<Node> &Nodes() const noexcept {
+        return m_Nodes;
+    }
+    [[nodiscard]] const std::vector<Link> &Links() const noexcept {
+        return m_Links;
+    }
+    [[nodiscard]] const Node *Find(std::string_view name) const noexcept {
+        const auto found = std::find_if(
+            m_Nodes.begin(), m_Nodes.end(), [&](const Node &node) {
+                return node.Name == name;
+            });
+        return found == m_Nodes.end() ? nullptr : &*found;
+    }
+
+    [[nodiscard]] Result<Graph> Logical() const;
+    [[nodiscard]] Result<Graph> Live() const;
+    [[nodiscard]] Result<ObservedValue> Read(const ValueRef &value) const;
+
+    template <class Function>
+    [[nodiscard]] Result<Behavior::Watch> Watch(
+        GraphChanged, Function &&callback) const;
+    template <class Function>
+    [[nodiscard]] Result<Behavior::Watch> Watch(
+        LayoutChanged change, Function &&callback) const;
+    template <class Function>
+    [[nodiscard]] Result<Behavior::Watch> Watch(
+        Sampled change, Function &&callback) const;
+    template <class Function>
+    [[nodiscard]] Result<Behavior::Watch> Watch(
+        Exact change, Function &&callback) const;
+
+private:
+    static Result<Graph> Read(std::shared_ptr<Detail::SessionState> session,
+                              BML_ObjectRef root, View view);
+    template <class Function>
+    Result<Behavior::Watch> OpenWatch(BML_BehaviorWatchSpec spec,
+                                     Function &&callback) const;
+
+    std::shared_ptr<Detail::SessionState> m_Session;
+    BML_ObjectRef m_Root{};
+    View m_View = View::Logical;
+    std::uint64_t m_Generation = 0;
+    std::uint64_t m_Fingerprint = 0;
+    std::vector<Node> m_Nodes;
+    std::vector<Link> m_Links;
+
+    friend class Session;
+};
+
 class Session;
 class Builder;
 class Block;
@@ -440,7 +679,9 @@ inline BML_BehaviorRunInfo EmptyRunInfo() noexcept {
 
 inline RunInfo ReadRunInfo(const BML_BehaviorRunInfo &source) {
     return {static_cast<RunKind>(source.Kind),
-            static_cast<RunState>(source.State), ReadStatus(source.Status)};
+            static_cast<RunState>(source.State),
+            (source.Flags & BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED) != 0,
+            ReadStatus(source.Status)};
 }
 
 struct SessionState {
@@ -1267,7 +1508,7 @@ public:
             return Result<Session>::Failure(code);
         const auto *api = static_cast<const BML_BehaviorInterface *>(found);
         if (!api || api->Header.MinorVersion < BML_BEHAVIOR_INTERFACE_MINOR ||
-            !BML_IFACE_HAS(api, BML_BehaviorInterface, ReadLiveLayout))
+            !BML_IFACE_HAS(api, BML_BehaviorInterface, CloseWatch))
             return Result<Session>::Failure(BML_ERROR_VERSION_MISMATCH);
 
         BML_BehaviorSession handle = nullptr;
@@ -1299,6 +1540,9 @@ public:
     }
     [[nodiscard]] Builder Use(CKGUID prototype) const {
         return Use(Prototype(prototype));
+    }
+    [[nodiscard]] Result<Graph> Inspect(BML_ObjectRef root) const {
+        return Graph::Read(m_State, root, View::Logical);
     }
     void Close() noexcept {
         if (m_State)
@@ -1709,6 +1953,375 @@ inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
 }
 
 } // namespace Detail
+
+namespace Detail {
+
+inline bool ReadObserved(const BML_BehaviorGraphValue &source,
+                         const std::vector<std::uint8_t> &payload,
+                         ObservedValue &out) {
+    if (source.StructSize < sizeof(source))
+        return false;
+    out = {};
+    out.State = static_cast<ObservationState>(source.State);
+    out.Source = static_cast<Relation>(source.Relation);
+    out.Type = source.Type;
+    if (source.State != BML_BEHAVIOR_VALUE_AVAILABLE)
+        return source.Kind == 0 && source.ValueSize == 0;
+    if (source.Kind < BML_BEHAVIOR_VALUE_BOOL ||
+        source.Kind > BML_BEHAVIOR_VALUE_OBJECT)
+        return false;
+    out.Kind = static_cast<ValueKind>(source.Kind);
+    BML_BehaviorPoutRecord value{};
+    value.StructSize = sizeof(value);
+    value.Kind = source.Kind;
+    value.ValueOffset = source.ValueOffset;
+    value.ValueSize = source.ValueSize;
+    return ReadPoutData(value, payload, out.Data);
+}
+
+inline bool ReadWatchValue(const BML_BehaviorWatchValue &source,
+                           ObservedValue &out) {
+    if (source.StructSize < sizeof(source) ||
+        source.Value.StructSize < sizeof(source.Value))
+        return false;
+    out = {};
+    out.State = static_cast<ObservationState>(source.State);
+    out.Source = static_cast<Relation>(source.Relation);
+    out.Type = source.Value.Type;
+    if (source.State != BML_BEHAVIOR_VALUE_AVAILABLE)
+        return source.Value.Kind == 0;
+    if (source.Value.Kind < BML_BEHAVIOR_VALUE_BOOL ||
+        source.Value.Kind > BML_BEHAVIOR_VALUE_OBJECT)
+        return false;
+    out.Kind = static_cast<ValueKind>(source.Value.Kind);
+    switch (source.Value.Kind) {
+    case BML_BEHAVIOR_VALUE_BOOL:
+        out.Data = source.Value.Data.Bool != 0;
+        break;
+    case BML_BEHAVIOR_VALUE_INT32:
+        out.Data = source.Value.Data.Int32;
+        break;
+    case BML_BEHAVIOR_VALUE_FLOAT32:
+        out.Data = source.Value.Data.Float32;
+        break;
+    case BML_BEHAVIOR_VALUE_UTF8:
+        if (!source.Value.Data.Utf8.Data && source.Value.Data.Utf8.Length)
+            return false;
+        out.Data = std::string(
+            source.Value.Data.Utf8.Data ? source.Value.Data.Utf8.Data : "",
+            source.Value.Data.Utf8.Length);
+        break;
+    case BML_BEHAVIOR_VALUE_VEC2: out.Data = source.Value.Data.Vec2; break;
+    case BML_BEHAVIOR_VALUE_VEC3: out.Data = source.Value.Data.Vec3; break;
+    case BML_BEHAVIOR_VALUE_QUATERNION:
+        out.Data = source.Value.Data.Quaternion; break;
+    case BML_BEHAVIOR_VALUE_EULER: out.Data = source.Value.Data.Euler; break;
+    case BML_BEHAVIOR_VALUE_RECT: out.Data = source.Value.Data.Rect; break;
+    case BML_BEHAVIOR_VALUE_COLOR: out.Data = source.Value.Data.Color; break;
+    case BML_BEHAVIOR_VALUE_BOX: out.Data = source.Value.Data.Box; break;
+    case BML_BEHAVIOR_VALUE_MAT4: out.Data = source.Value.Data.Mat4; break;
+    case BML_BEHAVIOR_VALUE_OBJECT: out.Data = source.Value.Data.Object; break;
+    default: return false;
+    }
+    return true;
+}
+
+inline bool ReadChange(const BML_BehaviorWatchEvent *source, Change &out) {
+    if (!source || source->StructSize < sizeof(*source))
+        return false;
+    out = {};
+    out.Kind = static_cast<ChangeKind>(source->Kind);
+    out.Sequence = source->Sequence;
+    out.GameFrame = source->Frame;
+    out.Before = source->Before;
+    out.After = source->After;
+    return ReadWatchValue(source->PreviousValue, out.PreviousValue) &&
+           ReadWatchValue(source->CurrentValue, out.CurrentValue);
+}
+
+template <class Function>
+struct WatchFunction {
+    using Callable = std::decay_t<Function>;
+
+    explicit WatchFunction(Function &&function)
+        : Value(std::forward<Function>(function)) {}
+
+    static void BML_BEHAVIOR_CALL Retain(void *state) {
+        ++static_cast<WatchFunction *>(state)->References;
+    }
+    static void BML_BEHAVIOR_CALL Release(void *state) {
+        auto *self = static_cast<WatchFunction *>(state);
+        if (self->References.fetch_sub(1) == 1)
+            delete self;
+    }
+    static void BML_BEHAVIOR_CALL Invoke(
+        void *state, const BML_BehaviorWatchEvent *source) {
+        Change change;
+        if (!ReadChange(source, change))
+            throw std::runtime_error("The Behavior Watch event is malformed.");
+        std::invoke(static_cast<WatchFunction *>(state)->Value, change);
+    }
+
+    std::atomic<std::uint32_t> References{1};
+    Callable Value;
+};
+
+} // namespace Detail
+
+inline Result<Graph> Graph::Read(
+    std::shared_ptr<Detail::SessionState> session,
+    BML_ObjectRef root, View view) {
+    if (!session || !session->Api || !session->Handle || !root.Domain)
+        return Result<Graph>::Failure(BML_ERROR_INVALID_HANDLE);
+    try {
+        BML_BehaviorGraph wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        std::uint32_t payloadSize = 0;
+        int code = session->Api->Inspect(
+            session->Handle, root, static_cast<std::uint32_t>(view),
+            &wire, nullptr, 0, &payloadSize, &status);
+        if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+            return Result<Graph>::Failure(code, Detail::ReadStatus(status));
+        std::vector<std::uint8_t> payload(payloadSize);
+        if (payloadSize) {
+            wire = {};
+            wire.StructSize = sizeof(wire);
+            status = Detail::EmptyStatus();
+            std::uint32_t written = 0;
+            code = session->Api->Inspect(
+                session->Handle, root, static_cast<std::uint32_t>(view),
+                &wire, payload.data(), payloadSize, &written, &status);
+            if (code != BML_OK)
+                return Result<Graph>::Failure(code, Detail::ReadStatus(status));
+            if (written != payload.size())
+                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        }
+        if (wire.StructSize < sizeof(wire) || wire.View !=
+                static_cast<std::uint32_t>(view) ||
+            !Detail::RecordsFit<BML_BehaviorGraphNode>(
+                payload, wire.NodeOffset, wire.NodeCount) ||
+            !Detail::RecordsFit<BML_BehaviorGraphLink>(
+                payload, wire.LinkOffset, wire.LinkCount))
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+
+        Graph graph;
+        graph.m_Session = std::move(session);
+        graph.m_Root = wire.Root;
+        graph.m_View = view;
+        graph.m_Generation = wire.Generation;
+        graph.m_Fingerprint = wire.Fingerprint;
+        graph.m_Nodes.reserve(wire.NodeCount);
+        for (std::uint32_t index = 0; index < wire.NodeCount; ++index) {
+            BML_BehaviorGraphNode record{};
+            if (!Detail::RecordAt(payload, wire.NodeOffset, index, record) ||
+                !Detail::RecordsFit<BML_BehaviorGraphPort>(
+                    payload, record.PortOffset, record.PortCount))
+                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            Node node;
+            node.Id = record.Id;
+            node.Object = record.Object;
+            node.Parent = record.Parent;
+            node.Prototype = record.Prototype;
+            node.Priority = record.Priority;
+            node.Active = record.Active != 0;
+            if (!Detail::TextAt(payload, record.Name.Offset,
+                                record.Name.Length, node.Name))
+                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            node.Ports.reserve(record.PortCount);
+            for (std::uint32_t portIndex = 0;
+                 portIndex < record.PortCount; ++portIndex) {
+                BML_BehaviorGraphPort portRecord{};
+                if (!Detail::RecordAt(payload, record.PortOffset,
+                                      portIndex, portRecord))
+                    return Result<Graph>::Failure(
+                        BML_ERROR_MALFORMED_MESSAGE);
+                Port port;
+                port.Node = portRecord.Node;
+                port.Kind = portRecord.Kind;
+                port.Index = portRecord.Index;
+                port.Occurrence = portRecord.Occurrence;
+                port.Active = portRecord.Active != 0;
+                if (!Detail::TextAt(payload, portRecord.Name.Offset,
+                                    portRecord.Name.Length, port.Name))
+                    return Result<Graph>::Failure(
+                        BML_ERROR_MALFORMED_MESSAGE);
+                node.Ports.push_back(std::move(port));
+            }
+            graph.m_Nodes.push_back(std::move(node));
+        }
+        graph.m_Links.reserve(wire.LinkCount);
+        for (std::uint32_t index = 0; index < wire.LinkCount; ++index) {
+            BML_BehaviorGraphLink record{};
+            if (!Detail::RecordAt(payload, wire.LinkOffset, index, record))
+                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            graph.m_Links.push_back({
+                record.Id, record.Object,
+                {record.SourceNode, record.SourceKind, record.SourceIndex},
+                {record.TargetNode, record.TargetKind, record.TargetIndex},
+                record.InitialDelay,
+                record.RemainingDelay,
+                static_cast<TruthValue>(record.Pending)});
+        }
+        return Result<Graph>::Success(std::move(graph),
+                                      Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<Graph>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Graph>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<Graph> Graph::Logical() const {
+    return Read(m_Session, m_Root, View::Logical);
+}
+
+inline Result<Graph> Graph::Live() const {
+    return Read(m_Session, m_Root, View::Live);
+}
+
+inline Result<ObservedValue> Graph::Read(const ValueRef &value) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle ||
+        !value.Node.Domain)
+        return Result<ObservedValue>::Failure(BML_ERROR_INVALID_HANDLE);
+    try {
+        BML_BehaviorSelector selector = value.Slot.Wire();
+        BML_BehaviorGraphValue wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        std::uint32_t payloadSize = 0;
+        int code = m_Session->Api->ReadValue(
+            m_Session->Handle, value.Node, value.Kind, &selector,
+            BML_BEHAVIOR_READ_NON_FORCING, &wire, nullptr, 0,
+            &payloadSize, &status);
+        if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+            return Result<ObservedValue>::Failure(
+                code, Detail::ReadStatus(status));
+        std::vector<std::uint8_t> payload(payloadSize);
+        if (payloadSize) {
+            wire = {};
+            wire.StructSize = sizeof(wire);
+            status = Detail::EmptyStatus();
+            std::uint32_t written = 0;
+            code = m_Session->Api->ReadValue(
+                m_Session->Handle, value.Node, value.Kind, &selector,
+                BML_BEHAVIOR_READ_NON_FORCING, &wire, payload.data(),
+                payloadSize, &written, &status);
+            if (code != BML_OK)
+                return Result<ObservedValue>::Failure(
+                    code, Detail::ReadStatus(status));
+            if (written != payload.size())
+                return Result<ObservedValue>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE);
+        }
+        ObservedValue observed;
+        if (!Detail::ReadObserved(wire, payload, observed))
+            return Result<ObservedValue>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE);
+        return Result<ObservedValue>::Success(
+            std::move(observed), Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<ObservedValue>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<ObservedValue>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+template <class Function>
+Result<Behavior::Watch> Graph::OpenWatch(
+    BML_BehaviorWatchSpec spec, Function &&callback) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+        return Result<Behavior::Watch>::Failure(BML_ERROR_INVALID_HANDLE);
+    using Holder = Detail::WatchFunction<Function>;
+    Holder *holder = nullptr;
+    try {
+        holder = new Holder(std::forward<Function>(callback));
+        BML_BehaviorWatchFunction function{};
+        function.StructSize = sizeof(function);
+        function.State = holder;
+        function.Retain = &Holder::Retain;
+        function.Release = &Holder::Release;
+        function.Invoke = &Holder::Invoke;
+        BML_BehaviorWatch handle = nullptr;
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_Session->Api->Watch(
+            m_Session->Handle, &spec, &function, &handle, &status);
+        Holder::Release(holder);
+        holder = nullptr;
+        if (code != BML_OK || !handle) {
+            if (handle)
+                (void) m_Session->Api->CloseWatch(handle);
+            return Result<Behavior::Watch>::Failure(
+                code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                Detail::ReadStatus(status));
+        }
+        return Result<Behavior::Watch>::Success(
+            Behavior::Watch(m_Session->Api, handle),
+            Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        if (holder)
+            Holder::Release(holder);
+        return Result<Behavior::Watch>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        if (holder)
+            Holder::Release(holder);
+        return Result<Behavior::Watch>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+template <class Function>
+Result<Behavior::Watch> Graph::Watch(
+    GraphChanged, Function &&callback) const {
+    BML_BehaviorWatchSpec spec{};
+    spec.StructSize = sizeof(spec);
+    spec.Kind = BML_BEHAVIOR_WATCH_GRAPH;
+    spec.View = static_cast<std::uint32_t>(m_View);
+    spec.Root = m_Root;
+    spec.Slot.StructSize = sizeof(spec.Slot);
+    spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
+    return OpenWatch(spec, std::forward<Function>(callback));
+}
+
+template <class Function>
+Result<Behavior::Watch> Graph::Watch(
+    LayoutChanged change, Function &&callback) const {
+    BML_BehaviorWatchSpec spec{};
+    spec.StructSize = sizeof(spec);
+    spec.Kind = BML_BEHAVIOR_WATCH_LAYOUT;
+    spec.View = static_cast<std::uint32_t>(m_View);
+    spec.Node = change.Node;
+    spec.Slot.StructSize = sizeof(spec.Slot);
+    spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
+    return OpenWatch(spec, std::forward<Function>(callback));
+}
+
+template <class Function>
+Result<Behavior::Watch> Graph::Watch(
+    Sampled change, Function &&callback) const {
+    BML_BehaviorWatchSpec spec{};
+    spec.StructSize = sizeof(spec);
+    spec.Kind = BML_BEHAVIOR_WATCH_SAMPLED_VALUE;
+    spec.View = static_cast<std::uint32_t>(m_View);
+    spec.Node = change.Value.Node;
+    spec.SlotKind = change.Value.Kind;
+    spec.Slot = change.Value.Slot.Wire();
+    spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
+    return OpenWatch(spec, std::forward<Function>(callback));
+}
+
+template <class Function>
+Result<Behavior::Watch> Graph::Watch(
+    Exact change, Function &&callback) const {
+    BML_BehaviorWatchSpec spec{};
+    spec.StructSize = sizeof(spec);
+    spec.Kind = BML_BEHAVIOR_WATCH_EXACT_VALUE;
+    spec.View = static_cast<std::uint32_t>(m_View);
+    spec.Node = change.Value.Node;
+    spec.SlotKind = change.Value.Kind;
+    spec.Slot = change.Value.Slot.Wire();
+    spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
+    return OpenWatch(spec, std::forward<Function>(callback));
+}
 
 inline Result<Block> Builder::Compile(Detail::BlockDefinition definition) const {
     if (!m_Session || !m_Session->Api || !m_Session->Handle)

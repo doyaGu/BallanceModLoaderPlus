@@ -17,13 +17,14 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 2u
+#define BML_BEHAVIOR_INTERFACE_MINOR 3u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 
 BML_BEGIN_CDECLS
 
 typedef struct BML_BehaviorSession__ *BML_BehaviorSession;
 typedef struct BML_BehaviorRun__ *BML_BehaviorRun;
+typedef struct BML_BehaviorWatch__ *BML_BehaviorWatch;
 
 #pragma pack(push, 8)
 
@@ -177,7 +178,9 @@ typedef enum BML_BehaviorError {
     BML_BEHAVIOR_ERROR_PROTOTYPE_LOAD_FAILED = 21,
     BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE = 22,
     BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNAVAILABLE = 23,
-    BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED = 24
+    BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED = 24,
+    BML_BEHAVIOR_ERROR_DETACHED_UNSUPPORTED = 25,
+    BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE = 26
 } BML_BehaviorError;
 
 typedef enum BML_BehaviorPhase {
@@ -221,10 +224,15 @@ typedef enum BML_BehaviorRunState {
     BML_BEHAVIOR_RUN_FAILED = 4
 } BML_BehaviorRunState;
 
+typedef enum BML_BehaviorRunFlags {
+    BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED = 1u << 0
+} BML_BehaviorRunFlags;
+
 typedef struct BML_BehaviorRunInfo {
     uint32_t StructSize;
     uint32_t Kind;
     uint32_t State;
+    uint32_t Flags;
     BML_BehaviorStatus Status;
 } BML_BehaviorRunInfo;
 
@@ -406,6 +414,144 @@ typedef struct BML_BehaviorLayout {
     uint32_t SlotCount;
 } BML_BehaviorLayout;
 
+typedef enum BML_BehaviorGraphView {
+    BML_BEHAVIOR_GRAPH_LOGICAL = 1,
+    BML_BEHAVIOR_GRAPH_LIVE = 2
+} BML_BehaviorGraphView;
+
+typedef enum BML_BehaviorTruth {
+    BML_BEHAVIOR_FALSE = 0,
+    BML_BEHAVIOR_TRUE = 1,
+    BML_BEHAVIOR_UNKNOWN = 2
+} BML_BehaviorTruth;
+
+typedef struct BML_BehaviorGraphPort {
+    uint32_t StructSize;
+    uint64_t Node;
+    uint32_t Kind;
+    int32_t Index;
+    int32_t Occurrence;
+    uint32_t Active;
+    BML_BehaviorText Name;
+} BML_BehaviorGraphPort;
+
+typedef struct BML_BehaviorGraphNode {
+    uint32_t StructSize;
+    uint64_t Id;
+    BML_ObjectRef Object;
+    uint64_t Parent;
+    BML_BehaviorGuid Prototype;
+    int32_t Priority;
+    uint32_t Active;
+    BML_BehaviorText Name;
+    uint32_t PortOffset;
+    uint32_t PortCount;
+} BML_BehaviorGraphNode;
+
+typedef struct BML_BehaviorGraphLink {
+    uint32_t StructSize;
+    uint64_t Id;
+    BML_ObjectRef Object;
+    uint64_t SourceNode;
+    uint32_t SourceKind;
+    int32_t SourceIndex;
+    uint64_t TargetNode;
+    uint32_t TargetKind;
+    int32_t TargetIndex;
+    int32_t InitialDelay;
+    int32_t RemainingDelay;
+    uint32_t Pending;
+} BML_BehaviorGraphLink;
+
+// All offsets are relative to the payload passed to Inspect.
+typedef struct BML_BehaviorGraph {
+    uint32_t StructSize;
+    uint32_t View;
+    BML_ObjectRef Root;
+    uint64_t Generation;
+    uint64_t Fingerprint;
+    uint32_t NodeOffset;
+    uint32_t NodeCount;
+    uint32_t LinkOffset;
+    uint32_t LinkCount;
+} BML_BehaviorGraph;
+
+typedef enum BML_BehaviorReadMode {
+    BML_BEHAVIOR_READ_NON_FORCING = 1
+} BML_BehaviorReadMode;
+
+typedef enum BML_BehaviorValueState {
+    BML_BEHAVIOR_VALUE_AVAILABLE = 1,
+    BML_BEHAVIOR_VALUE_INDETERMINATE = 2,
+    BML_BEHAVIOR_VALUE_UNSUPPORTED = 3
+} BML_BehaviorValueState;
+
+typedef enum BML_BehaviorValueRelation {
+    BML_BEHAVIOR_VALUE_STORED = 1,
+    BML_BEHAVIOR_VALUE_DIRECT = 2,
+    BML_BEHAVIOR_VALUE_SHARED = 3,
+    BML_BEHAVIOR_VALUE_OPERATION = 4
+} BML_BehaviorValueRelation;
+
+typedef struct BML_BehaviorGraphValue {
+    uint32_t StructSize;
+    uint32_t State;
+    uint32_t Relation;
+    BML_BehaviorGuid Type;
+    uint32_t Kind;
+    uint32_t ValueOffset;
+    uint32_t ValueSize;
+} BML_BehaviorGraphValue;
+
+typedef enum BML_BehaviorWatchKind {
+    BML_BEHAVIOR_WATCH_GRAPH = 1,
+    BML_BEHAVIOR_WATCH_LAYOUT = 2,
+    BML_BEHAVIOR_WATCH_SAMPLED_VALUE = 3,
+    BML_BEHAVIOR_WATCH_EXACT_VALUE = 4
+} BML_BehaviorWatchKind;
+
+typedef struct BML_BehaviorWatchValue {
+    uint32_t StructSize;
+    uint32_t State;
+    uint32_t Relation;
+    BML_BehaviorValue Value;
+} BML_BehaviorWatchValue;
+
+typedef struct BML_BehaviorWatchEvent {
+    uint32_t StructSize;
+    uint32_t Kind;
+    uint64_t Sequence;
+    uint64_t Frame;
+    uint64_t Before;
+    uint64_t After;
+    BML_BehaviorWatchValue PreviousValue;
+    BML_BehaviorWatchValue CurrentValue;
+} BML_BehaviorWatchEvent;
+
+typedef void (BML_BEHAVIOR_CALL *BML_BehaviorWatchRetain)(void *state);
+typedef void (BML_BEHAVIOR_CALL *BML_BehaviorWatchRelease)(void *state);
+typedef void (BML_BEHAVIOR_CALL *BML_BehaviorWatchCallback)(
+    void *state, const BML_BehaviorWatchEvent *event);
+
+typedef struct BML_BehaviorWatchFunction {
+    uint32_t StructSize;
+    void *State;
+    BML_BehaviorWatchRetain Retain;
+    BML_BehaviorWatchRelease Release;
+    BML_BehaviorWatchCallback Invoke;
+} BML_BehaviorWatchFunction;
+
+typedef struct BML_BehaviorWatchSpec {
+    uint32_t StructSize;
+    uint32_t Kind;
+    uint32_t View;
+    BML_ObjectRef Root;
+    BML_ObjectRef Node;
+    uint32_t SlotKind;
+    BML_BehaviorSelector Slot;
+    uint32_t Read;
+} BML_BehaviorWatchSpec;
+
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
 
@@ -483,6 +629,41 @@ typedef struct BML_BehaviorInterface {
         uint32_t payloadCapacity,
         uint32_t *outPayloadSize,
         BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *Inspect)(
+        BML_BehaviorSession session,
+        BML_ObjectRef root,
+        uint32_t view,
+        BML_BehaviorGraph *graph,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadNodeLayout)(
+        BML_BehaviorSession session,
+        BML_ObjectRef node,
+        BML_BehaviorLayout *layout,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadValue)(
+        BML_BehaviorSession session,
+        BML_ObjectRef node,
+        uint32_t slotKind,
+        const BML_BehaviorSelector *slot,
+        uint32_t read,
+        BML_BehaviorGraphValue *value,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *Watch)(
+        BML_BehaviorSession session,
+        const BML_BehaviorWatchSpec *spec,
+        const BML_BehaviorWatchFunction *callback,
+        BML_BehaviorWatch *outWatch,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *CloseWatch)(BML_BehaviorWatch watch);
 } BML_BehaviorInterface;
 
 #pragma pack(pop)

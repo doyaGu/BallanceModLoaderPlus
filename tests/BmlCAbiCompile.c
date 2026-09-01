@@ -27,6 +27,16 @@ BML_C_ABI_ASSERT(BmlBehaviorSlotRecordSize,
                  sizeof(BML_BehaviorSlotRecord) == 48u);
 BML_C_ABI_ASSERT(BmlBehaviorLayoutSize,
                  sizeof(BML_BehaviorLayout) == 128u);
+BML_C_ABI_ASSERT(BmlBehaviorGraphPortSize,
+                 sizeof(BML_BehaviorGraphPort) == 40u);
+BML_C_ABI_ASSERT(BmlBehaviorGraphNodeSize,
+                 sizeof(BML_BehaviorGraphNode) == 72u);
+BML_C_ABI_ASSERT(BmlBehaviorGraphLinkSize,
+                 sizeof(BML_BehaviorGraphLink) == 80u);
+BML_C_ABI_ASSERT(BmlBehaviorGraphSize,
+                 sizeof(BML_BehaviorGraph) == 56u);
+BML_C_ABI_ASSERT(BmlBehaviorGraphValueSize,
+                 sizeof(BML_BehaviorGraphValue) == 32u);
 
 #if UINTPTR_MAX == UINT32_MAX
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
@@ -36,7 +46,15 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 88u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 64u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 64u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 84u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
+                 sizeof(BML_BehaviorWatchValue) == 92u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
+                 sizeof(BML_BehaviorWatchEvent) == 224u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchFunctionSize,
+                 sizeof(BML_BehaviorWatchFunction) == 20u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchSpecSize,
+                 sizeof(BML_BehaviorWatchSpec) == 68u);
 #else
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
@@ -45,7 +63,15 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 104u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 96u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 128u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 168u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
+                 sizeof(BML_BehaviorWatchValue) == 96u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
+                 sizeof(BML_BehaviorWatchEvent) == 232u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchFunctionSize,
+                 sizeof(BML_BehaviorWatchFunction) == 40u);
+BML_C_ABI_ASSERT(BmlBehaviorWatchSpecSize,
+                 sizeof(BML_BehaviorWatchSpec) == 80u);
 #endif
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {

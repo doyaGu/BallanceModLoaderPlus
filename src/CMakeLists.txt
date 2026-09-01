@@ -295,6 +295,8 @@ set(BML_HOOK_SOURCES
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Callback.h
+        Behavior/Graph.h
+        Behavior/ObjectRef.h
         Behavior/PrototypeCatalog.h
         Behavior/Execution.h
         Behavior/Lifecycle.h
@@ -312,10 +314,12 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Sessions.h
         Behavior/Status.h
         Behavior/Text2D.h
+        Behavior/Watch.h
 )
 
 set(BML_BEHAVIOR_SOURCES
         Behavior/Callback.cpp
+        Behavior/CKGraph.cpp
         Behavior/CKPrototypeSource.cpp
         Behavior/Execution.cpp
         Behavior/Lifecycle.cpp
@@ -332,6 +336,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/SendMessage.cpp
         Behavior/Sessions.cpp
         Behavior/Text2D.cpp
+        Behavior/Watch.cpp
 )
 
 set(BML_VIRTOOLS_SOURCES

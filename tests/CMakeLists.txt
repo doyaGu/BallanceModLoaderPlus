@@ -254,6 +254,8 @@ add_bml_test(BehaviorSessionTest
         ${BML_SOURCE_DIR}/Behavior/Sessions.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
+        ${BML_SOURCE_DIR}/Behavior/Watch.cpp
+        ${BML_SOURCE_DIR}/Behavior/Callback.cpp
 )
 target_include_directories(BehaviorSessionTest PRIVATE
         "${VIRTOOLS_SDK_INCLUDE_DIR}"
@@ -278,6 +280,16 @@ add_bml_test(BehaviorCallbackTest
         SOURCES
         BehaviorCallbackTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
+)
+
+add_bml_test(BehaviorWatchTest
+        SOURCES
+        BehaviorWatchTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Watch.cpp
+        ${BML_SOURCE_DIR}/Behavior/Callback.cpp
+)
+target_include_directories(BehaviorWatchTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
 
 add_bml_test(StringUtilsTest

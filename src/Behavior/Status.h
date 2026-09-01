@@ -40,6 +40,7 @@ enum class Error {
     FrameQueueFull,
     ExecutionCancelled,
     DetachedUnsupported,
+    ObserverUnavailable,
 };
 
 enum class Phase {
