@@ -65,6 +65,11 @@ add_library(BmlCAbiCompile OBJECT BmlCAbiCompile.c)
 target_include_directories(BmlCAbiCompile PRIVATE "${BML_INCLUDE_DIR}")
 set_target_properties(BmlCAbiCompile PROPERTIES FOLDER "Tests")
 
+add_bml_test(BehaviorAuthoringTest
+        SOURCES BehaviorAuthoringTest.cpp
+        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+)
+
 # imc/test.sample.imc is the authoring input behind the generated header the
 # generator tests compile against. The loader publishes no .imc interface of its
 # own, so this sample is what keeps the generator, its lock format, and the
