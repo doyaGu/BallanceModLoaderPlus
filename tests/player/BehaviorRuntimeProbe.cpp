@@ -1629,16 +1629,38 @@ private:
         const Status closed = m_EditPatch
             ? m_Editor->Close(m_EditPatch) : Status{};
         m_Runtime.ProcessFrame();
-        const bool reverted = closed && !m_EditPatch && m_EditSource &&
-            m_EditFixture->GetSubBehaviorCount() == 1 &&
-            m_EditFixture->GetSubBehaviorLinkCount() == 0 &&
-            m_EditSource->GetInputCount() == 1 &&
-            m_EditSource->GetOutputCount() == 1 &&
-            m_EditSource->GetInputParameterCount() == 1 &&
-            m_EditSource->GetOutputParameterCount() == 0 &&
-            m_Editor->TopologyFingerprint(m_EditFixture) == 0;
+        std::string closeFailure;
+        if (!closed) {
+            closeFailure = "additive-edit-close-status-" +
+                std::to_string(static_cast<int>(closed.Code));
+        } else if (m_EditPatch) {
+            closeFailure = "additive-edit-close-patch";
+        } else if (!m_EditSource) {
+            closeFailure = "additive-edit-close-source";
+        } else if (m_EditFixture->GetSubBehaviorCount() != 1) {
+            closeFailure = "additive-edit-close-nodes-" +
+                std::to_string(m_EditFixture->GetSubBehaviorCount());
+        } else if (m_EditFixture->GetSubBehaviorLinkCount() != 0) {
+            closeFailure = "additive-edit-close-links-" +
+                std::to_string(m_EditFixture->GetSubBehaviorLinkCount());
+        } else if (m_EditSource->GetInputCount() != 1) {
+            closeFailure = "additive-edit-close-ins-" +
+                std::to_string(m_EditSource->GetInputCount());
+        } else if (m_EditSource->GetOutputCount() != 1) {
+            closeFailure = "additive-edit-close-outs-" +
+                std::to_string(m_EditSource->GetOutputCount());
+        } else if (m_EditSource->GetInputParameterCount() != 1) {
+            closeFailure = "additive-edit-close-pins-" +
+                std::to_string(m_EditSource->GetInputParameterCount());
+        } else if (m_EditSource->GetOutputParameterCount() != 0) {
+            closeFailure = "additive-edit-close-pouts-" +
+                std::to_string(m_EditSource->GetOutputParameterCount());
+        } else if (m_Editor->TopologyFingerprint(m_EditFixture) != 0) {
+            closeFailure = "additive-edit-close-topology";
+        }
+        const bool reverted = closeFailure.empty();
         if (!reverted)
-            Fail("additive-edit-close");
+            Fail(closeFailure.c_str());
         m_AdditiveEditPassed = reverted && m_EditTap.Calls == 1;
 
         if (m_EditSource)
