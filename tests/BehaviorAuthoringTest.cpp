@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -20,9 +21,18 @@ struct FakeState {
     std::uint32_t FrameKind = 0;
     std::uint32_t FrameLimit = 0;
     std::uint64_t Generation = 0;
+    std::uint64_t ProviderGeneration = 73;
+    int LayoutCalls = 0;
+    int OpenRuns = 0;
     int SessionCloses = 0;
     int RunCloses = 0;
+    int RunCode = BML_OK;
     bool FramesAvailable = true;
+    bool LayoutUnavailable = false;
+    bool MalformedLayout = false;
+    bool NullRun = false;
+    std::vector<BML_ObjectRef> RunOwners;
+    std::vector<const BML_BehaviorBlock *> Blocks;
 };
 
 FakeState g_State;
@@ -53,12 +63,16 @@ int BML_BEHAVIOR_CALL CloseSession(BML_BehaviorSession) {
     return BML_OK;
 }
 
-int OpenRun(const BML_BehaviorBlock *block,
+int OpenRun(BML_ObjectRef owner,
+            const BML_BehaviorBlock *block,
             const BML_BehaviorSelector *input,
             BML_BehaviorRun *run,
             BML_BehaviorRunInfo *info,
             BML_BehaviorStatus *status,
             std::uint32_t kind) {
+    ++g_State.OpenRuns;
+    g_State.RunOwners.push_back(owner);
+    g_State.Blocks.push_back(block);
     g_State.Generation = block->PrototypeGeneration;
     g_State.FrameKind = block->Frames.Kind;
     g_State.FrameLimit = block->Frames.Limit;
@@ -74,7 +88,7 @@ int OpenRun(const BML_BehaviorBlock *block,
         g_State.Text.assign(binding.Value.Data.Utf8.Data,
                             binding.Value.Data.Utf8.Length);
     }
-    *run = reinterpret_cast<BML_BehaviorRun>(2);
+    *run = g_State.NullRun ? nullptr : reinterpret_cast<BML_BehaviorRun>(2);
     Init(info);
     info->Kind = kind;
     info->State = kind == BML_BEHAVIOR_RUN_CALL
@@ -82,33 +96,35 @@ int OpenRun(const BML_BehaviorBlock *block,
         : BML_BEHAVIOR_RUN_COMPLETED;
     Init(&info->Status);
     Success(status);
-    return BML_OK;
+    return g_State.RunCode;
 }
 
-int BML_BEHAVIOR_CALL CallRun(BML_BehaviorSession, BML_ObjectRef,
+int BML_BEHAVIOR_CALL CallRun(BML_BehaviorSession, BML_ObjectRef owner,
                               const BML_BehaviorBlock *block,
                               const BML_BehaviorSelector *input,
                               BML_BehaviorRun *run,
                               BML_BehaviorRunInfo *info,
                               BML_BehaviorStatus *status) {
-    return OpenRun(block, input, run, info, status, BML_BEHAVIOR_RUN_CALL);
+    return OpenRun(owner, block, input, run, info, status,
+                   BML_BEHAVIOR_RUN_CALL);
 }
 
-int BML_BEHAVIOR_CALL StartRun(BML_BehaviorSession, BML_ObjectRef,
+int BML_BEHAVIOR_CALL StartRun(BML_BehaviorSession, BML_ObjectRef owner,
                                const BML_BehaviorBlock *block,
                                const BML_BehaviorSelector *input,
                                BML_BehaviorRun *run,
                                BML_BehaviorRunInfo *info,
                                BML_BehaviorStatus *status) {
-    return OpenRun(block, input, run, info, status, BML_BEHAVIOR_RUN_TASK);
+    return OpenRun(owner, block, input, run, info, status,
+                   BML_BEHAVIOR_RUN_TASK);
 }
 
-int BML_BEHAVIOR_CALL SpawnRun(BML_BehaviorSession, BML_ObjectRef,
+int BML_BEHAVIOR_CALL SpawnRun(BML_BehaviorSession, BML_ObjectRef owner,
                                const BML_BehaviorBlock *block,
                                BML_BehaviorRun *run,
                                BML_BehaviorRunInfo *info,
                                BML_BehaviorStatus *status) {
-    return OpenRun(block, nullptr, run, info, status,
+    return OpenRun(owner, block, nullptr, run, info, status,
                    BML_BEHAVIOR_RUN_INSTANCE);
 }
 
@@ -218,11 +234,91 @@ int BML_BEHAVIOR_CALL FindPrototypes(
     return BML_ERROR_NOT_IMPLEMENTED;
 }
 
+struct FakeSlot {
+    std::uint32_t Kind;
+    std::int32_t Index;
+    std::int32_t Occurrence;
+    CKGUID Type;
+    std::uint32_t ValueKind;
+    std::string_view Name;
+    bool Supported = true;
+};
+
+std::vector<std::uint8_t> DeclaredLayout(
+    const BML_BehaviorPrototypeRef &prototype,
+    BML_BehaviorLayout &layout) {
+    const FakeSlot slots[] = {
+        {BML_BEHAVIOR_SLOT_IN, 0, 0, CKGUID(), 0, "Run", false},
+        {BML_BEHAVIOR_SLOT_SETTING, 0, 0, CKPGUID_STRING,
+         BML_BEHAVIOR_VALUE_UTF8, "Caption"},
+        {BML_BEHAVIOR_SLOT_SETTING, 1, 0, CKPGUID_BOOL,
+         BML_BEHAVIOR_VALUE_BOOL, "Retry"},
+        {BML_BEHAVIOR_SLOT_SETTING, 2, 0, CKPGUID_BOOL,
+         BML_BEHAVIOR_VALUE_BOOL, "Extended Layout"},
+        {BML_BEHAVIOR_SLOT_SETTING, 4, 1, CKPGUID_BOOL,
+         BML_BEHAVIOR_VALUE_BOOL, "Duplicate"},
+        {BML_BEHAVIOR_SLOT_SETTING, 3, 0, CKPGUID_INT,
+         BML_BEHAVIOR_VALUE_INT32, "Duplicate"},
+        {BML_BEHAVIOR_SLOT_SETTING, 5, 0, CKGUID(91, 92), 0,
+         "Opaque", false},
+        {BML_BEHAVIOR_SLOT_PIN, 0, 0, CKPGUID_INT,
+         BML_BEHAVIOR_VALUE_INT32, "Value"},
+        {BML_BEHAVIOR_SLOT_LOCAL, 0, 0, CKPGUID_INT,
+         BML_BEHAVIOR_VALUE_INT32, "State"},
+    };
+
+    std::vector<std::uint8_t> payload(sizeof(slots) / sizeof(slots[0]) *
+                                      sizeof(BML_BehaviorSlotRecord));
+    for (std::size_t index = 0; index < std::size(slots); ++index) {
+        const FakeSlot &source = slots[index];
+        BML_BehaviorSlotRecord slot{};
+        slot.StructSize = sizeof(slot);
+        slot.Kind = source.Kind;
+        slot.Index = source.Index;
+        slot.Occurrence = source.Occurrence;
+        slot.Type = {source.Type.d1, source.Type.d2};
+        slot.ValueKind = source.ValueKind;
+        if (source.Supported)
+            slot.Flags |= BML_BEHAVIOR_SLOT_VALUE_SUPPORTED;
+        slot.Name.Offset = static_cast<std::uint32_t>(payload.size());
+        slot.Name.Length = static_cast<std::uint32_t>(source.Name.size());
+        payload.insert(payload.end(), source.Name.begin(), source.Name.end());
+        slot.TypeName.Offset = static_cast<std::uint32_t>(payload.size());
+        std::memcpy(payload.data() + index * sizeof(slot), &slot, sizeof(slot));
+    }
+
+    layout = {};
+    layout.StructSize = sizeof(layout);
+    layout.Origin = BML_BEHAVIOR_LAYOUT_DECLARED;
+    layout.Prototype = prototype;
+    if (!layout.Prototype.Generation)
+        layout.Prototype.Generation = g_State.ProviderGeneration;
+    layout.LayoutGeneration = 1;
+    layout.Kind = BML_BEHAVIOR_PROTOTYPE_FUNCTION;
+    layout.SlotOffset = 0;
+    layout.SlotCount = g_State.MalformedLayout
+        ? (std::numeric_limits<std::uint32_t>::max)()
+        : static_cast<std::uint32_t>(std::size(slots));
+    return payload;
+}
+
 int BML_BEHAVIOR_CALL ReadDeclaredLayout(
-    BML_BehaviorSession, const BML_BehaviorPrototypeRef *,
-    BML_BehaviorLayout *, void *, std::uint32_t, std::uint32_t *,
-    BML_BehaviorStatus *) {
-    return BML_ERROR_NOT_IMPLEMENTED;
+    BML_BehaviorSession, const BML_BehaviorPrototypeRef *prototype,
+    BML_BehaviorLayout *layout, void *payload, std::uint32_t payloadCapacity,
+    std::uint32_t *payloadSize, BML_BehaviorStatus *status) {
+    ++g_State.LayoutCalls;
+    if (g_State.LayoutUnavailable) {
+        Success(status);
+        return BML_ERROR_UNAVAILABLE;
+    }
+    const std::vector<std::uint8_t> bytes = DeclaredLayout(*prototype, *layout);
+    *payloadSize = static_cast<std::uint32_t>(bytes.size());
+    Success(status);
+    if (payloadCapacity < bytes.size())
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    if (!bytes.empty())
+        std::memcpy(payload, bytes.data(), bytes.size());
+    return BML_OK;
 }
 
 int BML_BEHAVIOR_CALL ReadLiveLayout(
@@ -264,6 +360,21 @@ extern "C" int BML_GetInterface(const char *id, std::uint16_t major,
     return BML_OK;
 }
 
+template <class T>
+concept ConfigurableBlock = requires(T &value) {
+    value.Setting("Value", std::int32_t{1});
+    value.Frames(signals(1));
+};
+
+static_assert(ConfigurableBlock<Builder>);
+static_assert(!ConfigurableBlock<Block>);
+static_assert(std::same_as<
+              decltype(std::declval<Builder &>().Frames(signals(1))),
+              Builder &>);
+static_assert(std::same_as<
+              decltype(std::declval<Builder &&>().Frames(signals(1))),
+              Builder &&>);
+
 TEST(BehaviorAuthoring, OwnsBlockTextAndUsesDomainSelectors) {
     g_State = {};
     auto opened = Session::Open("test.mod");
@@ -272,9 +383,12 @@ TEST(BehaviorAuthoring, OwnsBlockTextAndUsesDomainSelectors) {
 
     std::string settingName = "Caption";
     std::string text = "owned text";
-    Block block = session.Use(Prototype(CKGUID(11, 22), 37))
+    auto compiled = session.Use(Prototype(CKGUID(11, 22), 37))
         .Settings(setting(settingName, text))
-        .Frames(eachFrame(8));
+        .Frames(eachFrame(8))
+        .Compile();
+    ASSERT_TRUE(compiled) << compiled.Code();
+    Block block = std::move(compiled).Value();
     settingName.assign("changed");
     text.assign("changed");
 
@@ -287,6 +401,7 @@ TEST(BehaviorAuthoring, OwnsBlockTextAndUsesDomainSelectors) {
     EXPECT_EQ(g_State.FrameKind, BML_BEHAVIOR_FRAMES_EACH_FRAME);
     EXPECT_EQ(g_State.FrameLimit, 8u);
     EXPECT_EQ(g_State.Generation, 37u);
+    EXPECT_EQ(g_State.LayoutCalls, 2);
 }
 
 TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
@@ -294,7 +409,7 @@ TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
     Session session = std::move(opened).Value();
-    auto called = session.Use(CKGUID(1, 2)).Call(unique("Run"));
+    auto called = session.Use(CKGUID(1, 2)).Call("Run");
     ASSERT_TRUE(called);
     Call call = std::move(called).Value();
 
@@ -343,11 +458,158 @@ TEST(BehaviorAuthoring, ClosingSessionInvalidatesExistingBlocks) {
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
     Session session = std::move(opened).Value();
-    Block block = session.Use(CKGUID(5, 6));
+    auto compiled = session.Use(CKGUID(5, 6)).Compile();
+    ASSERT_TRUE(compiled);
+    Block block = std::move(compiled).Value();
     session.Close();
 
     auto called = block.Call();
     EXPECT_FALSE(called);
     EXPECT_EQ(called.Code(), BML_ERROR_INVALID_HANDLE);
     EXPECT_EQ(g_State.SessionCloses, 1);
+}
+
+TEST(BehaviorAuthoring, PinsProviderAndReusesOneBlockAcrossOwners) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto compiled = session.Use(CKGUID(7, 8)).Compile();
+    ASSERT_TRUE(compiled) << compiled.Detail().Message;
+    Block block = std::move(compiled).Value();
+
+    const BML_ObjectRef firstOwner{1, 2, 3};
+    const BML_ObjectRef secondOwner{4, 5, 6};
+    auto called = block.Call(firstOwner, unique("Run"));
+    auto started = block.Start(secondOwner, unique("Run"));
+    auto spawned = block.Spawn(firstOwner);
+    ASSERT_TRUE(called);
+    ASSERT_TRUE(started);
+    ASSERT_TRUE(spawned);
+    ASSERT_EQ(g_State.Blocks.size(), 3u);
+    EXPECT_EQ(g_State.Blocks[0], g_State.Blocks[1]);
+    EXPECT_EQ(g_State.Blocks[1], g_State.Blocks[2]);
+    ASSERT_EQ(g_State.RunOwners.size(), 3u);
+    EXPECT_EQ(g_State.RunOwners[0].Domain, firstOwner.Domain);
+    EXPECT_EQ(g_State.RunOwners[1].Domain, secondOwner.Domain);
+    EXPECT_EQ(g_State.Generation, g_State.ProviderGeneration);
+    EXPECT_EQ(g_State.LayoutCalls, 2);
+}
+
+TEST(BehaviorAuthoring, CompileChecksTheDeclaredLayout) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto missing = session.Use(CKGUID(9, 10))
+        .Setting("Missing", std::int32_t{1})
+        .Compile();
+    EXPECT_FALSE(missing);
+    EXPECT_EQ(missing.Detail().Error, BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND);
+
+    auto ambiguous = session.Use(CKGUID(9, 10))
+        .Setting("Duplicate", std::int32_t{1})
+        .Compile();
+    EXPECT_FALSE(ambiguous);
+    EXPECT_EQ(ambiguous.Detail().Error, BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS);
+
+    auto wrongKind = session.Use(CKGUID(9, 10))
+        .Setting("Caption", std::int32_t{1})
+        .Compile();
+    EXPECT_FALSE(wrongKind);
+    EXPECT_EQ(wrongKind.Detail().Error, BML_BEHAVIOR_ERROR_TYPE_MISMATCH);
+
+    auto unsupported = session.Use(CKGUID(9, 10))
+        .Setting("Opaque", std::int32_t{1})
+        .Compile();
+    EXPECT_FALSE(unsupported);
+    EXPECT_EQ(unsupported.Detail().Error,
+              BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED);
+
+    auto missingCall = session.Use(CKGUID(9, 10))
+        .Setting("Missing", std::int32_t{1})
+        .Call("Run");
+    EXPECT_FALSE(missingCall);
+    EXPECT_EQ(missingCall.Detail().Error,
+              BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND);
+
+    auto selected = session.Use(CKGUID(9, 10))
+        .Setting(named("Duplicate", 1), true)
+        .Compile();
+    EXPECT_TRUE(selected) << selected.Detail().Message;
+    EXPECT_EQ(g_State.OpenRuns, 0);
+}
+
+TEST(BehaviorAuthoring, CompileLeavesDynamicLayoutToTheNativeLifecycle) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto compiled = session.Use(CKGUID(13, 14))
+        .Setting("Extended Layout", true)
+        .NextStage()
+        .Setting("Created Later", std::int32_t{4})
+        .Pin("Dynamic Value", std::int32_t{713})
+        .Compile();
+    EXPECT_TRUE(compiled) << compiled.Detail().Message;
+
+    auto dynamicPin = session.Use(CKGUID(13, 14))
+        .Pin("Dynamic Value", std::int32_t{713})
+        .Compile();
+    EXPECT_TRUE(dynamicPin) << dynamicPin.Detail().Message;
+}
+
+TEST(BehaviorAuthoring, FallsBackWhenPrototypeDiscoveryIsUnavailable) {
+    g_State = {};
+    g_State.LayoutUnavailable = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto called = session.Use(CKGUID(15, 16))
+        .Setting("Runtime Setting", std::int32_t{9})
+        .Call("Run");
+    EXPECT_TRUE(called) << called.Detail().Message;
+    EXPECT_EQ(g_State.Generation, 0u);
+    EXPECT_EQ(g_State.LayoutCalls, 1);
+    EXPECT_EQ(g_State.OpenRuns, 1);
+}
+
+TEST(BehaviorAuthoring, RejectsMalformedDeclaredLayoutBeforeAllocation) {
+    g_State = {};
+    g_State.MalformedLayout = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto compiled = session.Use(CKGUID(17, 18)).Compile();
+    EXPECT_FALSE(compiled);
+    EXPECT_EQ(compiled.Code(), BML_ERROR_MALFORMED_MESSAGE);
+    EXPECT_EQ(compiled.Detail().Error,
+              BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE);
+}
+
+TEST(BehaviorAuthoring, ContainsMalformedRunResults) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto compiled = session.Use(CKGUID(19, 20)).Compile();
+    ASSERT_TRUE(compiled);
+    Block block = std::move(compiled).Value();
+
+    g_State.RunCode = BML_ERROR_FAIL;
+    auto failed = block.Call("Run");
+    EXPECT_FALSE(failed);
+    EXPECT_EQ(failed.Code(), BML_ERROR_FAIL);
+    EXPECT_EQ(g_State.RunCloses, 1);
+
+    g_State.RunCode = BML_OK;
+    g_State.NullRun = true;
+    auto malformed = block.Spawn();
+    EXPECT_FALSE(malformed);
+    EXPECT_EQ(malformed.Code(), BML_ERROR_MALFORMED_MESSAGE);
+    EXPECT_EQ(g_State.RunCloses, 1);
 }

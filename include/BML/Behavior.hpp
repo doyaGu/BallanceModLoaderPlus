@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <new>
 #include <optional>
@@ -77,6 +78,10 @@ public:
     [[nodiscard]] T &Value() & { return *m_Value; }
     [[nodiscard]] const T &Value() const & { return *m_Value; }
     [[nodiscard]] T &&Value() && { return std::move(*m_Value); }
+    [[nodiscard]] T *operator->() noexcept { return &*m_Value; }
+    [[nodiscard]] const T *operator->() const noexcept { return &*m_Value; }
+    [[nodiscard]] T &operator*() & noexcept { return *m_Value; }
+    [[nodiscard]] const T &operator*() const & noexcept { return *m_Value; }
 
     static Result Success(T value, Status status = {}) {
         Result result;
@@ -393,6 +398,7 @@ struct Prototype {
 };
 
 class Session;
+class Builder;
 class Block;
 class Call;
 class Task;
@@ -451,6 +457,37 @@ struct SessionState {
     }
 };
 
+struct BlockDefinition {
+    explicit BlockDefinition(Behavior::Prototype prototype)
+        : PrototypeRef(prototype) {
+        Settings.emplace_back();
+    }
+
+    Behavior::Prototype PrototypeRef;
+    std::uint32_t TargetKind = BML_BEHAVIOR_TARGET_OWNER;
+    Guid TargetType;
+    BML_ObjectRef TargetObject{};
+    std::vector<std::vector<Binding>> Settings;
+    std::vector<Binding> Pins;
+    std::vector<Binding> Locals;
+    FramePolicy Frames = signals();
+};
+
+struct DeclaredSlot {
+    std::uint32_t Kind = 0;
+    std::uint32_t Flags = 0;
+    std::int32_t Index = 0;
+    std::int32_t Occurrence = 0;
+    Guid Type;
+    std::uint32_t ValueKind = 0;
+    std::string Name;
+};
+
+struct DeclaredLayout {
+    Behavior::Prototype PrototypeRef;
+    std::vector<DeclaredSlot> Slots;
+};
+
 template <class T>
 bool RecordAt(const std::vector<std::uint8_t> &payload,
               std::uint32_t offset, std::uint32_t index, T &record) noexcept {
@@ -460,6 +497,14 @@ bool RecordAt(const std::vector<std::uint8_t> &payload,
         return false;
     std::memcpy(&record, payload.data() + at, sizeof(T));
     return record.StructSize >= sizeof(T);
+}
+
+template <class T>
+bool RecordsFit(const std::vector<std::uint8_t> &payload,
+                std::uint32_t offset, std::uint32_t count) noexcept {
+    const std::uint64_t end = static_cast<std::uint64_t>(offset) +
+        static_cast<std::uint64_t>(count) * sizeof(T);
+    return end <= payload.size();
 }
 
 inline bool BytesAt(const std::vector<std::uint8_t> &payload,
@@ -817,14 +862,22 @@ private:
     friend class ::BML::Behavior::Call;
 };
 
-struct BlockWire {
-    explicit BlockWire(const Block &source);
+struct CompiledBlock {
+    explicit CompiledBlock(BlockDefinition definition);
 
-    BML_BehaviorBlock Block{};
+    BlockDefinition Definition;
+    BML_BehaviorBlock Wire{};
     std::vector<std::vector<BML_BehaviorBinding>> SettingBindings;
     std::vector<BML_BehaviorSettingStage> SettingStages;
     std::vector<BML_BehaviorBinding> Pins;
     std::vector<BML_BehaviorBinding> Locals;
+};
+
+class Compiler final {
+public:
+    [[nodiscard]] Result<std::shared_ptr<const CompiledBlock>> operator()(
+        const std::shared_ptr<SessionState> &session,
+        BlockDefinition definition) const;
 };
 
 } // namespace Detail
@@ -908,143 +961,287 @@ private:
 
 class Block {
 public:
-    Block &Owner(BML_ObjectRef owner) noexcept {
-        m_Owner = owner;
+    Block(const Block &) noexcept = default;
+    Block &operator=(const Block &) noexcept = default;
+    Block(Block &&) noexcept = default;
+    Block &operator=(Block &&) noexcept = default;
+
+    [[nodiscard]] Result<Behavior::Call> Call(
+        const Selector &input = Selector::Only()) const;
+    [[nodiscard]] Result<Behavior::Call> Call(std::string_view input) const {
+        return Call(Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Behavior::Call> Call(
+        BML_ObjectRef owner, const Selector &input = Selector::Only()) const;
+    [[nodiscard]] Result<Behavior::Call> Call(
+        BML_ObjectRef owner, std::string_view input) const {
+        return Call(owner, Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Task> Start(
+        const Selector &input = Selector::Only()) const;
+    [[nodiscard]] Result<Task> Start(std::string_view input) const {
+        return Start(Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Task> Start(
+        BML_ObjectRef owner, const Selector &input = Selector::Only()) const;
+    [[nodiscard]] Result<Task> Start(
+        BML_ObjectRef owner, std::string_view input) const {
+        return Start(owner, Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Instance> Spawn() const;
+    [[nodiscard]] Result<Instance> Spawn(BML_ObjectRef owner) const;
+
+private:
+    Block(std::shared_ptr<Detail::SessionState> session,
+          std::shared_ptr<const Detail::CompiledBlock> definition)
+        : m_Session(std::move(session)), m_Definition(std::move(definition)) {}
+
+    template <class Handle, class Function>
+    Result<Handle> Open(Function function, BML_ObjectRef owner,
+                        const Selector *input) const;
+
+    std::shared_ptr<Detail::SessionState> m_Session;
+    std::shared_ptr<const Detail::CompiledBlock> m_Definition;
+
+    friend class Builder;
+};
+
+// Builder terminal methods are the one-shot authoring path. Compile once and
+// retain the immutable Block when the same definition is run repeatedly.
+class Builder {
+public:
+    Builder(const Builder &) = default;
+    Builder &operator=(const Builder &) = default;
+    Builder(Builder &&) noexcept = default;
+    Builder &operator=(Builder &&) noexcept = default;
+
+    Builder &TargetOwner() & noexcept {
+        m_Definition.TargetKind = BML_BEHAVIOR_TARGET_OWNER;
+        m_Definition.TargetType = {};
+        m_Definition.TargetObject = {};
         return *this;
     }
-    Block &TargetOwner() noexcept {
-        m_TargetKind = BML_BEHAVIOR_TARGET_OWNER;
-        m_TargetType = {};
-        m_TargetObject = {};
+    Builder &&TargetOwner() && noexcept {
+        static_cast<Builder &>(*this).TargetOwner();
+        return std::move(*this);
+    }
+    Builder &Target(Guid type, BML_ObjectRef object) & noexcept {
+        m_Definition.TargetKind = BML_BEHAVIOR_TARGET_OBJECT;
+        m_Definition.TargetType = type;
+        m_Definition.TargetObject = object;
         return *this;
     }
-    Block &Target(Guid type, BML_ObjectRef object) noexcept {
-        m_TargetKind = BML_BEHAVIOR_TARGET_OBJECT;
-        m_TargetType = type;
-        m_TargetObject = object;
+    Builder &&Target(Guid type, BML_ObjectRef object) && noexcept {
+        static_cast<Builder &>(*this).Target(type, object);
+        return std::move(*this);
+    }
+    Builder &NullTarget(Guid type) & noexcept {
+        m_Definition.TargetKind = BML_BEHAVIOR_TARGET_NULL;
+        m_Definition.TargetType = type;
+        m_Definition.TargetObject = {};
         return *this;
     }
-    Block &NullTarget(Guid type) noexcept {
-        m_TargetKind = BML_BEHAVIOR_TARGET_NULL;
-        m_TargetType = type;
-        m_TargetObject = {};
+    Builder &&NullTarget(Guid type) && noexcept {
+        static_cast<Builder &>(*this).NullTarget(type);
+        return std::move(*this);
+    }
+    Builder &Setting(Binding binding) & {
+        m_Definition.Settings.back().push_back(std::move(binding));
         return *this;
     }
-    Block &Setting(Binding binding) {
-        m_Settings.back().push_back(std::move(binding));
-        return *this;
+    Builder &&Setting(Binding binding) && {
+        static_cast<Builder &>(*this).Setting(std::move(binding));
+        return std::move(*this);
     }
     template <class T>
-    Block &Setting(Selector slot, T &&value) {
+    Builder &Setting(Selector slot, T &&value) & {
         return Setting({std::move(slot), std::forward<T>(value)});
     }
     template <class T>
-    Block &Setting(std::string_view name, T &&value) {
-        return Setting(Selector::Unique(name), std::forward<T>(value));
-    }
-    Block &NextStage() {
-        m_Settings.emplace_back();
-        return *this;
-    }
-    Block &Pin(Binding binding) {
-        m_Pins.push_back(std::move(binding));
-        return *this;
+    Builder &&Setting(Selector slot, T &&value) && {
+        static_cast<Builder &>(*this).Setting(
+            {std::move(slot), std::forward<T>(value)});
+        return std::move(*this);
     }
     template <class T>
-    Block &Pin(Selector slot, T &&value) {
+    Builder &Setting(std::string_view name, T &&value) & {
+        return Setting(Selector::Unique(name), std::forward<T>(value));
+    }
+    template <class T>
+    Builder &&Setting(std::string_view name, T &&value) && {
+        static_cast<Builder &>(*this).Setting(
+            Selector::Unique(name), std::forward<T>(value));
+        return std::move(*this);
+    }
+    Builder &NextStage() & {
+        if (!m_Definition.Settings.back().empty())
+            m_Definition.Settings.emplace_back();
+        return *this;
+    }
+    Builder &&NextStage() && {
+        static_cast<Builder &>(*this).NextStage();
+        return std::move(*this);
+    }
+    Builder &Pin(Binding binding) & {
+        m_Definition.Pins.push_back(std::move(binding));
+        return *this;
+    }
+    Builder &&Pin(Binding binding) && {
+        static_cast<Builder &>(*this).Pin(std::move(binding));
+        return std::move(*this);
+    }
+    template <class T>
+    Builder &Pin(Selector slot, T &&value) & {
         return Pin({std::move(slot), std::forward<T>(value)});
     }
     template <class T>
-    Block &Pin(std::string_view name, T &&value) {
-        return Pin(Selector::Unique(name), std::forward<T>(value));
-    }
-    Block &Local(Binding binding) {
-        m_Locals.push_back(std::move(binding));
-        return *this;
+    Builder &&Pin(Selector slot, T &&value) && {
+        static_cast<Builder &>(*this).Pin(
+            {std::move(slot), std::forward<T>(value)});
+        return std::move(*this);
     }
     template <class T>
-    Block &Local(Selector slot, T &&value) {
+    Builder &Pin(std::string_view name, T &&value) & {
+        return Pin(Selector::Unique(name), std::forward<T>(value));
+    }
+    template <class T>
+    Builder &&Pin(std::string_view name, T &&value) && {
+        static_cast<Builder &>(*this).Pin(
+            Selector::Unique(name), std::forward<T>(value));
+        return std::move(*this);
+    }
+    Builder &Local(Binding binding) & {
+        m_Definition.Locals.push_back(std::move(binding));
+        return *this;
+    }
+    Builder &&Local(Binding binding) && {
+        static_cast<Builder &>(*this).Local(std::move(binding));
+        return std::move(*this);
+    }
+    template <class T>
+    Builder &Local(Selector slot, T &&value) & {
         return Local({std::move(slot), std::forward<T>(value)});
     }
     template <class T>
-    Block &Local(std::string_view name, T &&value) {
+    Builder &&Local(Selector slot, T &&value) && {
+        static_cast<Builder &>(*this).Local(
+            {std::move(slot), std::forward<T>(value)});
+        return std::move(*this);
+    }
+    template <class T>
+    Builder &Local(std::string_view name, T &&value) & {
         return Local(Selector::Unique(name), std::forward<T>(value));
     }
+    template <class T>
+    Builder &&Local(std::string_view name, T &&value) && {
+        static_cast<Builder &>(*this).Local(
+            Selector::Unique(name), std::forward<T>(value));
+        return std::move(*this);
+    }
     template <class... Bindings>
-    Block &Pins(Bindings &&... bindings) {
+    Builder &Pins(Bindings &&... bindings) & {
         (Pin(std::forward<Bindings>(bindings)), ...);
         return *this;
     }
     template <class... Bindings>
-    Block &Settings(Bindings &&... bindings) {
+    Builder &&Pins(Bindings &&... bindings) && {
+        static_cast<Builder &>(*this).Pins(
+            std::forward<Bindings>(bindings)...);
+        return std::move(*this);
+    }
+    template <class... Bindings>
+    Builder &Settings(Bindings &&... bindings) & {
         (Setting(std::forward<Bindings>(bindings)), ...);
         return *this;
     }
     template <class... Bindings>
-    Block &Locals(Bindings &&... bindings) {
+    Builder &&Settings(Bindings &&... bindings) && {
+        static_cast<Builder &>(*this).Settings(
+            std::forward<Bindings>(bindings)...);
+        return std::move(*this);
+    }
+    template <class... Bindings>
+    Builder &Locals(Bindings &&... bindings) & {
         (Local(std::forward<Bindings>(bindings)), ...);
         return *this;
     }
-    Block &Frames(FramePolicy policy) noexcept {
-        m_Frames = policy;
+    template <class... Bindings>
+    Builder &&Locals(Bindings &&... bindings) && {
+        static_cast<Builder &>(*this).Locals(
+            std::forward<Bindings>(bindings)...);
+        return std::move(*this);
+    }
+    Builder &Frames(FramePolicy policy) & noexcept {
+        m_Definition.Frames = policy;
         return *this;
     }
+    Builder &&Frames(FramePolicy policy) && noexcept {
+        static_cast<Builder &>(*this).Frames(policy);
+        return std::move(*this);
+    }
 
+    [[nodiscard]] Result<Block> Compile() const &;
+    [[nodiscard]] Result<Block> Compile() &&;
     [[nodiscard]] Result<Behavior::Call> Call(
-        Selector input = Selector::Only()) const;
+        const Selector &input = Selector::Only()) const &;
+    [[nodiscard]] Result<Behavior::Call> Call(
+        const Selector &input = Selector::Only()) &&;
+    [[nodiscard]] Result<Behavior::Call> Call(std::string_view input) const & {
+        return Call(Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Behavior::Call> Call(std::string_view input) && {
+        return std::move(*this).Call(Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Behavior::Call> Call(
+        BML_ObjectRef owner, const Selector &input = Selector::Only()) const &;
+    [[nodiscard]] Result<Behavior::Call> Call(
+        BML_ObjectRef owner, const Selector &input = Selector::Only()) &&;
+    [[nodiscard]] Result<Behavior::Call> Call(
+        BML_ObjectRef owner, std::string_view input) const & {
+        return Call(owner, Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Behavior::Call> Call(
+        BML_ObjectRef owner, std::string_view input) && {
+        return std::move(*this).Call(owner, Selector::Unique(input));
+    }
     [[nodiscard]] Result<Task> Start(
-        Selector input = Selector::Only()) const;
-    [[nodiscard]] Result<Instance> Spawn() const;
+        const Selector &input = Selector::Only()) const &;
+    [[nodiscard]] Result<Task> Start(
+        const Selector &input = Selector::Only()) &&;
+    [[nodiscard]] Result<Task> Start(std::string_view input) const & {
+        return Start(Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Task> Start(std::string_view input) && {
+        return std::move(*this).Start(Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Task> Start(
+        BML_ObjectRef owner, const Selector &input = Selector::Only()) const &;
+    [[nodiscard]] Result<Task> Start(
+        BML_ObjectRef owner, const Selector &input = Selector::Only()) &&;
+    [[nodiscard]] Result<Task> Start(
+        BML_ObjectRef owner, std::string_view input) const & {
+        return Start(owner, Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Task> Start(
+        BML_ObjectRef owner, std::string_view input) && {
+        return std::move(*this).Start(owner, Selector::Unique(input));
+    }
+    [[nodiscard]] Result<Instance> Spawn() const &;
+    [[nodiscard]] Result<Instance> Spawn() &&;
+    [[nodiscard]] Result<Instance> Spawn(BML_ObjectRef owner) const &;
+    [[nodiscard]] Result<Instance> Spawn(BML_ObjectRef owner) &&;
 
 private:
-    Block(std::shared_ptr<Detail::SessionState> session, Prototype prototype)
-        : m_Session(std::move(session)), m_Prototype(prototype) {
-        m_Settings.emplace_back();
-    }
+    Builder(std::shared_ptr<Detail::SessionState> session,
+            Prototype prototype)
+        : m_Session(std::move(session)), m_Definition(prototype) {}
 
-    template <class Handle, class Function>
-    Result<Handle> Open(Function function, const Selector *input) const {
-        if (!m_Session || !m_Session->Api || !m_Session->Handle)
-            return Result<Handle>::Failure(BML_ERROR_INVALID_HANDLE);
-        try {
-            Detail::BlockWire wire(*this);
-            BML_BehaviorSelector selector{};
-            const BML_BehaviorSelector *selectorPointer = nullptr;
-            if (input) {
-                selector = input->Wire();
-                selectorPointer = &selector;
-            }
-            BML_BehaviorRun run = nullptr;
-            BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
-            BML_BehaviorStatus status = Detail::EmptyStatus();
-            const int code = function(
-                m_Session->Handle, m_Owner, &wire.Block, selectorPointer,
-                &run, &info, &status);
-            if (code != BML_OK || !run)
-                return Result<Handle>::Failure(code, Detail::ReadStatus(status));
-            return Result<Handle>::Success(
-                Handle(Detail::Run(m_Session->Api, run)),
-                Detail::ReadStatus(status));
-        } catch (const std::bad_alloc &) {
-            return Result<Handle>::Failure(BML_ERROR_OUT_OF_MEMORY);
-        } catch (...) {
-            return Result<Handle>::Failure(BML_ERROR_FAIL);
-        }
-    }
+    [[nodiscard]] Result<Block> Compile(Detail::BlockDefinition definition) const;
 
     std::shared_ptr<Detail::SessionState> m_Session;
-    Prototype m_Prototype;
-    BML_ObjectRef m_Owner{};
-    std::uint32_t m_TargetKind = BML_BEHAVIOR_TARGET_OWNER;
-    Guid m_TargetType;
-    BML_ObjectRef m_TargetObject{};
-    std::vector<std::vector<Binding>> m_Settings;
-    std::vector<Binding> m_Pins;
-    std::vector<Binding> m_Locals;
-    FramePolicy m_Frames = signals();
+    Detail::BlockDefinition m_Definition;
 
     friend class Session;
-    friend struct Detail::BlockWire;
 };
 
 class Session {
@@ -1094,13 +1291,13 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept {
         return m_State && m_State->Api && m_State->Handle;
     }
-    [[nodiscard]] Block Use(Prototype prototype) const {
-        return Block(m_State, prototype);
+    [[nodiscard]] Builder Use(Prototype prototype) const {
+        return Builder(m_State, prototype);
     }
-    [[nodiscard]] Block Use(Guid prototype) const {
+    [[nodiscard]] Builder Use(Guid prototype) const {
         return Use(Prototype(prototype));
     }
-    [[nodiscard]] Block Use(CKGUID prototype) const {
+    [[nodiscard]] Builder Use(CKGUID prototype) const {
         return Use(Prototype(prototype));
     }
     void Close() noexcept {
@@ -1113,10 +1310,315 @@ private:
     std::shared_ptr<Detail::SessionState> m_State;
 };
 
-inline Detail::BlockWire::BlockWire(const Behavior::Block &source) {
-    SettingBindings.reserve(source.m_Settings.size());
-    SettingStages.reserve(source.m_Settings.size());
-    for (const std::vector<Binding> &stage : source.m_Settings) {
+namespace Detail {
+
+inline Status BlockError(std::uint32_t error, std::uint32_t phase,
+                         Prototype prototype, Guid type,
+                         std::string message) {
+    Status status;
+    status.Error = error;
+    status.Phase = phase;
+    status.Prototype = prototype.Id;
+    status.Type = type;
+    status.Message = std::move(message);
+    return status;
+}
+
+inline Result<DeclaredLayout> ReadDeclared(
+    const std::shared_ptr<SessionState> &session, Prototype prototype) {
+    if (!session || !session->Api || !session->Handle)
+        return Result<DeclaredLayout>::Failure(BML_ERROR_INVALID_HANDLE);
+
+    BML_BehaviorPrototypeRef requested{};
+    requested.StructSize = sizeof(requested);
+    requested.Prototype = prototype.Id.Wire();
+    requested.Generation = prototype.Generation;
+    BML_BehaviorLayout wire{};
+    wire.StructSize = sizeof(wire);
+    BML_BehaviorStatus status = EmptyStatus();
+    std::uint32_t payloadSize = 0;
+    int code = session->Api->ReadDeclaredLayout(
+        session->Handle, &requested, &wire, nullptr, 0, &payloadSize, &status);
+    if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+        return Result<DeclaredLayout>::Failure(code, ReadStatus(status));
+    if (code == BML_OK && payloadSize != 0) {
+        return Result<DeclaredLayout>::Failure(
+            BML_ERROR_MALFORMED_MESSAGE,
+            BlockError(BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+                       BML_BEHAVIOR_PHASE_LAYOUT, prototype, {},
+                       "The declared Layout reported an incomplete payload."));
+    }
+
+    std::vector<std::uint8_t> payload(payloadSize);
+    if (payloadSize) {
+        wire = {};
+        wire.StructSize = sizeof(wire);
+        status = EmptyStatus();
+        std::uint32_t written = 0;
+        code = session->Api->ReadDeclaredLayout(
+            session->Handle, &requested, &wire, payload.data(), payloadSize,
+            &written, &status);
+        if (code != BML_OK)
+            return Result<DeclaredLayout>::Failure(code, ReadStatus(status));
+        if (written != payload.size()) {
+            return Result<DeclaredLayout>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE,
+                BlockError(BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+                           BML_BEHAVIOR_PHASE_LAYOUT, prototype, {},
+                           "The declared Layout payload is malformed."));
+        }
+    }
+
+    const bool samePrototype =
+        wire.Prototype.Prototype.Data1 == prototype.Id.Data1 &&
+        wire.Prototype.Prototype.Data2 == prototype.Id.Data2;
+    if (wire.StructSize < sizeof(wire) ||
+        wire.Prototype.StructSize < sizeof(wire.Prototype) ||
+        wire.Origin != BML_BEHAVIOR_LAYOUT_DECLARED || !samePrototype ||
+        !wire.Prototype.Generation ||
+        (prototype.Generation &&
+         wire.Prototype.Generation != prototype.Generation)) {
+        return Result<DeclaredLayout>::Failure(
+            BML_ERROR_MALFORMED_MESSAGE,
+            BlockError(BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+                       BML_BEHAVIOR_PHASE_LAYOUT, prototype, {},
+                       "The declared Layout does not identify the requested Prototype."));
+    }
+
+    const Prototype resolved(wire.Prototype.Prototype,
+                             wire.Prototype.Generation);
+    if (!RecordsFit<BML_BehaviorManagerInfo>(
+            payload, wire.ManagerOffset, wire.ManagerCount) ||
+        !RecordsFit<BML_BehaviorSlotRecord>(
+            payload, wire.SlotOffset, wire.SlotCount)) {
+        return Result<DeclaredLayout>::Failure(
+            BML_ERROR_MALFORMED_MESSAGE,
+            BlockError(BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+                       BML_BEHAVIOR_PHASE_LAYOUT, resolved, {},
+                       "The declared Layout record ranges are malformed."));
+    }
+    for (std::uint32_t index = 0; index < wire.ManagerCount; ++index) {
+        BML_BehaviorManagerInfo manager{};
+        if (!RecordAt(payload, wire.ManagerOffset, index, manager)) {
+            return Result<DeclaredLayout>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE,
+                BlockError(BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+                           BML_BEHAVIOR_PHASE_LAYOUT, resolved, {},
+                           "The declared Layout manager list is malformed."));
+        }
+    }
+
+    DeclaredLayout layout;
+    layout.PrototypeRef = resolved;
+    layout.Slots.reserve(wire.SlotCount);
+    for (std::uint32_t index = 0; index < wire.SlotCount; ++index) {
+        BML_BehaviorSlotRecord record{};
+        if (!RecordAt(payload, wire.SlotOffset, index, record)) {
+            return Result<DeclaredLayout>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE,
+                BlockError(BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+                           BML_BEHAVIOR_PHASE_LAYOUT, resolved, {},
+                           "The declared Layout slot list is malformed."));
+        }
+        DeclaredSlot slot;
+        slot.Kind = record.Kind;
+        slot.Flags = record.Flags;
+        slot.Index = record.Index;
+        slot.Occurrence = record.Occurrence;
+        slot.Type = record.Type;
+        slot.ValueKind = record.ValueKind;
+        if (!TextAt(payload, record.Name.Offset, record.Name.Length,
+                    slot.Name)) {
+            return Result<DeclaredLayout>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE,
+                BlockError(BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+                           BML_BEHAVIOR_PHASE_LAYOUT, resolved, {},
+                           "A declared Layout slot name is malformed."));
+        }
+        layout.Slots.push_back(std::move(slot));
+    }
+    return Result<DeclaredLayout>::Success(std::move(layout),
+                                            ReadStatus(status));
+}
+
+inline Status CheckDefinition(const BlockDefinition &definition) {
+    constexpr std::size_t maximum =
+        (std::numeric_limits<std::uint32_t>::max)();
+    if (!definition.PrototypeRef.Id) {
+        return BlockError(BML_BEHAVIOR_ERROR_PROTOTYPE_NOT_FOUND,
+                          BML_BEHAVIOR_PHASE_PROTOTYPE,
+                          definition.PrototypeRef, {},
+                          "A Block requires a Prototype GUID.");
+    }
+    if ((definition.TargetKind == BML_BEHAVIOR_TARGET_OBJECT ||
+         definition.TargetKind == BML_BEHAVIOR_TARGET_NULL) &&
+        !definition.TargetType) {
+        return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
+                          BML_BEHAVIOR_PHASE_TARGET,
+                          definition.PrototypeRef, {},
+                          "An explicit Target requires a parameter type.");
+    }
+    if (definition.TargetKind == BML_BEHAVIOR_TARGET_OBJECT &&
+        !definition.TargetObject.Domain) {
+        return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
+                          BML_BEHAVIOR_PHASE_TARGET,
+                          definition.PrototypeRef, definition.TargetType,
+                          "An explicit Target requires a live object reference.");
+    }
+    if (definition.TargetKind != BML_BEHAVIOR_TARGET_OWNER &&
+        definition.TargetKind != BML_BEHAVIOR_TARGET_OBJECT &&
+        definition.TargetKind != BML_BEHAVIOR_TARGET_NULL) {
+        return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
+                          BML_BEHAVIOR_PHASE_TARGET,
+                          definition.PrototypeRef, definition.TargetType,
+                          "The Block Target kind is unknown.");
+    }
+    const bool bounded =
+        definition.Frames.Kind == BML_BEHAVIOR_FRAMES_SIGNALS ||
+        definition.Frames.Kind == BML_BEHAVIOR_FRAMES_EACH_FRAME;
+    if ((bounded && !definition.Frames.Limit) ||
+        (!bounded && definition.Frames.Limit) ||
+        (!bounded && definition.Frames.Kind != BML_BEHAVIOR_FRAMES_LATEST &&
+         definition.Frames.Kind != BML_BEHAVIOR_FRAMES_NONE)) {
+        return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
+                          BML_BEHAVIOR_PHASE_NONE,
+                          definition.PrototypeRef, {},
+                          "The Block Frame policy is invalid.");
+    }
+    if (definition.Settings.size() > maximum ||
+        definition.Pins.size() > maximum ||
+        definition.Locals.size() > maximum) {
+        return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
+                          BML_BEHAVIOR_PHASE_NONE,
+                          definition.PrototypeRef, {},
+                          "The Block contains too many bindings.");
+    }
+    for (const auto &stage : definition.Settings) {
+        if (stage.size() > maximum) {
+            return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              definition.PrototypeRef, {},
+                              "A Block contains too many Settings in one stage.");
+        }
+    }
+    return {};
+}
+
+inline std::string SelectorLabel(const BML_BehaviorSelector &selector) {
+    if (selector.Kind == BML_BEHAVIOR_SELECTOR_ONLY)
+        return "<only>";
+    if (selector.Kind == BML_BEHAVIOR_SELECTOR_INDEX)
+        return "#" + std::to_string(selector.Index);
+    return "'" + std::string(selector.Name.Data ? selector.Name.Data : "",
+                              selector.Name.Length) + "'";
+}
+
+inline Status CheckSetting(const DeclaredLayout &layout,
+                           const Binding &binding) {
+    const BML_BehaviorSelector selector = binding.Slot.Wire();
+    std::vector<const DeclaredSlot *> matches;
+    for (const DeclaredSlot &slot : layout.Slots) {
+        if (slot.Kind != BML_BEHAVIOR_SLOT_SETTING)
+            continue;
+        if (selector.Kind == BML_BEHAVIOR_SELECTOR_INDEX) {
+            if (slot.Index == selector.Index)
+                matches.push_back(&slot);
+        } else if (selector.Kind == BML_BEHAVIOR_SELECTOR_ONLY) {
+            matches.push_back(&slot);
+        } else if (selector.Kind == BML_BEHAVIOR_SELECTOR_NAME ||
+                   selector.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME) {
+            const std::string_view name(
+                selector.Name.Data ? selector.Name.Data : "",
+                selector.Name.Length);
+            if (slot.Name == name)
+                matches.push_back(&slot);
+        } else {
+            return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              layout.PrototypeRef, {},
+                              "A Setting selector kind is unknown.");
+        }
+    }
+
+    if (matches.empty()) {
+        return BlockError(BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+                          BML_BEHAVIOR_PHASE_SETTINGS,
+                          layout.PrototypeRef, {},
+                          "Setting " + SelectorLabel(selector) +
+                              " is absent from the declared Layout.");
+    }
+    const DeclaredSlot *slot = nullptr;
+    if (selector.Kind == BML_BEHAVIOR_SELECTOR_ONLY ||
+        selector.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME) {
+        if (matches.size() != 1) {
+            return BlockError(BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              layout.PrototypeRef, {},
+                              "Setting " + SelectorLabel(selector) +
+                                  " is ambiguous in the declared Layout.");
+        }
+        slot = matches.front();
+    } else if (selector.Kind == BML_BEHAVIOR_SELECTOR_NAME) {
+        if (selector.Occurrence < 0) {
+            return BlockError(BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              layout.PrototypeRef, {},
+                              "The requested Setting occurrence is absent from the declared Layout.");
+        }
+        for (const DeclaredSlot *candidate : matches) {
+            if (candidate->Occurrence != selector.Occurrence)
+                continue;
+            if (slot) {
+                return BlockError(BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS,
+                                  BML_BEHAVIOR_PHASE_SETTINGS,
+                                  layout.PrototypeRef, {},
+                                  "The requested Setting occurrence is ambiguous in the declared Layout.");
+            }
+            slot = candidate;
+        }
+        if (!slot) {
+            return BlockError(BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              layout.PrototypeRef, {},
+                              "The requested Setting occurrence is absent from the declared Layout.");
+        }
+    } else {
+        if (matches.size() != 1) {
+            return BlockError(BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS,
+                              BML_BEHAVIOR_PHASE_SETTINGS,
+                              layout.PrototypeRef, {},
+                              "The Setting index is ambiguous in the declared Layout.");
+        }
+        slot = matches.front();
+    }
+
+    if (!(slot->Flags & BML_BEHAVIOR_SLOT_VALUE_SUPPORTED) ||
+        !slot->ValueKind) {
+        return BlockError(BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED,
+                          BML_BEHAVIOR_PHASE_SETTINGS,
+                          layout.PrototypeRef, slot->Type,
+                          "The Setting parameter type has no public value form.");
+    }
+    if (slot->ValueKind != static_cast<std::uint32_t>(binding.Value.Kind())) {
+        return BlockError(BML_BEHAVIOR_ERROR_TYPE_MISMATCH,
+                          BML_BEHAVIOR_PHASE_SETTINGS,
+                          layout.PrototypeRef, slot->Type,
+                          "The Setting value form does not match the declared Layout.");
+    }
+    return {};
+}
+
+inline CompiledBlock::CompiledBlock(BlockDefinition definition)
+    : Definition(std::move(definition)) {
+    while (Definition.Settings.size() > 1 &&
+           Definition.Settings.back().empty())
+        Definition.Settings.pop_back();
+    if (Definition.Settings.size() == 1 && Definition.Settings.front().empty())
+        Definition.Settings.clear();
+
+    SettingBindings.reserve(Definition.Settings.size());
+    SettingStages.reserve(Definition.Settings.size());
+    for (const std::vector<Binding> &stage : Definition.Settings) {
         std::vector<BML_BehaviorBinding> bindings;
         bindings.reserve(stage.size());
         for (const Binding &binding : stage) {
@@ -1131,7 +1633,7 @@ inline Detail::BlockWire::BlockWire(const Behavior::Block &source) {
     for (const auto &bindings : SettingBindings) {
         BML_BehaviorSettingStage stage{};
         stage.StructSize = sizeof(stage);
-        stage.Settings = bindings.data();
+        stage.Settings = bindings.empty() ? nullptr : bindings.data();
         stage.SettingCount = static_cast<std::uint32_t>(bindings.size());
         SettingStages.push_back(stage);
     }
@@ -1146,51 +1648,179 @@ inline Detail::BlockWire::BlockWire(const Behavior::Block &source) {
             to.push_back(wire);
         }
     };
-    add(source.m_Pins, Pins);
-    add(source.m_Locals, Locals);
+    add(Definition.Pins, Pins);
+    add(Definition.Locals, Locals);
 
-    Block.StructSize = sizeof(Block);
-    Block.Prototype = source.m_Prototype.Id.Wire();
-    Block.Target.StructSize = sizeof(Block.Target);
-    Block.Target.Kind = source.m_TargetKind;
-    Block.Target.Type = source.m_TargetType.Wire();
-    Block.Target.Object = source.m_TargetObject;
-    Block.SettingStages = SettingStages.data();
-    Block.SettingStageCount = static_cast<std::uint32_t>(SettingStages.size());
-    Block.Pins = Pins.data();
-    Block.PinCount = static_cast<std::uint32_t>(Pins.size());
-    Block.Locals = Locals.data();
-    Block.LocalCount = static_cast<std::uint32_t>(Locals.size());
-    Block.Frames.StructSize = sizeof(Block.Frames);
-    Block.Frames.Kind = source.m_Frames.Kind;
-    Block.Frames.Limit = source.m_Frames.Limit;
-    Block.PrototypeGeneration = source.m_Prototype.Generation;
+    Wire.StructSize = sizeof(Wire);
+    Wire.Prototype = Definition.PrototypeRef.Id.Wire();
+    Wire.Target.StructSize = sizeof(Wire.Target);
+    Wire.Target.Kind = Definition.TargetKind;
+    Wire.Target.Type = Definition.TargetType.Wire();
+    Wire.Target.Object = Definition.TargetObject;
+    Wire.SettingStages = SettingStages.empty() ? nullptr : SettingStages.data();
+    Wire.SettingStageCount = static_cast<std::uint32_t>(SettingStages.size());
+    Wire.Pins = Pins.empty() ? nullptr : Pins.data();
+    Wire.PinCount = static_cast<std::uint32_t>(Pins.size());
+    Wire.Locals = Locals.empty() ? nullptr : Locals.data();
+    Wire.LocalCount = static_cast<std::uint32_t>(Locals.size());
+    Wire.Frames.StructSize = sizeof(Wire.Frames);
+    Wire.Frames.Kind = Definition.Frames.Kind;
+    Wire.Frames.Limit = Definition.Frames.Limit;
+    Wire.PrototypeGeneration = Definition.PrototypeRef.Generation;
 }
 
-inline Result<Behavior::Call> Block::Call(Selector input) const {
+inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
+    const std::shared_ptr<SessionState> &session,
+    BlockDefinition definition) const {
+    if (!session || !session->Api || !session->Handle) {
+        return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+            BML_ERROR_INVALID_HANDLE);
+    }
+    Status checked = CheckDefinition(definition);
+    if (!checked) {
+        return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+            BML_ERROR_INVALID_PARAMETER, std::move(checked));
+    }
+    auto declared = ReadDeclared(session, definition.PrototypeRef);
+    if (!declared) {
+        if (declared.Code() == BML_ERROR_UNAVAILABLE) {
+            std::shared_ptr<const CompiledBlock> block =
+                std::make_shared<CompiledBlock>(std::move(definition));
+            return Result<std::shared_ptr<const CompiledBlock>>::Success(
+                std::move(block));
+        }
+        return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+            declared.Code(), declared.Detail());
+    }
+    if (!definition.Settings.empty()) {
+        for (const Binding &setting : definition.Settings.front()) {
+            checked = CheckSetting(declared.Value(), setting);
+            if (!checked) {
+                return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+                    BML_ERROR_FAIL, std::move(checked));
+            }
+        }
+    }
+    definition.PrototypeRef = declared.Value().PrototypeRef;
+    std::shared_ptr<const CompiledBlock> block =
+        std::make_shared<CompiledBlock>(std::move(definition));
+    return Result<std::shared_ptr<const CompiledBlock>>::Success(
+        std::move(block), declared.Detail());
+}
+
+} // namespace Detail
+
+inline Result<Block> Builder::Compile(Detail::BlockDefinition definition) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+        return Result<Block>::Failure(BML_ERROR_INVALID_HANDLE);
+    try {
+        auto compiled = Detail::Compiler{}(m_Session, std::move(definition));
+        if (!compiled)
+            return Result<Block>::Failure(compiled.Code(), compiled.Detail());
+        return Result<Block>::Success(
+            Block(m_Session, std::move(compiled).Value()),
+            compiled.Detail());
+    } catch (const std::bad_alloc &) {
+        return Result<Block>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Block>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<Block> Builder::Compile() const & {
+    try {
+        return Compile(m_Definition);
+    } catch (const std::bad_alloc &) {
+        return Result<Block>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Block>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<Block> Builder::Compile() && {
+    return Compile(std::move(m_Definition));
+}
+
+template <class Handle, class Function>
+Result<Handle> Block::Open(Function function, BML_ObjectRef owner,
+                           const Selector *input) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle || !m_Definition)
+        return Result<Handle>::Failure(BML_ERROR_INVALID_HANDLE);
+    try {
+        BML_BehaviorSelector selector{};
+        const BML_BehaviorSelector *selectorPointer = nullptr;
+        if (input) {
+            selector = input->Wire();
+            selectorPointer = &selector;
+        }
+        BML_BehaviorRun run = nullptr;
+        BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = function(
+            m_Session->Handle, owner, &m_Definition->Wire, selectorPointer,
+            &run, &info, &status);
+        if (code != BML_OK) {
+            if (run && m_Session->Api->CloseRun)
+                m_Session->Api->CloseRun(run);
+            return Result<Handle>::Failure(code, Detail::ReadStatus(status));
+        }
+        if (!run)
+            return Result<Handle>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+        return Result<Handle>::Success(
+            Handle(Detail::Run(m_Session->Api, run)),
+            Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<Handle>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Handle>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<Behavior::Call> Block::Call(const Selector &input) const {
+    return Call(BML_ObjectRef{}, input);
+}
+
+inline Result<Behavior::Call> Block::Call(BML_ObjectRef owner,
+                                           const Selector &input) const {
     if (!m_Session || !m_Session->Api)
         return Result<Behavior::Call>::Failure(BML_ERROR_INVALID_HANDLE);
-    return Open<Behavior::Call>(m_Session->Api->Call, &input);
+    return Open<Behavior::Call>(m_Session->Api->Call, owner, &input);
 }
 
-inline Result<Task> Block::Start(Selector input) const {
+inline Result<Task> Block::Start(const Selector &input) const {
+    return Start(BML_ObjectRef{}, input);
+}
+
+inline Result<Task> Block::Start(BML_ObjectRef owner,
+                                 const Selector &input) const {
     if (!m_Session || !m_Session->Api)
         return Result<Task>::Failure(BML_ERROR_INVALID_HANDLE);
-    return Open<Task>(m_Session->Api->Start, &input);
+    return Open<Task>(m_Session->Api->Start, owner, &input);
 }
 
 inline Result<Instance> Block::Spawn() const {
-    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+    return Spawn(BML_ObjectRef{});
+}
+
+inline Result<Instance> Block::Spawn(BML_ObjectRef owner) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle || !m_Definition)
         return Result<Instance>::Failure(BML_ERROR_INVALID_HANDLE);
     try {
-        Detail::BlockWire wire(*this);
         BML_BehaviorRun run = nullptr;
         BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
         BML_BehaviorStatus status = Detail::EmptyStatus();
         const int code = m_Session->Api->Spawn(
-            m_Session->Handle, m_Owner, &wire.Block, &run, &info, &status);
-        if (code != BML_OK || !run)
+            m_Session->Handle, owner, &m_Definition->Wire,
+            &run, &info, &status);
+        if (code != BML_OK) {
+            if (run && m_Session->Api->CloseRun)
+                m_Session->Api->CloseRun(run);
             return Result<Instance>::Failure(code, Detail::ReadStatus(status));
+        }
+        if (!run)
+            return Result<Instance>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
         return Result<Instance>::Success(
             Instance(Detail::Run(m_Session->Api, run)),
             Detail::ReadStatus(status));
@@ -1199,6 +1829,94 @@ inline Result<Instance> Block::Spawn() const {
     } catch (...) {
         return Result<Instance>::Failure(BML_ERROR_FAIL);
     }
+}
+
+inline Result<Behavior::Call> Builder::Call(const Selector &input) const & {
+    auto block = Compile();
+    if (!block)
+        return Result<Behavior::Call>::Failure(block.Code(), block.Detail());
+    return block->Call(input);
+}
+
+inline Result<Behavior::Call> Builder::Call(BML_ObjectRef owner,
+                                             const Selector &input) const & {
+    auto block = Compile();
+    if (!block)
+        return Result<Behavior::Call>::Failure(block.Code(), block.Detail());
+    return block->Call(owner, input);
+}
+
+inline Result<Behavior::Call> Builder::Call(const Selector &input) && {
+    auto block = std::move(*this).Compile();
+    if (!block)
+        return Result<Behavior::Call>::Failure(block.Code(), block.Detail());
+    return block->Call(input);
+}
+
+inline Result<Behavior::Call> Builder::Call(BML_ObjectRef owner,
+                                             const Selector &input) && {
+    auto block = std::move(*this).Compile();
+    if (!block)
+        return Result<Behavior::Call>::Failure(block.Code(), block.Detail());
+    return block->Call(owner, input);
+}
+
+inline Result<Task> Builder::Start(const Selector &input) const & {
+    auto block = Compile();
+    if (!block)
+        return Result<Task>::Failure(block.Code(), block.Detail());
+    return block->Start(input);
+}
+
+inline Result<Task> Builder::Start(BML_ObjectRef owner,
+                                   const Selector &input) const & {
+    auto block = Compile();
+    if (!block)
+        return Result<Task>::Failure(block.Code(), block.Detail());
+    return block->Start(owner, input);
+}
+
+inline Result<Task> Builder::Start(const Selector &input) && {
+    auto block = std::move(*this).Compile();
+    if (!block)
+        return Result<Task>::Failure(block.Code(), block.Detail());
+    return block->Start(input);
+}
+
+inline Result<Task> Builder::Start(BML_ObjectRef owner,
+                                   const Selector &input) && {
+    auto block = std::move(*this).Compile();
+    if (!block)
+        return Result<Task>::Failure(block.Code(), block.Detail());
+    return block->Start(owner, input);
+}
+
+inline Result<Instance> Builder::Spawn() const & {
+    auto block = Compile();
+    if (!block)
+        return Result<Instance>::Failure(block.Code(), block.Detail());
+    return block->Spawn();
+}
+
+inline Result<Instance> Builder::Spawn(BML_ObjectRef owner) const & {
+    auto block = Compile();
+    if (!block)
+        return Result<Instance>::Failure(block.Code(), block.Detail());
+    return block->Spawn(owner);
+}
+
+inline Result<Instance> Builder::Spawn() && {
+    auto block = std::move(*this).Compile();
+    if (!block)
+        return Result<Instance>::Failure(block.Code(), block.Detail());
+    return block->Spawn();
+}
+
+inline Result<Instance> Builder::Spawn(BML_ObjectRef owner) && {
+    auto block = std::move(*this).Compile();
+    if (!block)
+        return Result<Instance>::Failure(block.Code(), block.Detail());
+    return block->Spawn(owner);
 }
 
 inline Result<Task> Call::Continue() && {
