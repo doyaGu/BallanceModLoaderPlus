@@ -662,6 +662,7 @@ private:
         const BehaviorRuntimeProbeResult result = m_RuntimeProbe->Result();
         m_RuntimeProbePassed = result.Passed;
         m_LifecycleProbePassed = result.LifecyclePassed;
+        m_AdditiveEditProbePassed = result.AdditiveEditPassed;
         m_RuntimeProbeDetail = result.Detail;
         m_RuntimeProbe.reset();
         if (!m_RuntimeProbePassed) {
@@ -746,6 +747,7 @@ private:
                             std::fabs(m_ReleasedX - kReleasedX) <= kReleaseTolerance &&
                             m_PhysicalizeSeen && m_UnphysicalizeSeen &&
                             m_RuntimeProbePassed && m_LifecycleProbePassed &&
+                            m_AdditiveEditProbePassed &&
                             m_ScriptHookRetirementPassed;
         Finish(passed, passed ? "completed" : "result-mismatch");
     }
@@ -782,7 +784,7 @@ private:
             "pushed=%.6f pulled=%.6f released=%.6f "
             "physicalize_event=%s unphysicalize_event=%s menu_opened=%s "
             "level_chosen=%s control_ready=%s runtime_probe=%s "
-            "lifecycle_probe=%s script_hook_retirement=%s "
+            "lifecycle_probe=%s additive_edit=%s script_hook_retirement=%s "
             "runtime_detail=%s frames=%d",
             m_Passed ? "pass" : "fail", m_Reason, m_InitialX, m_PushStartX,
             m_PushedX, m_PulledX, m_ReleasedX,
@@ -793,6 +795,7 @@ private:
             m_ControlReady ? "true" : "false",
             m_RuntimeProbePassed ? "true" : "false",
             m_LifecycleProbePassed ? "true" : "false",
+            m_AdditiveEditProbePassed ? "true" : "false",
             m_ScriptHookRetirementPassed ? "true" : "false",
             m_RuntimeProbeDetail.c_str(), m_TotalFrames);
         m_Done = true;
@@ -876,6 +879,7 @@ private:
     bool m_ControlReady = false;
     bool m_RuntimeProbePassed = false;
     bool m_LifecycleProbePassed = false;
+    bool m_AdditiveEditProbePassed = false;
     bool m_ScriptHookSetupFailed = false;
     bool m_ScriptHookInstalled = false;
     bool m_ScriptHookRetirementPassed = false;

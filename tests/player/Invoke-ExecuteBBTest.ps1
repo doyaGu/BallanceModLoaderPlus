@@ -234,7 +234,7 @@ try {
     $restored = $true
 }
 
-$outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) runtime_probe=(?<runtimeProbe>true|false) lifecycle_probe=(?<lifecycleProbe>true|false) script_hook_retirement=(?<scriptHookRetirement>true|false) runtime_detail=(?<runtimeDetail>\S+) frames=(?<frames>[0-9]+)'
+$outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) runtime_probe=(?<runtimeProbe>true|false) lifecycle_probe=(?<lifecycleProbe>true|false) additive_edit=(?<additiveEdit>true|false) script_hook_retirement=(?<scriptHookRetirement>true|false) runtime_detail=(?<runtimeDetail>\S+) frames=(?<frames>[0-9]+)'
 $outcome = [regex]::Match($testLog, $outcomePattern)
 $transportPattern = 'Behavior transport: status=(?<status>pass|fail) reason=(?<reason>\S+) transport=(?<transport>true|false) wire=(?<wire>true|false) object_ref=(?<objectRef>true|false) session_after_reset=(?<session>true|false) catalog=(?<catalog>true|false) detached=(?<detached>true|false) inspect=(?<inspect>true|false) watch=(?<watch>true|false)'
 $transport = [regex]::Match($testLog, $transportPattern)
@@ -255,6 +255,8 @@ $checks = [ordered]@{
         $outcome.Groups['runtimeDetail'].Value -eq 'complete'
     LifecycleProbe = $outcome.Success -and
         $outcome.Groups['lifecycleProbe'].Value -eq 'true'
+    AdditiveEditProbe = $outcome.Success -and
+        $outcome.Groups['additiveEdit'].Value -eq 'true'
     ScriptHookRetirement = $outcome.Success -and
         $outcome.Groups['scriptHookRetirement'].Value -eq 'true' -and
         $testLog.Contains('ScriptHookRetirement installed=true') -and
@@ -338,6 +340,7 @@ $result = [pscustomobject]@{
             ControlReady = $outcome.Groups['controlReady'].Value -eq 'true'
             RuntimeProbe = $outcome.Groups['runtimeProbe'].Value -eq 'true'
             LifecycleProbe = $outcome.Groups['lifecycleProbe'].Value -eq 'true'
+            AdditiveEditProbe = $outcome.Groups['additiveEdit'].Value -eq 'true'
             ScriptHookRetirement = $outcome.Groups['scriptHookRetirement'].Value -eq 'true'
             RuntimeDetail = $outcome.Groups['runtimeDetail'].Value
             Frames = [int]$outcome.Groups['frames'].Value

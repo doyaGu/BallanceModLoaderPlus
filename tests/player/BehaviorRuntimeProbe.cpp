@@ -7,6 +7,7 @@
 #include <Windows.h>
 
 #include "Behavior/HookBlock.h"
+#include "Behavior/CKEdit.h"
 #include "Behavior/ObjectLoad.h"
 #include "Behavior/Physicalize.h"
 #include "Behavior/PhysicsImpulse.h"
@@ -262,7 +263,20 @@ class BehaviorRuntimeProbe::Impl final {
 public:
     Impl(CKContext *context, CK3dObject *owner)
         : m_Context(context), m_Owner(owner), m_Runtime(context),
-          m_ConsumerRuntime(context) {}
+          m_ConsumerRuntime(context) {
+        m_EditGraph = MakeCKGraphSource(
+            context, m_Runtime, [](const void *value) {
+                auto *object = const_cast<CKObject *>(
+                    static_cast<const CKObject *>(value));
+                return object
+                    ? ObjectRef{0x424d4c45u,
+                                static_cast<std::uint32_t>(object->GetID()), 1}
+                    : ObjectRef{};
+            });
+        if (m_EditGraph)
+            m_Editor = std::make_unique<CKEdit>(
+                context, m_Runtime, nullptr, *m_EditGraph);
+    }
 
     void Advance(int playerFrame) {
         if (m_State == State::Complete)
@@ -328,6 +342,9 @@ public:
         case State::GraphSchedulerWaitThird: ObserveGraphScheduler(); break;
         case State::GraphSchedulerCleanup: CleanupGraphScheduler(); break;
         case State::GraphOwnership: CheckGraphOwnership(); break;
+        case State::AdditiveEditStart: StartAdditiveEdit(); break;
+        case State::AdditiveEditWait: ObserveAdditiveEdit(); break;
+        case State::AdditiveEditClose: CloseAdditiveEdit(); break;
         case State::LifecycleFixture: CheckLifecycleFixture(); break;
         case State::Complete: break;
         }
@@ -339,6 +356,7 @@ public:
         BehaviorRuntimeProbeResult result;
         result.Detail = m_Failures.str();
         result.LifecyclePassed = m_LifecyclePassed;
+        result.AdditiveEditPassed = m_AdditiveEditPassed;
         result.Passed = Done() && result.Detail.empty();
         if (result.Passed)
             result.Detail = "complete";
@@ -397,6 +415,9 @@ private:
         GraphSchedulerWaitThird,
         GraphSchedulerCleanup,
         GraphOwnership,
+        AdditiveEditStart,
+        AdditiveEditWait,
+        AdditiveEditClose,
         LifecycleFixture,
         Complete,
     };
@@ -1378,6 +1399,235 @@ private:
         if (!placed || !cleaned)
             Fail("graph-ownership");
         m_Context->DestroyObject(graph);
+        m_State = State::AdditiveEditStart;
+    }
+
+    Spec LifecycleSpec() const {
+        const int setting = 42;
+        const int source = 9;
+        Spec spec(BML_LIFECYCLE_FIXTURE_GUID);
+        spec.Setting(Slot::Named(SlotKind::Setting, "Value", CKPGUID_INT),
+                     Value::From(CKPGUID_INT, setting))
+            .Input(Slot::Named(SlotKind::InputParameter, "Source", CKPGUID_INT),
+                   Value::From(CKPGUID_INT, source));
+        return spec;
+    }
+
+    void StartAdditiveEdit() {
+        if (!m_Editor) {
+            Fail("additive-edit-adapter");
+            m_State = State::LifecycleFixture;
+            return;
+        }
+        m_EditFixture = static_cast<CKBehavior *>(m_Context->CreateObject(
+            CKCID_BEHAVIOR, const_cast<CKSTRING>("__BML_Additive_Edit"),
+            CK_OBJECTCREATION_DYNAMIC));
+        CKScene *scene = m_Context->GetCurrentScene();
+        if (!m_EditFixture) {
+            Fail("additive-edit-graph");
+            m_State = State::LifecycleFixture;
+            return;
+        }
+        m_EditFixture->UseGraph();
+        m_EditFixture->SetType(CKBEHAVIORTYPE_SCRIPT);
+        if (m_EditFixture->SetOwner(m_Owner, FALSE) != CK_OK ||
+            !m_EditFixture->CreateInput("Start") ||
+            !m_EditFixture->CreateOutput("Done") || !scene ||
+            m_Owner->AddScript(m_EditFixture) != CK_OK) {
+            Fail("additive-edit-graph-layout");
+            m_Context->DestroyObject(m_EditFixture);
+            m_EditFixture = nullptr;
+            m_State = State::LifecycleFixture;
+            return;
+        }
+
+        AttachResult source = m_Runtime.AddToGraph(
+            m_EditFixture, LifecycleSpec());
+        m_EditSource = source.Block;
+        if (!source || !m_EditSource) {
+            Fail("additive-edit-source");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+        const Layout fixtureLayout = m_Runtime.Describe(m_EditSource);
+
+        AttachResult peer = m_Runtime.AddToGraph(
+            m_EditFixture, LifecycleSpec());
+        CKBehavior *peerBlock = peer.Block;
+        CKParameterIn *existingPin = m_EditSource->GetInputParameter(0);
+        CKParameterIn *peerPin = peerBlock
+            ? peerBlock->GetInputParameter(0) : nullptr;
+        CKParameter *previousDirect = existingPin
+            ? existingPin->GetDirectSource() : nullptr;
+        CKParameterIn *previousShared = existingPin
+            ? existingPin->GetSharedSource() : nullptr;
+        const auto closePeer = [&] {
+            if (existingPin) {
+                if (previousShared)
+                    (void) existingPin->ShareSourceWith(previousShared);
+                else
+                    (void) existingPin->SetDirectSource(previousDirect);
+            }
+            if (peerBlock)
+                (void) m_Runtime.Close(peerBlock);
+            m_Runtime.ProcessFrame();
+        };
+        if (!peer || !peerBlock || !existingPin || !peerPin ||
+            existingPin->ShareSourceWith(peerPin) != CK_OK) {
+            closePeer();
+            Fail("additive-edit-shared-baseline");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+        Edit sharedCycle;
+        Node sharedSource;
+        Node sharedPeer;
+        if (!m_Editor->Begin(m_EditFixture,
+                             {"player", "shared-cycle-rejected"},
+                             sharedCycle) ||
+            !m_Editor->Use(sharedCycle, m_EditSource, sharedSource) ||
+            !m_Editor->Use(sharedCycle, peerBlock, sharedPeer)) {
+            closePeer();
+            Fail("additive-edit-shared-plan");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+        sharedCycle.Share(sharedPeer.Pin("Source"),
+                          sharedSource.Pin("Source"));
+        Patch sharedPatch;
+        const int sharedNodesBefore = m_EditFixture->GetSubBehaviorCount();
+        const int sharedLinksBefore = m_EditFixture->GetSubBehaviorLinkCount();
+        const Status sharedStatus = m_Editor->Apply(sharedCycle, sharedPatch);
+        const bool sharedRejected =
+            sharedStatus.Code == Error::SharedSourceCycle && !sharedPatch &&
+            m_EditFixture->GetSubBehaviorCount() == sharedNodesBefore &&
+            m_EditFixture->GetSubBehaviorLinkCount() == sharedLinksBefore;
+        closePeer();
+        if (!sharedRejected || m_EditFixture->GetSubBehaviorCount() != 1) {
+            Fail("additive-edit-shared-cycle-guard");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+
+        Edit rejected;
+        Node rejectedSource;
+        if (!m_Editor->Begin(m_EditFixture, {"player", "cycle-rejected"},
+                             rejected) ||
+            !m_Editor->Use(rejected, m_EditSource, rejectedSource)) {
+            Fail("additive-edit-rejected-plan");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+        const Node rejectedNode = rejected.Add(LifecycleSpec(), fixtureLayout);
+        rejected.Flow(rejectedSource.Out(), rejectedNode.In(), 0,
+                      Cycle::Confirmed);
+        rejected.Flow(rejectedNode.Out(), rejectedSource.In());
+        Patch rejectedPatch;
+        const int nodesBefore = m_EditFixture->GetSubBehaviorCount();
+        const int linksBefore = m_EditFixture->GetSubBehaviorLinkCount();
+        const Status rejectedStatus = m_Editor->Apply(rejected, rejectedPatch);
+        if (rejectedStatus.Code != Error::UnconfirmedSameFrameCycle ||
+            rejectedPatch ||
+            m_EditFixture->GetSubBehaviorCount() != nodesBefore ||
+            m_EditFixture->GetSubBehaviorLinkCount() != linksBefore) {
+            Fail("additive-edit-cycle-guard");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+
+        Edit edit;
+        Node sourceNode;
+        if (!m_Editor->Begin(m_EditFixture, {"player", "additive"}, edit) ||
+            !m_Editor->Use(edit, m_EditSource, sourceNode)) {
+            Fail("additive-edit-plan");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+        const Node added = edit.Add(LifecycleSpec(), fixtureLayout);
+        const Port sourceCycleIn = edit.AppendIn(sourceNode, "Cycle In");
+        const Port sourceCycleOut = edit.AppendOut(sourceNode, "Cycle Out");
+        const Port sourcePin = edit.AppendPin(
+            sourceNode, "Extra Pin", CKPGUID_INT);
+        const Port sourcePout = edit.AppendPout(
+            sourceNode, "Extra Pout", CKPGUID_INT);
+        const Port addedCycleIn = edit.AppendIn(added, "Cycle In");
+        const Port addedCycleOut = edit.AppendOut(added, "Cycle Out");
+        const Port addedPin = edit.AppendPin(
+            added, "Extra Pin", CKPGUID_INT);
+        const Port addedPout = edit.AppendPout(
+            added, "Extra Pout", CKPGUID_INT);
+
+        edit.Flow(edit.Entry("Start"), sourceNode.In("In"));
+        edit.Flow(sourceNode.Out("Out"), added.In("In"));
+        edit.Flow(added.Out("Out"), edit.Exit("Done"));
+        edit.Flow(sourceCycleOut, addedCycleIn, 0, Cycle::Confirmed);
+        edit.Flow(addedCycleOut, sourceCycleIn, 0, Cycle::Confirmed);
+        const int value = 12;
+        edit.Bind(sourcePin, Value::From(CKPGUID_INT, value));
+        edit.Share(addedPin, sourceNode.Pin("Source"));
+        edit.Push(sourcePout, addedPout);
+        edit.Tap(sourceNode.Out("Out"),
+                 HookBlock::Bind(ProbeCountedExecution, &m_EditTap));
+
+        const Status applied = m_Editor->Apply(edit, m_EditPatch);
+        const bool shape = applied && m_EditPatch &&
+            m_EditFixture->GetSubBehaviorCount() == 3 &&
+            m_EditFixture->GetSubBehaviorLinkCount() == 6 &&
+            m_EditSource->GetInputCount() == 2 &&
+            m_EditSource->GetOutputCount() == 2 &&
+            m_EditSource->GetInputParameterCount() == 2 &&
+            m_EditSource->GetOutputParameterCount() == 1 &&
+            m_Editor->TopologyFingerprint(m_EditFixture) != 0;
+        if (!shape) {
+            Fail("additive-edit-apply");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+
+        scene->Activate(m_EditFixture, TRUE);
+        m_EditStartFrame = m_LastPlayerFrame;
+        m_State = State::AdditiveEditWait;
+    }
+
+    void ObserveAdditiveEdit() {
+        if (m_EditTap.Calls == 0 &&
+            m_LastPlayerFrame - m_EditStartFrame <= 3)
+            return;
+        if (m_EditTap.Calls != 1 || !m_EditFixture ||
+            !m_EditFixture->GetOutput(0)->IsActive())
+            Fail("additive-edit-execution");
+        m_State = State::AdditiveEditClose;
+    }
+
+    void CloseAdditiveEdit() {
+        if (!m_EditFixture) {
+            m_State = State::LifecycleFixture;
+            return;
+        }
+        if (CKScene *scene = m_Context->GetCurrentScene())
+            scene->DeActivate(m_EditFixture);
+        const Status closed = m_EditPatch
+            ? m_Editor->Close(m_EditPatch) : Status{};
+        m_Runtime.ProcessFrame();
+        const bool reverted = closed && !m_EditPatch && m_EditSource &&
+            m_EditFixture->GetSubBehaviorCount() == 1 &&
+            m_EditFixture->GetSubBehaviorLinkCount() == 0 &&
+            m_EditSource->GetInputCount() == 1 &&
+            m_EditSource->GetOutputCount() == 1 &&
+            m_EditSource->GetInputParameterCount() == 1 &&
+            m_EditSource->GetOutputParameterCount() == 0 &&
+            m_Editor->TopologyFingerprint(m_EditFixture) == 0;
+        if (!reverted)
+            Fail("additive-edit-close");
+        m_AdditiveEditPassed = reverted && m_EditTap.Calls == 1;
+
+        if (m_EditSource)
+            (void) m_Runtime.Close(m_EditSource);
+        m_Runtime.ProcessFrame();
+        (void) m_Owner->RemoveScript(m_EditFixture->GetID());
+        m_Context->DestroyObject(m_EditFixture);
+        m_EditFixture = nullptr;
+        m_EditSource = nullptr;
         m_State = State::LifecycleFixture;
     }
 
@@ -1570,6 +1820,8 @@ private:
     CK3dObject *m_Owner = nullptr;
     Runtime m_Runtime;
     Runtime m_ConsumerRuntime;
+    std::unique_ptr<GraphSource> m_EditGraph;
+    std::unique_ptr<CKEdit> m_Editor;
     State m_State = State::StaticChecks;
     int m_LastPlayerFrame = -1;
     std::ostringstream m_Failures;
@@ -1625,6 +1877,12 @@ private:
     CKBehaviorLink *m_DetachedExitLink = nullptr;
     int m_DetachedGraphFrames = 0;
     int m_GraphStartFrame = -1;
+    CKBehavior *m_EditFixture = nullptr;
+    CKBehavior *m_EditSource = nullptr;
+    Patch m_EditPatch;
+    CountedExecutionProbe m_EditTap;
+    int m_EditStartFrame = -1;
+    bool m_AdditiveEditPassed = false;
     bool m_LifecyclePassed = false;
 };
 

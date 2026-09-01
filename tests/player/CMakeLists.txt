@@ -48,8 +48,12 @@ bml_add_mod(ExecuteBBTest
         BehaviorRuntimeProbe.h
         BehaviorLifecycleFixtureApi.h
         ${PROJECT_SOURCE_DIR}/src/Behavior/Callback.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/CKEdit.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraph.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Edit.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Execution.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Layout.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/ObjectLoad.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
@@ -59,6 +63,7 @@ bml_add_mod(ExecuteBBTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Text2D.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
 )
 target_include_directories(ExecuteBBTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
 set_target_properties(ExecuteBBTest PROPERTIES
