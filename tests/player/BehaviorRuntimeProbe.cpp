@@ -19,6 +19,7 @@
 #include <memory>
 #include <initializer_list>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 namespace {
@@ -106,6 +107,44 @@ int ProbeCountedExecution(const CKBehaviorContext *, void *argument) {
     ++probe->Calls;
     return probe->Calls < probe->CompleteAfter
         ? CKBR_ACTIVATENEXTFRAME : CKBR_OK;
+}
+
+struct PatchCloseProbe {
+    CKEdit *Editor = nullptr;
+    Patch *Target = nullptr;
+    const Edit *Candidate = nullptr;
+    Patch *CandidatePatch = nullptr;
+    CKBehavior *Graph = nullptr;
+    int NodesBefore = 0;
+    int Calls = 0;
+    bool Queued = false;
+    bool ApplyQueued = false;
+    bool MutationDeferred = false;
+    bool InvocationObserved = false;
+};
+
+int ProbePatchClose(const CKBehaviorContext *context, void *argument) {
+    auto *probe = static_cast<PatchCloseProbe *>(argument);
+    if (!probe || !probe->Editor || !probe->Target)
+        return CKBR_BEHAVIORERROR;
+    ++probe->Calls;
+    CKBehaviorManager *manager = context && context->Context
+        ? context->Context->GetBehaviorManager() : nullptr;
+    probe->InvocationObserved = context && context->Behavior && manager &&
+                                manager->m_CurrentBehavior == context->Behavior;
+    const Status status = probe->Editor->Close(*probe->Target);
+    probe->Queued = static_cast<bool>(status) &&
+                    probe->Target->State() == PatchState::Closing;
+    if (probe->Candidate && probe->CandidatePatch && probe->Graph) {
+        const Status applied = probe->Editor->Apply(
+            *probe->Candidate, *probe->CandidatePatch);
+        probe->ApplyQueued = static_cast<bool>(applied) &&
+                             probe->CandidatePatch->State() ==
+                                 PatchState::Pending;
+        probe->MutationDeferred =
+            probe->Graph->GetSubBehaviorCount() == probe->NodesBefore;
+    }
+    return CKBR_OK;
 }
 
 int ProbeRecursivePump(const CKBehaviorContext *, void *argument) {
@@ -292,6 +331,8 @@ public:
             return;
         }
         m_LastPlayerFrame = playerFrame;
+        if (m_Editor)
+            m_Editor->ProcessFrame();
 
         switch (m_State) {
         case State::StaticChecks: RunStaticChecks(); break;
@@ -342,6 +383,10 @@ public:
         case State::GraphSchedulerWaitThird: ObserveGraphScheduler(); break;
         case State::GraphSchedulerCleanup: CleanupGraphScheduler(); break;
         case State::GraphOwnership: CheckGraphOwnership(); break;
+        case State::SpliceStart: StartSplice(); break;
+        case State::SplicePending: ApplySplice(); break;
+        case State::SpliceWait: ObserveSplice(); break;
+        case State::SpliceClose: CloseSplice(); break;
         case State::AdditiveEditStart: StartAdditiveEdit(); break;
         case State::AdditiveEditWait: ObserveAdditiveEdit(); break;
         case State::AdditiveEditClose: CloseAdditiveEdit(); break;
@@ -415,6 +460,10 @@ private:
         GraphSchedulerWaitThird,
         GraphSchedulerCleanup,
         GraphOwnership,
+        SpliceStart,
+        SplicePending,
+        SpliceWait,
+        SpliceClose,
         AdditiveEditStart,
         AdditiveEditWait,
         AdditiveEditClose,
@@ -1399,7 +1448,7 @@ private:
         if (!placed || !cleaned)
             Fail("graph-ownership");
         m_Context->DestroyObject(graph);
-        m_State = State::AdditiveEditStart;
+        m_State = State::SpliceStart;
     }
 
     Spec LifecycleSpec() const {
@@ -1411,6 +1460,210 @@ private:
             .Input(Slot::Named(SlotKind::InputParameter, "Source", CKPGUID_INT),
                    Value::From(CKPGUID_INT, source));
         return spec;
+    }
+
+    void StartSplice() {
+        m_SpliceGraph = static_cast<CKBehavior *>(m_Context->CreateObject(
+            CKCID_BEHAVIOR, const_cast<CKSTRING>("__BML_Exact_Splice"),
+            CK_OBJECTCREATION_DYNAMIC));
+        CKScene *scene = m_Context->GetCurrentScene();
+        if (!m_SpliceGraph || !scene) {
+            Fail("splice-graph");
+            m_State = State::SpliceClose;
+            return;
+        }
+        m_SpliceGraph->UseGraph();
+        m_SpliceGraph->SetType(CKBEHAVIORTYPE_SCRIPT);
+        if (m_SpliceGraph->SetOwner(m_Owner, FALSE) != CK_OK ||
+            !m_SpliceGraph->CreateInput("Start") ||
+            !m_SpliceGraph->CreateOutput("Done") ||
+            m_Owner->AddScript(m_SpliceGraph) != CK_OK) {
+            Fail("splice-graph-layout");
+            m_State = State::SpliceClose;
+            return;
+        }
+        AttachResult source = m_Runtime.AddToGraph(
+            m_SpliceGraph, LifecycleSpec());
+        AttachResult sink = m_Runtime.AddToGraph(
+            m_SpliceGraph, LifecycleSpec());
+        m_SpliceSource = source.Block;
+        m_SpliceSink = sink.Block;
+        if (!source || !sink || !m_SpliceSource || !m_SpliceSink) {
+            Fail("splice-nodes");
+            m_State = State::SpliceClose;
+            return;
+        }
+
+        const auto link = [&](CKBehaviorIO *from, CKBehaviorIO *to,
+                              int delay) -> CKBehaviorLink * {
+            auto *value = static_cast<CKBehaviorLink *>(m_Context->CreateObject(
+                CKCID_BEHAVIORLINK, nullptr, CK_OBJECTCREATION_DYNAMIC));
+            if (!value || value->SetInBehaviorIO(from) != CK_OK ||
+                value->SetOutBehaviorIO(to) != CK_OK) {
+                if (value)
+                    m_Context->DestroyObject(value);
+                return nullptr;
+            }
+            value->SetInitialActivationDelay(delay);
+            value->SetActivationDelay(delay);
+            if (m_SpliceGraph->AddSubBehaviorLink(value) != CK_OK) {
+                m_Context->DestroyObject(value);
+                return nullptr;
+            }
+            return value;
+        };
+        m_SpliceEntry = link(m_SpliceGraph->GetInput(0),
+                             m_SpliceSource->GetInput(0), 0);
+        m_SpliceAnchor = link(m_SpliceSource->GetOutput(0),
+                              m_SpliceSink->GetInput(0), 6);
+        m_SpliceExit = link(m_SpliceSink->GetOutput(0),
+                            m_SpliceGraph->GetOutput(0), 0);
+        if (!m_SpliceEntry || !m_SpliceAnchor || !m_SpliceExit) {
+            Fail("splice-base-links");
+            m_State = State::SpliceClose;
+            return;
+        }
+        m_SpliceAnchorId = m_SpliceAnchor->GetID();
+        scene->Activate(m_SpliceGraph, TRUE);
+        m_SpliceStartFrame = m_LastPlayerFrame;
+        m_State = State::SplicePending;
+    }
+
+    void ApplySplice() {
+        if (!m_SpliceAnchor || !m_SpliceGraph) {
+            m_State = State::SpliceClose;
+            return;
+        }
+        const int remaining = m_SpliceAnchor->GetActivationDelay();
+        if (remaining >= m_SpliceAnchor->GetInitialActivationDelay() &&
+            m_LastPlayerFrame - m_SpliceStartFrame <= 4)
+            return;
+        if (remaining <= 0 ||
+            m_SpliceGraph->GetOutput(0)->IsActive()) {
+            Fail("splice-pending-anchor");
+            m_State = State::SpliceClose;
+            return;
+        }
+        const Layout layout = m_Runtime.Describe(m_SpliceSource);
+
+        Edit beta;
+        Link betaLink;
+        if (!m_Editor->Begin(m_SpliceGraph, {"player", "beta"}, beta) ||
+            !m_Editor->Use(beta, m_SpliceAnchor, betaLink)) {
+            Fail("splice-beta-plan");
+            m_State = State::SpliceClose;
+            return;
+        }
+        const Node betaNode = beta.Add(LifecycleSpec(), layout);
+        beta.Splice(betaLink, betaNode);
+        Status status = m_Editor->Apply(beta, m_SpliceBeta);
+        if (!status || !m_SpliceBeta ||
+            m_SpliceAnchor->GetActivationDelay() != remaining) {
+            Fail("splice-beta-apply");
+            m_State = State::SpliceClose;
+            return;
+        }
+
+        Edit alpha;
+        Link alphaLink;
+        if (!m_Editor->Begin(m_SpliceGraph, {"player", "alpha"}, alpha) ||
+            !m_Editor->Use(alpha, m_SpliceAnchor, alphaLink)) {
+            Fail("splice-alpha-plan");
+            m_State = State::SpliceClose;
+            return;
+        }
+        const Node alphaNode = alpha.Add(LifecycleSpec(), layout);
+        alpha.Splice(alphaLink, alphaNode,
+                     {{OrderKind::Before, {"player", "beta"}}});
+        status = m_Editor->Apply(alpha, m_SpliceAlpha);
+        m_SpliceHead = m_SpliceAnchor->GetOutBehaviorIO();
+        const bool ordered = m_SpliceHead &&
+            m_SpliceHead->GetOwner() != m_SpliceSink &&
+            m_SpliceGraph->GetSubBehaviorCount() == 4 &&
+            m_SpliceGraph->GetSubBehaviorLinkCount() == 5 &&
+            m_SpliceAnchor->GetID() == m_SpliceAnchorId &&
+            m_SpliceAnchor->GetActivationDelay() == remaining;
+        if (!status || !m_SpliceAlpha || !ordered) {
+            Fail("splice-alpha-apply");
+            m_State = State::SpliceClose;
+            return;
+        }
+        m_State = State::SpliceWait;
+    }
+
+    void ObserveSplice() {
+        if (m_SpliceGraph && !m_SpliceGraph->GetOutput(0)->IsActive() &&
+            m_LastPlayerFrame - m_SpliceStartFrame <= 12)
+            return;
+        if (!m_SpliceGraph || !m_SpliceGraph->GetOutput(0)->IsActive())
+            Fail("splice-execution");
+        m_State = State::SpliceClose;
+    }
+
+    void CloseSplice() {
+        if (!m_SpliceGraph) {
+            m_State = State::AdditiveEditStart;
+            return;
+        }
+        if (CKScene *scene = m_Context->GetCurrentScene())
+            scene->DeActivate(m_SpliceGraph);
+        bool conflict = false;
+        bool restored = false;
+        if (m_SpliceAlpha && m_SpliceAnchor && m_SpliceSink && m_SpliceHead) {
+            (void) m_SpliceAnchor->SetOutBehaviorIO(m_SpliceSink->GetInput(0));
+            const Status rejected = m_Editor->Close(m_SpliceAlpha);
+            conflict = rejected.Code == Error::RevertConflict &&
+                       static_cast<bool>(m_SpliceAlpha) &&
+                       m_SpliceAnchor->GetOutBehaviorIO() ==
+                           m_SpliceSink->GetInput(0);
+            (void) m_SpliceAnchor->SetOutBehaviorIO(m_SpliceHead);
+            const Status closed = m_Editor->Close(m_SpliceAlpha);
+            restored = static_cast<bool>(closed) && !m_SpliceAlpha;
+        }
+        Status betaQueued;
+        CKBehaviorIO *betaHead = m_SpliceAnchor
+            ? m_SpliceAnchor->GetOutBehaviorIO() : nullptr;
+        if (m_SpliceBeta) {
+            std::thread closeThread([&] {
+                betaQueued = m_Editor->Close(m_SpliceBeta);
+            });
+            closeThread.join();
+        }
+        const bool crossThreadQueued = betaQueued && m_SpliceBeta &&
+            m_SpliceBeta.State() == PatchState::Closing && m_SpliceAnchor &&
+            m_SpliceAnchor->GetOutBehaviorIO() == betaHead;
+        m_Editor->ProcessFrame();
+        const bool base = crossThreadQueued && !m_SpliceBeta && m_SpliceAnchor &&
+            m_SpliceBeta.State() == PatchState::Closed &&
+            m_SpliceAnchor->GetID() == m_SpliceAnchorId &&
+            m_SpliceAnchor->GetOutBehaviorIO() == m_SpliceSink->GetInput(0) &&
+            m_SpliceGraph->GetSubBehaviorCount() == 2 &&
+            m_SpliceGraph->GetSubBehaviorLinkCount() == 3;
+        m_SplicePassed = conflict && restored && base;
+        if (!m_SplicePassed)
+            Fail("splice-close");
+
+        for (CKBehaviorLink *link :
+             {m_SpliceEntry, m_SpliceAnchor, m_SpliceExit}) {
+            if (!link)
+                continue;
+            m_SpliceGraph->RemoveSubBehaviorLink(link);
+            m_Context->DestroyObject(link);
+        }
+        if (m_SpliceSource)
+            (void) m_Runtime.Close(m_SpliceSource);
+        if (m_SpliceSink)
+            (void) m_Runtime.Close(m_SpliceSink);
+        m_Runtime.ProcessFrame();
+        (void) m_Owner->RemoveScript(m_SpliceGraph->GetID());
+        m_Context->DestroyObject(m_SpliceGraph);
+        m_SpliceGraph = nullptr;
+        m_SpliceSource = nullptr;
+        m_SpliceSink = nullptr;
+        m_SpliceEntry = nullptr;
+        m_SpliceAnchor = nullptr;
+        m_SpliceExit = nullptr;
+        m_State = State::AdditiveEditStart;
     }
 
     void StartAdditiveEdit() {
@@ -1567,8 +1820,10 @@ private:
         edit.Bind(sourcePin, Value::From(CKPGUID_INT, value));
         edit.Share(addedPin, sourceNode.Pin("Source"));
         edit.Push(sourcePout, addedPout);
+        m_EditTap.Editor = m_Editor.get();
+        m_EditTap.Target = &m_EditPatch;
         edit.Tap(sourceNode.Out("Out"),
-                 HookBlock::Bind(ProbeCountedExecution, &m_EditTap));
+                 HookBlock::Bind(ProbePatchClose, &m_EditTap));
 
         const Status applied = m_Editor->Apply(edit, m_EditPatch);
         std::string applyFailure;
@@ -1604,6 +1859,18 @@ private:
             return;
         }
 
+        if (!m_Editor->Begin(m_EditFixture, {"player", "queued"},
+                             m_QueuedEdit)) {
+            Fail("additive-edit-queued-plan");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+        (void) m_QueuedEdit.Add(LifecycleSpec(), fixtureLayout);
+        m_EditTap.Candidate = &m_QueuedEdit;
+        m_EditTap.CandidatePatch = &m_QueuedPatch;
+        m_EditTap.Graph = m_EditFixture;
+        m_EditTap.NodesBefore = m_EditFixture->GetSubBehaviorCount();
+
         scene->Activate(m_EditFixture, TRUE);
         m_EditStartFrame = m_LastPlayerFrame;
         m_State = State::AdditiveEditWait;
@@ -1613,9 +1880,28 @@ private:
         if (m_EditTap.Calls == 0 &&
             m_LastPlayerFrame - m_EditStartFrame <= 3)
             return;
-        if (m_EditTap.Calls != 1 || !m_EditFixture ||
-            !m_EditFixture->GetOutput(0)->IsActive())
-            Fail("additive-edit-execution");
+        m_Runtime.ProcessFrame();
+        if (m_EditTap.Calls != 1)
+            Fail("additive-edit-safe-point-calls");
+        if (!m_EditTap.InvocationObserved)
+            Fail("additive-edit-safe-point-invocation");
+        if (!m_EditTap.Queued)
+            Fail("additive-edit-safe-point-admission");
+        if (m_EditPatch.State() != PatchState::Closed)
+            Fail("additive-edit-safe-point-close");
+        if (!m_EditTap.ApplyQueued || !m_EditTap.MutationDeferred)
+            Fail("additive-edit-safe-point-apply-admission");
+        const bool queuedApplied =
+            m_QueuedPatch.State() == PatchState::Active && m_EditFixture &&
+            m_EditFixture->GetSubBehaviorCount() == 2;
+        if (!queuedApplied)
+            Fail("additive-edit-safe-point-apply");
+        const Status queuedClosed = m_QueuedPatch
+            ? m_Editor->Close(m_QueuedPatch) : Status{};
+        if (!queuedClosed || m_QueuedPatch || !m_EditFixture ||
+            m_EditFixture->GetSubBehaviorCount() != 1) {
+            Fail("additive-edit-safe-point-apply-close");
+        }
         m_State = State::AdditiveEditClose;
     }
 
@@ -1661,7 +1947,12 @@ private:
         const bool reverted = closeFailure.empty();
         if (!reverted)
             Fail(closeFailure.c_str());
-        m_AdditiveEditPassed = reverted && m_EditTap.Calls == 1;
+        m_AdditiveEditPassed = m_SplicePassed && reverted &&
+                               m_EditTap.Calls == 1 &&
+                               m_EditTap.InvocationObserved &&
+                               m_EditTap.Queued &&
+                               m_EditTap.ApplyQueued &&
+                               m_EditTap.MutationDeferred;
 
         if (m_EditSource)
             (void) m_Runtime.Close(m_EditSource);
@@ -1921,10 +2212,24 @@ private:
     int m_GraphStartFrame = -1;
     CKBehavior *m_EditFixture = nullptr;
     CKBehavior *m_EditSource = nullptr;
+    Edit m_QueuedEdit;
     Patch m_EditPatch;
-    CountedExecutionProbe m_EditTap;
+    Patch m_QueuedPatch;
+    PatchCloseProbe m_EditTap;
     int m_EditStartFrame = -1;
     bool m_AdditiveEditPassed = false;
+    CKBehavior *m_SpliceGraph = nullptr;
+    CKBehavior *m_SpliceSource = nullptr;
+    CKBehavior *m_SpliceSink = nullptr;
+    CKBehaviorLink *m_SpliceEntry = nullptr;
+    CKBehaviorLink *m_SpliceAnchor = nullptr;
+    CKBehaviorLink *m_SpliceExit = nullptr;
+    CKBehaviorIO *m_SpliceHead = nullptr;
+    CK_ID m_SpliceAnchorId = 0;
+    Patch m_SpliceAlpha;
+    Patch m_SpliceBeta;
+    int m_SpliceStartFrame = -1;
+    bool m_SplicePassed = false;
     bool m_LifecyclePassed = false;
 };
 
