@@ -314,6 +314,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Sessions.h
         Behavior/Status.h
         Behavior/Text2D.h
+        Behavior/Topology.h
         Behavior/Watch.h
 )
 
@@ -336,6 +337,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/SendMessage.cpp
         Behavior/Sessions.cpp
         Behavior/Text2D.cpp
+        Behavior/Topology.cpp
         Behavior/Watch.cpp
 )
 

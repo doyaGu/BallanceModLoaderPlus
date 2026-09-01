@@ -292,6 +292,13 @@ target_include_directories(BehaviorWatchTest PRIVATE
         "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
 
+add_bml_test(BehaviorTopologyTest
+        SOURCES
+        BehaviorTopologyTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Topology.cpp
+        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+)
+
 add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp

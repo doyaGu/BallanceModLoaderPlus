@@ -61,6 +61,9 @@ struct GraphEndpoint {
     std::uint64_t Node = 0;
     SlotKind Kind = SlotKind::Input;
     int Index = -1;
+
+    friend bool operator==(const GraphEndpoint &,
+                           const GraphEndpoint &) = default;
 };
 
 struct GraphLink {

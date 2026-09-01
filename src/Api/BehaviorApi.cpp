@@ -163,6 +163,9 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::ExecutionCancelled: return BML_BEHAVIOR_ERROR_CANCELLED;
     case Error::DetachedUnsupported: return BML_BEHAVIOR_ERROR_DETACHED_UNSUPPORTED;
     case Error::ObserverUnavailable: return BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE;
+    case Error::GraphChanged:
+    case Error::OrderingTargetMismatch:
+    case Error::OverlayOrderCycle: return BML_BEHAVIOR_ERROR_STATE_INVALID;
     case Error::WrongThread:
     case Error::ExecutionFailed: return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
     }

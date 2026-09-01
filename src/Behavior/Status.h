@@ -41,6 +41,9 @@ enum class Error {
     ExecutionCancelled,
     DetachedUnsupported,
     ObserverUnavailable,
+    GraphChanged,
+    OrderingTargetMismatch,
+    OverlayOrderCycle,
 };
 
 enum class Phase {
