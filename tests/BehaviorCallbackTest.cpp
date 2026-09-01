@@ -165,4 +165,23 @@ TEST(BehaviorCallback, OtherThreadCloseDoesNotWaitForInvocation) {
     EXPECT_EQ(counts.Releases, 1);
 }
 
+TEST(BehaviorCallback, ReportsTheCurrentThreadInvocationExtent) {
+    PlanCallbackState plan = PlanCallbackState::Static();
+    CallbackLease outerLease = plan.OpenLease();
+    CallbackLease innerLease = plan.OpenLease();
+    EXPECT_FALSE(CallbackInvocation::Active());
+    {
+        CallbackInvocation outer = outerLease.Enter();
+        ASSERT_TRUE(outer);
+        EXPECT_TRUE(CallbackInvocation::Active());
+        {
+            CallbackInvocation inner = innerLease.Enter();
+            ASSERT_TRUE(inner);
+            EXPECT_TRUE(CallbackInvocation::Active());
+        }
+        EXPECT_TRUE(CallbackInvocation::Active());
+    }
+    EXPECT_FALSE(CallbackInvocation::Active());
+}
+
 } // namespace

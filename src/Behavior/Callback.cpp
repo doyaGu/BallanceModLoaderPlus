@@ -154,6 +154,10 @@ bool CallbackInvocation::IsCurrent() const noexcept {
            g_InvocationStack.back() == m_Lease.get();
 }
 
+bool CallbackInvocation::Active() noexcept {
+    return !g_InvocationStack.empty();
+}
+
 void CallbackInvocation::Leave() noexcept {
     if (!m_Lease)
         return;

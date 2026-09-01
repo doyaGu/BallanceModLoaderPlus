@@ -90,9 +90,33 @@ std::uint64_t HashTap(const GraphEndpoint &source, std::uint32_t ordinal) {
     return hash;
 }
 
+std::uint64_t HashSplice(const LinkBase &link, std::uint32_t ordinal,
+                         std::uint32_t node) {
+    std::uint64_t hash = 1469598103934665603ull;
+    const auto add = [&](std::uint64_t value) {
+        for (int byte = 0; byte < 8; ++byte) {
+            hash ^= static_cast<unsigned char>(value >> (byte * 8));
+            hash *= 1099511628211ull;
+        }
+    };
+    add(link.Anchor.Domain);
+    add(link.Anchor.Slot);
+    add(link.Anchor.Generation);
+    add(ordinal);
+    add(node);
+    return hash;
+}
+
+CKBehaviorIO *ResolveIo(CKContext *context, Stamp stamp) {
+    CKObject *object = context && stamp.Id ? context->GetObject(stamp.Id) : nullptr;
+    if (object != stamp.Address || !object || object->IsToBeDeleted())
+        return nullptr;
+    return static_cast<CKBehaviorIO *>(object);
+}
+
 } // namespace
 
-struct Patch::Data {
+struct Patch::Journal {
     struct Link {
         Stamp Value;
     };
@@ -118,14 +142,58 @@ struct Patch::Data {
     };
 
     CKEdit *Editor = nullptr;
+    mutable std::mutex Mutex;
+    PatchState State = PatchState::Pending;
+    Status LastStatus;
+    bool Queued = false;
     Stamp Graph;
     PatchKey Key;
+    std::vector<std::shared_ptr<CallbackResource>> Callbacks;
     std::vector<Stamp> Nodes;
     std::vector<Link> Links;
     std::vector<Binding> Binds;
     std::vector<Destination> Pushes;
     std::vector<Interface> Ports;
-    bool Active = false;
+    PatchLayer Layer;
+    std::vector<std::pair<LinkId, std::uint32_t>> Splices;
+};
+
+struct CKEdit::Request {
+    enum class Kind {
+        Apply,
+        Close,
+    };
+
+    Kind Action = Kind::Apply;
+    Edit Candidate;
+    std::shared_ptr<Patch::Journal> Patch;
+};
+
+struct CKEdit::Links {
+    struct Key {
+        PatchKey Patch;
+        std::uint32_t Ordinal = 0;
+
+        friend auto operator<=>(const Key &, const Key &) = default;
+    };
+
+    struct Site {
+        Stamp Input;
+        Stamp Output;
+    };
+
+    struct Chain {
+        LinkId Id;
+        LinkBase Base;
+        Stamp Anchor;
+        Stamp Source;
+        Stamp Sink;
+        std::vector<Key> Order;
+        std::vector<Stamp> Continuations;
+    };
+
+    std::map<std::uint64_t, std::map<LinkId, Chain>> Chains;
+    std::map<std::uint64_t, std::map<Key, Site>> Sites;
 };
 
 Patch::Patch() = default;
@@ -134,13 +202,38 @@ Patch::Patch(Patch &&) noexcept = default;
 Patch &Patch::operator=(Patch &&) noexcept = default;
 
 Patch::operator bool() const noexcept {
-    return m_Data && m_Data->Active;
+    const PatchState state = State();
+    return state == PatchState::Pending || state == PatchState::Active ||
+           state == PatchState::Closing ||
+           state == PatchState::RepairRequired;
+}
+
+PatchState Patch::State() const noexcept {
+    if (!m_Journal)
+        return PatchState::Closed;
+    std::lock_guard<std::mutex> lock(m_Journal->Mutex);
+    return m_Journal->State;
+}
+
+Status Patch::Diagnostic() const {
+    if (!m_Journal)
+        return {};
+    std::lock_guard<std::mutex> lock(m_Journal->Mutex);
+    return m_Journal->LastStatus;
 }
 
 CKEdit::CKEdit(CKContext *context, Runtime &runtime,
                PrototypeCatalog *catalog, GraphSource &graph)
     : m_Context(context), m_Runtime(runtime), m_Catalog(catalog),
-      m_Graph(graph), m_Thread(std::this_thread::get_id()) {}
+      m_Graph(graph), m_Thread(std::this_thread::get_id()),
+      m_Links(std::make_unique<Links>()) {}
+
+CKEdit::~CKEdit() = default;
+
+void CKEdit::Queue(Request request) {
+    std::lock_guard<std::mutex> lock(m_QueueMutex);
+    m_Queue.push_back(std::move(request));
+}
 
 Status CKEdit::Ready() const {
     if (!m_Context)
@@ -149,6 +242,184 @@ Status CKEdit::Ready() const {
     if (m_Thread != std::this_thread::get_id())
         return Failure(Error::WrongThread,
                        "Behavior graph Edits require the game thread.");
+    return {};
+}
+
+bool CKEdit::InDispatch() const noexcept {
+    if (CallbackInvocation::Active())
+        return true;
+    CKBehaviorManager *manager = m_Context
+        ? m_Context->GetBehaviorManager() : nullptr;
+    return manager && manager->m_CurrentBehavior != nullptr;
+}
+
+Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
+    if (!graph || !m_Links)
+        return Failure(Error::InvalidGraphLocality,
+                       "The graph for Link materialization is unavailable.");
+    const auto topology = m_Topology.find(graphId);
+    const auto chains = m_Links->Chains.find(graphId);
+    if (topology == m_Topology.end() || chains == m_Links->Chains.end())
+        return {};
+    auto &sites = m_Links->Sites[graphId];
+
+    struct Prepared {
+        Links::Chain *Chain = nullptr;
+        CKBehaviorLink *Anchor = nullptr;
+        CKBehaviorIO *OldHead = nullptr;
+        CKBehaviorIO *NewHead = nullptr;
+        std::vector<Links::Key> Order;
+        std::vector<Stamp> Continuations;
+    };
+    std::vector<Prepared> prepared;
+    const auto siteInput = [&](const Links::Key &key) -> CKBehaviorIO * {
+        const auto found = sites.find(key);
+        return found == sites.end()
+            ? nullptr : ResolveIo(m_Context, found->second.Input);
+    };
+
+    const auto discard = [&] {
+        for (Prepared &change : prepared) {
+            for (Stamp stamp : change.Continuations) {
+                CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                    m_Context, stamp, CKCID_BEHAVIORLINK);
+                if (!link)
+                    continue;
+                graph->RemoveSubBehaviorLink(link);
+                m_Context->DestroyObject(link);
+            }
+            change.Continuations.clear();
+        }
+    };
+
+    for (auto &[id, chain] : chains->second) {
+        const LogicalLink *logical = topology->second.Find(id);
+        if (!logical)
+            return Failure(Error::GraphChanged,
+                           "A materialized Link lost its logical identity.");
+        std::vector<Links::Key> order;
+        for (const OrderedOverlay &overlay : logical->Overlays) {
+            if (overlay.Kind == OverlayKind::Splice)
+                order.push_back({overlay.Patch, overlay.Ordinal});
+        }
+        if (order == chain.Order)
+            continue;
+
+        auto *anchor = Resolve<CKBehaviorLink>(
+            m_Context, chain.Anchor, CKCID_BEHAVIORLINK);
+        CKBehaviorIO *source = ResolveIo(m_Context, chain.Source);
+        CKBehaviorIO *sink = ResolveIo(m_Context, chain.Sink);
+        CKBehaviorIO *oldHead = chain.Order.empty()
+            ? sink : siteInput(chain.Order.front());
+        if (!anchor || !source || !sink || !oldHead ||
+            anchor->GetInBehaviorIO() != source ||
+            anchor->GetOutBehaviorIO() != oldHead ||
+            anchor->GetInitialActivationDelay() != chain.Base.Delay ||
+            chain.Continuations.size() != chain.Order.size()) {
+            discard();
+            return Failure(Error::RevertConflict,
+                           "A spliced Link changed outside its published Patch.");
+        }
+        for (std::size_t index = 0; index < chain.Order.size(); ++index) {
+            const auto site = sites.find(chain.Order[index]);
+            CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                m_Context, chain.Continuations[index], CKCID_BEHAVIORLINK);
+            CKBehaviorIO *expectedSource = site == sites.end()
+                ? nullptr : ResolveIo(m_Context, site->second.Output);
+            CKBehaviorIO *expectedSink = index + 1 < chain.Order.size()
+                ? siteInput(chain.Order[index + 1])
+                : sink;
+            if (!link || !expectedSource || !expectedSink ||
+                link->GetInBehaviorIO() != expectedSource ||
+                link->GetOutBehaviorIO() != expectedSink ||
+                link->GetInitialActivationDelay() != 0) {
+                discard();
+                return Failure(Error::RevertConflict,
+                               "A physical Splice chain changed outside its Patch.");
+            }
+        }
+
+        Prepared change;
+        change.Chain = &chain;
+        change.Anchor = anchor;
+        change.OldHead = oldHead;
+        change.Order = order;
+        change.NewHead = order.empty()
+            ? sink : siteInput(order.front());
+        if (!change.NewHead) {
+            discard();
+            return Failure(Error::GraphChanged,
+                           "A Splice node disappeared before publication.");
+        }
+
+        prepared.push_back(std::move(change));
+        Prepared &pending = prepared.back();
+        for (std::size_t index = 0; index < order.size(); ++index) {
+            const auto site = sites.find(order[index]);
+            CKBehaviorIO *from = site == sites.end()
+                ? nullptr : ResolveIo(m_Context, site->second.Output);
+            CKBehaviorIO *to = index + 1 < order.size()
+                ? siteInput(order[index + 1])
+                : sink;
+            if (!from || !to) {
+                discard();
+                return Failure(Error::GraphChanged,
+                               "A Splice endpoint disappeared before publication.");
+            }
+            auto *link = static_cast<CKBehaviorLink *>(m_Context->CreateObject(
+                CKCID_BEHAVIORLINK, nullptr, CK_OBJECTCREATION_DYNAMIC));
+            if (!link) {
+                discard();
+                return Failure(Error::CreateFailed,
+                               "Virtools failed to create a Splice continuation.",
+                               CKERR_OUTOFMEMORY);
+            }
+            CKERROR error = link->SetInBehaviorIO(from);
+            if (error == CK_OK)
+                error = link->SetOutBehaviorIO(to);
+            if (error == CK_OK) {
+                link->SetInitialActivationDelay(0);
+                link->SetActivationDelay(0);
+                error = graph->AddSubBehaviorLink(link);
+            }
+            if (error != CK_OK) {
+                m_Context->DestroyObject(link);
+                discard();
+                return Failure(Error::GraphChanged,
+                               "Virtools rejected a Splice continuation.", error);
+            }
+            pending.Continuations.push_back(Capture(link));
+        }
+    }
+
+    std::size_t rewired = 0;
+    for (; rewired < prepared.size(); ++rewired) {
+        const CKERROR error =
+            prepared[rewired].Anchor->SetOutBehaviorIO(prepared[rewired].NewHead);
+        if (error == CK_OK)
+            continue;
+        while (rewired > 0) {
+            --rewired;
+            (void) prepared[rewired].Anchor->SetOutBehaviorIO(
+                prepared[rewired].OldHead);
+        }
+        discard();
+        return Failure(Error::GraphChanged,
+                       "Virtools rejected the exact Link rewire.", error);
+    }
+
+    for (Prepared &change : prepared) {
+        for (Stamp stamp : change.Chain->Continuations) {
+            CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                m_Context, stamp, CKCID_BEHAVIORLINK);
+            if (!link)
+                continue;
+            graph->RemoveSubBehaviorLink(link);
+            m_Context->DestroyObject(link);
+        }
+        change.Chain->Order = std::move(change.Order);
+        change.Chain->Continuations = std::move(change.Continuations);
+    }
     return {};
 }
 
@@ -186,6 +457,32 @@ Status CKEdit::Use(Edit &edit, CKBehavior *behavior, Node &out) {
     return {};
 }
 
+Status CKEdit::Use(Edit &edit, CKBehaviorLink *link, Link &out) {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    if (!link || edit.m_Nodes.empty())
+        return Failure(Error::LinkNotFound,
+                       "A native Link and Edit graph are required.");
+    NativeRef native;
+    status = m_Graph.Refer(link, native);
+    GraphModel graph;
+    if (status)
+        status = m_Graph.Read(edit.m_Nodes.front().Native,
+                              GraphView::Logical, graph);
+    if (!status)
+        return status;
+    const auto found = std::find_if(
+        graph.Links.begin(), graph.Links.end(),
+        [&](const GraphLink &candidate) { return candidate.Id == native.Id; });
+    if (found == graph.Links.end())
+        return Failure(Error::LinkNotFound,
+                       "The native Link does not belong to the Edit graph.");
+    out = edit.Use(found->Object);
+    return {};
+}
+
 Status CKEdit::Add(Edit &edit, Spec block, Node &out) {
     out = {};
     Status status = Ready();
@@ -205,13 +502,14 @@ Status CKEdit::Add(Edit &edit, Spec block, Node &out) {
     return {};
 }
 
-Status CKEdit::Apply(const Edit &edit, Patch &out) {
+Status CKEdit::ApplyNow(const Edit &edit,
+                        const std::shared_ptr<Patch::Journal> &patch) {
     Status status = Ready();
     if (!status)
         return status;
-    if (out)
+    if (!patch)
         return Failure(Error::InvalidState,
-                       "The destination Patch is already active.");
+                       "The Patch journal is unavailable.");
     if (edit.m_Nodes.empty())
         return Failure(Error::InvalidState, "The Edit has no graph.");
 
@@ -234,7 +532,39 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
     if (!status)
         return status;
 
-    auto patch = std::make_unique<Patch::Data>();
+    Topology &topology = m_Topology[graphId];
+    PatchLayer spliceLayer;
+    spliceLayer.Patch = edit.Key();
+    std::vector<LinkId> spliceLinks;
+    spliceLinks.reserve(checked.Splices.size());
+    for (const CheckedSplice &splice : checked.Splices) {
+        LinkId id;
+        const LogicalLink *known = topology.Find(splice.Target.Anchor);
+        status = known ? Status{} : topology.Identify(splice.Target, id);
+        if (known)
+            id = known->Id;
+        if (!status)
+            return status;
+        spliceLinks.push_back(id);
+
+        auto group = std::find_if(
+            spliceLayer.Links.begin(), spliceLayer.Links.end(),
+            [id](const LinkOverlays &candidate) { return candidate.Link == id; });
+        if (group == spliceLayer.Links.end()) {
+            spliceLayer.Links.push_back({id, splice.Ordering, {}});
+            group = std::prev(spliceLayer.Links.end());
+        }
+        group->Overlays.push_back(
+            {OverlayKind::Splice, splice.Ordinal,
+             HashSplice(splice.Target, splice.Ordinal,
+                        splice.Input.Owner.Value)});
+    }
+    if (!spliceLayer.Links.empty()) {
+        status = topology.Validate(spliceLayer);
+        if (!status)
+            return status;
+    }
+
     patch->Editor = this;
     patch->Graph = Capture(graph);
     patch->Key = edit.Key();
@@ -256,7 +586,12 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
     }
 
     const auto fail = [&](Status failure) {
-        (void) Undo(*patch, false);
+        Status reverted = Undo(*patch, false);
+        if (!reverted) {
+            if (!failure.Message.empty())
+                reverted.Message = failure.Message + " " + reverted.Message;
+            return reverted;
+        }
         return failure;
     };
     if (!status)
@@ -676,7 +1011,7 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
                                          "A Bind destination is not a Pin.")
                                : std::move(status));
 
-        Patch::Data::Binding change;
+        Patch::Journal::Binding change;
         change.Input = Capture(target);
         change.PreviousDirect = Capture(target->GetDirectSource());
         change.PreviousShared = Capture(target->GetSharedSource());
@@ -777,7 +1112,7 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
             return fail(std::move(status));
     }
 
-    PatchLayer layer;
+    PatchLayer layer = spliceLayer;
     layer.Patch = edit.Key();
     for (const CheckedTap &tap : checked.Taps) {
         CKBehavior *owner = behaviorFor(tap.Source.Owner);
@@ -800,16 +1135,84 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
         }
         found->Taps.push_back({tap.Ordinal, HashTap(source, tap.Ordinal)});
     }
-    status = m_Topology[graphId].Set(std::move(layer));
-    if (!status)
-        return fail(std::move(status));
+
+    for (std::size_t spliceIndex = 0;
+         spliceIndex < checked.Splices.size(); ++spliceIndex) {
+        const CheckedSplice &splice = checked.Splices[spliceIndex];
+        const LinkId id = spliceLinks[spliceIndex];
+        const auto nativeRecord = std::find_if(
+            base.Links.begin(), base.Links.end(), [&](const GraphLink &candidate) {
+                return candidate.Object == splice.Target.Anchor;
+            });
+        CKBehaviorLink *anchor = nativeRecord == base.Links.end()
+            ? nullptr
+            : Resolve<CKBehaviorLink>(
+                  m_Context,
+                  {static_cast<CK_ID>(nativeRecord->Id),
+                   m_Context->GetObject(static_cast<CK_ID>(nativeRecord->Id))},
+                  CKCID_BEHAVIORLINK);
+        if (!anchor)
+            return fail(Failure(Error::LinkNotFound,
+                                "The exact native Link disappeared before Apply."));
+
+        auto &chains = m_Links->Chains[graphId];
+        auto chain = chains.find(id);
+        if (chain == chains.end()) {
+            CKBehaviorIO *source = anchor->GetInBehaviorIO();
+            CKBehaviorIO *sink = anchor->GetOutBehaviorIO();
+            if (!source || !sink)
+                return fail(Failure(Error::GraphChanged,
+                                    "The selected Link lost an endpoint."));
+            Links::Chain value;
+            value.Id = id;
+            value.Base = topology.Find(id)->Base;
+            value.Anchor = Capture(anchor);
+            value.Source = Capture(source);
+            value.Sink = Capture(sink);
+            chain = chains.emplace(id, std::move(value)).first;
+        } else if (chain->second.Anchor.Address != anchor) {
+            return fail(Failure(Error::GraphChanged,
+                                "The selected Link anchor changed identity."));
+        }
+
+        CKBehaviorIO *input = nullptr;
+        CKBehaviorIO *output = nullptr;
+        status = control(splice.Input, input);
+        if (status)
+            status = control(splice.Output, output);
+        if (!status)
+            return fail(std::move(status));
+
+        const Links::Key key{edit.Key(), splice.Ordinal};
+        auto &sites = m_Links->Sites[graphId];
+        if (sites.contains(key))
+            return fail(Failure(Error::InvalidState,
+                                "The Splice action is already installed."));
+        sites.emplace(key, Links::Site{Capture(input), Capture(output)});
+        patch->Splices.emplace_back(id, splice.Ordinal);
+        // Keep the candidate in the journal as it is assembled so any later
+        // validation or materialization failure can remove every admitted
+        // Splice site, including sites recorded before the failure.
+        patch->Layer = layer;
+    }
+
+    patch->Layer = layer;
+    if (!layer.Links.empty() || !layer.Outs.empty()) {
+        status = topology.Set(layer);
+        if (status) {
+            m_Active[graphId].insert(edit.Key());
+            status = Materialize(graphId, graph);
+        }
+        if (!status)
+            return fail(std::move(status));
+    }
 
     const int edited = graph->CallCallbackFunction(CKM_BEHAVIOREDITED);
     if (edited != CK_OK)
         return fail(Failure(Error::CallbackFailed,
                             "The graph EDITED callback failed.", edited));
 
-    for (const Patch::Data::Link &item : patch->Links) {
+    for (const Patch::Journal::Link &item : patch->Links) {
         CKBehaviorLink *link = Resolve<CKBehaviorLink>(
             m_Context, item.Value, CKCID_BEHAVIORLINK);
         if (!link || link->GetInBehaviorIO() == nullptr ||
@@ -819,13 +1222,11 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
         }
     }
 
-    patch->Active = true;
     m_Active[graphId].insert(edit.Key());
-    out.m_Data = std::move(patch);
     return {};
 }
 
-Status CKEdit::Undo(Patch::Data &patch, bool notify) {
+Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
     Status first;
     const auto remember = [&](Status status) {
         if (!status && first)
@@ -835,10 +1236,29 @@ Status CKEdit::Undo(Patch::Data &patch, bool notify) {
     const std::uint64_t graphId = patch.Graph.Id
         ? static_cast<std::uint32_t>(patch.Graph.Id) : 0;
 
-    if (graphId) {
+    if (graphId && (!patch.Layer.Links.empty() || !patch.Layer.Outs.empty())) {
         const auto topology = m_Topology.find(graphId);
-        if (topology != m_Topology.end())
-            topology->second.Remove(patch.Key);
+        auto graphSites = m_Links->Sites.find(graphId);
+        const bool removed = topology != m_Topology.end() &&
+                             topology->second.Remove(patch.Key);
+        if (graph && removed) {
+            Status materialized = Materialize(graphId, graph);
+            if (!materialized) {
+                (void) topology->second.Set(patch.Layer);
+                return materialized;
+            }
+        }
+        // Materialize needs both the old and desired chains to remain
+        // resolvable. The retiring Patch's endpoints stop being part of the
+        // graph only after the exact Link has been published successfully.
+        if (graphSites != m_Links->Sites.end()) {
+            for (const auto &[link, ordinal] : patch.Splices) {
+                (void) link;
+                graphSites->second.erase(Links::Key{patch.Key, ordinal});
+            }
+        }
+    }
+    if (graphId) {
         const auto active = m_Active.find(graphId);
         if (active != m_Active.end())
             active->second.erase(patch.Key);
@@ -933,7 +1353,7 @@ Status CKEdit::Undo(Patch::Data &patch, bool notify) {
             m_Context->DestroyObject(removed);
     }
 
-    for (const Patch::Data::Binding &item : patch.Binds) {
+    for (const Patch::Journal::Binding &item : patch.Binds) {
         CKParameterLocal *literal = Resolve<CKParameterLocal>(
             m_Context, item.Literal, CKCID_PARAMETERLOCAL);
         if (literal)
@@ -954,24 +1374,214 @@ Status CKEdit::Undo(Patch::Data &patch, bool notify) {
                              "The graph EDITED callback failed while the Patch closed.",
                              result));
     }
-    patch.Active = false;
     return first;
 }
 
-Status CKEdit::Close(Patch &patch) {
+void CKEdit::CloseAdmission(Patch::Journal &patch) noexcept {
+    std::vector<std::shared_ptr<CallbackResource>> callbacks;
+    {
+        std::lock_guard<std::mutex> lock(patch.Mutex);
+        callbacks = patch.Callbacks;
+    }
+    for (const std::shared_ptr<CallbackResource> &callback : callbacks) {
+        if (callback)
+            callback->CloseAdmission();
+    }
+}
+
+Status CKEdit::Apply(const Edit &edit, Patch &out) {
     Status status = Ready();
     if (!status)
         return status;
-    if (!patch.m_Data || !patch.m_Data->Active) {
-        patch.m_Data.reset();
-        return {};
+    if (out)
+        return Failure(Error::InvalidState,
+                       "The destination Patch is already live.");
+
+    auto patch = std::make_shared<Patch::Journal>();
+    patch->Editor = this;
+    patch->Key = edit.Key();
+    for (const Edit::EditNode &node : edit.m_Nodes) {
+        if (!node.Block)
+            continue;
+        patch->Callbacks.insert(patch->Callbacks.end(),
+                                node.Block->m_KeepAlive.begin(),
+                                node.Block->m_KeepAlive.end());
     }
-    if (patch.m_Data->Editor != this)
+    for (const EditTap &tap : edit.m_Taps) {
+        if (tap.Callback)
+            patch->Callbacks.push_back(tap.Callback);
+    }
+    if (InDispatch()) {
+        if (edit.m_Nodes.empty())
+            return Failure(Error::InvalidState, "The Edit has no graph.");
+        CKBehavior *graph = ResolveBehavior(
+            m_Context, edit.m_Nodes.front().Native);
+        if (!graph || graph->IsUsingFunction())
+            return Failure(Error::InvalidGraphLocality,
+                           "The Edit graph is stale or no longer graph-backed.",
+                           CKERR_INVALIDOBJECT);
+        const std::uint64_t graphId =
+            static_cast<std::uint32_t>(graph->GetID());
+        if (m_Active[graphId].contains(edit.Key()))
+            return Failure(
+                Error::InvalidState,
+                "The same owner and patch key is already active on this graph.");
+        GraphModel base;
+        status = m_Graph.Read(edit.m_Nodes.front().Native,
+                              GraphView::Logical, base);
+        CheckedEdit checked;
+        if (status)
+            status = edit.Validate(base, checked);
+        if (!status)
+            return status;
+        {
+            std::lock_guard<std::mutex> lock(patch->Mutex);
+            patch->Queued = true;
+        }
+        out.m_Journal = patch;
+        Queue({Request::Kind::Apply, edit, patch});
+        Status queued;
+        queued.Message = "Behavior Patch application is queued for the game-thread safe point.";
+        queued.Details.Stage = Phase::Edit;
+        return queued;
+    }
+
+    status = ApplyNow(edit, patch);
+    {
+        std::lock_guard<std::mutex> lock(patch->Mutex);
+        patch->LastStatus = status;
+        patch->State = status
+            ? PatchState::Active
+            : status.Code == Error::RevertConflict
+                ? PatchState::RepairRequired : PatchState::Failed;
+        if (!status && status.Code != Error::RevertConflict)
+            patch->Callbacks.clear();
+    }
+    if (status || status.Code == Error::RevertConflict)
+        out.m_Journal = std::move(patch);
+    return status;
+}
+
+Status CKEdit::CloseNow(const std::shared_ptr<Patch::Journal> &patch) {
+    if (!patch)
+        return {};
+    CloseAdmission(*patch);
+    Status status = Undo(*patch, true);
+    {
+        std::lock_guard<std::mutex> lock(patch->Mutex);
+        patch->LastStatus = status;
+        patch->State = status.Code == Error::RevertConflict
+            ? PatchState::RepairRequired : PatchState::Closed;
+        if (status.Code != Error::RevertConflict)
+            patch->Callbacks.clear();
+    }
+    return status;
+}
+
+Status CKEdit::Close(Patch &patch) {
+    if (!patch.m_Journal)
+        return {};
+    const std::shared_ptr<Patch::Journal> data = patch.m_Journal;
+    if (data->Editor != this)
         return Failure(Error::InvalidState,
                        "The Patch belongs to another Behavior editor.");
-    status = Undo(*patch.m_Data, true);
-    patch.m_Data.reset();
+
+    PatchState state;
+    {
+        std::lock_guard<std::mutex> lock(data->Mutex);
+        state = data->State;
+    }
+    if (state == PatchState::Closed || state == PatchState::Failed) {
+        patch.m_Journal.reset();
+        return {};
+    }
+
+    CloseAdmission(*data);
+    if (m_Thread != std::this_thread::get_id() || InDispatch() ||
+        state == PatchState::Pending) {
+        bool queue = false;
+        {
+            std::lock_guard<std::mutex> lock(data->Mutex);
+            data->State = PatchState::Closing;
+            if (!data->Queued) {
+                data->Queued = true;
+                queue = true;
+            }
+        }
+        if (queue)
+            Queue({Request::Kind::Close, {}, data});
+        Status queued;
+        queued.Message = "Behavior Patch close is queued for the game-thread safe point.";
+        queued.Details.Stage = Phase::Teardown;
+        return queued;
+    }
+
+    Status status = Ready();
+    if (status)
+        status = CloseNow(data);
+    if (status.Code != Error::RevertConflict)
+        patch.m_Journal.reset();
     return status;
+}
+
+void CKEdit::ProcessFrame() {
+    if (!Ready() || InDispatch())
+        return;
+
+    std::vector<Request> requests;
+    {
+        std::lock_guard<std::mutex> lock(m_QueueMutex);
+        requests.swap(m_Queue);
+    }
+    for (Request &request : requests) {
+        const std::shared_ptr<Patch::Journal> &patch = request.Patch;
+        if (!patch)
+            continue;
+        PatchState state;
+        {
+            std::lock_guard<std::mutex> lock(patch->Mutex);
+            patch->Queued = false;
+            state = patch->State;
+        }
+
+        if (request.Action == Request::Kind::Apply) {
+            if (state == PatchState::Closing || patch.use_count() == 1) {
+                std::lock_guard<std::mutex> lock(patch->Mutex);
+                patch->State = PatchState::Closed;
+                continue;
+            }
+            if (state != PatchState::Pending)
+                continue;
+            Status status = ApplyNow(request.Candidate, patch);
+            bool close = false;
+            {
+                std::lock_guard<std::mutex> lock(patch->Mutex);
+                patch->LastStatus = status;
+                close = patch->State == PatchState::Closing;
+                if (!close) {
+                    patch->State = status
+                        ? PatchState::Active
+                        : status.Code == Error::RevertConflict
+                            ? PatchState::RepairRequired : PatchState::Failed;
+                    if (!status && status.Code != Error::RevertConflict)
+                        patch->Callbacks.clear();
+                }
+            }
+            if (close) {
+                if (status)
+                    (void) CloseNow(patch);
+                else {
+                    std::lock_guard<std::mutex> lock(patch->Mutex);
+                    patch->State = PatchState::Closed;
+                    patch->Callbacks.clear();
+                }
+            }
+            continue;
+        }
+
+        if (state == PatchState::Closing)
+            (void) CloseNow(patch);
+    }
 }
 
 std::uint64_t CKEdit::TopologyFingerprint(CKBehavior *graph) const {

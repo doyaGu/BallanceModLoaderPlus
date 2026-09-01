@@ -97,6 +97,7 @@ public:
         return m_Lease != nullptr;
     }
     [[nodiscard]] bool IsCurrent() const noexcept;
+    [[nodiscard]] static bool Active() noexcept;
 
 private:
     explicit CallbackInvocation(std::shared_ptr<LeaseControl> lease);
