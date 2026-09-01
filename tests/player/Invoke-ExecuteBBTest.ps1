@@ -248,7 +248,7 @@ $outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>
 $outcome = [regex]::Match($testLog, $outcomePattern)
 $transportPattern = 'Behavior transport: status=(?<status>pass|fail) reason=(?<reason>\S+) transport=(?<transport>true|false) wire=(?<wire>true|false) object_ref=(?<objectRef>true|false) session_after_reset=(?<session>true|false) catalog=(?<catalog>true|false) detached=(?<detached>true|false) inspect=(?<inspect>true|false) watch=(?<watch>true|false)'
 $transport = [regex]::Match($testLog, $transportPattern)
-$patchPattern = 'Behavior patch: status=(?<status>pass|fail) reason=(?<reason>\S+) module=(?<module>true|false) apply=(?<apply>true|false) execute=(?<execute>true|false) close=(?<close>true|false) restore=(?<restore>true|false)'
+$patchPattern = 'Behavior patch: status=(?<status>pass|fail) reason=(?<reason>\S+) module=(?<module>true|false) apply=(?<apply>true|false) execute=(?<execute>true|false) close=(?<close>true|false) restore=(?<restore>true|false) reset=(?<reset>true|false) deletion=(?<deletion>true|false) retirement=(?<retirement>true|false)'
 $patch = [regex]::Match($testLog, $patchPattern)
 $postStartIndex = $testLog.IndexOf('On Message PostStartMenu')
 $preLoadIndex = $testLog.IndexOf('On Message PreLoadLevel')
@@ -285,7 +285,10 @@ $checks = [ordered]@{
         $patch.Groups['apply'].Value -eq 'true' -and
         $patch.Groups['execute'].Value -eq 'true' -and
         $patch.Groups['close'].Value -eq 'true' -and
-        $patch.Groups['restore'].Value -eq 'true'
+        $patch.Groups['restore'].Value -eq 'true' -and
+        $patch.Groups['reset'].Value -eq 'true' -and
+        $patch.Groups['deletion'].Value -eq 'true' -and
+        $patch.Groups['retirement'].Value -eq 'true'
     BehaviorInspectProbe = $transport.Success -and
         $transport.Groups['inspect'].Value -eq 'true' -and
         $testLog -match

@@ -117,6 +117,37 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
     }
 }
 
+int BML_BEHAVIOR_CALL ResetPatches(BML_BehaviorSession session) {
+    ModContext *context = BML_GetModContext();
+    if (!Ready(context))
+        return context && !context->IsMainThread()
+            ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
+    try {
+        Behavior::SessionOwner owner;
+        if (!Owner(*context, session, owner))
+            return BML_ERROR_ACCESS_DENIED;
+        context->BehaviorPatches().ResetWorld();
+        return BML_OK;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
+int BML_BEHAVIOR_CALL RetirePatches(BML_BehaviorSession session) {
+    ModContext *context = BML_GetModContext();
+    if (!Ready(context))
+        return context && !context->IsMainThread()
+            ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
+    try {
+        Behavior::SessionOwner owner;
+        if (!Owner(*context, session, owner))
+            return BML_ERROR_ACCESS_DENIED;
+        return Result(context->BehaviorPatches().RetireOwner(owner.Id));
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
 const BML_BehaviorTestInterface kInterface = {
     BML_IFACE_HEADER(BML_BehaviorTestInterface,
                      BML_BEHAVIOR_TEST_INTERFACE_ID,
@@ -125,6 +156,8 @@ const BML_BehaviorTestInterface kInterface = {
     &InstallSplice,
     &ReadPatch,
     &ClosePatch,
+    &ResetPatches,
+    &RetirePatches,
 };
 
 } // namespace

@@ -29,6 +29,10 @@ struct BML_BehaviorTestInterface {
         std::uint32_t *state);
     int (BML_BEHAVIOR_CALL *ClosePatch)(
         BML_BehaviorSession session, std::uintptr_t patch);
+    int (BML_BEHAVIOR_CALL *ResetPatches)(
+        BML_BehaviorSession session);
+    int (BML_BEHAVIOR_CALL *RetirePatches)(
+        BML_BehaviorSession session);
 };
 
 namespace BML::Api {

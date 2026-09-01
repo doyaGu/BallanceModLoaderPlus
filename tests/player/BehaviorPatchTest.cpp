@@ -69,9 +69,23 @@ public:
             return;
         ++m_Frame;
         switch (m_State) {
-        case State::Create: CreateGraph(); break;
-        case State::Execute: ObserveExecution(); break;
-        case State::Close: ClosePatch(); break;
+        case State::CreateExplicit:
+            CreateGraph("player-explicit-close", State::ObserveExplicit);
+            break;
+        case State::ObserveExplicit: ObserveExecution(); break;
+        case State::CloseExplicit: CloseExplicit(); break;
+        case State::CreateReset:
+            CreateGraph("player-patch-reset", State::Reset);
+            break;
+        case State::Reset: ResetPatches(); break;
+        case State::CreateDeletion:
+            CreateGraph("player-graph-deletion", State::DeleteGraph);
+            break;
+        case State::DeleteGraph: DeleteGraph(); break;
+        case State::CreateRetirement:
+            CreateGraph("player-owner-retirement", State::Retire);
+            break;
+        case State::Retire: RetirePatches(); break;
         }
     }
 
@@ -87,9 +101,15 @@ public:
 
 private:
     enum class State {
-        Create,
-        Execute,
-        Close,
+        CreateExplicit,
+        ObserveExplicit,
+        CloseExplicit,
+        CreateReset,
+        Reset,
+        CreateDeletion,
+        DeleteGraph,
+        CreateRetirement,
+        Retire,
     };
 
     bool IsLoaderAddress(const void *address) const {
@@ -127,7 +147,7 @@ private:
         return link;
     }
 
-    void CreateGraph() {
+    void CreateGraph(const char *patchName, State next) {
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
         CKLevel *level = context ? context->GetCurrentLevel() : nullptr;
         CKScene *scene = context ? context->GetCurrentScene() : nullptr;
@@ -166,44 +186,60 @@ private:
             DestroyGraph();
             return;
         }
-        const CK_ID anchorId = m_Anchor->GetID();
+        m_AnchorId = m_Anchor->GetID();
         BML_BehaviorGuid prototype{
             static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d1),
             static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d2)};
         const int installed = m_Test->InstallSplice(
             m_Session, m_Graph, m_Anchor, prototype,
-            "player-production-splice", &m_Patch);
+            patchName, &m_Patch);
         std::uint32_t state = 0;
-        m_ApplyPassed = installed == BML_OK && m_Patch != 0 &&
+        const bool applied = installed == BML_OK && m_Patch != 0 &&
             m_Test->ReadPatch(m_Session, m_Patch, &state) == BML_OK &&
             state == BML_BEHAVIOR_TEST_PATCH_ACTIVE &&
-            m_Anchor->GetID() == anchorId &&
+            m_Anchor->GetID() == m_AnchorId &&
             m_Anchor->GetOutBehaviorIO() != m_Graph->GetOutput(0) &&
             m_Graph->GetSubBehaviorCount() == 1 &&
             m_Graph->GetSubBehaviorLinkCount() == 2;
-        if (!m_ApplyPassed) {
+        m_ApplyPassed = m_ApplyPassed && applied;
+        if (!applied) {
             Finish(false, "patch-apply");
             return;
         }
 
-        scene->Activate(m_Graph, TRUE);
-        m_Graph->ActivateInput(0, TRUE);
-        m_ExecuteStarted = m_Frame;
-        m_State = State::Execute;
+        if (next == State::ObserveExplicit) {
+            scene->Activate(m_Graph, TRUE);
+            m_Graph->ActivateInput(0, TRUE);
+            m_ExecuteStarted = m_Frame;
+        }
+        m_State = next;
     }
 
     void ObserveExecution() {
         if (m_Graph && m_Graph->GetOutput(0) &&
             m_Graph->GetOutput(0)->IsActive()) {
             m_ExecutePassed = true;
-            m_State = State::Close;
+            m_State = State::CloseExplicit;
             return;
         }
         if (m_Frame - m_ExecuteStarted > 12)
             Finish(false, "patch-execute");
     }
 
-    void ClosePatch() {
+    bool Restored() const {
+        return m_Graph && m_Anchor && m_Anchor->GetID() == m_AnchorId &&
+            m_Anchor->GetOutBehaviorIO() == m_Graph->GetOutput(0) &&
+            m_Graph->GetSubBehaviorCount() == 0 &&
+            m_Graph->GetSubBehaviorLinkCount() == 1;
+    }
+
+    bool StalePatch() const {
+        std::uint32_t state = 0;
+        return m_Test && m_Session && m_Patch &&
+            m_Test->ReadPatch(m_Session, m_Patch, &state) != BML_OK;
+    }
+
+    void CloseExplicit() {
         CKScene *scene = m_BML && m_BML->GetCKContext()
             ? m_BML->GetCKContext()->GetCurrentScene() : nullptr;
         if (scene && m_Graph)
@@ -211,15 +247,66 @@ private:
         const int closed = m_Test->ClosePatch(m_Session, m_Patch);
         m_Patch = 0;
         m_ClosePassed = closed == BML_OK;
-        m_RestorePassed = m_ClosePassed && m_Graph && m_Anchor &&
-            m_Anchor->GetOutBehaviorIO() == m_Graph->GetOutput(0) &&
-            m_Graph->GetSubBehaviorCount() == 0 &&
-            m_Graph->GetSubBehaviorLinkCount() == 1;
+        m_RestorePassed = m_ClosePassed && Restored();
         if (m_RestorePassed)
             DestroyGraph();
+        if (!m_RestorePassed) {
+            Finish(false, "patch-close");
+            return;
+        }
+        m_State = State::CreateReset;
+    }
+
+    void ResetPatches() {
+        const int reset = m_Test->ResetPatches(m_Session);
+        m_ResetPassed = reset == BML_OK && StalePatch() && Restored();
+        m_Patch = 0;
+        if (!m_ResetPassed) {
+            Finish(false, "patch-reset");
+            return;
+        }
+        DestroyGraph();
+        m_State = State::CreateDeletion;
+    }
+
+    void DeleteGraph() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        if (!context || !m_Graph || !m_Owner) {
+            Finish(false, "patch-delete-setup");
+            return;
+        }
+
+        const CK_ID graphId = m_Graph->GetID();
+        CKBehavior *graph = m_Graph;
+        CK3dObject *owner = m_Owner;
+        (void) owner->RemoveScript(graphId);
+        m_Graph = nullptr;
+        m_Anchor = nullptr;
+        m_Owner = nullptr;
+        const CKERROR destroyed = context->DestroyObject(graph);
+        CKObject *remaining = context->GetObject(graphId);
+        const bool deletionObserved = destroyed == CK_OK &&
+            (!remaining || remaining->IsToBeDeleted());
+        m_DeletionPassed = deletionObserved && StalePatch();
+        m_Patch = 0;
+        context->DestroyObject(owner);
+        if (!m_DeletionPassed) {
+            Finish(false, "patch-delete");
+            return;
+        }
+        m_State = State::CreateRetirement;
+    }
+
+    void RetirePatches() {
+        const int retired = m_Test->RetirePatches(m_Session);
+        m_RetirementPassed = retired == BML_OK && StalePatch() && Restored();
+        m_Patch = 0;
+        if (m_RetirementPassed)
+            DestroyGraph();
         Finish(m_ModulePassed && m_ApplyPassed && m_ExecutePassed &&
-                   m_ClosePassed && m_RestorePassed,
-               m_RestorePassed ? "complete" : "patch-close");
+                   m_ClosePassed && m_RestorePassed && m_ResetPassed &&
+                   m_DeletionPassed && m_RetirementPassed,
+               m_RetirementPassed ? "complete" : "patch-retirement");
     }
 
     void DestroyGraph() {
@@ -231,6 +318,7 @@ private:
             context->DestroyObject(m_Anchor);
         }
         m_Anchor = nullptr;
+        m_AnchorId = 0;
         if (m_Owner && m_Graph)
             (void) m_Owner->RemoveScript(m_Graph->GetID());
         if (m_Graph)
@@ -246,13 +334,16 @@ private:
             return;
         m_Done = true;
         GetLogger()->Info(
-            "Behavior patch: status=%s reason=%s module=%s apply=%s execute=%s close=%s restore=%s",
+            "Behavior patch: status=%s reason=%s module=%s apply=%s execute=%s close=%s restore=%s reset=%s deletion=%s retirement=%s",
             passed ? "pass" : "fail", reason,
             m_ModulePassed ? "true" : "false",
             m_ApplyPassed ? "true" : "false",
             m_ExecutePassed ? "true" : "false",
             m_ClosePassed ? "true" : "false",
-            m_RestorePassed ? "true" : "false");
+            m_RestorePassed ? "true" : "false",
+            m_ResetPassed ? "true" : "false",
+            m_DeletionPassed ? "true" : "false",
+            m_RetirementPassed ? "true" : "false");
     }
 
     const BML_BehaviorInterface *m_Behavior = nullptr;
@@ -262,15 +353,19 @@ private:
     CK3dObject *m_Owner = nullptr;
     CKBehavior *m_Graph = nullptr;
     CKBehaviorLink *m_Anchor = nullptr;
-    State m_State = State::Create;
+    CK_ID m_AnchorId = 0;
+    State m_State = State::CreateExplicit;
     int m_Frame = 0;
     int m_ExecuteStarted = 0;
     bool m_LevelStarted = false;
     bool m_ModulePassed = false;
-    bool m_ApplyPassed = false;
+    bool m_ApplyPassed = true;
     bool m_ExecutePassed = false;
     bool m_ClosePassed = false;
     bool m_RestorePassed = false;
+    bool m_ResetPassed = false;
+    bool m_DeletionPassed = false;
+    bool m_RetirementPassed = false;
     bool m_Done = false;
 };
 
