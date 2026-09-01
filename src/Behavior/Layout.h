@@ -29,6 +29,7 @@ struct Slot {
     std::string Name;
     int Occurrence = 0;
     bool RequireUnique = false;
+    bool RequireOnly = false;
     CKGUID ExpectedType;
 
     static Slot At(SlotKind kind, int index,
@@ -37,6 +38,7 @@ struct Slot {
                       CKGUID expectedType = CKGUID());
     static Slot OccurrenceOf(SlotKind kind, std::string name, int occurrence,
                              CKGUID expectedType = CKGUID());
+    static Slot Only(SlotKind kind, CKGUID expectedType = CKGUID());
     [[nodiscard]] bool UsesName() const noexcept { return !Name.empty(); }
 };
 

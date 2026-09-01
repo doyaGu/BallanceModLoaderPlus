@@ -71,7 +71,7 @@ public:
     Status ReadDeclaredLayout(std::uintptr_t sessionId,
                               PrototypeRef prototype, Layout &out);
     Status ReadLiveLayout(std::uintptr_t runId, Layout &out) const;
-    std::shared_ptr<OutcomeStore> Outcomes(std::uintptr_t runId) const;
+    std::shared_ptr<FrameStore> Frames(std::uintptr_t runId) const;
     void CloseRun(std::uintptr_t runId);
 
     void ProcessFrame();
@@ -97,7 +97,7 @@ private:
         std::uint64_t OwnerGeneration = 0;
         RunInfo Info;
         Instance Block;
-        std::shared_ptr<OutcomeStore> Outcome;
+        std::shared_ptr<FrameStore> Frames;
     };
 
     [[nodiscard]] Status Ready() const;

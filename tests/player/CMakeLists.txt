@@ -52,7 +52,7 @@ bml_add_mod(ExecuteBBTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/ObjectLoad.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/OutcomeStore.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Parameter.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Physicalize.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsImpulse.cpp

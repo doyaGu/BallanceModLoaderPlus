@@ -116,7 +116,7 @@ RunResult Sessions::Create(const StoredOptions &stored) {
 
     CreateResult created = m_Runtime.Instantiate(options.Target, Make(options));
     if (!created)
-        return {std::move(created.Outcome), RunState::Failed, CKBR_BEHAVIORERROR, {}};
+        return {std::move(created.Detail), RunState::Failed, CKBR_BEHAVIORERROR, {}};
     RunResult result = m_Runtime.Pulse(
         created.Handle, Slot::At(SlotKind::Input, 0));
 

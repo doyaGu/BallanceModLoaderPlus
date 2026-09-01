@@ -37,7 +37,7 @@ enum class Error {
     UnsupportedBreak,
     UnsupportedPout,
     PoutUnavailable,
-    OutcomeQueueFull,
+    FrameQueueFull,
     ExecutionCancelled,
 };
 

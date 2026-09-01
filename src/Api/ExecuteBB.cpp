@@ -28,7 +28,7 @@ void ReportFailure(const char *operation,
     ILogger *logger = context ? context->GetLogger() : nullptr;
     if (!logger)
         return;
-    const BML::Behavior::Status &status = result.Outcome;
+    const BML::Behavior::Status &status = result.Detail;
     logger->Error(
         "ExecuteBB::%s failed: error=%s phase=%s ck_error=%d behavior_result=%d message=%s",
         operation ? operation : "<unknown>",

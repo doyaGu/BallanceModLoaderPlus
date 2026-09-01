@@ -12,7 +12,7 @@
 
 BML_C_ABI_ASSERT(BmlBehaviorGuidSize, sizeof(BML_BehaviorGuid) == 8u);
 BML_C_ABI_ASSERT(BmlBehaviorStatusSize, sizeof(BML_BehaviorStatus) == 296u);
-BML_C_ABI_ASSERT(BmlBehaviorOutcomeSize, sizeof(BML_BehaviorOutcomeHeader) == 64u);
+BML_C_ABI_ASSERT(BmlBehaviorFrameSize, sizeof(BML_BehaviorRunFrame) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorOutSize, sizeof(BML_BehaviorOutRecord) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorPoutSize, sizeof(BML_BehaviorPoutRecord) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorDiagnosticSize,
@@ -31,9 +31,6 @@ BML_C_ABI_ASSERT(BmlBehaviorLayoutSize,
 #if UINTPTR_MAX == UINT32_MAX
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 108u);
-BML_C_ABI_ASSERT(BmlBehaviorBlockV1Size,
-                 offsetof(BML_BehaviorBlock, Outcomes) +
-                     sizeof(BML_BehaviorRetention) == 76u);
 BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
                  offsetof(BML_BehaviorBlock, PrototypeGeneration) == 80u);
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 88u);
@@ -43,9 +40,6 @@ BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 64u)
 #else
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
-BML_C_ABI_ASSERT(BmlBehaviorBlockV1Size,
-                 offsetof(BML_BehaviorBlock, Outcomes) +
-                     sizeof(BML_BehaviorRetention) == 96u);
 BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
                  offsetof(BML_BehaviorBlock, PrototypeGeneration) == 96u);
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 104u);
@@ -211,7 +205,7 @@ int BML_TestCAbiBehaviorInterface(BML_BehaviorRun run) {
     const void *found = NULL;
     const BML_BehaviorInterface *behavior = NULL;
     BML_BehaviorStatus status = {sizeof(status)};
-    uint32_t outcomeCount = 0;
+    uint32_t frameCount = 0;
     uint32_t payloadSize = 0;
 
     if (BML_GetInterface(BML_BEHAVIOR_INTERFACE_ID,
@@ -223,7 +217,7 @@ int BML_TestCAbiBehaviorInterface(BML_BehaviorRun run) {
     if (behavior->Header.MinorVersion >= 1 &&
         !BML_IFACE_HAS(behavior, BML_BehaviorInterface, ReadLiveLayout))
         return 0;
-    return behavior->DrainOutcomes(run, NULL, 0, sizeof(BML_BehaviorOutcomeHeader),
-                                   NULL, 0, &outcomeCount, &payloadSize,
-                                   &status) == BML_ERROR_BUFFER_TOO_SMALL;
+    return behavior->TakeFrames(run, NULL, 0, sizeof(BML_BehaviorRunFrame),
+                                NULL, 0, &frameCount, &payloadSize,
+                                &status) == BML_ERROR_BUFFER_TOO_SMALL;
 }

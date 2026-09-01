@@ -3,7 +3,7 @@
 #include <limits>
 #include <utility>
 
-#include "Behavior/OutcomeStore.h"
+#include "Behavior/FrameStore.h"
 
 namespace BML::Behavior {
 namespace {
@@ -101,10 +101,10 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
 
     CallResult called = m_Runtime.Call(owner, block, input);
     if (!called.Handle)
-        return {std::move(called.Outcome), 0, {}};
+        return {std::move(called.Detail), 0, {}};
     RunResult result = std::move(called.Run);
-    if (result.Outcome && !called.Outcome)
-        result.Outcome = std::move(called.Outcome);
+    if (result.Detail && !called.Detail)
+        result.Detail = std::move(called.Detail);
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Session *current = FindSession(session.Id);
     if (!current || current->OwnerGeneration != session.OwnerGeneration) {
@@ -132,12 +132,12 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
 
     CreateResult created = m_Runtime.Instantiate(owner, block);
     if (!created)
-        return {std::move(created.Outcome), 0, {}};
+        return {std::move(created.Detail), 0, {}};
     RunResult result = m_Runtime.StartTask(created.Handle, input);
     if (result.State == RunState::Pending || result.State == RunState::Queued) {
         Status continued = m_Runtime.Continue(created.Handle);
-        if (!continued && result.Outcome)
-            result.Outcome = std::move(continued);
+        if (!continued && result.Detail)
+            result.Detail = std::move(continued);
     }
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Session *current = FindSession(session.Id);
@@ -165,7 +165,7 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
     }
     CreateResult created = m_Runtime.Instantiate(owner, block);
     if (!created)
-        return {std::move(created.Outcome), 0, {}};
+        return {std::move(created.Detail), 0, {}};
     RunResult result;
     result.State = RunState::Completed;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -195,6 +195,8 @@ RunResult Sessions::Continue(std::uintptr_t runId) {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         run->Info.LastStatus = status;
         run->Info.State = status ? RunState::Pending : RunState::Failed;
+        if (status)
+            run->Info.Kind = RunKind::Task;
     }
     return {std::move(status), run->Info.State, CKBR_OK, {}};
 }
@@ -214,12 +216,12 @@ RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
     RunResult result = m_Runtime.Pulse(run->Block, input);
     if (result.State == RunState::Pending || result.State == RunState::Queued) {
         Status continued = m_Runtime.Continue(run->Block);
-        if (!continued && result.Outcome)
-            result.Outcome = std::move(continued);
+        if (!continued && result.Detail)
+            result.Detail = std::move(continued);
     }
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run->Info.LastStatus = result.Outcome;
+        run->Info.LastStatus = result.Detail;
         run->Info.State = result.State;
     }
     return result;
@@ -288,10 +290,10 @@ Status Sessions::ReadLiveLayout(std::uintptr_t runId, Layout &out) const {
     return m_Runtime.Describe(run->Block, out);
 }
 
-std::shared_ptr<OutcomeStore> Sessions::Outcomes(std::uintptr_t runId) const {
+std::shared_ptr<FrameStore> Sessions::Frames(std::uintptr_t runId) const {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::shared_ptr<const Run> run = FindRun(runId);
-    return run ? run->Outcome : nullptr;
+    return run ? run->Frames : nullptr;
 }
 
 void Sessions::CloseRun(std::uintptr_t runId) {
@@ -385,12 +387,12 @@ bool Sessions::SessionIsActive(const Session &session) const {
 
 OpenRun Sessions::AddRun(const Session &session, RunKind kind,
                           Instance block, RunResult result) {
-    std::shared_ptr<OutcomeStore> outcomes = m_Runtime.Outcomes(block);
-    const bool nativeExecuted = outcomes && !outcomes->Read().empty();
+    std::shared_ptr<FrameStore> frames = m_Runtime.Frames(block);
+    const bool nativeExecuted = frames && !frames->Read().empty();
     if (!result && !nativeExecuted) {
         block.Reset();
         m_Runtime.ClosePending();
-        return {std::move(result.Outcome), 0, {}};
+        return {std::move(result.Detail), 0, {}};
     }
     const std::uintptr_t id = NextId();
     if (!id) {
@@ -406,9 +408,9 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     run->OwnerGeneration = session.OwnerGeneration;
     run->Info.Kind = kind;
     run->Info.State = result.State;
-    run->Info.LastStatus = result.Outcome;
+    run->Info.LastStatus = result.Detail;
     run->Block = std::move(block);
-    run->Outcome = std::move(outcomes);
+    run->Frames = std::move(frames);
     auto [stored, inserted] = m_Runs.emplace(id, std::move(run));
     if (!inserted)
         return {Fail(Error::InvalidState, "Behavior Run id collision."), 0, {}};
@@ -419,7 +421,7 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
              result.State != RunState::Queued)
         CloseNative(*stored->second);
 
-    // A native error is an Outcome, not an admission failure.
+    // A native error is a Frame, not an admission failure.
     Status admitted;
     return {std::move(admitted), id, stored->second->Info};
 }

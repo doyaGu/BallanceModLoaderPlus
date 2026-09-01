@@ -298,7 +298,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Execution.h
         Behavior/Lifecycle.h
         Behavior/Layout.h
-        Behavior/OutcomeStore.h
+        Behavior/FrameStore.h
         Behavior/Parameter.h
         Behavior/HookBlock.h
         Behavior/ObjectLoad.h
@@ -318,7 +318,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/CKPrototypeSource.cpp
         Behavior/Execution.cpp
         Behavior/Lifecycle.cpp
-        Behavior/OutcomeStore.cpp
+        Behavior/FrameStore.cpp
         Behavior/Parameter.cpp
         Behavior/PrototypeCatalog.cpp
         Behavior/HookBlock.cpp

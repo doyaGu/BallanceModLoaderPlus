@@ -9,7 +9,7 @@ Behavior::RunResult ExecuteBBAdapter::Run(
     CKBeObject *owner, const Behavior::Spec &spec, int input) {
     Behavior::CreateResult created = m_Runtime.Instantiate(owner, spec);
     if (!created)
-        return {std::move(created.Outcome), Behavior::RunState::Failed,
+        return {std::move(created.Detail), Behavior::RunState::Failed,
                 CKBR_BEHAVIORERROR, {}};
     Behavior::RunResult result = m_Runtime.StartTask(
         created.Handle, Behavior::Slot::At(Behavior::SlotKind::Input, input));

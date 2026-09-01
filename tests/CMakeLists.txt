@@ -235,7 +235,7 @@ add_bml_test(BehaviorExecutionTest
         SOURCES
         BehaviorExecutionTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
-        ${BML_SOURCE_DIR}/Behavior/OutcomeStore.cpp
+        ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
 )
 
 add_bml_test(BehaviorSessionTest
@@ -244,7 +244,7 @@ add_bml_test(BehaviorSessionTest
         BehaviorSessionTestStubs.cpp
         ${BML_SOURCE_DIR}/Behavior/Sessions.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
-        ${BML_SOURCE_DIR}/Behavior/OutcomeStore.cpp
+        ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
 )
 target_include_directories(BehaviorSessionTest PRIVATE
         "${VIRTOOLS_SDK_INCLUDE_DIR}"

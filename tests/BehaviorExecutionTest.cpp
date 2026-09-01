@@ -1,5 +1,5 @@
 #include "Behavior/Execution.h"
-#include "Behavior/OutcomeStore.h"
+#include "Behavior/FrameStore.h"
 
 #include <algorithm>
 #include <deque>
@@ -173,9 +173,9 @@ TEST(BehaviorExecution, WaitForAllKeepsInputsAndQueuesSameFramePulse) {
 
     ExecutionResult first = execution.Pulse(ExecutionInput::Named("A"), 10, adapter);
     ASSERT_EQ(first.State, AdmissionState::Executed);
-    ASSERT_TRUE(first.Outcome);
-    EXPECT_TRUE(first.Outcome->NativeContinuation);
-    EXPECT_FALSE(first.Outcome->QueuedInput);
+    ASSERT_TRUE(first.Frame);
+    EXPECT_TRUE(first.Frame->NativeContinuation);
+    EXPECT_FALSE(first.Frame->QueuedInput);
     EXPECT_TRUE(adapter.Inputs[0].Active);
     EXPECT_FALSE(adapter.Inputs[1].Active);
 
@@ -186,10 +186,10 @@ TEST(BehaviorExecution, WaitForAllKeepsInputsAndQueuesSameFramePulse) {
 
     ExecutionResult completed = execution.Step(11, adapter);
     ASSERT_EQ(completed.State, AdmissionState::Executed);
-    ASSERT_TRUE(completed.Outcome);
-    EXPECT_TRUE(completed.Outcome->Terminal);
-    ASSERT_EQ(completed.Outcome->ActiveOutputs.size(), 1u);
-    EXPECT_EQ(completed.Outcome->ActiveOutputs[0].Name, "Out");
+    ASSERT_TRUE(completed.Frame);
+    EXPECT_TRUE(completed.Frame->Terminal);
+    ASSERT_EQ(completed.Frame->ActiveOutputs.size(), 1u);
+    EXPECT_EQ(completed.Frame->ActiveOutputs[0].Name, "Out");
     EXPECT_FALSE(adapter.Inputs[0].Active);
     EXPECT_FALSE(adapter.Inputs[1].Active);
     EXPECT_FALSE(adapter.Outputs[0].Active);
@@ -231,9 +231,9 @@ TEST(BehaviorExecution, ReentrantPulseRunsOnTheNextFrameOnly) {
     };
 
     ExecutionResult first = execution.Pulse(ExecutionInput::Named("A"), 4, adapter);
-    ASSERT_TRUE(first.Outcome);
-    EXPECT_FALSE(first.Outcome->NativeContinuation);
-    EXPECT_TRUE(first.Outcome->QueuedInput);
+    ASSERT_TRUE(first.Frame);
+    EXPECT_FALSE(first.Frame->NativeContinuation);
+    EXPECT_TRUE(first.Frame->QueuedInput);
     EXPECT_EQ(execution.State(), ExecutionState::Pending);
     EXPECT_EQ(adapter.Calls, 1);
 
@@ -251,8 +251,8 @@ TEST(BehaviorExecution, FunctionUsesRetryAndGraphUsesNativeActivity) {
     const ExecutionResult functionFirst =
         function.Pulse(ExecutionInput::At(0, 1), 1, functionAdapter);
     ASSERT_TRUE(functionFirst);
-    ASSERT_TRUE(functionFirst.Outcome);
-    EXPECT_FALSE(functionFirst.Outcome->GraphActive);
+    ASSERT_TRUE(functionFirst.Frame);
+    EXPECT_FALSE(functionFirst.Frame->GraphActive);
     EXPECT_EQ(function.State(), ExecutionState::Pending);
     ASSERT_TRUE(function.Step(2, functionAdapter));
     EXPECT_EQ(function.State(), ExecutionState::Idle);
@@ -265,8 +265,8 @@ TEST(BehaviorExecution, FunctionUsesRetryAndGraphUsesNativeActivity) {
     const ExecutionResult graphFirst =
         graph.Pulse(ExecutionInput::At(0, 1), 1, graphAdapter);
     ASSERT_TRUE(graphFirst);
-    ASSERT_TRUE(graphFirst.Outcome);
-    EXPECT_TRUE(graphFirst.Outcome->GraphActive);
+    ASSERT_TRUE(graphFirst.Frame);
+    EXPECT_TRUE(graphFirst.Frame->GraphActive);
     EXPECT_EQ(graph.State(), ExecutionState::Pending);
     ASSERT_TRUE(graph.Step(2, graphAdapter));
     EXPECT_EQ(graph.State(), ExecutionState::Idle);
@@ -300,9 +300,9 @@ TEST(BehaviorExecution, RetryErrorContinuesButFatalAndBreakClose) {
     retryAdapter.Native.push_back(FunctionResult(9, true, true));
     ExecutionResult retryResult = retry.Pulse(ExecutionInput::At(0, 1), 1,
                                               retryAdapter);
-    ASSERT_TRUE(retryResult.Outcome);
-    EXPECT_EQ(retryResult.Outcome->Fault.Code, ExecutionError::NativeFailed);
-    EXPECT_TRUE(retryResult.Outcome->NativeContinuation);
+    ASSERT_TRUE(retryResult.Frame);
+    EXPECT_EQ(retryResult.Frame->Fault.Code, ExecutionError::NativeFailed);
+    EXPECT_TRUE(retryResult.Frame->NativeContinuation);
     EXPECT_EQ(retry.State(), ExecutionState::Pending);
 
     Execution fatal;
@@ -310,8 +310,8 @@ TEST(BehaviorExecution, RetryErrorContinuesButFatalAndBreakClose) {
     fatalAdapter.Native.push_back(FunctionResult(10, false, true));
     ExecutionResult fatalResult = fatal.Pulse(ExecutionInput::At(0, 1), 1,
                                               fatalAdapter);
-    ASSERT_TRUE(fatalResult.Outcome);
-    EXPECT_TRUE(fatalResult.Outcome->Terminal);
+    ASSERT_TRUE(fatalResult.Frame);
+    EXPECT_TRUE(fatalResult.Frame->Terminal);
     EXPECT_EQ(fatal.State(), ExecutionState::Failed);
 
     Execution breakpoint;
@@ -319,9 +319,9 @@ TEST(BehaviorExecution, RetryErrorContinuesButFatalAndBreakClose) {
     breakAdapter.Native.push_back(FunctionResult(11, false, false, true));
     ExecutionResult breakResult = breakpoint.Pulse(ExecutionInput::At(0, 1), 1,
                                                    breakAdapter);
-    ASSERT_TRUE(breakResult.Outcome);
-    EXPECT_EQ(breakResult.Outcome->Fault.Code, ExecutionError::UnsupportedBreak);
-    EXPECT_TRUE(breakResult.Outcome->Terminal);
+    ASSERT_TRUE(breakResult.Frame);
+    EXPECT_EQ(breakResult.Frame->Fault.Code, ExecutionError::UnsupportedBreak);
+    EXPECT_TRUE(breakResult.Frame->Terminal);
     EXPECT_EQ(breakpoint.State(), ExecutionState::Failed);
     EXPECT_FALSE(breakpoint.NeedsFrame());
 }
@@ -362,7 +362,7 @@ TEST(BehaviorExecution, NamedQueuedInputReresolvesAfterLayoutChange) {
 }
 
 TEST(BehaviorExecution, RetentionPoliciesExposeSignalsGapsAndTerminalState) {
-    Execution signals(OutcomeRetention::Signals(4));
+    Execution signals(FrameRetention::Signals(4));
     FakeExecutionAdapter signalsAdapter;
     signalsAdapter.Native.push_back(FunctionResult(1, true));
     signalsAdapter.Native.push_back(FunctionResult(1, true));
@@ -370,20 +370,20 @@ TEST(BehaviorExecution, RetentionPoliciesExposeSignalsGapsAndTerminalState) {
     ASSERT_TRUE(signals.Pulse(ExecutionInput::At(0, 1), 1, signalsAdapter));
     ASSERT_TRUE(signals.Step(2, signalsAdapter));
     ASSERT_TRUE(signals.Step(3, signalsAdapter));
-    auto signalOutcomes = signals.Drain();
-    ASSERT_EQ(signalOutcomes.size(), 2u);
-    EXPECT_EQ(signalOutcomes[0].Sequence, 1u);
-    EXPECT_EQ(signalOutcomes[1].Sequence, 3u);
+    auto signalFrames = signals.Take();
+    ASSERT_EQ(signalFrames.size(), 2u);
+    EXPECT_EQ(signalFrames[0].Sequence, 1u);
+    EXPECT_EQ(signalFrames[1].Sequence, 3u);
 
-    Execution each(OutcomeRetention::EachFrame(4));
+    Execution each(FrameRetention::EachFrame(4));
     FakeExecutionAdapter eachAdapter;
     eachAdapter.Native.push_back(FunctionResult(1, true));
     eachAdapter.Native.push_back(FunctionResult(0));
     ASSERT_TRUE(each.Pulse(ExecutionInput::At(0, 1), 1, eachAdapter));
     ASSERT_TRUE(each.Step(2, eachAdapter));
-    EXPECT_EQ(each.Drain().size(), 2u);
+    EXPECT_EQ(each.Take().size(), 2u);
 
-    Execution latest(OutcomeRetention::Latest());
+    Execution latest(FrameRetention::Latest());
     FakeExecutionAdapter latestAdapter;
     latestAdapter.Native.push_back(FunctionResult(1, true));
     latestAdapter.Native.push_back(FunctionResult(1, true));
@@ -391,25 +391,25 @@ TEST(BehaviorExecution, RetentionPoliciesExposeSignalsGapsAndTerminalState) {
     ASSERT_TRUE(latest.Pulse(ExecutionInput::At(0, 1), 1, latestAdapter));
     ASSERT_TRUE(latest.Step(2, latestAdapter));
     ASSERT_TRUE(latest.Step(3, latestAdapter));
-    auto latestOutcomes = latest.Drain();
-    ASSERT_EQ(latestOutcomes.size(), 2u);
-    EXPECT_EQ(latestOutcomes[0].Sequence, 2u);
-    EXPECT_EQ(latestOutcomes[1].Sequence, 3u);
+    auto latestFrames = latest.Take();
+    ASSERT_EQ(latestFrames.size(), 2u);
+    EXPECT_EQ(latestFrames[0].Sequence, 2u);
+    EXPECT_EQ(latestFrames[1].Sequence, 3u);
 
-    Execution ignore(OutcomeRetention::Ignore());
+    Execution ignore(FrameRetention::Ignore());
     FakeExecutionAdapter ignoreAdapter;
     ignoreAdapter.Native.push_back(FunctionResult(1, true));
     ignoreAdapter.Native.push_back(FunctionResult(0));
     ASSERT_TRUE(ignore.Pulse(ExecutionInput::At(0, 1), 1, ignoreAdapter));
     ASSERT_TRUE(ignore.Step(2, ignoreAdapter));
-    auto ignored = ignore.Drain();
+    auto ignored = ignore.Take();
     ASSERT_EQ(ignored.size(), 1u);
     EXPECT_TRUE(ignored[0].Terminal);
     EXPECT_EQ(ignored[0].Sequence, 2u);
 }
 
-TEST(BehaviorExecution, FullOutcomeQueueUsesIndependentTerminalSlot) {
-    Execution execution(OutcomeRetention::EachFrame(1));
+TEST(BehaviorExecution, FullFrameQueueUsesIndependentTerminalSlot) {
+    Execution execution(FrameRetention::EachFrame(1));
     FakeExecutionAdapter adapter;
     adapter.Native.push_back(FunctionResult(1, true));
     adapter.Native.push_back(FunctionResult(1, true));
@@ -417,29 +417,29 @@ TEST(BehaviorExecution, FullOutcomeQueueUsesIndependentTerminalSlot) {
     ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
     ASSERT_TRUE(execution.Step(2, adapter));
     EXPECT_EQ(execution.State(), ExecutionState::Closing);
-    EXPECT_EQ(execution.TerminalError().Code, ExecutionError::OutcomeQueueFull);
+    EXPECT_EQ(execution.TerminalError().Code, ExecutionError::FrameQueueFull);
 
-    auto outcomes = execution.Drain();
-    ASSERT_EQ(outcomes.size(), 2u);
-    EXPECT_EQ(outcomes[0].Sequence, 1u);
-    EXPECT_EQ(outcomes[1].Sequence, 2u);
-    EXPECT_EQ(outcomes[1].Fault.Code, ExecutionError::OutcomeQueueFull);
-    ASSERT_TRUE(outcomes[1].Overflow);
-    EXPECT_EQ(outcomes[1].Overflow->Capacity, 1u);
+    auto frames = execution.Take();
+    ASSERT_EQ(frames.size(), 2u);
+    EXPECT_EQ(frames[0].Sequence, 1u);
+    EXPECT_EQ(frames[1].Sequence, 2u);
+    EXPECT_EQ(frames[1].Fault.Code, ExecutionError::FrameQueueFull);
+    ASSERT_TRUE(frames[1].Overflow);
+    EXPECT_EQ(frames[1].Overflow->Capacity, 1u);
 }
 
 TEST(BehaviorExecution, QueueFullPreservesTheDroppedNativeFault) {
-    Execution execution(OutcomeRetention::EachFrame(0));
+    Execution execution(FrameRetention::EachFrame(0));
     FakeExecutionAdapter adapter;
     adapter.Native.push_back(FunctionResult(10, false, true));
 
     ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
-    auto outcomes = execution.Drain();
-    ASSERT_EQ(outcomes.size(), 1u);
-    ASSERT_TRUE(outcomes[0].Overflow);
-    EXPECT_EQ(outcomes[0].Fault.Code, ExecutionError::OutcomeQueueFull);
-    EXPECT_EQ(outcomes[0].Overflow->Cause.Code, ExecutionError::NativeFailed);
-    EXPECT_EQ(outcomes[0].Overflow->Cause.NativeCode, 10);
+    auto frames = execution.Take();
+    ASSERT_EQ(frames.size(), 1u);
+    ASSERT_TRUE(frames[0].Overflow);
+    EXPECT_EQ(frames[0].Fault.Code, ExecutionError::FrameQueueFull);
+    EXPECT_EQ(frames[0].Overflow->Cause.Code, ExecutionError::NativeFailed);
+    EXPECT_EQ(frames[0].Overflow->Cause.NativeCode, 10);
 }
 
 TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {
@@ -449,9 +449,9 @@ TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {
     adapter.OnExecute = [&] { execution.RequestClose(); };
 
     ExecutionResult result = execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
-    ASSERT_TRUE(result.Outcome);
-    EXPECT_TRUE(result.Outcome->Terminal);
-    EXPECT_EQ(result.Outcome->Fault.Code, ExecutionError::Cancelled);
+    ASSERT_TRUE(result.Frame);
+    EXPECT_TRUE(result.Frame->Terminal);
+    EXPECT_EQ(result.Frame->Fault.Code, ExecutionError::Cancelled);
     EXPECT_EQ(execution.State(), ExecutionState::Closing);
     execution.MarkClosed();
     EXPECT_EQ(execution.State(), ExecutionState::Closed);
@@ -476,10 +476,10 @@ TEST(BehaviorExecution, ReadsActiveOutAndPoutBeforeClearingTheOut) {
 
     ExecutionResult result =
         execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
-    ASSERT_TRUE(result.Outcome);
-    ASSERT_EQ(result.Outcome->ActiveOutputs.size(), 1u);
-    ASSERT_EQ(result.Outcome->Pouts.size(), 1u);
-    EXPECT_EQ(result.Outcome->Pouts[0].Int32, 42);
+    ASSERT_TRUE(result.Frame);
+    ASSERT_EQ(result.Frame->ActiveOutputs.size(), 1u);
+    ASSERT_EQ(result.Frame->Pouts.size(), 1u);
+    EXPECT_EQ(result.Frame->Pouts[0].Int32, 42);
     EXPECT_FALSE(adapter.Outputs[0].Active);
 }
 
@@ -500,15 +500,15 @@ TEST(BehaviorExecution, PoutValuesAreOwnedAndKeepNameOccurrences) {
 
     ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
     adapter.Pouts[0].Text = "mutated";
-    auto outcomes = execution.Drain();
-    ASSERT_EQ(outcomes.size(), 1u);
-    ASSERT_EQ(outcomes[0].Pouts.size(), 2u);
-    EXPECT_EQ(outcomes[0].Pouts[0].Text, "first");
-    EXPECT_EQ(outcomes[0].Pouts[1].Occurrence, 1);
-    EXPECT_EQ(outcomes[0].Pouts[1].Text, "second");
+    auto frames = execution.Take();
+    ASSERT_EQ(frames.size(), 1u);
+    ASSERT_EQ(frames[0].Pouts.size(), 2u);
+    EXPECT_EQ(frames[0].Pouts[0].Text, "first");
+    EXPECT_EQ(frames[0].Pouts[1].Occurrence, 1);
+    EXPECT_EQ(frames[0].Pouts[1].Text, "second");
 }
 
-TEST(BehaviorExecution, UnsupportedPoutBeforeExecuteCreatesNoOutcome) {
+TEST(BehaviorExecution, UnsupportedPoutBeforeExecuteCreatesNoFrame) {
     Execution execution;
     FakeExecutionAdapter adapter;
     NativeExecution rejected;
@@ -522,7 +522,7 @@ TEST(BehaviorExecution, UnsupportedPoutBeforeExecuteCreatesNoOutcome) {
     EXPECT_EQ(result.State, AdmissionState::Failed);
     EXPECT_EQ(result.Fault.Code, ExecutionError::UnsupportedPout);
     EXPECT_EQ(execution.NextSequence(), 1u);
-    EXPECT_TRUE(execution.Drain().empty());
+    EXPECT_TRUE(execution.Take().empty());
 }
 
 TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
@@ -535,37 +535,37 @@ TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
 
     ExecutionResult result =
         execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
-    ASSERT_TRUE(result.Outcome);
-    EXPECT_EQ(result.Outcome->Sequence, 1u);
-    EXPECT_TRUE(result.Outcome->Terminal);
-    EXPECT_EQ(result.Outcome->Fault.Code, ExecutionError::UnsupportedPout);
-    ASSERT_EQ(result.Outcome->ActiveOutputs.size(), 1u);
-    EXPECT_TRUE(result.Outcome->Pouts.empty());
+    ASSERT_TRUE(result.Frame);
+    EXPECT_EQ(result.Frame->Sequence, 1u);
+    EXPECT_TRUE(result.Frame->Terminal);
+    EXPECT_EQ(result.Frame->Fault.Code, ExecutionError::UnsupportedPout);
+    ASSERT_EQ(result.Frame->ActiveOutputs.size(), 1u);
+    EXPECT_TRUE(result.Frame->Pouts.empty());
     EXPECT_EQ(execution.NextSequence(), 2u);
 }
 
-TEST(BehaviorExecution, OutcomeStoreReadsWithoutConsumingThenConsumesExactly) {
-    auto outcomes =
-        std::make_shared<OutcomeStore>(OutcomeRetention::EachFrame(4));
-    Execution execution(outcomes);
+TEST(BehaviorExecution, FrameStoreReadsWithoutConsumingThenConsumesExactly) {
+    auto frames =
+        std::make_shared<FrameStore>(FrameRetention::EachFrame(4));
+    Execution execution(frames);
     FakeExecutionAdapter adapter;
     adapter.Native.push_back(FunctionResult(1, true));
     adapter.Native.push_back(FunctionResult(0));
 
     ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
     ASSERT_TRUE(execution.Step(2, adapter));
-    const auto firstRead = outcomes->Read();
-    const auto secondRead = outcomes->Read();
+    const auto firstRead = frames->Read();
+    const auto secondRead = frames->Read();
     ASSERT_EQ(firstRead.size(), 2u);
     EXPECT_EQ(secondRead.size(), firstRead.size());
     EXPECT_EQ(secondRead[0].Sequence, firstRead[0].Sequence);
 
     const std::array<std::uint64_t, 2> wrong{1, 3};
-    EXPECT_FALSE(outcomes->Consume(wrong));
-    EXPECT_EQ(outcomes->Read().size(), 2u);
+    EXPECT_FALSE(frames->Consume(wrong));
+    EXPECT_EQ(frames->Read().size(), 2u);
     const std::array<std::uint64_t, 2> exact{1, 2};
-    EXPECT_TRUE(outcomes->Consume(exact));
-    EXPECT_TRUE(outcomes->Read().empty());
+    EXPECT_TRUE(frames->Consume(exact));
+    EXPECT_TRUE(frames->Read().empty());
 }
 
 } // namespace

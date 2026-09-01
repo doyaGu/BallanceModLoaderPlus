@@ -32,7 +32,7 @@ enum class ExecutionError {
     OutputUnavailable,
     UnsupportedPout,
     PoutReadFailed,
-    OutcomeQueueFull,
+    FrameQueueFull,
     Cancelled,
 };
 
@@ -149,24 +149,24 @@ enum class RetentionKind {
     Ignore,
 };
 
-struct OutcomeRetention {
+struct FrameRetention {
     RetentionKind Kind = RetentionKind::Signals;
     std::size_t Capacity = 64;
 
-    static OutcomeRetention Signals(std::size_t capacity = 64);
-    static OutcomeRetention EachFrame(std::size_t capacity);
-    static OutcomeRetention Latest();
-    static OutcomeRetention Ignore();
+    static FrameRetention Signals(std::size_t capacity = 64);
+    static FrameRetention EachFrame(std::size_t capacity);
+    static FrameRetention Latest();
+    static FrameRetention Ignore();
 };
 
-struct OutcomeOverflow {
+struct FrameOverflow {
     std::size_t Dropped = 0;
     RetentionKind Policy = RetentionKind::Signals;
     std::size_t Capacity = 0;
     ExecutionFault Cause;
 };
 
-struct ExecutionOutcome {
+struct RunFrame {
     std::uint64_t Sequence = 0;
     std::uint64_t Frame = 0;
     int ReturnCode = 0;
@@ -177,7 +177,7 @@ struct ExecutionOutcome {
     ExecutionFault Fault;
     std::vector<ExecutionOutput> ActiveOutputs;
     std::vector<Pout> Pouts;
-    std::optional<OutcomeOverflow> Overflow;
+    std::optional<FrameOverflow> Overflow;
 };
 
 enum class AdmissionState {
@@ -189,7 +189,7 @@ enum class AdmissionState {
 struct ExecutionResult {
     AdmissionState State = AdmissionState::Failed;
     ExecutionFault Fault;
-    std::optional<ExecutionOutcome> Outcome;
+    std::optional<RunFrame> Frame;
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return State != AdmissionState::Failed;
@@ -198,8 +198,8 @@ struct ExecutionResult {
 
 class Execution final {
 public:
-    explicit Execution(OutcomeRetention retention = OutcomeRetention::Signals());
-    explicit Execution(std::shared_ptr<class OutcomeStore> outcomes);
+    explicit Execution(FrameRetention retention = FrameRetention::Signals());
+    explicit Execution(std::shared_ptr<class FrameStore> frames);
 
     ExecutionResult Pulse(const ExecutionInput &input, std::uint64_t frame,
                           ExecutionAdapter &adapter);
@@ -220,9 +220,9 @@ public:
     [[nodiscard]] std::uint64_t NextSequence() const noexcept {
         return m_NextSequence;
     }
-    [[nodiscard]] std::vector<ExecutionOutcome> Drain();
-    [[nodiscard]] const std::shared_ptr<class OutcomeStore> &Outcomes() const noexcept {
-        return m_Outcomes;
+    [[nodiscard]] std::vector<RunFrame> Take();
+    [[nodiscard]] const std::shared_ptr<class FrameStore> &Frames() const noexcept {
+        return m_Frames;
     }
 
 private:
@@ -231,7 +231,7 @@ private:
     ExecutionResult Run(std::uint64_t frame, ExecutionAdapter &adapter);
     bool Queue(const ExecutionInput &input);
     void FailBeforeExecute(ExecutionFault fault) noexcept;
-    void Retain(ExecutionOutcome outcome);
+    void Retain(RunFrame frame);
 
     ExecutionState m_State = ExecutionState::Idle;
     bool m_Managed = false;
@@ -240,7 +240,7 @@ private:
     std::uint64_t m_LastFrame = static_cast<std::uint64_t>(-1);
     std::uint64_t m_NextSequence = 1;
     std::vector<ExecutionInput> m_QueuedInputs;
-    std::shared_ptr<class OutcomeStore> m_Outcomes;
+    std::shared_ptr<class FrameStore> m_Frames;
     ExecutionFault m_TerminalError;
 };
 

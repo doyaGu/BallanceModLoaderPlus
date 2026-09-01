@@ -70,7 +70,7 @@ public:
     Spec &Local(Slot slot, Value value);
     Spec &AddInput(std::string name);
     Spec &AddOutput(std::string name);
-    Spec &Outcomes(OutcomeRetention retention);
+    Spec &Frames(FrameRetention retention);
     Spec &KeepAlive(std::shared_ptr<CallbackResource> resource);
     Spec &PrototypeGeneration(std::uint64_t generation) noexcept {
         m_PrototypeGeneration = generation;
@@ -105,7 +105,7 @@ private:
     std::vector<std::string> m_AddedInputs;
     std::vector<std::string> m_AddedOutputs;
     std::vector<std::shared_ptr<CallbackResource>> m_KeepAlive;
-    OutcomeRetention m_OutcomeRetention = OutcomeRetention::Signals();
+    FrameRetention m_FrameRetention = FrameRetention::Signals();
 
     friend class Runtime;
 };
@@ -126,13 +126,13 @@ enum class RunState {
 };
 
 struct RunResult {
-    Status Outcome;
+    Status Detail;
     RunState State = RunState::Completed;
     int ReturnCode = CKBR_OK;
     std::vector<int> ActiveOutputs;
     AdmissionState Admission = AdmissionState::Failed;
 
-    explicit operator bool() const noexcept { return static_cast<bool>(Outcome); }
+    explicit operator bool() const noexcept { return static_cast<bool>(Detail); }
 };
 
 class Runtime;
@@ -166,29 +166,29 @@ private:
 };
 
 struct CreateResult {
-    Status Outcome;
+    Status Detail;
     Instance Handle;
     Layout Descriptor;
 
-    explicit operator bool() const noexcept { return static_cast<bool>(Outcome); }
+    explicit operator bool() const noexcept { return static_cast<bool>(Detail); }
 };
 
 struct AttachResult {
-    Status Outcome;
+    Status Detail;
     CKBehavior *Block = nullptr;
     Layout Descriptor;
 
-    explicit operator bool() const noexcept { return static_cast<bool>(Outcome); }
+    explicit operator bool() const noexcept { return static_cast<bool>(Detail); }
 };
 
 struct CallResult {
-    Status Outcome;
+    Status Detail;
     RunResult Run;
     Instance Handle;
     Layout Descriptor;
 
     explicit operator bool() const noexcept {
-        return static_cast<bool>(Outcome) && static_cast<bool>(Run);
+        return static_cast<bool>(Detail) && static_cast<bool>(Run);
     }
 };
 
@@ -249,8 +249,8 @@ public:
     Status Continue(Instance &instance);
     [[nodiscard]] bool IsTaskActive(const Instance &instance) const;
     [[nodiscard]] ExecutionState State(const Instance &instance) const;
-    [[nodiscard]] std::vector<ExecutionOutcome> Drain(Instance &instance);
-    [[nodiscard]] std::shared_ptr<OutcomeStore> Outcomes(
+    [[nodiscard]] std::vector<RunFrame> Take(Instance &instance);
+    [[nodiscard]] std::shared_ptr<FrameStore> Frames(
         const Instance &instance) const;
     [[nodiscard]] Status TerminalError(const Instance &instance) const;
     void ProcessTasks(const CKBehaviorContext *frame = nullptr);
@@ -281,6 +281,11 @@ private:
     struct Record {
         ObjectStamp Behavior;
         ObjectStamp Parent;
+        CKGUID PrototypeGuid;
+        CKBehaviorPrototype *Prototype = nullptr;
+        CKBEHAVIORCALLBACKFCT Callback = nullptr;
+        CKDWORD CallbackMask = 0;
+        void *CallbackArgument = nullptr;
         std::uint64_t Id = 0;
         std::uint64_t LayoutGeneration = 1;
         bool GraphResident = false;
@@ -320,6 +325,8 @@ private:
     [[nodiscard]] Status ReadyStatus() const;
     [[nodiscard]] Record *FindRecord(std::uint64_t instanceId);
     [[nodiscard]] const Record *FindRecord(std::uint64_t instanceId) const;
+    [[nodiscard]] Record *FindRecord(CKBehavior *behavior);
+    [[nodiscard]] const Record *FindRecord(CKBehavior *behavior) const;
     [[nodiscard]] Record *FindRecord(const Instance &instance);
     [[nodiscard]] const Record *FindRecord(const Instance &instance) const;
     [[nodiscard]] ObjectStamp CaptureObject(CKObject *object) const;
@@ -330,7 +337,10 @@ private:
     [[nodiscard]] Status ValidateTarget(CKBeObject *owner,
                                         const Spec &spec) const;
     [[nodiscard]] Status CreateBehavior(const Spec &spec,
-                                                CKBehavior *&behavior) const;
+                                        CKBehavior *&behavior,
+                                        Record &record) const;
+    [[nodiscard]] CKGUID PrototypeGuid(CKBehavior *behavior) const;
+    [[nodiscard]] CKBehaviorPrototype *PrototypeOf(CKBehavior *behavior) const;
     [[nodiscard]] CKParameter *ResolveParameter(CKBehavior *behavior, const SlotInfo &slot) const;
     [[nodiscard]] CKObject *ResolveSlotObject(CKBehavior *behavior, const SlotInfo &slot) const;
     [[nodiscard]] Status ValidateSlot(const Record &record,
@@ -364,8 +374,8 @@ private:
                                            const Spec &spec,
                                            const CKBehaviorContext *frame,
                                            Record &record);
-    [[nodiscard]] Status CallCallback(CKBehavior *behavior, CKDWORD message,
-                                              const CKBehaviorContext *frame) const;
+    [[nodiscard]] Status CallCallback(Record &record, CKDWORD message,
+                                      const CKBehaviorContext *frame) const;
     class NativeAdapter;
     class NativeLifecycleAdapter;
     [[nodiscard]] RunResult Execute(std::uint64_t instanceId,

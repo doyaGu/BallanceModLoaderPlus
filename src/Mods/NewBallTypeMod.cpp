@@ -156,7 +156,7 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
             nullptr, BML::Behavior::ObjectLoad::Make(definition));
         if (!load) {
             GetLogger()->Error("Cannot load ball type %s: %s", info.m_Name.c_str(),
-                               load.Outcome.Message.c_str());
+                               load.Detail.Message.c_str());
             return;
         }
         BML::Behavior::RunResult executed = context->Behaviors().Pulse(

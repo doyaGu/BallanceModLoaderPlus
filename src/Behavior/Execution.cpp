@@ -1,5 +1,5 @@
 #include "Behavior/Execution.h"
-#include "Behavior/OutcomeStore.h"
+#include "Behavior/FrameStore.h"
 
 #include <algorithm>
 #include <utility>
@@ -43,29 +43,29 @@ bool ExecutionInput::operator==(const ExecutionInput &other) const noexcept {
            RequireUnique == other.RequireUnique;
 }
 
-OutcomeRetention OutcomeRetention::Signals(std::size_t capacity) {
+FrameRetention FrameRetention::Signals(std::size_t capacity) {
     return {RetentionKind::Signals, capacity};
 }
 
-OutcomeRetention OutcomeRetention::EachFrame(std::size_t capacity) {
+FrameRetention FrameRetention::EachFrame(std::size_t capacity) {
     return {RetentionKind::EachFrame, capacity};
 }
 
-OutcomeRetention OutcomeRetention::Latest() {
+FrameRetention FrameRetention::Latest() {
     return {RetentionKind::Latest, 1};
 }
 
-OutcomeRetention OutcomeRetention::Ignore() {
+FrameRetention FrameRetention::Ignore() {
     return {RetentionKind::Ignore, 0};
 }
 
-Execution::Execution(OutcomeRetention retention)
-    : m_Outcomes(std::make_shared<OutcomeStore>(retention)) {}
+Execution::Execution(FrameRetention retention)
+    : m_Frames(std::make_shared<FrameStore>(retention)) {}
 
-Execution::Execution(std::shared_ptr<OutcomeStore> outcomes)
-    : m_Outcomes(std::move(outcomes)) {
-    if (!m_Outcomes)
-        m_Outcomes = std::make_shared<OutcomeStore>(OutcomeRetention::Signals());
+Execution::Execution(std::shared_ptr<FrameStore> frames)
+    : m_Frames(std::move(frames)) {
+    if (!m_Frames)
+        m_Frames = std::make_shared<FrameStore>(FrameRetention::Signals());
 }
 
 ExecutionResult Execution::Pulse(const ExecutionInput &input, std::uint64_t frame,
@@ -129,7 +129,7 @@ ExecutionResult Execution::Step(std::uint64_t frame, ExecutionAdapter &adapter) 
     return Run(frame, adapter);
 }
 
-ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
+ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter) {
     std::vector<ResolvedInput> resolved;
     resolved.reserve(m_QueuedInputs.size());
     for (const ExecutionInput &input : m_QueuedInputs) {
@@ -159,7 +159,7 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
     m_QueuedInputs.clear();
     m_NativeContinuation = false;
     m_State = ExecutionState::Running;
-    m_LastFrame = frame;
+    m_LastFrame = ordinal;
 
     NativeExecution native = adapter.Execute();
     if (!native.Executed) {
@@ -170,26 +170,26 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
         FailBeforeExecute(native.Fault);
         return {AdmissionState::Failed, native.Fault, std::nullopt};
     }
-    ExecutionOutcome outcome;
-    outcome.Sequence = m_NextSequence++;
-    outcome.Frame = frame;
-    outcome.ReturnCode = native.ReturnCode;
+    RunFrame frame;
+    frame.Sequence = m_NextSequence++;
+    frame.Frame = ordinal;
+    frame.ReturnCode = native.ReturnCode;
 
     ExecutionFault outputFault;
     if (!native.Fault &&
-        !adapter.ReadOutputs(outcome.ActiveOutputs, outcome.Pouts,
+        !adapter.ReadOutputs(frame.ActiveOutputs, frame.Pouts,
                              outputFault)) {
         if (!outputFault)
             outputFault = Fault(
                 ExecutionError::PoutReadFailed,
-                "Behavior outputs could not be copied into the Outcome.");
+                "Behavior outputs could not be copied into the Frame.");
         native.Fault = outputFault;
-        outcome.Pouts.clear();
+        frame.Pouts.clear();
     }
 
-    if (!outcome.ActiveOutputs.empty()) {
+    if (!frame.ActiveOutputs.empty()) {
         ExecutionFault clearFault;
-        if (!adapter.ClearOutputs(outcome.ActiveOutputs, clearFault) &&
+        if (!adapter.ClearOutputs(frame.ActiveOutputs, clearFault) &&
             !native.Fault) {
             if (!clearFault)
                 clearFault = Fault(ExecutionError::OutputUnavailable,
@@ -200,21 +200,21 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
 
     bool fatal = false;
     if (native.Break) {
-        outcome.Fault = Fault(
+        frame.Fault = Fault(
             ExecutionError::UnsupportedBreak,
             "CKBR_BREAK requires the Virtools debugger message pump and is not supported for detached execution.",
             native.ReturnCode);
         fatal = true;
     } else if (native.Fault) {
-        outcome.Fault = native.Fault;
+        frame.Fault = native.Fault;
         fatal = true;
     } else if (native.Error && !native.Retry) {
-        outcome.Fault = Fault(ExecutionError::NativeFailed,
+        frame.Fault = Fault(ExecutionError::NativeFailed,
                               "Behavior execution returned a terminal error.",
                               native.ReturnCode);
         fatal = true;
     } else if (native.Error) {
-        outcome.Fault = Fault(ExecutionError::NativeFailed,
+        frame.Fault = Fault(ExecutionError::NativeFailed,
                               "Behavior execution returned an error with retry.",
                               native.ReturnCode);
     }
@@ -224,20 +224,20 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
             ? native.Retry : native.Active;
     }
 
-    outcome.NativeContinuation = m_NativeContinuation;
-    outcome.GraphActive = native.Kind == BehaviorKind::Graph && native.Active;
-    outcome.QueuedInput = !m_QueuedInputs.empty();
+    frame.NativeContinuation = m_NativeContinuation;
+    frame.GraphActive = native.Kind == BehaviorKind::Graph && native.Active;
+    frame.QueuedInput = !m_QueuedInputs.empty();
 
     if (fatal) {
         m_Managed = false;
         m_NativeContinuation = false;
         m_QueuedInputs.clear();
-        m_TerminalError = outcome.Fault;
+        m_TerminalError = frame.Fault;
         m_State = ExecutionState::Failed;
-        outcome.NativeContinuation = false;
-        outcome.GraphActive = false;
-        outcome.QueuedInput = false;
-        outcome.Terminal = true;
+        frame.NativeContinuation = false;
+        frame.GraphActive = false;
+        frame.QueuedInput = false;
+        frame.Terminal = true;
     } else if (m_CloseRequested) {
         if (!m_TerminalError) {
             m_TerminalError = Fault(
@@ -248,22 +248,22 @@ ExecutionResult Execution::Run(std::uint64_t frame, ExecutionAdapter &adapter) {
         m_NativeContinuation = false;
         m_QueuedInputs.clear();
         m_State = ExecutionState::Closing;
-        outcome.NativeContinuation = false;
-        outcome.GraphActive = false;
-        outcome.QueuedInput = false;
-        outcome.Terminal = true;
-        if (!outcome.Fault)
-            outcome.Fault = m_TerminalError;
-    } else if (outcome.NativeContinuation || outcome.QueuedInput) {
+        frame.NativeContinuation = false;
+        frame.GraphActive = false;
+        frame.QueuedInput = false;
+        frame.Terminal = true;
+        if (!frame.Fault)
+            frame.Fault = m_TerminalError;
+    } else if (frame.NativeContinuation || frame.QueuedInput) {
         m_State = ExecutionState::Pending;
     } else {
         m_State = ExecutionState::Idle;
         m_Managed = false;
-        outcome.Terminal = true;
+        frame.Terminal = true;
     }
 
-    const ExecutionOutcome returned = outcome;
-    Retain(std::move(outcome));
+    const RunFrame returned = frame;
+    Retain(std::move(frame));
     return {AdmissionState::Executed, returned.Fault, returned};
 }
 
@@ -300,8 +300,8 @@ bool Execution::NeedsFrame() const noexcept {
     return m_Managed && m_State == ExecutionState::Pending;
 }
 
-std::vector<ExecutionOutcome> Execution::Drain() {
-    return m_Outcomes->Drain();
+std::vector<RunFrame> Execution::Take() {
+    return m_Frames->Take();
 }
 
 bool Execution::Queue(const ExecutionInput &input) {
@@ -321,8 +321,8 @@ void Execution::FailBeforeExecute(ExecutionFault fault) noexcept {
     m_State = ExecutionState::Failed;
 }
 
-void Execution::Retain(ExecutionOutcome outcome) {
-    OutcomeRetainResult result = m_Outcomes->Retain(std::move(outcome));
+void Execution::Retain(RunFrame frame) {
+    FrameAppendResult result = m_Frames->Retain(std::move(frame));
     if (!result.Overflowed)
         return;
     m_TerminalError = std::move(result.TerminalFault);

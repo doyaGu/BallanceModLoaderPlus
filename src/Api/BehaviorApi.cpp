@@ -12,8 +12,9 @@
 #include <vector>
 
 #include "BML/ImcWire.hpp"
+#include "BML/TypeConvert.h"
 #include "Behavior/Sessions.h"
-#include "Behavior/OutcomeStore.h"
+#include "Behavior/FrameStore.h"
 #include "Loader/ModContext.h"
 
 namespace {
@@ -22,8 +23,8 @@ using BML::Behavior::AdmissionState;
 using BML::Behavior::Sessions;
 using BML::Behavior::Error;
 using BML::Behavior::ExecutionError;
-using BML::Behavior::ExecutionOutcome;
-using BML::Behavior::OutcomeRetention;
+using BML::Behavior::RunFrame;
+using BML::Behavior::FrameRetention;
 using BML::Behavior::Phase;
 using BML::Behavior::Pout;
 using BML::Behavior::PoutKind;
@@ -147,7 +148,7 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::UnsupportedBreak: return BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED;
     case Error::UnsupportedPout: return BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED;
     case Error::PoutUnavailable: return BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE;
-    case Error::OutcomeQueueFull: return BML_BEHAVIOR_ERROR_OUTCOME_LIMIT_REACHED;
+    case Error::FrameQueueFull: return BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL;
     case Error::ExecutionCancelled: return BML_BEHAVIOR_ERROR_CANCELLED;
     case Error::WrongThread:
     case Error::ExecutionFailed: return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
@@ -165,7 +166,7 @@ std::uint32_t PublicError(ExecutionError error) noexcept {
     case ExecutionError::UnsupportedPout: return BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED;
     case ExecutionError::OutputUnavailable:
     case ExecutionError::PoutReadFailed: return BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE;
-    case ExecutionError::OutcomeQueueFull: return BML_BEHAVIOR_ERROR_OUTCOME_LIMIT_REACHED;
+    case ExecutionError::FrameQueueFull: return BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL;
     case ExecutionError::Cancelled: return BML_BEHAVIOR_ERROR_CANCELLED;
     case ExecutionError::InvalidState:
     case ExecutionError::ActivationFailed: return BML_BEHAVIOR_ERROR_STATE_INVALID;
@@ -248,6 +249,14 @@ bool ReadSelector(const BML_BehaviorSelector &from, SlotKind slotKind,
             : Slot::OccurrenceOf(slotKind, std::move(name), from.Occurrence, type);
         return true;
     }
+    case BML_BEHAVIOR_SELECTOR_ONLY:
+        if (from.Index != 0 || from.Occurrence != 0 || from.Name.Length != 0) {
+            status = InvalidValue(
+                "An only-slot Behavior selector cannot carry an index, occurrence, or name.");
+            return false;
+        }
+        to = Slot::Only(slotKind, type);
+        return true;
     default:
         status = InvalidValue("A Behavior selector kind is unknown.");
         return false;
@@ -337,28 +346,42 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
         return true;
     }
     case BML_BEHAVIOR_VALUE_VEC2:
-        to = RawValue(type, from.Data.Vec2);
+        to = RawValue(type, BML::Convert::ToVxVector(from.Data.Vec2));
         return true;
     case BML_BEHAVIOR_VALUE_VEC3:
-        to = RawValue(type, from.Data.Vec3);
+        to = RawValue(type, BML::Convert::ToVxVector(from.Data.Vec3));
         return true;
-    case BML_BEHAVIOR_VALUE_QUATERNION:
-        to = RawValue(type, from.Data.Quaternion);
+    case BML_BEHAVIOR_VALUE_QUATERNION: {
+        const BML_Quaternion &value = from.Data.Quaternion;
+        to = RawValue(type, VxQuaternion(value.x, value.y, value.z, value.w));
         return true;
-    case BML_BEHAVIOR_VALUE_EULER:
-        to = RawValue(type, from.Data.Euler);
+    }
+    case BML_BEHAVIOR_VALUE_EULER: {
+        const float value[3] = {from.Data.Euler.x, from.Data.Euler.y,
+                                from.Data.Euler.z};
+        to = Value::Raw(type, value, sizeof(value));
         return true;
-    case BML_BEHAVIOR_VALUE_RECT:
-        to = RawValue(type, from.Data.Rect);
+    }
+    case BML_BEHAVIOR_VALUE_RECT: {
+        const BML_Rect &value = from.Data.Rect;
+        to = RawValue(type,
+                      VxRect(value.left, value.top, value.right, value.bottom));
         return true;
-    case BML_BEHAVIOR_VALUE_COLOR:
-        to = RawValue(type, from.Data.Color);
+    }
+    case BML_BEHAVIOR_VALUE_COLOR: {
+        const BML_Color &value = from.Data.Color;
+        to = RawValue(type, VxColor(value.r, value.g, value.b, value.a));
         return true;
-    case BML_BEHAVIOR_VALUE_BOX:
-        to = RawValue(type, from.Data.Box);
+    }
+    case BML_BEHAVIOR_VALUE_BOX: {
+        const BML_Box &value = from.Data.Box;
+        to = RawValue(type,
+                      VxBbox(BML::Convert::ToVxVector(value.Min),
+                             BML::Convert::ToVxVector(value.Max)));
         return true;
+    }
     case BML_BEHAVIOR_VALUE_MAT4:
-        to = RawValue(type, from.Data.Mat4);
+        to = RawValue(type, BML::Convert::ToVxMatrix(from.Data.Mat4));
         return true;
     case BML_BEHAVIOR_VALUE_OBJECT: {
         CKObject *object = context.ObjectRefs().Resolve(from.Data.Object);
@@ -408,12 +431,9 @@ bool ReadBindings(const BML_BehaviorBinding *bindings, std::uint32_t count,
 
 bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
                Spec &to, Status &status) {
-    constexpr std::size_t kVersion1Size =
-        offsetof(BML_BehaviorBlock, Outcomes) +
-        sizeof(BML_BehaviorRetention);
-    if (from.StructSize < kVersion1Size ||
+    if (from.StructSize < sizeof(from) ||
         from.Target.StructSize < sizeof(from.Target) ||
-        from.Outcomes.StructSize < sizeof(from.Outcomes)) {
+        from.Frames.StructSize < sizeof(from.Frames)) {
         status = InvalidValue("The Behavior Block has an unsupported StructSize.");
         return false;
     }
@@ -425,10 +445,7 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
     }
 
     to = Spec(Guid(from.Prototype));
-    if (from.StructSize >=
-        offsetof(BML_BehaviorBlock, PrototypeGeneration) +
-            sizeof(from.PrototypeGeneration))
-        to.PrototypeGeneration(from.PrototypeGeneration);
+    to.PrototypeGeneration(from.PrototypeGeneration);
     switch (from.Target.Kind) {
     case BML_BEHAVIOR_TARGET_OWNER:
         to.TargetOwner();
@@ -470,29 +487,29 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
                       context, to, status))
         return false;
 
-    switch (from.Outcomes.Kind) {
-    case BML_BEHAVIOR_RETENTION_SIGNALS:
-        if (!from.Outcomes.Limit) {
-            status = InvalidValue("signals(n) requires a nonzero Outcome limit.");
+    switch (from.Frames.Kind) {
+    case BML_BEHAVIOR_FRAMES_SIGNALS:
+        if (!from.Frames.Limit) {
+            status = InvalidValue("signals(n) requires a nonzero RunFrame limit.");
             return false;
         }
-        to.Outcomes(OutcomeRetention::Signals(from.Outcomes.Limit));
+        to.Frames(FrameRetention::Signals(from.Frames.Limit));
         break;
-    case BML_BEHAVIOR_RETENTION_EACH_FRAME:
-        if (!from.Outcomes.Limit) {
-            status = InvalidValue("eachFrame(n) requires a nonzero Outcome limit.");
+    case BML_BEHAVIOR_FRAMES_EACH_FRAME:
+        if (!from.Frames.Limit) {
+            status = InvalidValue("eachFrame(n) requires a nonzero RunFrame limit.");
             return false;
         }
-        to.Outcomes(OutcomeRetention::EachFrame(from.Outcomes.Limit));
+        to.Frames(FrameRetention::EachFrame(from.Frames.Limit));
         break;
-    case BML_BEHAVIOR_RETENTION_LATEST:
-        to.Outcomes(OutcomeRetention::Latest());
+    case BML_BEHAVIOR_FRAMES_LATEST:
+        to.Frames(FrameRetention::Latest());
         break;
-    case BML_BEHAVIOR_RETENTION_NONE:
-        to.Outcomes(OutcomeRetention::Ignore());
+    case BML_BEHAVIOR_FRAMES_NONE:
+        to.Frames(FrameRetention::Ignore());
         break;
     default:
-        status = InvalidValue("The Behavior Outcome retention kind is unknown.");
+        status = InvalidValue("The Behavior RunFrame policy is unknown.");
         return false;
     }
     return true;
@@ -734,12 +751,12 @@ int BML_BEHAVIOR_CALL Continue(BML_BehaviorRun run,
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
         RunResult result = context->BehaviorSessions().Continue(RunId(run));
-        WriteStatus(status, result.Outcome);
+        WriteStatus(status, result.Detail);
         RunInfo current;
         const Status read = context->BehaviorSessions().ReadRun(RunId(run), current);
         if (read)
             WriteRunInfo(info, current);
-        return ResultCode(result.Outcome);
+        return ResultCode(result.Detail);
     });
 }
 
@@ -763,9 +780,9 @@ int BML_BEHAVIOR_CALL Pulse(BML_BehaviorRun run,
             return BML_ERROR_INVALID_PARAMETER;
         }
         RunResult result = context->BehaviorSessions().Pulse(RunId(run), in);
-        WriteStatus(status, result.Outcome);
+        WriteStatus(status, result.Detail);
         if (result.Admission == AdmissionState::Failed)
-            return ResultCode(result.Outcome);
+            return ResultCode(result.Detail);
         *admission = result.Admission == AdmissionState::Queued
             ? BML_BEHAVIOR_ADMISSION_QUEUED
             : BML_BEHAVIOR_ADMISSION_EXECUTED;
@@ -801,32 +818,32 @@ std::uint32_t PublicPoutKind(PoutKind kind) noexcept {
     return static_cast<std::uint32_t>(kind) + 1u;
 }
 
-class OutcomeBatch final {
+class FrameBatch final {
 public:
-    bool Add(const ExecutionOutcome &outcome) {
-        BML_BehaviorOutcomeHeader header{};
+    bool Add(const RunFrame &frame) {
+        BML_BehaviorRunFrame header{};
         header.StructSize = sizeof(header);
-        header.Sequence = outcome.Sequence;
-        header.Frame = outcome.Frame;
-        header.NativeResult = outcome.ReturnCode;
-        if (outcome.NativeContinuation)
+        header.Sequence = frame.Sequence;
+        header.Frame = frame.Frame;
+        header.NativeResult = frame.ReturnCode;
+        if (frame.NativeContinuation)
             header.Continuation |= BML_BEHAVIOR_CONTINUATION_NATIVE;
-        if (outcome.GraphActive)
+        if (frame.GraphActive)
             header.Continuation |= BML_BEHAVIOR_CONTINUATION_GRAPH_ACTIVE;
-        if (outcome.QueuedInput)
+        if (frame.QueuedInput)
             header.Continuation |= BML_BEHAVIOR_CONTINUATION_QUEUED_INPUT;
-        header.Terminal = outcome.Terminal ? 1u : 0u;
-        header.Error = PublicError(outcome.Fault.Code);
+        header.Terminal = frame.Terminal ? 1u : 0u;
+        header.Error = PublicError(frame.Fault.Code);
 
-        if (!AddOuts(outcome, header) || !AddPouts(outcome, header) ||
-            !AddDiagnostic(outcome, header))
+        if (!AddOuts(frame, header) || !AddPouts(frame, header) ||
+            !AddDiagnostic(frame, header))
             return false;
         Headers.push_back(header);
-        Sequences.push_back(outcome.Sequence);
+        Sequences.push_back(frame.Sequence);
         return true;
     }
 
-    std::vector<BML_BehaviorOutcomeHeader> Headers;
+    std::vector<BML_BehaviorRunFrame> Headers;
     std::vector<std::uint8_t> Payload;
     std::vector<std::uint64_t> Sequences;
 
@@ -873,16 +890,16 @@ private:
                     &record, sizeof(record));
     }
 
-    bool AddOuts(const ExecutionOutcome &outcome,
-                 BML_BehaviorOutcomeHeader &header) {
-        if (outcome.ActiveOutputs.empty())
+    bool AddOuts(const RunFrame &frame,
+                 BML_BehaviorRunFrame &header) {
+        if (frame.ActiveOutputs.empty())
             return true;
-        header.OutCount = static_cast<std::uint32_t>(outcome.ActiveOutputs.size());
+        header.OutCount = static_cast<std::uint32_t>(frame.ActiveOutputs.size());
         if (!ReserveRecords<BML_BehaviorOutRecord>(
-                outcome.ActiveOutputs.size(), header.OutOffset))
+                frame.ActiveOutputs.size(), header.OutOffset))
             return false;
-        for (std::size_t index = 0; index < outcome.ActiveOutputs.size(); ++index) {
-            const auto &out = outcome.ActiveOutputs[index];
+        for (std::size_t index = 0; index < frame.ActiveOutputs.size(); ++index) {
+            const auto &out = frame.ActiveOutputs[index];
             BML_BehaviorOutRecord record{};
             record.StructSize = sizeof(record);
             record.Index = out.Index;
@@ -895,16 +912,16 @@ private:
         return true;
     }
 
-    bool AddPouts(const ExecutionOutcome &outcome,
-                  BML_BehaviorOutcomeHeader &header) {
-        if (outcome.Pouts.empty())
+    bool AddPouts(const RunFrame &frame,
+                  BML_BehaviorRunFrame &header) {
+        if (frame.Pouts.empty())
             return true;
-        header.PoutCount = static_cast<std::uint32_t>(outcome.Pouts.size());
+        header.PoutCount = static_cast<std::uint32_t>(frame.Pouts.size());
         if (!ReserveRecords<BML_BehaviorPoutRecord>(
-                outcome.Pouts.size(), header.PoutOffset))
+                frame.Pouts.size(), header.PoutOffset))
             return false;
-        for (std::size_t index = 0; index < outcome.Pouts.size(); ++index) {
-            const Pout &pout = outcome.Pouts[index];
+        for (std::size_t index = 0; index < frame.Pouts.size(); ++index) {
+            const Pout &pout = frame.Pouts[index];
             BML_BehaviorPoutRecord record{};
             record.StructSize = sizeof(record);
             record.Index = pout.Index;
@@ -925,8 +942,8 @@ private:
         std::size_t size = 0;
         switch (pout.Kind) {
         case PoutKind::Bool:
-            bytes[0] = pout.Int32 ? 1 : 0;
-            size = 1;
+            BML::Imc::Wire::Detail::Store32(bytes, pout.Int32 ? 1u : 0u);
+            size = 4;
             break;
         case PoutKind::Int32:
             BML::Imc::Wire::Detail::Store32(
@@ -962,9 +979,9 @@ private:
         return Append(bytes, size, record.ValueOffset);
     }
 
-    bool AddDiagnostic(const ExecutionOutcome &outcome,
-                       BML_BehaviorOutcomeHeader &header) {
-        if (!outcome.Fault)
+    bool AddDiagnostic(const RunFrame &frame,
+                       BML_BehaviorRunFrame &header) {
+        if (!frame.Fault)
             return true;
         header.DiagnosticCount = 1;
         if (!ReserveRecords<BML_BehaviorDiagnosticRecord>(
@@ -972,12 +989,12 @@ private:
             return false;
         BML_BehaviorDiagnosticRecord record{};
         record.StructSize = sizeof(record);
-        record.Error = PublicError(outcome.Fault.Code);
+        record.Error = PublicError(frame.Fault.Code);
         record.Phase = BML_BEHAVIOR_PHASE_EXECUTION;
-        record.NativeResult = outcome.Fault.NativeCode;
+        record.NativeResult = frame.Fault.NativeCode;
         record.MessageLength = static_cast<std::uint32_t>(
-            outcome.Fault.Message.size());
-        if (!Append(outcome.Fault.Message.data(), outcome.Fault.Message.size(),
+            frame.Fault.Message.size());
+        if (!Append(frame.Fault.Message.data(), frame.Fault.Message.size(),
                     record.MessageOffset))
             return false;
         StoreRecord(header.DiagnosticOffset, 0, record);
@@ -985,8 +1002,8 @@ private:
     }
 };
 
-int BML_BEHAVIOR_CALL DrainOutcomes(
-    BML_BehaviorRun run, BML_BehaviorOutcomeHeader *headers,
+int BML_BEHAVIOR_CALL TakeFrames(
+    BML_BehaviorRun run, BML_BehaviorRunFrame *headers,
     std::uint32_t headerCapacity, std::uint32_t headerStride,
     void *payload, std::uint32_t payloadCapacity,
     std::uint32_t *outHeaderCount, std::uint32_t *outPayloadSize,
@@ -1002,20 +1019,20 @@ int BML_BEHAVIOR_CALL DrainOutcomes(
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
-        std::shared_ptr<BML::Behavior::OutcomeStore> store =
-            context->BehaviorSessions().Outcomes(RunId(run));
+        std::shared_ptr<BML::Behavior::FrameStore> store =
+            context->BehaviorSessions().Frames(RunId(run));
         if (!store)
             return BML_ERROR_INVALID_HANDLE;
 
-        OutcomeBatch batch;
-        for (const ExecutionOutcome &outcome : store->Read()) {
-            if (!batch.Add(outcome))
+        FrameBatch batch;
+        for (const RunFrame &frame : store->Read()) {
+            if (!batch.Add(frame))
                 return BML_ERROR_OUT_OF_MEMORY;
         }
         if (batch.Headers.size() > UINT32_MAX || batch.Payload.size() > UINT32_MAX)
             return BML_ERROR_OUT_OF_MEMORY;
         if (!FitsStrided(batch.Headers.size(), headerStride,
-                         sizeof(BML_BehaviorOutcomeHeader)))
+                         sizeof(BML_BehaviorRunFrame)))
             return BML_ERROR_OUT_OF_MEMORY;
         *outHeaderCount = static_cast<std::uint32_t>(batch.Headers.size());
         *outPayloadSize = static_cast<std::uint32_t>(batch.Payload.size());
@@ -1413,7 +1430,7 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &Continue,
     &Pulse,
     &ReadRun,
-    &DrainOutcomes,
+    &TakeFrames,
     &CloseRun,
     &FindPrototypes,
     &ReadDeclaredLayout,

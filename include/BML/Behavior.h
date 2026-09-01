@@ -1,7 +1,7 @@
 // Native Behavior authoring. This interface uses Virtools' own author-facing
 // vocabulary: a Block is created from a Prototype, configured through Settings,
 // Pins, Locals, and a Target, and driven through its Ins and Outs. Values passed
-// in are borrowed for the duration of a call. Outcomes returned by DrainOutcomes
+// in are borrowed for the duration of a call. Run frames returned by TakeFrames
 // are copied into caller-owned buffers and contain no process pointers.
 #ifndef BML_BEHAVIOR_H
 #define BML_BEHAVIOR_H
@@ -17,7 +17,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 1u
+#define BML_BEHAVIOR_INTERFACE_MINOR 2u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 
 BML_BEGIN_CDECLS
@@ -47,7 +47,8 @@ typedef struct BML_BehaviorText {
 typedef enum BML_BehaviorSelectorKind {
     BML_BEHAVIOR_SELECTOR_INDEX = 1,
     BML_BEHAVIOR_SELECTOR_NAME = 2,
-    BML_BEHAVIOR_SELECTOR_UNIQUE_NAME = 3
+    BML_BEHAVIOR_SELECTOR_UNIQUE_NAME = 3,
+    BML_BEHAVIOR_SELECTOR_ONLY = 4
 } BML_BehaviorSelectorKind;
 
 typedef struct BML_BehaviorSelector {
@@ -122,18 +123,18 @@ typedef struct BML_BehaviorTarget {
     BML_ObjectRef Object;
 } BML_BehaviorTarget;
 
-typedef enum BML_BehaviorRetentionKind {
-    BML_BEHAVIOR_RETENTION_SIGNALS = 1,
-    BML_BEHAVIOR_RETENTION_EACH_FRAME = 2,
-    BML_BEHAVIOR_RETENTION_LATEST = 3,
-    BML_BEHAVIOR_RETENTION_NONE = 4
-} BML_BehaviorRetentionKind;
+typedef enum BML_BehaviorFramePolicyKind {
+    BML_BEHAVIOR_FRAMES_SIGNALS = 1,
+    BML_BEHAVIOR_FRAMES_EACH_FRAME = 2,
+    BML_BEHAVIOR_FRAMES_LATEST = 3,
+    BML_BEHAVIOR_FRAMES_NONE = 4
+} BML_BehaviorFramePolicyKind;
 
-typedef struct BML_BehaviorRetention {
+typedef struct BML_BehaviorFramePolicy {
     uint32_t StructSize;
     uint32_t Kind;
     uint32_t Limit;
-} BML_BehaviorRetention;
+} BML_BehaviorFramePolicy;
 
 typedef struct BML_BehaviorBlock {
     uint32_t StructSize;
@@ -145,9 +146,9 @@ typedef struct BML_BehaviorBlock {
     uint32_t PinCount;
     const BML_BehaviorBinding *Locals;
     uint32_t LocalCount;
-    BML_BehaviorRetention Outcomes;
-    // Zero preserves v1.0's current-provider behavior. A nonzero generation
-    // pins the Prototype provider selected by FindPrototypes.
+    BML_BehaviorFramePolicy Frames;
+    // Zero selects the current provider. A nonzero generation pins the
+    // Prototype provider selected by FindPrototypes.
     uint64_t PrototypeGeneration;
 } BML_BehaviorBlock;
 
@@ -170,7 +171,7 @@ typedef enum BML_BehaviorError {
     BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED = 15,
     BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED = 16,
     BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE = 17,
-    BML_BEHAVIOR_ERROR_OUTCOME_LIMIT_REACHED = 18,
+    BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL = 18,
     BML_BEHAVIOR_ERROR_CANCELLED = 19,
     BML_BEHAVIOR_ERROR_PROTOTYPE_CHANGED = 20,
     BML_BEHAVIOR_ERROR_PROTOTYPE_LOAD_FAILED = 21,
@@ -240,8 +241,8 @@ typedef enum BML_BehaviorContinuation {
 } BML_BehaviorContinuation;
 
 // Every offset below is relative to the first byte of the payload buffer passed
-// to DrainOutcomes. Records and value bytes are naturally aligned within it.
-typedef struct BML_BehaviorOutcomeHeader {
+// to TakeFrames. Records and value bytes are naturally aligned within it.
+typedef struct BML_BehaviorRunFrame {
     uint32_t StructSize;
     uint64_t Sequence;
     uint64_t Frame;
@@ -255,7 +256,7 @@ typedef struct BML_BehaviorOutcomeHeader {
     uint32_t PoutCount;
     uint32_t DiagnosticOffset;
     uint32_t DiagnosticCount;
-} BML_BehaviorOutcomeHeader;
+} BML_BehaviorRunFrame;
 
 typedef struct BML_BehaviorOutRecord {
     uint32_t StructSize;
@@ -443,15 +444,15 @@ typedef struct BML_BehaviorInterface {
     int (BML_BEHAVIOR_CALL *ReadRun)(BML_BehaviorRun run,
                                      BML_BehaviorRunInfo *info,
                                      BML_BehaviorStatus *status);
-    int (BML_BEHAVIOR_CALL *DrainOutcomes)(BML_BehaviorRun run,
-                                           BML_BehaviorOutcomeHeader *headers,
-                                           uint32_t headerCapacity,
-                                           uint32_t headerStride,
-                                           void *payload,
-                                           uint32_t payloadCapacity,
-                                           uint32_t *outHeaderCount,
-                                           uint32_t *outPayloadSize,
-                                           BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *TakeFrames)(BML_BehaviorRun run,
+                                        BML_BehaviorRunFrame *headers,
+                                        uint32_t headerCapacity,
+                                        uint32_t headerStride,
+                                        void *payload,
+                                        uint32_t payloadCapacity,
+                                        uint32_t *outHeaderCount,
+                                        uint32_t *outPayloadSize,
+                                        BML_BehaviorStatus *status);
     int (BML_BEHAVIOR_CALL *CloseRun)(BML_BehaviorRun run);
     // Discovery and Layout reads use an all-or-nothing caller-buffer protocol.
     // On BML_ERROR_BUFFER_TOO_SMALL they report the complete required counts
