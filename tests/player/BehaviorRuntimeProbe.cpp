@@ -1570,16 +1570,35 @@ private:
                  HookBlock::Bind(ProbeCountedExecution, &m_EditTap));
 
         const Status applied = m_Editor->Apply(edit, m_EditPatch);
-        const bool shape = applied && m_EditPatch &&
-            m_EditFixture->GetSubBehaviorCount() == 3 &&
-            m_EditFixture->GetSubBehaviorLinkCount() == 6 &&
-            m_EditSource->GetInputCount() == 2 &&
-            m_EditSource->GetOutputCount() == 2 &&
-            m_EditSource->GetInputParameterCount() == 2 &&
-            m_EditSource->GetOutputParameterCount() == 1 &&
-            m_Editor->TopologyFingerprint(m_EditFixture) != 0;
-        if (!shape) {
-            Fail("additive-edit-apply");
+        std::string applyFailure;
+        if (!applied) {
+            applyFailure = "additive-edit-apply-status-" +
+                std::to_string(static_cast<int>(applied.Code));
+        } else if (!m_EditPatch) {
+            applyFailure = "additive-edit-apply-patch";
+        } else if (m_EditFixture->GetSubBehaviorCount() != 3) {
+            applyFailure = "additive-edit-apply-nodes-" +
+                std::to_string(m_EditFixture->GetSubBehaviorCount());
+        } else if (m_EditFixture->GetSubBehaviorLinkCount() != 6) {
+            applyFailure = "additive-edit-apply-links-" +
+                std::to_string(m_EditFixture->GetSubBehaviorLinkCount());
+        } else if (m_EditSource->GetInputCount() != 2) {
+            applyFailure = "additive-edit-apply-ins-" +
+                std::to_string(m_EditSource->GetInputCount());
+        } else if (m_EditSource->GetOutputCount() != 2) {
+            applyFailure = "additive-edit-apply-outs-" +
+                std::to_string(m_EditSource->GetOutputCount());
+        } else if (m_EditSource->GetInputParameterCount() != 2) {
+            applyFailure = "additive-edit-apply-pins-" +
+                std::to_string(m_EditSource->GetInputParameterCount());
+        } else if (m_EditSource->GetOutputParameterCount() != 1) {
+            applyFailure = "additive-edit-apply-pouts-" +
+                std::to_string(m_EditSource->GetOutputParameterCount());
+        } else if (m_Editor->TopologyFingerprint(m_EditFixture) == 0) {
+            applyFailure = "additive-edit-apply-topology";
+        }
+        if (!applyFailure.empty()) {
+            Fail(applyFailure.c_str());
             m_State = State::AdditiveEditClose;
             return;
         }
