@@ -1393,10 +1393,34 @@ Status Runtime::CreateBehavior(const Spec &spec, CKBehavior *&behavior,
     return {};
 }
 
+Status Runtime::CheckDetached(const Spec &spec, bool &unverified) const {
+    unverified = true;
+    if (!m_Catalog)
+        return {};
+
+    DetachedCompatibility compatibility = DetachedCompatibility::Unverified;
+    Status status = m_Catalog->Detached(
+        {spec.Prototype(), spec.PrototypeGeneration()}, compatibility);
+    if (!status)
+        return status;
+    if (compatibility == DetachedCompatibility::GraphOnly) {
+        return Failure(
+            Error::DetachedUnsupported,
+            "This Building Block requires a parent graph and cannot be run detached.",
+            CKERR_INVALIDPARAMETER, CKBR_PARAMETERERROR,
+            Phase::PrototypeResolution, spec.Prototype());
+    }
+    unverified = compatibility == DetachedCompatibility::Unverified;
+    return {};
+}
+
 CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
                                             const CKBehaviorContext *frame) {
     CreateResult result;
     result.Detail = ReadyStatus();
+    if (!result.Detail)
+        return result;
+    result.Detail = CheckDetached(spec, result.UnverifiedDetached);
     if (!result.Detail)
         return result;
     if (owner && owner->GetCKContext() != m_Context) {
@@ -1438,6 +1462,7 @@ CallResult Runtime::Call(CKBeObject *owner, const Spec &spec,
         return result;
     result.Descriptor = std::move(created.Descriptor);
     result.Handle = std::move(created.Handle);
+    result.UnverifiedDetached = created.UnverifiedDetached;
     Slot entry = input;
     entry.Kind = SlotKind::Input;
     SlotRef slot;
@@ -3723,6 +3748,8 @@ const char *DescribeError(Error error) {
     case Error::UnsupportedBreak: return "unsupported break";
     case Error::FrameQueueFull: return "frame queue full";
     case Error::ExecutionCancelled: return "execution cancelled";
+    case Error::DetachedUnsupported: return "detached execution unsupported";
+    case Error::ObserverUnavailable: return "observer unavailable";
     }
     return "unknown";
 }

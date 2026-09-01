@@ -39,6 +39,7 @@ enum class Error {
     PoutUnavailable,
     FrameQueueFull,
     ExecutionCancelled,
+    DetachedUnsupported,
 };
 
 enum class Phase {

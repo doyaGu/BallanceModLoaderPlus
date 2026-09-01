@@ -26,6 +26,12 @@ struct PrototypeRef {
     std::uint64_t Generation = 0;
 };
 
+enum class DetachedCompatibility {
+    Unverified,
+    Verified,
+    GraphOnly,
+};
+
 struct PrototypeInfo {
     PrototypeRef Ref;
     ProviderInfo Provider;
@@ -79,6 +85,10 @@ public:
                 std::vector<PrototypeInfo> &out);
     Status DeclaredLayout(PrototypeRef prototype, Layout &out);
     Status Validate(PrototypeRef prototype);
+    Status Detached(PrototypeRef prototype,
+                    DetachedCompatibility &out);
+    Status RecordDetached(PrototypeRef prototype,
+                          DetachedCompatibility compatibility);
 
 private:
     struct GuidHash {
@@ -99,6 +109,7 @@ private:
     struct Entry {
         PrototypeInfo Info;
         std::string ProviderKey;
+        DetachedCompatibility Detached = DetachedCompatibility::Unverified;
     };
 
     struct CachedLayout {

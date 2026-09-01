@@ -147,9 +147,14 @@ Status PrototypeCatalog::Refresh() {
         if (provider == nextProviders.end())
             continue;
         prototype.Ref.Generation = provider->second.Generation;
+        DetachedCompatibility detached = DetachedCompatibility::Unverified;
+        const auto previous = m_Entries.find(prototype.Ref.Guid);
+        if (previous != m_Entries.end() &&
+            previous->second.Info.Ref.Generation == provider->second.Generation)
+            detached = previous->second.Detached;
         nextEntries.emplace(
             prototype.Ref.Guid,
-            Entry{std::move(prototype), provider->first});
+            Entry{std::move(prototype), provider->first, detached});
     }
 
     for (auto it = m_Layouts.begin(); it != m_Layouts.end();) {
@@ -237,6 +242,35 @@ Status PrototypeCatalog::Validate(PrototypeRef prototype) {
         return Failure(Error::PrototypeChanged,
                        "The Building Block provider changed after discovery.",
                        prototype.Guid);
+    return {};
+}
+
+Status PrototypeCatalog::Detached(PrototypeRef prototype,
+                                  DetachedCompatibility &out) {
+    out = DetachedCompatibility::Unverified;
+    Status status = Validate(prototype);
+    if (!status)
+        return status;
+    const Entry *entry = FindEntry(prototype.Guid);
+    if (!entry)
+        return Failure(Error::PrototypeNotFound,
+                       "Building Block Prototype is unavailable.",
+                       prototype.Guid);
+    out = entry->Detached;
+    return {};
+}
+
+Status PrototypeCatalog::RecordDetached(
+    PrototypeRef prototype, DetachedCompatibility compatibility) {
+    Status status = Validate(prototype);
+    if (!status)
+        return status;
+    const Entry *entry = FindEntry(prototype.Guid);
+    if (!entry)
+        return Failure(Error::PrototypeNotFound,
+                       "Building Block Prototype is unavailable.",
+                       prototype.Guid);
+    m_Entries[prototype.Guid].Detached = compatibility;
     return {};
 }
 

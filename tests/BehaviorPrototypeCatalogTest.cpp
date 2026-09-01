@@ -160,6 +160,51 @@ TEST_F(CatalogFixture, RetirementInvalidatesOldProviderGeneration) {
     EXPECT_EQ(Catalog->Validate(before).Code, Error::PrototypeChanged);
 }
 
+TEST_F(CatalogFixture, DetachedCompatibilityBelongsToProviderGeneration) {
+    std::vector<PrototypeInfo> found;
+    ASSERT_TRUE(Catalog->Find({}, found));
+    const PrototypeRef before = found.front().Ref;
+
+    DetachedCompatibility compatibility = DetachedCompatibility::Verified;
+    ASSERT_TRUE(Catalog->Detached(before, compatibility));
+    EXPECT_EQ(compatibility, DetachedCompatibility::Unverified);
+
+    ASSERT_TRUE(Catalog->RecordDetached(
+        before, DetachedCompatibility::GraphOnly));
+    ASSERT_TRUE(Catalog->Detached(before, compatibility));
+    EXPECT_EQ(compatibility, DetachedCompatibility::GraphOnly);
+
+    Source->Retirements.push_back(before.Guid);
+    ASSERT_TRUE(Catalog->ProcessFrame());
+    EXPECT_EQ(Catalog->Detached(before, compatibility).Code,
+              Error::PrototypeChanged);
+
+    ASSERT_TRUE(Catalog->Find({}, found));
+    const auto replacement = std::find_if(
+        found.begin(), found.end(), [&](const PrototypeInfo &candidate) {
+            return candidate.Ref.Guid == before.Guid;
+        });
+    ASSERT_NE(replacement, found.end());
+    ASSERT_TRUE(Catalog->Detached(replacement->Ref, compatibility));
+    EXPECT_EQ(compatibility, DetachedCompatibility::Unverified);
+}
+
+TEST_F(CatalogFixture, KeepsDetachedConclusionAcrossOrdinaryRefreshes) {
+    std::vector<PrototypeInfo> found;
+    ASSERT_TRUE(Catalog->Find({}, found));
+    const PrototypeRef first = found.front().Ref;
+    ASSERT_TRUE(Catalog->RecordDetached(
+        first, DetachedCompatibility::Verified));
+
+    Source->Declarations.push_back(
+        Prototype(CKGUID(0x3000, 3), "gamma", "Third"));
+    ASSERT_TRUE(Catalog->ProcessFrame());
+
+    DetachedCompatibility compatibility = DetachedCompatibility::Unverified;
+    ASSERT_TRUE(Catalog->Detached(first, compatibility));
+    EXPECT_EQ(compatibility, DetachedCompatibility::Verified);
+}
+
 TEST_F(CatalogFixture, RetirementSurvivesATemporaryDeclarationReadFailure) {
     std::vector<PrototypeInfo> found;
     ASSERT_TRUE(Catalog->Find({}, found));

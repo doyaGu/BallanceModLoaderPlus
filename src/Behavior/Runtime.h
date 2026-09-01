@@ -20,6 +20,7 @@
 #include "Behavior/Execution.h"
 #include "Behavior/Lifecycle.h"
 #include "Behavior/Layout.h"
+#include "Behavior/ObjectRef.h"
 #include "Behavior/Parameter.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "Behavior/Status.h"
@@ -110,14 +111,6 @@ private:
     friend class Runtime;
 };
 
-struct ObjectRef {
-    std::uint32_t Domain = 0;
-    std::uint32_t Slot = 0;
-    std::uint32_t Generation = 0;
-
-    [[nodiscard]] bool IsNull() const noexcept { return Domain == 0; }
-};
-
 enum class RunState {
     Completed,
     Pending,
@@ -169,6 +162,7 @@ struct CreateResult {
     Status Detail;
     Instance Handle;
     Layout Descriptor;
+    bool UnverifiedDetached = false;
 
     explicit operator bool() const noexcept { return static_cast<bool>(Detail); }
 };
@@ -186,6 +180,7 @@ struct CallResult {
     RunResult Run;
     Instance Handle;
     Layout Descriptor;
+    bool UnverifiedDetached = false;
 
     explicit operator bool() const noexcept {
         return static_cast<bool>(Detail) && static_cast<bool>(Run);
@@ -334,6 +329,8 @@ private:
     [[nodiscard]] CKBehavior *ResolveBehavior(const Record &record) const;
     [[nodiscard]] Status ResolvePrototype(CKGUID guid,
                                           std::uint64_t generation = 0) const;
+    [[nodiscard]] Status CheckDetached(const Spec &spec,
+                                       bool &unverified) const;
     [[nodiscard]] Status ValidateTarget(CKBeObject *owner,
                                         const Spec &spec) const;
     [[nodiscard]] Status CreateBehavior(const Spec &spec,
