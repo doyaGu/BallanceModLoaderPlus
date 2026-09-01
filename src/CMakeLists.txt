@@ -294,9 +294,12 @@ set(BML_HOOK_SOURCES
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Callback.h
+        Behavior/PrototypeCatalog.h
         Behavior/Execution.h
         Behavior/Lifecycle.h
+        Behavior/Layout.h
         Behavior/OutcomeStore.h
+        Behavior/Parameter.h
         Behavior/HookBlock.h
         Behavior/ObjectLoad.h
         Behavior/Physicalize.h
@@ -306,14 +309,18 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Runtime.h
         Behavior/SendMessage.h
         Behavior/Sessions.h
+        Behavior/Status.h
         Behavior/Text2D.h
 )
 
 set(BML_BEHAVIOR_SOURCES
         Behavior/Callback.cpp
+        Behavior/CKPrototypeSource.cpp
         Behavior/Execution.cpp
         Behavior/Lifecycle.cpp
         Behavior/OutcomeStore.cpp
+        Behavior/Parameter.cpp
+        Behavior/PrototypeCatalog.cpp
         Behavior/HookBlock.cpp
         Behavior/ObjectLoad.cpp
         Behavior/Physicalize.cpp

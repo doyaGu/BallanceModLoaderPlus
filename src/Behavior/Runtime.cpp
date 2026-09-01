@@ -441,73 +441,56 @@ private:
         std::size_t Size = 0;
     };
 
-    bool ObjectDerived(CKParameter *parameter) const {
-        if (!parameter)
-            return false;
-        CKParameterManager *manager = m_Runtime.m_Context
-            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
-        return parameter->GetGUID() == CKPGUID_OBJECT ||
-               (manager && manager->IsDerivedFrom(parameter->GetGUID(),
-                                                   CKPGUID_OBJECT) != FALSE);
-    }
-
-    bool PlainDerived(CKGUID type, CKGUID base, std::size_t size) const {
-        if (type == base)
-            return true;
-        CKParameterManager *manager = m_Runtime.m_Context
-            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
-        if (!manager || !manager->IsDerivedFrom(type, base))
-            return false;
-        CKParameterTypeDesc *description =
-            manager->GetParameterTypeDescription(type);
-        return description && description->DefaultSize == size &&
-               !description->CreateDefaultFunction &&
-               !description->DeleteFunction &&
-               !description->CopyFunction &&
-               !description->SaveLoadFunction &&
-               !description->CheckFunction;
-    }
-
-    bool TextDerived(CKGUID type) const {
-        if (type == CKPGUID_STRING)
-            return true;
-        CKParameterManager *manager = m_Runtime.m_Context
-            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
-        return manager && manager->IsDerivedFrom(type, CKPGUID_STRING);
-    }
-
     bool GetPoutInfo(CKParameter *parameter, PoutInfo &info) const {
         if (!parameter)
             return false;
-        const CKGUID type = parameter->GetGUID();
-        if (ObjectDerived(parameter))
+        CKParameterManager *manager = m_Runtime.m_Context
+            ? m_Runtime.m_Context->GetParameterManager() : nullptr;
+        const Parameter::Type type =
+            Parameter::Describe(manager, parameter->GetGUID());
+        switch (type.ValueForm) {
+        case Parameter::Form::Object:
             info = {PoutKind::Object, 0};
-        else if (PlainDerived(type, CKPGUID_BOOL, sizeof(CKBOOL)))
+            break;
+        case Parameter::Form::Bool:
             info = {PoutKind::Bool, sizeof(CKBOOL)};
-        else if (PlainDerived(type, CKPGUID_INT, sizeof(int)))
+            break;
+        case Parameter::Form::Int32:
             info = {PoutKind::Int32, sizeof(int)};
-        else if (PlainDerived(type, CKPGUID_FLOAT, sizeof(float)))
+            break;
+        case Parameter::Form::Float32:
             info = {PoutKind::Float32, sizeof(float)};
-        else if (TextDerived(type))
+            break;
+        case Parameter::Form::Utf8:
             info = {PoutKind::Utf8, 0};
-        else if (PlainDerived(type, CKPGUID_2DVECTOR, sizeof(Vx2DVector)))
+            break;
+        case Parameter::Form::Vec2:
             info = {PoutKind::Vec2, sizeof(Vx2DVector)};
-        else if (PlainDerived(type, CKPGUID_VECTOR, sizeof(VxVector)))
+            break;
+        case Parameter::Form::Vec3:
             info = {PoutKind::Vec3, sizeof(VxVector)};
-        else if (PlainDerived(type, CKPGUID_QUATERNION, sizeof(VxQuaternion)))
+            break;
+        case Parameter::Form::Quaternion:
             info = {PoutKind::Quaternion, sizeof(VxQuaternion)};
-        else if (PlainDerived(type, CKPGUID_EULERANGLES, sizeof(float) * 3))
+            break;
+        case Parameter::Form::Euler:
             info = {PoutKind::Euler, sizeof(float) * 3};
-        else if (PlainDerived(type, CKPGUID_RECT, sizeof(VxRect)))
+            break;
+        case Parameter::Form::Rect:
             info = {PoutKind::Rect, sizeof(VxRect)};
-        else if (PlainDerived(type, CKPGUID_COLOR, sizeof(VxColor)))
+            break;
+        case Parameter::Form::Color:
             info = {PoutKind::Color, sizeof(VxColor)};
-        else if (PlainDerived(type, CKPGUID_BOX, sizeof(VxBbox)))
+            break;
+        case Parameter::Form::Box:
             info = {PoutKind::Box, sizeof(VxBbox)};
-        else if (PlainDerived(type, CKPGUID_MATRIX, sizeof(VxMatrix)))
+            break;
+        case Parameter::Form::Mat4:
             info = {PoutKind::Mat4, sizeof(VxMatrix)};
-        else
+            break;
+        case Parameter::Form::Unsupported:
             return false;
+        }
         return true;
     }
 
@@ -917,69 +900,6 @@ Slot Slot::OccurrenceOf(SlotKind kind, std::string name, int occurrence,
     return selector;
 }
 
-Value Value::Raw(CKGUID type, const void *data, std::size_t size) {
-    Value value;
-    value.m_Kind = ValueKind::Raw;
-    value.m_Type = type;
-    if (data && size != 0) {
-        value.m_Bytes.resize(size);
-        std::memcpy(value.m_Bytes.data(), data, size);
-    }
-    return value;
-}
-
-Value Value::UntypedRaw(const void *data, std::size_t size) {
-    return Raw(CKGUID(), data, size);
-}
-
-Value Value::Text(CKGUID type, std::string text) {
-    Value value;
-    value.m_Kind = ValueKind::Text;
-    value.m_Type = type;
-    value.m_Text = std::move(text);
-    return value;
-}
-
-Value Value::String(std::string text) {
-    return Text(CKPGUID_STRING, std::move(text));
-}
-
-Value Value::Object(CKGUID type, CKObject *object) {
-    Value value;
-    value.m_Kind = ValueKind::Object;
-    value.m_Type = type;
-    value.m_Object = object;
-    value.m_ObjectId = object ? object->GetID() : 0;
-    return value;
-}
-
-Value Value::Snapshot(CKParameter *source) {
-    Value value;
-    value.m_Kind = ValueKind::Snapshot;
-    value.m_Source = source;
-    value.m_SourceId = source ? source->GetID() : 0;
-    value.m_Type = source ? source->GetGUID() : CKGUID();
-    return value;
-}
-
-Value Value::DirectSource(CKParameter *source) {
-    Value value;
-    value.m_Kind = ValueKind::DirectSource;
-    value.m_Source = source;
-    value.m_SourceId = source ? source->GetID() : 0;
-    value.m_Type = source ? source->GetGUID() : CKGUID();
-    return value;
-}
-
-Value Value::SharedSource(CKParameterIn *source) {
-    Value value;
-    value.m_Kind = ValueKind::SharedSource;
-    value.m_SharedSource = source;
-    value.m_SharedSourceId = source ? source->GetID() : 0;
-    value.m_Type = source ? source->GetGUID() : CKGUID();
-    return value;
-}
-
 Operation &Operation::Result(CKGUID type) {
     m_ResultType = type;
     return *this;
@@ -1166,8 +1086,10 @@ void Instance::Reset() {
 }
 
 Runtime::Runtime(CKContext *context,
-                 std::function<ObjectRef(const void *)> issueObjectRef)
+                 std::function<ObjectRef(const void *)> issueObjectRef,
+                 PrototypeCatalog *catalog)
     : m_Context(context), m_IssueObjectRef(std::move(issueObjectRef)),
+      m_Catalog(catalog),
       m_Thread(std::this_thread::get_id()),
       m_Access(std::make_shared<Instance::Access>()),
       m_SharedBindings(AcquireSharedBindings(context)) {
@@ -1206,7 +1128,27 @@ Status Runtime::ReadyStatus() const {
     return {};
 }
 
-Status Runtime::ResolvePrototype(CKGUID guid) const {
+Status Runtime::ResolvePrototype(CKGUID guid, std::uint64_t generation) const {
+    if (m_Catalog) {
+        Layout layout;
+        Status status = m_Catalog->DeclaredLayout({guid, generation}, layout);
+        if (!status)
+            return status;
+        for (const ManagerRequirement &manager : layout.Managers) {
+            if (!manager.Available) {
+                std::ostringstream message;
+                message << "Required manager " << GuidText(manager.Guid)
+                        << " is missing for Building Block '"
+                        << layout.PrototypeName << "'.";
+                Status missing = Failure(
+                    Error::RequiredManagerMissing, message.str(), CK_OK,
+                    CKBR_OK, Phase::ManagerValidation, guid);
+                missing.Details.RequiredManager = manager.Guid;
+                return missing;
+            }
+        }
+        return {};
+    }
     if (!CKGetPrototypeFromGuid(guid)) {
         return Failure(Error::PrototypeNotFound,
                        "Building Block Prototype GUID " + GuidText(guid) +
@@ -1233,10 +1175,77 @@ Status Runtime::ResolvePrototype(CKGUID guid) const {
     return {};
 }
 
+Status Runtime::ValidateTarget(CKBeObject *owner, const Spec &spec) const {
+    if (!m_Catalog)
+        return {};
+    Layout declared;
+    Status status = m_Catalog->DeclaredLayout(
+        {spec.Prototype(), spec.PrototypeGeneration()}, declared);
+    if (!status)
+        return status;
+
+    if (owner && !CKIsChildClassOf(owner, declared.CompatibleClass)) {
+        return Failure(Error::OwnerInvalid,
+                       "Behavior owner is incompatible with the Prototype.",
+                       CKERR_INVALIDOBJECT, CKBR_OWNERERROR,
+                       Phase::OwnerBinding, spec.Prototype());
+    }
+    if (spec.m_TargetMode == TargetMode::Owner)
+        return {};
+    if (!(declared.BehaviorFlags & CKBEHAVIOR_TARGETABLE)) {
+        return Failure(Error::TargetInvalid,
+                       "The Prototype does not accept an explicit Target.",
+                       CKERR_INVALIDPARAMETER, CKBR_PARAMETERERROR,
+                       Phase::TargetBinding, spec.Prototype());
+    }
+
+    CKParameterManager *parameters = m_Context
+        ? m_Context->GetParameterManager() : nullptr;
+    const Parameter::Type targetType =
+        Parameter::Describe(parameters, spec.m_TargetType);
+    if (!targetType.Valid)
+        return Failure(Error::ParameterTypeUnavailable,
+                       "The Behavior Target parameter type is unavailable.",
+                       CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                       Phase::TargetBinding, spec.Prototype());
+    if (!targetType.ObjectDerived())
+        return Failure(Error::TypeMismatch,
+                       "The Behavior Target type is not object-derived.",
+                       CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                       Phase::TargetBinding, spec.Prototype());
+    if (targetType.ClassId &&
+        !CKIsChildClassOf(targetType.ClassId, declared.CompatibleClass)) {
+        return Failure(Error::TargetInvalid,
+                       "The typed Target cannot satisfy the Prototype compatible class.",
+                       CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                       Phase::TargetBinding, spec.Prototype());
+    }
+    if (spec.m_TargetMode == TargetMode::Explicit) {
+        CKObject *object = spec.m_TargetValue.ObjectValue();
+        CKObject *live = object && m_Context
+            ? m_Context->GetObject(spec.m_TargetValue.ObjectId()) : nullptr;
+        if (live != object || !live || live->IsToBeDeleted())
+            return Failure(Error::TargetInvalid,
+                           "The explicit Behavior Target has expired.",
+                           CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                           Phase::TargetBinding, spec.Prototype());
+        if ((targetType.ClassId &&
+             !CKIsChildClassOf(live, targetType.ClassId)) ||
+            !CKIsChildClassOf(live, declared.CompatibleClass)) {
+            return Failure(Error::TargetInvalid,
+                           "The explicit Behavior Target has an incompatible class.",
+                           CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                           Phase::TargetBinding, spec.Prototype());
+        }
+    }
+    return {};
+}
+
 Status Runtime::CreateBehavior(const Spec &spec,
                                                CKBehavior *&behavior) const {
     behavior = nullptr;
-    Status status = ResolvePrototype(spec.Prototype());
+    Status status = ResolvePrototype(spec.Prototype(),
+                                     spec.PrototypeGeneration());
     if (!status)
         return status;
 
@@ -1269,6 +1278,9 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
         result.Outcome = Failure(Error::OwnerInvalid, "Behavior owner belongs to another CKContext.");
         return result;
     }
+    result.Outcome = ValidateTarget(owner, spec);
+    if (!result.Outcome)
+        return result;
 
     CKBehavior *behavior = nullptr;
     result.Outcome = CreateBehavior(spec, behavior);
@@ -1337,6 +1349,9 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
             "Parent graph is invalid, retiring, or belongs to another CKContext.");
         return result;
     }
+    result.Outcome = ValidateTarget(parent->GetOwner(), spec);
+    if (!result.Outcome)
+        return result;
 
     CKBehavior *behavior = nullptr;
     result.Outcome = CreateBehavior(spec, behavior);
@@ -1365,6 +1380,9 @@ Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
     if (!ReadyStatus() || !behavior)
         return layout;
     layout.Prototype = behavior->GetPrototypeGuid();
+    layout.Origin = LayoutOrigin::Live;
+    layout.Kind = behavior->IsUsingFunction()
+        ? BehaviorKind::Function : BehaviorKind::Graph;
     if (CKBehaviorPrototype *prototype = behavior->GetPrototype()) {
         layout.PrototypeName = prototype->GetName() ? prototype->GetName() : "";
         layout.PrototypeFlags = prototype->GetFlags();
@@ -1428,6 +1446,7 @@ Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
         }
     }
     if (CKParameterIn *target = behavior->GetTargetParameter()) {
+        layout.TargetType = target->GetGUID();
         CKParameterTypeDesc *description = m_Context
             ? m_Context->GetParameterManager()->GetParameterTypeDescription(target->GetGUID())
             : nullptr;
@@ -1437,7 +1456,83 @@ Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
                                     ? target->GetRealSource()->GetDataSize()
                                     : (description ? description->DefaultSize : 0)});
     }
+    CKParameterManager *parameters = m_Context
+        ? m_Context->GetParameterManager() : nullptr;
+    for (std::size_t index = 0; index < layout.Slots.size(); ++index) {
+        SlotInfo &slot = layout.Slots[index];
+        slot.Occurrence = 0;
+        for (std::size_t previous = 0; previous < index; ++previous) {
+            if (layout.Slots[previous].Kind == slot.Kind &&
+                layout.Slots[previous].Name == slot.Name)
+                ++slot.Occurrence;
+        }
+        if (slot.Type.IsValid()) {
+            const Parameter::Type type =
+                Parameter::Describe(parameters, slot.Type);
+            slot.TypeName = type.Name;
+            slot.ValueForm = type.ValueForm;
+        }
+        switch (slot.Kind) {
+        case SlotKind::Input:
+            slot.Dynamic = (layout.BehaviorFlags &
+                (CKBEHAVIOR_VARIABLEINPUTS |
+                 CKBEHAVIOR_INTERNALLYCREATEDINPUTS)) != 0;
+            break;
+        case SlotKind::Output:
+            slot.Dynamic = (layout.BehaviorFlags &
+                (CKBEHAVIOR_VARIABLEOUTPUTS |
+                 CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS)) != 0;
+            break;
+        case SlotKind::InputParameter:
+            slot.Dynamic = (layout.BehaviorFlags &
+                (CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
+                 CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS)) != 0;
+            break;
+        case SlotKind::OutputParameter:
+            slot.Dynamic = (layout.BehaviorFlags &
+                (CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
+                 CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS)) != 0;
+            break;
+        case SlotKind::Setting:
+        case SlotKind::Local:
+            slot.Dynamic = (layout.BehaviorFlags &
+                CKBEHAVIOR_INTERNALLYCREATEDLOCALPARAMS) != 0;
+            break;
+        case SlotKind::Target:
+            break;
+        }
+    }
+    if (m_Catalog) {
+        Layout declared;
+        if (m_Catalog->DeclaredLayout({layout.Prototype, 0}, declared)) {
+            layout.ProviderGeneration = declared.ProviderGeneration;
+            layout.Provider = declared.Provider;
+            layout.ProviderName = declared.ProviderName;
+            layout.Author = declared.Author;
+            layout.Description = declared.Description;
+            layout.Version = declared.Version;
+            if (!layout.TargetType.IsValid())
+                layout.TargetType = declared.TargetType;
+            layout.Managers = declared.Managers;
+        }
+    }
     return layout;
+}
+
+Status Runtime::Describe(const Instance &instance, Layout &layout) const {
+    layout = {};
+    Status ready = ReadyStatus();
+    if (!ready)
+        return ready;
+    const Record *record = FindRecord(instance);
+    CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
+    if (!record || !behavior)
+        return Failure(Error::LayoutUnavailable,
+                       "The Run no longer owns a native Behavior Layout.",
+                       CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                       Phase::StaticLayout);
+    layout = Describe(behavior, record->LayoutGeneration);
+    return {};
 }
 
 Status Runtime::Resolve(CKBehavior *behavior, const Slot &selector,
@@ -1642,7 +1737,7 @@ Status Runtime::ApplyValue(CKParameter *parameter, const Value &value) const {
 
     if (value.Type().IsValid()) {
         CKParameterManager *manager = m_Context ? m_Context->GetParameterManager() : nullptr;
-        if (!manager || !manager->IsTypeCompatible(parameter->GetGUID(), value.Type()))
+        if (!Parameter::Compatible(manager, parameter->GetGUID(), value.Type()))
             return Failure(Error::TypeMismatch, "Parameter value type is incompatible with the slot type.");
     }
 
@@ -1666,10 +1761,10 @@ Status Runtime::ApplyValue(CKParameter *parameter, const Value &value) const {
         if (object != value.ObjectValue() || (object && object->IsToBeDeleted()))
             return Failure(Error::SourceInvalid, "Object value has expired.");
         CKParameterManager *manager = m_Context->GetParameterManager();
-        CKParameterTypeDesc *description = manager
-            ? manager->GetParameterTypeDescription(parameter->GetGUID()) : nullptr;
-        if (object && description && description->Cid != 0 &&
-            !CKIsChildClassOf(object, static_cast<CK_CLASSID>(description->Cid))) {
+        const Parameter::Type type =
+            Parameter::Describe(manager, parameter->GetGUID());
+        if (object && type.ClassId != 0 &&
+            !CKIsChildClassOf(object, type.ClassId)) {
             return Failure(Error::TypeMismatch,
                            "Object value is incompatible with the parameter class.");
         }

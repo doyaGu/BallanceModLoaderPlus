@@ -28,8 +28,10 @@ void Instance::Reset() {
 }
 
 Runtime::Runtime(CKContext *context,
-                 std::function<ObjectRef(const void *)> issueObjectRef)
-    : m_Context(context), m_IssueObjectRef(std::move(issueObjectRef)) {}
+                 std::function<ObjectRef(const void *)> issueObjectRef,
+                 PrototypeCatalog *catalog)
+    : m_Context(context), m_IssueObjectRef(std::move(issueObjectRef)),
+      m_Catalog(catalog) {}
 
 Runtime::~Runtime() = default;
 
@@ -72,6 +74,27 @@ ExecutionState Runtime::State(const Instance &) const {
 
 std::shared_ptr<OutcomeStore> Runtime::Outcomes(const Instance &) const {
     return {};
+}
+
+Status Runtime::Describe(const Instance &, Layout &) const {
+    return {Error::LayoutUnavailable, CKERR_INVALIDOBJECT,
+            CKBR_PARAMETERERROR,
+            "No live Layout is present in the Session golden test."};
+}
+
+bool PrototypeCatalog::TracksRetirement() const noexcept {
+    return false;
+}
+
+Status PrototypeCatalog::Find(const PrototypeQuery &,
+                              std::vector<PrototypeInfo> &) {
+    return {Error::InvalidState, CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+            "No Prototype Catalog is present in the Session golden test."};
+}
+
+Status PrototypeCatalog::DeclaredLayout(PrototypeRef, Layout &) {
+    return {Error::InvalidState, CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+            "No Prototype Catalog is present in the Session golden test."};
 }
 
 void Runtime::ClosePending() {}

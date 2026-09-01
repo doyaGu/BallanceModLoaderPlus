@@ -19,117 +19,12 @@
 #include "Behavior/Callback.h"
 #include "Behavior/Execution.h"
 #include "Behavior/Lifecycle.h"
+#include "Behavior/Layout.h"
+#include "Behavior/Parameter.h"
+#include "Behavior/PrototypeCatalog.h"
+#include "Behavior/Status.h"
 
 namespace BML::Behavior {
-
-enum class SlotKind {
-    Input,
-    Output,
-    InputParameter,
-    OutputParameter,
-    // Virtools stores settings in the same native local-parameter array as
-    // ordinary locals. Setting exposes the filtered settings view, while
-    // Local exposes only non-setting entries and retains their native index.
-    Setting,
-    Local,
-    Target,
-};
-
-struct Slot {
-    SlotKind Kind = SlotKind::InputParameter;
-    int Index = -1;
-    std::string Name;
-    int Occurrence = 0;
-    bool RequireUnique = false;
-    CKGUID ExpectedType;
-
-    static Slot At(SlotKind kind, int index, CKGUID expectedType = CKGUID());
-    static Slot Named(SlotKind kind, std::string name,
-                      CKGUID expectedType = CKGUID());
-    static Slot OccurrenceOf(SlotKind kind, std::string name, int occurrence,
-                             CKGUID expectedType = CKGUID());
-    [[nodiscard]] bool UsesName() const noexcept { return !Name.empty(); }
-};
-
-struct SlotInfo {
-    SlotKind Kind = SlotKind::InputParameter;
-    int Index = -1;
-    int NativeIndex = -1;
-    std::string Name;
-    CKGUID Type;
-    int DataSize = 0;
-};
-
-struct Layout {
-    CKGUID Prototype = CKGUID();
-    std::string PrototypeName;
-    std::string Category;
-    CK_CLASSID CompatibleClass = CKCID_BEOBJECT;
-    CKDWORD PrototypeFlags = 0;
-    CKDWORD BehaviorFlags = 0;
-    std::uint64_t Generation = 0;
-    std::vector<CKGUID> RequiredManagers;
-    std::vector<SlotInfo> Slots;
-};
-
-// A resolved slot is only valid for one configured live instance layout. The
-// instance id and layout generation keep that lifetime local to Runtime;
-// Object is compared with the live slot and is never dereferenced by itself.
-struct SlotRef {
-    std::uint64_t InstanceId = 0;
-    std::uint64_t LayoutGeneration = 0;
-    CKObject *Object = nullptr;
-    SlotInfo Slot;
-};
-
-enum class ValueKind {
-    Raw,
-    Text,
-    Object,
-    Snapshot,
-    DirectSource,
-    SharedSource,
-};
-
-class Value {
-public:
-    static Value Raw(CKGUID type, const void *data, std::size_t size);
-    static Value UntypedRaw(const void *data, std::size_t size);
-    static Value Text(CKGUID type, std::string text);
-    static Value String(std::string text);
-    static Value Object(CKGUID type, CKObject *object);
-    static Value Snapshot(CKParameter *source);
-    static Value DirectSource(CKParameter *source);
-    static Value SharedSource(CKParameterIn *source);
-
-    template <typename T>
-    static Value From(CKGUID type, const T &value) {
-        return Raw(type, &value, sizeof(T));
-    }
-
-    [[nodiscard]] ValueKind Kind() const noexcept { return m_Kind; }
-    [[nodiscard]] CKGUID Type() const noexcept { return m_Type; }
-    [[nodiscard]] const std::vector<std::byte> &Bytes() const noexcept { return m_Bytes; }
-    [[nodiscard]] const std::string &StringValue() const noexcept { return m_Text; }
-    [[nodiscard]] CKObject *ObjectValue() const noexcept { return m_Object; }
-    [[nodiscard]] CK_ID ObjectId() const noexcept { return m_ObjectId; }
-    [[nodiscard]] CKParameter *ParameterSource() const noexcept { return m_Source; }
-    [[nodiscard]] CK_ID ParameterSourceId() const noexcept { return m_SourceId; }
-    [[nodiscard]] CKParameterIn *SharedParameterSource() const noexcept { return m_SharedSource; }
-    [[nodiscard]] CK_ID SharedParameterSourceId() const noexcept { return m_SharedSourceId; }
-
-private:
-    ValueKind m_Kind = ValueKind::Raw;
-    CKGUID m_Type = CKGUID();
-    std::vector<std::byte> m_Bytes;
-    std::string m_Text;
-    CKObject *m_Object = nullptr;
-    CK_ID m_ObjectId = 0;
-    CKParameter *m_Source = nullptr;
-    CK_ID m_SourceId = 0;
-    CKParameterIn *m_SharedSource = nullptr;
-    CK_ID m_SharedSourceId = 0;
-};
 
 class Operation {
 public:
@@ -177,8 +72,15 @@ public:
     Spec &AddOutput(std::string name);
     Spec &Outcomes(OutcomeRetention retention);
     Spec &KeepAlive(std::shared_ptr<CallbackResource> resource);
+    Spec &PrototypeGeneration(std::uint64_t generation) noexcept {
+        m_PrototypeGeneration = generation;
+        return *this;
+    }
 
     [[nodiscard]] CKGUID Prototype() const noexcept { return m_Prototype; }
+    [[nodiscard]] std::uint64_t PrototypeGeneration() const noexcept {
+        return m_PrototypeGeneration;
+    }
 
 private:
     struct Binding {
@@ -192,6 +94,7 @@ private:
     };
 
     CKGUID m_Prototype = CKGUID();
+    std::uint64_t m_PrototypeGeneration = 0;
     TargetMode m_TargetMode = TargetMode::Owner;
     CKGUID m_TargetType = CKGUID();
     Value m_TargetValue;
@@ -205,78 +108,6 @@ private:
     OutcomeRetention m_OutcomeRetention = OutcomeRetention::Signals();
 
     friend class Runtime;
-};
-
-enum class Error {
-    None,
-    WrongThread,
-    ContextExpired,
-    PrototypeNotFound,
-    RequiredManagerMissing,
-    CreateFailed,
-    InitFailed,
-    OwnerInvalid,
-    TargetInvalid,
-    CallbackFailed,
-    SlotNotFound,
-    AmbiguousSlot,
-    StaleLayout,
-    TypeMismatch,
-    ValueWriteFailed,
-    SourceInvalid,
-    InvalidState,
-    ExecutionFailed,
-    OperationInvalid,
-    UnsupportedBreak,
-    UnsupportedPout,
-    PoutUnavailable,
-    OutcomeQueueFull,
-    ExecutionCancelled,
-};
-
-enum class Phase {
-    None,
-    PrototypeResolution,
-    ManagerValidation,
-    Creation,
-    Initialization,
-    StaticLayout,
-    OwnerBinding,
-    TargetBinding,
-    Settings,
-    LifecycleCallback,
-    ParameterBinding,
-    Execution,
-    Teardown,
-};
-
-struct Diagnostic {
-    Diagnostic()
-        : Prototype(), RequiredManager(), Selector(), ActualType(), OperationGuid() {}
-
-    Phase Stage = Phase::None;
-    CKGUID Prototype = CKGUID();
-    CKGUID RequiredManager = CKGUID();
-    Slot Selector;
-    CKGUID ActualType = CKGUID();
-    CKGUID OperationGuid = CKGUID();
-    CKDWORD CallbackMessage = 0;
-};
-
-struct Status {
-    Status() = default;
-    Status(Error error, CKERROR ckError, int behaviorResult,
-           std::string message)
-        : Code(error), CkError(ckError), BehaviorResult(behaviorResult),
-          Message(std::move(message)) {}
-
-    Error Code = Error::None;
-    CKERROR CkError = CK_OK;
-    int BehaviorResult = CKBR_OK;
-    std::string Message;
-    Diagnostic Details;
-
-    explicit operator bool() const noexcept { return Code == Error::None; }
 };
 
 struct ObjectRef {
@@ -365,7 +196,8 @@ class Runtime final {
 public:
     explicit Runtime(
         CKContext *context,
-        std::function<ObjectRef(const void *)> issueObjectRef = {});
+        std::function<ObjectRef(const void *)> issueObjectRef = {},
+        PrototypeCatalog *catalog = nullptr);
     ~Runtime();
     Runtime(const Runtime &) = delete;
     Runtime &operator=(const Runtime &) = delete;
@@ -378,6 +210,8 @@ public:
                                 const CKBehaviorContext *frame = nullptr);
 
     [[nodiscard]] Layout Describe(CKBehavior *behavior, std::uint64_t generation = 0) const;
+    [[nodiscard]] Status Describe(const Instance &instance,
+                                  Layout &layout) const;
     [[nodiscard]] Status Resolve(CKBehavior *behavior, const Slot &selector,
                                          SlotInfo &slot) const;
     [[nodiscard]] Status Resolve(const Instance &instance,
@@ -491,7 +325,10 @@ private:
     [[nodiscard]] ObjectStamp CaptureObject(CKObject *object) const;
     [[nodiscard]] CKObject *ResolveObject(ObjectStamp object) const;
     [[nodiscard]] CKBehavior *ResolveBehavior(const Record &record) const;
-    [[nodiscard]] Status ResolvePrototype(CKGUID guid) const;
+    [[nodiscard]] Status ResolvePrototype(CKGUID guid,
+                                          std::uint64_t generation = 0) const;
+    [[nodiscard]] Status ValidateTarget(CKBeObject *owner,
+                                        const Spec &spec) const;
     [[nodiscard]] Status CreateBehavior(const Spec &spec,
                                                 CKBehavior *&behavior) const;
     [[nodiscard]] CKParameter *ResolveParameter(CKBehavior *behavior, const SlotInfo &slot) const;
@@ -554,6 +391,7 @@ private:
 
     CKContext *m_Context = nullptr;
     std::function<ObjectRef(const void *)> m_IssueObjectRef;
+    PrototypeCatalog *m_Catalog = nullptr;
     std::thread::id m_Thread;
     std::uint64_t m_NextInstanceId = 1;
     std::uint64_t m_Frame = 0;

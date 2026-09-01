@@ -19,8 +19,9 @@ RunResult FailedRun(Error error, std::string message) {
 
 } // namespace
 
-Sessions::Sessions(Runtime &runtime)
-    : m_Runtime(runtime), m_Thread(std::this_thread::get_id()) {}
+Sessions::Sessions(Runtime &runtime, PrototypeCatalog *catalog)
+    : m_Runtime(runtime), m_Catalog(catalog),
+      m_Thread(std::this_thread::get_id()) {}
 
 std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
     if (ownerId.empty() || std::this_thread::get_id() != m_Thread)
@@ -240,6 +241,51 @@ Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
             info.State = RunState::Failed;
     }
     return {};
+}
+
+Status Sessions::FindPrototypes(std::uintptr_t sessionId,
+                                const PrototypeQuery &query,
+                                std::vector<PrototypeInfo> &out) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    Session *session = FindSession(sessionId);
+    if (!session || !SessionIsActive(*session))
+        return Fail(Error::InvalidState,
+                    "Behavior Session is stale or retiring.");
+    if (!m_Catalog || !m_Catalog->TracksRetirement())
+        return Fail(Error::Unavailable,
+                    "Behavior Prototype discovery is unavailable.");
+    return m_Catalog->Find(query, out);
+}
+
+Status Sessions::ReadDeclaredLayout(std::uintptr_t sessionId,
+                                    PrototypeRef prototype, Layout &out) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    Session *session = FindSession(sessionId);
+    if (!session || !SessionIsActive(*session))
+        return Fail(Error::InvalidState,
+                    "Behavior Session is stale or retiring.");
+    if (!m_Catalog || !m_Catalog->TracksRetirement())
+        return Fail(Error::Unavailable,
+                    "Behavior Prototype discovery is unavailable.");
+    return m_Catalog->DeclaredLayout(prototype, out);
+}
+
+Status Sessions::ReadLiveLayout(std::uintptr_t runId, Layout &out) const {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    std::shared_ptr<const Run> run = FindRun(runId);
+    if (!run)
+        return Fail(Error::InvalidState,
+                    "Behavior Run handle is stale.");
+    return m_Runtime.Describe(run->Block, out);
 }
 
 std::shared_ptr<OutcomeStore> Sessions::Outcomes(std::uintptr_t runId) const {

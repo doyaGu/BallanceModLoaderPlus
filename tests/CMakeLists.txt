@@ -250,6 +250,15 @@ target_include_directories(BehaviorSessionTest PRIVATE
         "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
 
+add_bml_test(BehaviorPrototypeCatalogTest
+        SOURCES
+        BehaviorPrototypeCatalogTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/PrototypeCatalog.cpp
+)
+target_include_directories(BehaviorPrototypeCatalogTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+)
+
 add_bml_test(BehaviorLifecycleTest
         SOURCES
         BehaviorLifecycleTest.cpp

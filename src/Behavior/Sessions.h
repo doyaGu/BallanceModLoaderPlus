@@ -46,7 +46,8 @@ struct OpenRun {
 // Runtime remains responsible for each native Behavior Instance.
 class Sessions final {
 public:
-    explicit Sessions(Runtime &runtime);
+    explicit Sessions(Runtime &runtime,
+                      PrototypeCatalog *catalog = nullptr);
 
     std::uint64_t RegisterOwner(std::string ownerId);
     void RetireOwner(const std::string &ownerId);
@@ -64,6 +65,12 @@ public:
     RunResult Pulse(std::uintptr_t runId, const Slot &input);
 
     Status ReadRun(std::uintptr_t runId, RunInfo &info) const;
+    Status FindPrototypes(std::uintptr_t sessionId,
+                          const PrototypeQuery &query,
+                          std::vector<PrototypeInfo> &out);
+    Status ReadDeclaredLayout(std::uintptr_t sessionId,
+                              PrototypeRef prototype, Layout &out);
+    Status ReadLiveLayout(std::uintptr_t runId, Layout &out) const;
     std::shared_ptr<OutcomeStore> Outcomes(std::uintptr_t runId) const;
     void CloseRun(std::uintptr_t runId);
 
@@ -109,6 +116,7 @@ private:
     void CloseOwner(const std::string &ownerId, std::uint64_t generation);
 
     Runtime &m_Runtime;
+    PrototypeCatalog *m_Catalog = nullptr;
     std::thread::id m_Thread;
     mutable std::recursive_mutex m_Mutex;
     std::uintptr_t m_NextId = 1;
