@@ -305,6 +305,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Layout.h
         Behavior/FrameStore.h
         Behavior/Parameter.h
+        Behavior/Plan.h
         Behavior/HookBlock.h
         Behavior/ObjectLoad.h
         Behavior/Physicalize.h
@@ -331,6 +332,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Layout.cpp
         Behavior/FrameStore.cpp
         Behavior/Parameter.cpp
+        Behavior/Plan.cpp
         Behavior/PrototypeCatalog.cpp
         Behavior/HookBlock.cpp
         Behavior/ObjectLoad.cpp
