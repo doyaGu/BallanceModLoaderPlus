@@ -159,6 +159,14 @@ namespace {
         return utils::CombinePathW(utils::CombinePathW(tempDirectory, kPackagesDirectoryName), archiveName);
     }
 
+    BML::Behavior::GraphSource &RequireBehaviorGraph(
+        BML::Behavior::Sessions &sessions) {
+        BML::Behavior::GraphSource *graph = sessions.Graph();
+        if (!graph)
+            throw std::runtime_error("Behavior graph adapter is unavailable.");
+        return *graph;
+    }
+
 }
 
 ModContext *g_ModContext = nullptr;
@@ -199,6 +207,8 @@ ModContext::ModContext(CKContext *context)
                       reference.Domain, reference.Slot,
                       reference.Generation};
               })),
+      m_BehaviorPatches(context, m_Behaviors, &m_BehaviorPrototypes,
+                        RequireBehaviorGraph(m_BehaviorSessions)),
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);
@@ -344,6 +354,7 @@ void ModContext::ResetVirtoolsWorld() {
     // to the API seam and are reset only after internal teardown is complete.
     m_ExecuteBB.Reset();
     m_PhysicsForce.Reset();
+    m_BehaviorPatches.ResetWorld();
     m_BehaviorSessions.ResetWorld();
     m_Behaviors.ResetWorld();
     m_ObjectRefs.Reset();
@@ -353,6 +364,7 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
     // Runtime owners observe the deletion first; public references are the
     // final observer because they do not participate in native teardown.
     m_PhysicsForce.ObjectsToBeDeleted(ids, count);
+    m_BehaviorPatches.ObjectsToBeDeleted(ids, count);
     m_Behaviors.ObjectsToBeDeleted(ids, count);
     m_ObjectRefs.Invalidate(ids, count);
 }
@@ -362,6 +374,7 @@ void ModContext::ProcessVirtoolsFrame() {
     m_PhysicsForce.ProcessFrame();
     m_Behaviors.ProcessFrame();
     m_BehaviorSessions.ProcessFrame();
+    m_BehaviorPatches.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
 }
 
@@ -651,6 +664,11 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
                 m_Logger->Error("Unknown exception in a Mod unload callback.");
         }
         try {
+            const BML::Behavior::Status patches =
+                m_BehaviorPatches.RetireOwner(mod->GetID());
+            if (!patches && m_Logger)
+                m_Logger->Error("Failed to retire Behavior Patches for Mod %s: %s",
+                                mod->GetID(), patches.Message.c_str());
             m_BehaviorSessions.RetireOwner(mod->GetID());
         } catch (...) {
             if (m_Logger)
@@ -668,6 +686,7 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
         IMod *mod = *rit;
         try {
             m_ImcRuntime.CleanupOwner(mod->GetID());
+            (void) m_BehaviorPatches.RetireOwner(mod->GetID());
             m_BehaviorSessions.RetireOwner(mod->GetID());
         } catch (...) {
             if (m_Logger)
@@ -2741,6 +2760,14 @@ bool ModContext::UnregisterMod(IMod *mod) {
             if (id == m_ModIndex.end())
                 return false;
             modIdCopy = id->first;
+        }
+        const BML::Behavior::Status patches =
+            m_BehaviorPatches.RetireOwner(modIdCopy);
+        if (!patches) {
+            if (m_Logger)
+                m_Logger->Error("Failed to retire Behavior Patches for Mod %s: %s",
+                                modIdCopy.c_str(), patches.Message.c_str());
+            return false;
         }
         m_BehaviorSessions.RetireOwner(modIdCopy);
         m_ImcRuntime.CleanupOwner(modIdCopy);

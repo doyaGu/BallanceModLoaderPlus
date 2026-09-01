@@ -38,6 +38,24 @@ TEST(BehaviorSessions, OwnerGenerationMakesOldSessionsStale) {
     EXPECT_GT(second, first);
 }
 
+TEST(BehaviorSessions, SessionExposesItsCurrentOwnerGeneration) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    const std::uint64_t generation = sessions.RegisterOwner("mod");
+    ASSERT_NE(generation, 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    SessionOwner owner;
+    ASSERT_TRUE(sessions.ReadOwner(session, owner));
+    EXPECT_EQ(owner.Id, "mod");
+    EXPECT_EQ(owner.Generation, generation);
+
+    sessions.RetireOwner("mod");
+    EXPECT_EQ(sessions.ReadOwner(session, owner).Code, Error::InvalidState);
+    EXPECT_FALSE(owner);
+}
+
 TEST(BehaviorSessions, RetiringOwnerClosesSessionsIdempotently) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);

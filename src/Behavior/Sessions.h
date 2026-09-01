@@ -44,6 +44,15 @@ struct OpenRun {
     }
 };
 
+struct SessionOwner {
+    std::string Id;
+    std::uint64_t Generation = 0;
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return !Id.empty() && Generation != 0;
+    }
+};
+
 // Owns the public Session and Run aggregates for every active Mod generation.
 // Runtime remains responsible for each native Behavior Instance.
 class Sessions final {
@@ -58,6 +67,7 @@ public:
 
     Status OpenSession(const std::string &ownerId, std::uintptr_t &sessionId);
     void CloseSession(std::uintptr_t sessionId);
+    Status ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const;
 
     OpenRun Call(std::uintptr_t sessionId, CKBeObject *owner,
                  const Spec &block, const Slot &input);
@@ -90,6 +100,8 @@ public:
 
     void ProcessFrame();
     void ResetWorld();
+
+    [[nodiscard]] GraphSource *Graph() noexcept { return m_Graph.get(); }
 
 private:
     struct Owner {

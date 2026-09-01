@@ -99,6 +99,20 @@ void Sessions::CloseSession(std::uintptr_t sessionId) {
     m_Sessions.erase(session);
 }
 
+Status Sessions::ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const {
+    out = {};
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    const Session *session = FindSession(sessionId);
+    if (!session || !SessionIsActive(*session))
+        return Fail(Error::InvalidState,
+                    "The Behavior Session is stale or retiring.");
+    out = {session->OwnerId, session->OwnerGeneration};
+    return {};
+}
+
 OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
                         const Spec &block, const Slot &input) {
     Status ready = Ready();

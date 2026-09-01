@@ -26,6 +26,7 @@
 #include "UI/GameFontCatalog.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Sessions.h"
+#include "Behavior/Patches.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/PhysicsForce.h"
@@ -248,6 +249,9 @@ public:
     BML::Behavior::Sessions &BehaviorSessions() noexcept {
         return m_BehaviorSessions;
     }
+    BML::Behavior::Patches &BehaviorPatches() noexcept {
+        return m_BehaviorPatches;
+    }
     BML::Behavior::PrototypeCatalog &BehaviorPrototypes() noexcept {
         return m_BehaviorPrototypes;
     }
@@ -460,6 +464,7 @@ private:
     BML::Behavior::PrototypeCatalog m_BehaviorPrototypes;
     BML::Behavior::Runtime m_Behaviors;
     BML::Behavior::Sessions m_BehaviorSessions;
+    BML::Behavior::Patches m_BehaviorPatches;
     BML::Behavior::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;

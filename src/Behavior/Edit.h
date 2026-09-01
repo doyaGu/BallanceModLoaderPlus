@@ -167,6 +167,9 @@ public:
     Edit(PatchKey key, NativeRef graph, Layout layout);
 
     [[nodiscard]] const PatchKey &Key() const noexcept { return m_Key; }
+    [[nodiscard]] NativeRef GraphRef() const noexcept {
+        return m_Nodes.empty() ? NativeRef{} : m_Nodes.front().Native;
+    }
     [[nodiscard]] Node Graph() const noexcept { return {1}; }
     [[nodiscard]] Port Entry(int index = 0) const;
     [[nodiscard]] Port Entry(std::string name) const;
