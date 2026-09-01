@@ -105,6 +105,31 @@ CKERROR Lifecycle(const CKBehaviorContext &context) {
     return CK_OK;
 }
 
+void CopyProviderValue(CKParameter *, CKParameter *) {}
+
+CKERROR InitFixture(CKContext *context) {
+    CKParameterManager *parameters = context
+        ? context->GetParameterManager() : nullptr;
+    if (!parameters)
+        return CKERR_INVALIDPARAMETER;
+    CKParameterTypeDesc type;
+    type.Guid = BML_BEHAVIOR_PROVIDER_VALUE_GUID;
+    type.DerivedFrom = CKPGUID_INT;
+    type.TypeName = "BML Provider Value";
+    type.DefaultSize = sizeof(int);
+    type.CopyFunction = CopyProviderValue;
+    return parameters->RegisterParameterType(&type);
+}
+
+CKERROR ExitFixture(CKContext *context) {
+    CKParameterManager *parameters = context
+        ? context->GetParameterManager() : nullptr;
+    return parameters
+        ? parameters->UnRegisterParameterType(
+              BML_BEHAVIOR_PROVIDER_VALUE_GUID)
+        : CKERR_INVALIDPARAMETER;
+}
+
 CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
     if (!prototype)
         return CKERR_INVALIDPARAMETER;
@@ -161,8 +186,8 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int) {
     g_PluginInfo.m_Extension = "";
     g_PluginInfo.m_Type = CKPLUGIN_BEHAVIOR_DLL;
     g_PluginInfo.m_Version = 0x000001;
-    g_PluginInfo.m_InitInstanceFct = nullptr;
-    g_PluginInfo.m_ExitInstanceFct = nullptr;
+    g_PluginInfo.m_InitInstanceFct = InitFixture;
+    g_PluginInfo.m_ExitInstanceFct = ExitFixture;
     g_PluginInfo.m_GUID = kPluginGuid;
     g_PluginInfo.m_Summary = "Behavior outcome transport fixture";
     return &g_PluginInfo;
