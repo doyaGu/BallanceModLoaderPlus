@@ -9,6 +9,10 @@
 #include "CKAll.h"
 
 namespace BML::Behavior {
+struct Status;
+}
+
+namespace BML::Behavior {
 
 enum class ValueKind {
     Raw,
@@ -116,6 +120,11 @@ struct Type {
 // the same argument order and handles an unavailable manager consistently.
 [[nodiscard]] bool Compatible(CKParameterManager *manager, CKGUID destination,
                               CKGUID source) noexcept;
+
+// Writes one owned Value through Virtools' registered parameter semantics.
+// Source relations are graph structure and are deliberately not accepted.
+[[nodiscard]] Status Write(CKContext *context, CKParameter *parameter,
+                           const Value &value);
 
 } // namespace Parameter
 } // namespace BML::Behavior

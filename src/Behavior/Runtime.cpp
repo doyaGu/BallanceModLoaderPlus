@@ -828,6 +828,21 @@ public:
         CKBehavior *behavior = Behavior(fault);
         if (!behavior || !m_Spec)
             return false;
+        const CKDWORD flags = behavior->GetFlags();
+        if (!m_Spec->m_AddedInputs.empty() &&
+            (flags & CKBEHAVIOR_VARIABLEINPUTS) == 0) {
+            return Fail(Failure(
+                            Error::InterfaceUnsupported,
+                            "Building Block does not permit dynamic inputs."),
+                        LifecycleError::BindingFailed, fault);
+        }
+        if (!m_Spec->m_AddedOutputs.empty() &&
+            (flags & CKBEHAVIOR_VARIABLEOUTPUTS) == 0) {
+            return Fail(Failure(
+                            Error::InterfaceUnsupported,
+                            "Building Block does not permit dynamic outputs."),
+                        LifecycleError::BindingFailed, fault);
+        }
         for (const std::string &name : m_Spec->m_AddedInputs) {
             if (!behavior->CreateInput(const_cast<CKSTRING>(name.c_str()))) {
                 return Fail(Failure(Error::CreateFailed,
@@ -1867,62 +1882,7 @@ CKParameter *Runtime::Parameter(const Instance &instance,
 }
 
 Status Runtime::ApplyValue(CKParameter *parameter, const Value &value) const {
-    if (!parameter)
-        return Failure(Error::SourceInvalid, "Parameter is not writable.");
-
-    if (value.Type().IsValid()) {
-        CKParameterManager *manager = m_Context ? m_Context->GetParameterManager() : nullptr;
-        if (!Parameter::Compatible(manager, parameter->GetGUID(), value.Type()))
-            return Failure(Error::TypeMismatch, "Parameter value type is incompatible with the slot type.");
-    }
-
-    CKERROR error = CK_OK;
-    switch (value.Kind()) {
-    case ValueKind::Raw:
-        if (value.Bytes().empty())
-            return Failure(Error::ValueWriteFailed, "Raw parameter value is empty.",
-                           CKERR_INVALIDPARAMETER);
-        if (parameter->GetDataSize() != static_cast<int>(value.Bytes().size())) {
-            return Failure(Error::TypeMismatch,
-                           "Raw value size does not match the registered parameter type.");
-        }
-        error = parameter->SetValue(value.Bytes().data(), static_cast<int>(value.Bytes().size()));
-        break;
-    case ValueKind::Text:
-        error = parameter->SetStringValue(const_cast<CKSTRING>(value.StringValue().c_str()));
-        break;
-    case ValueKind::Object: {
-        CKObject *object = value.ObjectId() ? m_Context->GetObject(value.ObjectId()) : nullptr;
-        if (object != value.ObjectValue() || (object && object->IsToBeDeleted()))
-            return Failure(Error::SourceInvalid, "Object value has expired.");
-        CKParameterManager *manager = m_Context->GetParameterManager();
-        const Parameter::Type type =
-            Parameter::Describe(manager, parameter->GetGUID());
-        if (object && type.ClassId != 0 &&
-            !CKIsChildClassOf(object, type.ClassId)) {
-            return Failure(Error::TypeMismatch,
-                           "Object value is incompatible with the parameter class.");
-        }
-        const CK_ID id = object ? object->GetID() : 0;
-        error = parameter->SetValue(&id, sizeof(id));
-        break;
-    }
-    case ValueKind::Snapshot: {
-        CKObject *sourceObject = value.ParameterSourceId()
-            ? m_Context->GetObject(value.ParameterSourceId()) : nullptr;
-        if (sourceObject != value.ParameterSource() || !sourceObject || sourceObject->IsToBeDeleted() ||
-            !CKIsChildClassOf(sourceObject, CKCID_PARAMETER)) {
-            return Failure(Error::SourceInvalid, "Snapshot source is invalid.");
-        }
-        error = parameter->CopyValue(value.ParameterSource(), TRUE);
-        break;
-    }
-    case ValueKind::DirectSource:
-    case ValueKind::SharedSource:
-        return Failure(Error::InvalidState, "Source bindings may only be applied to input parameters.");
-    }
-    return error == CK_OK ? Status{}
-                          : Failure(Error::ValueWriteFailed, "CKParameter rejected the value.", error);
+    return Parameter::Write(m_Context, parameter, value);
 }
 
 Status Runtime::BindInput(CKBehavior *behavior, Record &record,

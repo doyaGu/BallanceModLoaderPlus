@@ -295,6 +295,7 @@ set(BML_HOOK_SOURCES
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Callback.h
+        Behavior/CKEdit.h
         Behavior/Graph.h
         Behavior/ObjectRef.h
         Behavior/PrototypeCatalog.h
@@ -321,6 +322,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
 
 set(BML_BEHAVIOR_SOURCES
         Behavior/Callback.cpp
+        Behavior/CKEdit.cpp
         Behavior/CKGraph.cpp
         Behavior/CKPrototypeSource.cpp
         Behavior/Execution.cpp

@@ -47,6 +47,8 @@ private:
     bool m_HasInput2 = false;
 
     friend class Runtime;
+    friend class Edit;
+    friend class CKEdit;
 };
 
 enum class TargetMode {
@@ -109,6 +111,8 @@ private:
     FrameRetention m_FrameRetention = FrameRetention::Signals();
 
     friend class Runtime;
+    friend class Edit;
+    friend class CKEdit;
 };
 
 enum class RunState {

@@ -3,6 +3,8 @@
 #include <cstring>
 #include <utility>
 
+#include "Behavior/Status.h"
+
 namespace BML::Behavior {
 
 Value Value::Raw(CKGUID type, const void *data, std::size_t size) {
@@ -142,6 +144,83 @@ bool Compatible(CKParameterManager *manager, CKGUID destination,
                 CKGUID source) noexcept {
     return manager && destination.IsValid() && source.IsValid() &&
            manager->IsTypeCompatible(destination, source) != FALSE;
+}
+
+Status Write(CKContext *context, CKParameter *parameter,
+             const Value &value) {
+    if (!context || !parameter)
+        return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR, "Parameter is not writable."};
+
+    if (value.Type().IsValid() &&
+        !Compatible(context->GetParameterManager(), parameter->GetGUID(),
+                    value.Type())) {
+        return {Error::TypeMismatch, CKERR_INVALIDPARAMETER,
+                CKBR_PARAMETERERROR,
+                "Parameter value type is incompatible with the slot type."};
+    }
+
+    CKERROR error = CK_OK;
+    switch (value.Kind()) {
+    case ValueKind::Raw:
+        if (value.Bytes().empty())
+            return {Error::ValueWriteFailed, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR, "Raw parameter value is empty."};
+        if (parameter->GetDataSize() !=
+            static_cast<int>(value.Bytes().size())) {
+            return {Error::TypeMismatch, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR,
+                    "Raw value size does not match the registered parameter type."};
+        }
+        error = parameter->SetValue(
+            value.Bytes().data(), static_cast<int>(value.Bytes().size()));
+        break;
+    case ValueKind::Text:
+        error = parameter->SetStringValue(
+            const_cast<CKSTRING>(value.StringValue().c_str()));
+        break;
+    case ValueKind::Object: {
+        CKObject *object = value.ObjectId()
+            ? context->GetObject(value.ObjectId()) : nullptr;
+        if (object != value.ObjectValue() ||
+            (object && object->IsToBeDeleted())) {
+            return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
+                    CKBR_PARAMETERERROR, "Object value has expired."};
+        }
+        const Type type = Describe(context->GetParameterManager(),
+                                   parameter->GetGUID());
+        if (object && type.ClassId != 0 &&
+            !CKIsChildClassOf(object, type.ClassId)) {
+            return {Error::TypeMismatch, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR,
+                    "Object value is incompatible with the parameter class."};
+        }
+        const CK_ID id = object ? object->GetID() : 0;
+        error = parameter->SetValue(&id, sizeof(id));
+        break;
+    }
+    case ValueKind::Snapshot: {
+        CKObject *source = value.ParameterSourceId()
+            ? context->GetObject(value.ParameterSourceId()) : nullptr;
+        if (source != value.ParameterSource() || !source ||
+            source->IsToBeDeleted() ||
+            !CKIsChildClassOf(source, CKCID_PARAMETER)) {
+            return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
+                    CKBR_PARAMETERERROR, "Snapshot source is invalid."};
+        }
+        error = parameter->CopyValue(value.ParameterSource(), TRUE);
+        break;
+    }
+    case ValueKind::DirectSource:
+    case ValueKind::SharedSource:
+        return {Error::InvalidState, CKERR_INVALIDPARAMETER,
+                CKBR_PARAMETERERROR,
+                "Source relations cannot be written as parameter values."};
+    }
+    return error == CK_OK
+        ? Status{}
+        : Status{Error::ValueWriteFailed, error, CKBR_PARAMETERERROR,
+                 "CKParameter rejected the value."};
 }
 
 } // namespace Parameter
