@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -62,6 +63,11 @@ bool IsSharedSource(SlotKind kind) {
 
 bool IsPushDestination(SlotKind kind) {
     return kind == SlotKind::OutputParameter || kind == SlotKind::Local;
+}
+
+bool OrderLess(const Order &left, const Order &right) {
+    return std::tie(left.Other.Owner, left.Other.Name, left.Kind) <
+           std::tie(right.Other.Owner, right.Other.Name, right.Kind);
 }
 
 CKDWORD InterfaceFlag(SlotKind kind) {
@@ -292,6 +298,12 @@ Node Edit::Use(NativeRef native, Layout layout) {
     return node;
 }
 
+Link Edit::Use(ObjectRef anchor) {
+    const Link link{++m_NextLink};
+    m_Links.push_back({link, anchor});
+    return link;
+}
+
 Node Edit::Add(Spec block, Layout declared) {
     const Node node{++m_NextNode};
     m_Nodes.push_back({node, {}, std::move(declared), std::move(block)});
@@ -344,6 +356,16 @@ void Edit::Tap(Port source,
                std::shared_ptr<HookBlock::Binding> callback) {
     m_Taps.push_back(
         {std::move(source), std::move(callback), NextOrdinal()});
+}
+
+void Edit::Splice(Link target, Node block, std::vector<Order> ordering) {
+    Splice(target, block.In(), block.Out(), std::move(ordering));
+}
+
+void Edit::Splice(Link target, Port input, Port output,
+                  std::vector<Order> ordering) {
+    m_Splices.push_back({target, {input.Owner}, std::move(input),
+                         std::move(output), std::move(ordering), NextOrdinal()});
 }
 
 Port Edit::AppendIn(Node node, std::string name) {
@@ -559,6 +581,73 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         checked.Callback = tap.Callback;
         checked.Ordinal = tap.Ordinal;
         out.Taps.push_back(std::move(checked));
+    }
+
+    std::map<std::uint32_t, std::vector<Order>> spliceOrdering;
+    for (const EditSplice &splice : m_Splices) {
+        if (!splice.Target)
+            return Failure(Error::InvalidState,
+                           "A Splice requires a Link from this Edit.");
+        const auto declared = std::find_if(
+            m_Links.begin(), m_Links.end(), [&](const EditLink &candidate) {
+                return candidate.Handle == splice.Target;
+            });
+        if (declared == m_Links.end() || declared->Anchor.IsNull())
+            return Failure(Error::LinkNotFound,
+                           "A Splice requires an exact native Link anchor.");
+        const auto native = std::find_if(
+            base.Links.begin(), base.Links.end(), [&](const GraphLink &candidate) {
+                return candidate.Object == declared->Anchor;
+            });
+        if (native == base.Links.end())
+            return Failure(Error::LinkNotFound,
+                           "The selected Link is not present in the logical graph.");
+        if (std::find_if(std::next(native), base.Links.end(),
+                         [&](const GraphLink &candidate) {
+                             return candidate.Object == declared->Anchor;
+                         }) != base.Links.end()) {
+            return Failure(Error::GraphChanged,
+                           "The logical graph repeats a native Link anchor.");
+        }
+        if (native->InitialDelay < 0)
+            return Failure(Error::InvalidDelay,
+                           "A selected Link has an invalid delay.");
+
+        CheckedSplice checked;
+        Status status = resolve(splice.Input, checked.Input);
+        if (status)
+            status = resolve(splice.Output, checked.Output);
+        if (!status)
+            return status;
+        if (!splice.Block || checked.Input.Owner != splice.Block ||
+            checked.Output.Owner != splice.Block ||
+            splice.Block == Graph() || checked.Input.Slot.Kind != SlotKind::Input ||
+            checked.Output.Slot.Kind != SlotKind::Output) {
+            return Failure(Error::TypeMismatch,
+                           "Splice requires an In and Out on the same node.");
+        }
+        checked.Target = {native->Object, native->Source, native->Target,
+                          native->InitialDelay};
+        checked.Ordering = splice.Ordering;
+        std::sort(checked.Ordering.begin(), checked.Ordering.end(), OrderLess);
+        checked.Ordering.erase(
+            std::unique(checked.Ordering.begin(), checked.Ordering.end()),
+            checked.Ordering.end());
+        if (std::any_of(
+                checked.Ordering.begin(), checked.Ordering.end(),
+                [&](const Order &order) { return order.Other == m_Key; })) {
+            return Failure(Error::OverlayOrderCycle,
+                           "A Patch cannot order a Link against itself.");
+        }
+        const auto [knownOrder, inserted] = spliceOrdering.emplace(
+            splice.Target.Value, checked.Ordering);
+        if (!inserted && knownOrder->second != checked.Ordering) {
+            return Failure(
+                Error::InvalidState,
+                "Splices in one Patch must share the Link ordering declaration.");
+        }
+        checked.Ordinal = splice.Ordinal;
+        out.Splices.push_back(std::move(checked));
     }
 
     std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> baseline;

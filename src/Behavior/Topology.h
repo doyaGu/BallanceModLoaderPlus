@@ -98,6 +98,21 @@ struct LogicalLink {
     std::vector<OrderedOverlay> Overlays;
 };
 
+// A unique, non-branching control-flow path in the logical graph. Links keep
+// their native anchor identity; End is the final Out/Exit reached after the
+// last Link, or Start when the path is already a dead end.
+struct Path {
+    GraphEndpoint Start;
+    std::vector<LinkBase> Links;
+    GraphEndpoint End;
+};
+
+// Completes the logical path beginning at an Entry or node Out. A branch,
+// parallel Link, cycle, or dead-end node with more than one possible Out is
+// rejected instead of being guessed.
+Status CompletePath(const GraphModel &graph, const GraphEndpoint &start,
+                    Path &out);
+
 struct PatchOutTap {
     PatchKey Patch;
     int Priority = 0;
@@ -114,10 +129,12 @@ public:
 
     // Replaces all declarations owned by the same (owner, patch) key only when
     // the complete candidate topology has a valid order.
+    Status Validate(PatchLayer patch) const;
     Status Set(PatchLayer patch);
     bool Remove(const PatchKey &patch);
 
     [[nodiscard]] const LogicalLink *Find(LinkId link) const noexcept;
+    [[nodiscard]] const LogicalLink *Find(const ObjectRef &anchor) const noexcept;
     [[nodiscard]] const std::vector<PatchOutTap> *
     Taps(const GraphEndpoint &out) const noexcept;
     [[nodiscard]] std::uint64_t Fingerprint() const noexcept { return m_Fingerprint; }

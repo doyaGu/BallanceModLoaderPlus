@@ -266,4 +266,99 @@ TEST(BehaviorEdit, RejectsCompetingDataRelationsWithinOneEdit) {
     EXPECT_EQ(status.Code, Error::InvalidState);
 }
 
+TEST(BehaviorEdit, SelectsAnExactLinkForSpliceWithoutEndpointGuessing) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {1, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 1},
+        {2, {7, 32, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 3},
+    };
+
+    Edit edit = MakeEdit();
+    const Node block = edit.Use(Native(103), Shape());
+    const Link target = edit.Use(ObjectRef{7, 32, 9});
+    edit.Splice(target, block,
+                {{OrderKind::After, {"other", "patch"}}});
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(graph, checked));
+    ASSERT_EQ(checked.Splices.size(), 1u);
+    EXPECT_EQ(checked.Splices[0].Target.Anchor, (ObjectRef{7, 32, 9}));
+    EXPECT_EQ(checked.Splices[0].Target.Delay, 3);
+    EXPECT_EQ(checked.Splices[0].Input.Owner, block);
+    EXPECT_EQ(checked.Splices[0].Output.Owner, block);
+}
+
+TEST(BehaviorEdit, RejectsAStaleLinkAndMismatchedSplicePorts) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {1, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 0},
+    };
+    Edit stale = MakeEdit();
+    const Node node = stale.Use(Native(103), Shape());
+    stale.Splice(stale.Use(ObjectRef{7, 99, 9}), node);
+    CheckedEdit checked;
+    Status status = stale.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::LinkNotFound);
+
+    Edit mismatch = MakeEdit();
+    const Node first = mismatch.Use(Native(101), Shape());
+    const Node second = mismatch.Use(Native(102), Shape());
+    mismatch.Splice(mismatch.Use(ObjectRef{7, 31, 9}), first.In(),
+                    second.Out());
+    status = mismatch.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::TypeMismatch);
+}
+
+TEST(BehaviorEdit, KeepsSamePatchSplicesInDeclarationOrder) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {1, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 0},
+    };
+    Edit edit = MakeEdit();
+    const Node first = edit.Use(Native(101), Shape());
+    const Node second = edit.Use(Native(102), Shape());
+    const Link target = edit.Use(ObjectRef{7, 31, 9});
+    edit.Splice(target, first);
+    edit.Splice(target, second);
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(graph, checked));
+    ASSERT_EQ(checked.Splices.size(), 2u);
+    EXPECT_LT(checked.Splices[0].Ordinal, checked.Splices[1].Ordinal);
+}
+
+TEST(BehaviorEdit, RejectsConflictingOrSelfReferentialSpliceOrder) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {1, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 0},
+    };
+    Edit mismatch = MakeEdit();
+    const Node first = mismatch.Use(Native(101), Shape());
+    const Node second = mismatch.Use(Native(102), Shape());
+    const Link target = mismatch.Use(ObjectRef{7, 31, 9});
+    mismatch.Splice(target, first,
+                    {{OrderKind::Before, {"other", "patch"}}});
+    mismatch.Splice(target, second,
+                    {{OrderKind::After, {"other", "patch"}}});
+    CheckedEdit checked;
+    Status status = mismatch.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::InvalidState);
+
+    Edit self = MakeEdit();
+    const Node node = self.Use(Native(101), Shape());
+    self.Splice(self.Use(ObjectRef{7, 31, 9}), node,
+                {{OrderKind::Before, {"mod", "edit"}}});
+    status = self.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::OverlayOrderCycle);
+}
+
 } // namespace

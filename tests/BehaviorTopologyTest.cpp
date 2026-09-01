@@ -32,6 +32,19 @@ LinkId Identify(Topology &topology, const LinkBase &base) {
     return id;
 }
 
+GraphNode GraphNodeWithPorts(std::uint64_t id, std::uint64_t parent,
+                             std::string name) {
+    GraphNode node;
+    node.Id = id;
+    node.Parent = parent;
+    node.Name = std::move(name);
+    node.Ports = {
+        {SlotKind::Input, 0, 0, "In", false},
+        {SlotKind::Output, 0, 0, "Out", false},
+    };
+    return node;
+}
+
 PatchLayer OverlayPatch(std::string owner, std::string name, int priority, LinkId link,
                         std::vector<Overlay> items, std::vector<Order> order = {}) {
     PatchLayer patch;
@@ -246,6 +259,84 @@ TEST(BehaviorTopology, PatchReplacementIsAtomicAcrossLinksAndTaps) {
     EXPECT_EQ(OverlayNames(topology, first),
               (std::vector<std::string>{"mod:target#1", "mod:dependent#3"}));
     EXPECT_EQ(topology.Taps(Endpoint(300, SlotKind::Output, 0)), nullptr);
+}
+
+TEST(BehaviorTopology, CompletesAUniquePathWithExactLinkAnchors) {
+    GraphModel graph;
+    graph.Nodes = {
+        GraphNodeWithPorts(100, 0, "Graph"),
+        GraphNodeWithPorts(101, 100, "First"),
+        GraphNodeWithPorts(102, 100, "Last"),
+    };
+    graph.Links = {
+        {1, {9, 1, 4}, Endpoint(100, SlotKind::Input, 0),
+         Endpoint(101, SlotKind::Input, 0), 0},
+        {2, {9, 2, 4}, Endpoint(101, SlotKind::Output, 0),
+         Endpoint(102, SlotKind::Input, 0), 2},
+    };
+
+    Path path;
+    ASSERT_TRUE(CompletePath(
+        graph, Endpoint(100, SlotKind::Input, 0), path));
+    ASSERT_EQ(path.Links.size(), 2u);
+    EXPECT_EQ(path.Links[0].Anchor, (ObjectRef{9, 1, 4}));
+    EXPECT_EQ(path.Links[1].Anchor, (ObjectRef{9, 2, 4}));
+    EXPECT_EQ(path.Links[1].Delay, 2);
+    EXPECT_EQ(path.End, Endpoint(102, SlotKind::Output, 0));
+}
+
+TEST(BehaviorTopology, RejectsBranchesParallelLinksAndCyclesDuringPathCompletion) {
+    GraphModel graph;
+    graph.Nodes = {
+        GraphNodeWithPorts(100, 0, "Graph"),
+        GraphNodeWithPorts(101, 100, "Node"),
+    };
+    graph.Links = {
+        {1, {9, 1, 4}, Endpoint(100, SlotKind::Input, 0),
+         Endpoint(101, SlotKind::Input, 0), 0},
+        {2, {9, 2, 4}, Endpoint(100, SlotKind::Input, 0),
+         Endpoint(101, SlotKind::Input, 0), 1},
+    };
+    Path path;
+    Status status = CompletePath(
+        graph, Endpoint(100, SlotKind::Input, 0), path);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::PathAmbiguous);
+    EXPECT_TRUE(path.Links.empty());
+
+    graph.Links = {
+        {1, {9, 1, 4}, Endpoint(100, SlotKind::Input, 0),
+         Endpoint(101, SlotKind::Input, 0), 0},
+        {2, {9, 2, 4}, Endpoint(101, SlotKind::Output, 0),
+         Endpoint(101, SlotKind::Input, 0), 0},
+    };
+    status = CompletePath(graph, Endpoint(100, SlotKind::Input, 0), path);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::PathCycle);
+}
+
+TEST(BehaviorTopology, RejectsAnUnlinkedSiblingOut) {
+    GraphModel graph;
+    graph.Nodes = {
+        GraphNodeWithPorts(100, 0, "Graph"),
+        GraphNodeWithPorts(101, 100, "Branch"),
+        GraphNodeWithPorts(102, 100, "Sink"),
+    };
+    graph.Nodes[1].Ports.push_back(
+        {SlotKind::Output, 1, 0, "Other", false});
+    graph.Links = {
+        {1, {9, 1, 4}, Endpoint(100, SlotKind::Input, 0),
+         Endpoint(101, SlotKind::Input, 0), 0},
+        {2, {9, 2, 4}, Endpoint(101, SlotKind::Output, 0),
+         Endpoint(102, SlotKind::Input, 0), 0},
+    };
+
+    Path path;
+    const Status status = CompletePath(
+        graph, Endpoint(100, SlotKind::Input, 0), path);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::PathAmbiguous);
+    EXPECT_TRUE(path.Links.empty());
 }
 
 } // namespace

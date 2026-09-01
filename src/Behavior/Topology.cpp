@@ -19,6 +19,18 @@ Status Failure(Error error, std::string message) {
     return {error, CKERR_INVALIDPARAMETER, CKBR_PARAMETERERROR, std::move(message)};
 }
 
+bool SameEndpoint(const GraphEndpoint &left, const GraphEndpoint &right) {
+    return left == right;
+}
+
+struct GraphEndpointLess {
+    bool operator()(const GraphEndpoint &left,
+                    const GraphEndpoint &right) const noexcept {
+        return std::tie(left.Node, left.Kind, left.Index) <
+               std::tie(right.Node, right.Kind, right.Index);
+    }
+};
+
 template <typename T> void Hash(std::uint64_t &hash, T value) {
     static_assert(std::is_integral_v<T> || std::is_enum_v<T>);
     if constexpr (std::is_enum_v<T>) {
@@ -306,6 +318,18 @@ Status Topology::Set(PatchLayer patch) {
     return {};
 }
 
+Status Topology::Validate(PatchLayer patch) const {
+    Status status = Normalize(patch);
+    if (!status)
+        return status;
+    PatchMap patches = m_Patches;
+    patches[patch.Patch] = std::move(patch);
+    LinkMap links = m_Links;
+    TapMap taps;
+    std::uint64_t fingerprint = 0;
+    return Compose(patches, links, taps, fingerprint);
+}
+
 bool Topology::Remove(const PatchKey &patch) {
     PatchMap patches = m_Patches;
     if (patches.erase(patch) == 0)
@@ -328,10 +352,113 @@ const LogicalLink *Topology::Find(LinkId link) const noexcept {
     return found == m_Links.end() ? nullptr : &found->second;
 }
 
+const LogicalLink *Topology::Find(const ObjectRef &anchor) const noexcept {
+    const auto found = m_Anchors.find(anchor);
+    return found == m_Anchors.end() ? nullptr : Find(found->second);
+}
+
 const std::vector<PatchOutTap> *
 Topology::Taps(const GraphEndpoint &out) const noexcept {
     const auto found = m_Taps.find(out);
     return found == m_Taps.end() ? nullptr : &found->second;
+}
+
+Status CompletePath(const GraphModel &graph, const GraphEndpoint &start,
+                    Path &out) {
+    out = {};
+    const auto root = std::find_if(
+        graph.Nodes.begin(), graph.Nodes.end(),
+        [](const GraphNode &node) { return node.Id != 0 && node.Parent == 0; });
+    const auto node = [&](std::uint64_t id) {
+        return std::find_if(graph.Nodes.begin(), graph.Nodes.end(),
+                            [id](const GraphNode &item) { return item.Id == id; });
+    };
+    const auto startNode = node(start.Node);
+    const auto hasPort = [](const GraphNode &owner,
+                            const GraphEndpoint &endpoint) {
+        return std::any_of(
+            owner.Ports.begin(), owner.Ports.end(),
+            [&](const GraphPort &port) {
+                return port.Kind == endpoint.Kind &&
+                       port.Index == endpoint.Index;
+            });
+    };
+    if (root == graph.Nodes.end() || startNode == graph.Nodes.end() ||
+        start.Index < 0 || !hasPort(*startNode, start) ||
+        (start.Node == root->Id ? start.Kind != SlotKind::Input
+                               : start.Kind != SlotKind::Output)) {
+        return Failure(Error::InvalidState,
+                       "A Path must begin at a graph Entry or node Out.");
+    }
+
+    out.Start = start;
+    GraphEndpoint current = start;
+    std::set<GraphEndpoint, GraphEndpointLess> visited;
+    for (;;) {
+        if (!visited.insert(current).second) {
+            out = {};
+            return Failure(Error::PathCycle,
+                           "The logical Path returns to an earlier control port.");
+        }
+
+        std::vector<const GraphLink *> links;
+        for (const GraphLink &link : graph.Links) {
+            if (SameEndpoint(link.Source, current))
+                links.push_back(&link);
+        }
+        if (links.empty()) {
+            out.End = current;
+            return {};
+        }
+        if (links.size() != 1) {
+            out = {};
+            return Failure(Error::PathAmbiguous,
+                           "The logical Path has parallel Links or a branch.");
+        }
+
+        const GraphLink &link = *links.front();
+        if (link.Object.IsNull() || link.InitialDelay < 0) {
+            out = {};
+            return Failure(Error::GraphChanged,
+                           "The logical Path contains an invalid Link anchor.");
+        }
+        out.Links.push_back(
+            {link.Object, link.Source, link.Target, link.InitialDelay});
+
+        const auto target = node(link.Target.Node);
+        if (target == graph.Nodes.end() || link.Target.Index < 0 ||
+            !hasPort(*target, link.Target)) {
+            out = {};
+            return Failure(Error::GraphChanged,
+                           "The logical Path reaches a missing node or port.");
+        }
+        if (target->Id == root->Id) {
+            if (link.Target.Kind != SlotKind::Output) {
+                out = {};
+                return Failure(Error::GraphChanged,
+                               "The logical Path reaches an invalid graph boundary.");
+            }
+            out.End = link.Target;
+            return {};
+        }
+        if (link.Target.Kind != SlotKind::Input) {
+            out = {};
+            return Failure(Error::GraphChanged,
+                           "The logical Path reaches a node through a non-In port.");
+        }
+
+        std::set<GraphEndpoint, GraphEndpointLess> next;
+        for (const GraphPort &port : target->Ports) {
+            if (port.Kind == SlotKind::Output && port.Index >= 0)
+                next.insert({target->Id, SlotKind::Output, port.Index});
+        }
+        if (next.size() != 1) {
+            out = {};
+            return Failure(Error::PathAmbiguous,
+                           "A logical Path node must have exactly one Out.");
+        }
+        current = *next.begin();
+    }
 }
 
 Status Topology::Compose(const PatchMap &patches, LinkMap &links, TapMap &taps,

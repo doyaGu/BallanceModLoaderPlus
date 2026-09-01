@@ -15,6 +15,14 @@ namespace BML::Behavior {
 
 struct Node;
 
+struct Link {
+    std::uint32_t Value = 0;
+
+    [[nodiscard]] explicit operator bool() const noexcept { return Value != 0; }
+
+    friend bool operator==(const Link &, const Link &) = default;
+};
+
 struct Port {
     std::uint32_t Owner = 0;
     Slot Selector;
@@ -83,6 +91,15 @@ struct EditTap {
     std::uint32_t Ordinal = 0;
 };
 
+struct EditSplice {
+    Link Target;
+    Node Block;
+    Port Input;
+    Port Output;
+    std::vector<Order> Ordering;
+    std::uint32_t Ordinal = 0;
+};
+
 struct InterfacePort {
     Node Owner;
     SlotInfo Slot;
@@ -125,11 +142,20 @@ struct CheckedTap {
     std::uint32_t Ordinal = 0;
 };
 
+struct CheckedSplice {
+    LinkBase Target;
+    ResolvedPort Input;
+    ResolvedPort Output;
+    std::vector<Order> Ordering;
+    std::uint32_t Ordinal = 0;
+};
+
 struct CheckedEdit {
     std::vector<CheckedFlow> Flows;
     std::vector<CheckedBind> Binds;
     std::vector<CheckedPush> Pushes;
     std::vector<CheckedTap> Taps;
+    std::vector<CheckedSplice> Splices;
 };
 
 // A side-effect-free additive graph plan. Node and Port values are logical
@@ -148,6 +174,7 @@ public:
     [[nodiscard]] Port Exit(std::string name) const;
 
     Node Use(NativeRef native, Layout layout);
+    Link Use(ObjectRef anchor);
     Node Add(Spec block, Layout declared);
 
     void Flow(Port source, Port sink, int delay = 0,
@@ -157,6 +184,9 @@ public:
     void Share(Port target, Port source);
     void Push(Port source, Port destination);
     void Tap(Port source, std::shared_ptr<HookBlock::Binding> callback);
+    void Splice(Link target, Node block, std::vector<Order> ordering = {});
+    void Splice(Link target, Port input, Port output,
+                std::vector<Order> ordering = {});
 
     Port AppendIn(Node node, std::string name);
     Port AppendOut(Node node, std::string name);
@@ -174,6 +204,11 @@ private:
         std::optional<Spec> Block;
     };
 
+    struct EditLink {
+        Link Handle;
+        ObjectRef Anchor;
+    };
+
     Port Append(Node node, SlotKind kind, std::string name, CKGUID type,
                 bool inBlockSpec = false);
     [[nodiscard]] const EditNode *Find(Node node) const noexcept;
@@ -187,7 +222,10 @@ private:
     std::vector<EditBind> m_Binds;
     std::vector<EditPush> m_Pushes;
     std::vector<EditTap> m_Taps;
+    std::vector<EditLink> m_Links;
+    std::vector<EditSplice> m_Splices;
     std::uint32_t m_NextNode = 1;
+    std::uint32_t m_NextLink = 0;
     std::uint32_t m_NextAction = 1;
 
     friend class CKEdit;

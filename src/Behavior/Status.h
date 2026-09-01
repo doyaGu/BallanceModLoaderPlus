@@ -50,6 +50,11 @@ enum class Error {
     InterfaceUnsupported,
     OrderingTargetMismatch,
     OverlayOrderCycle,
+    LinkNotFound,
+    PathAmbiguous,
+    PathCycle,
+    RevertConflict,
+    TargetCardinality,
 };
 
 enum class Phase {
