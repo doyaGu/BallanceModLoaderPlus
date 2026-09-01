@@ -272,7 +272,7 @@ public:
             return;
         }
         if (!BML_IFACE_HAS(m_Behavior, BML_BehaviorInterface,
-                           ReadLiveLayout)) {
+                           CloseWatch)) {
             Fail("prototype-discovery-unavailable");
             return;
         }
@@ -1022,6 +1022,175 @@ private:
         return pulsed;
     }
 
+    bool InspectGameplayGraph() {
+        if (!m_Scene)
+            return false;
+        BML_ObjectRef root{};
+        if (m_Scene->FindObject("Gameplay_Events", &root) != BML_OK ||
+            !root.Domain)
+            return false;
+        auto inspected = m_CppSession.Inspect(root);
+        if (!inspected)
+            return false;
+        BML::Behavior::Graph graph = std::move(inspected).Value();
+        // Gameplay.nmo contributes 53 nodes and 60 links. The live graph is
+        // intentionally extensible: BML and other loaded mods may append nodes
+        // after the file has been loaded, so the disk image is a baseline rather
+        // than the final cardinality of the Player graph.
+        const bool nmoShape = graph.Find("Gameplay_Events") &&
+            graph.Nodes().size() >= 53 && graph.Links().size() >= 60;
+        bool delayOne = false;
+        bool delayTwo = false;
+        bool portablePending = true;
+        for (const BML::Behavior::Link &link : graph.Links()) {
+            delayOne = delayOne || link.InitialDelay == 1;
+            delayTwo = delayTwo || link.InitialDelay == 2;
+            if (link.InitialDelay > 0)
+                portablePending = portablePending &&
+                    link.Pending == BML::Behavior::TruthValue::Unknown;
+        }
+        auto live = graph.Live();
+        const bool liveShape = live &&
+            live->Mode() == BML::Behavior::View::Live &&
+            live->Nodes().size() == graph.Nodes().size() &&
+            live->Links().size() == graph.Links().size() &&
+            live->Fingerprint() == graph.Fingerprint();
+        m_InspectPassed = nmoShape && delayOne && delayTwo &&
+            portablePending && liveShape;
+        GetLogger()->Info(
+            "Behavior inspect: status=%s graph=Gameplay_Events nodes=%u links=%u template_nodes=53 template_links=60 delay_1=%s delay_2=%s pending=unknown live=%s",
+            m_InspectPassed ? "pass" : "fail",
+            static_cast<unsigned>(graph.Nodes().size()),
+            static_cast<unsigned>(graph.Links().size()),
+            delayOne ? "true" : "false", delayTwo ? "true" : "false",
+            liveShape ? "true" : "false");
+        return m_InspectPassed;
+    }
+
+    bool OpenGraphWatch() {
+        if (!m_Scene) {
+            GetLogger()->Error("Behavior watch graph failed: scene-unavailable");
+            return false;
+        }
+        BML_ObjectRef root{};
+        if (m_Scene->FindObject("__BML_BehaviorTransport_Graph", &root) !=
+                BML_OK || !root.Domain) {
+            GetLogger()->Error("Behavior watch graph failed: root-not-found");
+            return false;
+        }
+        auto inspected = m_CppSession.Inspect(root);
+        if (!inspected) {
+            GetLogger()->Error(
+                "Behavior watch graph failed: inspect result=%d error=%u message=%s",
+                inspected.Code(), inspected.Detail().Error,
+                inspected.Detail().Message.c_str());
+            return false;
+        }
+        BML::Behavior::Graph graph = std::move(inspected).Value();
+        const BML::Behavior::Node *rootNode =
+            graph.Find("__BML_BehaviorTransport_Graph");
+        const BML::Behavior::Node *child = nullptr;
+        if (rootNode) {
+            const BML::Behavior::Guid fixture(
+                BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID);
+            for (const BML::Behavior::Node &node : graph.Nodes()) {
+                if (node.Parent == rootNode->Id && node.Prototype == fixture) {
+                    child = &node;
+                    break;
+                }
+            }
+        }
+        if (!rootNode || !child || graph.Nodes().size() != 2 ||
+            graph.Links().size() != 2) {
+            GetLogger()->Error(
+                "Behavior watch graph failed: shape root=%s child=%s nodes=%u links=%u",
+                rootNode ? "true" : "false", child ? "true" : "false",
+                static_cast<unsigned>(graph.Nodes().size()),
+                static_cast<unsigned>(graph.Links().size()));
+            return false;
+        }
+        bool entry = false;
+        bool exit = false;
+        for (const BML::Behavior::Link &link : graph.Links()) {
+            entry = entry ||
+                (link.Source.Node == rootNode->Id &&
+                 link.Source.Kind == BML_BEHAVIOR_SLOT_IN &&
+                 link.Target.Node == child->Id &&
+                 link.Target.Kind == BML_BEHAVIOR_SLOT_IN);
+            exit = exit ||
+                (link.Source.Node == child->Id &&
+                 link.Source.Kind == BML_BEHAVIOR_SLOT_OUT &&
+                 link.Target.Node == rootNode->Id &&
+                 link.Target.Kind == BML_BEHAVIOR_SLOT_OUT);
+        }
+        if (!entry || !exit) {
+            GetLogger()->Error(
+                "Behavior watch graph failed: boundary entry=%s exit=%s",
+                entry ? "true" : "false", exit ? "true" : "false");
+            return false;
+        }
+
+        const auto execution = BML::Behavior::local(
+            child->Object, "Executions");
+        auto baseline = graph.Read(execution);
+        const std::int32_t *baselineValue = baseline
+            ? std::get_if<std::int32_t>(&baseline->Data) : nullptr;
+        if (!baseline ||
+            baseline->State != BML::Behavior::ObservationState::Available ||
+            baseline->Source != BML::Behavior::Relation::Stored ||
+            !baselineValue) {
+            GetLogger()->Error(
+                "Behavior watch graph failed: value result=%d error=%u state=%u source=%u int=%s message=%s",
+                baseline.Code(), baseline.Detail().Error,
+                baseline ? static_cast<unsigned>(baseline->State) : 0u,
+                baseline ? static_cast<unsigned>(baseline->Source) : 0u,
+                baselineValue ? "true" : "false",
+                baseline.Detail().Message.c_str());
+            return false;
+        }
+        m_WatchBaseline = *baselineValue;
+
+        auto exact = graph.Watch(
+            BML::Behavior::exact(execution), [](const auto &) {});
+        m_ExactWatchUnavailable = !exact &&
+            exact.Code() == BML_ERROR_UNAVAILABLE;
+        auto watched = graph.Watch(
+            BML::Behavior::sampled(execution),
+            [this](const BML::Behavior::Change &change) {
+                const auto *previous = std::get_if<std::int32_t>(
+                    &change.PreviousValue.Data);
+                const auto *current = std::get_if<std::int32_t>(
+                    &change.CurrentValue.Data);
+                const bool valid = change.Kind ==
+                        BML::Behavior::ChangeKind::SampledValue &&
+                    change.Sequence == m_WatchEventCount + 1 && previous &&
+                    current &&
+                    *previous == m_WatchBaseline +
+                        static_cast<std::int32_t>(m_WatchEventCount) &&
+                    *current == *previous + 1;
+                m_WatchPassed = m_WatchEventCount == 0
+                    ? valid : m_WatchPassed && valid;
+                ++m_WatchEventCount;
+                GetLogger()->Info(
+                    "Behavior watch event: sequence=%llu kind=%u previous=%d current=%d baseline=%d status=%s",
+                    static_cast<unsigned long long>(change.Sequence),
+                    static_cast<unsigned>(change.Kind),
+                    previous ? *previous : -1, current ? *current : -1,
+                    m_WatchBaseline, valid ? "pass" : "fail");
+            });
+        if (!watched || !m_ExactWatchUnavailable) {
+            GetLogger()->Error(
+                "Behavior watch graph failed: sampled=%d sampled_error=%u exact_unavailable=%s exact_result=%d exact_error=%u",
+                watched.Code(), watched.Detail().Error,
+                m_ExactWatchUnavailable ? "true" : "false", exact.Code(),
+                exact.Detail().Error);
+            return false;
+        }
+        m_CppWatch.emplace(std::move(watched).Value());
+        m_GraphShapePassed = true;
+        return true;
+    }
+
     bool CloseMakesRunStale() {
         BML_BehaviorRun run = nullptr;
         if (!OpenInstance(run, BML_BEHAVIOR_FRAMES_SIGNALS, 4))
@@ -1051,6 +1220,8 @@ private:
         if (!opened)
             return false;
         m_CppSession = std::move(opened).Value();
+        if (!InspectGameplayGraph())
+            return false;
         const BML::Behavior::Prototype prototype(
             BML::Behavior::Guid(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID),
             m_Prototype.Generation);
@@ -1065,6 +1236,10 @@ private:
         if (!called)
             return false;
         BML::Behavior::Call call = std::move(called).Value();
+        auto callInfo = call.Read();
+        if (!callInfo || !callInfo->UnverifiedDetached)
+            return false;
+        m_DetachedDiagnosticPassed = true;
         auto taken = call.Take();
         if (!taken || taken.Value().size() != 1)
             return false;
@@ -1212,6 +1387,7 @@ private:
             !require(OpenIndexed(m_Indexed), "selector-index") ||
             !require(OpenWaitForAll(), "wait-for-all") ||
             !require(OpenGraph(), "graph") ||
+            !require(OpenGraphWatch(), "graph-watch") ||
             !require(CloseMakesRunStale(), "close-stale") ||
             !require(ReadLiveLayout(m_Latest), "live-layout") ||
             !require(ReadDynamicLiveLayout(m_Dynamic), "dynamic-layout") ||
@@ -1234,7 +1410,8 @@ private:
             info.State == BML_BEHAVIOR_RUN_PENDING;
         m_CppFacadePassed = m_CppFacadePassed && ContinueCppFacade();
         if (!m_ContinueAccepted || !m_CppFacadePassed ||
-            !Pulse(m_Latest, "Run", BML_BEHAVIOR_ADMISSION_EXECUTED))
+            !Pulse(m_Latest, "Run", BML_BEHAVIOR_ADMISSION_EXECUTED) ||
+            !Pulse(m_Graph, "Enter", BML_BEHAVIOR_ADMISSION_EXECUTED))
             Fail("latest-pulse");
     }
 
@@ -1475,6 +1652,15 @@ private:
 
     void CheckRuns() {
         m_CppFacadePassed = m_CppFacadePassed && CheckCppFacade();
+        GetLogger()->Info(
+            "Behavior watch: status=%s sampled=%s events=%llu exact_unavailable=%s graph_endpoints=%s",
+            (m_WatchPassed && m_WatchEventCount == 2 &&
+             m_ExactWatchUnavailable && m_GraphShapePassed)
+                ? "pass" : "fail",
+            m_WatchPassed ? "true" : "false",
+            static_cast<unsigned long long>(m_WatchEventCount),
+            m_ExactWatchUnavailable ? "true" : "false",
+            m_GraphShapePassed ? "true" : "false");
         TakenFrames call;
         TakenFrames start;
         TakenFrames object;
@@ -1612,9 +1798,10 @@ private:
             queueFull.Headers.size() < 2 ? 0u : queueFull.Headers[1].Error);
 
         GetLogger()->Info(
-            "Behavior functional detail: catalog=%s cpp_facade=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_state=%s",
+            "Behavior functional detail: catalog=%s cpp_facade=%s detached=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_state=%s",
             m_CatalogPassed ? "true" : "false",
             m_CppFacadePassed ? "true" : "false",
+            m_DetachedDiagnosticPassed ? "true" : "false",
             echoOk ? "true" : "false",
             continuedOk ? "true" : "false",
             dynamicOk ? "true" : "false",
@@ -1624,7 +1811,11 @@ private:
             graphOk ? "true" : "false",
             statesOk ? "true" : "false");
 
-        m_FunctionalPassed = m_CppFacadePassed && continuedOk && echoOk &&
+        m_FunctionalPassed = m_CppFacadePassed &&
+            m_DetachedDiagnosticPassed && m_InspectPassed &&
+            m_WatchPassed && m_WatchEventCount == 2 &&
+            m_ExactWatchUnavailable && m_GraphShapePassed &&
+            continuedOk && echoOk &&
             dynamicOk && targetsOk && selectorsOk && waitForAllOk &&
             graphOk && statesOk;
         m_TransportPassed = callOk && startOk && objectWire && latestOk &&
@@ -1677,13 +1868,18 @@ private:
         m_Done = true;
         m_Passed = passed;
         GetLogger()->Info(
-            "Behavior transport: status=%s reason=%s transport=%s wire=%s object_ref=%s session_after_reset=%s catalog=%s",
+            "Behavior transport: status=%s reason=%s transport=%s wire=%s object_ref=%s session_after_reset=%s catalog=%s detached=%s inspect=%s watch=%s",
             passed ? "pass" : "fail", reason,
             m_TransportPassed ? "true" : "false",
             m_WirePassed ? "true" : "false",
             m_ObjectRefPassed ? "true" : "false",
             m_SessionOpenedBeforeLevel ? "true" : "false",
-            m_CatalogPassed ? "true" : "false");
+            m_CatalogPassed ? "true" : "false",
+            m_DetachedDiagnosticPassed ? "true" : "false",
+            m_InspectPassed ? "true" : "false",
+            (m_WatchPassed && m_WatchEventCount == 2 &&
+             m_ExactWatchUnavailable && m_GraphShapePassed)
+                ? "true" : "false");
         CloseRuns();
     }
 
@@ -1713,6 +1909,7 @@ private:
     std::optional<BML::Behavior::Task> m_CppStart;
     std::optional<BML::Behavior::Task> m_CppContinued;
     std::optional<BML::Behavior::Instance> m_CppInstance;
+    std::optional<BML::Behavior::Watch> m_CppWatch;
     CK_ID m_InputObjectId = 0;
     BML_ObjectRef m_InputObjectRef{};
     int m_LevelFrames = 0;
@@ -1723,6 +1920,13 @@ private:
     bool m_ObjectRefPassed = false;
     bool m_CatalogPassed = false;
     bool m_CppFacadePassed = false;
+    bool m_DetachedDiagnosticPassed = false;
+    bool m_InspectPassed = false;
+    bool m_GraphShapePassed = false;
+    bool m_ExactWatchUnavailable = false;
+    bool m_WatchPassed = false;
+    std::uint64_t m_WatchEventCount = 0;
+    std::int32_t m_WatchBaseline = 0;
     bool m_FunctionalPassed = false;
     bool m_ContinueAccepted = false;
     bool m_Done = false;

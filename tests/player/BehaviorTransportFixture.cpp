@@ -398,6 +398,7 @@ CKERROR GraphLifecycle(const CKBehaviorContext &context) {
                          CKERR_INVALIDPARAMETER);
     if (context.CallbackMessage != CKM_BEHAVIORCREATE)
         return CK_OK;
+    context.Behavior->SetName("__BML_BehaviorTransport_Graph");
     CKBehaviorIO *input = context.Behavior->GetInput(0);
     CKBehaviorIO *output = context.Behavior->GetOutput(0);
     if (!input || !output)

@@ -236,7 +236,7 @@ try {
 
 $outcomePattern = 'ExecuteBB test: status=(?<status>pass|fail) reason=(?<reason>\S+) x0=(?<x0>-?[0-9.]+) push_start=(?<pushStart>-?[0-9.]+) pushed=(?<pushed>-?[0-9.]+) pulled=(?<pulled>-?[0-9.]+) released=(?<released>-?[0-9.]+) physicalize_event=(?<physicalize>true|false) unphysicalize_event=(?<unphysicalize>true|false) menu_opened=(?<menuOpened>true|false) level_chosen=(?<levelChosen>true|false) control_ready=(?<controlReady>true|false) runtime_probe=(?<runtimeProbe>true|false) lifecycle_probe=(?<lifecycleProbe>true|false) script_hook_retirement=(?<scriptHookRetirement>true|false) runtime_detail=(?<runtimeDetail>\S+) frames=(?<frames>[0-9]+)'
 $outcome = [regex]::Match($testLog, $outcomePattern)
-$transportPattern = 'Behavior transport: status=(?<status>pass|fail) reason=(?<reason>\S+) transport=(?<transport>true|false) wire=(?<wire>true|false) object_ref=(?<objectRef>true|false) session_after_reset=(?<session>true|false) catalog=(?<catalog>true|false)'
+$transportPattern = 'Behavior transport: status=(?<status>pass|fail) reason=(?<reason>\S+) transport=(?<transport>true|false) wire=(?<wire>true|false) object_ref=(?<objectRef>true|false) session_after_reset=(?<session>true|false) catalog=(?<catalog>true|false) detached=(?<detached>true|false) inspect=(?<inspect>true|false) watch=(?<watch>true|false)'
 $transport = [regex]::Match($testLog, $transportPattern)
 $postStartIndex = $testLog.IndexOf('On Message PostStartMenu')
 $preLoadIndex = $testLog.IndexOf('On Message PreLoadLevel')
@@ -265,6 +265,16 @@ $checks = [ordered]@{
         $transport.Groups['transport'].Value -eq 'true' -and
         $transport.Groups['session'].Value -eq 'true' -and
         $transport.Groups['catalog'].Value -eq 'true'
+    BehaviorInspectProbe = $transport.Success -and
+        $transport.Groups['inspect'].Value -eq 'true' -and
+        $testLog -match
+            'Behavior inspect: status=pass graph=Gameplay_Events nodes=\d+ links=\d+ template_nodes=53 template_links=60 delay_1=true delay_2=true pending=unknown live=true'
+    BehaviorDetachedProbe = $transport.Success -and
+        $transport.Groups['detached'].Value -eq 'true'
+    BehaviorWatchProbe = $transport.Success -and
+        $transport.Groups['watch'].Value -eq 'true' -and
+        $testLog.Contains(
+            'Behavior watch: status=pass sampled=true events=2 exact_unavailable=true graph_endpoints=true')
     OutcomeWire = $transport.Success -and
         $transport.Groups['wire'].Value -eq 'true'
     CaptureTimeObjectRef = $transport.Success -and
