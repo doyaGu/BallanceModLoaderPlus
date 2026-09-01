@@ -1055,8 +1055,13 @@ private:
             BML::Behavior::Guid(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID),
             m_Prototype.Generation);
 
-        auto called = m_CppSession.Use(prototype)
-            .Call(BML::Behavior::unique("Run"));
+        auto plain = m_CppSession.Use(prototype)
+            .Frames(BML::Behavior::signals(4))
+            .Compile();
+        if (!plain)
+            return false;
+
+        auto called = plain->Call("Run");
         if (!called)
             return false;
         BML::Behavior::Call call = std::move(called).Value();
@@ -1085,9 +1090,7 @@ private:
             return false;
         m_CppCall.emplace(std::move(pending).Value());
 
-        auto spawned = m_CppSession.Use(prototype)
-            .Frames(BML::Behavior::signals(4))
-            .Spawn();
+        auto spawned = plain->Spawn();
         if (!spawned)
             return false;
         m_CppInstance.emplace(std::move(spawned).Value());
@@ -1120,9 +1123,8 @@ private:
             return false;
 
         auto targeted = m_CppSession.Use(prototype)
-            .Owner(m_InputObjectRef)
             .TargetOwner()
-            .Call(BML::Behavior::unique("Read Target"));
+            .Call(m_InputObjectRef, "Read Target");
         if (!targeted)
             return false;
         BML::Behavior::Call targetCall = std::move(targeted).Value();
