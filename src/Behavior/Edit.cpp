@@ -464,7 +464,17 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
                            &port.Selector);
         resolved.Owner = node->Handle;
         resolved.Selector = port.Selector;
-        return Resolve(node->Shape, port.Selector, resolved.Slot);
+        Status status = Resolve(node->Shape, port.Selector, resolved.Slot);
+        if (!status)
+            return status;
+        resolved.Appended = std::any_of(
+            m_Interface.begin(), m_Interface.end(),
+            [&](const InterfacePort &item) {
+                return item.Owner == resolved.Owner &&
+                    item.Slot.Kind == resolved.Slot.Kind &&
+                    item.Slot.NativeIndex == resolved.Slot.NativeIndex;
+            });
+        return Status{};
     };
 
     for (const EditFlow &flow : m_Flows) {

@@ -274,7 +274,7 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
         if (!node)
             return Failure(Error::InvalidState,
                            "An Edit data port names an unknown Node.");
-        if (node->Block || port.Slot.Dynamic)
+        if (node->Block || port.Appended)
             return {};
 
         CKBehavior *behavior = behaviorFor(port.Owner);

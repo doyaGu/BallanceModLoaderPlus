@@ -94,6 +94,7 @@ struct ResolvedPort {
     Node Owner;
     Slot Selector;
     SlotInfo Slot;
+    bool Appended = false;
 };
 
 struct CheckedFlow {

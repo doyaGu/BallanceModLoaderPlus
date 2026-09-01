@@ -173,6 +173,24 @@ TEST(BehaviorEdit, ChecksEachDynamicInterfaceKindIndependently) {
     EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
 }
 
+TEST(BehaviorEdit, DistinguishesExistingAndAppendedDynamicPorts) {
+    Layout dynamic = Shape(CKBEHAVIOR_VARIABLEPARAMETERINPUTS);
+    dynamic.Slots[2].Dynamic = true;
+
+    Edit edit = MakeEdit();
+    const Node target = edit.Use(Native(101), std::move(dynamic));
+    const Node source = edit.Use(Native(102), Shape());
+    const Port appended = edit.AppendPin(target, "Other", CKPGUID_INT);
+    edit.Share(target.Pin("Value"), source.Pin());
+    edit.Share(appended, source.Pin());
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(Base(), checked));
+    ASSERT_EQ(checked.Binds.size(), 2u);
+    EXPECT_FALSE(checked.Binds[0].Target.Appended);
+    EXPECT_TRUE(checked.Binds[1].Target.Appended);
+}
+
 TEST(BehaviorEdit, RejectsSharedAndPushCyclesBeforeMutation) {
     Edit shared = MakeEdit();
     const Node a = shared.Use(Native(101), Shape());
