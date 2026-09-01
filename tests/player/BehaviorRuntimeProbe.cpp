@@ -291,13 +291,13 @@ public:
         case State::TerminalPulseResume: ResumeTerminalPulse(); break;
         case State::ReentrantPulseStart: StartReentrantPulse(); break;
         case State::ReentrantPulseResume: ResumeReentrantPulse(); break;
-        case State::OutcomeLatestStart: StartLatestOutcomes(); break;
-        case State::OutcomeLatestResume1:
-        case State::OutcomeLatestResume2:
-        case State::OutcomeLatestResume3: ResumeLatestOutcomes(); break;
-        case State::OutcomeFullStart: StartFullOutcomes(); break;
-        case State::OutcomeFullCheck: CheckFullOutcomes(); break;
-        case State::OutcomeFullStopped: CheckFullOutcomesStopped(); break;
+        case State::FrameLatestStart: StartLatestFrames(); break;
+        case State::FrameLatestResume1:
+        case State::FrameLatestResume2:
+        case State::FrameLatestResume3: ResumeLatestFrames(); break;
+        case State::FrameFullStart: StartFullFrames(); break;
+        case State::FrameFullCheck: CheckFullFrames(); break;
+        case State::FrameFullStopped: CheckFullFramesStopped(); break;
         case State::DetachedGraphStart: StartDetachedGraph(); break;
         case State::DetachedGraphWait: ObserveDetachedGraph(); break;
         case State::RecursivePumpStart: StartRecursivePump(); break;
@@ -360,13 +360,13 @@ private:
         TerminalPulseResume,
         ReentrantPulseStart,
         ReentrantPulseResume,
-        OutcomeLatestStart,
-        OutcomeLatestResume1,
-        OutcomeLatestResume2,
-        OutcomeLatestResume3,
-        OutcomeFullStart,
-        OutcomeFullCheck,
-        OutcomeFullStopped,
+        FrameLatestStart,
+        FrameLatestResume1,
+        FrameLatestResume2,
+        FrameLatestResume3,
+        FrameFullStart,
+        FrameFullCheck,
+        FrameFullStopped,
         DetachedGraphStart,
         DetachedGraphWait,
         RecursivePumpStart,
@@ -604,16 +604,16 @@ private:
                 m_WaitAllInstance,
                 Slot::Named(SlotKind::Input, "In 1"));
         });
-        const std::vector<ExecutionOutcome> firstOutcomes =
-            m_Runtime.Drain(m_WaitAllInstance);
+        const std::vector<RunFrame> firstFrames =
+            m_Runtime.Take(m_WaitAllInstance);
         const bool firstPending = first.State == RunState::Pending &&
             second.State == RunState::Queued && behavior &&
             behavior->IsInputActive(0) && !behavior->IsInputActive(1) &&
             m_Runtime.IsTaskActive(m_WaitAllInstance) &&
-            firstOutcomes.size() == 1 &&
-            firstOutcomes[0].Sequence == 1 &&
-            firstOutcomes[0].NativeContinuation &&
-            !firstOutcomes[0].QueuedInput;
+            firstFrames.size() == 1 &&
+            firstFrames[0].Sequence == 1 &&
+            firstFrames[0].NativeContinuation &&
+            !firstFrames[0].QueuedInput;
         if (!firstPending)
             Fail("wait-all-first");
         m_State = State::WaitAllResume;
@@ -622,15 +622,15 @@ private:
     void ResumeWaitAll() {
         ProcessRuntimeFrame("wait-all-frame-context-restore");
         CKBehavior *behavior = m_WaitAllInstance.Get();
-        const std::vector<ExecutionOutcome> outcomes =
-            m_Runtime.Drain(m_WaitAllInstance);
+        const std::vector<RunFrame> frames =
+            m_Runtime.Take(m_WaitAllInstance);
         const bool completed = behavior && !behavior->IsInputActive(0) &&
             !behavior->IsInputActive(1) && !behavior->IsOutputActive(0) &&
             !m_Runtime.IsTaskActive(m_WaitAllInstance) &&
             m_Runtime.State(m_WaitAllInstance) == ExecutionState::Idle &&
-            outcomes.size() == 1 && outcomes[0].Sequence == 2 &&
-            outcomes[0].Terminal && outcomes[0].ActiveOutputs.size() == 1 &&
-            outcomes[0].ActiveOutputs[0].Name == "Out";
+            frames.size() == 1 && frames[0].Sequence == 2 &&
+            frames[0].Terminal && frames[0].ActiveOutputs.size() == 1 &&
+            frames[0].ActiveOutputs[0].Name == "Out";
         if (!completed)
             Fail("wait-all-complete");
         m_WaitAllInstance.Reset();
@@ -664,12 +664,12 @@ private:
 
     void ResumeTerminalPulse() {
         ProcessRuntimeFrame("terminal-pulse-context-restore");
-        const std::vector<ExecutionOutcome> outcomes =
-            m_Runtime.Drain(m_TerminalPulseInstance);
+        const std::vector<RunFrame> frames =
+            m_Runtime.Take(m_TerminalPulseInstance);
         if (m_TerminalPulse.Calls != 2 || !m_TerminalPulse.ContextMatched ||
             m_Runtime.State(m_TerminalPulseInstance) != ExecutionState::Idle ||
-            outcomes.size() != 2 || outcomes[0].Sequence != 1 ||
-            outcomes[1].Sequence != 2 || !outcomes[1].Terminal) {
+            frames.size() != 2 || frames[0].Sequence != 1 ||
+            frames[1].Sequence != 2 || !frames[1].Terminal) {
             Fail("terminal-pulse-complete");
         }
         m_TerminalPulseInstance.Reset();
@@ -683,7 +683,7 @@ private:
             HookBlock::Make(ProbeReentrantPulse, &m_ReentrantPulse, 2, 1));
         if (!created) {
             Fail("reentrant-pulse-create");
-            m_State = State::OutcomeLatestStart;
+            m_State = State::FrameLatestStart;
             return;
         }
         m_ReentrantPulseInstance = std::move(created.Handle);
@@ -710,93 +710,93 @@ private:
         }
         m_ReentrantPulse.Handle = nullptr;
         m_ReentrantPulseInstance.Reset();
-        m_State = State::OutcomeLatestStart;
+        m_State = State::FrameLatestStart;
     }
 
-    void StartLatestOutcomes() {
-        m_LatestOutcomes.CompleteAfter = 4;
+    void StartLatestFrames() {
+        m_LatestFrames.CompleteAfter = 4;
         Spec spec = HookBlock::Make(
-            ProbeCountedExecution, &m_LatestOutcomes, 1, 0);
-        spec.Outcomes(OutcomeRetention::Latest());
+            ProbeCountedExecution, &m_LatestFrames, 1, 0);
+        spec.Frames(FrameRetention::Latest());
         CreateResult created = m_Runtime.Instantiate(m_Owner, spec);
         if (!created) {
-            Fail("outcome-latest-create");
-            m_State = State::OutcomeFullStart;
+            Fail("frame-latest-create");
+            m_State = State::FrameFullStart;
             return;
         }
-        m_LatestOutcomeInstance = std::move(created.Handle);
+        m_LatestFrameInstance = std::move(created.Handle);
         RunResult first = m_Runtime.StartTask(
-            m_LatestOutcomeInstance,
+            m_LatestFrameInstance,
             Slot::Named(SlotKind::Input, "In 0"));
         if (first.State != RunState::Pending)
-            Fail("outcome-latest-start");
-        m_State = State::OutcomeLatestResume1;
+            Fail("frame-latest-start");
+        m_State = State::FrameLatestResume1;
     }
 
-    void ResumeLatestOutcomes() {
-        ProcessRuntimeFrame("outcome-latest-context-restore");
-        if (m_State == State::OutcomeLatestResume1) {
-            m_State = State::OutcomeLatestResume2;
+    void ResumeLatestFrames() {
+        ProcessRuntimeFrame("frame-latest-context-restore");
+        if (m_State == State::FrameLatestResume1) {
+            m_State = State::FrameLatestResume2;
             return;
         }
-        if (m_State == State::OutcomeLatestResume2) {
-            m_State = State::OutcomeLatestResume3;
+        if (m_State == State::FrameLatestResume2) {
+            m_State = State::FrameLatestResume3;
             return;
         }
-        const std::vector<ExecutionOutcome> outcomes =
-            m_Runtime.Drain(m_LatestOutcomeInstance);
-        if (m_LatestOutcomes.Calls != 4 || outcomes.size() != 2 ||
-            outcomes[0].Sequence != 3 || outcomes[1].Sequence != 4 ||
-            !outcomes[1].Terminal ||
-            m_Runtime.IsTaskActive(m_LatestOutcomeInstance)) {
-            Fail("outcome-latest-sequence");
+        const std::vector<RunFrame> frames =
+            m_Runtime.Take(m_LatestFrameInstance);
+        if (m_LatestFrames.Calls != 4 || frames.size() != 2 ||
+            frames[0].Sequence != 3 || frames[1].Sequence != 4 ||
+            !frames[1].Terminal ||
+            m_Runtime.IsTaskActive(m_LatestFrameInstance)) {
+            Fail("frame-latest-sequence");
         }
-        m_LatestOutcomeInstance.Reset();
-        m_State = State::OutcomeFullStart;
+        m_LatestFrameInstance.Reset();
+        m_State = State::FrameFullStart;
     }
 
-    void StartFullOutcomes() {
-        m_FullOutcomes.CompleteAfter = 10;
+    void StartFullFrames() {
+        m_FullFrames.CompleteAfter = 10;
         Spec spec = HookBlock::Make(
-            ProbeCountedExecution, &m_FullOutcomes, 1, 0);
-        spec.Outcomes(OutcomeRetention::EachFrame(1));
+            ProbeCountedExecution, &m_FullFrames, 1, 0);
+        spec.Frames(FrameRetention::EachFrame(1));
         CreateResult created = m_Runtime.Instantiate(m_Owner, spec);
         if (!created) {
-            Fail("outcome-full-create");
+            Fail("frame-full-create");
             m_State = State::DetachedGraphStart;
             return;
         }
-        m_FullOutcomeInstance = std::move(created.Handle);
+        m_FullFrameInstance = std::move(created.Handle);
         RunResult first = m_Runtime.StartTask(
-            m_FullOutcomeInstance,
+            m_FullFrameInstance,
             Slot::Named(SlotKind::Input, "In 0"));
         if (first.State != RunState::Pending)
-            Fail("outcome-full-start");
-        m_State = State::OutcomeFullCheck;
+            Fail("frame-full-start");
+        m_State = State::FrameFullCheck;
     }
 
-    void CheckFullOutcomes() {
-        ProcessRuntimeFrame("outcome-full-context-restore");
-        const Status terminal = m_Runtime.TerminalError(m_FullOutcomeInstance);
-        const std::vector<ExecutionOutcome> outcomes =
-            m_Runtime.Drain(m_FullOutcomeInstance);
-        const bool full = m_FullOutcomes.Calls == 2 &&
-            m_Runtime.State(m_FullOutcomeInstance) == ExecutionState::Closing &&
-            !m_Runtime.IsTaskActive(m_FullOutcomeInstance) &&
-            terminal.Code == Error::OutcomeQueueFull && outcomes.size() == 2 &&
-            outcomes[0].Sequence == 1 && outcomes[1].Sequence == 2 &&
-            outcomes[1].Fault.Code == ExecutionError::OutcomeQueueFull &&
-            outcomes[1].Overflow && outcomes[1].Overflow->Capacity == 1;
+    void CheckFullFrames() {
+        ProcessRuntimeFrame("frame-full-context-restore");
+        const Status terminal = m_Runtime.TerminalError(m_FullFrameInstance);
+        const std::vector<RunFrame> frames =
+            m_Runtime.Take(m_FullFrameInstance);
+        const bool full = m_FullFrames.Calls == 2 &&
+            m_Runtime.State(m_FullFrameInstance) == ExecutionState::Closing &&
+            !m_Runtime.IsTaskActive(m_FullFrameInstance) &&
+            terminal.Code == Error::FrameQueueFull && frames.size() == 2 &&
+            frames[0].Sequence == 1 && frames[1].Sequence == 2 &&
+            frames[1].Fault.Code == ExecutionError::FrameQueueFull &&
+            frames[1].Overflow && frames[1].Overflow->Capacity == 1;
         if (!full)
-            Fail("outcome-full-terminal");
-        m_State = State::OutcomeFullStopped;
+            Fail("frame-full-terminal");
+        m_State = State::FrameFullStopped;
     }
 
-    void CheckFullOutcomesStopped() {
-        ProcessRuntimeFrame("outcome-full-stopped-context-restore");
-        if (m_FullOutcomes.Calls != 2)
-            Fail("outcome-full-rescheduled");
-        m_FullOutcomeInstance.Reset();
+    void CheckFullFramesStopped() {
+        ProcessRuntimeFrame("frame-full-stopped-context-restore");
+        if (m_FullFrames.Calls != 2)
+            Fail("frame-full-rescheduled");
+        m_FullFrameInstance.Reset();
         m_State = State::DetachedGraphStart;
     }
 
@@ -856,12 +856,12 @@ private:
                 m_DetachedGraphInstance,
                 Slot::Named(SlotKind::Input, "In 0"));
         });
-        const std::vector<ExecutionOutcome> firstOutcomes =
-            m_Runtime.Drain(m_DetachedGraphInstance);
+        const std::vector<RunFrame> firstFrames =
+            m_Runtime.Take(m_DetachedGraphInstance);
         if (first.ReturnCode != CKBR_OK || first.State != RunState::Pending ||
             !m_Runtime.IsTaskActive(m_DetachedGraphInstance) ||
-            firstOutcomes.size() != 1 ||
-            !firstOutcomes[0].NativeContinuation) {
+            firstFrames.size() != 1 ||
+            !firstFrames[0].NativeContinuation) {
             Fail("detached-graph-native-continuation");
         }
         m_DetachedGraphFrames = 0;
@@ -874,16 +874,16 @@ private:
         if (m_DetachedDestination.Calls == 0 && m_DetachedGraphFrames < 4)
             return;
 
-        const std::vector<ExecutionOutcome> outcomes =
-            m_Runtime.Drain(m_DetachedGraphInstance);
+        const std::vector<RunFrame> frames =
+            m_Runtime.Take(m_DetachedGraphInstance);
         const bool completed = m_DetachedSource.Calls == 1 &&
             m_DetachedDestination.Calls == 1 &&
             m_DetachedSource.ContextMatched &&
             m_DetachedDestination.ContextMatched &&
             !m_Runtime.IsTaskActive(m_DetachedGraphInstance) &&
             m_Runtime.State(m_DetachedGraphInstance) == ExecutionState::Idle &&
-            !outcomes.empty() && outcomes.back().Terminal &&
-            outcomes.back().ActiveOutputs.size() == 1;
+            !frames.empty() && frames.back().Terminal &&
+            frames.back().ActiveOutputs.size() == 1;
         if (!completed)
             Fail("detached-graph-complete");
         m_Runtime.ResetWorld();
@@ -948,7 +948,7 @@ private:
         });
         if (m_ReentrantRelease.Calls != 1 || m_ReentrantReleaseInstance ||
             run.State != RunState::Failed ||
-            run.Outcome.Code != Error::ExecutionCancelled ||
+            run.Detail.Code != Error::ExecutionCancelled ||
             !m_ReentrantReleaseId) {
             Fail("reentrant-release-result");
         }
@@ -981,7 +981,7 @@ private:
         });
         if (run.State != RunState::Completed)
             Fail("self-delete-run-state");
-        if (run.Outcome.Code != Error::None)
+        if (run.Detail.Code != Error::None)
             Fail("self-delete-run-error");
         if (m_SelfDelete.Calls != 1)
             Fail("self-delete-call-count");
@@ -1577,8 +1577,8 @@ private:
     ExecutionProbe m_Breakpoint;
     ExecutionProbe m_TerminalPulse;
     ReentrantPulseProbe m_ReentrantPulse;
-    CountedExecutionProbe m_LatestOutcomes;
-    CountedExecutionProbe m_FullOutcomes;
+    CountedExecutionProbe m_LatestFrames;
+    CountedExecutionProbe m_FullFrames;
     RecursivePumpProbe m_RecursivePump;
     ReentrantReleaseProbe m_ReentrantRelease;
     SelfDeleteProbe m_SelfDelete;
@@ -1593,8 +1593,8 @@ private:
     Instance m_WaitAllInstance;
     Instance m_TerminalPulseInstance;
     Instance m_ReentrantPulseInstance;
-    Instance m_LatestOutcomeInstance;
-    Instance m_FullOutcomeInstance;
+    Instance m_LatestFrameInstance;
+    Instance m_FullFrameInstance;
     Instance m_DetachedGraphInstance;
     Instance m_RecursivePumpInstance;
     Instance m_ReentrantReleaseInstance;

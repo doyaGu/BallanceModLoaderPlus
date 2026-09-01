@@ -1,14 +1,22 @@
-#include <BML/Behavior.h>
+#include <BML/Behavior.hpp>
+#include <BML/Guids/Logics.h>
 #include <BML/ILogger.h>
 #include <BML/IMod.h>
 #include <BML/Scene.h>
 
 #include "BehaviorTransportFixtureApi.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 #include <bit>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,6 +35,16 @@ BML_BehaviorGuid Guid(CKGUID value) {
             static_cast<std::uint32_t>(value.d2)};
 }
 
+bool Same(BML_BehaviorGuid left, CKGUID right) {
+    return left.Data1 == static_cast<std::uint32_t>(right.d1) &&
+           left.Data2 == static_cast<std::uint32_t>(right.d2);
+}
+
+bool Same(BML_ObjectRef left, BML_ObjectRef right) {
+    return left.Domain == right.Domain && left.Slot == right.Slot &&
+           left.Generation == right.Generation;
+}
+
 BML_BehaviorString Text(const char *value) {
     return {value, static_cast<std::uint32_t>(std::strlen(value))};
 }
@@ -36,6 +54,36 @@ BML_BehaviorSelector Named(const char *name) {
     selector.Kind = BML_BEHAVIOR_SELECTOR_UNIQUE_NAME;
     selector.Name = Text(name);
     return selector;
+}
+
+BML_BehaviorSelector Occurrence(const char *name, int occurrence) {
+    BML_BehaviorSelector selector = Dto<BML_BehaviorSelector>();
+    selector.Kind = BML_BEHAVIOR_SELECTOR_NAME;
+    selector.Name = Text(name);
+    selector.Occurrence = occurrence;
+    return selector;
+}
+
+BML_BehaviorSelector Indexed(int index) {
+    BML_BehaviorSelector selector = Dto<BML_BehaviorSelector>();
+    selector.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
+    selector.Index = index;
+    return selector;
+}
+
+BML_BehaviorValue Literal(BML_BehaviorGuid type, std::uint32_t kind) {
+    BML_BehaviorValue value = Dto<BML_BehaviorValue>();
+    value.Type = type;
+    value.Kind = kind;
+    return value;
+}
+
+BML_BehaviorBinding Bind(BML_BehaviorSelector slot,
+                         BML_BehaviorValue value) {
+    BML_BehaviorBinding binding = Dto<BML_BehaviorBinding>();
+    binding.Slot = slot;
+    binding.Value = value;
+    return binding;
 }
 
 struct BlockArguments {
@@ -58,9 +106,122 @@ struct BlockArguments {
         Block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
         Block.SettingStages = &Stage;
         Block.SettingStageCount = 1;
-        Block.Outcomes = Dto<BML_BehaviorRetention>();
-        Block.Outcomes.Kind = retention;
-        Block.Outcomes.Limit = limit;
+        Block.Frames = Dto<BML_BehaviorFramePolicy>();
+        Block.Frames.Kind = retention;
+        Block.Frames.Limit = limit;
+        Block.PrototypeGeneration = generation;
+    }
+};
+
+struct EchoBlockArguments {
+    std::array<BML_BehaviorBinding, 13> Pins{};
+    BML_BehaviorBinding Retry = Dto<BML_BehaviorBinding>();
+    BML_BehaviorSettingStage Stage = Dto<BML_BehaviorSettingStage>();
+    BML_BehaviorBlock Block = Dto<BML_BehaviorBlock>();
+
+    explicit EchoBlockArguments(BML_ObjectRef object,
+                                std::uint64_t generation) {
+        Retry = Bind(Named("Retry"), Literal(Guid(CKPGUID_BOOL),
+                                             BML_BEHAVIOR_VALUE_BOOL));
+        Retry.Value.Data.Bool = 0;
+        Stage.Settings = &Retry;
+        Stage.SettingCount = 1;
+
+        Pins[0] = Bind(Named("Bool"),
+                       Literal(Guid(CKPGUID_BOOL), BML_BEHAVIOR_VALUE_BOOL));
+        Pins[0].Value.Data.Bool = 0;
+        Pins[1] = Bind(Occurrence("Number", 0),
+                       Literal(Guid(CKPGUID_INT), BML_BEHAVIOR_VALUE_INT32));
+        Pins[1].Value.Data.Int32 = -1234567;
+        Pins[2] = Bind(Occurrence("Number", 1),
+                       Literal(Guid(CKPGUID_FLOAT), BML_BEHAVIOR_VALUE_FLOAT32));
+        Pins[2].Value.Data.Float32 = -2.25f;
+        Pins[3] = Bind(Named("Text"),
+                       Literal(Guid(CKPGUID_STRING), BML_BEHAVIOR_VALUE_UTF8));
+        Pins[3].Value.Data.Utf8 = Text("authored");
+        Pins[4] = Bind(Named("Vec2"),
+                       Literal(Guid(CKPGUID_2DVECTOR), BML_BEHAVIOR_VALUE_VEC2));
+        Pins[4].Value.Data.Vec2 = {-4.25f, 5.5f};
+        Pins[5] = Bind(Named("Vector"),
+                       Literal(Guid(CKPGUID_VECTOR), BML_BEHAVIOR_VALUE_VEC3));
+        Pins[5].Value.Data.Vec3 = {6.25f, -7.5f, 8.75f};
+        Pins[6] = Bind(Named("Quaternion"),
+                       Literal(Guid(CKPGUID_QUATERNION),
+                               BML_BEHAVIOR_VALUE_QUATERNION));
+        Pins[6].Value.Data.Quaternion = {-0.1f, 0.2f, -0.3f, 0.4f};
+        Pins[7] = Bind(Named("Euler"),
+                       Literal(Guid(CKPGUID_EULERANGLES), BML_BEHAVIOR_VALUE_EULER));
+        Pins[7].Value.Data.Euler = {0.9f, -0.8f, 0.7f};
+        Pins[8] = Bind(Named("Rect"),
+                       Literal(Guid(CKPGUID_RECT), BML_BEHAVIOR_VALUE_RECT));
+        Pins[8].Value.Data.Rect = {-1.0f, -2.0f, 3.0f, 4.0f};
+        Pins[9] = Bind(Named("Color"),
+                       Literal(Guid(CKPGUID_COLOR), BML_BEHAVIOR_VALUE_COLOR));
+        Pins[9].Value.Data.Color = {0.11f, 0.22f, 0.33f, 0.44f};
+        Pins[10] = Bind(Named("Box"),
+                        Literal(Guid(CKPGUID_BOX), BML_BEHAVIOR_VALUE_BOX));
+        Pins[10].Value.Data.Box = {{-9.0f, -8.0f, -7.0f},
+                                   {7.0f, 8.0f, 9.0f}};
+        Pins[11] = Bind(Named("Matrix"),
+                        Literal(Guid(CKPGUID_MATRIX), BML_BEHAVIOR_VALUE_MAT4));
+        Pins[11].Value.Data.Mat4 = {
+            0.25f, 1.25f, 2.25f, 3.25f,
+            4.25f, 5.25f, 6.25f, 7.25f,
+            8.25f, 9.25f, 10.25f, 11.25f,
+            12.25f, 13.25f, 14.25f, 15.25f};
+        Pins[12] = Bind(Named("Object"),
+                        Literal(Guid(CKPGUID_BEOBJECT), BML_BEHAVIOR_VALUE_OBJECT));
+        Pins[12].Value.Data.Object = object;
+
+        Block.Prototype = Guid(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID);
+        Block.Target = Dto<BML_BehaviorTarget>();
+        Block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
+        Block.SettingStages = &Stage;
+        Block.SettingStageCount = 1;
+        Block.Pins = Pins.data();
+        Block.PinCount = static_cast<std::uint32_t>(Pins.size());
+        Block.Frames = Dto<BML_BehaviorFramePolicy>();
+        Block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        Block.Frames.Limit = 64;
+        Block.PrototypeGeneration = generation;
+    }
+};
+
+struct DynamicBlockArguments {
+    BML_BehaviorBinding Extended = Dto<BML_BehaviorBinding>();
+    BML_BehaviorBinding Retry = Dto<BML_BehaviorBinding>();
+    std::array<BML_BehaviorSettingStage, 2> Stages{};
+    BML_BehaviorBinding DynamicPin = Dto<BML_BehaviorBinding>();
+    BML_BehaviorBlock Block = Dto<BML_BehaviorBlock>();
+
+    explicit DynamicBlockArguments(std::uint64_t generation) {
+        Extended = Bind(Named("Extended Layout"),
+                        Literal(Guid(CKPGUID_BOOL), BML_BEHAVIOR_VALUE_BOOL));
+        Extended.Value.Data.Bool = 1;
+        Retry = Bind(Named("Retry"),
+                     Literal(Guid(CKPGUID_BOOL), BML_BEHAVIOR_VALUE_BOOL));
+        Retry.Value.Data.Bool = 0;
+        Stages[0] = Dto<BML_BehaviorSettingStage>();
+        Stages[0].Settings = &Extended;
+        Stages[0].SettingCount = 1;
+        Stages[1] = Dto<BML_BehaviorSettingStage>();
+        Stages[1].Settings = &Retry;
+        Stages[1].SettingCount = 1;
+        DynamicPin = Bind(
+            Named("Dynamic Value"),
+            Literal(Guid(CKPGUID_INT), BML_BEHAVIOR_VALUE_INT32));
+        DynamicPin.Value.Data.Int32 = 713;
+
+        Block.Prototype = Guid(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID);
+        Block.Target = Dto<BML_BehaviorTarget>();
+        Block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
+        Block.SettingStages = Stages.data();
+        Block.SettingStageCount = static_cast<std::uint32_t>(Stages.size());
+        Block.Pins = &DynamicPin;
+        Block.PinCount = 1;
+        Block.Frames = Dto<BML_BehaviorFramePolicy>();
+        Block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        Block.Frames.Limit = 64;
         Block.PrototypeGeneration = generation;
     }
 };
@@ -72,10 +233,15 @@ std::uint32_t Load32(const std::uint8_t *data) {
            (static_cast<std::uint32_t>(data[3]) << 24);
 }
 
-struct DrainedOutcomes {
-    std::vector<BML_BehaviorOutcomeHeader> Headers;
+struct TakenFrames {
+    std::vector<BML_BehaviorRunFrame> Headers;
     std::vector<std::uint8_t> Payload;
     bool NonConsumingSizeQuery = false;
+};
+
+struct PrototypeBatch {
+    std::vector<BML_BehaviorPrototypeInfo> Records;
+    std::vector<std::uint8_t> Payload;
 };
 
 class BehaviorTransportTest final : public IMod {
@@ -130,6 +296,20 @@ public:
 
     void OnStartLevel() override {
         m_LevelStarted = true;
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        CKObject *object = context ? context->CreateObject(
+            CKCID_BEOBJECT, "__BML_BehaviorAuthoring_Input",
+            CK_OBJECTCREATION_DYNAMIC) : nullptr;
+        if (!object || !m_Scene ||
+            m_Scene->FindObject("__BML_BehaviorAuthoring_Input",
+                                &m_InputObjectRef) != BML_OK ||
+            !m_InputObjectRef.Domain) {
+            if (context && object)
+                context->DestroyObject(object);
+            Fail("input-object");
+            return;
+        }
+        m_InputObjectId = object->GetID();
     }
 
     void OnProcess() override {
@@ -140,15 +320,26 @@ public:
             BeginRuns();
         else if (m_LevelFrames == 3)
             PulseLatest();
-        else if (m_LevelFrames == 5)
+        else if (m_LevelFrames == 7)
             CheckRuns();
     }
 
     void OnUnload() override {
         CloseRuns();
+        DestroyInputObject();
         if (m_Behavior && m_Session)
             m_Behavior->CloseSession(m_Session);
         m_Session = nullptr;
+    }
+
+    void DestroyInputObject() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        CKObject *object = context && m_InputObjectId
+            ? context->GetObject(m_InputObjectId) : nullptr;
+        if (context && object)
+            context->DestroyObject(object);
+        m_InputObjectId = 0;
+        m_InputObjectRef = {};
     }
 
 private:
@@ -161,10 +352,61 @@ private:
                 text.Length};
     }
 
+    bool Find(const BML_BehaviorPrototypeQuery &query,
+              PrototypeBatch &batch) const {
+        batch = {};
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        std::uint32_t count = 0;
+        std::uint32_t payloadSize = 0;
+        const int measured = m_Behavior->FindPrototypes(
+            m_Session, &query, nullptr, 0,
+            sizeof(BML_BehaviorPrototypeInfo), nullptr, 0, &count,
+            &payloadSize, &status);
+        if (measured != (count || payloadSize
+                            ? BML_ERROR_BUFFER_TOO_SMALL : BML_OK))
+            return false;
+        batch.Records.resize(count);
+        batch.Payload.resize(payloadSize);
+        std::uint32_t actualCount = 0;
+        std::uint32_t actualPayloadSize = 0;
+        status = Dto<BML_BehaviorStatus>();
+        const int read = m_Behavior->FindPrototypes(
+            m_Session, &query,
+            batch.Records.empty() ? nullptr : batch.Records.data(), count,
+            sizeof(BML_BehaviorPrototypeInfo),
+            batch.Payload.empty() ? nullptr : batch.Payload.data(),
+            payloadSize, &actualCount, &actualPayloadSize, &status);
+        if (read != BML_OK || actualCount != count ||
+            actualPayloadSize != payloadSize)
+            return false;
+        for (const BML_BehaviorPrototypeInfo &record : batch.Records) {
+            if (record.StructSize < sizeof(record) ||
+                record.Ref.StructSize < sizeof(record.Ref))
+                return false;
+        }
+        return true;
+    }
+
+    bool FindOne(CKGUID guid, BML_BehaviorPrototypeRef &prototype,
+                 std::string_view expectedName = {}) const {
+        BML_BehaviorPrototypeQuery query = Dto<BML_BehaviorPrototypeQuery>();
+        query.Match = BML_BEHAVIOR_MATCH_PROTOTYPE;
+        query.Prototype = Guid(guid);
+        PrototypeBatch batch;
+        if (!Find(query, batch) || batch.Records.size() != 1)
+            return false;
+        const BML_BehaviorPrototypeInfo &record = batch.Records.front();
+        if (!expectedName.empty() && Bytes(batch.Payload, record.Name) != expectedName)
+            return false;
+        prototype = record.Ref;
+        return prototype.Generation != 0;
+    }
+
     bool HasLayoutSlot(const BML_BehaviorLayout &layout,
                        const std::vector<std::uint8_t> &payload,
                        std::uint32_t kind, std::string_view name,
-                       int occurrence, std::uint32_t valueKind = 0) const {
+                       int occurrence, std::uint32_t valueKind = 0,
+                       std::uint32_t requiredFlags = 0) const {
         for (std::uint32_t index = 0; index < layout.SlotCount; ++index) {
             const std::uint64_t offset =
                 static_cast<std::uint64_t>(layout.SlotOffset) +
@@ -178,7 +420,8 @@ private:
                 return false;
             if (slot.Kind == kind && slot.Occurrence == occurrence &&
                 Bytes(payload, slot.Name) == name &&
-                (!valueKind || slot.ValueKind == valueKind))
+                (!valueKind || slot.ValueKind == valueKind) &&
+                (slot.Flags & requiredFlags) == requiredFlags)
                 return true;
         }
         return false;
@@ -199,12 +442,69 @@ private:
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_OUT, "Done", 0) &&
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_SETTING,
                           "Retry", 0, BML_BEHAVIOR_VALUE_BOOL) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_SETTING,
+                          "Extended Layout", 0, BML_BEHAVIOR_VALUE_BOOL) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Bool", 0, BML_BEHAVIOR_VALUE_BOOL) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Number", 0, BML_BEHAVIOR_VALUE_INT32) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Number", 1, BML_BEHAVIOR_VALUE_FLOAT32) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Text", 0, BML_BEHAVIOR_VALUE_UTF8) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Vec2", 0, BML_BEHAVIOR_VALUE_VEC2) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Vector", 0, BML_BEHAVIOR_VALUE_VEC3) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Quaternion", 0,
+                          BML_BEHAVIOR_VALUE_QUATERNION) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Euler", 0, BML_BEHAVIOR_VALUE_EULER) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Rect", 0, BML_BEHAVIOR_VALUE_RECT) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Color", 0, BML_BEHAVIOR_VALUE_COLOR) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Box", 0, BML_BEHAVIOR_VALUE_BOX) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Matrix", 0, BML_BEHAVIOR_VALUE_MAT4) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Object", 0, BML_BEHAVIOR_VALUE_OBJECT) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Bool", 0, BML_BEHAVIOR_VALUE_BOOL) &&
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
                           "Number", 0, BML_BEHAVIOR_VALUE_INT32) &&
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
                           "Number", 1, BML_BEHAVIOR_VALUE_FLOAT32) &&
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
-                          "Object", 0, BML_BEHAVIOR_VALUE_OBJECT);
+                          "Text", 0, BML_BEHAVIOR_VALUE_UTF8) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Vec2", 0, BML_BEHAVIOR_VALUE_VEC2) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Vector", 0, BML_BEHAVIOR_VALUE_VEC3) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Quaternion", 0,
+                          BML_BEHAVIOR_VALUE_QUATERNION) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Euler", 0, BML_BEHAVIOR_VALUE_EULER) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Rect", 0, BML_BEHAVIOR_VALUE_RECT) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Color", 0, BML_BEHAVIOR_VALUE_COLOR) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Box", 0, BML_BEHAVIOR_VALUE_BOX) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Matrix", 0, BML_BEHAVIOR_VALUE_MAT4) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Object", 0, BML_BEHAVIOR_VALUE_OBJECT) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Target", 0, BML_BEHAVIOR_VALUE_OBJECT) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_LOCAL,
+                          "Executions", 0, BML_BEHAVIOR_VALUE_INT32) &&
+            (origin == BML_BEHAVIOR_LAYOUT_LIVE ||
+             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_TARGET,
+                           "Target", 0, BML_BEHAVIOR_VALUE_OBJECT));
     }
 
     bool ReadDeclaredLayout() {
@@ -257,8 +557,207 @@ private:
         status = Dto<BML_BehaviorStatus>();
         result = m_Behavior->ReadLiveLayout(
             run, &layout, payload.data(), payloadSize, &payloadSize, &status);
-        return result == BML_OK && layout.LayoutGeneration != 0 &&
+        const bool valid = result == BML_OK && layout.LayoutGeneration != 0 &&
             ValidateLayout(layout, payload, BML_BEHAVIOR_LAYOUT_LIVE);
+        if (!valid)
+            LogLayout("live", layout, payload, result, status);
+        return valid;
+    }
+
+    void LogLayout(const char *label, const BML_BehaviorLayout &layout,
+                   const std::vector<std::uint8_t> &payload, int result,
+                   const BML_BehaviorStatus &status) {
+        GetLogger()->Error(
+            "Behavior %s layout invalid: result=%d error=%u phase=%u origin=%u kind=%u generation=%llu slots=%u name=%.*s",
+            label, result, status.Error, status.Phase, layout.Origin,
+            layout.Kind, static_cast<unsigned long long>(layout.LayoutGeneration),
+            layout.SlotCount, static_cast<int>(Bytes(payload, layout.Name).size()),
+            Bytes(payload, layout.Name).data());
+        for (std::uint32_t index = 0; index < layout.SlotCount; ++index) {
+            const std::uint64_t offset =
+                static_cast<std::uint64_t>(layout.SlotOffset) +
+                static_cast<std::uint64_t>(index) *
+                    sizeof(BML_BehaviorSlotRecord);
+            if (offset + sizeof(BML_BehaviorSlotRecord) > payload.size())
+                break;
+            BML_BehaviorSlotRecord slot{};
+            std::memcpy(&slot, payload.data() + offset, sizeof(slot));
+            const std::string_view name = Bytes(payload, slot.Name);
+            GetLogger()->Error(
+                "Behavior %s slot: kind=%u flags=%u index=%d occurrence=%d value=%u name=%.*s",
+                label, slot.Kind, slot.Flags, slot.Index, slot.Occurrence,
+                slot.ValueKind, static_cast<int>(name.size()), name.data());
+        }
+    }
+
+    bool ReadDynamicLiveLayout(BML_BehaviorRun run) {
+        BML_BehaviorLayout layout = Dto<BML_BehaviorLayout>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        std::uint32_t payloadSize = 0;
+        if (m_Behavior->ReadLiveLayout(run, &layout, nullptr, 0,
+                                       &payloadSize, &status) !=
+                BML_ERROR_BUFFER_TOO_SMALL ||
+            !payloadSize)
+            return false;
+        std::vector<std::uint8_t> payload(payloadSize);
+        layout = Dto<BML_BehaviorLayout>();
+        status = Dto<BML_BehaviorStatus>();
+        if (m_Behavior->ReadLiveLayout(
+                run, &layout, payload.data(), payloadSize, &payloadSize,
+                &status) != BML_OK ||
+            !ValidateLayout(layout, payload, BML_BEHAVIOR_LAYOUT_LIVE))
+            return false;
+        const std::uint32_t dynamic = BML_BEHAVIOR_SLOT_DYNAMIC;
+        return HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_IN,
+                             "Dynamic Run", 0, 0, dynamic) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_OUT,
+                          "Dynamic Done", 0, 0, dynamic) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_PIN,
+                          "Dynamic Value", 0, BML_BEHAVIOR_VALUE_INT32,
+                          dynamic | BML_BEHAVIOR_SLOT_VALUE_SUPPORTED) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_POUT,
+                          "Dynamic Value", 0, BML_BEHAVIOR_VALUE_INT32,
+                          dynamic | BML_BEHAVIOR_SLOT_VALUE_SUPPORTED);
+    }
+
+    bool ReadGraphLayout() {
+        BML_BehaviorLayout layout = Dto<BML_BehaviorLayout>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        std::uint32_t payloadSize = 0;
+        if (m_Behavior->ReadDeclaredLayout(
+                m_Session, &m_GraphPrototype, &layout, nullptr, 0,
+                &payloadSize, &status) != BML_ERROR_BUFFER_TOO_SMALL ||
+            !payloadSize)
+            return false;
+        std::vector<std::uint8_t> payload(payloadSize);
+        layout = Dto<BML_BehaviorLayout>();
+        status = Dto<BML_BehaviorStatus>();
+        if (m_Behavior->ReadDeclaredLayout(
+                m_Session, &m_GraphPrototype, &layout, payload.data(),
+                payloadSize, &payloadSize, &status) != BML_OK)
+            return false;
+        if (layout.Origin != BML_BEHAVIOR_LAYOUT_DECLARED ||
+            layout.Kind != BML_BEHAVIOR_PROTOTYPE_GRAPH ||
+            layout.CompatibleClass != CKCID_3DENTITY ||
+            !Same(layout.Prototype.Prototype,
+                  BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID) ||
+            layout.Prototype.Generation != m_GraphPrototype.Generation ||
+            Bytes(payload, layout.Name) != "BML Behavior Graph Fixture" ||
+            Bytes(payload, layout.Category) != "BML/Test/Graph" ||
+            !HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_IN,
+                           "Enter", 0) ||
+            !HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_OUT,
+                           "Exit", 0) ||
+            layout.ManagerCount != 1 ||
+            static_cast<std::uint64_t>(layout.ManagerOffset) +
+                    sizeof(BML_BehaviorManagerInfo) > payload.size())
+            return false;
+        BML_BehaviorManagerInfo manager{};
+        std::memcpy(&manager, payload.data() + layout.ManagerOffset,
+                    sizeof(manager));
+        return manager.StructSize >= sizeof(manager) &&
+            Same(manager.Guid, TIME_MANAGER_GUID) && manager.Available == 1;
+    }
+
+    bool ReadGraphLiveLayout(BML_BehaviorRun run) {
+        BML_BehaviorLayout layout = Dto<BML_BehaviorLayout>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        std::uint32_t payloadSize = 0;
+        if (m_Behavior->ReadLiveLayout(run, &layout, nullptr, 0,
+                                       &payloadSize, &status) !=
+                BML_ERROR_BUFFER_TOO_SMALL ||
+            !payloadSize)
+            return false;
+        std::vector<std::uint8_t> payload(payloadSize);
+        layout = Dto<BML_BehaviorLayout>();
+        status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->ReadLiveLayout(
+                   run, &layout, payload.data(), payloadSize, &payloadSize,
+                   &status) == BML_OK &&
+            layout.Origin == BML_BEHAVIOR_LAYOUT_LIVE &&
+            layout.Kind == BML_BEHAVIOR_PROTOTYPE_GRAPH &&
+            layout.LayoutGeneration != 0 &&
+            layout.Prototype.Generation == m_GraphPrototype.Generation &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_IN, "Enter", 0) &&
+            HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_OUT, "Exit", 0);
+    }
+
+    bool ValidateCatalogQueries() {
+        BML_BehaviorPrototypeQuery query = Dto<BML_BehaviorPrototypeQuery>();
+        query.Match = BML_BEHAVIOR_MATCH_PROVIDER |
+                      BML_BEHAVIOR_MATCH_PROVIDER_GUID;
+        query.Provider = Text("BEHAVIORTRANSPORTFIXTURE");
+        query.ProviderGuid = Guid(BML_BEHAVIOR_TRANSPORT_PLUGIN_GUID);
+        PrototypeBatch provider;
+        if (!Find(query, provider) || provider.Records.size() != 2 ||
+            !Same(provider.Records[0].Ref.Prototype,
+                  BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID) ||
+            !Same(provider.Records[1].Ref.Prototype,
+                  BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID) ||
+            Bytes(provider.Payload, provider.Records[0].ProviderName) !=
+                "BehaviorTransportFixture" ||
+            Bytes(provider.Payload, provider.Records[1].ProviderName) !=
+                "BehaviorTransportFixture")
+            return false;
+
+        query = Dto<BML_BehaviorPrototypeQuery>();
+        query.Match = BML_BEHAVIOR_MATCH_NAME |
+                      BML_BEHAVIOR_MATCH_CATEGORY;
+        query.Name = Text("BML Behavior Graph Fixture");
+        query.Category = Text("BML/Test/Graph");
+        PrototypeBatch graph;
+        if (!Find(query, graph) || graph.Records.size() != 1 ||
+            !Same(graph.Records[0].Ref.Prototype,
+                  BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID))
+            return false;
+        m_GraphPrototype = graph.Records[0].Ref;
+
+        const BML_BehaviorGuid timeManager = Guid(TIME_MANAGER_GUID);
+        query = Dto<BML_BehaviorPrototypeQuery>();
+        query.Match = BML_BEHAVIOR_MATCH_PROVIDER_GUID |
+                      BML_BEHAVIOR_MATCH_REQUIRED_MANAGERS;
+        query.ProviderGuid = Guid(BML_BEHAVIOR_TRANSPORT_PLUGIN_GUID);
+        query.RequiredManagers = &timeManager;
+        query.RequiredManagerCount = 1;
+        PrototypeBatch managers;
+        if (!Find(query, managers) || managers.Records.size() != 1 ||
+            !Same(managers.Records[0].Ref.Prototype,
+                  BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID))
+            return false;
+
+        query = Dto<BML_BehaviorPrototypeQuery>();
+        query.Match = BML_BEHAVIOR_MATCH_PROTOTYPE |
+                      BML_BEHAVIOR_MATCH_COMPATIBLE_CLASS;
+        query.Prototype = Guid(BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID);
+        query.CompatibleClass = CKCID_3DOBJECT;
+        PrototypeBatch compatible;
+        if (!Find(query, compatible) || compatible.Records.size() != 1)
+            return false;
+
+        query = Dto<BML_BehaviorPrototypeQuery>();
+        query.Match = BML_BEHAVIOR_MATCH_PROTOTYPE;
+        query.Prototype = {0x7fffffffu, 0x13572468u};
+        PrototypeBatch absent;
+        if (!Find(query, absent) || !absent.Records.empty() ||
+            !absent.Payload.empty())
+            return false;
+
+        if (!FindOne(VT_LOGICS_WAITFORALL, m_WaitForAllPrototype))
+            return false;
+
+        BML_BehaviorPrototypeRef stale = m_Prototype;
+        ++stale.Generation;
+        BML_BehaviorLayout untouched = Dto<BML_BehaviorLayout>();
+        untouched.Origin = 0x7fffffffu;
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        std::uint32_t payloadSize = 0;
+        const int staleResult = m_Behavior->ReadDeclaredLayout(
+            m_Session, &stale, &untouched, nullptr, 0, &payloadSize,
+            &status);
+        return staleResult == BML_ERROR_FAIL &&
+            status.Error == BML_BEHAVIOR_ERROR_PROTOTYPE_CHANGED &&
+            status.Phase == BML_BEHAVIOR_PHASE_PROTOTYPE &&
+            untouched.Origin == 0x7fffffffu && ReadGraphLayout();
     }
 
     bool DiscoverPrototype() {
@@ -303,13 +802,14 @@ private:
             Bytes(payload, prototype.Category) != "BML/Test")
             return false;
         m_Prototype = prototype.Ref;
-        m_CatalogPassed = ReadDeclaredLayout() &&
-            RejectProviderOwnedValue();
+        m_CatalogPassed = ValidateCatalogQueries() &&
+            ReadDeclaredLayout() && RejectProviderOwnedValue() &&
+            RejectStaleProviderRun() && RejectMismatchedValueKind();
         return m_CatalogPassed;
     }
 
     bool RejectProviderOwnedValue() {
-        BlockArguments arguments(false, BML_BEHAVIOR_RETENTION_SIGNALS, 64,
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
                                  m_Prototype.Generation);
         arguments.Retry.Value.Type = Guid(BML_BEHAVIOR_PROVIDER_VALUE_GUID);
         arguments.Retry.Value.Kind = BML_BEHAVIOR_VALUE_INT32;
@@ -324,14 +824,38 @@ private:
             status.Phase == BML_BEHAVIOR_PHASE_BINDING;
     }
 
-    bool OpenCall(BML_BehaviorRun &run, const char *inputName = "Run",
-                  bool version1Block = false) {
-        BlockArguments arguments(false, BML_BEHAVIOR_RETENTION_SIGNALS, 64,
+    bool RejectStaleProviderRun() {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation + 1);
+        BML_BehaviorSelector input = Named("Run");
+        BML_BehaviorRun run = nullptr;
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        const int result = m_Behavior->Call(
+            m_Session, {}, &arguments.Block, &input, &run, &info, &status);
+        return result == BML_ERROR_FAIL && !run &&
+            status.Error == BML_BEHAVIOR_ERROR_PROTOTYPE_CHANGED &&
+            status.Phase == BML_BEHAVIOR_PHASE_PROTOTYPE;
+    }
+
+    bool RejectMismatchedValueKind() {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
                                  m_Prototype.Generation);
-        if (version1Block)
-            arguments.Block.StructSize =
-                offsetof(BML_BehaviorBlock, Outcomes) +
-                sizeof(BML_BehaviorRetention);
+        arguments.Retry.Value.Kind = BML_BEHAVIOR_VALUE_INT32;
+        arguments.Retry.Value.Data.Int32 = 1;
+        BML_BehaviorSelector input = Named("Run");
+        BML_BehaviorRun run = nullptr;
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        const int result = m_Behavior->Call(
+            m_Session, {}, &arguments.Block, &input, &run, &info, &status);
+        return result == BML_ERROR_INVALID_PARAMETER && !run &&
+            status.Error == BML_BEHAVIOR_ERROR_TYPE_MISMATCH;
+    }
+
+    bool OpenCall(BML_BehaviorRun &run, const char *inputName = "Run") {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation);
         BML_BehaviorSelector input = Named(inputName);
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
@@ -340,13 +864,25 @@ private:
     }
 
     bool OpenStart(BML_BehaviorRun &run, std::uint32_t limit) {
-        BlockArguments arguments(true, BML_BEHAVIOR_RETENTION_EACH_FRAME,
+        BlockArguments arguments(true, BML_BEHAVIOR_FRAMES_EACH_FRAME,
                                  limit, m_Prototype.Generation);
         BML_BehaviorSelector input = Named("Run");
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         return m_Behavior->Start(m_Session, {}, &arguments.Block, &input,
                                  &run, &info, &status) == BML_OK && run;
+    }
+
+    bool OpenPendingCall(BML_BehaviorRun &run) {
+        BlockArguments arguments(true, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation);
+        BML_BehaviorSelector input = Named("Run");
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
+                                &run, &info, &status) == BML_OK && run &&
+            info.Kind == BML_BEHAVIOR_RUN_CALL &&
+            info.State == BML_BEHAVIOR_RUN_PENDING;
     }
 
     bool OpenInstance(BML_BehaviorRun &run, std::uint32_t retention,
@@ -357,6 +893,146 @@ private:
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         return m_Behavior->Spawn(m_Session, {}, &arguments.Block, &run,
                                  &info, &status) == BML_OK && run;
+    }
+
+    bool OpenEcho(BML_BehaviorRun &run) {
+        EchoBlockArguments arguments(m_InputObjectRef,
+                                     m_Prototype.Generation);
+        BML_BehaviorSelector input = Named("Echo");
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
+                                &run, &info, &status) == BML_OK && run;
+    }
+
+    bool OpenDynamic(BML_BehaviorRun &run) {
+        DynamicBlockArguments arguments(m_Prototype.Generation);
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->Spawn(m_Session, {}, &arguments.Block, &run,
+                                 &info, &status) == BML_OK && run;
+    }
+
+    bool OpenTarget(BML_BehaviorRun &run, std::uint32_t targetKind,
+                    BML_ObjectRef owner, BML_ObjectRef target) {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation);
+        arguments.Block.Target.Kind = targetKind;
+        arguments.Block.Target.Type = Guid(CKPGUID_BEOBJECT);
+        arguments.Block.Target.Object = target;
+        BML_BehaviorSelector input = Named("Read Target");
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->Call(m_Session, owner, &arguments.Block, &input,
+                                &run, &info, &status) == BML_OK && run;
+    }
+
+    bool RejectAmbiguousSelector() {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation);
+        BML_BehaviorSelector input = Named("Duplicate");
+        BML_BehaviorRun run = nullptr;
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        const int result = m_Behavior->Call(
+            m_Session, {}, &arguments.Block, &input, &run, &info, &status);
+        return result == BML_ERROR_FAIL && !run &&
+            status.Error == BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS &&
+            status.Phase == BML_BEHAVIOR_PHASE_EXECUTION;
+    }
+
+    bool OpenDuplicateOccurrence(BML_BehaviorRun &run) {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation);
+        BML_BehaviorSelector input = Occurrence("Duplicate", 1);
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
+                                &run, &info, &status) == BML_OK && run;
+    }
+
+    bool OpenIndexed(BML_BehaviorRun &run) {
+        BlockArguments arguments(false, BML_BEHAVIOR_FRAMES_SIGNALS, 64,
+                                 m_Prototype.Generation);
+        BML_BehaviorSelector input = Indexed(0);
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
+                                &run, &info, &status) == BML_OK && run;
+    }
+
+    bool OpenWaitForAll() {
+        BML_BehaviorBlock block = Dto<BML_BehaviorBlock>();
+        block.Prototype = Guid(VT_LOGICS_WAITFORALL);
+        block.Target = Dto<BML_BehaviorTarget>();
+        block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
+        block.Frames = Dto<BML_BehaviorFramePolicy>();
+        block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        block.Frames.Limit = 64;
+        block.PrototypeGeneration = m_WaitForAllPrototype.Generation;
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        if (m_Behavior->Spawn(m_Session, {}, &block, &m_WaitForAll,
+                              &info, &status) != BML_OK || !m_WaitForAll)
+            return false;
+        return Pulse(m_WaitForAll, "In 0",
+                     BML_BEHAVIOR_ADMISSION_EXECUTED) &&
+            Pulse(m_WaitForAll, "In 1", BML_BEHAVIOR_ADMISSION_QUEUED);
+    }
+
+    bool OpenGraph() {
+        BML_BehaviorBlock block = Dto<BML_BehaviorBlock>();
+        block.Prototype = Guid(BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID);
+        block.Target = Dto<BML_BehaviorTarget>();
+        block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
+        block.Frames = Dto<BML_BehaviorFramePolicy>();
+        block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        block.Frames.Limit = 64;
+        block.PrototypeGeneration = m_GraphPrototype.Generation;
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        const int spawned = m_Behavior->Spawn(
+            m_Session, {}, &block, &m_Graph, &info, &status);
+        if (spawned != BML_OK || !m_Graph) {
+            const HMODULE fixture = GetModuleHandleA(
+                "BehaviorTransportFixture.dll");
+            const auto readTrace = fixture
+                ? reinterpret_cast<BML_BehaviorTransportReadGraphTrace>(
+                      GetProcAddress(fixture,
+                                     "BMLBehaviorTransportReadGraphTrace"))
+                : nullptr;
+            const BML_BehaviorTransportGraphTrace *trace = readTrace
+                ? readTrace() : nullptr;
+            GetLogger()->Error(
+                "Behavior graph spawn failed: result=%d error=%u phase=%u ck=%d native=%d graph_stage=%d graph_error=%d message=%s",
+                spawned, status.Error, status.Phase, status.CkError,
+                status.NativeResult, trace ? trace->Stage : -1,
+                trace ? trace->Error : CKERR_NOTINITIALIZED,
+                status.Message);
+            return false;
+        }
+        if (!ReadGraphLiveLayout(m_Graph)) {
+            GetLogger()->Error("Behavior graph live layout failed");
+            return false;
+        }
+        const bool pulsed = Pulse(
+            m_Graph, "Enter", BML_BEHAVIOR_ADMISSION_EXECUTED);
+        if (!pulsed)
+            GetLogger()->Error("Behavior graph pulse failed");
+        return pulsed;
+    }
+
+    bool CloseMakesRunStale() {
+        BML_BehaviorRun run = nullptr;
+        if (!OpenInstance(run, BML_BEHAVIOR_FRAMES_SIGNALS, 4))
+            return false;
+        if (m_Behavior->CloseRun(run) != BML_OK)
+            return false;
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->ReadRun(run, &info, &status) ==
+                   BML_ERROR_INVALID_HANDLE &&
+            status.Error == BML_BEHAVIOR_ERROR_STATE_INVALID;
     }
 
     bool Pulse(BML_BehaviorRun run, const char *name,
@@ -370,31 +1046,202 @@ private:
                admission == expectedAdmission;
     }
 
+    bool RunCppFacade() {
+        auto opened = BML::Behavior::Session::Open();
+        if (!opened)
+            return false;
+        m_CppSession = std::move(opened).Value();
+        const BML::Behavior::Prototype prototype(
+            BML::Behavior::Guid(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID),
+            m_Prototype.Generation);
+
+        auto called = m_CppSession.Use(prototype)
+            .Call(BML::Behavior::unique("Run"));
+        if (!called)
+            return false;
+        BML::Behavior::Call call = std::move(called).Value();
+        auto taken = call.Take();
+        if (!taken || taken.Value().size() != 1)
+            return false;
+        const BML::Behavior::Frame &frame = taken.Value().front();
+        const BML::Behavior::Pout *number = frame.FindPout("Number", 0);
+        const std::int32_t *value = number
+            ? number->Get<std::int32_t>() : nullptr;
+        if (frame.Sequence != 1 || !frame.Terminal ||
+            !frame.HasOut("Done") || !value || *value != 42)
+            return false;
+
+        auto started = m_CppSession.Use(prototype)
+            .Setting("Retry", true)
+            .Start(BML::Behavior::unique("Run"));
+        if (!started)
+            return false;
+        m_CppStart.emplace(std::move(started).Value());
+
+        auto pending = m_CppSession.Use(prototype)
+            .Setting("Retry", true)
+            .Call(BML::Behavior::unique("Run"));
+        if (!pending)
+            return false;
+        m_CppCall.emplace(std::move(pending).Value());
+
+        auto spawned = m_CppSession.Use(prototype)
+            .Frames(BML::Behavior::signals(4))
+            .Spawn();
+        if (!spawned)
+            return false;
+        m_CppInstance.emplace(std::move(spawned).Value());
+        auto admission = m_CppInstance->Pulse("Run");
+        if (!admission ||
+            admission.Value() != BML::Behavior::Admission::Executed)
+            return false;
+
+        auto dynamic = m_CppSession.Use(prototype)
+            .Setting("Extended Layout", true)
+            .NextStage()
+            .Setting("Retry", false)
+            .Pin("Dynamic Value", std::int32_t{713})
+            .Spawn();
+        if (!dynamic)
+            return false;
+        BML::Behavior::Instance dynamicInstance = std::move(dynamic).Value();
+        auto dynamicAdmission = dynamicInstance.Pulse("Dynamic Run");
+        auto dynamicFrames = dynamicInstance.Take();
+        const BML::Behavior::Pout *dynamicValue =
+            dynamicFrames && dynamicFrames.Value().size() == 1
+            ? dynamicFrames.Value().front().FindPout("Dynamic Value")
+            : nullptr;
+        if (!dynamicAdmission ||
+            dynamicAdmission.Value() != BML::Behavior::Admission::Executed ||
+            !dynamicFrames || dynamicFrames.Value().size() != 1 ||
+            !dynamicFrames.Value().front().HasOut("Dynamic Done") ||
+            !dynamicValue || !dynamicValue->Get<std::int32_t>() ||
+            *dynamicValue->Get<std::int32_t>() != 713)
+            return false;
+
+        auto targeted = m_CppSession.Use(prototype)
+            .Owner(m_InputObjectRef)
+            .TargetOwner()
+            .Call(BML::Behavior::unique("Read Target"));
+        if (!targeted)
+            return false;
+        BML::Behavior::Call targetCall = std::move(targeted).Value();
+        auto targetFrames = targetCall.Take();
+        const BML::Behavior::Pout *target =
+            targetFrames && targetFrames.Value().size() == 1
+            ? targetFrames.Value().front().FindPout("Target") : nullptr;
+        const BML_ObjectRef *targetObject = target
+            ? target->Get<BML_ObjectRef>() : nullptr;
+        return targetObject && Same(*targetObject, m_InputObjectRef);
+    }
+
+    bool ContinueCppFacade() {
+        if (!m_CppCall)
+            return false;
+        auto continued = std::move(*m_CppCall).Continue();
+        m_CppCall.reset();
+        if (!continued)
+            return false;
+        m_CppContinued.emplace(std::move(continued).Value());
+        auto info = m_CppContinued->Read();
+        return info && info.Value().Kind == BML::Behavior::RunKind::Task &&
+            info.Value().State == BML::Behavior::RunState::Pending;
+    }
+
+    bool CheckCppFacade() {
+        if (!m_CppStart || !m_CppContinued || !m_CppInstance)
+            return false;
+        auto startInfo = m_CppStart->Read();
+        auto continuedInfo = m_CppContinued->Read();
+        auto instanceInfo = m_CppInstance->Read();
+        auto startFrames = m_CppStart->Take();
+        auto continuedFrames = m_CppContinued->Take();
+        auto instanceFrames = m_CppInstance->Take();
+        const auto validTask = [](const BML::Behavior::Result<
+                                      BML::Behavior::RunInfo> &info,
+                                  const BML::Behavior::Result<std::vector<
+                                      BML::Behavior::Frame>> &frames) {
+            return info && info.Value().Kind == BML::Behavior::RunKind::Task &&
+                info.Value().State == BML::Behavior::RunState::Completed &&
+                frames && frames.Value().size() == 2 &&
+                frames.Value()[0].Sequence == 1 &&
+                frames.Value()[0].Continuation != 0 &&
+                frames.Value()[1].Sequence == 2 &&
+                frames.Value()[1].Terminal &&
+                frames.Value()[1].HasOut("Done");
+        };
+        return validTask(startInfo, startFrames) &&
+            validTask(continuedInfo, continuedFrames) &&
+            instanceInfo &&
+            instanceInfo.Value().Kind == BML::Behavior::RunKind::Instance &&
+            instanceInfo.Value().State == BML::Behavior::RunState::Completed &&
+            instanceFrames && instanceFrames.Value().size() == 1 &&
+            instanceFrames.Value().front().Terminal &&
+            instanceFrames.Value().front().HasOut("Done");
+    }
+
     void BeginRuns() {
-        const bool opened = OpenCall(m_Call, "Run", true) &&
-            OpenStart(m_Start, 64) &&
-            OpenCall(m_Object, "Make Object") &&
-            OpenInstance(m_Latest, BML_BEHAVIOR_RETENTION_LATEST, 0) &&
-            OpenStart(m_QueueFull, 1);
-        const bool pulsed = opened &&
-            ReadLiveLayout(m_Latest) &&
-            Pulse(m_Latest, "Run", BML_BEHAVIOR_ADMISSION_EXECUTED) &&
-            Pulse(m_Latest, "Run", BML_BEHAVIOR_ADMISSION_QUEUED);
-        if (!pulsed)
+        const auto require = [&](bool passed, const char *name) {
+            if (!passed)
+                GetLogger()->Error("Behavior functional admission failed: %s",
+                                   name);
+            return passed;
+        };
+        m_CppFacadePassed = require(RunCppFacade(), "cpp-facade");
+        if (!m_CppFacadePassed ||
+            !require(OpenCall(m_Call), "call") ||
+            !require(OpenStart(m_Start, 64), "start") ||
+            !require(OpenCall(m_Object, "Make Object"), "object") ||
+            !require(OpenInstance(m_Latest, BML_BEHAVIOR_FRAMES_LATEST, 0),
+                     "latest") ||
+            !require(OpenStart(m_QueueFull, 1), "queue-full") ||
+            !require(OpenPendingCall(m_ContinuedCall), "pending-call") ||
+            !require(OpenEcho(m_Echo), "echo") ||
+            !require(OpenDynamic(m_Dynamic), "dynamic-spawn") ||
+            !require(OpenTarget(m_TargetOwner, BML_BEHAVIOR_TARGET_OWNER,
+                                m_InputObjectRef, {}), "target-owner") ||
+            !require(OpenTarget(m_TargetObject, BML_BEHAVIOR_TARGET_OBJECT, {},
+                                m_InputObjectRef), "target-object") ||
+            !require(OpenTarget(m_TargetNull, BML_BEHAVIOR_TARGET_NULL, {}, {}),
+                     "target-null") ||
+            !require(RejectAmbiguousSelector(), "selector-ambiguous") ||
+            !require(OpenDuplicateOccurrence(m_DuplicateOccurrence),
+                     "selector-occurrence") ||
+            !require(OpenIndexed(m_Indexed), "selector-index") ||
+            !require(OpenWaitForAll(), "wait-for-all") ||
+            !require(OpenGraph(), "graph") ||
+            !require(CloseMakesRunStale(), "close-stale") ||
+            !require(ReadLiveLayout(m_Latest), "live-layout") ||
+            !require(ReadDynamicLiveLayout(m_Dynamic), "dynamic-layout") ||
+            !require(Pulse(m_Dynamic, "Dynamic Run",
+                           BML_BEHAVIOR_ADMISSION_EXECUTED), "dynamic-pulse") ||
+            !require(Pulse(m_Latest, "Run",
+                           BML_BEHAVIOR_ADMISSION_EXECUTED), "pulse-executed") ||
+            !require(Pulse(m_Latest, "Run",
+                           BML_BEHAVIOR_ADMISSION_QUEUED), "pulse-queued")) {
             Fail("admission");
+        }
     }
 
     void PulseLatest() {
-        if (!Pulse(m_Latest, "Run", BML_BEHAVIOR_ADMISSION_EXECUTED))
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        m_ContinueAccepted = m_Behavior->Continue(
+            m_ContinuedCall, &info, &status) == BML_OK &&
+            info.Kind == BML_BEHAVIOR_RUN_TASK &&
+            info.State == BML_BEHAVIOR_RUN_PENDING;
+        m_CppFacadePassed = m_CppFacadePassed && ContinueCppFacade();
+        if (!m_ContinueAccepted || !m_CppFacadePassed ||
+            !Pulse(m_Latest, "Run", BML_BEHAVIOR_ADMISSION_EXECUTED))
             Fail("latest-pulse");
     }
 
-    bool Drain(BML_BehaviorRun run, DrainedOutcomes &out) {
+    bool Take(BML_BehaviorRun run, TakenFrames &out) {
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         std::uint32_t headerCount = 0;
         std::uint32_t payloadSize = 0;
-        const int measured = m_Behavior->DrainOutcomes(
-            run, nullptr, 0, sizeof(BML_BehaviorOutcomeHeader), nullptr, 0,
+        const int measured = m_Behavior->TakeFrames(
+            run, nullptr, 0, sizeof(BML_BehaviorRunFrame), nullptr, 0,
             &headerCount, &payloadSize, &status);
         if (measured != BML_ERROR_BUFFER_TOO_SMALL || !headerCount)
             return false;
@@ -403,17 +1250,17 @@ private:
         std::uint32_t secondHeaderCount = 0;
         std::uint32_t secondPayloadSize = 0;
         status = Dto<BML_BehaviorStatus>();
-        const int drained = m_Behavior->DrainOutcomes(
+        const int taken = m_Behavior->TakeFrames(
             run, out.Headers.data(), headerCount,
-            sizeof(BML_BehaviorOutcomeHeader), out.Payload.data(), payloadSize,
+            sizeof(BML_BehaviorRunFrame), out.Payload.data(), payloadSize,
             &secondHeaderCount, &secondPayloadSize, &status);
-        out.NonConsumingSizeQuery = drained == BML_OK &&
+        out.NonConsumingSizeQuery = taken == BML_OK &&
             secondHeaderCount == headerCount && secondPayloadSize == payloadSize;
         return out.NonConsumingSizeQuery;
     }
 
     template <typename T>
-    bool Record(const DrainedOutcomes &out, std::uint32_t offset,
+    bool Record(const TakenFrames &out, std::uint32_t offset,
                 std::uint32_t index, T &record) const {
         const std::uint64_t position = static_cast<std::uint64_t>(offset) +
             static_cast<std::uint64_t>(index) * sizeof(T);
@@ -423,7 +1270,7 @@ private:
         return record.StructSize >= sizeof(T);
     }
 
-    std::string_view Bytes(const DrainedOutcomes &out, std::uint32_t offset,
+    std::string_view Bytes(const TakenFrames &out, std::uint32_t offset,
                            std::uint32_t length) const {
         if (static_cast<std::uint64_t>(offset) + length > out.Payload.size())
             return {};
@@ -431,17 +1278,41 @@ private:
                 length};
     }
 
-    bool ValidateValues(const DrainedOutcomes &out,
-                        const BML_BehaviorOutcomeHeader &header,
+    bool ValidateValues(const TakenFrames &out,
+                        const BML_BehaviorRunFrame &header,
                         BML_ObjectRef *objectReference = nullptr,
-                        std::uint32_t *valueMask = nullptr) const {
-        if (header.PoutCount != 5)
+                        std::uint32_t *valueMask = nullptr,
+                        bool authored = false,
+                        const BML_ObjectRef *expectedTarget = nullptr) const {
+        if (header.PoutCount < 14)
             return false;
-        bool integer = false;
-        bool real = false;
-        bool vector = false;
-        bool text = false;
-        bool object = false;
+        std::uint32_t mask = 0;
+        const auto floats = [&](std::string_view value,
+                                std::initializer_list<float> expected) {
+            if (value.size() != expected.size() * sizeof(float))
+                return false;
+            const auto *bytes = reinterpret_cast<const std::uint8_t *>(
+                value.data());
+            std::size_t index = 0;
+            for (float expectedValue : expected) {
+                const float actual = std::bit_cast<float>(
+                    Load32(bytes + index * sizeof(float)));
+                if (actual != expectedValue)
+                    return false;
+                ++index;
+            }
+            return true;
+        };
+        const auto objectRef = [&](std::string_view value,
+                                   BML_ObjectRef &reference) {
+            if (value.size() != 12)
+                return false;
+            const auto *bytes = reinterpret_cast<const std::uint8_t *>(
+                value.data());
+            reference = {Load32(bytes), Load32(bytes + 4),
+                         Load32(bytes + 8)};
+            return true;
+        };
         for (std::uint32_t index = 0; index < header.PoutCount; ++index) {
             BML_BehaviorPoutRecord record{};
             if (!Record(out, header.PoutOffset, index, record))
@@ -450,44 +1321,105 @@ private:
                 out, record.NameOffset, record.NameLength);
             const std::string_view value = Bytes(
                 out, record.ValueOffset, record.ValueSize);
-            if (record.Kind == BML_BEHAVIOR_VALUE_INT32 && name == "Number" &&
+            if (record.Kind == BML_BEHAVIOR_VALUE_BOOL && name == "Bool" &&
+                value.size() == 4 &&
+                Load32(reinterpret_cast<const std::uint8_t *>(value.data())) ==
+                    (authored ? 0u : 1u)) {
+                mask |= 1u << 0;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_INT32 && name == "Number" &&
                 record.Occurrence == 0 && value.size() == 4) {
-                integer = Load32(reinterpret_cast<const std::uint8_t *>(value.data())) == 42;
+                const std::int32_t actual = static_cast<std::int32_t>(
+                    Load32(reinterpret_cast<const std::uint8_t *>(value.data())));
+                if (actual == (authored ? -1234567 : 42))
+                    mask |= 1u << 1;
             } else if (record.Kind == BML_BEHAVIOR_VALUE_FLOAT32 &&
                        name == "Number" && record.Occurrence == 1 &&
                        value.size() == 4) {
                 const float number = std::bit_cast<float>(
                     Load32(reinterpret_cast<const std::uint8_t *>(value.data())));
-                real = number == 1.5f;
-            } else if (record.Kind == BML_BEHAVIOR_VALUE_VEC3 &&
-                       name == "Vector" && value.size() == 12) {
-                const auto *bytes = reinterpret_cast<const std::uint8_t *>(value.data());
-                vector = std::bit_cast<float>(Load32(bytes)) == 1.0f &&
-                         std::bit_cast<float>(Load32(bytes + 4)) == 2.0f &&
-                         std::bit_cast<float>(Load32(bytes + 8)) == 3.0f;
+                if (number == (authored ? -2.25f : 1.5f))
+                    mask |= 1u << 2;
             } else if (record.Kind == BML_BEHAVIOR_VALUE_UTF8 &&
-                       name == "Text") {
-                text = value == "transport";
+                       name == "Text" &&
+                       value == (authored ? "authored" : "transport")) {
+                mask |= 1u << 3;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_VEC2 &&
+                       name == "Vec2" &&
+                       (authored ? floats(value, {-4.25f, 5.5f})
+                                 : floats(value, {4.0f, 5.0f}))) {
+                mask |= 1u << 4;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_VEC3 &&
+                       name == "Vector" &&
+                       (authored ? floats(value, {6.25f, -7.5f, 8.75f})
+                                 : floats(value, {1.0f, 2.0f, 3.0f}))) {
+                mask |= 1u << 5;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_QUATERNION &&
+                       name == "Quaternion" &&
+                       (authored ? floats(value, {-0.1f, 0.2f, -0.3f, 0.4f})
+                                 : floats(value, {0.1f, 0.2f, 0.3f, 0.4f}))) {
+                mask |= 1u << 6;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_EULER &&
+                       name == "Euler" &&
+                       (authored ? floats(value, {0.9f, -0.8f, 0.7f})
+                                 : floats(value, {0.5f, 0.6f, 0.7f}))) {
+                mask |= 1u << 7;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_RECT &&
+                       name == "Rect" &&
+                       (authored ? floats(value, {-1.0f, -2.0f, 3.0f, 4.0f})
+                                 : floats(value, {1.0f, 2.0f, 3.0f, 4.0f}))) {
+                mask |= 1u << 8;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_COLOR &&
+                       name == "Color" &&
+                       (authored ? floats(value, {0.11f, 0.22f, 0.33f, 0.44f})
+                                 : floats(value, {0.2f, 0.4f, 0.6f, 0.8f}))) {
+                mask |= 1u << 9;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_BOX &&
+                       name == "Box" &&
+                       (authored ? floats(value, {-9.0f, -8.0f, -7.0f,
+                                                   7.0f, 8.0f, 9.0f})
+                                 : floats(value, {-1.0f, -2.0f, -3.0f,
+                                                   4.0f, 5.0f, 6.0f}))) {
+                mask |= 1u << 10;
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_MAT4 &&
+                       name == "Matrix") {
+                bool matrix = value.size() == 16 * sizeof(float);
+                const auto *bytes = reinterpret_cast<const std::uint8_t *>(
+                    value.data());
+                for (int component = 0; matrix && component < 16; ++component) {
+                    const float actual = std::bit_cast<float>(
+                        Load32(bytes + component * sizeof(float)));
+                    const float expected = authored
+                        ? static_cast<float>(component) + 0.25f
+                        : static_cast<float>((component / 4) * 10 +
+                                             component % 4);
+                    matrix = actual == expected;
+                }
+                if (matrix)
+                    mask |= 1u << 11;
             } else if (record.Kind == BML_BEHAVIOR_VALUE_OBJECT &&
                        name == "Object" && value.size() == 12) {
-                const auto *bytes = reinterpret_cast<const std::uint8_t *>(value.data());
-                BML_ObjectRef reference{Load32(bytes), Load32(bytes + 4),
-                                        Load32(bytes + 8)};
-                object = true;
-                if (objectReference && reference.Domain)
-                    *objectReference = reference;
+                BML_ObjectRef reference{};
+                if (objectRef(value, reference) &&
+                    (!authored || Same(reference, m_InputObjectRef))) {
+                    mask |= 1u << 12;
+                    if (objectReference && reference.Domain)
+                        *objectReference = reference;
+                }
+            } else if (record.Kind == BML_BEHAVIOR_VALUE_OBJECT &&
+                       name == "Target" && value.size() == 12) {
+                BML_ObjectRef reference{};
+                if (objectRef(value, reference) &&
+                    (!expectedTarget || Same(reference, *expectedTarget)))
+                    mask |= 1u << 13;
             }
         }
-        const std::uint32_t mask = (integer ? 1u : 0u) |
-            (real ? 2u : 0u) | (vector ? 4u : 0u) |
-            (text ? 8u : 0u) | (object ? 16u : 0u);
         if (valueMask)
             *valueMask = mask;
-        return mask == 31u;
+        return mask == 0x3fffu;
     }
 
-    bool HasOut(const DrainedOutcomes &out,
-                const BML_BehaviorOutcomeHeader &header,
+    bool HasOut(const TakenFrames &out,
+                const BML_BehaviorRunFrame &header,
                 std::string_view expected) const {
         for (std::uint32_t index = 0; index < header.OutCount; ++index) {
             BML_BehaviorOutRecord record{};
@@ -499,17 +1431,76 @@ private:
         return false;
     }
 
+    bool HasIntPout(const TakenFrames &out,
+                    const BML_BehaviorRunFrame &header,
+                    std::string_view expectedName,
+                    std::int32_t expectedValue) const {
+        for (std::uint32_t index = 0; index < header.PoutCount; ++index) {
+            BML_BehaviorPoutRecord record{};
+            if (!Record(out, header.PoutOffset, index, record))
+                return false;
+            if (record.Kind != BML_BEHAVIOR_VALUE_INT32 ||
+                Bytes(out, record.NameOffset, record.NameLength) != expectedName)
+                continue;
+            const std::string_view value = Bytes(
+                out, record.ValueOffset, record.ValueSize);
+            return value.size() == 4 &&
+                static_cast<std::int32_t>(Load32(
+                    reinterpret_cast<const std::uint8_t *>(value.data()))) ==
+                    expectedValue;
+        }
+        return false;
+    }
+
+    bool RunIs(BML_BehaviorRun run, std::uint32_t kind,
+               std::uint32_t state) const {
+        BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        return m_Behavior->ReadRun(run, &info, &status) == BML_OK &&
+            info.Kind == kind && info.State == state;
+    }
+
+    bool TerminalCallHasNoLiveLayout(BML_BehaviorRun run) const {
+        BML_BehaviorLayout layout = Dto<BML_BehaviorLayout>();
+        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
+        std::uint32_t payloadSize = 0;
+        return m_Behavior->ReadLiveLayout(
+                   run, &layout, nullptr, 0, &payloadSize, &status) ==
+                   BML_ERROR_FAIL &&
+            status.Error == BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE &&
+            status.Phase == BML_BEHAVIOR_PHASE_LAYOUT;
+    }
+
     void CheckRuns() {
-        DrainedOutcomes call;
-        DrainedOutcomes start;
-        DrainedOutcomes object;
-        DrainedOutcomes latest;
-        DrainedOutcomes queueFull;
-        const bool drained = Drain(m_Call, call) && Drain(m_Start, start) &&
-            Drain(m_Object, object) && Drain(m_Latest, latest) &&
-            Drain(m_QueueFull, queueFull);
-        if (!drained) {
-            Fail("drain");
+        m_CppFacadePassed = m_CppFacadePassed && CheckCppFacade();
+        TakenFrames call;
+        TakenFrames start;
+        TakenFrames object;
+        TakenFrames latest;
+        TakenFrames queueFull;
+        TakenFrames continued;
+        TakenFrames echo;
+        TakenFrames dynamic;
+        TakenFrames targetOwner;
+        TakenFrames targetObject;
+        TakenFrames targetNull;
+        TakenFrames duplicate;
+        TakenFrames indexed;
+        TakenFrames waitForAll;
+        TakenFrames graph;
+        const bool taken = Take(m_Call, call) && Take(m_Start, start) &&
+            Take(m_Object, object) && Take(m_Latest, latest) &&
+            Take(m_QueueFull, queueFull) &&
+            Take(m_ContinuedCall, continued) && Take(m_Echo, echo) &&
+            Take(m_Dynamic, dynamic) &&
+            Take(m_TargetOwner, targetOwner) &&
+            Take(m_TargetObject, targetObject) &&
+            Take(m_TargetNull, targetNull) &&
+            Take(m_DuplicateOccurrence, duplicate) &&
+            Take(m_Indexed, indexed) && Take(m_WaitForAll, waitForAll) &&
+            Take(m_Graph, graph);
+        if (!taken) {
+            Fail("take");
             return;
         }
 
@@ -549,7 +1540,57 @@ private:
             queueFull.Headers[1].Sequence == 2 &&
             queueFull.Headers[1].Terminal &&
             queueFull.Headers[1].Error ==
-                BML_BEHAVIOR_ERROR_OUTCOME_LIMIT_REACHED;
+                BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL;
+
+        const bool continuedOk = m_ContinueAccepted &&
+            continued.Headers.size() == 2 &&
+            continued.Headers[0].Sequence == 1 &&
+            continued.Headers[1].Sequence == 2 &&
+            (continued.Headers[0].Continuation &
+             BML_BEHAVIOR_CONTINUATION_NATIVE) != 0 &&
+            HasOut(continued, continued.Headers[1], "Done") &&
+            ValidateValues(continued, continued.Headers[1]);
+        const bool echoOk = echo.Headers.size() == 1 &&
+            HasOut(echo, echo.Headers[0], "Done") &&
+            ValidateValues(echo, echo.Headers[0], nullptr, nullptr, true);
+        const bool dynamicOk = dynamic.Headers.size() == 1 &&
+            HasOut(dynamic, dynamic.Headers[0], "Dynamic Done") &&
+            HasIntPout(dynamic, dynamic.Headers[0], "Dynamic Value", 713) &&
+            ValidateValues(dynamic, dynamic.Headers[0]);
+        const BML_ObjectRef nullReference{};
+        const bool targetsOk = targetOwner.Headers.size() == 1 &&
+            targetObject.Headers.size() == 1 && targetNull.Headers.size() == 1 &&
+            ValidateValues(targetOwner, targetOwner.Headers[0], nullptr,
+                           nullptr, false, &m_InputObjectRef) &&
+            ValidateValues(targetObject, targetObject.Headers[0], nullptr,
+                           nullptr, false, &m_InputObjectRef) &&
+            ValidateValues(targetNull, targetNull.Headers[0], nullptr,
+                           nullptr, false, &nullReference);
+        const bool selectorsOk = duplicate.Headers.size() == 1 &&
+            indexed.Headers.size() == 1 &&
+            HasOut(duplicate, duplicate.Headers[0], "Done") &&
+            HasOut(indexed, indexed.Headers[0], "Done") &&
+            ValidateValues(duplicate, duplicate.Headers[0]) &&
+            ValidateValues(indexed, indexed.Headers[0]);
+        const bool waitForAllOk = waitForAll.Headers.size() == 2 &&
+            waitForAll.Headers[0].Sequence == 1 &&
+            waitForAll.Headers[1].Sequence == 2 &&
+            waitForAll.Headers[1].OutCount == 1;
+        bool graphOut = false;
+        for (const BML_BehaviorRunFrame &header : graph.Headers)
+            graphOut = graphOut || HasOut(graph, header, "Exit");
+        const bool graphOk = !graph.Headers.empty() &&
+            graph.Headers.front().Sequence == 1 && graphOut &&
+            RunIs(m_Graph, BML_BEHAVIOR_RUN_INSTANCE,
+                  BML_BEHAVIOR_RUN_COMPLETED);
+        const bool statesOk =
+            RunIs(m_Call, BML_BEHAVIOR_RUN_CALL,
+                  BML_BEHAVIOR_RUN_COMPLETED) &&
+            RunIs(m_Start, BML_BEHAVIOR_RUN_TASK,
+                  BML_BEHAVIOR_RUN_COMPLETED) &&
+            RunIs(m_Dynamic, BML_BEHAVIOR_RUN_INSTANCE,
+                  BML_BEHAVIOR_RUN_COMPLETED) &&
+            TerminalCallHasNoLiveLayout(m_Call);
 
         GetLogger()->Info(
             "Behavior transport detail: call=%s call_count=%u call_out=%s call_values=%u start=%s start_count=%u start_out=%s start_values=%u object=%s object_count=%u object_values=%u captured=%u:%u:%u stale=%s latest=%s latest_count=%u latest_sequence=%llu queue=%s queue_count=%u queue_error=%u",
@@ -568,11 +1609,35 @@ private:
             static_cast<unsigned>(queueFull.Headers.size()),
             queueFull.Headers.size() < 2 ? 0u : queueFull.Headers[1].Error);
 
+        GetLogger()->Info(
+            "Behavior functional detail: catalog=%s cpp_facade=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_state=%s",
+            m_CatalogPassed ? "true" : "false",
+            m_CppFacadePassed ? "true" : "false",
+            echoOk ? "true" : "false",
+            continuedOk ? "true" : "false",
+            dynamicOk ? "true" : "false",
+            targetsOk ? "true" : "false",
+            selectorsOk ? "true" : "false",
+            waitForAllOk ? "true" : "false",
+            graphOk ? "true" : "false",
+            statesOk ? "true" : "false");
+
+        m_FunctionalPassed = m_CppFacadePassed && continuedOk && echoOk &&
+            dynamicOk && targetsOk && selectorsOk && waitForAllOk &&
+            graphOk && statesOk;
         m_TransportPassed = callOk && startOk && objectWire && latestOk &&
-            queueFullOk && m_SessionOpenedBeforeLevel && m_CatalogPassed;
+            queueFullOk && m_FunctionalPassed &&
+            m_SessionOpenedBeforeLevel && m_CatalogPassed;
         m_WirePassed = call.NonConsumingSizeQuery && start.NonConsumingSizeQuery &&
             object.NonConsumingSizeQuery && latest.NonConsumingSizeQuery &&
-            queueFull.NonConsumingSizeQuery;
+            queueFull.NonConsumingSizeQuery &&
+            continued.NonConsumingSizeQuery && echo.NonConsumingSizeQuery &&
+            dynamic.NonConsumingSizeQuery &&
+            targetOwner.NonConsumingSizeQuery &&
+            targetObject.NonConsumingSizeQuery &&
+            targetNull.NonConsumingSizeQuery && duplicate.NonConsumingSizeQuery &&
+            indexed.NonConsumingSizeQuery && waitForAll.NonConsumingSizeQuery &&
+            graph.NonConsumingSizeQuery;
         m_ObjectRefPassed = objectStale;
         if (!m_TransportPassed)
             Fail("transport");
@@ -588,7 +1653,11 @@ private:
         if (!m_Behavior)
             return;
         for (BML_BehaviorRun *run : {&m_Call, &m_Start, &m_Object,
-                                     &m_Latest, &m_QueueFull}) {
+                                     &m_Latest, &m_QueueFull,
+                                     &m_ContinuedCall, &m_Echo, &m_Dynamic,
+                                     &m_TargetOwner, &m_TargetObject,
+                                     &m_TargetNull, &m_DuplicateOccurrence,
+                                     &m_Indexed, &m_WaitForAll, &m_Graph}) {
             if (*run) {
                 m_Behavior->CloseRun(*run);
                 *run = nullptr;
@@ -620,11 +1689,30 @@ private:
     const BML_SceneInterface *m_Scene = nullptr;
     BML_BehaviorSession m_Session = nullptr;
     BML_BehaviorPrototypeRef m_Prototype = Dto<BML_BehaviorPrototypeRef>();
+    BML_BehaviorPrototypeRef m_GraphPrototype = Dto<BML_BehaviorPrototypeRef>();
+    BML_BehaviorPrototypeRef m_WaitForAllPrototype = Dto<BML_BehaviorPrototypeRef>();
     BML_BehaviorRun m_Call = nullptr;
     BML_BehaviorRun m_Start = nullptr;
     BML_BehaviorRun m_Object = nullptr;
     BML_BehaviorRun m_Latest = nullptr;
     BML_BehaviorRun m_QueueFull = nullptr;
+    BML_BehaviorRun m_ContinuedCall = nullptr;
+    BML_BehaviorRun m_Echo = nullptr;
+    BML_BehaviorRun m_Dynamic = nullptr;
+    BML_BehaviorRun m_TargetOwner = nullptr;
+    BML_BehaviorRun m_TargetObject = nullptr;
+    BML_BehaviorRun m_TargetNull = nullptr;
+    BML_BehaviorRun m_DuplicateOccurrence = nullptr;
+    BML_BehaviorRun m_Indexed = nullptr;
+    BML_BehaviorRun m_WaitForAll = nullptr;
+    BML_BehaviorRun m_Graph = nullptr;
+    BML::Behavior::Session m_CppSession;
+    std::optional<BML::Behavior::Call> m_CppCall;
+    std::optional<BML::Behavior::Task> m_CppStart;
+    std::optional<BML::Behavior::Task> m_CppContinued;
+    std::optional<BML::Behavior::Instance> m_CppInstance;
+    CK_ID m_InputObjectId = 0;
+    BML_ObjectRef m_InputObjectRef{};
     int m_LevelFrames = 0;
     bool m_LevelStarted = false;
     bool m_SessionOpenedBeforeLevel = false;
@@ -632,6 +1720,9 @@ private:
     bool m_WirePassed = false;
     bool m_ObjectRefPassed = false;
     bool m_CatalogPassed = false;
+    bool m_CppFacadePassed = false;
+    bool m_FunctionalPassed = false;
+    bool m_ContinueAccepted = false;
     bool m_Done = false;
     bool m_Passed = false;
 };
