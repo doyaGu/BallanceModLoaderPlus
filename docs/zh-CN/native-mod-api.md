@@ -63,6 +63,7 @@ C 符号 `BMLEntry` 和 `BMLExit`。入口缺失或被 C++ 名称修饰时，构
 | `DataShare.h` | 低层、同进程的命名字节数据共享 |
 | `Types.h`, `TypeConvert.h` | 对象引用、向量与矩阵，以及与 Virtools 类型之间的互转 |
 | `Interface.h` | Loader 交出的带版本接口结构体，以及取用它的方式 |
+| `Behavior.h` | 原生 Building Block 发现、声明/实时 Layout、配置后的 Run 与自持有 Outcome |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | 通过接口结构体取用的 Loader 能力，附带内联 C++ 包装 |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ 运行时与线格式 |
 | `Bui.h` | Ballance 风格 ImGui 控件 |
@@ -192,6 +193,14 @@ void MyMod::OnUnload() {
 版本规则写在 `Interface.h` 里：结构体只能在末尾追加成员并提升次版本号，而
 `BML_IFACE_HAS` 用来询问正在运行的 Loader 有没有某个比 Mod 编译时的头文件更晚
 加入的成员。
+
+`bml.behavior` 直接沿用 Virtools 的 Prototype、Layout、Setting、Pin、Local、In、
+Out 和 Pout 词汇。次版本 1 增加精确的 Prototype 发现以及声明/实时 Layout 读取。
+发现结果包含 Prototype GUID 和 provider generation；应把 generation 写入
+`BML_BehaviorBlock`，这样 provider 被替换后会明确失败，而不是静默绑定到另一个 DLL。
+发现与 Layout 读取采用调用方 buffer 的两阶段协议：buffer 不足时只报告完整所需的
+记录数和 payload 大小，不写入、不消费半条结果。调用新增函数前应使用
+`BML_IFACE_HAS`；如果当前 CK2 无法可靠观察声明注销，这几个函数会报告能力不可用。
 
 原生 `BML::Gameplay` 的集合读取函数会在调用方持有的 `std::vector` 中返回完整
 快照。目录应在初始化时读取，检查点和重置点应在关卡变化时刷新；这些调用会
