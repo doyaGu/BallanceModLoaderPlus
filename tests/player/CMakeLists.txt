@@ -40,8 +40,9 @@ if (NOT TARGET BML::BML)
     add_library(BML::BML ALIAS BML)
 endif ()
 
-# This Mod is loaded by Ballance Player. It exercises both the public adapter
-# and the exact private Runtime implementation against the proprietary CK2.
+# This Mod is loaded by Ballance Player. It exercises the public adapter and
+# CK2 semantics through private sources recompiled into this fixture.
+# It does not prove that those sources are wired into the Loader composition.
 bml_add_mod(ExecuteBBTest
         ExecuteBBTest.cpp
         BehaviorRuntimeProbe.cpp
@@ -76,6 +77,17 @@ bml_add_mod(BehaviorTransportTest
         BehaviorTransportFixtureApi.h
 )
 set_target_properties(BehaviorTransportTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        FOLDER "Tests/Player"
+)
+
+bml_add_mod(BehaviorPatchTest
+        BehaviorPatchTest.cpp
+        BehaviorLifecycleFixtureApi.h
+)
+# This Mod links the normal import library and reaches Patches owned by BMLPlus.dll.
+target_include_directories(BehaviorPatchTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
+set_target_properties(BehaviorPatchTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         FOLDER "Tests/Player"
 )

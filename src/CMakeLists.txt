@@ -157,6 +157,11 @@ set(BML_API_SOURCES
         Api/ObjectRefs.cpp
 )
 
+if (BML_BUILD_TESTS)
+    list(APPEND BML_API_PRIVATE_HEADERS Api/BehaviorTestApi.h)
+    list(APPEND BML_API_SOURCES Api/BehaviorTestApi.cpp)
+endif ()
+
 set(BML_DATA_SHARE_PRIVATE_HEADERS
         DataShare/DataShare.hpp
 )
@@ -550,6 +555,7 @@ add_dependencies(BML BML_VersionHeader)
 target_compile_definitions(BML PRIVATE
         BML_EXPORTS IMGUI_EXPORT IMGUI_USER_CONFIG=\"BMLImGuiConfig.h\"
         BML_ENABLE_ANGELSCRIPT=$<BOOL:${BML_WITH_ANGELSCRIPT}>
+        BML_ENABLE_PLAYER_TESTS=$<BOOL:${BML_BUILD_TESTS}>
 )
 
 set_target_properties(BML PROPERTIES

@@ -19,6 +19,9 @@
 
 #include "Api/BuiltinCapabilities.h"
 #include "Api/BehaviorApi.h"
+#if BML_ENABLE_PLAYER_TESTS
+#include "Api/BehaviorTestApi.h"
+#endif
 #include "Loader/ModContext.h"
 
 namespace {
@@ -363,6 +366,10 @@ struct InterfaceEntry {
 };
 
 const InterfaceEntry kInterfaces[] = {
+#if BML_ENABLE_PLAYER_TESTS
+    {BML_BEHAVIOR_TEST_INTERFACE_ID, BML_BEHAVIOR_TEST_INTERFACE_MAJOR,
+     &BML::Api::BehaviorTestInterface()},
+#endif
     {BML_BEHAVIOR_INTERFACE_ID, BML_BEHAVIOR_INTERFACE_MAJOR,
      &BML::Api::BehaviorInterface()},
     {BML_GAMEPLAY_INTERFACE_ID, BML_GAMEPLAY_INTERFACE_MAJOR, &kGameplayInterface},
