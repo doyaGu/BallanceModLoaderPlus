@@ -3719,8 +3719,18 @@ const char *DescribeError(Error error) {
     case Error::SharedSourceCycle: return "shared-source cycle";
     case Error::PushCycle: return "Pout destination cycle";
     case Error::InterfaceUnsupported: return "interface change unsupported";
+    case Error::SourceConflict: return "Pin source conflict";
+    case Error::SourceOrderCycle: return "Pin source order cycle";
     case Error::OrderingTargetMismatch: return "ordering target mismatch";
     case Error::OverlayOrderCycle: return "overlay order cycle";
+    case Error::LinkNotFound: return "Link not found";
+    case Error::PathAmbiguous: return "ambiguous Path";
+    case Error::PathCycle: return "cyclic Path";
+    case Error::QueryNotFound: return "query not found";
+    case Error::QueryAmbiguous: return "ambiguous query";
+    case Error::WorldBoundValue: return "world-bound value";
+    case Error::RevertConflict: return "Patch revert conflict";
+    case Error::TargetCardinality: return "target cardinality mismatch";
     }
     return "unknown";
 }
