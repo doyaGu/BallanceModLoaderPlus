@@ -27,6 +27,7 @@
 #include "Behavior/Runtime.h"
 #include "Behavior/Sessions.h"
 #include "Behavior/Patches.h"
+#include "Behavior/Plan.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/PhysicsForce.h"
@@ -252,6 +253,9 @@ public:
     BML::Behavior::Patches &BehaviorPatches() noexcept {
         return m_BehaviorPatches;
     }
+    BML::Behavior::Plans &BehaviorPlans() noexcept {
+        return m_BehaviorPlans;
+    }
     BML::Behavior::PrototypeCatalog &BehaviorPrototypes() noexcept {
         return m_BehaviorPrototypes;
     }
@@ -260,6 +264,7 @@ public:
         return m_PhysicsForce;
     }
     void VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count);
+    void BehaviorScriptLoaded(CKBehavior *script);
     void ProcessVirtoolsFrame();
     void ResetVirtoolsWorld();
     BML::GameFontCatalog &GetGameFonts() noexcept { return m_GameFonts; }
@@ -465,6 +470,7 @@ private:
     BML::Behavior::Runtime m_Behaviors;
     BML::Behavior::Sessions m_BehaviorSessions;
     BML::Behavior::Patches m_BehaviorPatches;
+    BML::Behavior::Plans m_BehaviorPlans;
     BML::Behavior::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;

@@ -75,6 +75,7 @@ int ObjectLoad(const CKBehaviorContext &behcontext) {
         if (obj && obj->GetClassID() == CKCID_BEHAVIOR) {
             auto *behavior = static_cast<CKBehavior *>(obj);
             if ((behavior->GetType() & CKBEHAVIORTYPE_SCRIPT) != 0) {
+                modContext->BehaviorScriptLoaded(behavior);
                 modContext->BroadcastCallback(&IMod::OnLoadScript, callbackName.c_str(), behavior);
             }
         }

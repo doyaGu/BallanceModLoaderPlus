@@ -208,7 +208,12 @@ ModContext::ModContext(CKContext *context)
                       reference.Generation};
               })),
       m_BehaviorPatches(context, m_Behaviors, &m_BehaviorPrototypes,
-                        RequireBehaviorGraph(m_BehaviorSessions)),
+                        RequireBehaviorGraph(m_BehaviorSessions),
+                        [this](const BML::Behavior::ObjectRef &reference) {
+                            return m_ObjectRefs.Resolve({
+                                reference.Domain, reference.Slot,
+                                reference.Generation});
+                        }),
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);
@@ -354,6 +359,10 @@ void ModContext::ResetVirtoolsWorld() {
     // to the API seam and are reset only after internal teardown is complete.
     m_ExecuteBB.Reset();
     m_PhysicsForce.Reset();
+    const BML::Behavior::Status plans = m_BehaviorPlans.ResetWorld();
+    if (!plans && m_Logger)
+        m_Logger->Error("Failed to leave the current Behavior Plan world: %s",
+                        plans.Message.c_str());
     m_BehaviorPatches.ResetWorld();
     m_BehaviorSessions.ResetWorld();
     m_Behaviors.ResetWorld();
@@ -365,8 +374,32 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
     // final observer because they do not participate in native teardown.
     m_PhysicsForce.ObjectsToBeDeleted(ids, count);
     m_BehaviorPatches.ObjectsToBeDeleted(ids, count);
+    // Dropping the target only marks the world dirty. Reconciliation waits for
+    // the next Loader frame: Virtools is still inside DeleteObjects here, so a
+    // Plan that installed onto the doomed script must not try to reach it, and
+    // Patches::Close already succeeds for an installation this pass erased.
+    if (ids && count > 0) {
+        for (int index = 0; index < count; ++index) {
+            m_BehaviorPlans.RemoveObject(
+                BML_OBJECT_DOMAIN_VIRTOOLS,
+                static_cast<std::uint32_t>(ids[index]));
+        }
+    }
     m_Behaviors.ObjectsToBeDeleted(ids, count);
     m_ObjectRefs.Invalidate(ids, count);
+}
+
+void ModContext::BehaviorScriptLoaded(CKBehavior *script) {
+    if (!script)
+        return;
+    const BML_ObjectRef reference = m_ObjectRefs.Issue(script);
+    const char *name = script->GetName();
+    const BML::Behavior::Status status = m_BehaviorPlans.LoadScript(
+        name ? name : "",
+        {reference.Domain, reference.Slot, reference.Generation});
+    if (!status && m_Logger)
+        m_Logger->Error("Failed to retain a live Behavior script: %s",
+                        status.Message.c_str());
 }
 
 void ModContext::ProcessVirtoolsFrame() {
@@ -374,6 +407,10 @@ void ModContext::ProcessVirtoolsFrame() {
     m_PhysicsForce.ProcessFrame();
     m_Behaviors.ProcessFrame();
     m_BehaviorSessions.ProcessFrame();
+    const BML::Behavior::Status plans = m_BehaviorPlans.ProcessFrame();
+    if (!plans && m_Logger)
+        m_Logger->Error("Failed to reconcile Behavior Plans: %s",
+                        plans.Message.c_str());
     m_BehaviorPatches.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
 }
@@ -664,6 +701,11 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
                 m_Logger->Error("Unknown exception in a Mod unload callback.");
         }
         try {
+            const BML::Behavior::Status plans =
+                m_BehaviorPlans.RetireOwner(mod->GetID());
+            if (!plans && m_Logger)
+                m_Logger->Error("Failed to retire Behavior Plans for Mod %s: %s",
+                                mod->GetID(), plans.Message.c_str());
             const BML::Behavior::Status patches =
                 m_BehaviorPatches.RetireOwner(mod->GetID());
             if (!patches && m_Logger)
@@ -686,6 +728,7 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
         IMod *mod = *rit;
         try {
             m_ImcRuntime.CleanupOwner(mod->GetID());
+            (void) m_BehaviorPlans.RetireOwner(mod->GetID());
             (void) m_BehaviorPatches.RetireOwner(mod->GetID());
             m_BehaviorSessions.RetireOwner(mod->GetID());
         } catch (...) {
@@ -1678,6 +1721,7 @@ void ModContext::OnLoadGame() {
     for (int i = 0; i < scriptCnt; i++) {
         auto *behavior = (CKBehavior *) m_CKContext->GetObject(scripts[i]);
         if (behavior->GetType() == CKBEHAVIORTYPE_SCRIPT) {
+            BehaviorScriptLoaded(behavior);
             BroadcastCallback(&IMod::OnLoadScript, "base.cmo", behavior);
         }
     }
@@ -2760,6 +2804,14 @@ bool ModContext::UnregisterMod(IMod *mod) {
             if (id == m_ModIndex.end())
                 return false;
             modIdCopy = id->first;
+        }
+        const BML::Behavior::Status plans =
+            m_BehaviorPlans.RetireOwner(modIdCopy);
+        if (!plans) {
+            if (m_Logger)
+                m_Logger->Error("Failed to retire Behavior Plans for Mod %s: %s",
+                                modIdCopy.c_str(), plans.Message.c_str());
+            return false;
         }
         const BML::Behavior::Status patches =
             m_BehaviorPatches.RetireOwner(modIdCopy);
