@@ -23,7 +23,7 @@ Status ResolvePort(const GraphNode &node, const Slot &selector,
     if (selector.Kind != SlotKind::Input &&
         selector.Kind != SlotKind::Output) {
         return Failure(Error::TypeMismatch,
-                       "A durable Link selector requires an In or Out port.");
+                       "A Link selector requires an In or Out port.");
     }
 
     std::vector<const GraphPort *> matches;
@@ -39,18 +39,18 @@ Status ResolvePort(const GraphNode &node, const Slot &selector,
     }
     if (matches.empty())
         return Failure(Error::SlotNotFound,
-                       "A durable Link port did not match the current graph.");
+                       "A Link port did not match the current graph.");
     if ((selector.RequireOnly ||
          (selector.UsesName() && selector.RequireUnique)) &&
         matches.size() != 1) {
         return Failure(Error::AmbiguousSlot,
-                       "A durable Link port is ambiguous in the current graph.");
+                       "A Link port is ambiguous in the current graph.");
     }
     const int occurrence = selector.UsesName() ? selector.Occurrence : 0;
     if (occurrence < 0 ||
         occurrence >= static_cast<int>(matches.size())) {
         return Failure(Error::SlotNotFound,
-                       "A durable Link port occurrence does not exist.");
+                       "A Link port occurrence does not exist.");
     }
     out = {node.Id, matches[static_cast<std::size_t>(occurrence)]->Kind,
            matches[static_cast<std::size_t>(occurrence)]->Index};
@@ -213,21 +213,23 @@ Status GraphEdit::Validate() const {
     for (const EditNode &node : m_Nodes) {
         if (node.Added && !node.Prototype.IsValid())
             return Failure(Error::PrototypeNotFound,
-                           "An added durable Block requires a Prototype GUID.");
+                           "An added Block requires a Prototype GUID.");
         if (!node.Added && !node.Query)
             return Failure(Error::QueryNotFound,
-                           "A durable Node query has no semantic identity.");
+                           "A Node query has no semantic identity.");
     }
     for (const EditLink &link : m_Links) {
         if (!link.Source || !link.Sink ||
             !existingNode(link.Source.Owner) ||
             !existingNode(link.Sink.Owner) ||
             (!link.Source.Selector.UsesName() &&
+             !link.Source.Selector.RequireOnly &&
              link.Source.Selector.Index < 0) ||
             (!link.Sink.Selector.UsesName() &&
+             !link.Sink.Selector.RequireOnly &&
              link.Sink.Selector.Index < 0)) {
             return Failure(Error::InvalidState,
-                           "A durable Link query requires existing graph ports.");
+                           "A Link query requires existing graph ports.");
         }
         if (link.Delay && (*link.Delay < 0 || *link.Delay >= 32765)) {
             return Failure(Error::InvalidDelay,
@@ -242,11 +244,12 @@ Status GraphEdit::Validate() const {
         if (!path.Handle || !path.Start ||
             !existingNode(path.Start.Owner) ||
             (!path.Start.Selector.UsesName() &&
+             !path.Start.Selector.RequireOnly &&
              path.Start.Selector.Index < 0) ||
             (!rootEntry && !nodeOut)) {
             return Failure(
                 Error::InvalidState,
-                "A durable Path must begin at a graph Entry or existing node Out.");
+                "A Path must begin at a graph Entry or existing node Out.");
         }
     }
 
@@ -255,7 +258,8 @@ Status GraphEdit::Validate() const {
     const auto port = [&](const Port &value) {
         if (!value || !knownNode(value.Owner))
             return false;
-        return value.Selector.UsesName() || value.Selector.Index >= 0 ||
+        return value.Selector.UsesName() || value.Selector.RequireOnly ||
+            value.Selector.Index >= 0 ||
             interface.contains({value.Owner, value.Selector.Kind,
                                 value.Selector.Index});
     };
@@ -281,7 +285,7 @@ Status GraphEdit::Validate() const {
                     !item.Literal.Type().IsValid()) {
                     return Failure(
                         Error::TypeMismatch,
-                        "A durable null Value requires a Virtools type GUID.");
+                        "A null Value requires a Virtools type GUID.");
                 }
             } else if constexpr (std::is_same_v<T, EditPush>) {
                 if (!port(item.Source) || !port(item.Destination))
@@ -341,7 +345,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     out = {};
     if (patch.Owner.empty() || patch.Name.empty() || graph.IsNull())
         return Failure(Error::InvalidState,
-                       "A durable Graph Edit requires a patch key and live script.");
+                       "A Graph Edit requires a patch key and live graph.");
 
     Status status = Validate();
     if (!status)
@@ -354,14 +358,14 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         return status;
     if (base.Root != graph)
         return Failure(Error::GraphChanged,
-                       "The compiled Graph Edit inspected another script.");
+                       "The compiled Graph Edit inspected another graph.");
 
     const auto root = std::find_if(
         base.Nodes.begin(), base.Nodes.end(),
         [](const GraphNode &node) { return node.Parent == 0; });
     if (root == base.Nodes.end() || root->Object != graph)
         return Failure(Error::InvalidGraphLocality,
-                       "The Graph Edit target is not the logical root script.");
+                       "The Graph Edit target is not the logical root graph.");
 
     std::map<std::uint32_t, const GraphNode *> nodes;
     std::map<std::uint32_t, Node> liveNodes;
@@ -385,10 +389,10 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         }
         if (matches.empty())
             return Failure(Error::QueryNotFound,
-                           "A durable Node query matched no Node.");
+                           "A Node query matched no Node.");
         if (matches.size() != 1) {
             std::ostringstream message;
-            message << "A durable Node query matched " << matches.size()
+            message << "A Node query matched " << matches.size()
                     << " Nodes; RequireOne cannot choose between them.";
             return Failure(Error::QueryAmbiguous, message.str());
         }
@@ -407,7 +411,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         const auto sinkNode = nodes.find(item.Sink.Owner);
         if (sourceNode == nodes.end() || sinkNode == nodes.end())
             return Failure(Error::InvalidState,
-                           "A durable Link query names an added or unknown Node.");
+                           "A Link query names an added or unknown Node.");
         GraphEndpoint source;
         GraphEndpoint sink;
         status = ResolvePort(*sourceNode->second, item.Source.Selector, source);
@@ -426,10 +430,10 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         }
         if (matches.empty())
             return Failure(Error::LinkNotFound,
-                           "A durable exact Link query matched no Link.");
+                           "An exact Link query matched no Link.");
         if (matches.size() != 1) {
             std::ostringstream message;
-            message << "A durable exact Link query matched " << matches.size()
+            message << "An exact Link query matched " << matches.size()
                     << " parallel Links; add a delay or stronger endpoint selector.";
             return Failure(Error::QueryAmbiguous, message.str());
         }
@@ -451,7 +455,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         const auto liveOwner = liveNodes.find(item.Start.Owner);
         if (owner == nodes.end() || liveOwner == liveNodes.end()) {
             return Failure(Error::InvalidState,
-                           "A durable Path names an unknown Node.");
+                           "A Path names an unknown Node.");
         }
 
         GraphEndpoint start;
@@ -487,7 +491,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                     });
                 if (end == base.Nodes.end()) {
                     return Failure(Error::GraphChanged,
-                                   "A durable Path endpoint disappeared.");
+                                   "A Path endpoint disappeared.");
                 }
                 Node liveEnd;
                 const auto existing = std::find_if(

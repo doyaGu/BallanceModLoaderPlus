@@ -11,8 +11,8 @@
 
 namespace BML::Behavior {
 
-// A Node query is durable: it contains semantic identity only and is resolved
-// again against each matching script installation. An empty field is not a
+// A Node query contains semantic identity only and is resolved against the
+// target graph each time this edit is compiled. An empty field is not a
 // wildcard authoring shortcut unless the other field identifies the Node.
 struct NodeQuery {
     std::string Name;
@@ -84,8 +84,8 @@ public:
     Port AppendPout(Node node, std::string name, CKGUID type);
     Port AppendLocal(Node node, std::string name, CKGUID type);
 
-    // Checks the retained intent without consulting a CK world. This is also
-    // used by Submit so a durable Plan never owns a world-bound Value.
+    // Checks the retained intent without consulting a CK world. A symbolic
+    // edit never owns a world-bound Value.
     [[nodiscard]] Status Validate() const;
 
     Status Compile(const PatchKey &patch, const ObjectRef &graph,

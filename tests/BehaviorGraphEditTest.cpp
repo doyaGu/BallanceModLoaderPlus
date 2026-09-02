@@ -196,6 +196,23 @@ TEST(BehaviorGraphEdit, ResolvesSemanticNodesAndAnExactLinkBeforeAdding) {
     EXPECT_EQ(checked.Splices.front().Target.Anchor, Ref(201));
 }
 
+TEST(BehaviorGraphEdit, AcceptsTheOnlyPortSelectorFromThePublicDsl) {
+    FakeCompiler compiler(Model());
+    GraphEdit edit;
+    const Node wait = edit.RequireOne({"Wait Message"});
+    const Node sink = edit.RequireOne({"set Resetpoint"});
+    const Port onlyOut{wait.Value, Slot::Only(SlotKind::Output)};
+    const Port onlyIn{sink.Value, Slot::Only(SlotKind::Input)};
+    const Link edge = edit.RequireOne(onlyOut, onlyIn);
+    edit.Splice(edge, edit.Add(CKGUID(0x3333, 3)));
+
+    Edit resolved;
+    ASSERT_TRUE(edit.Compile(
+        {"mod", "only-ports"}, compiler.Base.Root, compiler, resolved));
+    EXPECT_EQ(compiler.UsedLinks,
+              (std::vector<ObjectRef>{Ref(201)}));
+}
+
 TEST(BehaviorGraphEdit, RejectsAnAmbiguousNameBeforeResolvingLinksOrBlocks) {
     GraphModel graph = Model();
     GraphNode duplicate = graph.Nodes[1];
