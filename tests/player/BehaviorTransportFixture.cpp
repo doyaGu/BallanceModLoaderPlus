@@ -29,6 +29,7 @@ enum InputIndex {
     InputReadTarget,
     InputDuplicate0,
     InputDuplicate1,
+    InputEchoNumber,
 };
 
 enum OutputIndex {
@@ -199,6 +200,9 @@ int Run(const CKBehaviorContext &context) {
     if (behavior->IsInputActive(InputEcho)) {
         if (!EchoPins(behavior))
             return CKBR_BEHAVIORERROR;
+    } else if (behavior->IsInputActive(InputEchoNumber)) {
+        if (!CopyPin(behavior, PinInteger, PoutInteger))
+            return CKBR_BEHAVIORERROR;
     } else if (!SetStaticValues(behavior)) {
         return CKBR_BEHAVIORERROR;
     }
@@ -311,6 +315,7 @@ CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
     created->DeclareInput("Read Target");
     created->DeclareInput("Duplicate");
     created->DeclareInput("Duplicate");
+    created->DeclareInput("Echo Number");
     created->DeclareOutput("Done");
     created->DeclareOutput("Deleted");
     created->DeclareOutParameter("Bool", CKPGUID_BOOL, "FALSE");

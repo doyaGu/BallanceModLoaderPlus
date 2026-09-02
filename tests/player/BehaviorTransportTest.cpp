@@ -1281,7 +1281,7 @@ private:
                 boundRelation.Detail().Message.c_str());
             return false;
         }
-        auto boundPulse = boundInstance.Pulse("Echo");
+        auto boundPulse = boundInstance.Pulse("Echo Number");
         if (!boundPulse) {
             GetLogger()->Error(
                 "Behavior live edit: stage=bind-pulse code=%d error=%u message=%s",
@@ -1293,7 +1293,10 @@ private:
         const BML::Behavior::Pout *boundNumber =
             boundFrames && boundFrames.Value().size() == 1
             ? boundFrames.Value().front().FindPout("Number") : nullptr;
-        if (!boundNumber || !boundNumber->Get<std::int32_t>() ||
+        if (!boundFrames || boundFrames.Value().size() != 1 ||
+            boundFrames.Value().front().Error != BML_BEHAVIOR_ERROR_NONE ||
+            !boundFrames.Value().front().HasOut("Done") ||
+            !boundNumber || !boundNumber->Get<std::int32_t>() ||
             *boundNumber->Get<std::int32_t>() != 42) {
             GetLogger()->Error(
                 "Behavior live edit: stage=bind-value frames=%u value=%d",
@@ -1302,6 +1305,59 @@ private:
                     ? *boundNumber->Get<std::int32_t>() : -1);
             return false;
         }
+
+        auto sharedSource = m_CppSession.Use(prototype)
+            .Pin(BML::Behavior::named("Number", 0), std::int32_t{84})
+            .Spawn();
+        auto sharedTarget = plain->Spawn();
+        if (!sharedSource || !sharedTarget)
+            return false;
+        BML::Behavior::Instance sharedSourceInstance =
+            std::move(sharedSource).Value();
+        BML::Behavior::Instance sharedTargetInstance =
+            std::move(sharedTarget).Value();
+        auto sharedSourceGraph = sharedSourceInstance.Inspect();
+        auto sharedTargetLayout = sharedTargetInstance.Layout();
+        const BML::Behavior::Slot *sharedTargetPin = sharedTargetLayout
+            ? sharedTargetLayout->Find(
+                  BML::Behavior::SlotKind::Pin, "Number")
+            : nullptr;
+        if (!sharedSourceGraph || !sharedTargetPin)
+            return false;
+        auto shared = sharedTargetInstance.Bind(
+            *sharedTargetPin,
+            BML::Behavior::pin(
+                sharedSourceGraph->Root(),
+                BML::Behavior::named("Number", 0)),
+            BML::Behavior::Relation::Shared);
+        if (!shared || !sharedTargetInstance.Configure({
+                           BML::Behavior::setting(
+                               "Extended Layout", true)}))
+            return false;
+        auto sharedTargetGraph = sharedTargetInstance.Inspect();
+        auto sharedValue = sharedTargetGraph
+            ? sharedTargetGraph->Read(BML::Behavior::pin(
+                  sharedTargetGraph->Root(),
+                  BML::Behavior::named("Number", 0)))
+            : BML::Behavior::Result<BML::Behavior::ObservedValue>::Failure(
+                  BML_ERROR_FAIL);
+        const std::int32_t *sharedNumber = sharedValue
+            ? std::get_if<std::int32_t>(&sharedValue->Data) : nullptr;
+        auto sharedPulse = sharedTargetInstance.Pulse("Echo Number");
+        auto sharedFrames = sharedTargetInstance.Take();
+        const BML::Behavior::Pout *sharedPout =
+            sharedFrames && sharedFrames.Value().size() == 1
+            ? sharedFrames.Value().front().FindPout("Number") : nullptr;
+        if (!sharedValue ||
+            sharedValue->Source != BML::Behavior::Relation::Shared ||
+            !sharedNumber || *sharedNumber != 84 || !sharedPulse ||
+            sharedPulse.Value() != BML::Behavior::Admission::Executed ||
+            !sharedFrames || sharedFrames.Value().size() != 1 ||
+            sharedFrames.Value().front().Error != BML_BEHAVIOR_ERROR_NONE ||
+            !sharedFrames.Value().front().HasOut("Done") ||
+            !sharedPout || !sharedPout->Get<std::int32_t>() ||
+            *sharedPout->Get<std::int32_t>() != 84)
+            return false;
 
         auto started = m_CppSession.Use(prototype)
             .Setting("Retry", true)
@@ -1345,8 +1401,11 @@ private:
             return false;
         }
         const BML::Behavior::Slot staleNumber = *oldNumber;
-        auto configured = dynamicInstance.Configure({
-            BML::Behavior::setting("Extended Layout", true)});
+        const std::vector<BML::Behavior::SettingStage> settingStages = {
+            {BML::Behavior::setting("Extended Layout", true)},
+            {BML::Behavior::setting("Retry", true)},
+        };
+        auto configured = dynamicInstance.Configure(settingStages);
         if (!configured || configured.Value() <= before->Generation) {
             GetLogger()->Error(
                 "Behavior live edit: stage=configure code=%d error=%u generation=%llu before=%llu message=%s",
@@ -1369,7 +1428,12 @@ private:
         const BML::Behavior::Slot *dynamicPin = after
             ? after->Find(BML::Behavior::SlotKind::Pin, "Dynamic Value")
             : nullptr;
-        if (!dynamicPin || dynamicPin->Generation != configured.Value()) {
+        const BML::Behavior::Slot *executions = after
+            ? after->Find(BML::Behavior::SlotKind::Local, "Executions")
+            : nullptr;
+        if (!dynamicPin || !executions ||
+            dynamicPin->Generation != configured.Value() ||
+            executions->Generation != configured.Value()) {
             GetLogger()->Error(
                 "Behavior live edit: stage=configure-layout-after pin=%s generation=%llu configured=%llu",
                 dynamicPin ? "true" : "false",
@@ -1379,10 +1443,13 @@ private:
         }
         auto setDynamic = dynamicInstance.Set(
             *dynamicPin, std::int32_t{713});
-        if (!setDynamic) {
+        auto setExecutions = dynamicInstance.Set(
+            *executions, std::int32_t{5});
+        if (!setDynamic || !setExecutions) {
             GetLogger()->Error(
-                "Behavior live edit: stage=set code=%d error=%u message=%s",
+                "Behavior live edit: stage=set code=%d error=%u local_code=%d local_error=%u message=%s",
                 setDynamic.Code(), setDynamic.Detail().Error,
+                setExecutions.Code(), setExecutions.Detail().Error,
                 setDynamic.Detail().Message.c_str());
             return false;
         }
@@ -1403,9 +1470,25 @@ private:
                   BML_ERROR_FAIL);
         const std::int32_t *replayedValue = replayedNumber
             ? std::get_if<std::int32_t>(&replayedNumber->Data) : nullptr;
+        auto configuredRetry = dynamicGraph
+            ? dynamicGraph->Read(BML::Behavior::setting(
+                  dynamicGraph->Root(), "Retry"))
+            : BML::Behavior::Result<BML::Behavior::ObservedValue>::Failure(
+                  BML_ERROR_FAIL);
+        const bool *retryValue = configuredRetry
+            ? std::get_if<bool>(&configuredRetry->Data) : nullptr;
+        auto localBefore = dynamicGraph
+            ? dynamicGraph->Read(BML::Behavior::local(
+                  dynamicGraph->Root(), "Executions"))
+            : BML::Behavior::Result<BML::Behavior::ObservedValue>::Failure(
+                  BML_ERROR_FAIL);
+        const std::int32_t *executionsBefore = localBefore
+            ? std::get_if<std::int32_t>(&localBefore->Data) : nullptr;
         if (!observedValue || *observedValue != 713 ||
             !replayedValue || *replayedValue != 321 ||
-            replayedNumber->Source != BML::Behavior::Relation::Direct) {
+            replayedNumber->Source != BML::Behavior::Relation::Direct ||
+            !retryValue || !*retryValue ||
+            !executionsBefore || *executionsBefore != 5) {
             GetLogger()->Error(
                 "Behavior live edit: stage=set-read code=%d error=%u state=%u relation=%u value=%d replay=%d replay_relation=%u index=%d",
                 observedDynamic.Code(), observedDynamic.Detail().Error,
@@ -1431,12 +1514,21 @@ private:
             BML::Behavior::named("Dynamic Value", 0)));
         const std::int32_t *postValue = postDynamic
             ? std::get_if<std::int32_t>(&postDynamic->Data) : nullptr;
+        auto localAfter = dynamicGraph->Read(BML::Behavior::local(
+            dynamicGraph->Root(), "Executions"));
+        const std::int32_t *executionsAfter = localAfter
+            ? std::get_if<std::int32_t>(&localAfter->Data) : nullptr;
         if (!dynamicAdmission ||
             dynamicAdmission.Value() != BML::Behavior::Admission::Executed ||
             !dynamicFrames || dynamicFrames.Value().size() != 1 ||
+            dynamicFrames.Value().front().Error != BML_BEHAVIOR_ERROR_NONE ||
+            dynamicFrames.Value().front().Continuation !=
+                BML_BEHAVIOR_CONTINUATION_NONE ||
             !dynamicFrames.Value().front().HasOut("Dynamic Done") ||
+            !dynamicFrames.Value().front().HasOut("Done") ||
             !dynamicValue || !dynamicValue->Get<std::int32_t>() ||
-            *dynamicValue->Get<std::int32_t>() != 713) {
+            *dynamicValue->Get<std::int32_t>() != 713 ||
+            !executionsAfter || *executionsAfter != 6) {
             GetLogger()->Error(
                 "Behavior live edit: stage=dynamic-execute admission=%d frames=%u value=%d post=%d out=%s",
                 dynamicAdmission.Code(),
@@ -1450,7 +1542,7 @@ private:
             return false;
         }
         GetLogger()->Info(
-            "Behavior live edit: status=pass bind=true configure=true stale=true set=true replay=true");
+            "Behavior live edit: status=pass direct=true shared=true configure=multi-stage stale=true pin=true local=true replay=true");
 
         const BML::Behavior::Prototype graphPrototype(
             BML::Behavior::Guid(BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID),
