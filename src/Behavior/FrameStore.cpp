@@ -20,6 +20,19 @@ bool HasNoContinuation(const RunFrame &frame) noexcept {
 FrameStore::FrameStore(FrameRetention retention)
     : m_Retention(retention) {}
 
+bool FrameStore::KeepsPouts(const RunFrame &frame) const noexcept {
+    switch (m_Retention.Kind) {
+    case RetentionKind::Latest:
+        return true;
+    case RetentionKind::Ignore:
+        return false;
+    case RetentionKind::Signals:
+    case RetentionKind::EachFrame:
+        return ShouldRetain(frame);
+    }
+    return false;
+}
+
 FrameAppendResult FrameStore::Retain(RunFrame frame) {
     std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_Retention.Kind == RetentionKind::Latest) {

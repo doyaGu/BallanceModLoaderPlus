@@ -227,21 +227,6 @@ public:
             return result;
         }
 
-        for (int index = 0; index < behavior->GetOutputParameterCount(); ++index) {
-            CKParameterOut *parameter = behavior->GetOutputParameter(index);
-            PoutInfo info;
-            if (!parameter || !GetPoutInfo(parameter, info)) {
-                result.Executed = false;
-                result.Fault = {
-                    ExecutionError::UnsupportedPout, CKBR_PARAMETERERROR,
-                    parameter
-                        ? std::string("Pout '") + SafeName(parameter) +
-                              "' has an unsupported type."
-                        : "A Pout is unavailable before Behavior execution."};
-                return result;
-            }
-        }
-
         ++record->LayoutGeneration;
         result.ReturnCode = m_Runtime.ExecuteNative(behavior, m_Frame);
         result.Retry = HasContinuation(result.ReturnCode);
@@ -265,7 +250,6 @@ public:
     }
 
     bool ReadOutputs(std::vector<ExecutionOutput> &activeOutputs,
-                     std::vector<Pout> &pouts,
                      ExecutionFault &fault) override {
         Record *record = m_Runtime.FindRecord(m_InstanceId);
         CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
@@ -282,7 +266,18 @@ public:
             activeOutputs.push_back(
                 {index, name, Occurrence(behavior, index, name, false)});
         }
+        return true;
+    }
 
+    bool ReadPouts(std::vector<Pout> &pouts,
+                   ExecutionFault &fault) override {
+        Record *record = m_Runtime.FindRecord(m_InstanceId);
+        CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
+        if (!record || !behavior) {
+            fault = {ExecutionError::PoutReadFailed, CKBR_BEHAVIORERROR,
+                     "Behavior disappeared before its Pouts were read."};
+            return false;
+        }
         for (int index = 0; index < behavior->GetOutputParameterCount(); ++index) {
             CKParameterOut *parameter = behavior->GetOutputParameter(index);
             if (!parameter) {

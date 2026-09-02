@@ -134,8 +134,9 @@ public:
     virtual bool Activate(const ResolvedInput &input, ExecutionFault &fault) = 0;
     virtual NativeExecution Execute() = 0;
     virtual bool ReadOutputs(std::vector<ExecutionOutput> &activeOutputs,
-                             std::vector<Pout> &pouts,
                              ExecutionFault &fault) = 0;
+    virtual bool ReadPouts(std::vector<Pout> &pouts,
+                           ExecutionFault &fault) = 0;
     virtual bool ClearOutputs(const std::vector<ExecutionOutput> &outputs,
                               ExecutionFault &fault) = 0;
 };

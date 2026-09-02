@@ -23,6 +23,7 @@ class FrameStore final {
 public:
     explicit FrameStore(FrameRetention retention);
 
+    [[nodiscard]] bool KeepsPouts(const RunFrame &frame) const noexcept;
     [[nodiscard]] FrameAppendResult Retain(RunFrame frame);
     [[nodiscard]] std::vector<RunFrame> Read() const;
     bool Consume(std::span<const std::uint64_t> sequences);

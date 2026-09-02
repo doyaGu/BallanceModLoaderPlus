@@ -108,12 +108,18 @@ public:
     }
 
     bool ReadOutputs(std::vector<ExecutionOutput> &activeOutputs,
-                     std::vector<Pout> &pouts,
-                     ExecutionFault &fault) override {
+                     ExecutionFault &) override {
+        ++OutputReads;
         for (int index = 0; index < static_cast<int>(Outputs.size()); ++index) {
             if (Outputs[index].Active)
                 activeOutputs.push_back({index, Outputs[index].Name, 0});
         }
+        return true;
+    }
+
+    bool ReadPouts(std::vector<Pout> &pouts,
+                   ExecutionFault &fault) override {
+        ++PoutReads;
         pouts = Pouts;
         if (OnRead)
             OnRead(pouts);
@@ -145,6 +151,8 @@ public:
     std::uint64_t LayoutGeneration = 1;
     bool WaitForAll = false;
     int Calls = 0;
+    int OutputReads = 0;
+    int PoutReads = 0;
     std::vector<Input> Inputs;
     std::vector<Input> Outputs;
     std::vector<int> Activated;
@@ -375,6 +383,7 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     ASSERT_EQ(signalFrames.size(), 2u);
     EXPECT_EQ(signalFrames[0].Sequence, 1u);
     EXPECT_EQ(signalFrames[1].Sequence, 3u);
+    EXPECT_EQ(signalsAdapter.PoutReads, 2);
 
     Execution each(FrameRetention::EachFrame(4));
     FakeExecutionAdapter eachAdapter;
@@ -383,6 +392,7 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     ASSERT_TRUE(each.Pulse(ExecutionInput::At(0, 1), 1, eachAdapter));
     ASSERT_TRUE(each.Step(2, eachAdapter));
     EXPECT_EQ(each.Take().size(), 2u);
+    EXPECT_EQ(eachAdapter.PoutReads, 2);
 
     Execution latest(FrameRetention::Latest());
     FakeExecutionAdapter latestAdapter;
@@ -396,6 +406,7 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     ASSERT_EQ(latestFrames.size(), 2u);
     EXPECT_EQ(latestFrames[0].Sequence, 2u);
     EXPECT_EQ(latestFrames[1].Sequence, 3u);
+    EXPECT_EQ(latestAdapter.PoutReads, 3);
 
     Execution ignore(FrameRetention::Ignore());
     FakeExecutionAdapter ignoreAdapter;
@@ -408,6 +419,8 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     EXPECT_FALSE(ignored[0].NativeContinuation);
     EXPECT_FALSE(ignored[0].QueuedInput);
     EXPECT_EQ(ignored[0].Sequence, 2u);
+    EXPECT_EQ(ignoreAdapter.OutputReads, 2);
+    EXPECT_EQ(ignoreAdapter.PoutReads, 0);
 }
 
 TEST(BehaviorExecution, FullFrameQueueUsesIndependentFailureSlot) {
@@ -472,7 +485,10 @@ TEST(BehaviorExecution, ReadsActiveOutAndPoutBeforeClearingTheOut) {
     value.Kind = PoutKind::Int32;
     value.Int32 = 42;
     adapter.Pouts.push_back(value);
+    bool poutsRead = false;
+    adapter.OnRead = [&](std::vector<Pout> &) { poutsRead = true; };
     adapter.OnClear = [&](const std::vector<ExecutionOutput> &) {
+        EXPECT_TRUE(poutsRead);
         ASSERT_EQ(adapter.Pouts.size(), 1u);
         EXPECT_EQ(adapter.Pouts[0].Int32, 42);
     };
@@ -511,21 +527,23 @@ TEST(BehaviorExecution, PoutValuesAreOwnedAndKeepNameOccurrences) {
     EXPECT_EQ(frames[0].Pouts[1].Text, "second");
 }
 
-TEST(BehaviorExecution, UnsupportedPoutBeforeExecuteCreatesNoFrame) {
+TEST(BehaviorExecution, UnsupportedPoutDoesNotChangeNativeExecution) {
     Execution execution;
     FakeExecutionAdapter adapter;
-    NativeExecution rejected;
-    rejected.Executed = false;
-    rejected.Fault = {ExecutionError::UnsupportedPout, 1,
-                      "unsupported Pout"};
-    adapter.Native.push_back(rejected);
+    adapter.ReadFailure = {ExecutionError::UnsupportedPout, 1,
+                           "unsupported Pout"};
 
     ExecutionResult result =
         execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
-    EXPECT_EQ(result.State, AdmissionState::Failed);
+    EXPECT_EQ(result.State, AdmissionState::Executed);
     EXPECT_EQ(result.Fault.Code, ExecutionError::UnsupportedPout);
-    EXPECT_EQ(execution.NextSequence(), 1u);
-    EXPECT_TRUE(execution.Take().empty());
+    EXPECT_EQ(adapter.Calls, 1);
+    EXPECT_EQ(adapter.PoutReads, 1);
+    EXPECT_EQ(execution.State(), ExecutionState::Idle);
+    EXPECT_EQ(execution.NextSequence(), 2u);
+    auto frames = execution.Take();
+    ASSERT_EQ(frames.size(), 1u);
+    EXPECT_EQ(frames[0].Fault.Code, ExecutionError::UnsupportedPout);
 }
 
 TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {

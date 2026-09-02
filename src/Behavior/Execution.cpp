@@ -176,26 +176,13 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
     frame.ReturnCode = native.ReturnCode;
 
     ExecutionFault outputFault;
-    if (!native.Fault &&
-        !adapter.ReadOutputs(frame.ActiveOutputs, frame.Pouts,
-                             outputFault)) {
+    if (!native.Fault && !adapter.ReadOutputs(frame.ActiveOutputs,
+                                               outputFault)) {
         if (!outputFault)
             outputFault = Fault(
-                ExecutionError::PoutReadFailed,
-                "Behavior outputs could not be copied into the Frame.");
+                ExecutionError::OutputUnavailable,
+                "Active Behavior outputs could not be read.");
         native.Fault = outputFault;
-        frame.Pouts.clear();
-    }
-
-    if (!frame.ActiveOutputs.empty()) {
-        ExecutionFault clearFault;
-        if (!adapter.ClearOutputs(frame.ActiveOutputs, clearFault) &&
-            !native.Fault) {
-            if (!clearFault)
-                clearFault = Fault(ExecutionError::OutputUnavailable,
-                                   "Active Behavior outputs could not be cleared.");
-            native.Fault = clearFault;
-        }
     }
 
     bool fatal = false;
@@ -224,6 +211,30 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
 
     frame.NativeContinuation = m_NativeContinuation;
     frame.QueuedInput = !m_QueuedInputs.empty();
+
+    if (!native.Fault && m_Frames->KeepsPouts(frame)) {
+        ExecutionFault poutFault;
+        if (!adapter.ReadPouts(frame.Pouts, poutFault)) {
+            if (!poutFault)
+                poutFault = Fault(
+                    ExecutionError::PoutReadFailed,
+                    "Behavior Pouts could not be copied into the Frame.");
+            frame.Pouts.clear();
+            if (!frame.Fault)
+                frame.Fault = std::move(poutFault);
+        }
+    }
+
+    if (!frame.ActiveOutputs.empty()) {
+        ExecutionFault clearFault;
+        if (!adapter.ClearOutputs(frame.ActiveOutputs, clearFault)) {
+            if (!clearFault)
+                clearFault = Fault(ExecutionError::OutputUnavailable,
+                                   "Active Behavior outputs could not be cleared.");
+            frame.Fault = std::move(clearFault);
+            fatal = true;
+        }
+    }
 
     if (fatal) {
         m_Managed = false;
