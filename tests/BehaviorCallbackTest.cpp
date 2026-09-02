@@ -1,4 +1,4 @@
-#include "Behavior/Callback.h"
+#include "Behavior/HookBlock.h"
 
 #include <stdexcept>
 #include <thread>
@@ -21,6 +21,10 @@ void Retain(void *state) {
 
 void Release(void *state) {
     ++static_cast<ReferenceCounts *>(state)->Releases;
+}
+
+int Noop(const CKBehaviorContext *, void *) {
+    return CKBR_OK;
 }
 
 TEST(BehaviorCallback, RetainsOnceAcrossLeasesAndReleasesAtSafePoint) {
@@ -182,6 +186,61 @@ TEST(BehaviorCallback, ReportsTheCurrentThreadInvocationExtent) {
         EXPECT_TRUE(CallbackInvocation::Active());
     }
     EXPECT_FALSE(CallbackInvocation::Active());
+}
+
+TEST(BehaviorCallback, DurableHookOpensOneLeasePerInstallation) {
+    ReferenceCounts counts;
+    PlanCallbackState state =
+        PlanCallbackState::Retained(&counts, Retain, Release);
+    HookBlock::Hook hook(state, Noop, &counts);
+
+    std::shared_ptr<HookBlock::Binding> first = hook.Bind();
+    std::shared_ptr<HookBlock::Binding> second = hook.Bind();
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    EXPECT_NE(first.get(), second.get());
+    EXPECT_EQ(counts.Retains, 1);
+
+    first->CloseAdmission();
+    EXPECT_TRUE(first->RetireAtSafePoint());
+    first.reset();
+    EXPECT_FALSE(state.Retired());
+    EXPECT_EQ(second->State(), CallbackLeaseState::Open);
+
+    std::shared_ptr<HookBlock::Binding> third = hook.Bind();
+    ASSERT_TRUE(third);
+    EXPECT_EQ(counts.Retains, 1);
+    second->CloseAdmission();
+    third->CloseAdmission();
+    EXPECT_TRUE(second->RetireAtSafePoint());
+    EXPECT_TRUE(third->RetireAtSafePoint());
+    EXPECT_EQ(counts.Releases, 0);
+}
+
+TEST(BehaviorCallback, DurableHookReleasesAfterPlanAndEveryInstallation) {
+    ReferenceCounts counts;
+    PlanCallbackState state =
+        PlanCallbackState::Retained(&counts, Retain, Release);
+    std::shared_ptr<HookBlock::Binding> first;
+    std::shared_ptr<HookBlock::Binding> second;
+    {
+        HookBlock::Hook hook(state, Noop, &counts);
+        HookBlock::Hook copy = hook;
+        first = hook.Bind();
+        second = copy.Bind();
+        ASSERT_TRUE(first);
+        ASSERT_TRUE(second);
+        first->CloseAdmission();
+        second->CloseAdmission();
+    }
+
+    EXPECT_TRUE(state.Retired());
+    EXPECT_FALSE(first->RetireAtSafePoint());
+    EXPECT_EQ(counts.Releases, 0);
+    EXPECT_TRUE(second->RetireAtSafePoint());
+    EXPECT_EQ(counts.Releases, 1);
+    EXPECT_TRUE(first->RetireAtSafePoint());
+    EXPECT_EQ(counts.Releases, 1);
 }
 
 } // namespace

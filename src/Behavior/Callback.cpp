@@ -9,6 +9,9 @@ namespace BML::Behavior {
 
 struct PlanCallbackState::Control {
     mutable std::mutex Mutex;
+    // Owns the storage Value points at when the caller does not. It outlives
+    // every lease because a lease holds this Control.
+    std::shared_ptr<void> Owner;
     void *Value = nullptr;
     Reference Retain = nullptr;
     Reference Release = nullptr;
@@ -24,6 +27,7 @@ struct CallbackInvocation::LeaseControl {
     std::shared_ptr<PlanCallbackState::Control> Plan;
     CallbackLeaseState State = CallbackLeaseState::Open;
     std::size_t Invocations = 0;
+    bool RetireRequested = false;
     std::atomic<bool> Counted{true};
 };
 
@@ -46,6 +50,17 @@ void RetireLease(const std::shared_ptr<CallbackInvocation::LeaseControl> &lease)
 PlanCallbackState PlanCallbackState::Retained(void *state, Reference retain,
                                               Reference release) {
     auto control = std::make_shared<Control>();
+    control->Value = state;
+    control->Retain = retain;
+    control->Release = release;
+    return PlanCallbackState(std::move(control));
+}
+
+PlanCallbackState PlanCallbackState::Retained(std::shared_ptr<void> owner,
+                                              void *state, Reference retain,
+                                              Reference release) {
+    auto control = std::make_shared<Control>();
+    control->Owner = std::move(owner);
     control->Value = state;
     control->Retain = retain;
     control->Release = release;
@@ -172,7 +187,8 @@ void CallbackInvocation::Leave() noexcept {
         if (m_Lease->Invocations > 0)
             --m_Lease->Invocations;
         retire = m_Lease->Invocations == 0 &&
-                 m_Lease->State == CallbackLeaseState::Closing;
+                 m_Lease->State == CallbackLeaseState::Closing &&
+                 m_Lease->RetireRequested;
         if (retire)
             m_Lease->State = CallbackLeaseState::Closed;
     }
@@ -206,6 +222,21 @@ CallbackInvocation CallbackLease::Enter() const {
     return CallbackInvocation(m_Lease);
 }
 
+CallbackCloseResult CallbackLease::CloseAdmission() noexcept {
+    if (!m_Lease)
+        return CallbackCloseResult::Closed;
+
+    {
+        std::lock_guard<std::mutex> lock(m_Lease->Mutex);
+        if (m_Lease->State == CallbackLeaseState::Closed)
+            return CallbackCloseResult::Closed;
+        m_Lease->State = CallbackLeaseState::Closing;
+        return m_Lease->Invocations == 0
+            ? CallbackCloseResult::Ready
+            : CallbackCloseResult::Queued;
+    }
+}
+
 CallbackCloseResult CallbackLease::Close() noexcept {
     if (!m_Lease)
         return CallbackCloseResult::Closed;
@@ -217,6 +248,7 @@ CallbackCloseResult CallbackLease::Close() noexcept {
         if (m_Lease->State == CallbackLeaseState::Closed)
             return CallbackCloseResult::Closed;
         m_Lease->State = CallbackLeaseState::Closing;
+        m_Lease->RetireRequested = true;
         if (m_Lease->Invocations == 0) {
             m_Lease->State = CallbackLeaseState::Closed;
             retire = true;

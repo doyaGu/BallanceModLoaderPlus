@@ -7,6 +7,8 @@ namespace BML::Behavior::HookBlock {
 
 using Callback = int (*)(const CKBehaviorContext *context, void *argument);
 
+class Hook;
+
 class Binding final : public CallbackResource {
 public:
     Binding(PlanCallbackState state, Callback callback, void *argument);
@@ -20,12 +22,56 @@ public:
     [[nodiscard]] void *Argument() const noexcept { return m_Argument; }
 
 private:
+    Binding(PlanCallbackState state, Callback callback, void *argument,
+            bool ownsState);
+
     PlanCallbackState m_State;
     CallbackLease m_Lease;
     Callback m_Callback = nullptr;
     void *m_Argument = nullptr;
+    bool m_OwnsState = true;
     mutable std::mutex m_DiagnosticMutex;
     CallbackFault m_Diagnostic;
+
+    friend class Hook;
+};
+
+// One author callback occurrence in a durable graph edit. Copies share the
+// occurrence, while every live installation receives its own Binding lease.
+class Hook final {
+public:
+    Hook() = default;
+    Hook(Callback callback, void *argument = nullptr)
+        : Hook(PlanCallbackState::Static(argument), callback, argument) {}
+    Hook(PlanCallbackState state, Callback callback,
+         void *argument = nullptr)
+        : m_Occurrence(callback
+              ? std::make_shared<Occurrence>(
+                    std::move(state), callback, argument)
+              : nullptr) {}
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return m_Occurrence != nullptr;
+    }
+    [[nodiscard]] std::shared_ptr<Binding> Bind() const;
+
+private:
+    struct Occurrence {
+        Occurrence(PlanCallbackState state, Callback callback,
+                   void *argument)
+            : State(std::move(state)), Function(callback),
+              Argument(argument) {}
+        ~Occurrence() {
+            State.Retire();
+            (void) State.Collect();
+        }
+
+        PlanCallbackState State;
+        Callback Function = nullptr;
+        void *Argument = nullptr;
+    };
+
+    std::shared_ptr<Occurrence> m_Occurrence;
 };
 
 std::shared_ptr<Binding> Bind(Callback callback, void *argument = nullptr);

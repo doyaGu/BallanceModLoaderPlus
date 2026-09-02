@@ -15,9 +15,11 @@ int Run(const CKBehaviorContext &context) {
     CallbackCall call;
     if (binding)
         call = binding->Invoke(&context);
-    if (!call.Invoked)
-        return CKBR_OK;
-    if (call.Fault)
+    // A Block whose author callback did not run stays transparent. The Hook is
+    // spliced into a chain the host script owns, so swallowing the activation
+    // would stop that script while the Patch is merely closing or Conflicted.
+    // A callback that ran and faulted is a real error and still stops here.
+    if (call.Invoked && call.Fault)
         return call.ReturnCode;
 
     CKBOOL autoActivateOutputs = TRUE;
@@ -27,7 +29,7 @@ int Run(const CKBehaviorContext &context) {
         for (int i = 0; i < behavior->GetOutputCount(); ++i)
             behavior->ActivateOutput(i);
     }
-    return call.ReturnCode;
+    return call.Invoked ? call.ReturnCode : CKBR_OK;
 }
 
 CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
@@ -61,59 +63,6 @@ CKObjectDeclaration *Declaration() {
 }
 
 } // namespace
-
-Binding::Binding(PlanCallbackState state, Callback callback, void *argument)
-    : m_State(std::move(state)), m_Lease(m_State.OpenLease()),
-      m_Callback(callback), m_Argument(argument) {}
-
-Binding::~Binding() {
-    CloseAdmission();
-    (void) RetireAtSafePoint();
-}
-
-CallbackCall Binding::Invoke(const CKBehaviorContext *context) noexcept {
-    if (!m_Callback)
-        return {false, CKBR_OK, {}};
-    CallbackCall call = InvokeCallback(
-        m_Lease, CKBR_BEHAVIORERROR,
-        [&] { return m_Callback(context, m_Argument); });
-    if (call.Fault) {
-        std::lock_guard<std::mutex> lock(m_DiagnosticMutex);
-        if (!m_Diagnostic)
-            m_Diagnostic = call.Fault;
-    }
-    return call;
-}
-
-void Binding::CloseAdmission() noexcept {
-    (void) m_Lease.Close();
-}
-
-bool Binding::RetireAtSafePoint() noexcept {
-    CloseAdmission();
-    m_State.Retire();
-    return m_State.Collect();
-}
-
-CallbackLeaseState Binding::State() const noexcept {
-    return m_Lease.State();
-}
-
-CallbackFault Binding::Diagnostic() const {
-    std::lock_guard<std::mutex> lock(m_DiagnosticMutex);
-    return m_Diagnostic;
-}
-
-std::shared_ptr<Binding> Bind(Callback callback, void *argument) {
-    return Bind(PlanCallbackState::Static(argument), callback, argument);
-}
-
-std::shared_ptr<Binding> Bind(PlanCallbackState state, Callback callback,
-                              void *argument) {
-    if (!callback)
-        return {};
-    return std::make_shared<Binding>(std::move(state), callback, argument);
-}
 
 Spec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount) {
     Spec spec(HOOKS_HOOKBLOCK_GUID);

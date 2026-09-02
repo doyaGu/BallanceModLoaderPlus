@@ -60,6 +60,11 @@ public:
 
     static PlanCallbackState Retained(void *state, Reference retain,
                                       Reference release);
+    // Keeps owner alive for as long as any copy of this state, any lease, or
+    // any resource built from it can still read the state pointer. Release is
+    // still invoked only by Collect, and only when a lease was opened.
+    static PlanCallbackState Retained(std::shared_ptr<void> owner, void *state,
+                                      Reference retain, Reference release);
     static PlanCallbackState Static(void *state = nullptr);
 
     CallbackLease OpenLease() const;
@@ -118,6 +123,7 @@ public:
     ~CallbackLease();
 
     [[nodiscard]] CallbackInvocation Enter() const;
+    CallbackCloseResult CloseAdmission() noexcept;
     CallbackCloseResult Close() noexcept;
     [[nodiscard]] CallbackLeaseState State() const noexcept;
     [[nodiscard]] bool IsCurrentInvocation() const noexcept;

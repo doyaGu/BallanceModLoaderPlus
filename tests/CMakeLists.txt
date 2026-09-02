@@ -280,6 +280,10 @@ add_bml_test(BehaviorCallbackTest
         SOURCES
         BehaviorCallbackTest.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
+        ${BML_SOURCE_DIR}/Behavior/Hook.cpp
+)
+target_include_directories(BehaviorCallbackTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
 )
 
 add_bml_test(BehaviorWatchTest
