@@ -69,6 +69,15 @@ bool SameSelector(const Slot &left, const Slot &right) {
         : left.Index == right.Index;
 }
 
+Slot LiveSelector(const SlotInfo &slot) {
+    if (!slot.Name.empty())
+        return Slot::OccurrenceOf(slot.Kind, slot.Name, slot.Occurrence,
+                                  slot.Type);
+    if (slot.Kind == SlotKind::Target)
+        return Slot::Only(slot.Kind, slot.Type);
+    return Slot::At(slot.Kind, slot.Index, slot.Type);
+}
+
 std::string GuidText(CKGUID guid) {
     std::ostringstream stream;
     stream << std::hex << "0x" << guid.d1 << ":0x" << guid.d2;
@@ -1039,6 +1048,12 @@ Spec &Spec::Input(Slot slot, Operation operation) {
 
 Spec &Spec::Local(Slot slot, Parameter::Binding value) {
     slot.Kind = SlotKind::Local;
+    for (Binding &binding : m_Locals) {
+        if (SameSelector(binding.Target, slot)) {
+            binding = {std::move(slot), std::move(value)};
+            return *this;
+        }
+    }
     m_Locals.push_back({std::move(slot), std::move(value)});
     return *this;
 }
@@ -1388,6 +1403,11 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
     result.Detail = Configure(behavior, owner, nullptr, spec, frame, record);
     if (!result.Detail)
         return result;
+    record.Desired = spec;
+    record.Desired.m_SettingStages.clear();
+    record.Desired.m_AddedInputs.clear();
+    record.Desired.m_AddedOutputs.clear();
+    record.Desired.m_KeepAlive.clear();
 
     const std::uint64_t instanceId = record.Id;
     m_Records.emplace(instanceId, std::move(record));
@@ -1464,6 +1484,11 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
     result.Detail = Configure(behavior, parent->GetOwner(), parent, spec, frame, record);
     if (!result.Detail)
         return result;
+    record.Desired = spec;
+    record.Desired.m_SettingStages.clear();
+    record.Desired.m_AddedInputs.clear();
+    record.Desired.m_AddedOutputs.clear();
+    record.Desired.m_KeepAlive.clear();
 
     result.Block = behavior;
     const std::uint64_t instanceId = record.Id;
@@ -2437,6 +2462,16 @@ Status Runtime::SetInput(Instance &instance,
     status = BindInput(behavior, *record, slot.Slot, value);
     PruneOwnedSources(*record);
     PruneOwnedOperations(*record);
+    if (status) {
+        const Slot selector = LiveSelector(slot.Slot);
+        if (slot.Slot.Kind == SlotKind::Target) {
+            record->Desired.m_TargetMode = TargetMode::Explicit;
+            record->Desired.m_TargetType = slot.Slot.Type;
+            record->Desired.m_TargetValue = value;
+        } else {
+            record->Desired.Input(selector, value);
+        }
+    }
     return status;
 }
 
@@ -2468,8 +2503,67 @@ Status Runtime::SetLocal(Instance &instance,
         return status;
     if (slot.Slot.Kind != SlotKind::Local)
         return Failure(Error::InvalidState, "Resolved slot is not a local parameter.");
-    return Parameter::Write(
+    Status written = Parameter::Write(
         m_Context, ResolveParameter(behavior, slot.Slot), value);
+    if (written)
+        record->Desired.Local(LiveSelector(slot.Slot), value);
+    return written;
+}
+
+Status Runtime::Bind(Instance &instance, const SlotRef &slot,
+                     CKBehavior *source, const Slot &sourceSlot,
+                     Parameter::BindingKind relation) {
+    Status ready = ReadyStatus();
+    if (!ready)
+        return ready;
+    if (!source || source->GetCKContext() != m_Context ||
+        source->IsToBeDeleted()) {
+        return Failure(Error::SourceInvalid,
+                       "Behavior parameter source is stale or belongs to another CKContext.");
+    }
+    SlotInfo resolved;
+    Status status = Resolve(source, sourceSlot, resolved);
+    if (!status)
+        return status;
+    if (relation == Parameter::BindingKind::Direct) {
+        CKParameter *parameter = LiveLayout(
+            m_Context, source, PrototypeGuid(source), PrototypeOf(source))
+                .Parameter(resolved);
+        if (!parameter)
+            return Failure(Error::SourceInvalid,
+                           "The source slot has no live parameter value.");
+        return SetInput(instance, slot, Parameter::Binding::Direct(parameter));
+    }
+    if (relation == Parameter::BindingKind::Shared) {
+        if (resolved.Kind != SlotKind::InputParameter &&
+            resolved.Kind != SlotKind::Target) {
+            return Failure(Error::SourceInvalid,
+                           "Only a Pin or Target can share its Virtools source.");
+        }
+        CKObject *object = LiveLayout(
+            m_Context, source, PrototypeGuid(source), PrototypeOf(source))
+                .Object(resolved);
+        auto *input = object && CKIsChildClassOf(object, CKCID_PARAMETERIN)
+            ? static_cast<CKParameterIn *>(object) : nullptr;
+        if (!input)
+            return Failure(Error::SourceInvalid,
+                           "The source Pin or Target is no longer live.");
+        return SetInput(instance, slot, Parameter::Binding::Shared(input));
+    }
+    return Failure(Error::SourceInvalid,
+                   "Behavior Bind accepts only direct or shared Virtools sources.");
+}
+
+Status Runtime::Configure(Instance &instance, const Spec &settings,
+                          const CKBehaviorContext *frame) {
+    Record *record = FindRecord(instance);
+    if (!record)
+        return Failure(Error::InvalidState, "Behavior instance has expired.");
+    // A Setting callback may create another managed Behavior and rehash the
+    // record table. Keep the desired native relations stable across callbacks.
+    const Spec desired = record->Desired;
+    return ApplySettings(instance, settings.m_SettingStages,
+                         desired, frame);
 }
 
 Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
@@ -2491,6 +2585,38 @@ Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
         return Failure(Error::InvalidState,
                        "Reconfiguration cannot append duplicate behavior IOs.");
 
+    Status status = ApplySettings(instance, spec.m_SettingStages, spec, frame);
+    if (status) {
+        record = FindRecord(instance);
+        if (record) {
+            record->Desired = spec;
+            record->Desired.m_SettingStages.clear();
+            record->Desired.m_AddedInputs.clear();
+            record->Desired.m_AddedOutputs.clear();
+            record->Desired.m_KeepAlive.clear();
+        }
+    }
+    return status;
+}
+
+Status Runtime::ApplySettings(
+    Instance &instance,
+    const std::vector<std::vector<Spec::Binding>> &settings,
+    const Spec &desired, const CKBehaviorContext *frame) {
+    Status ready = ReadyStatus();
+    if (!ready)
+        return ready;
+    Record *record = FindRecord(instance);
+    CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
+    if (!record || !behavior)
+        return Failure(Error::InvalidState, "Behavior instance has expired.");
+    if (record->Protocol.State() != ExecutionState::Idle)
+        return Failure(Error::InvalidState,
+                       "Configuration requires an idle behavior instance.");
+    if (record->Poisoned)
+        return Failure(Error::InvalidState,
+                       "Behavior instance requires a complete successful reconfiguration.");
+
     CKBehaviorPrototype *prototype = record->Prototype;
     if (!prototype)
         return Failure(Error::PrototypeNotFound,
@@ -2502,10 +2628,10 @@ Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
     Status status = EnsurePrototypeLayout(behavior, prototype, true);
     if (!status)
         return status;
-    status = BindTarget(behavior, owner, spec, *record);
+    status = BindTarget(behavior, owner, desired, *record);
     if (!status)
         return status;
-    for (const auto &stage : spec.m_SettingStages) {
+    for (const auto &stage : settings) {
         for (const Spec::Binding &binding : stage) {
             SlotInfo setting;
             status = Resolve(behavior, binding.Target, setting);
@@ -2532,14 +2658,14 @@ Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
         status = EnsurePrototypeLayout(behavior, prototype, true);
         if (!status)
             return status;
-        status = BindTarget(behavior, owner, spec, *record);
+        status = BindTarget(behavior, owner, desired, *record);
         if (!status)
             return status;
         status = EnsurePrototypeDefaults(behavior, prototype, *record);
         if (!status)
             return status;
     }
-    status = ApplyBindings(behavior, spec, *record);
+    status = ApplyBindings(behavior, desired, *record);
     if (!status)
         return status;
     ++record->LayoutGeneration;
@@ -2554,13 +2680,13 @@ Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
     status = EnsurePrototypeLayout(behavior, prototype, true);
     if (!status)
         return status;
-    status = BindTarget(behavior, owner, spec, *record);
+    status = BindTarget(behavior, owner, desired, *record);
     if (!status)
         return status;
     status = EnsurePrototypeDefaults(behavior, prototype, *record);
     if (!status)
         return status;
-    status = ApplyBindings(behavior, spec, *record);
+    status = ApplyBindings(behavior, desired, *record);
     PruneOwnedSources(*record);
     PruneOwnedOperations(*record);
     if (status)

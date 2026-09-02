@@ -85,6 +85,15 @@ public:
     Status ReadDeclaredLayout(std::uintptr_t sessionId,
                               PrototypeRef prototype, Layout &out);
     Status ReadLiveLayout(std::uintptr_t runId, Layout &out) const;
+    Status Set(std::uintptr_t runId, std::uint64_t layoutGeneration,
+               const Slot &slot, const Parameter::Binding &value,
+               std::uint64_t &currentGeneration);
+    Status Bind(std::uintptr_t runId, std::uint64_t layoutGeneration,
+                const Slot &slot, CKBehavior *source,
+                const Slot &sourceSlot, Parameter::BindingKind relation,
+                std::uint64_t &currentGeneration);
+    Status Configure(std::uintptr_t runId, const Spec &settings,
+                     std::uint64_t &layoutGeneration);
     Status ReadGraph(std::uintptr_t runId, GraphView view,
                      GraphModel &out);
     Status ReadGraph(std::uintptr_t sessionId, void *root,

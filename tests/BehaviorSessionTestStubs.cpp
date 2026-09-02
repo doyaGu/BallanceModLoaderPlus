@@ -80,6 +80,12 @@ CKBehavior *Instance::Get() const {
         : nullptr;
 }
 
+std::uint64_t Instance::LayoutGeneration() const {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    const FakeInstance *found = FindFake(m_Id);
+    return found ? found->Descriptor.Generation : 0;
+}
+
 void Instance::Reset() {
     if (m_Id) {
         std::lock_guard<std::mutex> lock(g_FakeMutex);
@@ -216,6 +222,62 @@ Status Runtime::Describe(const Instance &instance, Layout &layout) const {
         return {Error::LayoutUnavailable, CKERR_INVALIDOBJECT,
                 CKBR_PARAMETERERROR, "The fake Behavior is stale."};
     layout = found->Descriptor;
+    return {};
+}
+
+Status Runtime::Resolve(const Instance &instance, const Slot &selector,
+                        SlotRef &slot) const {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    const FakeInstance *found = FindFake(instance.m_Id);
+    if (!found)
+        return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR, "The fake Behavior is stale."};
+    slot = SlotRef();
+    slot.InstanceId = instance.m_Id;
+    slot.LayoutGeneration = found->Descriptor.Generation;
+    slot.Object = reinterpret_cast<CKObject *>(
+        static_cast<std::uintptr_t>(instance.m_Id));
+    slot.Slot.Kind = selector.Kind;
+    slot.Slot.Index = selector.Index >= 0 ? selector.Index : 0;
+    slot.Slot.NativeIndex = slot.Slot.Index;
+    slot.Slot.Name = selector.Name;
+    slot.Slot.Occurrence = selector.Occurrence;
+    slot.Slot.Type = selector.ExpectedType;
+    return {};
+}
+
+Status Runtime::SetInput(Instance &instance, const SlotRef &slot,
+                         const Parameter::Binding &) {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    FakeInstance *found = FindFake(instance.m_Id);
+    if (!found)
+        return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR, "The fake Behavior is stale."};
+    if (slot.LayoutGeneration != found->Descriptor.Generation)
+        return {Error::StaleLayout, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR, "The fake Layout changed."};
+    return {};
+}
+
+Status Runtime::SetLocal(Instance &instance, const SlotRef &slot,
+                         const Parameter::Binding &value) {
+    return SetInput(instance, slot, value);
+}
+
+Status Runtime::Bind(Instance &instance, const SlotRef &slot,
+                     CKBehavior *, const Slot &,
+                     Parameter::BindingKind) {
+    return SetInput(instance, slot, Parameter::Binding{});
+}
+
+Status Runtime::Configure(Instance &instance, const Spec &,
+                          const CKBehaviorContext *) {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    FakeInstance *found = FindFake(instance.m_Id);
+    if (!found)
+        return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR, "The fake Behavior is stale."};
+    ++found->Descriptor.Generation;
     return {};
 }
 

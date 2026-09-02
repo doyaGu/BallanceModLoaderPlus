@@ -329,6 +329,85 @@ Status Sessions::ReadLiveLayout(std::uintptr_t runId, Layout &out) const {
     return m_Runtime.Describe(run->Block, out);
 }
 
+Status Sessions::Set(std::uintptr_t runId,
+                     std::uint64_t layoutGeneration, const Slot &slot,
+                     const Parameter::Binding &value,
+                     std::uint64_t &currentGeneration) {
+    currentGeneration = 0;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || !run->Block)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    if (layoutGeneration &&
+        run->Block.LayoutGeneration() != layoutGeneration) {
+        return Fail(Error::StaleLayout,
+                    "The live Behavior Layout has changed.");
+    }
+    SlotRef resolved;
+    Status status = m_Runtime.Resolve(run->Block, slot, resolved);
+    if (!status)
+        return status;
+    if (slot.Kind == SlotKind::InputParameter)
+        status = m_Runtime.SetInput(run->Block, resolved, value);
+    else if (slot.Kind == SlotKind::Local)
+        status = m_Runtime.SetLocal(run->Block, resolved, value);
+    else
+        return Fail(Error::InvalidState,
+                    "Set accepts a live Pin or Local.");
+    if (status)
+        currentGeneration = run->Block.LayoutGeneration();
+    return status;
+}
+
+Status Sessions::Bind(std::uintptr_t runId,
+                      std::uint64_t layoutGeneration, const Slot &slot,
+                      CKBehavior *source, const Slot &sourceSlot,
+                      Parameter::BindingKind relation,
+                      std::uint64_t &currentGeneration) {
+    currentGeneration = 0;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || !run->Block)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    if (layoutGeneration &&
+        run->Block.LayoutGeneration() != layoutGeneration) {
+        return Fail(Error::StaleLayout,
+                    "The live Behavior Layout has changed.");
+    }
+    if (slot.Kind != SlotKind::InputParameter)
+        return Fail(Error::InvalidState, "Bind accepts a live Pin.");
+    SlotRef resolved;
+    Status status = m_Runtime.Resolve(run->Block, slot, resolved);
+    if (status)
+        status = m_Runtime.Bind(run->Block, resolved, source,
+                                sourceSlot, relation);
+    if (status)
+        currentGeneration = run->Block.LayoutGeneration();
+    return status;
+}
+
+Status Sessions::Configure(std::uintptr_t runId, const Spec &settings,
+                           std::uint64_t &layoutGeneration) {
+    layoutGeneration = 0;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    std::shared_ptr<Run> run = FindRun(runId);
+    if (!run || !run->Block)
+        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    Status status = m_Runtime.Configure(run->Block, settings);
+    if (status)
+        layoutGeneration = run->Block.LayoutGeneration();
+    return status;
+}
+
 Status Sessions::ReadGraph(std::uintptr_t runId, GraphView view,
                            GraphModel &out) {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);

@@ -231,6 +231,11 @@ public:
                             const Parameter::Binding &value);
     Status SetLocal(Instance &instance, const SlotRef &slot,
                             const Parameter::Binding &value);
+    Status Bind(Instance &instance, const SlotRef &slot,
+                CKBehavior *source, const Slot &sourceSlot,
+                Parameter::BindingKind relation);
+    Status Configure(Instance &instance, const Spec &settings,
+                     const CKBehaviorContext *frame = nullptr);
     // Settings can rebuild arbitrary parts of the live layout.  Reconfigure
     // therefore takes the complete desired spec and reapplies target, locals,
     // and inputs after every settings stage; there is no misleading one-field
@@ -289,6 +294,10 @@ private:
         bool Poisoned = false;
         Lifecycle NativeLifecycle;
         Execution Protocol;
+        // The Target, Pins, Locals, and operations that define the current
+        // live instance. Settings are deliberately not retained: each stage
+        // is an event and must not be replayed by a later Configure call.
+        Spec Desired;
         std::vector<ObjectStamp> OwnedSources;
         std::vector<OwnedOperation> OwnedOperations;
         std::vector<std::shared_ptr<CallbackResource>> KeepAlive;
@@ -368,6 +377,10 @@ private:
                                            const Spec &spec,
                                            const CKBehaviorContext *frame,
                                            Record &record);
+    [[nodiscard]] Status ApplySettings(
+        Instance &instance,
+        const std::vector<std::vector<Spec::Binding>> &settings,
+        const Spec &desired, const CKBehaviorContext *frame);
     [[nodiscard]] Status CallCallback(Record &record, CKDWORD message,
                                       const CKBehaviorContext *frame) const;
     class NativeAdapter;

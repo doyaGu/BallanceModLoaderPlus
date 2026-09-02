@@ -199,6 +199,41 @@ TEST(BehaviorSessions, ReadsTheGraphOwnedByTheRun) {
               Error::InvalidState);
 }
 
+TEST(BehaviorSessions, LiveEditsHonorLayoutGeneration) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    OpenRun run = sessions.Spawn(session, nullptr, Spec(CKGUID(1, 2)));
+    ASSERT_TRUE(run);
+
+    Slot pin = Slot::Named(SlotKind::InputParameter, "Value", CKPGUID_INT);
+    Parameter::Binding value;
+    std::uint64_t generation = 0;
+    ASSERT_TRUE(sessions.Set(run.Id, 1, pin, value, generation));
+    EXPECT_EQ(generation, 1u);
+
+    Status stale = sessions.Set(run.Id, 2, pin, value, generation);
+    EXPECT_EQ(stale.Code, Error::StaleLayout);
+    EXPECT_EQ(generation, 0u);
+
+    Spec settings;
+    ASSERT_TRUE(sessions.Configure(run.Id, settings, generation));
+    EXPECT_EQ(generation, 2u);
+    EXPECT_EQ(sessions.Set(run.Id, 1, pin, value, generation).Code,
+              Error::StaleLayout);
+    ASSERT_TRUE(sessions.Set(run.Id, 2, pin, value, generation));
+
+    auto *source = reinterpret_cast<CKBehavior *>(
+        static_cast<std::uintptr_t>(77));
+    ASSERT_TRUE(sessions.Bind(
+        run.Id, 2, pin, source,
+        Slot::Named(SlotKind::OutputParameter, "Value"),
+        Parameter::BindingKind::Direct, generation));
+    EXPECT_EQ(generation, 2u);
+}
+
 TEST(BehaviorSessions, ContinuePromotesTheSameCallAndRetainsBothFrames) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);
