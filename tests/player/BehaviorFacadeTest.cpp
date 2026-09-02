@@ -431,7 +431,14 @@ private:
     }
 
     void ClosePatch() {
-        m_Patch.Close();
+        // The GraphPatch owns the native Session it still needs. Releasing the
+        // original facade value must not make the Patch stale before restore.
+        m_Session.Close();
+        const int closed = m_Patch.Close();
+        if (closed != BML_OK) {
+            GetLogger()->Error(
+                "Behavior graph patch close failed: code=%d", closed);
+        }
         if (m_Patch || !Restored()) {
             Finish(false, "patch-close");
             return;
