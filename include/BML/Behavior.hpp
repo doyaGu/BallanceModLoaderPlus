@@ -702,34 +702,31 @@ class PatchBuilder;
 class Watch {
 public:
     Watch() = default;
-    ~Watch() { Close(); }
+    ~Watch();
     Watch(const Watch &) = delete;
     Watch &operator=(const Watch &) = delete;
     Watch(Watch &&other) noexcept
-        : m_Api(std::exchange(other.m_Api, nullptr)),
+        : m_Session(std::move(other.m_Session)),
           m_Handle(std::exchange(other.m_Handle, nullptr)) {}
     Watch &operator=(Watch &&other) noexcept {
         if (this != &other) {
-            Close();
-            m_Api = std::exchange(other.m_Api, nullptr);
+            if (Close() != BML_OK)
+                return *this;
+            m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
         }
         return *this;
     }
     [[nodiscard]] explicit operator bool() const noexcept {
-        return m_Api && m_Handle;
+        return m_Session && m_Handle;
     }
-    void Close() noexcept {
-        if (m_Api && m_Handle)
-            (void) m_Api->CloseWatch(m_Handle);
-        m_Api = nullptr;
-        m_Handle = nullptr;
-    }
+    int Close() noexcept;
 
 private:
-    Watch(const BML_BehaviorInterface *api, BML_BehaviorWatch handle)
-        : m_Api(api), m_Handle(handle) {}
-    const BML_BehaviorInterface *m_Api = nullptr;
+    Watch(std::shared_ptr<Detail::SessionState> session,
+          BML_BehaviorWatch handle)
+        : m_Session(std::move(session)), m_Handle(handle) {}
+    std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorWatch m_Handle = nullptr;
 
     friend class Graph;
@@ -859,13 +856,9 @@ struct SessionState {
     const BML_BehaviorInterface *Api = nullptr;
     BML_BehaviorSession Handle = nullptr;
 
-    ~SessionState() { Close(); }
-
-    void Close() noexcept {
-        if (!Api || !Handle)
-            return;
-        (void) Api->CloseSession(Handle);
-        Handle = nullptr;
+    ~SessionState() {
+        if (Api && Handle)
+            (void) Api->CloseSession(Handle);
     }
 };
 
@@ -1330,11 +1323,17 @@ public:
     }
 
     int Close() noexcept {
-        if (!m_Session || !m_Session->Api || !m_Handle)
+        if (!m_Handle) {
+            m_Session.reset();
             return BML_OK;
+        }
+        if (!m_Session || !m_Session->Api || !m_Session->Handle)
+            return BML_ERROR_INVALID_HANDLE;
         const int code = m_Session->Api->CloseRun(m_Handle);
-        if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE)
+        if (code == BML_OK) {
             m_Handle = nullptr;
+            m_Session.reset();
+        }
         return code;
     }
 
@@ -1402,6 +1401,23 @@ public:
 };
 
 } // namespace Detail
+
+inline Watch::~Watch() { (void) Close(); }
+
+inline int Watch::Close() noexcept {
+    if (!m_Handle) {
+        m_Session.reset();
+        return BML_OK;
+    }
+    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+        return BML_ERROR_INVALID_HANDLE;
+    const int code = m_Session->Api->CloseWatch(m_Handle);
+    if (code == BML_OK) {
+        m_Handle = nullptr;
+        m_Session.reset();
+    }
+    return code;
+}
 
 class Call {
 public:
@@ -1980,11 +1996,12 @@ private:
 };
 
 // A durable authoring intent the Loader owns. Closing the handle reverts every
-// installation the Plan still holds, and so does closing the Session.
+// installation the Plan still holds. It also keeps the native Session alive
+// until that close succeeds or the Plan value is destroyed.
 class Plan {
 public:
     Plan() = default;
-    ~Plan() { Close(); }
+    ~Plan() { (void) Close(); }
     Plan(const Plan &) = delete;
     Plan &operator=(const Plan &) = delete;
     Plan(Plan &&other) noexcept
@@ -1992,7 +2009,8 @@ public:
           m_Handle(std::exchange(other.m_Handle, nullptr)) {}
     Plan &operator=(Plan &&other) noexcept {
         if (this != &other) {
-            Close();
+            if (Close() != BML_OK)
+                return *this;
             m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
         }
@@ -2019,14 +2037,23 @@ public:
         return Result<PlanInfo>::Success(Detail::ReadPlanInfo(wire),
                                         Detail::ReadStatus(status));
     }
-    // Reverts what the Plan still owns. A revert the live graph no longer
-    // permits leaves the Plan Conflicted, which keeps the callback state alive;
-    // Read it before closing when that matters.
-    void Close() noexcept {
-        if (m_Session && m_Session->Api && m_Session->Handle && m_Handle)
-            (void) m_Session->Api->ClosePlan(m_Session->Handle, m_Handle);
-        m_Session.reset();
-        m_Handle = nullptr;
+    // Reverts what the Plan still owns. If a live graph prevents the inverse,
+    // the handle remains valid so Read can describe the conflict and Close can
+    // be retried after the graph is restored to the expected after-image.
+    int Close() noexcept {
+        if (!m_Handle) {
+            m_Session.reset();
+            return BML_OK;
+        }
+        if (!m_Session || !m_Session->Api || !m_Session->Handle)
+            return BML_ERROR_INVALID_HANDLE;
+        const int code = m_Session->Api->ClosePlan(
+            m_Session->Handle, m_Handle);
+        if (code == BML_OK) {
+            m_Handle = nullptr;
+            m_Session.reset();
+        }
+        return code;
     }
 
 private:
@@ -2046,7 +2073,7 @@ private:
 class GraphPatch {
 public:
     GraphPatch() = default;
-    ~GraphPatch() { Close(); }
+    ~GraphPatch() { (void) Close(); }
     GraphPatch(const GraphPatch &) = delete;
     GraphPatch &operator=(const GraphPatch &) = delete;
     GraphPatch(GraphPatch &&other) noexcept
@@ -2054,7 +2081,8 @@ public:
           m_Handle(std::exchange(other.m_Handle, nullptr)) {}
     GraphPatch &operator=(GraphPatch &&other) noexcept {
         if (this != &other) {
-            Close();
+            if (Close() != BML_OK)
+                return *this;
             m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
         }
@@ -2081,11 +2109,21 @@ public:
         return Result<GraphPatchInfo>::Success(
             Detail::ReadPatchInfo(wire), Detail::ReadStatus(status));
     }
-    void Close() noexcept {
-        if (m_Session && m_Session->Api && m_Session->Handle && m_Handle)
-            (void) m_Session->Api->ClosePatch(m_Session->Handle, m_Handle);
-        m_Session.reset();
-        m_Handle = nullptr;
+    // A revert conflict keeps this handle live for Read and a later retry.
+    int Close() noexcept {
+        if (!m_Handle) {
+            m_Session.reset();
+            return BML_OK;
+        }
+        if (!m_Session || !m_Session->Api || !m_Session->Handle)
+            return BML_ERROR_INVALID_HANDLE;
+        const int code = m_Session->Api->ClosePatch(
+            m_Session->Handle, m_Handle);
+        if (code == BML_OK) {
+            m_Handle = nullptr;
+            m_Session.reset();
+        }
+        return code;
     }
 
 private:
@@ -2644,8 +2682,10 @@ public:
         return Behavior::PatchBuilder(m_State, name);
     }
     void Close() noexcept {
-        if (m_State)
-            m_State->Close();
+        // Values created from this Session hold their own lease. Releasing the
+        // Session value stops this object from admitting work without
+        // invalidating Blocks, Runs, Watches, Plans, or Patches that still own
+        // native state. The last lease closes the C Session.
         m_State.reset();
     }
 
@@ -3513,7 +3553,7 @@ Result<Behavior::Watch> Graph::OpenWatch(
                 Detail::ReadStatus(status));
         }
         return Result<Behavior::Watch>::Success(
-            Behavior::Watch(m_Session->Api, handle),
+            Behavior::Watch(m_Session, handle),
             Detail::ReadStatus(status));
     } catch (const std::bad_alloc &) {
         if (holder)

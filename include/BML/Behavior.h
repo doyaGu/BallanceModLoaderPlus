@@ -939,8 +939,9 @@ typedef struct BML_BehaviorInterface {
                                       BML_BehaviorPlan plan,
                                       BML_BehaviorPlanInfo *info,
                                       BML_BehaviorStatus *status);
-    // Reverts every installation the Plan still owns. A revert the game graph
-    // no longer permits leaves the Plan Conflicted rather than failing here.
+    // Reverts every installation the Plan still owns. If a game graph no
+    // longer permits the inverse, this returns an error and leaves the Plan
+    // Conflicted so the caller can inspect and retry it.
     int (BML_BEHAVIOR_CALL *ClosePlan)(BML_BehaviorSession session,
                                        BML_BehaviorPlan plan);
     // Reads the native Behavior owned by a Run as a graph. This avoids a
@@ -992,7 +993,8 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorPatchInfo *info,
         BML_BehaviorStatus *status);
     // Stops callback admission immediately. Native restoration may finish at
-    // the next game-thread safe point.
+    // the next game-thread safe point. A revert conflict returns an error and
+    // keeps the Patch valid for inspection and retry.
     int (BML_BEHAVIOR_CALL *ClosePatch)(BML_BehaviorSession session,
                                         BML_BehaviorPatch patch);
 } BML_BehaviorInterface;
