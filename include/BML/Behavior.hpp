@@ -641,6 +641,25 @@ struct PlanInfo {
     }
 };
 
+enum class GraphPatchState : std::uint32_t {
+    Pending = BML_BEHAVIOR_PATCH_PENDING,
+    Active = BML_BEHAVIOR_PATCH_ACTIVE,
+    Closing = BML_BEHAVIOR_PATCH_CLOSING,
+    Conflicted = BML_BEHAVIOR_PATCH_CONFLICTED,
+    Closed = BML_BEHAVIOR_PATCH_CLOSED,
+    Failed = BML_BEHAVIOR_PATCH_FAILED,
+};
+
+struct GraphPatchInfo {
+    GraphPatchState State = GraphPatchState::Pending;
+    std::uint32_t Conflicts = 0;
+    Behavior::Status Diagnostic;
+
+    [[nodiscard]] bool Installed() const noexcept {
+        return State == GraphPatchState::Active;
+    }
+};
+
 // What one Hook callback receives. Every reference is live for the duration of
 // the call only.
 struct HookEvent {
@@ -677,6 +696,8 @@ namespace Detail {
 struct SessionState;
 class Run;
 }
+
+class PatchBuilder;
 
 class Watch {
 public:
@@ -741,6 +762,7 @@ public:
     [[nodiscard]] Result<Graph> Logical() const;
     [[nodiscard]] Result<Graph> Live() const;
     [[nodiscard]] Result<ObservedValue> Read(const ValueRef &value) const;
+    [[nodiscard]] PatchBuilder Patch(std::string_view name) const;
 
     template <class Function>
     [[nodiscard]] Result<Behavior::Watch> Watch(
@@ -790,7 +812,7 @@ class Task;
 class Instance;
 class Hook;
 class Plan;
-class Draft;
+class GraphPatch;
 
 namespace Detail {
 
@@ -1833,9 +1855,17 @@ inline PlanInfo ReadPlanInfo(const BML_BehaviorPlanInfo &source) {
     return info;
 }
 
+inline GraphPatchInfo ReadPatchInfo(const BML_BehaviorPatchInfo &source) {
+    GraphPatchInfo info;
+    info.State = static_cast<GraphPatchState>(source.State);
+    info.Conflicts = source.Conflicts;
+    info.Diagnostic = ReadStatus(source.Diagnostic);
+    return info;
+}
+
 // Holds the caller reference to one author callback. The Loader takes a
-// reference of its own while it accepts a Plan, so this record only has to
-// outlive the Draft that carries it.
+// reference of its own while it accepts an edit, so this record only has to
+// outlive the PatchBuilder that carries it.
 struct HookHolder {
     HookHolder() = default;
     HookHolder(const HookHolder &) = delete;
@@ -1916,9 +1946,9 @@ struct HookFunction {
 
 } // namespace Detail
 
-// One author callback, shareable across the steps of one Draft. The callback
+// One author callback, shareable across the steps of one PatchBuilder. The callback
 // runs on the game thread inside the execution the game itself drives, so it
-// must not close the Plan, the Session, or the Mod that owns it.
+// must not close the Patch, Plan, Session, or Mod that owns it.
 class Hook {
 public:
     Hook() = default;
@@ -1946,7 +1976,7 @@ public:
 private:
     std::shared_ptr<Detail::HookHolder> m_Record;
 
-    friend class Draft;
+    friend class PatchBuilder;
 };
 
 // A durable authoring intent the Loader owns. Closing the handle reverts every
@@ -2007,15 +2037,72 @@ private:
     std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorPlan m_Handle = nullptr;
 
-    friend class Draft;
+    friend class PatchBuilder;
 };
 
-// Accumulates the symbolic edit one Plan installs. A Draft names nodes, links,
-// and paths of the matched script by what they are rather than by index, so the
-// same edit keeps working across the levels and reloads that a Run cannot
-// survive. Nothing reaches a live graph until Submit, which validates the whole
-// program before accepting any of it.
-class Draft {
+// One reversible Patch on a specific live graph. It does not follow script
+// names into another world; use Plan when the same intent must be reconciled
+// again after loading or reset.
+class GraphPatch {
+public:
+    GraphPatch() = default;
+    ~GraphPatch() { Close(); }
+    GraphPatch(const GraphPatch &) = delete;
+    GraphPatch &operator=(const GraphPatch &) = delete;
+    GraphPatch(GraphPatch &&other) noexcept
+        : m_Session(std::move(other.m_Session)),
+          m_Handle(std::exchange(other.m_Handle, nullptr)) {}
+    GraphPatch &operator=(GraphPatch &&other) noexcept {
+        if (this != &other) {
+            Close();
+            m_Session = std::move(other.m_Session);
+            m_Handle = std::exchange(other.m_Handle, nullptr);
+        }
+        return *this;
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return m_Session && m_Session->Api && m_Session->Handle && m_Handle;
+    }
+    [[nodiscard]] Result<GraphPatchInfo> Read() const {
+        if (!*this)
+            return Result<GraphPatchInfo>::Failure(BML_ERROR_INVALID_HANDLE);
+        BML_BehaviorPatchInfo wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_Session->Api->ReadPatch(
+            m_Session->Handle, m_Handle, &wire, &status);
+        if (code != BML_OK)
+            return Result<GraphPatchInfo>::Failure(
+                code, Detail::ReadStatus(status));
+        if (wire.StructSize < sizeof(wire))
+            return Result<GraphPatchInfo>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE);
+        return Result<GraphPatchInfo>::Success(
+            Detail::ReadPatchInfo(wire), Detail::ReadStatus(status));
+    }
+    void Close() noexcept {
+        if (m_Session && m_Session->Api && m_Session->Handle && m_Handle)
+            (void) m_Session->Api->ClosePatch(m_Session->Handle, m_Handle);
+        m_Session.reset();
+        m_Handle = nullptr;
+    }
+
+private:
+    GraphPatch(std::shared_ptr<Detail::SessionState> session,
+               BML_BehaviorPatch handle)
+        : m_Session(std::move(session)), m_Handle(handle) {}
+
+    std::shared_ptr<Detail::SessionState> m_Session;
+    BML_BehaviorPatch m_Handle = nullptr;
+
+    friend class PatchBuilder;
+};
+
+// Accumulates one symbolic graph Patch. Apply targets a specific live graph;
+// On(...).Submit() retains the same edit as a Plan and reconciles it against
+// matching scripts in later worlds.
+class PatchBuilder {
 public:
     // Addresses one port of a node the program named.
     struct Port {
@@ -2119,28 +2206,28 @@ public:
         operator Port() const { return Ref(); }
     };
 
-    Draft(const Draft &) = default;
-    Draft &operator=(const Draft &) = default;
-    Draft(Draft &&) noexcept = default;
-    Draft &operator=(Draft &&) noexcept = default;
+    PatchBuilder(const PatchBuilder &) = default;
+    PatchBuilder &operator=(const PatchBuilder &) = default;
+    PatchBuilder(PatchBuilder &&) noexcept = default;
+    PatchBuilder &operator=(PatchBuilder &&) noexcept = default;
 
     // Installs into every live script carrying this exact name.
-    Draft &On(std::string_view script) {
+    PatchBuilder &On(std::string_view script) {
         m_Script.assign(script);
         m_Targets = BML_BEHAVIOR_TARGETS_EACH;
         return *this;
     }
     // Installs into the single live script carrying this exact name. More than
     // one live match leaves the Plan Unsatisfied instead of choosing one.
-    Draft &OnSingle(std::string_view script) {
+    PatchBuilder &OnSingle(std::string_view script) {
         m_Script.assign(script);
         m_Targets = BML_BEHAVIOR_TARGETS_ONE;
         return *this;
     }
 
-    // The matched script itself. Its ports are the entry and exit of the graph.
-    [[nodiscard]] Node Script() const noexcept {
-        return Node{BML_BEHAVIOR_EDIT_SCRIPT};
+    // The target graph itself. Its ports are the entry and exit of the graph.
+    [[nodiscard]] Node Graph() const noexcept {
+        return Node{BML_BEHAVIOR_EDIT_GRAPH};
     }
 
     // Names the one node carrying this name, and this Prototype when one is
@@ -2203,7 +2290,7 @@ public:
     }
 
     // Adds a behavior link, delayed by whole frames.
-    Draft &Flow(Port source, Port sink, std::int32_t delay = 0) {
+    PatchBuilder &Flow(Port source, Port sink, std::int32_t delay = 0) {
         Step &step = Define(BML_BEHAVIOR_EDIT_FLOW, 0);
         step.Source = std::move(source);
         step.Sink = std::move(sink);
@@ -2212,28 +2299,28 @@ public:
     }
     // Adds a behavior link that may close a same-frame cycle. Without this the
     // Loader rejects a cycle instead of installing one.
-    Draft &FlowCycle(Port source, Port sink, std::int32_t delay = 0) {
+    PatchBuilder &FlowCycle(Port source, Port sink, std::int32_t delay = 0) {
         Flow(std::move(source), std::move(sink), delay);
         m_Steps.back().Flags |= BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
         return *this;
     }
-    // Writes a literal into a port. A durable Plan cannot bind a live object,
-    // because the object it named may be gone by the time the Plan installs.
-    Draft &Bind(Port sink, Behavior::Value value) {
+    // Writes an owned literal into a port. World-bound object values are not
+    // part of the symbolic edit language.
+    PatchBuilder &Bind(Port sink, Behavior::Value value) {
         Step &step = Define(BML_BEHAVIOR_EDIT_BIND_VALUE, 0);
         step.Sink = std::move(sink);
         step.Value.emplace(std::move(value));
         return *this;
     }
     // Makes the sink read the source directly.
-    Draft &Bind(Port sink, Port source) {
+    PatchBuilder &Bind(Port sink, Port source) {
         Step &step = Define(BML_BEHAVIOR_EDIT_BIND_PORT, 0);
         step.Sink = std::move(sink);
         step.Source = std::move(source);
         return *this;
     }
     // Makes the sink share the parameter the source reads.
-    Draft &Share(Port sink, Port source) {
+    PatchBuilder &Share(Port sink, Port source) {
         Step &step = Define(BML_BEHAVIOR_EDIT_SHARE, 0);
         step.Sink = std::move(sink);
         step.Source = std::move(source);
@@ -2241,7 +2328,7 @@ public:
     }
     // Copies the source into the sink after each execution of the node that
     // owns the source.
-    Draft &Push(Port source, Port sink) {
+    PatchBuilder &Push(Port source, Port sink) {
         Step &step = Define(BML_BEHAVIOR_EDIT_PUSH, 0);
         step.Source = std::move(source);
         step.Sink = std::move(sink);
@@ -2249,27 +2336,27 @@ public:
     }
     // Runs the callback on every link leaving this port, before whatever those
     // links reach. The Hook Block activates its Out once the callback returns.
-    Draft &Tap(Port source, Hook hook) {
+    PatchBuilder &Tap(Port source, Hook hook) {
         Step &step = Define(BML_BEHAVIOR_EDIT_TAP, 0);
         step.Source = std::move(source);
         step.Hook = std::move(hook.m_Record);
         return *this;
     }
     // Runs the callback once the chain named by the path has finished.
-    Draft &After(Path path, Hook hook) {
+    PatchBuilder &After(Path path, Hook hook) {
         Step &step = Define(BML_BEHAVIOR_EDIT_AFTER, 0);
         step.Target = path.Id;
         step.Hook = std::move(hook.m_Record);
         return *this;
     }
     // Runs the callback once the chain leaving this port has finished.
-    Draft &After(Port source, Hook hook) {
+    PatchBuilder &After(Port source, Hook hook) {
         return After(Follow(std::move(source)), std::move(hook));
     }
     // Reroutes a link through a Block, keeping the delay of the link. Ordering
     // places this Patch relative to the Patches of other Mods spliced onto the
     // same link; a Patch no one submitted constrains nothing.
-    Draft &Splice(Link link, Node through,
+    PatchBuilder &Splice(Link link, Node through,
                   std::vector<PatchOrder> ordering = {}) {
         Step &step = Define(BML_BEHAVIOR_EDIT_SPLICE, 0);
         step.Target = link.Id;
@@ -2279,7 +2366,7 @@ public:
     }
     // Reroutes a link into the sink and out of the source, which is how one
     // Block with several Ins and Outs carries more than one splice.
-    Draft &Splice(Link link, Port sink, Port source,
+    PatchBuilder &Splice(Link link, Port sink, Port source,
                   std::vector<PatchOrder> ordering = {}) {
         Step &step = Define(BML_BEHAVIOR_EDIT_SPLICE, 0);
         step.Target = link.Id;
@@ -2288,6 +2375,12 @@ public:
         step.Ordering = std::move(ordering);
         return *this;
     }
+
+    // Applies this edit once to a specific logical graph.
+    [[nodiscard]] Result<GraphPatch> Apply() const {
+        return Apply(m_Graph);
+    }
+    [[nodiscard]] Result<GraphPatch> Apply(BML_ObjectRef graph) const;
 
     // Hands the program to the Loader, which validates all of it, retains the
     // callbacks it accepted, and installs on the next frame. Submitting a name
@@ -2313,8 +2406,14 @@ private:
         std::vector<PatchOrder> Ordering;
     };
 
-    Draft(std::shared_ptr<Detail::SessionState> session, std::string_view name)
-        : m_Session(std::move(session)), m_Name(name) {}
+    struct WireProgram {
+        std::vector<BML_BehaviorEditOrder> Ordering;
+        std::vector<BML_BehaviorEditStep> Steps;
+    };
+
+    PatchBuilder(std::shared_ptr<Detail::SessionState> session,
+                 std::string_view name, BML_ObjectRef graph = {})
+        : m_Session(std::move(session)), m_Name(name), m_Graph(graph) {}
 
     Step &Define(std::uint32_t kind) {
         return Define(kind, m_NextHandle++);
@@ -2335,74 +2434,87 @@ private:
         step.Type = type;
         return Slot{step.Result};
     }
+    void Encode(WireProgram &out) const;
 
     std::shared_ptr<Detail::SessionState> m_Session;
     std::string m_Name;
+    BML_ObjectRef m_Graph{};
     std::string m_Script;
     std::uint32_t m_Targets = BML_BEHAVIOR_TARGETS_EACH;
-    std::uint32_t m_NextHandle = BML_BEHAVIOR_EDIT_SCRIPT + 1u;
+    std::uint32_t m_NextHandle = BML_BEHAVIOR_EDIT_GRAPH + 1u;
     std::vector<Step> m_Steps;
 
+    friend class Graph;
     friend class Session;
 };
 
-inline Result<Plan> Draft::Submit() const {
+inline PatchBuilder Graph::Patch(std::string_view name) const {
+    return PatchBuilder(m_Session, name, m_Root);
+}
+
+inline void PatchBuilder::Encode(WireProgram &out) const {
+    std::size_t orderCount = 0;
+    for (const Step &step : m_Steps)
+        orderCount += step.Ordering.size();
+    // Both arrays are sized up front, so nothing a step points at moves.
+    out.Ordering.clear();
+    out.Ordering.reserve(orderCount);
+    for (const Step &step : m_Steps) {
+        for (const PatchOrder &order : step.Ordering) {
+            BML_BehaviorEditOrder wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Kind = order.Kind;
+            wire.Owner = Detail::Text(order.Owner);
+            wire.Name = Detail::Text(order.Name);
+            out.Ordering.push_back(wire);
+        }
+    }
+
+    out.Steps.clear();
+    out.Steps.reserve(m_Steps.size());
+    std::size_t consumed = 0;
+    for (const Step &step : m_Steps) {
+        BML_BehaviorEditStep wire{};
+        wire.StructSize = sizeof(wire);
+        wire.Kind = step.Kind;
+        wire.Result = step.Result;
+        wire.Flags = step.Flags;
+        wire.Target = step.Target;
+        wire.Node = step.Node;
+        wire.SlotKind = step.SlotKind;
+        wire.Delay = step.Delay;
+        wire.Name = Detail::Text(step.Name);
+        wire.Prototype = step.Prototype.Wire();
+        wire.Type = step.Type.Wire();
+        wire.Source = step.Source.Wire();
+        wire.Sink = step.Sink.Wire();
+        if (step.Value)
+            wire.Value = step.Value->Wire();
+        wire.Hook = step.Hook ? &step.Hook->Function : nullptr;
+        wire.OrderCount = static_cast<std::uint32_t>(step.Ordering.size());
+        wire.Ordering = wire.OrderCount
+            ? out.Ordering.data() + consumed : nullptr;
+        consumed += step.Ordering.size();
+        out.Steps.push_back(wire);
+    }
+}
+
+inline Result<Plan> PatchBuilder::Submit() const {
     if (!m_Session || !m_Session->Api || !m_Session->Handle)
         return Result<Plan>::Failure(BML_ERROR_INVALID_HANDLE);
     if (m_Name.empty() || m_Script.empty())
         return Result<Plan>::Failure(BML_ERROR_INVALID_PARAMETER);
     try {
-        std::size_t orderCount = 0;
-        for (const Step &step : m_Steps)
-            orderCount += step.Ordering.size();
-        // Both arrays are sized up front, so nothing a step points at moves.
-        std::vector<BML_BehaviorEditOrder> orders;
-        orders.reserve(orderCount);
-        for (const Step &step : m_Steps) {
-            for (const PatchOrder &order : step.Ordering) {
-                BML_BehaviorEditOrder wire{};
-                wire.StructSize = sizeof(wire);
-                wire.Kind = order.Kind;
-                wire.Owner = Detail::Text(order.Owner);
-                wire.Name = Detail::Text(order.Name);
-                orders.push_back(wire);
-            }
-        }
-
-        std::vector<BML_BehaviorEditStep> steps;
-        steps.reserve(m_Steps.size());
-        std::size_t consumed = 0;
-        for (const Step &step : m_Steps) {
-            BML_BehaviorEditStep wire{};
-            wire.StructSize = sizeof(wire);
-            wire.Kind = step.Kind;
-            wire.Result = step.Result;
-            wire.Flags = step.Flags;
-            wire.Target = step.Target;
-            wire.Node = step.Node;
-            wire.SlotKind = step.SlotKind;
-            wire.Delay = step.Delay;
-            wire.Name = Detail::Text(step.Name);
-            wire.Prototype = step.Prototype.Wire();
-            wire.Type = step.Type.Wire();
-            wire.Source = step.Source.Wire();
-            wire.Sink = step.Sink.Wire();
-            if (step.Value)
-                wire.Value = step.Value->Wire();
-            wire.Hook = step.Hook ? &step.Hook->Function : nullptr;
-            wire.OrderCount = static_cast<std::uint32_t>(step.Ordering.size());
-            wire.Ordering = wire.OrderCount ? orders.data() + consumed : nullptr;
-            consumed += step.Ordering.size();
-            steps.push_back(wire);
-        }
+        WireProgram program;
+        Encode(program);
 
         BML_BehaviorPlanSpec spec{};
         spec.StructSize = sizeof(spec);
         spec.Targets = m_Targets;
         spec.Name = Detail::Text(m_Name);
         spec.Script = Detail::Text(m_Script);
-        spec.Steps = steps.empty() ? nullptr : steps.data();
-        spec.StepCount = static_cast<std::uint32_t>(steps.size());
+        spec.Steps = program.Steps.empty() ? nullptr : program.Steps.data();
+        spec.StepCount = static_cast<std::uint32_t>(program.Steps.size());
 
         BML_BehaviorPlan handle = nullptr;
         BML_BehaviorStatus status = Detail::EmptyStatus();
@@ -2421,6 +2533,44 @@ inline Result<Plan> Draft::Submit() const {
         return Result<Plan>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
         return Result<Plan>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<GraphPatch> PatchBuilder::Apply(BML_ObjectRef graph) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+        return Result<GraphPatch>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (m_Name.empty() || !graph.Domain)
+        return Result<GraphPatch>::Failure(BML_ERROR_INVALID_PARAMETER);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, ClosePatch))
+        return Result<GraphPatch>::Failure(BML_ERROR_VERSION_MISMATCH);
+    try {
+        WireProgram program;
+        Encode(program);
+
+        BML_BehaviorPatchSpec spec{};
+        spec.StructSize = sizeof(spec);
+        spec.Name = Detail::Text(m_Name);
+        spec.Graph = graph;
+        spec.Steps = program.Steps.empty() ? nullptr : program.Steps.data();
+        spec.StepCount = static_cast<std::uint32_t>(program.Steps.size());
+
+        BML_BehaviorPatch handle = nullptr;
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_Session->Api->ApplyPatch(
+            m_Session->Handle, &spec, &handle, nullptr, &status);
+        if (code != BML_OK || !handle) {
+            if (handle)
+                (void) m_Session->Api->ClosePatch(m_Session->Handle, handle);
+            return Result<GraphPatch>::Failure(
+                code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                Detail::ReadStatus(status));
+        }
+        return Result<GraphPatch>::Success(
+            GraphPatch(m_Session, handle), Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<GraphPatch>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<GraphPatch>::Failure(BML_ERROR_FAIL);
     }
 }
 
@@ -2447,7 +2597,7 @@ public:
             return Result<Session>::Failure(code);
         const auto *api = static_cast<const BML_BehaviorInterface *>(found);
         if (!api || api->Header.MinorVersion < BML_BEHAVIOR_INTERFACE_MINOR ||
-            !BML_IFACE_HAS(api, BML_BehaviorInterface, Configure))
+            !BML_IFACE_HAS(api, BML_BehaviorInterface, ClosePatch))
             return Result<Session>::Failure(BML_ERROR_VERSION_MISMATCH);
 
         BML_BehaviorSession handle = nullptr;
@@ -2485,8 +2635,13 @@ public:
     }
     // Opens a durable edit named within this Mod. Submitting a name that is
     // already live replaces the Plan carrying it.
-    [[nodiscard]] Behavior::Draft Plan(std::string_view name) const {
-        return Behavior::Draft(m_State, name);
+    [[nodiscard]] Behavior::PatchBuilder Plan(std::string_view name) const {
+        return Behavior::PatchBuilder(m_State, name);
+    }
+    // Opens an edit for one graph. The returned builder shares the same
+    // symbolic language as Plan; call Apply(graph) when it is complete.
+    [[nodiscard]] Behavior::PatchBuilder Patch(std::string_view name) const {
+        return Behavior::PatchBuilder(m_State, name);
     }
     void Close() noexcept {
         if (m_State)

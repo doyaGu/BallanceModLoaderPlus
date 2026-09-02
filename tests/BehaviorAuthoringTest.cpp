@@ -69,6 +69,14 @@ struct FakeState {
     std::string PlanScript;
     std::vector<CapturedStep> PlanSteps;
     std::vector<BML_BehaviorHookFunction> PlanHooks;
+    int PatchApplies = 0;
+    int PatchReads = 0;
+    int PatchCloses = 0;
+    int PatchApplyCode = BML_OK;
+    std::string PatchName;
+    BML_ObjectRef PatchGraph{};
+    std::vector<CapturedStep> PatchSteps;
+    std::vector<BML_BehaviorHookFunction> PatchHooks;
     std::uint32_t SetKind = 0;
     std::uint64_t SetGeneration = 0;
     std::string SetSlot;
@@ -596,18 +604,13 @@ std::string Copy(BML_BehaviorString text) {
     return text.Data ? std::string(text.Data, text.Length) : std::string();
 }
 
-int BML_BEHAVIOR_CALL SubmitPlan(
-    BML_BehaviorSession, const BML_BehaviorPlanSpec *spec,
-    BML_BehaviorPlan *plan, BML_BehaviorPlanInfo *info,
-    BML_BehaviorStatus *status) {
-    Success(status);
-    ++g_State.PlanSubmits;
-    g_State.PlanName = Copy(spec->Name);
-    g_State.PlanScript = Copy(spec->Script);
-    g_State.PlanTargets = spec->Targets;
-    g_State.PlanSteps.clear();
-    for (std::uint32_t index = 0; index < spec->StepCount; ++index) {
-        const BML_BehaviorEditStep &step = spec->Steps[index];
+void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
+                  std::vector<CapturedStep> &capturedSteps,
+                  std::vector<BML_BehaviorHookFunction> &hooks) {
+    capturedSteps.clear();
+    hooks.clear();
+    for (std::uint32_t index = 0; index < count; ++index) {
+        const BML_BehaviorEditStep &step = steps[index];
         CapturedStep captured;
         captured.Kind = step.Kind;
         captured.Result = step.Result;
@@ -632,9 +635,22 @@ int BML_BEHAVIOR_CALL SubmitPlan(
                      Copy(step.Ordering[entry].Name)});
         }
         if (step.Hook)
-            g_State.PlanHooks.push_back(*step.Hook);
-        g_State.PlanSteps.push_back(std::move(captured));
+            hooks.push_back(*step.Hook);
+        capturedSteps.push_back(std::move(captured));
     }
+}
+
+int BML_BEHAVIOR_CALL SubmitPlan(
+    BML_BehaviorSession, const BML_BehaviorPlanSpec *spec,
+    BML_BehaviorPlan *plan, BML_BehaviorPlanInfo *info,
+    BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.PlanSubmits;
+    g_State.PlanName = Copy(spec->Name);
+    g_State.PlanScript = Copy(spec->Script);
+    g_State.PlanTargets = spec->Targets;
+    CaptureSteps(spec->Steps, spec->StepCount, g_State.PlanSteps,
+                 g_State.PlanHooks);
     if (g_State.PlanSubmitCode != BML_OK) {
         g_State.PlanHooks.clear();
         return g_State.PlanSubmitCode;
@@ -678,6 +694,56 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession, BML_BehaviorPlan) {
     return BML_OK;
 }
 
+int BML_BEHAVIOR_CALL ApplyPatch(
+    BML_BehaviorSession, const BML_BehaviorPatchSpec *spec,
+    BML_BehaviorPatch *patch, BML_BehaviorPatchInfo *info,
+    BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.PatchApplies;
+    g_State.PatchName = Copy(spec->Name);
+    g_State.PatchGraph = spec->Graph;
+    CaptureSteps(spec->Steps, spec->StepCount, g_State.PatchSteps,
+                 g_State.PatchHooks);
+    if (g_State.PatchApplyCode != BML_OK) {
+        g_State.PatchHooks.clear();
+        return g_State.PatchApplyCode;
+    }
+    for (const BML_BehaviorHookFunction &hook : g_State.PatchHooks) {
+        if (hook.Retain)
+            hook.Retain(hook.State);
+    }
+    if (info) {
+        Init(info);
+        info->State = BML_BEHAVIOR_PATCH_ACTIVE;
+        Init(&info->Diagnostic);
+    }
+    *patch = reinterpret_cast<BML_BehaviorPatch>(10);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReadPatch(
+    BML_BehaviorSession, BML_BehaviorPatch patch,
+    BML_BehaviorPatchInfo *info, BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.PatchReads;
+    if (!patch)
+        return BML_ERROR_INVALID_HANDLE;
+    Init(info);
+    info->State = BML_BEHAVIOR_PATCH_ACTIVE;
+    Init(&info->Diagnostic);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession, BML_BehaviorPatch) {
+    ++g_State.PatchCloses;
+    for (const BML_BehaviorHookFunction &hook : g_State.PatchHooks) {
+        if (hook.Release)
+            hook.Release(hook.State);
+    }
+    g_State.PatchHooks.clear();
+    return BML_OK;
+}
+
 BML_BehaviorInterface g_Interface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -707,6 +773,9 @@ BML_BehaviorInterface g_Interface = {
     &SetRun,
     &BindRun,
     &ConfigureRun,
+    &ApplyPatch,
+    &ReadPatch,
+    &ClosePatch,
 };
 
 } // namespace
@@ -1179,7 +1248,7 @@ TEST(BehaviorAuthoring, RejectsExactWatchWhenTheProviderCannotObserveIt) {
     EXPECT_EQ(g_State.WatchFunction.Invoke, nullptr);
 }
 
-TEST(BehaviorAuthoring, TranslatesPlanProgramAndOwnsHookState) {
+TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
@@ -1188,13 +1257,13 @@ TEST(BehaviorAuthoring, TranslatesPlanProgramAndOwnsHookState) {
     auto alive = std::make_shared<int>(0);
     std::vector<float> deltas;
     {
-        Draft draft = session.Plan("extra-life");
+        PatchBuilder draft = session.Plan("extra-life");
         draft.OnSingle("Gameplay_Events");
         const auto counter = draft.Require("Counter_Active", CKGUID(1, 2));
         const auto added = draft.Add(CKGUID(3, 4));
         const auto amount = draft.AppendPin(added, "Amount", CKPGUID_FLOAT);
         const auto link =
-            draft.Between(counter.Out(0), draft.Script().In("Reset"), 2);
+            draft.Between(counter.Out(0), draft.Graph().In("Reset"), 2);
         draft.Splice(link, added,
                      {before("Other", "hud"), after("Third", "sound")})
             .Bind(amount, 3.5f)
@@ -1227,7 +1296,7 @@ TEST(BehaviorAuthoring, TranslatesPlanProgramAndOwnsHookState) {
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_NODE));
         EXPECT_EQ(require.Name, "Counter_Active");
         EXPECT_EQ(require.Prototype.Data1, 1u);
-        EXPECT_EQ(require.Result, BML_BEHAVIOR_EDIT_SCRIPT + 1u);
+        EXPECT_EQ(require.Result, BML_BEHAVIOR_EDIT_GRAPH + 1u);
 
         const CapturedStep &append = g_State.PlanSteps[2];
         EXPECT_EQ(append.Kind,
@@ -1249,7 +1318,7 @@ TEST(BehaviorAuthoring, TranslatesPlanProgramAndOwnsHookState) {
                   static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_OUT));
         EXPECT_EQ(between.Source.Slot.Kind,
                   static_cast<std::uint32_t>(BML_BEHAVIOR_SELECTOR_INDEX));
-        EXPECT_EQ(between.Sink.Handle, BML_BEHAVIOR_EDIT_SCRIPT);
+        EXPECT_EQ(between.Sink.Handle, BML_BEHAVIOR_EDIT_GRAPH);
         EXPECT_EQ(between.SinkSlot, "Reset");
 
         const CapturedStep &splice = g_State.PlanSteps[4];
@@ -1325,7 +1394,64 @@ TEST(BehaviorAuthoring, TranslatesPlanProgramAndOwnsHookState) {
         EXPECT_EQ(g_State.PlanCloses, 1);
         plan.Close();
         EXPECT_EQ(g_State.PlanCloses, 1);
-        // The Draft still owns the reference the Loader dropped.
+        // The builder still owns the reference the Loader dropped.
+        EXPECT_EQ(alive.use_count(), 2);
+    }
+    EXPECT_EQ(alive.use_count(), 1);
+}
+
+TEST(BehaviorAuthoring, AppliesTheSameEditLanguageToOneLiveGraph) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    Graph graph = std::move(inspected).Value();
+
+    auto alive = std::make_shared<int>(0);
+    {
+        auto edit = graph.Patch("one-graph");
+        const auto existing = edit.Require("Counter_Active", CKGUID(1, 2));
+        const auto added = edit.Add(CKGUID(3, 4));
+        const auto amount = edit.AppendPin(added, "Amount", CKPGUID_FLOAT);
+        const auto link = edit.Between(existing.Out(), edit.Graph().In());
+        edit.Bind(amount, 2.5f)
+            .Splice(link, added)
+            .Tap(added.Out(), [alive] {});
+
+        auto applied = edit.Apply();
+        ASSERT_TRUE(applied) << applied.Detail().Message;
+        GraphPatch patch = std::move(applied).Value();
+        EXPECT_EQ(g_State.PatchApplies, 1);
+        EXPECT_EQ(g_State.PatchName, "one-graph");
+        EXPECT_EQ(g_State.PatchGraph.Domain, 41u);
+        EXPECT_EQ(g_State.PatchGraph.Slot, 42u);
+        EXPECT_EQ(g_State.PatchGraph.Generation, 43u);
+        ASSERT_EQ(g_State.PatchSteps.size(), 7u);
+        EXPECT_EQ(g_State.PatchSteps[0].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_NODE));
+        EXPECT_EQ(g_State.PatchSteps[1].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
+        EXPECT_EQ(g_State.PatchSteps[2].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_APPEND_SLOT));
+        EXPECT_EQ(g_State.PatchSteps[4].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_BIND_VALUE));
+        EXPECT_EQ(g_State.PatchSteps[5].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SPLICE));
+        EXPECT_EQ(g_State.PatchSteps[6].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_TAP));
+
+        auto read = patch.Read();
+        ASSERT_TRUE(read);
+        EXPECT_EQ(read.Value().State, GraphPatchState::Active);
+        EXPECT_TRUE(read.Value().Installed());
+        EXPECT_EQ(read.Value().Conflicts, 0u);
+
+        patch.Close();
+        EXPECT_EQ(g_State.PatchCloses, 1);
+        patch.Close();
+        EXPECT_EQ(g_State.PatchCloses, 1);
         EXPECT_EQ(alive.use_count(), 2);
     }
     EXPECT_EQ(alive.use_count(), 1);
@@ -1337,7 +1463,7 @@ TEST(BehaviorAuthoring, RejectsPlanWithoutAScriptBeforeCallingTheLoader) {
     ASSERT_TRUE(opened);
     Session session = std::move(opened).Value();
 
-    Draft draft = session.Plan("nameless");
+    PatchBuilder draft = session.Plan("nameless");
     auto submitted = draft.Submit();
     EXPECT_FALSE(submitted);
     EXPECT_EQ(submitted.Code(), BML_ERROR_INVALID_PARAMETER);
@@ -1354,15 +1480,15 @@ TEST(BehaviorAuthoring, KeepsHookStateWhenTheLoaderRejectsThePlan) {
 
     auto alive = std::make_shared<int>(0);
     {
-        Draft draft = session.Plan("rejected");
+        PatchBuilder draft = session.Plan("rejected");
         draft.On("Gameplay_Events")
-            .Tap(draft.Script().Out(0), [alive] {});
+            .Tap(draft.Graph().Out(0), [alive] {});
         auto submitted = draft.Submit();
         EXPECT_FALSE(submitted);
         EXPECT_EQ(submitted.Code(), BML_ERROR_INVALID_PARAMETER);
         EXPECT_EQ(g_State.PlanSubmits, 1);
         EXPECT_EQ(g_State.PlanCloses, 0);
-        // A rejected Plan retained nothing, so only the Draft still owns it.
+        // A rejected Plan retained nothing, so only the builder still owns it.
         EXPECT_EQ(alive.use_count(), 2);
     }
     EXPECT_EQ(alive.use_count(), 1);
