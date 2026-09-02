@@ -43,6 +43,8 @@ public:
     Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
     Status Add(Edit &edit, Spec block, Node &out);
     Status Apply(const SessionOwner &owner, const Edit &edit, PatchId &out);
+    Status Apply(const SessionOwner &owner, const ObjectRef &graph,
+                 std::string name, GraphEdit edit, PatchId &out);
     Status Submit(Plans &plans, const SessionOwner &owner, Script target,
                   std::string name, GraphEdit edit, PlanId &out);
     Status Read(const SessionOwner &owner, PatchId patch,

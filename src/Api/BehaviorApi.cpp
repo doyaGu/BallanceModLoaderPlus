@@ -64,7 +64,10 @@ using BML::Behavior::Node;
 using BML::Behavior::NodeQuery;
 using BML::Behavior::Order;
 using BML::Behavior::OrderKind;
+using BML::Behavior::PatchId;
+using BML::Behavior::PatchInfo;
 using BML::Behavior::PatchKey;
+using BML::Behavior::PatchState;
 using BML::Behavior::PathRef;
 using BML::Behavior::PlanCallbackState;
 using BML::Behavior::PlanId;
@@ -187,6 +190,12 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::DetachedUnsupported: return BML_BEHAVIOR_ERROR_DETACHED_UNSUPPORTED;
     case Error::ObserverUnavailable: return BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE;
     case Error::GraphChanged:
+    case Error::InvalidGraphLocality:
+    case Error::InvalidDelay:
+    case Error::UnconfirmedSameFrameCycle:
+    case Error::SharedSourceCycle:
+    case Error::PushCycle:
+    case Error::InterfaceUnsupported:
     case Error::LinkNotFound:
     case Error::PathAmbiguous:
     case Error::PathCycle:
@@ -237,6 +246,7 @@ std::uint32_t PublicPhase(Phase phase) noexcept {
     case Phase::LifecycleCallback: return BML_BEHAVIOR_PHASE_CALLBACK;
     case Phase::ParameterBinding: return BML_BEHAVIOR_PHASE_BINDING;
     case Phase::Execution: return BML_BEHAVIOR_PHASE_EXECUTION;
+    case Phase::Edit: return BML_BEHAVIOR_PHASE_EDIT;
     case Phase::Teardown: return BML_BEHAVIOR_PHASE_TEARDOWN;
     }
     return BML_BEHAVIOR_PHASE_NONE;
@@ -2154,6 +2164,30 @@ void WritePlanInfo(BML_BehaviorPlanInfo *out, const PlanInfo &info) noexcept {
     WriteStatus(&out->Diagnostic, info.Diagnostic);
 }
 
+std::uint32_t PublicPatchState(PatchState state) noexcept {
+    switch (state) {
+    case PatchState::Pending: return BML_BEHAVIOR_PATCH_PENDING;
+    case PatchState::Active: return BML_BEHAVIOR_PATCH_ACTIVE;
+    case PatchState::Closing: return BML_BEHAVIOR_PATCH_CLOSING;
+    case PatchState::Conflicted: return BML_BEHAVIOR_PATCH_CONFLICTED;
+    case PatchState::Closed: return BML_BEHAVIOR_PATCH_CLOSED;
+    case PatchState::Failed: return BML_BEHAVIOR_PATCH_FAILED;
+    }
+    return BML_BEHAVIOR_PATCH_FAILED;
+}
+
+void WritePatchInfo(BML_BehaviorPatchInfo *out,
+                    const PatchInfo &info) noexcept {
+    if (!out)
+        return;
+    *out = {};
+    out->StructSize = sizeof(*out);
+    out->State = PublicPatchState(info.State);
+    out->Conflicts = Count(info.Conflicts.size());
+    out->Diagnostic.StructSize = sizeof(out->Diagnostic);
+    WriteStatus(&out->Diagnostic, info.Diagnostic);
+}
+
 bool ReadSlotKind(std::uint32_t kind, SlotKind &out) noexcept {
     switch (kind) {
     case BML_BEHAVIOR_SLOT_IN: out = SlotKind::Input; return true;
@@ -2344,46 +2378,45 @@ int InvokeHook(const CKBehaviorContext *native, void *argument) {
     }
 }
 
-enum class PlanHandleKind {
+enum class EditHandleKind {
     Node,
     Link,
     Path,
     Port,
 };
 
-struct PlanHandle {
-    PlanHandleKind Kind = PlanHandleKind::Node;
+struct EditHandle {
+    EditHandleKind Kind = EditHandleKind::Node;
     Node NodeValue;
     Link LinkValue;
     PathRef PathValue;
     Port PortValue;
 };
 
-// Translates a wire edit program into one durable GraphEdit. Nothing here
-// touches a CK world: the program only builds symbolic intent, which Submit
-// validates before the Loader compiles it against a matching script.
-class PlanProgram final {
+// Translates the shared wire edit program into symbolic graph intent. The same
+// value can be applied once to a known graph or retained by a durable Plan.
+class EditProgram final {
 public:
-    Status Build(const BML_BehaviorPlanSpec &spec, ModContext &context,
-                 GraphEdit &edit);
+    Status Build(const BML_BehaviorEditStep *steps, std::uint32_t count,
+                 ModContext &context, GraphEdit &edit);
 
 private:
     static bool Defines(std::uint32_t kind) noexcept;
 
     Status Step(const BML_BehaviorEditStep &step, ModContext &context,
                 GraphEdit &edit);
-    Status Use(std::uint32_t id, PlanHandleKind kind,
-               const PlanHandle *&out) const;
+    Status Use(std::uint32_t id, EditHandleKind kind,
+               const EditHandle *&out) const;
     Status ReadPort(const BML_BehaviorPortRef &from, Port &out) const;
     Status ReadHook(const BML_BehaviorHookFunction *from,
                     HookBlock::Hook &out) const;
     Status ReadOrdering(const BML_BehaviorEditStep &step,
                         std::vector<Order> &out) const;
 
-    std::map<std::uint32_t, PlanHandle> m_Handles;
+    std::map<std::uint32_t, EditHandle> m_Handles;
 };
 
-bool PlanProgram::Defines(std::uint32_t kind) noexcept {
+bool EditProgram::Defines(std::uint32_t kind) noexcept {
     switch (kind) {
     case BML_BEHAVIOR_EDIT_REQUIRE_NODE:
     case BML_BEHAVIOR_EDIT_REQUIRE_LINK:
@@ -2396,35 +2429,36 @@ bool PlanProgram::Defines(std::uint32_t kind) noexcept {
     }
 }
 
-Status PlanProgram::Build(const BML_BehaviorPlanSpec &spec,
-                          ModContext &context, GraphEdit &edit) {
-    PlanHandle script;
-    script.NodeValue = edit.Graph();
+Status EditProgram::Build(const BML_BehaviorEditStep *steps,
+                          std::uint32_t count, ModContext &context,
+                          GraphEdit &edit) {
+    EditHandle graph;
+    graph.NodeValue = edit.Graph();
     m_Handles.clear();
-    m_Handles.emplace(BML_BEHAVIOR_EDIT_SCRIPT, script);
-    for (std::uint32_t index = 0; index < spec.StepCount; ++index) {
-        const Status status = Step(spec.Steps[index], context, edit);
+    m_Handles.emplace(BML_BEHAVIOR_EDIT_GRAPH, graph);
+    for (std::uint32_t index = 0; index < count; ++index) {
+        const Status status = Step(steps[index], context, edit);
         if (!status)
             return status;
     }
     return {};
 }
 
-Status PlanProgram::Step(const BML_BehaviorEditStep &step,
+Status EditProgram::Step(const BML_BehaviorEditStep &step,
                          ModContext &context, GraphEdit &edit) {
     if (step.StructSize < sizeof(step))
-        return InvalidValue("A Behavior Plan step has an unsupported StructSize.");
+        return InvalidValue("A Behavior edit step has an unsupported StructSize.");
     if (Defines(step.Kind)) {
-        if (step.Result == 0 || step.Result == BML_BEHAVIOR_EDIT_SCRIPT ||
+        if (step.Result == 0 || step.Result == BML_BEHAVIOR_EDIT_GRAPH ||
             m_Handles.find(step.Result) != m_Handles.end()) {
             return InvalidValue(
-                "A Behavior Plan step handle is missing or already defined.");
+                "A Behavior edit step handle is missing or already defined.");
         }
     } else if (step.Result != 0) {
-        return InvalidValue("This kind of Behavior Plan step defines no handle.");
+        return InvalidValue("This kind of Behavior edit step defines no handle.");
     }
 
-    PlanHandle defined;
+    EditHandle defined;
     Status status;
     Port source;
     Port sink;
@@ -2438,7 +2472,7 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
             return InvalidValue(
                 "A required Behavior node needs a name or a Prototype.");
         }
-        defined.Kind = PlanHandleKind::Node;
+        defined.Kind = EditHandleKind::Node;
         defined.NodeValue = edit.RequireOne(std::move(query));
         break;
     }
@@ -2450,27 +2484,27 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
         std::optional<int> delay;
         if (step.Flags & BML_BEHAVIOR_EDIT_HAS_DELAY)
             delay = step.Delay;
-        defined.Kind = PlanHandleKind::Link;
+        defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.RequireOne(source, sink, delay);
         break;
     }
     case BML_BEHAVIOR_EDIT_FOLLOW:
         if (status = ReadPort(step.Source, source); !status)
             return status;
-        defined.Kind = PlanHandleKind::Path;
+        defined.Kind = EditHandleKind::Path;
         defined.PathValue = edit.Follow(source);
         break;
     case BML_BEHAVIOR_EDIT_ADD_BLOCK: {
         const CKGUID prototype = Guid(step.Prototype);
         if (!prototype.IsValid())
             return InvalidValue("An added Behavior Block needs a Prototype.");
-        defined.Kind = PlanHandleKind::Node;
+        defined.Kind = EditHandleKind::Node;
         defined.NodeValue = edit.Add(prototype);
         break;
     }
     case BML_BEHAVIOR_EDIT_APPEND_SLOT: {
-        const PlanHandle *owner = nullptr;
-        if (status = Use(step.Target, PlanHandleKind::Node, owner); !status)
+        const EditHandle *owner = nullptr;
+        if (status = Use(step.Target, EditHandleKind::Node, owner); !status)
             return status;
         std::string name;
         if (!ReadString(step.Name, name) || name.empty())
@@ -2483,7 +2517,7 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
             return InvalidValue(
                 "An appended Behavior Pin, Pout, or Local needs a parameter type.");
         }
-        defined.Kind = PlanHandleKind::Port;
+        defined.Kind = EditHandleKind::Port;
         switch (step.SlotKind) {
         case BML_BEHAVIOR_SLOT_IN:
             defined.PortValue = edit.AppendIn(owner->NodeValue, std::move(name));
@@ -2505,7 +2539,7 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
             break;
         default:
             return InvalidValue(
-                "A Behavior Plan can only append an In, Out, Pin, Pout, or Local.");
+                "A Behavior edit can only append an In, Out, Pin, Pout, or Local.");
         }
         break;
     }
@@ -2527,7 +2561,7 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
         if (binding.Kind() != Parameter::BindingKind::Value) {
             return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
                     CKBR_PARAMETERERROR,
-                    "A durable Behavior Plan cannot bind a live object."};
+                    "A symbolic Behavior edit cannot bind a live object."};
         }
         edit.Bind(sink, binding.Literal());
         break;
@@ -2556,8 +2590,8 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_AFTER: {
-        const PlanHandle *path = nullptr;
-        if (status = Use(step.Target, PlanHandleKind::Path, path); !status)
+        const EditHandle *path = nullptr;
+        if (status = Use(step.Target, EditHandleKind::Path, path); !status)
             return status;
         HookBlock::Hook hook;
         if (status = ReadHook(step.Hook, hook); !status)
@@ -2566,15 +2600,15 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_SPLICE: {
-        const PlanHandle *link = nullptr;
-        if (status = Use(step.Target, PlanHandleKind::Link, link); !status)
+        const EditHandle *link = nullptr;
+        if (status = Use(step.Target, EditHandleKind::Link, link); !status)
             return status;
         std::vector<Order> ordering;
         if (status = ReadOrdering(step, ordering); !status)
             return status;
         if (step.Node) {
-            const PlanHandle *block = nullptr;
-            if (status = Use(step.Node, PlanHandleKind::Node, block); !status)
+            const EditHandle *block = nullptr;
+            if (status = Use(step.Node, EditHandleKind::Node, block); !status)
                 return status;
             edit.Splice(link->LinkValue, block->NodeValue, std::move(ordering));
             break;
@@ -2587,7 +2621,7 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
         break;
     }
     default:
-        return InvalidValue("A Behavior Plan step names an unknown edit.");
+        return InvalidValue("A Behavior edit step names an unknown operation.");
     }
 
     if (Defines(step.Kind))
@@ -2595,23 +2629,23 @@ Status PlanProgram::Step(const BML_BehaviorEditStep &step,
     return {};
 }
 
-Status PlanProgram::Use(std::uint32_t id, PlanHandleKind kind,
-                        const PlanHandle *&out) const {
+Status EditProgram::Use(std::uint32_t id, EditHandleKind kind,
+                        const EditHandle *&out) const {
     const auto found = m_Handles.find(id);
     if (found == m_Handles.end()) {
         return InvalidValue(
-            "A Behavior Plan step read a handle no earlier step defined.");
+            "A Behavior edit step read a handle no earlier step defined.");
     }
     if (found->second.Kind != kind)
-        return InvalidValue("A Behavior Plan step read a handle of another kind.");
+        return InvalidValue("A Behavior edit step read a handle of another kind.");
     out = &found->second;
     return {};
 }
 
-Status PlanProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
-    const PlanHandle *handle = nullptr;
+Status EditProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
+    const EditHandle *handle = nullptr;
     if (from.Kind == 0) {
-        const Status status = Use(from.Handle, PlanHandleKind::Port, handle);
+        const Status status = Use(from.Handle, EditHandleKind::Port, handle);
         if (!status)
             return status;
         out = handle->PortValue;
@@ -2622,7 +2656,7 @@ Status PlanProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
     SlotKind kind;
     if (!ReadSlotKind(from.Kind, kind))
         return InvalidValue("A Behavior port names an unknown slot kind.");
-    Status status = Use(from.Handle, PlanHandleKind::Node, handle);
+    Status status = Use(from.Handle, EditHandleKind::Node, handle);
     if (!status)
         return status;
     Slot slot;
@@ -2632,7 +2666,7 @@ Status PlanProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
     return {};
 }
 
-Status PlanProgram::ReadHook(const BML_BehaviorHookFunction *from,
+Status EditProgram::ReadHook(const BML_BehaviorHookFunction *from,
                              HookBlock::Hook &out) const {
     if (!from || from->StructSize < sizeof(*from) || !from->Invoke)
         return InvalidValue("A Behavior Hook needs a callback.");
@@ -2641,9 +2675,9 @@ Status PlanProgram::ReadHook(const BML_BehaviorHookFunction *from,
             "A Behavior Hook needs both Retain and Release, or neither.");
     }
     // The record takes the caller reference here, so the caller may drop its
-    // own as soon as this Plan is accepted. The matching Release runs when the
+    // own as soon as this edit is accepted. The matching Release runs when the
     // last holder of the record drops it, which is later than retirement for a
-    // Conflicted Plan and earlier than any lease for a Plan that never installs.
+    // Conflicted Patch and earlier than any lease for an edit that never installs.
     auto thunk = std::make_shared<HookThunk>();
     thunk->Function = *from;
     if (from->Retain)
@@ -2654,15 +2688,15 @@ Status PlanProgram::ReadHook(const BML_BehaviorHookFunction *from,
     return {};
 }
 
-Status PlanProgram::ReadOrdering(const BML_BehaviorEditStep &step,
+Status EditProgram::ReadOrdering(const BML_BehaviorEditStep &step,
                                  std::vector<Order> &out) const {
     if (step.OrderCount && !step.Ordering)
-        return InvalidValue("A Behavior Plan ordering array is missing.");
+        return InvalidValue("A Behavior Patch ordering array is missing.");
     for (std::uint32_t index = 0; index < step.OrderCount; ++index) {
         const BML_BehaviorEditOrder &order = step.Ordering[index];
         if (order.StructSize < sizeof(order)) {
             return InvalidValue(
-                "A Behavior Plan ordering entry has an unsupported StructSize.");
+                "A Behavior Patch ordering entry has an unsupported StructSize.");
         }
         OrderKind kind;
         switch (order.Kind) {
@@ -2670,14 +2704,14 @@ Status PlanProgram::ReadOrdering(const BML_BehaviorEditStep &step,
         case BML_BEHAVIOR_ORDER_AFTER: kind = OrderKind::After; break;
         default:
             return InvalidValue(
-                "A Behavior Plan ordering entry names an unknown order.");
+                "A Behavior Patch ordering entry names an unknown order.");
         }
         std::string owner;
         std::string name;
         if (!ReadString(order.Owner, owner) || owner.empty() ||
             !ReadString(order.Name, name) || name.empty()) {
             return InvalidValue(
-                "A Behavior Plan ordering entry needs an owner and a Patch name.");
+                "A Behavior Patch ordering entry needs an owner and name.");
         }
         out.push_back({kind, PatchKey{std::move(owner), std::move(name)}});
     }
@@ -2686,6 +2720,15 @@ Status PlanProgram::ReadOrdering(const BML_BehaviorEditStep &step,
 
 BML_BehaviorPlan PlanHandleOf(PlanId id) noexcept {
     return reinterpret_cast<BML_BehaviorPlan>(static_cast<std::uintptr_t>(id));
+}
+
+BML_BehaviorPatch PatchHandleOf(PatchId id) noexcept {
+    return reinterpret_cast<BML_BehaviorPatch>(
+        static_cast<std::uintptr_t>(id));
+}
+
+PatchId PatchIdOf(BML_BehaviorPatch patch) noexcept {
+    return static_cast<PatchId>(reinterpret_cast<std::uintptr_t>(patch));
 }
 
 PlanId PlanIdOf(BML_BehaviorPlan plan) noexcept {
@@ -2734,8 +2777,8 @@ int BML_BEHAVIOR_CALL SubmitPlan(
         }
 
         GraphEdit edit;
-        PlanProgram program;
-        result = program.Build(*spec, *context, edit);
+        EditProgram program;
+        result = program.Build(spec->Steps, spec->StepCount, *context, edit);
         if (!result) {
             WriteStatus(status, result);
             return BML_ERROR_INVALID_PARAMETER;
@@ -2806,6 +2849,105 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
     });
 }
 
+int BML_BEHAVIOR_CALL ApplyPatch(
+    BML_BehaviorSession session, const BML_BehaviorPatchSpec *spec,
+    BML_BehaviorPatch *outPatch, BML_BehaviorPatchInfo *info,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!session || !HasStructSize(spec) || !outPatch ||
+            (info && !HasStructSize(info)) ||
+            (status && !HasStructSize(status)) ||
+            (spec->StepCount && !spec->Steps) || !spec->Graph.Domain)
+            return BML_ERROR_INVALID_PARAMETER;
+        *outPatch = nullptr;
+        std::string name;
+        if (!ReadString(spec->Name, name) || name.empty())
+            return BML_ERROR_INVALID_PARAMETER;
+
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+
+        GraphEdit edit;
+        EditProgram program;
+        result = program.Build(spec->Steps, spec->StepCount, *context, edit);
+        if (!result) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+
+        PatchId id = 0;
+        result = context->BehaviorPatches().Apply(
+            owner,
+            BML::Behavior::ObjectRef{spec->Graph.Domain, spec->Graph.Slot,
+                                     spec->Graph.Generation},
+            std::move(name), std::move(edit), id);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        *outPatch = PatchHandleOf(id);
+        PatchInfo read;
+        if (info && context->BehaviorPatches().Read(owner, id, read))
+            WritePatchInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadPatch(
+    BML_BehaviorSession session, BML_BehaviorPatch patch,
+    BML_BehaviorPatchInfo *info, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!session || !patch || !HasStructSize(info) ||
+            (status && !HasStructSize(status)))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        PatchInfo read;
+        result = context->BehaviorPatches().Read(owner, PatchIdOf(patch), read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        WritePatchInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
+                                 BML_BehaviorPatch patch) {
+    return Guard([&] {
+        if (!session || !patch)
+            return BML_ERROR_INVALID_HANDLE;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result))
+            return ResultCode(result);
+        return ResultCode(
+            context->BehaviorPatches().Close(owner, PatchIdOf(patch)));
+    });
+}
+
 const BML_BehaviorInterface kBehaviorInterface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -2835,6 +2977,9 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &Set,
     &Bind,
     &Configure,
+    &ApplyPatch,
+    &ReadPatch,
+    &ClosePatch,
 };
 
 } // namespace

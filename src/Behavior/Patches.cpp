@@ -122,6 +122,20 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
     return status;
 }
 
+Status Patches::Apply(const SessionOwner &owner, const ObjectRef &graph,
+                      std::string name, GraphEdit edit, PatchId &out) {
+    out = 0;
+    Status status = Ready();
+    if (!status)
+        return status;
+    if (!owner || graph.IsNull() || name.empty()) {
+        return Failure(
+            Error::OwnerInvalid,
+            "A Behavior Patch requires an owner, graph, and name.");
+    }
+    return Install(owner, {owner.Id, std::move(name)}, graph, edit, out);
+}
+
 class Patches::PlanWorld final : public Plan::World {
 public:
     PlanWorld(Patches &patches, SessionOwner owner, GraphEdit edit)
@@ -194,7 +208,7 @@ Status Patches::Begin(const PatchKey &patch, const ObjectRef &graph,
     CKBehavior *behavior = object ? CKBehavior::Cast(object) : nullptr;
     if (!behavior)
         return Failure(Error::TargetInvalid,
-                       "A durable Behavior Edit target script is stale.");
+                       "The Behavior Patch target graph is stale.");
     Status status = m_Edit.Begin(behavior, patch, out);
     if (status)
         status = m_Graph.Read(out.GraphRef(), GraphView::Logical, base);
@@ -208,7 +222,7 @@ Status Patches::UseNode(Edit &edit, const ObjectRef &node, Node &out) {
     return behavior
         ? m_Edit.Use(edit, behavior, out)
         : Failure(Error::GraphChanged,
-                  "A durable Behavior Node disappeared during compilation.");
+                  "A Behavior Node disappeared during compilation.");
 }
 
 Status Patches::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
@@ -218,7 +232,7 @@ Status Patches::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
     return native
         ? m_Edit.Use(edit, native, out)
         : Failure(Error::GraphChanged,
-                  "A durable Behavior Link disappeared during compilation.");
+                  "A Behavior Link disappeared during compilation.");
 }
 
 Status Patches::Add(Edit &edit, CKGUID prototype, Node &out) {
@@ -230,7 +244,7 @@ Status Patches::Tap(Edit &edit, Port source,
     std::shared_ptr<HookBlock::Binding> binding = hook.Bind();
     if (!binding) {
         return Failure(Error::CallbackFailed,
-                       "The durable Tap callback is no longer available.");
+                       "The Tap callback is no longer available.");
     }
     edit.Tap(std::move(source), std::move(binding));
     return {};
@@ -241,7 +255,7 @@ Status Patches::After(Edit &edit, Link link,
     std::shared_ptr<HookBlock::Binding> binding = hook.Bind();
     if (!binding) {
         return Failure(Error::CallbackFailed,
-                       "The durable Path callback is no longer available.");
+                       "The Path callback is no longer available.");
     }
     Node block;
     Status status = m_Edit.Add(

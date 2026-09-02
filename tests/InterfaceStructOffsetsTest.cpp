@@ -81,6 +81,9 @@ TEST(InterfaceStructOffsets, BehaviorInterface) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Set, 100);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Bind, 104);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Configure, 108);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ApplyPatch, 112);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadPatch, 116);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ClosePatch, 120);
     ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 52, 0,
                                              BML_BEHAVIOR_INTERFACE_MINOR);
 }

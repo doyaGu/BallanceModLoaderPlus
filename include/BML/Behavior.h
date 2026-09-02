@@ -17,7 +17,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 6u
+#define BML_BEHAVIOR_INTERFACE_MINOR 7u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 
 BML_BEGIN_CDECLS
@@ -26,6 +26,7 @@ typedef struct BML_BehaviorSession__ *BML_BehaviorSession;
 typedef struct BML_BehaviorRun__ *BML_BehaviorRun;
 typedef struct BML_BehaviorWatch__ *BML_BehaviorWatch;
 typedef struct BML_BehaviorPlan__ *BML_BehaviorPlan;
+typedef struct BML_BehaviorPatch__ *BML_BehaviorPatch;
 
 #pragma pack(push, 8)
 
@@ -218,7 +219,8 @@ typedef enum BML_BehaviorPhase {
     BML_BEHAVIOR_PHASE_CALLBACK = 9,
     BML_BEHAVIOR_PHASE_BINDING = 10,
     BML_BEHAVIOR_PHASE_EXECUTION = 11,
-    BML_BEHAVIOR_PHASE_TEARDOWN = 12
+    BML_BEHAVIOR_PHASE_TEARDOWN = 12,
+    BML_BEHAVIOR_PHASE_EDIT = 13
 } BML_BehaviorPhase;
 
 typedef struct BML_BehaviorStatus {
@@ -620,6 +622,27 @@ typedef struct BML_BehaviorPlanInfo {
     BML_BehaviorStatus Diagnostic;
 } BML_BehaviorPlanInfo;
 
+// State of one Patch applied to a specific live graph. Unlike a Plan, a Patch
+// is not matched again after its graph is deleted or the world is reset.
+typedef enum BML_BehaviorPatchState {
+    BML_BEHAVIOR_PATCH_PENDING = 1,
+    BML_BEHAVIOR_PATCH_ACTIVE = 2,
+    BML_BEHAVIOR_PATCH_CLOSING = 3,
+    BML_BEHAVIOR_PATCH_CONFLICTED = 4,
+    BML_BEHAVIOR_PATCH_CLOSED = 5,
+    BML_BEHAVIOR_PATCH_FAILED = 6
+} BML_BehaviorPatchState;
+
+typedef struct BML_BehaviorPatchInfo {
+    uint32_t StructSize;
+    uint32_t State;
+    // Number of graph relations that could not be restored exactly. Details
+    // remain in Diagnostic in v1; a later minor may add a caller-buffer view.
+    uint32_t Conflicts;
+    uint32_t Reserved;
+    BML_BehaviorStatus Diagnostic;
+} BML_BehaviorPatchInfo;
+
 typedef struct BML_BehaviorHookContext {
     uint32_t StructSize;
     uint32_t Flags;
@@ -646,13 +669,13 @@ typedef void (BML_BEHAVIOR_CALL *BML_BehaviorHookRelease)(void *state);
 typedef int (BML_BEHAVIOR_CALL *BML_BehaviorHookCallback)(
     void *state, const BML_BehaviorHookContext *context);
 
-// One author callback occurrence in a Plan. Retain runs once while SubmitPlan
-// accepts the Hook, so the caller may drop its own reference as soon as the
-// call returns, and Release runs once the Loader has retired the occurrence and
-// dropped every installation of it, which keeps State alive for a Conflicted
-// Plan. A rejected Plan retains nothing it has not already released. Invoke
+// One author callback occurrence in an edit. Retain runs once while a Patch or
+// Plan accepts the Hook, so the caller may drop its own reference as soon as
+// the call returns, and Release runs once the Loader has retired the occurrence
+// and dropped every installation of it. A rejected edit retains nothing it has
+// not already released. Invoke
 // runs on the game thread inside the behavior execution the game itself drives,
-// and must not close the Plan or its Session.
+// and must not close the Patch, Plan, or Session that owns it.
 typedef struct BML_BehaviorHookFunction {
     uint32_t StructSize;
     void *State;
@@ -676,9 +699,9 @@ typedef struct BML_BehaviorEditOrder {
 } BML_BehaviorEditOrder;
 
 // Steps name each other through caller-assigned handles in one namespace per
-// Plan. Handle 1 always denotes the matched script itself; every other handle
+// edit. Handle 1 always denotes the target graph itself; every other handle
 // must be defined by an earlier step before a later step reads it.
-#define BML_BEHAVIOR_EDIT_SCRIPT 1u
+#define BML_BEHAVIOR_EDIT_GRAPH 1u
 
 // A port of a node. Kind is a BML_BehaviorSlotKind naming which interface of
 // Handle to address. A zero Kind means Handle is itself a port defined by an
@@ -775,6 +798,19 @@ typedef struct BML_BehaviorPlanSpec {
     uint32_t StepCount;
     uint32_t Reserved;
 } BML_BehaviorPlanSpec;
+
+// Applies one edit program to this exact live graph. The graph is resolved and
+// the entire program is compiled before native mutation begins. Name identifies
+// the Patch within the Session owner for ordering and conflict detection.
+typedef struct BML_BehaviorPatchSpec {
+    uint32_t StructSize;
+    uint32_t Reserved;
+    BML_BehaviorString Name;
+    BML_ObjectRef Graph;
+    const BML_BehaviorEditStep *Steps;
+    uint32_t StepCount;
+    uint32_t Reserved2;
+} BML_BehaviorPatchSpec;
 
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
@@ -942,6 +978,23 @@ typedef struct BML_BehaviorInterface {
         uint32_t stageCount,
         uint64_t *outLayoutGeneration,
         BML_BehaviorStatus *status);
+    // A Patch targets one live graph and is never reconciled against later
+    // worlds. It uses the same edit program as a durable Plan.
+    int (BML_BEHAVIOR_CALL *ApplyPatch)(
+        BML_BehaviorSession session,
+        const BML_BehaviorPatchSpec *spec,
+        BML_BehaviorPatch *outPatch,
+        BML_BehaviorPatchInfo *info,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadPatch)(
+        BML_BehaviorSession session,
+        BML_BehaviorPatch patch,
+        BML_BehaviorPatchInfo *info,
+        BML_BehaviorStatus *status);
+    // Stops callback admission immediately. Native restoration may finish at
+    // the next game-thread safe point.
+    int (BML_BEHAVIOR_CALL *ClosePatch)(BML_BehaviorSession session,
+                                        BML_BehaviorPatch patch);
 } BML_BehaviorInterface;
 
 #pragma pack(pop)
