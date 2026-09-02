@@ -268,41 +268,6 @@ Status SlotFailure(Error error, std::string message, CKGUID prototype,
 
 } // namespace
 
-Slot Slot::At(SlotKind kind, int index, CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.Index = index;
-    selector.ExpectedType = expectedType;
-    return selector;
-}
-
-Slot Slot::Named(SlotKind kind, std::string name, CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.Name = std::move(name);
-    selector.ExpectedType = expectedType;
-    selector.RequireUnique = true;
-    return selector;
-}
-
-Slot Slot::OccurrenceOf(SlotKind kind, std::string name, int occurrence,
-                        CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.Name = std::move(name);
-    selector.Occurrence = occurrence;
-    selector.ExpectedType = expectedType;
-    return selector;
-}
-
-Slot Slot::Only(SlotKind kind, CKGUID expectedType) {
-    Slot selector;
-    selector.Kind = kind;
-    selector.RequireOnly = true;
-    selector.ExpectedType = expectedType;
-    return selector;
-}
-
 Layout LiveLayout::Describe(std::uint64_t generation,
                             const Layout *declared) const {
     Layout layout;
@@ -311,8 +276,12 @@ Layout LiveLayout::Describe(std::uint64_t generation,
 
     layout.Prototype = m_Prototype;
     layout.Origin = LayoutOrigin::Live;
-    layout.Kind = m_Behavior->IsUsingFunction()
-        ? BehaviorKind::Function : BehaviorKind::Graph;
+    if (!m_Behavior->IsUsingFunction())
+        layout.Kind = BehaviorKind::Graph;
+    else if (m_Declaration && !m_Declaration->GetFunction())
+        layout.Kind = BehaviorKind::Callback;
+    else
+        layout.Kind = BehaviorKind::Function;
     if (m_Declaration) {
         layout.PrototypeName = m_Declaration->GetName()
             ? m_Declaration->GetName() : "";

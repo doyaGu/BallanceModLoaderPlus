@@ -438,7 +438,7 @@ private:
             layout.Prototype.Prototype.Data2 ==
                 Guid(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID).Data2 &&
             layout.Prototype.Generation == m_Prototype.Generation &&
-            layout.Kind == BML_BEHAVIOR_PROTOTYPE_FUNCTION &&
+            layout.Kind == BML_BEHAVIOR_KIND_FUNCTION &&
             Bytes(payload, layout.Name) == "BML Behavior Transport Fixture" &&
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_IN, "Run", 0) &&
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_OUT, "Done", 0) &&
@@ -639,7 +639,7 @@ private:
                 payloadSize, &payloadSize, &status) != BML_OK)
             return false;
         if (layout.Origin != BML_BEHAVIOR_LAYOUT_DECLARED ||
-            layout.Kind != BML_BEHAVIOR_PROTOTYPE_GRAPH ||
+            layout.Kind != BML_BEHAVIOR_KIND_CALLBACK ||
             layout.CompatibleClass != CKCID_3DENTITY ||
             !Same(layout.Prototype.Prototype,
                   BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID) ||
@@ -677,7 +677,7 @@ private:
                    run, &layout, payload.data(), payloadSize, &payloadSize,
                    &status) == BML_OK &&
             layout.Origin == BML_BEHAVIOR_LAYOUT_LIVE &&
-            layout.Kind == BML_BEHAVIOR_PROTOTYPE_GRAPH &&
+            layout.Kind == BML_BEHAVIOR_KIND_GRAPH &&
             layout.LayoutGeneration != 0 &&
             layout.Prototype.Generation == m_GraphPrototype.Generation &&
             HasLayoutSlot(layout, payload, BML_BEHAVIOR_SLOT_IN, "Enter", 0) &&

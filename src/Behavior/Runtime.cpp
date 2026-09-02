@@ -131,6 +131,14 @@ private:
     bool &m_Flag;
 };
 
+class CKBehaviorAccess final : public CKBehavior {
+public:
+    static BehaviorBlockData *BlockData(CKBehavior *behavior) {
+        BehaviorBlockData *CKBehavior::*member = &CKBehaviorAccess::m_BlockData;
+        return behavior ? behavior->*member : nullptr;
+    }
+};
+
 } // namespace
 
 class Runtime::NativeAdapter final : public ExecutionAdapter {
@@ -695,8 +703,11 @@ public:
 
         identity = {};
         identity.Behavior = Convert(m_Runtime.CaptureObject(behavior));
-        CKBehaviorPrototype *prototype = behavior->GetPrototype();
-        const CKGUID guid = behavior->GetPrototypeGuid();
+        const bool graph = !behavior->IsUsingFunction();
+        CKBehaviorPrototype *prototype = graph
+            ? m_Record.Prototype : behavior->GetPrototype();
+        const CKGUID guid = graph
+            ? m_Record.PrototypeGuid : behavior->GetPrototypeGuid();
         identity.Prototype = {
             (static_cast<std::uint64_t>(guid.d1) << 32u) ^
                 static_cast<std::uint32_t>(guid.d2),
@@ -832,8 +843,8 @@ public:
                 return false;
         }
         m_Runtime.m_SharedBindings->Sources.Update(behavior);
-        m_Runtime.PruneOwnedSources(behavior, m_Record);
-        m_Runtime.PruneOwnedOperations(behavior, m_Record);
+        m_Runtime.PruneOwnedSources(m_Record);
+        m_Runtime.PruneOwnedOperations(m_Record);
         return true;
     }
 
@@ -1323,8 +1334,6 @@ Status Runtime::CreateBehavior(const Spec &spec, CKBehavior *&behavior,
 
     record.PrototypeGuid = spec.Prototype();
     record.Prototype = prototype;
-    if (!prototype->GetFunction())
-        behavior->UseGraph();
     return {};
 }
 
@@ -1667,7 +1676,7 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
     }
 
     m_SharedBindings->Sources.Update(input);
-    if (oldOwned && !IsSourceReferenced(oldDirect)) {
+    if (oldOwned && m_SharedBindings->Sources.Count(oldDirect) == 0) {
         QueueSourceDestroy(oldRef);
         record.OwnedSources.erase(owned);
     }
@@ -1928,7 +1937,7 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
         record.OwnedSources.begin(), record.OwnedSources.end(),
         [&](ObjectStamp candidate) { return candidate == previousRef; });
     if (previousLiteral != record.OwnedSources.end() &&
-        !IsSourceReferenced(previousSource)) {
+        m_SharedBindings->Sources.Count(previousSource) == 0) {
         QueueSourceDestroy(*previousLiteral);
         record.OwnedSources.erase(previousLiteral);
     }
@@ -1942,7 +1951,7 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
             return candidateOperation && candidateOperation->GetOutParameter() == previousSource;
         });
     if (previousOperation != record.OwnedOperations.end() &&
-        !IsSourceReferenced(previousSource)) {
+        m_SharedBindings->Sources.Count(previousSource) == 0) {
         DetachOperation(*previousOperation);
         QueueOperationDestroy(std::move(*previousOperation));
         record.OwnedOperations.erase(previousOperation);
@@ -2215,18 +2224,13 @@ Status Runtime::ApplyBindings(CKBehavior *behavior, const Spec &spec,
     return {};
 }
 
-bool Runtime::IsSourceReferenced(CKParameter *source) {
-    return m_SharedBindings->Sources.Count(source) != 0;
-}
-
-void Runtime::PruneOwnedSources(CKBehavior *behavior, Record &record) {
-    if (!behavior)
-        return;
+void Runtime::PruneOwnedSources(Record &record) {
     for (auto it = record.OwnedSources.begin(); it != record.OwnedSources.end();) {
         CKObject *object = ResolveObject(*it);
         auto *source = object && CKIsChildClassOf(object, CKCID_PARAMETER)
             ? static_cast<CKParameter *>(object) : nullptr;
-        const bool used = source && IsSourceReferenced(source);
+        const bool used = source &&
+            m_SharedBindings->Sources.Count(source) != 0;
         if (used) {
             ++it;
         } else {
@@ -2236,16 +2240,14 @@ void Runtime::PruneOwnedSources(CKBehavior *behavior, Record &record) {
     }
 }
 
-void Runtime::PruneOwnedOperations(CKBehavior *behavior, Record &record) {
-    if (!behavior)
-        return;
+void Runtime::PruneOwnedOperations(Record &record) {
     for (auto it = record.OwnedOperations.begin();
          it != record.OwnedOperations.end();) {
         CKObject *object = ResolveObject(it->Operation);
         auto *operation = object && CKIsChildClassOf(object, CKCID_PARAMETEROPERATION)
             ? static_cast<CKParameterOperation *>(object) : nullptr;
         const bool used = operation &&
-            IsSourceReferenced(operation->GetOutParameter());
+            m_SharedBindings->Sources.Count(operation->GetOutParameter()) != 0;
         if (used) {
             ++it;
         } else {
@@ -2269,8 +2271,8 @@ void Runtime::SweepRecords() {
             continue;
         }
         m_SharedBindings->Sources.Update(behavior);
-        PruneOwnedSources(behavior, record);
-        PruneOwnedOperations(behavior, record);
+        PruneOwnedSources(record);
+        PruneOwnedOperations(record);
     }
 }
 
@@ -2366,7 +2368,19 @@ Status Runtime::CallCallback(Record &record, CKDWORD message,
     const CK_ID behaviorId = behavior->GetID();
     const CKGUID prototypeGuid = record.PrototypeGuid;
     int result = CK_OK;
-    {
+    if (message == CKM_BEHAVIORCREATE) {
+        // Ballance's retail CK2.dll maps CKM_BEHAVIORCREATE to a zero callback
+        // mask inside CallCallbackFunction. Dispatch CREATE from the live block
+        // data so the provider's current callback, mask, and argument are kept.
+        BehaviorBlockData *block = CKBehaviorAccess::BlockData(behavior);
+        if (block && block->m_Callback &&
+            (block->m_CallbackMask & CKCB_BEHAVIORCREATE) != 0) {
+            BehaviorContextScope scope(m_Context, behavior, frame);
+            m_Context->m_BehaviorContext.CallbackMessage = message;
+            m_Context->m_BehaviorContext.CallbackArg = block->m_CallbackArg;
+            result = block->m_Callback(m_Context->m_BehaviorContext);
+        }
+    } else {
         BehaviorContextScope scope(m_Context, behavior, frame);
         result = behavior->CallCallbackFunction(message);
     }
@@ -2421,8 +2435,8 @@ Status Runtime::SetInput(Instance &instance,
         return Failure(Error::InvalidState, "Resolved slot is not an input parameter.");
     }
     status = BindInput(behavior, *record, slot.Slot, value);
-    PruneOwnedSources(behavior, *record);
-    PruneOwnedOperations(behavior, *record);
+    PruneOwnedSources(*record);
+    PruneOwnedOperations(*record);
     return status;
 }
 
@@ -2547,8 +2561,8 @@ Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
     if (!status)
         return status;
     status = ApplyBindings(behavior, spec, *record);
-    PruneOwnedSources(behavior, *record);
-    PruneOwnedOperations(behavior, *record);
+    PruneOwnedSources(*record);
+    PruneOwnedOperations(*record);
     if (status)
         record->Poisoned = false;
     return status;

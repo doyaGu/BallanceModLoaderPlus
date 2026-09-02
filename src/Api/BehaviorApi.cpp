@@ -1324,8 +1324,17 @@ bool AddLayout(const Layout &from, BehaviorPayload &payload,
     record.Prototype.Prototype = Guid(from.Prototype);
     record.Prototype.Generation = from.ProviderGeneration;
     record.LayoutGeneration = from.Generation;
-    record.Kind = from.Kind == BML::Behavior::BehaviorKind::Graph
-        ? BML_BEHAVIOR_PROTOTYPE_GRAPH : BML_BEHAVIOR_PROTOTYPE_FUNCTION;
+    switch (from.Kind) {
+    case BML::Behavior::BehaviorKind::Function:
+        record.Kind = BML_BEHAVIOR_KIND_FUNCTION;
+        break;
+    case BML::Behavior::BehaviorKind::Callback:
+        record.Kind = BML_BEHAVIOR_KIND_CALLBACK;
+        break;
+    case BML::Behavior::BehaviorKind::Graph:
+        record.Kind = BML_BEHAVIOR_KIND_GRAPH;
+        break;
+    }
     if (from.MaterializedNow)
         record.Flags |= BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW;
     record.CompatibleClass = from.CompatibleClass;

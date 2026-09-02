@@ -359,9 +359,8 @@ private:
                                                Record &record);
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
                                             const Spec &spec, Record &record);
-    [[nodiscard]] bool IsSourceReferenced(CKParameter *source);
-    void PruneOwnedSources(CKBehavior *behavior, Record &record);
-    void PruneOwnedOperations(CKBehavior *behavior, Record &record);
+    void PruneOwnedSources(Record &record);
+    void PruneOwnedOperations(Record &record);
     void SweepRecords();
     void DetachOperation(OwnedOperation &operation);
     [[nodiscard]] Status Configure(CKBehavior *behavior,

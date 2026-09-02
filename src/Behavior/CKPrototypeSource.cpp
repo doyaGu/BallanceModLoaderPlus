@@ -226,7 +226,7 @@ public:
         layout.PrototypeFlags = prototype->GetFlags();
         layout.BehaviorFlags = prototype->GetBehaviorFlags();
         layout.Kind = prototype->GetFunction()
-            ? BehaviorKind::Function : BehaviorKind::Graph;
+            ? BehaviorKind::Function : BehaviorKind::Callback;
         layout.CompatibleClass = prototype->GetApplyToClassID();
 
         const CKDWORD flags = layout.BehaviorFlags;

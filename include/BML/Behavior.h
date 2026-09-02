@@ -361,10 +361,13 @@ typedef enum BML_BehaviorLayoutOrigin {
     BML_BEHAVIOR_LAYOUT_LIVE = 2
 } BML_BehaviorLayoutOrigin;
 
-typedef enum BML_BehaviorPrototypeKind {
-    BML_BEHAVIOR_PROTOTYPE_FUNCTION = 1,
-    BML_BEHAVIOR_PROTOTYPE_GRAPH = 2
-} BML_BehaviorPrototypeKind;
+typedef enum BML_BehaviorKind {
+    BML_BEHAVIOR_KIND_FUNCTION = 1,
+    // The Prototype contributes lifecycle callbacks but no Execute function.
+    // A live instance may remain callback-only or become graph-backed in CREATE.
+    BML_BEHAVIOR_KIND_CALLBACK = 2,
+    BML_BEHAVIOR_KIND_GRAPH = 3
+} BML_BehaviorKind;
 
 typedef enum BML_BehaviorSlotKind {
     BML_BEHAVIOR_SLOT_IN = 1,

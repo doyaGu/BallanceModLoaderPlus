@@ -328,7 +328,7 @@ std::vector<std::uint8_t> DeclaredLayout(
     if (!layout.Prototype.Generation)
         layout.Prototype.Generation = g_State.ProviderGeneration;
     layout.LayoutGeneration = 1;
-    layout.Kind = BML_BEHAVIOR_PROTOTYPE_FUNCTION;
+    layout.Kind = BML_BEHAVIOR_KIND_FUNCTION;
     layout.SlotOffset = 0;
     layout.SlotCount = g_State.MalformedLayout
         ? (std::numeric_limits<std::uint32_t>::max)()

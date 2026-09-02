@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "CKAll.h"
@@ -34,12 +35,38 @@ struct Slot {
     CKGUID ExpectedType;
 
     static Slot At(SlotKind kind, int index,
-                   CKGUID expectedType = CKGUID());
+                   CKGUID expectedType = CKGUID()) {
+        Slot selector;
+        selector.Kind = kind;
+        selector.Index = index;
+        selector.ExpectedType = expectedType;
+        return selector;
+    }
     static Slot Named(SlotKind kind, std::string name,
-                      CKGUID expectedType = CKGUID());
+                      CKGUID expectedType = CKGUID()) {
+        Slot selector;
+        selector.Kind = kind;
+        selector.Name = std::move(name);
+        selector.ExpectedType = expectedType;
+        selector.RequireUnique = true;
+        return selector;
+    }
     static Slot OccurrenceOf(SlotKind kind, std::string name, int occurrence,
-                             CKGUID expectedType = CKGUID());
-    static Slot Only(SlotKind kind, CKGUID expectedType = CKGUID());
+                             CKGUID expectedType = CKGUID()) {
+        Slot selector;
+        selector.Kind = kind;
+        selector.Name = std::move(name);
+        selector.Occurrence = occurrence;
+        selector.ExpectedType = expectedType;
+        return selector;
+    }
+    static Slot Only(SlotKind kind, CKGUID expectedType = CKGUID()) {
+        Slot selector;
+        selector.Kind = kind;
+        selector.RequireOnly = true;
+        selector.ExpectedType = expectedType;
+        return selector;
+    }
     [[nodiscard]] bool UsesName() const noexcept { return !Name.empty(); }
 };
 
@@ -66,6 +93,7 @@ enum class LayoutOrigin {
 // both representations through CKBehavior::IsActive().
 enum class BehaviorKind {
     Function,
+    Callback,
     Graph,
 };
 

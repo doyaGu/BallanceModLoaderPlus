@@ -399,6 +399,10 @@ CKERROR GraphLifecycle(const CKBehaviorContext &context) {
     if (context.CallbackMessage != CKM_BEHAVIORCREATE)
         return CK_OK;
     context.Behavior->SetName("__BML_BehaviorTransport_Graph");
+    // A Prototype without an Execute function is callback-only. The provider,
+    // not Runtime, changes this instance into a graph while CREATE still owns
+    // the native callback state.
+    context.Behavior->UseGraph();
     CKBehaviorIO *input = context.Behavior->GetInput(0);
     CKBehaviorIO *output = context.Behavior->GetOutput(0);
     if (!input || !output)
