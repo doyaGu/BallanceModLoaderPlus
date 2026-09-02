@@ -2,6 +2,7 @@
 #define BML_BEHAVIOR_PHYSICSFORCE_H
 
 #include <list>
+#include <optional>
 #include <unordered_map>
 
 #include "Behavior/Runtime.h"
@@ -29,8 +30,10 @@ public:
     RunResult Set(const Options &options);
     RunResult Clear(CK3dEntity *target);
     // Must run immediately after the physics post-process seam. Physics Force
-    // creates its native controller from a queued pre-sim callback, so a close
-    // request is not safe in the same physics epoch as Create.
+    // asks the physics callback container to create its controller immediately;
+    // only a target without a PhysicsObject leaves that callback pending for a
+    // later simulation. A pending callback must observe cancellation before the
+    // CKBehavior can be retired.
     void ProcessFrame();
     void ObjectsToBeDeleted(const CK_ID *ids, int count);
     void Reset();
@@ -71,9 +74,10 @@ private:
     struct Session {
         EntityStamp Target;
         Instance Block;
-        bool Closing = false;
-        bool CancellationArmed = false;
-        std::uint64_t CloseAfterEpoch = 0;
+        bool Stopping = false;
+        bool ShutdownQueued = false;
+        std::uint64_t RetireAfterFrame = 0;
+        std::optional<StoredOptions> Replacement;
     };
 
     [[nodiscard]] StoredOptions Capture(const Options &options) const;
@@ -83,11 +87,11 @@ private:
     [[nodiscard]] static EntityKey KeyOf(EntityStamp reference);
     [[nodiscard]] bool HasNativeController(Session &session) const;
     RunResult Create(const StoredOptions &stored);
-    static RunResult Accepted(const char *message);
+    static RunResult Pending(const char *message);
 
     CKContext *m_Context = nullptr;
     Runtime &m_Runtime;
-    std::uint64_t m_PhysicsEpoch = 0;
+    std::uint64_t m_PhysicsFrame = 0;
     std::unordered_map<EntityKey, Session, EntityKeyHash> m_Sessions;
     std::list<Session> m_Retiring;
 };

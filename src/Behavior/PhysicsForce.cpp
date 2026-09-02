@@ -1,6 +1,7 @@
 #include "Behavior/PhysicsForce.h"
 
 #include <utility>
+#include <vector>
 
 #include "BML/Guids/physics_RT.h"
 
@@ -100,10 +101,11 @@ bool Sessions::HasNativeController(Session &session) const {
     return status && local && local->GetValue(&controller) == CK_OK && controller != nullptr;
 }
 
-RunResult Sessions::Accepted(const char *message) {
+RunResult Sessions::Pending(const char *message) {
     Status status;
     status.Message = message ? message : "";
-    return {std::move(status), RunState::Pending, CKBR_OK, {}};
+    return {std::move(status), RunState::Pending, CKBR_OK, {},
+            AdmissionState::Queued};
 }
 
 RunResult Sessions::Create(const StoredOptions &stored) {
@@ -119,6 +121,8 @@ RunResult Sessions::Create(const StoredOptions &stored) {
         return {std::move(created.Detail), RunState::Failed, CKBR_BEHAVIORERROR, {}};
     RunResult result = m_Runtime.Pulse(
         created.Handle, Slot::At(SlotKind::Input, 0));
+    if (!result)
+        return result;
 
     Session session;
     session.Target = stored.Target;
@@ -139,6 +143,10 @@ RunResult Sessions::Set(const Options &options) {
     if (existing == m_Sessions.end())
         return Create(stored);
 
+    if (existing->second.Stopping) {
+        existing->second.Replacement = stored;
+        return Pending("Updated Physics Force will follow native Shutdown.");
+    }
     if (!existing->second.Block.Get()) {
         m_Sessions.erase(existing);
         return Create(stored);
@@ -146,8 +154,24 @@ RunResult Sessions::Set(const Options &options) {
     if (HasNativeController(existing->second)) {
         RunResult shutdown = m_Runtime.Pulse(
             existing->second.Block, Slot::At(SlotKind::Input, 1));
-        if (!shutdown || shutdown.State != RunState::Ready)
+        if (!shutdown)
             return shutdown;
+        if (shutdown.State == RunState::Pending) {
+            existing->second.Stopping = true;
+            existing->second.ShutdownQueued = true;
+            existing->second.Replacement = stored;
+            return shutdown;
+        }
+        if (shutdown.State != RunState::Ready)
+            return shutdown;
+        if (HasNativeController(existing->second)) {
+            existing->second.Stopping = true;
+            existing->second.Replacement = stored;
+            existing->second.Block.Reset();
+            existing->second.RetireAfterFrame = m_PhysicsFrame + 1;
+            return Pending(
+                "Updated Physics Force is waiting for native teardown.");
+        }
         m_Sessions.erase(existing);
         return Create(stored);
     }
@@ -161,9 +185,7 @@ RunResult Sessions::Set(const Options &options) {
         existing->second.Block, Make(pendingOptions));
     if (!reconfigured)
         return {std::move(reconfigured), RunState::Failed, CKBR_PARAMETERERROR, {}};
-    existing->second.Closing = false;
-    existing->second.CancellationArmed = false;
-    return Accepted("Pending Physics Force updated before native controller creation.");
+    return Pending("Pending Physics Force updated before native controller creation.");
 }
 
 RunResult Sessions::Clear(CK3dEntity *target) {
@@ -180,11 +202,28 @@ RunResult Sessions::Clear(CK3dEntity *target) {
                        "Physics Force instance has expired."},
                 RunState::Failed, CKBR_OK, {}};
     }
+    if (it->second.Stopping) {
+        it->second.Replacement.reset();
+        return Pending("Physics Force Shutdown is already in progress.");
+    }
     if (HasNativeController(it->second)) {
         RunResult shutdown = m_Runtime.Pulse(
             it->second.Block, Slot::At(SlotKind::Input, 1));
-        if (shutdown && shutdown.State == RunState::Ready)
-            m_Sessions.erase(it);
+        if (shutdown && shutdown.State == RunState::Ready) {
+            if (!HasNativeController(it->second)) {
+                m_Sessions.erase(it);
+            } else {
+                it->second.Stopping = true;
+                it->second.Block.Reset();
+                it->second.RetireAfterFrame = m_PhysicsFrame + 1;
+                return Pending(
+                    "Physics Force is waiting for native teardown.");
+            }
+        } else if (shutdown && shutdown.State == RunState::Pending) {
+            it->second.Stopping = true;
+            it->second.ShutdownQueued = true;
+            it->second.Replacement.reset();
+        }
         return shutdown;
     }
     Options cancellation;
@@ -192,35 +231,65 @@ RunResult Sessions::Clear(CK3dEntity *target) {
         it->second.Block, Make(cancellation));
     if (!cancelled)
         return {std::move(cancelled), RunState::Failed, CKBR_PARAMETERERROR, {}};
-    it->second.Closing = true;
-    it->second.CancellationArmed = true;
-    it->second.CloseAfterEpoch = m_PhysicsEpoch + 1;
-    return Accepted("Physics Force shutdown queued for the next physics epoch.");
+    it->second.Stopping = true;
+    it->second.RetireAfterFrame = m_PhysicsFrame + 1;
+    return Pending("Physics Force shutdown queued for the next physics frame.");
 }
 
 void Sessions::ProcessFrame() {
-    ++m_PhysicsEpoch;
+    ++m_PhysicsFrame;
+    std::vector<StoredOptions> nextForces;
     auto keep = [&](Session &session) {
-        if (!session.Block.Get())
+        if (!session.Block.Get()) {
+            if (session.Stopping &&
+                session.RetireAfterFrame <= m_PhysicsFrame &&
+                session.Replacement) {
+                nextForces.push_back(*session.Replacement);
+            }
             return false;
-        if (!session.Closing || session.CloseAfterEpoch > m_PhysicsEpoch)
+        }
+        if (!session.Stopping ||
+            session.RetireAfterFrame > m_PhysicsFrame) {
             return true;
+        }
 
-        // A null local means the physics manager still owns a callback carrying
-        // the CKBehavior pointer. Keep the instance until that callback runs.
+        // At this point the pending Create callback has observed cancellation,
+        // or Runtime has executed the queued Shutdown. In either case no native
+        // controller remains and the old instance can retire.
         if (!HasNativeController(session)) {
-            if (session.CancellationArmed || !Resolve(session.Target))
-                return false;
-            session.CloseAfterEpoch = m_PhysicsEpoch + 1;
+            if (session.Replacement)
+                nextForces.push_back(*session.Replacement);
+            return false;
+        }
+
+        // A queued Shutdown belongs to Runtime's next logical frame. Sessions
+        // runs before Runtime at the post-physics safe point, so it observes
+        // the cleared Local on the following call rather than pulsing again.
+        if (session.ShutdownQueued) {
+            const ExecutionState state = m_Runtime.State(session.Block);
+            if (state == ExecutionState::Pending ||
+                state == ExecutionState::Running) {
+                return true;
+            }
+
+            // The accepted Shutdown did not clear the controller. Retire the
+            // instance through its native lifecycle, then wait one complete
+            // physics frame before admitting a replacement for this target.
+            session.Block.Reset();
+            session.ShutdownQueued = false;
+            session.RetireAfterFrame = m_PhysicsFrame + 1;
             return true;
         }
 
         RunResult shutdown = m_Runtime.Pulse(
             session.Block, Slot::At(SlotKind::Input, 1));
         if (!shutdown || shutdown.State == RunState::Pending) {
-            session.CloseAfterEpoch = m_PhysicsEpoch + 1;
+            session.ShutdownQueued = static_cast<bool>(shutdown);
+            session.RetireAfterFrame = m_PhysicsFrame + 1;
             return true;
         }
+        if (session.Replacement)
+            nextForces.push_back(*session.Replacement);
         return false;
     };
 
@@ -236,6 +305,8 @@ void Sessions::ProcessFrame() {
         else
             ++it;
     }
+    for (const StoredOptions &next : nextForces)
+        (void) Create(next);
 }
 
 void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
@@ -247,13 +318,13 @@ void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             continue;
         }
         Session &session = it->second;
-        session.Closing = true;
+        session.Stopping = true;
+        session.Replacement.reset();
         if (session.Block.Get() && !HasNativeController(session)) {
             Options cancellation;
-            session.CancellationArmed = static_cast<bool>(m_Runtime.Reconfigure(
-                session.Block, Make(cancellation)));
+            (void) m_Runtime.Reconfigure(session.Block, Make(cancellation));
         }
-        session.CloseAfterEpoch = m_PhysicsEpoch + 1;
+        session.RetireAfterFrame = m_PhysicsFrame + 1;
         m_Retiring.push_back(std::move(session));
         it = m_Sessions.erase(it);
     }
@@ -274,7 +345,7 @@ void Sessions::Reset() {
         shutdown(session);
     m_Sessions.clear();
     m_Retiring.clear();
-    m_PhysicsEpoch = 0;
+    m_PhysicsFrame = 0;
 }
 
 } // namespace BML::Behavior::PhysicsForce
