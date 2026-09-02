@@ -104,3 +104,16 @@ set_target_properties(BehaviorPatchTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         FOLDER "Tests/Player"
 )
+
+# The published Plan and Hook facade, authored the way a Mod would author it.
+# It reaches into src only for ObserveScript, which puts a script the probe
+# created itself into the Plans world the game normally feeds.
+bml_add_mod(BehaviorFacadeTest
+        BehaviorFacadeTest.cpp
+        BehaviorLifecycleFixtureApi.h
+)
+target_include_directories(BehaviorFacadeTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
+set_target_properties(BehaviorFacadeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        FOLDER "Tests/Player"
+)
