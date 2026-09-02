@@ -11,6 +11,7 @@
 
 #include "Behavior/Edit.h"
 #include "Behavior/PrototypeCatalog.h"
+#include "Behavior/Relations.h"
 
 namespace BML::Behavior {
 
@@ -18,9 +19,37 @@ enum class PatchState {
     Pending,
     Active,
     Closing,
-    RepairRequired,
+    Conflicted,
     Closed,
     Failed,
+};
+
+enum class RevertSubject {
+    PinSource,
+    Link,
+};
+
+enum class PinSourceKind {
+    None,
+    Direct,
+    Shared,
+};
+
+struct PinSource {
+    PinSourceKind Kind = PinSourceKind::None;
+    std::uint64_t Object = 0;
+
+    friend bool operator==(const PinSource &, const PinSource &) = default;
+};
+
+struct RevertConflict {
+    RevertSubject Subject = RevertSubject::PinSource;
+    GraphEndpoint Pin;
+    ObjectRef Link;
+    PinSource Before;
+    PinSource Expected;
+    PinSource Actual;
+    Status Diagnostic;
 };
 
 class Patch final {
@@ -35,6 +64,7 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] PatchState State() const noexcept;
     [[nodiscard]] Status Diagnostic() const;
+    [[nodiscard]] std::vector<RevertConflict> Conflicts() const;
 
 private:
     struct Journal;
@@ -83,6 +113,7 @@ private:
     GraphSource &m_Graph;
     std::thread::id m_Thread;
     std::map<std::uint64_t, Topology> m_Topology;
+    std::map<std::uint64_t, Relations> m_Relations;
     std::map<std::uint64_t, std::set<PatchKey>> m_Active;
     std::unique_ptr<Links> m_Links;
     std::mutex m_QueueMutex;

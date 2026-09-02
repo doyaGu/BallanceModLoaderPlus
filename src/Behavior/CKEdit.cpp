@@ -23,6 +23,8 @@ Status Failure(Error error, std::string message,
 struct Stamp {
     CK_ID Id = 0;
     CKObject *Address = nullptr;
+
+    friend bool operator==(const Stamp &, const Stamp &) = default;
 };
 
 Stamp Capture(CKObject *object) {
@@ -107,11 +109,72 @@ std::uint64_t HashSplice(const LinkBase &link, std::uint32_t ordinal,
     return hash;
 }
 
+std::uint64_t HashBind(const GraphEndpoint &pin, const CheckedBind &bind) {
+    std::uint64_t hash = 1469598103934665603ull;
+    const auto add = [&](std::uint64_t value) {
+        for (int byte = 0; byte < 8; ++byte) {
+            hash ^= static_cast<unsigned char>(value >> (byte * 8));
+            hash *= 1099511628211ull;
+        }
+    };
+    add(pin.Node);
+    add(static_cast<std::uint64_t>(pin.Kind));
+    add(static_cast<std::uint32_t>(pin.Index));
+    add(static_cast<std::uint64_t>(bind.Kind));
+    add(bind.Ordinal);
+    if (bind.Kind != BindKind::Literal) {
+        add(bind.Source.Owner.Value);
+        add(static_cast<std::uint64_t>(bind.Source.Slot.Kind));
+        add(static_cast<std::uint32_t>(bind.Source.Slot.NativeIndex));
+    }
+    return hash;
+}
+
 CKBehaviorIO *ResolveIo(CKContext *context, Stamp stamp) {
     CKObject *object = context && stamp.Id ? context->GetObject(stamp.Id) : nullptr;
     if (object != stamp.Address || !object || object->IsToBeDeleted())
         return nullptr;
     return static_cast<CKBehaviorIO *>(object);
+}
+
+PinSource DescribeSource(CKParameterIn *input) {
+    if (!input)
+        return {};
+    if (CKParameterIn *shared = input->GetSharedSource()) {
+        return {PinSourceKind::Shared,
+                static_cast<std::uint32_t>(shared->GetID())};
+    }
+    if (CKParameter *direct = input->GetDirectSource()) {
+        return {PinSourceKind::Direct,
+                static_cast<std::uint32_t>(direct->GetID())};
+    }
+    return {};
+}
+
+GraphEndpoint DescribePin(CKParameterIn *input) {
+    CKBehavior *owner = input
+        ? CKBehavior::Cast(input->GetOwner()) : nullptr;
+    if (!owner)
+        return {};
+    if (owner->GetTargetParameter() == input) {
+        return {static_cast<std::uint32_t>(owner->GetID()),
+                SlotKind::Target, 0};
+    }
+    const int index = owner->GetInputParameterPosition(input);
+    return index < 0
+        ? GraphEndpoint{}
+        : GraphEndpoint{static_cast<std::uint32_t>(owner->GetID()),
+                        SlotKind::InputParameter, index};
+}
+
+bool ContainsLink(CKBehavior *graph, CKBehaviorLink *link) {
+    if (!graph || !link)
+        return false;
+    for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
+        if (graph->GetSubBehaviorLink(index) == link)
+            return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -123,11 +186,18 @@ struct Patch::Journal {
 
     struct Binding {
         Stamp Input;
+        GraphEndpoint Pin;
         Stamp PreviousDirect;
         Stamp PreviousShared;
         Stamp InstalledDirect;
         Stamp InstalledShared;
         Stamp Literal;
+        PinSource Before;
+        PinSource Expected;
+        // Set once this Pin has been handed back to its previous source. A
+        // Conflicted Patch is closed again later, and a Pin that already
+        // reverted must not be touched twice.
+        bool Reverted = false;
     };
 
     struct Destination {
@@ -155,7 +225,9 @@ struct Patch::Journal {
     std::vector<Destination> Pushes;
     std::vector<Interface> Ports;
     PatchLayer Layer;
+    RelationLayer Data;
     std::vector<std::pair<LinkId, std::uint32_t>> Splices;
+    std::vector<RevertConflict> Conflicts;
 };
 
 struct CKEdit::Request {
@@ -205,7 +277,7 @@ Patch::operator bool() const noexcept {
     const PatchState state = State();
     return state == PatchState::Pending || state == PatchState::Active ||
            state == PatchState::Closing ||
-           state == PatchState::RepairRequired;
+           state == PatchState::Conflicted;
 }
 
 PatchState Patch::State() const noexcept {
@@ -220,6 +292,13 @@ Status Patch::Diagnostic() const {
         return {};
     std::lock_guard<std::mutex> lock(m_Journal->Mutex);
     return m_Journal->LastStatus;
+}
+
+std::vector<RevertConflict> Patch::Conflicts() const {
+    if (!m_Journal)
+        return {};
+    std::lock_guard<std::mutex> lock(m_Journal->Mutex);
+    return m_Journal->Conflicts;
 }
 
 CKEdit::CKEdit(CKContext *context, Runtime &runtime,
@@ -533,6 +612,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
         return status;
 
     Topology &topology = m_Topology[graphId];
+    Relations &relations = m_Relations[graphId];
     PatchLayer spliceLayer;
     spliceLayer.Patch = edit.Key();
     std::vector<LinkId> spliceLinks;
@@ -561,6 +641,25 @@ Status CKEdit::ApplyNow(const Edit &edit,
     }
     if (!spliceLayer.Links.empty()) {
         status = topology.Validate(spliceLayer);
+        if (!status)
+            return status;
+    }
+
+    RelationLayer relationLayer;
+    relationLayer.Patch = edit.Key();
+    for (const CheckedBind &bind : checked.Binds) {
+        const Edit::EditNode *target = edit.Find(bind.Target.Owner);
+        if (!target || target->Block || bind.Target.Appended)
+            continue;
+        const GraphEndpoint pin{
+            target->Native.Id, bind.Target.Slot.Kind,
+            bind.Target.Slot.NativeIndex};
+        relationLayer.Pins.push_back(
+            {pin, {}, {{RelationKind::Bind, bind.Ordinal,
+                        HashBind(pin, bind)}}});
+    }
+    if (!relationLayer.Pins.empty()) {
+        status = relations.Validate(relationLayer);
         if (!status)
             return status;
     }
@@ -685,7 +784,6 @@ Status CKEdit::ApplyNow(const Edit &edit,
         if (!status)
             return fail(std::move(status));
     }
-
     std::unordered_map<ParameterId, CKObject *> nativeParameters;
     const auto parameterId = [&](const ResolvedPort &port,
                                  ParameterId &id) -> Status {
@@ -1013,8 +1111,10 @@ Status CKEdit::ApplyNow(const Edit &edit,
 
         Patch::Journal::Binding change;
         change.Input = Capture(target);
+        change.Pin = DescribePin(target);
         change.PreviousDirect = Capture(target->GetDirectSource());
         change.PreviousShared = Capture(target->GetSharedSource());
+        change.Before = DescribeSource(target);
 
         CKERROR error = CK_OK;
         if (bind.Kind == BindKind::Direct) {
@@ -1075,7 +1175,15 @@ Status CKEdit::ApplyNow(const Edit &edit,
         if (error != CK_OK)
             return fail(Failure(Error::TypeMismatch,
                                 "Virtools rejected a Bind relation.", error));
+        change.Expected = DescribeSource(target);
         patch->Binds.push_back(std::move(change));
+    }
+
+    patch->Data = relationLayer;
+    if (!relationLayer.Pins.empty()) {
+        status = relations.Set(relationLayer);
+        if (!status)
+            return fail(std::move(status));
     }
 
     for (const CheckedPush &push : checked.Pushes) {
@@ -1228,6 +1336,14 @@ Status CKEdit::ApplyNow(const Edit &edit,
 
 Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
     Status first;
+    {
+        std::lock_guard<std::mutex> lock(patch.Mutex);
+        patch.Conflicts.clear();
+    }
+    const auto noteConflict = [&](RevertConflict conflict) {
+        std::lock_guard<std::mutex> lock(patch.Mutex);
+        patch.Conflicts.push_back(std::move(conflict));
+    };
     const auto remember = [&](Status status) {
         if (!status && first)
             first = std::move(status);
@@ -1245,6 +1361,15 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             Status materialized = Materialize(graphId, graph);
             if (!materialized) {
                 (void) topology->second.Set(patch.Layer);
+                for (const LinkOverlays &group : patch.Layer.Links) {
+                    const LogicalLink *link = topology->second.Find(group.Link);
+                    RevertConflict conflict;
+                    conflict.Subject = RevertSubject::Link;
+                    if (link)
+                        conflict.Link = link->Base.Anchor;
+                    conflict.Diagnostic = materialized;
+                    noteConflict(std::move(conflict));
+                }
                 return materialized;
             }
         }
@@ -1258,11 +1383,6 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             }
         }
     }
-    if (graphId) {
-        const auto active = m_Active.find(graphId);
-        if (active != m_Active.end())
-            active->second.erase(patch.Key);
-    }
 
     for (auto item = patch.Pushes.rbegin(); item != patch.Pushes.rend(); ++item) {
         auto *source = Resolve<CKParameterOut>(
@@ -1274,10 +1394,25 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
     }
 
     for (auto item = patch.Binds.rbegin(); item != patch.Binds.rend(); ++item) {
+        if (item->Reverted)
+            continue;
         auto *input = Resolve<CKParameterIn>(
             m_Context, item->Input, CKCID_PARAMETERIN);
-        if (!input)
+        if (!input) {
+            // Nothing is left to hand back, so the revert is settled even
+            // though the owner still hears about the missing Pin.
+            item->Reverted = true;
+            if (graph) {
+                Status conflict = Failure(
+                    Error::RevertConflict,
+                    "A Pin disappeared after the Patch was published.");
+                conflict.Details.Stage = Phase::Teardown;
+                noteConflict({RevertSubject::PinSource, item->Pin, {},
+                              item->Before, item->Expected, {}, conflict});
+                remember(std::move(conflict));
+            }
             continue;
+        }
         CKParameter *installedDirect = Resolve<CKParameter>(
             m_Context, item->InstalledDirect, CKCID_PARAMETER);
         CKParameterIn *installedShared = Resolve<CKParameterIn>(
@@ -1286,20 +1421,49 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             ? input->GetSharedSource() == installedShared
             : input->GetDirectSource() == installedDirect;
         if (!unchanged) {
-            remember(Failure(Error::GraphChanged,
-                             "A Bind source changed before the Patch closed."));
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "A Pin source changed after the Patch was published.");
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::PinSource, item->Pin, {},
+                          item->Before, item->Expected, DescribeSource(input),
+                          conflict});
+            remember(std::move(conflict));
             continue;
         }
         CKParameterIn *previousShared = Resolve<CKParameterIn>(
             m_Context, item->PreviousShared, CKCID_PARAMETERIN);
         CKParameter *previousDirect = Resolve<CKParameter>(
             m_Context, item->PreviousDirect, CKCID_PARAMETER);
+        const bool previousMissing =
+            (item->PreviousShared.Id && !previousShared) ||
+            (item->PreviousDirect.Id && !previousDirect);
+        if (previousMissing) {
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "The previous Pin source no longer exists.");
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::PinSource, item->Pin, {},
+                          item->Before, item->Expected, DescribeSource(input),
+                          conflict});
+            remember(std::move(conflict));
+            continue;
+        }
         const CKERROR error = item->PreviousShared.Id
             ? input->ShareSourceWith(previousShared)
             : input->SetDirectSource(previousDirect);
-        if (error != CK_OK)
-            remember(Failure(Error::GraphChanged,
-                             "Virtools rejected a restored Bind source.", error));
+        if (error != CK_OK) {
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "Virtools rejected the previous Pin source.", error);
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::PinSource, item->Pin, {},
+                          item->Before, item->Expected, DescribeSource(input),
+                          conflict});
+            remember(std::move(conflict));
+        } else {
+            item->Reverted = true;
+        }
     }
 
     for (auto item = patch.Links.rbegin(); item != patch.Links.rend(); ++item) {
@@ -1353,18 +1517,54 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             m_Context->DestroyObject(removed);
     }
 
+    // A Pin removed with the ports above has nothing left to hand back.
+    for (Patch::Journal::Binding &item : patch.Binds) {
+        if (!item.Reverted &&
+            !Resolve<CKParameterIn>(m_Context, item.Input, CKCID_PARAMETERIN))
+            item.Reverted = true;
+    }
+
+    // A Pin this Patch could not hand back still points at a source the Patch
+    // owns. Until that clears, the Patch keeps its relation claim so no other
+    // Patch can take the Pin, and keeps its key in the graph's active set so
+    // the same key cannot be applied on top of the unfinished teardown.
+    const bool pinsRetained = std::any_of(
+        patch.Binds.begin(), patch.Binds.end(),
+        [](const Patch::Journal::Binding &item) { return !item.Reverted; });
+    if (graphId && !pinsRetained) {
+        if (!patch.Data.Pins.empty()) {
+            const auto relations = m_Relations.find(graphId);
+            if (relations != m_Relations.end())
+                (void) relations->second.Remove(patch.Key);
+        }
+        const auto active = m_Active.find(graphId);
+        if (active != m_Active.end())
+            active->second.erase(patch.Key);
+    }
+
     for (const Patch::Journal::Binding &item : patch.Binds) {
         CKParameterLocal *literal = Resolve<CKParameterLocal>(
             m_Context, item.Literal, CKCID_PARAMETERLOCAL);
-        if (literal)
+        CKParameterIn *input = Resolve<CKParameterIn>(
+            m_Context, item.Input, CKCID_PARAMETERIN);
+        // An unreverted Bind may still read this value, so the literal outlives
+        // the failed teardown and is destroyed on a later close.
+        if (literal && item.Reverted &&
+            (!input || input->GetDirectSource() != literal))
             m_Context->DestroyObject(literal);
     }
 
     for (auto item = patch.Nodes.rbegin(); item != patch.Nodes.rend(); ++item) {
         CKBehavior *node = Resolve<CKBehavior>(
             m_Context, *item, CKCID_BEHAVIOR);
-        if (node)
-            remember(m_Runtime.Close(node));
+        if (!node)
+            continue;
+        Status closed = m_Runtime.Close(node);
+        // Forget the Node once the Runtime disowns it. Asking again on a retry
+        // would report a Block this Behavior Runtime no longer owns.
+        if (closed)
+            *item = {};
+        remember(std::move(closed));
     }
 
     if (notify && graph) {
@@ -1373,6 +1573,19 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             remember(Failure(Error::CallbackFailed,
                              "The graph EDITED callback failed while the Patch closed.",
                              result));
+    }
+    if (graphId && !pinsRetained) {
+        const auto active = m_Active.find(graphId);
+        if (active == m_Active.end() || active->second.empty()) {
+            if (active != m_Active.end())
+                m_Active.erase(active);
+            m_Topology.erase(graphId);
+            m_Relations.erase(graphId);
+            if (m_Links) {
+                m_Links->Chains.erase(graphId);
+                m_Links->Sites.erase(graphId);
+            }
+        }
     }
     return first;
 }
@@ -1453,7 +1666,7 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
         patch->State = status
             ? PatchState::Active
             : status.Code == Error::RevertConflict
-                ? PatchState::RepairRequired : PatchState::Failed;
+                ? PatchState::Conflicted : PatchState::Failed;
         if (!status && status.Code != Error::RevertConflict)
             patch->Callbacks.clear();
     }
@@ -1471,7 +1684,7 @@ Status CKEdit::CloseNow(const std::shared_ptr<Patch::Journal> &patch) {
         std::lock_guard<std::mutex> lock(patch->Mutex);
         patch->LastStatus = status;
         patch->State = status.Code == Error::RevertConflict
-            ? PatchState::RepairRequired : PatchState::Closed;
+            ? PatchState::Conflicted : PatchState::Closed;
         if (status.Code != Error::RevertConflict)
             patch->Callbacks.clear();
     }
@@ -1562,7 +1775,7 @@ void CKEdit::ProcessFrame() {
                     patch->State = status
                         ? PatchState::Active
                         : status.Code == Error::RevertConflict
-                            ? PatchState::RepairRequired : PatchState::Failed;
+                            ? PatchState::Conflicted : PatchState::Failed;
                     if (!status && status.Code != Error::RevertConflict)
                         patch->Callbacks.clear();
                 }
