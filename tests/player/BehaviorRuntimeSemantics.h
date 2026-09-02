@@ -11,7 +11,9 @@ struct BehaviorRuntimeSemanticsResult {
     bool Passed = false;
     bool LifecyclePassed = false;
     bool AdditiveEditPassed = false;
+    bool RelationsPassed = false;
     bool PhysicsForcePassed = false;
+    bool VisualPassed = false;
     std::string Detail;
 };
 
@@ -26,6 +28,7 @@ public:
     // Called exactly once from each fixture OnProcess frame in Ballance Player.
     void Advance(int playerFrame);
     [[nodiscard]] bool Done() const;
+    [[nodiscard]] bool VisualReady() const;
     [[nodiscard]] BehaviorRuntimeSemanticsResult Result() const;
 
 private:

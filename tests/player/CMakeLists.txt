@@ -65,14 +65,17 @@ bml_add_mod(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Execution.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Lifecycle.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Layout.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Hook.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/ObjectLoad.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Parameter.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Value.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Physicalize.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsForce.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsImpulse.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Relations.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Text2D.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp

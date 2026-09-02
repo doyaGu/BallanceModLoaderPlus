@@ -14,10 +14,14 @@
 #include "Behavior/PhysicsImpulse.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Text2D.h"
+#include "BML/Guids/Interface.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/physics_RT.h"
 
+#include <chrono>
 #include <cmath>
+#include <cstring>
+#include <iomanip>
 #include <memory>
 #include <initializer_list>
 #include <sstream>
@@ -27,6 +31,10 @@
 namespace {
 
 using namespace BML::Behavior;
+
+int RunRelationNode(const CKBehaviorContext &) {
+    return CKBR_OK;
+}
 
 struct ExecutionProbe {
     CKContext *Context = nullptr;
@@ -70,6 +78,26 @@ CKBehaviorLink *CreateBehaviorLink(CKContext *context, CKBehaviorIO *source,
     link->SetInitialActivationDelay(delay);
     link->SetActivationDelay(delay);
     return link;
+}
+
+bool HasSubBehavior(CKBehavior *graph, CKBehavior *node) {
+    if (!graph || !node)
+        return false;
+    for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
+        if (graph->GetSubBehavior(index) == node)
+            return true;
+    }
+    return false;
+}
+
+bool HasDestination(CKParameterOut *source, CKParameter *destination) {
+    if (!source || !destination)
+        return false;
+    for (int index = 0; index < source->GetDestinationCount(); ++index) {
+        if (source->GetDestination(index) == destination)
+            return true;
+    }
+    return false;
 }
 
 struct RecursivePumpProbe {
@@ -321,6 +349,8 @@ public:
                 context, m_Runtime, nullptr, *m_EditGraph);
     }
 
+    ~Impl() { CloseRuntimeVisual(); }
+
     void Advance(int playerFrame) {
         if (m_State == State::Complete)
             return;
@@ -346,8 +376,8 @@ public:
         case State::BreakResume: ResumeBreak(); break;
         case State::WaitAllStart: StartWaitAll(); break;
         case State::WaitAllResume: ResumeWaitAll(); break;
-        case State::TerminalPulseStart: StartTerminalPulse(); break;
-        case State::TerminalPulseResume: ResumeTerminalPulse(); break;
+        case State::SameFramePulseStart: StartSameFramePulse(); break;
+        case State::SameFramePulseResume: ResumeSameFramePulse(); break;
         case State::ReentrantPulseStart: StartReentrantPulse(); break;
         case State::ReentrantPulseResume: ResumeReentrantPulse(); break;
         case State::FrameLatestStart: StartLatestFrames(); break;
@@ -394,6 +424,7 @@ public:
         case State::AdditiveEditStart: StartAdditiveEdit(); break;
         case State::AdditiveEditWait: ObserveAdditiveEdit(); break;
         case State::AdditiveEditClose: CloseAdditiveEdit(); break;
+        case State::Relations: CheckRelations(); break;
         case State::Physicalize: PhysicalizeBody(); break;
         case State::PhysicsForceCreate: CreatePhysicsForce(); break;
         case State::PhysicsForceObserve: ObservePhysicsForce(); break;
@@ -402,18 +433,26 @@ public:
         case State::PhysicsForceClearObserve: ObserveClearedPhysicsForce(); break;
         case State::PhysicsForceShutdown: ShutdownPhysicsForce(); break;
         case State::LifecycleFixture: CheckLifecycleFixture(); break;
+        case State::RuntimeVisualCreate: CreateRuntimeVisual(); break;
+        case State::RuntimeVisualAdvance: AdvanceRuntimeVisual(); break;
+        case State::RuntimeVisualPresent: PresentRuntimeVisual(); break;
+        case State::RuntimeVisualWait: WaitRuntimeVisual(); break;
         case State::Complete: break;
         }
     }
 
     [[nodiscard]] bool Done() const { return m_State == State::Complete; }
 
+    [[nodiscard]] bool VisualReady() const { return m_VisualReady; }
+
     [[nodiscard]] BehaviorRuntimeSemanticsResult Result() const {
         BehaviorRuntimeSemanticsResult result;
         result.Detail = m_Failures.str();
         result.LifecyclePassed = m_LifecyclePassed;
         result.AdditiveEditPassed = m_AdditiveEditPassed;
+        result.RelationsPassed = m_RelationsPassed;
         result.PhysicsForcePassed = m_PhysicsForcePassed;
+        result.VisualPassed = m_VisualPassed;
         result.Passed = Done() && result.Detail.empty();
         if (result.Passed)
             result.Detail = "complete";
@@ -431,8 +470,8 @@ private:
         BreakResume,
         WaitAllStart,
         WaitAllResume,
-        TerminalPulseStart,
-        TerminalPulseResume,
+        SameFramePulseStart,
+        SameFramePulseResume,
         ReentrantPulseStart,
         ReentrantPulseResume,
         FrameLatestStart,
@@ -479,6 +518,7 @@ private:
         AdditiveEditStart,
         AdditiveEditWait,
         AdditiveEditClose,
+        Relations,
         Physicalize,
         PhysicsForceCreate,
         PhysicsForceObserve,
@@ -487,6 +527,10 @@ private:
         PhysicsForceClearObserve,
         PhysicsForceShutdown,
         LifecycleFixture,
+        RuntimeVisualCreate,
+        RuntimeVisualAdvance,
+        RuntimeVisualPresent,
+        RuntimeVisualWait,
         Complete,
     };
 
@@ -678,7 +722,7 @@ private:
             m_Owner, Spec(VT_LOGICS_WAITFORALL));
         if (!created) {
             Fail("wait-all-create");
-            m_State = State::TerminalPulseStart;
+            m_State = State::SameFramePulseStart;
             return;
         }
         m_WaitAllInstance = std::move(created.Handle);
@@ -725,47 +769,49 @@ private:
         if (!completed)
             Fail("wait-all-complete");
         m_WaitAllInstance.Reset();
-        m_State = State::TerminalPulseStart;
+        m_State = State::SameFramePulseStart;
     }
 
-    void StartTerminalPulse() {
-        m_TerminalPulse.Context = m_Context;
+    void StartSameFramePulse() {
+        m_SameFramePulse.Context = m_Context;
         CreateResult created = m_Runtime.Instantiate(
-            m_Owner, HookBlock::Make(ProbeExecution, &m_TerminalPulse));
+            m_Owner, HookBlock::Make(ProbeExecution, &m_SameFramePulse));
         if (!created) {
-            Fail("terminal-pulse-create");
+            Fail("same-frame-pulse-create");
             m_State = State::ReentrantPulseStart;
             return;
         }
-        m_TerminalPulseInstance = std::move(created.Handle);
-        m_TerminalPulse.Behavior = m_TerminalPulseInstance.Get();
+        m_SameFramePulseInstance = std::move(created.Handle);
+        m_SameFramePulse.Behavior = m_SameFramePulseInstance.Get();
         RunResult first = m_Runtime.Pulse(
-            m_TerminalPulseInstance,
+            m_SameFramePulseInstance,
             Slot::Named(SlotKind::Input, "In 0"));
         RunResult second = m_Runtime.Pulse(
-            m_TerminalPulseInstance,
+            m_SameFramePulseInstance,
             Slot::Named(SlotKind::Input, "In 0"));
         if (first.State != RunState::Ready ||
             second.State != RunState::Pending ||
-            second.Admission != AdmissionState::Queued || m_TerminalPulse.Calls != 1 ||
-            m_Runtime.State(m_TerminalPulseInstance) != ExecutionState::Pending) {
-            Fail("terminal-pulse-queued");
+            second.Admission != AdmissionState::Queued ||
+            m_SameFramePulse.Calls != 1 ||
+            m_Runtime.State(m_SameFramePulseInstance) != ExecutionState::Pending) {
+            Fail("same-frame-pulse-queued");
         }
-        m_State = State::TerminalPulseResume;
+        m_State = State::SameFramePulseResume;
     }
 
-    void ResumeTerminalPulse() {
-        ProcessRuntimeFrame("terminal-pulse-context-restore");
+    void ResumeSameFramePulse() {
+        ProcessRuntimeFrame("same-frame-pulse-context-restore");
         const std::vector<RunFrame> frames =
-            m_Runtime.Take(m_TerminalPulseInstance);
-        if (m_TerminalPulse.Calls != 2 || !m_TerminalPulse.ContextMatched ||
-            m_Runtime.State(m_TerminalPulseInstance) != ExecutionState::Idle ||
+            m_Runtime.Take(m_SameFramePulseInstance);
+        if (m_SameFramePulse.Calls != 2 ||
+            !m_SameFramePulse.ContextMatched ||
+            m_Runtime.State(m_SameFramePulseInstance) != ExecutionState::Idle ||
             frames.size() != 2 || frames[0].Sequence != 1 ||
             frames[1].Sequence != 2 || frames[1].NativeContinuation ||
             frames[1].QueuedInput) {
-            Fail("terminal-pulse-complete");
+            Fail("same-frame-pulse-complete");
         }
-        m_TerminalPulseInstance.Reset();
+        m_SameFramePulseInstance.Reset();
         m_State = State::ReentrantPulseStart;
     }
 
@@ -1431,7 +1477,7 @@ private:
             CKCID_BEHAVIOR, nullptr, CK_OBJECTCREATION_DYNAMIC));
         if (!graph) {
             Fail("graph-create");
-            m_State = State::LifecycleFixture;
+            m_State = State::Physicalize;
             return;
         }
 
@@ -1693,7 +1739,7 @@ private:
     void StartAdditiveEdit() {
         if (!m_Editor) {
             Fail("additive-edit-adapter");
-            m_State = State::LifecycleFixture;
+            m_State = State::Physicalize;
             return;
         }
         m_EditFixture = static_cast<CKBehavior *>(m_Context->CreateObject(
@@ -1702,7 +1748,7 @@ private:
         CKScene *scene = m_Context->GetCurrentScene();
         if (!m_EditFixture) {
             Fail("additive-edit-graph");
-            m_State = State::LifecycleFixture;
+            m_State = State::Physicalize;
             return;
         }
         m_EditFixture->UseGraph();
@@ -1714,7 +1760,7 @@ private:
             Fail("additive-edit-graph-layout");
             m_Context->DestroyObject(m_EditFixture);
             m_EditFixture = nullptr;
-            m_State = State::LifecycleFixture;
+            m_State = State::Physicalize;
             return;
         }
 
@@ -1931,7 +1977,7 @@ private:
 
     void CloseAdditiveEdit() {
         if (!m_EditFixture) {
-            m_State = State::Physicalize;
+            m_State = State::Relations;
             return;
         }
         if (CKScene *scene = m_Context->GetCurrentScene())
@@ -1985,6 +2031,189 @@ private:
         m_Context->DestroyObject(m_EditFixture);
         m_EditFixture = nullptr;
         m_EditSource = nullptr;
+        m_State = State::Relations;
+    }
+
+    void CheckRelations() {
+        CKBehavior *graph = CKBehavior::Cast(m_Context->CreateObject(
+            CKCID_BEHAVIOR, const_cast<CKSTRING>("__BML_Relations"),
+            CK_OBJECTCREATION_DYNAMIC));
+        CKBehavior *node = CKBehavior::Cast(m_Context->CreateObject(
+            CKCID_BEHAVIOR, const_cast<CKSTRING>("Relation Target"),
+            CK_OBJECTCREATION_DYNAMIC));
+        CKParameterLocal *baseline = m_Context->CreateCKParameterLocal(
+            const_cast<CKSTRING>("Relation Baseline"), CKPGUID_INT, TRUE);
+        CKParameterLocal *foreign = m_Context->CreateCKParameterLocal(
+            const_cast<CKSTRING>("Relation Foreign"), CKPGUID_INT, TRUE);
+        CKParameterLocal *otherBaseline = m_Context->CreateCKParameterLocal(
+            const_cast<CKSTRING>("Relation Other Baseline"), CKPGUID_INT, TRUE);
+        CKParameterIn *pin = nullptr;
+        CKParameterIn *otherPin = nullptr;
+        bool passed = graph && node && baseline && foreign && otherBaseline;
+        if (passed) {
+            graph->UseGraph();
+            node->UseFunction();
+            node->SetFunction(RunRelationNode);
+            pin = node->CreateInputParameter(
+                const_cast<CKSTRING>("Value"), CKPGUID_INT);
+            otherPin = node->CreateInputParameter(
+                const_cast<CKSTRING>("Other"), CKPGUID_INT);
+            const int first = 7;
+            const int second = 9;
+            const int third = 11;
+            passed = pin && otherPin && baseline->SetValue(&first) == CK_OK &&
+                foreign->SetValue(&second) == CK_OK &&
+                otherBaseline->SetValue(&third) == CK_OK &&
+                pin->SetDirectSource(baseline) == CK_OK &&
+                otherPin->SetDirectSource(otherBaseline) == CK_OK &&
+                graph->AddSubBehavior(node) == CK_OK;
+        }
+
+        Patch alphaPatch;
+        Patch betaPatch;
+        CKParameter *installed = nullptr;
+        CKParameter *otherInstalled = nullptr;
+        if (passed) {
+            Edit alpha;
+            Node target;
+            Status status = m_Editor->Begin(
+                graph, {"player", "relation-alpha"}, alpha);
+            if (status)
+                status = m_Editor->Use(alpha, node, target);
+            const int value = 41;
+            const int otherValue = 43;
+            if (status) {
+                alpha.Bind(target.Pin("Value"),
+                           Value::From(CKPGUID_INT, value));
+                alpha.Bind(target.Pin("Other"),
+                           Value::From(CKPGUID_INT, otherValue));
+            }
+            if (status)
+                status = m_Editor->Apply(alpha, alphaPatch);
+            installed = pin->GetDirectSource();
+            otherInstalled = otherPin->GetDirectSource();
+            passed = status && alphaPatch && installed &&
+                installed != baseline && otherInstalled &&
+                otherInstalled != otherBaseline;
+        }
+
+        if (passed) {
+            Edit beta;
+            Node target;
+            Status status = m_Editor->Begin(
+                graph, {"player", "relation-beta"}, beta);
+            if (status)
+                status = m_Editor->Use(beta, node, target);
+            const int value = 73;
+            if (status)
+                beta.Bind(target.Pin("Value"),
+                          Value::From(CKPGUID_INT, value));
+            if (status)
+                status = m_Editor->Apply(beta, betaPatch);
+            passed = !status && status.Code == Error::SourceConflict &&
+                !betaPatch && pin->GetDirectSource() == installed;
+        }
+
+        if (passed) {
+            passed = pin->SetDirectSource(foreign) == CK_OK;
+            const Status conflict = m_Editor->Close(alphaPatch);
+            const std::vector<RevertConflict> conflicts =
+                alphaPatch.Conflicts();
+            passed = passed && !conflict &&
+                conflict.Code == Error::RevertConflict && alphaPatch &&
+                alphaPatch.State() == PatchState::Conflicted &&
+                conflicts.size() == 1 &&
+                conflicts.front().Subject == RevertSubject::PinSource &&
+                conflicts.front().Pin.Node ==
+                    static_cast<std::uint32_t>(node->GetID()) &&
+                conflicts.front().Pin.Kind == SlotKind::InputParameter &&
+                conflicts.front().Pin.Index == 0 &&
+                conflicts.front().Before == PinSource{
+                    PinSourceKind::Direct,
+                    static_cast<std::uint32_t>(baseline->GetID())} &&
+                conflicts.front().Expected == PinSource{
+                    PinSourceKind::Direct,
+                    static_cast<std::uint32_t>(installed->GetID())} &&
+                conflicts.front().Actual == PinSource{
+                    PinSourceKind::Direct,
+                    static_cast<std::uint32_t>(foreign->GetID())};
+            // Only the contested Pin is held back. The Pin nobody touched is
+            // already home, and its value went with it.
+            passed = passed && pin->GetDirectSource() == foreign &&
+                otherPin->GetDirectSource() == otherBaseline;
+        }
+
+        if (passed) {
+            // A Conflicted Patch keeps its claim on every Pin it published, so
+            // no other owner can move in while the teardown is unfinished.
+            Patch gammaPatch;
+            Edit gamma;
+            Node target;
+            Status status = m_Editor->Begin(
+                graph, {"player", "relation-gamma"}, gamma);
+            if (status)
+                status = m_Editor->Use(gamma, node, target);
+            const int value = 47;
+            if (status)
+                gamma.Bind(target.Pin("Other"),
+                           Value::From(CKPGUID_INT, value));
+            if (status)
+                status = m_Editor->Apply(gamma, gammaPatch);
+            passed = !status && status.Code == Error::SourceConflict &&
+                !gammaPatch &&
+                otherPin->GetDirectSource() == otherBaseline;
+        }
+
+        if (passed) {
+            passed = m_Context->GetObject(installed->GetID()) == installed &&
+                pin->SetDirectSource(installed) == CK_OK;
+            const Status closed = m_Editor->Close(alphaPatch);
+            passed = passed && closed && !alphaPatch &&
+                pin->GetDirectSource() == baseline &&
+                otherPin->GetDirectSource() == otherBaseline;
+        }
+
+        if (passed) {
+            // The retired key is free again once the retry completes.
+            Patch againPatch;
+            Edit again;
+            Node target;
+            Status status = m_Editor->Begin(
+                graph, {"player", "relation-alpha"}, again);
+            if (status)
+                status = m_Editor->Use(again, node, target);
+            const int value = 53;
+            if (status)
+                again.Bind(target.Pin("Value"),
+                           Value::From(CKPGUID_INT, value));
+            if (status)
+                status = m_Editor->Apply(again, againPatch);
+            passed = status && againPatch &&
+                pin->GetDirectSource() != baseline;
+            const Status closed = m_Editor->Close(againPatch);
+            passed = passed && closed &&
+                pin->GetDirectSource() == baseline;
+        }
+
+        if (!passed)
+            Fail("relations-revert-conflict");
+        m_RelationsPassed = passed;
+        m_AdditiveEditPassed = m_AdditiveEditPassed && passed;
+
+        if (alphaPatch)
+            (void) m_Editor->Close(alphaPatch);
+        if (node && graph)
+            (void) graph->RemoveSubBehavior(node);
+        if (node)
+            m_Context->DestroyObject(node);
+        if (graph)
+            m_Context->DestroyObject(graph);
+        if (baseline)
+            m_Context->DestroyObject(baseline);
+        if (foreign)
+            m_Context->DestroyObject(foreign);
+        if (otherBaseline)
+            m_Context->DestroyObject(otherBaseline);
         m_State = State::Physicalize;
     }
 
@@ -2465,7 +2694,374 @@ private:
             if (!selfClosePassed)
                 Fail("lifecycle-self-close");
         }
+        if (!m_LifecyclePassed || !m_Failures.str().empty()) {
+            Finish();
+            return;
+        }
+        m_VisualNotBefore = std::chrono::steady_clock::now() +
+                            std::chrono::seconds(5);
+        m_State = State::RuntimeVisualCreate;
+    }
+
+    int ResolveRuntimeFont() const {
+        if (!m_Context)
+            return 0;
+        const XObjectPointerArray &behaviors =
+            m_Context->GetObjectListByType(CKCID_BEHAVIOR, TRUE);
+        for (XObjectPointerArray::ConstIterator it = behaviors.Begin();
+             it != behaviors.End(); ++it) {
+            CKBehavior *behavior = CKBehavior::Cast(*it);
+            const char *prototypeName = behavior
+                ? behavior->GetPrototypeName() : nullptr;
+            const char *fontName = behavior &&
+                behavior->GetInputParameterCount() > 0
+                ? static_cast<const char *>(
+                      behavior->GetInputParameterReadDataPtr(0))
+                : nullptr;
+            if (!behavior || behavior->IsToBeDeleted() || !prototypeName ||
+                !fontName || std::strcmp(prototypeName, "TT CreateFontEx") != 0 ||
+                std::strcmp(fontName, "GameFont_01") != 0 ||
+                behavior->GetOutputParameterCount() == 0) {
+                continue;
+            }
+            int font = 0;
+            if (behavior->GetOutputParameterValue(0, &font) == CK_OK &&
+                font != 0) {
+                return font;
+            }
+        }
+        for (XObjectPointerArray::ConstIterator it = behaviors.Begin();
+             it != behaviors.End(); ++it) {
+            CKBehavior *behavior = CKBehavior::Cast(*it);
+            if (!behavior || behavior->IsToBeDeleted() ||
+                behavior->GetPrototypeGuid() != VT_INTERFACE_2DTEXT ||
+                behavior->GetInputParameterCount() == 0) {
+                continue;
+            }
+            int font = 0;
+            if (behavior->GetInputParameterValue(0, &font) == CK_OK &&
+                font != 0) {
+                return font;
+            }
+        }
+        return 0;
+    }
+
+    CK2dEntity *CreateRuntimeDisplay() {
+        CKLevel *level = m_Context ? m_Context->GetCurrentLevel() : nullptr;
+        CKScene *scene = m_Context ? m_Context->GetCurrentScene() : nullptr;
+        auto *display = m_Context ? static_cast<CK2dEntity *>(
+            m_Context->CreateObject(CKCID_2DENTITY,
+                                    const_cast<CKSTRING>("__BML_Runtime"),
+                                    CK_OBJECTCREATION_DYNAMIC)) : nullptr;
+        if (!display || !level || !scene || level->AddObject(display) != CK_OK) {
+            if (display)
+                m_Context->DestroyObject(display);
+            return nullptr;
+        }
+        if (scene != level->GetLevelScene())
+            (void) scene->AddObject(display);
+        display->SetHomogeneousCoordinates();
+        display->EnableClipToCamera(false);
+        display->EnableRatioOffset(false);
+        display->SetPosition(Vx2DVector(0.04f, 0.06f), TRUE);
+        display->SetSize(Vx2DVector(0.92f, 0.46f), TRUE);
+        display->SetZOrder(120);
+        display->Show(CKSHOW);
+        scene->Activate(display, TRUE);
+        m_VisualDisplay = {display->GetID(), display};
+        return display;
+    }
+
+    Spec RuntimeText(CK2dEntity *display, const char *text) const {
+        Text2D::Options options;
+        options.Target = display;
+        options.FontIndex = m_VisualFont;
+        options.Text = text;
+        options.Alignment = 5;
+        options.Margin = VxRect(8.0f, 8.0f, 8.0f, 8.0f);
+        options.Flags = 1;
+        Spec spec = Text2D::Make(options);
+        spec.Frames(FrameRetention::EachFrame(4));
+        return spec;
+    }
+
+    static bool FirstExecution(const RunResult &run) {
+        return run && run.Admission == AdmissionState::Executed &&
+               run.State == RunState::Pending &&
+               run.ReturnCode == CKBR_ACTIVATENEXTFRAME &&
+               run.ActiveOutputs.size() == 1;
+    }
+
+    static bool SequenceIs(const std::vector<RunFrame> &frames,
+                           std::initializer_list<std::uint64_t> sequence) {
+        if (frames.size() != sequence.size())
+            return false;
+        std::size_t index = 0;
+        for (std::uint64_t value : sequence) {
+            if (frames[index++].Sequence != value)
+                return false;
+        }
+        return true;
+    }
+
+    void BuildRuntimeVisualText() {
+        std::ostringstream text;
+        text << "BEHAVIOR RUNTIME\n"
+             << "CALL  ONE EXECUTE | START/PULSE  MANAGED\n"
+             << "PHYSICS FORCE\n"
+             << "CREATE RETURNS READY | IVP CONTROLLER REMAINS ACTIVE\n"
+             << std::fixed << std::setprecision(2)
+             << "CREATE X " << m_PhysicsForceStartX << " -> "
+             << m_PhysicsForceAfterX << " | SAME-FRAME +X -> -X "
+             << m_PhysicsForcePeakX << " -> " << m_PhysicsForceUpdatedX
+             << "\nSAME-FRAME SET/CLEAR  QUEUED -> CLOSED";
+        m_VisualText = text.str();
+    }
+
+    void CreateRuntimeVisual() {
+        if (std::chrono::steady_clock::now() < m_VisualNotBefore)
+            return;
+
+        m_VisualFont = ResolveRuntimeFont();
+        if (m_VisualFont == 0) {
+            Fail("runtime-visual-font");
+            Finish();
+            return;
+        }
+        BuildRuntimeVisualText();
+
+        m_VisualCallProbe.CompleteAfter = 2;
+        m_VisualTaskProbe.CompleteAfter = 2;
+        m_VisualPulseProbe.CompleteAfter = 2;
+        auto makeProbe = [](CountedExecutionProbe &probe) {
+            Spec spec = HookBlock::Make(
+                ProbeCountedExecution, &probe, 1, 1);
+            spec.Frames(FrameRetention::EachFrame(4));
+            return spec;
+        };
+
+        CallResult call = WithContextCheck("runtime-visual-call-context", [&] {
+            return m_Runtime.Call(
+                m_Owner, makeProbe(m_VisualCallProbe),
+                Slot::At(SlotKind::Input, 0));
+        });
+        const bool callPassed = call && FirstExecution(call.Run);
+        m_VisualCall = std::move(call.Handle);
+
+        CreateResult task = m_Runtime.Instantiate(
+            m_Owner, makeProbe(m_VisualTaskProbe));
+        m_VisualTask = std::move(task.Handle);
+        RunResult started = task
+            ? WithContextCheck("runtime-visual-start-context", [&] {
+                  return m_Runtime.StartTask(
+                      m_VisualTask, Slot::At(SlotKind::Input, 0));
+              })
+            : RunResult{};
+        const bool startPassed = task && FirstExecution(started);
+
+        CreateResult instance = m_Runtime.Instantiate(
+            m_Owner, makeProbe(m_VisualPulseProbe));
+        m_VisualPulse = std::move(instance.Handle);
+        RunResult pulsed = instance
+            ? WithContextCheck("runtime-visual-pulse-context", [&] {
+                  return m_Runtime.Pulse(
+                      m_VisualPulse, Slot::At(SlotKind::Input, 0));
+              })
+            : RunResult{};
+        const bool pulsePassed = instance && FirstExecution(pulsed);
+
+        const bool admissionPassed = callPassed && startPassed && pulsePassed &&
+            !m_Runtime.IsTaskActive(m_VisualCall) &&
+            m_Runtime.IsTaskActive(m_VisualTask) &&
+            m_Runtime.IsTaskActive(m_VisualPulse);
+        if (!admissionPassed) {
+            if (!callPassed)
+                Fail("runtime-visual-call");
+            if (!startPassed)
+                Fail("runtime-visual-start");
+            if (!pulsePassed)
+                Fail("runtime-visual-pulse");
+            if (m_Runtime.IsTaskActive(m_VisualCall))
+                Fail("runtime-visual-call-managed");
+            if (!m_Runtime.IsTaskActive(m_VisualTask))
+                Fail("runtime-visual-start-unmanaged");
+            if (!m_Runtime.IsTaskActive(m_VisualPulse))
+                Fail("runtime-visual-pulse-unmanaged");
+            CloseRuntimeVisual();
+            Finish();
+            return;
+        }
+        m_State = State::RuntimeVisualAdvance;
+    }
+
+    void AdvanceRuntimeVisual() {
+        ProcessRuntimeFrame("runtime-visual-context-restore");
+        const std::vector<RunFrame> callFrames =
+            m_Runtime.Take(m_VisualCall);
+        const std::vector<RunFrame> taskFrames =
+            m_Runtime.Take(m_VisualTask);
+        const std::vector<RunFrame> pulseFrames =
+            m_Runtime.Take(m_VisualPulse);
+        m_VisualPassed = SequenceIs(callFrames, {1}) &&
+            SequenceIs(taskFrames, {1, 2}) &&
+            SequenceIs(pulseFrames, {1, 2}) &&
+            callFrames[0].NativeContinuation &&
+            !taskFrames[1].NativeContinuation &&
+            !taskFrames[1].QueuedInput &&
+            !pulseFrames[1].NativeContinuation &&
+            !pulseFrames[1].QueuedInput &&
+            m_VisualCallProbe.Calls == 1 &&
+            m_VisualTaskProbe.Calls == 2 &&
+            m_VisualPulseProbe.Calls == 2 &&
+            m_Runtime.State(m_VisualCall) == ExecutionState::Pending &&
+            m_Runtime.State(m_VisualTask) == ExecutionState::Idle &&
+            m_Runtime.State(m_VisualPulse) == ExecutionState::Idle &&
+            !m_Runtime.IsTaskActive(m_VisualCall) &&
+            !m_Runtime.IsTaskActive(m_VisualTask) &&
+            !m_Runtime.IsTaskActive(m_VisualPulse);
+        if (!m_VisualPassed) {
+            Fail("runtime-visual-scheduling");
+            CloseRuntimeVisual();
+            Finish();
+            return;
+        }
+
+        CK2dEntity *display = CreateRuntimeDisplay();
+        m_VisualGraph = display ? static_cast<CKBehavior *>(
+            m_Context->CreateObject(CKCID_BEHAVIOR,
+                                    const_cast<CKSTRING>("__BML_Runtime_Graph"),
+                                    CK_OBJECTCREATION_DYNAMIC)) : nullptr;
+        if (!display || !m_VisualGraph) {
+            Fail("runtime-visual-display");
+            CloseRuntimeVisual();
+            Finish();
+            return;
+        }
+        m_VisualGraphId = m_VisualGraph->GetID();
+        m_VisualGraph->UseGraph();
+        m_VisualGraph->SetType(CKBEHAVIORTYPE_SCRIPT);
+        CKBehaviorIO *graphInput = m_VisualGraph->CreateInput("In");
+        CKBehaviorIO *graphOutput = m_VisualGraph->CreateOutput("Out");
+        CKScene *scene = m_Context->GetCurrentScene();
+        const bool graphReady = graphInput && graphOutput && scene &&
+            m_VisualGraph->SetOwner(display, FALSE) == CK_OK &&
+            display->AddScript(m_VisualGraph) == CK_OK;
+        AttachResult attached = graphReady
+            ? m_Runtime.AddToGraph(
+                  m_VisualGraph,
+                  RuntimeText(display, m_VisualText.c_str()))
+            : AttachResult{};
+        m_VisualBlock = attached.Block;
+        m_VisualEntry = attached && m_VisualBlock
+            ? CreateBehaviorLink(m_Context, graphInput,
+                                 m_VisualBlock->GetInput(0), 0)
+            : nullptr;
+        m_VisualExit = attached && m_VisualBlock
+            ? CreateBehaviorLink(m_Context, m_VisualBlock->GetOutput(0),
+                                 graphOutput, 0)
+            : nullptr;
+        const bool entryAdded = m_VisualEntry &&
+            m_VisualGraph->AddSubBehaviorLink(m_VisualEntry) == CK_OK;
+        const bool exitAdded = m_VisualExit &&
+            m_VisualGraph->AddSubBehaviorLink(m_VisualExit) == CK_OK;
+        const bool linksReady = entryAdded && exitAdded;
+        if (!attached || !linksReady) {
+            if (m_VisualEntry && !entryAdded) {
+                m_Context->DestroyObject(m_VisualEntry);
+                m_VisualEntry = nullptr;
+            }
+            if (m_VisualExit && !exitAdded) {
+                m_Context->DestroyObject(m_VisualExit);
+                m_VisualExit = nullptr;
+            }
+            Fail("runtime-visual-graph");
+            CloseRuntimeVisual();
+            Finish();
+            return;
+        }
+        scene->Activate(m_VisualGraph, TRUE);
+        m_State = State::RuntimeVisualPresent;
+    }
+
+    void PresentRuntimeVisual() {
+        CKObject *graphObject = m_Context && m_VisualGraphId
+            ? m_Context->GetObject(m_VisualGraphId) : nullptr;
+        const bool graphLive = graphObject == m_VisualGraph &&
+            !graphObject->IsToBeDeleted();
+        const bool displayLive = m_Context && m_VisualDisplay.Id &&
+            m_Context->GetObject(m_VisualDisplay.Id) == m_VisualDisplay.Address;
+        const char *configuredText = m_VisualBlock &&
+            m_VisualBlock->GetInputParameterCount() > 1
+            ? static_cast<const char *>(
+                  m_VisualBlock->GetInputParameterReadDataPtr(1))
+            : nullptr;
+        if (!graphLive || !displayLive ||
+            m_VisualGraph->GetSubBehaviorCount() != 1 ||
+            m_VisualGraph->GetSubBehavior(0) != m_VisualBlock ||
+            m_VisualGraph->GetSubBehaviorLinkCount() != 2 ||
+            !m_VisualGraph->IsActive() || !m_VisualBlock ||
+            m_VisualBlock->IsToBeDeleted() || !m_VisualBlock->IsActive() ||
+            !configuredText ||
+            std::strcmp(configuredText, m_VisualText.c_str()) != 0) {
+            Fail("runtime-visual-present");
+            CloseRuntimeVisual();
+            Finish();
+            return;
+        }
+        m_VisualReady = true;
+        m_VisualUntil = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(1800);
+        m_State = State::RuntimeVisualWait;
+    }
+
+    void WaitRuntimeVisual() {
+        if (std::chrono::steady_clock::now() < m_VisualUntil)
+            return;
+        CloseRuntimeVisual();
         Finish();
+    }
+
+    void CloseRuntimeVisual() {
+        m_VisualReady = false;
+        if (m_VisualBlock)
+            (void) m_Runtime.Close(m_VisualBlock);
+        m_VisualBlock = nullptr;
+        m_VisualEntry = nullptr;
+        m_VisualExit = nullptr;
+        m_VisualCall.Reset();
+        m_VisualTask.Reset();
+        m_VisualPulse.Reset();
+        if (m_Context)
+            m_Runtime.ProcessFrame();
+
+        CKObject *graphObject = m_Context && m_VisualGraphId
+            ? m_Context->GetObject(m_VisualGraphId) : nullptr;
+        auto *graph = graphObject == m_VisualGraph && graphObject &&
+            !graphObject->IsToBeDeleted()
+            ? static_cast<CKBehavior *>(graphObject) : nullptr;
+        CKObject *displayObject = m_Context && m_VisualDisplay.Id
+            ? m_Context->GetObject(m_VisualDisplay.Id) : nullptr;
+        auto *display = displayObject == m_VisualDisplay.Address &&
+            displayObject && !displayObject->IsToBeDeleted()
+            ? static_cast<CK2dEntity *>(displayObject) : nullptr;
+        if (graph) {
+            if (CKScene *scene = m_Context->GetCurrentScene())
+                scene->DeActivate(graph);
+            if (display)
+                (void) display->RemoveScript(m_VisualGraphId);
+            while (graph->GetSubBehaviorLinkCount() > 0) {
+                CKBehaviorLink *link = graph->RemoveSubBehaviorLink(0);
+                if (link)
+                    m_Context->DestroyObject(link);
+            }
+            m_Context->DestroyObject(graph);
+        }
+        m_VisualGraph = nullptr;
+        m_VisualGraphId = 0;
+        if (display)
+            m_Context->DestroyObject(display);
+        m_VisualDisplay = {};
     }
 
     void Finish() { m_State = State::Complete; }
@@ -2482,7 +3078,7 @@ private:
     std::ostringstream m_Failures;
     ExecutionProbe m_Retry;
     ExecutionProbe m_Breakpoint;
-    ExecutionProbe m_TerminalPulse;
+    ExecutionProbe m_SameFramePulse;
     ReentrantPulseProbe m_ReentrantPulse;
     CountedExecutionProbe m_LatestFrames;
     CountedExecutionProbe m_FullFrames;
@@ -2498,7 +3094,7 @@ private:
     Instance m_RetryInstance;
     Instance m_BreakInstance;
     Instance m_WaitAllInstance;
-    Instance m_TerminalPulseInstance;
+    Instance m_SameFramePulseInstance;
     Instance m_ReentrantPulseInstance;
     Instance m_LatestFrameInstance;
     Instance m_FullFrameInstance;
@@ -2540,6 +3136,7 @@ private:
     PatchCloseProbe m_EditTap;
     int m_EditStartFrame = -1;
     bool m_AdditiveEditPassed = false;
+    bool m_RelationsPassed = false;
     CKBehavior *m_SpliceGraph = nullptr;
     CKBehavior *m_SpliceSource = nullptr;
     CKBehavior *m_SpliceSink = nullptr;
@@ -2552,6 +3149,7 @@ private:
     Patch m_SpliceBeta;
     int m_SpliceStartFrame = -1;
     bool m_SplicePassed = false;
+    bool m_LifecyclePassed = false;
     Instance m_PhysicalizeInstance;
     Instance m_PhysicsForceInstance;
     int m_PhysicsForceStartFrame = -1;
@@ -2573,7 +3171,28 @@ private:
     bool m_PhysicsForceClearQueued = false;
     bool m_PhysicsForceCleared = false;
     bool m_PhysicsForcePassed = false;
-    bool m_LifecyclePassed = false;
+    struct VisualDisplay {
+        CK_ID Id = 0;
+        CK2dEntity *Address = nullptr;
+    };
+    VisualDisplay m_VisualDisplay;
+    CKBehavior *m_VisualGraph = nullptr;
+    CKBehavior *m_VisualBlock = nullptr;
+    CKBehaviorLink *m_VisualEntry = nullptr;
+    CKBehaviorLink *m_VisualExit = nullptr;
+    CK_ID m_VisualGraphId = 0;
+    Instance m_VisualCall;
+    Instance m_VisualTask;
+    Instance m_VisualPulse;
+    CountedExecutionProbe m_VisualCallProbe;
+    CountedExecutionProbe m_VisualTaskProbe;
+    CountedExecutionProbe m_VisualPulseProbe;
+    std::chrono::steady_clock::time_point m_VisualNotBefore{};
+    std::chrono::steady_clock::time_point m_VisualUntil{};
+    bool m_VisualPassed = false;
+    bool m_VisualReady = false;
+    int m_VisualFont = 0;
+    std::string m_VisualText;
 };
 
 BehaviorRuntimeSemantics::BehaviorRuntimeSemantics(CKContext *context, CK3dObject *owner)
@@ -2587,6 +3206,10 @@ void BehaviorRuntimeSemantics::Advance(int playerFrame) {
 
 bool BehaviorRuntimeSemantics::Done() const {
     return m_Impl->Done();
+}
+
+bool BehaviorRuntimeSemantics::VisualReady() const {
+    return m_Impl->VisualReady();
 }
 
 BehaviorRuntimeSemanticsResult BehaviorRuntimeSemantics::Result() const {

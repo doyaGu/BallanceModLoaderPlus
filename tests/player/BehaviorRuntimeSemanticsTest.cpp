@@ -41,6 +41,11 @@ public:
             return;
 
         m_Semantics->Advance(++m_Frame);
+        if (!m_VisualLogged && m_Semantics->VisualReady()) {
+            m_VisualLogged = true;
+            GetLogger()->Info(
+                "Behavior runtime visual: stage=active call=true start=true pulse=true");
+        }
         if (!m_Semantics->Done())
             return;
 
@@ -50,7 +55,9 @@ public:
             : BML_BEHAVIOR_RUNTIME_SEMANTICS_FAILED;
         g_Result.LifecyclePassed = result.LifecyclePassed ? 1u : 0u;
         g_Result.AdditiveEditPassed = result.AdditiveEditPassed ? 1u : 0u;
+        g_Result.RelationsPassed = result.RelationsPassed ? 1u : 0u;
         g_Result.PhysicsForcePassed = result.PhysicsForcePassed ? 1u : 0u;
+        g_Result.VisualPassed = result.VisualPassed ? 1u : 0u;
         const std::size_t length = (std::min)(
             result.Detail.size(), sizeof(g_Result.Detail) - 1);
         std::memcpy(g_Result.Detail, result.Detail.data(), length);
@@ -59,11 +66,13 @@ public:
         m_Semantics.reset();
         DestroyOwner();
         GetLogger()->Info(
-            "Behavior runtime semantics: status=%s lifecycle=%s additive_edit=%s physics_force=%s detail=%s",
+            "Behavior runtime semantics: status=%s lifecycle=%s additive_edit=%s relations=%s physics_force=%s visual=%s detail=%s",
             result.Passed ? "pass" : "fail",
             result.LifecyclePassed ? "true" : "false",
             result.AdditiveEditPassed ? "true" : "false",
+            result.RelationsPassed ? "true" : "false",
             result.PhysicsForcePassed ? "true" : "false",
+            result.VisualPassed ? "true" : "false",
             g_Result.Detail);
     }
 
@@ -114,6 +123,7 @@ private:
     int m_Frame = 0;
     bool m_LevelStarted = false;
     bool m_BallNavigationActive = false;
+    bool m_VisualLogged = false;
 };
 
 } // namespace
