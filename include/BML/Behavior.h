@@ -939,9 +939,11 @@ typedef struct BML_BehaviorInterface {
                                       BML_BehaviorPlan plan,
                                       BML_BehaviorPlanInfo *info,
                                       BML_BehaviorStatus *status);
-    // Reverts every installation the Plan still owns. If a game graph no
-    // longer permits the inverse, this returns an error and leaves the Plan
-    // Conflicted so the caller can inspect and retry it.
+    // May be called from any thread. Retires every installation the Plan still
+    // owns. BML_ERROR_BUSY means an inverse is waiting for the next safe point.
+    // A graph conflict returns an error and leaves the Plan readable. Once
+    // ClosePlan has been accepted, the Loader retries unfinished inverses at
+    // safe points.
     int (BML_BEHAVIOR_CALL *ClosePlan)(BML_BehaviorSession session,
                                        BML_BehaviorPlan plan);
     // Reads the native Behavior owned by a Run as a graph. This avoids a
@@ -992,9 +994,11 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorPatch patch,
         BML_BehaviorPatchInfo *info,
         BML_BehaviorStatus *status);
-    // Stops callback admission immediately. Native restoration may finish at
-    // the next game-thread safe point. A revert conflict returns an error and
-    // keeps the Patch valid for inspection and retry.
+    // May be called from any thread. Stops callback admission immediately.
+    // BML_ERROR_BUSY means restoration will continue at the next game-thread
+    // safe point. A revert conflict returns an error and keeps the Patch
+    // readable; the Loader also retries the requested retirement at later safe
+    // points.
     int (BML_BEHAVIOR_CALL *ClosePatch)(BML_BehaviorSession session,
                                         BML_BehaviorPatch patch);
 } BML_BehaviorInterface;

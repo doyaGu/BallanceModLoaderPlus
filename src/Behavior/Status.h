@@ -31,6 +31,7 @@ enum class Error {
     ValueWriteFailed,
     SourceInvalid,
     InvalidState,
+    Busy,
     Unavailable,
     ExecutionFailed,
     OperationInvalid,

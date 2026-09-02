@@ -3493,6 +3493,7 @@ const char *DescribeError(Error error) {
     case Error::ValueWriteFailed: return "value write failed";
     case Error::SourceInvalid: return "invalid source";
     case Error::InvalidState: return "invalid state";
+    case Error::Busy: return "busy";
     case Error::ExecutionFailed: return "execution failed";
     case Error::OperationInvalid: return "invalid parameter operation";
     case Error::UnsupportedBreak: return "unsupported break";

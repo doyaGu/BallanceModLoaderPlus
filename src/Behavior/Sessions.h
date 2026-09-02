@@ -67,6 +67,8 @@ public:
 
     Status OpenSession(const std::string &ownerId, std::uintptr_t &sessionId);
     void CloseSession(std::uintptr_t sessionId);
+    // Reads only Loader-owned identity and may be used by close requests from
+    // any thread. It never enters CK2.
     Status ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const;
 
     OpenRun Call(std::uintptr_t sessionId, CKBeObject *owner,

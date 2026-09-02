@@ -182,6 +182,7 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::OperationInvalid: return BML_BEHAVIOR_ERROR_VALUE_INVALID;
     case Error::InvalidState:
     case Error::Unavailable: return BML_BEHAVIOR_ERROR_STATE_INVALID;
+    case Error::Busy: return BML_BEHAVIOR_ERROR_STATE_INVALID;
     case Error::UnsupportedBreak: return BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED;
     case Error::UnsupportedPout: return BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED;
     case Error::PoutUnavailable: return BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE;
@@ -676,6 +677,8 @@ int ResultCode(const Status &status) noexcept {
         return BML_ERROR_WRONG_THREAD;
     if (status.Code == Error::InvalidState)
         return BML_ERROR_INVALID_HANDLE;
+    if (status.Code == Error::Busy)
+        return BML_ERROR_BUSY;
     if (status.Code == Error::Unavailable ||
         status.Code == Error::ObserverUnavailable)
         return BML_ERROR_UNAVAILABLE;
@@ -2838,8 +2841,6 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
         ModContext *context = BML_GetModContext();
         if (!context)
             return BML_ERROR_FROZEN;
-        if (!context->IsMainThread())
-            return BML_ERROR_WRONG_THREAD;
         SessionOwner owner;
         Status result;
         if (!ReadSessionOwner(session, *context, owner, result))
@@ -2937,8 +2938,6 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
         ModContext *context = BML_GetModContext();
         if (!context)
             return BML_ERROR_FROZEN;
-        if (!context->IsMainThread())
-            return BML_ERROR_WRONG_THREAD;
         SessionOwner owner;
         Status result;
         if (!ReadSessionOwner(session, *context, owner, result))

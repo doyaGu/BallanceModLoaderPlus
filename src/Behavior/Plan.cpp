@@ -35,7 +35,8 @@ Status Plan::CloseAll(World &world) {
     for (auto item = m_Installed.begin(); item != m_Installed.end();) {
         Status status = world.Close(item->second);
         if (!status) {
-            if (first)
+            if (first ||
+                (first.Code == Error::Busy && status.Code != Error::Busy))
                 first = std::move(status);
             ++item;
             continue;
@@ -43,7 +44,8 @@ Status Plan::CloseAll(World &world) {
         item = m_Installed.erase(item);
     }
     if (!first) {
-        m_State = PlanState::Conflicted;
+        m_State = m_Retiring && first.Code == Error::Busy
+            ? PlanState::Retiring : PlanState::Conflicted;
         return first;
     }
     return {};
@@ -198,6 +200,7 @@ void Plans::Mark(std::string_view name) noexcept {
 Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
                      Script target,
                      std::shared_ptr<Plan::World> world, PlanId &out) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     out = 0;
     if (patch.Owner.empty() || patch.Name.empty() || ownerGeneration == 0 ||
         !target || !world)
@@ -249,6 +252,7 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
 }
 
 Status Plans::Read(PlanId id, PlanInfo &out) const {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return Failure(Error::InvalidState,
@@ -263,6 +267,7 @@ Status Plans::Read(PlanId id, PlanInfo &out) const {
 
 Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
                    PlanId id, PlanInfo &out) const {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end() ||
         found->second->Value.Key().Owner != owner ||
@@ -274,6 +279,7 @@ Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
 }
 
 Status Plans::Close(PlanId id) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return {};
@@ -288,6 +294,7 @@ Status Plans::Close(PlanId id) {
 
 Status Plans::Close(std::string_view owner, std::uint64_t ownerGeneration,
                     PlanId id) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return {};
@@ -299,6 +306,7 @@ Status Plans::Close(std::string_view owner, std::uint64_t ownerGeneration,
 }
 
 Status Plans::RetireOwner(std::string_view owner) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status first;
     for (auto item = m_Plans.begin(); item != m_Plans.end();) {
         if (item->second->Value.Key().Owner != owner) {
@@ -320,6 +328,7 @@ Status Plans::RetireOwner(std::string_view owner) {
 }
 
 Status Plans::LoadScript(std::string name, ObjectRef script) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     if (name.empty() || script.IsNull())
         return Failure(Error::TargetInvalid,
                        "A live script requires an exact name and object reference.");
@@ -346,6 +355,7 @@ Status Plans::LoadScript(std::string name, ObjectRef script) {
 }
 
 void Plans::Remove(ObjectRef script) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Scripts.find(script);
     if (found == m_Scripts.end())
         return;
@@ -355,11 +365,13 @@ void Plans::Remove(ObjectRef script) {
 }
 
 void Plans::Remove(const std::vector<ObjectRef> &scripts) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     for (const ObjectRef &script : scripts)
         Remove(script);
 }
 
 void Plans::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     for (auto script = m_Scripts.begin(); script != m_Scripts.end();) {
         if (script->first.Domain != domain || script->first.Slot != slot) {
             ++script;
@@ -372,6 +384,7 @@ void Plans::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
 }
 
 Status Plans::ResetWorld() {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status first;
     for (auto &[id, record] : m_Plans) {
         Status status = record->Value.LeaveWorld(*record->World);
@@ -388,35 +401,62 @@ Status Plans::ResetWorld() {
 }
 
 Status Plans::ProcessFrame() {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status first;
-    for (auto &[id, record] : m_Plans) {
-        if (!record->Dirty)
+    for (auto item = m_Plans.begin(); item != m_Plans.end();) {
+        Record &record = *item->second;
+        if (record.Value.Retiring()) {
+            Status status = record.Value.Retire(*record.World);
+            record.Diagnostic = status;
+            if (status) {
+                m_Keys.erase(record.Value.Key());
+                item = m_Plans.erase(item);
+                continue;
+            }
+            ++item;
             continue;
+        }
+        if (!record.Dirty) {
+            ++item;
+            continue;
+        }
         std::vector<ObjectRef> targets;
         try {
             for (const auto &[script, name] : m_Scripts) {
-                if (name == record->Value.Target().Name)
+                if (name == record.Value.Target().Name)
                     targets.push_back(script);
             }
         } catch (...) {
             Status status = Failure(
                 Error::CreateFailed,
                 "The Loader could not form the Behavior Plan target set.");
-            record->Diagnostic = status;
+            record.Diagnostic = status;
             if (first)
                 first = status;
+            ++item;
             continue;
         }
 
-        record->Matches = targets.size();
-        Status status = record->Value.Reconcile(
-            std::move(targets), m_Epoch, *record->World);
-        record->Diagnostic = status;
-        record->Dirty = false;
+        record.Matches = targets.size();
+        Status status = record.Value.Reconcile(
+            std::move(targets), m_Epoch, *record.World);
+        record.Diagnostic = status;
+        record.Dirty = false;
         if (!status && first)
             first = status;
+        ++item;
     }
     return first;
+}
+
+Epoch Plans::WorldEpoch() const {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    return m_Epoch;
+}
+
+std::size_t Plans::Size() const {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    return m_Plans.size();
 }
 
 } // namespace BML::Behavior

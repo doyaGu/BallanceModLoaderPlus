@@ -458,6 +458,7 @@ private:
     void FillCallbackMap(IMod *mod);
     void SnapshotConfigMetadata();
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
+    BML::Behavior::Status RetireBehaviorEdits(const std::string &ownerId);
     void DeactivateActiveMods(bool dispatchPendingNotifications);
     void RollbackModActivation();
 

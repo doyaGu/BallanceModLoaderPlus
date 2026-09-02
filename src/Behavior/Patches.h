@@ -64,6 +64,7 @@ private:
         SessionOwner Owner;
         CK_ID Graph = 0;
         Patch Value;
+        bool Retiring = false;
     };
 
     [[nodiscard]] Status Ready() const;

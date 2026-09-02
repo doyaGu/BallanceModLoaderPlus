@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -66,6 +67,7 @@ public:
     [[nodiscard]] Epoch WorldEpoch() const noexcept { return m_Epoch; }
     [[nodiscard]] std::size_t Size() const noexcept { return m_Installed.size(); }
     [[nodiscard]] bool Contains(const ObjectRef &target) const noexcept;
+    [[nodiscard]] bool Retiring() const noexcept { return m_Retiring; }
 
 private:
     struct RefLess {
@@ -121,8 +123,8 @@ public:
     Status ResetWorld();
     Status ProcessFrame();
 
-    [[nodiscard]] Epoch WorldEpoch() const noexcept { return m_Epoch; }
-    [[nodiscard]] std::size_t Size() const noexcept { return m_Plans.size(); }
+    [[nodiscard]] Epoch WorldEpoch() const;
+    [[nodiscard]] std::size_t Size() const;
 
 private:
     struct Record {
@@ -152,6 +154,7 @@ private:
 
     Epoch m_Epoch = 1;
     PlanId m_NextId = 1;
+    mutable std::recursive_mutex m_Mutex;
     std::map<PlanId, std::unique_ptr<Record>> m_Plans;
     std::map<PatchKey, PlanId> m_Keys;
     std::map<ObjectRef, std::string, RefLess> m_Scripts;

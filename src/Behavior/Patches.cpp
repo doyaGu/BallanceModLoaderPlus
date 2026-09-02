@@ -105,6 +105,7 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
             stored->second.Owner = owner;
             stored->second.Graph = static_cast<CK_ID>(graph.Id);
             stored->second.Value = std::move(patch);
+            stored->second.Retiring = !status;
         } catch (...) {
             m_Patches.erase(stored);
             throw;
@@ -281,7 +282,17 @@ Status Patches::Read(const SessionOwner &owner, PatchId patch,
 }
 
 Status Patches::Close(OwnedPatch &patch) {
-    return m_Edit.Close(patch.Value);
+    patch.Retiring = true;
+    // A Closing Patch already has one CKEdit request queued. Let that request
+    // preserve callback and journal retirement order at the safe point.
+    if (patch.Value.State() == PatchState::Closing)
+        return Failure(Error::Busy, "The Behavior Patch is Closing.",
+                       Phase::Teardown);
+    Status status = m_Edit.Close(patch.Value);
+    if (status && patch.Value.State() == PatchState::Closing)
+        return Failure(Error::Busy, "The Behavior Patch is Closing.",
+                       Phase::Teardown);
+    return status;
 }
 
 Status Patches::Close(const SessionOwner &owner, PatchId patch) {
@@ -302,17 +313,28 @@ Status Patches::Close(const SessionOwner &owner, PatchId patch) {
 
 Status Patches::RetireOwner(const std::string &ownerId) {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    Status first;
     for (auto &[id, patch] : m_Patches) {
         if (patch.Owner.Id != ownerId)
             continue;
-        Status status = Close(patch);
-        if (!status && first)
-            first = std::move(status);
+        (void) Close(patch);
     }
     m_Edit.ProcessFrame();
     Collect();
-    return first;
+    Status remaining;
+    for (const auto &[id, patch] : m_Patches) {
+        if (patch.Owner.Id != ownerId)
+            continue;
+        Status status = patch.Value.Diagnostic();
+        if (status) {
+            status = Failure(Error::Busy,
+                             "A Behavior Patch is still Closing.",
+                             Phase::Teardown);
+        }
+        if (remaining ||
+            (remaining.Code == Error::Busy && status.Code != Error::Busy))
+            remaining = std::move(status);
+    }
+    return remaining;
 }
 
 void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
@@ -354,6 +376,13 @@ void Patches::ProcessFrame() {
     if (std::this_thread::get_id() != m_Thread)
         return;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    for (auto &entry : m_Patches) {
+        OwnedPatch &patch = entry.second;
+        const PatchState state = patch.Value.State();
+        if (patch.Retiring &&
+            (state == PatchState::Active || state == PatchState::Conflicted))
+            (void) Close(patch);
+    }
     m_Edit.ProcessFrame();
     Collect();
 }

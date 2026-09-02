@@ -133,6 +133,24 @@ TEST(BehaviorSessions, CloseSessionMayRunOffTheGameThread) {
     sessions.CloseSession(session);
 }
 
+TEST(BehaviorSessions, SessionOwnerMayBeReadOffTheGameThread) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    const std::uint64_t generation = sessions.RegisterOwner("mod");
+    ASSERT_NE(generation, 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    SessionOwner owner;
+    Status status;
+    std::thread read([&] { status = sessions.ReadOwner(session, owner); });
+    read.join();
+
+    ASSERT_TRUE(status);
+    EXPECT_EQ(owner.Id, "mod");
+    EXPECT_EQ(owner.Generation, generation);
+}
+
 TEST(BehaviorSessions, OtherOperationsRequireTheGameThread) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);

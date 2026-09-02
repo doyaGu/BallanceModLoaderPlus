@@ -117,9 +117,6 @@ void Sessions::CloseSession(std::uintptr_t sessionId) {
 Status Sessions::ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const {
     out = {};
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    Status ready = Ready();
-    if (!ready)
-        return ready;
     const Session *session = FindSession(sessionId);
     if (!session || !SessionIsActive(*session))
         return Fail(Error::InvalidState,

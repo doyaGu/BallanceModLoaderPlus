@@ -415,6 +415,21 @@ void ModContext::ProcessVirtoolsFrame() {
     m_ExecuteBB.ProcessFrame();
 }
 
+BML::Behavior::Status ModContext::RetireBehaviorEdits(
+    const std::string &ownerId) {
+    // A Plan can be waiting on a Patch request that was already queued by an
+    // off-thread Close. Request Plan retirement, complete every owned Patch at
+    // the CK edit safe point, then collect Plans whose installations closed.
+    (void) m_BehaviorPlans.RetireOwner(ownerId);
+    const BML::Behavior::Status patches =
+        m_BehaviorPatches.RetireOwner(ownerId);
+    const BML::Behavior::Status plans =
+        m_BehaviorPlans.RetireOwner(ownerId);
+    if (!plans)
+        return plans;
+    return patches;
+}
+
 bool ModContext::LoadMods() {
     if (!IsInited() || AreModsLoaded())
         return false;
@@ -701,16 +716,11 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
                 m_Logger->Error("Unknown exception in a Mod unload callback.");
         }
         try {
-            const BML::Behavior::Status plans =
-                m_BehaviorPlans.RetireOwner(mod->GetID());
-            if (!plans && m_Logger)
-                m_Logger->Error("Failed to retire Behavior Plans for Mod %s: %s",
-                                mod->GetID(), plans.Message.c_str());
-            const BML::Behavior::Status patches =
-                m_BehaviorPatches.RetireOwner(mod->GetID());
-            if (!patches && m_Logger)
-                m_Logger->Error("Failed to retire Behavior Patches for Mod %s: %s",
-                                mod->GetID(), patches.Message.c_str());
+            const BML::Behavior::Status edits =
+                RetireBehaviorEdits(mod->GetID());
+            if (!edits && m_Logger)
+                m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
+                                mod->GetID(), edits.Message.c_str());
             m_BehaviorSessions.RetireOwner(mod->GetID());
         } catch (...) {
             if (m_Logger)
@@ -728,8 +738,7 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
         IMod *mod = *rit;
         try {
             m_ImcRuntime.CleanupOwner(mod->GetID());
-            (void) m_BehaviorPlans.RetireOwner(mod->GetID());
-            (void) m_BehaviorPatches.RetireOwner(mod->GetID());
+            (void) RetireBehaviorEdits(mod->GetID());
             m_BehaviorSessions.RetireOwner(mod->GetID());
         } catch (...) {
             if (m_Logger)
@@ -2805,20 +2814,12 @@ bool ModContext::UnregisterMod(IMod *mod) {
                 return false;
             modIdCopy = id->first;
         }
-        const BML::Behavior::Status plans =
-            m_BehaviorPlans.RetireOwner(modIdCopy);
-        if (!plans) {
+        const BML::Behavior::Status edits =
+            RetireBehaviorEdits(modIdCopy);
+        if (!edits) {
             if (m_Logger)
-                m_Logger->Error("Failed to retire Behavior Plans for Mod %s: %s",
-                                modIdCopy.c_str(), plans.Message.c_str());
-            return false;
-        }
-        const BML::Behavior::Status patches =
-            m_BehaviorPatches.RetireOwner(modIdCopy);
-        if (!patches) {
-            if (m_Logger)
-                m_Logger->Error("Failed to retire Behavior Patches for Mod %s: %s",
-                                modIdCopy.c_str(), patches.Message.c_str());
+                m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
+                                modIdCopy.c_str(), edits.Message.c_str());
             return false;
         }
         m_BehaviorSessions.RetireOwner(modIdCopy);
