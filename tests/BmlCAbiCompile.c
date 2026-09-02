@@ -50,7 +50,7 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 88u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 64u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 96u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 100u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
                  sizeof(BML_BehaviorWatchValue) == 92u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
@@ -67,7 +67,7 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 104u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 96u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 192u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 200u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
                  sizeof(BML_BehaviorWatchValue) == 96u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
@@ -246,6 +246,9 @@ int BML_TestCAbiBehaviorInterface(BML_BehaviorRun run) {
         return 0;
     if (behavior->Header.MinorVersion >= 1 &&
         !BML_IFACE_HAS(behavior, BML_BehaviorInterface, ReadLiveLayout))
+        return 0;
+    if (behavior->Header.MinorVersion >= 5 &&
+        !BML_IFACE_HAS(behavior, BML_BehaviorInterface, InspectRun))
         return 0;
     return behavior->TakeFrames(run, NULL, 0, sizeof(BML_BehaviorRunFrame),
                                 NULL, 0, &frameCount, &payloadSize,

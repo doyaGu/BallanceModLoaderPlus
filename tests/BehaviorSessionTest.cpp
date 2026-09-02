@@ -14,6 +14,54 @@ namespace {
 
 using namespace BML::Behavior;
 
+class FakeGraphSource final : public GraphSource {
+public:
+    Status Refer(void *object, NativeRef &out) override {
+        if (!object)
+            return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                    CKBR_PARAMETERERROR, "The fake graph root is stale."};
+        out = {41, object};
+        return {};
+    }
+
+    Status Read(const NativeRef &root, GraphView view,
+                GraphModel &out) override {
+        if (!root)
+            return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                    CKBR_PARAMETERERROR, "The fake graph root is stale."};
+        out = {};
+        out.View = view;
+        out.Generation = 7;
+        GraphNode node;
+        node.Id = root.Id;
+        node.Name = "Owned Behavior";
+        out.Nodes.push_back(std::move(node));
+        return {};
+    }
+
+    Status ReadLayout(const NativeRef &, Layout &) override {
+        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
+                CKBR_PARAMETERERROR, "Not used by this test."};
+    }
+
+    Status ReadValue(const NativeRef &, const Slot &, ReadMode,
+                     GraphValue &) override {
+        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
+                CKBR_PARAMETERERROR, "Not used by this test."};
+    }
+
+    Status GraphFingerprint(const NativeRef &, GraphView,
+                            std::uint64_t &) override {
+        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
+                CKBR_PARAMETERERROR, "Not used by this test."};
+    }
+
+    Status LayoutFingerprint(const NativeRef &, std::uint64_t &) override {
+        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
+                CKBR_PARAMETERERROR, "Not used by this test."};
+    }
+};
+
 Slot Input(const char *name) {
     Slot input;
     input.Kind = SlotKind::Input;
@@ -126,6 +174,29 @@ TEST(BehaviorSessions, ReadyCallKeepsItsInstanceUntilTheRunCloses) {
     EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
     sessions.ProcessFrame();
     EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+}
+
+TEST(BehaviorSessions, ReadsTheGraphOwnedByTheRun) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime, nullptr, std::make_unique<FakeGraphSource>());
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    OpenRun run = sessions.Spawn(session, nullptr, Spec(CKGUID(1, 2)));
+    ASSERT_TRUE(run);
+
+    GraphModel graph;
+    ASSERT_TRUE(sessions.ReadGraph(run.Id, GraphView::Live, graph));
+    EXPECT_EQ(graph.View, GraphView::Live);
+    EXPECT_EQ(graph.Generation, 7u);
+    ASSERT_EQ(graph.Nodes.size(), 1u);
+    EXPECT_EQ(graph.Nodes.front().Id, 41u);
+    EXPECT_EQ(graph.Nodes.front().Name, "Owned Behavior");
+
+    sessions.CloseRun(run.Id);
+    EXPECT_EQ(sessions.ReadGraph(run.Id, GraphView::Logical, graph).Code,
+              Error::InvalidState);
 }
 
 TEST(BehaviorSessions, ContinuePromotesTheSameCallAndRetainsBothFrames) {

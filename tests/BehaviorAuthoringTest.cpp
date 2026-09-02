@@ -356,9 +356,24 @@ int BML_BEHAVIOR_CALL ReadDeclaredLayout(
 }
 
 int BML_BEHAVIOR_CALL ReadLiveLayout(
-    BML_BehaviorRun, BML_BehaviorLayout *, void *, std::uint32_t,
-    std::uint32_t *, BML_BehaviorStatus *) {
-    return BML_ERROR_NOT_IMPLEMENTED;
+    BML_BehaviorRun, BML_BehaviorLayout *layout, void *payload,
+    std::uint32_t payloadCapacity, std::uint32_t *payloadSize,
+    BML_BehaviorStatus *status) {
+    BML_BehaviorPrototypeRef prototype{};
+    prototype.StructSize = sizeof(prototype);
+    prototype.Prototype = {1, 2};
+    prototype.Generation = g_State.ProviderGeneration;
+    const std::vector<std::uint8_t> bytes = DeclaredLayout(prototype, *layout);
+    layout->Origin = BML_BEHAVIOR_LAYOUT_LIVE;
+    layout->LayoutGeneration = 9;
+    layout->Flags = BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW;
+    *payloadSize = static_cast<std::uint32_t>(bytes.size());
+    Success(status);
+    if (payloadCapacity < bytes.size())
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    if (!bytes.empty())
+        std::memcpy(payload, bytes.data(), bytes.size());
+    return BML_OK;
 }
 
 std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
@@ -439,6 +454,14 @@ int BML_BEHAVIOR_CALL InspectGraph(
     if (!bytes.empty())
         std::memcpy(payload, bytes.data(), bytes.size());
     return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL InspectRun(
+    BML_BehaviorRun, std::uint32_t view, BML_BehaviorGraph *graph,
+    void *payload, std::uint32_t payloadCapacity,
+    std::uint32_t *payloadSize, BML_BehaviorStatus *status) {
+    return InspectGraph(nullptr, {71, 72, 73}, view, graph, payload,
+                        payloadCapacity, payloadSize, status);
 }
 
 int BML_BEHAVIOR_CALL ReadNodeLayout(
@@ -612,6 +635,7 @@ BML_BehaviorInterface g_Interface = {
     &SubmitPlan,
     &ReadPlan,
     &ClosePlan,
+    &InspectRun,
 };
 
 } // namespace
@@ -719,6 +743,32 @@ TEST(BehaviorAuthoring, PulseAndRaiiCloseUseTheRunHandle) {
     }
     EXPECT_EQ(g_State.RunCloses, 1);
     EXPECT_EQ(g_State.SessionCloses, 1);
+}
+
+TEST(BehaviorAuthoring, ReadsLayoutAndGraphFromTheOwnedBehavior) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto spawned = session.Use(CKGUID(1, 2)).Spawn();
+    ASSERT_TRUE(spawned);
+    Instance instance = std::move(spawned).Value();
+
+    auto layout = instance.Layout();
+    ASSERT_TRUE(layout) << layout.Detail().Message;
+    EXPECT_EQ(layout->Origin, LayoutOrigin::Live);
+    EXPECT_EQ(layout->Kind, BehaviorKind::Function);
+    EXPECT_EQ(layout->Generation, 9u);
+    EXPECT_TRUE(layout->MaterializedNow);
+    const Slot *input = layout->Find(SlotKind::In, "Run");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->Index, 0);
+
+    auto inspected = instance.Inspect();
+    ASSERT_TRUE(inspected) << inspected.Detail().Message;
+    EXPECT_EQ(inspected->Root().Domain, 71u);
+    EXPECT_EQ(inspected->Mode(), View::Logical);
+    EXPECT_NE(inspected->Find("Root"), nullptr);
 }
 
 TEST(BehaviorAuthoring, ClosingSessionInvalidatesExistingBlocks) {

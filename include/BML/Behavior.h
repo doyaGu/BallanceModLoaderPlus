@@ -17,7 +17,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 4u
+#define BML_BEHAVIOR_INTERFACE_MINOR 5u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 
 BML_BEGIN_CDECLS
@@ -886,6 +886,17 @@ typedef struct BML_BehaviorInterface {
     // no longer permits leaves the Plan Conflicted rather than failing here.
     int (BML_BEHAVIOR_CALL *ClosePlan)(BML_BehaviorSession session,
                                        BML_BehaviorPlan plan);
+    // Reads the native Behavior owned by a Run as a graph. This avoids a
+    // separate Scene lookup and names the same instance used by ReadLiveLayout,
+    // Pulse, and TakeFrames.
+    int (BML_BEHAVIOR_CALL *InspectRun)(
+        BML_BehaviorRun run,
+        uint32_t view,
+        BML_BehaviorGraph *graph,
+        void *payload,
+        uint32_t payloadCapacity,
+        uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 #pragma pack(pop)

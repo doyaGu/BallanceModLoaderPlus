@@ -1624,6 +1624,22 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
     return true;
 }
 
+int WriteGraphResult(const GraphModel &source, BML_BehaviorGraph *graph,
+                     void *payload, std::uint32_t payloadCapacity,
+                     std::uint32_t *outPayloadSize) {
+    BehaviorPayload bytes;
+    BML_BehaviorGraph wire{};
+    if (!AddGraph(source, bytes, wire) || bytes.Bytes().size() > UINT32_MAX)
+        return BML_ERROR_OUT_OF_MEMORY;
+    *outPayloadSize = static_cast<std::uint32_t>(bytes.Bytes().size());
+    if (payloadCapacity < bytes.Bytes().size())
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    *graph = wire;
+    if (!bytes.Bytes().empty())
+        std::memcpy(payload, bytes.Bytes().data(), bytes.Bytes().size());
+    return BML_OK;
+}
+
 bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
                    BML_BehaviorGraphValue &record) {
     record = {};
@@ -1772,17 +1788,37 @@ int BML_BEHAVIOR_CALL Inspect(
         WriteStatus(status, result);
         if (!result)
             return ResultCode(result);
-        BehaviorPayload bytes;
-        BML_BehaviorGraph wire{};
-        if (!AddGraph(source, bytes, wire) || bytes.Bytes().size() > UINT32_MAX)
-            return BML_ERROR_OUT_OF_MEMORY;
-        *outPayloadSize = static_cast<std::uint32_t>(bytes.Bytes().size());
-        if (payloadCapacity < bytes.Bytes().size())
-            return BML_ERROR_BUFFER_TOO_SMALL;
-        *graph = wire;
-        if (!bytes.Bytes().empty())
-            std::memcpy(payload, bytes.Bytes().data(), bytes.Bytes().size());
-        return BML_OK;
+        return WriteGraphResult(source, graph, payload, payloadCapacity,
+                                outPayloadSize);
+    });
+}
+
+int BML_BEHAVIOR_CALL InspectRun(
+    BML_BehaviorRun run, std::uint32_t view, BML_BehaviorGraph *graph,
+    void *payload, std::uint32_t payloadCapacity,
+    std::uint32_t *outPayloadSize, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!run || !HasStructSize(graph) || !outPayloadSize ||
+            (status && !HasStructSize(status)) ||
+            (payloadCapacity && !payload) ||
+            (view != BML_BEHAVIOR_GRAPH_LOGICAL &&
+             view != BML_BEHAVIOR_GRAPH_LIVE))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        GraphModel source;
+        Status result = context->BehaviorSessions().ReadGraph(
+            RunId(run), view == BML_BEHAVIOR_GRAPH_LOGICAL
+                ? GraphView::Logical : GraphView::Live,
+            source);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        return WriteGraphResult(source, graph, payload, payloadCapacity,
+                                outPayloadSize);
     });
 }
 
@@ -2658,6 +2694,7 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &SubmitPlan,
     &ReadPlan,
     &ClosePlan,
+    &InspectRun,
 };
 
 } // namespace

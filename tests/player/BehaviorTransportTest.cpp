@@ -1300,6 +1300,24 @@ private:
             *dynamicValue->Get<std::int32_t>() != 713)
             return false;
 
+        const BML::Behavior::Prototype graphPrototype(
+            BML::Behavior::Guid(BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID),
+            m_GraphPrototype.Generation);
+        auto graphSpawned = m_CppSession.Use(graphPrototype)
+            .Setting("Run Owned", true)
+            .Spawn();
+        if (!graphSpawned)
+            return false;
+        BML::Behavior::Instance graphRun = std::move(graphSpawned).Value();
+        auto graphLayout = graphRun.Layout();
+        auto graph = graphRun.Inspect();
+        if (!graphLayout || !graph ||
+            graphLayout->Origin != BML::Behavior::LayoutOrigin::Live ||
+            graphLayout->Kind != BML::Behavior::BehaviorKind::Graph ||
+            !graphLayout->Find(BML::Behavior::SlotKind::In, "Enter") ||
+            !graph->Find("__BML_BehaviorTransport_RunGraph"))
+            return false;
+
         auto targeted = m_CppSession.Use(prototype)
             .TargetOwner()
             .Call(m_InputObjectRef, "Read Target");

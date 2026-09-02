@@ -383,6 +383,7 @@ CKERROR CreateGraphPrototype(CKBehaviorPrototype **prototype) {
         return CKERR_OUTOFMEMORY;
     created->DeclareInput("Enter");
     created->DeclareOutput("Exit");
+    created->DeclareSetting("Run Owned", CKPGUID_BOOL, "FALSE");
     created->SetApplyToClassID(CKCID_3DENTITY);
     created->SetBehaviorCallbackFct(GraphLifecycle, CKCB_BEHAVIORCREATE);
     created->SetBehaviorFlags(CKBEHAVIOR_SCRIPT);
@@ -398,7 +399,13 @@ CKERROR GraphLifecycle(const CKBehaviorContext &context) {
                          CKERR_INVALIDPARAMETER);
     if (context.CallbackMessage != CKM_BEHAVIORCREATE)
         return CK_OK;
-    context.Behavior->SetName("__BML_BehaviorTransport_Graph");
+    CKBOOL runOwned = FALSE;
+    if (context.Behavior->GetLocalParameterValue(0, &runOwned) != CK_OK)
+        return GraphStep(BML_BEHAVIOR_TRANSPORT_GRAPH_CREATE,
+                         CKERR_INVALIDPARAMETER);
+    context.Behavior->SetName(
+        runOwned ? "__BML_BehaviorTransport_RunGraph"
+                 : "__BML_BehaviorTransport_Graph");
     // A Prototype without an Execute function is callback-only. The provider,
     // not Runtime, changes this instance into a graph while CREATE still owns
     // the native callback state.

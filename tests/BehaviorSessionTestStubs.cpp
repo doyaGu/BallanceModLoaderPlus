@@ -73,6 +73,13 @@ Instance::operator bool() const noexcept {
     return m_Id != 0;
 }
 
+CKBehavior *Instance::Get() const {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    return FindFake(m_Id)
+        ? reinterpret_cast<CKBehavior *>(static_cast<std::uintptr_t>(m_Id))
+        : nullptr;
+}
+
 void Instance::Reset() {
     if (m_Id) {
         std::lock_guard<std::mutex> lock(g_FakeMutex);

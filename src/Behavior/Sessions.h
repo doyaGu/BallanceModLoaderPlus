@@ -85,6 +85,8 @@ public:
     Status ReadDeclaredLayout(std::uintptr_t sessionId,
                               PrototypeRef prototype, Layout &out);
     Status ReadLiveLayout(std::uintptr_t runId, Layout &out) const;
+    Status ReadGraph(std::uintptr_t runId, GraphView view,
+                     GraphModel &out);
     Status ReadGraph(std::uintptr_t sessionId, void *root,
                      GraphView view, GraphModel &out);
     Status ReadNodeLayout(std::uintptr_t sessionId, void *node, Layout &out);

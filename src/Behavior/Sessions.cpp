@@ -329,6 +329,28 @@ Status Sessions::ReadLiveLayout(std::uintptr_t runId, Layout &out) const {
     return m_Runtime.Describe(run->Block, out);
 }
 
+Status Sessions::ReadGraph(std::uintptr_t runId, GraphView view,
+                           GraphModel &out) {
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    std::shared_ptr<Run> run = FindRun(runId);
+    if (!run)
+        return Fail(Error::InvalidState,
+                    "Behavior Run handle is stale.");
+    CKBehavior *behavior = run->Block.Get();
+    if (!behavior)
+        return Fail(Error::InvalidState,
+                    "The Behavior owned by this Run is stale.");
+    if (!m_Graph)
+        return Fail(Error::Unavailable,
+                    "Behavior graph inspection is unavailable.");
+    NativeRef reference;
+    Status status = m_Graph->Refer(behavior, reference);
+    return status ? m_Graph->Read(reference, view, out) : status;
+}
+
 Status Sessions::ReadGraph(std::uintptr_t sessionId, void *root,
                            GraphView view, GraphModel &out) {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
