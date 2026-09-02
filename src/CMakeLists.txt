@@ -306,6 +306,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/PrototypeCatalog.h
         Behavior/Execution.h
         Behavior/Edit.h
+        Behavior/GraphEdit.h
         Behavior/Lifecycle.h
         Behavior/Layout.h
         Behavior/FrameStore.h
@@ -313,6 +314,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Value.h
         Behavior/Patches.h
         Behavior/Plan.h
+        Behavior/Relations.h
         Behavior/HookBlock.h
         Behavior/ObjectLoad.h
         Behavior/Physicalize.h
@@ -335,6 +337,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/CKPrototypeSource.cpp
         Behavior/Execution.cpp
         Behavior/Edit.cpp
+        Behavior/GraphEdit.cpp
         Behavior/Lifecycle.cpp
         Behavior/Layout.cpp
         Behavior/FrameStore.cpp
@@ -343,6 +346,8 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Patches.cpp
         Behavior/Plan.cpp
         Behavior/PrototypeCatalog.cpp
+        Behavior/Relations.cpp
+        Behavior/Hook.cpp
         Behavior/HookBlock.cpp
         Behavior/ObjectLoad.cpp
         Behavior/Physicalize.cpp

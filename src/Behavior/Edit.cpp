@@ -432,6 +432,11 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
     if (m_Nodes.empty() || !m_Nodes.front().Native)
         return Failure(Error::InvalidState,
                        "An additive Edit has no native graph.");
+    if (m_ExpectedFingerprint != 0 &&
+        base.Fingerprint != m_ExpectedFingerprint) {
+        return Failure(Error::GraphChanged,
+                       "The graph changed after its durable queries resolved.");
+    }
 
     const std::uint64_t root = m_Nodes.front().Native.Id;
     const auto rootNode = std::find_if(

@@ -190,7 +190,6 @@ public:
     void Splice(Link target, Node block, std::vector<Order> ordering = {});
     void Splice(Link target, Port input, Port output,
                 std::vector<Order> ordering = {});
-
     Port AppendIn(Node node, std::string name);
     Port AppendOut(Node node, std::string name);
     Port AppendPin(Node node, std::string name, CKGUID type);
@@ -230,8 +229,10 @@ private:
     std::uint32_t m_NextNode = 1;
     std::uint32_t m_NextLink = 0;
     std::uint32_t m_NextAction = 1;
+    std::uint64_t m_ExpectedFingerprint = 0;
 
     friend class CKEdit;
+    friend class GraphEdit;
 };
 
 } // namespace BML::Behavior
