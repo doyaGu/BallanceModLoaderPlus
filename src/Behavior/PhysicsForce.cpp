@@ -24,11 +24,13 @@ Spec Make(const Options &options) {
         .Input(Slot::At(SlotKind::InputParameter, 0, CKPGUID_VECTOR),
                Value::From(CKPGUID_VECTOR, options.Position))
         .Input(Slot::At(SlotKind::InputParameter, 1, CKPGUID_3DENTITY),
-               Value::Object(CKPGUID_3DENTITY, options.PositionReference))
+               Parameter::Binding::Object(
+                   CKPGUID_3DENTITY, options.PositionReference))
         .Input(Slot::At(SlotKind::InputParameter, 2, CKPGUID_VECTOR),
                Value::From(CKPGUID_VECTOR, options.Direction))
         .Input(Slot::At(SlotKind::InputParameter, 3, CKPGUID_3DENTITY),
-               Value::Object(CKPGUID_3DENTITY, options.DirectionReference))
+               Parameter::Binding::Object(
+                   CKPGUID_3DENTITY, options.DirectionReference))
         .Input(Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
                Value::From(CKPGUID_FLOAT, options.Magnitude));
     return spec;

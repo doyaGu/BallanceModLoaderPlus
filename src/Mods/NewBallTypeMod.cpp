@@ -512,7 +512,7 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
         for (int i = 0; i < 11; ++i) {
             spec.Input(BML::Behavior::Slot::At(
                            BML::Behavior::SlotKind::InputParameter, i),
-                       BML::Behavior::Value::SharedSource(
+                       BML::Behavior::Parameter::Binding::Shared(
                            physicalize->GetInputParameter(i)));
         }
         if (info.m_Radius > 0) {
@@ -520,7 +520,8 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
         } else {
             spec.Input(BML::Behavior::Slot::At(
                            BML::Behavior::SlotKind::InputParameter, 11, CKPGUID_MESH),
-                       BML::Behavior::Value::DirectSource(op->GetOutputParameter(0)));
+                       BML::Behavior::Parameter::Binding::Direct(
+                           op->GetOutputParameter(0)));
         }
         auto *context = dynamic_cast<ModContext *>(m_BML);
         BML::Behavior::AttachResult created = context

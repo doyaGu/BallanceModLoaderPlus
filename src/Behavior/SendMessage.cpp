@@ -9,7 +9,7 @@ Spec Make(const char *message, CKBeObject *destination) {
     spec.Input(Slot::At(SlotKind::InputParameter, 0, CKPGUID_STRING),
                Value::String(message ? message : ""))
         .Input(Slot::At(SlotKind::InputParameter, 1, CKPGUID_BEOBJECT),
-               Value::Object(CKPGUID_BEOBJECT, destination));
+               Parameter::Binding::Object(CKPGUID_BEOBJECT, destination));
     return spec;
 }
 

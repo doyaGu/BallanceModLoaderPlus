@@ -285,7 +285,7 @@ Value RawValue(CKGUID type, const T &value) {
 }
 
 bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
-               Value &to, Status &status) {
+               Parameter::Binding &to, Status &status) {
     if (from.StructSize < sizeof(from)) {
         status = InvalidValue("A Behavior value has an unsupported StructSize.");
         return false;
@@ -407,7 +407,7 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
                       "A Behavior object value is stale."};
             return false;
         }
-        to = Value::Object(type, object);
+        to = Parameter::Binding::Object(type, object);
         return true;
     }
     default:
@@ -429,7 +429,7 @@ bool ReadBindings(const BML_BehaviorBinding *bindings, std::uint32_t count,
             status = InvalidValue("A Behavior binding has an unsupported StructSize.");
             return false;
         }
-        Value value;
+        Parameter::Binding value;
         if (!ReadValue(binding.Value, context, value, status))
             return false;
         Slot slot;

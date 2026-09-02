@@ -265,11 +265,11 @@ Spec PhysicsForceBase(CK3dObject *owner) {
         .Input(Slot::At(SlotKind::InputParameter, 0, CKPGUID_VECTOR),
                Value::From(CKPGUID_VECTOR, zero))
         .Input(Slot::At(SlotKind::InputParameter, 1, CKPGUID_3DENTITY),
-               Value::Object(CKPGUID_3DENTITY, nullptr))
+               Value::Null(CKPGUID_3DENTITY))
         .Input(Slot::At(SlotKind::InputParameter, 2, CKPGUID_VECTOR),
                Value::From(CKPGUID_VECTOR, direction))
         .Input(Slot::At(SlotKind::InputParameter, 3, CKPGUID_3DENTITY),
-               Value::Object(CKPGUID_3DENTITY, nullptr));
+               Value::Null(CKPGUID_3DENTITY));
     return spec;
 }
 
@@ -288,7 +288,7 @@ Spec PhysicsForceWithOperation(CK3dObject *owner, CKGUID operationGuid) {
 Spec PhysicsForceWithSource(CK3dObject *owner, CKParameter *magnitude) {
     Spec spec = PhysicsForceBase(owner);
     spec.Input(Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
-               Value::DirectSource(magnitude));
+               Parameter::Binding::Direct(magnitude));
     return spec;
 }
 

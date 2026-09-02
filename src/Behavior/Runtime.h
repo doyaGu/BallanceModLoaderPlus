@@ -32,8 +32,8 @@ public:
     explicit Operation(CKGUID operation = CKGUID()) : m_Operation(operation) {}
 
     Operation &Result(CKGUID type);
-    Operation &Input1(Value value);
-    Operation &Input2(Value value);
+    Operation &Input1(Parameter::Binding value);
+    Operation &Input2(Parameter::Binding value);
 
     [[nodiscard]] CKGUID Guid() const noexcept { return m_Operation; }
     [[nodiscard]] CKGUID ResultType() const noexcept { return m_ResultType; }
@@ -41,8 +41,8 @@ public:
 private:
     CKGUID m_Operation = CKGUID();
     CKGUID m_ResultType = CKGUID();
-    Value m_Input1;
-    Value m_Input2;
+    Parameter::Binding m_Input1;
+    Parameter::Binding m_Input2;
     bool m_HasInput1 = false;
     bool m_HasInput2 = false;
 
@@ -66,11 +66,11 @@ public:
     Spec &NullTarget(CKGUID type);
     Spec &TargetSource(CKGUID type, CKParameter *source);
     Spec &TargetShared(CKGUID type, CKParameterIn *source);
-    Spec &Setting(Slot slot, Value value);
+    Spec &Setting(Slot slot, Parameter::Binding value);
     Spec &RefreshLayout();
-    Spec &Input(Slot slot, Value value);
+    Spec &Input(Slot slot, Parameter::Binding value);
     Spec &Input(Slot slot, Operation operation);
-    Spec &Local(Slot slot, Value value);
+    Spec &Local(Slot slot, Parameter::Binding value);
     Spec &AddInput(std::string name);
     Spec &AddOutput(std::string name);
     Spec &Frames(FrameRetention retention);
@@ -88,7 +88,7 @@ public:
 private:
     struct Binding {
         Slot Target;
-        Value Source;
+        Parameter::Binding Source;
     };
 
     struct OperationBinding {
@@ -100,7 +100,7 @@ private:
     std::uint64_t m_PrototypeGeneration = 0;
     TargetMode m_TargetMode = TargetMode::Owner;
     CKGUID m_TargetType = CKGUID();
-    Value m_TargetValue;
+    Parameter::Binding m_TargetValue;
     std::vector<std::vector<Binding>> m_SettingStages;
     std::vector<Binding> m_Inputs;
     std::vector<OperationBinding> m_Operations;
@@ -223,13 +223,13 @@ public:
                                          Status *status = nullptr) const;
 
     Status SetInput(Instance &instance, const Slot &selector,
-                            const Value &value);
+                            const Parameter::Binding &value);
     Status SetInput(Instance &instance, const SlotRef &slot,
-                            const Value &value);
+                            const Parameter::Binding &value);
     Status SetLocal(Instance &instance, const Slot &selector,
-                            const Value &value);
+                            const Parameter::Binding &value);
     Status SetLocal(Instance &instance, const SlotRef &slot,
-                            const Value &value);
+                            const Parameter::Binding &value);
     // Settings can rebuild arbitrary parts of the live layout.  Reconfigure
     // therefore takes the complete desired spec and reapplies target, locals,
     // and inputs after every settings stage; there is no misleading one-field
@@ -345,9 +345,9 @@ private:
     [[nodiscard]] CKObject *ResolveSlotObject(CKBehavior *behavior, const SlotInfo &slot) const;
     [[nodiscard]] Status ValidateSlot(const Record &record,
                                               const SlotRef &slot) const;
-    [[nodiscard]] Status ApplyValue(CKParameter *parameter, const Value &value) const;
     [[nodiscard]] Status BindInput(CKBehavior *behavior, Record &record,
-                                           const SlotInfo &slot, const Value &value);
+                                           const SlotInfo &slot,
+                                           const Parameter::Binding &value);
     [[nodiscard]] Status BindOperation(CKBehavior *behavior, Record &record,
                                                const SlotInfo &slot,
                                                const Operation &operation);

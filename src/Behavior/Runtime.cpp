@@ -685,7 +685,8 @@ public:
                                      &binding.Target),
                             LifecycleError::SettingFailed, fault);
             }
-            status = m_Runtime.ApplyValue(
+            status = Parameter::Write(
+                m_Runtime.m_Context,
                 m_Runtime.ResolveParameter(behavior, slot), binding.Source);
             if (!status) {
                 return Fail(Annotate(std::move(status), Phase::Settings,
@@ -994,13 +995,13 @@ Operation &Operation::Result(CKGUID type) {
     return *this;
 }
 
-Operation &Operation::Input1(Value value) {
+Operation &Operation::Input1(Parameter::Binding value) {
     m_Input1 = std::move(value);
     m_HasInput1 = true;
     return *this;
 }
 
-Operation &Operation::Input2(Value value) {
+Operation &Operation::Input2(Parameter::Binding value) {
     m_Input2 = std::move(value);
     m_HasInput2 = true;
     return *this;
@@ -1009,39 +1010,39 @@ Operation &Operation::Input2(Value value) {
 Spec &Spec::TargetOwner() {
     m_TargetMode = TargetMode::Owner;
     m_TargetType = CKGUID();
-    m_TargetValue = Value();
+    m_TargetValue = Parameter::Binding();
     return *this;
 }
 
 Spec &Spec::Target(CKGUID type, CKObject *object) {
-    m_TargetMode = TargetMode::Explicit;
+    m_TargetMode = object ? TargetMode::Explicit : TargetMode::ExplicitNull;
     m_TargetType = type;
-    m_TargetValue = Value::Object(type, object);
+    m_TargetValue = Parameter::Binding::Object(type, object);
     return *this;
 }
 
 Spec &Spec::NullTarget(CKGUID type) {
     m_TargetMode = TargetMode::ExplicitNull;
     m_TargetType = type;
-    m_TargetValue = Value::Object(type, nullptr);
+    m_TargetValue = Value::Null(type);
     return *this;
 }
 
 Spec &Spec::TargetSource(CKGUID type, CKParameter *source) {
     m_TargetMode = TargetMode::Explicit;
     m_TargetType = type;
-    m_TargetValue = Value::DirectSource(source);
+    m_TargetValue = Parameter::Binding::Direct(source);
     return *this;
 }
 
 Spec &Spec::TargetShared(CKGUID type, CKParameterIn *source) {
     m_TargetMode = TargetMode::Explicit;
     m_TargetType = type;
-    m_TargetValue = Value::SharedSource(source);
+    m_TargetValue = Parameter::Binding::Shared(source);
     return *this;
 }
 
-Spec &Spec::Setting(Slot slot, Value value) {
+Spec &Spec::Setting(Slot slot, Parameter::Binding value) {
     slot.Kind = SlotKind::Setting;
     m_SettingStages.back().push_back({std::move(slot), std::move(value)});
     return *this;
@@ -1053,7 +1054,7 @@ Spec &Spec::RefreshLayout() {
     return *this;
 }
 
-Spec &Spec::Input(Slot slot, Value value) {
+Spec &Spec::Input(Slot slot, Parameter::Binding value) {
     slot.Kind = SlotKind::InputParameter;
     m_Operations.erase(
         std::remove_if(m_Operations.begin(), m_Operations.end(),
@@ -1087,7 +1088,7 @@ Spec &Spec::Input(Slot slot, Operation operation) {
     return *this;
 }
 
-Spec &Spec::Local(Slot slot, Value value) {
+Spec &Spec::Local(Slot slot, Parameter::Binding value) {
     slot.Kind = SlotKind::Local;
     m_Locals.push_back({std::move(slot), std::move(value)});
     return *this;
@@ -1310,20 +1311,52 @@ Status Runtime::ValidateTarget(CKBeObject *owner, const Spec &spec) const {
                        Phase::TargetBinding, spec.Prototype());
     }
     if (spec.m_TargetMode == TargetMode::Explicit) {
-        CKObject *object = spec.m_TargetValue.ObjectValue();
-        CKObject *live = object && m_Context
-            ? m_Context->GetObject(spec.m_TargetValue.ObjectId()) : nullptr;
-        if (live != object || !live || live->IsToBeDeleted())
+        if (spec.m_TargetValue.Kind() == Parameter::BindingKind::Object) {
+            CKObject *object = spec.m_TargetValue.ObjectValue();
+            CKObject *live = object && m_Context
+                ? m_Context->GetObject(spec.m_TargetValue.ObjectId()) : nullptr;
+            if (live != object || !live || live->IsToBeDeleted())
+                return Failure(Error::TargetInvalid,
+                               "The explicit Behavior Target has expired.",
+                               CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                               Phase::TargetBinding, spec.Prototype());
+            if ((targetType.ClassId &&
+                 !CKIsChildClassOf(live, targetType.ClassId)) ||
+                !CKIsChildClassOf(live, declared.CompatibleClass)) {
+                return Failure(Error::TargetInvalid,
+                               "The explicit Behavior Target has an incompatible class.",
+                               CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                               Phase::TargetBinding, spec.Prototype());
+            }
+        } else if (spec.m_TargetValue.Kind() ==
+                   Parameter::BindingKind::Direct) {
+            CKParameter *source = spec.m_TargetValue.Source();
+            CKObject *live = source && m_Context
+                ? m_Context->GetObject(spec.m_TargetValue.SourceId()) : nullptr;
+            if (live != source || !live || live->IsToBeDeleted() ||
+                !CKIsChildClassOf(live, CKCID_PARAMETER)) {
+                return Failure(Error::TargetInvalid,
+                               "The direct Target source has expired.",
+                               CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                               Phase::TargetBinding, spec.Prototype());
+            }
+        } else if (spec.m_TargetValue.Kind() ==
+                   Parameter::BindingKind::Shared) {
+            CKParameterIn *source = spec.m_TargetValue.SharedSource();
+            CKObject *live = source && m_Context
+                ? m_Context->GetObject(spec.m_TargetValue.SharedSourceId())
+                : nullptr;
+            if (live != source || !live || live->IsToBeDeleted() ||
+                !CKIsChildClassOf(live, CKCID_PARAMETERIN)) {
+                return Failure(Error::TargetInvalid,
+                               "The shared Target source has expired.",
+                               CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                               Phase::TargetBinding, spec.Prototype());
+            }
+        } else {
             return Failure(Error::TargetInvalid,
-                           "The explicit Behavior Target has expired.",
-                           CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
-                           Phase::TargetBinding, spec.Prototype());
-        if ((targetType.ClassId &&
-             !CKIsChildClassOf(live, targetType.ClassId)) ||
-            !CKIsChildClassOf(live, declared.CompatibleClass)) {
-            return Failure(Error::TargetInvalid,
-                           "The explicit Behavior Target has an incompatible class.",
-                           CKERR_INVALIDOBJECT, CKBR_PARAMETERERROR,
+                           "An explicit Behavior Target requires an object or parameter source.",
+                           CKERR_INVALIDPARAMETER, CKBR_PARAMETERERROR,
                            Phase::TargetBinding, spec.Prototype());
         }
     }
@@ -1883,12 +1916,9 @@ CKParameter *Runtime::Parameter(const Instance &instance,
     return ready ? ResolveParameter(ResolveBehavior(*record), slot.Slot) : nullptr;
 }
 
-Status Runtime::ApplyValue(CKParameter *parameter, const Value &value) const {
-    return Parameter::Write(m_Context, parameter, value);
-}
-
 Status Runtime::BindInput(CKBehavior *behavior, Record &record,
-                                          const SlotInfo &slot, const Value &value) {
+                                          const SlotInfo &slot,
+                                          const Parameter::Binding &value) {
     if (!behavior)
         return Failure(Error::InvalidState, "Behavior is unavailable.");
     CKParameterIn *input = slot.Kind == SlotKind::Target
@@ -1903,32 +1933,32 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
                               [&](ObjectStamp candidate) { return candidate == oldRef; });
     const bool oldOwned = owned != record.OwnedSources.end();
 
-    const bool literalValue = value.Kind() != ValueKind::DirectSource &&
-                              value.Kind() != ValueKind::SharedSource;
-    if (literalValue && oldOwned && oldDirect &&
+    const bool storedValue = value.Kind() != Parameter::BindingKind::Direct &&
+                             value.Kind() != Parameter::BindingKind::Shared;
+    if (storedValue && oldOwned && oldDirect &&
         oldDirect->GetGUID() == input->GetGUID() &&
         SourceReferenceCount(oldDirect) == 1) {
-        return ApplyValue(oldDirect, value);
+        return Parameter::Write(m_Context, oldDirect, value);
     }
 
-    if (value.Kind() == ValueKind::DirectSource) {
-        CKObject *sourceObject = value.ParameterSourceId()
-            ? m_Context->GetObject(value.ParameterSourceId()) : nullptr;
-        if (sourceObject != value.ParameterSource() || !sourceObject || sourceObject->IsToBeDeleted() ||
+    if (value.Kind() == Parameter::BindingKind::Direct) {
+        CKObject *sourceObject = value.SourceId()
+            ? m_Context->GetObject(value.SourceId()) : nullptr;
+        if (sourceObject != value.Source() || !sourceObject || sourceObject->IsToBeDeleted() ||
             !CKIsChildClassOf(sourceObject, CKCID_PARAMETER)) {
             return Failure(Error::SourceInvalid, "Direct source is invalid.");
         }
-        const CKERROR error = input->SetDirectSource(value.ParameterSource());
+        const CKERROR error = input->SetDirectSource(value.Source());
         if (error != CK_OK)
             return Failure(Error::TypeMismatch, "Input rejected its direct source.", error);
-    } else if (value.Kind() == ValueKind::SharedSource) {
-        CKObject *sourceObject = value.SharedParameterSourceId()
-            ? m_Context->GetObject(value.SharedParameterSourceId()) : nullptr;
-        if (sourceObject != value.SharedParameterSource() || !sourceObject || sourceObject->IsToBeDeleted() ||
+    } else if (value.Kind() == Parameter::BindingKind::Shared) {
+        CKObject *sourceObject = value.SharedSourceId()
+            ? m_Context->GetObject(value.SharedSourceId()) : nullptr;
+        if (sourceObject != value.SharedSource() || !sourceObject || sourceObject->IsToBeDeleted() ||
             !CKIsChildClassOf(sourceObject, CKCID_PARAMETERIN)) {
             return Failure(Error::SourceInvalid, "Shared input source is invalid.");
         }
-        const CKERROR error = input->ShareSourceWith(value.SharedParameterSource());
+        const CKERROR error = input->ShareSourceWith(value.SharedSource());
         if (error != CK_OK)
             return Failure(Error::TypeMismatch, "Input rejected its shared source.", error);
     } else {
@@ -1939,7 +1969,7 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
             const_cast<CKSTRING>(name.str().c_str()), input->GetGUID(), TRUE);
         if (!literal)
             return Failure(Error::CreateFailed, "Failed to create an input source parameter.");
-        Status status = ApplyValue(literal, value);
+        Status status = Parameter::Write(m_Context, literal, value);
         if (!status) {
             m_Context->DestroyObject(literal);
             return status;
@@ -1979,17 +2009,17 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
         return status;
     }
 
-    auto resolveInputType = [&](const Value &value, bool provided,
+    auto resolveInputType = [&](const Parameter::Binding &value, bool provided,
                                 CKGUID &type, int inputIndex) -> Status {
         if (!provided) {
             type = CKPGUID_NONE;
             return {};
         }
         CKObject *sourceObject = nullptr;
-        if (value.Kind() == ValueKind::DirectSource) {
-            sourceObject = value.ParameterSourceId()
-                ? m_Context->GetObject(value.ParameterSourceId()) : nullptr;
-            if (sourceObject != value.ParameterSource() || !sourceObject ||
+        if (value.Kind() == Parameter::BindingKind::Direct) {
+            sourceObject = value.SourceId()
+                ? m_Context->GetObject(value.SourceId()) : nullptr;
+            if (sourceObject != value.Source() || !sourceObject ||
                 sourceObject->IsToBeDeleted() ||
                 !CKIsChildClassOf(sourceObject, CKCID_PARAMETER)) {
                 return Failure(Error::SourceInvalid,
@@ -1998,13 +2028,13 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
                                CKERR_INVALIDOBJECT, CKBR_OK,
                                Phase::ParameterBinding);
             }
-            type = value.ParameterSource()->GetGUID();
+            type = value.Source()->GetGUID();
             return {};
         }
-        if (value.Kind() == ValueKind::SharedSource) {
-            sourceObject = value.SharedParameterSourceId()
-                ? m_Context->GetObject(value.SharedParameterSourceId()) : nullptr;
-            if (sourceObject != value.SharedParameterSource() || !sourceObject ||
+        if (value.Kind() == Parameter::BindingKind::Shared) {
+            sourceObject = value.SharedSourceId()
+                ? m_Context->GetObject(value.SharedSourceId()) : nullptr;
+            if (sourceObject != value.SharedSource() || !sourceObject ||
                 sourceObject->IsToBeDeleted() ||
                 !CKIsChildClassOf(sourceObject, CKCID_PARAMETERIN)) {
                 return Failure(Error::SourceInvalid,
@@ -2013,7 +2043,7 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
                                CKERR_INVALIDOBJECT, CKBR_OK,
                                Phase::ParameterBinding);
             }
-            type = value.SharedParameterSource()->GetGUID();
+            type = value.SharedSource()->GetGUID();
             return {};
         }
         type = value.Type();
@@ -2124,7 +2154,8 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
             record.PrototypeGuid));
     }
 
-    auto bindOperationInput = [&](CKParameterIn *input, const Value &value,
+    auto bindOperationInput = [&](CKParameterIn *input,
+                                  const Parameter::Binding &value,
                                   bool provided, int inputIndex) -> Status {
         if (!input || input->GetGUID() == CKPGUID_NONE) {
             if (!provided)
@@ -2144,10 +2175,10 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
         }
 
         CKERROR error = CK_OK;
-        if (value.Kind() == ValueKind::DirectSource) {
-            error = input->SetDirectSource(value.ParameterSource());
-        } else if (value.Kind() == ValueKind::SharedSource) {
-            error = input->ShareSourceWith(value.SharedParameterSource());
+        if (value.Kind() == Parameter::BindingKind::Direct) {
+            error = input->SetDirectSource(value.Source());
+        } else if (value.Kind() == Parameter::BindingKind::Shared) {
+            error = input->ShareSourceWith(value.SharedSource());
         } else {
             std::ostringstream sourceName;
             sourceName << name.str() << "_Input" << inputIndex;
@@ -2159,7 +2190,7 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
                                CKERR_INVALIDPARAMETER, CKBR_OK,
                                Phase::ParameterBinding);
             }
-            Status applied = ApplyValue(literal, value);
+            Status applied = Parameter::Write(m_Context, literal, value);
             if (!applied) {
                 m_Context->DestroyObject(literal);
                 return applied;
@@ -2429,7 +2460,7 @@ Status Runtime::BindTarget(CKBehavior *behavior, CKBeObject *owner,
                        "Failed to enable the explicit target.", useError,
                        CKBR_OK, Phase::TargetBinding,
                        record.PrototypeGuid);
-    if (spec.m_TargetValue.Kind() == ValueKind::Object &&
+    if (spec.m_TargetValue.Kind() == Parameter::BindingKind::Object &&
         spec.m_TargetValue.ObjectValue()) {
         CKObject *target = spec.m_TargetValue.ObjectId()
             ? m_Context->GetObject(spec.m_TargetValue.ObjectId()) : nullptr;
@@ -2461,7 +2492,8 @@ Status Runtime::ApplyBindings(CKBehavior *behavior, const Spec &spec,
         if (!status)
             return Annotate(std::move(status), Phase::ParameterBinding,
                             record.PrototypeGuid, &binding.Target);
-        status = ApplyValue(ResolveParameter(behavior, slot), binding.Source);
+        status = Parameter::Write(
+            m_Context, ResolveParameter(behavior, slot), binding.Source);
         if (!status)
             return Annotate(std::move(status), Phase::ParameterBinding,
                             record.PrototypeGuid, &binding.Target);
@@ -2703,7 +2735,7 @@ Status Runtime::CallCallback(Record &record, CKDWORD message,
 }
 
 Status Runtime::SetInput(Instance &instance, const Slot &selector,
-                                         const Value &value) {
+                                         const Parameter::Binding &value) {
     SlotRef slot;
     Status status = Resolve(instance, selector, slot);
     return status ? SetInput(instance, slot, value) : status;
@@ -2711,7 +2743,7 @@ Status Runtime::SetInput(Instance &instance, const Slot &selector,
 
 Status Runtime::SetInput(Instance &instance,
                                          const SlotRef &slot,
-                                         const Value &value) {
+                                         const Parameter::Binding &value) {
     Status ready = ReadyStatus();
     if (!ready)
         return ready;
@@ -2739,7 +2771,7 @@ Status Runtime::SetInput(Instance &instance,
 }
 
 Status Runtime::SetLocal(Instance &instance, const Slot &selector,
-                                         const Value &value) {
+                                         const Parameter::Binding &value) {
     SlotRef slot;
     Status status = Resolve(instance, selector, slot);
     return status ? SetLocal(instance, slot, value) : status;
@@ -2747,7 +2779,7 @@ Status Runtime::SetLocal(Instance &instance, const Slot &selector,
 
 Status Runtime::SetLocal(Instance &instance,
                                          const SlotRef &slot,
-                                         const Value &value) {
+                                         const Parameter::Binding &value) {
     Status ready = ReadyStatus();
     if (!ready)
         return ready;
@@ -2766,7 +2798,8 @@ Status Runtime::SetLocal(Instance &instance,
         return status;
     if (slot.Slot.Kind != SlotKind::Local)
         return Failure(Error::InvalidState, "Resolved slot is not a local parameter.");
-    return ApplyValue(ResolveParameter(behavior, slot.Slot), value);
+    return Parameter::Write(
+        m_Context, ResolveParameter(behavior, slot.Slot), value);
 }
 
 Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
@@ -2809,7 +2842,8 @@ Status Runtime::Reconfigure(Instance &instance, const Spec &spec,
             if (!status)
                 return Annotate(std::move(status), Phase::Settings,
                                 record->PrototypeGuid, &binding.Target);
-            status = ApplyValue(ResolveParameter(behavior, setting), binding.Source);
+            status = Parameter::Write(
+                m_Context, ResolveParameter(behavior, setting), binding.Source);
             if (!status)
                 return Annotate(std::move(status), Phase::Settings,
                                 record->PrototypeGuid, &binding.Target);

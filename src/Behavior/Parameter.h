@@ -1,81 +1,65 @@
 #ifndef BML_BEHAVIOR_PARAMETER_H
 #define BML_BEHAVIOR_PARAMETER_H
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include "CKAll.h"
+#include "Behavior/Value.h"
 
 namespace BML::Behavior {
 struct Status;
 }
 
 namespace BML::Behavior {
+namespace Parameter {
 
-enum class ValueKind {
-    Raw,
-    Text,
+enum class BindingKind : std::uint32_t {
+    Value,
     Object,
-    Snapshot,
-    DirectSource,
-    SharedSource,
+    Copy,
+    Direct,
+    Shared,
 };
 
-class Value {
+// A live Virtools parameter binding. Owned literal data remains in Value;
+// CK objects and parameter relations are world-bound and retain both their
+// object id and address until Runtime validates them against the current world.
+class Binding {
 public:
-    static Value Raw(CKGUID type, const void *data, std::size_t size);
-    static Value UntypedRaw(const void *data, std::size_t size);
-    static Value Text(CKGUID type, std::string text);
-    static Value String(std::string text);
-    static Value Object(CKGUID type, CKObject *object);
-    static Value Snapshot(CKParameter *source);
-    static Value DirectSource(CKParameter *source);
-    static Value SharedSource(CKParameterIn *source);
+    Binding() = default;
+    Binding(Value value);
 
-    template <typename T>
-    static Value From(CKGUID type, const T &value) {
-        return Raw(type, &value, sizeof(T));
-    }
+    static Binding Object(CKGUID type, CKObject *object);
+    static Binding Copy(CKParameter *source);
+    static Binding Direct(CKParameter *source);
+    static Binding Shared(CKParameterIn *source);
 
-    [[nodiscard]] ValueKind Kind() const noexcept { return m_Kind; }
+    [[nodiscard]] BindingKind Kind() const noexcept { return m_Kind; }
     [[nodiscard]] CKGUID Type() const noexcept { return m_Type; }
-    [[nodiscard]] const std::vector<std::byte> &Bytes() const noexcept {
-        return m_Bytes;
-    }
-    [[nodiscard]] const std::string &StringValue() const noexcept {
-        return m_Text;
-    }
+    [[nodiscard]] const Value &Literal() const noexcept { return m_Value; }
     [[nodiscard]] CKObject *ObjectValue() const noexcept { return m_Object; }
     [[nodiscard]] CK_ID ObjectId() const noexcept { return m_ObjectId; }
-    [[nodiscard]] CKParameter *ParameterSource() const noexcept {
-        return m_Source;
+    [[nodiscard]] CKParameter *Source() const noexcept { return m_Source; }
+    [[nodiscard]] CK_ID SourceId() const noexcept { return m_SourceId; }
+    [[nodiscard]] CKParameterIn *SharedSource() const noexcept {
+        return m_Shared;
     }
-    [[nodiscard]] CK_ID ParameterSourceId() const noexcept {
-        return m_SourceId;
-    }
-    [[nodiscard]] CKParameterIn *SharedParameterSource() const noexcept {
-        return m_SharedSource;
-    }
-    [[nodiscard]] CK_ID SharedParameterSourceId() const noexcept {
-        return m_SharedSourceId;
+    [[nodiscard]] CK_ID SharedSourceId() const noexcept {
+        return m_SharedId;
     }
 
 private:
-    ValueKind m_Kind = ValueKind::Raw;
+    BindingKind m_Kind = BindingKind::Value;
     CKGUID m_Type = CKGUID();
-    std::vector<std::byte> m_Bytes;
-    std::string m_Text;
+    Value m_Value;
     CKObject *m_Object = nullptr;
     CK_ID m_ObjectId = 0;
     CKParameter *m_Source = nullptr;
     CK_ID m_SourceId = 0;
-    CKParameterIn *m_SharedSource = nullptr;
-    CK_ID m_SharedSourceId = 0;
+    CKParameterIn *m_Shared = nullptr;
+    CK_ID m_SharedId = 0;
 };
-
-namespace Parameter {
 
 enum class Form : std::uint32_t {
     Unsupported,
@@ -125,6 +109,8 @@ struct Type {
 // Source relations are graph structure and are deliberately not accepted.
 [[nodiscard]] Status Write(CKContext *context, CKParameter *parameter,
                            const Value &value);
+[[nodiscard]] Status Write(CKContext *context, CKParameter *parameter,
+                           const Binding &binding);
 
 } // namespace Parameter
 } // namespace BML::Behavior

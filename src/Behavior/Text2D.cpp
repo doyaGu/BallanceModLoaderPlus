@@ -20,11 +20,13 @@ Spec Make(const Options &options) {
         .Input(Slot::At(SlotKind::InputParameter, 5, CKPGUID_2DVECTOR),
                Value::From(CKPGUID_2DVECTOR, options.ParagraphIndentation))
         .Input(Slot::At(SlotKind::InputParameter, 6, CKPGUID_MATERIAL),
-               Value::Object(CKPGUID_MATERIAL, options.BackgroundMaterial))
+               Parameter::Binding::Object(
+                   CKPGUID_MATERIAL, options.BackgroundMaterial))
         .Input(Slot::At(SlotKind::InputParameter, 7, CKPGUID_PERCENTAGE),
                Value::From(CKPGUID_PERCENTAGE, options.CaretSize))
         .Input(Slot::At(SlotKind::InputParameter, 8, CKPGUID_MATERIAL),
-               Value::Object(CKPGUID_MATERIAL, options.CaretMaterial))
+               Parameter::Binding::Object(
+                   CKPGUID_MATERIAL, options.CaretMaterial))
         .Setting(Slot::At(SlotKind::Setting, 0, CKPGUID_TEXTPROPERTIES),
                  Value::From(CKPGUID_TEXTPROPERTIES, options.Flags));
     return spec;

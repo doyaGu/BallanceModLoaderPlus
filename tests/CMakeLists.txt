@@ -314,6 +314,15 @@ add_bml_test(BehaviorEditTest
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
+add_bml_test(BehaviorValueTest
+        SOURCES
+        BehaviorValueTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Value.cpp
+)
+target_include_directories(BehaviorValueTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+)
+
 add_bml_test(StringUtilsTest
         SOURCES
         StringUtilsTest.cpp

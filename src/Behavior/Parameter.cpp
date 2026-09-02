@@ -1,76 +1,52 @@
 #include "Behavior/Parameter.h"
 
-#include <cstring>
 #include <utility>
 
 #include "Behavior/Status.h"
 
 namespace BML::Behavior {
 
-Value Value::Raw(CKGUID type, const void *data, std::size_t size) {
-    Value value;
-    value.m_Kind = ValueKind::Raw;
-    value.m_Type = type;
-    if (data && size != 0) {
-        value.m_Bytes.resize(size);
-        std::memcpy(value.m_Bytes.data(), data, size);
-    }
-    return value;
-}
-
-Value Value::UntypedRaw(const void *data, std::size_t size) {
-    return Raw(CKGUID(), data, size);
-}
-
-Value Value::Text(CKGUID type, std::string text) {
-    Value value;
-    value.m_Kind = ValueKind::Text;
-    value.m_Type = type;
-    value.m_Text = std::move(text);
-    return value;
-}
-
-Value Value::String(std::string text) {
-    return Text(CKPGUID_STRING, std::move(text));
-}
-
-Value Value::Object(CKGUID type, CKObject *object) {
-    Value value;
-    value.m_Kind = ValueKind::Object;
-    value.m_Type = type;
-    value.m_Object = object;
-    value.m_ObjectId = object ? object->GetID() : 0;
-    return value;
-}
-
-Value Value::Snapshot(CKParameter *source) {
-    Value value;
-    value.m_Kind = ValueKind::Snapshot;
-    value.m_Source = source;
-    value.m_SourceId = source ? source->GetID() : 0;
-    value.m_Type = source ? source->GetGUID() : CKGUID();
-    return value;
-}
-
-Value Value::DirectSource(CKParameter *source) {
-    Value value;
-    value.m_Kind = ValueKind::DirectSource;
-    value.m_Source = source;
-    value.m_SourceId = source ? source->GetID() : 0;
-    value.m_Type = source ? source->GetGUID() : CKGUID();
-    return value;
-}
-
-Value Value::SharedSource(CKParameterIn *source) {
-    Value value;
-    value.m_Kind = ValueKind::SharedSource;
-    value.m_SharedSource = source;
-    value.m_SharedSourceId = source ? source->GetID() : 0;
-    value.m_Type = source ? source->GetGUID() : CKGUID();
-    return value;
-}
-
 namespace Parameter {
+
+Binding::Binding(Value value)
+    : m_Kind(BindingKind::Value), m_Type(value.Type()),
+      m_Value(std::move(value)) {}
+
+Binding Binding::Object(CKGUID type, CKObject *object) {
+    if (!object)
+        return Value::Null(type);
+    Binding binding;
+    binding.m_Kind = BindingKind::Object;
+    binding.m_Type = type;
+    binding.m_Object = object;
+    binding.m_ObjectId = object->GetID();
+    return binding;
+}
+
+Binding Binding::Copy(CKParameter *source) {
+    Binding binding;
+    binding.m_Kind = BindingKind::Copy;
+    binding.m_Type = source ? source->GetGUID() : CKGUID();
+    binding.m_Source = source;
+    binding.m_SourceId = source ? source->GetID() : 0;
+    return binding;
+}
+
+Binding Binding::Direct(CKParameter *source) {
+    Binding binding = Copy(source);
+    binding.m_Kind = BindingKind::Direct;
+    return binding;
+}
+
+Binding Binding::Shared(CKParameterIn *source) {
+    Binding binding;
+    binding.m_Kind = BindingKind::Shared;
+    binding.m_Type = source ? source->GetGUID() : CKGUID();
+    binding.m_Shared = source;
+    binding.m_SharedId = source ? source->GetID() : 0;
+    return binding;
+}
+
 namespace {
 
 bool HasProviderRepresentation(const CKParameterTypeDesc &type) noexcept {
@@ -179,48 +155,77 @@ Status Write(CKContext *context, CKParameter *parameter,
         error = parameter->SetStringValue(
             const_cast<CKSTRING>(value.StringValue().c_str()));
         break;
-    case ValueKind::Object: {
-        CKObject *object = value.ObjectId()
-            ? context->GetObject(value.ObjectId()) : nullptr;
-        if (object != value.ObjectValue() ||
-            (object && object->IsToBeDeleted())) {
-            return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
-                    CKBR_PARAMETERERROR, "Object value has expired."};
-        }
+    case ValueKind::Null: {
         const Type type = Describe(context->GetParameterManager(),
                                    parameter->GetGUID());
-        if (object && type.ClassId != 0 &&
-            !CKIsChildClassOf(object, type.ClassId)) {
+        if (!type.ObjectDerived()) {
             return {Error::TypeMismatch, CKERR_INVALIDPARAMETER,
                     CKBR_PARAMETERERROR,
-                    "Object value is incompatible with the parameter class."};
+                    "A null Value requires an object-derived parameter type."};
         }
-        const CK_ID id = object ? object->GetID() : 0;
+        const CK_ID id = 0;
         error = parameter->SetValue(&id, sizeof(id));
         break;
     }
-    case ValueKind::Snapshot: {
-        CKObject *source = value.ParameterSourceId()
-            ? context->GetObject(value.ParameterSourceId()) : nullptr;
-        if (source != value.ParameterSource() || !source ||
-            source->IsToBeDeleted() ||
-            !CKIsChildClassOf(source, CKCID_PARAMETER)) {
-            return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
-                    CKBR_PARAMETERERROR, "Snapshot source is invalid."};
-        }
-        error = parameter->CopyValue(value.ParameterSource(), TRUE);
-        break;
-    }
-    case ValueKind::DirectSource:
-    case ValueKind::SharedSource:
-        return {Error::InvalidState, CKERR_INVALIDPARAMETER,
-                CKBR_PARAMETERERROR,
-                "Source relations cannot be written as parameter values."};
     }
     return error == CK_OK
         ? Status{}
         : Status{Error::ValueWriteFailed, error, CKBR_PARAMETERERROR,
                  "CKParameter rejected the value."};
+}
+
+Status Write(CKContext *context, CKParameter *parameter,
+             const Binding &binding) {
+    if (binding.Kind() == BindingKind::Value)
+        return Write(context, parameter, binding.Literal());
+    if (!context || !parameter)
+        return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR, "Parameter is not writable."};
+
+    CKERROR error = CK_OK;
+    if (binding.Kind() == BindingKind::Object) {
+        CKObject *object = binding.ObjectId()
+            ? context->GetObject(binding.ObjectId()) : nullptr;
+        if (object != binding.ObjectValue() || !object ||
+            object->IsToBeDeleted()) {
+            return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
+                    CKBR_PARAMETERERROR, "Object binding has expired."};
+        }
+        if (binding.Type().IsValid() &&
+            !Compatible(context->GetParameterManager(), parameter->GetGUID(),
+                        binding.Type())) {
+            return {Error::TypeMismatch, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR,
+                    "Object binding type is incompatible with the slot type."};
+        }
+        const Type type = Describe(context->GetParameterManager(),
+                                   parameter->GetGUID());
+        if (type.ClassId != 0 && !CKIsChildClassOf(object, type.ClassId)) {
+            return {Error::TypeMismatch, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR,
+                    "Object binding is incompatible with the parameter class."};
+        }
+        const CK_ID id = object->GetID();
+        error = parameter->SetValue(&id, sizeof(id));
+    } else if (binding.Kind() == BindingKind::Copy) {
+        CKObject *source = binding.SourceId()
+            ? context->GetObject(binding.SourceId()) : nullptr;
+        if (source != binding.Source() || !source ||
+            source->IsToBeDeleted() ||
+            !CKIsChildClassOf(source, CKCID_PARAMETER)) {
+            return {Error::SourceInvalid, CKERR_INVALIDOBJECT,
+                    CKBR_PARAMETERERROR, "Parameter copy source is invalid."};
+        }
+        error = parameter->CopyValue(binding.Source(), TRUE);
+    } else {
+        return {Error::InvalidState, CKERR_INVALIDPARAMETER,
+                CKBR_PARAMETERERROR,
+                "Direct and shared sources require an input parameter."};
+    }
+    return error == CK_OK
+        ? Status{}
+        : Status{Error::ValueWriteFailed, error, CKBR_PARAMETERERROR,
+                 "CKParameter rejected the binding."};
 }
 
 } // namespace Parameter

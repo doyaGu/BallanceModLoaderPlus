@@ -53,7 +53,7 @@ Spec Convex(const Options &options, CKMesh *mesh) {
                  Value::From(CKPGUID_INT, concave))
         .RefreshLayout()
         .Input(Slot::At(SlotKind::InputParameter, 11, CKPGUID_MESH),
-               Value::Object(CKPGUID_MESH, mesh));
+               Parameter::Binding::Object(CKPGUID_MESH, mesh));
     return spec;
 }
 
@@ -89,7 +89,7 @@ Spec Concave(const Options &options, CKMesh *mesh) {
                  Value::From(CKPGUID_INT, concave))
         .RefreshLayout()
         .Input(Slot::At(SlotKind::InputParameter, 11, CKPGUID_MESH),
-               Value::Object(CKPGUID_MESH, mesh));
+               Parameter::Binding::Object(CKPGUID_MESH, mesh));
     return spec;
 }
 

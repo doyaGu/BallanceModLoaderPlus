@@ -310,6 +310,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Layout.h
         Behavior/FrameStore.h
         Behavior/Parameter.h
+        Behavior/Value.h
         Behavior/Patches.h
         Behavior/Plan.h
         Behavior/HookBlock.h
@@ -338,6 +339,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Layout.cpp
         Behavior/FrameStore.cpp
         Behavior/Parameter.cpp
+        Behavior/Value.cpp
         Behavior/Patches.cpp
         Behavior/Plan.cpp
         Behavior/PrototypeCatalog.cpp
