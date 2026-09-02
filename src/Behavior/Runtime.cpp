@@ -69,39 +69,9 @@ bool SameSelector(const Slot &left, const Slot &right) {
         : left.Index == right.Index;
 }
 
-const char *SlotKindName(SlotKind kind) {
-    switch (kind) {
-    case SlotKind::Input: return "input";
-    case SlotKind::Output: return "output";
-    case SlotKind::InputParameter: return "input parameter";
-    case SlotKind::OutputParameter: return "output parameter";
-    case SlotKind::Setting: return "setting";
-    case SlotKind::Local: return "local parameter";
-    case SlotKind::Target: return "target";
-    }
-    return "slot";
-}
-
 std::string GuidText(CKGUID guid) {
     std::ostringstream stream;
     stream << std::hex << "0x" << guid.d1 << ":0x" << guid.d2;
-    return stream.str();
-}
-
-std::string CandidateList(const Layout &layout, SlotKind kind) {
-    std::ostringstream stream;
-    bool first = true;
-    for (const SlotInfo &candidate : layout.Slots) {
-        if (candidate.Kind != kind)
-            continue;
-        stream << (first ? " Available: " : ", ") << "[" << candidate.Index << "] '"
-               << candidate.Name << "'";
-        if (candidate.Type.IsValid())
-            stream << " " << GuidText(candidate.Type);
-        first = false;
-    }
-    if (first)
-        stream << " No slots of this kind are present.";
     return stream.str();
 }
 
@@ -1545,153 +1515,17 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
 }
 
 Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
-    Layout layout;
     if (!ReadyStatus() || !behavior)
-        return layout;
-    layout.Prototype = PrototypeGuid(behavior);
-    layout.Origin = LayoutOrigin::Live;
-    layout.Kind = behavior->IsUsingFunction()
-        ? BehaviorKind::Function : BehaviorKind::Graph;
-    CKBehaviorPrototype *prototype = PrototypeOf(behavior);
-    if (prototype) {
-        layout.PrototypeName = prototype->GetName() ? prototype->GetName() : "";
-        layout.PrototypeFlags = prototype->GetFlags();
-    }
-    if (CKObjectDeclaration *declaration =
-            CKGetObjectDeclarationFromGuid(layout.Prototype)) {
-        layout.Category = declaration->GetCategory() ? declaration->GetCategory() : "";
-        for (int i = 0; i < declaration->GetManagerNeededCount(); ++i)
-            layout.RequiredManagers.push_back(declaration->GetManagerNeeded(i));
-    }
-    layout.CompatibleClass = behavior->GetCompatibleClassID();
-    layout.BehaviorFlags = behavior->GetFlags();
-    layout.Generation = generation;
-
-    for (int i = 0; i < behavior->GetInputCount(); ++i) {
-        CKBehaviorIO *io = behavior->GetInput(i);
-        layout.Slots.push_back({SlotKind::Input, i, i, io && io->GetName() ? io->GetName() : "", CKGUID(), 0});
-    }
-    for (int i = 0; i < behavior->GetOutputCount(); ++i) {
-        CKBehaviorIO *io = behavior->GetOutput(i);
-        layout.Slots.push_back({SlotKind::Output, i, i, io && io->GetName() ? io->GetName() : "", CKGUID(), 0});
-    }
-    for (int i = 0; i < behavior->GetInputParameterCount(); ++i) {
-        CKParameterIn *parameter = behavior->GetInputParameter(i);
-        CKParameterTypeDesc *description = parameter && m_Context
-            ? m_Context->GetParameterManager()->GetParameterTypeDescription(parameter->GetGUID())
-            : nullptr;
-        layout.Slots.push_back({SlotKind::InputParameter, i, i,
-                                parameter && parameter->GetName() ? parameter->GetName() : "",
-                                parameter ? parameter->GetGUID() : CKGUID(),
-                                parameter && parameter->GetRealSource()
-                                    ? parameter->GetRealSource()->GetDataSize()
-                                    : (description ? description->DefaultSize : 0)});
-    }
-    for (int i = 0; i < behavior->GetOutputParameterCount(); ++i) {
-        CKParameterOut *parameter = behavior->GetOutputParameter(i);
-        layout.Slots.push_back({SlotKind::OutputParameter, i, i,
-                                parameter && parameter->GetName() ? parameter->GetName() : "",
-                                parameter ? parameter->GetGUID() : CKGUID(),
-                                parameter ? parameter->GetDataSize() : 0});
-    }
-
-    int settingIndex = 0;
-    for (int nativeIndex = 0; nativeIndex < behavior->GetLocalParameterCount(); ++nativeIndex) {
-        CKParameterLocal *parameter = behavior->GetLocalParameter(nativeIndex);
-        bool setting = behavior->IsLocalParameterSetting(nativeIndex) != FALSE;
-        if (prototype && nativeIndex < prototype->GetLocalParameterCount()) {
-            CKPARAMETER_DESC **locals = prototype->GetLocalParameterList();
-            setting = locals && locals[nativeIndex] &&
-                locals[nativeIndex]->Type == 3;
-        }
-        if (setting) {
-            layout.Slots.push_back({SlotKind::Setting, settingIndex++, nativeIndex,
-                                    parameter && parameter->GetName() ? parameter->GetName() : "",
-                                    parameter ? parameter->GetGUID() : CKGUID(),
-                                    parameter ? parameter->GetDataSize() : 0});
-        } else {
-            // A setting lives in CKBehavior's native local array, but it is not
-            // an ordinary local: changing it requires SETTINGSEDITED and may
-            // rebuild the rest of the layout. Exposing it twice lets callers
-            // bypass that lifecycle through SetLocal.
-            layout.Slots.push_back({SlotKind::Local, nativeIndex, nativeIndex,
-                                    parameter && parameter->GetName() ? parameter->GetName() : "",
-                                    parameter ? parameter->GetGUID() : CKGUID(),
-                                    parameter ? parameter->GetDataSize() : 0});
-        }
-    }
-    if (CKParameterIn *target = behavior->GetTargetParameter()) {
-        layout.TargetType = target->GetGUID();
-        CKParameterTypeDesc *description = m_Context
-            ? m_Context->GetParameterManager()->GetParameterTypeDescription(target->GetGUID())
-            : nullptr;
-        layout.Slots.push_back({SlotKind::Target, 0, 0,
-                                target->GetName() ? target->GetName() : "Target",
-                                target->GetGUID(), target->GetRealSource()
-                                    ? target->GetRealSource()->GetDataSize()
-                                    : (description ? description->DefaultSize : 0)});
-    }
-    CKParameterManager *parameters = m_Context
-        ? m_Context->GetParameterManager() : nullptr;
-    for (std::size_t index = 0; index < layout.Slots.size(); ++index) {
-        SlotInfo &slot = layout.Slots[index];
-        slot.Occurrence = 0;
-        for (std::size_t previous = 0; previous < index; ++previous) {
-            if (layout.Slots[previous].Kind == slot.Kind &&
-                layout.Slots[previous].Name == slot.Name)
-                ++slot.Occurrence;
-        }
-        if (slot.Type.IsValid()) {
-            const Parameter::Type type =
-                Parameter::Describe(parameters, slot.Type);
-            slot.TypeName = type.Name;
-            slot.ValueForm = type.ValueForm;
-        }
-        switch (slot.Kind) {
-        case SlotKind::Input:
-            slot.Dynamic = (layout.BehaviorFlags &
-                (CKBEHAVIOR_VARIABLEINPUTS |
-                 CKBEHAVIOR_INTERNALLYCREATEDINPUTS)) != 0;
-            break;
-        case SlotKind::Output:
-            slot.Dynamic = (layout.BehaviorFlags &
-                (CKBEHAVIOR_VARIABLEOUTPUTS |
-                 CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS)) != 0;
-            break;
-        case SlotKind::InputParameter:
-            slot.Dynamic = (layout.BehaviorFlags &
-                (CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
-                 CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS)) != 0;
-            break;
-        case SlotKind::OutputParameter:
-            slot.Dynamic = (layout.BehaviorFlags &
-                (CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
-                 CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS)) != 0;
-            break;
-        case SlotKind::Setting:
-        case SlotKind::Local:
-            slot.Dynamic = (layout.BehaviorFlags &
-                CKBEHAVIOR_INTERNALLYCREATEDLOCALPARAMS) != 0;
-            break;
-        case SlotKind::Target:
-            break;
-        }
-    }
+        return {};
+    Layout declared;
+    const Layout *metadata = nullptr;
     if (m_Catalog) {
-        Layout declared;
-        if (m_Catalog->DeclaredLayout({layout.Prototype, 0}, declared)) {
-            layout.ProviderGeneration = declared.ProviderGeneration;
-            layout.Provider = declared.Provider;
-            layout.ProviderName = declared.ProviderName;
-            layout.Author = declared.Author;
-            layout.Description = declared.Description;
-            layout.Version = declared.Version;
-            if (!layout.TargetType.IsValid())
-                layout.TargetType = declared.TargetType;
-            layout.Managers = declared.Managers;
-        }
+        if (m_Catalog->DeclaredLayout(
+                {PrototypeGuid(behavior), 0}, declared))
+            metadata = &declared;
     }
-    return layout;
+    return LiveLayout(m_Context, behavior, PrototypeGuid(behavior),
+                      PrototypeOf(behavior)).Describe(generation, metadata);
 }
 
 Status Runtime::Describe(const Instance &instance, Layout &layout) const {
@@ -1717,77 +1551,8 @@ Status Runtime::Resolve(CKBehavior *behavior, const Slot &selector,
         return ready;
     if (!behavior)
         return Failure(Error::InvalidState, "Behavior no longer exists.");
-
-    const Layout layout = Describe(behavior);
-    auto failSlot = [&](Error error, std::string message,
-                        CKGUID actualType = CKGUID()) {
-        Status status = SlotFailure(error, std::move(message), selector,
-                                            actualType);
-        status.Details.Prototype = layout.Prototype;
-        return status;
-    };
-    std::vector<const SlotInfo *> matches;
-    for (const SlotInfo &candidate : layout.Slots) {
-        if (candidate.Kind != selector.Kind)
-            continue;
-        if (selector.UsesName()) {
-            if (candidate.Name == selector.Name)
-                matches.push_back(&candidate);
-        } else if (selector.RequireOnly || candidate.Index == selector.Index) {
-            matches.push_back(&candidate);
-        }
-    }
-    if (matches.empty()) {
-        std::ostringstream message;
-        message << SlotKindName(selector.Kind) << " "
-                << (selector.RequireOnly
-                    ? "<only>"
-                    : selector.UsesName()
-                        ? "'" + selector.Name + "'"
-                        : "#" + std::to_string(selector.Index))
-                << " was not found on Building Block '" << SafeName(behavior) << "'."
-                << CandidateList(layout, selector.Kind);
-        return failSlot(Error::SlotNotFound, message.str());
-    }
-    if (selector.RequireOnly && matches.size() != 1) {
-        return failSlot(
-            Error::AmbiguousSlot,
-            "Expected exactly one " + std::string(SlotKindName(selector.Kind)) +
-                ", but the configured Layout contains " +
-                std::to_string(matches.size()) + "." +
-                CandidateList(layout, selector.Kind));
-    }
-    if (selector.UsesName() && selector.RequireUnique && matches.size() != 1) {
-        return failSlot(
-            Error::AmbiguousSlot,
-            "Slot name '" + selector.Name + "' matched " +
-                std::to_string(matches.size()) +
-                " candidates; select an explicit occurrence." +
-                CandidateList(layout, selector.Kind));
-    }
-    const int occurrence = selector.UsesName() ? selector.Occurrence : 0;
-    if (occurrence < 0 || occurrence >= static_cast<int>(matches.size())) {
-        return failSlot(
-            Error::SlotNotFound,
-            "Requested occurrence " + std::to_string(occurrence) + " of " +
-                SlotKindName(selector.Kind) + " '" + selector.Name +
-                "' does not exist; " + std::to_string(matches.size()) +
-                " candidate(s) matched." + CandidateList(layout, selector.Kind));
-    }
-    slot = *matches[static_cast<std::size_t>(occurrence)];
-
-    if (selector.ExpectedType.IsValid() && slot.Type.IsValid()) {
-        CKParameterManager *manager = m_Context ? m_Context->GetParameterManager() : nullptr;
-        if (!manager || !manager->IsTypeCompatible(slot.Type, selector.ExpectedType)) {
-            return failSlot(
-                Error::TypeMismatch,
-                "Resolved " + std::string(SlotKindName(selector.Kind)) + " '" +
-                    slot.Name + "' has type " + GuidText(slot.Type) +
-                    ", incompatible with expected " + GuidText(selector.ExpectedType) + ".",
-                slot.Type);
-        }
-    }
-    return {};
+    return LiveLayout(m_Context, behavior, PrototypeGuid(behavior),
+                      PrototypeOf(behavior)).Resolve(selector, slot);
 }
 
 Status Runtime::Resolve(const Instance &instance,
@@ -1816,46 +1581,13 @@ Status Runtime::Resolve(const Instance &instance,
 }
 
 CKParameter *Runtime::ResolveParameter(CKBehavior *behavior, const SlotInfo &slot) const {
-    if (!behavior)
-        return nullptr;
-    switch (slot.Kind) {
-    case SlotKind::InputParameter: {
-        CKParameterIn *input = behavior->GetInputParameter(slot.NativeIndex);
-        return input ? input->GetRealSource() : nullptr;
-    }
-    case SlotKind::OutputParameter:
-        return behavior->GetOutputParameter(slot.NativeIndex);
-    case SlotKind::Setting:
-    case SlotKind::Local:
-        return behavior->GetLocalParameter(slot.NativeIndex);
-    case SlotKind::Target: {
-        CKParameterIn *target = behavior->GetTargetParameter();
-        return target ? target->GetRealSource() : nullptr;
-    }
-    default:
-        return nullptr;
-    }
+    return LiveLayout(m_Context, behavior, PrototypeGuid(behavior),
+                      PrototypeOf(behavior)).Parameter(slot);
 }
 
 CKObject *Runtime::ResolveSlotObject(CKBehavior *behavior, const SlotInfo &slot) const {
-    if (!behavior)
-        return nullptr;
-    switch (slot.Kind) {
-    case SlotKind::Input:
-        return behavior->GetInput(slot.NativeIndex);
-    case SlotKind::Output:
-        return behavior->GetOutput(slot.NativeIndex);
-    case SlotKind::InputParameter:
-        return behavior->GetInputParameter(slot.NativeIndex);
-    case SlotKind::OutputParameter:
-        return behavior->GetOutputParameter(slot.NativeIndex);
-    case SlotKind::Setting:
-    case SlotKind::Local:
-        return behavior->GetLocalParameter(slot.NativeIndex);
-    case SlotKind::Target:
-        return behavior->GetTargetParameter();
-    }
-    return nullptr;
+    return LiveLayout(m_Context, behavior, PrototypeGuid(behavior),
+                      PrototypeOf(behavior)).Object(slot);
 }
 
 Status Runtime::ValidateSlot(const Record &record,

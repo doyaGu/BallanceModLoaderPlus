@@ -10,6 +10,8 @@
 
 namespace BML::Behavior {
 
+struct Status;
+
 enum class SlotKind {
     Input,
     Output,
@@ -101,6 +103,32 @@ struct SlotRef {
     std::uint64_t LayoutGeneration = 0;
     CKObject *Object = nullptr;
     SlotInfo Slot;
+};
+
+// The current native Layout of one CKBehavior. This object is deliberately
+// short-lived: it borrows the CK objects only while Runtime is handling one
+// operation. A full Layout is built only for inspection; Resolve walks only
+// the requested slot family and keeps normal execution off that allocation
+// path.
+class LiveLayout final {
+public:
+    LiveLayout(CKContext *context, CKBehavior *behavior, CKGUID prototype,
+               CKBehaviorPrototype *declaration) noexcept
+        : m_Context(context), m_Behavior(behavior), m_Prototype(prototype),
+          m_Declaration(declaration) {}
+
+    [[nodiscard]] Layout Describe(
+        std::uint64_t generation = 0,
+        const Layout *declared = nullptr) const;
+    [[nodiscard]] Status Resolve(const Slot &selector, SlotInfo &slot) const;
+    [[nodiscard]] CKObject *Object(const SlotInfo &slot) const;
+    [[nodiscard]] CKParameter *Parameter(const SlotInfo &slot) const;
+
+private:
+    CKContext *m_Context = nullptr;
+    CKBehavior *m_Behavior = nullptr;
+    CKGUID m_Prototype = CKGUID();
+    CKBehaviorPrototype *m_Declaration = nullptr;
 };
 
 } // namespace BML::Behavior
