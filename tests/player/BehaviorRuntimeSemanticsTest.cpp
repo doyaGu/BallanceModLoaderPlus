@@ -31,8 +31,10 @@ public:
 
     void OnStartLevel() override { m_LevelStarted = true; }
 
+    void OnBallNavActive() override { m_BallNavigationActive = true; }
+
     void OnProcess() override {
-        if (!m_LevelStarted || g_Result.State !=
+        if (!m_LevelStarted || !m_BallNavigationActive || g_Result.State !=
                 BML_BEHAVIOR_RUNTIME_SEMANTICS_PENDING)
             return;
         if (!m_Semantics && !CreateOwner())
@@ -48,6 +50,7 @@ public:
             : BML_BEHAVIOR_RUNTIME_SEMANTICS_FAILED;
         g_Result.LifecyclePassed = result.LifecyclePassed ? 1u : 0u;
         g_Result.AdditiveEditPassed = result.AdditiveEditPassed ? 1u : 0u;
+        g_Result.PhysicsForcePassed = result.PhysicsForcePassed ? 1u : 0u;
         const std::size_t length = (std::min)(
             result.Detail.size(), sizeof(g_Result.Detail) - 1);
         std::memcpy(g_Result.Detail, result.Detail.data(), length);
@@ -56,10 +59,11 @@ public:
         m_Semantics.reset();
         DestroyOwner();
         GetLogger()->Info(
-            "Behavior runtime semantics: status=%s lifecycle=%s additive_edit=%s detail=%s",
+            "Behavior runtime semantics: status=%s lifecycle=%s additive_edit=%s physics_force=%s detail=%s",
             result.Passed ? "pass" : "fail",
             result.LifecyclePassed ? "true" : "false",
             result.AdditiveEditPassed ? "true" : "false",
+            result.PhysicsForcePassed ? "true" : "false",
             g_Result.Detail);
     }
 
@@ -109,6 +113,7 @@ private:
     CK3dObject *m_Owner = nullptr;
     int m_Frame = 0;
     bool m_LevelStarted = false;
+    bool m_BallNavigationActive = false;
 };
 
 } // namespace

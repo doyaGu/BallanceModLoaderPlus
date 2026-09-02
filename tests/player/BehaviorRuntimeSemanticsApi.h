@@ -11,10 +11,11 @@ enum BMLBehaviorRuntimeSemanticsState : std::uint32_t {
 
 struct BMLBehaviorRuntimeSemanticsResult {
     std::uint32_t Size = sizeof(BMLBehaviorRuntimeSemanticsResult);
-    std::uint32_t Version = 1;
+    std::uint32_t Version = 2;
     std::uint32_t State = BML_BEHAVIOR_RUNTIME_SEMANTICS_PENDING;
     std::uint32_t LifecyclePassed = 0;
     std::uint32_t AdditiveEditPassed = 0;
+    std::uint32_t PhysicsForcePassed = 0;
     char Detail[96]{};
 };
 

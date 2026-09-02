@@ -70,6 +70,7 @@ bml_add_mod(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Parameter.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Physicalize.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsForce.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsImpulse.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp

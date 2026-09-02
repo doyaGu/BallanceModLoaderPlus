@@ -10,12 +10,14 @@
 #include "Behavior/CKEdit.h"
 #include "Behavior/ObjectLoad.h"
 #include "Behavior/Physicalize.h"
+#include "Behavior/PhysicsForce.h"
 #include "Behavior/PhysicsImpulse.h"
 #include "Behavior/Runtime.h"
 #include "Behavior/Text2D.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/physics_RT.h"
 
+#include <cmath>
 #include <memory>
 #include <initializer_list>
 #include <sstream>
@@ -303,6 +305,7 @@ class BehaviorRuntimeSemantics::Impl final {
 public:
     Impl(CKContext *context, CK3dObject *owner)
         : m_Context(context), m_Owner(owner), m_Runtime(context),
+          m_PhysicsForces(context, m_Runtime),
           m_ConsumerRuntime(context) {
         m_EditGraph = MakeCKGraphSource(
             context, m_Runtime, [](const void *value) {
@@ -391,6 +394,13 @@ public:
         case State::AdditiveEditStart: StartAdditiveEdit(); break;
         case State::AdditiveEditWait: ObserveAdditiveEdit(); break;
         case State::AdditiveEditClose: CloseAdditiveEdit(); break;
+        case State::Physicalize: PhysicalizeBody(); break;
+        case State::PhysicsForceCreate: CreatePhysicsForce(); break;
+        case State::PhysicsForceObserve: ObservePhysicsForce(); break;
+        case State::PhysicsForceUpdate: UpdatePhysicsForce(); break;
+        case State::PhysicsForceUpdateObserve: ObserveUpdatedPhysicsForce(); break;
+        case State::PhysicsForceClearObserve: ObserveClearedPhysicsForce(); break;
+        case State::PhysicsForceShutdown: ShutdownPhysicsForce(); break;
         case State::LifecycleFixture: CheckLifecycleFixture(); break;
         case State::Complete: break;
         }
@@ -403,6 +413,7 @@ public:
         result.Detail = m_Failures.str();
         result.LifecyclePassed = m_LifecyclePassed;
         result.AdditiveEditPassed = m_AdditiveEditPassed;
+        result.PhysicsForcePassed = m_PhysicsForcePassed;
         result.Passed = Done() && result.Detail.empty();
         if (result.Passed)
             result.Detail = "complete";
@@ -468,6 +479,13 @@ private:
         AdditiveEditStart,
         AdditiveEditWait,
         AdditiveEditClose,
+        Physicalize,
+        PhysicsForceCreate,
+        PhysicsForceObserve,
+        PhysicsForceUpdate,
+        PhysicsForceUpdateObserve,
+        PhysicsForceClearObserve,
+        PhysicsForceShutdown,
         LifecycleFixture,
         Complete,
     };
@@ -1913,7 +1931,7 @@ private:
 
     void CloseAdditiveEdit() {
         if (!m_EditFixture) {
-            m_State = State::LifecycleFixture;
+            m_State = State::Physicalize;
             return;
         }
         if (CKScene *scene = m_Context->GetCurrentScene())
@@ -1967,6 +1985,303 @@ private:
         m_Context->DestroyObject(m_EditFixture);
         m_EditFixture = nullptr;
         m_EditSource = nullptr;
+        m_State = State::Physicalize;
+    }
+
+    bool ReadPhysicsController(void *&controller) {
+        controller = nullptr;
+        Status status;
+        CKParameter *local = m_Runtime.Parameter(
+            m_PhysicsForceInstance,
+            Slot::At(SlotKind::Local, 0, CKPGUID_POINTER), &status);
+        return status && local && local->GetValue(&controller) == CK_OK;
+    }
+
+    void PhysicalizeBody() {
+        Physicalize::Options options;
+        options.Target = m_Owner;
+        options.EnableCollision = FALSE;
+        options.LinearDamping = 0.1f;
+        options.RotationalDamping = 0.1f;
+
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, Physicalize::Ball(options, VxVector(), 2.0f));
+        if (!created) {
+            Fail("physics-force-physicalize-create");
+            m_State = State::LifecycleFixture;
+            return;
+        }
+        m_PhysicalizeInstance = std::move(created.Handle);
+        RunResult run = WithContextCheck("physics-force-physicalize-context", [&] {
+            return m_Runtime.Pulse(
+                m_PhysicalizeInstance, Slot::At(SlotKind::Input, 0));
+        });
+        m_Physicalized = run && run.State == RunState::Ready &&
+            run.Admission == AdmissionState::Executed &&
+            run.ReturnCode == CKBR_OK && run.ActiveOutputs.size() == 1 &&
+            run.ActiveOutputs[0] == 0;
+        if (!m_Physicalized) {
+            Fail("physics-force-physicalize");
+            m_State = State::PhysicsForceShutdown;
+            return;
+        }
+        m_State = State::PhysicsForceCreate;
+    }
+
+    void CreatePhysicsForce() {
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, PhysicsForceWithMagnitude(m_Owner, 1000.0f));
+        if (!created) {
+            Fail("physics-force-create");
+            m_State = State::PhysicsForceShutdown;
+            return;
+        }
+        m_PhysicsForceInstance = std::move(created.Handle);
+        RunResult run = WithContextCheck("physics-force-create-context", [&] {
+            return m_Runtime.Pulse(
+                m_PhysicsForceInstance, Slot::At(SlotKind::Input, 0));
+        });
+
+        void *controller = nullptr;
+        const bool localReadable = ReadPhysicsController(controller);
+        m_PhysicsForceCreated = run && run.State == RunState::Ready &&
+            run.Admission == AdmissionState::Executed &&
+            run.ReturnCode == CKBR_OK && run.ActiveOutputs.size() == 1 &&
+            run.ActiveOutputs[0] == 0 &&
+            m_Runtime.State(m_PhysicsForceInstance) == ExecutionState::Idle &&
+            !m_Runtime.IsTaskActive(m_PhysicsForceInstance) &&
+            localReadable && controller != nullptr;
+        if (!m_PhysicsForceCreated)
+            Fail("physics-force-create-semantics");
+        m_PhysicsControllerObserved = localReadable && controller != nullptr;
+        m_PhysicsControllerOutlivedExecution = m_PhysicsControllerObserved &&
+            m_Runtime.State(m_PhysicsForceInstance) == ExecutionState::Idle &&
+            !m_Runtime.IsTaskActive(m_PhysicsForceInstance);
+
+        VxVector position;
+        m_Owner->GetPosition(&position);
+        m_PhysicsForceStartX = position.x;
+        m_PhysicsForceStartFrame = m_LastPlayerFrame;
+        m_State = run ? State::PhysicsForceObserve
+                      : State::PhysicsForceShutdown;
+    }
+
+    void ObservePhysicsForce() {
+        ProcessRuntimeFrame("physics-force-frame-context");
+        void *controller = nullptr;
+        const bool localReadable = ReadPhysicsController(controller);
+        VxVector position;
+        m_Owner->GetPosition(&position);
+
+        if (localReadable && controller) {
+            m_PhysicsControllerObserved = true;
+            m_PhysicsControllerOutlivedExecution =
+                m_Runtime.State(m_PhysicsForceInstance) == ExecutionState::Idle &&
+                !m_Runtime.IsTaskActive(m_PhysicsForceInstance);
+        }
+        if (std::isfinite(position.x) &&
+            std::fabs(position.x - m_PhysicsForceStartX) > 0.01f) {
+            m_PhysicsForceMoved = true;
+            m_PhysicsForceAfterX = position.x;
+        }
+
+        const bool timedOut =
+            m_LastPlayerFrame - m_PhysicsForceStartFrame >= 180;
+        if ((!m_PhysicsControllerObserved || !m_PhysicsForceMoved) && !timedOut)
+            return;
+
+        if (!m_PhysicsControllerObserved)
+            Fail("physics-force-controller");
+        if (!m_PhysicsControllerOutlivedExecution)
+            Fail("physics-force-inactive-lifetime");
+        if (!m_PhysicsForceMoved)
+            Fail("physics-force-motion");
+
+        if (controller) {
+            RunResult shutdown = WithContextCheck(
+                "physics-force-shutdown-context", [&] {
+                    return m_Runtime.Pulse(
+                        m_PhysicsForceInstance,
+                        Slot::At(SlotKind::Input, 1));
+                });
+            void *remaining = nullptr;
+            const bool remainingReadable = ReadPhysicsController(remaining);
+            m_PhysicsForceStopped = shutdown &&
+                shutdown.State == RunState::Ready &&
+                shutdown.Admission == AdmissionState::Executed &&
+                shutdown.ReturnCode == CKBR_OK &&
+                shutdown.ActiveOutputs.size() == 1 &&
+                shutdown.ActiveOutputs[0] == 1 &&
+                remainingReadable && remaining == nullptr;
+        } else {
+            Spec cancel = PhysicsForceWithMagnitude(nullptr, 0.0f);
+            m_PhysicsForceCancelled = static_cast<bool>(
+                m_Runtime.Reconfigure(m_PhysicsForceInstance, cancel));
+        }
+        if (!m_PhysicsForceStopped && !m_PhysicsForceCancelled)
+            Fail("physics-force-shutdown");
+        m_State = m_PhysicsForceStopped
+            ? State::PhysicsForceUpdate : State::PhysicsForceShutdown;
+    }
+
+    void UpdatePhysicsForce() {
+        m_PhysicsForceInstance.Reset();
+        ProcessRuntimeFrame("physics-force-update-close-context");
+
+        PhysicsForce::Options first;
+        first.Target = m_Owner;
+        first.Direction = VxVector(1.0f, 0.0f, 0.0f);
+        first.Magnitude = 1000.0f;
+        PhysicsForce::Options superseded = first;
+        superseded.Direction = VxVector(0.0f, 1.0f, 0.0f);
+        PhysicsForce::Options updated = first;
+        updated.Direction = VxVector(-1.0f, 0.0f, 0.0f);
+
+        RunResult applied = WithContextCheck(
+            "physics-force-set-context", [&] {
+                return m_PhysicsForces.Set(first);
+            });
+        RunResult changed = WithContextCheck(
+            "physics-force-update-context", [&] {
+                return m_PhysicsForces.Set(superseded);
+            });
+        RunResult replaced = WithContextCheck(
+            "physics-force-replacement-context", [&] {
+                return m_PhysicsForces.Set(updated);
+            });
+        m_PhysicsForceUpdateQueued = applied &&
+            applied.State == RunState::Ready &&
+            applied.Admission == AdmissionState::Executed && changed &&
+            changed.State == RunState::Pending &&
+            changed.Admission == AdmissionState::Queued && replaced &&
+            replaced.State == RunState::Pending &&
+            replaced.Admission == AdmissionState::Queued;
+        if (!m_PhysicsForceUpdateQueued) {
+            Fail("physics-force-update-admission");
+            m_State = State::PhysicsForceShutdown;
+            return;
+        }
+
+        VxVector position;
+        m_Owner->GetPosition(&position);
+        m_PhysicsForcePeakX = position.x;
+        m_PhysicsForceUpdateFrame = m_LastPlayerFrame;
+        m_State = State::PhysicsForceUpdateObserve;
+    }
+
+    void ObserveUpdatedPhysicsForce() {
+        // This is the production ordering: the Physics Force session observes
+        // the completed physics step before Runtime advances queued BB inputs.
+        m_PhysicsForces.ProcessFrame();
+        ProcessRuntimeFrame("physics-force-update-frame-context");
+
+        VxVector position;
+        m_Owner->GetPosition(&position);
+        if (std::isfinite(position.x) && position.x > m_PhysicsForcePeakX)
+            m_PhysicsForcePeakX = position.x;
+        const bool reversed = std::isfinite(position.x) &&
+            m_PhysicsForcePeakX - position.x > 0.01f;
+        const bool timedOut =
+            m_LastPlayerFrame - m_PhysicsForceUpdateFrame >= 240;
+        if (!reversed && !timedOut)
+            return;
+
+        RunResult cleared = WithContextCheck(
+            "physics-force-clear-context", [&] {
+                return m_PhysicsForces.Clear(m_Owner);
+            });
+        m_PhysicsForceUpdated = reversed && cleared &&
+            cleared.State == RunState::Ready &&
+            cleared.Admission == AdmissionState::Executed;
+        if (reversed)
+            m_PhysicsForceUpdatedX = position.x;
+        if (!m_PhysicsForceUpdated) {
+            Fail(reversed ? "physics-force-update-clear"
+                          : "physics-force-update-motion");
+            m_State = State::PhysicsForceShutdown;
+            return;
+        }
+
+        PhysicsForce::Options finalForce;
+        finalForce.Target = m_Owner;
+        finalForce.Direction = VxVector(1.0f, 0.0f, 0.0f);
+        finalForce.Magnitude = 1000.0f;
+        RunResult applied = WithContextCheck(
+            "physics-force-clear-set-context", [&] {
+                return m_PhysicsForces.Set(finalForce);
+            });
+        RunResult stopped = WithContextCheck(
+            "physics-force-clear-queue-context", [&] {
+                return m_PhysicsForces.Clear(m_Owner);
+            });
+        RunResult repeated = WithContextCheck(
+            "physics-force-clear-repeat-context", [&] {
+                return m_PhysicsForces.Clear(m_Owner);
+            });
+        m_PhysicsForceClearQueued = applied &&
+            applied.State == RunState::Ready &&
+            applied.Admission == AdmissionState::Executed && stopped &&
+            stopped.State == RunState::Pending &&
+            stopped.Admission == AdmissionState::Queued && repeated &&
+            repeated.State == RunState::Pending &&
+            repeated.Admission == AdmissionState::Queued;
+        if (!m_PhysicsForceClearQueued) {
+            Fail("physics-force-clear-admission");
+            m_State = State::PhysicsForceShutdown;
+            return;
+        }
+        m_PhysicsForceClearFrame = m_LastPlayerFrame;
+        m_State = State::PhysicsForceClearObserve;
+    }
+
+    void ObserveClearedPhysicsForce() {
+        m_PhysicsForces.ProcessFrame();
+        ProcessRuntimeFrame("physics-force-clear-frame-context");
+        if (m_LastPlayerFrame - m_PhysicsForceClearFrame < 2)
+            return;
+
+        RunResult absent = m_PhysicsForces.Clear(m_Owner);
+        m_PhysicsForceCleared = !absent &&
+            absent.Detail.Code == Error::InvalidState;
+        if (!m_PhysicsForceCleared)
+            Fail("physics-force-clear-retirement");
+        m_State = State::PhysicsForceShutdown;
+    }
+
+    void ShutdownPhysicsForce() {
+        void *controller = nullptr;
+        const bool forceClosed = !m_PhysicsForceInstance ||
+            (ReadPhysicsController(controller) && controller == nullptr);
+        if (!forceClosed)
+            Fail("physics-force-controller-release");
+
+        m_PhysicsForceInstance.Reset();
+        m_PhysicsForces.Reset();
+        ProcessRuntimeFrame("physics-force-close-context");
+
+        bool unphysicalized = !m_PhysicalizeInstance;
+        if (m_PhysicalizeInstance) {
+            RunResult run = WithContextCheck(
+                "physics-force-unphysicalize-context", [&] {
+                    return m_Runtime.Pulse(
+                        m_PhysicalizeInstance, Slot::At(SlotKind::Input, 1));
+                });
+            unphysicalized = run && run.State == RunState::Ready &&
+                run.Admission == AdmissionState::Executed &&
+                run.ReturnCode == CKBR_OK &&
+                run.ActiveOutputs.size() == 1 && run.ActiveOutputs[0] == 1;
+            m_PhysicalizeInstance.Reset();
+            ProcessRuntimeFrame("physics-force-unphysicalize-close-context");
+        }
+        if (!unphysicalized)
+            Fail("physics-force-unphysicalize");
+
+        m_PhysicsForcePassed = m_Physicalized && m_PhysicsForceCreated &&
+            m_PhysicsControllerObserved &&
+            m_PhysicsControllerOutlivedExecution && m_PhysicsForceMoved &&
+            m_PhysicsForceStopped && m_PhysicsForceUpdateQueued &&
+            m_PhysicsForceUpdated && m_PhysicsForceClearQueued &&
+            m_PhysicsForceCleared && forceClosed && unphysicalized;
         m_State = State::LifecycleFixture;
     }
 
@@ -2158,6 +2473,7 @@ private:
     CKContext *m_Context = nullptr;
     CK3dObject *m_Owner = nullptr;
     Runtime m_Runtime;
+    PhysicsForce::Sessions m_PhysicsForces;
     Runtime m_ConsumerRuntime;
     std::unique_ptr<GraphSource> m_EditGraph;
     std::unique_ptr<CKEdit> m_Editor;
@@ -2236,6 +2552,27 @@ private:
     Patch m_SpliceBeta;
     int m_SpliceStartFrame = -1;
     bool m_SplicePassed = false;
+    Instance m_PhysicalizeInstance;
+    Instance m_PhysicsForceInstance;
+    int m_PhysicsForceStartFrame = -1;
+    float m_PhysicsForceStartX = 0.0f;
+    float m_PhysicsForceAfterX = 0.0f;
+    bool m_Physicalized = false;
+    bool m_PhysicsForceCreated = false;
+    bool m_PhysicsControllerObserved = false;
+    bool m_PhysicsControllerOutlivedExecution = false;
+    bool m_PhysicsForceMoved = false;
+    bool m_PhysicsForceStopped = false;
+    bool m_PhysicsForceCancelled = false;
+    int m_PhysicsForceUpdateFrame = -1;
+    float m_PhysicsForcePeakX = 0.0f;
+    float m_PhysicsForceUpdatedX = 0.0f;
+    bool m_PhysicsForceUpdateQueued = false;
+    bool m_PhysicsForceUpdated = false;
+    int m_PhysicsForceClearFrame = -1;
+    bool m_PhysicsForceClearQueued = false;
+    bool m_PhysicsForceCleared = false;
+    bool m_PhysicsForcePassed = false;
     bool m_LifecyclePassed = false;
 };
 

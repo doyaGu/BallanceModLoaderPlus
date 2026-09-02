@@ -11,6 +11,7 @@ struct BehaviorRuntimeSemanticsResult {
     bool Passed = false;
     bool LifecyclePassed = false;
     bool AdditiveEditPassed = false;
+    bool PhysicsForcePassed = false;
     std::string Detail;
 };
 

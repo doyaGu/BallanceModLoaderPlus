@@ -261,7 +261,7 @@ $transportPattern = 'Behavior transport: status=(?<status>pass|fail) reason=(?<r
 $transport = [regex]::Match($testLog, $transportPattern)
 $patchPattern = 'Behavior patch: status=(?<status>pass|fail) reason=(?<reason>\S+) module=(?<module>true|false) apply=(?<apply>true|false) execute=(?<execute>true|false) close=(?<close>true|false) restore=(?<restore>true|false) reset=(?<reset>true|false) deletion=(?<deletion>true|false) retirement=(?<retirement>true|false)'
 $patch = [regex]::Match($testLog, $patchPattern)
-$runtimeSemanticsPattern = 'Behavior runtime semantics: status=(?<status>pass|fail) lifecycle=(?<lifecycle>true|false) additive_edit=(?<additiveEdit>true|false) detail=(?<detail>\S+)'
+$runtimeSemanticsPattern = 'Behavior runtime semantics: status=(?<status>pass|fail) lifecycle=(?<lifecycle>true|false) additive_edit=(?<additiveEdit>true|false) physics_force=(?<physicsForce>true|false) detail=(?<detail>\S+)'
 $runtimeSemantics = [regex]::Match($testLog, $runtimeSemanticsPattern)
 $postStartIndex = $testLog.IndexOf('On Message PostStartMenu')
 $preLoadIndex = $testLog.IndexOf('On Message PreLoadLevel')
@@ -282,6 +282,7 @@ $checks = [ordered]@{
         $runtimeSemantics.Groups['status'].Value -eq 'pass' -and
         $runtimeSemantics.Groups['lifecycle'].Value -eq 'true' -and
         $runtimeSemantics.Groups['additiveEdit'].Value -eq 'true' -and
+        $runtimeSemantics.Groups['physicsForce'].Value -eq 'true' -and
         $runtimeSemantics.Groups['detail'].Value -eq 'complete'
     LifecycleProbe = $outcome.Success -and
         $outcome.Groups['lifecycleProbe'].Value -eq 'true'
