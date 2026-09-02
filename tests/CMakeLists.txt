@@ -303,6 +303,13 @@ add_bml_test(BehaviorTopologyTest
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
+add_bml_test(BehaviorRelationsTest
+        SOURCES
+        BehaviorRelationsTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Relations.cpp
+        DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
+)
+
 add_bml_test(BehaviorPlanTest
         SOURCES
         BehaviorPlanTest.cpp
