@@ -399,6 +399,24 @@ int BML_BEHAVIOR_CALL ReadHooks(
     return BML_OK;
 }
 
+int BML_BEHAVIOR_CALL ReferenceObject(
+    BML_BehaviorSession session, void *rawObject,
+    BML_ObjectRef *reference) {
+    if (!rawObject || !reference)
+        return BML_ERROR_INVALID_PARAMETER;
+    *reference = {};
+    ModContext *context = BML_GetModContext();
+    if (!Ready(context))
+        return context && !context->IsMainThread()
+            ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
+    Behavior::SessionOwner owner;
+    if (!Owner(*context, session, owner))
+        return BML_ERROR_ACCESS_DENIED;
+    *reference = context->ObjectRefs().Issue(
+        static_cast<CKObject *>(rawObject));
+    return reference->Domain ? BML_OK : BML_ERROR_FAIL;
+}
+
 const BML_BehaviorTestInterface kInterface = {
     BML_IFACE_HEADER(BML_BehaviorTestInterface,
                      BML_BEHAVIOR_TEST_INTERFACE_ID,
@@ -416,6 +434,7 @@ const BML_BehaviorTestInterface kInterface = {
     &ClosePlan,
     &ResetPlans,
     &ReadHooks,
+    &ReferenceObject,
 };
 
 } // namespace

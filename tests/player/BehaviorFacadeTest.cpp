@@ -1,4 +1,4 @@
-// Exercises the published Plan and Hook surface the way a Mod author would:
+// Exercises the published Patch, Plan, and Hook surface the way a Mod author would:
 // only BML/Behavior.hpp, no private Behavior headers. The one test affordance
 // is ObserveScript, which puts a script this probe created itself into the
 // Plans world; the game feeds real scripts in the same way when it loads them.
@@ -17,6 +17,7 @@ namespace {
 using BML::Behavior::Hook;
 using BML::Behavior::HookEvent;
 using BML::Behavior::HookResult;
+using BML::Behavior::GraphPatchState;
 using BML::Behavior::PlanState;
 
 constexpr const char *kScriptName = "__BML_Public_Plan";
@@ -57,7 +58,7 @@ public:
     const char *GetName() override { return "Behavior Facade Test"; }
     const char *GetAuthor() override { return "BML"; }
     const char *GetDescription() override {
-        return "Validates the published Behavior Plan and Hook facade";
+        return "Validates the published Behavior Patch, Plan, and Hook facade";
     }
     DECLARE_BML_VERSION;
 
@@ -91,11 +92,13 @@ public:
         case State::WaitHooks: WaitHooks(); break;
         case State::Close: ClosePlan(); break;
         case State::WaitReleased: WaitReleased(); break;
+        case State::ClosePatch: ClosePatch(); break;
         }
     }
 
     void OnUnload() override {
         m_Plan.Close();
+        m_Patch.Close();
         m_Session.Close();
         DestroyGraph();
     }
@@ -107,6 +110,7 @@ private:
         WaitHooks,
         Close,
         WaitReleased,
+        ClosePatch,
     };
 
     CKBehaviorLink *AddLink(CKBehaviorIO *source, CKBehaviorIO *sink) {
@@ -225,6 +229,14 @@ private:
             m_Anchor->GetOutBehaviorIO() == m_Sink->GetInput(0) &&
             m_Graph->GetSubBehaviorCount() == 2 &&
             m_Graph->GetSubBehaviorLinkCount() == 2;
+    }
+
+    bool PatchInstalled() const {
+        return m_Graph && m_Source && m_Sink && m_Anchor &&
+            m_Anchor->GetID() == m_AnchorId &&
+            m_Anchor->GetOutBehaviorIO() != m_Sink->GetInput(0) &&
+            m_Graph->GetSubBehaviorCount() == 3 &&
+            m_Graph->GetSubBehaviorLinkCount() == 3;
     }
 
     // The whole authoring program, written the way an author would write it.
@@ -367,8 +379,7 @@ private:
     void WaitReleased() {
         if (m_Counters.use_count() == 1) {
             m_ReleasePassed = true;
-            DestroyGraph();
-            Finish(true, "done");
+            ApplyPatch();
             return;
         }
         if (m_Frame > m_WaitUntil) {
@@ -379,10 +390,66 @@ private:
         }
     }
 
+    void ApplyPatch() {
+        BML_ObjectRef reference{};
+        if (m_Test->ReferenceObject(
+                m_Session.Handle(), m_Graph, &reference) != BML_OK) {
+            Finish(false, "patch-reference");
+            return;
+        }
+        auto inspected = m_Session.Inspect(reference);
+        if (!inspected) {
+            Finish(false, "patch-inspect");
+            return;
+        }
+        auto edit = inspected->Patch("player-public-patch");
+        const auto source = edit.Require(kSourceName);
+        const auto sink = edit.Require(kSinkName);
+        const auto link = edit.Between(source.Out(), sink.In());
+        const auto block = edit.Add(BML::Behavior::Guid(
+            BML_LIFECYCLE_FIXTURE_GUID));
+        edit.Splice(link, block);
+
+        auto applied = edit.Apply();
+        if (!applied) {
+            GetLogger()->Error(
+                "Behavior patch apply failed: code=%d error=%u phase=%u detail=%s",
+                applied.Code(), applied.Detail().Error,
+                applied.Detail().Phase, applied.Detail().Message.c_str());
+            Finish(false, "patch-apply");
+            return;
+        }
+        m_Patch = std::move(applied).Value();
+        const auto info = m_Patch.Read();
+        m_PatchPassed = info && info->State == GraphPatchState::Active &&
+            info->Installed() && info->Conflicts == 0 && PatchInstalled();
+        if (!m_PatchPassed) {
+            Finish(false, "patch-state");
+            return;
+        }
+        m_State = State::ClosePatch;
+    }
+
+    void ClosePatch() {
+        m_Patch.Close();
+        if (m_Patch || !Restored()) {
+            Finish(false, "patch-close");
+            return;
+        }
+        m_PatchClosePassed = true;
+        DestroyGraph();
+        Finish(true, "done");
+    }
+
     void Finish(bool passed, const char *reason) {
         if (m_Done)
             return;
         m_Done = true;
+        if (!passed) {
+            m_Patch.Close();
+            m_Plan.Close();
+            DestroyGraph();
+        }
         GetLogger()->Info(
             "Behavior plan: status=%s reason=%s submit=%s install=%s hooks=%s close=%s release=%s taps=%u afters=%u frames=%d",
             passed ? "pass" : "fail", reason,
@@ -392,11 +459,17 @@ private:
             m_ClosePassed ? "true" : "false",
             m_ReleasePassed ? "true" : "false",
             m_Counters->Taps, m_Counters->Afters, m_Frame);
+        GetLogger()->Info(
+            "Behavior graph patch: status=%s reason=%s apply=%s close=%s",
+            passed ? "pass" : "fail", reason,
+            m_PatchPassed ? "true" : "false",
+            m_PatchClosePassed ? "true" : "false");
     }
 
     const BML_BehaviorTestInterface *m_Test = nullptr;
     BML::Behavior::Session m_Session;
     BML::Behavior::Plan m_Plan;
+    BML::Behavior::GraphPatch m_Patch;
     std::shared_ptr<Counters> m_Counters = std::make_shared<Counters>();
     CK3dObject *m_Owner = nullptr;
     CKBehavior *m_Graph = nullptr;
@@ -414,6 +487,8 @@ private:
     bool m_HookPassed = false;
     bool m_ClosePassed = false;
     bool m_ReleasePassed = false;
+    bool m_PatchPassed = false;
+    bool m_PatchClosePassed = false;
     bool m_Done = false;
 };
 

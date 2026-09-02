@@ -7,7 +7,7 @@
 
 #define BML_BEHAVIOR_TEST_INTERFACE_ID "bml.test.behavior"
 #define BML_BEHAVIOR_TEST_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_TEST_INTERFACE_MINOR 4u
+#define BML_BEHAVIOR_TEST_INTERFACE_MINOR 5u
 
 enum BML_BehaviorTestPatchState : std::uint32_t {
     BML_BEHAVIOR_TEST_PATCH_PENDING = 1,
@@ -64,6 +64,9 @@ struct BML_BehaviorTestInterface {
         BML_BehaviorSession session, std::uint32_t *retains,
         std::uint32_t *releases, std::uint32_t *taps,
         std::uint32_t *afters);
+    int (BML_BEHAVIOR_CALL *ReferenceObject)(
+        BML_BehaviorSession session, void *object,
+        BML_ObjectRef *reference);
 };
 
 namespace BML::Api {
