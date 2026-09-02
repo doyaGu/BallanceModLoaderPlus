@@ -17,7 +17,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 3u
+#define BML_BEHAVIOR_INTERFACE_MINOR 4u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 
 BML_BEGIN_CDECLS
@@ -25,6 +25,7 @@ BML_BEGIN_CDECLS
 typedef struct BML_BehaviorSession__ *BML_BehaviorSession;
 typedef struct BML_BehaviorRun__ *BML_BehaviorRun;
 typedef struct BML_BehaviorWatch__ *BML_BehaviorWatch;
+typedef struct BML_BehaviorPlan__ *BML_BehaviorPlan;
 
 #pragma pack(push, 8)
 
@@ -556,6 +557,201 @@ typedef struct BML_BehaviorWatchSpec {
     uint32_t Read;
 } BML_BehaviorWatchSpec;
 
+// A Plan is durable authoring intent. It names one script by its exact name
+// and a symbolic edit to apply to every live installation of that script. The
+// Loader owns the installed edits and reconciles them as scripts load, reload,
+// or are deleted, so a Plan outlives a level change while a Run does not.
+typedef enum BML_BehaviorTargetSet {
+    // Install into every live script that carries the name.
+    BML_BEHAVIOR_TARGETS_EACH = 1,
+    // Install into the single live script that carries the name. More than one
+    // live match leaves the Plan Unsatisfied instead of choosing one.
+    BML_BEHAVIOR_TARGETS_ONE = 2
+} BML_BehaviorTargetSet;
+
+typedef enum BML_BehaviorPlanState {
+    // Accepted, and waiting for its first reconciliation pass. A Plan reads
+    // this way between the call that submits it and the next frame.
+    BML_BEHAVIOR_PLAN_RECONCILING = 1,
+    // Installed into every current match.
+    BML_BEHAVIOR_PLAN_ACTIVE = 2,
+    // A pass ran and found no live match, or an ambiguous match under
+    // BML_BEHAVIOR_TARGETS_ONE. The Plan is retained and reconsidered against
+    // later worlds.
+    BML_BEHAVIOR_PLAN_UNSATISFIED = 3,
+    // An installation could not be reverted. The Plan keeps its Hook state
+    // alive because the game graph still refers to it.
+    BML_BEHAVIOR_PLAN_CONFLICTED = 4,
+    BML_BEHAVIOR_PLAN_RETIRING = 5
+} BML_BehaviorPlanState;
+
+typedef struct BML_BehaviorPlanInfo {
+    uint32_t StructSize;
+    uint32_t State;
+    // The world epoch this Plan was last reconciled against.
+    uint64_t World;
+    uint32_t Matches;
+    uint32_t Installations;
+    // Why the Plan is Unsatisfied or Conflicted, not why the call failed.
+    BML_BehaviorStatus Diagnostic;
+} BML_BehaviorPlanInfo;
+
+typedef struct BML_BehaviorHookContext {
+    uint32_t StructSize;
+    uint32_t Flags;
+    float DeltaTime;
+    uint32_t Reserved;
+    // The Hook Block instance being executed.
+    BML_ObjectRef Block;
+    // The root script that owns the Block, when the Loader can name it.
+    BML_ObjectRef Script;
+    // The object the Block is attached to.
+    BML_ObjectRef Owner;
+} BML_BehaviorHookContext;
+
+// Return codes an author callback may report. Any other value is reported to
+// Virtools as a behavior error, which stops the enclosing chain.
+typedef enum BML_BehaviorHookResult {
+    BML_BEHAVIOR_HOOK_OK = 0,
+    // Keep the Hook Block active for one more frame. Its Outs still activate.
+    BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME = 1
+} BML_BehaviorHookResult;
+
+typedef void (BML_BEHAVIOR_CALL *BML_BehaviorHookRetain)(void *state);
+typedef void (BML_BEHAVIOR_CALL *BML_BehaviorHookRelease)(void *state);
+typedef int (BML_BEHAVIOR_CALL *BML_BehaviorHookCallback)(
+    void *state, const BML_BehaviorHookContext *context);
+
+// One author callback occurrence in a Plan. Retain runs once while SubmitPlan
+// accepts the Hook, so the caller may drop its own reference as soon as the
+// call returns, and Release runs once the Loader has retired the occurrence and
+// dropped every installation of it, which keeps State alive for a Conflicted
+// Plan. A rejected Plan retains nothing it has not already released. Invoke
+// runs on the game thread inside the behavior execution the game itself drives,
+// and must not close the Plan or its Session.
+typedef struct BML_BehaviorHookFunction {
+    uint32_t StructSize;
+    void *State;
+    BML_BehaviorHookRetain Retain;
+    BML_BehaviorHookRelease Release;
+    BML_BehaviorHookCallback Invoke;
+} BML_BehaviorHookFunction;
+
+// Cross-Mod overlay ordering on one spliced link, by Patch identity. A Patch
+// no one submitted does not constrain anything.
+typedef enum BML_BehaviorOrderKind {
+    BML_BEHAVIOR_ORDER_BEFORE = 1,
+    BML_BEHAVIOR_ORDER_AFTER = 2
+} BML_BehaviorOrderKind;
+
+typedef struct BML_BehaviorEditOrder {
+    uint32_t StructSize;
+    uint32_t Kind;
+    BML_BehaviorString Owner;
+    BML_BehaviorString Name;
+} BML_BehaviorEditOrder;
+
+// Steps name each other through caller-assigned handles in one namespace per
+// Plan. Handle 1 always denotes the matched script itself; every other handle
+// must be defined by an earlier step before a later step reads it.
+#define BML_BEHAVIOR_EDIT_SCRIPT 1u
+
+// A port of a node. Kind is a BML_BehaviorSlotKind naming which interface of
+// Handle to address. A zero Kind means Handle is itself a port defined by an
+// earlier BML_BEHAVIOR_EDIT_APPEND_SLOT, which is the only way to address an
+// appended slot: an appended slot has no author-visible index until the edit
+// is compiled against a live graph.
+typedef struct BML_BehaviorPortRef {
+    uint32_t StructSize;
+    uint32_t Handle;
+    uint32_t Kind;
+    // The Virtools parameter type expected of a Pin, Pout, or Local port. A
+    // zero type accepts whatever the live slot declares.
+    BML_BehaviorGuid Type;
+    BML_BehaviorSelector Slot;
+} BML_BehaviorPortRef;
+
+typedef enum BML_BehaviorEditKind {
+    // Result names the one existing node matching Name and Prototype.
+    BML_BEHAVIOR_EDIT_REQUIRE_NODE = 1,
+    // Result names the one existing link from Source to Sink.
+    BML_BEHAVIOR_EDIT_REQUIRE_LINK = 2,
+    // Result names the unique non-branching path leaving Source.
+    BML_BEHAVIOR_EDIT_FOLLOW = 3,
+    // Result names a new Block created from Prototype.
+    BML_BEHAVIOR_EDIT_ADD_BLOCK = 4,
+    // Result names a slot appended to Target, of SlotKind, called Name.
+    BML_BEHAVIOR_EDIT_APPEND_SLOT = 5,
+    // Adds a behavior link from Source to Sink.
+    BML_BEHAVIOR_EDIT_FLOW = 6,
+    // Writes Value into Sink.
+    BML_BEHAVIOR_EDIT_BIND_VALUE = 7,
+    // Makes Sink read Source directly.
+    BML_BEHAVIOR_EDIT_BIND_PORT = 8,
+    // Makes Sink share the parameter Source reads.
+    BML_BEHAVIOR_EDIT_SHARE = 9,
+    // Copies Source into Sink after each execution of the node owning Source.
+    BML_BEHAVIOR_EDIT_PUSH = 10,
+    // Inserts Hook on every link leaving Source.
+    BML_BEHAVIOR_EDIT_TAP = 11,
+    // Inserts Hook at the end of the path named by Target.
+    BML_BEHAVIOR_EDIT_AFTER = 12,
+    // Reroutes the link named by Target through Node, or through the Sink and
+    // Source ports when Node is zero, keeping the delay of that link.
+    BML_BEHAVIOR_EDIT_SPLICE = 13
+} BML_BehaviorEditKind;
+
+typedef enum BML_BehaviorEditFlags {
+    // BML_BEHAVIOR_EDIT_REQUIRE_LINK matches Delay as well as its endpoints.
+    BML_BEHAVIOR_EDIT_HAS_DELAY = 1u << 0,
+    // BML_BEHAVIOR_EDIT_FLOW may close a same-frame cycle. Without this the
+    // edit is rejected instead.
+    BML_BEHAVIOR_EDIT_CONFIRM_CYCLE = 1u << 1
+} BML_BehaviorEditFlags;
+
+// One step of an edit program. Only the fields its Kind documents are read,
+// and the whole program is validated before any of it reaches a live graph.
+typedef struct BML_BehaviorEditStep {
+    uint32_t StructSize;
+    uint32_t Kind;
+    // The handle this step defines, or zero for a step that defines none.
+    uint32_t Result;
+    uint32_t Flags;
+    // The node, link, or path this step reads.
+    uint32_t Target;
+    // The Block a splice routes through.
+    uint32_t Node;
+    // BML_BehaviorSlotKind of an appended slot.
+    uint32_t SlotKind;
+    int32_t Delay;
+    // Node name to require, or the name of an appended slot.
+    BML_BehaviorString Name;
+    // Prototype to require or to create.
+    BML_BehaviorGuid Prototype;
+    // Virtools parameter type of an appended Pin, Pout, or Local.
+    BML_BehaviorGuid Type;
+    BML_BehaviorPortRef Source;
+    BML_BehaviorPortRef Sink;
+    BML_BehaviorValue Value;
+    const BML_BehaviorHookFunction *Hook;
+    const BML_BehaviorEditOrder *Ordering;
+    uint32_t OrderCount;
+    uint32_t Reserved;
+} BML_BehaviorEditStep;
+
+typedef struct BML_BehaviorPlanSpec {
+    uint32_t StructSize;
+    uint32_t Targets;
+    // Names this Plan within the owner of the Session. Submitting a name that
+    // is already live replaces the Plan carrying it.
+    BML_BehaviorString Name;
+    // The exact script name to match.
+    BML_BehaviorString Script;
+    const BML_BehaviorEditStep *Steps;
+    uint32_t StepCount;
+    uint32_t Reserved;
+} BML_BehaviorPlanSpec;
+
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
 
@@ -671,6 +867,22 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorWatch *outWatch,
         BML_BehaviorStatus *status);
     int (BML_BEHAVIOR_CALL *CloseWatch)(BML_BehaviorWatch watch);
+    // A Plan is submitted once and reconciled by the Loader from then on.
+    // SubmitPlan validates the whole edit program before accepting it, so a
+    // Plan that was accepted is well formed even while it is Unsatisfied.
+    int (BML_BEHAVIOR_CALL *SubmitPlan)(BML_BehaviorSession session,
+                                        const BML_BehaviorPlanSpec *spec,
+                                        BML_BehaviorPlan *outPlan,
+                                        BML_BehaviorPlanInfo *info,
+                                        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadPlan)(BML_BehaviorSession session,
+                                      BML_BehaviorPlan plan,
+                                      BML_BehaviorPlanInfo *info,
+                                      BML_BehaviorStatus *status);
+    // Reverts every installation the Plan still owns. A revert the game graph
+    // no longer permits leaves the Plan Conflicted rather than failing here.
+    int (BML_BEHAVIOR_CALL *ClosePlan)(BML_BehaviorSession session,
+                                       BML_BehaviorPlan plan);
 } BML_BehaviorInterface;
 
 #pragma pack(pop)

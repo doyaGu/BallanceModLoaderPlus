@@ -5,12 +5,34 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
 
 using namespace BML::Behavior;
+
+struct CapturedStep {
+    std::uint32_t Kind = 0;
+    std::uint32_t Result = 0;
+    std::uint32_t Flags = 0;
+    std::uint32_t Target = 0;
+    std::uint32_t Node = 0;
+    std::uint32_t SlotKind = 0;
+    std::int32_t Delay = 0;
+    std::string Name;
+    BML_BehaviorGuid Prototype{};
+    BML_BehaviorGuid Type{};
+    BML_BehaviorPortRef Source{};
+    BML_BehaviorPortRef Sink{};
+    std::string SourceSlot;
+    std::string SinkSlot;
+    BML_BehaviorValue Value{};
+    bool HasHook = false;
+    std::vector<std::pair<std::uint32_t, std::string>> Ordering;
+};
 
 struct FakeState {
     std::string Owner;
@@ -37,6 +59,15 @@ struct FakeState {
     BML_BehaviorWatchFunction WatchFunction{};
     std::vector<BML_ObjectRef> RunOwners;
     std::vector<const BML_BehaviorBlock *> Blocks;
+    int PlanSubmits = 0;
+    int PlanReads = 0;
+    int PlanCloses = 0;
+    int PlanSubmitCode = BML_OK;
+    std::uint32_t PlanTargets = 0;
+    std::string PlanName;
+    std::string PlanScript;
+    std::vector<CapturedStep> PlanSteps;
+    std::vector<BML_BehaviorHookFunction> PlanHooks;
 };
 
 FakeState g_State;
@@ -470,6 +501,92 @@ int BML_BEHAVIOR_CALL CloseWatch(BML_BehaviorWatch) {
     return BML_OK;
 }
 
+std::string Copy(BML_BehaviorString text) {
+    return text.Data ? std::string(text.Data, text.Length) : std::string();
+}
+
+int BML_BEHAVIOR_CALL SubmitPlan(
+    BML_BehaviorSession, const BML_BehaviorPlanSpec *spec,
+    BML_BehaviorPlan *plan, BML_BehaviorPlanInfo *info,
+    BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.PlanSubmits;
+    g_State.PlanName = Copy(spec->Name);
+    g_State.PlanScript = Copy(spec->Script);
+    g_State.PlanTargets = spec->Targets;
+    g_State.PlanSteps.clear();
+    for (std::uint32_t index = 0; index < spec->StepCount; ++index) {
+        const BML_BehaviorEditStep &step = spec->Steps[index];
+        CapturedStep captured;
+        captured.Kind = step.Kind;
+        captured.Result = step.Result;
+        captured.Flags = step.Flags;
+        captured.Target = step.Target;
+        captured.Node = step.Node;
+        captured.SlotKind = step.SlotKind;
+        captured.Delay = step.Delay;
+        captured.Name = Copy(step.Name);
+        captured.Prototype = step.Prototype;
+        captured.Type = step.Type;
+        captured.Source = step.Source;
+        captured.Sink = step.Sink;
+        captured.SourceSlot = Copy(step.Source.Slot.Name);
+        captured.SinkSlot = Copy(step.Sink.Slot.Name);
+        captured.Value = step.Value;
+        captured.HasHook = step.Hook != nullptr;
+        for (std::uint32_t entry = 0; entry < step.OrderCount; ++entry) {
+            captured.Ordering.push_back(
+                {step.Ordering[entry].Kind,
+                 Copy(step.Ordering[entry].Owner) + "/" +
+                     Copy(step.Ordering[entry].Name)});
+        }
+        if (step.Hook)
+            g_State.PlanHooks.push_back(*step.Hook);
+        g_State.PlanSteps.push_back(std::move(captured));
+    }
+    if (g_State.PlanSubmitCode != BML_OK) {
+        g_State.PlanHooks.clear();
+        return g_State.PlanSubmitCode;
+    }
+    // The Loader takes its own reference to every callback it accepted.
+    for (const BML_BehaviorHookFunction &hook : g_State.PlanHooks) {
+        if (hook.Retain)
+            hook.Retain(hook.State);
+    }
+    if (info) {
+        Init(info);
+        info->State = BML_BEHAVIOR_PLAN_RECONCILING;
+    }
+    *plan = reinterpret_cast<BML_BehaviorPlan>(9);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReadPlan(BML_BehaviorSession, BML_BehaviorPlan plan,
+                               BML_BehaviorPlanInfo *info,
+                               BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.PlanReads;
+    if (!plan)
+        return BML_ERROR_INVALID_HANDLE;
+    Init(info);
+    info->State = BML_BEHAVIOR_PLAN_ACTIVE;
+    info->World = 12;
+    info->Matches = 1;
+    info->Installations = 1;
+    Init(&info->Diagnostic);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession, BML_BehaviorPlan) {
+    ++g_State.PlanCloses;
+    for (const BML_BehaviorHookFunction &hook : g_State.PlanHooks) {
+        if (hook.Release)
+            hook.Release(hook.State);
+    }
+    g_State.PlanHooks.clear();
+    return BML_OK;
+}
+
 BML_BehaviorInterface g_Interface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -492,6 +609,9 @@ BML_BehaviorInterface g_Interface = {
     &ReadGraphValue,
     &OpenWatch,
     &CloseWatch,
+    &SubmitPlan,
+    &ReadPlan,
+    &ClosePlan,
 };
 
 } // namespace
@@ -887,4 +1007,210 @@ TEST(BehaviorAuthoring, RejectsExactWatchWhenTheProviderCannotObserveIt) {
     EXPECT_EQ(watched.Code(), BML_ERROR_UNAVAILABLE);
     EXPECT_EQ(g_State.WatchCloses, 0);
     EXPECT_EQ(g_State.WatchFunction.Invoke, nullptr);
+}
+
+TEST(BehaviorAuthoring, TranslatesPlanProgramAndOwnsHookState) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto alive = std::make_shared<int>(0);
+    std::vector<float> deltas;
+    {
+        Draft draft = session.Plan("extra-life");
+        draft.OnSingle("Gameplay_Events");
+        const auto counter = draft.Require("Counter_Active", CKGUID(1, 2));
+        const auto added = draft.Add(CKGUID(3, 4));
+        const auto amount = draft.AppendPin(added, "Amount", CKPGUID_FLOAT);
+        const auto link =
+            draft.Between(counter.Out(0), draft.Script().In("Reset"), 2);
+        draft.Splice(link, added,
+                     {before("Other", "hud"), after("Third", "sound")})
+            .Bind(amount, 3.5f)
+            .Bind(added.Pin("Other"), counter.Pout("Value"))
+            .Share(added.Pin(1), counter.Pout(0))
+            .Push(counter.Pout(2), added.Pin(2))
+            .Flow(added.Out(0), counter.In(0), 1)
+            .FlowCycle(added.Out(1), counter.In(0))
+            .After(counter.Out(1), [alive, &deltas](const HookEvent &event) {
+                deltas.push_back(event.DeltaTime);
+                return HookResult::AgainNextFrame;
+            });
+        EXPECT_EQ(alive.use_count(), 2);
+
+        auto submitted = draft.Submit();
+        ASSERT_TRUE(submitted) << submitted.Detail().Message;
+        Plan plan = std::move(submitted).Value();
+        EXPECT_EQ(g_State.PlanSubmits, 1);
+        EXPECT_EQ(g_State.PlanName, "extra-life");
+        EXPECT_EQ(g_State.PlanScript, "Gameplay_Events");
+        EXPECT_EQ(g_State.PlanTargets,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_TARGETS_ONE));
+        // The Loader took a reference of its own to the one record that owns
+        // the callback, so the callback itself was not copied.
+        EXPECT_EQ(alive.use_count(), 2);
+
+        ASSERT_EQ(g_State.PlanSteps.size(), 13u);
+        const CapturedStep &require = g_State.PlanSteps[0];
+        EXPECT_EQ(require.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_NODE));
+        EXPECT_EQ(require.Name, "Counter_Active");
+        EXPECT_EQ(require.Prototype.Data1, 1u);
+        EXPECT_EQ(require.Result, BML_BEHAVIOR_EDIT_SCRIPT + 1u);
+
+        const CapturedStep &append = g_State.PlanSteps[2];
+        EXPECT_EQ(append.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_APPEND_SLOT));
+        EXPECT_EQ(append.Target, g_State.PlanSteps[1].Result);
+        EXPECT_EQ(append.SlotKind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_PIN));
+        EXPECT_EQ(append.Name, "Amount");
+        EXPECT_EQ(append.Type.Data1, CKPGUID_FLOAT.d1);
+
+        const CapturedStep &between = g_State.PlanSteps[3];
+        EXPECT_EQ(between.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_LINK));
+        EXPECT_EQ(between.Flags & BML_BEHAVIOR_EDIT_HAS_DELAY,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_HAS_DELAY));
+        EXPECT_EQ(between.Delay, 2);
+        EXPECT_EQ(between.Source.Handle, require.Result);
+        EXPECT_EQ(between.Source.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_OUT));
+        EXPECT_EQ(between.Source.Slot.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_SELECTOR_INDEX));
+        EXPECT_EQ(between.Sink.Handle, BML_BEHAVIOR_EDIT_SCRIPT);
+        EXPECT_EQ(between.SinkSlot, "Reset");
+
+        const CapturedStep &splice = g_State.PlanSteps[4];
+        EXPECT_EQ(splice.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SPLICE));
+        EXPECT_EQ(splice.Target, between.Result);
+        EXPECT_EQ(splice.Node, g_State.PlanSteps[1].Result);
+        ASSERT_EQ(splice.Ordering.size(), 2u);
+        EXPECT_EQ(splice.Ordering[0].first,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_ORDER_BEFORE));
+        EXPECT_EQ(splice.Ordering[0].second, "Other/hud");
+        EXPECT_EQ(splice.Ordering[1].first,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_ORDER_AFTER));
+        EXPECT_EQ(splice.Ordering[1].second, "Third/sound");
+
+        // An appended slot is addressed by handle, because it has no
+        // author-visible index until the edit compiles.
+        const CapturedStep &bound = g_State.PlanSteps[5];
+        EXPECT_EQ(bound.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_BIND_VALUE));
+        EXPECT_EQ(bound.Sink.Handle, append.Result);
+        EXPECT_EQ(bound.Sink.Kind, 0u);
+        EXPECT_EQ(bound.Value.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_FLOAT32));
+        EXPECT_FLOAT_EQ(bound.Value.Data.Float32, 3.5f);
+        EXPECT_EQ(bound.Result, 0u);
+
+        EXPECT_EQ(g_State.PlanSteps[6].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_BIND_PORT));
+        EXPECT_EQ(g_State.PlanSteps[7].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SHARE));
+        EXPECT_EQ(g_State.PlanSteps[8].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_PUSH));
+        EXPECT_EQ(g_State.PlanSteps[9].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FLOW));
+        EXPECT_EQ(g_State.PlanSteps[9].Delay, 1);
+        EXPECT_EQ(g_State.PlanSteps[10].Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_CONFIRM_CYCLE));
+
+        // Hooking a port follows the chain leaving it, then hooks the end of
+        // that chain.
+        const CapturedStep &follow = g_State.PlanSteps[11];
+        EXPECT_EQ(follow.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FOLLOW));
+        EXPECT_EQ(follow.Source.Handle, require.Result);
+        EXPECT_EQ(follow.Source.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_OUT));
+        const CapturedStep &hooked = g_State.PlanSteps[12];
+        EXPECT_EQ(hooked.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_AFTER));
+        EXPECT_EQ(hooked.Target, follow.Result);
+        EXPECT_TRUE(hooked.HasHook);
+
+        auto read = plan.Read();
+        ASSERT_TRUE(read);
+        EXPECT_EQ(read.Value().State, PlanState::Active);
+        EXPECT_EQ(read.Value().World, 12u);
+        EXPECT_TRUE(read.Value().Installed());
+
+        ASSERT_EQ(g_State.PlanHooks.size(), 1u);
+        BML_BehaviorHookContext context{};
+        Init(&context);
+        context.DeltaTime = 16.5f;
+        context.Block = {1, 2, 3};
+        ASSERT_NE(g_State.PlanHooks[0].Invoke, nullptr);
+        EXPECT_EQ(g_State.PlanHooks[0].Invoke(g_State.PlanHooks[0].State,
+                                              &context),
+                  BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME);
+        ASSERT_EQ(deltas.size(), 1u);
+        EXPECT_FLOAT_EQ(deltas[0], 16.5f);
+
+        plan.Close();
+        EXPECT_EQ(g_State.PlanCloses, 1);
+        plan.Close();
+        EXPECT_EQ(g_State.PlanCloses, 1);
+        // The Draft still owns the reference the Loader dropped.
+        EXPECT_EQ(alive.use_count(), 2);
+    }
+    EXPECT_EQ(alive.use_count(), 1);
+}
+
+TEST(BehaviorAuthoring, RejectsPlanWithoutAScriptBeforeCallingTheLoader) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    Draft draft = session.Plan("nameless");
+    auto submitted = draft.Submit();
+    EXPECT_FALSE(submitted);
+    EXPECT_EQ(submitted.Code(), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(g_State.PlanSubmits, 0);
+    EXPECT_EQ(g_State.PlanCloses, 0);
+}
+
+TEST(BehaviorAuthoring, KeepsHookStateWhenTheLoaderRejectsThePlan) {
+    g_State = {};
+    g_State.PlanSubmitCode = BML_ERROR_INVALID_PARAMETER;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto alive = std::make_shared<int>(0);
+    {
+        Draft draft = session.Plan("rejected");
+        draft.On("Gameplay_Events")
+            .Tap(draft.Script().Out(0), [alive] {});
+        auto submitted = draft.Submit();
+        EXPECT_FALSE(submitted);
+        EXPECT_EQ(submitted.Code(), BML_ERROR_INVALID_PARAMETER);
+        EXPECT_EQ(g_State.PlanSubmits, 1);
+        EXPECT_EQ(g_State.PlanCloses, 0);
+        // A rejected Plan retained nothing, so only the Draft still owns it.
+        EXPECT_EQ(alive.use_count(), 2);
+    }
+    EXPECT_EQ(alive.use_count(), 1);
+}
+
+TEST(BehaviorAuthoring, ClosingSessionLeavesPlanHandlesInert) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto submitted = session.Plan("inert").On("Gameplay_Events").Submit();
+    ASSERT_TRUE(submitted);
+    Plan plan = std::move(submitted).Value();
+    ASSERT_TRUE(plan);
+
+    session.Close();
+    EXPECT_FALSE(plan);
+    EXPECT_FALSE(plan.Read());
+    plan.Close();
+    EXPECT_EQ(g_State.PlanCloses, 0);
 }

@@ -537,6 +537,62 @@ struct Change {
     ObservedValue CurrentValue;
 };
 
+// A Plan is durable authoring intent: one exact script name, one symbolic edit,
+// and the Loader reconciling the two as scripts load, reload, and are deleted.
+enum class PlanState : std::uint32_t {
+    Reconciling = BML_BEHAVIOR_PLAN_RECONCILING,
+    Active = BML_BEHAVIOR_PLAN_ACTIVE,
+    Unsatisfied = BML_BEHAVIOR_PLAN_UNSATISFIED,
+    Conflicted = BML_BEHAVIOR_PLAN_CONFLICTED,
+    Retiring = BML_BEHAVIOR_PLAN_RETIRING,
+};
+
+struct PlanInfo {
+    PlanState State = PlanState::Reconciling;
+    // The world epoch this Plan was last reconciled against.
+    std::uint64_t World = 0;
+    std::uint32_t Matches = 0;
+    std::uint32_t Installations = 0;
+    // Why the Plan is Unsatisfied or Conflicted.
+    Behavior::Status Diagnostic;
+
+    [[nodiscard]] bool Installed() const noexcept {
+        return State == PlanState::Active && Installations != 0;
+    }
+};
+
+// What one Hook callback receives. Every reference is live for the duration of
+// the call only.
+struct HookEvent {
+    float DeltaTime = 0.0f;
+    // The Hook Block being executed.
+    BML_ObjectRef Block{};
+    // The root script that owns the Block, when the Loader can name it.
+    BML_ObjectRef Script{};
+    // The object the Block is attached to.
+    BML_ObjectRef Owner{};
+};
+
+enum class HookResult : int {
+    Ok = BML_BEHAVIOR_HOOK_OK,
+    // Keep the Hook Block active for one more frame. Its Outs still activate.
+    AgainNextFrame = BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME,
+};
+
+// Places one Patch relative to another Patch spliced onto the same link.
+struct PatchOrder {
+    std::uint32_t Kind = BML_BEHAVIOR_ORDER_BEFORE;
+    std::string Owner;
+    std::string Name;
+};
+
+inline PatchOrder before(std::string_view owner, std::string_view name) {
+    return {BML_BEHAVIOR_ORDER_BEFORE, std::string(owner), std::string(name)};
+}
+inline PatchOrder after(std::string_view owner, std::string_view name) {
+    return {BML_BEHAVIOR_ORDER_AFTER, std::string(owner), std::string(name)};
+}
+
 namespace Detail { struct SessionState; }
 
 class Watch {
@@ -640,6 +696,9 @@ class Block;
 class Call;
 class Task;
 class Instance;
+class Hook;
+class Plan;
+class Draft;
 
 namespace Detail {
 
@@ -1485,6 +1544,609 @@ private:
     friend class Session;
 };
 
+namespace Detail {
+
+inline PlanInfo ReadPlanInfo(const BML_BehaviorPlanInfo &source) {
+    PlanInfo info;
+    info.State = static_cast<PlanState>(source.State);
+    info.World = source.World;
+    info.Matches = source.Matches;
+    info.Installations = source.Installations;
+    info.Diagnostic = ReadStatus(source.Diagnostic);
+    return info;
+}
+
+// Holds the caller reference to one author callback. The Loader takes a
+// reference of its own while it accepts a Plan, so this record only has to
+// outlive the Draft that carries it.
+struct HookHolder {
+    HookHolder() = default;
+    HookHolder(const HookHolder &) = delete;
+    HookHolder &operator=(const HookHolder &) = delete;
+    ~HookHolder() {
+        if (Function.Release)
+            Function.Release(Function.State);
+    }
+
+    BML_BehaviorHookFunction Function{};
+};
+
+// Resolves the return type of whichever call the callback supports, without
+// forming the other one.
+template <class Callable, bool TakesEvent, bool TakesNothing>
+struct HookReturn {
+    using Type = void;
+};
+template <class Callable, bool TakesNothing>
+struct HookReturn<Callable, true, TakesNothing> {
+    using Type = std::invoke_result_t<Callable &, const HookEvent &>;
+};
+template <class Callable>
+struct HookReturn<Callable, false, true> {
+    using Type = std::invoke_result_t<Callable &>;
+};
+
+template <class Function>
+struct HookFunction {
+    using Callable = std::decay_t<Function>;
+    static constexpr bool TakesEvent =
+        std::is_invocable_v<Callable &, const HookEvent &>;
+    static_assert(TakesEvent || std::is_invocable_v<Callable &>,
+                  "A Behavior Hook callback takes a HookEvent or nothing.");
+    using Returned = typename HookReturn<
+        Callable, TakesEvent, std::is_invocable_v<Callable &>>::Type;
+    static_assert(std::is_void_v<Returned> ||
+                  std::is_same_v<Returned, HookResult>,
+                  "A Behavior Hook callback returns void or HookResult.");
+
+    explicit HookFunction(Function &&function)
+        : Value(std::forward<Function>(function)) {}
+
+    static void BML_BEHAVIOR_CALL Retain(void *state) {
+        ++static_cast<HookFunction *>(state)->References;
+    }
+    static void BML_BEHAVIOR_CALL Release(void *state) {
+        auto *self = static_cast<HookFunction *>(state);
+        if (self->References.fetch_sub(1) == 1)
+            delete self;
+    }
+    static int BML_BEHAVIOR_CALL Invoke(
+        void *state, const BML_BehaviorHookContext *source) {
+        if (!source || source->StructSize < sizeof(*source))
+            throw std::runtime_error("The Behavior Hook context is malformed.");
+        HookEvent event;
+        event.DeltaTime = source->DeltaTime;
+        event.Block = source->Block;
+        event.Script = source->Script;
+        event.Owner = source->Owner;
+        auto &callable = static_cast<HookFunction *>(state)->Value;
+        if constexpr (std::is_void_v<Returned>) {
+            if constexpr (TakesEvent)
+                std::invoke(callable, event);
+            else
+                std::invoke(callable);
+            return BML_BEHAVIOR_HOOK_OK;
+        } else if constexpr (TakesEvent) {
+            return static_cast<int>(std::invoke(callable, event));
+        } else {
+            return static_cast<int>(std::invoke(callable));
+        }
+    }
+
+    std::atomic<std::uint32_t> References{1};
+    Callable Value;
+};
+
+} // namespace Detail
+
+// One author callback, shareable across the steps of one Draft. The callback
+// runs on the game thread inside the execution the game itself drives, so it
+// must not close the Plan, the Session, or the Mod that owns it.
+class Hook {
+public:
+    Hook() = default;
+
+    template <class Function,
+              class = std::enable_if_t<
+                  !std::is_same_v<std::decay_t<Function>, Hook>>>
+    Hook(Function &&callback) {
+        using Holder = Detail::HookFunction<Function>;
+        auto holder = std::make_unique<Holder>(std::forward<Function>(callback));
+        auto record = std::make_shared<Detail::HookHolder>();
+        record->Function.StructSize = sizeof(record->Function);
+        record->Function.State = holder.get();
+        record->Function.Retain = &Holder::Retain;
+        record->Function.Release = &Holder::Release;
+        record->Function.Invoke = &Holder::Invoke;
+        (void) holder.release();
+        m_Record = std::move(record);
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return m_Record != nullptr;
+    }
+
+private:
+    std::shared_ptr<Detail::HookHolder> m_Record;
+
+    friend class Draft;
+};
+
+// A durable authoring intent the Loader owns. Closing the handle reverts every
+// installation the Plan still holds, and so does closing the Session.
+class Plan {
+public:
+    Plan() = default;
+    ~Plan() { Close(); }
+    Plan(const Plan &) = delete;
+    Plan &operator=(const Plan &) = delete;
+    Plan(Plan &&other) noexcept
+        : m_Session(std::move(other.m_Session)),
+          m_Handle(std::exchange(other.m_Handle, nullptr)) {}
+    Plan &operator=(Plan &&other) noexcept {
+        if (this != &other) {
+            Close();
+            m_Session = std::move(other.m_Session);
+            m_Handle = std::exchange(other.m_Handle, nullptr);
+        }
+        return *this;
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return m_Session && m_Session->Api && m_Session->Handle && m_Handle;
+    }
+    // A Plan the Loader accepted is Reconciling until the next frame installs
+    // it, so read the state rather than assuming the edit is already live.
+    [[nodiscard]] Result<PlanInfo> Read() const {
+        if (!*this)
+            return Result<PlanInfo>::Failure(BML_ERROR_INVALID_HANDLE);
+        BML_BehaviorPlanInfo wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_Session->Api->ReadPlan(
+            m_Session->Handle, m_Handle, &wire, &status);
+        if (code != BML_OK)
+            return Result<PlanInfo>::Failure(code, Detail::ReadStatus(status));
+        if (wire.StructSize < sizeof(wire))
+            return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        return Result<PlanInfo>::Success(Detail::ReadPlanInfo(wire),
+                                        Detail::ReadStatus(status));
+    }
+    // Reverts what the Plan still owns. A revert the live graph no longer
+    // permits leaves the Plan Conflicted, which keeps the callback state alive;
+    // Read it before closing when that matters.
+    void Close() noexcept {
+        if (m_Session && m_Session->Api && m_Session->Handle && m_Handle)
+            (void) m_Session->Api->ClosePlan(m_Session->Handle, m_Handle);
+        m_Session.reset();
+        m_Handle = nullptr;
+    }
+
+private:
+    Plan(std::shared_ptr<Detail::SessionState> session,
+         BML_BehaviorPlan handle)
+        : m_Session(std::move(session)), m_Handle(handle) {}
+
+    std::shared_ptr<Detail::SessionState> m_Session;
+    BML_BehaviorPlan m_Handle = nullptr;
+
+    friend class Draft;
+};
+
+// Accumulates the symbolic edit one Plan installs. A Draft names nodes, links,
+// and paths of the matched script by what they are rather than by index, so the
+// same edit keeps working across the levels and reloads that a Run cannot
+// survive. Nothing reaches a live graph until Submit, which validates the whole
+// program before accepting any of it.
+class Draft {
+public:
+    // Addresses one port of a node the program named.
+    struct Port {
+        std::uint32_t Handle = 0;
+        // A BML_BehaviorSlotKind, or zero when Handle is an appended slot.
+        std::uint32_t Kind = 0;
+        Guid Type;
+        Behavior::Selector Slot;
+
+        [[nodiscard]] BML_BehaviorPortRef Wire() const noexcept {
+            BML_BehaviorPortRef port{};
+            port.StructSize = sizeof(port);
+            port.Handle = Handle;
+            port.Kind = Kind;
+            port.Type = Type.Wire();
+            port.Slot = Slot.Wire();
+            return port;
+        }
+    };
+
+    // A node of the matched script, either required or added by the program.
+    struct Node {
+        std::uint32_t Id = 0;
+
+        [[nodiscard]] Port In(Behavior::Selector slot = {}) const {
+            return {Id, BML_BEHAVIOR_SLOT_IN, {}, std::move(slot)};
+        }
+        [[nodiscard]] Port In(std::int32_t index) const {
+            return In(Behavior::Selector::At(index));
+        }
+        [[nodiscard]] Port In(std::string_view name) const {
+            return In(Behavior::Selector::Unique(name));
+        }
+        [[nodiscard]] Port Out(Behavior::Selector slot = {}) const {
+            return {Id, BML_BEHAVIOR_SLOT_OUT, {}, std::move(slot)};
+        }
+        [[nodiscard]] Port Out(std::int32_t index) const {
+            return Out(Behavior::Selector::At(index));
+        }
+        [[nodiscard]] Port Out(std::string_view name) const {
+            return Out(Behavior::Selector::Unique(name));
+        }
+        [[nodiscard]] Port Pin(Behavior::Selector slot, Guid type = {}) const {
+            return {Id, BML_BEHAVIOR_SLOT_PIN, type, std::move(slot)};
+        }
+        [[nodiscard]] Port Pin(std::int32_t index, Guid type = {}) const {
+            return Pin(Behavior::Selector::At(index), type);
+        }
+        [[nodiscard]] Port Pin(std::string_view name, Guid type = {}) const {
+            return Pin(Behavior::Selector::Unique(name), type);
+        }
+        [[nodiscard]] Port Pout(Behavior::Selector slot, Guid type = {}) const {
+            return {Id, BML_BEHAVIOR_SLOT_POUT, type, std::move(slot)};
+        }
+        [[nodiscard]] Port Pout(std::int32_t index, Guid type = {}) const {
+            return Pout(Behavior::Selector::At(index), type);
+        }
+        [[nodiscard]] Port Pout(std::string_view name, Guid type = {}) const {
+            return Pout(Behavior::Selector::Unique(name), type);
+        }
+        [[nodiscard]] Port Local(Behavior::Selector slot, Guid type = {}) const {
+            return {Id, BML_BEHAVIOR_SLOT_LOCAL, type, std::move(slot)};
+        }
+        [[nodiscard]] Port Local(std::int32_t index, Guid type = {}) const {
+            return Local(Behavior::Selector::At(index), type);
+        }
+        [[nodiscard]] Port Local(std::string_view name, Guid type = {}) const {
+            return Local(Behavior::Selector::Unique(name), type);
+        }
+        [[nodiscard]] Port Setting(Behavior::Selector slot) const {
+            return {Id, BML_BEHAVIOR_SLOT_SETTING, {}, std::move(slot)};
+        }
+        [[nodiscard]] Port Setting(std::int32_t index) const {
+            return Setting(Behavior::Selector::At(index));
+        }
+        [[nodiscard]] Port Setting(std::string_view name) const {
+            return Setting(Behavior::Selector::Unique(name));
+        }
+        [[nodiscard]] Port Target() const {
+            return {Id, BML_BEHAVIOR_SLOT_TARGET, {}, {}};
+        }
+    };
+
+    // One behavior link of the matched script.
+    struct Link {
+        std::uint32_t Id = 0;
+    };
+
+    // The unique non-branching chain leaving one port, which is where a Hook
+    // that must run after a whole sequence belongs.
+    struct Path {
+        std::uint32_t Id = 0;
+    };
+
+    // A slot the program appended. An appended slot has no author-visible index
+    // until the edit compiles, so it is addressed by handle instead.
+    struct Slot {
+        std::uint32_t Id = 0;
+
+        [[nodiscard]] Port Ref() const { return Port{Id, 0, {}, {}}; }
+        operator Port() const { return Ref(); }
+    };
+
+    Draft(const Draft &) = default;
+    Draft &operator=(const Draft &) = default;
+    Draft(Draft &&) noexcept = default;
+    Draft &operator=(Draft &&) noexcept = default;
+
+    // Installs into every live script carrying this exact name.
+    Draft &On(std::string_view script) {
+        m_Script.assign(script);
+        m_Targets = BML_BEHAVIOR_TARGETS_EACH;
+        return *this;
+    }
+    // Installs into the single live script carrying this exact name. More than
+    // one live match leaves the Plan Unsatisfied instead of choosing one.
+    Draft &OnSingle(std::string_view script) {
+        m_Script.assign(script);
+        m_Targets = BML_BEHAVIOR_TARGETS_ONE;
+        return *this;
+    }
+
+    // The matched script itself. Its ports are the entry and exit of the graph.
+    [[nodiscard]] Node Script() const noexcept {
+        return Node{BML_BEHAVIOR_EDIT_SCRIPT};
+    }
+
+    // Names the one node carrying this name, and this Prototype when one is
+    // given. No match, or more than one, leaves the Plan Unsatisfied rather
+    // than installing a guess.
+    [[nodiscard]] Node Require(std::string_view name, Guid prototype = {}) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_NODE);
+        step.Name.assign(name);
+        step.Prototype = prototype;
+        return Node{step.Result};
+    }
+    [[nodiscard]] Node Require(Guid prototype) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_NODE);
+        step.Prototype = prototype;
+        return Node{step.Result};
+    }
+    // Names the one existing link between these ports.
+    [[nodiscard]] Link Between(Port source, Port sink) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_LINK);
+        step.Source = std::move(source);
+        step.Sink = std::move(sink);
+        return Link{step.Result};
+    }
+    // Names the one existing link between these ports that also carries this
+    // delay, in frames.
+    [[nodiscard]] Link Between(Port source, Port sink, std::int32_t delay) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_LINK);
+        step.Source = std::move(source);
+        step.Sink = std::move(sink);
+        step.Flags |= BML_BEHAVIOR_EDIT_HAS_DELAY;
+        step.Delay = delay;
+        return Link{step.Result};
+    }
+    [[nodiscard]] Path Follow(Port source) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_FOLLOW);
+        step.Source = std::move(source);
+        return Path{step.Result};
+    }
+    // Creates one Block of this Prototype inside the matched script.
+    [[nodiscard]] Node Add(Guid prototype) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_ADD_BLOCK);
+        step.Prototype = prototype;
+        return Node{step.Result};
+    }
+    [[nodiscard]] Slot AppendIn(Node owner, std::string_view name) {
+        return Append(owner, BML_BEHAVIOR_SLOT_IN, name, {});
+    }
+    [[nodiscard]] Slot AppendOut(Node owner, std::string_view name) {
+        return Append(owner, BML_BEHAVIOR_SLOT_OUT, name, {});
+    }
+    [[nodiscard]] Slot AppendPin(Node owner, std::string_view name, Guid type) {
+        return Append(owner, BML_BEHAVIOR_SLOT_PIN, name, type);
+    }
+    [[nodiscard]] Slot AppendPout(Node owner, std::string_view name, Guid type) {
+        return Append(owner, BML_BEHAVIOR_SLOT_POUT, name, type);
+    }
+    [[nodiscard]] Slot AppendLocal(Node owner, std::string_view name,
+                                   Guid type) {
+        return Append(owner, BML_BEHAVIOR_SLOT_LOCAL, name, type);
+    }
+
+    // Adds a behavior link, delayed by whole frames.
+    Draft &Flow(Port source, Port sink, std::int32_t delay = 0) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_FLOW, 0);
+        step.Source = std::move(source);
+        step.Sink = std::move(sink);
+        step.Delay = delay;
+        return *this;
+    }
+    // Adds a behavior link that may close a same-frame cycle. Without this the
+    // Loader rejects a cycle instead of installing one.
+    Draft &FlowCycle(Port source, Port sink, std::int32_t delay = 0) {
+        Flow(std::move(source), std::move(sink), delay);
+        m_Steps.back().Flags |= BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
+        return *this;
+    }
+    // Writes a literal into a port. A durable Plan cannot bind a live object,
+    // because the object it named may be gone by the time the Plan installs.
+    Draft &Bind(Port sink, Behavior::Value value) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_BIND_VALUE, 0);
+        step.Sink = std::move(sink);
+        step.Value.emplace(std::move(value));
+        return *this;
+    }
+    // Makes the sink read the source directly.
+    Draft &Bind(Port sink, Port source) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_BIND_PORT, 0);
+        step.Sink = std::move(sink);
+        step.Source = std::move(source);
+        return *this;
+    }
+    // Makes the sink share the parameter the source reads.
+    Draft &Share(Port sink, Port source) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_SHARE, 0);
+        step.Sink = std::move(sink);
+        step.Source = std::move(source);
+        return *this;
+    }
+    // Copies the source into the sink after each execution of the node that
+    // owns the source.
+    Draft &Push(Port source, Port sink) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_PUSH, 0);
+        step.Source = std::move(source);
+        step.Sink = std::move(sink);
+        return *this;
+    }
+    // Runs the callback on every link leaving this port, before whatever those
+    // links reach. The Hook Block activates its Out once the callback returns.
+    Draft &Tap(Port source, Hook hook) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_TAP, 0);
+        step.Source = std::move(source);
+        step.Hook = std::move(hook.m_Record);
+        return *this;
+    }
+    // Runs the callback once the chain named by the path has finished.
+    Draft &After(Path path, Hook hook) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_AFTER, 0);
+        step.Target = path.Id;
+        step.Hook = std::move(hook.m_Record);
+        return *this;
+    }
+    // Runs the callback once the chain leaving this port has finished.
+    Draft &After(Port source, Hook hook) {
+        return After(Follow(std::move(source)), std::move(hook));
+    }
+    // Reroutes a link through a Block, keeping the delay of the link. Ordering
+    // places this Patch relative to the Patches of other Mods spliced onto the
+    // same link; a Patch no one submitted constrains nothing.
+    Draft &Splice(Link link, Node through,
+                  std::vector<PatchOrder> ordering = {}) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_SPLICE, 0);
+        step.Target = link.Id;
+        step.Node = through.Id;
+        step.Ordering = std::move(ordering);
+        return *this;
+    }
+    // Reroutes a link into the sink and out of the source, which is how one
+    // Block with several Ins and Outs carries more than one splice.
+    Draft &Splice(Link link, Port sink, Port source,
+                  std::vector<PatchOrder> ordering = {}) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_SPLICE, 0);
+        step.Target = link.Id;
+        step.Sink = std::move(sink);
+        step.Source = std::move(source);
+        step.Ordering = std::move(ordering);
+        return *this;
+    }
+
+    // Hands the program to the Loader, which validates all of it, retains the
+    // callbacks it accepted, and installs on the next frame. Submitting a name
+    // that is already live replaces the Plan carrying it.
+    [[nodiscard]] Result<Behavior::Plan> Submit() const;
+
+private:
+    struct Step {
+        std::uint32_t Kind = 0;
+        std::uint32_t Result = 0;
+        std::uint32_t Flags = 0;
+        std::uint32_t Target = 0;
+        std::uint32_t Node = 0;
+        std::uint32_t SlotKind = 0;
+        std::int32_t Delay = 0;
+        std::string Name;
+        Guid Prototype;
+        Guid Type;
+        Port Source;
+        Port Sink;
+        std::optional<Behavior::Value> Value;
+        std::shared_ptr<Detail::HookHolder> Hook;
+        std::vector<PatchOrder> Ordering;
+    };
+
+    Draft(std::shared_ptr<Detail::SessionState> session, std::string_view name)
+        : m_Session(std::move(session)), m_Name(name) {}
+
+    Step &Define(std::uint32_t kind) {
+        return Define(kind, m_NextHandle++);
+    }
+    Step &Define(std::uint32_t kind, std::uint32_t result) {
+        Step step;
+        step.Kind = kind;
+        step.Result = result;
+        m_Steps.push_back(std::move(step));
+        return m_Steps.back();
+    }
+    Slot Append(Node owner, std::uint32_t slotKind, std::string_view name,
+                Guid type) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_APPEND_SLOT);
+        step.Target = owner.Id;
+        step.SlotKind = slotKind;
+        step.Name.assign(name);
+        step.Type = type;
+        return Slot{step.Result};
+    }
+
+    std::shared_ptr<Detail::SessionState> m_Session;
+    std::string m_Name;
+    std::string m_Script;
+    std::uint32_t m_Targets = BML_BEHAVIOR_TARGETS_EACH;
+    std::uint32_t m_NextHandle = BML_BEHAVIOR_EDIT_SCRIPT + 1u;
+    std::vector<Step> m_Steps;
+
+    friend class Session;
+};
+
+inline Result<Plan> Draft::Submit() const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+        return Result<Plan>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (m_Name.empty() || m_Script.empty())
+        return Result<Plan>::Failure(BML_ERROR_INVALID_PARAMETER);
+    try {
+        std::size_t orderCount = 0;
+        for (const Step &step : m_Steps)
+            orderCount += step.Ordering.size();
+        // Both arrays are sized up front, so nothing a step points at moves.
+        std::vector<BML_BehaviorEditOrder> orders;
+        orders.reserve(orderCount);
+        for (const Step &step : m_Steps) {
+            for (const PatchOrder &order : step.Ordering) {
+                BML_BehaviorEditOrder wire{};
+                wire.StructSize = sizeof(wire);
+                wire.Kind = order.Kind;
+                wire.Owner = Detail::Text(order.Owner);
+                wire.Name = Detail::Text(order.Name);
+                orders.push_back(wire);
+            }
+        }
+
+        std::vector<BML_BehaviorEditStep> steps;
+        steps.reserve(m_Steps.size());
+        std::size_t consumed = 0;
+        for (const Step &step : m_Steps) {
+            BML_BehaviorEditStep wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Kind = step.Kind;
+            wire.Result = step.Result;
+            wire.Flags = step.Flags;
+            wire.Target = step.Target;
+            wire.Node = step.Node;
+            wire.SlotKind = step.SlotKind;
+            wire.Delay = step.Delay;
+            wire.Name = Detail::Text(step.Name);
+            wire.Prototype = step.Prototype.Wire();
+            wire.Type = step.Type.Wire();
+            wire.Source = step.Source.Wire();
+            wire.Sink = step.Sink.Wire();
+            if (step.Value)
+                wire.Value = step.Value->Wire();
+            wire.Hook = step.Hook ? &step.Hook->Function : nullptr;
+            wire.OrderCount = static_cast<std::uint32_t>(step.Ordering.size());
+            wire.Ordering = wire.OrderCount ? orders.data() + consumed : nullptr;
+            consumed += step.Ordering.size();
+            steps.push_back(wire);
+        }
+
+        BML_BehaviorPlanSpec spec{};
+        spec.StructSize = sizeof(spec);
+        spec.Targets = m_Targets;
+        spec.Name = Detail::Text(m_Name);
+        spec.Script = Detail::Text(m_Script);
+        spec.Steps = steps.empty() ? nullptr : steps.data();
+        spec.StepCount = static_cast<std::uint32_t>(steps.size());
+
+        BML_BehaviorPlan handle = nullptr;
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_Session->Api->SubmitPlan(
+            m_Session->Handle, &spec, &handle, nullptr, &status);
+        if (code != BML_OK || !handle) {
+            if (handle)
+                (void) m_Session->Api->ClosePlan(m_Session->Handle, handle);
+            return Result<Plan>::Failure(
+                code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                Detail::ReadStatus(status));
+        }
+        return Result<Plan>::Success(Plan(m_Session, handle),
+                                     Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<Plan>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Plan>::Failure(BML_ERROR_FAIL);
+    }
+}
+
 class Session {
 public:
     Session() = default;
@@ -1508,7 +2170,7 @@ public:
             return Result<Session>::Failure(code);
         const auto *api = static_cast<const BML_BehaviorInterface *>(found);
         if (!api || api->Header.MinorVersion < BML_BEHAVIOR_INTERFACE_MINOR ||
-            !BML_IFACE_HAS(api, BML_BehaviorInterface, CloseWatch))
+            !BML_IFACE_HAS(api, BML_BehaviorInterface, ClosePlan))
             return Result<Session>::Failure(BML_ERROR_VERSION_MISMATCH);
 
         BML_BehaviorSession handle = nullptr;
@@ -1544,10 +2206,24 @@ public:
     [[nodiscard]] Result<Graph> Inspect(BML_ObjectRef root) const {
         return Graph::Read(m_State, root, View::Logical);
     }
+    // Opens a durable edit named within this Mod. Submitting a name that is
+    // already live replaces the Plan carrying it.
+    [[nodiscard]] Behavior::Draft Plan(std::string_view name) const {
+        return Behavior::Draft(m_State, name);
+    }
     void Close() noexcept {
         if (m_State)
             m_State->Close();
         m_State.reset();
+    }
+
+    // The escape hatch to the C ABI, for whatever this facade does not cover
+    // yet. Both stay valid until Close, and neither transfers ownership.
+    [[nodiscard]] BML_BehaviorSession Handle() const noexcept {
+        return m_State ? m_State->Handle : nullptr;
+    }
+    [[nodiscard]] const BML_BehaviorInterface *Api() const noexcept {
+        return m_State ? m_State->Api : nullptr;
     }
 
 private:

@@ -7,13 +7,17 @@
 #include <cstring>
 #include <intrin.h>
 #include <limits>
+#include <map>
+#include <memory>
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "BML/ImcWire.hpp"
 #include "BML/TypeConvert.h"
+#include "Behavior/Patches.h"
 #include "Behavior/Sessions.h"
 #include "Behavior/FrameStore.h"
 #include "Loader/ModContext.h"
@@ -53,6 +57,24 @@ using BML::Behavior::ValueState;
 using BML::Behavior::WatchEvent;
 using BML::Behavior::WatchKind;
 using BML::Behavior::WatchSpec;
+using BML::Behavior::Cycle;
+using BML::Behavior::GraphEdit;
+using BML::Behavior::Link;
+using BML::Behavior::Node;
+using BML::Behavior::NodeQuery;
+using BML::Behavior::Order;
+using BML::Behavior::OrderKind;
+using BML::Behavior::PatchKey;
+using BML::Behavior::PathRef;
+using BML::Behavior::PlanCallbackState;
+using BML::Behavior::PlanId;
+using BML::Behavior::PlanInfo;
+using BML::Behavior::PlanState;
+using BML::Behavior::Port;
+using BML::Behavior::Script;
+using BML::Behavior::SessionOwner;
+using BML::Behavior::TargetSet;
+namespace HookBlock = BML::Behavior::HookBlock;
 namespace Parameter = BML::Behavior::Parameter;
 
 template <typename T>
@@ -153,6 +175,7 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::ParameterTypeUnsupported: return BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED;
     case Error::ValueWriteFailed:
     case Error::SourceInvalid:
+    case Error::WorldBoundValue:
     case Error::OperationInvalid: return BML_BEHAVIOR_ERROR_VALUE_INVALID;
     case Error::InvalidState:
     case Error::Unavailable: return BML_BEHAVIOR_ERROR_STATE_INVALID;
@@ -164,6 +187,15 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::DetachedUnsupported: return BML_BEHAVIOR_ERROR_DETACHED_UNSUPPORTED;
     case Error::ObserverUnavailable: return BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE;
     case Error::GraphChanged:
+    case Error::LinkNotFound:
+    case Error::PathAmbiguous:
+    case Error::PathCycle:
+    case Error::QueryNotFound:
+    case Error::QueryAmbiguous:
+    case Error::RevertConflict:
+    case Error::TargetCardinality:
+    case Error::SourceConflict:
+    case Error::SourceOrderCycle:
     case Error::OrderingTargetMismatch:
     case Error::OverlayOrderCycle: return BML_BEHAVIOR_ERROR_STATE_INVALID;
     case Error::WrongThread:
@@ -2049,6 +2081,549 @@ int BML_BEHAVIOR_CALL CloseWatch(BML_BehaviorWatch watch) {
     });
 }
 
+std::uint32_t PublicPlanState(PlanState state) noexcept {
+    switch (state) {
+    case PlanState::Reconciling: return BML_BEHAVIOR_PLAN_RECONCILING;
+    case PlanState::Active: return BML_BEHAVIOR_PLAN_ACTIVE;
+    case PlanState::Unsatisfied: return BML_BEHAVIOR_PLAN_UNSATISFIED;
+    case PlanState::Conflicted: return BML_BEHAVIOR_PLAN_CONFLICTED;
+    case PlanState::Retiring: return BML_BEHAVIOR_PLAN_RETIRING;
+    }
+    return BML_BEHAVIOR_PLAN_UNSATISFIED;
+}
+
+std::uint32_t Count(std::size_t value) noexcept {
+    return value > UINT32_MAX ? UINT32_MAX : static_cast<std::uint32_t>(value);
+}
+
+void WritePlanInfo(BML_BehaviorPlanInfo *out, const PlanInfo &info) noexcept {
+    if (!out)
+        return;
+    *out = {};
+    out->StructSize = sizeof(*out);
+    out->State = PublicPlanState(info.State);
+    out->World = info.World;
+    out->Matches = Count(info.Matches);
+    out->Installations = Count(info.Installations);
+    out->Diagnostic.StructSize = sizeof(out->Diagnostic);
+    WriteStatus(&out->Diagnostic, info.Diagnostic);
+}
+
+bool ReadSlotKind(std::uint32_t kind, SlotKind &out) noexcept {
+    switch (kind) {
+    case BML_BEHAVIOR_SLOT_IN: out = SlotKind::Input; return true;
+    case BML_BEHAVIOR_SLOT_OUT: out = SlotKind::Output; return true;
+    case BML_BEHAVIOR_SLOT_PIN: out = SlotKind::InputParameter; return true;
+    case BML_BEHAVIOR_SLOT_POUT: out = SlotKind::OutputParameter; return true;
+    case BML_BEHAVIOR_SLOT_SETTING: out = SlotKind::Setting; return true;
+    case BML_BEHAVIOR_SLOT_LOCAL: out = SlotKind::Local; return true;
+    case BML_BEHAVIOR_SLOT_TARGET: out = SlotKind::Target; return true;
+    default: return false;
+    }
+}
+
+// The record a Hook Block hands back to InvokeHook. The callback state owns it,
+// so it outlives the Hook occurrence and every Binding taken from that
+// occurrence, including Bindings a Conflicted Plan can no longer revert.
+struct HookThunk {
+    ~HookThunk() {
+        if (Function.Release)
+            Function.Release(Function.State);
+    }
+
+    BML_BehaviorHookFunction Function{};
+};
+
+int InvokeHook(const CKBehaviorContext *native, void *argument) {
+    const auto *thunk = static_cast<const HookThunk *>(argument);
+    if (!thunk || !thunk->Function.Invoke || !native || !native->Behavior)
+        return CKBR_BEHAVIORERROR;
+    ModContext *context = BML_GetModContext();
+    if (!context)
+        return CKBR_BEHAVIORERROR;
+
+    CKBehavior *block = native->Behavior;
+    BML_BehaviorHookContext wire{};
+    wire.StructSize = sizeof(wire);
+    wire.DeltaTime = native->DeltaTime;
+    wire.Block = context->ObjectRefs().Issue(block);
+    wire.Script = context->ObjectRefs().Issue(block->GetOwnerScript());
+    wire.Owner = context->ObjectRefs().Issue(block->GetOwner());
+
+    int result;
+    {
+        auto invocation = context->LockModInvocation();
+        result = thunk->Function.Invoke(thunk->Function.State, &wire);
+    }
+    switch (result) {
+    case BML_BEHAVIOR_HOOK_OK: return CKBR_OK;
+    case BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME: return CKBR_ACTIVATENEXTFRAME;
+    default: return CKBR_BEHAVIORERROR;
+    }
+}
+
+enum class PlanHandleKind {
+    Node,
+    Link,
+    Path,
+    Port,
+};
+
+struct PlanHandle {
+    PlanHandleKind Kind = PlanHandleKind::Node;
+    Node NodeValue;
+    Link LinkValue;
+    PathRef PathValue;
+    Port PortValue;
+};
+
+// Translates a wire edit program into one durable GraphEdit. Nothing here
+// touches a CK world: the program only builds symbolic intent, which Submit
+// validates before the Loader compiles it against a matching script.
+class PlanProgram final {
+public:
+    Status Build(const BML_BehaviorPlanSpec &spec, ModContext &context,
+                 GraphEdit &edit);
+
+private:
+    static bool Defines(std::uint32_t kind) noexcept;
+
+    Status Step(const BML_BehaviorEditStep &step, ModContext &context,
+                GraphEdit &edit);
+    Status Use(std::uint32_t id, PlanHandleKind kind,
+               const PlanHandle *&out) const;
+    Status ReadPort(const BML_BehaviorPortRef &from, Port &out) const;
+    Status ReadHook(const BML_BehaviorHookFunction *from,
+                    HookBlock::Hook &out) const;
+    Status ReadOrdering(const BML_BehaviorEditStep &step,
+                        std::vector<Order> &out) const;
+
+    std::map<std::uint32_t, PlanHandle> m_Handles;
+};
+
+bool PlanProgram::Defines(std::uint32_t kind) noexcept {
+    switch (kind) {
+    case BML_BEHAVIOR_EDIT_REQUIRE_NODE:
+    case BML_BEHAVIOR_EDIT_REQUIRE_LINK:
+    case BML_BEHAVIOR_EDIT_FOLLOW:
+    case BML_BEHAVIOR_EDIT_ADD_BLOCK:
+    case BML_BEHAVIOR_EDIT_APPEND_SLOT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+Status PlanProgram::Build(const BML_BehaviorPlanSpec &spec,
+                          ModContext &context, GraphEdit &edit) {
+    PlanHandle script;
+    script.NodeValue = edit.Graph();
+    m_Handles.clear();
+    m_Handles.emplace(BML_BEHAVIOR_EDIT_SCRIPT, script);
+    for (std::uint32_t index = 0; index < spec.StepCount; ++index) {
+        const Status status = Step(spec.Steps[index], context, edit);
+        if (!status)
+            return status;
+    }
+    return {};
+}
+
+Status PlanProgram::Step(const BML_BehaviorEditStep &step,
+                         ModContext &context, GraphEdit &edit) {
+    if (step.StructSize < sizeof(step))
+        return InvalidValue("A Behavior Plan step has an unsupported StructSize.");
+    if (Defines(step.Kind)) {
+        if (step.Result == 0 || step.Result == BML_BEHAVIOR_EDIT_SCRIPT ||
+            m_Handles.find(step.Result) != m_Handles.end()) {
+            return InvalidValue(
+                "A Behavior Plan step handle is missing or already defined.");
+        }
+    } else if (step.Result != 0) {
+        return InvalidValue("This kind of Behavior Plan step defines no handle.");
+    }
+
+    PlanHandle defined;
+    Status status;
+    Port source;
+    Port sink;
+    switch (step.Kind) {
+    case BML_BEHAVIOR_EDIT_REQUIRE_NODE: {
+        std::string name;
+        if (!ReadString(step.Name, name))
+            return InvalidValue("A Behavior node name is not valid UTF-8 text.");
+        NodeQuery query{std::move(name), Guid(step.Prototype)};
+        if (!query) {
+            return InvalidValue(
+                "A required Behavior node needs a name or a Prototype.");
+        }
+        defined.Kind = PlanHandleKind::Node;
+        defined.NodeValue = edit.RequireOne(std::move(query));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_REQUIRE_LINK: {
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        std::optional<int> delay;
+        if (step.Flags & BML_BEHAVIOR_EDIT_HAS_DELAY)
+            delay = step.Delay;
+        defined.Kind = PlanHandleKind::Link;
+        defined.LinkValue = edit.RequireOne(source, sink, delay);
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_FOLLOW:
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        defined.Kind = PlanHandleKind::Path;
+        defined.PathValue = edit.Follow(source);
+        break;
+    case BML_BEHAVIOR_EDIT_ADD_BLOCK: {
+        const CKGUID prototype = Guid(step.Prototype);
+        if (!prototype.IsValid())
+            return InvalidValue("An added Behavior Block needs a Prototype.");
+        defined.Kind = PlanHandleKind::Node;
+        defined.NodeValue = edit.Add(prototype);
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_APPEND_SLOT: {
+        const PlanHandle *owner = nullptr;
+        if (status = Use(step.Target, PlanHandleKind::Node, owner); !status)
+            return status;
+        std::string name;
+        if (!ReadString(step.Name, name) || name.empty())
+            return InvalidValue("An appended Behavior slot needs a name.");
+        const CKGUID type = Guid(step.Type);
+        const bool typed = step.SlotKind == BML_BEHAVIOR_SLOT_PIN ||
+                           step.SlotKind == BML_BEHAVIOR_SLOT_POUT ||
+                           step.SlotKind == BML_BEHAVIOR_SLOT_LOCAL;
+        if (typed && !type.IsValid()) {
+            return InvalidValue(
+                "An appended Behavior Pin, Pout, or Local needs a parameter type.");
+        }
+        defined.Kind = PlanHandleKind::Port;
+        switch (step.SlotKind) {
+        case BML_BEHAVIOR_SLOT_IN:
+            defined.PortValue = edit.AppendIn(owner->NodeValue, std::move(name));
+            break;
+        case BML_BEHAVIOR_SLOT_OUT:
+            defined.PortValue = edit.AppendOut(owner->NodeValue, std::move(name));
+            break;
+        case BML_BEHAVIOR_SLOT_PIN:
+            defined.PortValue =
+                edit.AppendPin(owner->NodeValue, std::move(name), type);
+            break;
+        case BML_BEHAVIOR_SLOT_POUT:
+            defined.PortValue =
+                edit.AppendPout(owner->NodeValue, std::move(name), type);
+            break;
+        case BML_BEHAVIOR_SLOT_LOCAL:
+            defined.PortValue =
+                edit.AppendLocal(owner->NodeValue, std::move(name), type);
+            break;
+        default:
+            return InvalidValue(
+                "A Behavior Plan can only append an In, Out, Pin, Pout, or Local.");
+        }
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_FLOW:
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        edit.Flow(source, sink, step.Delay,
+                  (step.Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE)
+                      ? Cycle::Confirmed : Cycle::Reject);
+        break;
+    case BML_BEHAVIOR_EDIT_BIND_VALUE: {
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        Parameter::Binding binding;
+        if (!ReadValue(step.Value, context, binding, status))
+            return status;
+        if (binding.Kind() != Parameter::BindingKind::Value) {
+            return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR,
+                    "A durable Behavior Plan cannot bind a live object."};
+        }
+        edit.Bind(sink, binding.Literal());
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_BIND_PORT:
+    case BML_BEHAVIOR_EDIT_SHARE:
+    case BML_BEHAVIOR_EDIT_PUSH:
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        if (step.Kind == BML_BEHAVIOR_EDIT_BIND_PORT)
+            edit.Bind(sink, source);
+        else if (step.Kind == BML_BEHAVIOR_EDIT_SHARE)
+            edit.Share(sink, source);
+        else
+            edit.Push(source, sink);
+        break;
+    case BML_BEHAVIOR_EDIT_TAP: {
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        HookBlock::Hook hook;
+        if (status = ReadHook(step.Hook, hook); !status)
+            return status;
+        edit.Tap(source, std::move(hook));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_AFTER: {
+        const PlanHandle *path = nullptr;
+        if (status = Use(step.Target, PlanHandleKind::Path, path); !status)
+            return status;
+        HookBlock::Hook hook;
+        if (status = ReadHook(step.Hook, hook); !status)
+            return status;
+        edit.After(path->PathValue, std::move(hook));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_SPLICE: {
+        const PlanHandle *link = nullptr;
+        if (status = Use(step.Target, PlanHandleKind::Link, link); !status)
+            return status;
+        std::vector<Order> ordering;
+        if (status = ReadOrdering(step, ordering); !status)
+            return status;
+        if (step.Node) {
+            const PlanHandle *block = nullptr;
+            if (status = Use(step.Node, PlanHandleKind::Node, block); !status)
+                return status;
+            edit.Splice(link->LinkValue, block->NodeValue, std::move(ordering));
+            break;
+        }
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        edit.Splice(link->LinkValue, sink, source, std::move(ordering));
+        break;
+    }
+    default:
+        return InvalidValue("A Behavior Plan step names an unknown edit.");
+    }
+
+    if (Defines(step.Kind))
+        m_Handles.emplace(step.Result, defined);
+    return {};
+}
+
+Status PlanProgram::Use(std::uint32_t id, PlanHandleKind kind,
+                        const PlanHandle *&out) const {
+    const auto found = m_Handles.find(id);
+    if (found == m_Handles.end()) {
+        return InvalidValue(
+            "A Behavior Plan step read a handle no earlier step defined.");
+    }
+    if (found->second.Kind != kind)
+        return InvalidValue("A Behavior Plan step read a handle of another kind.");
+    out = &found->second;
+    return {};
+}
+
+Status PlanProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
+    const PlanHandle *handle = nullptr;
+    if (from.Kind == 0) {
+        const Status status = Use(from.Handle, PlanHandleKind::Port, handle);
+        if (!status)
+            return status;
+        out = handle->PortValue;
+        return {};
+    }
+    if (from.StructSize < sizeof(from))
+        return InvalidValue("A Behavior port has an unsupported StructSize.");
+    SlotKind kind;
+    if (!ReadSlotKind(from.Kind, kind))
+        return InvalidValue("A Behavior port names an unknown slot kind.");
+    Status status = Use(from.Handle, PlanHandleKind::Node, handle);
+    if (!status)
+        return status;
+    Slot slot;
+    if (!ReadSelector(from.Slot, kind, Guid(from.Type), slot, status))
+        return status;
+    out = Port{handle->NodeValue.Value, std::move(slot)};
+    return {};
+}
+
+Status PlanProgram::ReadHook(const BML_BehaviorHookFunction *from,
+                             HookBlock::Hook &out) const {
+    if (!from || from->StructSize < sizeof(*from) || !from->Invoke)
+        return InvalidValue("A Behavior Hook needs a callback.");
+    if ((from->Retain == nullptr) != (from->Release == nullptr)) {
+        return InvalidValue(
+            "A Behavior Hook needs both Retain and Release, or neither.");
+    }
+    // The record takes the caller reference here, so the caller may drop its
+    // own as soon as this Plan is accepted. The matching Release runs when the
+    // last holder of the record drops it, which is later than retirement for a
+    // Conflicted Plan and earlier than any lease for a Plan that never installs.
+    auto thunk = std::make_shared<HookThunk>();
+    thunk->Function = *from;
+    if (from->Retain)
+        from->Retain(from->State);
+    out = HookBlock::Hook(
+        PlanCallbackState::Retained(thunk, from->State, nullptr, nullptr),
+        &InvokeHook, thunk.get());
+    return {};
+}
+
+Status PlanProgram::ReadOrdering(const BML_BehaviorEditStep &step,
+                                 std::vector<Order> &out) const {
+    if (step.OrderCount && !step.Ordering)
+        return InvalidValue("A Behavior Plan ordering array is missing.");
+    for (std::uint32_t index = 0; index < step.OrderCount; ++index) {
+        const BML_BehaviorEditOrder &order = step.Ordering[index];
+        if (order.StructSize < sizeof(order)) {
+            return InvalidValue(
+                "A Behavior Plan ordering entry has an unsupported StructSize.");
+        }
+        OrderKind kind;
+        switch (order.Kind) {
+        case BML_BEHAVIOR_ORDER_BEFORE: kind = OrderKind::Before; break;
+        case BML_BEHAVIOR_ORDER_AFTER: kind = OrderKind::After; break;
+        default:
+            return InvalidValue(
+                "A Behavior Plan ordering entry names an unknown order.");
+        }
+        std::string owner;
+        std::string name;
+        if (!ReadString(order.Owner, owner) || owner.empty() ||
+            !ReadString(order.Name, name) || name.empty()) {
+            return InvalidValue(
+                "A Behavior Plan ordering entry needs an owner and a Patch name.");
+        }
+        out.push_back({kind, PatchKey{std::move(owner), std::move(name)}});
+    }
+    return {};
+}
+
+BML_BehaviorPlan PlanHandleOf(PlanId id) noexcept {
+    return reinterpret_cast<BML_BehaviorPlan>(static_cast<std::uintptr_t>(id));
+}
+
+PlanId PlanIdOf(BML_BehaviorPlan plan) noexcept {
+    return static_cast<PlanId>(reinterpret_cast<std::uintptr_t>(plan));
+}
+
+bool ReadSessionOwner(BML_BehaviorSession session, ModContext &context,
+                      SessionOwner &out, Status &status) {
+    status = context.BehaviorSessions().ReadOwner(SessionId(session), out);
+    return static_cast<bool>(status);
+}
+
+int BML_BEHAVIOR_CALL SubmitPlan(
+    BML_BehaviorSession session, const BML_BehaviorPlanSpec *spec,
+    BML_BehaviorPlan *outPlan, BML_BehaviorPlanInfo *info,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!session || !HasStructSize(spec) || !outPlan ||
+            (info && !HasStructSize(info)) ||
+            (status && !HasStructSize(status)) ||
+            (spec->StepCount && !spec->Steps))
+            return BML_ERROR_INVALID_PARAMETER;
+        *outPlan = nullptr;
+        TargetSet targets;
+        switch (spec->Targets) {
+        case BML_BEHAVIOR_TARGETS_EACH: targets = TargetSet::Each; break;
+        case BML_BEHAVIOR_TARGETS_ONE: targets = TargetSet::One; break;
+        default: return BML_ERROR_INVALID_PARAMETER;
+        }
+        std::string name;
+        std::string script;
+        if (!ReadString(spec->Name, name) || name.empty() ||
+            !ReadString(spec->Script, script) || script.empty())
+            return BML_ERROR_INVALID_PARAMETER;
+
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+
+        GraphEdit edit;
+        PlanProgram program;
+        result = program.Build(*spec, *context, edit);
+        if (!result) {
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+
+        PlanId id = 0;
+        result = context->BehaviorPatches().Submit(
+            context->BehaviorPlans(), owner,
+            Script{std::move(script), targets}, std::move(name),
+            std::move(edit), id);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        *outPlan = PlanHandleOf(id);
+        PlanInfo read;
+        if (info && context->BehaviorPlans().Read(owner.Id, owner.Generation,
+                                                  id, read))
+            WritePlanInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadPlan(
+    BML_BehaviorSession session, BML_BehaviorPlan plan,
+    BML_BehaviorPlanInfo *info, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!session || !plan || !HasStructSize(info) ||
+            (status && !HasStructSize(status)))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        PlanInfo read;
+        result = context->BehaviorPlans().Read(owner.Id, owner.Generation,
+                                               PlanIdOf(plan), read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        WritePlanInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
+                                BML_BehaviorPlan plan) {
+    return Guard([&] {
+        if (!session || !plan)
+            return BML_ERROR_INVALID_HANDLE;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result))
+            return ResultCode(result);
+        return ResultCode(context->BehaviorPlans().Close(
+            owner.Id, owner.Generation, PlanIdOf(plan)));
+    });
+}
+
 const BML_BehaviorInterface kBehaviorInterface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -2071,6 +2646,9 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReadGraphValue,
     &OpenWatch,
     &CloseWatch,
+    &SubmitPlan,
+    &ReadPlan,
+    &ClosePlan,
 };
 
 } // namespace
