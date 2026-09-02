@@ -195,7 +195,8 @@ public:
     explicit Runtime(
         CKContext *context,
         std::function<ObjectRef(const void *)> issueObjectRef = {},
-        PrototypeCatalog *catalog = nullptr);
+        PrototypeCatalog *catalog = nullptr,
+        Runtime *sourceRuntime = nullptr);
     ~Runtime();
     Runtime(const Runtime &) = delete;
     Runtime &operator=(const Runtime &) = delete;
@@ -298,7 +299,6 @@ private:
         ObjectStamp Parent;
         std::vector<ObjectStamp> Sources;
         std::vector<OwnedOperation> Operations;
-        std::vector<ObjectStamp> IgnoredInputs;
         std::vector<std::shared_ptr<CallbackResource>> KeepAlive;
         int Frames = 2;
         bool DestroyBehavior = false;
@@ -306,8 +306,9 @@ private:
     };
 
     struct SharedBindings {
-        // Sources and operations may outlive the Runtime that created them
-        // when another input in the same CKContext still consumes them.
+        explicit SharedBindings(CKContext *context) : Sources(context) {}
+
+        Parameter::Sources Sources;
         std::list<PendingDestroy> Pending;
     };
 
@@ -358,10 +359,7 @@ private:
                                                Record &record);
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
                                             const Spec &spec, Record &record);
-    [[nodiscard]] int SourceReferenceCount(
-        CKParameter *source, CKBehavior *ignoredBehavior = nullptr,
-        const std::vector<ObjectStamp> *ignoredInputs = nullptr) const;
-    [[nodiscard]] bool IsSourceReferenced(CKParameter *source) const;
+    [[nodiscard]] bool IsSourceReferenced(CKParameter *source);
     void PruneOwnedSources(CKBehavior *behavior, Record &record);
     void PruneOwnedOperations(CKBehavior *behavior, Record &record);
     void SweepRecords();
@@ -393,9 +391,6 @@ private:
     void AdoptSharedBindings();
     void Close();
     void DestroyReady(DestroyMode mode);
-    [[nodiscard]] static std::shared_ptr<SharedBindings>
-    AcquireSharedBindings(CKContext *context);
-
     CKContext *m_Context = nullptr;
     std::function<ObjectRef(const void *)> m_IssueObjectRef;
     PrototypeCatalog *m_Catalog = nullptr;

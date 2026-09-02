@@ -334,7 +334,7 @@ public:
     Impl(CKContext *context, CK3dObject *owner)
         : m_Context(context), m_Owner(owner), m_Runtime(context),
           m_PhysicsForces(context, m_Runtime),
-          m_ConsumerRuntime(context) {
+          m_ConsumerRuntime(context, {}, nullptr, &m_Runtime) {
         m_EditGraph = MakeCKGraphSource(
             context, m_Runtime, [](const void *value) {
                 auto *object = const_cast<CKObject *>(
@@ -1245,7 +1245,9 @@ private:
     }
 
     void StartRuntimeClose() {
-        m_ClosingRuntime = std::make_unique<Runtime>(m_Context);
+        m_ClosingRuntime = std::make_unique<Runtime>(
+            m_Context, std::function<ObjectRef(const void *)>{}, nullptr,
+            &m_Runtime);
         CreateResult operation = m_ClosingRuntime->Instantiate(
             m_Owner, PhysicsForceWithOperation(m_Owner, m_Addition));
         m_ClosingProducerInstance = std::move(operation.Handle);

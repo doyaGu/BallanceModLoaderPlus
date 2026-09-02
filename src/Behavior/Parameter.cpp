@@ -1,5 +1,6 @@
 #include "Behavior/Parameter.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "Behavior/Status.h"
@@ -120,6 +121,137 @@ bool Compatible(CKParameterManager *manager, CKGUID destination,
                 CKGUID source) noexcept {
     return manager && destination.IsValid() && source.IsValid() &&
            manager->IsTypeCompatible(destination, source) != FALSE;
+}
+
+Sources::Object Sources::Live(CKObject *object) const {
+    if (!m_Context || !object || object->GetCKContext() != m_Context ||
+        object->IsToBeDeleted()) {
+        return {};
+    }
+    const CK_ID id = object->GetID();
+    return id != 0 && m_Context->GetObject(id) == object
+        ? Object{id, object} : Object{};
+}
+
+CKObject *Sources::Live(Object object) const {
+    if (!m_Context || object.Id == 0 || !object.Address)
+        return nullptr;
+    CKObject *current = m_Context->GetObject(object.Id);
+    return current == object.Address && !current->IsToBeDeleted()
+        ? current : nullptr;
+}
+
+void Sources::Own(CKParameter *source) {
+    const Object object = Live(source);
+    if (object.Id != 0 &&
+        std::find(m_Owned.begin(), m_Owned.end(), object) == m_Owned.end()) {
+        m_Owned.push_back(object);
+    }
+}
+
+void Sources::Update(CKParameterIn *input) {
+    const Object inputObject = Live(input);
+    m_Sources.erase(
+        std::remove_if(m_Sources.begin(), m_Sources.end(),
+                       [&](const Source &source) {
+                           return source.Input == inputObject;
+                       }),
+        m_Sources.end());
+    if (inputObject.Id == 0)
+        return;
+    const Object value = Live(input->GetRealSource());
+    if (value.Id == 0 ||
+        std::find(m_Owned.begin(), m_Owned.end(), value) == m_Owned.end()) {
+        return;
+    }
+    m_Sources.push_back({inputObject, Live(input->GetOwner()), value});
+}
+
+void Sources::Update(CKBehavior *behavior) {
+    if (!behavior)
+        return;
+    Remove(behavior);
+    Update(behavior->GetTargetParameter());
+    for (int index = 0; index < behavior->GetInputParameterCount(); ++index)
+        Update(behavior->GetInputParameter(index));
+}
+
+void Sources::Remove(CKParameter *source) {
+    if (!source)
+        return;
+    const Object object{source->GetID(), source};
+    m_Owned.erase(std::remove(m_Owned.begin(), m_Owned.end(), object),
+                  m_Owned.end());
+    m_Sources.erase(
+        std::remove_if(m_Sources.begin(), m_Sources.end(),
+                       [&](const Source &entry) {
+                           return entry.Value == object;
+                       }),
+        m_Sources.end());
+}
+
+void Sources::Remove(CKParameterIn *input) {
+    if (!input)
+        return;
+    const Object object{input->GetID(), input};
+    m_Sources.erase(
+        std::remove_if(m_Sources.begin(), m_Sources.end(),
+                       [&](const Source &source) {
+                           return source.Input == object;
+                       }),
+        m_Sources.end());
+}
+
+void Sources::Remove(CKBehavior *behavior) {
+    if (!behavior)
+        return;
+    const Object object{behavior->GetID(), behavior};
+    m_Sources.erase(
+        std::remove_if(m_Sources.begin(), m_Sources.end(),
+                       [&](const Source &source) {
+                           return source.Owner == object;
+                       }),
+        m_Sources.end());
+}
+
+void Sources::Remove(const CK_ID *ids, int count) {
+    if (!ids || count <= 0)
+        return;
+    const auto contains = [&](CK_ID id) {
+        return std::find(ids, ids + count, id) != ids + count;
+    };
+    m_Owned.erase(
+        std::remove_if(m_Owned.begin(), m_Owned.end(),
+                       [&](Object object) { return contains(object.Id); }),
+        m_Owned.end());
+    m_Sources.erase(
+        std::remove_if(m_Sources.begin(), m_Sources.end(),
+                       [&](const Source &source) {
+                           return contains(source.Input.Id) ||
+                                  contains(source.Owner.Id) ||
+                                  contains(source.Value.Id);
+                       }),
+        m_Sources.end());
+}
+
+int Sources::Count(CKParameter *source) {
+    const Object value = Live(source);
+    if (value.Id == 0)
+        return 0;
+    int count = 0;
+    for (auto entry = m_Sources.begin(); entry != m_Sources.end();) {
+        CKObject *object = Live(entry->Input);
+        auto *input = object && CKIsChildClassOf(object, CKCID_PARAMETERIN)
+            ? static_cast<CKParameterIn *>(object) : nullptr;
+        if (!input || Live(entry->Value) != input->GetRealSource()) {
+            entry = m_Sources.erase(entry);
+            continue;
+        }
+        if (entry->Value == value)
+            ++count;
+        ++entry;
+    }
+    return count;
 }
 
 Status Write(CKContext *context, CKParameter *parameter,

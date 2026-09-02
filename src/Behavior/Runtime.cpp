@@ -759,6 +759,7 @@ public:
         Status status = m_Runtime.EnsurePrototypeLayout(behavior, prototype, true);
         if (!status)
             return Fail(std::move(status), LifecycleError::LayoutFailed, fault);
+        m_Runtime.m_SharedBindings->Sources.Update(behavior);
         layout.Generation = ++m_Record.LayoutGeneration;
         return true;
     }
@@ -830,6 +831,7 @@ public:
             if (!validate(binding.Target))
                 return false;
         }
+        m_Runtime.m_SharedBindings->Sources.Update(behavior);
         m_Runtime.PruneOwnedSources(behavior, m_Record);
         m_Runtime.PruneOwnedOperations(behavior, m_Record);
         return true;
@@ -1113,12 +1115,15 @@ void Instance::Reset() {
 
 Runtime::Runtime(CKContext *context,
                  std::function<ObjectRef(const void *)> issueObjectRef,
-                 PrototypeCatalog *catalog)
+                 PrototypeCatalog *catalog,
+                 Runtime *sourceRuntime)
     : m_Context(context), m_IssueObjectRef(std::move(issueObjectRef)),
       m_Catalog(catalog),
       m_Thread(std::this_thread::get_id()),
       m_Access(std::make_shared<Instance::Access>()),
-      m_SharedBindings(AcquireSharedBindings(context)) {
+      m_SharedBindings(sourceRuntime && sourceRuntime->m_Context == context
+            ? sourceRuntime->m_SharedBindings
+            : std::make_shared<SharedBindings>(context)) {
     m_Access->Owner = this;
 }
 
@@ -1128,22 +1133,6 @@ Runtime::~Runtime() {
         m_Access->Owner = nullptr;
     }
     Close();
-}
-
-std::shared_ptr<Runtime::SharedBindings>
-Runtime::AcquireSharedBindings(CKContext *context) {
-    if (!context)
-        return {};
-    static std::mutex registryMutex;
-    // A live Runtime anchors the state. Weak registry entries cannot retain a
-    // dead CKContext or leak its object stamps into a later context at the
-    // same address.
-    static std::unordered_map<CKContext *, std::weak_ptr<SharedBindings>> registry;
-    std::lock_guard<std::mutex> lock(registryMutex);
-    std::shared_ptr<SharedBindings> bindings = registry[context].lock();
-    if (!bindings)
-        registry[context] = bindings = std::make_shared<SharedBindings>();
-    return bindings;
 }
 
 Status Runtime::ReadyStatus() const {
@@ -1619,6 +1608,7 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
         : behavior->GetInputParameter(slot.NativeIndex);
     if (!input)
         return Failure(Error::SlotNotFound, "Input parameter no longer exists.");
+    m_SharedBindings->Sources.Update(input);
 
     CKParameter *oldDirect = input->GetDirectSource();
     const ObjectStamp oldRef = CaptureObject(oldDirect);
@@ -1630,7 +1620,7 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
                              value.Kind() != Parameter::BindingKind::Shared;
     if (storedValue && oldOwned && oldDirect &&
         oldDirect->GetGUID() == input->GetGUID() &&
-        SourceReferenceCount(oldDirect) == 1) {
+        m_SharedBindings->Sources.Count(oldDirect) == 1) {
         return Parameter::Write(m_Context, oldDirect, value);
     }
 
@@ -1672,9 +1662,11 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
             m_Context->DestroyObject(literal);
             return Failure(Error::TypeMismatch, "Input rejected its literal source.", error);
         }
+        m_SharedBindings->Sources.Own(literal);
         record.OwnedSources.push_back(CaptureObject(literal));
     }
 
+    m_SharedBindings->Sources.Update(input);
     if (oldOwned && !IsSourceReferenced(oldDirect)) {
         QueueSourceDestroy(oldRef);
         record.OwnedSources.erase(owned);
@@ -1701,6 +1693,7 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
         status.Details.OperationGuid = spec.m_Operation;
         return status;
     }
+    m_SharedBindings->Sources.Update(target);
 
     auto resolveInputType = [&](const Parameter::Binding &value, bool provided,
                                 CKGUID &type, int inputIndex) -> Status {
@@ -1925,6 +1918,10 @@ Status Runtime::BindOperation(CKBehavior *behavior, Record &record,
             record.PrototypeGuid));
     }
     targetConnected = true;
+    m_SharedBindings->Sources.Own(operation->GetOutParameter());
+    m_SharedBindings->Sources.Update(operation->GetInParameter1());
+    m_SharedBindings->Sources.Update(operation->GetInParameter2());
+    m_SharedBindings->Sources.Update(target);
 
     const ObjectStamp previousRef = CaptureObject(previousSource);
     auto previousLiteral = std::find_if(
@@ -2218,37 +2215,8 @@ Status Runtime::ApplyBindings(CKBehavior *behavior, const Spec &spec,
     return {};
 }
 
-int Runtime::SourceReferenceCount(CKParameter *source,
-                                  CKBehavior *ignoredBehavior,
-                                  const std::vector<ObjectStamp> *ignoredInputs) const {
-    if (!m_Context || !source || source->IsToBeDeleted())
-        return 0;
-
-    int references = 0;
-    const XObjectPointerArray &inputs =
-        m_Context->GetObjectListByType(CKCID_PARAMETERIN, TRUE);
-    for (XObjectPointerArray::ConstIterator it = inputs.Begin();
-         it != inputs.End(); ++it) {
-        CKObject *object = *it;
-        auto *input = object && !object->IsToBeDeleted()
-            ? static_cast<CKParameterIn *>(object) : nullptr;
-        const bool ignoredInput = input && ignoredInputs &&
-            std::any_of(ignoredInputs->begin(), ignoredInputs->end(),
-                        [&](ObjectStamp candidate) {
-                            return candidate.Address == input &&
-                                   candidate.Id == input->GetID();
-                        });
-        if (input && !ignoredInput &&
-            (!ignoredBehavior || input->GetOwner() != ignoredBehavior) &&
-            input->GetRealSource() == source) {
-            ++references;
-        }
-    }
-    return references;
-}
-
-bool Runtime::IsSourceReferenced(CKParameter *source) const {
-    return SourceReferenceCount(source) != 0;
+bool Runtime::IsSourceReferenced(CKParameter *source) {
+    return m_SharedBindings->Sources.Count(source) != 0;
 }
 
 void Runtime::PruneOwnedSources(CKBehavior *behavior, Record &record) {
@@ -2300,6 +2268,7 @@ void Runtime::SweepRecords() {
             CloseCallbacks(record);
             continue;
         }
+        m_SharedBindings->Sources.Update(behavior);
         PruneOwnedSources(behavior, record);
         PruneOwnedOperations(behavior, record);
     }
@@ -3132,33 +3101,19 @@ void Runtime::DestroyReady(DestroyMode mode) {
                 ? static_cast<CKBehavior *>(object) : nullptr;
         };
         CKBehavior *behavior = resolveBehavior();
-        if (behavior && it->DestroyBehavior) {
-            auto rememberInput = [&](CKParameterIn *input) {
-                const ObjectStamp stamp = CaptureObject(input);
-                if (stamp.Id != 0 &&
-                    std::find(it->IgnoredInputs.begin(), it->IgnoredInputs.end(),
-                              stamp) == it->IgnoredInputs.end()) {
-                    it->IgnoredInputs.push_back(stamp);
-                }
-            };
-            rememberInput(behavior->GetTargetParameter());
-            for (int i = 0; i < behavior->GetInputParameterCount(); ++i)
-                rememberInput(behavior->GetInputParameter(i));
-        }
+        if (behavior && it->DestroyBehavior)
+            m_SharedBindings->Sources.Remove(behavior);
         behavior = resolveBehavior();
 
         PendingDestroy retained;
         retained.Frames = 1;
-        retained.IgnoredInputs = it->IgnoredInputs;
         if (!force) {
-            CKBehavior *ignoredBehavior = it->DestroyBehavior ? behavior : nullptr;
             for (auto source = it->Sources.begin(); source != it->Sources.end();) {
                 CKObject *object = ResolveObject(*source);
                 auto *parameter = object && CKIsChildClassOf(object, CKCID_PARAMETER)
                     ? static_cast<CKParameter *>(object) : nullptr;
                 if (parameter &&
-                    SourceReferenceCount(parameter, ignoredBehavior,
-                                         &it->IgnoredInputs) != 0) {
+                    m_SharedBindings->Sources.Count(parameter) != 0) {
                     retained.Sources.push_back(*source);
                     source = it->Sources.erase(source);
                 } else {
@@ -3172,9 +3127,8 @@ void Runtime::DestroyReady(DestroyMode mode) {
                     CKIsChildClassOf(object, CKCID_PARAMETEROPERATION)
                     ? static_cast<CKParameterOperation *>(object) : nullptr;
                 const bool referenced = parameterOperation &&
-                    SourceReferenceCount(parameterOperation->GetOutParameter(),
-                                         ignoredBehavior,
-                                         &it->IgnoredInputs) != 0;
+                    m_SharedBindings->Sources.Count(
+                        parameterOperation->GetOutParameter()) != 0;
                 if (referenced) {
                     if (it->DestroyBehavior)
                         DetachOperation(*operation);
@@ -3198,6 +3152,9 @@ void Runtime::DestroyReady(DestroyMode mode) {
                 ? static_cast<CKParameterOperation *>(object) : nullptr;
             if (!operation)
                 continue;
+            m_SharedBindings->Sources.Remove(operation->GetInParameter1());
+            m_SharedBindings->Sources.Remove(operation->GetInParameter2());
+            m_SharedBindings->Sources.Remove(operation->GetOutParameter());
             CKObject *ownerObject = ResolveObject(pendingOperation.Owner);
             auto *operationOwner = ownerObject &&
                 CKIsChildClassOf(ownerObject, CKCID_BEHAVIOR)
@@ -3229,8 +3186,12 @@ void Runtime::DestroyReady(DestroyMode mode) {
             }
         }
         for (ObjectStamp source : sources) {
-            if (CKObject *object = ResolveObject(source))
+            if (CKObject *object = ResolveObject(source)) {
+                if (CKIsChildClassOf(object, CKCID_PARAMETER))
+                    m_SharedBindings->Sources.Remove(
+                        static_cast<CKParameter *>(object));
                 m_Context->DestroyObject(object);
+            }
         }
         for (std::shared_ptr<CallbackResource> &resource : it->KeepAlive) {
             if (resource && !resource->RetireAtSafePoint())
@@ -3258,6 +3219,7 @@ void Runtime::ObjectsToBeDeleted(const CK_ID *ids, int count) {
     if (!ReadyStatus())
         return;
     AdoptSharedBindings();
+    m_SharedBindings->Sources.Remove(ids, count);
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (ContainsId(ids, count, pending.Behavior.Id)) {
             pending.Behavior = {};

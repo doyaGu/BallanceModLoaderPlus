@@ -84,7 +84,8 @@ void Instance::Reset() {
 
 Runtime::Runtime(CKContext *context,
                  std::function<ObjectRef(const void *)> issueObjectRef,
-                 PrototypeCatalog *catalog)
+                 PrototypeCatalog *catalog,
+                 Runtime *)
     : m_Context(context), m_IssueObjectRef(std::move(issueObjectRef)),
       m_Catalog(catalog), m_Thread(std::this_thread::get_id()),
       m_Access(std::make_shared<Instance::Access>()) {

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "CKAll.h"
 #include "Behavior/Value.h"
@@ -94,6 +95,47 @@ struct Type {
     [[nodiscard]] bool ObjectDerived() const noexcept {
         return ValueForm == Form::Object;
     }
+};
+
+// The source graph for Runtime-created parameters. Virtools stores raw source
+// pointers but does not retain their owners, so every managed relation is
+// recorded when Runtime binds or re-reads an input. Relations made outside
+// this graph do not acquire ownership of a Runtime-created source.
+class Sources final {
+public:
+    explicit Sources(CKContext *context) : m_Context(context) {}
+
+    void Own(CKParameter *source);
+    void Update(CKParameterIn *input);
+    void Update(CKBehavior *behavior);
+    void Remove(CKParameter *source);
+    void Remove(CKParameterIn *input);
+    void Remove(CKBehavior *behavior);
+    void Remove(const CK_ID *ids, int count);
+    [[nodiscard]] int Count(CKParameter *source);
+
+private:
+    struct Object {
+        CK_ID Id = 0;
+        CKObject *Address = nullptr;
+
+        [[nodiscard]] bool operator==(const Object &other) const noexcept {
+            return Id == other.Id && Address == other.Address;
+        }
+    };
+
+    struct Source {
+        Object Input;
+        Object Owner;
+        Object Value;
+    };
+
+    [[nodiscard]] Object Live(CKObject *object) const;
+    [[nodiscard]] CKObject *Live(Object object) const;
+
+    CKContext *m_Context = nullptr;
+    std::vector<Object> m_Owned;
+    std::vector<Source> m_Sources;
 };
 
 // Reads and copies the current Virtools type description. No pointer returned
