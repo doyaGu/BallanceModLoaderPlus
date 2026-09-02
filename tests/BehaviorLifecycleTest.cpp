@@ -78,6 +78,8 @@ public:
             SettingsSeen.push_back(Setting);
             Setting = NormalizedSetting;
         }
+        if (ChangeRelationsDuring == callback)
+            ++RelationGeneration;
 
         if (CloseDuring == callback && Coordinator)
             Coordinator->RequestClose(ResetDuringClose);
@@ -96,7 +98,7 @@ public:
         if (!Alive)
             return Fail(fault, "behavior no longer exists");
         if (DriftAfterCallback && ++ValidationCount == DriftValidation) {
-            Identity.Target.Id += 1;
+            Identity.Owner.Id += 1;
         }
         if (!(identity == Identity))
             return Fail(fault, "identity drifted");
@@ -115,7 +117,6 @@ public:
         Events.emplace_back("BIND");
         if (FailAt == "BIND")
             return Fail(fault, "binding failed");
-        Identity.Sources = {{41, 0x4100}, {42, 0x4200}};
         return true;
     }
 
@@ -150,7 +151,7 @@ public:
 
     Lifecycle *Coordinator = nullptr;
     LifecycleIdentity Identity{{1, 0x1000}, {2, 0x2000}, {3, 0x3000},
-                               {4, 0x4000}, {5, 0x5000}, {}};
+                               {4, 0x4000}};
     std::uint64_t Generation = 1;
     int AuthorStageZero = 42;
     int LaterSetting = 84;
@@ -162,12 +163,15 @@ public:
     bool DriftAfterCallback = false;
     int DriftValidation = 1;
     int ValidationCount = 0;
+    int RelationGeneration = 0;
     bool ResetDuringClose = false;
     std::string FailAt;
     LifecycleCallback FailCallback = static_cast<LifecycleCallback>(-1);
     int FailOccurrence = 1;
     LifecycleCallback CloseDuring = static_cast<LifecycleCallback>(-1);
     LifecycleCallback DestroyDuring = static_cast<LifecycleCallback>(-1);
+    LifecycleCallback ChangeRelationsDuring =
+        static_cast<LifecycleCallback>(-1);
     std::map<std::size_t, int> Writes;
     std::map<LifecycleCallback, int> Callbacks;
     std::vector<int> SettingsSeen;
@@ -229,6 +233,20 @@ TEST(BehaviorLifecycle, CallbackIdentityDriftFailsAndCompensatesByLedger) {
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Attach], 0);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Detach], 0);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
+}
+
+TEST(BehaviorLifecycle, CallbackMayChangeTargetAndParameterSources) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+    adapter.ChangeRelationsDuring = LifecycleCallback::Edited;
+
+    ASSERT_TRUE(lifecycle.Configure({true, {true}}, adapter));
+    EXPECT_EQ(adapter.RelationGeneration, 1);
+    EXPECT_NE(std::find_if(adapter.Events.begin(), adapter.Events.end(),
+                           [](const std::string &event) {
+                               return event.starts_with("RECONCILE@");
+                           }),
+              adapter.Events.end());
 }
 
 TEST(BehaviorLifecycle, CallbackFailuresUseExactCompensationLedger) {

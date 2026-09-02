@@ -281,9 +281,6 @@ private:
         ObjectStamp Parent;
         CKGUID PrototypeGuid;
         CKBehaviorPrototype *Prototype = nullptr;
-        CKBEHAVIORCALLBACKFCT Callback = nullptr;
-        CKDWORD CallbackMask = 0;
-        void *CallbackArgument = nullptr;
         std::uint64_t Id = 0;
         std::uint64_t LayoutGeneration = 1;
         bool GraphResident = false;

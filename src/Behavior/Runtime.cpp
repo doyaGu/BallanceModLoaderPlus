@@ -131,27 +131,6 @@ private:
     bool &m_Flag;
 };
 
-class BehaviorInternals final : public CKBehavior {
-public:
-    static BehaviorBlockData *BlockData(CKBehavior *behavior) {
-        BehaviorBlockData *CKBehavior::*member = &BehaviorInternals::m_BlockData;
-        return behavior ? behavior->*member : nullptr;
-    }
-};
-
-CKDWORD CallbackMaskForMessage(CKDWORD message) {
-    switch (message) {
-    case CKM_BEHAVIORDELETE: return CKCB_BEHAVIORDELETE;
-    case CKM_BEHAVIORATTACH: return CKCB_BEHAVIORATTACH;
-    case CKM_BEHAVIORDETACH: return CKCB_BEHAVIORDETACH;
-    case CKM_BEHAVIORCREATE: return CKCB_BEHAVIORCREATE;
-    case CKM_BEHAVIORRESET: return CKCB_BEHAVIORRESET;
-    case CKM_BEHAVIOREDITED: return CKCB_BEHAVIOREDITED;
-    case CKM_BEHAVIORSETTINGSEDITED: return CKCB_BEHAVIORSETTINGSEDITED;
-    default: return 0;
-    }
-}
-
 } // namespace
 
 class Runtime::NativeAdapter final : public ExecutionAdapter {
@@ -716,20 +695,14 @@ public:
 
         identity = {};
         identity.Behavior = Convert(m_Runtime.CaptureObject(behavior));
-        CKBehaviorPrototype *prototype = m_Record.Prototype;
-        const CKGUID guid = m_Record.PrototypeGuid;
+        CKBehaviorPrototype *prototype = behavior->GetPrototype();
+        const CKGUID guid = behavior->GetPrototypeGuid();
         identity.Prototype = {
             (static_cast<std::uint64_t>(guid.d1) << 32u) ^
                 static_cast<std::uint32_t>(guid.d2),
             reinterpret_cast<std::uintptr_t>(prototype)};
         identity.Owner = Convert(m_Runtime.CaptureObject(behavior->GetOwner()));
         identity.Parent = Convert(m_Runtime.CaptureObject(behavior->GetParent()));
-        identity.Target = Convert(
-            m_Runtime.CaptureObject(behavior->GetTargetParameter()));
-
-        CKParameterIn *target = behavior->GetTargetParameter();
-        identity.Sources.push_back(Convert(m_Runtime.CaptureObject(
-            target ? target->GetRealSource() : nullptr)));
         return true;
     }
 
@@ -763,8 +736,6 @@ public:
         recordChange("Prototype", !(current.Prototype == identity.Prototype));
         recordChange("owner", !(current.Owner == identity.Owner));
         recordChange("parent", !(current.Parent == identity.Parent));
-        recordChange("target", !(current.Target == identity.Target));
-        recordChange("parameter source", current.Sources != identity.Sources);
         CKBehavior *behavior = m_Runtime.ResolveBehavior(m_Record);
         return Fail(Failure(
                         Error::InvalidState,
@@ -1363,11 +1334,6 @@ Status Runtime::CreateBehavior(const Spec &spec, CKBehavior *&behavior,
 
     record.PrototypeGuid = spec.Prototype();
     record.Prototype = prototype;
-    if (BehaviorBlockData *block = BehaviorInternals::BlockData(behavior)) {
-        record.Callback = block->m_Callback;
-        record.CallbackMask = block->m_CallbackMask;
-        record.CallbackArgument = block->m_CallbackArg;
-    }
     if (!prototype->GetFunction())
         behavior->UseGraph();
     return {};
@@ -2430,16 +2396,10 @@ Status Runtime::CallCallback(Record &record, CKDWORD message,
 
     const CK_ID behaviorId = behavior->GetID();
     const CKGUID prototypeGuid = record.PrototypeGuid;
-    CKERROR result = CK_OK;
-    const CKDWORD mask = CallbackMaskForMessage(message);
-    const CKBEHAVIORCALLBACKFCT callback = record.Callback;
-    const CKDWORD callbackMask = record.CallbackMask;
-    void *const callbackArg = record.CallbackArgument;
-    if (callback && mask != 0 && (callbackMask & mask) != 0) {
+    int result = CK_OK;
+    {
         BehaviorContextScope scope(m_Context, behavior, frame);
-        m_Context->m_BehaviorContext.CallbackMessage = message;
-        m_Context->m_BehaviorContext.CallbackArg = callbackArg;
-        result = callback(m_Context->m_BehaviorContext);
+        result = behavior->CallCallbackFunction(message);
     }
     CKObject *current = m_Context->GetObject(behaviorId);
     if (current != behavior || (current && current->IsToBeDeleted())) {

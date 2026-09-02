@@ -69,13 +69,10 @@ struct LifecycleIdentity {
     LifecycleObject Prototype;
     LifecycleObject Owner;
     LifecycleObject Parent;
-    LifecycleObject Target;
-    std::vector<LifecycleObject> Sources;
 
     [[nodiscard]] bool operator==(const LifecycleIdentity &other) const noexcept {
         return Behavior == other.Behavior && Prototype == other.Prototype &&
-               Owner == other.Owner && Parent == other.Parent &&
-               Target == other.Target && Sources == other.Sources;
+               Owner == other.Owner && Parent == other.Parent;
     }
 };
 
