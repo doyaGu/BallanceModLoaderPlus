@@ -44,6 +44,7 @@ struct FakeState {
     std::uint32_t FrameLimit = 0;
     std::uint64_t Generation = 0;
     std::uint64_t ProviderGeneration = 73;
+    std::uint64_t LiveGeneration = 9;
     int LayoutCalls = 0;
     int OpenRuns = 0;
     int SessionCloses = 0;
@@ -68,6 +69,14 @@ struct FakeState {
     std::string PlanScript;
     std::vector<CapturedStep> PlanSteps;
     std::vector<BML_BehaviorHookFunction> PlanHooks;
+    std::uint32_t SetKind = 0;
+    std::uint64_t SetGeneration = 0;
+    std::string SetSlot;
+    std::int32_t SetValue = 0;
+    std::uint32_t BindRelation = 0;
+    BML_ObjectRef BindNode{};
+    std::string BindSource;
+    std::vector<std::string> ConfiguredSettings;
 };
 
 FakeState g_State;
@@ -365,7 +374,7 @@ int BML_BEHAVIOR_CALL ReadLiveLayout(
     prototype.Generation = g_State.ProviderGeneration;
     const std::vector<std::uint8_t> bytes = DeclaredLayout(prototype, *layout);
     layout->Origin = BML_BEHAVIOR_LAYOUT_LIVE;
-    layout->LayoutGeneration = 9;
+    layout->LayoutGeneration = g_State.LiveGeneration;
     layout->Flags = BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW;
     *payloadSize = static_cast<std::uint32_t>(bytes.size());
     Success(status);
@@ -462,6 +471,65 @@ int BML_BEHAVIOR_CALL InspectRun(
     std::uint32_t *payloadSize, BML_BehaviorStatus *status) {
     return InspectGraph(nullptr, {71, 72, 73}, view, graph, payload,
                         payloadCapacity, payloadSize, status);
+}
+
+int BML_BEHAVIOR_CALL SetRun(
+    BML_BehaviorRun, const BML_BehaviorSlotRef *slot,
+    const BML_BehaviorValue *value, std::uint64_t *generation,
+    BML_BehaviorStatus *status) {
+    Init(status);
+    if (slot->LayoutGeneration &&
+        slot->LayoutGeneration != g_State.LiveGeneration) {
+        status->Error = BML_BEHAVIOR_ERROR_LAYOUT_CHANGED;
+        return BML_ERROR_FAIL;
+    }
+    g_State.SetKind = slot->Kind;
+    g_State.SetGeneration = slot->LayoutGeneration;
+    g_State.SetSlot.assign(slot->Slot.Name.Data ? slot->Slot.Name.Data : "",
+                           slot->Slot.Name.Length);
+    if (value->Kind == BML_BEHAVIOR_VALUE_INT32)
+        g_State.SetValue = value->Data.Int32;
+    *generation = g_State.LiveGeneration;
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL BindRun(
+    BML_BehaviorRun, const BML_BehaviorSlotRef *slot,
+    const BML_BehaviorValueRef *source, std::uint32_t relation,
+    std::uint64_t *generation, BML_BehaviorStatus *status) {
+    Init(status);
+    if (slot->LayoutGeneration != g_State.LiveGeneration) {
+        status->Error = BML_BEHAVIOR_ERROR_LAYOUT_CHANGED;
+        return BML_ERROR_FAIL;
+    }
+    g_State.BindRelation = relation;
+    g_State.BindNode = source->Node;
+    g_State.BindSource.assign(
+        source->Slot.Name.Data ? source->Slot.Name.Data : "",
+        source->Slot.Name.Length);
+    *generation = g_State.LiveGeneration;
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ConfigureRun(
+    BML_BehaviorRun, const BML_BehaviorSettingStage *stages,
+    std::uint32_t stageCount, std::uint64_t *generation,
+    BML_BehaviorStatus *status) {
+    Init(status);
+    g_State.ConfiguredSettings.clear();
+    for (std::uint32_t stageIndex = 0; stageIndex < stageCount;
+         ++stageIndex) {
+        for (std::uint32_t index = 0;
+             index < stages[stageIndex].SettingCount; ++index) {
+            const BML_BehaviorBinding &binding =
+                stages[stageIndex].Settings[index];
+            g_State.ConfiguredSettings.emplace_back(
+                binding.Slot.Name.Data ? binding.Slot.Name.Data : "",
+                binding.Slot.Name.Length);
+        }
+    }
+    *generation = ++g_State.LiveGeneration;
+    return BML_OK;
 }
 
 int BML_BEHAVIOR_CALL ReadNodeLayout(
@@ -636,6 +704,9 @@ BML_BehaviorInterface g_Interface = {
     &ReadPlan,
     &ClosePlan,
     &InspectRun,
+    &SetRun,
+    &BindRun,
+    &ConfigureRun,
 };
 
 } // namespace
@@ -769,6 +840,55 @@ TEST(BehaviorAuthoring, ReadsLayoutAndGraphFromTheOwnedBehavior) {
     EXPECT_EQ(inspected->Root().Domain, 71u);
     EXPECT_EQ(inspected->Mode(), View::Logical);
     EXPECT_NE(inspected->Find("Root"), nullptr);
+}
+
+TEST(BehaviorAuthoring, EditsTheLiveRunThroughLayoutSlots) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto spawned = session.Use(CKGUID(1, 2)).Spawn();
+    ASSERT_TRUE(spawned);
+    Instance instance = std::move(spawned).Value();
+
+    auto layout = instance.Layout();
+    ASSERT_TRUE(layout);
+    const Slot *pinSlot = layout->Find(SlotKind::Pin, "Value");
+    ASSERT_NE(pinSlot, nullptr);
+    EXPECT_EQ(pinSlot->Generation, 9u);
+
+    auto set = instance.Set(*pinSlot, std::int32_t{713});
+    ASSERT_TRUE(set);
+    EXPECT_EQ(set.Value(), 9u);
+    EXPECT_EQ(g_State.SetKind, BML_BEHAVIOR_SLOT_PIN);
+    EXPECT_EQ(g_State.SetGeneration, 9u);
+    EXPECT_EQ(g_State.SetValue, 713);
+
+    auto inspected = instance.Inspect();
+    ASSERT_TRUE(inspected);
+    auto bound = instance.Bind(
+        *pinSlot, pout(inspected->Root(), "Value"), Relation::Direct);
+    ASSERT_TRUE(bound);
+    EXPECT_EQ(g_State.BindRelation, BML_BEHAVIOR_VALUE_DIRECT);
+    EXPECT_EQ(g_State.BindNode.Domain, inspected->Root().Domain);
+    EXPECT_EQ(g_State.BindSource, "Value");
+
+    auto configured = instance.Configure({setting("Retry", true)});
+    ASSERT_TRUE(configured);
+    EXPECT_EQ(configured.Value(), 10u);
+    ASSERT_EQ(g_State.ConfiguredSettings.size(), 1u);
+    EXPECT_EQ(g_State.ConfiguredSettings[0], "Retry");
+
+    auto stale = instance.Set(*pinSlot, std::int32_t{1});
+    EXPECT_FALSE(stale);
+    EXPECT_EQ(stale.Detail().Error,
+              BML_BEHAVIOR_ERROR_LAYOUT_CHANGED);
+
+    auto current = instance.Layout();
+    ASSERT_TRUE(current);
+    const Slot *currentPin = current->Find(SlotKind::Pin, "Value");
+    ASSERT_NE(currentPin, nullptr);
+    EXPECT_EQ(currentPin->Generation, 10u);
 }
 
 TEST(BehaviorAuthoring, ClosingSessionInvalidatesExistingBlocks) {

@@ -17,7 +17,7 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 5u
+#define BML_BEHAVIOR_INTERFACE_MINOR 6u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
 
 BML_BEGIN_CDECLS
@@ -111,6 +111,27 @@ typedef struct BML_BehaviorSettingStage {
     const BML_BehaviorBinding *Settings;
     uint32_t SettingCount;
 } BML_BehaviorSettingStage;
+
+// A slot in one live Layout generation. Index selectors require a non-zero
+// LayoutGeneration; named selectors may use zero to resolve the current live
+// Layout at the time of the call.
+typedef struct BML_BehaviorSlotRef {
+    uint32_t StructSize;
+    uint32_t Kind;
+    uint64_t LayoutGeneration;
+    BML_BehaviorGuid Type;
+    BML_BehaviorSelector Slot;
+} BML_BehaviorSlotRef;
+
+// A parameter exposed by a live CKBehavior. Node is a Scene object reference,
+// while Kind and Slot identify one of its Pin, Pout, Setting, Local, or Target
+// parameters.
+typedef struct BML_BehaviorValueRef {
+    uint32_t StructSize;
+    uint32_t Kind;
+    BML_ObjectRef Node;
+    BML_BehaviorSelector Slot;
+} BML_BehaviorValueRef;
 
 typedef enum BML_BehaviorTargetKind {
     BML_BEHAVIOR_TARGET_OWNER = 1,
@@ -896,6 +917,30 @@ typedef struct BML_BehaviorInterface {
         void *payload,
         uint32_t payloadCapacity,
         uint32_t *outPayloadSize,
+        BML_BehaviorStatus *status);
+    // Set writes a Pin or Local. Bind connects a Pin to a live Virtools
+    // parameter using direct-source or shared-source semantics.
+    int (BML_BEHAVIOR_CALL *Set)(
+        BML_BehaviorRun run,
+        const BML_BehaviorSlotRef *slot,
+        const BML_BehaviorValue *value,
+        uint64_t *outLayoutGeneration,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *Bind)(
+        BML_BehaviorRun run,
+        const BML_BehaviorSlotRef *slot,
+        const BML_BehaviorValueRef *source,
+        uint32_t relation,
+        uint64_t *outLayoutGeneration,
+        BML_BehaviorStatus *status);
+    // Each non-empty stage is written against the current Layout and followed
+    // by one CKM_BEHAVIORSETTINGSEDITED. Existing Target, Pin, and Local
+    // bindings are then restored against the resulting Layout.
+    int (BML_BEHAVIOR_CALL *Configure)(
+        BML_BehaviorRun run,
+        const BML_BehaviorSettingStage *stages,
+        uint32_t stageCount,
+        uint64_t *outLayoutGeneration,
         BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 

@@ -265,6 +265,8 @@ struct Binding {
         : Slot(std::move(slot)), Value(std::forward<T>(value)) {}
 };
 
+using SettingStage = std::vector<Binding>;
+
 template <class T>
 Binding pin(Selector slot, T &&value) {
     return {std::move(slot), std::forward<T>(value)};
@@ -428,6 +430,7 @@ struct Manager {
 
 struct Slot {
     SlotKind Kind = SlotKind::Pin;
+    std::uint64_t Generation = 0;
     bool Dynamic = false;
     std::int32_t Index = 0;
     std::int32_t Occurrence = 0;
@@ -435,6 +438,16 @@ struct Slot {
     std::optional<ValueKind> Value;
     std::string Name;
     std::string TypeName;
+
+    [[nodiscard]] BML_BehaviorSlotRef Wire() const noexcept {
+        BML_BehaviorSlotRef slot{};
+        slot.StructSize = sizeof(slot);
+        slot.Kind = static_cast<std::uint32_t>(Kind);
+        slot.LayoutGeneration = Generation;
+        slot.Type = Type.Wire();
+        slot.Slot = Selector::At(Index).Wire();
+        return slot;
+    }
 };
 
 struct Layout {
@@ -973,6 +986,7 @@ inline bool ReadLayout(const BML_BehaviorLayout &wire,
             return false;
         Slot slot;
         slot.Kind = static_cast<SlotKind>(record.Kind);
+        slot.Generation = wire.LayoutGeneration;
         slot.Dynamic = (record.Flags & BML_BEHAVIOR_SLOT_DYNAMIC) != 0;
         slot.Index = record.Index;
         slot.Occurrence = record.Occurrence;
@@ -1319,6 +1333,16 @@ public:
 
     [[nodiscard]] Result<Behavior::Layout> Layout() const;
     [[nodiscard]] Result<Graph> Inspect(View view = View::Logical) const;
+    [[nodiscard]] Result<std::uint64_t> Set(
+        const Behavior::Slot &slot, const Behavior::Value &value) const;
+    [[nodiscard]] Result<std::uint64_t> Set(
+        SlotKind kind, const Selector &slot,
+        const Behavior::Value &value) const;
+    [[nodiscard]] Result<std::uint64_t> Bind(
+        const Behavior::Slot &slot, const ValueRef &source,
+        Relation relation = Relation::Direct) const;
+    [[nodiscard]] Result<std::uint64_t> Configure(
+        const std::vector<SettingStage> &stages) const;
 
 private:
     Run(std::shared_ptr<SessionState> session,
@@ -1375,6 +1399,24 @@ public:
     [[nodiscard]] Result<Graph> Inspect(View view = View::Logical) const {
         return m_Run.Inspect(view);
     }
+    template <class T>
+    [[nodiscard]] Result<std::uint64_t> Set(
+        const Behavior::Slot &slot, T &&value) const {
+        return m_Run.Set(slot, Behavior::Value(std::forward<T>(value)));
+    }
+    [[nodiscard]] Result<std::uint64_t> Bind(
+        const Behavior::Slot &slot, const ValueRef &source,
+        Relation relation = Relation::Direct) const {
+        return m_Run.Bind(slot, source, relation);
+    }
+    [[nodiscard]] Result<std::uint64_t> Configure(
+        const std::vector<SettingStage> &stages) const {
+        return m_Run.Configure(stages);
+    }
+    [[nodiscard]] Result<std::uint64_t> Configure(
+        std::initializer_list<Binding> stage) const {
+        return Configure({SettingStage(stage)});
+    }
     int Close() noexcept { return m_Run.Close(); }
     [[nodiscard]] Result<Task> Continue() &&;
 
@@ -1409,6 +1451,24 @@ public:
     [[nodiscard]] Result<Admission> Pulse(std::string_view input) const {
         return Pulse(Selector::Unique(input));
     }
+    template <class T>
+    [[nodiscard]] Result<std::uint64_t> Set(
+        const Behavior::Slot &slot, T &&value) const {
+        return m_Run.Set(slot, Behavior::Value(std::forward<T>(value)));
+    }
+    [[nodiscard]] Result<std::uint64_t> Bind(
+        const Behavior::Slot &slot, const ValueRef &source,
+        Relation relation = Relation::Direct) const {
+        return m_Run.Bind(slot, source, relation);
+    }
+    [[nodiscard]] Result<std::uint64_t> Configure(
+        const std::vector<SettingStage> &stages) const {
+        return m_Run.Configure(stages);
+    }
+    [[nodiscard]] Result<std::uint64_t> Configure(
+        std::initializer_list<Binding> stage) const {
+        return Configure({SettingStage(stage)});
+    }
     int Close() noexcept { return m_Run.Close(); }
 
 private:
@@ -1442,6 +1502,30 @@ public:
     }
     [[nodiscard]] Result<Admission> Pulse(std::string_view input) const {
         return Pulse(Selector::Unique(input));
+    }
+    template <class T>
+    [[nodiscard]] Result<std::uint64_t> Set(
+        const Behavior::Slot &slot, T &&value) const {
+        return m_Run.Set(slot, Behavior::Value(std::forward<T>(value)));
+    }
+    template <class T>
+    [[nodiscard]] Result<std::uint64_t> Set(
+        SlotKind kind, const Selector &slot, T &&value) const {
+        return m_Run.Set(kind, slot,
+                         Behavior::Value(std::forward<T>(value)));
+    }
+    [[nodiscard]] Result<std::uint64_t> Bind(
+        const Behavior::Slot &slot, const ValueRef &source,
+        Relation relation = Relation::Direct) const {
+        return m_Run.Bind(slot, source, relation);
+    }
+    [[nodiscard]] Result<std::uint64_t> Configure(
+        const std::vector<SettingStage> &stages) const {
+        return m_Run.Configure(stages);
+    }
+    [[nodiscard]] Result<std::uint64_t> Configure(
+        std::initializer_list<Binding> stage) const {
+        return Configure({SettingStage(stage)});
     }
     int Close() noexcept { return m_Run.Close(); }
 
@@ -2363,7 +2447,7 @@ public:
             return Result<Session>::Failure(code);
         const auto *api = static_cast<const BML_BehaviorInterface *>(found);
         if (!api || api->Header.MinorVersion < BML_BEHAVIOR_INTERFACE_MINOR ||
-            !BML_IFACE_HAS(api, BML_BehaviorInterface, InspectRun))
+            !BML_IFACE_HAS(api, BML_BehaviorInterface, Configure))
             return Result<Session>::Failure(BML_ERROR_VERSION_MISMATCH);
 
         BML_BehaviorSession handle = nullptr;
@@ -3087,6 +3171,107 @@ inline Result<Graph> Detail::Run::Inspect(View view) const {
     if (!*this)
         return Result<Graph>::Failure(BML_ERROR_INVALID_HANDLE);
     return Graph::ReadRun(m_Session, m_Handle, view);
+}
+
+inline Result<std::uint64_t> Detail::Run::Set(
+    const Behavior::Slot &slot, const Behavior::Value &value) const {
+    if (!*this || !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Set))
+        return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorSlotRef target = slot.Wire();
+    const BML_BehaviorValue wire = value.Wire();
+    BML_BehaviorStatus status = EmptyStatus();
+    std::uint64_t generation = 0;
+    const int code = m_Session->Api->Set(
+        m_Handle, &target, &wire, &generation, &status);
+    return code == BML_OK
+        ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
+        : Result<std::uint64_t>::Failure(code, ReadStatus(status));
+}
+
+inline Result<std::uint64_t> Detail::Run::Set(
+    SlotKind kind, const Selector &slot,
+    const Behavior::Value &value) const {
+    if (!*this || !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Set))
+        return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorSlotRef target{};
+    target.StructSize = sizeof(target);
+    target.Kind = static_cast<std::uint32_t>(kind);
+    target.Type = value.Type().Wire();
+    target.Slot = slot.Wire();
+    const BML_BehaviorValue wire = value.Wire();
+    BML_BehaviorStatus status = EmptyStatus();
+    std::uint64_t generation = 0;
+    const int code = m_Session->Api->Set(
+        m_Handle, &target, &wire, &generation, &status);
+    return code == BML_OK
+        ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
+        : Result<std::uint64_t>::Failure(code, ReadStatus(status));
+}
+
+inline Result<std::uint64_t> Detail::Run::Bind(
+    const Behavior::Slot &slot, const ValueRef &source,
+    Relation relation) const {
+    if (!*this || !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Bind))
+        return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorSlotRef target = slot.Wire();
+    BML_BehaviorValueRef value{};
+    value.StructSize = sizeof(value);
+    value.Kind = source.Kind;
+    value.Node = source.Node;
+    value.Slot = source.Slot.Wire();
+    BML_BehaviorStatus status = EmptyStatus();
+    std::uint64_t generation = 0;
+    const int code = m_Session->Api->Bind(
+        m_Handle, &target, &value,
+        static_cast<std::uint32_t>(relation), &generation, &status);
+    return code == BML_OK
+        ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
+        : Result<std::uint64_t>::Failure(code, ReadStatus(status));
+}
+
+inline Result<std::uint64_t> Detail::Run::Configure(
+    const std::vector<SettingStage> &stages) const {
+    if (!*this || stages.empty() ||
+        !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Configure))
+        return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
+    try {
+        std::vector<std::vector<BML_BehaviorBinding>> bindings;
+        std::vector<BML_BehaviorSettingStage> wireStages;
+        bindings.reserve(stages.size());
+        wireStages.reserve(stages.size());
+        for (const SettingStage &stage : stages) {
+            std::vector<BML_BehaviorBinding> wireBindings;
+            wireBindings.reserve(stage.size());
+            for (const Binding &binding : stage) {
+                BML_BehaviorBinding wire{};
+                wire.StructSize = sizeof(wire);
+                wire.Slot = binding.Slot.Wire();
+                wire.Value = binding.Value.Wire();
+                wireBindings.push_back(wire);
+            }
+            bindings.push_back(std::move(wireBindings));
+        }
+        for (const auto &stage : bindings) {
+            BML_BehaviorSettingStage wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Settings = stage.empty() ? nullptr : stage.data();
+            wire.SettingCount = static_cast<std::uint32_t>(stage.size());
+            wireStages.push_back(wire);
+        }
+        BML_BehaviorStatus status = EmptyStatus();
+        std::uint64_t generation = 0;
+        const int code = m_Session->Api->Configure(
+            m_Handle, wireStages.data(),
+            static_cast<std::uint32_t>(wireStages.size()),
+            &generation, &status);
+        return code == BML_OK
+            ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
+            : Result<std::uint64_t>::Failure(code, ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<std::uint64_t>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<std::uint64_t>::Failure(BML_ERROR_FAIL);
+    }
 }
 
 inline Result<Graph> Graph::Logical() const {

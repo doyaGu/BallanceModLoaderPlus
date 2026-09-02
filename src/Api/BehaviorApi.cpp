@@ -2167,6 +2167,143 @@ bool ReadSlotKind(std::uint32_t kind, SlotKind &out) noexcept {
     }
 }
 
+bool ReadLiveSlot(const BML_BehaviorSlotRef &from, Slot &slot,
+                  Status &status) {
+    SlotKind kind;
+    if (!HasStructSize(&from) || !ReadSlotKind(from.Kind, kind)) {
+        status = InvalidValue("A live Behavior slot has an invalid kind or StructSize.");
+        return false;
+    }
+    if (from.Slot.Kind == BML_BEHAVIOR_SELECTOR_INDEX &&
+        from.LayoutGeneration == 0) {
+        status = InvalidValue(
+            "An indexed live Behavior slot requires its Layout generation.");
+        return false;
+    }
+    return ReadSelector(from.Slot, kind, Guid(from.Type), slot, status);
+}
+
+int BML_BEHAVIOR_CALL Set(
+    BML_BehaviorRun run, const BML_BehaviorSlotRef *slot,
+    const BML_BehaviorValue *value, std::uint64_t *outLayoutGeneration,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!run || !HasStructSize(slot) || !HasStructSize(value) ||
+            !outLayoutGeneration || (status && !HasStructSize(status)))
+            return BML_ERROR_INVALID_PARAMETER;
+        *outLayoutGeneration = 0;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        Slot target;
+        Status result;
+        Parameter::Binding binding;
+        if (!ReadLiveSlot(*slot, target, result) ||
+            !ReadValue(*value, *context, binding, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        result = context->BehaviorSessions().Set(
+            RunId(run), slot->LayoutGeneration, target, binding,
+            *outLayoutGeneration);
+        WriteStatus(status, result);
+        return ResultCode(result);
+    });
+}
+
+int BML_BEHAVIOR_CALL Bind(
+    BML_BehaviorRun run, const BML_BehaviorSlotRef *slot,
+    const BML_BehaviorValueRef *source, std::uint32_t relation,
+    std::uint64_t *outLayoutGeneration, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!run || !HasStructSize(slot) || !HasStructSize(source) ||
+            !outLayoutGeneration || (status && !HasStructSize(status)))
+            return BML_ERROR_INVALID_PARAMETER;
+        *outLayoutGeneration = 0;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        Slot targetSlot;
+        Slot sourceSlot;
+        SlotKind sourceKind;
+        Status result;
+        if (!ReadLiveSlot(*slot, targetSlot, result) ||
+            !ReadSlotKind(source->Kind, sourceKind) ||
+            !ReadSelector(source->Slot, sourceKind, CKGUID(),
+                          sourceSlot, result)) {
+            if (result)
+                result = InvalidValue("A Behavior Bind source is invalid.");
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        Parameter::BindingKind nativeRelation;
+        if (relation == BML_BEHAVIOR_VALUE_DIRECT)
+            nativeRelation = Parameter::BindingKind::Direct;
+        else if (relation == BML_BEHAVIOR_VALUE_SHARED)
+            nativeRelation = Parameter::BindingKind::Shared;
+        else {
+            result = InvalidValue(
+                "Behavior Bind accepts direct or shared source semantics.");
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        CKBehavior *native = ReadBehavior(source->Node, *context, result);
+        if (!native) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        result = context->BehaviorSessions().Bind(
+            RunId(run), slot->LayoutGeneration, targetSlot, native,
+            sourceSlot, nativeRelation, *outLayoutGeneration);
+        WriteStatus(status, result);
+        return ResultCode(result);
+    });
+}
+
+int BML_BEHAVIOR_CALL Configure(
+    BML_BehaviorRun run, const BML_BehaviorSettingStage *stages,
+    std::uint32_t stageCount, std::uint64_t *outLayoutGeneration,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!run || !stages || stageCount == 0 || !outLayoutGeneration ||
+            (status && !HasStructSize(status)))
+            return BML_ERROR_INVALID_PARAMETER;
+        *outLayoutGeneration = 0;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        Spec settings;
+        Status result;
+        for (std::uint32_t index = 0; index < stageCount; ++index) {
+            const BML_BehaviorSettingStage &stage = stages[index];
+            if (!HasStructSize(&stage)) {
+                result = InvalidValue(
+                    "A Behavior Setting stage has an unsupported StructSize.");
+                WriteStatus(status, result);
+                return ResultCode(result);
+            }
+            if (index)
+                settings.RefreshLayout();
+            if (!ReadBindings(stage.Settings, stage.SettingCount,
+                              SlotKind::Setting, *context, settings,
+                              result)) {
+                WriteStatus(status, result);
+                return ResultCode(result);
+            }
+        }
+        result = context->BehaviorSessions().Configure(
+            RunId(run), settings, *outLayoutGeneration);
+        WriteStatus(status, result);
+        return ResultCode(result);
+    });
+}
+
 // The record a Hook Block hands back to InvokeHook. The callback state owns it,
 // so it outlives the Hook occurrence and every Binding taken from that
 // occurrence, including Bindings a Conflicted Plan can no longer revert.
@@ -2695,6 +2832,9 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReadPlan,
     &ClosePlan,
     &InspectRun,
+    &Set,
+    &Bind,
+    &Configure,
 };
 
 } // namespace

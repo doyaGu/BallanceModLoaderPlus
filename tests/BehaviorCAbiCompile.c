@@ -56,7 +56,11 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 100u);
+                        sizeof(BML_BehaviorInterface) == 112u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
+                        sizeof(BML_BehaviorSlotRef) == 48u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
+                        sizeof(BML_BehaviorValueRef) == 44u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchValueSize,
                         sizeof(BML_BehaviorWatchValue) == 92u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchEventSize,
@@ -88,7 +92,11 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 200u);
+                        sizeof(BML_BehaviorInterface) == 224u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
+                        sizeof(BML_BehaviorSlotRef) == 56u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
+                        sizeof(BML_BehaviorValueRef) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchValueSize,
                         sizeof(BML_BehaviorWatchValue) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchEventSize,
