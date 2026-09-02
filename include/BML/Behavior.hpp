@@ -1330,7 +1330,7 @@ public:
         if (!m_Session || !m_Session->Api || !m_Session->Handle)
             return BML_ERROR_INVALID_HANDLE;
         const int code = m_Session->Api->CloseRun(m_Handle);
-        if (code == BML_OK) {
+        if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = nullptr;
             m_Session.reset();
         }
@@ -1412,7 +1412,7 @@ inline int Watch::Close() noexcept {
     if (!m_Session || !m_Session->Api || !m_Session->Handle)
         return BML_ERROR_INVALID_HANDLE;
     const int code = m_Session->Api->CloseWatch(m_Handle);
-    if (code == BML_OK) {
+    if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
         m_Handle = nullptr;
         m_Session.reset();
     }
@@ -2049,7 +2049,7 @@ public:
             return BML_ERROR_INVALID_HANDLE;
         const int code = m_Session->Api->ClosePlan(
             m_Session->Handle, m_Handle);
-        if (code == BML_OK) {
+        if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = nullptr;
             m_Session.reset();
         }
@@ -2119,7 +2119,7 @@ public:
             return BML_ERROR_INVALID_HANDLE;
         const int code = m_Session->Api->ClosePatch(
             m_Session->Handle, m_Handle);
-        if (code == BML_OK) {
+        if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = nullptr;
             m_Session.reset();
         }
