@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <thread>
 
 namespace {
 
@@ -83,7 +84,9 @@ public:
     void OnStartLevel() override { m_LevelStarted = true; }
 
     void OnProcess() override {
-        if (m_Done || !m_LevelStarted || !m_Session || !m_Test)
+        if (m_Done || !m_LevelStarted || !m_Test ||
+            (!m_Session && m_State != State::WaitPatchConflict &&
+             m_State != State::WaitPatchRetired))
             return;
         ++m_Frame;
         switch (m_State) {
@@ -91,8 +94,11 @@ public:
         case State::WaitActive: WaitActive(); break;
         case State::WaitHooks: WaitHooks(); break;
         case State::Close: ClosePlan(); break;
+        case State::WaitPlanRetired: WaitPlanRetired(); break;
         case State::WaitReleased: WaitReleased(); break;
         case State::ClosePatch: ClosePatch(); break;
+        case State::WaitPatchConflict: WaitPatchConflict(); break;
+        case State::WaitPatchRetired: WaitPatchRetired(); break;
         }
     }
 
@@ -109,8 +115,11 @@ private:
         WaitActive,
         WaitHooks,
         Close,
+        WaitPlanRetired,
         WaitReleased,
         ClosePatch,
+        WaitPatchConflict,
+        WaitPatchRetired,
     };
 
     CKBehaviorLink *AddLink(CKBehaviorIO *source, CKBehaviorIO *sink) {
@@ -362,13 +371,28 @@ private:
     }
 
     void ClosePlan() {
-        m_Plan.Close();
-        if (m_Plan) {
-            Finish(false, "close-handle");
+        int closed = BML_OK;
+        std::thread closer([&] { closed = m_Plan.Close(); });
+        closer.join();
+        const auto closing = m_Plan.Read();
+        if (closed != BML_ERROR_BUSY || !m_Plan || !closing ||
+            closing->State != PlanState::Retiring) {
+            Finish(false, "plan-thread-close");
             return;
         }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitPlanRetired;
+    }
+
+    void WaitPlanRetired() {
         if (!Restored()) {
-            Finish(false, "restore");
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "restore");
+            return;
+        }
+        const int closed = m_Plan.Close();
+        if (closed != BML_OK || m_Plan) {
+            Finish(false, "close-handle");
             return;
         }
         m_ClosePassed = true;
@@ -434,18 +458,53 @@ private:
         // The GraphPatch owns the native Session it still needs. Releasing the
         // original facade value must not make the Patch stale before restore.
         m_Session.Close();
-        const int closed = m_Patch.Close();
-        if (closed != BML_OK) {
-            GetLogger()->Error(
-                "Behavior graph patch close failed: code=%d", closed);
-        }
-        if (m_Patch || !Restored()) {
-            Finish(false, "patch-close");
+        m_PatchSink = m_Anchor ? m_Anchor->GetOutBehaviorIO() : nullptr;
+        if (!m_Anchor || !m_Graph || !m_PatchSink ||
+            m_Anchor->SetOutBehaviorIO(m_Graph->GetOutput(0)) != CK_OK) {
+            Finish(false, "patch-conflict-setup");
             return;
         }
-        m_PatchClosePassed = true;
-        DestroyGraph();
-        Finish(true, "done");
+        int closed = BML_OK;
+        std::thread closer([&] { closed = m_Patch.Close(); });
+        closer.join();
+        const auto closing = m_Patch.Read();
+        if (closed != BML_ERROR_BUSY || !m_Patch || !closing ||
+            closing->State != GraphPatchState::Closing) {
+            Finish(false, "patch-thread-close");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitPatchConflict;
+    }
+
+    void WaitPatchConflict() {
+        const auto conflicted = m_Patch.Read();
+        if (!conflicted || conflicted->State != GraphPatchState::Conflicted) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "patch-conflict");
+            return;
+        }
+        // Destroy the only facade handle while the inverse is still blocked.
+        // The Loader now owns completion of the requested retirement.
+        m_Patch = {};
+        if (m_Patch ||
+            m_Anchor->SetOutBehaviorIO(m_PatchSink) != CK_OK) {
+            Finish(false, "patch-conflict-release");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitPatchRetired;
+    }
+
+    void WaitPatchRetired() {
+        if (Restored()) {
+            m_PatchClosePassed = true;
+            DestroyGraph();
+            Finish(true, "done");
+            return;
+        }
+        if (m_Frame > m_WaitUntil)
+            Finish(false, "patch-retirement");
     }
 
     void Finish(bool passed, const char *reason) {
@@ -484,6 +543,7 @@ private:
     CKBehavior *m_Sink = nullptr;
     CKBehaviorLink *m_Entry = nullptr;
     CKBehaviorLink *m_Anchor = nullptr;
+    CKBehaviorIO *m_PatchSink = nullptr;
     CK_ID m_AnchorId = 0;
     State m_State = State::Submit;
     int m_Frame = 0;
