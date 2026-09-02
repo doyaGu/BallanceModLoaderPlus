@@ -111,15 +111,13 @@ struct Pout {
     std::uint32_t ObjectGeneration = 0;
 };
 
-enum class BehaviorKind {
-    Function,
-    Graph,
-};
-
 struct NativeExecution {
-    BehaviorKind Kind = BehaviorKind::Function;
     int ReturnCode = 0;
     bool Retry = false;
+    // CKBehavior::IsActive() after Execute.  CK2 derives this from the retry
+    // bit for a function and from graph activity for a composite; the
+    // detached driver consumes the resulting native state, not a parallel
+    // function/graph scheduler model.
     bool Active = false;
     bool Error = false;
     bool Break = false;
@@ -171,9 +169,7 @@ struct RunFrame {
     std::uint64_t Frame = 0;
     int ReturnCode = 0;
     bool NativeContinuation = false;
-    bool GraphActive = false;
     bool QueuedInput = false;
-    bool Terminal = false;
     ExecutionFault Fault;
     std::vector<ExecutionOutput> ActiveOutputs;
     std::vector<Pout> Pouts;
@@ -214,8 +210,8 @@ public:
     [[nodiscard]] ExecutionState State() const noexcept { return m_State; }
     [[nodiscard]] bool Managed() const noexcept { return m_Managed; }
     [[nodiscard]] bool NeedsFrame() const noexcept;
-    [[nodiscard]] const ExecutionFault &TerminalError() const noexcept {
-        return m_TerminalError;
+    [[nodiscard]] const ExecutionFault &Failure() const noexcept {
+        return m_Failure;
     }
     [[nodiscard]] std::uint64_t NextSequence() const noexcept {
         return m_NextSequence;
@@ -241,7 +237,7 @@ private:
     std::uint64_t m_NextSequence = 1;
     std::vector<ExecutionInput> m_QueuedInputs;
     std::shared_ptr<class FrameStore> m_Frames;
-    ExecutionFault m_TerminalError;
+    ExecutionFault m_Failure;
 };
 
 } // namespace BML::Behavior

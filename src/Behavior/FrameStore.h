@@ -13,12 +13,12 @@ namespace BML::Behavior {
 
 struct FrameAppendResult {
     bool Overflowed = false;
-    ExecutionFault TerminalFault;
+    ExecutionFault Failure;
 };
 
-// Owns copied RunFrames independently of the native Behavior instance. A Run
-// can therefore tear down its CK objects as soon as it becomes terminal while
-// preserving transport data until the author takes it or closes the handle.
+// Owns copied RunFrames independently of the native Behavior instance. Ending
+// an input activation does not end that instance: its Run retains the native
+// Behavior until explicit Run/session/owner/world teardown.
 class FrameStore final {
 public:
     explicit FrameStore(FrameRetention retention);
@@ -31,7 +31,7 @@ public:
 private:
     [[nodiscard]] bool ShouldRetain(
         const RunFrame &frame) const noexcept;
-    void StoreTerminal(RunFrame frame);
+    void StoreNonContinuing(RunFrame frame);
     [[nodiscard]] std::vector<RunFrame> ReadLocked() const;
     bool EraseSequence(std::uint64_t sequence);
 
@@ -40,7 +40,7 @@ private:
     std::vector<RunFrame> m_Frames;
     std::optional<RunFrame> m_Latest;
     std::optional<RunFrame> m_LastError;
-    std::optional<RunFrame> m_TerminalFrame;
+    std::optional<RunFrame> m_NonContinuing;
 };
 
 } // namespace BML::Behavior

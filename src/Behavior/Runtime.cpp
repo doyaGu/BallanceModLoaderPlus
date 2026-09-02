@@ -272,8 +272,6 @@ public:
             }
         }
 
-        result.Kind = behavior->IsUsingFunction()
-            ? BehaviorKind::Function : BehaviorKind::Graph;
         ++record->LayoutGeneration;
         result.ReturnCode = m_Runtime.ExecuteNative(behavior, m_Frame);
         result.Retry = HasContinuation(result.ReturnCode);
@@ -287,8 +285,12 @@ public:
                             "Building Block destroyed itself during execution."};
             return result;
         }
-        if (result.Kind == BehaviorKind::Graph)
-            result.Active = behavior->IsActive() != FALSE;
+        // Ballanced's CKBehavior::ExecuteFunction updates CKBEHAVIOR_ACTIVE
+        // from CKBR_ACTIVATENEXTFRAME, while CheckBehaviorActivity updates the
+        // same flag from delayed links and active/waiting sub-behaviors.  The
+        // post-Execute flag is therefore the native continuation truth for
+        // both representations.
+        result.Active = behavior->IsActive() != FALSE;
         return result;
     }
 
@@ -2626,7 +2628,7 @@ Status Runtime::Configure(CKBehavior *behavior,
     if (!adapter.LastStatus())
         return adapter.LastStatus();
 
-    const LifecycleFault &fault = record.NativeLifecycle.TerminalError();
+    const LifecycleFault &fault = record.NativeLifecycle.Failure();
     Error error = Error::InvalidState;
     Phase phase = Phase::LifecycleCallback;
     switch (fault.Code) {
@@ -2966,14 +2968,14 @@ std::shared_ptr<FrameStore> Runtime::Frames(const Instance &instance) const {
     return record ? record->Protocol.Frames() : nullptr;
 }
 
-Status Runtime::TerminalError(const Instance &instance) const {
+Status Runtime::InstanceFailure(const Instance &instance) const {
     Status ready = ReadyStatus();
     if (!ready)
         return ready;
     const Record *record = FindRecord(instance);
     if (!record)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
-    const ExecutionFault &fault = record->Protocol.TerminalError();
+    const ExecutionFault &fault = record->Protocol.Failure();
     if (!fault)
         return {};
     Error error = Error::ExecutionFailed;
@@ -3081,7 +3083,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
     RunResult result;
     result.Admission = executed.State;
     if (executed.State == AdmissionState::Queued) {
-        result.State = RunState::Queued;
+        result.State = RunState::Pending;
     } else if (executed.State == AdmissionState::Failed) {
         result.State = RunState::Failed;
     }
@@ -3145,7 +3147,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
                  state == ExecutionState::Closed)
             result.State = RunState::Failed;
         else
-            result.State = RunState::Completed;
+            result.State = RunState::Ready;
     }
 
     if (record->Expired || ResolveBehavior(*record) != behavior) {

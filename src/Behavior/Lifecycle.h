@@ -135,8 +135,8 @@ public:
     [[nodiscard]] const LifecycleLedger &Ledger() const noexcept {
         return m_Ledger;
     }
-    [[nodiscard]] const LifecycleFault &TerminalError() const noexcept {
-        return m_TerminalError;
+    [[nodiscard]] const LifecycleFault &Failure() const noexcept {
+        return m_Failure;
     }
     [[nodiscard]] bool CloseRequested() const noexcept {
         return m_CloseRequested.load(std::memory_order_acquire);
@@ -154,14 +154,14 @@ private:
                           LifecycleFault &fault,
                           bool *completed = nullptr);
     bool FailConfiguration(LifecycleFault fault, LifecycleAdapter &adapter);
-    void RecordTerminal(LifecycleFault fault) noexcept;
+    void RecordFailure(LifecycleFault fault) noexcept;
     bool TeardownCallback(LifecycleAdapter &adapter,
                           LifecycleCallback callback,
                           const LifecycleIdentity *identity);
 
     LifecycleState m_State = LifecycleState::New;
     LifecycleLedger m_Ledger;
-    LifecycleFault m_TerminalError;
+    LifecycleFault m_Failure;
     LifecycleIdentity m_Identity;
     bool m_HasIdentity = false;
     std::atomic<bool> m_CloseRequested{false};

@@ -28,7 +28,7 @@ Lifecycle &Lifecycle::operator=(Lifecycle &&other) noexcept {
         return *this;
     m_State = other.m_State;
     m_Ledger = other.m_Ledger;
-    m_TerminalError = std::move(other.m_TerminalError);
+    m_Failure = std::move(other.m_Failure);
     m_Identity = std::move(other.m_Identity);
     m_HasIdentity = other.m_HasIdentity;
     m_CloseRequested.store(
@@ -48,7 +48,7 @@ Lifecycle &Lifecycle::operator=(Lifecycle &&other) noexcept {
 bool Lifecycle::Configure(const LifecyclePlan &plan,
                           LifecycleAdapter &adapter) {
     if (m_State != LifecycleState::New) {
-        RecordTerminal(Fault(LifecycleError::InvalidState,
+        RecordFailure(Fault(LifecycleError::InvalidState,
                              "Behavior lifecycle was configured more than once."));
         return false;
     }
@@ -150,7 +150,7 @@ bool Lifecycle::Configure(const LifecyclePlan &plan,
     }
 
     if (CloseRequested()) {
-        RecordTerminal(Fault(LifecycleError::Cancelled,
+        RecordFailure(Fault(LifecycleError::Cancelled,
                              "Behavior lifecycle was closed during configuration."));
         Drain(adapter);
         return false;
@@ -207,7 +207,7 @@ bool Lifecycle::InvokeConfigured(LifecycleAdapter &adapter,
 
 bool Lifecycle::FailConfiguration(LifecycleFault fault,
                                   LifecycleAdapter &adapter) {
-    RecordTerminal(std::move(fault));
+    RecordFailure(std::move(fault));
     RequestClose(false);
     Drain(adapter);
     return false;
@@ -230,7 +230,7 @@ bool Lifecycle::Drain(LifecycleAdapter &adapter) {
     if (!adapter.Deactivate(fault)) {
         SupplyFault(fault, LifecycleError::TeardownFailed,
                     "Behavior deactivation failed during teardown.");
-        RecordTerminal(std::move(fault));
+        RecordFailure(std::move(fault));
     }
 
     const LifecycleIdentity *identity = m_HasIdentity ? &m_Identity : nullptr;
@@ -245,7 +245,7 @@ bool Lifecycle::Drain(LifecycleAdapter &adapter) {
     if (!adapter.DisconnectAndDestroy(fault)) {
         SupplyFault(fault, LifecycleError::TeardownFailed,
                     "Behavior native destruction failed.");
-        RecordTerminal(std::move(fault));
+        RecordFailure(std::move(fault));
     }
 
     m_Ledger = {};
@@ -261,22 +261,22 @@ bool Lifecycle::TeardownCallback(LifecycleAdapter &adapter,
     if (!success) {
         SupplyFault(fault, LifecycleError::CallbackFailed,
                     "A native Behavior teardown callback failed.");
-        RecordTerminal(std::move(fault));
+        RecordFailure(std::move(fault));
         return false;
     }
 
     if (identity && !adapter.Revalidate(*identity, fault)) {
         SupplyFault(fault, LifecycleError::IdentityChanged,
                     "A native teardown callback changed Behavior identity.");
-        RecordTerminal(std::move(fault));
+        RecordFailure(std::move(fault));
         return false;
     }
     return true;
 }
 
-void Lifecycle::RecordTerminal(LifecycleFault fault) noexcept {
-    if (!m_TerminalError && fault)
-        m_TerminalError = std::move(fault);
+void Lifecycle::RecordFailure(LifecycleFault fault) noexcept {
+    if (!m_Failure && fault)
+        m_Failure = std::move(fault);
 }
 
 } // namespace BML::Behavior

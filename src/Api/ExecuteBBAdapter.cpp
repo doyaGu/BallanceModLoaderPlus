@@ -13,8 +13,7 @@ Behavior::RunResult ExecuteBBAdapter::Run(
                 CKBR_BEHAVIORERROR, {}};
     Behavior::RunResult result = m_Runtime.StartTask(
         created.Handle, Behavior::Slot::At(Behavior::SlotKind::Input, input));
-    if (result.State == Behavior::RunState::Pending ||
-        result.State == Behavior::RunState::Queued)
+    if (result.State == Behavior::RunState::Pending)
         m_Tasks.push_back(std::move(created.Handle));
     return result;
 }
@@ -37,7 +36,7 @@ std::pair<XObjectArray *, CKObject *> ExecuteBBAdapter::LoadObjects(
         return {nullptr, nullptr};
     Behavior::RunResult executed = m_Runtime.Pulse(
         created.Handle, Behavior::Slot::At(Behavior::SlotKind::Input, 0));
-    if (!executed || executed.State != Behavior::RunState::Completed)
+    if (!executed || executed.State != Behavior::RunState::Ready)
         return {nullptr, nullptr};
 
     CKBehavior *behavior = created.Handle.Get();

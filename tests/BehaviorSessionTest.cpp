@@ -98,7 +98,7 @@ TEST(BehaviorSessions, OtherOperationsRequireTheGameThread) {
     EXPECT_EQ(status.Code, Error::WrongThread);
 }
 
-TEST(BehaviorSessions, CompletedCallKeepsFramesAfterNativeTeardown) {
+TEST(BehaviorSessions, ReadyCallKeepsItsInstanceUntilTheRunCloses) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);
     ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
@@ -110,18 +110,22 @@ TEST(BehaviorSessions, CompletedCallKeepsFramesAfterNativeTeardown) {
         session, nullptr, block, Input("Run"));
     ASSERT_TRUE(run);
     EXPECT_EQ(run.Info.Kind, RunKind::Call);
-    EXPECT_EQ(run.Info.State, RunState::Completed);
-    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+    EXPECT_EQ(run.Info.State, RunState::Ready);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
 
     std::shared_ptr<FrameStore> frames = sessions.Frames(run.Id);
     ASSERT_NE(frames, nullptr);
     ASSERT_EQ(frames->Read().size(), 1u);
-    EXPECT_TRUE(frames->Read().front().Terminal);
+    EXPECT_FALSE(frames->Read().front().NativeContinuation);
+    EXPECT_FALSE(frames->Read().front().QueuedInput);
     EXPECT_EQ(frames->Read().front().ActiveOutputs.front().Name, "Done");
 
     sessions.CloseRun(run.Id);
     RunInfo stale;
     EXPECT_EQ(sessions.ReadRun(run.Id, stale).Code, Error::InvalidState);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
 TEST(BehaviorSessions, ContinuePromotesTheSameCallAndRetainsBothFrames) {
@@ -151,16 +155,51 @@ TEST(BehaviorSessions, ContinuePromotesTheSameCallAndRetainsBothFrames) {
     sessions.ProcessFrame();
     ASSERT_TRUE(sessions.ReadRun(run.Id, info));
     EXPECT_EQ(info.Kind, RunKind::Task);
-    EXPECT_EQ(info.State, RunState::Completed);
-    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+    EXPECT_EQ(info.State, RunState::Ready);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
 
     std::shared_ptr<FrameStore> frames = sessions.Frames(run.Id);
     ASSERT_NE(frames, nullptr);
     const std::vector<RunFrame> captured = frames->Read();
     ASSERT_EQ(captured.size(), 2u);
     EXPECT_TRUE(captured[0].NativeContinuation);
-    EXPECT_FALSE(captured[0].Terminal);
-    EXPECT_TRUE(captured[1].Terminal);
+    EXPECT_FALSE(captured[1].NativeContinuation);
+    EXPECT_FALSE(captured[1].QueuedInput);
+
+    RunResult pulsed = sessions.Pulse(run.Id, Input("Run"));
+    ASSERT_TRUE(pulsed);
+    EXPECT_EQ(pulsed.State, RunState::Ready);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+    sessions.CloseRun(run.Id);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+}
+
+TEST(BehaviorSessions, FailedActivationStillUsesRunOwnedTeardown) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    OpenRun run = sessions.Call(
+        session, nullptr, Spec(CKGUID(11, 12)), Input("Fail"));
+    ASSERT_TRUE(run);
+    EXPECT_EQ(run.Info.State, RunState::Failed);
+    EXPECT_EQ(run.Info.LastStatus.Code, Error::ExecutionFailed);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+
+    const std::shared_ptr<FrameStore> frames = sessions.Frames(run.Id);
+    ASSERT_NE(frames, nullptr);
+    ASSERT_EQ(frames->Read().size(), 1u);
+    EXPECT_EQ(frames->Read().front().Fault.Code,
+              ExecutionError::NativeFailed);
+
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+    sessions.CloseRun(run.Id);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
 TEST(BehaviorSessions, StartIsManagedFromItsFirstExecution) {
@@ -182,10 +221,40 @@ TEST(BehaviorSessions, StartIsManagedFromItsFirstExecution) {
     sessions.ProcessFrame();
     RunInfo info;
     ASSERT_TRUE(sessions.ReadRun(run.Id, info));
-    EXPECT_EQ(info.State, RunState::Completed);
-    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+    EXPECT_EQ(info.State, RunState::Ready);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
     ASSERT_NE(sessions.Frames(run.Id), nullptr);
     EXPECT_EQ(sessions.Frames(run.Id)->Read().size(), 2u);
+    sessions.CloseRun(run.Id);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+}
+
+TEST(BehaviorSessions, RejectedPulseDoesNotChangeTheRunState) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    OpenRun run = sessions.Spawn(
+        session, nullptr, Spec(CKGUID(13, 14)));
+    ASSERT_TRUE(run);
+
+    RunResult rejected = sessions.Pulse(run.Id, Input("Missing"));
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.Admission, AdmissionState::Failed);
+    RunInfo info;
+    ASSERT_TRUE(sessions.ReadRun(run.Id, info));
+    EXPECT_EQ(info.State, RunState::Ready);
+    EXPECT_EQ(info.LastStatus.Code, Error::SlotNotFound);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+
+    RunResult accepted = sessions.Pulse(run.Id, Input("Run"));
+    ASSERT_TRUE(accepted);
+    EXPECT_EQ(accepted.State, RunState::Ready);
+    sessions.CloseRun(run.Id);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
 TEST(BehaviorSessions, WorldResetClosesRunsButKeepsTheSession) {
@@ -201,7 +270,7 @@ TEST(BehaviorSessions, WorldResetClosesRunsButKeepsTheSession) {
     RunResult pulse = sessions.Pulse(
         instance.Id, Input("Run"));
     ASSERT_TRUE(pulse.Detail);
-    EXPECT_EQ(pulse.State, RunState::Completed);
+    EXPECT_EQ(pulse.State, RunState::Ready);
     sessions.ProcessFrame();
     EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
 

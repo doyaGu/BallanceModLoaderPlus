@@ -17,6 +17,21 @@ RunResult FailedRun(Error error, std::string message) {
             CKBR_BEHAVIORERROR, {}};
 }
 
+RunState RunStateOf(ExecutionState state) noexcept {
+    switch (state) {
+    case ExecutionState::Idle:
+        return RunState::Ready;
+    case ExecutionState::Pending:
+    case ExecutionState::Running:
+        return RunState::Pending;
+    case ExecutionState::Closing:
+    case ExecutionState::Closed:
+    case ExecutionState::Failed:
+        return RunState::Failed;
+    }
+    return RunState::Failed;
+}
+
 } // namespace
 
 Sessions::Sessions(Runtime &runtime, PrototypeCatalog *catalog,
@@ -163,7 +178,7 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
     if (!created)
         return {std::move(created.Detail), 0, {}};
     RunResult result = m_Runtime.StartTask(created.Handle, input);
-    if (result.State == RunState::Pending || result.State == RunState::Queued) {
+    if (result.State == RunState::Pending) {
         Status continued = m_Runtime.Continue(created.Handle);
         if (!continued && result.Detail)
             result.Detail = std::move(continued);
@@ -197,7 +212,7 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
     if (!created)
         return {std::move(created.Detail), 0, {}};
     RunResult result;
-    result.State = RunState::Completed;
+    result.State = RunState::Ready;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Session *current = FindSession(session.Id);
     if (!current || current->OwnerGeneration != session.OwnerGeneration) {
@@ -225,7 +240,7 @@ RunResult Sessions::Continue(std::uintptr_t runId) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         run->Info.LastStatus = status;
-        run->Info.State = status ? RunState::Pending : RunState::Failed;
+        run->Info.State = RunStateOf(m_Runtime.State(run->Block));
         if (status)
             run->Info.Kind = RunKind::Task;
     }
@@ -245,7 +260,7 @@ RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
                              "Pulse requires a live Task or Instance Run.");
     }
     RunResult result = m_Runtime.Pulse(run->Block, input);
-    if (result.State == RunState::Pending || result.State == RunState::Queued) {
+    if (result.State == RunState::Pending) {
         Status continued = m_Runtime.Continue(run->Block);
         if (!continued && result.Detail)
             result.Detail = std::move(continued);
@@ -253,7 +268,7 @@ RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         run->Info.LastStatus = result.Detail;
-        run->Info.State = result.State;
+        run->Info.State = RunStateOf(m_Runtime.State(run->Block));
     }
     return result;
 }
@@ -264,15 +279,8 @@ Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
     if (!run)
         return Fail(Error::InvalidState, "The Behavior Run is stale.");
     info = run->Info;
-    if (run->Block) {
-        const ExecutionState state = m_Runtime.State(run->Block);
-        if (state == ExecutionState::Pending || state == ExecutionState::Running)
-            info.State = RunState::Pending;
-        else if (state == ExecutionState::Failed ||
-                 state == ExecutionState::Closing ||
-                 state == ExecutionState::Closed)
-            info.State = RunState::Failed;
-    }
+    if (run->Block)
+        info.State = RunStateOf(m_Runtime.State(run->Block));
     return {};
 }
 
@@ -467,19 +475,7 @@ void Sessions::ProcessFrame() {
             Run &run = *entry;
             if (!run.Block)
                 continue;
-            const ExecutionState state = m_Runtime.State(run.Block);
-            if (state == ExecutionState::Pending ||
-                state == ExecutionState::Running) {
-                run.Info.State = RunState::Pending;
-            } else {
-                run.Info.State = state == ExecutionState::Failed
-                    ? RunState::Failed : RunState::Completed;
-                if (run.Info.Kind != RunKind::Instance ||
-                    state == ExecutionState::Failed ||
-                    state == ExecutionState::Closing ||
-                    state == ExecutionState::Closed)
-                    CloseNative(run);
-            }
+            run.Info.State = RunStateOf(m_Runtime.State(run.Block));
         }
         watches.reserve(m_Watches.size());
         for (const auto &[id, watch] : m_Watches)
@@ -600,19 +596,9 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     if (!inserted)
         return {Fail(Error::InvalidState, "Behavior Run id collision."), 0, {}};
 
-    if (kind == RunKind::Call && result.State != RunState::Pending)
-        CloseNative(*stored->second);
-    else if (kind == RunKind::Task && result.State != RunState::Pending &&
-             result.State != RunState::Queued)
-        CloseNative(*stored->second);
-
     // A native error is a Frame, not an admission failure.
     Status admitted;
     return {std::move(admitted), id, stored->second->Info};
-}
-
-void Sessions::CloseNative(Run &run) {
-    run.Block.Reset();
 }
 
 void Sessions::QueueClose(std::shared_ptr<Run> run) {

@@ -311,9 +311,8 @@ enum class RunKind : std::uint32_t {
 };
 
 enum class RunState : std::uint32_t {
-    Completed = BML_BEHAVIOR_RUN_COMPLETED,
+    Ready = BML_BEHAVIOR_RUN_READY,
     Pending = BML_BEHAVIOR_RUN_PENDING,
-    Queued = BML_BEHAVIOR_RUN_QUEUED,
     Failed = BML_BEHAVIOR_RUN_FAILED,
 };
 
@@ -324,7 +323,7 @@ enum class Admission : std::uint32_t {
 
 struct RunInfo {
     RunKind Kind = RunKind::Instance;
-    RunState State = RunState::Completed;
+    RunState State = RunState::Ready;
     bool UnverifiedDetached = false;
     Status Detail;
 };
@@ -369,7 +368,6 @@ struct Frame {
     std::uint64_t GameFrame = 0;
     std::int32_t NativeResult = 0;
     std::uint32_t Continuation = BML_BEHAVIOR_CONTINUATION_NONE;
-    bool Terminal = false;
     std::uint32_t Error = BML_BEHAVIOR_ERROR_NONE;
     std::vector<Out> Outs;
     std::vector<Pout> Pouts;
@@ -937,7 +935,6 @@ inline bool ReadFrames(const std::vector<BML_BehaviorRunFrame> &headers,
         frame.GameFrame = header.Frame;
         frame.NativeResult = header.NativeResult;
         frame.Continuation = header.Continuation;
-        frame.Terminal = header.Terminal != 0;
         frame.Error = header.Error;
 
         frame.Outs.reserve(header.OutCount);
@@ -989,6 +986,9 @@ inline bool ReadFrames(const std::vector<BML_BehaviorRunFrame> &headers,
     return true;
 }
 
+// A Run owns one native Behavior instance. Ready means no continuation is
+// waiting; Failed means execution cannot continue. Neither state releases the
+// instance. Close/destruction performs lifecycle teardown at a safe point.
 class Run {
 public:
     Run() = default;
@@ -1247,7 +1247,7 @@ private:
     friend class Builder;
 };
 
-// Builder terminal methods are the one-shot authoring path. Compile once and
+// Builder execution methods are the one-shot authoring path. Compile once and
 // retain the immutable Block when the same definition is run repeatedly.
 class Builder {
 public:

@@ -116,15 +116,14 @@ private:
 };
 
 enum class RunState {
-    Completed,
+    Ready,
     Pending,
-    Queued,
     Failed,
 };
 
 struct RunResult {
     Status Detail;
-    RunState State = RunState::Completed;
+    RunState State = RunState::Ready;
     int ReturnCode = CKBR_OK;
     std::vector<int> ActiveOutputs;
     AdmissionState Admission = AdmissionState::Failed;
@@ -251,7 +250,7 @@ public:
     [[nodiscard]] std::vector<RunFrame> Take(Instance &instance);
     [[nodiscard]] std::shared_ptr<FrameStore> Frames(
         const Instance &instance) const;
-    [[nodiscard]] Status TerminalError(const Instance &instance) const;
+    [[nodiscard]] Status InstanceFailure(const Instance &instance) const;
     void ProcessTasks(const CKBehaviorContext *frame = nullptr);
     void ProcessFrame();
     void ClosePending();

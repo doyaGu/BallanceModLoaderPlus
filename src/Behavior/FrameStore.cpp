@@ -11,6 +11,10 @@ ExecutionFault QueueFullFault(int nativeCode) {
             "Behavior frame retention is full; execution was stopped."};
 }
 
+bool HasNoContinuation(const RunFrame &frame) noexcept {
+    return !frame.NativeContinuation && !frame.QueuedInput;
+}
+
 } // namespace
 
 FrameStore::FrameStore(FrameRetention retention)
@@ -19,8 +23,8 @@ FrameStore::FrameStore(FrameRetention retention)
 FrameAppendResult FrameStore::Retain(RunFrame frame) {
     std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_Retention.Kind == RetentionKind::Latest) {
-        if (frame.Terminal)
-            StoreTerminal(std::move(frame));
+        if (HasNoContinuation(frame))
+            StoreNonContinuing(std::move(frame));
         else if (frame.Fault)
             m_LastError = std::move(frame);
         else
@@ -29,8 +33,8 @@ FrameAppendResult FrameStore::Retain(RunFrame frame) {
     }
 
     if (m_Retention.Kind == RetentionKind::Ignore) {
-        if (frame.Terminal)
-            StoreTerminal(std::move(frame));
+        if (HasNoContinuation(frame))
+            StoreNonContinuing(std::move(frame));
         else if (frame.Fault)
             m_LastError = std::move(frame);
         return {};
@@ -43,16 +47,15 @@ FrameAppendResult FrameStore::Retain(RunFrame frame) {
         return {};
     }
 
-    RunFrame terminal = frame;
-    terminal.Terminal = true;
-    terminal.NativeContinuation = false;
-    terminal.QueuedInput = false;
-    terminal.Overflow = FrameOverflow{1, m_Retention.Kind,
-                                        m_Retention.Capacity,
-                                        terminal.Fault};
-    terminal.Fault = QueueFullFault(frame.ReturnCode);
-    const ExecutionFault fault = terminal.Fault;
-    StoreTerminal(std::move(terminal));
+    RunFrame failureFrame = frame;
+    failureFrame.NativeContinuation = false;
+    failureFrame.QueuedInput = false;
+    failureFrame.Overflow = FrameOverflow{1, m_Retention.Kind,
+                                         m_Retention.Capacity,
+                                         failureFrame.Fault};
+    failureFrame.Fault = QueueFullFault(frame.ReturnCode);
+    const ExecutionFault fault = failureFrame.Fault;
+    StoreNonContinuing(std::move(failureFrame));
     return {true, fault};
 }
 
@@ -83,7 +86,7 @@ std::vector<RunFrame> FrameStore::Take() {
     m_Frames.clear();
     m_Latest.reset();
     m_LastError.reset();
-    m_TerminalFrame.reset();
+    m_NonContinuing.reset();
     return drained;
 }
 
@@ -91,7 +94,7 @@ bool FrameStore::ShouldRetain(const RunFrame &frame) const noexcept {
     switch (m_Retention.Kind) {
     case RetentionKind::Signals:
         return frame.Sequence == 1 || !frame.ActiveOutputs.empty() ||
-               frame.Terminal || static_cast<bool>(frame.Fault);
+               HasNoContinuation(frame) || static_cast<bool>(frame.Fault);
     case RetentionKind::EachFrame:
         return true;
     case RetentionKind::Latest:
@@ -101,22 +104,22 @@ bool FrameStore::ShouldRetain(const RunFrame &frame) const noexcept {
     return false;
 }
 
-void FrameStore::StoreTerminal(RunFrame frame) {
-    m_TerminalFrame = std::move(frame);
+void FrameStore::StoreNonContinuing(RunFrame frame) {
+    m_NonContinuing = std::move(frame);
 }
 
 std::vector<RunFrame> FrameStore::ReadLocked() const {
     std::vector<RunFrame> frames;
     frames.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
                      (m_LastError ? 1u : 0u) +
-                     (m_TerminalFrame ? 1u : 0u));
+                     (m_NonContinuing ? 1u : 0u));
     frames.insert(frames.end(), m_Frames.begin(), m_Frames.end());
     if (m_Latest)
         frames.push_back(*m_Latest);
     if (m_LastError)
         frames.push_back(*m_LastError);
-    if (m_TerminalFrame)
-        frames.push_back(*m_TerminalFrame);
+    if (m_NonContinuing)
+        frames.push_back(*m_NonContinuing);
     std::sort(frames.begin(), frames.end(),
               [](const RunFrame &left, const RunFrame &right) {
                   return left.Sequence < right.Sequence;
@@ -149,7 +152,7 @@ bool FrameStore::EraseSequence(std::uint64_t sequence) {
         return true;
     }
     return eraseOptional(m_Latest) || eraseOptional(m_LastError) ||
-           eraseOptional(m_TerminalFrame);
+           eraseOptional(m_NonContinuing);
 }
 
 } // namespace BML::Behavior

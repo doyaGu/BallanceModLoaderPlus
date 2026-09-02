@@ -224,7 +224,7 @@ TEST(BehaviorLifecycle, CallbackIdentityDriftFailsAndCompensatesByLedger) {
 
     EXPECT_FALSE(lifecycle.Configure({true, {true}}, adapter));
     EXPECT_EQ(lifecycle.State(), LifecycleState::Closed);
-    EXPECT_EQ(lifecycle.TerminalError().Code, LifecycleError::CallbackFailed);
+    EXPECT_EQ(lifecycle.Failure().Code, LifecycleError::CallbackFailed);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Create], 1);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Attach], 0);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Detach], 0);
@@ -294,7 +294,7 @@ TEST(BehaviorLifecycle, CallbackSelfCloseQueuesTeardownWithoutSelfWait) {
     EXPECT_EQ(lifecycle.State(), LifecycleState::Closed);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Detach], 1);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
-    EXPECT_EQ(lifecycle.TerminalError().Code, LifecycleError::Cancelled);
+    EXPECT_EQ(lifecycle.Failure().Code, LifecycleError::Cancelled);
 }
 
 TEST(BehaviorLifecycle, ExternalThreadCloseOnlyMutatesAtDrainSafePoint) {
@@ -323,7 +323,7 @@ TEST(BehaviorLifecycle, SelfDestructionNeverPreventsBestEffortNativeCleanup) {
     EXPECT_EQ(lifecycle.State(), LifecycleState::Closed);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Detach], 1);
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
-    EXPECT_TRUE(lifecycle.TerminalError());
+    EXPECT_TRUE(lifecycle.Failure());
     EXPECT_EQ(adapter.Events.back(), "DESTROY");
 }
 
@@ -336,7 +336,7 @@ TEST(BehaviorLifecycle, FirstTeardownDiagnosticWinsWhileCleanupContinues) {
 
     lifecycle.RequestClose();
     ASSERT_TRUE(lifecycle.Drain(adapter));
-    EXPECT_EQ(lifecycle.TerminalError().Message, "deactivation failed");
+    EXPECT_EQ(lifecycle.Failure().Message, "deactivation failed");
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
     EXPECT_EQ(adapter.Events.back(), "DESTROY");
 }

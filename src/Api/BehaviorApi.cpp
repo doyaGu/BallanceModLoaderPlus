@@ -542,9 +542,8 @@ std::uint32_t PublicRunKind(RunKind kind) noexcept {
 
 std::uint32_t PublicRunState(RunState state) noexcept {
     switch (state) {
-    case RunState::Completed: return BML_BEHAVIOR_RUN_COMPLETED;
+    case RunState::Ready: return BML_BEHAVIOR_RUN_READY;
     case RunState::Pending: return BML_BEHAVIOR_RUN_PENDING;
-    case RunState::Queued: return BML_BEHAVIOR_RUN_QUEUED;
     case RunState::Failed: return BML_BEHAVIOR_RUN_FAILED;
     }
     return BML_BEHAVIOR_RUN_FAILED;
@@ -867,11 +866,8 @@ public:
         header.NativeResult = frame.ReturnCode;
         if (frame.NativeContinuation)
             header.Continuation |= BML_BEHAVIOR_CONTINUATION_NATIVE;
-        if (frame.GraphActive)
-            header.Continuation |= BML_BEHAVIOR_CONTINUATION_GRAPH_ACTIVE;
         if (frame.QueuedInput)
             header.Continuation |= BML_BEHAVIOR_CONTINUATION_QUEUED_INPUT;
-        header.Terminal = frame.Terminal ? 1u : 0u;
         header.Error = PublicError(frame.Fault.Code);
 
         if (!AddOuts(frame, header) || !AddPouts(frame, header) ||

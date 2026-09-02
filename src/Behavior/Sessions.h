@@ -29,7 +29,7 @@ enum class RunKind {
 
 struct RunInfo {
     RunKind Kind = RunKind::Instance;
-    RunState State = RunState::Completed;
+    RunState State = RunState::Ready;
     Status LastStatus;
     bool UnverifiedDetached = false;
 };
@@ -145,7 +145,6 @@ private:
     [[nodiscard]] OpenRun AddRun(const Session &session, RunKind kind,
                                  Instance block, RunResult result,
                                  bool unverifiedDetached);
-    void CloseNative(Run &run);
     void QueueClose(std::shared_ptr<Run> run);
     void CloseQueuedRuns();
     void CloseOwner(const std::string &ownerId, std::uint64_t generation);

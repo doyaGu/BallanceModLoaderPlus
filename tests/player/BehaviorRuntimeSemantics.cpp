@@ -90,7 +90,8 @@ int ProbeReentrantPulse(const CKBehaviorContext *, void *argument) {
     if (probe->Calls == 1) {
         RunResult queued = probe->Owner->Pulse(
             *probe->Handle, Slot::Named(SlotKind::Input, "In 1"));
-        probe->Queued = queued.State == RunState::Queued;
+        probe->Queued = queued.State == RunState::Pending &&
+                        queued.Admission == AdmissionState::Queued;
     }
     return CKBR_OK;
 }
@@ -634,11 +635,11 @@ private:
             return m_Runtime.StartTask(
                 m_BreakInstance, Slot::At(SlotKind::Input, 0));
         });
-        const Status terminal = m_Runtime.TerminalError(m_BreakInstance);
+        const Status failure = m_Runtime.InstanceFailure(m_BreakInstance);
         const bool rejected = first.ReturnCode == CKBR_BREAK &&
                               first.State == RunState::Failed &&
                               !m_Runtime.IsTaskActive(m_BreakInstance) &&
-                              terminal.Code == Error::UnsupportedBreak;
+                              failure.Code == Error::UnsupportedBreak;
         if (!rejected)
             Fail("break-start");
         m_State = State::BreakResume;
@@ -677,7 +678,8 @@ private:
         const std::vector<RunFrame> firstFrames =
             m_Runtime.Take(m_WaitAllInstance);
         const bool firstPending = first.State == RunState::Pending &&
-            second.State == RunState::Queued && behavior &&
+            second.State == RunState::Pending &&
+            second.Admission == AdmissionState::Queued && behavior &&
             behavior->IsInputActive(0) && !behavior->IsInputActive(1) &&
             m_Runtime.IsTaskActive(m_WaitAllInstance) &&
             firstFrames.size() == 1 &&
@@ -699,7 +701,8 @@ private:
             !m_Runtime.IsTaskActive(m_WaitAllInstance) &&
             m_Runtime.State(m_WaitAllInstance) == ExecutionState::Idle &&
             frames.size() == 1 && frames[0].Sequence == 2 &&
-            frames[0].Terminal && frames[0].ActiveOutputs.size() == 1 &&
+            !frames[0].NativeContinuation && !frames[0].QueuedInput &&
+            frames[0].ActiveOutputs.size() == 1 &&
             frames[0].ActiveOutputs[0].Name == "Out";
         if (!completed)
             Fail("wait-all-complete");
@@ -724,8 +727,9 @@ private:
         RunResult second = m_Runtime.Pulse(
             m_TerminalPulseInstance,
             Slot::Named(SlotKind::Input, "In 0"));
-        if (first.State != RunState::Completed ||
-            second.State != RunState::Queued || m_TerminalPulse.Calls != 1 ||
+        if (first.State != RunState::Ready ||
+            second.State != RunState::Pending ||
+            second.Admission != AdmissionState::Queued || m_TerminalPulse.Calls != 1 ||
             m_Runtime.State(m_TerminalPulseInstance) != ExecutionState::Pending) {
             Fail("terminal-pulse-queued");
         }
@@ -739,7 +743,8 @@ private:
         if (m_TerminalPulse.Calls != 2 || !m_TerminalPulse.ContextMatched ||
             m_Runtime.State(m_TerminalPulseInstance) != ExecutionState::Idle ||
             frames.size() != 2 || frames[0].Sequence != 1 ||
-            frames[1].Sequence != 2 || !frames[1].Terminal) {
+            frames[1].Sequence != 2 || frames[1].NativeContinuation ||
+            frames[1].QueuedInput) {
             Fail("terminal-pulse-complete");
         }
         m_TerminalPulseInstance.Reset();
@@ -817,7 +822,7 @@ private:
             m_Runtime.Take(m_LatestFrameInstance);
         if (m_LatestFrames.Calls != 4 || frames.size() != 2 ||
             frames[0].Sequence != 3 || frames[1].Sequence != 4 ||
-            !frames[1].Terminal ||
+            frames[1].NativeContinuation || frames[1].QueuedInput ||
             m_Runtime.IsTaskActive(m_LatestFrameInstance)) {
             Fail("frame-latest-sequence");
         }
@@ -847,18 +852,18 @@ private:
 
     void CheckFullFrames() {
         ProcessRuntimeFrame("frame-full-context-restore");
-        const Status terminal = m_Runtime.TerminalError(m_FullFrameInstance);
+        const Status failure = m_Runtime.InstanceFailure(m_FullFrameInstance);
         const std::vector<RunFrame> frames =
             m_Runtime.Take(m_FullFrameInstance);
         const bool full = m_FullFrames.Calls == 2 &&
-            m_Runtime.State(m_FullFrameInstance) == ExecutionState::Closing &&
+            m_Runtime.State(m_FullFrameInstance) == ExecutionState::Failed &&
             !m_Runtime.IsTaskActive(m_FullFrameInstance) &&
-            terminal.Code == Error::FrameQueueFull && frames.size() == 2 &&
+            failure.Code == Error::FrameQueueFull && frames.size() == 2 &&
             frames[0].Sequence == 1 && frames[1].Sequence == 2 &&
             frames[1].Fault.Code == ExecutionError::FrameQueueFull &&
             frames[1].Overflow && frames[1].Overflow->Capacity == 1;
         if (!full)
-            Fail("frame-full-terminal");
+            Fail("frame-full-failure");
         m_State = State::FrameFullStopped;
     }
 
@@ -952,7 +957,8 @@ private:
             m_DetachedDestination.ContextMatched &&
             !m_Runtime.IsTaskActive(m_DetachedGraphInstance) &&
             m_Runtime.State(m_DetachedGraphInstance) == ExecutionState::Idle &&
-            !frames.empty() && frames.back().Terminal &&
+            !frames.empty() && !frames.back().NativeContinuation &&
+            !frames.back().QueuedInput &&
             frames.back().ActiveOutputs.size() == 1;
         if (!completed)
             Fail("detached-graph-complete");
@@ -1049,7 +1055,7 @@ private:
             return m_Runtime.Pulse(
                 m_SelfDeleteInstance, Slot::At(SlotKind::Input, 0));
         });
-        if (run.State != RunState::Completed)
+        if (run.State != RunState::Ready)
             Fail("self-delete-run-state");
         if (run.Detail.Code != Error::None)
             Fail("self-delete-run-error");

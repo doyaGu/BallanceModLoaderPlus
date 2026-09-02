@@ -218,10 +218,13 @@ typedef enum BML_BehaviorRunKind {
 } BML_BehaviorRunKind;
 
 typedef enum BML_BehaviorRunState {
-    BML_BEHAVIOR_RUN_COMPLETED = 1,
+    // No native or queued continuation is waiting. The Run still owns its
+    // native Behavior instance and any state established by that instance.
+    BML_BEHAVIOR_RUN_READY = 1,
     BML_BEHAVIOR_RUN_PENDING = 2,
-    BML_BEHAVIOR_RUN_QUEUED = 3,
-    BML_BEHAVIOR_RUN_FAILED = 4
+    // Execution cannot continue. This does not release the native instance;
+    // CloseRun or the enclosing ownership boundary performs teardown.
+    BML_BEHAVIOR_RUN_FAILED = 3
 } BML_BehaviorRunState;
 
 typedef enum BML_BehaviorRunFlags {
@@ -243,9 +246,11 @@ typedef enum BML_BehaviorAdmission {
 
 typedef enum BML_BehaviorContinuation {
     BML_BEHAVIOR_CONTINUATION_NONE = 0,
+    // The native CKBehavior remains active after Execute.  CK2 computes this
+    // for both function-backed and graph-backed Behaviors.
     BML_BEHAVIOR_CONTINUATION_NATIVE = 1u << 0,
-    BML_BEHAVIOR_CONTINUATION_QUEUED_INPUT = 1u << 1,
-    BML_BEHAVIOR_CONTINUATION_GRAPH_ACTIVE = 1u << 2
+    // BML accepted a Pulse which cannot execute before a later game frame.
+    BML_BEHAVIOR_CONTINUATION_QUEUED_INPUT = 1u << 1
 } BML_BehaviorContinuation;
 
 // Every offset below is relative to the first byte of the payload buffer passed
@@ -256,7 +261,6 @@ typedef struct BML_BehaviorRunFrame {
     uint64_t Frame;
     int32_t NativeResult;
     uint32_t Continuation;
-    uint32_t Terminal;
     uint32_t Error;
     uint32_t OutOffset;
     uint32_t OutCount;
@@ -555,6 +559,9 @@ typedef struct BML_BehaviorWatchSpec {
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
 
+    // Every successful Call, Start, or Spawn returns a Run that owns one
+    // native Behavior instance until CloseRun, session/owner retirement, or
+    // world reset. Run state and TakeFrames never imply native teardown.
     int (BML_BEHAVIOR_CALL *OpenSession)(BML_BehaviorString ownerId,
                                           BML_BehaviorSession *outSession,
                                           BML_BehaviorStatus *status);

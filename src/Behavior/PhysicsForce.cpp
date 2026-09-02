@@ -146,7 +146,7 @@ RunResult Sessions::Set(const Options &options) {
     if (HasNativeController(existing->second)) {
         RunResult shutdown = m_Runtime.Pulse(
             existing->second.Block, Slot::At(SlotKind::Input, 1));
-        if (!shutdown || shutdown.State != RunState::Completed)
+        if (!shutdown || shutdown.State != RunState::Ready)
             return shutdown;
         m_Sessions.erase(existing);
         return Create(stored);
@@ -183,7 +183,7 @@ RunResult Sessions::Clear(CK3dEntity *target) {
     if (HasNativeController(it->second)) {
         RunResult shutdown = m_Runtime.Pulse(
             it->second.Block, Slot::At(SlotKind::Input, 1));
-        if (shutdown && shutdown.State == RunState::Completed)
+        if (shutdown && shutdown.State == RunState::Ready)
             m_Sessions.erase(it);
         return shutdown;
     }
@@ -217,8 +217,7 @@ void Sessions::ProcessFrame() {
 
         RunResult shutdown = m_Runtime.Pulse(
             session.Block, Slot::At(SlotKind::Input, 1));
-        if (!shutdown || shutdown.State == RunState::Pending ||
-            shutdown.State == RunState::Queued) {
+        if (!shutdown || shutdown.State == RunState::Pending) {
             session.CloseAfterEpoch = m_PhysicsEpoch + 1;
             return true;
         }

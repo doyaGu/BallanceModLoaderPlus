@@ -19,14 +19,13 @@ struct FakeInstance {
 std::mutex g_FakeMutex;
 std::unordered_map<std::uint64_t, FakeInstance> g_FakeInstances;
 
-RunFrame MakeFrame(FakeInstance &instance, bool terminal) {
+RunFrame MakeFrame(FakeInstance &instance, bool endsActivation) {
     RunFrame frame;
     frame.Sequence = instance.NextSequence++;
     frame.Frame = frame.Sequence;
-    frame.ReturnCode = terminal ? CKBR_OK : CKBR_ACTIVATENEXTFRAME;
-    frame.NativeContinuation = !terminal;
-    frame.Terminal = terminal;
-    if (terminal)
+    frame.ReturnCode = endsActivation ? CKBR_OK : CKBR_ACTIVATENEXTFRAME;
+    frame.NativeContinuation = !endsActivation;
+    if (endsActivation)
         frame.ActiveOutputs.push_back({0, "Done", 0});
     return frame;
 }
@@ -153,17 +152,40 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
                  CKBR_BEHAVIORERROR, "The fake Behavior is stale."},
                 RunState::Failed, CKBR_BEHAVIORERROR, {},
                 AdmissionState::Failed};
+    if (input.Name == "Missing") {
+        return {{Error::SlotNotFound, CK_OK, CKBR_PARAMETERERROR,
+                 "The fake Behavior input does not exist."},
+                RunState::Failed, CKBR_PARAMETERERROR, {},
+                AdmissionState::Failed};
+    }
 
     const bool pending = input.Name == "Pending" &&
         found->NextSequence == 1;
-    (void) found->Frames->Retain(MakeFrame(*found, !pending));
-    found->State = pending ? ExecutionState::Pending : ExecutionState::Idle;
+    const bool failed = input.Name == "Fail";
+    RunFrame captured = MakeFrame(*found, !pending);
+    if (failed) {
+        captured.ReturnCode = CKBR_BEHAVIORERROR;
+        captured.Fault = {ExecutionError::NativeFailed,
+                          CKBR_BEHAVIORERROR,
+                          "The fake Behavior execution failed."};
+    }
+    (void) found->Frames->Retain(std::move(captured));
+    found->State = failed ? ExecutionState::Failed
+                         : pending ? ExecutionState::Pending
+                                   : ExecutionState::Idle;
     RunResult result;
-    result.State = pending ? RunState::Pending : RunState::Completed;
-    result.ReturnCode = pending ? CKBR_ACTIVATENEXTFRAME : CKBR_OK;
+    result.State = failed ? RunState::Failed
+                          : pending ? RunState::Pending : RunState::Ready;
+    result.ReturnCode = failed ? CKBR_BEHAVIORERROR
+                               : pending ? CKBR_ACTIVATENEXTFRAME : CKBR_OK;
     result.Admission = AdmissionState::Executed;
-    if (!pending)
+    if (failed) {
+        result.Detail = {Error::ExecutionFailed, CK_OK,
+                         CKBR_BEHAVIORERROR,
+                         "The fake Behavior execution failed."};
+    } else if (!pending) {
         result.ActiveOutputs.push_back(0);
+    }
     return result;
 }
 

@@ -322,6 +322,8 @@ public:
             PulseLatest();
         else if (m_LevelFrames == 7)
             CheckRuns();
+        else if (m_ObjectCloseRequested && m_LevelFrames >= 8)
+            CheckCapturedObject();
     }
 
     void OnUnload() override {
@@ -1247,7 +1249,8 @@ private:
         const BML::Behavior::Pout *number = frame.FindPout("Number", 0);
         const std::int32_t *value = number
             ? number->Get<std::int32_t>() : nullptr;
-        if (frame.Sequence != 1 || !frame.Terminal ||
+        if (frame.Sequence != 1 ||
+            frame.Continuation != BML_BEHAVIOR_CONTINUATION_NONE ||
             !frame.HasOut("Done") || !value || *value != 42)
             return false;
 
@@ -1339,21 +1342,23 @@ private:
                                   const BML::Behavior::Result<std::vector<
                                       BML::Behavior::Frame>> &frames) {
             return info && info.Value().Kind == BML::Behavior::RunKind::Task &&
-                info.Value().State == BML::Behavior::RunState::Completed &&
+                info.Value().State == BML::Behavior::RunState::Ready &&
                 frames && frames.Value().size() == 2 &&
                 frames.Value()[0].Sequence == 1 &&
                 frames.Value()[0].Continuation != 0 &&
                 frames.Value()[1].Sequence == 2 &&
-                frames.Value()[1].Terminal &&
+                frames.Value()[1].Continuation ==
+                    BML_BEHAVIOR_CONTINUATION_NONE &&
                 frames.Value()[1].HasOut("Done");
         };
         return validTask(startInfo, startFrames) &&
             validTask(continuedInfo, continuedFrames) &&
             instanceInfo &&
             instanceInfo.Value().Kind == BML::Behavior::RunKind::Instance &&
-            instanceInfo.Value().State == BML::Behavior::RunState::Completed &&
+            instanceInfo.Value().State == BML::Behavior::RunState::Ready &&
             instanceFrames && instanceFrames.Value().size() == 1 &&
-            instanceFrames.Value().front().Terminal &&
+            instanceFrames.Value().front().Continuation ==
+                BML_BEHAVIOR_CONTINUATION_NONE &&
             instanceFrames.Value().front().HasOut("Done");
     }
 
@@ -1639,17 +1644,6 @@ private:
             info.Kind == kind && info.State == state;
     }
 
-    bool TerminalCallHasNoLiveLayout(BML_BehaviorRun run) const {
-        BML_BehaviorLayout layout = Dto<BML_BehaviorLayout>();
-        BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        std::uint32_t payloadSize = 0;
-        return m_Behavior->ReadLiveLayout(
-                   run, &layout, nullptr, 0, &payloadSize, &status) ==
-                   BML_ERROR_FAIL &&
-            status.Error == BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE &&
-            status.Phase == BML_BEHAVIOR_PHASE_LAYOUT;
-    }
-
     void CheckRuns() {
         m_CppFacadePassed = m_CppFacadePassed && CheckCppFacade();
         GetLogger()->Info(
@@ -1718,15 +1712,16 @@ private:
             ValidateValues(object, object.Headers[0], &captured, &objectMask) &&
             captured.Domain != 0 && HasOut(object, object.Headers[0], "Done");
         BML_SceneObjectInfo objectInfo{};
-        const bool objectStale = objectWire && m_Scene &&
-            m_Scene->ReadObject(captured, &objectInfo) == BML_ERROR_OBJECT_INVALID;
+        const bool objectLive = objectWire && m_Scene &&
+            m_Scene->ReadObject(captured, &objectInfo) == BML_OK;
 
         const bool latestOk = latest.Headers.size() == 1 &&
             latest.Headers[0].Sequence == 3;
         const bool queueFullOk = queueFull.Headers.size() == 2 &&
             queueFull.Headers[0].Sequence == 1 &&
             queueFull.Headers[1].Sequence == 2 &&
-            queueFull.Headers[1].Terminal &&
+            queueFull.Headers[1].Continuation ==
+                BML_BEHAVIOR_CONTINUATION_NONE &&
             queueFull.Headers[1].Error ==
                 BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL;
 
@@ -1770,18 +1765,19 @@ private:
         const bool graphOk = !graph.Headers.empty() &&
             graph.Headers.front().Sequence == 1 && graphOut &&
             RunIs(m_Graph, BML_BEHAVIOR_RUN_INSTANCE,
-                  BML_BEHAVIOR_RUN_COMPLETED);
+                  BML_BEHAVIOR_RUN_READY);
         const bool statesOk =
             RunIs(m_Call, BML_BEHAVIOR_RUN_CALL,
-                  BML_BEHAVIOR_RUN_COMPLETED) &&
+                  BML_BEHAVIOR_RUN_READY) &&
             RunIs(m_Start, BML_BEHAVIOR_RUN_TASK,
-                  BML_BEHAVIOR_RUN_COMPLETED) &&
+                  BML_BEHAVIOR_RUN_READY) &&
             RunIs(m_Dynamic, BML_BEHAVIOR_RUN_INSTANCE,
-                  BML_BEHAVIOR_RUN_COMPLETED) &&
-            TerminalCallHasNoLiveLayout(m_Call);
+                  BML_BEHAVIOR_RUN_READY) &&
+            ReadLiveLayout(m_Call) && ReadLiveLayout(m_Start) &&
+            ReadLiveLayout(m_Object);
 
         GetLogger()->Info(
-            "Behavior transport detail: call=%s call_count=%u call_out=%s call_values=%u start=%s start_count=%u start_out=%s start_values=%u object=%s object_count=%u object_values=%u captured=%u:%u:%u stale=%s latest=%s latest_count=%u latest_sequence=%llu queue=%s queue_count=%u queue_error=%u",
+            "Behavior transport detail: call=%s call_count=%u call_out=%s call_values=%u start=%s start_count=%u start_out=%s start_values=%u object=%s object_count=%u object_values=%u captured=%u:%u:%u object_at_capture=%s latest=%s latest_count=%u latest_sequence=%llu queue=%s queue_count=%u queue_error=%u",
             callOk ? "true" : "false", static_cast<unsigned>(call.Headers.size()),
             callOut ? "true" : "false", callMask,
             startOk ? "true" : "false", static_cast<unsigned>(start.Headers.size()),
@@ -1789,7 +1785,7 @@ private:
             objectWire ? "true" : "false", static_cast<unsigned>(object.Headers.size()),
             objectMask,
             captured.Domain, captured.Slot, captured.Generation,
-            objectStale ? "true" : "false",
+            objectLive ? "live" : "invalid",
             latestOk ? "true" : "false", static_cast<unsigned>(latest.Headers.size()),
             latest.Headers.empty() ? 0ull :
                 static_cast<unsigned long long>(latest.Headers[0].Sequence),
@@ -1798,7 +1794,7 @@ private:
             queueFull.Headers.size() < 2 ? 0u : queueFull.Headers[1].Error);
 
         GetLogger()->Info(
-            "Behavior functional detail: catalog=%s cpp_facade=%s detached=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_state=%s",
+            "Behavior functional detail: catalog=%s cpp_facade=%s detached=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_ownership=%s",
             m_CatalogPassed ? "true" : "false",
             m_CppFacadePassed ? "true" : "false",
             m_DetachedDiagnosticPassed ? "true" : "false",
@@ -1818,7 +1814,7 @@ private:
             continuedOk && echoOk &&
             dynamicOk && targetsOk && selectorsOk && waitForAllOk &&
             graphOk && statesOk;
-        m_TransportPassed = callOk && startOk && objectWire && latestOk &&
+        m_TransportPassed = callOk && startOk && objectLive && latestOk &&
             queueFullOk && m_FunctionalPassed &&
             m_SessionOpenedBeforeLevel && m_CatalogPassed;
         m_WirePassed = call.NonConsumingSizeQuery && start.NonConsumingSizeQuery &&
@@ -1831,15 +1827,31 @@ private:
             targetNull.NonConsumingSizeQuery && duplicate.NonConsumingSizeQuery &&
             indexed.NonConsumingSizeQuery && waitForAll.NonConsumingSizeQuery &&
             graph.NonConsumingSizeQuery;
-        m_ObjectRefPassed = objectStale;
         if (!m_TransportPassed)
             Fail("transport");
         else if (!m_WirePassed)
             Fail("wire");
-        else if (!m_ObjectRefPassed)
-            Fail("object-ref");
-        else
+        else if (m_Behavior->CloseRun(m_Object) != BML_OK)
+            Fail("object-close");
+        else {
+            m_Object = nullptr;
+            m_CapturedObjectRef = captured;
+            m_ObjectCloseRequested = true;
+        }
+    }
+
+    void CheckCapturedObject() {
+        BML_SceneObjectInfo objectInfo{};
+        m_ObjectRefPassed = m_Scene && m_CapturedObjectRef.Domain &&
+            m_Scene->ReadObject(m_CapturedObjectRef, &objectInfo) ==
+                BML_ERROR_OBJECT_INVALID;
+        if (m_ObjectRefPassed) {
+            GetLogger()->Info(
+                "Behavior capture-time object: live_before_close=true stale_after_close=true");
             Finish(true, "complete");
+        } else if (m_LevelFrames >= 30) {
+            Fail("object-ref");
+        }
     }
 
     void CloseRuns() {
@@ -1912,12 +1924,14 @@ private:
     std::optional<BML::Behavior::Watch> m_CppWatch;
     CK_ID m_InputObjectId = 0;
     BML_ObjectRef m_InputObjectRef{};
+    BML_ObjectRef m_CapturedObjectRef{};
     int m_LevelFrames = 0;
     bool m_LevelStarted = false;
     bool m_SessionOpenedBeforeLevel = false;
     bool m_TransportPassed = false;
     bool m_WirePassed = false;
     bool m_ObjectRefPassed = false;
+    bool m_ObjectCloseRequested = false;
     bool m_CatalogPassed = false;
     bool m_CppFacadePassed = false;
     bool m_DetachedDiagnosticPassed = false;

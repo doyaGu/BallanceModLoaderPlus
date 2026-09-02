@@ -97,7 +97,7 @@ int OpenRun(BML_ObjectRef owner,
     info->Kind = kind;
     info->State = kind == BML_BEHAVIOR_RUN_CALL
         ? BML_BEHAVIOR_RUN_PENDING
-        : BML_BEHAVIOR_RUN_COMPLETED;
+        : BML_BEHAVIOR_RUN_READY;
     Init(&info->Status);
     Success(status);
     return g_State.RunCode;
@@ -152,7 +152,7 @@ int BML_BEHAVIOR_CALL PulseRun(BML_BehaviorRun,
     *admission = BML_BEHAVIOR_ADMISSION_EXECUTED;
     Init(info);
     info->Kind = BML_BEHAVIOR_RUN_INSTANCE;
-    info->State = BML_BEHAVIOR_RUN_COMPLETED;
+    info->State = BML_BEHAVIOR_RUN_READY;
     Init(&info->Status);
     Success(status);
     return BML_OK;
@@ -216,7 +216,6 @@ int BML_BEHAVIOR_CALL TakeFrames(BML_BehaviorRun,
     frames->StructSize = sizeof(*frames);
     frames->Sequence = 7;
     frames->Frame = 91;
-    frames->Terminal = 1;
     frames->OutOffset = 0;
     frames->OutCount = 1;
     frames->PoutOffset = 24;
@@ -568,7 +567,7 @@ TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
     const Frame &frame = taken.Value().front();
     EXPECT_EQ(frame.Sequence, 7u);
     EXPECT_EQ(frame.GameFrame, 91u);
-    EXPECT_TRUE(frame.Terminal);
+    EXPECT_EQ(frame.Continuation, BML_BEHAVIOR_CONTINUATION_NONE);
     EXPECT_TRUE(frame.HasOut("Done"));
     const Pout *pout = frame.FindPout("Value");
     ASSERT_NE(pout, nullptr);

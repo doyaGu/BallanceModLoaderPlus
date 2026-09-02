@@ -1565,7 +1565,7 @@ static bool BMLAS_RunBehavior(ModContext &context, CKBeObject *owner,
         return false;
     BML::Behavior::RunResult result = context.Behaviors().Pulse(
         created.Handle, BML::Behavior::Slot::At(BML::Behavior::SlotKind::Input, input));
-    return result && result.State == BML::Behavior::RunState::Completed;
+    return result && result.State == BML::Behavior::RunState::Ready;
 }
 
 static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,

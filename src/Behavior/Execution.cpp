@@ -210,7 +210,7 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
         fatal = true;
     } else if (native.Error && !native.Retry) {
         frame.Fault = Fault(ExecutionError::NativeFailed,
-                              "Behavior execution returned a terminal error.",
+                              "Behavior execution returned a fatal error.",
                               native.ReturnCode);
         fatal = true;
     } else if (native.Error) {
@@ -219,28 +219,23 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
                               native.ReturnCode);
     }
 
-    if (!fatal) {
-        m_NativeContinuation = native.Kind == BehaviorKind::Function
-            ? native.Retry : native.Active;
-    }
+    if (!fatal)
+        m_NativeContinuation = native.Active;
 
     frame.NativeContinuation = m_NativeContinuation;
-    frame.GraphActive = native.Kind == BehaviorKind::Graph && native.Active;
     frame.QueuedInput = !m_QueuedInputs.empty();
 
     if (fatal) {
         m_Managed = false;
         m_NativeContinuation = false;
         m_QueuedInputs.clear();
-        m_TerminalError = frame.Fault;
+        m_Failure = frame.Fault;
         m_State = ExecutionState::Failed;
         frame.NativeContinuation = false;
-        frame.GraphActive = false;
         frame.QueuedInput = false;
-        frame.Terminal = true;
     } else if (m_CloseRequested) {
-        if (!m_TerminalError) {
-            m_TerminalError = Fault(
+        if (!m_Failure) {
+            m_Failure = Fault(
                 ExecutionError::Cancelled,
                 "Behavior execution was closed while native execution was active.");
         }
@@ -249,17 +244,14 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
         m_QueuedInputs.clear();
         m_State = ExecutionState::Closing;
         frame.NativeContinuation = false;
-        frame.GraphActive = false;
         frame.QueuedInput = false;
-        frame.Terminal = true;
         if (!frame.Fault)
-            frame.Fault = m_TerminalError;
+            frame.Fault = m_Failure;
     } else if (frame.NativeContinuation || frame.QueuedInput) {
         m_State = ExecutionState::Pending;
     } else {
         m_State = ExecutionState::Idle;
         m_Managed = false;
-        frame.Terminal = true;
     }
 
     const RunFrame returned = frame;
@@ -280,7 +272,7 @@ void Execution::RequestClose(ExecutionFault reason) noexcept {
                        "Pending behavior execution was cancelled.");
     }
     if (reason)
-        m_TerminalError = std::move(reason);
+        m_Failure = std::move(reason);
     m_CloseRequested = true;
     m_Managed = false;
     m_NativeContinuation = false;
@@ -317,7 +309,7 @@ void Execution::FailBeforeExecute(ExecutionFault fault) noexcept {
     m_Managed = false;
     m_NativeContinuation = false;
     m_QueuedInputs.clear();
-    m_TerminalError = std::move(fault);
+    m_Failure = std::move(fault);
     m_State = ExecutionState::Failed;
 }
 
@@ -325,11 +317,11 @@ void Execution::Retain(RunFrame frame) {
     FrameAppendResult result = m_Frames->Retain(std::move(frame));
     if (!result.Overflowed)
         return;
-    m_TerminalError = std::move(result.TerminalFault);
+    m_Failure = std::move(result.Failure);
     m_Managed = false;
     m_NativeContinuation = false;
     m_QueuedInputs.clear();
-    m_State = ExecutionState::Closing;
+    m_State = ExecutionState::Failed;
 }
 
 } // namespace BML::Behavior

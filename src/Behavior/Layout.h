@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "CKAll.h"
-#include "Behavior/Execution.h"
 #include "Behavior/Parameter.h"
 
 namespace BML::Behavior {
@@ -58,6 +57,14 @@ struct SlotInfo {
 enum class LayoutOrigin {
     Declared,
     Live,
+};
+
+// A Layout describes which native representation CKBehavior currently uses.
+// Execution does not branch on this distinction: CK2 exposes continuation for
+// both representations through CKBehavior::IsActive().
+enum class BehaviorKind {
+    Function,
+    Graph,
 };
 
 struct ManagerRequirement {
