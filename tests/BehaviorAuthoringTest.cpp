@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -1577,6 +1578,30 @@ TEST(BehaviorAuthoring, AFailedPlanCloseKeepsTheHandleForRetry) {
     EXPECT_EQ(g_State.PlanCloses, 2);
 }
 
+TEST(BehaviorAuthoring, AClosingPlanKeepsTheHandleUntilItIsClosed) {
+    g_State = {};
+    g_State.PlanCloseCode = BML_ERROR_BUSY;
+    g_State.PlanState = BML_BEHAVIOR_PLAN_RETIRING;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto submitted = session.Plan("closing")
+        .On("Gameplay_Events")
+        .Submit();
+    ASSERT_TRUE(submitted);
+    Plan plan = std::move(submitted).Value();
+
+    EXPECT_EQ(plan.Close(), BML_ERROR_BUSY);
+    EXPECT_TRUE(plan);
+    auto read = plan.Read();
+    ASSERT_TRUE(read);
+    EXPECT_EQ(read->State, PlanState::Retiring);
+
+    g_State.PlanCloseCode = BML_OK;
+    EXPECT_EQ(plan.Close(), BML_OK);
+    EXPECT_FALSE(plan);
+}
+
 TEST(BehaviorAuthoring, AFailedGraphPatchCloseKeepsTheHandleForRetry) {
     g_State = {};
     g_State.PatchCloseCode = BML_ERROR_FAIL;
@@ -1603,4 +1628,115 @@ TEST(BehaviorAuthoring, AFailedGraphPatchCloseKeepsTheHandleForRetry) {
     EXPECT_FALSE(patch);
     EXPECT_EQ(g_State.PatchCloses, 2);
     EXPECT_EQ(g_State.SessionCloses, 1);
+}
+
+TEST(BehaviorAuthoring, AClosingGraphPatchKeepsTheHandleUntilItIsClosed) {
+    g_State = {};
+    g_State.PatchCloseCode = BML_ERROR_BUSY;
+    g_State.PatchState = BML_BEHAVIOR_PATCH_CLOSING;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto applied = session.Patch("closing").Apply({41, 42, 43});
+    ASSERT_TRUE(applied);
+    GraphPatch patch = std::move(applied).Value();
+
+    EXPECT_EQ(patch.Close(), BML_ERROR_BUSY);
+    EXPECT_TRUE(patch);
+    auto read = patch.Read();
+    ASSERT_TRUE(read);
+    EXPECT_EQ(read->State, GraphPatchState::Closing);
+
+    g_State.PatchCloseCode = BML_OK;
+    EXPECT_EQ(patch.Close(), BML_OK);
+    EXPECT_FALSE(patch);
+}
+
+TEST(BehaviorAuthoring, DestructionRequestsRetirementBeforeReleasingTheSession) {
+    g_State = {};
+    g_State.PlanCloseCode = BML_ERROR_FAIL;
+    {
+        auto opened = Session::Open();
+        ASSERT_TRUE(opened);
+        Session session = std::move(opened).Value();
+        auto submitted = session.Plan("retiring")
+            .On("Gameplay_Events")
+            .Submit();
+        ASSERT_TRUE(submitted);
+        Plan plan = std::move(submitted).Value();
+        session.Close();
+        EXPECT_EQ(g_State.SessionCloses, 0);
+    }
+    EXPECT_EQ(g_State.PlanCloses, 1);
+    EXPECT_EQ(g_State.SessionCloses, 1);
+}
+
+TEST(BehaviorAuthoring, DestructionMayRequestRetirementFromAnotherThread) {
+    g_State = {};
+    g_State.PlanCloseCode = BML_ERROR_BUSY;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto submitted = session.Plan("retiring")
+        .On("Gameplay_Events")
+        .Submit();
+    ASSERT_TRUE(submitted);
+    Plan plan = std::move(submitted).Value();
+    session.Close();
+
+    std::thread retire([plan = std::move(plan)]() mutable {});
+    retire.join();
+
+    EXPECT_EQ(g_State.PlanCloses, 1);
+    EXPECT_EQ(g_State.SessionCloses, 1);
+}
+
+TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto firstSpawned = session.Use(CKGUID(1, 2)).Spawn();
+    auto secondSpawned = session.Use(CKGUID(3, 4)).Spawn();
+    ASSERT_TRUE(firstSpawned);
+    ASSERT_TRUE(secondSpawned);
+    Instance firstInstance = std::move(firstSpawned).Value();
+    Instance secondInstance = std::move(secondSpawned).Value();
+    firstInstance = std::move(secondInstance);
+    EXPECT_TRUE(firstInstance);
+    EXPECT_FALSE(secondInstance);
+    EXPECT_EQ(g_State.RunCloses, 1);
+    EXPECT_EQ(firstInstance.Close(), BML_OK);
+    EXPECT_EQ(g_State.RunCloses, 2);
+
+    auto firstSubmitted = session.Plan("first")
+        .On("Gameplay_Events")
+        .Submit();
+    auto secondSubmitted = session.Plan("second")
+        .On("Gameplay_Events")
+        .Submit();
+    ASSERT_TRUE(firstSubmitted);
+    ASSERT_TRUE(secondSubmitted);
+    Plan firstPlan = std::move(firstSubmitted).Value();
+    Plan secondPlan = std::move(secondSubmitted).Value();
+    firstPlan = std::move(secondPlan);
+    EXPECT_TRUE(firstPlan);
+    EXPECT_FALSE(secondPlan);
+    EXPECT_EQ(g_State.PlanCloses, 1);
+    EXPECT_EQ(firstPlan.Close(), BML_OK);
+    EXPECT_EQ(g_State.PlanCloses, 2);
+
+    auto firstApplied = session.Patch("first").Apply({41, 42, 43});
+    auto secondApplied = session.Patch("second").Apply({41, 42, 43});
+    ASSERT_TRUE(firstApplied);
+    ASSERT_TRUE(secondApplied);
+    GraphPatch firstPatch = std::move(firstApplied).Value();
+    GraphPatch secondPatch = std::move(secondApplied).Value();
+    firstPatch = std::move(secondPatch);
+    EXPECT_TRUE(firstPatch);
+    EXPECT_FALSE(secondPatch);
+    EXPECT_EQ(g_State.PatchCloses, 1);
+    EXPECT_EQ(firstPatch.Close(), BML_OK);
+    EXPECT_EQ(g_State.PatchCloses, 2);
 }

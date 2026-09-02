@@ -710,8 +710,7 @@ public:
           m_Handle(std::exchange(other.m_Handle, nullptr)) {}
     Watch &operator=(Watch &&other) noexcept {
         if (this != &other) {
-            if (Close() != BML_OK)
-                return *this;
+            Watch previous(std::move(*this));
             m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
         }
@@ -1258,7 +1257,7 @@ public:
     Run(Run &&other) noexcept { MoveFrom(other); }
     Run &operator=(Run &&other) noexcept {
         if (this != &other) {
-            (void) Close();
+            Run previous(std::move(*this));
             MoveFrom(other);
         }
         return *this;
@@ -1995,9 +1994,9 @@ private:
     friend class PatchBuilder;
 };
 
-// A durable authoring intent the Loader owns. Closing the handle reverts every
-// installation the Plan still holds. It also keeps the native Session alive
-// until that close succeeds or the Plan value is destroyed.
+// A durable authoring intent the Loader owns. Closing the handle retires every
+// installation the Plan still holds. A conflict keeps the handle readable;
+// retirement continues at later Behavior safe points even if this value dies.
 class Plan {
 public:
     Plan() = default;
@@ -2009,8 +2008,7 @@ public:
           m_Handle(std::exchange(other.m_Handle, nullptr)) {}
     Plan &operator=(Plan &&other) noexcept {
         if (this != &other) {
-            if (Close() != BML_OK)
-                return *this;
+            Plan previous(std::move(*this));
             m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
         }
@@ -2081,8 +2079,7 @@ public:
           m_Handle(std::exchange(other.m_Handle, nullptr)) {}
     GraphPatch &operator=(GraphPatch &&other) noexcept {
         if (this != &other) {
-            if (Close() != BML_OK)
-                return *this;
+            GraphPatch previous(std::move(*this));
             m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
         }
