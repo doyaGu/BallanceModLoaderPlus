@@ -1254,6 +1254,55 @@ private:
             !frame.HasOut("Done") || !value || *value != 42)
             return false;
 
+        auto source = call.Inspect();
+        auto bound = plain->Spawn();
+        if (!source || !bound) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=bind-open source=%d bound=%d",
+                source.Code(), bound.Code());
+            return false;
+        }
+        BML::Behavior::Instance boundInstance = std::move(bound).Value();
+        auto boundLayout = boundInstance.Layout();
+        const BML::Behavior::Slot *boundPin = boundLayout
+            ? boundLayout->Find(BML::Behavior::SlotKind::Pin, "Number")
+            : nullptr;
+        if (!boundPin) {
+            GetLogger()->Error("Behavior live edit: stage=bind-layout");
+            return false;
+        }
+        auto boundRelation = boundInstance.Bind(
+            *boundPin, BML::Behavior::pout(
+                source->Root(), BML::Behavior::named("Number", 0)));
+        if (!boundRelation) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=bind code=%d error=%u message=%s",
+                boundRelation.Code(), boundRelation.Detail().Error,
+                boundRelation.Detail().Message.c_str());
+            return false;
+        }
+        auto boundPulse = boundInstance.Pulse("Echo");
+        if (!boundPulse) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=bind-pulse code=%d error=%u message=%s",
+                boundPulse.Code(), boundPulse.Detail().Error,
+                boundPulse.Detail().Message.c_str());
+            return false;
+        }
+        auto boundFrames = boundInstance.Take();
+        const BML::Behavior::Pout *boundNumber =
+            boundFrames && boundFrames.Value().size() == 1
+            ? boundFrames.Value().front().FindPout("Number") : nullptr;
+        if (!boundNumber || !boundNumber->Get<std::int32_t>() ||
+            *boundNumber->Get<std::int32_t>() != 42) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=bind-value frames=%u value=%d",
+                boundFrames ? static_cast<unsigned>(boundFrames.Value().size()) : 0,
+                boundNumber && boundNumber->Get<std::int32_t>()
+                    ? *boundNumber->Get<std::int32_t>() : -1);
+            return false;
+        }
+
         auto started = m_CppSession.Use(prototype)
             .Setting("Retry", true)
             .Start(BML::Behavior::unique("Run"));
@@ -1278,27 +1327,130 @@ private:
             return false;
 
         auto dynamic = m_CppSession.Use(prototype)
-            .Setting("Extended Layout", true)
-            .NextStage()
-            .Setting("Retry", false)
-            .Pin("Dynamic Value", std::int32_t{713})
+            .Pin(BML::Behavior::named("Number", 0), std::int32_t{321})
             .Spawn();
-        if (!dynamic)
+        if (!dynamic) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=configure-open code=%d error=%u message=%s",
+                dynamic.Code(), dynamic.Detail().Error,
+                dynamic.Detail().Message.c_str());
             return false;
+        }
         BML::Behavior::Instance dynamicInstance = std::move(dynamic).Value();
+        auto before = dynamicInstance.Layout();
+        const BML::Behavior::Slot *oldNumber = before
+            ? before->Find(BML::Behavior::SlotKind::Pin, "Number") : nullptr;
+        if (!oldNumber) {
+            GetLogger()->Error("Behavior live edit: stage=configure-layout-before");
+            return false;
+        }
+        const BML::Behavior::Slot staleNumber = *oldNumber;
+        auto configured = dynamicInstance.Configure({
+            BML::Behavior::setting("Extended Layout", true)});
+        if (!configured || configured.Value() <= before->Generation) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=configure code=%d error=%u generation=%llu before=%llu message=%s",
+                configured.Code(), configured.Detail().Error,
+                configured ? static_cast<unsigned long long>(configured.Value()) : 0,
+                static_cast<unsigned long long>(before->Generation),
+                configured.Detail().Message.c_str());
+            return false;
+        }
+        auto stale = dynamicInstance.Set(staleNumber, std::int32_t{1});
+        if (stale || stale.Detail().Error !=
+                BML_BEHAVIOR_ERROR_LAYOUT_CHANGED) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=stale accepted=%s code=%d error=%u message=%s",
+                stale ? "true" : "false", stale.Code(), stale.Detail().Error,
+                stale.Detail().Message.c_str());
+            return false;
+        }
+        auto after = dynamicInstance.Layout();
+        const BML::Behavior::Slot *dynamicPin = after
+            ? after->Find(BML::Behavior::SlotKind::Pin, "Dynamic Value")
+            : nullptr;
+        if (!dynamicPin || dynamicPin->Generation != configured.Value()) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=configure-layout-after pin=%s generation=%llu configured=%llu",
+                dynamicPin ? "true" : "false",
+                dynamicPin ? static_cast<unsigned long long>(dynamicPin->Generation) : 0,
+                static_cast<unsigned long long>(configured.Value()));
+            return false;
+        }
+        auto setDynamic = dynamicInstance.Set(
+            *dynamicPin, std::int32_t{713});
+        if (!setDynamic) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=set code=%d error=%u message=%s",
+                setDynamic.Code(), setDynamic.Detail().Error,
+                setDynamic.Detail().Message.c_str());
+            return false;
+        }
+        auto dynamicGraph = dynamicInstance.Inspect();
+        auto observedDynamic = dynamicGraph
+            ? dynamicGraph->Read(BML::Behavior::pin(
+                  dynamicGraph->Root(),
+                  BML::Behavior::named("Dynamic Value", 0)))
+            : BML::Behavior::Result<BML::Behavior::ObservedValue>::Failure(
+                  BML_ERROR_FAIL);
+        const std::int32_t *observedValue = observedDynamic
+            ? std::get_if<std::int32_t>(&observedDynamic->Data) : nullptr;
+        auto replayedNumber = dynamicGraph
+            ? dynamicGraph->Read(BML::Behavior::pin(
+                  dynamicGraph->Root(),
+                  BML::Behavior::named("Number", 0)))
+            : BML::Behavior::Result<BML::Behavior::ObservedValue>::Failure(
+                  BML_ERROR_FAIL);
+        const std::int32_t *replayedValue = replayedNumber
+            ? std::get_if<std::int32_t>(&replayedNumber->Data) : nullptr;
+        if (!observedValue || *observedValue != 713 ||
+            !replayedValue || *replayedValue != 321 ||
+            replayedNumber->Source != BML::Behavior::Relation::Direct) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=set-read code=%d error=%u state=%u relation=%u value=%d replay=%d replay_relation=%u index=%d",
+                observedDynamic.Code(), observedDynamic.Detail().Error,
+                observedDynamic
+                    ? static_cast<unsigned>(observedDynamic->State) : 0,
+                observedDynamic
+                    ? static_cast<unsigned>(observedDynamic->Source) : 0,
+                observedValue ? *observedValue : -1,
+                replayedValue ? *replayedValue : -1,
+                replayedNumber
+                    ? static_cast<unsigned>(replayedNumber->Source) : 0,
+                dynamicPin->Index);
+            return false;
+        }
         auto dynamicAdmission = dynamicInstance.Pulse("Dynamic Run");
         auto dynamicFrames = dynamicInstance.Take();
         const BML::Behavior::Pout *dynamicValue =
             dynamicFrames && dynamicFrames.Value().size() == 1
             ? dynamicFrames.Value().front().FindPout("Dynamic Value")
             : nullptr;
+        auto postDynamic = dynamicGraph->Read(BML::Behavior::pout(
+            dynamicGraph->Root(),
+            BML::Behavior::named("Dynamic Value", 0)));
+        const std::int32_t *postValue = postDynamic
+            ? std::get_if<std::int32_t>(&postDynamic->Data) : nullptr;
         if (!dynamicAdmission ||
             dynamicAdmission.Value() != BML::Behavior::Admission::Executed ||
             !dynamicFrames || dynamicFrames.Value().size() != 1 ||
             !dynamicFrames.Value().front().HasOut("Dynamic Done") ||
             !dynamicValue || !dynamicValue->Get<std::int32_t>() ||
-            *dynamicValue->Get<std::int32_t>() != 713)
+            *dynamicValue->Get<std::int32_t>() != 713) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=dynamic-execute admission=%d frames=%u value=%d post=%d out=%s",
+                dynamicAdmission.Code(),
+                dynamicFrames ? static_cast<unsigned>(dynamicFrames.Value().size()) : 0,
+                dynamicValue && dynamicValue->Get<std::int32_t>()
+                    ? *dynamicValue->Get<std::int32_t>() : -1,
+                postValue ? *postValue : -1,
+                dynamicFrames && dynamicFrames.Value().size() == 1 &&
+                    dynamicFrames.Value().front().HasOut("Dynamic Done")
+                    ? "true" : "false");
             return false;
+        }
+        GetLogger()->Info(
+            "Behavior live edit: status=pass bind=true configure=true stale=true set=true replay=true");
 
         const BML::Behavior::Prototype graphPrototype(
             BML::Behavior::Guid(BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID),
