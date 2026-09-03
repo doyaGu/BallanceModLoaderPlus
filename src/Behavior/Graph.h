@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -85,6 +86,30 @@ struct GraphModel {
     std::vector<GraphLink> Links;
 };
 
+// CKEdit owns the logical identity of resources claimed by a Patch. The CK
+// graph reader consumes exact native identities and endpoint facts instead of
+// trying to infer Patch infrastructure from native names or graph shape.
+struct GraphLinkShape {
+    GraphEndpoint Source;
+    GraphEndpoint Target;
+    int InitialDelay = 0;
+
+    friend bool operator==(const GraphLinkShape &,
+                           const GraphLinkShape &) = default;
+};
+
+struct LogicalGraphLink {
+    NativeRef Object;
+    GraphLinkShape Live;
+    // An absent logical shape means that this is an infrastructure Link.
+    std::optional<GraphLinkShape> Logical;
+};
+
+struct LogicalGraph {
+    std::vector<NativeRef> InfrastructureNodes;
+    std::vector<LogicalGraphLink> Links;
+};
+
 enum class ReadMode {
     NonForcing,
 };
@@ -133,6 +158,10 @@ public:
                                     std::uint64_t &out) = 0;
     virtual Status LayoutFingerprint(const NativeRef &node,
                                      std::uint64_t &out) = 0;
+
+    // Graph sources that can expose CKEdit's logical view retain this state by
+    // exact native identity. Other sources may keep their own logical model.
+    virtual void SetLogicalGraph(const NativeRef &, LogicalGraph) {}
 };
 
 class Runtime;

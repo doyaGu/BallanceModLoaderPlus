@@ -260,7 +260,8 @@ Status Patches::After(Edit &edit, Link link,
     }
     Node block;
     Status status = m_Edit.Add(
-        edit, HookBlock::Make(std::move(binding), 1, 1), block);
+        edit, HookBlock::Make(std::move(binding), 1, 1), block,
+        NodeRole::Infrastructure);
     if (status)
         edit.Splice(link, block);
     return status;

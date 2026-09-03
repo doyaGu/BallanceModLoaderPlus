@@ -31,6 +31,12 @@ Stamp Capture(CKObject *object) {
     return {object ? object->GetID() : 0, object};
 }
 
+NativeRef Native(Stamp stamp) {
+    return {static_cast<std::uint64_t>(
+                static_cast<std::uint32_t>(stamp.Id)),
+            stamp.Address};
+}
+
 template <typename T>
 T *Resolve(CKContext *context, Stamp stamp, CK_CLASSID type) {
     CKObject *object = context && stamp.Id ? context->GetObject(stamp.Id) : nullptr;
@@ -137,6 +143,28 @@ CKBehaviorIO *ResolveIo(CKContext *context, Stamp stamp) {
     return static_cast<CKBehaviorIO *>(object);
 }
 
+bool Describe(CKBehaviorIO *io, GraphEndpoint &out) {
+    out = {};
+    CKBehavior *owner = io ? io->GetOwner() : nullptr;
+    if (!owner)
+        return false;
+    out.Node = static_cast<std::uint32_t>(owner->GetID());
+    out.Kind = SlotKind::Output;
+    out.Index = owner->GetOutputPosition(io);
+    if (out.Index < 0) {
+        out.Kind = SlotKind::Input;
+        out.Index = owner->GetInputPosition(io);
+    }
+    return out.Index >= 0;
+}
+
+bool Describe(CKBehaviorLink *link, GraphLinkShape &out) {
+    out = {};
+    return link && Describe(link->GetInBehaviorIO(), out.Source) &&
+           Describe(link->GetOutBehaviorIO(), out.Target) &&
+           (out.InitialDelay = link->GetInitialActivationDelay(), true);
+}
+
 PinSource DescribeSource(CKParameterIn *input) {
     if (!input)
         return {};
@@ -220,6 +248,8 @@ struct Patch::Journal {
     PatchKey Key;
     std::vector<std::shared_ptr<CallbackResource>> Callbacks;
     std::vector<Stamp> Nodes;
+    std::vector<Stamp> InfrastructureNodes;
+    std::vector<Stamp> InfrastructureLinks;
     std::vector<Link> Links;
     std::vector<Binding> Binds;
     std::vector<Destination> Pushes;
@@ -264,8 +294,15 @@ struct CKEdit::Links {
         std::vector<Stamp> Continuations;
     };
 
+    struct Infrastructure {
+        std::vector<Stamp> Nodes;
+        std::vector<Stamp> Links;
+    };
+
     std::map<std::uint64_t, std::map<LinkId, Chain>> Chains;
     std::map<std::uint64_t, std::map<Key, Site>> Sites;
+    std::map<std::uint64_t, std::map<PatchKey, Infrastructure>> Patches;
+    std::map<std::uint64_t, Stamp> Roots;
 };
 
 Patch::Patch() = default;
@@ -308,6 +345,88 @@ CKEdit::CKEdit(CKContext *context, Runtime &runtime,
       m_Links(std::make_unique<Links>()) {}
 
 CKEdit::~CKEdit() = default;
+
+void CKEdit::AdoptGraph(CKBehavior *graph) {
+    if (!graph || !m_Links)
+        return;
+    const std::uint64_t graphId = static_cast<std::uint32_t>(graph->GetID());
+    const Stamp current = Capture(graph);
+    const auto known = m_Links->Roots.find(graphId);
+    if (known != m_Links->Roots.end() && known->second != current) {
+        m_Graph.SetLogicalGraph(Native(known->second), {});
+        m_Topology.erase(graphId);
+        m_Relations.erase(graphId);
+        m_Active.erase(graphId);
+        m_Links->Chains.erase(graphId);
+        m_Links->Sites.erase(graphId);
+        m_Links->Patches.erase(graphId);
+    }
+    m_Links->Roots[graphId] = current;
+}
+
+Status CKEdit::PublishLogicalGraph(std::uint64_t graphId) {
+    if (!m_Links)
+        return Failure(Error::InvalidState,
+                       "The graph Link registry is unavailable.");
+    const auto root = m_Links->Roots.find(graphId);
+    if (root == m_Links->Roots.end())
+        return Failure(Error::InvalidGraphLocality,
+                       "The logical graph root is unavailable.");
+    if (!Resolve<CKBehavior>(m_Context, root->second, CKCID_BEHAVIOR)) {
+        m_Graph.SetLogicalGraph(Native(root->second), {});
+        return {};
+    }
+
+    LogicalGraph logical;
+    const auto patches = m_Links->Patches.find(graphId);
+    if (patches != m_Links->Patches.end()) {
+        for (const auto &[key, infrastructure] : patches->second) {
+            (void) key;
+            for (Stamp node : infrastructure.Nodes)
+                logical.InfrastructureNodes.push_back(Native(node));
+            for (Stamp linkStamp : infrastructure.Links) {
+                CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                    m_Context, linkStamp, CKCID_BEHAVIORLINK);
+                GraphLinkShape live;
+                if (!link || !Describe(link, live))
+                    return Failure(Error::GraphChanged,
+                                   "A Tap infrastructure Link disappeared.");
+                logical.Links.push_back({Native(linkStamp), live, std::nullopt});
+            }
+        }
+    }
+
+    const auto topology = m_Topology.find(graphId);
+    const auto chains = m_Links->Chains.find(graphId);
+    if (topology != m_Topology.end() && chains != m_Links->Chains.end()) {
+        for (const auto &[id, chain] : chains->second) {
+            if (chain.Order.empty())
+                continue;
+            const LogicalLink *link = topology->second.Find(id);
+            CKBehaviorLink *anchor = Resolve<CKBehaviorLink>(
+                m_Context, chain.Anchor, CKCID_BEHAVIORLINK);
+            GraphLinkShape live;
+            if (!link || !anchor || !Describe(anchor, live))
+                return Failure(Error::GraphChanged,
+                               "A Splice anchor disappeared.");
+            logical.Links.push_back(
+                {Native(chain.Anchor), live,
+                 GraphLinkShape{link->Base.Source, link->Base.Sink,
+                                link->Base.Delay}});
+            for (Stamp continuation : chain.Continuations) {
+                CKBehaviorLink *native = Resolve<CKBehaviorLink>(
+                    m_Context, continuation, CKCID_BEHAVIORLINK);
+                if (!native || !Describe(native, live))
+                    return Failure(Error::GraphChanged,
+                                   "A Splice continuation disappeared.");
+                logical.Links.push_back(
+                    {Native(continuation), live, std::nullopt});
+            }
+        }
+    }
+    m_Graph.SetLogicalGraph(Native(root->second), std::move(logical));
+    return {};
+}
 
 void CKEdit::Queue(Request request) {
     std::lock_guard<std::mutex> lock(m_QueueMutex);
@@ -508,6 +627,8 @@ Status CKEdit::Begin(CKBehavior *graph, PatchKey key, Edit &out) {
         return status;
     NativeRef native;
     status = m_Graph.Refer(graph, native);
+    if (status)
+        AdoptGraph(graph);
     Layout layout;
     if (status)
         status = m_Graph.ReadLayout(native, layout);
@@ -562,7 +683,7 @@ Status CKEdit::Use(Edit &edit, CKBehaviorLink *link, Link &out) {
     return {};
 }
 
-Status CKEdit::Add(Edit &edit, Spec block, Node &out) {
+Status CKEdit::Add(Edit &edit, Spec block, Node &out, NodeRole role) {
     out = {};
     Status status = Ready();
     if (!status)
@@ -577,7 +698,7 @@ Status CKEdit::Add(Edit &edit, Spec block, Node &out) {
         return status;
     if (!block.PrototypeGeneration())
         block.PrototypeGeneration(declared.ProviderGeneration);
-    out = edit.Add(std::move(block), std::move(declared));
+    out = edit.Add(std::move(block), std::move(declared), role);
     return {};
 }
 
@@ -667,6 +788,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
     patch->Editor = this;
     patch->Graph = Capture(graph);
     patch->Key = edit.Key();
+    AdoptGraph(graph);
 
     std::unordered_map<std::uint32_t, CKBehavior *> nodes;
     nodes.emplace(edit.Graph().Value, graph);
@@ -943,7 +1065,10 @@ Status CKEdit::ApplyNow(const Edit &edit,
         if (!added || !added.Block)
             return fail(added.Detail);
         nodes.emplace(node.Handle.Value, added.Block);
-        patch->Nodes.push_back(Capture(added.Block));
+        const Stamp stamp = Capture(added.Block);
+        patch->Nodes.push_back(stamp);
+        if (node.Role == NodeRole::Infrastructure)
+            patch->InfrastructureNodes.push_back(stamp);
     }
 
     std::unordered_map<std::uint32_t, CKBehavior *> tapNodes;
@@ -953,7 +1078,9 @@ Status CKEdit::ApplyNow(const Edit &edit,
         if (!added || !added.Block)
             return fail(added.Detail);
         tapNodes.emplace(tap.Ordinal, added.Block);
-        patch->Nodes.push_back(Capture(added.Block));
+        const Stamp node = Capture(added.Block);
+        patch->Nodes.push_back(node);
+        patch->InfrastructureNodes.push_back(node);
     }
 
     std::unordered_set<CKBehavior *> changed;
@@ -1064,7 +1191,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
     };
 
     const auto addLink = [&](CKBehaviorIO *source, CKBehaviorIO *sink,
-                             int delay) -> Status {
+                             int delay, Stamp *added = nullptr) -> Status {
         auto *link = static_cast<CKBehaviorLink *>(m_Context->CreateObject(
             CKCID_BEHAVIORLINK, nullptr, CK_OBJECTCREATION_DYNAMIC));
         if (!link)
@@ -1084,7 +1211,10 @@ Status CKEdit::ApplyNow(const Edit &edit,
             return Failure(Error::GraphChanged,
                            "Virtools rejected a Behavior Link.", error);
         }
-        patch->Links.push_back({Capture(link)});
+        const Stamp value = Capture(link);
+        patch->Links.push_back({value});
+        if (added)
+            *added = value;
         return {};
     };
 
@@ -1214,10 +1344,12 @@ Status CKEdit::ApplyNow(const Edit &edit,
         if (status && (!block || !block->GetInput(0)))
             status = Failure(Error::GraphChanged,
                              "A Tap observer disappeared during Apply.");
+        Stamp link;
         if (status)
-            status = addLink(source, block->GetInput(0), 0);
+            status = addLink(source, block->GetInput(0), 0, &link);
         if (!status)
             return fail(std::move(status));
+        patch->InfrastructureLinks.push_back(link);
     }
 
     PatchLayer layer = spliceLayer;
@@ -1313,6 +1445,11 @@ Status CKEdit::ApplyNow(const Edit &edit,
         }
         if (!status)
             return fail(std::move(status));
+        m_Links->Patches[graphId][patch->Key] = {
+            patch->InfrastructureNodes, patch->InfrastructureLinks};
+        status = PublishLogicalGraph(graphId);
+        if (!status)
+            return fail(std::move(status));
     }
 
     const int edited = graph->CallCallbackFunction(CKM_BEHAVIOREDITED);
@@ -1351,8 +1488,13 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
     auto *graph = Resolve<CKBehavior>(m_Context, patch.Graph, CKCID_BEHAVIOR);
     const std::uint64_t graphId = patch.Graph.Id
         ? static_cast<std::uint32_t>(patch.Graph.Id) : 0;
+    const auto registeredRoot = m_Links->Roots.find(graphId);
+    const bool ownsLogicalGraph =
+        registeredRoot != m_Links->Roots.end() &&
+        registeredRoot->second == patch.Graph;
 
-    if (graphId && (!patch.Layer.Links.empty() || !patch.Layer.Outs.empty())) {
+    if (ownsLogicalGraph &&
+        (!patch.Layer.Links.empty() || !patch.Layer.Outs.empty())) {
         const auto topology = m_Topology.find(graphId);
         auto graphSites = m_Links->Sites.find(graphId);
         const bool removed = topology != m_Topology.end() &&
@@ -1531,7 +1673,7 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
     const bool pinsRetained = std::any_of(
         patch.Binds.begin(), patch.Binds.end(),
         [](const Patch::Journal::Binding &item) { return !item.Reverted; });
-    if (graphId && !pinsRetained) {
+    if (ownsLogicalGraph && !pinsRetained) {
         if (!patch.Data.Pins.empty()) {
             const auto relations = m_Relations.find(graphId);
             if (relations != m_Relations.end())
@@ -1567,6 +1709,13 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         remember(std::move(closed));
     }
 
+    if (ownsLogicalGraph) {
+        const auto infrastructure = m_Links->Patches.find(graphId);
+        if (infrastructure != m_Links->Patches.end())
+            infrastructure->second.erase(patch.Key);
+        remember(PublishLogicalGraph(graphId));
+    }
+
     if (notify && graph) {
         const int result = graph->CallCallbackFunction(CKM_BEHAVIOREDITED);
         if (result != CK_OK)
@@ -1574,7 +1723,7 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
                              "The graph EDITED callback failed while the Patch closed.",
                              result));
     }
-    if (graphId && !pinsRetained) {
+    if (ownsLogicalGraph && !pinsRetained) {
         const auto active = m_Active.find(graphId);
         if (active == m_Active.end() || active->second.empty()) {
             if (active != m_Active.end())
@@ -1584,6 +1733,8 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             if (m_Links) {
                 m_Links->Chains.erase(graphId);
                 m_Links->Sites.erase(graphId);
+                m_Links->Patches.erase(graphId);
+                m_Links->Roots.erase(graphId);
             }
         }
     }

@@ -85,7 +85,8 @@ public:
     Status Begin(CKBehavior *graph, PatchKey key, Edit &out);
     Status Use(Edit &edit, CKBehavior *behavior, Node &out);
     Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
-    Status Add(Edit &edit, Spec block, Node &out);
+    Status Add(Edit &edit, Spec block, Node &out,
+               NodeRole role = NodeRole::Logical);
     Status Apply(const Edit &edit, Patch &out);
     Status Close(Patch &patch);
     void ProcessFrame();
@@ -100,6 +101,8 @@ private:
     Status CloseNow(const std::shared_ptr<Patch::Journal> &journal);
     Status Undo(Patch::Journal &journal, bool notify);
     Status Materialize(std::uint64_t graphId, CKBehavior *graph);
+    Status PublishLogicalGraph(std::uint64_t graphId);
+    void AdoptGraph(CKBehavior *graph);
     void CloseAdmission(Patch::Journal &journal) noexcept;
 
     struct Request;

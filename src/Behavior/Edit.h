@@ -63,6 +63,11 @@ enum class BindKind {
     Shared,
 };
 
+enum class NodeRole {
+    Logical,
+    Infrastructure,
+};
+
 struct EditFlow {
     Port Source;
     Port Sink;
@@ -178,7 +183,8 @@ public:
 
     Node Use(NativeRef native, Layout layout);
     Link Use(ObjectRef anchor);
-    Node Add(Spec block, Layout declared);
+    Node Add(Spec block, Layout declared,
+             NodeRole role = NodeRole::Logical);
 
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
@@ -204,6 +210,7 @@ private:
         NativeRef Native;
         Layout Shape;
         std::optional<Spec> Block;
+        NodeRole Role = NodeRole::Logical;
     };
 
     struct EditLink {

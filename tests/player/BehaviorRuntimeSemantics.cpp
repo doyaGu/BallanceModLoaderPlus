@@ -18,6 +18,7 @@
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/physics_RT.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -1655,7 +1656,45 @@ private:
             m_SpliceGraph->GetSubBehaviorLinkCount() == 5 &&
             m_SpliceAnchor->GetID() == m_SpliceAnchorId &&
             m_SpliceAnchor->GetActivationDelay() == remaining;
-        if (!status || !m_SpliceAlpha || !ordered) {
+        NativeRef graphRef;
+        GraphModel logical;
+        GraphModel live;
+        std::uint64_t logicalFingerprint = 0;
+        std::uint64_t liveFingerprint = 0;
+        Status inspected = m_EditGraph->Refer(m_SpliceGraph, graphRef);
+        if (inspected)
+            inspected = m_EditGraph->Read(
+                graphRef, GraphView::Logical, logical);
+        if (inspected)
+            inspected = m_EditGraph->Read(graphRef, GraphView::Live, live);
+        if (inspected)
+            inspected = m_EditGraph->GraphFingerprint(
+                graphRef, GraphView::Logical, logicalFingerprint);
+        if (inspected)
+            inspected = m_EditGraph->GraphFingerprint(
+                graphRef, GraphView::Live, liveFingerprint);
+        const auto logicalAnchor = std::find_if(
+            logical.Links.begin(), logical.Links.end(),
+            [&](const GraphLink &link) {
+                return link.Id == static_cast<std::uint32_t>(m_SpliceAnchorId);
+            });
+        const auto liveAnchor = std::find_if(
+            live.Links.begin(), live.Links.end(),
+            [&](const GraphLink &link) {
+                return link.Id == static_cast<std::uint32_t>(m_SpliceAnchorId);
+            });
+        const bool projected = inspected && logical.Nodes.size() == 5 &&
+            logical.Links.size() == 3 && live.Nodes.size() == 5 &&
+            live.Links.size() == 5 && logicalAnchor != logical.Links.end() &&
+            liveAnchor != live.Links.end() &&
+            logicalAnchor->Target.Node ==
+                static_cast<std::uint32_t>(m_SpliceSink->GetID()) &&
+            logicalAnchor->InitialDelay == 6 &&
+            liveAnchor->Target.Node != logicalAnchor->Target.Node &&
+            logical.Fingerprint == logicalFingerprint &&
+            live.Fingerprint == liveFingerprint &&
+            logicalFingerprint != liveFingerprint;
+        if (!status || !m_SpliceAlpha || !ordered || !projected) {
             Fail("splice-alpha-apply");
             m_State = State::SpliceClose;
             return;
@@ -1924,6 +1963,22 @@ private:
                 std::to_string(m_EditSource->GetOutputParameterCount());
         } else if (m_Editor->TopologyFingerprint(m_EditFixture) == 0) {
             applyFailure = "additive-edit-apply-topology";
+        } else {
+            NativeRef graphRef;
+            GraphModel logical;
+            GraphModel live;
+            Status inspected = m_EditGraph->Refer(m_EditFixture, graphRef);
+            if (inspected)
+                inspected = m_EditGraph->Read(
+                    graphRef, GraphView::Logical, logical);
+            if (inspected)
+                inspected = m_EditGraph->Read(
+                    graphRef, GraphView::Live, live);
+            if (!inspected || logical.Nodes.size() != 3 ||
+                logical.Links.size() != 5 || live.Nodes.size() != 4 ||
+                live.Links.size() != 6) {
+                applyFailure = "additive-edit-logical-view";
+            }
         }
         if (!applyFailure.empty()) {
             Fail(applyFailure.c_str());

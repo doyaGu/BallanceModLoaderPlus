@@ -277,7 +277,8 @@ Port Node::Target() const {
 
 Edit::Edit(PatchKey key, NativeRef graph, Layout layout)
     : m_Key(std::move(key)) {
-    m_Nodes.push_back({{1}, graph, std::move(layout), std::nullopt});
+    m_Nodes.push_back(
+        {{1}, graph, std::move(layout), std::nullopt, NodeRole::Logical});
 }
 
 Port Edit::Entry(int index) const { return Graph().In(index); }
@@ -294,7 +295,8 @@ Port Edit::Exit(std::string name) const {
 
 Node Edit::Use(NativeRef native, Layout layout) {
     const Node node{++m_NextNode};
-    m_Nodes.push_back({node, native, std::move(layout), std::nullopt});
+    m_Nodes.push_back(
+        {node, native, std::move(layout), std::nullopt, NodeRole::Logical});
     return node;
 }
 
@@ -304,9 +306,10 @@ Link Edit::Use(ObjectRef anchor) {
     return link;
 }
 
-Node Edit::Add(Spec block, Layout declared) {
+Node Edit::Add(Spec block, Layout declared, NodeRole role) {
     const Node node{++m_NextNode};
-    m_Nodes.push_back({node, {}, std::move(declared), std::move(block)});
+    m_Nodes.push_back(
+        {node, {}, std::move(declared), std::move(block), role});
     EditNode &added = m_Nodes.back();
     for (const std::string &name : added.Block->m_AddedInputs)
         (void) Append(node, SlotKind::Input, name, CKGUID(), true);

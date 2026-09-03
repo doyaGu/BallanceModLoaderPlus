@@ -1,5 +1,6 @@
 #include "Behavior/Graph.h"
 
+#include <algorithm>
 #include <bit>
 #include <cstring>
 #include <limits>
@@ -82,88 +83,30 @@ public:
             return Failure(Error::InvalidState,
                            "The inspected Behavior graph is stale.");
 
-        std::uint64_t fingerprint = 0;
-        Status status = Fingerprint(graph, fingerprint);
+        Status status = ReadGraph(graph, true, out);
         if (!status)
             return status;
+        out.View = view;
+        if (view == GraphView::Logical) {
+            status = ApplyLogical(graph, out);
+            if (!status)
+                return status;
+        }
 
         ObjectRef rootObject;
         status = Issue(graph, rootObject);
         if (!status)
             return status;
-        out.View = view;
         out.Root = rootObject;
-        out.Fingerprint = fingerprint;
-        Generation &state = m_Generations[graph->GetID()];
-        if (state.Address != graph || state.Fingerprint != fingerprint) {
+        out.Fingerprint = Fingerprint(out);
+        Generation &state = m_Generations[graph->GetID()][ViewIndex(view)];
+        if (state.Address != graph || state.Fingerprint != out.Fingerprint) {
             state.Address = graph;
-            state.Fingerprint = fingerprint;
+            state.Fingerprint = out.Fingerprint;
             if (state.Value != (std::numeric_limits<std::uint64_t>::max)())
                 ++state.Value;
         }
         out.Generation = state.Value;
-
-        out.Nodes.reserve(static_cast<std::size_t>(
-            graph->GetSubBehaviorCount()) + 1u);
-        status = AddNode(graph, nullptr, out);
-        if (!status)
-            return status;
-        for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
-            CKBehavior *child = graph->GetSubBehavior(index);
-            if (!Valid(child))
-                return Failure(Error::InvalidState,
-                               "A graph node disappeared during inspection.");
-            status = AddNode(child, graph, out);
-            if (!status)
-                return status;
-        }
-
-        out.Links.reserve(static_cast<std::size_t>(
-            graph->GetSubBehaviorLinkCount()));
-        for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
-            CKBehaviorLink *link = graph->GetSubBehaviorLink(index);
-            if (!Valid(link))
-                return Failure(Error::InvalidState,
-                               "A graph Link disappeared during inspection.");
-            CKBehaviorIO *sourceIo = link->GetInBehaviorIO();
-            CKBehaviorIO *targetIo = link->GetOutBehaviorIO();
-            CKBehavior *source = sourceIo ? sourceIo->GetOwner() : nullptr;
-            CKBehavior *target = targetIo ? targetIo->GetOwner() : nullptr;
-            if (!Valid(source) || !Valid(target))
-                return Failure(Error::InvalidState,
-                               "A graph Link has a missing endpoint.");
-            GraphLink record;
-            record.Id = static_cast<std::uint64_t>(
-                static_cast<std::uint32_t>(link->GetID()));
-            status = Issue(link, record.Object);
-            if (!status)
-                return status;
-            record.Source.Node = static_cast<std::uint64_t>(
-                static_cast<std::uint32_t>(source->GetID()));
-            record.Source.Index = source->GetOutputPosition(sourceIo);
-            record.Source.Kind = SlotKind::Output;
-            if (record.Source.Index < 0) {
-                record.Source.Index = source->GetInputPosition(sourceIo);
-                record.Source.Kind = SlotKind::Input;
-            }
-            record.Target.Node = static_cast<std::uint64_t>(
-                static_cast<std::uint32_t>(target->GetID()));
-            record.Target.Index = target->GetInputPosition(targetIo);
-            record.Target.Kind = SlotKind::Input;
-            if (record.Target.Index < 0) {
-                record.Target.Index = target->GetOutputPosition(targetIo);
-                record.Target.Kind = SlotKind::Output;
-            }
-            if (record.Source.Index < 0 || record.Target.Index < 0)
-                return Failure(Error::InvalidState,
-                               "A graph Link endpoint is not owned by its Behavior.");
-            record.InitialDelay = link->GetInitialActivationDelay();
-            record.RemainingDelay = link->GetActivationDelay();
-            // CK2.1 exposes the residual counter but not delayed-list
-            // membership. Residual delay alone cannot prove pending state.
-            record.Pending = Truth::Unknown;
-            out.Links.push_back(std::move(record));
-        }
         return {};
     }
 
@@ -251,12 +194,56 @@ public:
         return ReadParameter(parameter, type, out);
     }
 
-    Status GraphFingerprint(const NativeRef &root, GraphView,
+    Status GraphFingerprint(const NativeRef &root, GraphView view,
                             std::uint64_t &out) override {
         CKBehavior *graph = ResolveBehavior(root);
-        return graph ? Fingerprint(graph, out)
-                     : Failure(Error::InvalidState,
-                               "The watched Behavior graph is stale.");
+        if (!graph)
+            return Failure(Error::InvalidState,
+                           "The watched Behavior graph is stale.");
+        GraphModel model;
+        Status status = ReadGraph(graph, false, model);
+        if (status && view == GraphView::Logical)
+            status = ApplyLogical(graph, model);
+        if (status)
+            out = Fingerprint(model);
+        return status;
+    }
+
+    void SetLogicalGraph(const NativeRef &root,
+                         LogicalGraph graph) override {
+        if (!root)
+            return;
+        LogicalState &state = m_Logical[root.Id];
+        if (state.Root != root)
+            state = {};
+        state.Root = root;
+
+        const auto currentNode = [&](const NativeRef &node) {
+            return std::find(graph.InfrastructureNodes.begin(),
+                             graph.InfrastructureNodes.end(), node) !=
+                   graph.InfrastructureNodes.end();
+        };
+        for (const NativeRef &node : state.Graph.InfrastructureNodes) {
+            if (!currentNode(node) &&
+                std::find(state.RetiredNodes.begin(), state.RetiredNodes.end(),
+                          node) == state.RetiredNodes.end())
+                state.RetiredNodes.push_back(node);
+        }
+        const auto currentLink = [&](const NativeRef &link) {
+            return std::any_of(graph.Links.begin(), graph.Links.end(),
+                               [&](const LogicalGraphLink &candidate) {
+                                   return candidate.Object == link;
+                               });
+        };
+        for (const LogicalGraphLink &link : state.Graph.Links) {
+            if (!link.Logical && !currentLink(link.Object) &&
+                std::find(state.RetiredLinks.begin(), state.RetiredLinks.end(),
+                          link.Object) == state.RetiredLinks.end())
+                state.RetiredLinks.push_back(link.Object);
+        }
+        state.Graph = std::move(graph);
+        std::erase_if(state.RetiredNodes, currentNode);
+        std::erase_if(state.RetiredLinks, currentLink);
     }
 
     Status LayoutFingerprint(const NativeRef &node,
@@ -310,11 +297,22 @@ public:
     }
 
 private:
+    struct LogicalState {
+        NativeRef Root;
+        LogicalGraph Graph;
+        std::vector<NativeRef> RetiredNodes;
+        std::vector<NativeRef> RetiredLinks;
+    };
+
     struct Generation {
         const void *Address = nullptr;
         std::uint64_t Fingerprint = 0;
         std::uint64_t Value = 0;
     };
+
+    static std::size_t ViewIndex(GraphView view) noexcept {
+        return view == GraphView::Logical ? 0u : 1u;
+    }
 
     bool Valid(CKObject *object) const {
         return m_Context && object && object->GetCKContext() == m_Context &&
@@ -354,13 +352,15 @@ private:
     }
 
     Status AddNode(CKBehavior *behavior, CKBehavior *parent,
-                   GraphModel &out) const {
+                   bool references, GraphModel &out) const {
         GraphNode node;
         node.Id = static_cast<std::uint64_t>(
             static_cast<std::uint32_t>(behavior->GetID()));
-        Status status = Issue(behavior, node.Object);
-        if (!status)
-            return status;
+        if (references) {
+            Status status = Issue(behavior, node.Object);
+            if (!status)
+                return status;
+        }
         node.Parent = parent ? static_cast<std::uint64_t>(
             static_cast<std::uint32_t>(parent->GetID())) : 0;
         node.Prototype = Prototype(behavior);
@@ -387,28 +387,31 @@ private:
         return {};
     }
 
-    Status Fingerprint(CKBehavior *graph, std::uint64_t &out) const {
-        out = kHashOffset;
-        Hash(out, graph->GetID());
-        Hash(out, graph->GetSubBehaviorCount());
-        Hash(out, graph->GetSubBehaviorLinkCount());
+    Status ReadGraph(CKBehavior *graph, bool references,
+                     GraphModel &out) const {
+        out = {};
+        out.Nodes.reserve(static_cast<std::size_t>(
+            graph->GetSubBehaviorCount()) + 1u);
+        Status status = AddNode(graph, nullptr, references, out);
+        if (!status)
+            return status;
         for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
             CKBehavior *child = graph->GetSubBehavior(index);
             if (!Valid(child))
                 return Failure(Error::InvalidState,
-                               "A graph node disappeared while its structure was read.");
-            Hash(out, child->GetID());
-            const CKGUID prototype = Prototype(child);
-            Hash(out, prototype.d1);
-            Hash(out, prototype.d2);
-            HashText(out, child->GetName());
-            Hash(out, child->GetPriority());
+                               "A graph node disappeared during inspection.");
+            status = AddNode(child, graph, references, out);
+            if (!status)
+                return status;
         }
+
+        out.Links.reserve(static_cast<std::size_t>(
+            graph->GetSubBehaviorLinkCount()));
         for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
             CKBehaviorLink *link = graph->GetSubBehaviorLink(index);
             if (!Valid(link))
                 return Failure(Error::InvalidState,
-                               "A graph Link disappeared while its structure was read.");
+                               "A graph Link disappeared during inspection.");
             CKBehaviorIO *sourceIo = link->GetInBehaviorIO();
             CKBehaviorIO *targetIo = link->GetOutBehaviorIO();
             CKBehavior *source = sourceIo ? sourceIo->GetOwner() : nullptr;
@@ -416,31 +419,180 @@ private:
             if (!Valid(source) || !Valid(target))
                 return Failure(Error::InvalidState,
                                "A graph Link has a missing endpoint.");
-            Hash(out, link->GetID());
-            Hash(out, source->GetID());
-            int sourceIndex = source->GetOutputPosition(sourceIo);
-            SlotKind sourceKind = SlotKind::Output;
-            if (sourceIndex < 0) {
-                sourceIndex = source->GetInputPosition(sourceIo);
-                sourceKind = SlotKind::Input;
+            GraphLink record;
+            record.Id = static_cast<std::uint64_t>(
+                static_cast<std::uint32_t>(link->GetID()));
+            if (references) {
+                status = Issue(link, record.Object);
+                if (!status)
+                    return status;
             }
-            Hash(out, target->GetID());
-            int targetIndex = target->GetInputPosition(targetIo);
-            SlotKind targetKind = SlotKind::Input;
-            if (targetIndex < 0) {
-                targetIndex = target->GetOutputPosition(targetIo);
-                targetKind = SlotKind::Output;
+            record.Source.Node = static_cast<std::uint64_t>(
+                static_cast<std::uint32_t>(source->GetID()));
+            record.Source.Index = source->GetOutputPosition(sourceIo);
+            record.Source.Kind = SlotKind::Output;
+            if (record.Source.Index < 0) {
+                record.Source.Index = source->GetInputPosition(sourceIo);
+                record.Source.Kind = SlotKind::Input;
             }
-            if (sourceIndex < 0 || targetIndex < 0)
+            record.Target.Node = static_cast<std::uint64_t>(
+                static_cast<std::uint32_t>(target->GetID()));
+            record.Target.Index = target->GetInputPosition(targetIo);
+            record.Target.Kind = SlotKind::Input;
+            if (record.Target.Index < 0) {
+                record.Target.Index = target->GetOutputPosition(targetIo);
+                record.Target.Kind = SlotKind::Output;
+            }
+            if (record.Source.Index < 0 || record.Target.Index < 0)
                 return Failure(Error::InvalidState,
                                "A graph Link endpoint is not owned by its Behavior.");
-            Hash(out, sourceKind);
-            Hash(out, sourceIndex);
-            Hash(out, targetKind);
-            Hash(out, targetIndex);
-            Hash(out, link->GetInitialActivationDelay());
+            record.InitialDelay = link->GetInitialActivationDelay();
+            record.RemainingDelay = link->GetActivationDelay();
+            // CK2.1 exposes the residual counter but not delayed-list
+            // membership. Residual delay alone cannot prove pending state.
+            record.Pending = Truth::Unknown;
+            out.Links.push_back(std::move(record));
         }
         return {};
+    }
+
+    bool InGraph(CKBehavior *graph, const NativeRef &reference,
+                 CK_CLASSID type) const {
+        if (!graph || !reference ||
+            reference.Id > static_cast<std::uint64_t>(
+                (std::numeric_limits<CK_ID>::max)()))
+            return false;
+        CKObject *object = m_Context->GetObject(static_cast<CK_ID>(reference.Id));
+        if (object != reference.Address || !Valid(object) ||
+            !CKIsChildClassOf(object, type))
+            return false;
+        if (type == CKCID_BEHAVIOR) {
+            for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
+                if (graph->GetSubBehavior(index) == object)
+                    return true;
+            }
+            return false;
+        }
+        for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
+            if (graph->GetSubBehaviorLink(index) == object)
+                return true;
+        }
+        return false;
+    }
+
+    static GraphLinkShape Shape(const GraphLink &link) {
+        return {link.Source, link.Target, link.InitialDelay};
+    }
+
+    Status ApplyLogical(CKBehavior *graph, GraphModel &model) {
+        const auto found = m_Logical.find(static_cast<std::uint32_t>(
+            graph->GetID()));
+        if (found == m_Logical.end())
+            return {};
+        LogicalState &state = found->second;
+        if (state.Root.Address != graph) {
+            m_Logical.erase(found);
+            return {};
+        }
+
+        std::erase_if(state.RetiredNodes, [&](const NativeRef &node) {
+            return !InGraph(graph, node, CKCID_BEHAVIOR);
+        });
+        std::erase_if(state.RetiredLinks, [&](const NativeRef &link) {
+            return !InGraph(graph, link, CKCID_BEHAVIORLINK);
+        });
+        for (const NativeRef &node : state.Graph.InfrastructureNodes) {
+            if (!InGraph(graph, node, CKCID_BEHAVIOR))
+                return Failure(Error::GraphChanged,
+                               "A Patch infrastructure node disappeared.");
+        }
+
+        for (const LogicalGraphLink &logical : state.Graph.Links) {
+            if (!InGraph(graph, logical.Object, CKCID_BEHAVIORLINK))
+                return Failure(Error::GraphChanged,
+                               "A Patch-controlled Link disappeared.");
+            const auto link = std::find_if(
+                model.Links.begin(), model.Links.end(),
+                [&](const GraphLink &candidate) {
+                    return candidate.Id == logical.Object.Id;
+                });
+            if (link == model.Links.end() || Shape(*link) != logical.Live)
+                return Failure(Error::GraphChanged,
+                               "A Patch-controlled Link changed outside its Patch.");
+            if (logical.Logical) {
+                link->Source = logical.Logical->Source;
+                link->Target = logical.Logical->Target;
+                link->InitialDelay = logical.Logical->InitialDelay;
+            } else {
+                model.Links.erase(link);
+            }
+        }
+        for (const NativeRef &retired : state.RetiredLinks) {
+            std::erase_if(model.Links, [&](const GraphLink &link) {
+                return link.Id == retired.Id;
+            });
+        }
+
+        std::vector<std::uint64_t> hidden;
+        hidden.reserve(state.Graph.InfrastructureNodes.size() +
+                       state.RetiredNodes.size());
+        for (const NativeRef &node : state.Graph.InfrastructureNodes)
+            hidden.push_back(node.Id);
+        for (const NativeRef &node : state.RetiredNodes)
+            hidden.push_back(node.Id);
+        for (const GraphLink &link : model.Links) {
+            if (std::find(hidden.begin(), hidden.end(), link.Source.Node) !=
+                    hidden.end() ||
+                std::find(hidden.begin(), hidden.end(), link.Target.Node) !=
+                    hidden.end()) {
+                return Failure(Error::GraphChanged,
+                               "A Patch infrastructure node gained an unmanaged Link.");
+            }
+        }
+        std::erase_if(model.Nodes, [&](const GraphNode &node) {
+            return std::find(hidden.begin(), hidden.end(), node.Id) != hidden.end();
+        });
+        return {};
+    }
+
+    static std::uint64_t Fingerprint(const GraphModel &graph) {
+        std::uint64_t out = kHashOffset;
+        const auto root = std::find_if(
+            graph.Nodes.begin(), graph.Nodes.end(),
+            [](const GraphNode &node) { return node.Parent == 0; });
+        Hash(out, root == graph.Nodes.end() ? std::uint64_t{0} : root->Id);
+        const std::size_t childCount = static_cast<std::size_t>(std::count_if(
+            graph.Nodes.begin(), graph.Nodes.end(),
+            [](const GraphNode &node) { return node.Parent != 0; }));
+        Hash(out, childCount);
+        Hash(out, graph.Links.size());
+        for (const GraphNode &node : graph.Nodes) {
+            if (node.Parent == 0)
+                continue;
+            Hash(out, node.Id);
+            Hash(out, node.Prototype.d1);
+            Hash(out, node.Prototype.d2);
+            HashText(out, node.Name.c_str());
+            Hash(out, node.Priority);
+            Hash(out, node.Ports.size());
+            for (const GraphPort &port : node.Ports) {
+                Hash(out, port.Kind);
+                Hash(out, port.Index);
+                Hash(out, port.Occurrence);
+                HashText(out, port.Name.c_str());
+            }
+        }
+        for (const GraphLink &link : graph.Links) {
+            Hash(out, link.Id);
+            Hash(out, link.Source.Node);
+            Hash(out, link.Source.Kind);
+            Hash(out, link.Source.Index);
+            Hash(out, link.Target.Node);
+            Hash(out, link.Target.Kind);
+            Hash(out, link.Target.Index);
+            Hash(out, link.InitialDelay);
+        }
+        return out;
     }
 
     Status ReadParameter(CKParameter *parameter, const Parameter::Type &type,
@@ -536,7 +688,8 @@ private:
     CKContext *m_Context = nullptr;
     Runtime &m_Runtime;
     std::function<ObjectRef(const void *)> m_IssueObjectRef;
-    std::unordered_map<CK_ID, Generation> m_Generations;
+    std::unordered_map<CK_ID, std::array<Generation, 2>> m_Generations;
+    std::unordered_map<std::uint64_t, LogicalState> m_Logical;
 };
 
 } // namespace
