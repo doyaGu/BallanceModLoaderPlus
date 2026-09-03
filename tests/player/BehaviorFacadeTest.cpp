@@ -103,8 +103,8 @@ public:
     }
 
     void OnUnload() override {
-        m_Plan.Close();
-        m_Patch.Close();
+        (void) m_Plan.Close();
+        (void) m_Patch.Close();
         m_Session.Close();
         DestroyGraph();
     }
@@ -300,8 +300,10 @@ private:
         if (!submitted) {
             GetLogger()->Error(
                 "Behavior plan submit failed: code=%d error=%u phase=%u detail=%s",
-                submitted.Code(), submitted.Detail().Error,
-                submitted.Detail().Phase, submitted.Detail().Message.c_str());
+                submitted.Code(),
+                static_cast<unsigned>(submitted.Detail().Error),
+                static_cast<unsigned>(submitted.Detail().Phase),
+                submitted.Detail().Message.c_str());
             Finish(false, "submit");
             return;
         }
@@ -371,11 +373,12 @@ private:
     }
 
     void ClosePlan() {
-        int closed = BML_OK;
+        BML::Behavior::Result<BML::Behavior::CloseState> closed;
         std::thread closer([&] { closed = m_Plan.Close(); });
         closer.join();
         const auto closing = m_Plan.Read();
-        if (closed != BML_ERROR_BUSY || !m_Plan || !closing ||
+        if (!closed || closed.Value() != BML::Behavior::CloseState::Closing ||
+            !m_Plan || !closing ||
             closing->State != PlanState::Retiring) {
             Finish(false, "plan-thread-close");
             return;
@@ -390,8 +393,9 @@ private:
                 Finish(false, "restore");
             return;
         }
-        const int closed = m_Plan.Close();
-        if (closed != BML_OK || m_Plan) {
+        const auto closed = m_Plan.Close();
+        if (!closed || closed.Value() != BML::Behavior::CloseState::Closed ||
+            m_Plan) {
             Finish(false, "close-handle");
             return;
         }
@@ -438,8 +442,10 @@ private:
         if (!applied) {
             GetLogger()->Error(
                 "Behavior patch apply failed: code=%d error=%u phase=%u detail=%s",
-                applied.Code(), applied.Detail().Error,
-                applied.Detail().Phase, applied.Detail().Message.c_str());
+                applied.Code(),
+                static_cast<unsigned>(applied.Detail().Error),
+                static_cast<unsigned>(applied.Detail().Phase),
+                applied.Detail().Message.c_str());
             Finish(false, "patch-apply");
             return;
         }
@@ -464,11 +470,12 @@ private:
             Finish(false, "patch-conflict-setup");
             return;
         }
-        int closed = BML_OK;
+        BML::Behavior::Result<BML::Behavior::CloseState> closed;
         std::thread closer([&] { closed = m_Patch.Close(); });
         closer.join();
         const auto closing = m_Patch.Read();
-        if (closed != BML_ERROR_BUSY || !m_Patch || !closing ||
+        if (!closed || closed.Value() != BML::Behavior::CloseState::Closing ||
+            !m_Patch || !closing ||
             closing->State != GraphPatchState::Closing) {
             Finish(false, "patch-thread-close");
             return;
@@ -512,8 +519,8 @@ private:
             return;
         m_Done = true;
         if (!passed) {
-            m_Patch.Close();
-            m_Plan.Close();
+            (void) m_Patch.Close();
+            (void) m_Plan.Close();
             DestroyGraph();
         }
         GetLogger()->Info(

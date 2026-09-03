@@ -54,9 +54,80 @@ struct Guid {
     friend constexpr bool operator==(Guid, Guid) noexcept = default;
 };
 
+enum class Error : std::uint32_t {
+    None = BML_BEHAVIOR_ERROR_NONE,
+    OwnerUnavailable = BML_BEHAVIOR_ERROR_OWNER_UNAVAILABLE,
+    PrototypeNotFound = BML_BEHAVIOR_ERROR_PROTOTYPE_NOT_FOUND,
+    RequiredManagerMissing = BML_BEHAVIOR_ERROR_REQUIRED_MANAGER_MISSING,
+    CreationFailed = BML_BEHAVIOR_ERROR_CREATION_FAILED,
+    InitializationFailed = BML_BEHAVIOR_ERROR_INITIALIZATION_FAILED,
+    TargetInvalid = BML_BEHAVIOR_ERROR_TARGET_INVALID,
+    CallbackFailed = BML_BEHAVIOR_ERROR_CALLBACK_FAILED,
+    SlotNotFound = BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+    SlotAmbiguous = BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS,
+    LayoutChanged = BML_BEHAVIOR_ERROR_LAYOUT_CHANGED,
+    TypeMismatch = BML_BEHAVIOR_ERROR_TYPE_MISMATCH,
+    ValueInvalid = BML_BEHAVIOR_ERROR_VALUE_INVALID,
+    StateInvalid = BML_BEHAVIOR_ERROR_STATE_INVALID,
+    NativeError = BML_BEHAVIOR_ERROR_NATIVE_ERROR,
+    BreakUnsupported = BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED,
+    PoutUnsupported = BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED,
+    PoutUnavailable = BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE,
+    FrameQueueFull = BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL,
+    Cancelled = BML_BEHAVIOR_ERROR_CANCELLED,
+    PrototypeChanged = BML_BEHAVIOR_ERROR_PROTOTYPE_CHANGED,
+    PrototypeLoadFailed = BML_BEHAVIOR_ERROR_PROTOTYPE_LOAD_FAILED,
+    LayoutUnavailable = BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE,
+    ParameterTypeUnavailable = BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNAVAILABLE,
+    ParameterTypeUnsupported = BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED,
+    DetachedUnsupported = BML_BEHAVIOR_ERROR_DETACHED_UNSUPPORTED,
+    ObserverUnavailable = BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE,
+    GraphChanged = BML_BEHAVIOR_ERROR_GRAPH_CHANGED,
+    GraphLocalityInvalid = BML_BEHAVIOR_ERROR_GRAPH_LOCALITY_INVALID,
+    DelayInvalid = BML_BEHAVIOR_ERROR_DELAY_INVALID,
+    SameFrameCycle = BML_BEHAVIOR_ERROR_SAME_FRAME_CYCLE,
+    SharedSourceCycle = BML_BEHAVIOR_ERROR_SHARED_SOURCE_CYCLE,
+    PushCycle = BML_BEHAVIOR_ERROR_PUSH_CYCLE,
+    InterfaceUnsupported = BML_BEHAVIOR_ERROR_INTERFACE_UNSUPPORTED,
+    SourceConflict = BML_BEHAVIOR_ERROR_SOURCE_CONFLICT,
+    SourceOrderCycle = BML_BEHAVIOR_ERROR_SOURCE_ORDER_CYCLE,
+    OrderingTargetMismatch = BML_BEHAVIOR_ERROR_ORDERING_TARGET_MISMATCH,
+    OverlayOrderCycle = BML_BEHAVIOR_ERROR_OVERLAY_ORDER_CYCLE,
+    LinkNotFound = BML_BEHAVIOR_ERROR_LINK_NOT_FOUND,
+    PathAmbiguous = BML_BEHAVIOR_ERROR_PATH_AMBIGUOUS,
+    PathCycle = BML_BEHAVIOR_ERROR_PATH_CYCLE,
+    QueryNotFound = BML_BEHAVIOR_ERROR_QUERY_NOT_FOUND,
+    QueryAmbiguous = BML_BEHAVIOR_ERROR_QUERY_AMBIGUOUS,
+    WorldBoundValue = BML_BEHAVIOR_ERROR_WORLD_BOUND_VALUE,
+    RevertConflict = BML_BEHAVIOR_ERROR_REVERT_CONFLICT,
+    TargetCardinality = BML_BEHAVIOR_ERROR_TARGET_CARDINALITY,
+    SourceInvalid = BML_BEHAVIOR_ERROR_SOURCE_INVALID,
+    OperationInvalid = BML_BEHAVIOR_ERROR_OPERATION_INVALID,
+    Busy = BML_BEHAVIOR_ERROR_BUSY,
+    Unavailable = BML_BEHAVIOR_ERROR_UNAVAILABLE,
+    WrongThread = BML_BEHAVIOR_ERROR_WRONG_THREAD,
+};
+
+enum class Phase : std::uint32_t {
+    None = BML_BEHAVIOR_PHASE_NONE,
+    Prototype = BML_BEHAVIOR_PHASE_PROTOTYPE,
+    Manager = BML_BEHAVIOR_PHASE_MANAGER,
+    Creation = BML_BEHAVIOR_PHASE_CREATION,
+    Initialization = BML_BEHAVIOR_PHASE_INITIALIZATION,
+    Layout = BML_BEHAVIOR_PHASE_LAYOUT,
+    Owner = BML_BEHAVIOR_PHASE_OWNER,
+    Target = BML_BEHAVIOR_PHASE_TARGET,
+    Settings = BML_BEHAVIOR_PHASE_SETTINGS,
+    Callback = BML_BEHAVIOR_PHASE_CALLBACK,
+    Binding = BML_BEHAVIOR_PHASE_BINDING,
+    Execution = BML_BEHAVIOR_PHASE_EXECUTION,
+    Teardown = BML_BEHAVIOR_PHASE_TEARDOWN,
+    Edit = BML_BEHAVIOR_PHASE_EDIT,
+};
+
 struct Status {
-    std::uint32_t Error = BML_BEHAVIOR_ERROR_NONE;
-    std::uint32_t Phase = BML_BEHAVIOR_PHASE_NONE;
+    Behavior::Error Error = Behavior::Error::None;
+    Behavior::Phase Phase = Behavior::Phase::None;
     std::int32_t CkError = 0;
     std::int32_t NativeResult = 0;
     Guid Prototype;
@@ -64,7 +135,7 @@ struct Status {
     std::string Message;
 
     [[nodiscard]] explicit operator bool() const noexcept {
-        return Error == BML_BEHAVIOR_ERROR_NONE;
+        return Error == Behavior::Error::None;
     }
 };
 
@@ -79,13 +150,14 @@ public:
     [[nodiscard]] int Code() const noexcept { return m_Code; }
     [[nodiscard]] const Status &Detail() const noexcept { return m_Status; }
 
-    [[nodiscard]] T &Value() & { return *m_Value; }
-    [[nodiscard]] const T &Value() const & { return *m_Value; }
-    [[nodiscard]] T &&Value() && { return std::move(*m_Value); }
-    [[nodiscard]] T *operator->() noexcept { return &*m_Value; }
-    [[nodiscard]] const T *operator->() const noexcept { return &*m_Value; }
-    [[nodiscard]] T &operator*() & noexcept { return *m_Value; }
-    [[nodiscard]] const T &operator*() const & noexcept { return *m_Value; }
+    [[nodiscard]] bool HasValue() const noexcept { return m_Value.has_value(); }
+    [[nodiscard]] T &Value() & { return m_Value.value(); }
+    [[nodiscard]] const T &Value() const & { return m_Value.value(); }
+    [[nodiscard]] T &&Value() && { return std::move(m_Value).value(); }
+    [[nodiscard]] T *operator->() { return &Value(); }
+    [[nodiscard]] const T *operator->() const { return &Value(); }
+    [[nodiscard]] T &operator*() & { return Value(); }
+    [[nodiscard]] const T &operator*() const & { return Value(); }
 
     static Result Success(T value, Status status = {}) {
         Result result;
@@ -318,15 +390,38 @@ enum class RunState : std::uint32_t {
     Failed = BML_BEHAVIOR_RUN_FAILED,
 };
 
-enum class Admission : std::uint32_t {
-    Executed = BML_BEHAVIOR_ADMISSION_EXECUTED,
+enum class PulseResult : std::uint32_t {
+    Ran = BML_BEHAVIOR_ADMISSION_EXECUTED,
     Queued = BML_BEHAVIOR_ADMISSION_QUEUED,
 };
+
+enum class DetachedSupport {
+    Verified,
+    Unverified,
+};
+
+enum class Continuation : std::uint32_t {
+    None = BML_BEHAVIOR_CONTINUATION_NONE,
+    Native = BML_BEHAVIOR_CONTINUATION_NATIVE,
+    QueuedInput = BML_BEHAVIOR_CONTINUATION_QUEUED_INPUT,
+};
+
+[[nodiscard]] constexpr Continuation operator|(Continuation left,
+                                                Continuation right) noexcept {
+    return static_cast<Continuation>(static_cast<std::uint32_t>(left) |
+                                     static_cast<std::uint32_t>(right));
+}
+
+[[nodiscard]] constexpr bool Has(Continuation value,
+                                 Continuation flag) noexcept {
+    return (static_cast<std::uint32_t>(value) &
+            static_cast<std::uint32_t>(flag)) != 0;
+}
 
 struct RunInfo {
     RunKind Kind = RunKind::Instance;
     RunState State = RunState::Ready;
-    bool UnverifiedDetached = false;
+    DetachedSupport Detached = DetachedSupport::Verified;
     Status Detail;
 };
 
@@ -356,8 +451,8 @@ struct Pout {
 };
 
 struct Diagnostic {
-    std::uint32_t Error = BML_BEHAVIOR_ERROR_NONE;
-    std::uint32_t Phase = BML_BEHAVIOR_PHASE_NONE;
+    Behavior::Error Error = Behavior::Error::None;
+    Behavior::Phase Phase = Behavior::Phase::None;
     std::int32_t CkError = 0;
     std::int32_t NativeResult = 0;
     Guid Prototype;
@@ -369,8 +464,8 @@ struct Frame {
     std::uint64_t Sequence = 0;
     std::uint64_t GameFrame = 0;
     std::int32_t NativeResult = 0;
-    std::uint32_t Continuation = BML_BEHAVIOR_CONTINUATION_NONE;
-    std::uint32_t Error = BML_BEHAVIOR_ERROR_NONE;
+    Behavior::Continuation Continuation = Behavior::Continuation::None;
+    Behavior::Error Error = Behavior::Error::None;
     std::vector<Out> Outs;
     std::vector<Pout> Pouts;
     std::vector<Diagnostic> Diagnostics;
@@ -402,6 +497,19 @@ struct Prototype {
         : Id(id), Generation(generation) {}
 };
 
+// Filters the Prototype registrations visible in the running Player. An empty
+// query returns every registration. optional distinguishes an absent filter
+// from an intentionally empty text value.
+struct PrototypeQuery {
+    std::optional<Guid> Id;
+    std::optional<std::string> Name;
+    std::optional<std::string> Category;
+    std::optional<std::string> Provider;
+    std::optional<Guid> ProviderId;
+    std::optional<std::int32_t> CompatibleClass;
+    std::vector<Guid> RequiredManagers;
+};
+
 enum class LayoutOrigin : std::uint32_t {
     Declared = BML_BEHAVIOR_LAYOUT_DECLARED,
     Live = BML_BEHAVIOR_LAYOUT_LIVE,
@@ -426,6 +534,19 @@ enum class SlotKind : std::uint32_t {
 struct Manager {
     Guid Id;
     bool Available = false;
+};
+
+struct PrototypeInfo {
+    Prototype Ref;
+    Guid Provider;
+    std::uint32_t Version = 0;
+    std::int32_t CompatibleClass = 0;
+    std::string Name;
+    std::string Category;
+    std::string ProviderName;
+    std::string Author;
+    std::string Description;
+    std::vector<Manager> Managers;
 };
 
 struct Slot {
@@ -595,16 +716,20 @@ struct Sampled {
 };
 inline Sampled sampled(ValueRef value) { return {std::move(value)}; }
 
-struct Exact {
-    ValueRef Value;
-};
-inline Exact exact(ValueRef value) { return {std::move(value)}; }
-
 enum class ChangeKind : std::uint32_t {
     Graph = BML_BEHAVIOR_WATCH_GRAPH,
     Layout = BML_BEHAVIOR_WATCH_LAYOUT,
     SampledValue = BML_BEHAVIOR_WATCH_SAMPLED_VALUE,
-    ExactValue = BML_BEHAVIOR_WATCH_EXACT_VALUE,
+};
+
+enum class WatchState : std::uint32_t {
+    Active = BML_BEHAVIOR_WATCH_ACTIVE,
+    Failed = BML_BEHAVIOR_WATCH_FAILED,
+};
+
+struct WatchInfo {
+    WatchState State = WatchState::Active;
+    Status Diagnostic;
 };
 
 struct Change {
@@ -673,9 +798,17 @@ struct HookEvent {
 };
 
 enum class HookResult : int {
+    // Stops the enclosing chain. The facade also returns this when an author
+    // callback throws, so no C++ exception crosses the C seam.
+    Error = -1,
     Ok = BML_BEHAVIOR_HOOK_OK,
     // Keep the Hook Block active for one more frame. Its Outs still activate.
     AgainNextFrame = BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME,
+};
+
+enum class CloseState {
+    Closing,
+    Closed,
 };
 
 // Places one Patch relative to another Patch spliced onto the same link.
@@ -695,8 +828,11 @@ inline PatchOrder after(std::string_view owner, std::string_view name) {
 namespace Detail {
 struct SessionState;
 class Run;
+template <class Final>
+class EditBuilder;
 }
 
+class PlanBuilder;
 class PatchBuilder;
 
 class Watch {
@@ -719,7 +855,8 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept {
         return m_Session && m_Handle;
     }
-    int Close() noexcept;
+    [[nodiscard]] Result<WatchInfo> Read() const;
+    [[nodiscard]] Result<CloseState> Close() noexcept;
 
 private:
     Watch(std::shared_ptr<Detail::SessionState> session,
@@ -747,12 +884,39 @@ public:
     [[nodiscard]] const std::vector<Link> &Links() const noexcept {
         return m_Links;
     }
-    [[nodiscard]] const Node *Find(std::string_view name) const noexcept {
-        const auto found = std::find_if(
-            m_Nodes.begin(), m_Nodes.end(), [&](const Node &node) {
-                return node.Name == name;
-            });
-        return found == m_Nodes.end() ? nullptr : &*found;
+    [[nodiscard]] std::vector<Node> FindAll(
+        std::string_view name) const {
+        std::vector<Node> matches;
+        for (const Node &node : m_Nodes) {
+            if (node.Name == name)
+                matches.push_back(node);
+        }
+        return matches;
+    }
+    [[nodiscard]] Result<Node> Find(std::string_view name) const {
+        const Node *match = nullptr;
+        for (const Node &node : m_Nodes) {
+            if (node.Name != name)
+                continue;
+            if (match) {
+                Status status;
+                status.Error = Error::QueryAmbiguous;
+                status.Message = "More than one Behavior node is named '" +
+                    std::string(name) + "'.";
+                return Result<Node>::Failure(BML_ERROR_FAIL,
+                                              std::move(status));
+            }
+            match = &node;
+        }
+        if (!match) {
+            Status status;
+            status.Error = Error::QueryNotFound;
+            status.Message = "No Behavior node is named '" +
+                std::string(name) + "'.";
+            return Result<Node>::Failure(BML_ERROR_NOT_FOUND,
+                                          std::move(status));
+        }
+        return Result<Node>::Success(*match);
     }
 
     [[nodiscard]] Result<Graph> Logical() const;
@@ -769,10 +933,6 @@ public:
     template <class Function>
     [[nodiscard]] Result<Behavior::Watch> Watch(
         Sampled change, Function &&callback) const;
-    template <class Function>
-    [[nodiscard]] Result<Behavior::Watch> Watch(
-        Exact change, Function &&callback) const;
-
 private:
     static Result<Graph> Read(std::shared_ptr<Detail::SessionState> session,
                               BML_ObjectRef root, View view);
@@ -818,8 +978,8 @@ inline BML_BehaviorString Text(std::string_view value) noexcept {
 
 inline Status ReadStatus(const BML_BehaviorStatus &source) {
     Status status;
-    status.Error = source.Error;
-    status.Phase = source.Phase;
+    status.Error = static_cast<Behavior::Error>(source.Error);
+    status.Phase = static_cast<Behavior::Phase>(source.Phase);
     status.CkError = source.CkError;
     status.NativeResult = source.NativeResult;
     status.Prototype = source.Prototype;
@@ -847,7 +1007,9 @@ inline BML_BehaviorRunInfo EmptyRunInfo() noexcept {
 inline RunInfo ReadRunInfo(const BML_BehaviorRunInfo &source) {
     return {static_cast<RunKind>(source.Kind),
             static_cast<RunState>(source.State),
-            (source.Flags & BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED) != 0,
+            (source.Flags & BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED) != 0
+                ? DetachedSupport::Unverified
+                : DetachedSupport::Verified,
             ReadStatus(source.Status)};
 }
 
@@ -1192,8 +1354,9 @@ inline bool ReadFrames(const std::vector<BML_BehaviorRunFrame> &headers,
         frame.Sequence = header.Sequence;
         frame.GameFrame = header.Frame;
         frame.NativeResult = header.NativeResult;
-        frame.Continuation = header.Continuation;
-        frame.Error = header.Error;
+        frame.Continuation = static_cast<Behavior::Continuation>(
+            header.Continuation);
+        frame.Error = static_cast<Behavior::Error>(header.Error);
 
         frame.Outs.reserve(header.OutCount);
         for (std::uint32_t index = 0; index < header.OutCount; ++index) {
@@ -1228,8 +1391,8 @@ inline bool ReadFrames(const std::vector<BML_BehaviorRunFrame> &headers,
             if (!RecordAt(payload, header.DiagnosticOffset, index, record))
                 return false;
             Diagnostic diagnostic;
-            diagnostic.Error = record.Error;
-            diagnostic.Phase = record.Phase;
+            diagnostic.Error = static_cast<Behavior::Error>(record.Error);
+            diagnostic.Phase = static_cast<Behavior::Phase>(record.Phase);
             diagnostic.CkError = record.CkError;
             diagnostic.NativeResult = record.NativeResult;
             diagnostic.Prototype = record.Prototype;
@@ -1321,24 +1484,27 @@ public:
         }
     }
 
-    int Close() noexcept {
+    [[nodiscard]] Result<CloseState> Close() noexcept {
         if (!m_Handle) {
             m_Session.reset();
-            return BML_OK;
+            return Result<CloseState>::Success(CloseState::Closed);
         }
         if (!m_Session || !m_Session->Api || !m_Session->Handle)
-            return BML_ERROR_INVALID_HANDLE;
+            return Result<CloseState>::Failure(BML_ERROR_INVALID_HANDLE);
         const int code = m_Session->Api->CloseRun(m_Handle);
         if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = nullptr;
             m_Session.reset();
+            return Result<CloseState>::Success(CloseState::Closed);
         }
-        return code;
+        if (code == BML_ERROR_BUSY)
+            return Result<CloseState>::Success(CloseState::Closing);
+        return Result<CloseState>::Failure(code);
     }
 
-    [[nodiscard]] Result<Admission> Pulse(const Selector &input) const {
+    [[nodiscard]] Result<PulseResult> Pulse(const Selector &input) const {
         if (!*this)
-            return Result<Admission>::Failure(BML_ERROR_INVALID_HANDLE);
+            return Result<PulseResult>::Failure(BML_ERROR_INVALID_HANDLE);
         const BML_BehaviorSelector selector = input.Wire();
         BML_BehaviorRunInfo info = EmptyRunInfo();
         BML_BehaviorStatus status = EmptyStatus();
@@ -1346,9 +1512,9 @@ public:
         const int code = m_Session->Api->Pulse(
             m_Handle, &selector, &admission, &info, &status);
         if (code != BML_OK)
-            return Result<Admission>::Failure(code, ReadStatus(status));
-        return Result<Admission>::Success(static_cast<Admission>(admission),
-                                          ReadStatus(status));
+            return Result<PulseResult>::Failure(code, ReadStatus(status));
+        return Result<PulseResult>::Success(static_cast<PulseResult>(admission),
+                                            ReadStatus(status));
     }
 
     [[nodiscard]] Result<Behavior::Layout> Layout() const;
@@ -1403,19 +1569,41 @@ public:
 
 inline Watch::~Watch() { (void) Close(); }
 
-inline int Watch::Close() noexcept {
+inline Result<WatchInfo> Watch::Read() const {
+    if (!m_Session || !m_Session->Api || !m_Handle ||
+        !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, ReadWatch))
+        return Result<WatchInfo>::Failure(BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorWatchInfo info{};
+    info.StructSize = sizeof(info);
+    info.Diagnostic.StructSize = sizeof(info.Diagnostic);
+    BML_BehaviorStatus status = Detail::EmptyStatus();
+    const int code = m_Session->Api->ReadWatch(m_Handle, &info, &status);
+    if (code != BML_OK)
+        return Result<WatchInfo>::Failure(code, Detail::ReadStatus(status));
+    if (info.StructSize < sizeof(info))
+        return Result<WatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    return Result<WatchInfo>::Success(
+        {static_cast<WatchState>(info.State),
+         Detail::ReadStatus(info.Diagnostic)},
+        Detail::ReadStatus(status));
+}
+
+inline Result<CloseState> Watch::Close() noexcept {
     if (!m_Handle) {
         m_Session.reset();
-        return BML_OK;
+        return Result<CloseState>::Success(CloseState::Closed);
     }
     if (!m_Session || !m_Session->Api || !m_Session->Handle)
-        return BML_ERROR_INVALID_HANDLE;
+        return Result<CloseState>::Failure(BML_ERROR_INVALID_HANDLE);
     const int code = m_Session->Api->CloseWatch(m_Handle);
     if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
         m_Handle = nullptr;
         m_Session.reset();
+        return Result<CloseState>::Success(CloseState::Closed);
     }
-    return code;
+    if (code == BML_ERROR_BUSY)
+        return Result<CloseState>::Success(CloseState::Closing);
+    return Result<CloseState>::Failure(code);
 }
 
 class Call {
@@ -1454,7 +1642,7 @@ public:
         std::initializer_list<Binding> stage) const {
         return Configure({SettingStage(stage)});
     }
-    int Close() noexcept { return m_Run.Close(); }
+    [[nodiscard]] Result<CloseState> Close() noexcept { return m_Run.Close(); }
     [[nodiscard]] Result<Task> Continue() &&;
 
 private:
@@ -1482,10 +1670,10 @@ public:
     [[nodiscard]] Result<Graph> Inspect(View view = View::Logical) const {
         return m_Run.Inspect(view);
     }
-    [[nodiscard]] Result<Admission> Pulse(const Selector &input) const {
+    [[nodiscard]] Result<PulseResult> Pulse(const Selector &input) const {
         return m_Run.Pulse(input);
     }
-    [[nodiscard]] Result<Admission> Pulse(std::string_view input) const {
+    [[nodiscard]] Result<PulseResult> Pulse(std::string_view input) const {
         return Pulse(Selector::Unique(input));
     }
     template <class T>
@@ -1506,7 +1694,7 @@ public:
         std::initializer_list<Binding> stage) const {
         return Configure({SettingStage(stage)});
     }
-    int Close() noexcept { return m_Run.Close(); }
+    [[nodiscard]] Result<CloseState> Close() noexcept { return m_Run.Close(); }
 
 private:
     explicit Task(Detail::Run run) : m_Run(std::move(run)) {}
@@ -1534,10 +1722,10 @@ public:
     [[nodiscard]] Result<Graph> Inspect(View view = View::Logical) const {
         return m_Run.Inspect(view);
     }
-    [[nodiscard]] Result<Admission> Pulse(const Selector &input) const {
+    [[nodiscard]] Result<PulseResult> Pulse(const Selector &input) const {
         return m_Run.Pulse(input);
     }
-    [[nodiscard]] Result<Admission> Pulse(std::string_view input) const {
+    [[nodiscard]] Result<PulseResult> Pulse(std::string_view input) const {
         return Pulse(Selector::Unique(input));
     }
     template <class T>
@@ -1564,7 +1752,7 @@ public:
         std::initializer_list<Binding> stage) const {
         return Configure({SettingStage(stage)});
     }
-    int Close() noexcept { return m_Run.Close(); }
+    [[nodiscard]] Result<CloseState> Close() noexcept { return m_Run.Close(); }
 
 private:
     explicit Instance(Detail::Run run) : m_Run(std::move(run)) {}
@@ -1933,25 +2121,29 @@ struct HookFunction {
             delete self;
     }
     static int BML_BEHAVIOR_CALL Invoke(
-        void *state, const BML_BehaviorHookContext *source) {
-        if (!source || source->StructSize < sizeof(*source))
-            throw std::runtime_error("The Behavior Hook context is malformed.");
-        HookEvent event;
-        event.DeltaTime = source->DeltaTime;
-        event.Block = source->Block;
-        event.Script = source->Script;
-        event.Owner = source->Owner;
-        auto &callable = static_cast<HookFunction *>(state)->Value;
-        if constexpr (std::is_void_v<Returned>) {
-            if constexpr (TakesEvent)
-                std::invoke(callable, event);
-            else
-                std::invoke(callable);
-            return BML_BEHAVIOR_HOOK_OK;
-        } else if constexpr (TakesEvent) {
-            return static_cast<int>(std::invoke(callable, event));
-        } else {
-            return static_cast<int>(std::invoke(callable));
+        void *state, const BML_BehaviorHookContext *source) noexcept {
+        try {
+            if (!state || !source || source->StructSize < sizeof(*source))
+                return static_cast<int>(HookResult::Error);
+            HookEvent event;
+            event.DeltaTime = source->DeltaTime;
+            event.Block = source->Block;
+            event.Script = source->Script;
+            event.Owner = source->Owner;
+            auto &callable = static_cast<HookFunction *>(state)->Value;
+            if constexpr (std::is_void_v<Returned>) {
+                if constexpr (TakesEvent)
+                    std::invoke(callable, event);
+                else
+                    std::invoke(callable);
+                return BML_BEHAVIOR_HOOK_OK;
+            } else if constexpr (TakesEvent) {
+                return static_cast<int>(std::invoke(callable, event));
+            } else {
+                return static_cast<int>(std::invoke(callable));
+            }
+        } catch (...) {
+            return static_cast<int>(HookResult::Error);
         }
     }
 
@@ -1991,7 +2183,8 @@ public:
 private:
     std::shared_ptr<Detail::HookHolder> m_Record;
 
-    friend class PatchBuilder;
+    template <class Final>
+    friend class Detail::EditBuilder;
 };
 
 // A durable authoring intent the Loader owns. Closing the handle retires every
@@ -2038,20 +2231,23 @@ public:
     // Reverts what the Plan still owns. If a live graph prevents the inverse,
     // the handle remains valid so Read can describe the conflict and Close can
     // be retried after the graph is restored to the expected after-image.
-    int Close() noexcept {
+    [[nodiscard]] Result<CloseState> Close() noexcept {
         if (!m_Handle) {
             m_Session.reset();
-            return BML_OK;
+            return Result<CloseState>::Success(CloseState::Closed);
         }
         if (!m_Session || !m_Session->Api || !m_Session->Handle)
-            return BML_ERROR_INVALID_HANDLE;
+            return Result<CloseState>::Failure(BML_ERROR_INVALID_HANDLE);
         const int code = m_Session->Api->ClosePlan(
             m_Session->Handle, m_Handle);
         if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = nullptr;
             m_Session.reset();
+            return Result<CloseState>::Success(CloseState::Closed);
         }
-        return code;
+        if (code == BML_ERROR_BUSY)
+            return Result<CloseState>::Success(CloseState::Closing);
+        return Result<CloseState>::Failure(code);
     }
 
 private:
@@ -2062,7 +2258,7 @@ private:
     std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorPlan m_Handle = nullptr;
 
-    friend class PatchBuilder;
+    friend class PlanBuilder;
 };
 
 // One reversible Patch on a specific live graph. It does not follow script
@@ -2107,20 +2303,23 @@ public:
             Detail::ReadPatchInfo(wire), Detail::ReadStatus(status));
     }
     // A revert conflict keeps this handle live for Read and a later retry.
-    int Close() noexcept {
+    [[nodiscard]] Result<CloseState> Close() noexcept {
         if (!m_Handle) {
             m_Session.reset();
-            return BML_OK;
+            return Result<CloseState>::Success(CloseState::Closed);
         }
         if (!m_Session || !m_Session->Api || !m_Session->Handle)
-            return BML_ERROR_INVALID_HANDLE;
+            return Result<CloseState>::Failure(BML_ERROR_INVALID_HANDLE);
         const int code = m_Session->Api->ClosePatch(
             m_Session->Handle, m_Handle);
         if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = nullptr;
             m_Session.reset();
+            return Result<CloseState>::Success(CloseState::Closed);
         }
-        return code;
+        if (code == BML_ERROR_BUSY)
+            return Result<CloseState>::Success(CloseState::Closing);
+        return Result<CloseState>::Failure(code);
     }
 
 private:
@@ -2134,10 +2333,12 @@ private:
     friend class PatchBuilder;
 };
 
-// Accumulates one symbolic graph Patch. Apply targets a specific live graph;
-// On(...).Submit() retains the same edit as a Plan and reconciles it against
-// matching scripts in later worlds.
-class PatchBuilder {
+// Shared symbolic graph-edit language. PlanBuilder chooses matching scripts and
+// persists the edit; PatchBuilder applies it to one live graph.
+namespace Detail {
+
+template <class Final>
+class EditBuilder {
 public:
     // Addresses one port of a node the program named.
     struct Port {
@@ -2241,24 +2442,10 @@ public:
         operator Port() const { return Ref(); }
     };
 
-    PatchBuilder(const PatchBuilder &) = default;
-    PatchBuilder &operator=(const PatchBuilder &) = default;
-    PatchBuilder(PatchBuilder &&) noexcept = default;
-    PatchBuilder &operator=(PatchBuilder &&) noexcept = default;
-
-    // Installs into every live script carrying this exact name.
-    PatchBuilder &On(std::string_view script) {
-        m_Script.assign(script);
-        m_Targets = BML_BEHAVIOR_TARGETS_EACH;
-        return *this;
-    }
-    // Installs into the single live script carrying this exact name. More than
-    // one live match leaves the Plan Unsatisfied instead of choosing one.
-    PatchBuilder &OnSingle(std::string_view script) {
-        m_Script.assign(script);
-        m_Targets = BML_BEHAVIOR_TARGETS_ONE;
-        return *this;
-    }
+    EditBuilder(const EditBuilder &) = default;
+    EditBuilder &operator=(const EditBuilder &) = default;
+    EditBuilder(EditBuilder &&) noexcept = default;
+    EditBuilder &operator=(EditBuilder &&) noexcept = default;
 
     // The target graph itself. Its ports are the entry and exit of the graph.
     [[nodiscard]] Node Graph() const noexcept {
@@ -2325,104 +2512,93 @@ public:
     }
 
     // Adds a behavior link, delayed by whole frames.
-    PatchBuilder &Flow(Port source, Port sink, std::int32_t delay = 0) {
+    Final &Flow(Port source, Port sink, std::int32_t delay = 0) {
         Step &step = Define(BML_BEHAVIOR_EDIT_FLOW, 0);
         step.Source = std::move(source);
         step.Sink = std::move(sink);
         step.Delay = delay;
-        return *this;
+        return Self();
     }
     // Adds a behavior link that may close a same-frame cycle. Without this the
     // Loader rejects a cycle instead of installing one.
-    PatchBuilder &FlowCycle(Port source, Port sink, std::int32_t delay = 0) {
+    Final &FlowCycle(Port source, Port sink, std::int32_t delay = 0) {
         Flow(std::move(source), std::move(sink), delay);
         m_Steps.back().Flags |= BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
-        return *this;
+        return Self();
     }
     // Writes an owned literal into a port. World-bound object values are not
     // part of the symbolic edit language.
-    PatchBuilder &Bind(Port sink, Behavior::Value value) {
+    Final &Bind(Port sink, Behavior::Value value) {
         Step &step = Define(BML_BEHAVIOR_EDIT_BIND_VALUE, 0);
         step.Sink = std::move(sink);
         step.Value.emplace(std::move(value));
-        return *this;
+        return Self();
     }
     // Makes the sink read the source directly.
-    PatchBuilder &Bind(Port sink, Port source) {
+    Final &Bind(Port sink, Port source) {
         Step &step = Define(BML_BEHAVIOR_EDIT_BIND_PORT, 0);
         step.Sink = std::move(sink);
         step.Source = std::move(source);
-        return *this;
+        return Self();
     }
     // Makes the sink share the parameter the source reads.
-    PatchBuilder &Share(Port sink, Port source) {
+    Final &Share(Port sink, Port source) {
         Step &step = Define(BML_BEHAVIOR_EDIT_SHARE, 0);
         step.Sink = std::move(sink);
         step.Source = std::move(source);
-        return *this;
+        return Self();
     }
     // Copies the source into the sink after each execution of the node that
     // owns the source.
-    PatchBuilder &Push(Port source, Port sink) {
+    Final &Push(Port source, Port sink) {
         Step &step = Define(BML_BEHAVIOR_EDIT_PUSH, 0);
         step.Source = std::move(source);
         step.Sink = std::move(sink);
-        return *this;
+        return Self();
     }
     // Runs the callback on every link leaving this port, before whatever those
     // links reach. The Hook Block activates its Out once the callback returns.
-    PatchBuilder &Tap(Port source, Hook hook) {
+    Final &Tap(Port source, Hook hook) {
         Step &step = Define(BML_BEHAVIOR_EDIT_TAP, 0);
         step.Source = std::move(source);
         step.Hook = std::move(hook.m_Record);
-        return *this;
+        return Self();
     }
     // Runs the callback once the chain named by the path has finished.
-    PatchBuilder &After(Path path, Hook hook) {
+    Final &After(Path path, Hook hook) {
         Step &step = Define(BML_BEHAVIOR_EDIT_AFTER, 0);
         step.Target = path.Id;
         step.Hook = std::move(hook.m_Record);
-        return *this;
+        return Self();
     }
     // Runs the callback once the chain leaving this port has finished.
-    PatchBuilder &After(Port source, Hook hook) {
+    Final &After(Port source, Hook hook) {
         return After(Follow(std::move(source)), std::move(hook));
     }
     // Reroutes a link through a Block, keeping the delay of the link. Ordering
     // places this Patch relative to the Patches of other Mods spliced onto the
     // same link; a Patch no one submitted constrains nothing.
-    PatchBuilder &Splice(Link link, Node through,
+    Final &Splice(Link link, Node through,
                   std::vector<PatchOrder> ordering = {}) {
         Step &step = Define(BML_BEHAVIOR_EDIT_SPLICE, 0);
         step.Target = link.Id;
         step.Node = through.Id;
         step.Ordering = std::move(ordering);
-        return *this;
+        return Self();
     }
     // Reroutes a link into the sink and out of the source, which is how one
     // Block with several Ins and Outs carries more than one splice.
-    PatchBuilder &Splice(Link link, Port sink, Port source,
+    Final &Splice(Link link, Port sink, Port source,
                   std::vector<PatchOrder> ordering = {}) {
         Step &step = Define(BML_BEHAVIOR_EDIT_SPLICE, 0);
         step.Target = link.Id;
         step.Sink = std::move(sink);
         step.Source = std::move(source);
         step.Ordering = std::move(ordering);
-        return *this;
+        return Self();
     }
 
-    // Applies this edit once to a specific logical graph.
-    [[nodiscard]] Result<GraphPatch> Apply() const {
-        return Apply(m_Graph);
-    }
-    [[nodiscard]] Result<GraphPatch> Apply(BML_ObjectRef graph) const;
-
-    // Hands the program to the Loader, which validates all of it, retains the
-    // callbacks it accepted, and installs on the next frame. Submitting a name
-    // that is already live replaces the Plan carrying it.
-    [[nodiscard]] Result<Behavior::Plan> Submit() const;
-
-private:
+protected:
     struct Step {
         std::uint32_t Kind = 0;
         std::uint32_t Result = 0;
@@ -2446,9 +2622,13 @@ private:
         std::vector<BML_BehaviorEditStep> Steps;
     };
 
-    PatchBuilder(std::shared_ptr<Detail::SessionState> session,
-                 std::string_view name, BML_ObjectRef graph = {})
+    EditBuilder(std::shared_ptr<SessionState> session,
+                std::string_view name, BML_ObjectRef graph = {})
         : m_Session(std::move(session)), m_Name(name), m_Graph(graph) {}
+
+    [[nodiscard]] Final &Self() noexcept {
+        return static_cast<Final &>(*this);
+    }
 
     Step &Define(std::uint32_t kind) {
         return Define(kind, m_NextHandle++);
@@ -2471,13 +2651,60 @@ private:
     }
     void Encode(WireProgram &out) const;
 
-    std::shared_ptr<Detail::SessionState> m_Session;
+    std::shared_ptr<SessionState> m_Session;
     std::string m_Name;
     BML_ObjectRef m_Graph{};
     std::string m_Script;
     std::uint32_t m_Targets = BML_BEHAVIOR_TARGETS_EACH;
     std::uint32_t m_NextHandle = BML_BEHAVIOR_EDIT_GRAPH + 1u;
     std::vector<Step> m_Steps;
+
+};
+
+} // namespace Detail
+
+class PlanBuilder final : public Detail::EditBuilder<PlanBuilder> {
+public:
+    // Installs into every live script carrying this exact name.
+    PlanBuilder &On(std::string_view script) {
+        m_Script.assign(script);
+        m_Targets = BML_BEHAVIOR_TARGETS_EACH;
+        return *this;
+    }
+    // Installs into the single live script carrying this exact name. More than
+    // one live match leaves the Plan Unsatisfied instead of choosing one.
+    PlanBuilder &OnSingle(std::string_view script) {
+        m_Script.assign(script);
+        m_Targets = BML_BEHAVIOR_TARGETS_ONE;
+        return *this;
+    }
+
+    // Hands the program to the Loader, which validates all of it, retains the
+    // callbacks it accepted, and installs on the next frame. Submitting a name
+    // that is already live replaces the Plan carrying it.
+    [[nodiscard]] Result<Behavior::Plan> Submit() const;
+
+private:
+    PlanBuilder(std::shared_ptr<Detail::SessionState> session,
+                std::string_view name)
+        : Detail::EditBuilder<PlanBuilder>(std::move(session), name) {}
+
+    friend class Session;
+};
+
+class PatchBuilder final : public Detail::EditBuilder<PatchBuilder> {
+public:
+    // Applies this edit once to a specific logical graph.
+    [[nodiscard]] Result<GraphPatch> Apply() const {
+        return Apply(m_Graph);
+    }
+    [[nodiscard]] Result<GraphPatch> Apply(BML_ObjectRef graph) const;
+
+private:
+    PatchBuilder(std::shared_ptr<Detail::SessionState> session,
+                 std::string_view name, BML_ObjectRef graph = {})
+        : Detail::EditBuilder<PatchBuilder>(
+              std::move(session), name, graph) {}
 
     friend class Graph;
     friend class Session;
@@ -2487,7 +2714,8 @@ inline PatchBuilder Graph::Patch(std::string_view name) const {
     return PatchBuilder(m_Session, name, m_Root);
 }
 
-inline void PatchBuilder::Encode(WireProgram &out) const {
+template <class Final>
+inline void Detail::EditBuilder<Final>::Encode(WireProgram &out) const {
     std::size_t orderCount = 0;
     for (const Step &step : m_Steps)
         orderCount += step.Ordering.size();
@@ -2534,7 +2762,7 @@ inline void PatchBuilder::Encode(WireProgram &out) const {
     }
 }
 
-inline Result<Plan> PatchBuilder::Submit() const {
+inline Result<Plan> PlanBuilder::Submit() const {
     if (!m_Session || !m_Session->Api || !m_Session->Handle)
         return Result<Plan>::Failure(BML_ERROR_INVALID_HANDLE);
     if (m_Name.empty() || m_Script.empty())
@@ -2631,8 +2859,9 @@ public:
         if (code != BML_OK)
             return Result<Session>::Failure(code);
         const auto *api = static_cast<const BML_BehaviorInterface *>(found);
-        if (!api || api->Header.MinorVersion < BML_BEHAVIOR_INTERFACE_MINOR ||
-            !BML_IFACE_HAS(api, BML_BehaviorInterface, ClosePatch))
+        // The facade needs the complete 1.0 contract. Later minor members are
+        // probed at their call sites instead of rejecting an older loader here.
+        if (!api || !BML_BEHAVIOR_HAS_1_0(api))
             return Result<Session>::Failure(BML_ERROR_VERSION_MISMATCH);
 
         BML_BehaviorSession handle = nullptr;
@@ -2665,13 +2894,23 @@ public:
     [[nodiscard]] Builder Use(CKGUID prototype) const {
         return Use(Prototype(prototype));
     }
+    [[nodiscard]] Result<std::vector<PrototypeInfo>> Prototypes(
+        const PrototypeQuery &query = {}) const;
+    [[nodiscard]] Result<Behavior::Layout> Layout(
+        Prototype prototype) const;
+    [[nodiscard]] Result<Behavior::Layout> Layout(Guid prototype) const {
+        return Layout(Prototype(prototype));
+    }
+    [[nodiscard]] Result<Behavior::Layout> Layout(CKGUID prototype) const {
+        return Layout(Prototype(prototype));
+    }
     [[nodiscard]] Result<Graph> Inspect(BML_ObjectRef root) const {
         return Graph::Read(m_State, root, View::Logical);
     }
     // Opens a durable edit named within this Mod. Submitting a name that is
     // already live replaces the Plan carrying it.
-    [[nodiscard]] Behavior::PatchBuilder Plan(std::string_view name) const {
-        return Behavior::PatchBuilder(m_State, name);
+    [[nodiscard]] Behavior::PlanBuilder Plan(std::string_view name) const {
+        return Behavior::PlanBuilder(m_State, name);
     }
     // Opens an edit for one graph. The returned builder shares the same
     // symbolic language as Plan; call Apply(graph) when it is complete.
@@ -2705,18 +2944,154 @@ inline Status BlockError(std::uint32_t error, std::uint32_t phase,
                          Prototype prototype, Guid type,
                          std::string message) {
     Status status;
-    status.Error = error;
-    status.Phase = phase;
+    status.Error = static_cast<Behavior::Error>(error);
+    status.Phase = static_cast<Behavior::Phase>(phase);
     status.Prototype = prototype.Id;
     status.Type = type;
     status.Message = std::move(message);
     return status;
 }
 
+inline Result<std::vector<PrototypeInfo>> FindPrototypes(
+    const std::shared_ptr<SessionState> &session,
+    const PrototypeQuery &query) {
+    if (!session || !session->Api || !session->Handle)
+        return Result<std::vector<PrototypeInfo>>::Failure(
+            BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface,
+                       FindPrototypes))
+        return Result<std::vector<PrototypeInfo>>::Failure(
+            BML_ERROR_VERSION_MISMATCH);
+
+    try {
+        if (query.RequiredManagers.size() >
+            (std::numeric_limits<std::uint32_t>::max)())
+            return Result<std::vector<PrototypeInfo>>::Failure(
+                BML_ERROR_INVALID_PARAMETER);
+        std::vector<BML_BehaviorGuid> managers;
+        managers.reserve(query.RequiredManagers.size());
+        for (Guid manager : query.RequiredManagers)
+            managers.push_back(manager.Wire());
+
+        BML_BehaviorPrototypeQuery wireQuery{};
+        wireQuery.StructSize = sizeof(wireQuery);
+        if (query.Id) {
+            wireQuery.Match |= BML_BEHAVIOR_MATCH_PROTOTYPE;
+            wireQuery.Prototype = query.Id->Wire();
+        }
+        if (query.Name) {
+            wireQuery.Match |= BML_BEHAVIOR_MATCH_NAME;
+            wireQuery.Name = Text(*query.Name);
+        }
+        if (query.Category) {
+            wireQuery.Match |= BML_BEHAVIOR_MATCH_CATEGORY;
+            wireQuery.Category = Text(*query.Category);
+        }
+        if (query.Provider) {
+            wireQuery.Match |= BML_BEHAVIOR_MATCH_PROVIDER;
+            wireQuery.Provider = Text(*query.Provider);
+        }
+        if (query.ProviderId) {
+            wireQuery.Match |= BML_BEHAVIOR_MATCH_PROVIDER_GUID;
+            wireQuery.ProviderGuid = query.ProviderId->Wire();
+        }
+        if (query.CompatibleClass) {
+            wireQuery.Match |= BML_BEHAVIOR_MATCH_COMPATIBLE_CLASS;
+            wireQuery.CompatibleClass = *query.CompatibleClass;
+        }
+        if (!managers.empty()) {
+            wireQuery.Match |= BML_BEHAVIOR_MATCH_REQUIRED_MANAGERS;
+            wireQuery.RequiredManagers = managers.data();
+            wireQuery.RequiredManagerCount =
+                static_cast<std::uint32_t>(managers.size());
+        }
+
+        BML_BehaviorStatus status = EmptyStatus();
+        std::uint32_t count = 0;
+        std::uint32_t payloadSize = 0;
+        int code = session->Api->FindPrototypes(
+            session->Handle, &wireQuery, nullptr, 0,
+            sizeof(BML_BehaviorPrototypeInfo), nullptr, 0, &count,
+            &payloadSize, &status);
+        if (code == BML_OK && count == 0 && payloadSize == 0)
+            return Result<std::vector<PrototypeInfo>>::Success(
+                {}, ReadStatus(status));
+        if (code != BML_ERROR_BUFFER_TOO_SMALL)
+            return Result<std::vector<PrototypeInfo>>::Failure(
+                code, ReadStatus(status));
+
+        std::vector<BML_BehaviorPrototypeInfo> records(count);
+        std::vector<std::uint8_t> payload(payloadSize);
+        status = EmptyStatus();
+        std::uint32_t writtenCount = 0;
+        std::uint32_t writtenBytes = 0;
+        code = session->Api->FindPrototypes(
+            session->Handle, &wireQuery, records.data(), count,
+            sizeof(BML_BehaviorPrototypeInfo), payload.data(), payloadSize,
+            &writtenCount, &writtenBytes, &status);
+        if (code != BML_OK)
+            return Result<std::vector<PrototypeInfo>>::Failure(
+                code, ReadStatus(status));
+        if (writtenCount != count || writtenBytes != payloadSize)
+            return Result<std::vector<PrototypeInfo>>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
+
+        std::vector<PrototypeInfo> found;
+        found.reserve(records.size());
+        for (const BML_BehaviorPrototypeInfo &record : records) {
+            if (record.StructSize < sizeof(record) ||
+                record.Ref.StructSize < sizeof(record.Ref) ||
+                !RecordsFit<BML_BehaviorManagerInfo>(
+                    payload, record.ManagerOffset, record.ManagerCount))
+                return Result<std::vector<PrototypeInfo>>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
+
+            PrototypeInfo info;
+            info.Ref = Prototype(record.Ref.Prototype, record.Ref.Generation);
+            info.Provider = record.Provider;
+            info.Version = record.Version;
+            info.CompatibleClass = record.CompatibleClass;
+            if (!TextAt(payload, record.Name.Offset, record.Name.Length,
+                        info.Name) ||
+                !TextAt(payload, record.Category.Offset, record.Category.Length,
+                        info.Category) ||
+                !TextAt(payload, record.ProviderName.Offset,
+                        record.ProviderName.Length, info.ProviderName) ||
+                !TextAt(payload, record.Author.Offset, record.Author.Length,
+                        info.Author) ||
+                !TextAt(payload, record.Description.Offset,
+                        record.Description.Length, info.Description))
+                return Result<std::vector<PrototypeInfo>>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
+
+            info.Managers.reserve(record.ManagerCount);
+            for (std::uint32_t index = 0; index < record.ManagerCount; ++index) {
+                BML_BehaviorManagerInfo manager{};
+                if (!RecordAt(payload, record.ManagerOffset, index, manager))
+                    return Result<std::vector<PrototypeInfo>>::Failure(
+                        BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
+                info.Managers.push_back(
+                    {manager.Guid, manager.Available != 0});
+            }
+            found.push_back(std::move(info));
+        }
+        return Result<std::vector<PrototypeInfo>>::Success(
+            std::move(found), ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<std::vector<PrototypeInfo>>::Failure(
+            BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<std::vector<PrototypeInfo>>::Failure(BML_ERROR_FAIL);
+    }
+}
+
 inline Result<Behavior::Layout> ReadDeclared(
     const std::shared_ptr<SessionState> &session, Prototype prototype) {
     if (!session || !session->Api || !session->Handle)
         return Result<Behavior::Layout>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(session->Api, BML_BehaviorInterface,
+                       ReadDeclaredLayout))
+        return Result<Behavior::Layout>::Failure(BML_ERROR_VERSION_MISMATCH);
 
     BML_BehaviorPrototypeRef requested{};
     requested.StructSize = sizeof(requested);
@@ -3056,6 +3431,15 @@ inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
 
 } // namespace Detail
 
+inline Result<std::vector<PrototypeInfo>> Session::Prototypes(
+    const PrototypeQuery &query) const {
+    return Detail::FindPrototypes(m_State, query);
+}
+
+inline Result<Behavior::Layout> Session::Layout(Prototype prototype) const {
+    return Detail::ReadDeclared(m_State, prototype);
+}
+
 namespace Detail {
 
 inline bool ReadObserved(const BML_BehaviorGraphValue &source,
@@ -3156,12 +3540,17 @@ struct WatchFunction {
         if (self->References.fetch_sub(1) == 1)
             delete self;
     }
-    static void BML_BEHAVIOR_CALL Invoke(
-        void *state, const BML_BehaviorWatchEvent *source) {
-        Change change;
-        if (!ReadChange(source, change))
-            throw std::runtime_error("The Behavior Watch event is malformed.");
-        std::invoke(static_cast<WatchFunction *>(state)->Value, change);
+    static int BML_BEHAVIOR_CALL Invoke(
+        void *state, const BML_BehaviorWatchEvent *source) noexcept {
+        try {
+            Change change;
+            if (!state || !ReadChange(source, change))
+                return BML_BEHAVIOR_WATCH_ERROR;
+            std::invoke(static_cast<WatchFunction *>(state)->Value, change);
+            return BML_BEHAVIOR_WATCH_OK;
+        } catch (...) {
+            return BML_BEHAVIOR_WATCH_ERROR;
+        }
     }
 
     std::atomic<std::uint32_t> References{1};
@@ -3595,20 +3984,6 @@ Result<Behavior::Watch> Graph::Watch(
     BML_BehaviorWatchSpec spec{};
     spec.StructSize = sizeof(spec);
     spec.Kind = BML_BEHAVIOR_WATCH_SAMPLED_VALUE;
-    spec.View = static_cast<std::uint32_t>(m_View);
-    spec.Node = change.Value.Node;
-    spec.SlotKind = change.Value.Kind;
-    spec.Slot = change.Value.Slot.Wire();
-    spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
-    return OpenWatch(spec, std::forward<Function>(callback));
-}
-
-template <class Function>
-Result<Behavior::Watch> Graph::Watch(
-    Exact change, Function &&callback) const {
-    BML_BehaviorWatchSpec spec{};
-    spec.StructSize = sizeof(spec);
-    spec.Kind = BML_BEHAVIOR_WATCH_EXACT_VALUE;
     spec.View = static_cast<std::uint32_t>(m_View);
     spec.Node = change.Value.Node;
     spec.SlotKind = change.Value.Kind;

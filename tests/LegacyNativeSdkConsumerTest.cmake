@@ -142,6 +142,40 @@ if(NOT native_scaffold_status EQUAL 0 OR
 endif()
 
 file(READ "${consumer_source_dir}/src/QuickStartMod.cpp" generated_native_source)
+
+# Compile a real slice of the installed Behavior C++ facade from outside the
+# BML source tree.  The function is deliberately not called by the template
+# Mod: this test proves that the installed headers and import library are
+# sufficient for authoring, while the Player probes exercise the live path.
+set(behavior_facade_probe [=[
+#include <BML/Behavior.hpp>
+
+#include <type_traits>
+
+namespace {
+static_assert(std::is_move_constructible_v<BML::Behavior::Session>);
+static_assert(!std::is_copy_constructible_v<BML::Behavior::Session>);
+static_assert(std::is_copy_constructible_v<BML::Behavior::Block>);
+
+[[maybe_unused]] void CompileBehaviorAuthoringSurface() {
+    using namespace BML::Behavior;
+    auto session = Session::Open();
+    if (!session)
+        return;
+    auto block = session->Use(Guid(0x12345678u, 0x9abcdef0u))
+        .Setting("Mode", 1)
+        .Pin("Value", 2.0f)
+        .Frames(latest())
+        .Compile();
+    (void) block;
+}
+} // namespace
+
+]=])
+string(PREPEND generated_native_source "${behavior_facade_probe}")
+file(WRITE "${consumer_source_dir}/src/QuickStartMod.cpp"
+     "${generated_native_source}")
+
 foreach(required_fragment
         "return \"sdk.quick-start\";"
         "return \"SDK Quick Start\";"

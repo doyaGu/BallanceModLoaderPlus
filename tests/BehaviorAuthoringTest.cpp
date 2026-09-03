@@ -51,13 +51,22 @@ struct FakeState {
     int OpenRuns = 0;
     int SessionCloses = 0;
     int RunCloses = 0;
+    int RunCloseCode = BML_OK;
     int RunCode = BML_OK;
     bool FramesAvailable = true;
     bool LayoutUnavailable = false;
     bool MalformedLayout = false;
     bool NullRun = false;
+    bool DuplicateGraphNames = false;
+    bool NullInterface = false;
+    std::uint32_t PrototypeMatch = 0;
+    std::string PrototypeName;
+    std::vector<BML_BehaviorGuid> RequiredManagers;
     std::uint32_t GraphView = 0;
     int WatchCloses = 0;
+    int WatchCloseCode = BML_OK;
+    int WatchReads = 0;
+    std::uint32_t WatchState = BML_BEHAVIOR_WATCH_ACTIVE;
     BML_BehaviorWatchSpec WatchSpec{};
     BML_BehaviorWatchFunction WatchFunction{};
     std::vector<BML_ObjectRef> RunOwners;
@@ -281,14 +290,63 @@ int BML_BEHAVIOR_CALL TakeFrames(BML_BehaviorRun,
 
 int BML_BEHAVIOR_CALL CloseRun(BML_BehaviorRun) {
     ++g_State.RunCloses;
-    return BML_OK;
+    return g_State.RunCloseCode;
 }
 
 int BML_BEHAVIOR_CALL FindPrototypes(
-    BML_BehaviorSession, const BML_BehaviorPrototypeQuery *,
-    BML_BehaviorPrototypeInfo *, std::uint32_t, std::uint32_t, void *,
-    std::uint32_t, std::uint32_t *, std::uint32_t *, BML_BehaviorStatus *) {
-    return BML_ERROR_NOT_IMPLEMENTED;
+    BML_BehaviorSession, const BML_BehaviorPrototypeQuery *query,
+    BML_BehaviorPrototypeInfo *prototypes, std::uint32_t prototypeCapacity,
+    std::uint32_t prototypeStride, void *payload,
+    std::uint32_t payloadCapacity, std::uint32_t *prototypeCount,
+    std::uint32_t *payloadSize, BML_BehaviorStatus *status) {
+    Success(status);
+    g_State.PrototypeMatch = query->Match;
+    g_State.PrototypeName.assign(query->Name.Data ? query->Name.Data : "",
+                                 query->Name.Length);
+    g_State.RequiredManagers.clear();
+    if (query->RequiredManagerCount) {
+        g_State.RequiredManagers.assign(
+            query->RequiredManagers,
+            query->RequiredManagers + query->RequiredManagerCount);
+    }
+
+    BML_BehaviorManagerInfo manager{};
+    manager.StructSize = sizeof(manager);
+    manager.Guid = {91, 92};
+    manager.Available = 1;
+    std::vector<std::uint8_t> bytes(sizeof(manager));
+    std::memcpy(bytes.data(), &manager, sizeof(manager));
+    auto text = [&](std::string_view value) {
+        BML_BehaviorText result{static_cast<std::uint32_t>(bytes.size()),
+                                static_cast<std::uint32_t>(value.size())};
+        bytes.insert(bytes.end(), value.begin(), value.end());
+        return result;
+    };
+
+    BML_BehaviorPrototypeInfo info{};
+    info.StructSize = sizeof(info);
+    info.Ref.StructSize = sizeof(info.Ref);
+    info.Ref.Prototype = {17, 18};
+    info.Ref.Generation = g_State.ProviderGeneration;
+    info.Provider = {31, 32};
+    info.Version = 7;
+    info.CompatibleClass = 99;
+    info.ManagerOffset = 0;
+    info.ManagerCount = 1;
+    info.Name = text("Fixture");
+    info.Category = text("Tests/Behavior");
+    info.ProviderName = text("Fixture Provider");
+    info.Author = text("BML");
+    info.Description = text("Discovery fixture");
+
+    *prototypeCount = 1;
+    *payloadSize = static_cast<std::uint32_t>(bytes.size());
+    if (!prototypes || !payload || prototypeCapacity < 1 ||
+        prototypeStride < sizeof(info) || payloadCapacity < bytes.size())
+        return BML_ERROR_BUFFER_TOO_SMALL;
+    *prototypes = info;
+    std::memcpy(payload, bytes.data(), bytes.size());
+    return BML_OK;
 }
 
 struct FakeSlot {
@@ -402,7 +460,9 @@ int BML_BEHAVIOR_CALL ReadLiveLayout(
 std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
                                        BML_BehaviorGraph &graph) {
     const std::uint32_t nodeOffset = 0;
-    const std::uint32_t linkOffset = sizeof(BML_BehaviorGraphNode);
+    const std::uint32_t nodeCount = g_State.DuplicateGraphNames ? 2u : 1u;
+    const std::uint32_t linkOffset =
+        nodeCount * sizeof(BML_BehaviorGraphNode);
     const std::uint32_t portOffset = linkOffset +
         sizeof(BML_BehaviorGraphLink);
     std::vector<std::uint8_t> payload(
@@ -446,6 +506,15 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     link.Pending = BML_BEHAVIOR_UNKNOWN;
 
     std::memcpy(payload.data() + nodeOffset, &node, sizeof(node));
+    if (g_State.DuplicateGraphNames) {
+        BML_BehaviorGraphNode duplicate = node;
+        duplicate.Id = 102;
+        duplicate.Object = {root.Domain, root.Slot + 1, root.Generation};
+        duplicate.PortOffset = 0;
+        duplicate.PortCount = 0;
+        std::memcpy(payload.data() + sizeof(node), &duplicate,
+                    sizeof(duplicate));
+    }
     std::memcpy(payload.data() + linkOffset, &link, sizeof(link));
     std::memcpy(payload.data() + portOffset, &port, sizeof(port));
 
@@ -456,7 +525,7 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     graph.Generation = 5;
     graph.Fingerprint = 0x713;
     graph.NodeOffset = nodeOffset;
-    graph.NodeCount = 1;
+    graph.NodeCount = nodeCount;
     graph.LinkOffset = linkOffset;
     graph.LinkCount = 1;
     return payload;
@@ -588,8 +657,6 @@ int BML_BEHAVIOR_CALL OpenWatch(
     const BML_BehaviorWatchFunction *callback,
     BML_BehaviorWatch *watch, BML_BehaviorStatus *status) {
     Success(status);
-    if (spec->Kind == BML_BEHAVIOR_WATCH_EXACT_VALUE)
-        return BML_ERROR_UNAVAILABLE;
     g_State.WatchSpec = *spec;
     g_State.WatchFunction = *callback;
     if (callback->Retain)
@@ -600,9 +667,26 @@ int BML_BEHAVIOR_CALL OpenWatch(
 
 int BML_BEHAVIOR_CALL CloseWatch(BML_BehaviorWatch) {
     ++g_State.WatchCloses;
+    if (g_State.WatchCloseCode != BML_OK)
+        return g_State.WatchCloseCode;
     if (g_State.WatchFunction.Release)
         g_State.WatchFunction.Release(g_State.WatchFunction.State);
     g_State.WatchFunction = {};
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReadWatch(BML_BehaviorWatch,
+                                BML_BehaviorWatchInfo *info,
+                                BML_BehaviorStatus *status) {
+    ++g_State.WatchReads;
+    Init(info);
+    info->State = g_State.WatchState;
+    Init(&info->Diagnostic);
+    if (info->State == BML_BEHAVIOR_WATCH_FAILED) {
+        info->Diagnostic.Error = BML_BEHAVIOR_ERROR_CALLBACK_FAILED;
+        info->Diagnostic.Phase = BML_BEHAVIOR_PHASE_CALLBACK;
+    }
+    Success(status);
     return BML_OK;
 }
 
@@ -786,6 +870,7 @@ BML_BehaviorInterface g_Interface = {
     &ApplyPatch,
     &ReadPatch,
     &ClosePatch,
+    &ReadWatch,
 };
 
 } // namespace
@@ -798,7 +883,7 @@ extern "C" int BML_GetInterface(const char *id, std::uint16_t major,
         return BML_ERROR_NOT_FOUND;
     if (major != BML_BEHAVIOR_INTERFACE_MAJOR)
         return BML_ERROR_VERSION_MISMATCH;
-    *out = &g_Interface;
+    *out = g_State.NullInterface ? nullptr : &g_Interface;
     return BML_OK;
 }
 
@@ -806,6 +891,21 @@ template <class T>
 concept ConfigurableBlock = requires(T &value) {
     value.Setting("Value", std::int32_t{1});
     value.Frames(signals(1));
+};
+
+template <class T>
+concept CanSelectScripts = requires(T &value) {
+    value.On("Gameplay_Events");
+};
+
+template <class T>
+concept CanSubmit = requires(const T &value) {
+    value.Submit();
+};
+
+template <class T>
+concept CanApply = requires(const T &value) {
+    value.Apply(BML_ObjectRef{1, 2, 3});
 };
 
 static_assert(ConfigurableBlock<Builder>);
@@ -816,6 +916,42 @@ static_assert(std::same_as<
 static_assert(std::same_as<
               decltype(std::declval<Builder &&>().Frames(signals(1))),
               Builder &&>);
+static_assert(CanSelectScripts<PlanBuilder>);
+static_assert(CanSubmit<PlanBuilder>);
+static_assert(!CanApply<PlanBuilder>);
+static_assert(!CanSelectScripts<PatchBuilder>);
+static_assert(!CanSubmit<PatchBuilder>);
+static_assert(CanApply<PatchBuilder>);
+
+TEST(BehaviorAuthoring, ResultRejectsValueAccessAfterFailure) {
+    auto failed = Result<std::string>::Failure(BML_ERROR_FAIL);
+    EXPECT_FALSE(failed.HasValue());
+    EXPECT_THROW((void) failed.Value(), std::bad_optional_access);
+    EXPECT_THROW((void) failed->size(), std::bad_optional_access);
+}
+
+TEST(BehaviorAuthoring, OpensAgainstTheCompleteVersionOneContract) {
+    g_State = {};
+    const std::uint16_t minor = g_Interface.Header.MinorVersion;
+    const std::size_t size = g_Interface.Header.StructSize;
+
+    g_Interface.Header.MinorVersion = 99;
+    auto future = Session::Open();
+    ASSERT_TRUE(future);
+    std::move(future).Value().Close();
+
+    g_Interface.Header.StructSize = BML_BEHAVIOR_INTERFACE_1_0_SIZE - 1;
+    auto incomplete = Session::Open();
+    EXPECT_FALSE(incomplete);
+    EXPECT_EQ(incomplete.Code(), BML_ERROR_VERSION_MISMATCH);
+
+    g_Interface.Header.StructSize = size;
+    g_Interface.Header.MinorVersion = minor;
+    g_State.NullInterface = true;
+    auto missing = Session::Open();
+    EXPECT_FALSE(missing);
+    EXPECT_EQ(missing.Code(), BML_ERROR_VERSION_MISMATCH);
+}
 
 TEST(BehaviorAuthoring, OwnsBlockTextAndUsesDomainSelectors) {
     g_State = {};
@@ -861,7 +997,7 @@ TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
     const Frame &frame = taken.Value().front();
     EXPECT_EQ(frame.Sequence, 7u);
     EXPECT_EQ(frame.GameFrame, 91u);
-    EXPECT_EQ(frame.Continuation, BML_BEHAVIOR_CONTINUATION_NONE);
+    EXPECT_EQ(frame.Continuation, Continuation::None);
     EXPECT_TRUE(frame.HasOut("Done"));
     const Pout *pout = frame.FindPout("Value");
     ASSERT_NE(pout, nullptr);
@@ -890,11 +1026,30 @@ TEST(BehaviorAuthoring, PulseAndRaiiCloseUseTheRunHandle) {
         EXPECT_EQ(g_State.SessionCloses, 0);
         auto admission = instance.Pulse("Create");
         ASSERT_TRUE(admission);
-        EXPECT_EQ(admission.Value(), Admission::Executed);
+        EXPECT_EQ(admission.Value(), PulseResult::Ran);
         EXPECT_EQ(g_State.Input, "Create");
     }
     EXPECT_EQ(g_State.RunCloses, 1);
     EXPECT_EQ(g_State.SessionCloses, 1);
+}
+
+TEST(BehaviorAuthoring, TreatsAcceptedRunRetirementAsClosing) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto spawned = session.Use(CKGUID(3, 4)).Spawn();
+    ASSERT_TRUE(spawned);
+    Instance instance = std::move(spawned).Value();
+
+    g_State.RunCloseCode = BML_ERROR_BUSY;
+    auto closing = instance.Close();
+    ASSERT_TRUE(closing);
+    EXPECT_EQ(closing.Value(), CloseState::Closing);
+    EXPECT_TRUE(instance);
+    g_State.RunCloseCode = BML_OK;
+    EXPECT_EQ(instance.Close().Value(), CloseState::Closed);
+    EXPECT_FALSE(instance);
 }
 
 TEST(BehaviorAuthoring, ReadsLayoutAndGraphFromTheOwnedBehavior) {
@@ -920,7 +1075,40 @@ TEST(BehaviorAuthoring, ReadsLayoutAndGraphFromTheOwnedBehavior) {
     ASSERT_TRUE(inspected) << inspected.Detail().Message;
     EXPECT_EQ(inspected->Root().Domain, 71u);
     EXPECT_EQ(inspected->Mode(), View::Logical);
-    EXPECT_NE(inspected->Find("Root"), nullptr);
+    auto root = inspected->Find("Root");
+    ASSERT_TRUE(root) << root.Detail().Message;
+    EXPECT_EQ(root->Name, "Root");
+}
+
+TEST(BehaviorAuthoring, DiscoversPrototypesAndReadsTheirDeclaredLayout) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    PrototypeQuery query;
+    query.Name = "Fixture";
+    query.RequiredManagers.push_back(Guid(CKGUID(91, 92)));
+
+    auto found = session.Prototypes(query);
+    ASSERT_TRUE(found) << found.Detail().Message;
+    ASSERT_EQ(found->size(), 1u);
+    EXPECT_EQ(g_State.PrototypeName, "Fixture");
+    EXPECT_NE(g_State.PrototypeMatch & BML_BEHAVIOR_MATCH_NAME, 0u);
+    EXPECT_NE(g_State.PrototypeMatch & BML_BEHAVIOR_MATCH_REQUIRED_MANAGERS, 0u);
+    ASSERT_EQ(g_State.RequiredManagers.size(), 1u);
+    EXPECT_EQ(found->front().Ref.Id, Guid(CKGUID(17, 18)));
+    EXPECT_EQ(found->front().Ref.Generation, g_State.ProviderGeneration);
+    EXPECT_EQ(found->front().Provider, Guid(CKGUID(31, 32)));
+    EXPECT_EQ(found->front().Name, "Fixture");
+    EXPECT_EQ(found->front().Category, "Tests/Behavior");
+    ASSERT_EQ(found->front().Managers.size(), 1u);
+    EXPECT_TRUE(found->front().Managers.front().Available);
+
+    auto layout = session.Layout(found->front().Ref);
+    ASSERT_TRUE(layout) << layout.Detail().Message;
+    EXPECT_EQ(layout->Origin, LayoutOrigin::Declared);
+    EXPECT_EQ(layout->PrototypeRef.Id, Guid(CKGUID(17, 18)));
+    EXPECT_EQ(layout->PrototypeRef.Generation, g_State.ProviderGeneration);
 }
 
 TEST(BehaviorAuthoring, EditsTheLiveRunThroughLayoutSlots) {
@@ -962,8 +1150,7 @@ TEST(BehaviorAuthoring, EditsTheLiveRunThroughLayoutSlots) {
 
     auto stale = instance.Set(*pinSlot, std::int32_t{1});
     EXPECT_FALSE(stale);
-    EXPECT_EQ(stale.Detail().Error,
-              BML_BEHAVIOR_ERROR_LAYOUT_CHANGED);
+    EXPECT_EQ(stale.Detail().Error, Error::LayoutChanged);
 
     auto current = instance.Layout();
     ASSERT_TRUE(current);
@@ -1028,33 +1215,31 @@ TEST(BehaviorAuthoring, CompileChecksTheDeclaredLayout) {
         .Setting("Missing", std::int32_t{1})
         .Compile();
     EXPECT_FALSE(missing);
-    EXPECT_EQ(missing.Detail().Error, BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND);
+    EXPECT_EQ(missing.Detail().Error, Error::SlotNotFound);
 
     auto ambiguous = session.Use(CKGUID(9, 10))
         .Setting("Duplicate", std::int32_t{1})
         .Compile();
     EXPECT_FALSE(ambiguous);
-    EXPECT_EQ(ambiguous.Detail().Error, BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS);
+    EXPECT_EQ(ambiguous.Detail().Error, Error::SlotAmbiguous);
 
     auto wrongKind = session.Use(CKGUID(9, 10))
         .Setting("Caption", std::int32_t{1})
         .Compile();
     EXPECT_FALSE(wrongKind);
-    EXPECT_EQ(wrongKind.Detail().Error, BML_BEHAVIOR_ERROR_TYPE_MISMATCH);
+    EXPECT_EQ(wrongKind.Detail().Error, Error::TypeMismatch);
 
     auto unsupported = session.Use(CKGUID(9, 10))
         .Setting("Opaque", std::int32_t{1})
         .Compile();
     EXPECT_FALSE(unsupported);
-    EXPECT_EQ(unsupported.Detail().Error,
-              BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED);
+    EXPECT_EQ(unsupported.Detail().Error, Error::ParameterTypeUnsupported);
 
     auto missingCall = session.Use(CKGUID(9, 10))
         .Setting("Missing", std::int32_t{1})
         .Call("Run");
     EXPECT_FALSE(missingCall);
-    EXPECT_EQ(missingCall.Detail().Error,
-              BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND);
+    EXPECT_EQ(missingCall.Detail().Error, Error::SlotNotFound);
 
     auto selected = session.Use(CKGUID(9, 10))
         .Setting(named("Duplicate", 1), true)
@@ -1109,8 +1294,7 @@ TEST(BehaviorAuthoring, RejectsMalformedDeclaredLayoutBeforeAllocation) {
     auto compiled = session.Use(CKGUID(17, 18)).Compile();
     EXPECT_FALSE(compiled);
     EXPECT_EQ(compiled.Code(), BML_ERROR_MALFORMED_MESSAGE);
-    EXPECT_EQ(compiled.Detail().Error,
-              BML_BEHAVIOR_ERROR_LAYOUT_UNAVAILABLE);
+    EXPECT_EQ(compiled.Detail().Error, Error::LayoutUnavailable);
 }
 
 TEST(BehaviorAuthoring, ContainsMalformedRunResults) {
@@ -1151,13 +1335,13 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     EXPECT_EQ(graph.Generation(), 5u);
     EXPECT_EQ(graph.Fingerprint(), 0x713u);
     ASSERT_EQ(graph.Nodes().size(), 1u);
-    const Node *node = graph.Find("Root");
-    ASSERT_NE(node, nullptr);
-    EXPECT_EQ(node->Prototype, Guid(CKGUID(21, 22)));
-    EXPECT_TRUE(node->Active);
-    ASSERT_EQ(node->Ports.size(), 1u);
-    EXPECT_EQ(node->Ports[0].Name, "Run");
-    EXPECT_TRUE(node->Ports[0].Active);
+    auto foundNode = graph.Find("Root");
+    ASSERT_TRUE(foundNode);
+    EXPECT_EQ(foundNode->Prototype, Guid(CKGUID(21, 22)));
+    EXPECT_TRUE(foundNode->Active);
+    ASSERT_EQ(foundNode->Ports.size(), 1u);
+    EXPECT_EQ(foundNode->Ports[0].Name, "Run");
+    EXPECT_TRUE(foundNode->Ports[0].Active);
     ASSERT_EQ(graph.Links().size(), 1u);
     EXPECT_EQ(graph.Links()[0].Source.Node, 101u);
     EXPECT_EQ(graph.Links()[0].Source.Kind, BML_BEHAVIOR_SLOT_OUT);
@@ -1170,6 +1354,29 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     ASSERT_TRUE(live);
     EXPECT_EQ(live.Value().Mode(), View::Live);
     EXPECT_EQ(g_State.GraphView, BML_BEHAVIOR_GRAPH_LIVE);
+}
+
+TEST(BehaviorAuthoring, RequiresExplicitChoiceForDuplicateNodeNames) {
+    g_State = {};
+    g_State.DuplicateGraphNames = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected) << inspected.Detail().Message;
+    Graph graph = std::move(inspected).Value();
+
+    auto matches = graph.FindAll("Root");
+    ASSERT_EQ(matches.size(), 2u);
+    EXPECT_EQ(matches[0].Id, 101u);
+    EXPECT_EQ(matches[1].Id, 102u);
+
+    auto ambiguous = graph.Find("Root");
+    EXPECT_FALSE(ambiguous);
+    EXPECT_EQ(ambiguous.Detail().Error, Error::QueryAmbiguous);
+    auto missing = graph.Find("Missing");
+    EXPECT_FALSE(missing);
+    EXPECT_EQ(missing.Detail().Error, Error::QueryNotFound);
 }
 
 TEST(BehaviorAuthoring, ReadsStoredAndOperationBackedValuesNonForcing) {
@@ -1233,16 +1440,58 @@ TEST(BehaviorAuthoring, OwnsWatchCallbackAndReportsDomainChanges) {
         event.CurrentValue.State = BML_BEHAVIOR_VALUE_UNSUPPORTED;
         event.CurrentValue.Relation = BML_BEHAVIOR_VALUE_STORED;
         ASSERT_NE(g_State.WatchFunction.Invoke, nullptr);
-        g_State.WatchFunction.Invoke(g_State.WatchFunction.State, &event);
+        EXPECT_EQ(g_State.WatchFunction.Invoke(g_State.WatchFunction.State,
+                                                &event),
+                  BML_BEHAVIOR_WATCH_OK);
         ASSERT_EQ(changes.size(), 1u);
         EXPECT_EQ(changes[0].Kind, ChangeKind::Graph);
         EXPECT_EQ(changes[0].Sequence, 3u);
         EXPECT_EQ(changes[0].GameFrame, 17u);
         EXPECT_EQ(changes[0].Before, 0x11u);
         EXPECT_EQ(changes[0].After, 0x22u);
+        auto info = watched->Read();
+        ASSERT_TRUE(info);
+        EXPECT_EQ(info->State, WatchState::Active);
+        EXPECT_EQ(g_State.WatchReads, 1);
     }
     EXPECT_EQ(g_State.WatchCloses, 1);
     EXPECT_EQ(g_State.WatchFunction.Invoke, nullptr);
+}
+
+TEST(BehaviorAuthoring, ContainsWatchCallbackFailuresAtTheCSeam) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    auto watched = inspected->Watch(graphChanged, [](const Change &) {
+        throw std::runtime_error("callback failure");
+    });
+    ASSERT_TRUE(watched);
+
+    BML_BehaviorWatchEvent event{};
+    Init(&event);
+    event.Kind = BML_BEHAVIOR_WATCH_GRAPH;
+    Init(&event.PreviousValue);
+    Init(&event.PreviousValue.Value);
+    event.PreviousValue.State = BML_BEHAVIOR_VALUE_UNSUPPORTED;
+    event.PreviousValue.Relation = BML_BEHAVIOR_VALUE_STORED;
+    Init(&event.CurrentValue);
+    Init(&event.CurrentValue.Value);
+    event.CurrentValue.State = BML_BEHAVIOR_VALUE_UNSUPPORTED;
+    event.CurrentValue.Relation = BML_BEHAVIOR_VALUE_STORED;
+    EXPECT_EQ(g_State.WatchFunction.Invoke(g_State.WatchFunction.State, &event),
+              BML_BEHAVIOR_WATCH_ERROR);
+    EXPECT_EQ(g_State.WatchFunction.Invoke(g_State.WatchFunction.State, nullptr),
+              BML_BEHAVIOR_WATCH_ERROR);
+
+    g_State.WatchState = BML_BEHAVIOR_WATCH_FAILED;
+    auto info = watched->Read();
+    ASSERT_TRUE(info);
+    EXPECT_EQ(info->State, WatchState::Failed);
+    EXPECT_EQ(info->Diagnostic.Error, Error::CallbackFailed);
+    EXPECT_EQ(info->Diagnostic.Phase, Phase::Callback);
 }
 
 TEST(BehaviorAuthoring, AWatchKeepsTheNativeSessionAlive) {
@@ -1264,27 +1513,30 @@ TEST(BehaviorAuthoring, AWatchKeepsTheNativeSessionAlive) {
     }
 
     EXPECT_EQ(g_State.SessionCloses, 0);
-    EXPECT_EQ(retained->Close(), BML_OK);
+    EXPECT_EQ(retained->Close().Value(), CloseState::Closed);
     EXPECT_EQ(g_State.WatchCloses, 1);
     EXPECT_EQ(g_State.SessionCloses, 1);
 }
 
-TEST(BehaviorAuthoring, RejectsExactWatchWhenTheProviderCannotObserveIt) {
+TEST(BehaviorAuthoring, TreatsAcceptedWatchRetirementAsClosing) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
     Session session = std::move(opened).Value();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
-    Graph graph = std::move(inspected).Value();
+    auto watched = inspected->Watch(graphChanged, [](const Change &) {});
+    ASSERT_TRUE(watched);
+    Watch watch = std::move(watched).Value();
 
-    auto watched = graph.Watch(
-        exact(pin(graph.Nodes().front().Object, "Value")),
-        [](const Change &) {});
-    EXPECT_FALSE(watched);
-    EXPECT_EQ(watched.Code(), BML_ERROR_UNAVAILABLE);
-    EXPECT_EQ(g_State.WatchCloses, 0);
-    EXPECT_EQ(g_State.WatchFunction.Invoke, nullptr);
+    g_State.WatchCloseCode = BML_ERROR_BUSY;
+    auto closing = watch.Close();
+    ASSERT_TRUE(closing);
+    EXPECT_EQ(closing.Value(), CloseState::Closing);
+    EXPECT_TRUE(watch);
+    g_State.WatchCloseCode = BML_OK;
+    EXPECT_EQ(watch.Close().Value(), CloseState::Closed);
+    EXPECT_FALSE(watch);
 }
 
 TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
@@ -1296,7 +1548,7 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
     auto alive = std::make_shared<int>(0);
     std::vector<float> deltas;
     {
-        PatchBuilder draft = session.Plan("extra-life");
+        PlanBuilder draft = session.Plan("extra-life");
         draft.OnSingle("Gameplay_Events");
         const auto counter = draft.Require("Counter_Active", CKGUID(1, 2));
         const auto added = draft.Add(CKGUID(3, 4));
@@ -1429,14 +1681,34 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
         ASSERT_EQ(deltas.size(), 1u);
         EXPECT_FLOAT_EQ(deltas[0], 16.5f);
 
-        EXPECT_EQ(plan.Close(), BML_OK);
+        EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
         EXPECT_EQ(g_State.PlanCloses, 1);
-        EXPECT_EQ(plan.Close(), BML_OK);
+        EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
         EXPECT_EQ(g_State.PlanCloses, 1);
         // The builder still owns the reference the Loader dropped.
         EXPECT_EQ(alive.use_count(), 2);
     }
     EXPECT_EQ(alive.use_count(), 1);
+}
+
+TEST(BehaviorAuthoring, ContainsHookCallbackFailuresAtTheCSeam) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    PlanBuilder draft = session.Plan("throwing-hook");
+    draft.On("Gameplay_Events")
+        .Tap(draft.Graph().Out(), [] { throw std::runtime_error("failure"); });
+    auto submitted = draft.Submit();
+    ASSERT_TRUE(submitted);
+    ASSERT_EQ(g_State.PlanHooks.size(), 1u);
+
+    BML_BehaviorHookContext context{};
+    Init(&context);
+    EXPECT_EQ(g_State.PlanHooks[0].Invoke(g_State.PlanHooks[0].State, &context),
+              static_cast<int>(HookResult::Error));
+    EXPECT_EQ(g_State.PlanHooks[0].Invoke(g_State.PlanHooks[0].State, nullptr),
+              static_cast<int>(HookResult::Error));
 }
 
 TEST(BehaviorAuthoring, AppliesTheSameEditLanguageToOneLiveGraph) {
@@ -1487,9 +1759,9 @@ TEST(BehaviorAuthoring, AppliesTheSameEditLanguageToOneLiveGraph) {
         EXPECT_TRUE(read.Value().Installed());
         EXPECT_EQ(read.Value().Conflicts, 0u);
 
-        EXPECT_EQ(patch.Close(), BML_OK);
+        EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
         EXPECT_EQ(g_State.PatchCloses, 1);
-        EXPECT_EQ(patch.Close(), BML_OK);
+        EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
         EXPECT_EQ(g_State.PatchCloses, 1);
         EXPECT_EQ(alive.use_count(), 2);
     }
@@ -1502,7 +1774,7 @@ TEST(BehaviorAuthoring, RejectsPlanWithoutAScriptBeforeCallingTheLoader) {
     ASSERT_TRUE(opened);
     Session session = std::move(opened).Value();
 
-    PatchBuilder draft = session.Plan("nameless");
+    PlanBuilder draft = session.Plan("nameless");
     auto submitted = draft.Submit();
     EXPECT_FALSE(submitted);
     EXPECT_EQ(submitted.Code(), BML_ERROR_INVALID_PARAMETER);
@@ -1519,7 +1791,7 @@ TEST(BehaviorAuthoring, KeepsHookStateWhenTheLoaderRejectsThePlan) {
 
     auto alive = std::make_shared<int>(0);
     {
-        PatchBuilder draft = session.Plan("rejected");
+        PlanBuilder draft = session.Plan("rejected");
         draft.On("Gameplay_Events")
             .Tap(draft.Graph().Out(0), [alive] {});
         auto submitted = draft.Submit();
@@ -1547,7 +1819,7 @@ TEST(BehaviorAuthoring, PlansKeepTheNativeSessionAlive) {
     EXPECT_TRUE(plan);
     EXPECT_TRUE(plan.Read());
     EXPECT_EQ(g_State.SessionCloses, 0);
-    EXPECT_EQ(plan.Close(), BML_OK);
+    EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
     EXPECT_EQ(g_State.PlanCloses, 1);
     EXPECT_EQ(g_State.SessionCloses, 1);
 }
@@ -1565,7 +1837,9 @@ TEST(BehaviorAuthoring, AFailedPlanCloseKeepsTheHandleForRetry) {
     ASSERT_TRUE(submitted);
     Plan plan = std::move(submitted).Value();
 
-    EXPECT_EQ(plan.Close(), BML_ERROR_FAIL);
+    auto failedClose = plan.Close();
+    EXPECT_FALSE(failedClose);
+    EXPECT_EQ(failedClose.Code(), BML_ERROR_FAIL);
     EXPECT_TRUE(plan);
     auto read = plan.Read();
     ASSERT_TRUE(read);
@@ -1573,7 +1847,7 @@ TEST(BehaviorAuthoring, AFailedPlanCloseKeepsTheHandleForRetry) {
     EXPECT_EQ(g_State.PlanCloses, 1);
 
     g_State.PlanCloseCode = BML_OK;
-    EXPECT_EQ(plan.Close(), BML_OK);
+    EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
     EXPECT_FALSE(plan);
     EXPECT_EQ(g_State.PlanCloses, 2);
 }
@@ -1591,14 +1865,16 @@ TEST(BehaviorAuthoring, AClosingPlanKeepsTheHandleUntilItIsClosed) {
     ASSERT_TRUE(submitted);
     Plan plan = std::move(submitted).Value();
 
-    EXPECT_EQ(plan.Close(), BML_ERROR_BUSY);
+    auto closing = plan.Close();
+    ASSERT_TRUE(closing);
+    EXPECT_EQ(closing.Value(), CloseState::Closing);
     EXPECT_TRUE(plan);
     auto read = plan.Read();
     ASSERT_TRUE(read);
     EXPECT_EQ(read->State, PlanState::Retiring);
 
     g_State.PlanCloseCode = BML_OK;
-    EXPECT_EQ(plan.Close(), BML_OK);
+    EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
     EXPECT_FALSE(plan);
 }
 
@@ -1616,7 +1892,9 @@ TEST(BehaviorAuthoring, AFailedGraphPatchCloseKeepsTheHandleForRetry) {
     session.Close();
     EXPECT_EQ(g_State.SessionCloses, 0);
 
-    EXPECT_EQ(patch.Close(), BML_ERROR_FAIL);
+    auto failedClose = patch.Close();
+    EXPECT_FALSE(failedClose);
+    EXPECT_EQ(failedClose.Code(), BML_ERROR_FAIL);
     EXPECT_TRUE(patch);
     auto read = patch.Read();
     ASSERT_TRUE(read);
@@ -1624,7 +1902,7 @@ TEST(BehaviorAuthoring, AFailedGraphPatchCloseKeepsTheHandleForRetry) {
     EXPECT_EQ(g_State.PatchCloses, 1);
 
     g_State.PatchCloseCode = BML_OK;
-    EXPECT_EQ(patch.Close(), BML_OK);
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
     EXPECT_FALSE(patch);
     EXPECT_EQ(g_State.PatchCloses, 2);
     EXPECT_EQ(g_State.SessionCloses, 1);
@@ -1641,14 +1919,16 @@ TEST(BehaviorAuthoring, AClosingGraphPatchKeepsTheHandleUntilItIsClosed) {
     ASSERT_TRUE(applied);
     GraphPatch patch = std::move(applied).Value();
 
-    EXPECT_EQ(patch.Close(), BML_ERROR_BUSY);
+    auto closing = patch.Close();
+    ASSERT_TRUE(closing);
+    EXPECT_EQ(closing.Value(), CloseState::Closing);
     EXPECT_TRUE(patch);
     auto read = patch.Read();
     ASSERT_TRUE(read);
     EXPECT_EQ(read->State, GraphPatchState::Closing);
 
     g_State.PatchCloseCode = BML_OK;
-    EXPECT_EQ(patch.Close(), BML_OK);
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
     EXPECT_FALSE(patch);
 }
 
@@ -1707,7 +1987,7 @@ TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
     EXPECT_TRUE(firstInstance);
     EXPECT_FALSE(secondInstance);
     EXPECT_EQ(g_State.RunCloses, 1);
-    EXPECT_EQ(firstInstance.Close(), BML_OK);
+    EXPECT_EQ(firstInstance.Close().Value(), CloseState::Closed);
     EXPECT_EQ(g_State.RunCloses, 2);
 
     auto firstSubmitted = session.Plan("first")
@@ -1724,7 +2004,7 @@ TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
     EXPECT_TRUE(firstPlan);
     EXPECT_FALSE(secondPlan);
     EXPECT_EQ(g_State.PlanCloses, 1);
-    EXPECT_EQ(firstPlan.Close(), BML_OK);
+    EXPECT_EQ(firstPlan.Close().Value(), CloseState::Closed);
     EXPECT_EQ(g_State.PlanCloses, 2);
 
     auto firstApplied = session.Patch("first").Apply({41, 42, 43});
@@ -1737,6 +2017,6 @@ TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
     EXPECT_TRUE(firstPatch);
     EXPECT_FALSE(secondPatch);
     EXPECT_EQ(g_State.PatchCloses, 1);
-    EXPECT_EQ(firstPatch.Close(), BML_OK);
+    EXPECT_EQ(firstPatch.Close().Value(), CloseState::Closed);
     EXPECT_EQ(g_State.PatchCloses, 2);
 }
