@@ -20,6 +20,12 @@ Status Failure(Error error, std::string message,
     return status;
 }
 
+struct PublishingScope {
+    int &Depth;
+    explicit PublishingScope(int &depth) : Depth(depth) { ++Depth; }
+    ~PublishingScope() { --Depth; }
+};
+
 struct Stamp {
     CK_ID Id = 0;
     CKObject *Address = nullptr;
@@ -451,6 +457,10 @@ bool CKEdit::InDispatch() const noexcept {
     return manager && manager->m_CurrentBehavior != nullptr;
 }
 
+bool CKEdit::Deferred() const noexcept {
+    return InDispatch() || m_Processing || m_Publishing > 0;
+}
+
 Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
     if (!graph || !m_Links)
         return Failure(Error::InvalidGraphLocality,
@@ -710,6 +720,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
     if (!patch)
         return Failure(Error::InvalidState,
                        "The Patch journal is unavailable.");
+    PublishingScope publishing(m_Publishing);
     if (edit.m_Nodes.empty())
         return Failure(Error::InvalidState, "The Edit has no graph.");
 
@@ -1807,7 +1818,7 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
         if (tap.Callback)
             patch->Callbacks.push_back(tap.Callback);
     }
-    if (InDispatch()) {
+    if (Deferred()) {
         if (edit.m_Nodes.empty())
             return Failure(Error::InvalidState, "The Edit has no graph.");
         CKBehavior *graph = ResolveBehavior(
@@ -1862,7 +1873,18 @@ Status CKEdit::CloseNow(const std::shared_ptr<Patch::Journal> &patch) {
     if (!patch)
         return {};
     CloseAdmission(*patch);
-    Status status = Undo(*patch, true);
+    // The Patch is Closing for the whole inverse, so a native teardown
+    // callback that closes it again is answered Busy instead of starting a
+    // second Undo under the first.
+    {
+        std::lock_guard<std::mutex> lock(patch->Mutex);
+        patch->State = PatchState::Closing;
+    }
+    Status status;
+    {
+        PublishingScope publishing(m_Publishing);
+        status = Undo(*patch, true);
+    }
     {
         std::lock_guard<std::mutex> lock(patch->Mutex);
         patch->LastStatus = status;
@@ -1893,7 +1915,7 @@ Status CKEdit::Close(Patch &patch) {
     }
 
     CloseAdmission(*data);
-    if (m_Thread != std::this_thread::get_id() || InDispatch() ||
+    if (m_Thread != std::this_thread::get_id() || Deferred() ||
         state == PatchState::Pending) {
         bool queue = false;
         {
@@ -1921,7 +1943,7 @@ Status CKEdit::Close(Patch &patch) {
 }
 
 void CKEdit::ProcessFrame() {
-    if (!Ready() || InDispatch() || m_Processing)
+    if (!Ready() || Deferred())
         return;
     struct ProcessingScope {
         bool &Flag;

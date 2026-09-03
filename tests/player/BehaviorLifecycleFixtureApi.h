@@ -13,6 +13,9 @@ inline const CKGUID BML_LIFECYCLE_FIXTURE_GUID(
 enum class BMLLifecycleFixtureMode : std::uint32_t {
     Normal = 0,
     CloseOnEdited = 1,
+    // Runs the close hook from the RESET, DETACH and DELETE callbacks, that
+    // is from inside the native teardown the Loader drives for the block.
+    CloseOnTeardown = 2,
 };
 
 struct BMLLifecycleFixtureEvent {

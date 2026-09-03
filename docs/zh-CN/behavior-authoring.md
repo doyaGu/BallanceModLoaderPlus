@@ -126,7 +126,10 @@ Hook 与 Watch callback 在 game thread 运行。C++ thunk 会在异常跨越 C/
 不会停掉宿主脚本的链。返回 `HookResult::Error` 是显式决定，会让所有 Out 保持未激活，
 callback 仍然保留安装。callback 内或其他线程都可以请求 Close：新的 callback
 admission 立即停止，graph 恢复、native teardown 与 callback Release 则在后续 game-thread
-Behavior safe point 完成；Close 永远不会等待自己所在的 callback。
+Behavior safe point 完成；Close 永远不会等待自己所在的 callback。这一延后规则同样适用于
+Loader 自己的逆操作内部：native teardown 或 EDITED callback 若再次关闭正在拆除的 Patch，
+会得到 `Busy`；若关闭或应用另一个 Patch，该请求会排队到下一个 safe point，而不会嵌套在
+正在进行的恢复之下。
 
 ## 生命周期
 

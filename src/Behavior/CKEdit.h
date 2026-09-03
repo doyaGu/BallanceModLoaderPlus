@@ -121,10 +121,16 @@ private:
     std::unique_ptr<Links> m_Links;
     std::mutex m_QueueMutex;
     std::vector<Request> m_Queue;
+    [[nodiscard]] bool Deferred() const noexcept;
+
     // ProcessFrame re-enters through CK's SequenceToBeDeleted notification
     // while it destroys Patch objects. Nested requests wait for the next
     // safe point instead of running inside a half-finished Apply or Undo.
     bool m_Processing = false;
+    // Depth of the synchronous ApplyNow/CloseNow publishing to CK right now.
+    // A native teardown or EDITED callback that reaches Apply or Close from
+    // inside it is treated like a request made during dispatch.
+    int m_Publishing = 0;
 };
 
 } // namespace BML::Behavior

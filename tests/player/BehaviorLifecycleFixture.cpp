@@ -89,6 +89,14 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
         ++g_Trace.CloseHookCalls;
         if (g_CloseHook(behavior, g_CloseArgument) != 0)
             ++g_Trace.CloseHookAccepted;
+    } else if ((context.CallbackMessage == CKM_BEHAVIORRESET ||
+                context.CallbackMessage == CKM_BEHAVIORDETACH ||
+                context.CallbackMessage == CKM_BEHAVIORDELETE) &&
+               g_Mode == BMLLifecycleFixtureMode::CloseOnTeardown &&
+               g_CloseHook) {
+        ++g_Trace.CloseHookCalls;
+        if (g_CloseHook(behavior, g_CloseArgument) != 0)
+            ++g_Trace.CloseHookAccepted;
     }
     return CK_OK;
 }

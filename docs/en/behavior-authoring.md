@@ -151,7 +151,10 @@ callback installed. A
 callback or another thread may request Close: new callback admission stops
 immediately, while graph restoration, native teardown, and callback Release run
 later at a game-thread Behavior safe point. Close never waits for its own active
-callback.
+callback. The same deferral applies inside the Loader's own inverse: a native
+teardown or EDITED callback that closes the Patch being torn down is answered
+`Busy`, and one that closes or applies another Patch has that request queued for
+the next safe point rather than nested under the running restoration.
 
 ## Lifetimes
 
