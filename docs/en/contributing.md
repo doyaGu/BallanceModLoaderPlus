@@ -116,6 +116,32 @@ backs up the installed loader, installs smoke assets, starts Player, validates
 the logs, and restores the previous installation unless `-KeepInstalled` is
 specified.
 
+The Behavior Runtime has its own Player runner, separate from the `ExecuteBBTest`
+scenario driver, so the two flows do not interleave. It installs the Behavior
+probe Mods with their two Virtools fixture plugins, drives the shipped menu graph
+into a level, and reports a single acceptance verdict:
+
+```powershell
+cmake --build build-dev --config RelWithDebInfo --target BML `
+  BehaviorAcceptanceTest BehaviorRuntimeSemanticsTest BehaviorTransportTest `
+  BehaviorPatchTest BehaviorFacadeTest BehaviorLifecycleFixture `
+  BehaviorTransportFixture
+powershell -ExecutionPolicy Bypass `
+  -File tests/player/Invoke-BehaviorAcceptanceTest.ps1 `
+  -BallanceRoot "<Ballance-root>" `
+  -BuildDll "build-dev/bin/RelWithDebInfo/BMLPlus.dll"
+```
+
+Every probe path defaults to the directory holding the loader DLL, so one
+`-BuildDll` is enough. Add `-DisableAngelScript` when the install has no
+`AngelScript.dll`; the runner then skips the script Hook retirement check
+instead of failing it.
+
+The Behavior runner drives Player through `tests/player/BMLPlayerHarness.psm1`.
+That module starts Player, answers the FullScreen Setup dialog, captures window
+screenshots, and drives the tutorial exit key. Change it when startup or the
+tutorial handshake changes, not the runner.
+
 ## Find the owner of a change
 
 | Change | Owner | Minimum focused validation |

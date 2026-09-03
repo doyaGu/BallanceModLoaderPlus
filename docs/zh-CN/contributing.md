@@ -109,6 +109,29 @@ powershell -ExecutionPolicy Bypass `
 资源、启动 Player、检查日志，并在结束后恢复原安装；只有显式传入
 `-KeepInstalled` 才会保留测试文件。
 
+Behavior Runtime 有独立的 Player runner，与 `ExecuteBBTest` 场景驱动分开，两条流程
+不再交织。它安装各个 Behavior probe Mod 和两个 Virtools fixture 插件，沿自带菜单图
+进入关卡，并只输出一条验收结论：
+
+```powershell
+cmake --build build-dev --config RelWithDebInfo --target BML `
+  BehaviorAcceptanceTest BehaviorRuntimeSemanticsTest BehaviorTransportTest `
+  BehaviorPatchTest BehaviorFacadeTest BehaviorLifecycleFixture `
+  BehaviorTransportFixture
+powershell -ExecutionPolicy Bypass `
+  -File tests/player/Invoke-BehaviorAcceptanceTest.ps1 `
+  -BallanceRoot "<Ballance 根目录>" `
+  -BuildDll "build-dev/bin/RelWithDebInfo/BMLPlus.dll"
+```
+
+各 probe 路径默认取 Loader DLL 所在目录，只传 `-BuildDll` 即可。安装目录没有
+`AngelScript.dll` 时补 `-DisableAngelScript`，runner 会跳过脚本 Hook 退休检查而
+不是判定失败。
+
+Behavior runner 通过 `tests/player/BMLPlayerHarness.psm1` 驱动 Player：启动 Player、
+应答 FullScreen Setup 对话框、抓取窗口截图、驱动教程退出键。启动流程或教程握手变化
+时改这个模块，不要改 runner 自身。
+
 ## 找到修改的负责区域
 
 | 修改目标 | 负责区域 | 最小定向验证 |
