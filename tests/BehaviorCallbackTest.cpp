@@ -15,8 +15,67 @@ struct ReferenceCounts {
     int Releases = 0;
 };
 
+struct ThrowingReferences {
+    static void Retain(void *state) {
+        auto &self = *static_cast<ThrowingReferences *>(state);
+        ++self.Retains;
+        if (self.Throw)
+            throw std::runtime_error("retain failed");
+    }
+    static void Release(void *state) {
+        auto &self = *static_cast<ThrowingReferences *>(state);
+        ++self.Releases;
+        if (self.ThrowRelease)
+            throw std::runtime_error("release failed");
+    }
+
+    bool Throw = true;
+    bool ThrowRelease = false;
+    int Retains = 0;
+    int Releases = 0;
+};
+
+struct ReentrantReferences {
+    static void Retain(void *state) {
+        auto &self = *static_cast<ReentrantReferences *>(state);
+        ++self.Retains;
+        self.Nested = self.Plan->OpenLease();
+        self.SawState = self.Plan->State() == state;
+    }
+    static void Release(void *state) {
+        auto &self = *static_cast<ReentrantReferences *>(state);
+        ++self.Releases;
+        self.CollectedAgain = self.Plan->Collect();
+    }
+
+    PlanCallbackState *Plan = nullptr;
+    CallbackLease Nested;
+    bool SawState = false;
+    bool CollectedAgain = false;
+    int Retains = 0;
+    int Releases = 0;
+};
+
 void Retain(void *state) {
     ++static_cast<ReferenceCounts *>(state)->Retains;
+}
+
+TEST(BehaviorCallback, ReleaseFailureDoesNotEscapeOrRepeat) {
+    ThrowingReferences references;
+    references.Throw = false;
+    references.ThrowRelease = true;
+    PlanCallbackState plan = PlanCallbackState::Retained(
+        &references, &ThrowingReferences::Retain,
+        &ThrowingReferences::Release);
+    CallbackLease lease = plan.OpenLease();
+    ASSERT_TRUE(lease);
+    EXPECT_EQ(lease.Close(), CallbackCloseResult::Ready);
+    plan.Retire();
+
+    EXPECT_TRUE(plan.Collect());
+    EXPECT_TRUE(plan.Collect());
+    EXPECT_EQ(references.Retains, 1);
+    EXPECT_EQ(references.Releases, 1);
 }
 
 void Release(void *state) {
@@ -43,6 +102,45 @@ TEST(BehaviorCallback, RetainsOnceAcrossLeasesAndReleasesAtSafePoint) {
     EXPECT_TRUE(plan.Collect());
     EXPECT_TRUE(plan.Collect());
     EXPECT_EQ(counts.Releases, 1);
+}
+
+TEST(BehaviorCallback, FailedRetainLeavesNoLeaseOrReferenceInTheLedger) {
+    ThrowingReferences references;
+    PlanCallbackState plan = PlanCallbackState::Retained(
+        &references, &ThrowingReferences::Retain,
+        &ThrowingReferences::Release);
+
+    EXPECT_THROW((void) plan.OpenLease(), std::runtime_error);
+    EXPECT_EQ(references.Retains, 1);
+    EXPECT_EQ(references.Releases, 0);
+
+    references.Throw = false;
+    CallbackLease lease = plan.OpenLease();
+    ASSERT_TRUE(lease);
+    EXPECT_EQ(references.Retains, 2);
+    EXPECT_EQ(lease.Close(), CallbackCloseResult::Ready);
+    plan.Retire();
+    EXPECT_TRUE(plan.Collect());
+    EXPECT_EQ(references.Releases, 1);
+}
+
+TEST(BehaviorCallback, ReferenceHooksMayReenterWithoutObservingHalfRetainedState) {
+    ReentrantReferences references;
+    PlanCallbackState plan = PlanCallbackState::Retained(
+        &references, &ReentrantReferences::Retain,
+        &ReentrantReferences::Release);
+    references.Plan = &plan;
+
+    CallbackLease lease = plan.OpenLease();
+    ASSERT_TRUE(lease);
+    EXPECT_FALSE(references.Nested);
+    EXPECT_TRUE(references.SawState);
+    EXPECT_EQ(lease.Close(), CallbackCloseResult::Ready);
+    plan.Retire();
+    EXPECT_TRUE(plan.Collect());
+    EXPECT_TRUE(references.CollectedAgain);
+    EXPECT_EQ(references.Retains, 1);
+    EXPECT_EQ(references.Releases, 1);
 }
 
 TEST(BehaviorCallback, RepeatedOccurrencesOwnIndependentReferences) {

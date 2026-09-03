@@ -2153,9 +2153,11 @@ struct HookFunction {
 
 } // namespace Detail
 
-// One author callback, shareable across the steps of one PatchBuilder. The callback
-// runs on the game thread inside the execution the game itself drives, so it
-// must not close the Patch, Plan, Session, or Mod that owns it.
+// One author callback, shareable across the steps of one PatchBuilder. It runs
+// on the game thread inside the execution the game itself drives. It may close
+// its Patch, Plan, Session, or Mod: callback admission closes immediately, the
+// request never waits for this invocation, and native teardown plus Release
+// occur later at a game-thread safe point.
 class Hook {
 public:
     Hook() = default;

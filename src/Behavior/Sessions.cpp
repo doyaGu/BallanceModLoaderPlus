@@ -1,5 +1,6 @@
 #include "Behavior/Sessions.h"
 
+#include <iterator>
 #include <limits>
 #include <utility>
 
@@ -32,6 +33,16 @@ RunState RunStateOf(ExecutionState state) noexcept {
     return RunState::Failed;
 }
 
+void RefreshRunInfo(const Runtime &runtime, const Instance &instance,
+                    RunInfo &info) {
+    info.State = RunStateOf(runtime.State(instance));
+    if (info.State != RunState::Failed)
+        return;
+    Status failure = runtime.InstanceFailure(instance);
+    if (!failure)
+        info.LastStatus = std::move(failure);
+}
+
 } // namespace
 
 Sessions::Sessions(Runtime &runtime, PrototypeCatalog *catalog,
@@ -47,11 +58,28 @@ Sessions::~Sessions() {
 std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
     if (ownerId.empty() || std::this_thread::get_id() != m_Thread)
         return 0;
+    std::uint64_t retiring = 0;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        auto existing = m_Owners.find(ownerId);
+        if (existing != m_Owners.end() &&
+            existing->second.State != OwnerState::Released) {
+            retiring = existing->second.Generation;
+            CloseOwner(ownerId, retiring);
+        }
+    }
+    if (retiring)
+        DrainOwner(ownerId, retiring);
+
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    auto existing = m_Owners.find(ownerId);
+    const auto existing = m_Owners.find(ownerId);
     if (existing != m_Owners.end() &&
         existing->second.State != OwnerState::Released) {
-        CloseOwner(ownerId, existing->second.Generation);
+        // Author Release may register this owner while the retired generation
+        // is drained without the Sessions lock. That registration satisfies
+        // the outer request; replacing it would orphan its Sessions and Runs.
+        return existing->second.State == OwnerState::Active
+            ? existing->second.Generation : 0;
     }
     if (m_NextOwnerGeneration == 0)
         return 0;
@@ -63,11 +91,16 @@ std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
 void Sessions::RetireOwner(const std::string &ownerId) {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    auto owner = m_Owners.find(ownerId);
-    if (owner == m_Owners.end() || owner->second.State == OwnerState::Released)
-        return;
-    CloseOwner(ownerId, owner->second.Generation);
+    std::uint64_t generation = 0;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        auto owner = m_Owners.find(ownerId);
+        if (owner == m_Owners.end() || owner->second.State == OwnerState::Released)
+            return;
+        generation = owner->second.Generation;
+        CloseOwner(ownerId, generation);
+    }
+    DrainOwner(ownerId, generation);
 }
 
 Status Sessions::OpenSession(const std::string &ownerId,
@@ -145,14 +178,6 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
     RunResult result = std::move(called.Run);
     if (result.Detail && !called.Detail)
         result.Detail = std::move(called.Detail);
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    Session *current = FindSession(session.Id);
-    if (!current || current->OwnerGeneration != session.OwnerGeneration) {
-        called.Handle.Reset();
-        m_Runtime.ClosePending();
-        return {Fail(Error::InvalidState,
-                     "The Behavior session closed during Call."), 0, {}};
-    }
     return AddRun(session, RunKind::Call, std::move(called.Handle),
                   std::move(result), called.Detached);
 }
@@ -180,14 +205,6 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
         if (!continued && result.Detail)
             result.Detail = std::move(continued);
     }
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    Session *current = FindSession(session.Id);
-    if (!current || current->OwnerGeneration != session.OwnerGeneration) {
-        created.Handle.Reset();
-        m_Runtime.ClosePending();
-        return {Fail(Error::InvalidState,
-                     "The Behavior session closed during Start."), 0, {}};
-    }
     return AddRun(session, RunKind::Task, std::move(created.Handle),
                   std::move(result), created.Detached);
 }
@@ -210,14 +227,6 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
         return {std::move(created.Detail), 0, {}};
     RunResult result;
     result.State = RunState::Ready;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    Session *current = FindSession(session.Id);
-    if (!current || current->OwnerGeneration != session.OwnerGeneration) {
-        created.Handle.Reset();
-        m_Runtime.ClosePending();
-        return {Fail(Error::InvalidState,
-                     "The Behavior session closed during Spawn."), 0, {}};
-    }
     return AddRun(session, RunKind::Instance, std::move(created.Handle),
                   std::move(result), created.Detached);
 }
@@ -237,7 +246,7 @@ RunResult Sessions::Continue(std::uintptr_t runId) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         run->Info.LastStatus = status;
-        run->Info.State = RunStateOf(m_Runtime.State(run->Block));
+        RefreshRunInfo(m_Runtime, run->Block, run->Info);
         if (status)
             run->Info.Kind = RunKind::Task;
     }
@@ -265,7 +274,7 @@ RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         run->Info.LastStatus = result.Detail;
-        run->Info.State = RunStateOf(m_Runtime.State(run->Block));
+        RefreshRunInfo(m_Runtime, run->Block, run->Info);
     }
     return result;
 }
@@ -277,7 +286,7 @@ Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
         return Fail(Error::InvalidState, "The Behavior Run is stale.");
     info = run->Info;
     if (run->Block)
-        info.State = RunStateOf(m_Runtime.State(run->Block));
+        RefreshRunInfo(m_Runtime, run->Block, info);
     return {};
 }
 
@@ -487,33 +496,49 @@ Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
                            WatchBinding::Function callback,
                            std::uintptr_t &watchId) {
     watchId = 0;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    Session *session = FindSession(sessionId);
-    if (!session || !SessionIsActive(*session))
-        return Fail(Error::InvalidState,
-                    "Behavior Session is stale or retiring.");
-    if (!m_Graph)
-        return Fail(Error::Unavailable,
-                    "Behavior graph observation is unavailable.");
+    Session session;
+    GraphSource *graph = nullptr;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        Session *found = FindSession(sessionId);
+        if (!found || !SessionIsActive(*found))
+            return Fail(Error::InvalidState,
+                        "Behavior Session is stale or retiring.");
+        if (!m_Graph)
+            return Fail(Error::Unavailable,
+                        "Behavior graph observation is unavailable.");
+        session = *found;
+        graph = m_Graph.get();
+    }
     Status status;
     if (root) {
-        status = m_Graph->Refer(root, spec.Root);
+        status = graph->Refer(root, spec.Root);
         if (!status)
             return status;
     }
     if (node) {
-        status = m_Graph->Refer(node, spec.Node);
+        status = graph->Refer(node, spec.Node);
         if (!status)
             return status;
     }
     std::shared_ptr<Watch> watch;
-    status = Watch::Open(*m_Graph, std::move(spec), std::move(state),
+    status = Watch::Open(*graph, std::move(spec), std::move(state),
                          std::move(callback), watch);
     if (!status)
         return status;
+
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Session *current = FindSession(session.Id);
+    if (!current || current->OwnerGeneration != session.OwnerGeneration ||
+        !SessionIsActive(*current)) {
+        watch->Close();
+        QueueWatch(std::move(watch));
+        return Fail(Error::InvalidState,
+                    "The Behavior Session closed while the Watch was opening.");
+    }
     const std::uintptr_t id = NextId();
     if (!id) {
         watch->Close();
@@ -521,8 +546,8 @@ Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
         return Fail(Error::InvalidState, "Behavior Watch ids are exhausted.");
     }
     m_Watches.emplace(
-        id, OwnedWatch{id, session->Id, session->OwnerId,
-                       session->OwnerGeneration, std::move(watch)});
+        id, OwnedWatch{id, session.Id, session.OwnerId,
+                       session.OwnerGeneration, std::move(watch)});
     watchId = id;
     return {};
 }
@@ -579,7 +604,7 @@ void Sessions::ProcessFrame() {
             Run &run = *entry;
             if (!run.Block)
                 continue;
-            run.Info.State = RunStateOf(m_Runtime.State(run.Block));
+            RefreshRunInfo(m_Runtime, run.Block, run.Info);
         }
         watches.reserve(m_Watches.size());
         for (const auto &[id, watch] : m_Watches)
@@ -614,24 +639,23 @@ void Sessions::ProcessFrame() {
             }
         }
     }
-    {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        CollectWatches();
-        m_Runtime.ClosePending();
-    }
+    CollectWatches();
+    m_Runtime.ClosePending();
 }
 
 void Sessions::ResetWorld() {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    for (auto &[id, run] : m_Runs)
-        QueueClose(std::move(run));
-    m_Runs.clear();
-    for (auto &[id, watch] : m_Watches)
-        QueueWatch(std::move(watch.Value));
-    m_Watches.clear();
-    CloseQueuedRuns();
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        for (auto &[id, run] : m_Runs)
+            QueueClose(std::move(run));
+        m_Runs.clear();
+        for (auto &[id, watch] : m_Watches)
+            QueueWatch(std::move(watch.Value));
+        m_Watches.clear();
+        CloseQueuedRuns();
+    }
     CollectWatches();
     m_Runtime.ClosePending();
 }
@@ -688,15 +712,8 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
         m_Runtime.ClosePending();
         return {std::move(result.Detail), 0, {}};
     }
-    const std::uintptr_t id = NextId();
-    if (!id) {
-        block.Reset();
-        m_Runtime.ClosePending();
-        return {Fail(Error::InvalidState, "Behavior Run ids are exhausted."), 0, {}};
-    }
 
     auto run = std::make_shared<Run>();
-    run->Id = id;
     run->SessionId = session.Id;
     run->OwnerId = session.OwnerId;
     run->OwnerGeneration = session.OwnerGeneration;
@@ -706,13 +723,41 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     run->Info.Detached = compatibility;
     run->Block = std::move(block);
     run->Frames = std::move(frames);
-    auto [stored, inserted] = m_Runs.emplace(id, std::move(run));
-    if (!inserted)
-        return {Fail(Error::InvalidState, "Behavior Run id collision."), 0, {}};
 
-    // A native error is a Frame, not an admission failure.
-    Status admitted;
-    return {std::move(admitted), id, stored->second->Info};
+    std::uintptr_t id = 0;
+    bool sessionClosed = false;
+    bool exhausted = false;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        Session *current = FindSession(session.Id);
+        sessionClosed = !current ||
+            current->OwnerGeneration != session.OwnerGeneration ||
+            !SessionIsActive(*current);
+        if (!sessionClosed) {
+            id = NextId();
+            exhausted = id == 0;
+        }
+        if (!sessionClosed && !exhausted) {
+            run->Id = id;
+            const auto [stored, inserted] = m_Runs.emplace(id, run);
+            if (inserted) {
+                Status admitted;
+                return {std::move(admitted), id, stored->second->Info};
+            }
+        }
+    }
+
+    run->Block.Reset();
+    m_Runtime.ClosePending();
+    if (sessionClosed) {
+        return {Fail(Error::InvalidState,
+                     "The Behavior Session closed while the Run was opening."),
+                0, {}};
+    }
+    if (exhausted)
+        return {Fail(Error::InvalidState, "Behavior Run ids are exhausted."), 0, {}};
+    return {Fail(Error::InvalidState, "Behavior Run id collision."), 0, {}};
+
 }
 
 void Sessions::QueueClose(std::shared_ptr<Run> run) {
@@ -761,9 +806,18 @@ void Sessions::CloseOwner(const std::string &ownerId,
     }
     owner->second.State = OwnerState::Draining;
     CloseQueuedRuns();
+}
+
+void Sessions::DrainOwner(const std::string &ownerId,
+                          std::uint64_t generation) {
     CollectWatches();
     m_Runtime.ClosePending();
-    owner->second.State = OwnerState::Released;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    auto owner = m_Owners.find(ownerId);
+    if (owner != m_Owners.end() && owner->second.Generation == generation &&
+        owner->second.State == OwnerState::Draining) {
+        owner->second.State = OwnerState::Released;
+    }
 }
 
 void Sessions::QueueWatch(std::shared_ptr<Watch> watch) {
@@ -774,12 +828,28 @@ void Sessions::QueueWatch(std::shared_ptr<Watch> watch) {
 }
 
 void Sessions::CollectWatches() {
-    for (auto watch = m_ClosingWatches.begin();
-         watch != m_ClosingWatches.end();) {
-        if ((*watch)->RetireAtSafePoint())
-            watch = m_ClosingWatches.erase(watch);
-        else
-            ++watch;
+    std::vector<std::shared_ptr<Watch>> pending;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        pending.swap(m_ClosingWatches);
+    }
+    while (!pending.empty()) {
+        std::vector<std::shared_ptr<Watch>> waiting;
+        waiting.reserve(pending.size());
+        for (std::shared_ptr<Watch> &watch : pending) {
+            if (watch && !watch->RetireAtSafePoint())
+                waiting.push_back(std::move(watch));
+        }
+        std::vector<std::shared_ptr<Watch>> discovered;
+        {
+            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+            discovered.swap(m_ClosingWatches);
+            m_ClosingWatches.insert(
+                m_ClosingWatches.end(),
+                std::make_move_iterator(waiting.begin()),
+                std::make_move_iterator(waiting.end()));
+        }
+        pending = std::move(discovered);
     }
 }
 

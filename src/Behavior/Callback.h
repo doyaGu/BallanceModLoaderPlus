@@ -67,12 +67,16 @@ public:
                                       Reference retain, Reference release);
     static PlanCallbackState Static(void *state = nullptr);
 
+    // Allocates before acquiring the author's reference. Retain runs without
+    // internal locks held; if it throws, the plan ledger remains unchanged.
+    // A reentrant attempt while the first Retain is in progress never waits
+    // and returns an empty lease.
     CallbackLease OpenLease() const;
     void Retire() const noexcept;
 
     // Collect is the only operation that invokes Release. The owner calls it
     // at a game-thread safe point after closing every lease.
-    [[nodiscard]] bool Collect() const;
+    [[nodiscard]] bool Collect() const noexcept;
     [[nodiscard]] bool Retired() const noexcept;
     [[nodiscard]] void *State() const noexcept;
 

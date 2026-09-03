@@ -162,6 +162,7 @@ private:
     void QueueClose(std::shared_ptr<Run> run);
     void CloseQueuedRuns();
     void CloseOwner(const std::string &ownerId, std::uint64_t generation);
+    void DrainOwner(const std::string &ownerId, std::uint64_t generation);
     void QueueWatch(std::shared_ptr<Watch> watch);
     void CollectWatches();
 

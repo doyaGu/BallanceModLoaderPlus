@@ -14,6 +14,8 @@ struct FakeInstance {
     std::shared_ptr<FrameStore> Frames;
     Layout Descriptor;
     std::uint64_t NextSequence = 1;
+    bool FailOnAdvance = false;
+    Status Failure;
 };
 
 std::mutex g_FakeMutex;
@@ -42,6 +44,14 @@ void AdvanceBehaviorSessionRuntime() {
     for (auto &[id, instance] : g_FakeInstances) {
         if (instance.State != ExecutionState::Pending)
             continue;
+        if (instance.FailOnAdvance) {
+            instance.State = ExecutionState::Failed;
+            instance.Failure = {Error::StaleLayout, CKERR_INVALIDOBJECT,
+                                CKBR_PARAMETERERROR,
+                                "The fake queued input layout changed."};
+            instance.Failure.Details.Stage = Phase::Execution;
+            continue;
+        }
         (void) instance.Frames->Retain(MakeFrame(instance, true));
         instance.State = ExecutionState::Idle;
     }
@@ -173,7 +183,8 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
                 AdmissionState::Failed};
     }
 
-    const bool pending = input.Name == "Pending" &&
+    const bool pending = (input.Name == "Pending" ||
+                          input.Name == "PendingFail") &&
         found->NextSequence == 1;
     const bool failed = input.Name == "Fail";
     RunFrame captured = MakeFrame(*found, !pending);
@@ -184,6 +195,7 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
                           "The fake Behavior execution failed."};
     }
     (void) found->Frames->Retain(std::move(captured));
+    found->FailOnAdvance = input.Name == "PendingFail";
     found->State = failed ? ExecutionState::Failed
                          : pending ? ExecutionState::Pending
                                    : ExecutionState::Idle;
@@ -197,6 +209,8 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
         result.Detail = {Error::ExecutionFailed, CK_OK,
                          CKBR_BEHAVIORERROR,
                          "The fake Behavior execution failed."};
+        found->Failure = result.Detail;
+        found->Failure.Details.Stage = Phase::Execution;
     } else if (!pending) {
         result.ActiveOutputs.push_back(0);
     }
@@ -207,6 +221,15 @@ ExecutionState Runtime::State(const Instance &instance) const {
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     const FakeInstance *found = FindFake(instance.m_Id);
     return found ? found->State : ExecutionState::Closed;
+}
+
+Status Runtime::InstanceFailure(const Instance &instance) const {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    const FakeInstance *found = FindFake(instance.m_Id);
+    if (!found)
+        return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                CKBR_BEHAVIORERROR, "The fake Behavior is stale."};
+    return found->Failure;
 }
 
 std::shared_ptr<FrameStore> Runtime::Frames(const Instance &instance) const {

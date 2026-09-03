@@ -2466,12 +2466,18 @@ int BML_BEHAVIOR_CALL Configure(
 // so it outlives the Hook occurrence and every Binding taken from that
 // occurrence, including Bindings a Conflicted Plan can no longer revert.
 struct HookThunk {
-    ~HookThunk() {
-        if (Function.Release)
+    ~HookThunk() noexcept {
+        if (!Retained || !Function.Release)
+            return;
+        try {
             Function.Release(Function.State);
+        } catch (...) {
+            // A foreign release callback must not cross the Loader boundary.
+        }
     }
 
     BML_BehaviorHookFunction Function{};
+    bool Retained = false;
 };
 
 int InvokeHook(const CKBehaviorContext *native, void *argument) {
@@ -2804,8 +2810,23 @@ Status EditProgram::ReadHook(const BML_BehaviorHookFunction *from,
     // Conflicted Patch and earlier than any lease for an edit that never installs.
     auto thunk = std::make_shared<HookThunk>();
     thunk->Function = *from;
-    if (from->Retain)
-        from->Retain(from->State);
+    if (from->Retain) {
+        try {
+            from->Retain(from->State);
+            thunk->Retained = true;
+        } catch (const std::exception &exception) {
+            Status failure{Error::CallbackFailed, CK_OK,
+                           CKBR_BEHAVIORERROR, exception.what()};
+            failure.Details.Stage = Phase::LifecycleCallback;
+            return failure;
+        } catch (...) {
+            Status failure{
+                Error::CallbackFailed, CK_OK, CKBR_BEHAVIORERROR,
+                "A Behavior Hook Retain callback threw an exception."};
+            failure.Details.Stage = Phase::LifecycleCallback;
+            return failure;
+        }
+    }
     out = HookBlock::Hook(
         PlanCallbackState::Retained(thunk, from->State, nullptr, nullptr),
         &InvokeHook, thunk.get());

@@ -184,12 +184,14 @@ TEST(BehaviorWatch, CallbackExceptionFailsTheWatchAndKeepsTheFirstDiagnostic) {
     source.Structure = 13;
     const Status status = watch->Poll(1);
     EXPECT_EQ(status.Code, Error::CallbackFailed);
+    EXPECT_EQ(status.Details.Stage, Phase::LifecycleCallback);
     EXPECT_EQ(status.Message, "watch failed");
     EXPECT_FALSE(watch->IsOpen());
 
     const WatchInfo failed = watch->Read();
     EXPECT_EQ(failed.State, WatchState::Failed);
     EXPECT_EQ(failed.Diagnostic.Code, Error::CallbackFailed);
+    EXPECT_EQ(failed.Diagnostic.Details.Stage, Phase::LifecycleCallback);
     EXPECT_EQ(failed.Diagnostic.Message, "watch failed");
 
     const int reads = source.GraphFingerprintCalls;

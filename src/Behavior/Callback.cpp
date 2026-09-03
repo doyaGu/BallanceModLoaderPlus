@@ -18,6 +18,10 @@ struct PlanCallbackState::Control {
     std::size_t Leases = 0;
     std::size_t Invocations = 0;
     bool ReferenceHeld = false;
+    // Retain is author code and runs without Mutex held. While it is in
+    // progress, another lease must not observe a reference that has not yet
+    // been acquired. OpenLease never waits on that author callback.
+    bool ReferencePending = false;
     bool RetireRequested = false;
     bool Released = false;
 };
@@ -75,24 +79,51 @@ CallbackLease PlanCallbackState::OpenLease() const {
     if (!m_Control)
         return {};
 
+    // Allocate everything that may throw before changing the plan ledger.
+    auto lease = std::make_shared<CallbackInvocation::LeaseControl>();
+    lease->Plan = m_Control;
+
     Reference retain = nullptr;
     void *value = nullptr;
     {
         std::lock_guard<std::mutex> lock(m_Control->Mutex);
-        if (m_Control->RetireRequested || m_Control->Released)
+        if (m_Control->RetireRequested || m_Control->Released ||
+            m_Control->ReferencePending)
             return {};
         if (!m_Control->ReferenceHeld) {
-            m_Control->ReferenceHeld = true;
             retain = m_Control->Retain;
             value = m_Control->Value;
+            if (retain) {
+                m_Control->ReferencePending = true;
+            } else {
+                m_Control->ReferenceHeld = true;
+            }
         }
+        if (!retain) {
+            ++m_Control->Leases;
+            return CallbackLease(std::move(lease));
+        }
+    }
+
+    try {
+        retain(value);
+    } catch (...) {
+        std::lock_guard<std::mutex> lock(m_Control->Mutex);
+        m_Control->ReferencePending = false;
+        throw;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_Control->Mutex);
+        m_Control->ReferencePending = false;
+        m_Control->ReferenceHeld = true;
+        // Retire may have been requested reentrantly by author Retain. The
+        // reference remains in the ledger for Collect to release at a safe
+        // point, but no new callback admission is opened.
+        if (m_Control->RetireRequested || m_Control->Released)
+            return {};
         ++m_Control->Leases;
     }
-    if (retain)
-        retain(value);
-
-    auto lease = std::make_shared<CallbackInvocation::LeaseControl>();
-    lease->Plan = m_Control;
     return CallbackLease(std::move(lease));
 }
 
@@ -103,7 +134,7 @@ void PlanCallbackState::Retire() const noexcept {
     m_Control->RetireRequested = true;
 }
 
-bool PlanCallbackState::Collect() const {
+bool PlanCallbackState::Collect() const noexcept {
     if (!m_Control)
         return true;
 
@@ -111,7 +142,8 @@ bool PlanCallbackState::Collect() const {
     void *value = nullptr;
     {
         std::lock_guard<std::mutex> lock(m_Control->Mutex);
-        if (!m_Control->RetireRequested || m_Control->Leases != 0 ||
+        if (!m_Control->RetireRequested || m_Control->ReferencePending ||
+            m_Control->Leases != 0 ||
             m_Control->Invocations != 0) {
             return false;
         }
@@ -124,8 +156,15 @@ bool PlanCallbackState::Collect() const {
             }
         }
     }
-    if (release)
-        release(value);
+    if (release) {
+        try {
+            release(value);
+        } catch (...) {
+            // A foreign callback must never escape a Loader safe point. The
+            // reference was already retired from this ledger and is not
+            // invoked twice after an author Release reports failure.
+        }
+    }
     return true;
 }
 

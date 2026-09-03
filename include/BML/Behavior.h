@@ -762,9 +762,11 @@ typedef int (BML_BEHAVIOR_CALL *BML_BehaviorHookCallback)(
 // Plan accepts the Hook, so the caller may drop its own reference as soon as
 // the call returns, and Release runs once the Loader has retired the occurrence
 // and dropped every installation of it. A rejected edit retains nothing it has
-// not already released. Invoke
-// runs on the game thread inside the behavior execution the game itself drives,
-// and must not close the Patch, Plan, or Session that owns it.
+// not already released. Invoke runs on the game thread inside the behavior
+// execution the game itself drives. It may close the Patch, Plan, or Session
+// that owns it: admission closes immediately, the request never waits for the
+// current invocation, and native teardown plus Release finish later at a
+// game-thread safe point.
 typedef struct BML_BehaviorHookFunction {
     uint32_t StructSize;
     void *State;

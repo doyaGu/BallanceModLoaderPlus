@@ -80,6 +80,55 @@ struct WatchReferences {
     int Releases = 0;
 };
 
+struct ReentrantWatchReferences {
+    static void Retain(void *state) {
+        auto &self = *static_cast<ReentrantWatchReferences *>(state);
+        ++self.Retains;
+        if (self.CloseSessionOnRetain)
+            self.Owner->CloseSession(self.Session);
+    }
+
+    static void Release(void *state) {
+        auto &self = *static_cast<ReentrantWatchReferences *>(state);
+        ++self.Releases;
+        if (self.WatchToClose)
+            self.Owner->CloseWatch(self.WatchToClose);
+    }
+
+    Sessions *Owner = nullptr;
+    std::uintptr_t Session = 0;
+    std::uintptr_t WatchToClose = 0;
+    bool CloseSessionOnRetain = false;
+    int Retains = 0;
+    int Releases = 0;
+};
+
+struct ReentrantOwnerRegistration {
+    static void Retain(void *state) {
+        ++static_cast<ReentrantOwnerRegistration *>(state)->Retains;
+    }
+
+    static void Release(void *state) {
+        auto &self = *static_cast<ReentrantOwnerRegistration *>(state);
+        ++self.Releases;
+        self.Generation = self.Owner->RegisterOwner(self.OwnerId);
+        self.Opened = self.Owner->OpenSession(self.OwnerId, self.Session);
+        if (self.Opened) {
+            self.Run = self.Owner->Spawn(
+                self.Session, nullptr, Spec(CKGUID(21, 22)));
+        }
+    }
+
+    Sessions *Owner = nullptr;
+    std::string OwnerId;
+    std::uint64_t Generation = 0;
+    std::uintptr_t Session = 0;
+    Status Opened;
+    OpenRun Run;
+    int Retains = 0;
+    int Releases = 0;
+};
+
 Slot Input(const char *name) {
     Slot input;
     input.Kind = SlotKind::Input;
@@ -109,6 +158,40 @@ TEST(BehaviorSessions, OwnerGenerationMakesOldSessionsStale) {
     std::uintptr_t second = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", second));
     EXPECT_GT(second, first);
+}
+
+TEST(BehaviorSessions, RegisterOwnerKeepsAReentrantOwnerGeneration) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    ReentrantOwnerRegistration registration;
+    registration.Owner = &sessions;
+    registration.OwnerId = "mod";
+    std::uintptr_t watch = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Retained(
+            &registration, &ReentrantOwnerRegistration::Retain,
+            &ReentrantOwnerRegistration::Release),
+        [](const WatchEvent &) {}, watch));
+
+    const std::uint64_t generation = sessions.RegisterOwner("mod");
+    EXPECT_EQ(registration.Releases, 1);
+    ASSERT_NE(registration.Generation, 0u);
+    EXPECT_EQ(generation, registration.Generation);
+    ASSERT_TRUE(registration.Opened);
+    ASSERT_NE(registration.Session, 0u);
+    SessionOwner owner;
+    ASSERT_TRUE(sessions.ReadOwner(registration.Session, owner));
+    EXPECT_EQ(owner.Generation, registration.Generation);
+    ASSERT_TRUE(registration.Run);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+    sessions.RetireOwner("mod");
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
 TEST(BehaviorSessions, SessionExposesItsCurrentOwnerGeneration) {
@@ -284,6 +367,70 @@ TEST(BehaviorSessions, FailedWatchRemainsReadableAndIsNotPolledAgain) {
 
     sessions.CloseWatch(watch);
     EXPECT_EQ(sessions.ReadWatch(watch, info).Code, Error::InvalidState);
+}
+
+TEST(BehaviorSessions, WatchRetainMayCloseItsSessionWithoutInvalidatingOpen) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    ReentrantWatchReferences references;
+    references.Owner = &sessions;
+    references.Session = session;
+    references.CloseSessionOnRetain = true;
+    std::uintptr_t watch = 0;
+    Status opened = sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Retained(
+            &references, &ReentrantWatchReferences::Retain,
+            &ReentrantWatchReferences::Release),
+        [](const WatchEvent &) {}, watch);
+
+    EXPECT_EQ(opened.Code, Error::InvalidState);
+    EXPECT_EQ(watch, 0u);
+    EXPECT_EQ(references.Retains, 1);
+    sessions.ProcessFrame();
+    EXPECT_EQ(references.Releases, 1);
+}
+
+TEST(BehaviorSessions, WatchReleaseMayCloseAnotherWatchDuringCollection) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    ReentrantWatchReferences firstReferences;
+    firstReferences.Owner = &sessions;
+    WatchReferences secondReferences;
+    std::uintptr_t first = 0;
+    std::uintptr_t second = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Retained(
+            &firstReferences, &ReentrantWatchReferences::Retain,
+            &ReentrantWatchReferences::Release),
+        [](const WatchEvent &) {}, first));
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Retained(
+            &secondReferences, &WatchReferences::Retain,
+            &WatchReferences::Release),
+        [](const WatchEvent &) {}, second));
+    firstReferences.WatchToClose = second;
+
+    sessions.CloseWatch(first);
+    sessions.ProcessFrame();
+
+    WatchInfo info;
+    EXPECT_EQ(sessions.ReadWatch(first, info).Code, Error::InvalidState);
+    EXPECT_EQ(sessions.ReadWatch(second, info).Code, Error::InvalidState);
+    EXPECT_EQ(firstReferences.Releases, 1);
+    EXPECT_EQ(secondReferences.Releases, 1);
 }
 
 TEST(BehaviorSessions, VanishedGraphFailsWatchUntilWorldReset) {
@@ -492,6 +639,30 @@ TEST(BehaviorSessions, StartIsManagedFromItsFirstExecution) {
     sessions.CloseRun(run.Id);
     sessions.ProcessFrame();
     EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+}
+
+TEST(BehaviorSessions, ManagedFailureUpdatesRunStateAndDiagnostic) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    OpenRun run = sessions.Start(
+        session, nullptr, Spec(CKGUID(15, 16)), Input("PendingFail"));
+    ASSERT_TRUE(run);
+    ASSERT_EQ(run.Info.State, RunState::Pending);
+    ASSERT_TRUE(run.Info.LastStatus);
+
+    AdvanceBehaviorSessionRuntime();
+    sessions.ProcessFrame();
+
+    RunInfo info;
+    ASSERT_TRUE(sessions.ReadRun(run.Id, info));
+    EXPECT_EQ(info.State, RunState::Failed);
+    EXPECT_EQ(info.LastStatus.Code, Error::StaleLayout);
+    EXPECT_EQ(info.LastStatus.Details.Stage, Phase::Execution);
+    EXPECT_EQ(sessions.Frames(run.Id)->Read().size(), 1u);
 }
 
 TEST(BehaviorSessions, RejectedPulseDoesNotChangeTheRunState) {

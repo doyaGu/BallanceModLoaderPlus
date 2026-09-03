@@ -24,9 +24,11 @@ Status WatchBinding::Invoke(const WatchEvent &event) noexcept {
         });
     if (!call.Fault)
         return {};
-    return Failure(call.Fault.Code == CallbackError::Exception
-                       ? Error::CallbackFailed : Error::InvalidState,
-                   call.Fault.Message);
+    Status status = Failure(call.Fault.Code == CallbackError::Exception
+                                ? Error::CallbackFailed : Error::InvalidState,
+                            call.Fault.Message);
+    status.Details.Stage = Phase::LifecycleCallback;
+    return status;
 }
 
 void WatchBinding::CloseAdmission() noexcept {
