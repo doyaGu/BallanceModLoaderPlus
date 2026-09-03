@@ -402,6 +402,9 @@ public:
         case State::FrameFullStopped: CheckFullFramesStopped(); break;
         case State::DetachedGraphStart: StartDetachedGraph(); break;
         case State::DetachedGraphWait: ObserveDetachedGraph(); break;
+        case State::ErrorLinkStart: StartErrorLink(); break;
+        case State::ErrorLinkWait: ObserveErrorLink(); break;
+        case State::ErrorLinkResume: ResumeErrorLink(); break;
         case State::RecursivePumpStart: StartRecursivePump(); break;
         case State::RecursivePumpResume1:
         case State::RecursivePumpResume2: ResumeRecursivePump(); break;
@@ -470,6 +473,7 @@ public:
         result.AdditiveEditPassed = m_AdditiveEditPassed;
         result.RelationsPassed = m_RelationsPassed;
         result.PhysicsForcePassed = m_PhysicsForcePassed;
+        result.HookErrorPassed = m_HookErrorPassed;
         result.VisualPassed = m_VisualPassed;
         result.Passed = Done() && result.Detail.empty();
         if (result.Passed)
@@ -503,6 +507,9 @@ private:
         FrameFullStopped,
         DetachedGraphStart,
         DetachedGraphWait,
+        ErrorLinkStart,
+        ErrorLinkWait,
+        ErrorLinkResume,
         RecursivePumpStart,
         RecursivePumpResume1,
         RecursivePumpResume2,
@@ -1016,14 +1023,14 @@ private:
             HookBlock::Make(ProbeExecution, &m_DetachedOuter, 1, 1));
         if (!created) {
             Fail("detached-graph-create");
-            m_State = State::RecursivePumpStart;
+            m_State = State::ErrorLinkStart;
             return;
         }
         m_DetachedGraphInstance = std::move(created.Handle);
         m_DetachedGraph = m_DetachedGraphInstance.Get();
         if (!m_DetachedGraph) {
             Fail("detached-graph-missing");
-            m_State = State::RecursivePumpStart;
+            m_State = State::ErrorLinkStart;
             return;
         }
         m_DetachedGraph->UseGraph();
@@ -1057,7 +1064,7 @@ private:
             !add(m_DetachedDelayLink) || !add(m_DetachedExitLink)) {
             Fail("detached-graph-setup");
             m_Runtime.ResetWorld();
-            m_State = State::RecursivePumpStart;
+            m_State = State::ErrorLinkStart;
             return;
         }
 
@@ -1102,6 +1109,128 @@ private:
         m_DetachedEntryLink = nullptr;
         m_DetachedDelayLink = nullptr;
         m_DetachedExitLink = nullptr;
+        m_State = State::ErrorLinkStart;
+    }
+
+    // A Hook callback that reports an error must stop the chain at its own
+    // Block: the Hook Block returns the code before it activates any Out, so
+    // the Link behind the callback never fires. This is asserted on a real
+    // detached CK2 graph, where the only path to the destination Block is that
+    // one Link, and the graph Out sits behind the destination.
+    void StartErrorLink() {
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, HookBlock::Make(ProbeExecution, &m_ErrorOuter, 1, 1));
+        if (!created) {
+            Fail("error-link-create");
+            m_State = State::RecursivePumpStart;
+            return;
+        }
+        m_ErrorGraphInstance = std::move(created.Handle);
+        m_ErrorGraph = m_ErrorGraphInstance.Get();
+        if (!m_ErrorGraph) {
+            Fail("error-link-missing");
+            m_State = State::RecursivePumpStart;
+            return;
+        }
+        m_ErrorGraph->UseGraph();
+
+        m_ErrorSource.Context = m_Context;
+        m_ErrorDestination.Context = m_Context;
+        m_ErrorSource.FirstResult = CKBR_BEHAVIORERROR;
+        AttachResult source = m_Runtime.AddToGraph(
+            m_ErrorGraph, HookBlock::Make(ProbeExecution, &m_ErrorSource, 1, 1));
+        AttachResult destination = m_Runtime.AddToGraph(
+            m_ErrorGraph,
+            HookBlock::Make(ProbeExecution, &m_ErrorDestination, 1, 1));
+        m_ErrorSource.Behavior = source.Block;
+        m_ErrorDestination.Behavior = destination.Block;
+        if (source && destination) {
+            m_ErrorEntryLink = CreateBehaviorLink(
+                m_Context, m_ErrorGraph->GetInput(0),
+                source.Block->GetInput(0), 0);
+            m_ErrorChainLink = CreateBehaviorLink(
+                m_Context, source.Block->GetOutput(0),
+                destination.Block->GetInput(0), 0);
+            m_ErrorExitLink = CreateBehaviorLink(
+                m_Context, destination.Block->GetOutput(0),
+                m_ErrorGraph->GetOutput(0), 0);
+        }
+        auto add = [&](CKBehaviorLink *link) {
+            return link && m_ErrorGraph->AddSubBehaviorLink(link) == CK_OK;
+        };
+        if (!source || !destination || !add(m_ErrorEntryLink) ||
+            !add(m_ErrorChainLink) || !add(m_ErrorExitLink)) {
+            Fail("error-link-setup");
+            m_Runtime.ResetWorld();
+            m_ErrorGraph = nullptr;
+            m_ErrorEntryLink = nullptr;
+            m_ErrorChainLink = nullptr;
+            m_ErrorExitLink = nullptr;
+            m_State = State::RecursivePumpStart;
+            return;
+        }
+
+        RunResult first = WithContextCheck("error-link-context-restore", [&] {
+            return m_Runtime.StartTask(
+                m_ErrorGraphInstance, Slot::At(SlotKind::Input, 0));
+        });
+        // The graph itself stays healthy: CK2 discards a sub-behavior return
+        // code, so the failure is visible as an unfollowed Link, not as a graph
+        // error. What must hold is that the callback ran once, the Link behind
+        // it was never followed, and the graph Out never activated.
+        CKBehaviorIO *chainSink = destination.Block->GetInput(0);
+        CKBehaviorIO *graphOut = m_ErrorGraph->GetOutput(0);
+        m_HookErrorBlocked = first.ReturnCode == CKBR_OK &&
+            first.ActiveOutputs.empty() && m_ErrorSource.Calls == 1 &&
+            m_ErrorSource.ContextMatched && m_ErrorDestination.Calls == 0 &&
+            chainSink && !chainSink->IsActive() &&
+            graphOut && !graphOut->IsActive();
+        if (!m_HookErrorBlocked)
+            Fail("error-link-blocked");
+        m_ErrorGraphFrames = 0;
+        m_State = State::ErrorLinkWait;
+    }
+
+    void ObserveErrorLink() {
+        ProcessRuntimeFrame("error-link-frame-context-restore");
+        ++m_ErrorGraphFrames;
+        CKBehaviorIO *graphOut = m_ErrorGraph
+            ? m_ErrorGraph->GetOutput(0) : nullptr;
+        if (m_ErrorDestination.Calls != 0 || (graphOut && graphOut->IsActive()))
+            m_HookErrorBlocked = false;
+        if (m_ErrorGraphFrames < 4)
+            return;
+        // Nothing was deferred either: the stopped chain leaves no continuation
+        // for a later frame to pick up.
+        if (m_Runtime.IsTaskActive(m_ErrorGraphInstance)) {
+            m_HookErrorBlocked = false;
+            Fail("error-link-continuation");
+        }
+        m_State = State::ErrorLinkResume;
+    }
+
+    void ResumeErrorLink() {
+        // The very same graph, the very same Link. Only the callback result
+        // changed, so a destination call now proves the earlier silence came
+        // from the reported error and not from a broken Link.
+        RunResult resumed = WithContextCheck(
+            "error-link-resume-context-restore", [&] {
+                return m_Runtime.Pulse(
+                    m_ErrorGraphInstance, Slot::At(SlotKind::Input, 0));
+            });
+        m_HookErrorResumed = static_cast<bool>(resumed) &&
+            m_ErrorSource.Calls == 2 && m_ErrorDestination.Calls == 1 &&
+            m_ErrorDestination.ContextMatched;
+        m_HookErrorPassed = m_HookErrorBlocked && m_HookErrorResumed;
+        if (!m_HookErrorResumed)
+            Fail("error-link-resume");
+        m_Runtime.ResetWorld();
+        m_ErrorGraph = nullptr;
+        m_ErrorEntryLink = nullptr;
+        m_ErrorChainLink = nullptr;
+        m_ErrorExitLink = nullptr;
+        m_ErrorSource.Behavior = nullptr;
+        m_ErrorDestination.Behavior = nullptr;
         m_State = State::RecursivePumpStart;
     }
 
@@ -3425,6 +3554,9 @@ private:
     ExecutionProbe m_DetachedOuter;
     ExecutionProbe m_DetachedSource;
     ExecutionProbe m_DetachedDestination;
+    ExecutionProbe m_ErrorOuter;
+    ExecutionProbe m_ErrorSource;
+    ExecutionProbe m_ErrorDestination;
     Instance m_RetryInstance;
     Instance m_FaultInstance;
     Instance m_BreakInstance;
@@ -3434,6 +3566,7 @@ private:
     Instance m_LatestFrameInstance;
     Instance m_FullFrameInstance;
     Instance m_DetachedGraphInstance;
+    Instance m_ErrorGraphInstance;
     Instance m_RecursivePumpInstance;
     Instance m_ReentrantReleaseInstance;
     Instance m_SelfDeleteInstance;
@@ -3462,6 +3595,14 @@ private:
     CKBehaviorLink *m_DetachedDelayLink = nullptr;
     CKBehaviorLink *m_DetachedExitLink = nullptr;
     int m_DetachedGraphFrames = 0;
+    CKBehavior *m_ErrorGraph = nullptr;
+    CKBehaviorLink *m_ErrorEntryLink = nullptr;
+    CKBehaviorLink *m_ErrorChainLink = nullptr;
+    CKBehaviorLink *m_ErrorExitLink = nullptr;
+    int m_ErrorGraphFrames = 0;
+    bool m_HookErrorBlocked = false;
+    bool m_HookErrorResumed = false;
+    bool m_HookErrorPassed = false;
     int m_GraphStartFrame = -1;
     CKBehavior *m_EditFixture = nullptr;
     CKBehavior *m_EditSource = nullptr;

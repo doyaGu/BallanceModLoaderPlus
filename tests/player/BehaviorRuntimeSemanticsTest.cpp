@@ -57,6 +57,7 @@ public:
         g_Result.AdditiveEditPassed = result.AdditiveEditPassed ? 1u : 0u;
         g_Result.RelationsPassed = result.RelationsPassed ? 1u : 0u;
         g_Result.PhysicsForcePassed = result.PhysicsForcePassed ? 1u : 0u;
+        g_Result.HookErrorPassed = result.HookErrorPassed ? 1u : 0u;
         g_Result.VisualPassed = result.VisualPassed ? 1u : 0u;
         const std::size_t length = (std::min)(
             result.Detail.size(), sizeof(g_Result.Detail) - 1);
@@ -66,12 +67,13 @@ public:
         m_Semantics.reset();
         DestroyOwner();
         GetLogger()->Info(
-            "Behavior runtime semantics: status=%s lifecycle=%s additive_edit=%s relations=%s physics_force=%s visual=%s detail=%s",
+            "Behavior runtime semantics: status=%s lifecycle=%s additive_edit=%s relations=%s physics_force=%s hook_error=%s visual=%s detail=%s",
             result.Passed ? "pass" : "fail",
             result.LifecyclePassed ? "true" : "false",
             result.AdditiveEditPassed ? "true" : "false",
             result.RelationsPassed ? "true" : "false",
             result.PhysicsForcePassed ? "true" : "false",
+            result.HookErrorPassed ? "true" : "false",
             result.VisualPassed ? "true" : "false",
             g_Result.Detail);
     }

@@ -13,6 +13,7 @@ struct BehaviorRuntimeSemanticsResult {
     bool AdditiveEditPassed = false;
     bool RelationsPassed = false;
     bool PhysicsForcePassed = false;
+    bool HookErrorPassed = false;
     bool VisualPassed = false;
     std::string Detail;
 };
