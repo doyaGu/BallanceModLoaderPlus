@@ -257,6 +257,14 @@ public:
         Hash(out, prototype.d1);
         Hash(out, prototype.d2);
         Hash(out, behavior->GetCompatibleClassID());
+        // UseTarget adds or removes the Target slot of a live Layout.
+        CKParameterIn *target = behavior->GetTargetParameter();
+        Hash(out, static_cast<int>(target != nullptr));
+        if (target) {
+            const CKGUID type = target->GetGUID();
+            Hash(out, type.d1);
+            Hash(out, type.d2);
+        }
         Hash(out, behavior->GetInputCount());
         Hash(out, behavior->GetOutputCount());
         Hash(out, behavior->GetInputParameterCount());
