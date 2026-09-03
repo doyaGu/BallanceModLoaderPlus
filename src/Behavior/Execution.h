@@ -228,7 +228,10 @@ private:
     ExecutionResult Run(std::uint64_t frame, ExecutionAdapter &adapter);
     bool Queue(const ExecutionInput &input);
     void FailBeforeExecute(ExecutionFault fault) noexcept;
-    void Retain(RunFrame frame);
+    // Stores the Frame. On retention overflow the Run fails and `returned` is
+    // rewritten to the failure Frame the store kept, so the caller never
+    // receives a success that the Run's state contradicts.
+    void Retain(RunFrame frame, RunFrame &returned);
 
     ExecutionState m_State = ExecutionState::Idle;
     bool m_Managed = false;

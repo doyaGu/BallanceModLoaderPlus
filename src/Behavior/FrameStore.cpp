@@ -78,8 +78,9 @@ FrameAppendResult FrameStore::Retain(RunFrame frame) {
                                          failureFrame.Fault};
     failureFrame.Fault = QueueFullFault(frame.ReturnCode);
     const ExecutionFault fault = failureFrame.Fault;
+    const std::optional<FrameOverflow> overflow = failureFrame.Overflow;
     StoreNonContinuing(std::move(failureFrame));
-    return {true, fault};
+    return {true, fault, overflow};
 }
 
 std::vector<RunFrame> FrameStore::Read() const {

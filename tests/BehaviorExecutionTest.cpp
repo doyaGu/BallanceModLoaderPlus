@@ -435,9 +435,18 @@ TEST(BehaviorExecution, FullFrameQueueUsesIndependentFailureSlot) {
     adapter.Native.push_back(FunctionResult(1, true));
 
     ASSERT_TRUE(execution.Pulse(ExecutionInput::At(0, 1), 1, adapter));
-    ASSERT_TRUE(execution.Step(2, adapter));
+    const ExecutionResult overflowed = execution.Step(2, adapter);
+    ASSERT_TRUE(overflowed);
     EXPECT_EQ(execution.State(), ExecutionState::Failed);
     EXPECT_EQ(execution.Failure().Code, ExecutionError::FrameQueueFull);
+    // The caller sees the same Frame the store kept, not a success that the
+    // Run's Failed state contradicts.
+    EXPECT_EQ(overflowed.Fault.Code, ExecutionError::FrameQueueFull);
+    ASSERT_TRUE(overflowed.Frame);
+    EXPECT_EQ(overflowed.Frame->Fault.Code, ExecutionError::FrameQueueFull);
+    EXPECT_FALSE(overflowed.Frame->NativeContinuation);
+    ASSERT_TRUE(overflowed.Frame->Overflow);
+    EXPECT_EQ(overflowed.Frame->Overflow->Capacity, 1u);
 
     auto frames = execution.Take();
     ASSERT_EQ(frames.size(), 2u);

@@ -161,6 +161,26 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
     m_State = ExecutionState::Running;
     m_LastFrame = ordinal;
 
+    // Running is terminal for admission and close alike, so an exception
+    // thrown by the adapter or by Frame construction must not strand the Run
+    // there. Any unwinding past this point fails the Run instead.
+    struct RunningScope {
+        Execution &Owner;
+        bool Armed = true;
+        void Disarm() noexcept { Armed = false; }
+        ~RunningScope() {
+            if (!Armed || Owner.m_State != ExecutionState::Running)
+                return;
+            Owner.m_Failure = Fault(
+                ExecutionError::InvalidState,
+                "Behavior execution was interrupted by an exception.");
+            Owner.m_Managed = false;
+            Owner.m_NativeContinuation = false;
+            Owner.m_QueuedInputs.clear();
+            Owner.m_State = ExecutionState::Failed;
+        }
+    } running{*this};
+
     NativeExecution native = adapter.Execute();
     if (!native.Executed) {
         if (!native.Fault)
@@ -267,8 +287,9 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
         m_Managed = false;
     }
 
-    const RunFrame returned = frame;
-    Retain(std::move(frame));
+    RunFrame returned = frame;
+    Retain(std::move(frame), returned);
+    running.Disarm();
     return {AdmissionState::Executed, returned.Fault, returned};
 }
 
@@ -326,10 +347,14 @@ void Execution::FailBeforeExecute(ExecutionFault fault) noexcept {
     m_State = ExecutionState::Failed;
 }
 
-void Execution::Retain(RunFrame frame) {
+void Execution::Retain(RunFrame frame, RunFrame &returned) {
     FrameAppendResult result = m_Frames->Retain(std::move(frame));
     if (!result.Overflowed)
         return;
+    returned.Fault = result.Failure;
+    returned.Overflow = std::move(result.Overflow);
+    returned.NativeContinuation = false;
+    returned.QueuedInput = false;
     m_Failure = std::move(result.Failure);
     m_Managed = false;
     m_NativeContinuation = false;

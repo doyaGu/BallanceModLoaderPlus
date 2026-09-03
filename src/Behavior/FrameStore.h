@@ -14,6 +14,9 @@ namespace BML::Behavior {
 struct FrameAppendResult {
     bool Overflowed = false;
     ExecutionFault Failure;
+    // The overflow record the store attached to the Frame it kept, so the
+    // caller can report the same Frame it stored.
+    std::optional<FrameOverflow> Overflow;
 };
 
 // Owns copied RunFrames independently of the native Behavior instance. Ending
