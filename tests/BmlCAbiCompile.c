@@ -63,6 +63,18 @@ BML_C_ABI_ASSERT(BmlBehaviorWatchFunctionSize,
                  sizeof(BML_BehaviorWatchFunction) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchSpecSize,
                  sizeof(BML_BehaviorWatchSpec) == 68u);
+BML_C_ABI_ASSERT(BmlBehaviorHookFunctionSize,
+                 sizeof(BML_BehaviorHookFunction) == 20u);
+BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,
+                 sizeof(BML_BehaviorEditOrder) == 24u);
+BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
+                 sizeof(BML_BehaviorPortRef) == 44u);
+BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
+                 sizeof(BML_BehaviorEditStep) == 240u);
+BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
+                 sizeof(BML_BehaviorPlanSpec) == 36u);
+BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,
+                 sizeof(BML_BehaviorPatchSpec) == 40u);
 #else
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
@@ -82,6 +94,18 @@ BML_C_ABI_ASSERT(BmlBehaviorWatchFunctionSize,
                  sizeof(BML_BehaviorWatchFunction) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchSpecSize,
                  sizeof(BML_BehaviorWatchSpec) == 80u);
+BML_C_ABI_ASSERT(BmlBehaviorHookFunctionSize,
+                 sizeof(BML_BehaviorHookFunction) == 40u);
+BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,
+                 sizeof(BML_BehaviorEditOrder) == 40u);
+BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
+                 sizeof(BML_BehaviorPortRef) == 56u);
+BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
+                 sizeof(BML_BehaviorEditStep) == 280u);
+BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
+                 sizeof(BML_BehaviorPlanSpec) == 56u);
+BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,
+                 sizeof(BML_BehaviorPatchSpec) == 56u);
 #endif
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
