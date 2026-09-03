@@ -99,6 +99,7 @@ bml_add_mod(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Relations.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/SendMessage.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Text2D.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
 )

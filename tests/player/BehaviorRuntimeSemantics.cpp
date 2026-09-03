@@ -5,6 +5,12 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+// Windows.h defines SendMessage as SendMessageA, which would rename the
+// Loader's SendMessage namespace at this translation unit only.
+#ifdef SendMessage
+#undef SendMessage
+#endif
+#include <stdexcept>
 
 #include "Behavior/HookBlock.h"
 #include "Behavior/CKEdit.h"
@@ -13,6 +19,7 @@
 #include "Behavior/PhysicsForce.h"
 #include "Behavior/PhysicsImpulse.h"
 #include "Behavior/Runtime.h"
+#include "Behavior/SendMessage.h"
 #include "Behavior/Text2D.h"
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/Logics.h"
@@ -32,6 +39,10 @@
 namespace {
 
 using namespace BML::Behavior;
+
+// Named once so the Wait Message pin, the Send Message pin and the Message
+// Manager registration all speak of the same message.
+constexpr const char *kProbeMessageName = "BML Semantics Probe";
 
 int RunRelationNode(const CKBehaviorContext &) {
     return CKBR_OK;
@@ -440,6 +451,9 @@ public:
         case State::AdditiveEditStart: StartAdditiveEdit(); break;
         case State::AdditiveEditWait: ObserveAdditiveEdit(); break;
         case State::AdditiveEditClose: CloseAdditiveEdit(); break;
+        case State::MessageStart: StartMessage(); break;
+        case State::MessageWait: ObserveMessage(); break;
+        case State::MessageCleanup: CleanupMessage(); break;
         case State::Relations: CheckRelations(); break;
         case State::Physicalize: PhysicalizeBody(); break;
         case State::PhysicsForceCreate: CreatePhysicsForce(); break;
@@ -474,6 +488,7 @@ public:
         result.RelationsPassed = m_RelationsPassed;
         result.PhysicsForcePassed = m_PhysicsForcePassed;
         result.HookErrorPassed = m_HookErrorPassed;
+        result.MessagePassed = m_MessagePassed;
         result.VisualPassed = m_VisualPassed;
         result.Passed = Done() && result.Detail.empty();
         if (result.Passed)
@@ -545,6 +560,9 @@ private:
         AdditiveEditStart,
         AdditiveEditWait,
         AdditiveEditClose,
+        MessageStart,
+        MessageWait,
+        MessageCleanup,
         Relations,
         Physicalize,
         PhysicsForceCreate,
@@ -2278,7 +2296,7 @@ private:
 
     void CloseAdditiveEdit() {
         if (!m_EditFixture) {
-            m_State = State::Relations;
+            m_State = State::MessageStart;
             return;
         }
         if (CKScene *scene = m_Context->GetCurrentScene())
@@ -2333,6 +2351,196 @@ private:
         m_Context->DestroyObject(m_EditFixture);
         m_EditFixture = nullptr;
         m_EditSource = nullptr;
+        m_State = State::MessageStart;
+    }
+
+    // Builds a real receiver script and proves that a Send Message Block
+    // configured through the CKPGUID_MESSAGE seam names the same registered
+    // message type a Wait Message Block waits on, and that the message actually
+    // arrives and activates the Link behind that Wait.
+    void StartMessage() {
+        CKMessageManager *messages = m_Context->GetMessageManager();
+        CKScene *scene = m_Context->GetCurrentScene();
+        if (!messages || !scene) {
+            Fail("message-manager");
+            m_State = State::Relations;
+            return;
+        }
+        m_MessageType = messages->AddMessageType(
+            const_cast<CKSTRING>(kProbeMessageName));
+        if (m_MessageType < 0) {
+            Fail("message-type");
+            m_State = State::Relations;
+            return;
+        }
+
+        m_MessageGraph = static_cast<CKBehavior *>(m_Context->CreateObject(
+            CKCID_BEHAVIOR,
+            const_cast<CKSTRING>("__BML_Message_Receiver"),
+            CK_OBJECTCREATION_DYNAMIC));
+        if (!m_MessageGraph) {
+            Fail("message-graph-create");
+            m_State = State::Relations;
+            return;
+        }
+        m_MessageGraph->UseGraph();
+        m_MessageGraph->SetType(CKBEHAVIORTYPE_SCRIPT);
+        CKBehaviorIO *graphInput = m_MessageGraph->CreateInput("In");
+        CKBehaviorIO *graphOutput = m_MessageGraph->CreateOutput("Out");
+        if (!graphInput || !graphOutput ||
+            m_Owner->AddScript(m_MessageGraph) != CK_OK) {
+            Fail("message-graph-script");
+            m_Context->DestroyObject(m_MessageGraph);
+            m_MessageGraph = nullptr;
+            m_State = State::Relations;
+            return;
+        }
+
+        Spec wait(VT_LOGICS_WAITMESSAGE);
+        wait.Target(CKPGUID_BEOBJECT, m_Owner)
+            .Input(Slot::At(SlotKind::InputParameter, 0, CKPGUID_MESSAGE),
+                   Value::Text(CKPGUID_MESSAGE, kProbeMessageName));
+        AttachResult waiter = m_Runtime.AddToGraph(m_MessageGraph, wait);
+        m_MessageProbe.Context = m_Context;
+        AttachResult observer = m_Runtime.AddToGraph(
+            m_MessageGraph,
+            HookBlock::Make(ProbeExecution, &m_MessageProbe, 1, 1));
+        m_MessageWaitBlock = waiter.Block;
+        m_MessageProbe.Behavior = observer.Block;
+        if (!waiter || !observer || !m_MessageWaitBlock) {
+            Fail("message-blocks");
+            m_State = State::MessageCleanup;
+            return;
+        }
+
+        int declared = -1;
+        m_MessageTypeDeclared = m_MessageWaitBlock->GetInputParameterCount() > 0 &&
+            m_MessageWaitBlock->GetInputParameterValue(0, &declared) == CK_OK &&
+            declared == m_MessageType;
+        if (!m_MessageTypeDeclared) {
+            Fail("message-wait-type");
+            m_State = State::MessageCleanup;
+            return;
+        }
+
+        m_MessageEntryLink = CreateBehaviorLink(
+            m_Context, graphInput, m_MessageWaitBlock->GetInput(0), 0);
+        m_MessageChainLink = CreateBehaviorLink(
+            m_Context, m_MessageWaitBlock->GetOutput(0),
+            observer.Block->GetInput(0), 0);
+        m_MessageExitLink = CreateBehaviorLink(
+            m_Context, observer.Block->GetOutput(0), graphOutput, 0);
+        auto add = [&](CKBehaviorLink *link) {
+            return link && m_MessageGraph->AddSubBehaviorLink(link) == CK_OK;
+        };
+        if (!add(m_MessageEntryLink) || !add(m_MessageChainLink) ||
+            !add(m_MessageExitLink)) {
+            Fail("message-graph-links");
+            m_State = State::MessageCleanup;
+            return;
+        }
+
+        scene->Activate(m_MessageGraph, TRUE);
+        m_MessageStartFrame = m_LastPlayerFrame;
+        m_State = State::MessageWait;
+    }
+
+    void ObserveMessage() {
+        const bool timedOut = m_LastPlayerFrame - m_MessageStartFrame > 120;
+        if (!m_MessageSent) {
+            // Wait Message registers itself with the Message Manager when it
+            // runs, and only then can a message match it. The registration is
+            // visible as the CKBEHAVIOR_WAITSFORMESSAGE flag.
+            const bool registered = m_MessageWaitBlock &&
+                (m_MessageWaitBlock->GetFlags() &
+                 CKBEHAVIOR_WAITSFORMESSAGE) != 0;
+            if (!registered) {
+                if (timedOut) {
+                    Fail("message-wait-register");
+                    m_State = State::MessageCleanup;
+                }
+                return;
+            }
+            CreateResult sender = m_Runtime.Instantiate(
+                m_Owner, SendMessage::Make(kProbeMessageName, m_Owner));
+            if (!sender) {
+                Fail("message-sender-create");
+                m_State = State::MessageCleanup;
+                return;
+            }
+            m_MessageSender = std::move(sender.Handle);
+            CKBehavior *senderBlock = m_MessageSender.Get();
+            int senderType = -1;
+            m_MessageTypeSent = senderBlock &&
+                senderBlock->GetInputParameterCount() > 1 &&
+                senderBlock->GetInputParameterValue(0, &senderType) == CK_OK &&
+                senderType == m_MessageType;
+            RunResult sent = WithContextCheck("message-send-context", [&] {
+                return m_Runtime.Pulse(
+                    m_MessageSender, Slot::At(SlotKind::Input, 0));
+            });
+            m_MessageSent = static_cast<bool>(sent) &&
+                sent.State == RunState::Ready &&
+                sent.Admission == AdmissionState::Executed &&
+                sent.ReturnCode == CKBR_OK && sent.ActiveOutputs.size() == 1;
+            if (!m_MessageSent || !m_MessageTypeSent) {
+                Fail("message-send");
+                m_State = State::MessageCleanup;
+                return;
+            }
+            m_MessageSendFrame = m_LastPlayerFrame;
+            return;
+        }
+
+        if (m_MessageProbe.Calls == 0) {
+            if (m_LastPlayerFrame - m_MessageSendFrame > 60) {
+                Fail("message-delivery");
+                m_State = State::MessageCleanup;
+            }
+            return;
+        }
+        m_MessagePassed = m_MessageTypeDeclared && m_MessageTypeSent &&
+            m_MessageProbe.Calls == 1 && m_MessageProbe.ContextMatched &&
+            m_MessageWaitBlock &&
+            (m_MessageWaitBlock->GetFlags() &
+             CKBEHAVIOR_WAITSFORMESSAGE) == 0;
+        if (!m_MessagePassed)
+            Fail("message-matched");
+        m_State = State::MessageCleanup;
+    }
+
+    void CleanupMessage() {
+        // A registration that never matched would outlive this Block, so it is
+        // withdrawn before anything is destroyed.
+        CKMessageManager *messages = m_Context->GetMessageManager();
+        if (messages && m_MessageWaitBlock && m_MessageType >= 0 &&
+            (m_MessageWaitBlock->GetFlags() & CKBEHAVIOR_WAITSFORMESSAGE) != 0) {
+            (void) messages->UnRegisterWait(
+                m_MessageType, m_MessageWaitBlock, 0);
+        }
+        m_MessageSender.Reset();
+        if (m_MessageGraph) {
+            if (CKScene *scene = m_Context->GetCurrentScene())
+                scene->DeActivate(m_MessageGraph);
+        }
+        const ContextSnapshot before = CaptureContext(m_Context);
+        m_Runtime.ResetWorld();
+        if (!ContextRestored(m_Context, before))
+            Fail("message-reset-context");
+        if (m_MessageGraph) {
+            if (m_MessageGraph->GetSubBehaviorCount() != 0 ||
+                m_MessageGraph->GetSubBehaviorLinkCount() != 0) {
+                Fail("message-graph-cleanup");
+            }
+            (void) m_Owner->RemoveScript(m_MessageGraph->GetID());
+            m_Context->DestroyObject(m_MessageGraph);
+        }
+        m_MessageGraph = nullptr;
+        m_MessageWaitBlock = nullptr;
+        m_MessageProbe.Behavior = nullptr;
+        m_MessageEntryLink = nullptr;
+        m_MessageChainLink = nullptr;
+        m_MessageExitLink = nullptr;
         m_State = State::Relations;
     }
 
@@ -3557,6 +3765,7 @@ private:
     ExecutionProbe m_ErrorOuter;
     ExecutionProbe m_ErrorSource;
     ExecutionProbe m_ErrorDestination;
+    ExecutionProbe m_MessageProbe;
     Instance m_RetryInstance;
     Instance m_FaultInstance;
     Instance m_BreakInstance;
@@ -3567,6 +3776,7 @@ private:
     Instance m_FullFrameInstance;
     Instance m_DetachedGraphInstance;
     Instance m_ErrorGraphInstance;
+    Instance m_MessageSender;
     Instance m_RecursivePumpInstance;
     Instance m_ReentrantReleaseInstance;
     Instance m_SelfDeleteInstance;
@@ -3603,6 +3813,18 @@ private:
     bool m_HookErrorBlocked = false;
     bool m_HookErrorResumed = false;
     bool m_HookErrorPassed = false;
+    CKBehavior *m_MessageGraph = nullptr;
+    CKBehavior *m_MessageWaitBlock = nullptr;
+    CKBehaviorLink *m_MessageEntryLink = nullptr;
+    CKBehaviorLink *m_MessageChainLink = nullptr;
+    CKBehaviorLink *m_MessageExitLink = nullptr;
+    CKMessageType m_MessageType = -1;
+    int m_MessageStartFrame = -1;
+    int m_MessageSendFrame = -1;
+    bool m_MessageTypeDeclared = false;
+    bool m_MessageTypeSent = false;
+    bool m_MessageSent = false;
+    bool m_MessagePassed = false;
     int m_GraphStartFrame = -1;
     CKBehavior *m_EditFixture = nullptr;
     CKBehavior *m_EditSource = nullptr;
