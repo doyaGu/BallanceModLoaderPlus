@@ -11,12 +11,14 @@
 #endif
 #include <Windows.h>
 
+#include <algorithm>
 #include <bit>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1039,7 +1041,8 @@ private:
         // intentionally extensible: BML and other loaded mods may append nodes
         // after the file has been loaded, so the disk image is a baseline rather
         // than the final cardinality of the Player graph.
-        const bool nmoShape = graph.Find("Gameplay_Events") &&
+        const auto gameplayEvents = graph.Find("Gameplay_Events");
+        const bool nmoShape = gameplayEvents &&
             graph.Nodes().size() >= 53 && graph.Links().size() >= 60;
         bool delayOne = false;
         bool delayTwo = false;
@@ -1084,13 +1087,15 @@ private:
         if (!inspected) {
             GetLogger()->Error(
                 "Behavior watch graph failed: inspect result=%d error=%u message=%s",
-                inspected.Code(), inspected.Detail().Error,
+                inspected.Code(),
+                static_cast<unsigned>(inspected.Detail().Error),
                 inspected.Detail().Message.c_str());
             return false;
         }
         BML::Behavior::Graph graph = std::move(inspected).Value();
-        const BML::Behavior::Node *rootNode =
-            graph.Find("__BML_BehaviorTransport_Graph");
+        const auto rootMatch = graph.Find("__BML_BehaviorTransport_Graph");
+        const BML::Behavior::Node *rootNode = rootMatch
+            ? &rootMatch.Value() : nullptr;
         const BML::Behavior::Node *child = nullptr;
         if (rootNode) {
             const BML::Behavior::Guid fixture(
@@ -1143,7 +1148,8 @@ private:
             !baselineValue) {
             GetLogger()->Error(
                 "Behavior watch graph failed: value result=%d error=%u state=%u source=%u int=%s message=%s",
-                baseline.Code(), baseline.Detail().Error,
+                baseline.Code(),
+                static_cast<unsigned>(baseline.Detail().Error),
                 baseline ? static_cast<unsigned>(baseline->State) : 0u,
                 baseline ? static_cast<unsigned>(baseline->Source) : 0u,
                 baselineValue ? "true" : "false",
@@ -1152,10 +1158,6 @@ private:
         }
         m_WatchBaseline = *baselineValue;
 
-        auto exact = graph.Watch(
-            BML::Behavior::exact(execution), [](const auto &) {});
-        m_ExactWatchUnavailable = !exact &&
-            exact.Code() == BML_ERROR_UNAVAILABLE;
         auto watched = graph.Watch(
             BML::Behavior::sampled(execution),
             [this](const BML::Behavior::Change &change) {
@@ -1180,15 +1182,22 @@ private:
                     previous ? *previous : -1, current ? *current : -1,
                     m_WatchBaseline, valid ? "pass" : "fail");
             });
-        if (!watched || !m_ExactWatchUnavailable) {
+        auto failedWatch = graph.Watch(
+            BML::Behavior::sampled(execution),
+            [](const BML::Behavior::Change &) {
+                throw std::runtime_error("player watch failure");
+            });
+        if (!watched || !failedWatch) {
             GetLogger()->Error(
-                "Behavior watch graph failed: sampled=%d sampled_error=%u exact_unavailable=%s exact_result=%d exact_error=%u",
-                watched.Code(), watched.Detail().Error,
-                m_ExactWatchUnavailable ? "true" : "false", exact.Code(),
-                exact.Detail().Error);
+                "Behavior watch graph failed: sampled=%d sampled_error=%u failure_watch=%d failure_error=%u",
+                watched.Code(),
+                static_cast<unsigned>(watched.Detail().Error),
+                failedWatch.Code(),
+                static_cast<unsigned>(failedWatch.Detail().Error));
             return false;
         }
         m_CppWatch.emplace(std::move(watched).Value());
+        m_CppFailedWatch.emplace(std::move(failedWatch).Value());
         m_GraphShapePassed = true;
         return true;
     }
@@ -1239,7 +1248,8 @@ private:
             return false;
         BML::Behavior::Call call = std::move(called).Value();
         auto callInfo = call.Read();
-        if (!callInfo || !callInfo->UnverifiedDetached)
+        if (!callInfo || callInfo->Detached !=
+                BML::Behavior::DetachedSupport::Unverified)
             return false;
         m_DetachedDiagnosticPassed = true;
         auto taken = call.Take();
@@ -1250,7 +1260,7 @@ private:
         const std::int32_t *value = number
             ? number->Get<std::int32_t>() : nullptr;
         if (frame.Sequence != 1 ||
-            frame.Continuation != BML_BEHAVIOR_CONTINUATION_NONE ||
+            frame.Continuation != BML::Behavior::Continuation::None ||
             !frame.HasOut("Done") || !value || *value != 42)
             return false;
 
@@ -1277,7 +1287,8 @@ private:
         if (!boundRelation) {
             GetLogger()->Error(
                 "Behavior live edit: stage=bind code=%d error=%u message=%s",
-                boundRelation.Code(), boundRelation.Detail().Error,
+                boundRelation.Code(),
+                static_cast<unsigned>(boundRelation.Detail().Error),
                 boundRelation.Detail().Message.c_str());
             return false;
         }
@@ -1285,7 +1296,8 @@ private:
         if (!boundPulse) {
             GetLogger()->Error(
                 "Behavior live edit: stage=bind-pulse code=%d error=%u message=%s",
-                boundPulse.Code(), boundPulse.Detail().Error,
+                boundPulse.Code(),
+                static_cast<unsigned>(boundPulse.Detail().Error),
                 boundPulse.Detail().Message.c_str());
             return false;
         }
@@ -1294,7 +1306,7 @@ private:
             boundFrames && boundFrames.Value().size() == 1
             ? boundFrames.Value().front().FindPout("Number") : nullptr;
         if (!boundFrames || boundFrames.Value().size() != 1 ||
-            boundFrames.Value().front().Error != BML_BEHAVIOR_ERROR_NONE ||
+            boundFrames.Value().front().Error != BML::Behavior::Error::None ||
             !boundFrames.Value().front().HasOut("Done") ||
             !boundNumber || !boundNumber->Get<std::int32_t>() ||
             *boundNumber->Get<std::int32_t>() != 42) {
@@ -1351,9 +1363,9 @@ private:
         if (!sharedValue ||
             sharedValue->Source != BML::Behavior::Relation::Shared ||
             !sharedNumber || *sharedNumber != 84 || !sharedPulse ||
-            sharedPulse.Value() != BML::Behavior::Admission::Executed ||
+            sharedPulse.Value() != BML::Behavior::PulseResult::Ran ||
             !sharedFrames || sharedFrames.Value().size() != 1 ||
-            sharedFrames.Value().front().Error != BML_BEHAVIOR_ERROR_NONE ||
+            sharedFrames.Value().front().Error != BML::Behavior::Error::None ||
             !sharedFrames.Value().front().HasOut("Done") ||
             !sharedPout || !sharedPout->Get<std::int32_t>() ||
             *sharedPout->Get<std::int32_t>() != 84)
@@ -1379,7 +1391,7 @@ private:
         m_CppInstance.emplace(std::move(spawned).Value());
         auto admission = m_CppInstance->Pulse("Run");
         if (!admission ||
-            admission.Value() != BML::Behavior::Admission::Executed)
+            admission.Value() != BML::Behavior::PulseResult::Ran)
             return false;
 
         auto dynamic = m_CppSession.Use(prototype)
@@ -1388,7 +1400,8 @@ private:
         if (!dynamic) {
             GetLogger()->Error(
                 "Behavior live edit: stage=configure-open code=%d error=%u message=%s",
-                dynamic.Code(), dynamic.Detail().Error,
+                dynamic.Code(),
+                static_cast<unsigned>(dynamic.Detail().Error),
                 dynamic.Detail().Message.c_str());
             return false;
         }
@@ -1409,7 +1422,8 @@ private:
         if (!configured || configured.Value() <= before->Generation) {
             GetLogger()->Error(
                 "Behavior live edit: stage=configure code=%d error=%u generation=%llu before=%llu message=%s",
-                configured.Code(), configured.Detail().Error,
+                configured.Code(),
+                static_cast<unsigned>(configured.Detail().Error),
                 configured ? static_cast<unsigned long long>(configured.Value()) : 0,
                 static_cast<unsigned long long>(before->Generation),
                 configured.Detail().Message.c_str());
@@ -1417,10 +1431,11 @@ private:
         }
         auto stale = dynamicInstance.Set(staleNumber, std::int32_t{1});
         if (stale || stale.Detail().Error !=
-                BML_BEHAVIOR_ERROR_LAYOUT_CHANGED) {
+                BML::Behavior::Error::LayoutChanged) {
             GetLogger()->Error(
                 "Behavior live edit: stage=stale accepted=%s code=%d error=%u message=%s",
-                stale ? "true" : "false", stale.Code(), stale.Detail().Error,
+                stale ? "true" : "false", stale.Code(),
+                static_cast<unsigned>(stale.Detail().Error),
                 stale.Detail().Message.c_str());
             return false;
         }
@@ -1448,8 +1463,10 @@ private:
         if (!setDynamic || !setExecutions) {
             GetLogger()->Error(
                 "Behavior live edit: stage=set code=%d error=%u local_code=%d local_error=%u message=%s",
-                setDynamic.Code(), setDynamic.Detail().Error,
-                setExecutions.Code(), setExecutions.Detail().Error,
+                setDynamic.Code(),
+                static_cast<unsigned>(setDynamic.Detail().Error),
+                setExecutions.Code(),
+                static_cast<unsigned>(setExecutions.Detail().Error),
                 setDynamic.Detail().Message.c_str());
             return false;
         }
@@ -1491,7 +1508,8 @@ private:
             !executionsBefore || *executionsBefore != 5) {
             GetLogger()->Error(
                 "Behavior live edit: stage=set-read code=%d error=%u state=%u relation=%u value=%d replay=%d replay_relation=%u index=%d",
-                observedDynamic.Code(), observedDynamic.Detail().Error,
+                observedDynamic.Code(),
+                static_cast<unsigned>(observedDynamic.Detail().Error),
                 observedDynamic
                     ? static_cast<unsigned>(observedDynamic->State) : 0,
                 observedDynamic
@@ -1519,11 +1537,12 @@ private:
         const std::int32_t *executionsAfter = localAfter
             ? std::get_if<std::int32_t>(&localAfter->Data) : nullptr;
         if (!dynamicAdmission ||
-            dynamicAdmission.Value() != BML::Behavior::Admission::Executed ||
+            dynamicAdmission.Value() != BML::Behavior::PulseResult::Ran ||
             !dynamicFrames || dynamicFrames.Value().size() != 1 ||
-            dynamicFrames.Value().front().Error != BML_BEHAVIOR_ERROR_NONE ||
+            dynamicFrames.Value().front().Error !=
+                BML::Behavior::Error::None ||
             dynamicFrames.Value().front().Continuation !=
-                BML_BEHAVIOR_CONTINUATION_NONE ||
+                BML::Behavior::Continuation::None ||
             !dynamicFrames.Value().front().HasOut("Dynamic Done") ||
             !dynamicFrames.Value().front().HasOut("Done") ||
             !dynamicValue || !dynamicValue->Get<std::int32_t>() ||
@@ -1607,10 +1626,11 @@ private:
                 info.Value().State == BML::Behavior::RunState::Ready &&
                 frames && frames.Value().size() == 2 &&
                 frames.Value()[0].Sequence == 1 &&
-                frames.Value()[0].Continuation != 0 &&
+                frames.Value()[0].Continuation !=
+                    BML::Behavior::Continuation::None &&
                 frames.Value()[1].Sequence == 2 &&
                 frames.Value()[1].Continuation ==
-                    BML_BEHAVIOR_CONTINUATION_NONE &&
+                    BML::Behavior::Continuation::None &&
                 frames.Value()[1].HasOut("Done");
         };
         return validTask(startInfo, startFrames) &&
@@ -1620,7 +1640,7 @@ private:
             instanceInfo.Value().State == BML::Behavior::RunState::Ready &&
             instanceFrames && instanceFrames.Value().size() == 1 &&
             instanceFrames.Value().front().Continuation ==
-                BML_BEHAVIOR_CONTINUATION_NONE &&
+                BML::Behavior::Continuation::None &&
             instanceFrames.Value().front().HasOut("Done");
     }
 
@@ -1691,6 +1711,41 @@ private:
             &headerCount, &payloadSize, &status);
         if (measured != BML_ERROR_BUFFER_TOO_SMALL || !headerCount)
             return false;
+
+        std::vector<BML_BehaviorRunFrame> untouchedHeaders(headerCount);
+        std::memset(untouchedHeaders.data(), 0xa5,
+                    untouchedHeaders.size() * sizeof(untouchedHeaders[0]));
+        std::vector<std::uint8_t> untouchedPayload(payloadSize, 0xa5);
+        const std::uint32_t shortHeaderCapacity = payloadSize == 0
+            ? headerCount - 1 : headerCount;
+        const std::uint32_t shortPayloadCapacity = payloadSize == 0
+            ? 0 : payloadSize - 1;
+        std::uint32_t repeatedHeaderCount = 0;
+        std::uint32_t repeatedPayloadSize = 0;
+        status = Dto<BML_BehaviorStatus>();
+        const int shortRead = m_Behavior->TakeFrames(
+            run, untouchedHeaders.data(), shortHeaderCapacity,
+            sizeof(BML_BehaviorRunFrame),
+            untouchedPayload.empty() ? nullptr : untouchedPayload.data(),
+            shortPayloadCapacity, &repeatedHeaderCount, &repeatedPayloadSize,
+            &status);
+        const auto untouched = [](const auto &bytes) {
+            if (bytes.empty())
+                return true;
+            const auto *begin = reinterpret_cast<const std::uint8_t *>(
+                bytes.data());
+            const std::size_t size = bytes.size() * sizeof(bytes[0]);
+            return std::all_of(begin, begin + size,
+                               [](std::uint8_t value) {
+                                   return value == 0xa5;
+                               });
+        };
+        if (shortRead != BML_ERROR_BUFFER_TOO_SMALL ||
+            repeatedHeaderCount != headerCount ||
+            repeatedPayloadSize != payloadSize ||
+            !untouched(untouchedHeaders) || !untouched(untouchedPayload))
+            return false;
+
         out.Headers.resize(headerCount);
         out.Payload.resize(payloadSize);
         std::uint32_t secondHeaderCount = 0;
@@ -1762,6 +1817,8 @@ private:
         for (std::uint32_t index = 0; index < header.PoutCount; ++index) {
             BML_BehaviorPoutRecord record{};
             if (!Record(out, header.PoutOffset, index, record))
+                return false;
+            if (record.ValueOffset % BML_BEHAVIOR_VALUE_ALIGNMENT != 0)
                 return false;
             const std::string_view name = Bytes(
                 out, record.NameOffset, record.NameLength);
@@ -1908,14 +1965,22 @@ private:
 
     void CheckRuns() {
         m_CppFacadePassed = m_CppFacadePassed && CheckCppFacade();
+        const auto failedWatch = m_CppFailedWatch
+            ? m_CppFailedWatch->Read()
+            : BML::Behavior::Result<BML::Behavior::WatchInfo>::Failure(
+                  BML_ERROR_INVALID_HANDLE);
+        m_WatchFailurePassed = failedWatch &&
+            failedWatch->State == BML::Behavior::WatchState::Failed &&
+            failedWatch->Diagnostic.Error ==
+                BML::Behavior::Error::CallbackFailed;
         GetLogger()->Info(
-            "Behavior watch: status=%s sampled=%s events=%llu exact_unavailable=%s graph_endpoints=%s",
+            "Behavior watch: status=%s sampled=%s events=%llu callback_failure=%s graph_endpoints=%s",
             (m_WatchPassed && m_WatchEventCount == 2 &&
-             m_ExactWatchUnavailable && m_GraphShapePassed)
+             m_WatchFailurePassed && m_GraphShapePassed)
                 ? "pass" : "fail",
             m_WatchPassed ? "true" : "false",
             static_cast<unsigned long long>(m_WatchEventCount),
-            m_ExactWatchUnavailable ? "true" : "false",
+            m_WatchFailurePassed ? "true" : "false",
             m_GraphShapePassed ? "true" : "false");
         TakenFrames call;
         TakenFrames start;
@@ -2072,7 +2137,7 @@ private:
         m_FunctionalPassed = m_CppFacadePassed &&
             m_DetachedDiagnosticPassed && m_InspectPassed &&
             m_WatchPassed && m_WatchEventCount == 2 &&
-            m_ExactWatchUnavailable && m_GraphShapePassed &&
+            m_WatchFailurePassed && m_GraphShapePassed &&
             continuedOk && echoOk &&
             dynamicOk && targetsOk && selectorsOk && waitForAllOk &&
             graphOk && statesOk;
@@ -2152,7 +2217,7 @@ private:
             m_DetachedDiagnosticPassed ? "true" : "false",
             m_InspectPassed ? "true" : "false",
             (m_WatchPassed && m_WatchEventCount == 2 &&
-             m_ExactWatchUnavailable && m_GraphShapePassed)
+             m_WatchFailurePassed && m_GraphShapePassed)
                 ? "true" : "false");
         CloseRuns();
     }
@@ -2184,6 +2249,7 @@ private:
     std::optional<BML::Behavior::Task> m_CppContinued;
     std::optional<BML::Behavior::Instance> m_CppInstance;
     std::optional<BML::Behavior::Watch> m_CppWatch;
+    std::optional<BML::Behavior::Watch> m_CppFailedWatch;
     CK_ID m_InputObjectId = 0;
     BML_ObjectRef m_InputObjectRef{};
     BML_ObjectRef m_CapturedObjectRef{};
@@ -2199,8 +2265,8 @@ private:
     bool m_DetachedDiagnosticPassed = false;
     bool m_InspectPassed = false;
     bool m_GraphShapePassed = false;
-    bool m_ExactWatchUnavailable = false;
     bool m_WatchPassed = false;
+    bool m_WatchFailurePassed = false;
     std::uint64_t m_WatchEventCount = 0;
     std::int32_t m_WatchBaseline = 0;
     bool m_FunctionalPassed = false;

@@ -317,7 +317,7 @@ $checks = [ordered]@{
     BehaviorWatchProbe = $transport.Success -and
         $transport.Groups['watch'].Value -eq 'true' -and
         $testLog.Contains(
-            'Behavior watch: status=pass sampled=true events=2 exact_unavailable=true graph_endpoints=true')
+            'Behavior watch: status=pass sampled=true events=2 callback_failure=true graph_endpoints=true')
     OutcomeWire = $transport.Success -and
         $transport.Groups['wire'].Value -eq 'true'
     CaptureTimeObjectRef = $transport.Success -and
