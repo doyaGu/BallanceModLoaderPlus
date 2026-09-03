@@ -1426,6 +1426,14 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
         result.Detail = Failure(Error::OwnerInvalid, "Behavior owner belongs to another CKContext.");
         return result;
     }
+    // CaptureObject drops a to-be-deleted object silently. An owner in that
+    // state must fail admission instead of degrading into an ownerless ATTACH.
+    if (owner && (owner->IsToBeDeleted() ||
+                  CKGetObject(m_Context, owner->GetID()) != owner)) {
+        result.Detail = Failure(Error::OwnerInvalid,
+                                "Behavior owner is being deleted.");
+        return result;
+    }
     result.Detail = ValidateTarget(owner, spec);
     if (!result.Detail)
         return result;
@@ -1686,9 +1694,17 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
 
     CKParameter *oldDirect = input->GetDirectSource();
     const ObjectStamp oldRef = CaptureObject(oldDirect);
-    auto owned = std::find_if(record.OwnedSources.begin(), record.OwnedSources.end(),
-                              [&](ObjectStamp candidate) { return candidate == oldRef; });
-    const bool oldOwned = owned != record.OwnedSources.end();
+    // Only remember whether the previous source is Runtime-owned. The literal
+    // branch below appends to OwnedSources, so an iterator taken here would
+    // not survive; the entry is looked up again when it is released.
+    const auto findOwned = [&] {
+        return std::find_if(record.OwnedSources.begin(),
+                            record.OwnedSources.end(),
+                            [&](ObjectStamp candidate) {
+                                return candidate == oldRef;
+                            });
+    };
+    const bool oldOwned = findOwned() != record.OwnedSources.end();
 
     const bool storedValue = value.Kind() != Parameter::BindingKind::Direct &&
                              value.Kind() != Parameter::BindingKind::Shared;
@@ -1743,7 +1759,9 @@ Status Runtime::BindInput(CKBehavior *behavior, Record &record,
     m_SharedBindings->Sources.Update(input);
     if (oldOwned && m_SharedBindings->Sources.Count(oldDirect) == 0) {
         QueueSourceDestroy(oldRef);
-        record.OwnedSources.erase(owned);
+        const auto owned = findOwned();
+        if (owned != record.OwnedSources.end())
+            record.OwnedSources.erase(owned);
     }
     return {};
 }
@@ -3207,6 +3225,12 @@ void Runtime::DestroyReady(DestroyMode mode) {
     m_Destroying = true;
     const bool force = requestedForce || std::exchange(m_ForceDestroyPending, false);
     const bool closing = mode == DestroyMode::Close;
+    // Entries retained by this pass are collected separately and appended
+    // once the walk is over. Appending to m_PendingDestroy while walking it
+    // would revisit them in the same pass, and in force mode nothing changes
+    // between visits: a callback still on the stack keeps RetireAtSafePoint
+    // false, so the walk would never terminate.
+    std::list<PendingDestroy> deferred;
     auto it = m_PendingDestroy.begin();
     while (it != m_PendingDestroy.end()) {
         if (!force && !closing && it->Frames > 0) {
@@ -3321,9 +3345,10 @@ void Runtime::DestroyReady(DestroyMode mode) {
             if (closing && m_SharedBindings)
                 m_SharedBindings->Pending.push_back(std::move(retained));
             else
-                m_PendingDestroy.push_back(std::move(retained));
+                deferred.push_back(std::move(retained));
         }
     }
+    m_PendingDestroy.splice(m_PendingDestroy.end(), deferred);
     m_Destroying = false;
     if (m_ForceDestroyPending) {
         AdoptSharedBindings();
