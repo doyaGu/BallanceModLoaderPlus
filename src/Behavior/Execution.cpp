@@ -180,7 +180,7 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
                                                outputFault)) {
         if (!outputFault)
             outputFault = Fault(
-                ExecutionError::OutputUnavailable,
+                ExecutionError::OutUnavailable,
                 "Active Behavior outputs could not be read.");
         native.Fault = outputFault;
     }
@@ -220,8 +220,9 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
                     ExecutionError::PoutReadFailed,
                     "Behavior Pouts could not be copied into the Frame.");
             frame.Pouts.clear();
-            if (!frame.Fault)
+            if (!fatal)
                 frame.Fault = std::move(poutFault);
+            fatal = true;
         }
     }
 
@@ -229,9 +230,10 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
         ExecutionFault clearFault;
         if (!adapter.ClearOutputs(frame.ActiveOutputs, clearFault)) {
             if (!clearFault)
-                clearFault = Fault(ExecutionError::OutputUnavailable,
+                clearFault = Fault(ExecutionError::OutUnavailable,
                                    "Active Behavior outputs could not be cleared.");
-            frame.Fault = std::move(clearFault);
+            if (!fatal)
+                frame.Fault = std::move(clearFault);
             fatal = true;
         }
     }

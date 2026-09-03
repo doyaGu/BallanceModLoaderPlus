@@ -34,7 +34,8 @@ private:
         const RunFrame &frame) const noexcept;
     void StoreNonContinuing(RunFrame frame);
     [[nodiscard]] std::vector<RunFrame> ReadLocked() const;
-    bool EraseSequence(std::uint64_t sequence);
+    [[nodiscard]] bool MatchesLocked(
+        std::span<const std::uint64_t> sequences) const;
 
     FrameRetention m_Retention;
     mutable std::mutex m_Mutex;

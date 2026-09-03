@@ -51,6 +51,47 @@ bool HasContinuation(int result) {
     return (result & CKBR_ACTIVATENEXTFRAME) != 0;
 }
 
+Status ExecutionFailure(const ExecutionFault &fault,
+                        CKGUID prototype = CKGUID()) {
+    Error error = Error::ExecutionFailed;
+    switch (fault.Code) {
+    case ExecutionError::SelectorNotFound:
+        error = Error::SlotNotFound;
+        break;
+    case ExecutionError::SelectorAmbiguous:
+        error = Error::AmbiguousSlot;
+        break;
+    case ExecutionError::LayoutStale:
+        error = Error::StaleLayout;
+        break;
+    case ExecutionError::UnsupportedBreak:
+        error = Error::UnsupportedBreak;
+        break;
+    case ExecutionError::UnsupportedPout:
+        error = Error::UnsupportedPout;
+        break;
+    case ExecutionError::PoutReadFailed:
+        error = Error::PoutUnavailable;
+        break;
+    case ExecutionError::OutUnavailable:
+        error = Error::ExecutionFailed;
+        break;
+    case ExecutionError::FrameQueueFull:
+        error = Error::FrameQueueFull;
+        break;
+    case ExecutionError::Cancelled:
+        error = Error::ExecutionCancelled;
+        break;
+    case ExecutionError::InvalidState:
+        error = Error::InvalidState;
+        break;
+    default:
+        break;
+    }
+    return Failure(error, fault.Message, CK_OK, fault.NativeCode,
+                   Phase::Execution, prototype);
+}
+
 bool ContainsId(const CK_ID *ids, int count, CK_ID reference) {
     if (!ids || reference == 0)
         return false;
@@ -250,7 +291,7 @@ public:
         Record *record = m_Runtime.FindRecord(m_InstanceId);
         CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
         if (!record || !behavior) {
-            fault = {ExecutionError::OutputUnavailable, CKBR_BEHAVIORERROR,
+            fault = {ExecutionError::OutUnavailable, CKBR_BEHAVIORERROR,
                      "Behavior disappeared before its outputs were read."};
             return false;
         }
@@ -471,7 +512,7 @@ public:
         Record *record = m_Runtime.FindRecord(m_InstanceId);
         CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
         if (!record || !behavior) {
-            fault = {ExecutionError::OutputUnavailable, CKBR_BEHAVIORERROR,
+            fault = {ExecutionError::OutUnavailable, CKBR_BEHAVIORERROR,
                      "Behavior disappeared before its active outputs were cleared."};
             return false;
         }
@@ -2807,34 +2848,7 @@ Status Runtime::InstanceFailure(const Instance &instance) const {
     const ExecutionFault &fault = record->Protocol.Failure();
     if (!fault)
         return {};
-    Error error = Error::ExecutionFailed;
-    switch (fault.Code) {
-    case ExecutionError::UnsupportedBreak:
-        error = Error::UnsupportedBreak;
-        break;
-    case ExecutionError::FrameQueueFull:
-        error = Error::FrameQueueFull;
-        break;
-    case ExecutionError::Cancelled:
-        error = Error::ExecutionCancelled;
-        break;
-    case ExecutionError::LayoutStale:
-        error = Error::StaleLayout;
-        break;
-    case ExecutionError::SelectorNotFound:
-        error = Error::SlotNotFound;
-        break;
-    case ExecutionError::SelectorAmbiguous:
-        error = Error::AmbiguousSlot;
-        break;
-    case ExecutionError::InvalidState:
-        error = Error::InvalidState;
-        break;
-    default:
-        break;
-    }
-    return Failure(error, fault.Message, CK_OK, fault.NativeCode,
-                   Phase::Execution);
+    return ExecutionFailure(fault, record->PrototypeGuid);
 }
 
 void Runtime::ProcessTasks(const CKBehaviorContext *frame) {
@@ -2925,42 +2939,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
     }
 
     if (executed.Fault) {
-        Error error = Error::ExecutionFailed;
-        switch (executed.Fault.Code) {
-        case ExecutionError::SelectorNotFound:
-            error = Error::SlotNotFound;
-            break;
-        case ExecutionError::SelectorAmbiguous:
-            error = Error::AmbiguousSlot;
-            break;
-        case ExecutionError::LayoutStale:
-            error = Error::StaleLayout;
-            break;
-        case ExecutionError::UnsupportedBreak:
-            error = Error::UnsupportedBreak;
-            break;
-        case ExecutionError::UnsupportedPout:
-            error = Error::UnsupportedPout;
-            break;
-        case ExecutionError::PoutReadFailed:
-        case ExecutionError::OutputUnavailable:
-            error = Error::PoutUnavailable;
-            break;
-        case ExecutionError::FrameQueueFull:
-            error = Error::FrameQueueFull;
-            break;
-        case ExecutionError::Cancelled:
-            error = Error::ExecutionCancelled;
-            break;
-        case ExecutionError::InvalidState:
-            error = Error::InvalidState;
-            break;
-        default:
-            break;
-        }
-        result.Detail = Failure(error, executed.Fault.Message, CK_OK,
-                                 executed.Fault.NativeCode,
-                                 Phase::Execution, prototypeGuid);
+        result.Detail = ExecutionFailure(executed.Fault, prototypeGuid);
     }
 
     record = FindRecord(instanceId);

@@ -36,20 +36,30 @@ bool FrameStore::KeepsPouts(const RunFrame &frame) const noexcept {
 FrameAppendResult FrameStore::Retain(RunFrame frame) {
     std::lock_guard<std::mutex> lock(m_Mutex);
     if (m_Retention.Kind == RetentionKind::Latest) {
-        if (HasNoContinuation(frame))
+        if (HasNoContinuation(frame)) {
+            if (frame.Fault && m_LastError &&
+                m_LastError->Sequence < frame.Sequence) {
+                m_LastError.reset();
+            }
             StoreNonContinuing(std::move(frame));
-        else if (frame.Fault)
+        } else if (frame.Fault) {
             m_LastError = std::move(frame);
-        else
+        } else {
             m_Latest = std::move(frame);
+        }
         return {};
     }
 
     if (m_Retention.Kind == RetentionKind::Ignore) {
-        if (HasNoContinuation(frame))
+        if (HasNoContinuation(frame)) {
+            if (frame.Fault && m_LastError &&
+                m_LastError->Sequence < frame.Sequence) {
+                m_LastError.reset();
+            }
             StoreNonContinuing(std::move(frame));
-        else if (frame.Fault)
+        } else if (frame.Fault) {
             m_LastError = std::move(frame);
+        }
         return {};
     }
 
@@ -79,17 +89,12 @@ std::vector<RunFrame> FrameStore::Read() const {
 
 bool FrameStore::Consume(std::span<const std::uint64_t> sequences) {
     std::lock_guard<std::mutex> lock(m_Mutex);
-    const std::vector<RunFrame> current = ReadLocked();
-    if (current.size() != sequences.size())
+    if (!MatchesLocked(sequences))
         return false;
-    for (std::size_t index = 0; index < current.size(); ++index) {
-        if (current[index].Sequence != sequences[index])
-            return false;
-    }
-    for (std::uint64_t sequence : sequences) {
-        if (!EraseSequence(sequence))
-            return false;
-    }
+    m_Frames.clear();
+    m_Latest.reset();
+    m_LastError.reset();
+    m_NonContinuing.reset();
     return true;
 }
 
@@ -118,54 +123,66 @@ bool FrameStore::ShouldRetain(const RunFrame &frame) const noexcept {
 }
 
 void FrameStore::StoreNonContinuing(RunFrame frame) {
+    // A failed non-continuing Frame is both the last failure and the last
+    // completion. Keep one owned copy while it is current; when a later
+    // completion displaces it, preserve it in the failure role.
+    if (!frame.Fault && m_NonContinuing && m_NonContinuing->Fault &&
+        (!m_LastError ||
+         m_NonContinuing->Sequence > m_LastError->Sequence)) {
+        m_LastError = std::move(*m_NonContinuing);
+    }
     m_NonContinuing = std::move(frame);
 }
 
 std::vector<RunFrame> FrameStore::ReadLocked() const {
-    std::vector<RunFrame> frames;
-    frames.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
-                     (m_LastError ? 1u : 0u) +
-                     (m_NonContinuing ? 1u : 0u));
-    frames.insert(frames.end(), m_Frames.begin(), m_Frames.end());
+    std::vector<const RunFrame *> visible;
+    visible.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
+                    (m_LastError ? 1u : 0u) +
+                    (m_NonContinuing ? 1u : 0u));
+    for (const RunFrame &frame : m_Frames)
+        visible.push_back(&frame);
     if (m_Latest)
-        frames.push_back(*m_Latest);
+        visible.push_back(&*m_Latest);
     if (m_LastError)
-        frames.push_back(*m_LastError);
+        visible.push_back(&*m_LastError);
     if (m_NonContinuing)
-        frames.push_back(*m_NonContinuing);
-    std::sort(frames.begin(), frames.end(),
-              [](const RunFrame &left, const RunFrame &right) {
-                  return left.Sequence < right.Sequence;
+        visible.push_back(&*m_NonContinuing);
+    std::sort(visible.begin(), visible.end(),
+              [](const RunFrame *left, const RunFrame *right) {
+                  return left->Sequence < right->Sequence;
               });
-    frames.erase(
-        std::unique(frames.begin(), frames.end(),
-                    [](const RunFrame &left,
-                       const RunFrame &right) {
-                        return left.Sequence == right.Sequence;
+    visible.erase(
+        std::unique(visible.begin(), visible.end(),
+                    [](const RunFrame *left, const RunFrame *right) {
+                        return left->Sequence == right->Sequence;
                     }),
-        frames.end());
+        visible.end());
+
+    std::vector<RunFrame> frames;
+    frames.reserve(visible.size());
+    for (const RunFrame *frame : visible)
+        frames.push_back(*frame);
     return frames;
 }
 
-bool FrameStore::EraseSequence(std::uint64_t sequence) {
-    const auto eraseOptional = [sequence](std::optional<RunFrame> &entry) {
-        if (entry && entry->Sequence == sequence) {
-            entry.reset();
-            return true;
-        }
-        return false;
-    };
-    auto iterator = std::find_if(
-        m_Frames.begin(), m_Frames.end(),
-        [sequence](const RunFrame &frame) {
-            return frame.Sequence == sequence;
-        });
-    if (iterator != m_Frames.end()) {
-        m_Frames.erase(iterator);
-        return true;
-    }
-    return eraseOptional(m_Latest) || eraseOptional(m_LastError) ||
-           eraseOptional(m_NonContinuing);
+bool FrameStore::MatchesLocked(
+    std::span<const std::uint64_t> sequences) const {
+    std::vector<std::uint64_t> current;
+    current.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
+                    (m_LastError ? 1u : 0u) +
+                    (m_NonContinuing ? 1u : 0u));
+    for (const RunFrame &frame : m_Frames)
+        current.push_back(frame.Sequence);
+    if (m_Latest)
+        current.push_back(m_Latest->Sequence);
+    if (m_LastError)
+        current.push_back(m_LastError->Sequence);
+    if (m_NonContinuing)
+        current.push_back(m_NonContinuing->Sequence);
+    std::sort(current.begin(), current.end());
+    current.erase(std::unique(current.begin(), current.end()), current.end());
+    return current.size() == sequences.size() &&
+        std::equal(current.begin(), current.end(), sequences.begin());
 }
 
 } // namespace BML::Behavior

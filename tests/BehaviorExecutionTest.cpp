@@ -131,9 +131,13 @@ public:
     }
 
     bool ClearOutputs(const std::vector<ExecutionOutput> &outputs,
-                      ExecutionFault &) override {
+                      ExecutionFault &fault) override {
         if (OnClear)
             OnClear(outputs);
+        if (ClearFailure) {
+            fault = *ClearFailure;
+            return false;
+        }
         for (const ExecutionOutput &output : outputs)
             Outputs[output.Index].Active = false;
         return true;
@@ -160,6 +164,7 @@ public:
     std::function<void()> OnExecute;
     std::vector<Pout> Pouts;
     std::optional<ExecutionFault> ReadFailure;
+    std::optional<ExecutionFault> ClearFailure;
     std::function<void(std::vector<Pout> &)> OnRead;
     std::function<void(const std::vector<ExecutionOutput> &)> OnClear;
 };
@@ -527,23 +532,39 @@ TEST(BehaviorExecution, PoutValuesAreOwnedAndKeepNameOccurrences) {
     EXPECT_EQ(frames[0].Pouts[1].Text, "second");
 }
 
-TEST(BehaviorExecution, UnsupportedPoutDoesNotChangeNativeExecution) {
-    Execution execution;
-    FakeExecutionAdapter adapter;
-    adapter.ReadFailure = {ExecutionError::UnsupportedPout, 1,
-                           "unsupported Pout"};
+TEST(BehaviorExecution, PoutFailureStopsTheExecutionAfterNativeCapture) {
+    const std::array<ExecutionFault, 3> faults{{
+        {ExecutionError::UnsupportedPout, 1, "unsupported Pout format"},
+        {ExecutionError::PoutReadFailed, 2, "Pout read failed"},
+        {ExecutionError::PoutReadFailed, 3,
+         "ObjectRefs rejected an object Pout"},
+    }};
+    for (const ExecutionFault &fault : faults) {
+        SCOPED_TRACE(fault.Message);
+        Execution execution;
+        FakeExecutionAdapter adapter;
+        adapter.Outputs[0].Active = true;
+        adapter.ReadFailure = fault;
 
-    ExecutionResult result =
-        execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
-    EXPECT_EQ(result.State, AdmissionState::Executed);
-    EXPECT_EQ(result.Fault.Code, ExecutionError::UnsupportedPout);
-    EXPECT_EQ(adapter.Calls, 1);
-    EXPECT_EQ(adapter.PoutReads, 1);
-    EXPECT_EQ(execution.State(), ExecutionState::Idle);
-    EXPECT_EQ(execution.NextSequence(), 2u);
-    auto frames = execution.Take();
-    ASSERT_EQ(frames.size(), 1u);
-    EXPECT_EQ(frames[0].Fault.Code, ExecutionError::UnsupportedPout);
+        ExecutionResult result =
+            execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
+        EXPECT_EQ(result.State, AdmissionState::Executed);
+        EXPECT_EQ(result.Fault.Code, fault.Code);
+        EXPECT_EQ(adapter.Calls, 1);
+        EXPECT_EQ(adapter.PoutReads, 1);
+        EXPECT_EQ(execution.State(), ExecutionState::Failed);
+        EXPECT_EQ(execution.Failure().Code, fault.Code);
+        EXPECT_EQ(execution.NextSequence(), 2u);
+        auto frames = execution.Take();
+        ASSERT_EQ(frames.size(), 1u);
+        EXPECT_EQ(frames[0].Sequence, 1u);
+        EXPECT_EQ(frames[0].Fault.Code, fault.Code);
+        EXPECT_EQ(frames[0].Fault.NativeCode, fault.NativeCode);
+        EXPECT_EQ(frames[0].Fault.Message, fault.Message);
+        ASSERT_EQ(frames[0].ActiveOutputs.size(), 1u);
+        EXPECT_EQ(frames[0].ActiveOutputs[0].Name, "Out");
+        EXPECT_FALSE(adapter.Outputs[0].Active);
+    }
 }
 
 TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
@@ -564,6 +585,95 @@ TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
     ASSERT_EQ(result.Frame->ActiveOutputs.size(), 1u);
     EXPECT_TRUE(result.Frame->Pouts.empty());
     EXPECT_EQ(execution.NextSequence(), 2u);
+    EXPECT_EQ(execution.State(), ExecutionState::Failed);
+    EXPECT_EQ(execution.Failure().Code, ExecutionError::UnsupportedPout);
+}
+
+TEST(BehaviorExecution, PoutFailureRemainsTheTerminalCaptureDiagnostic) {
+    Execution execution;
+    FakeExecutionAdapter adapter;
+    adapter.Outputs[0].Active = true;
+    adapter.ReadFailure = {ExecutionError::PoutReadFailed, 2,
+                           "Pout read failed"};
+    adapter.ClearFailure = {ExecutionError::OutUnavailable, 3,
+                            "Out clear failed"};
+
+    const ExecutionResult result =
+        execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
+    ASSERT_TRUE(result.Frame);
+    EXPECT_EQ(result.Frame->Sequence, 1u);
+    EXPECT_EQ(result.Frame->Fault.Code, ExecutionError::PoutReadFailed);
+    EXPECT_EQ(result.Frame->Fault.NativeCode, 2);
+    ASSERT_EQ(result.Frame->ActiveOutputs.size(), 1u);
+    EXPECT_EQ(execution.State(), ExecutionState::Failed);
+    EXPECT_EQ(execution.Failure().Code, ExecutionError::PoutReadFailed);
+}
+
+TEST(BehaviorExecution, PoutFailureDoesNotReplaceAFatalNativeDiagnostic) {
+    struct Case {
+        NativeExecution Native;
+        ExecutionError Expected;
+    };
+    const std::array<Case, 2> cases{{
+        {FunctionResult(10, false, true), ExecutionError::NativeFailed},
+        {FunctionResult(11, false, false, true),
+         ExecutionError::UnsupportedBreak},
+    }};
+
+    for (const Case &test : cases) {
+        SCOPED_TRACE(static_cast<int>(test.Expected));
+        Execution execution;
+        FakeExecutionAdapter adapter;
+        adapter.Native.push_back(test.Native);
+        adapter.ReadFailure = {ExecutionError::PoutReadFailed, 23,
+                               "Pout read failed after native execution"};
+
+        const ExecutionResult result =
+            execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
+        ASSERT_TRUE(result.Frame);
+        EXPECT_EQ(adapter.PoutReads, 1);
+        EXPECT_EQ(result.Frame->Fault.Code, test.Expected);
+        EXPECT_EQ(result.Frame->Fault.NativeCode, test.Native.ReturnCode);
+        EXPECT_EQ(execution.Failure().Code, test.Expected);
+        EXPECT_EQ(execution.Failure().NativeCode, test.Native.ReturnCode);
+    }
+}
+
+TEST(BehaviorExecution, LatestAndIgnoreKeepSeparateFailedAndFinalFrames) {
+    for (const FrameRetention retention : {
+             FrameRetention::Latest(), FrameRetention::Ignore()}) {
+        FrameStore frames(retention);
+        RunFrame failed;
+        failed.Sequence = 1;
+        failed.Fault = {ExecutionError::PoutReadFailed, 7,
+                        "Pout read failed"};
+        ASSERT_FALSE(frames.Retain(std::move(failed)).Overflowed);
+
+        RunFrame completed;
+        completed.Sequence = 2;
+        ASSERT_FALSE(frames.Retain(std::move(completed)).Overflowed);
+
+        const std::vector<RunFrame> retained = frames.Read();
+        ASSERT_EQ(retained.size(), 2u);
+        EXPECT_EQ(retained[0].Sequence, 1u);
+        EXPECT_EQ(retained[0].Fault.Code, ExecutionError::PoutReadFailed);
+        EXPECT_EQ(retained[1].Sequence, 2u);
+        EXPECT_FALSE(retained[1].Fault);
+    }
+}
+
+TEST(BehaviorExecution, ConsumeClearsEveryRoleHeldByOneFrame) {
+    FrameStore frames(FrameRetention::Latest());
+    RunFrame failedAndFinal;
+    failedAndFinal.Sequence = 1;
+    failedAndFinal.Fault = {ExecutionError::PoutReadFailed, 7,
+                            "Pout read failed"};
+    ASSERT_FALSE(frames.Retain(std::move(failedAndFinal)).Overflowed);
+    ASSERT_EQ(frames.Read().size(), 1u);
+
+    const std::array<std::uint64_t, 1> batch{1};
+    EXPECT_TRUE(frames.Consume(batch));
+    EXPECT_TRUE(frames.Read().empty());
 }
 
 TEST(BehaviorExecution, FrameStoreReadsWithoutConsumingThenConsumesExactly) {
@@ -588,6 +698,26 @@ TEST(BehaviorExecution, FrameStoreReadsWithoutConsumingThenConsumesExactly) {
     const std::array<std::uint64_t, 2> exact{1, 2};
     EXPECT_TRUE(frames->Consume(exact));
     EXPECT_TRUE(frames->Read().empty());
+}
+
+TEST(BehaviorExecution, ConsumeRejectsAReadWhenTheVisibleBatchChanged) {
+    FrameStore frames(FrameRetention::EachFrame(4));
+    RunFrame first;
+    first.Sequence = 1;
+    ASSERT_FALSE(frames.Retain(std::move(first)).Overflowed);
+    const std::vector<RunFrame> read = frames.Read();
+    ASSERT_EQ(read.size(), 1u);
+
+    RunFrame second;
+    second.Sequence = 2;
+    ASSERT_FALSE(frames.Retain(std::move(second)).Overflowed);
+    const std::array<std::uint64_t, 1> staleBatch{1};
+    EXPECT_FALSE(frames.Consume(staleBatch));
+
+    const std::vector<RunFrame> retained = frames.Read();
+    ASSERT_EQ(retained.size(), 2u);
+    EXPECT_EQ(retained[0].Sequence, 1u);
+    EXPECT_EQ(retained[1].Sequence, 2u);
 }
 
 } // namespace

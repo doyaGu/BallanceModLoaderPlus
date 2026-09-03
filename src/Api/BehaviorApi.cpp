@@ -232,7 +232,8 @@ std::uint32_t PublicError(ExecutionError error) noexcept {
     case ExecutionError::LayoutStale: return BML_BEHAVIOR_ERROR_LAYOUT_CHANGED;
     case ExecutionError::UnsupportedBreak: return BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED;
     case ExecutionError::UnsupportedPout: return BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED;
-    case ExecutionError::OutputUnavailable:
+    case ExecutionError::OutUnavailable:
+        return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
     case ExecutionError::PoutReadFailed: return BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE;
     case ExecutionError::FrameQueueFull: return BML_BEHAVIOR_ERROR_FRAME_QUEUE_FULL;
     case ExecutionError::Cancelled: return BML_BEHAVIOR_ERROR_CANCELLED;

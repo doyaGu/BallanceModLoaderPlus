@@ -29,7 +29,7 @@ enum class ExecutionError {
     ActivationFailed,
     NativeFailed,
     UnsupportedBreak,
-    OutputUnavailable,
+    OutUnavailable,
     UnsupportedPout,
     PoutReadFailed,
     FrameQueueFull,
