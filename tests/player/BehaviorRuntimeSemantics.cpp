@@ -2060,6 +2060,12 @@ private:
         m_EditTap.Graph = m_EditFixture;
         m_EditTap.NodesBefore = m_EditFixture->GetSubBehaviorCount();
 
+        m_EditSourceId = m_EditSource->GetID();
+        if (const auto resetTrace =
+                reinterpret_cast<BMLLifecycleFixtureResetTraceFn>(
+                    LifecycleFixtureExport("BMLLifecycleFixtureResetTrace"))) {
+            resetTrace();
+        }
         scene->Activate(m_EditFixture, TRUE);
         m_EditStartFrame = m_LastPlayerFrame;
         m_State = State::AdditiveEditWait;
@@ -2070,6 +2076,21 @@ private:
             m_LastPlayerFrame - m_EditStartFrame <= 3)
             return;
         m_Runtime.ProcessFrame();
+        // Closing the Patch deletes the four Ports it appended to the source
+        // Block. The owning Block has to hear about that exactly once.
+        BMLLifecycleFixtureTrace portTrace;
+        const auto readTrace =
+            reinterpret_cast<BMLLifecycleFixtureReadTraceFn>(
+                LifecycleFixtureExport("BMLLifecycleFixtureReadTrace"));
+        const bool portTraceRead = readTrace && readTrace(&portTrace) != 0;
+        const int portEdited = portTraceRead
+            ? FixtureEditedCount(portTrace, m_EditSourceId) : -1;
+        m_PortDeletionNotified = m_EditSourceId != 0 && portEdited == 1;
+        if (!m_PortDeletionNotified) {
+            // -1 means the fixture trace could not be read at all.
+            Fail(("additive-edit-port-edited-count-" +
+                  std::to_string(portEdited)).c_str());
+        }
         if (m_EditTap.Calls != 1)
             Fail("additive-edit-safe-point-calls");
         if (!m_EditTap.InvocationObserved)
@@ -2092,6 +2113,30 @@ private:
             Fail("additive-edit-safe-point-apply-close");
         }
         m_State = State::AdditiveEditClose;
+    }
+
+    static void *LifecycleFixtureExport(const char *name) {
+        HMODULE module = ::GetModuleHandleA("BehaviorLifecycleFixture.dll");
+        return module ? reinterpret_cast<void *>(
+            ::GetProcAddress(module, name)) : nullptr;
+    }
+
+    // Counts the EDITED callbacks the fixture recorded for one Block.
+    static int FixtureEditedCount(const BMLLifecycleFixtureTrace &trace,
+                                  CK_ID behavior) {
+        const std::uint32_t wanted = static_cast<std::uint32_t>(behavior);
+        const std::uint32_t capacity = static_cast<std::uint32_t>(
+            sizeof(trace.Events) / sizeof(trace.Events[0]));
+        const std::uint32_t count = trace.EventCount < capacity
+            ? trace.EventCount : capacity;
+        int edited = 0;
+        for (std::uint32_t index = 0; index < count; ++index) {
+            if (trace.Events[index].Message == CKM_BEHAVIOREDITED &&
+                trace.Events[index].BehaviorId == wanted) {
+                ++edited;
+            }
+        }
+        return edited;
     }
 
     void CloseAdditiveEdit() {
@@ -2137,6 +2182,7 @@ private:
         if (!reverted)
             Fail(closeFailure.c_str());
         m_AdditiveEditPassed = m_SplicePassed && reverted &&
+                               m_PortDeletionNotified &&
                                m_EditTap.Calls == 1 &&
                                m_EditTap.InvocationObserved &&
                                m_EditTap.Queued &&
@@ -3256,6 +3302,8 @@ private:
     Patch m_QueuedPatch;
     PatchCloseProbe m_EditTap;
     int m_EditStartFrame = -1;
+    CK_ID m_EditSourceId = 0;
+    bool m_PortDeletionNotified = false;
     bool m_AdditiveEditPassed = false;
     bool m_RelationsPassed = false;
     CKBehavior *m_SpliceGraph = nullptr;
