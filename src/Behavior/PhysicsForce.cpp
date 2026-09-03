@@ -198,15 +198,18 @@ RunResult Sessions::Clear(CK3dEntity *target) {
                        "No Physics Force session exists for the target."},
                 RunState::Failed, CKBR_OK, {}};
     }
+    // A Stopping session may already have released its Block while it waits
+    // out the one-physics-frame quarantine. It must stay registered so a
+    // following Set cannot create a controller over the retiring one.
+    if (it->second.Stopping) {
+        it->second.Replacement.reset();
+        return Pending("Physics Force Shutdown is already in progress.");
+    }
     if (!it->second.Block.Get()) {
         m_Sessions.erase(it);
         return {Status{Error::InvalidState, CK_OK, CKBR_OK,
                        "Physics Force instance has expired."},
                 RunState::Failed, CKBR_OK, {}};
-    }
-    if (it->second.Stopping) {
-        it->second.Replacement.reset();
-        return Pending("Physics Force Shutdown is already in progress.");
     }
     if (HasNativeController(it->second)) {
         RunResult shutdown = m_Runtime.Pulse(
