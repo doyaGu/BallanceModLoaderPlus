@@ -60,6 +60,16 @@ int ProbeExecution(const CKBehaviorContext *context, void *argument) {
     return probe->Calls == 1 ? probe->FirstResult : CKBR_OK;
 }
 
+// A Hook callback that never completes. The Loader must keep the first fault,
+// stop invoking it, and let the Hook Block pass the activation through.
+int ProbeFault(const CKBehaviorContext *context, void *argument) {
+    auto *probe = static_cast<ExecutionProbe *>(argument);
+    if (!probe || !context)
+        return CKBR_BEHAVIORERROR;
+    ++probe->Calls;
+    throw std::runtime_error("semantics fixture hook fault");
+}
+
 int CloseLifecycleFixture(CKBehavior *behavior, void *argument) {
     auto *runtime = static_cast<Runtime *>(argument);
     return runtime && runtime->Close(behavior) ? 1 : 0;
@@ -373,6 +383,8 @@ public:
         case State::StaticChecks: RunStaticChecks(); break;
         case State::RetryStart: StartRetry(); break;
         case State::RetryResume: ResumeRetry(); break;
+        case State::FaultStart: StartFault(); break;
+        case State::FaultResume: ResumeFault(); break;
         case State::BreakStart: StartBreak(); break;
         case State::BreakResume: ResumeBreak(); break;
         case State::WaitAllStart: StartWaitAll(); break;
@@ -467,6 +479,8 @@ private:
         StaticChecks,
         RetryStart,
         RetryResume,
+        FaultStart,
+        FaultResume,
         BreakStart,
         BreakResume,
         WaitAllStart,
@@ -654,7 +668,7 @@ private:
             m_Owner, HookBlock::Make(ProbeExecution, &m_Retry, 1, 2));
         if (!created) {
             Fail("retry-create");
-            m_State = State::BreakStart;
+            m_State = State::FaultStart;
             return;
         }
         m_RetryInstance = std::move(created.Handle);
@@ -663,9 +677,12 @@ private:
             return m_Runtime.StartTask(
                 m_RetryInstance, Slot::At(SlotKind::Input, 0));
         });
+        // This checks Runtime's error-retry continuation only. The Hook Block
+        // treats any CKBR error code as a chain stop and leaves its Outs
+        // inactive, so the active-Out set is a HookBlock policy, not a Runtime
+        // semantic, and is deliberately not asserted here.
         const bool firstOk = first.ReturnCode == CKBR_BEHAVIORERROR_RETRY &&
                              first.State == RunState::Pending &&
-                             first.ActiveOutputs.size() == 2 &&
                              m_Runtime.IsTaskActive(m_RetryInstance);
         if (!firstOk)
             Fail("retry-start");
@@ -679,6 +696,51 @@ private:
             Fail("retry-semantics");
         }
         m_RetryInstance.Reset();
+        m_State = State::FaultStart;
+    }
+
+    void StartFault() {
+        m_Fault.Context = m_Context;
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, HookBlock::Make(ProbeFault, &m_Fault, 1, 2));
+        if (!created) {
+            Fail("fault-create");
+            m_State = State::BreakStart;
+            return;
+        }
+        m_FaultInstance = std::move(created.Handle);
+        m_Fault.Behavior = m_FaultInstance.Get();
+        RunResult first = WithContextCheck("fault-start-context-restore", [&] {
+            return m_Runtime.StartTask(
+                m_FaultInstance, Slot::At(SlotKind::Input, 0));
+        });
+        // The callback threw. The Hook Block must stay transparent: both Outs
+        // active, CKBR_OK, no continuation, and the Run is not Failed.
+        const bool transparent = first && first.ReturnCode == CKBR_OK &&
+                                 first.State == RunState::Ready &&
+                                 first.ActiveOutputs.size() == 2 &&
+                                 !m_Runtime.IsTaskActive(m_FaultInstance) &&
+                                 m_Fault.Calls == 1;
+        if (!transparent)
+            Fail("fault-start");
+        m_State = State::FaultResume;
+    }
+
+    void ResumeFault() {
+        ProcessRuntimeFrame("fault-frame-context-restore");
+        // Admission for the faulted occurrence is closed: the callback does
+        // not run again while the Block keeps passing activations through.
+        RunResult again = WithContextCheck("fault-resume-context-restore", [&] {
+            return m_Runtime.Pulse(
+                m_FaultInstance, Slot::At(SlotKind::Input, 0));
+        });
+        const bool disabled = again && again.ReturnCode == CKBR_OK &&
+                              again.State == RunState::Ready &&
+                              again.ActiveOutputs.size() == 2 &&
+                              m_Fault.Calls == 1;
+        if (!disabled)
+            Fail("fault-disabled");
+        m_FaultInstance.Reset();
         m_State = State::BreakStart;
     }
 
@@ -3134,6 +3196,7 @@ private:
     int m_LastPlayerFrame = -1;
     std::ostringstream m_Failures;
     ExecutionProbe m_Retry;
+    ExecutionProbe m_Fault;
     ExecutionProbe m_Breakpoint;
     ExecutionProbe m_SameFramePulse;
     ReentrantPulseProbe m_ReentrantPulse;
@@ -3149,6 +3212,7 @@ private:
     ExecutionProbe m_DetachedSource;
     ExecutionProbe m_DetachedDestination;
     Instance m_RetryInstance;
+    Instance m_FaultInstance;
     Instance m_BreakInstance;
     Instance m_WaitAllInstance;
     Instance m_SameFramePulseInstance;
