@@ -2773,6 +2773,8 @@ Status EditProgram::Use(std::uint32_t id, EditHandleKind kind,
 }
 
 Status EditProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
+    if (from.StructSize < sizeof(from))
+        return InvalidValue("A Behavior port has an unsupported StructSize.");
     const EditHandle *handle = nullptr;
     if (from.Kind == 0) {
         const Status status = Use(from.Handle, EditHandleKind::Port, handle);
@@ -2781,8 +2783,6 @@ Status EditProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
         out = handle->PortValue;
         return {};
     }
-    if (from.StructSize < sizeof(from))
-        return InvalidValue("A Behavior port has an unsupported StructSize.");
     SlotKind kind;
     if (!ReadSlotKind(from.Kind, kind))
         return InvalidValue("A Behavior port names an unknown slot kind.");

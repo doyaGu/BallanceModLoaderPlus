@@ -9,6 +9,7 @@
 #include "BML/IMod.h"
 #include "CKAll.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <thread>
@@ -96,6 +97,9 @@ public:
         case State::Close: ClosePlan(); break;
         case State::WaitPlanRetired: WaitPlanRetired(); break;
         case State::WaitReleased: WaitReleased(); break;
+        case State::SubmitSelfClose: SubmitSelfClose(); break;
+        case State::WaitSelfActive: WaitSelfActive(); break;
+        case State::WaitSelfRetired: WaitSelfRetired(); break;
         case State::ClosePatch: ClosePatch(); break;
         case State::WaitPatchConflict: WaitPatchConflict(); break;
         case State::WaitPatchRetired: WaitPatchRetired(); break;
@@ -104,6 +108,7 @@ public:
 
     void OnUnload() override {
         (void) m_Plan.Close();
+        (void) m_SelfPlan.Close();
         (void) m_Patch.Close();
         m_Session.Close();
         DestroyGraph();
@@ -117,6 +122,9 @@ private:
         Close,
         WaitPlanRetired,
         WaitReleased,
+        SubmitSelfClose,
+        WaitSelfActive,
+        WaitSelfRetired,
         ClosePatch,
         WaitPatchConflict,
         WaitPatchRetired,
@@ -185,11 +193,12 @@ private:
             return false;
         m_Entry = AddLink(m_Graph->GetInput(0), m_Source->GetInput(0));
         m_Anchor = AddLink(m_Source->GetOutput(0), m_Sink->GetInput(0));
-        if (!m_Entry || !m_Anchor)
+        m_Exit = AddLink(m_Sink->GetOutput(0), m_Graph->GetOutput(0));
+        if (!m_Entry || !m_Anchor || !m_Exit)
             return false;
         m_AnchorId = m_Anchor->GetID();
         return m_Graph->GetSubBehaviorCount() == 2 &&
-            m_Graph->GetSubBehaviorLinkCount() == 2;
+            m_Graph->GetSubBehaviorLinkCount() == 3;
     }
 
     void DestroyGraph() {
@@ -205,6 +214,7 @@ private:
         m_Sink = nullptr;
         m_Entry = nullptr;
         m_Anchor = nullptr;
+        m_Exit = nullptr;
         m_AnchorId = 0;
         if (m_Owner)
             context->DestroyObject(m_Owner);
@@ -228,7 +238,7 @@ private:
             m_Anchor->GetID() == m_AnchorId &&
             m_Anchor->GetOutBehaviorIO() != m_Sink->GetInput(0) &&
             m_Graph->GetSubBehaviorCount() == 5 &&
-            m_Graph->GetSubBehaviorLinkCount() == 5;
+            m_Graph->GetSubBehaviorLinkCount() == 6;
     }
 
     bool Restored() const {
@@ -237,7 +247,7 @@ private:
             m_Anchor->GetInBehaviorIO() == m_Source->GetOutput(0) &&
             m_Anchor->GetOutBehaviorIO() == m_Sink->GetInput(0) &&
             m_Graph->GetSubBehaviorCount() == 2 &&
-            m_Graph->GetSubBehaviorLinkCount() == 2;
+            m_Graph->GetSubBehaviorLinkCount() == 3;
     }
 
     bool PatchInstalled() const {
@@ -245,7 +255,45 @@ private:
             m_Anchor->GetID() == m_AnchorId &&
             m_Anchor->GetOutBehaviorIO() != m_Sink->GetInput(0) &&
             m_Graph->GetSubBehaviorCount() == 3 &&
-            m_Graph->GetSubBehaviorLinkCount() == 3;
+            m_Graph->GetSubBehaviorLinkCount() == 4;
+    }
+
+    bool PublicViews() {
+        BML_ObjectRef reference{};
+        if (m_Test->ReferenceObject(
+                m_Session.Handle(), m_Graph, &reference) != BML_OK) {
+            return false;
+        }
+        auto logical = m_Session.Inspect(reference);
+        if (!logical)
+            return false;
+        auto live = logical->Live();
+        if (!live)
+            return false;
+        const auto logicalAnchor = std::find_if(
+            logical->Links().begin(), logical->Links().end(),
+            [&](const BML::Behavior::Link &link) {
+                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+            });
+        const auto liveAnchor = std::find_if(
+            live->Links().begin(), live->Links().end(),
+            [&](const BML::Behavior::Link &link) {
+                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+            });
+        return logical->Mode() == BML::Behavior::View::Logical &&
+            live->Mode() == BML::Behavior::View::Live &&
+            // The explicit fixture remains author-visible. Tap and the
+            // exit-path After HookBlock do not add Logical nodes or Links.
+            logical->Nodes().size() == 4 && logical->Links().size() == 3 &&
+            live->Nodes().size() == 6 && live->Links().size() == 6 &&
+            logicalAnchor != logical->Links().end() &&
+            liveAnchor != live->Links().end() &&
+            logicalAnchor->Source.Node ==
+                static_cast<std::uint32_t>(m_Source->GetID()) &&
+            logicalAnchor->Target.Node ==
+                static_cast<std::uint32_t>(m_Sink->GetID()) &&
+            liveAnchor->Target.Node != logicalAnchor->Target.Node &&
+            logical->Fingerprint() != live->Fingerprint();
     }
 
     // The whole authoring program, written the way an author would write it.
@@ -331,6 +379,10 @@ private:
                 Finish(false, "install-shape");
                 return;
             }
+            if (!PublicViews()) {
+                Finish(false, "graph-views");
+                return;
+            }
             m_InstallPassed = true;
             RunGraph();
             m_State = State::WaitHooks;
@@ -407,7 +459,7 @@ private:
     void WaitReleased() {
         if (m_Counters.use_count() == 1) {
             m_ReleasePassed = true;
-            ApplyPatch();
+            m_State = State::SubmitSelfClose;
             return;
         }
         if (m_Frame > m_WaitUntil) {
@@ -418,11 +470,112 @@ private:
         }
     }
 
+    void SubmitSelfClose() {
+        auto state = m_SelfClose;
+        Hook hook([this, state]() {
+            ++state->Calls;
+            const auto closed = m_SelfPlan.Close();
+            state->Closing = closed &&
+                closed.Value() == BML::Behavior::CloseState::Closing;
+        });
+        auto draft = m_Session.Plan("player-public-self-close");
+        draft.OnSingle(kScriptName);
+        const auto source = draft.Require(kSourceName);
+        draft.Tap(source.Out(0), hook);
+        auto submitted = draft.Submit();
+        if (!submitted) {
+            Finish(false, "self-close-submit");
+            return;
+        }
+        m_SelfPlan = std::move(submitted).Value();
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitSelfActive;
+    }
+
+    void WaitSelfActive() {
+        const auto info = m_SelfPlan.Read();
+        if (info && info->Installed() && info->Matches == 1 &&
+            info->Installations == 1) {
+            RunGraph();
+            m_State = State::WaitSelfRetired;
+            return;
+        }
+        if (m_Frame > m_WaitUntil)
+            Finish(false, "self-close-install");
+    }
+
+    void WaitSelfRetired() {
+        if (m_SelfClose->Calls != 0 && Restored()) {
+            const auto closed = m_SelfPlan.Close();
+            if (!m_SelfClose->Closing || m_SelfClose->Calls != 1 ||
+                !closed || closed.Value() != BML::Behavior::CloseState::Closed ||
+                m_SelfPlan || m_SelfClose.use_count() != 1) {
+                Finish(false, "self-close-contract");
+                return;
+            }
+            m_SelfClosePassed = true;
+            ApplyPatch();
+            return;
+        }
+        if (m_Frame > m_WaitUntil)
+            Finish(false, "self-close-retirement");
+    }
+
+    bool RejectsMalformedPort(BML_ObjectRef graph) {
+        const BML_BehaviorInterface *api = m_Session.Api();
+        if (!api)
+            return false;
+
+        constexpr char appendedName[] = "Malformed In";
+        constexpr char patchName[] = "player-malformed-port";
+        BML_BehaviorEditStep steps[2]{};
+        steps[0].StructSize = sizeof(steps[0]);
+        steps[0].Kind = BML_BEHAVIOR_EDIT_APPEND_SLOT;
+        steps[0].Result = 2;
+        steps[0].Target = BML_BEHAVIOR_EDIT_GRAPH;
+        steps[0].SlotKind = BML_BEHAVIOR_SLOT_IN;
+        steps[0].Name = {appendedName,
+                         static_cast<std::uint32_t>(sizeof(appendedName) - 1)};
+
+        steps[1].StructSize = sizeof(steps[1]);
+        steps[1].Kind = BML_BEHAVIOR_EDIT_FLOW;
+        steps[1].Source.Handle = 2;
+        steps[1].Source.Kind = 0;
+        // StructSize deliberately remains zero. Appended-slot references are
+        // still complete public DTOs and must not bypass wire validation.
+        steps[1].Sink.StructSize = sizeof(steps[1].Sink);
+        steps[1].Sink.Handle = BML_BEHAVIOR_EDIT_GRAPH;
+        steps[1].Sink.Kind = BML_BEHAVIOR_SLOT_OUT;
+        steps[1].Sink.Slot.StructSize = sizeof(steps[1].Sink.Slot);
+        steps[1].Sink.Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
+        steps[1].Sink.Slot.Index = 0;
+
+        BML_BehaviorPatchSpec spec{};
+        spec.StructSize = sizeof(spec);
+        spec.Name = {patchName,
+                     static_cast<std::uint32_t>(sizeof(patchName) - 1)};
+        spec.Graph = graph;
+        spec.Steps = steps;
+        spec.StepCount = 2;
+        BML_BehaviorPatch patch = nullptr;
+        BML_BehaviorStatus status{};
+        status.StructSize = sizeof(status);
+        const int code = api->ApplyPatch(m_Session.Handle(), &spec, &patch,
+                                         nullptr, &status);
+        if (patch)
+            (void) api->ClosePatch(m_Session.Handle(), patch);
+        return code == BML_ERROR_INVALID_PARAMETER && patch == nullptr;
+    }
+
     void ApplyPatch() {
         BML_ObjectRef reference{};
         if (m_Test->ReferenceObject(
                 m_Session.Handle(), m_Graph, &reference) != BML_OK) {
             Finish(false, "patch-reference");
+            return;
+        }
+        if (!RejectsMalformedPort(reference)) {
+            Finish(false, "malformed-port");
             return;
         }
         auto inspected = m_Session.Inspect(reference);
@@ -521,6 +674,7 @@ private:
         if (!passed) {
             (void) m_Patch.Close();
             (void) m_Plan.Close();
+            (void) m_SelfPlan.Close();
             DestroyGraph();
         }
         GetLogger()->Info(
@@ -533,6 +687,10 @@ private:
             m_ReleasePassed ? "true" : "false",
             m_Counters->Taps, m_Counters->Afters, m_Frame);
         GetLogger()->Info(
+            "Behavior self-close: status=%s calls=%u closing=%s",
+            m_SelfClosePassed ? "pass" : "fail", m_SelfClose->Calls,
+            m_SelfClose->Closing ? "true" : "false");
+        GetLogger()->Info(
             "Behavior graph patch: status=%s reason=%s apply=%s close=%s",
             passed ? "pass" : "fail", reason,
             m_PatchPassed ? "true" : "false",
@@ -542,14 +700,22 @@ private:
     const BML_BehaviorTestInterface *m_Test = nullptr;
     BML::Behavior::Session m_Session;
     BML::Behavior::Plan m_Plan;
+    BML::Behavior::Plan m_SelfPlan;
     BML::Behavior::GraphPatch m_Patch;
     std::shared_ptr<Counters> m_Counters = std::make_shared<Counters>();
+    struct SelfCloseState {
+        std::uint32_t Calls = 0;
+        bool Closing = false;
+    };
+    std::shared_ptr<SelfCloseState> m_SelfClose =
+        std::make_shared<SelfCloseState>();
     CK3dObject *m_Owner = nullptr;
     CKBehavior *m_Graph = nullptr;
     CKBehavior *m_Source = nullptr;
     CKBehavior *m_Sink = nullptr;
     CKBehaviorLink *m_Entry = nullptr;
     CKBehaviorLink *m_Anchor = nullptr;
+    CKBehaviorLink *m_Exit = nullptr;
     CKBehaviorIO *m_PatchSink = nullptr;
     CK_ID m_AnchorId = 0;
     State m_State = State::Submit;
@@ -561,6 +727,7 @@ private:
     bool m_HookPassed = false;
     bool m_ClosePassed = false;
     bool m_ReleasePassed = false;
+    bool m_SelfClosePassed = false;
     bool m_PatchPassed = false;
     bool m_PatchClosePassed = false;
     bool m_Done = false;
