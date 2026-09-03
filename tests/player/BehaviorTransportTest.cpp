@@ -322,6 +322,8 @@ public:
             BeginRuns();
         else if (m_LevelFrames == 3)
             PulseLatest();
+        else if (m_LevelFrames == 5)
+            ChangeGraphChildTarget();
         else if (m_LevelFrames == 7)
             CheckRuns();
         else if (m_ObjectCloseRequested && m_LevelFrames >= 8)
@@ -1157,6 +1159,13 @@ private:
             return false;
         }
         m_WatchBaseline = *baselineValue;
+        BML_SceneObjectInfo childInfo{};
+        if (m_Scene->ReadObject(child->Object, &childInfo) != BML_OK ||
+            childInfo.Id == 0) {
+            GetLogger()->Error("Behavior watch graph failed: child-identity");
+            return false;
+        }
+        m_WatchNodeId = static_cast<CK_ID>(childInfo.Id);
 
         auto watched = graph.Watch(
             BML::Behavior::sampled(execution),
@@ -1187,19 +1196,83 @@ private:
             [](const BML::Behavior::Change &) {
                 throw std::runtime_error("player watch failure");
             });
-        if (!watched || !failedWatch) {
+        auto layoutWatch = graph.Watch(
+            BML::Behavior::layoutChanged(child->Object),
+            [this](const BML::Behavior::Change &change) {
+                const bool valid = change.Kind ==
+                        BML::Behavior::ChangeKind::Layout &&
+                    change.Sequence == m_LayoutWatchEventCount + 1 &&
+                    change.Before != change.After;
+                m_LayoutWatchPassed = m_LayoutWatchEventCount == 0
+                    ? valid : m_LayoutWatchPassed && valid;
+                ++m_LayoutWatchEventCount;
+                GetLogger()->Info(
+                    "Behavior layout watch event: sequence=%llu kind=%u before=%llu after=%llu status=%s",
+                    static_cast<unsigned long long>(change.Sequence),
+                    static_cast<unsigned>(change.Kind),
+                    static_cast<unsigned long long>(change.Before),
+                    static_cast<unsigned long long>(change.After),
+                    valid ? "pass" : "fail");
+            });
+        if (!watched || !failedWatch || !layoutWatch) {
             GetLogger()->Error(
-                "Behavior watch graph failed: sampled=%d sampled_error=%u failure_watch=%d failure_error=%u",
+                "Behavior watch graph failed: sampled=%d sampled_error=%u failure_watch=%d failure_error=%u layout_watch=%d layout_error=%u",
                 watched.Code(),
                 static_cast<unsigned>(watched.Detail().Error),
                 failedWatch.Code(),
-                static_cast<unsigned>(failedWatch.Detail().Error));
+                static_cast<unsigned>(failedWatch.Detail().Error),
+                layoutWatch.Code(),
+                static_cast<unsigned>(layoutWatch.Detail().Error));
             return false;
         }
         m_CppWatch.emplace(std::move(watched).Value());
         m_CppFailedWatch.emplace(std::move(failedWatch).Value());
+        m_CppLayoutWatch.emplace(std::move(layoutWatch).Value());
         m_GraphShapePassed = true;
         return true;
+    }
+
+    // The Target slot belongs to the live Layout, and the Layout fingerprint
+    // hashes both its presence and its type, so adding it has to reach the
+    // Layout Watch. Only CKBehavior::UseTarget adds or removes that slot: the
+    // published seam binds an existing Target and never creates one. The graph
+    // is deliberately not pulsed again after this frame, so the new Target
+    // stays unbound and the child never executes without a target.
+    void ChangeGraphChildTarget() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        CKObject *object = context && m_WatchNodeId
+            ? context->GetObject(m_WatchNodeId) : nullptr;
+        if (!object || !CKIsChildClassOf(object, CKCID_BEHAVIOR)) {
+            GetLogger()->Error(
+                "Behavior layout target failed: node id=%d resolved=%s",
+                static_cast<int>(m_WatchNodeId), object ? "true" : "false");
+            Fail("layout-target-node");
+            return;
+        }
+        auto *child = static_cast<CKBehavior *>(object);
+        if (child->IsUsingTarget() || !child->IsTargetable()) {
+            GetLogger()->Error(
+                "Behavior layout target failed: state targetable=%s using=%s",
+                child->IsTargetable() ? "true" : "false",
+                child->IsUsingTarget() ? "true" : "false");
+            Fail("layout-target-state");
+            return;
+        }
+        const CKERROR used = child->UseTarget(TRUE);
+        CKParameterIn *target = child->GetTargetParameter();
+        if (used != CK_OK || !target) {
+            GetLogger()->Error(
+                "Behavior layout target failed: use ck=%d target=%s",
+                static_cast<int>(used), target ? "true" : "false");
+            Fail("layout-target-change");
+            return;
+        }
+        m_LayoutTargetChanged = true;
+        GetLogger()->Info(
+            "Behavior layout target: changed=true using=%s type=%08x%08x",
+            child->IsUsingTarget() ? "true" : "false",
+            static_cast<unsigned>(target->GetGUID().d1),
+            static_cast<unsigned>(target->GetGUID().d2));
     }
 
     bool CloseMakesRunStale() {
@@ -1974,14 +2047,14 @@ private:
             failedWatch->Diagnostic.Error ==
                 BML::Behavior::Error::CallbackFailed;
         GetLogger()->Info(
-            "Behavior watch: status=%s sampled=%s events=%llu callback_failure=%s graph_endpoints=%s",
-            (m_WatchPassed && m_WatchEventCount == 2 &&
-             m_WatchFailurePassed && m_GraphShapePassed)
-                ? "pass" : "fail",
+            "Behavior watch: status=%s sampled=%s events=%llu callback_failure=%s graph_endpoints=%s layout_target=%s layout_events=%llu",
+            WatchPassed() ? "pass" : "fail",
             m_WatchPassed ? "true" : "false",
             static_cast<unsigned long long>(m_WatchEventCount),
             m_WatchFailurePassed ? "true" : "false",
-            m_GraphShapePassed ? "true" : "false");
+            m_GraphShapePassed ? "true" : "false",
+            (m_LayoutTargetChanged && m_LayoutWatchPassed) ? "true" : "false",
+            static_cast<unsigned long long>(m_LayoutWatchEventCount));
         TakenFrames call;
         TakenFrames start;
         TakenFrames object;
@@ -2136,9 +2209,7 @@ private:
 
         m_FunctionalPassed = m_CppFacadePassed &&
             m_DetachedDiagnosticPassed && m_InspectPassed &&
-            m_WatchPassed && m_WatchEventCount == 2 &&
-            m_WatchFailurePassed && m_GraphShapePassed &&
-            continuedOk && echoOk &&
+            WatchPassed() && continuedOk && echoOk &&
             dynamicOk && targetsOk && selectorsOk && waitForAllOk &&
             graphOk && statesOk;
         m_TransportPassed = callOk && startOk && objectLive && latestOk &&
@@ -2197,6 +2268,15 @@ private:
         }
     }
 
+    // The sampled Watch, its deliberately failing twin, the graph endpoints and
+    // the Layout Watch that observes the Target slot change all have to hold.
+    bool WatchPassed() const {
+        return m_WatchPassed && m_WatchEventCount == 2 &&
+            m_WatchFailurePassed && m_GraphShapePassed &&
+            m_LayoutTargetChanged && m_LayoutWatchPassed &&
+            m_LayoutWatchEventCount == 1;
+    }
+
     void Fail(const char *reason) {
         Finish(false, reason);
     }
@@ -2216,9 +2296,7 @@ private:
             m_CatalogPassed ? "true" : "false",
             m_DetachedDiagnosticPassed ? "true" : "false",
             m_InspectPassed ? "true" : "false",
-            (m_WatchPassed && m_WatchEventCount == 2 &&
-             m_WatchFailurePassed && m_GraphShapePassed)
-                ? "true" : "false");
+            WatchPassed() ? "true" : "false");
         CloseRuns();
     }
 
@@ -2250,7 +2328,9 @@ private:
     std::optional<BML::Behavior::Instance> m_CppInstance;
     std::optional<BML::Behavior::Watch> m_CppWatch;
     std::optional<BML::Behavior::Watch> m_CppFailedWatch;
+    std::optional<BML::Behavior::Watch> m_CppLayoutWatch;
     CK_ID m_InputObjectId = 0;
+    CK_ID m_WatchNodeId = 0;
     BML_ObjectRef m_InputObjectRef{};
     BML_ObjectRef m_CapturedObjectRef{};
     int m_LevelFrames = 0;
@@ -2267,7 +2347,10 @@ private:
     bool m_GraphShapePassed = false;
     bool m_WatchPassed = false;
     bool m_WatchFailurePassed = false;
+    bool m_LayoutTargetChanged = false;
+    bool m_LayoutWatchPassed = false;
     std::uint64_t m_WatchEventCount = 0;
+    std::uint64_t m_LayoutWatchEventCount = 0;
     std::int32_t m_WatchBaseline = 0;
     bool m_FunctionalPassed = false;
     bool m_ContinueAccepted = false;
