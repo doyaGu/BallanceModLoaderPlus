@@ -444,6 +444,11 @@ public:
         case State::PhysicsForceUpdate: UpdatePhysicsForce(); break;
         case State::PhysicsForceUpdateObserve: ObserveUpdatedPhysicsForce(); break;
         case State::PhysicsForceClearObserve: ObserveClearedPhysicsForce(); break;
+        case State::PhysicsForceRetireSet: SetPhysicsForceRetirement(); break;
+        case State::PhysicsForceRetireObserve:
+            ObservePhysicsForceRetirement();
+            break;
+        case State::PhysicsForceRetireClear: ClearPhysicsForceRetirement(); break;
         case State::PhysicsForceShutdown: ShutdownPhysicsForce(); break;
         case State::LifecycleFixture: CheckLifecycleFixture(); break;
         case State::RuntimeVisualCreate: CreateRuntimeVisual(); break;
@@ -540,6 +545,9 @@ private:
         PhysicsForceUpdate,
         PhysicsForceUpdateObserve,
         PhysicsForceClearObserve,
+        PhysicsForceRetireSet,
+        PhysicsForceRetireObserve,
+        PhysicsForceRetireClear,
         PhysicsForceShutdown,
         LifecycleFixture,
         RuntimeVisualCreate,
@@ -2639,6 +2647,164 @@ private:
             absent.Detail.Code == Error::InvalidState;
         if (!m_PhysicsForceCleared)
             Fail("physics-force-clear-retirement");
+        m_State = State::PhysicsForceRetireSet;
+    }
+
+    // Counts live Physics Force Blocks on the target that still hold a native
+    // controller, and reports the first one found.
+    int ReadPhysicsForceBlocks(CK_ID *first, float *directionX = nullptr) const {
+        if (first)
+            *first = 0;
+        if (directionX)
+            *directionX = 0.0f;
+        if (!m_Context)
+            return 0;
+        int count = 0;
+        const XObjectPointerArray &behaviors =
+            m_Context->GetObjectListByType(CKCID_BEHAVIOR, TRUE);
+        for (XObjectPointerArray::ConstIterator it = behaviors.Begin();
+             it != behaviors.End(); ++it) {
+            CKBehavior *behavior = CKBehavior::Cast(*it);
+            if (!behavior || behavior->IsToBeDeleted() ||
+                behavior->GetPrototypeGuid() != PHYSICS_RT_PHYSICSFORCE ||
+                behavior->GetOwner() != m_Owner ||
+                behavior->GetLocalParameterCount() == 0) {
+                continue;
+            }
+            void *controller = nullptr;
+            if (behavior->GetLocalParameterValue(0, &controller) != CK_OK ||
+                !controller) {
+                continue;
+            }
+            if (count == 0) {
+                if (first)
+                    *first = behavior->GetID();
+                VxVector direction(0.0f, 0.0f, 0.0f);
+                if (directionX &&
+                    behavior->GetInputParameterCount() > 2 &&
+                    behavior->GetInputParameterValue(2, &direction) == CK_OK) {
+                    *directionX = direction.x;
+                }
+            }
+            ++count;
+        }
+        return count;
+    }
+
+    // A session whose native Shutdown has not finished stays registered. A Set
+    // arriving in that window may only record a replacement: creating a second
+    // controller over the retiring one would hand the physics engine two
+    // controllers for one body.
+    void SetPhysicsForceRetirement() {
+        PhysicsForce::Options force;
+        force.Target = m_Owner;
+        force.Direction = VxVector(1.0f, 0.0f, 0.0f);
+        force.Magnitude = 1000.0f;
+        RunResult created = WithContextCheck(
+            "physics-force-retire-create-context", [&] {
+                return m_PhysicsForces.Set(force);
+            });
+        float direction = 0.0f;
+        const int live = ReadPhysicsForceBlocks(
+            &m_PhysicsForceRetireId, &direction);
+        if (!created || created.State != RunState::Ready ||
+            created.Admission != AdmissionState::Executed || live != 1 ||
+            direction <= 0.0f) {
+            Fail("physics-force-retire-create");
+            m_State = State::PhysicsForceShutdown;
+            return;
+        }
+
+        RunResult stopped = WithContextCheck(
+            "physics-force-retire-clear-context", [&] {
+                return m_PhysicsForces.Clear(m_Owner);
+            });
+        PhysicsForce::Options replacement = force;
+        replacement.Direction = VxVector(-1.0f, 0.0f, 0.0f);
+        RunResult early = WithContextCheck(
+            "physics-force-retire-set-context", [&] {
+                return m_PhysicsForces.Set(replacement);
+            });
+        RunResult repeated = WithContextCheck(
+            "physics-force-retire-reset-context", [&] {
+                return m_PhysicsForces.Set(replacement);
+            });
+        CK_ID after = 0;
+        float afterDirection = 0.0f;
+        const int afterSet = ReadPhysicsForceBlocks(&after, &afterDirection);
+        m_PhysicsForceRetireDeferred = stopped &&
+            stopped.State == RunState::Pending &&
+            stopped.Admission == AdmissionState::Queued && early &&
+            early.State == RunState::Pending &&
+            early.Admission == AdmissionState::Queued &&
+            early.Detail.Message ==
+                "Updated Physics Force will follow native Shutdown." &&
+            repeated && repeated.State == RunState::Pending &&
+            repeated.Admission == AdmissionState::Queued &&
+            afterSet == 1 && after == m_PhysicsForceRetireId &&
+            afterDirection > 0.0f;
+        if (!m_PhysicsForceRetireDeferred) {
+            Fail("physics-force-retire-admission");
+            m_State = State::PhysicsForceShutdown;
+            return;
+        }
+        m_PhysicsForceRetireFrame = m_LastPlayerFrame;
+        m_State = State::PhysicsForceRetireObserve;
+    }
+
+    void ObservePhysicsForceRetirement() {
+        m_PhysicsForces.ProcessFrame();
+        ProcessRuntimeFrame("physics-force-retire-frame-context");
+        CK_ID live = 0;
+        float direction = 0.0f;
+        const int count = ReadPhysicsForceBlocks(&live, &direction);
+        if (count > 1)
+            m_PhysicsForceRetireOverlapped = true;
+        // The recorded replacement pushes in the opposite direction, so the
+        // Direction pin says which session owns the one live controller. That
+        // survives CK2 recycling the retired Block's CK_ID.
+        if (count == 1 && direction < 0.0f) {
+            m_PhysicsForceRetireReplaced = true;
+            m_PhysicsForceRetireClearFrame = -1;
+            m_State = State::PhysicsForceRetireClear;
+            return;
+        }
+        if (m_LastPlayerFrame - m_PhysicsForceRetireFrame < 240)
+            return;
+        Fail("physics-force-retire-replacement");
+        m_State = State::PhysicsForceShutdown;
+    }
+
+    void ClearPhysicsForceRetirement() {
+        if (m_PhysicsForceRetireClearFrame < 0) {
+            RunResult stopped = WithContextCheck(
+                "physics-force-retire-final-clear-context", [&] {
+                    return m_PhysicsForces.Clear(m_Owner);
+                });
+            if (!stopped) {
+                Fail("physics-force-retire-final-clear");
+                m_State = State::PhysicsForceShutdown;
+                return;
+            }
+            m_PhysicsForceRetireClearFrame = m_LastPlayerFrame;
+            return;
+        }
+        m_PhysicsForces.ProcessFrame();
+        ProcessRuntimeFrame("physics-force-retire-final-frame-context");
+        RunResult absent = m_PhysicsForces.Clear(m_Owner);
+        const bool released = !absent &&
+            absent.Detail.Code == Error::InvalidState;
+        if (!released &&
+            m_LastPlayerFrame - m_PhysicsForceRetireClearFrame < 240) {
+            return;
+        }
+        CK_ID remaining = 0;
+        m_PhysicsForceRetired = released &&
+            ReadPhysicsForceBlocks(&remaining) == 0;
+        if (m_PhysicsForceRetireOverlapped)
+            Fail("physics-force-retire-overlap");
+        if (!m_PhysicsForceRetired)
+            Fail("physics-force-retire-final");
         m_State = State::PhysicsForceShutdown;
     }
 
@@ -2675,7 +2841,9 @@ private:
             m_PhysicsControllerOutlivedExecution && m_PhysicsForceMoved &&
             m_PhysicsForceStopped && m_PhysicsForceUpdateQueued &&
             m_PhysicsForceUpdated && m_PhysicsForceClearQueued &&
-            m_PhysicsForceCleared && forceClosed && unphysicalized;
+            m_PhysicsForceCleared && m_PhysicsForceRetireDeferred &&
+            !m_PhysicsForceRetireOverlapped && m_PhysicsForceRetireReplaced &&
+            m_PhysicsForceRetired && forceClosed && unphysicalized;
         m_State = State::LifecycleFixture;
     }
 
@@ -3339,6 +3507,13 @@ private:
     int m_PhysicsForceClearFrame = -1;
     bool m_PhysicsForceClearQueued = false;
     bool m_PhysicsForceCleared = false;
+    CK_ID m_PhysicsForceRetireId = 0;
+    int m_PhysicsForceRetireFrame = -1;
+    int m_PhysicsForceRetireClearFrame = -1;
+    bool m_PhysicsForceRetireDeferred = false;
+    bool m_PhysicsForceRetireOverlapped = false;
+    bool m_PhysicsForceRetireReplaced = false;
+    bool m_PhysicsForceRetired = false;
     bool m_PhysicsForcePassed = false;
     struct VisualDisplay {
         CK_ID Id = 0;
