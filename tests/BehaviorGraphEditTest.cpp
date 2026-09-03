@@ -213,6 +213,25 @@ TEST(BehaviorGraphEdit, AcceptsTheOnlyPortSelectorFromThePublicDsl) {
               (std::vector<ObjectRef>{Ref(201)}));
 }
 
+TEST(BehaviorGraphEdit, CompilesTheOnlyPortSelectorInActions) {
+    FakeCompiler compiler(Model());
+    GraphEdit edit;
+    const Node wait = edit.RequireOne({"Wait Message"});
+    const Node added = edit.Add(CKGUID(0x3333, 3));
+    const Port onlyOut{wait.Value, Slot::Only(SlotKind::Output)};
+    const Port onlyIn{added.Value, Slot::Only(SlotKind::Input)};
+    edit.Flow(onlyOut, onlyIn, 1);
+    edit.Bind({added.Value, Slot::Only(SlotKind::InputParameter)},
+              Value::From(CKPGUID_INT, 7));
+    edit.Tap(onlyOut, HookBlock::Hook(Noop));
+
+    Edit resolved;
+    const Status status = edit.Compile(
+        {"mod", "only-actions"}, compiler.Base.Root, compiler, resolved);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.Adds, 1);
+}
+
 TEST(BehaviorGraphEdit, RejectsAnAmbiguousNameBeforeResolvingLinksOrBlocks) {
     GraphModel graph = Model();
     GraphNode duplicate = graph.Nodes[1];

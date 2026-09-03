@@ -299,9 +299,13 @@ Status GraphEdit::Validate() const {
                 if (!knownNode(item.Owner.Value) || item.Name.empty())
                     return Failure(Error::InvalidState,
                                    "A dynamic interface requires a Node and name.");
+                // Edit::Validate never admits a dynamic Local; reject it at
+                // Submit instead of at every installation.
+                if (item.Kind == SlotKind::Local)
+                    return Failure(Error::InterfaceUnsupported,
+                                   "Dynamic Locals are not supported by Graph Edits.");
                 if ((item.Kind == SlotKind::InputParameter ||
-                     item.Kind == SlotKind::OutputParameter ||
-                     item.Kind == SlotKind::Local) &&
+                     item.Kind == SlotKind::OutputParameter) &&
                     !item.Type.IsValid()) {
                     return Failure(Error::TypeMismatch,
                                    "A dynamic parameter requires a Virtools type GUID.");
@@ -528,7 +532,10 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     using PortKey = std::tuple<std::uint32_t, SlotKind, int>;
     std::map<PortKey, Port> liveInterface;
     const auto port = [&](const Port &symbolic, Port &live) -> Status {
-        if (!symbolic.Selector.UsesName() && symbolic.Selector.Index < 0) {
+        // Slot::Only is also nameless with a negative index; only an
+        // intent-local dynamic Port handle is looked up here.
+        if (!symbolic.Selector.UsesName() && !symbolic.Selector.RequireOnly &&
+            symbolic.Selector.Index < 0) {
             const auto dynamic = liveInterface.find({
                 symbolic.Owner, symbolic.Selector.Kind,
                 symbolic.Selector.Index});
