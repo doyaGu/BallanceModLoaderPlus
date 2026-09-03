@@ -740,10 +740,10 @@ Status CKEdit::ApplyNow(const Edit &edit,
     spliceLinks.reserve(checked.Splices.size());
     for (const CheckedSplice &splice : checked.Splices) {
         LinkId id;
-        const LogicalLink *known = topology.Find(splice.Target.Anchor);
-        status = known ? Status{} : topology.Identify(splice.Target, id);
-        if (known)
-            id = known->Id;
+        // Identify also re-checks a known anchor against its recorded base
+        // endpoints and delay, so a foreign change to an idle spliced Link is
+        // reported as GraphChanged here instead of as a RevertConflict later.
+        status = topology.Identify(splice.Target, id);
         if (!status)
             return status;
         spliceLinks.push_back(id);
@@ -1512,7 +1512,19 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
                     conflict.Diagnostic = materialized;
                     noteConflict(std::move(conflict));
                 }
-                return materialized;
+                // The layer is back in the Topology and every native resource
+                // is still installed. Only a RevertConflict keeps the journal
+                // for a later retry; any other code would let CloseNow report
+                // Closed over a Patch that is still physically present.
+                if (materialized.Code == Error::RevertConflict)
+                    return materialized;
+                Status conflict = Failure(
+                    Error::RevertConflict,
+                    "The spliced Links could not be restored: " +
+                        materialized.Message,
+                    materialized.CkError);
+                conflict.Details = materialized.Details;
+                return conflict;
             }
         }
         // Materialize needs both the old and desired chains to remain
@@ -1618,6 +1630,9 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         m_Context->DestroyObject(link);
     }
 
+    // Apply notified each block that received a dynamic port; Close notifies
+    // the same blocks once their ports are gone.
+    std::vector<Stamp> portOwners;
     for (auto item = patch.Ports.rbegin(); item != patch.Ports.rend(); ++item) {
         CKBehavior *behavior = Resolve<CKBehavior>(
             m_Context, item->Behavior, CKCID_BEHAVIOR);
@@ -1655,8 +1670,12 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         default:
             break;
         }
-        if (removed == port)
+        if (removed == port) {
             m_Context->DestroyObject(removed);
+            if (std::find(portOwners.begin(), portOwners.end(),
+                          item->Behavior) == portOwners.end())
+                portOwners.push_back(item->Behavior);
+        }
     }
 
     // A Pin removed with the ports above has nothing left to hand back.
@@ -1716,6 +1735,19 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         remember(PublishLogicalGraph(graphId));
     }
 
+    if (notify) {
+        for (Stamp owner : portOwners) {
+            CKBehavior *block = Resolve<CKBehavior>(
+                m_Context, owner, CKCID_BEHAVIOR);
+            if (!block)
+                continue;
+            const int result = block->CallCallbackFunction(CKM_BEHAVIOREDITED);
+            if (result != CK_OK)
+                remember(Failure(Error::CallbackFailed,
+                                 "A block EDITED callback failed while the Patch closed.",
+                                 result));
+        }
+    }
     if (notify && graph) {
         const int result = graph->CallCallbackFunction(CKM_BEHAVIOREDITED);
         if (result != CK_OK)
@@ -1889,8 +1921,13 @@ Status CKEdit::Close(Patch &patch) {
 }
 
 void CKEdit::ProcessFrame() {
-    if (!Ready() || InDispatch())
+    if (!Ready() || InDispatch() || m_Processing)
         return;
+    struct ProcessingScope {
+        bool &Flag;
+        explicit ProcessingScope(bool &flag) : Flag(flag) { Flag = true; }
+        ~ProcessingScope() { Flag = false; }
+    } processing(m_Processing);
 
     std::vector<Request> requests;
     {

@@ -121,6 +121,10 @@ private:
     std::unique_ptr<Links> m_Links;
     std::mutex m_QueueMutex;
     std::vector<Request> m_Queue;
+    // ProcessFrame re-enters through CK's SequenceToBeDeleted notification
+    // while it destroys Patch objects. Nested requests wait for the next
+    // safe point instead of running inside a half-finished Apply or Undo.
+    bool m_Processing = false;
 };
 
 } // namespace BML::Behavior
