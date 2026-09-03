@@ -58,6 +58,7 @@ using BML::Behavior::WatchEvent;
 using BML::Behavior::WatchKind;
 using BML::Behavior::WatchSpec;
 using BML::Behavior::Cycle;
+using BML::Behavior::DetachedCompatibility;
 using BML::Behavior::GraphEdit;
 using BML::Behavior::Link;
 using BML::Behavior::Node;
@@ -176,13 +177,12 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::TypeMismatch: return BML_BEHAVIOR_ERROR_TYPE_MISMATCH;
     case Error::ParameterTypeUnavailable: return BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNAVAILABLE;
     case Error::ParameterTypeUnsupported: return BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED;
-    case Error::ValueWriteFailed:
-    case Error::SourceInvalid:
-    case Error::WorldBoundValue:
-    case Error::OperationInvalid: return BML_BEHAVIOR_ERROR_VALUE_INVALID;
-    case Error::InvalidState:
-    case Error::Unavailable: return BML_BEHAVIOR_ERROR_STATE_INVALID;
-    case Error::Busy: return BML_BEHAVIOR_ERROR_STATE_INVALID;
+    case Error::ValueWriteFailed: return BML_BEHAVIOR_ERROR_VALUE_INVALID;
+    case Error::SourceInvalid: return BML_BEHAVIOR_ERROR_SOURCE_INVALID;
+    case Error::OperationInvalid: return BML_BEHAVIOR_ERROR_OPERATION_INVALID;
+    case Error::InvalidState: return BML_BEHAVIOR_ERROR_STATE_INVALID;
+    case Error::Busy: return BML_BEHAVIOR_ERROR_BUSY;
+    case Error::Unavailable: return BML_BEHAVIOR_ERROR_UNAVAILABLE;
     case Error::UnsupportedBreak: return BML_BEHAVIOR_ERROR_BREAK_UNSUPPORTED;
     case Error::UnsupportedPout: return BML_BEHAVIOR_ERROR_POUT_UNSUPPORTED;
     case Error::PoutUnavailable: return BML_BEHAVIOR_ERROR_POUT_UNAVAILABLE;
@@ -190,25 +190,35 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::ExecutionCancelled: return BML_BEHAVIOR_ERROR_CANCELLED;
     case Error::DetachedUnsupported: return BML_BEHAVIOR_ERROR_DETACHED_UNSUPPORTED;
     case Error::ObserverUnavailable: return BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE;
-    case Error::GraphChanged:
+    case Error::GraphChanged: return BML_BEHAVIOR_ERROR_GRAPH_CHANGED;
     case Error::InvalidGraphLocality:
-    case Error::InvalidDelay:
+        return BML_BEHAVIOR_ERROR_GRAPH_LOCALITY_INVALID;
+    case Error::InvalidDelay: return BML_BEHAVIOR_ERROR_DELAY_INVALID;
     case Error::UnconfirmedSameFrameCycle:
+        return BML_BEHAVIOR_ERROR_SAME_FRAME_CYCLE;
     case Error::SharedSourceCycle:
-    case Error::PushCycle:
+        return BML_BEHAVIOR_ERROR_SHARED_SOURCE_CYCLE;
+    case Error::PushCycle: return BML_BEHAVIOR_ERROR_PUSH_CYCLE;
     case Error::InterfaceUnsupported:
-    case Error::LinkNotFound:
-    case Error::PathAmbiguous:
-    case Error::PathCycle:
-    case Error::QueryNotFound:
-    case Error::QueryAmbiguous:
-    case Error::RevertConflict:
-    case Error::TargetCardinality:
-    case Error::SourceConflict:
+        return BML_BEHAVIOR_ERROR_INTERFACE_UNSUPPORTED;
+    case Error::SourceConflict: return BML_BEHAVIOR_ERROR_SOURCE_CONFLICT;
     case Error::SourceOrderCycle:
+        return BML_BEHAVIOR_ERROR_SOURCE_ORDER_CYCLE;
     case Error::OrderingTargetMismatch:
-    case Error::OverlayOrderCycle: return BML_BEHAVIOR_ERROR_STATE_INVALID;
-    case Error::WrongThread:
+        return BML_BEHAVIOR_ERROR_ORDERING_TARGET_MISMATCH;
+    case Error::OverlayOrderCycle:
+        return BML_BEHAVIOR_ERROR_OVERLAY_ORDER_CYCLE;
+    case Error::LinkNotFound: return BML_BEHAVIOR_ERROR_LINK_NOT_FOUND;
+    case Error::PathAmbiguous: return BML_BEHAVIOR_ERROR_PATH_AMBIGUOUS;
+    case Error::PathCycle: return BML_BEHAVIOR_ERROR_PATH_CYCLE;
+    case Error::QueryNotFound: return BML_BEHAVIOR_ERROR_QUERY_NOT_FOUND;
+    case Error::QueryAmbiguous: return BML_BEHAVIOR_ERROR_QUERY_AMBIGUOUS;
+    case Error::WorldBoundValue:
+        return BML_BEHAVIOR_ERROR_WORLD_BOUND_VALUE;
+    case Error::RevertConflict: return BML_BEHAVIOR_ERROR_REVERT_CONFLICT;
+    case Error::TargetCardinality:
+        return BML_BEHAVIOR_ERROR_TARGET_CARDINALITY;
+    case Error::WrongThread: return BML_BEHAVIOR_ERROR_WRONG_THREAD;
     case Error::ExecutionFailed: return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
     }
     return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
@@ -275,6 +285,15 @@ void WriteStatus(BML_BehaviorStatus *out, const Status &status) noexcept {
     out->Prototype = Guid(status.Details.Prototype);
     out->Type = Guid(status.Details.ActualType);
     WriteMessage(*out, status.Message);
+}
+
+bool PrepareStatus(BML_BehaviorStatus *out) noexcept {
+    if (!out)
+        return true;
+    if (!HasStructSize(out))
+        return false;
+    WriteStatus(out, {});
+    return true;
 }
 
 Status InvalidValue(std::string message) {
@@ -599,7 +618,7 @@ void WriteRunInfo(BML_BehaviorRunInfo *out, const RunInfo &info) noexcept {
     out->StructSize = sizeof(*out);
     out->Kind = PublicRunKind(info.Kind);
     out->State = PublicRunState(info.State);
-    out->Flags = info.UnverifiedDetached
+    out->Flags = info.Detached == DetachedCompatibility::Unverified
         ? BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED : 0;
     out->Status.StructSize = sizeof(out->Status);
     WriteStatus(&out->Status, info.LastStatus);
@@ -607,8 +626,8 @@ void WriteRunInfo(BML_BehaviorRunInfo *out, const RunInfo &info) noexcept {
 
 bool ValidOutputs(BML_BehaviorRunInfo *info,
                   BML_BehaviorStatus *status) noexcept {
-    return (!info || HasStructSize(info)) &&
-           (!status || HasStructSize(status));
+    const bool statusValid = PrepareStatus(status);
+    return statusValid && (!info || HasStructSize(info));
 }
 
 std::uintptr_t SessionId(BML_BehaviorSession session) noexcept {
@@ -706,7 +725,7 @@ int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
                                   BML_BehaviorStatus *status) {
     const void *caller = _ReturnAddress();
     return Guard([&] {
-        if (!outSession || (status && !HasStructSize(status)))
+        if (!PrepareStatus(status) || !outSession)
             return BML_ERROR_INVALID_PARAMETER;
         *outSession = nullptr;
         std::string requested;
@@ -715,6 +734,8 @@ int BML_BEHAVIOR_CALL OpenSession(BML_BehaviorString requestedOwner,
         ModContext *context = BML_GetModContext();
         if (!context || !context->AreModsLoaded())
             return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
         const std::string owner = context->GetNativeModOwnerId(
             caller, requested.empty() ? nullptr : requested.c_str());
         if (owner.empty() || (!requested.empty() && owner != requested))
@@ -750,7 +771,7 @@ int OpenRunEntry(OpenKind kind, BML_BehaviorSession session,
                  BML_BehaviorRun *outRun,
                  BML_BehaviorRunInfo *info,
                  BML_BehaviorStatus *status) {
-    if (!session || !block || !outRun || !ValidOutputs(info, status) ||
+    if (!ValidOutputs(info, status) || !session || !block || !outRun ||
         (kind != OpenKind::Spawn && !input))
         return BML_ERROR_INVALID_PARAMETER;
     *outRun = nullptr;
@@ -826,7 +847,7 @@ int BML_BEHAVIOR_CALL Continue(BML_BehaviorRun run,
                               BML_BehaviorRunInfo *info,
                               BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !ValidOutputs(info, status))
+        if (!ValidOutputs(info, status) || !run)
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
         if (!context)
@@ -849,7 +870,7 @@ int BML_BEHAVIOR_CALL Pulse(BML_BehaviorRun run,
                            BML_BehaviorRunInfo *info,
                            BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !input || !admission || !ValidOutputs(info, status))
+        if (!ValidOutputs(info, status) || !run || !input || !admission)
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
         if (!context)
@@ -880,7 +901,7 @@ int BML_BEHAVIOR_CALL ReadRun(BML_BehaviorRun run,
                              BML_BehaviorRunInfo *info,
                              BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !info || !ValidOutputs(info, status))
+        if (!ValidOutputs(info, status) || !run || !info)
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
         if (!context)
@@ -903,6 +924,9 @@ std::uint32_t PublicPoutKind(PoutKind kind) noexcept {
 
 class FrameBatch final {
 public:
+    explicit FrameBatch(bool materialize) noexcept
+        : m_Materialize(materialize) {}
+
     bool Add(const RunFrame &frame) {
         BML_BehaviorRunFrame header{};
         header.StructSize = sizeof(header);
@@ -918,35 +942,60 @@ public:
         if (!AddOuts(frame, header) || !AddPouts(frame, header) ||
             !AddDiagnostic(frame, header))
             return false;
-        Headers.push_back(header);
-        Sequences.push_back(frame.Sequence);
+        if (m_Materialize) {
+            m_Headers.push_back(header);
+            m_Sequences.push_back(frame.Sequence);
+        }
+        ++m_HeaderCount;
         return true;
     }
 
-    std::vector<BML_BehaviorRunFrame> Headers;
-    std::vector<std::uint8_t> Payload;
-    std::vector<std::uint64_t> Sequences;
+    [[nodiscard]] std::size_t HeaderCount() const noexcept {
+        return m_HeaderCount;
+    }
+
+    [[nodiscard]] std::size_t PayloadSize() const noexcept {
+        return m_PayloadSize;
+    }
+
+    [[nodiscard]] const std::vector<BML_BehaviorRunFrame> &Headers() const
+        noexcept {
+        return m_Headers;
+    }
+
+    [[nodiscard]] const std::vector<std::uint8_t> &Payload() const noexcept {
+        return m_Payload;
+    }
+
+    [[nodiscard]] const std::vector<std::uint64_t> &Sequences() const noexcept {
+        return m_Sequences;
+    }
 
 private:
     bool Align(std::size_t alignment) {
-        const std::size_t remainder = Payload.size() % alignment;
+        const std::size_t remainder = m_PayloadSize % alignment;
         if (!remainder)
             return true;
         const std::size_t padding = alignment - remainder;
-        if (Payload.size() > UINT32_MAX ||
-            padding > UINT32_MAX - Payload.size())
+        if (m_PayloadSize > UINT32_MAX ||
+            padding > UINT32_MAX - m_PayloadSize)
             return false;
-        Payload.insert(Payload.end(), padding, 0);
+        if (m_Materialize)
+            m_Payload.insert(m_Payload.end(), padding, 0);
+        m_PayloadSize += padding;
         return true;
     }
 
     bool Append(const void *data, std::size_t size, std::uint32_t &offset) {
-        if (Payload.size() > UINT32_MAX || size > UINT32_MAX ||
-            size > UINT32_MAX - Payload.size())
+        if ((!data && size) || m_PayloadSize > UINT32_MAX ||
+            size > UINT32_MAX || size > UINT32_MAX - m_PayloadSize)
             return false;
-        offset = static_cast<std::uint32_t>(Payload.size());
-        const auto *bytes = static_cast<const std::uint8_t *>(data);
-        Payload.insert(Payload.end(), bytes, bytes + size);
+        offset = static_cast<std::uint32_t>(m_PayloadSize);
+        if (m_Materialize && size) {
+            const auto *bytes = static_cast<const std::uint8_t *>(data);
+            m_Payload.insert(m_Payload.end(), bytes, bytes + size);
+        }
+        m_PayloadSize += size;
         return true;
     }
 
@@ -955,19 +1004,23 @@ private:
         if (!Align(alignof(T)) || count > UINT32_MAX / sizeof(T))
             return false;
         const std::size_t bytes = count * sizeof(T);
-        if (Payload.size() > UINT32_MAX ||
-            bytes > UINT32_MAX - Payload.size())
+        if (m_PayloadSize > UINT32_MAX ||
+            bytes > UINT32_MAX - m_PayloadSize)
             return false;
-        offset = static_cast<std::uint32_t>(Payload.size());
-        Payload.resize(Payload.size() + bytes, 0);
+        offset = static_cast<std::uint32_t>(m_PayloadSize);
+        if (m_Materialize)
+            m_Payload.resize(m_Payload.size() + bytes, 0);
+        m_PayloadSize += bytes;
         return true;
     }
 
     template <typename T>
     void StoreRecord(std::uint32_t base, std::size_t index,
                      const T &record) {
-        std::memcpy(Payload.data() + base + index * sizeof(T),
-                    &record, sizeof(record));
+        if (m_Materialize) {
+            std::memcpy(m_Payload.data() + base + index * sizeof(T),
+                        &record, sizeof(record));
+        }
     }
 
     bool AddOuts(const RunFrame &frame,
@@ -1018,6 +1071,8 @@ private:
     }
 
     bool AddPoutValue(const Pout &pout, BML_BehaviorPoutRecord &record) {
+        if (!Align(BML_BEHAVIOR_VALUE_ALIGNMENT))
+            return false;
         std::uint8_t bytes[64]{};
         std::size_t size = 0;
         switch (pout.Kind) {
@@ -1080,6 +1135,13 @@ private:
         StoreRecord(header.DiagnosticOffset, 0, record);
         return true;
     }
+
+    const bool m_Materialize;
+    std::size_t m_HeaderCount = 0;
+    std::size_t m_PayloadSize = 0;
+    std::vector<BML_BehaviorRunFrame> m_Headers;
+    std::vector<std::uint8_t> m_Payload;
+    std::vector<std::uint64_t> m_Sequences;
 };
 
 int BML_BEHAVIOR_CALL TakeFrames(
@@ -1089,8 +1151,7 @@ int BML_BEHAVIOR_CALL TakeFrames(
     std::uint32_t *outHeaderCount, std::uint32_t *outPayloadSize,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !outHeaderCount || !outPayloadSize ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !run || !outHeaderCount || !outPayloadSize ||
             (headerCapacity && (!headers || headerStride < sizeof(*headers))) ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
@@ -1104,30 +1165,40 @@ int BML_BEHAVIOR_CALL TakeFrames(
         if (!store)
             return BML_ERROR_INVALID_HANDLE;
 
-        FrameBatch batch;
-        for (const RunFrame &frame : store->Read()) {
+        const std::vector<RunFrame> frames = store->Read();
+        FrameBatch measured(false);
+        for (const RunFrame &frame : frames) {
+            if (!measured.Add(frame))
+                return BML_ERROR_OUT_OF_MEMORY;
+        }
+        if (measured.HeaderCount() > UINT32_MAX ||
+            measured.PayloadSize() > UINT32_MAX)
+            return BML_ERROR_OUT_OF_MEMORY;
+        if (!FitsStrided(measured.HeaderCount(), headerStride,
+                         sizeof(BML_BehaviorRunFrame)))
+            return BML_ERROR_OUT_OF_MEMORY;
+        *outHeaderCount = static_cast<std::uint32_t>(measured.HeaderCount());
+        *outPayloadSize = static_cast<std::uint32_t>(measured.PayloadSize());
+        if (headerCapacity < measured.HeaderCount() ||
+            payloadCapacity < measured.PayloadSize())
+            return BML_ERROR_BUFFER_TOO_SMALL;
+
+        FrameBatch batch(true);
+        for (const RunFrame &frame : frames) {
             if (!batch.Add(frame))
                 return BML_ERROR_OUT_OF_MEMORY;
         }
-        if (batch.Headers.size() > UINT32_MAX || batch.Payload.size() > UINT32_MAX)
-            return BML_ERROR_OUT_OF_MEMORY;
-        if (!FitsStrided(batch.Headers.size(), headerStride,
-                         sizeof(BML_BehaviorRunFrame)))
-            return BML_ERROR_OUT_OF_MEMORY;
-        *outHeaderCount = static_cast<std::uint32_t>(batch.Headers.size());
-        *outPayloadSize = static_cast<std::uint32_t>(batch.Payload.size());
-        WriteStatus(status, {});
-        if (headerCapacity < batch.Headers.size() ||
-            payloadCapacity < batch.Payload.size())
-            return BML_ERROR_BUFFER_TOO_SMALL;
+        if (batch.HeaderCount() != measured.HeaderCount() ||
+            batch.PayloadSize() != measured.PayloadSize())
+            return BML_ERROR_BUSY;
 
         auto *headerBytes = reinterpret_cast<std::uint8_t *>(headers);
-        for (std::size_t index = 0; index < batch.Headers.size(); ++index)
+        for (std::size_t index = 0; index < batch.Headers().size(); ++index)
             std::memcpy(headerBytes + index * headerStride,
-                        &batch.Headers[index], sizeof(batch.Headers[index]));
-        if (!batch.Payload.empty())
-            std::memcpy(payload, batch.Payload.data(), batch.Payload.size());
-        if (!store->Consume(batch.Sequences))
+                        &batch.Headers()[index], sizeof(batch.Headers()[index]));
+        if (!batch.Payload().empty())
+            std::memcpy(payload, batch.Payload().data(), batch.Payload().size());
+        if (!store->Consume(batch.Sequences()))
             return BML_ERROR_BUSY;
         return BML_OK;
     });
@@ -1185,6 +1256,11 @@ public:
         if (size)
             m_Bytes.insert(m_Bytes.end(), bytes, bytes + size);
         return true;
+    }
+
+    bool Value(const void *value, std::size_t size, std::uint32_t &offset) {
+        return Align(BML_BEHAVIOR_VALUE_ALIGNMENT) &&
+            Bytes(value, size, offset);
     }
 
     [[nodiscard]] const std::vector<std::uint8_t> &Bytes() const noexcept {
@@ -1398,8 +1474,8 @@ int BML_BEHAVIOR_CALL FindPrototypes(
     std::uint32_t payloadCapacity, std::uint32_t *outPrototypeCount,
     std::uint32_t *outPayloadSize, BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !query || !outPrototypeCount || !outPayloadSize ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !session || !query ||
+            !outPrototypeCount || !outPayloadSize ||
             (prototypeCapacity &&
              (!prototypes || prototypeStride < sizeof(*prototypes))) ||
             (payloadCapacity && !payload))
@@ -1471,8 +1547,8 @@ int BML_BEHAVIOR_CALL ReadDeclaredLayout(
     std::uint32_t payloadCapacity, std::uint32_t *outPayloadSize,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !HasStructSize(prototype) || !HasStructSize(layout) ||
-            !outPayloadSize || (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !session || !HasStructSize(prototype) ||
+            !HasStructSize(layout) || !outPayloadSize ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
@@ -1498,8 +1574,8 @@ int BML_BEHAVIOR_CALL ReadLiveLayout(
     std::uint32_t payloadCapacity, std::uint32_t *outPayloadSize,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !HasStructSize(layout) || !outPayloadSize ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !run || !HasStructSize(layout) ||
+            !outPayloadSize ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
@@ -1552,10 +1628,27 @@ std::uint32_t PublicWatchKind(WatchKind kind) noexcept {
     case WatchKind::LayoutChanged: return BML_BEHAVIOR_WATCH_LAYOUT;
     case WatchKind::SampledValueChanged:
         return BML_BEHAVIOR_WATCH_SAMPLED_VALUE;
-    case WatchKind::ExactValueChanged:
-        return BML_BEHAVIOR_WATCH_EXACT_VALUE;
     }
     return 0;
+}
+
+std::uint32_t PublicWatchState(BML::Behavior::WatchState state) noexcept {
+    switch (state) {
+    case BML::Behavior::WatchState::Active:
+        return BML_BEHAVIOR_WATCH_ACTIVE;
+    case BML::Behavior::WatchState::Failed:
+        return BML_BEHAVIOR_WATCH_FAILED;
+    }
+    return BML_BEHAVIOR_WATCH_FAILED;
+}
+
+void WriteWatchInfo(BML_BehaviorWatchInfo *out,
+                    const BML::Behavior::WatchInfo &info) noexcept {
+    *out = {};
+    out->StructSize = sizeof(*out);
+    out->State = PublicWatchState(info.State);
+    out->Diagnostic.StructSize = sizeof(out->Diagnostic);
+    WriteStatus(&out->Diagnostic, info.Diagnostic);
 }
 
 bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
@@ -1703,7 +1796,7 @@ bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
         if (!value || value->size() > UINT32_MAX)
             return false;
         record.ValueSize = static_cast<std::uint32_t>(value->size());
-        return payload.Bytes(value->data(), value->size(), record.ValueOffset);
+        return payload.Value(value->data(), value->size(), record.ValueOffset);
     }
     case Parameter::Form::Object: {
         const auto *value = std::get_if<BML::Behavior::ObjectRef>(&source.Data);
@@ -1767,7 +1860,7 @@ bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
         return false;
     }
     record.ValueSize = static_cast<std::uint32_t>(size);
-    return payload.Bytes(bytes, size, record.ValueOffset);
+    return payload.Value(bytes, size, record.ValueOffset);
 }
 
 int BML_BEHAVIOR_CALL Inspect(
@@ -1775,8 +1868,8 @@ int BML_BEHAVIOR_CALL Inspect(
     BML_BehaviorGraph *graph, void *payload, std::uint32_t payloadCapacity,
     std::uint32_t *outPayloadSize, BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !HasStructSize(graph) || !outPayloadSize ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !session || !HasStructSize(graph) ||
+            !outPayloadSize ||
             (payloadCapacity && !payload) ||
             (view != BML_BEHAVIOR_GRAPH_LOGICAL &&
              view != BML_BEHAVIOR_GRAPH_LIVE))
@@ -1811,8 +1904,8 @@ int BML_BEHAVIOR_CALL InspectRun(
     void *payload, std::uint32_t payloadCapacity,
     std::uint32_t *outPayloadSize, BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !HasStructSize(graph) || !outPayloadSize ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !run || !HasStructSize(graph) ||
+            !outPayloadSize ||
             (payloadCapacity && !payload) ||
             (view != BML_BEHAVIOR_GRAPH_LOGICAL &&
              view != BML_BEHAVIOR_GRAPH_LIVE))
@@ -1841,8 +1934,8 @@ int BML_BEHAVIOR_CALL ReadNodeLayout(
     std::uint32_t payloadCapacity, std::uint32_t *outPayloadSize,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !HasStructSize(layout) || !outPayloadSize ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !session || !HasStructSize(layout) ||
+            !outPayloadSize ||
             (payloadCapacity && !payload))
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
@@ -1874,8 +1967,8 @@ int BML_BEHAVIOR_CALL ReadGraphValue(
     std::uint32_t payloadCapacity, std::uint32_t *outPayloadSize,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !slot || !HasStructSize(value) || !outPayloadSize ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !session || !slot ||
+            !HasStructSize(value) || !outPayloadSize ||
             (payloadCapacity && !payload) ||
             read != BML_BEHAVIOR_READ_NON_FORCING)
             return BML_ERROR_INVALID_PARAMETER;
@@ -2022,9 +2115,8 @@ int BML_BEHAVIOR_CALL OpenWatch(
     const BML_BehaviorWatchFunction *callback,
     BML_BehaviorWatch *outWatch, BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !HasStructSize(source) || !HasStructSize(callback) ||
-            !outWatch || !callback->Invoke ||
-            (status && !HasStructSize(status)) ||
+        if (!PrepareStatus(status) || !session || !HasStructSize(source) ||
+            !HasStructSize(callback) || !outWatch || !callback->Invoke ||
             (!!callback->Retain != !!callback->Release))
             return BML_ERROR_INVALID_PARAMETER;
         *outWatch = nullptr;
@@ -2044,9 +2136,6 @@ int BML_BEHAVIOR_CALL OpenWatch(
             break;
         case BML_BEHAVIOR_WATCH_SAMPLED_VALUE:
             spec.Kind = WatchKind::SampledValueChanged;
-            break;
-        case BML_BEHAVIOR_WATCH_EXACT_VALUE:
-            spec.Kind = WatchKind::ExactValueChanged;
             break;
         default:
             return BML_ERROR_INVALID_PARAMETER;
@@ -2076,8 +2165,7 @@ int BML_BEHAVIOR_CALL OpenWatch(
                 return ResultCode(result);
             }
         }
-        if (spec.Kind == WatchKind::SampledValueChanged ||
-            spec.Kind == WatchKind::ExactValueChanged) {
+        if (spec.Kind == WatchKind::SampledValueChanged) {
             SlotKind kind;
             switch (source->SlotKind) {
             case BML_BEHAVIOR_SLOT_PIN: kind = SlotKind::InputParameter; break;
@@ -2117,7 +2205,17 @@ int BML_BEHAVIOR_CALL OpenWatch(
                     throw std::runtime_error(
                         "A Behavior Watch value could not be represented.");
                 auto invocation = context->LockModInvocation();
-                function.Invoke(function.State, &wire);
+                int callbackResult = BML_BEHAVIOR_WATCH_ERROR;
+                try {
+                    callbackResult = function.Invoke(function.State, &wire);
+                } catch (...) {
+                    throw std::runtime_error(
+                        "A Behavior Watch callback threw an exception.");
+                }
+                if (callbackResult != BML_BEHAVIOR_WATCH_OK) {
+                    throw std::runtime_error(
+                        "A Behavior Watch callback reported an error.");
+                }
             }, id);
         WriteStatus(status, result);
         if (!result)
@@ -2135,6 +2233,28 @@ int BML_BEHAVIOR_CALL CloseWatch(BML_BehaviorWatch watch) {
         if (!context)
             return BML_ERROR_FROZEN;
         context->BehaviorSessions().CloseWatch(WatchId(watch));
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadWatch(BML_BehaviorWatch watch,
+                                BML_BehaviorWatchInfo *info,
+                                BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !watch || !HasStructSize(info))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        BML::Behavior::WatchInfo current;
+        const Status result = context->BehaviorSessions().ReadWatch(
+            WatchId(watch), current);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        WriteWatchInfo(info, current);
         return BML_OK;
     });
 }
@@ -2225,8 +2345,8 @@ int BML_BEHAVIOR_CALL Set(
     const BML_BehaviorValue *value, std::uint64_t *outLayoutGeneration,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !HasStructSize(slot) || !HasStructSize(value) ||
-            !outLayoutGeneration || (status && !HasStructSize(status)))
+        if (!PrepareStatus(status) || !run || !HasStructSize(slot) ||
+            !HasStructSize(value) || !outLayoutGeneration)
             return BML_ERROR_INVALID_PARAMETER;
         *outLayoutGeneration = 0;
         ModContext *context = BML_GetModContext();
@@ -2255,8 +2375,8 @@ int BML_BEHAVIOR_CALL Bind(
     const BML_BehaviorValueRef *source, std::uint32_t relation,
     std::uint64_t *outLayoutGeneration, BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !HasStructSize(slot) || !HasStructSize(source) ||
-            !outLayoutGeneration || (status && !HasStructSize(status)))
+        if (!PrepareStatus(status) || !run || !HasStructSize(slot) ||
+            !HasStructSize(source) || !outLayoutGeneration)
             return BML_ERROR_INVALID_PARAMETER;
         *outLayoutGeneration = 0;
         ModContext *context = BML_GetModContext();
@@ -2306,8 +2426,8 @@ int BML_BEHAVIOR_CALL Configure(
     std::uint32_t stageCount, std::uint64_t *outLayoutGeneration,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!run || !stages || stageCount == 0 || !outLayoutGeneration ||
-            (status && !HasStructSize(status)))
+        if (!PrepareStatus(status) || !run || !stages || stageCount == 0 ||
+            !outLayoutGeneration)
             return BML_ERROR_INVALID_PARAMETER;
         *outLayoutGeneration = 0;
         ModContext *context = BML_GetModContext();
@@ -2749,9 +2869,8 @@ int BML_BEHAVIOR_CALL SubmitPlan(
     BML_BehaviorPlan *outPlan, BML_BehaviorPlanInfo *info,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !HasStructSize(spec) || !outPlan ||
+        if (!PrepareStatus(status) || !session || !HasStructSize(spec) || !outPlan ||
             (info && !HasStructSize(info)) ||
-            (status && !HasStructSize(status)) ||
             (spec->StepCount && !spec->Steps))
             return BML_ERROR_INVALID_PARAMETER;
         *outPlan = nullptr;
@@ -2808,8 +2927,7 @@ int BML_BEHAVIOR_CALL ReadPlan(
     BML_BehaviorSession session, BML_BehaviorPlan plan,
     BML_BehaviorPlanInfo *info, BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !plan || !HasStructSize(info) ||
-            (status && !HasStructSize(status)))
+        if (!PrepareStatus(status) || !session || !plan || !HasStructSize(info))
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
         if (!context)
@@ -2855,9 +2973,8 @@ int BML_BEHAVIOR_CALL ApplyPatch(
     BML_BehaviorPatch *outPatch, BML_BehaviorPatchInfo *info,
     BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !HasStructSize(spec) || !outPatch ||
+        if (!PrepareStatus(status) || !session || !HasStructSize(spec) || !outPatch ||
             (info && !HasStructSize(info)) ||
-            (status && !HasStructSize(status)) ||
             (spec->StepCount && !spec->Steps) || !spec->Graph.Domain)
             return BML_ERROR_INVALID_PARAMETER;
         *outPatch = nullptr;
@@ -2906,8 +3023,7 @@ int BML_BEHAVIOR_CALL ReadPatch(
     BML_BehaviorSession session, BML_BehaviorPatch patch,
     BML_BehaviorPatchInfo *info, BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!session || !patch || !HasStructSize(info) ||
-            (status && !HasStructSize(status)))
+        if (!PrepareStatus(status) || !session || !patch || !HasStructSize(info))
             return BML_ERROR_INVALID_PARAMETER;
         ModContext *context = BML_GetModContext();
         if (!context)
@@ -2979,6 +3095,7 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ApplyPatch,
     &ReadPatch,
     &ClosePatch,
+    &ReadWatch,
 };
 
 } // namespace

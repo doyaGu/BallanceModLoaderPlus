@@ -84,8 +84,65 @@ TEST(InterfaceStructOffsets, BehaviorInterface) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ApplyPatch, 112);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadPatch, 116);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ClosePatch, 120);
-    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 52, 0,
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadWatch, 124);
+    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 128, 0,
                                              BML_BEHAVIOR_INTERFACE_MINOR);
+    EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MAJOR, 1u);
+    EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MINOR, 0u);
+    EXPECT_EQ(BML_BEHAVIOR_INTERFACE_1_0_SIZE,
+              sizeof(BML_BehaviorInterface));
+}
+
+TEST(InterfaceStructOffsets, BehaviorWireRecords) {
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, Error, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, Phase, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, CkError, 12);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, NativeResult, 16);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, Prototype, 20);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, Type, 28);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, MessageLength, 36);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorStatus, Message, 40);
+    EXPECT_EQ(sizeof(BML_BehaviorStatus), static_cast<std::size_t>(296));
+
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, Sequence, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, Frame, 16);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, NativeResult, 24);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, Continuation, 28);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, Error, 32);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, OutOffset, 36);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, OutCount, 40);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, PoutOffset, 44);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, PoutCount, 48);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, DiagnosticOffset, 52);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorRunFrame, DiagnosticCount, 56);
+    EXPECT_EQ(sizeof(BML_BehaviorRunFrame), static_cast<std::size_t>(64));
+
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, Index, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, Occurrence, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, Type, 12);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, Kind, 20);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, NameOffset, 24);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, NameLength, 28);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, ValueOffset, 32);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorPoutRecord, ValueSize, 36);
+    EXPECT_EQ(sizeof(BML_BehaviorPoutRecord), static_cast<std::size_t>(40));
+
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, State, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, Relation, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, Type, 12);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, Kind, 20);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, ValueOffset, 24);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, ValueSize, 28);
+    EXPECT_EQ(sizeof(BML_BehaviorGraphValue), static_cast<std::size_t>(32));
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, State, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, Diagnostic, 8);
+    EXPECT_EQ(sizeof(BML_BehaviorWatchInfo), static_cast<std::size_t>(304));
+    EXPECT_EQ(BML_BEHAVIOR_VALUE_ALIGNMENT, 4u);
 }
 
 TEST(InterfaceStructOffsets, SceneInterface) {

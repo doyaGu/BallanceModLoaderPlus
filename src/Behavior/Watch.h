@@ -4,6 +4,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 
 #include "Behavior/Callback.h"
 #include "Behavior/Graph.h"
@@ -14,7 +15,6 @@ enum class WatchKind {
     GraphChanged,
     LayoutChanged,
     SampledValueChanged,
-    ExactValueChanged,
 };
 
 struct WatchSpec {
@@ -34,6 +34,16 @@ struct WatchEvent {
     std::uint64_t After = 0;
     GraphValue PreviousValue;
     GraphValue CurrentValue;
+};
+
+enum class WatchState {
+    Active,
+    Failed,
+};
+
+struct WatchInfo {
+    WatchState State = WatchState::Active;
+    Status Diagnostic;
 };
 
 class WatchBinding final : public CallbackResource {
@@ -61,6 +71,7 @@ public:
                        std::shared_ptr<Watch> &out);
 
     Status Poll(std::uint64_t frame);
+    [[nodiscard]] WatchInfo Read() const;
     void Close() noexcept;
     [[nodiscard]] bool RetireAtSafePoint() noexcept;
     [[nodiscard]] bool IsOpen() const noexcept {
@@ -74,6 +85,7 @@ private:
           m_Binding(std::move(binding)) {}
 
     Status ReadBaseline();
+    void Fail(Status status);
 
     GraphSource &m_Source;
     WatchSpec m_Spec;
@@ -81,6 +93,8 @@ private:
     std::uint64_t m_Fingerprint = 0;
     GraphValue m_Value;
     std::uint64_t m_Sequence = 0;
+    mutable std::mutex m_StateMutex;
+    WatchInfo m_Info;
     std::atomic<bool> m_Open{true};
 };
 

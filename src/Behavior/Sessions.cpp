@@ -154,7 +154,7 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
                      "The Behavior session closed during Call."), 0, {}};
     }
     return AddRun(session, RunKind::Call, std::move(called.Handle),
-                  std::move(result), called.UnverifiedDetached);
+                  std::move(result), called.Detached);
 }
 
 OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
@@ -189,7 +189,7 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
                      "The Behavior session closed during Start."), 0, {}};
     }
     return AddRun(session, RunKind::Task, std::move(created.Handle),
-                  std::move(result), created.UnverifiedDetached);
+                  std::move(result), created.Detached);
 }
 
 OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
@@ -219,7 +219,7 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
                      "The Behavior session closed during Spawn."), 0, {}};
     }
     return AddRun(session, RunKind::Instance, std::move(created.Handle),
-                  std::move(result), created.UnverifiedDetached);
+                  std::move(result), created.Detached);
 }
 
 RunResult Sessions::Continue(std::uintptr_t runId) {
@@ -498,11 +498,6 @@ Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
     if (!m_Graph)
         return Fail(Error::Unavailable,
                     "Behavior graph observation is unavailable.");
-    if (spec.Kind == WatchKind::ExactValueChanged)
-        return Fail(
-            Error::ObserverUnavailable,
-            "CK2.1 does not provide a portable exact parameter-change observer.");
-
     Status status;
     if (root) {
         status = m_Graph->Refer(root, spec.Root);
@@ -541,6 +536,17 @@ void Sessions::CloseWatch(std::uintptr_t watchId) {
         return;
     QueueWatch(std::move(watch->second.Value));
     m_Watches.erase(watch);
+}
+
+Status Sessions::ReadWatch(std::uintptr_t watchId, WatchInfo &info) const {
+    info = {};
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    const auto watch = m_Watches.find(watchId);
+    if (watch == m_Watches.end())
+        return Fail(Error::InvalidState,
+                    "The Behavior Watch handle is stale or closed.");
+    info = watch->second.Value->Read();
+    return {};
 }
 
 std::shared_ptr<FrameStore> Sessions::Frames(std::uintptr_t runId) const {
@@ -587,8 +593,18 @@ void Sessions::ProcessFrame() {
             if (current == m_Watches.end() || current->second.Value != watch)
                 continue;
         }
+        if (watch->Read().State == WatchState::Failed) {
+            (void) watch->RetireAtSafePoint();
+            continue;
+        }
         Status status = watch->Poll(frame);
-        if (!status || !watch->IsOpen()) {
+        if (!status) {
+            // Failure remains readable through the Watch handle, but its
+            // callback belongs to the Mod and must retire at this safe point.
+            (void) watch->RetireAtSafePoint();
+            continue;
+        }
+        if (!watch->IsOpen()) {
             std::lock_guard<std::recursive_mutex> lock(m_Mutex);
             const auto current = m_Watches.find(id);
             if (current != m_Watches.end() &&
@@ -664,7 +680,7 @@ bool Sessions::SessionIsActive(const Session &session) const {
 
 OpenRun Sessions::AddRun(const Session &session, RunKind kind,
                           Instance block, RunResult result,
-                          bool unverifiedDetached) {
+                          DetachedCompatibility compatibility) {
     std::shared_ptr<FrameStore> frames = m_Runtime.Frames(block);
     const bool nativeExecuted = frames && !frames->Read().empty();
     if (!result && !nativeExecuted) {
@@ -687,7 +703,7 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     run->Info.Kind = kind;
     run->Info.State = result.State;
     run->Info.LastStatus = result.Detail;
-    run->Info.UnverifiedDetached = unverifiedDetached;
+    run->Info.Detached = compatibility;
     run->Block = std::move(block);
     run->Frames = std::move(frames);
     auto [stored, inserted] = m_Runs.emplace(id, std::move(run));

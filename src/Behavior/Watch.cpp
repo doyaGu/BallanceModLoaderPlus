@@ -42,15 +42,10 @@ bool WatchBinding::RetireAtSafePoint() noexcept {
 }
 
 Status Watch::Open(GraphSource &source, WatchSpec spec,
-                   PlanCallbackState state,
+    PlanCallbackState state,
                    WatchBinding::Function callback,
                    std::shared_ptr<Watch> &out) {
     out.reset();
-    if (spec.Kind == WatchKind::ExactValueChanged) {
-        return Failure(
-            Error::ObserverUnavailable,
-            "CK2.1 does not provide a portable exact parameter-change observer.");
-    }
     if (!callback)
         return Failure(Error::InvalidState,
                        "A Behavior Watch requires a callback.");
@@ -76,14 +71,14 @@ Status Watch::ReadBaseline() {
     case WatchKind::SampledValueChanged:
         return m_Source.ReadValue(
             m_Spec.Node, m_Spec.ValueSlot, m_Spec.Read, m_Value);
-    case WatchKind::ExactValueChanged:
-        return Failure(Error::ObserverUnavailable,
-                       "Exact parameter observation is unavailable.");
     }
     return Failure(Error::InvalidState, "The Behavior Watch kind is invalid.");
 }
 
 Status Watch::Poll(std::uint64_t frame) {
+    WatchInfo info = Read();
+    if (info.State == WatchState::Failed)
+        return info.Diagnostic;
     if (!m_Open.load(std::memory_order_acquire))
         return Failure(Error::InvalidState,
                        "The Behavior Watch is closed.");
@@ -120,14 +115,10 @@ Status Watch::Poll(std::uint64_t frame) {
         m_Value = std::move(current);
         break;
     }
-    case WatchKind::ExactValueChanged:
-        status = Failure(Error::ObserverUnavailable,
-                         "Exact parameter observation is unavailable.");
-        break;
     }
 
     if (!status) {
-        Close();
+        Fail(status);
         return status;
     }
     if (!changed)
@@ -135,8 +126,22 @@ Status Watch::Poll(std::uint64_t frame) {
     event.Sequence = ++m_Sequence;
     status = m_Binding->Invoke(event);
     if (!status)
-        Close();
+        Fail(status);
     return status;
+}
+
+WatchInfo Watch::Read() const {
+    std::lock_guard<std::mutex> lock(m_StateMutex);
+    return m_Info;
+}
+
+void Watch::Fail(Status status) {
+    std::lock_guard<std::mutex> lock(m_StateMutex);
+    if (m_Info.State == WatchState::Failed)
+        return;
+    m_Info.State = WatchState::Failed;
+    m_Info.Diagnostic = std::move(status);
+    Close();
 }
 
 void Watch::Close() noexcept {

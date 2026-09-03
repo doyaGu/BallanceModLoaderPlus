@@ -39,6 +39,7 @@ public:
 
     Status GraphFingerprint(const NativeRef &, GraphView view,
                             std::uint64_t &out) override {
+        ++GraphFingerprintCalls;
         LastView = view;
         out = Structure;
         return GraphStatus;
@@ -56,6 +57,7 @@ public:
                      CKGUID(1, 2), Parameter::Form::Int32,
                      std::int32_t{1}};
     GraphView LastView = GraphView::Logical;
+    int GraphFingerprintCalls = 0;
     Status GraphStatus;
     Status LayoutStatus;
     Status ValueStatus;
@@ -147,23 +149,6 @@ TEST(BehaviorWatch, NonForcingValueCanBecomeIndeterminate) {
     EXPECT_EQ(observed.CurrentValue.Relation, ValueRelation::Operation);
 }
 
-TEST(BehaviorWatch, ExactObservationFailsBeforeRetainingCallbackState) {
-    FakeGraph source;
-    References references;
-    WatchSpec spec = ValueSpec();
-    spec.Kind = WatchKind::ExactValueChanged;
-    std::shared_ptr<Watch> watch;
-    const Status status = Watch::Open(
-        source, spec,
-        PlanCallbackState::Retained(
-            &references, &References::Retain, &References::Release),
-        [](const WatchEvent &) {}, watch);
-    EXPECT_EQ(status.Code, Error::ObserverUnavailable);
-    EXPECT_FALSE(watch);
-    EXPECT_EQ(references.Retains, 0);
-    EXPECT_EQ(references.Releases, 0);
-}
-
 TEST(BehaviorWatch, SelfCloseStopsAdmissionWithoutWaiting) {
     FakeGraph source;
     References references;
@@ -185,18 +170,39 @@ TEST(BehaviorWatch, SelfCloseStopsAdmissionWithoutWaiting) {
     EXPECT_EQ(references.Releases, 1);
 }
 
-TEST(BehaviorWatch, CallbackExceptionClosesTheWatch) {
+TEST(BehaviorWatch, CallbackExceptionFailsTheWatchAndKeepsTheFirstDiagnostic) {
     FakeGraph source;
+    References references;
     std::shared_ptr<Watch> watch;
     ASSERT_TRUE(Watch::Open(
-        source, GraphSpec(), PlanCallbackState::Static(),
+        source, GraphSpec(),
+        PlanCallbackState::Retained(
+            &references, &References::Retain, &References::Release),
         [](const WatchEvent &) { throw std::runtime_error("watch failed"); },
         watch));
+    EXPECT_EQ(references.Retains, 1);
     source.Structure = 13;
     const Status status = watch->Poll(1);
     EXPECT_EQ(status.Code, Error::CallbackFailed);
     EXPECT_EQ(status.Message, "watch failed");
     EXPECT_FALSE(watch->IsOpen());
+
+    const WatchInfo failed = watch->Read();
+    EXPECT_EQ(failed.State, WatchState::Failed);
+    EXPECT_EQ(failed.Diagnostic.Code, Error::CallbackFailed);
+    EXPECT_EQ(failed.Diagnostic.Message, "watch failed");
+
+    const int reads = source.GraphFingerprintCalls;
+    source.GraphStatus = {Error::InvalidState, CKERR_INVALIDOBJECT,
+                          CKBR_BEHAVIORERROR, "graph vanished later"};
+    const Status repeated = watch->Poll(2);
+    EXPECT_EQ(repeated.Code, Error::CallbackFailed);
+    EXPECT_EQ(repeated.Message, "watch failed");
+    EXPECT_EQ(source.GraphFingerprintCalls, reads);
+
+    EXPECT_TRUE(watch->RetireAtSafePoint());
+    EXPECT_EQ(references.Releases, 1);
+    EXPECT_EQ(watch->Read().State, WatchState::Failed);
 }
 
 TEST(BehaviorWatch, CloseFromAnotherThreadDoesNotWaitForTheCallback) {

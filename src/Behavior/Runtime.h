@@ -165,7 +165,7 @@ struct CreateResult {
     Status Detail;
     Instance Handle;
     Layout Descriptor;
-    bool UnverifiedDetached = false;
+    DetachedCompatibility Detached = DetachedCompatibility::Unverified;
 
     explicit operator bool() const noexcept { return static_cast<bool>(Detail); }
 };
@@ -183,7 +183,7 @@ struct CallResult {
     RunResult Run;
     Instance Handle;
     Layout Descriptor;
-    bool UnverifiedDetached = false;
+    DetachedCompatibility Detached = DetachedCompatibility::Unverified;
 
     explicit operator bool() const noexcept {
         return static_cast<bool>(Detail) && static_cast<bool>(Run);
@@ -339,8 +339,8 @@ private:
     [[nodiscard]] CKBehavior *ResolveBehavior(const Record &record) const;
     [[nodiscard]] Status ResolvePrototype(CKGUID guid,
                                           std::uint64_t generation = 0) const;
-    [[nodiscard]] Status CheckDetached(const Spec &spec,
-                                       bool &unverified) const;
+    [[nodiscard]] Status CheckDetached(
+        const Spec &spec, DetachedCompatibility &compatibility) const;
     [[nodiscard]] Status ValidateTarget(CKBeObject *owner,
                                         const Spec &spec) const;
     [[nodiscard]] Status CreateBehavior(const Spec &spec,

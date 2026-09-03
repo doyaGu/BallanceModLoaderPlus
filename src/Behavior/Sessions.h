@@ -31,7 +31,7 @@ struct RunInfo {
     RunKind Kind = RunKind::Instance;
     RunState State = RunState::Ready;
     Status LastStatus;
-    bool UnverifiedDetached = false;
+    DetachedCompatibility Detached = DetachedCompatibility::Unverified;
 };
 
 struct OpenRun {
@@ -107,6 +107,7 @@ public:
                      WatchSpec spec, PlanCallbackState state,
                      WatchBinding::Function callback,
                      std::uintptr_t &watchId);
+    Status ReadWatch(std::uintptr_t watchId, WatchInfo &info) const;
     void CloseWatch(std::uintptr_t watchId);
     std::shared_ptr<FrameStore> Frames(std::uintptr_t runId) const;
     void CloseRun(std::uintptr_t runId);
@@ -157,7 +158,7 @@ private:
     [[nodiscard]] bool SessionIsActive(const Session &session) const;
     [[nodiscard]] OpenRun AddRun(const Session &session, RunKind kind,
                                  Instance block, RunResult result,
-                                 bool unverifiedDetached);
+                                 DetachedCompatibility compatibility);
     void QueueClose(std::shared_ptr<Run> run);
     void CloseQueuedRuns();
     void CloseOwner(const std::string &ownerId, std::uint64_t generation);

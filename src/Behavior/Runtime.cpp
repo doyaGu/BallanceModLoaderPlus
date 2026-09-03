@@ -1352,12 +1352,12 @@ Status Runtime::CreateBehavior(const Spec &spec, CKBehavior *&behavior,
     return {};
 }
 
-Status Runtime::CheckDetached(const Spec &spec, bool &unverified) const {
-    unverified = true;
+Status Runtime::CheckDetached(
+    const Spec &spec, DetachedCompatibility &compatibility) const {
+    compatibility = DetachedCompatibility::Unverified;
     if (!m_Catalog)
         return {};
 
-    DetachedCompatibility compatibility = DetachedCompatibility::Unverified;
     Status status = m_Catalog->Detached(
         {spec.Prototype(), spec.PrototypeGeneration()}, compatibility);
     if (!status)
@@ -1369,7 +1369,6 @@ Status Runtime::CheckDetached(const Spec &spec, bool &unverified) const {
             CKERR_INVALIDPARAMETER, CKBR_PARAMETERERROR,
             Phase::PrototypeResolution, spec.Prototype());
     }
-    unverified = compatibility == DetachedCompatibility::Unverified;
     return {};
 }
 
@@ -1379,7 +1378,7 @@ CreateResult Runtime::Instantiate(CKBeObject *owner, const Spec &spec,
     result.Detail = ReadyStatus();
     if (!result.Detail)
         return result;
-    result.Detail = CheckDetached(spec, result.UnverifiedDetached);
+    result.Detail = CheckDetached(spec, result.Detached);
     if (!result.Detail)
         return result;
     if (owner && owner->GetCKContext() != m_Context) {
@@ -1426,7 +1425,7 @@ CallResult Runtime::Call(CKBeObject *owner, const Spec &spec,
         return result;
     result.Descriptor = std::move(created.Descriptor);
     result.Handle = std::move(created.Handle);
-    result.UnverifiedDetached = created.UnverifiedDetached;
+    result.Detached = created.Detached;
     Slot entry = input;
     entry.Kind = SlotKind::Input;
     SlotRef slot;

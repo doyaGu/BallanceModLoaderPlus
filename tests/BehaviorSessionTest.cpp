@@ -1,6 +1,7 @@
 #include "Behavior/Sessions.h"
 #include "Behavior/FrameStore.h"
 
+#include <stdexcept>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -51,15 +52,32 @@ public:
     }
 
     Status GraphFingerprint(const NativeRef &, GraphView,
-                            std::uint64_t &) override {
-        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
-                CKBR_PARAMETERERROR, "Not used by this test."};
+                            std::uint64_t &out) override {
+        ++GraphFingerprintCalls;
+        out = GraphFingerprintValue;
+        return GraphFingerprintStatus;
     }
 
     Status LayoutFingerprint(const NativeRef &, std::uint64_t &) override {
         return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
                 CKBR_PARAMETERERROR, "Not used by this test."};
     }
+
+    std::uint64_t GraphFingerprintValue = 7;
+    int GraphFingerprintCalls = 0;
+    Status GraphFingerprintStatus;
+};
+
+struct WatchReferences {
+    static void Retain(void *state) {
+        ++static_cast<WatchReferences *>(state)->Retains;
+    }
+    static void Release(void *state) {
+        ++static_cast<WatchReferences *>(state)->Releases;
+    }
+
+    int Retains = 0;
+    int Releases = 0;
 };
 
 Slot Input(const char *name) {
@@ -68,6 +86,13 @@ Slot Input(const char *name) {
     input.Name = name;
     input.RequireUnique = true;
     return input;
+}
+
+WatchSpec GraphWatchSpec() {
+    WatchSpec spec;
+    spec.Kind = WatchKind::GraphChanged;
+    spec.View = GraphView::Logical;
+    return spec;
 }
 
 TEST(BehaviorSessions, OwnerGenerationMakesOldSessionsStale) {
@@ -215,6 +240,121 @@ TEST(BehaviorSessions, ReadsTheGraphOwnedByTheRun) {
     sessions.CloseRun(run.Id);
     EXPECT_EQ(sessions.ReadGraph(run.Id, GraphView::Logical, graph).Code,
               Error::InvalidState);
+}
+
+TEST(BehaviorSessions, FailedWatchRemainsReadableAndIsNotPolledAgain) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    WatchReferences references;
+    std::uintptr_t watch = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Retained(
+            &references, &WatchReferences::Retain, &WatchReferences::Release),
+        [](const WatchEvent &) { throw std::runtime_error("callback failed"); },
+        watch));
+    EXPECT_EQ(references.Retains, 1);
+    WatchInfo info;
+    ASSERT_TRUE(sessions.ReadWatch(watch, info));
+    EXPECT_EQ(info.State, WatchState::Active);
+    EXPECT_TRUE(info.Diagnostic);
+
+    graph->GraphFingerprintValue = 8;
+    sessions.ProcessFrame();
+    ASSERT_TRUE(sessions.ReadWatch(watch, info));
+    EXPECT_EQ(info.State, WatchState::Failed);
+    EXPECT_EQ(info.Diagnostic.Code, Error::CallbackFailed);
+    EXPECT_EQ(info.Diagnostic.Message, "callback failed");
+    EXPECT_EQ(references.Releases, 1);
+
+    const int reads = graph->GraphFingerprintCalls;
+    graph->GraphFingerprintValue = 9;
+    sessions.ProcessFrame();
+    ASSERT_TRUE(sessions.ReadWatch(watch, info));
+    EXPECT_EQ(info.Diagnostic.Code, Error::CallbackFailed);
+    EXPECT_EQ(info.Diagnostic.Message, "callback failed");
+    EXPECT_EQ(graph->GraphFingerprintCalls, reads);
+    EXPECT_EQ(references.Releases, 1);
+
+    sessions.CloseWatch(watch);
+    EXPECT_EQ(sessions.ReadWatch(watch, info).Code, Error::InvalidState);
+}
+
+TEST(BehaviorSessions, VanishedGraphFailsWatchUntilWorldReset) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    int callbacks = 0;
+    std::uintptr_t watch = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Static(),
+        [&](const WatchEvent &) { ++callbacks; }, watch));
+    graph->GraphFingerprintStatus = {
+        Error::InvalidState, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
+        "The watched graph vanished."};
+    sessions.ProcessFrame();
+
+    WatchInfo info;
+    ASSERT_TRUE(sessions.ReadWatch(watch, info));
+    EXPECT_EQ(info.State, WatchState::Failed);
+    EXPECT_EQ(info.Diagnostic.Code, Error::InvalidState);
+    EXPECT_EQ(info.Diagnostic.Message, "The watched graph vanished.");
+    EXPECT_EQ(callbacks, 0);
+
+    const int reads = graph->GraphFingerprintCalls;
+    graph->GraphFingerprintStatus = {};
+    graph->GraphFingerprintValue = 8;
+    sessions.ProcessFrame();
+    EXPECT_EQ(graph->GraphFingerprintCalls, reads);
+    EXPECT_EQ(callbacks, 0);
+
+    sessions.ResetWorld();
+    EXPECT_EQ(sessions.ReadWatch(watch, info).Code, Error::InvalidState);
+}
+
+TEST(BehaviorSessions, ClosingWatchTwiceRetiresItsCallbackOnceAtSafePoint) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    WatchReferences references;
+    int callbacks = 0;
+    std::uintptr_t watch = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Retained(
+            &references, &WatchReferences::Retain, &WatchReferences::Release),
+        [&](const WatchEvent &) { ++callbacks; }, watch));
+    EXPECT_EQ(references.Retains, 1);
+
+    sessions.CloseWatch(watch);
+    sessions.CloseWatch(watch);
+    WatchInfo info;
+    EXPECT_EQ(sessions.ReadWatch(watch, info).Code, Error::InvalidState);
+    EXPECT_EQ(references.Releases, 0);
+
+    graph->GraphFingerprintValue = 8;
+    sessions.ProcessFrame();
+    EXPECT_EQ(callbacks, 0);
+    EXPECT_EQ(references.Releases, 1);
+    sessions.ProcessFrame();
+    EXPECT_EQ(references.Releases, 1);
 }
 
 TEST(BehaviorSessions, LiveEditsHonorLayoutGeneration) {

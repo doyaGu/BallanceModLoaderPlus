@@ -17,8 +17,9 @@
 
 #define BML_BEHAVIOR_INTERFACE_ID "bml.behavior"
 #define BML_BEHAVIOR_INTERFACE_MAJOR 1u
-#define BML_BEHAVIOR_INTERFACE_MINOR 7u
+#define BML_BEHAVIOR_INTERFACE_MINOR 0u
 #define BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY 256u
+#define BML_BEHAVIOR_VALUE_ALIGNMENT 4u
 
 BML_BEGIN_CDECLS
 
@@ -148,9 +149,19 @@ typedef struct BML_BehaviorTarget {
 } BML_BehaviorTarget;
 
 typedef enum BML_BehaviorFramePolicyKind {
+    // Keep the first Execute, every Execute that activates an Out, the final
+    // non-continuing Execute, and every failed Execute, up to Limit. Reaching
+    // Limit stops the Run instead of discarding an older Frame.
     BML_BEHAVIOR_FRAMES_SIGNALS = 1,
+    // Keep every native Execute, up to Limit. A Run executes at most once in a
+    // game frame. Reaching Limit stops the Run instead of overwriting a Frame.
     BML_BEHAVIOR_FRAMES_EACH_FRAME = 2,
+    // Keep the latest continuing Execute plus the most recent failed and final
+    // non-continuing Executes. Consequently TakeFrames may return up to three
+    // Frames for this policy, ordered by Sequence.
     BML_BEHAVIOR_FRAMES_LATEST = 3,
+    // Do not keep ordinary continuing Executes. Failed and final
+    // non-continuing Executes remain observable through TakeFrames.
     BML_BEHAVIOR_FRAMES_NONE = 4
 } BML_BehaviorFramePolicyKind;
 
@@ -203,7 +214,31 @@ typedef enum BML_BehaviorError {
     BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNAVAILABLE = 23,
     BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED = 24,
     BML_BEHAVIOR_ERROR_DETACHED_UNSUPPORTED = 25,
-    BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE = 26
+    BML_BEHAVIOR_ERROR_OBSERVER_UNAVAILABLE = 26,
+    BML_BEHAVIOR_ERROR_GRAPH_CHANGED = 27,
+    BML_BEHAVIOR_ERROR_GRAPH_LOCALITY_INVALID = 28,
+    BML_BEHAVIOR_ERROR_DELAY_INVALID = 29,
+    BML_BEHAVIOR_ERROR_SAME_FRAME_CYCLE = 30,
+    BML_BEHAVIOR_ERROR_SHARED_SOURCE_CYCLE = 31,
+    BML_BEHAVIOR_ERROR_PUSH_CYCLE = 32,
+    BML_BEHAVIOR_ERROR_INTERFACE_UNSUPPORTED = 33,
+    BML_BEHAVIOR_ERROR_SOURCE_CONFLICT = 34,
+    BML_BEHAVIOR_ERROR_SOURCE_ORDER_CYCLE = 35,
+    BML_BEHAVIOR_ERROR_ORDERING_TARGET_MISMATCH = 36,
+    BML_BEHAVIOR_ERROR_OVERLAY_ORDER_CYCLE = 37,
+    BML_BEHAVIOR_ERROR_LINK_NOT_FOUND = 38,
+    BML_BEHAVIOR_ERROR_PATH_AMBIGUOUS = 39,
+    BML_BEHAVIOR_ERROR_PATH_CYCLE = 40,
+    BML_BEHAVIOR_ERROR_QUERY_NOT_FOUND = 41,
+    BML_BEHAVIOR_ERROR_QUERY_AMBIGUOUS = 42,
+    BML_BEHAVIOR_ERROR_WORLD_BOUND_VALUE = 43,
+    BML_BEHAVIOR_ERROR_REVERT_CONFLICT = 44,
+    BML_BEHAVIOR_ERROR_TARGET_CARDINALITY = 45,
+    BML_BEHAVIOR_ERROR_SOURCE_INVALID = 46,
+    BML_BEHAVIOR_ERROR_OPERATION_INVALID = 47,
+    BML_BEHAVIOR_ERROR_BUSY = 48,
+    BML_BEHAVIOR_ERROR_UNAVAILABLE = 49,
+    BML_BEHAVIOR_ERROR_WRONG_THREAD = 50
 } BML_BehaviorError;
 
 typedef enum BML_BehaviorPhase {
@@ -234,6 +269,14 @@ typedef struct BML_BehaviorStatus {
     uint32_t MessageLength;
     char Message[BML_BEHAVIOR_STATUS_MESSAGE_CAPACITY];
 } BML_BehaviorStatus;
+
+// A caller that supplies Status initializes StructSize to sizeof(Status).
+// Whenever that size is valid, a Behavior function which accepts Status clears
+// and writes it before returning. Error == BML_BEHAVIOR_ERROR_NONE means the
+// outer BML_* result alone describes a generic argument, thread, availability,
+// handle, or buffer condition. A nonzero Error is the stable Behavior-domain
+// diagnostic; Message is explanatory text and must not be parsed for control
+// flow. MessageLength follows the truncation rule in BML/Interface.h.
 
 typedef enum BML_BehaviorRunKind {
     BML_BEHAVIOR_RUN_CALL = 1,
@@ -278,7 +321,22 @@ typedef enum BML_BehaviorContinuation {
 } BML_BehaviorContinuation;
 
 // Every offset below is relative to the first byte of the payload buffer passed
-// to TakeFrames. Records and value bytes are naturally aligned within it.
+// to TakeFrames. Record arrays are naturally aligned. Every Pout ValueOffset is
+// a multiple of BML_BEHAVIOR_VALUE_ALIGNMENT, including UTF-8 values.
+//
+// PoutRecord.Kind is a BML_BehaviorValueKind. Values use the following owned
+// wire representation; integer words and IEEE-754 binary32 words are little
+// endian and strings have no trailing NUL:
+//   BOOL, INT32, FLOAT32                       4 bytes
+//   UTF8                                      ValueSize bytes
+//   VEC2                                      x,y (8 bytes)
+//   VEC3, EULER                               x,y,z (12 bytes)
+//   QUATERNION                                x,y,z,w (16 bytes)
+//   RECT                                      left,top,right,bottom (16 bytes)
+//   COLOR                                     r,g,b,a (16 bytes)
+//   BOX                                       Min.x,y,z, Max.x,y,z (24 bytes)
+//   MAT4                                      row-major m00..m33 (64 bytes)
+//   OBJECT                                    Domain,Slot,Generation (12 bytes)
 typedef struct BML_BehaviorRunFrame {
     uint32_t StructSize;
     uint64_t Sequence;
@@ -534,11 +592,14 @@ typedef struct BML_BehaviorGraphValue {
     uint32_t ValueSize;
 } BML_BehaviorGraphValue;
 
+// When State is AVAILABLE, Kind is a BML_BehaviorValueKind and ValueOffset /
+// ValueSize use the same aligned wire representation documented for
+// BML_BehaviorPoutRecord. Other states carry no value bytes.
+
 typedef enum BML_BehaviorWatchKind {
     BML_BEHAVIOR_WATCH_GRAPH = 1,
     BML_BEHAVIOR_WATCH_LAYOUT = 2,
-    BML_BEHAVIOR_WATCH_SAMPLED_VALUE = 3,
-    BML_BEHAVIOR_WATCH_EXACT_VALUE = 4
+    BML_BEHAVIOR_WATCH_SAMPLED_VALUE = 3
 } BML_BehaviorWatchKind;
 
 typedef struct BML_BehaviorWatchValue {
@@ -559,11 +620,39 @@ typedef struct BML_BehaviorWatchEvent {
     BML_BehaviorWatchValue CurrentValue;
 } BML_BehaviorWatchEvent;
 
+typedef enum BML_BehaviorWatchState {
+    BML_BEHAVIOR_WATCH_ACTIVE = 1,
+    BML_BEHAVIOR_WATCH_FAILED = 2
+} BML_BehaviorWatchState;
+
+typedef struct BML_BehaviorWatchInfo {
+    uint32_t StructSize;
+    uint32_t State;
+    // Set when State is FAILED. The first callback or observation failure is
+    // retained until CloseWatch; Message follows the Status truncation rule.
+    BML_BehaviorStatus Diagnostic;
+} BML_BehaviorWatchInfo;
+
 typedef void (BML_BEHAVIOR_CALL *BML_BehaviorWatchRetain)(void *state);
 typedef void (BML_BEHAVIOR_CALL *BML_BehaviorWatchRelease)(void *state);
-typedef void (BML_BEHAVIOR_CALL *BML_BehaviorWatchCallback)(
+
+typedef enum BML_BehaviorWatchResult {
+    BML_BEHAVIOR_WATCH_OK = 0,
+    // Stop this Watch. The Loader never allows an exception to escape through
+    // the callback seam; any other return value is treated as ERROR as well.
+    BML_BEHAVIOR_WATCH_ERROR = 1
+} BML_BehaviorWatchResult;
+
+typedef int (BML_BEHAVIOR_CALL *BML_BehaviorWatchCallback)(
     void *state, const BML_BehaviorWatchEvent *event);
 
+// One callback owned by a Watch. Retain and Release are either both null for
+// static State, or both non-null. A successful Watch retains once before the
+// caller may release its reference, and releases once after CloseWatch or an
+// automatic failure has reached a game-thread safe point and no invocation is
+// active. Invoke runs on the game thread. It may call CloseWatch; that closes
+// admission immediately without waiting for the current invocation. None of
+// Retain, Release, or Invoke may unwind an exception through this C interface.
 typedef struct BML_BehaviorWatchFunction {
     uint32_t StructSize;
     void *State;
@@ -815,6 +904,17 @@ typedef struct BML_BehaviorPatchSpec {
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
 
+    // Except for the five Close functions, every function in this Interface
+    // must be called on the game thread. CloseSession, CloseRun, CloseWatch,
+    // ClosePlan, and ClosePatch may be called from any thread. They close new
+    // admission immediately and never wait for a running callback or Execute;
+    // native teardown and callback Release finish at a later game-thread safe
+    // point. Repeating CloseSession, CloseRun, or CloseWatch with the same
+    // non-null stale handle is harmless and returns BML_OK.
+    //
+    // OpenSession authenticates the calling Native Mod from the DLL containing
+    // the call site. An empty ownerId selects that Mod. A non-empty ownerId must
+    // exactly match it and cannot be used to act for another Mod generation.
     // Every successful Call, Start, or Spawn returns a Run that owns one
     // native Behavior instance until CloseRun, session/owner retirement, or
     // world reset. Run state and TakeFrames never imply native teardown.
@@ -842,6 +942,8 @@ typedef struct BML_BehaviorInterface {
                                    BML_BehaviorRun *outRun,
                                    BML_BehaviorRunInfo *info,
                                    BML_BehaviorStatus *status);
+    // Continue accepts only a pending Call. Once accepted, the same Run becomes
+    // a managed Task; ReadRun subsequently reports BML_BEHAVIOR_RUN_TASK.
     int (BML_BEHAVIOR_CALL *Continue)(BML_BehaviorRun run,
                                       BML_BehaviorRunInfo *info,
                                       BML_BehaviorStatus *status);
@@ -853,6 +955,11 @@ typedef struct BML_BehaviorInterface {
     int (BML_BEHAVIOR_CALL *ReadRun)(BML_BehaviorRun run,
                                      BML_BehaviorRunInfo *info,
                                      BML_BehaviorStatus *status);
+    // TakeFrames is all-or-nothing and consuming only on success. The first call
+    // may pass zero capacities to obtain the complete required counts and size;
+    // BML_ERROR_BUFFER_TOO_SMALL writes neither records nor payload and consumes
+    // nothing. A successful call writes complete Frames in Sequence order and
+    // atomically consumes exactly that batch.
     int (BML_BEHAVIOR_CALL *TakeFrames)(BML_BehaviorRun run,
                                         BML_BehaviorRunFrame *headers,
                                         uint32_t headerCapacity,
@@ -1001,7 +1108,26 @@ typedef struct BML_BehaviorInterface {
     // points.
     int (BML_BEHAVIOR_CALL *ClosePatch)(BML_BehaviorSession session,
                                         BML_BehaviorPatch patch);
+    // Reads the retained state of a live Watch. A callback ERROR or exception
+    // makes the Watch FAILED, closes further callback admission, and remains
+    // observable here until CloseWatch retires the handle.
+    int (BML_BEHAVIOR_CALL *ReadWatch)(BML_BehaviorWatch watch,
+                                       BML_BehaviorWatchInfo *info,
+                                       BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
+
+// The complete function table frozen for bml.behavior 1.0. Minor-compatible
+// revisions append functions after ReadWatch and leave all 1.0 DTO layouts
+// unchanged. Use BML_IFACE_HAS on a function appended by a later minor.
+#define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
+    (offsetof(BML_BehaviorInterface, ReadWatch) +                             \
+     sizeof(((BML_BehaviorInterface *) 0)->ReadWatch))
+
+// The single capability checkpoint for the complete 1.0 surface. A Mod may
+// accept a later minor when this is true, then probe later additions with
+// BML_IFACE_HAS before calling them.
+#define BML_BEHAVIOR_HAS_1_0(iface)                                          \
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, ReadWatch)
 
 #pragma pack(pop)
 
