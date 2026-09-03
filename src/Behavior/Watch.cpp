@@ -38,6 +38,10 @@ void WatchBinding::CloseAdmission() noexcept {
     m_State.Retire();
 }
 
+bool WatchBinding::IsOpen() const noexcept {
+    return m_Lease.State() == CallbackLeaseState::Open;
+}
+
 bool WatchBinding::RetireAtSafePoint() noexcept {
     CloseAdmission();
     return m_State.Collect();
@@ -59,6 +63,12 @@ Status Watch::Open(GraphSource &source, WatchSpec spec,
         return status;
     watch->m_Binding = std::make_shared<WatchBinding>(
         std::move(state), std::move(callback));
+    if (!watch->m_Binding->IsOpen()) {
+        // Fail Open now instead of on the first observed change.
+        (void) watch->m_Binding->RetireAtSafePoint();
+        return Failure(Error::CallbackFailed,
+                       "The Behavior Watch callback state is already retired.");
+    }
     out = std::move(watch);
     return {};
 }

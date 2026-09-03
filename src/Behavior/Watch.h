@@ -55,6 +55,9 @@ public:
     Status Invoke(const WatchEvent &event) noexcept;
     void CloseAdmission() noexcept override;
     [[nodiscard]] bool RetireAtSafePoint() noexcept override;
+    // False when the callback lease never opened, e.g. the state was already
+    // retired or its Retain was still in progress.
+    [[nodiscard]] bool IsOpen() const noexcept;
 
 private:
     PlanCallbackState m_State;
