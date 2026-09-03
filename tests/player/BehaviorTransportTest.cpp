@@ -23,6 +23,8 @@
 #include <string_view>
 #include <vector>
 
+#include "PlayerProbe.h"
+
 namespace {
 
 template <typename T>
@@ -262,6 +264,7 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override {
+        BML::PlayerTest::ProbeReport::Reset();
         const void *found = nullptr;
         if (BML_GetInterface(BML_BEHAVIOR_INTERFACE_ID,
                              BML_BEHAVIOR_INTERFACE_MAJOR, &found) != BML_OK) {
@@ -2298,6 +2301,10 @@ private:
             m_InspectPassed ? "true" : "false",
             WatchPassed() ? "true" : "false");
         CloseRuns();
+        if (passed)
+            BML::PlayerTest::ProbeReport::Pass(reason);
+        else
+            BML::PlayerTest::ProbeReport::Fail(reason);
     }
 
     const BML_BehaviorInterface *m_Behavior = nullptr;
@@ -2359,6 +2366,8 @@ private:
 };
 
 } // namespace
+
+BML_PLAYER_PROBE_READ_EXPORT()
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml) {
     return new BehaviorTransportTest(bml);

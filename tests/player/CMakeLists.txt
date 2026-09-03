@@ -40,46 +40,54 @@ if (NOT TARGET BML::BML)
     add_library(BML::BML ALIAS BML)
 endif ()
 
-# Shared Player acceptance helpers. Every driver Mod navigates the shipped menu
-# graph and captures frames the same way, so those units are compiled into each
-# Mod that needs them instead of being duplicated per driver.
-set(BML_PLAYER_SHARED_SOURCES
+# One Mod drives the shipped Player flow; every subject under test is a probe
+# Mod that publishes a single verdict through the exported probe entry points.
+# Installing a probe is all it takes to include it in a run.
+set(BML_PLAYER_PROBE_SOURCES
+        PlayerProbe.cpp
+        PlayerProbe.h
+        PlayerProbeApi.h
+)
+
+function(bml_add_player_test target)
+    bml_add_mod(${target} ${ARGN})
+    set_target_properties(${target} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+            FOLDER "Tests/Player"
+    )
+endfunction()
+
+# Menu -> Level_01 -> tutorial exit -> screenshot -> exit, with no knowledge of
+# any subject under test.
+bml_add_player_test(PlayerFlowDriver
+        PlayerFlowDriver.cpp
         PlayerFrameCapture.cpp
         PlayerFrameCapture.h
         PlayerNavigator.cpp
         PlayerNavigator.h
+        PlayerProbeApi.h
 )
 
-# Drives the Behavior Runtime acceptance flow on its own so the Behavior probes
-# do not interleave with the ExecuteBB scenario.
-bml_add_mod(BehaviorAcceptanceTest
-        BehaviorAcceptanceTest.cpp
-        ${BML_PLAYER_SHARED_SOURCES}
-        BehaviorRuntimeSemanticsApi.h
-)
-set_target_properties(BehaviorAcceptanceTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        FOLDER "Tests/Player"
-)
-
-bml_add_mod(ExecuteBBTest
+# The ExecuteBB physics operations, on a body the probe owns itself.
+bml_add_player_test(ExecuteBBTest
         ExecuteBBTest.cpp
-        BehaviorRuntimeSemanticsApi.h
-        BehaviorLifecycleFixtureApi.h
+        ${BML_PLAYER_PROBE_SOURCES}
 )
-set_target_properties(ExecuteBBTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        FOLDER "Tests/Player"
+
+# Offers a real script graph for a script Mod to hook and retire.
+bml_add_player_test(BehaviorScriptHookTest
+        BehaviorScriptHookTest.cpp
+        ${BML_PLAYER_PROBE_SOURCES}
 )
 
 # This fixture exercises CK2 semantics through private sources recompiled into
 # the Mod. It is deliberately separate from production-composition probes.
-bml_add_mod(BehaviorRuntimeSemanticsTest
+bml_add_player_test(BehaviorRuntimeSemanticsTest
         BehaviorRuntimeSemanticsTest.cpp
         BehaviorRuntimeSemantics.cpp
         BehaviorRuntimeSemantics.h
-        BehaviorRuntimeSemanticsApi.h
         BehaviorLifecycleFixtureApi.h
+        ${BML_PLAYER_PROBE_SOURCES}
         ${PROJECT_SOURCE_DIR}/src/Behavior/Callback.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKEdit.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraph.cpp
@@ -106,40 +114,27 @@ bml_add_mod(BehaviorRuntimeSemanticsTest
 target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE
         ${PROJECT_SOURCE_DIR}/src
 )
-set_target_properties(BehaviorRuntimeSemanticsTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        FOLDER "Tests/Player"
-)
 
-bml_add_mod(BehaviorTransportTest
+bml_add_player_test(BehaviorTransportTest
         BehaviorTransportTest.cpp
         BehaviorTransportFixtureApi.h
-)
-set_target_properties(BehaviorTransportTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        FOLDER "Tests/Player"
+        ${BML_PLAYER_PROBE_SOURCES}
 )
 
-bml_add_mod(BehaviorPatchTest
+bml_add_player_test(BehaviorPatchTest
         BehaviorPatchTest.cpp
         BehaviorLifecycleFixtureApi.h
+        ${BML_PLAYER_PROBE_SOURCES}
 )
 # This Mod links the normal import library and reaches Patches owned by BMLPlus.dll.
 target_include_directories(BehaviorPatchTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
-set_target_properties(BehaviorPatchTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        FOLDER "Tests/Player"
-)
 
 # The published Plan and Hook facade, authored the way a Mod would author it.
 # It reaches into src only for ObserveScript, which puts a script the probe
 # created itself into the Plans world the game normally feeds.
-bml_add_mod(BehaviorFacadeTest
+bml_add_player_test(BehaviorFacadeTest
         BehaviorFacadeTest.cpp
         BehaviorLifecycleFixtureApi.h
+        ${BML_PLAYER_PROBE_SOURCES}
 )
 target_include_directories(BehaviorFacadeTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
-set_target_properties(BehaviorFacadeTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        FOLDER "Tests/Player"
-)

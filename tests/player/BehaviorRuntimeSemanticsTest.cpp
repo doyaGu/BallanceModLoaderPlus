@@ -1,16 +1,13 @@
 #include "BehaviorRuntimeSemantics.h"
-#include "BehaviorRuntimeSemanticsApi.h"
 
 #include "BML/IMod.h"
 #include "CKAll.h"
 
-#include <algorithm>
-#include <cstring>
+#include "PlayerProbe.h"
+
 #include <memory>
 
 namespace {
-
-BMLBehaviorRuntimeSemanticsResult g_Result;
 
 class BehaviorRuntimeSemanticsTest final : public IMod {
 public:
@@ -27,15 +24,15 @@ public:
     }
     DECLARE_BML_VERSION;
 
-    void OnLoad() override { g_Result = {}; }
+    void OnLoad() override { BML::PlayerTest::ProbeReport::Reset(); }
 
     void OnStartLevel() override { m_LevelStarted = true; }
 
     void OnBallNavActive() override { m_BallNavigationActive = true; }
 
     void OnProcess() override {
-        if (!m_LevelStarted || !m_BallNavigationActive || g_Result.State !=
-                BML_BEHAVIOR_RUNTIME_SEMANTICS_PENDING)
+        if (!m_LevelStarted || !m_BallNavigationActive ||
+            BML::PlayerTest::ProbeReport::Reported())
             return;
         if (!m_Semantics && !CreateOwner())
             return;
@@ -50,21 +47,10 @@ public:
             return;
 
         const BehaviorRuntimeSemanticsResult result = m_Semantics->Result();
-        g_Result.State = result.Passed
-            ? BML_BEHAVIOR_RUNTIME_SEMANTICS_PASSED
-            : BML_BEHAVIOR_RUNTIME_SEMANTICS_FAILED;
-        g_Result.LifecyclePassed = result.LifecyclePassed ? 1u : 0u;
-        g_Result.AdditiveEditPassed = result.AdditiveEditPassed ? 1u : 0u;
-        g_Result.RelationsPassed = result.RelationsPassed ? 1u : 0u;
-        g_Result.PhysicsForcePassed = result.PhysicsForcePassed ? 1u : 0u;
-        g_Result.HookErrorPassed = result.HookErrorPassed ? 1u : 0u;
-        g_Result.MessagePassed = result.MessagePassed ? 1u : 0u;
-        g_Result.VisualPassed = result.VisualPassed ? 1u : 0u;
-        const std::size_t length = (std::min)(
-            result.Detail.size(), sizeof(g_Result.Detail) - 1);
-        std::memcpy(g_Result.Detail, result.Detail.data(), length);
-        g_Result.Detail[length] = '\0';
-
+        // Every sub-verdict is on the log line below. The driver only needs one
+        // verdict per probe, so the detail carries the failing reason.
+        const bool passed = result.Passed && result.LifecyclePassed &&
+                            result.AdditiveEditPassed;
         m_Semantics.reset();
         DestroyOwner();
         GetLogger()->Info(
@@ -77,7 +63,11 @@ public:
             result.HookErrorPassed ? "true" : "false",
             result.MessagePassed ? "true" : "false",
             result.VisualPassed ? "true" : "false",
-            g_Result.Detail);
+            result.Detail.c_str());
+        if (passed)
+            BML::PlayerTest::ProbeReport::Pass(result.Detail.c_str());
+        else
+            BML::PlayerTest::ProbeReport::Fail(result.Detail.c_str());
     }
 
     void OnUnload() override {
@@ -132,13 +122,7 @@ private:
 
 } // namespace
 
-extern "C" __declspec(dllexport) int __cdecl
-BMLBehaviorRuntimeSemanticsRead(BMLBehaviorRuntimeSemanticsResult *result) {
-    if (!result || result->Size != sizeof(BMLBehaviorRuntimeSemanticsResult))
-        return 0;
-    *result = g_Result;
-    return 1;
-}
+BML_PLAYER_PROBE_READ_EXPORT()
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml) {
     return new BehaviorRuntimeSemanticsTest(bml);

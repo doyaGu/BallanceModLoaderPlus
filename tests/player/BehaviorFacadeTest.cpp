@@ -14,6 +14,8 @@
 #include <memory>
 #include <thread>
 
+#include "PlayerProbe.h"
+
 namespace {
 
 using BML::Behavior::Hook;
@@ -65,6 +67,7 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override {
+        BML::PlayerTest::ProbeReport::Reset();
         const void *found = nullptr;
         if (BML_GetInterface(BML_BEHAVIOR_TEST_INTERFACE_ID,
                              BML_BEHAVIOR_TEST_INTERFACE_MAJOR,
@@ -695,6 +698,10 @@ private:
             passed ? "pass" : "fail", reason,
             m_PatchPassed ? "true" : "false",
             m_PatchClosePassed ? "true" : "false");
+        if (passed)
+            BML::PlayerTest::ProbeReport::Pass(reason);
+        else
+            BML::PlayerTest::ProbeReport::Fail(reason);
     }
 
     const BML_BehaviorTestInterface *m_Test = nullptr;
@@ -734,6 +741,8 @@ private:
 };
 
 } // namespace
+
+BML_PLAYER_PROBE_READ_EXPORT()
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml) {
     return new BehaviorFacadeTest(bml);

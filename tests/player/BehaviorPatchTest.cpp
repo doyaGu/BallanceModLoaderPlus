@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "PlayerProbe.h"
+
 namespace {
 
 int RunDurableNode(const CKBehaviorContext &context) {
@@ -83,6 +85,53 @@ int RunPatchCloseNode(const CKBehaviorContext &context) {
     return CKBR_OK;
 }
 
+// Records what the native teardown of one Patch observes when it closes Patches
+// from inside the Loader's own inverse.
+struct TeardownReentryProbe {
+    const BML_BehaviorInterface *Behavior = nullptr;
+    const BML_BehaviorTestInterface *Test = nullptr;
+    BML_BehaviorSession Session = nullptr;
+    std::uintptr_t Patch = 0;
+    std::uintptr_t Sibling = 0;
+    CKBehavior *Graph = nullptr;
+    std::uint32_t Calls = 0;
+    int SelfClose = BML_OK;
+    int SiblingClose = BML_OK;
+    int Read = BML_ERROR_FAIL;
+    std::uint32_t State = 0;
+    int SiblingRead = BML_ERROR_FAIL;
+    std::uint32_t SiblingState = 0;
+    int Nodes = -1;
+    int Links = -1;
+};
+
+TeardownReentryProbe g_Teardown;
+
+// Runs inside the DETACH and DELETE callbacks the Loader drives while it
+// closes the Patch that owns the fixture node. Closing that Patch again must
+// answer Busy, and closing a sibling Patch on the same graph must wait for the
+// next safe point instead of nesting a second inverse under the running one.
+int CloseFromTeardown(CKBehavior *, void *) {
+    TeardownReentryProbe &probe = g_Teardown;
+    ++probe.Calls;
+    if (probe.Calls != 1 || !probe.Behavior || !probe.Test || !probe.Session ||
+        !probe.Patch || !probe.Sibling)
+        return 0;
+    probe.SelfClose = probe.Behavior->ClosePatch(
+        probe.Session, reinterpret_cast<BML_BehaviorPatch>(probe.Patch));
+    probe.SiblingClose = probe.Behavior->ClosePatch(
+        probe.Session, reinterpret_cast<BML_BehaviorPatch>(probe.Sibling));
+    probe.Read = probe.Test->ReadPatch(probe.Session, probe.Patch,
+                                       &probe.State);
+    probe.SiblingRead = probe.Test->ReadPatch(probe.Session, probe.Sibling,
+                                              &probe.SiblingState);
+    if (probe.Graph) {
+        probe.Nodes = probe.Graph->GetSubBehaviorCount();
+        probe.Links = probe.Graph->GetSubBehaviorLinkCount();
+    }
+    return 1;
+}
+
 class BehaviorPatchTest final : public IMod {
 public:
     explicit BehaviorPatchTest(IBML *bml) : IMod(bml) {
@@ -99,6 +148,7 @@ public:
     DECLARE_BML_VERSION;
 
     void OnLoad() override {
+        BML::PlayerTest::ProbeReport::Reset();
         const void *found = nullptr;
         if (BML_GetInterface(BML_BEHAVIOR_INTERFACE_ID,
                              BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -166,6 +216,8 @@ public:
         case State::CreateCallbackClose: CreateCallbackGraph(); break;
         case State::CallbackClose: ObserveCallbackClose(); break;
         case State::WaitCallbackClose: WaitCallbackRestored(); break;
+        case State::CreateTeardownReentry: CreateTeardownGraph(); break;
+        case State::TeardownReentry: ObserveTeardownReentry(); break;
         case State::CreateDeletion:
             CreateGraph("player-graph-deletion", State::DeleteGraph);
             break;
@@ -184,7 +236,12 @@ public:
         if (m_Test && m_Session && m_Patch)
             (void) m_Test->ClosePatch(m_Session, m_Patch);
         m_Patch = 0;
+        if (m_Test && m_Session && m_SiblingPatch)
+            (void) m_Test->ClosePatch(m_Session, m_SiblingPatch);
+        m_SiblingPatch = 0;
+        ResetLifecycleFixture();
         g_PatchClose = {};
+        g_Teardown = {};
         DestroyGraph();
         if (m_Behavior && m_Session)
             m_Behavior->CloseSession(m_Session);
@@ -218,6 +275,8 @@ private:
         CreateCallbackClose,
         CallbackClose,
         WaitCallbackClose,
+        CreateTeardownReentry,
+        TeardownReentry,
         CreateDeletion,
         DeleteGraph,
         CreateRetirement,
@@ -1025,6 +1084,189 @@ private:
         m_Patch = 0;
         g_PatchClose = {};
         DestroyGraph();
+        m_State = State::CreateTeardownReentry;
+    }
+
+    struct LifecycleFixtureExports {
+        BMLLifecycleFixtureResetTraceFn ResetTrace = nullptr;
+        BMLLifecycleFixtureSetModeFn SetMode = nullptr;
+        BMLLifecycleFixtureSetCloseHookFn SetCloseHook = nullptr;
+        BMLLifecycleFixtureReadTraceFn ReadTrace = nullptr;
+
+        explicit operator bool() const {
+            return ResetTrace && SetMode && SetCloseHook && ReadTrace;
+        }
+    };
+
+    static LifecycleFixtureExports ResolveLifecycleFixture() {
+        LifecycleFixtureExports exports;
+        HMODULE module = ::GetModuleHandleA("BehaviorLifecycleFixture.dll");
+        if (!module)
+            return exports;
+        exports.ResetTrace = reinterpret_cast<BMLLifecycleFixtureResetTraceFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureResetTrace"));
+        exports.SetMode = reinterpret_cast<BMLLifecycleFixtureSetModeFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureSetMode"));
+        exports.SetCloseHook =
+            reinterpret_cast<BMLLifecycleFixtureSetCloseHookFn>(
+                ::GetProcAddress(module, "BMLLifecycleFixtureSetCloseHook"));
+        exports.ReadTrace = reinterpret_cast<BMLLifecycleFixtureReadTraceFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureReadTrace"));
+        return exports;
+    }
+
+    static void ResetLifecycleFixture() {
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        if (!fixture)
+            return;
+        fixture.SetCloseHook(nullptr, nullptr);
+        fixture.SetMode(BMLLifecycleFixtureMode::Normal);
+    }
+
+    // Two fixture Patches on one graph. Closing the first one on the game
+    // thread runs its inverse synchronously; the fixture's teardown callbacks
+    // then close both Patches again from inside that inverse.
+    void CreateTeardownGraph() {
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        if (!fixture) {
+            Finish(false, "teardown-fixture-exports");
+            return;
+        }
+        if (!CreateGraphObjects("__BML_Patch_Teardown") ||
+            !m_Graph->CreateOutput("Done2")) {
+            Finish(false, "teardown-graph-create");
+            DestroyGraph();
+            return;
+        }
+        m_Anchor = AddLink(m_Graph->GetInput(0), m_Graph->GetOutput(0));
+        m_SiblingAnchor = AddLink(m_Graph->GetInput(0), m_Graph->GetOutput(1));
+        if (!m_Anchor || !m_SiblingAnchor) {
+            Finish(false, "teardown-graph-link");
+            DestroyGraph();
+            return;
+        }
+        m_AnchorId = m_Anchor->GetID();
+        m_SiblingAnchorId = m_SiblingAnchor->GetID();
+
+        BML_BehaviorGuid prototype{
+            static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d1),
+            static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d2)};
+        fixture.ResetTrace();
+        const int installed = m_Test->InstallSplice(
+            m_Session, m_Graph, m_Anchor, prototype,
+            "player-teardown-reentry", &m_Patch);
+        const int siblingInstalled = m_Test->InstallSplice(
+            m_Session, m_Graph, m_SiblingAnchor, prototype,
+            "player-teardown-sibling", &m_SiblingPatch);
+        std::uint32_t state = 0;
+        std::uint32_t siblingState = 0;
+        const bool applied = installed == BML_OK && m_Patch != 0 &&
+            siblingInstalled == BML_OK && m_SiblingPatch != 0 &&
+            m_Test->ReadPatch(m_Session, m_Patch, &state) == BML_OK &&
+            state == BML_BEHAVIOR_TEST_PATCH_ACTIVE &&
+            m_Test->ReadPatch(m_Session, m_SiblingPatch, &siblingState) ==
+                BML_OK &&
+            siblingState == BML_BEHAVIOR_TEST_PATCH_ACTIVE &&
+            m_Graph->GetSubBehaviorCount() == 2 &&
+            m_Graph->GetSubBehaviorLinkCount() == 4;
+        if (!applied) {
+            GetLogger()->Error(
+                "Behavior patch teardown install failed: code=%d sibling_code=%d state=%u sibling_state=%u nodes=%d links=%d",
+                installed, siblingInstalled, static_cast<unsigned>(state),
+                static_cast<unsigned>(siblingState),
+                m_Graph->GetSubBehaviorCount(),
+                m_Graph->GetSubBehaviorLinkCount());
+            Finish(false, "teardown-patch-apply");
+            return;
+        }
+
+        g_Teardown = {};
+        g_Teardown.Behavior = m_Behavior;
+        g_Teardown.Test = m_Test;
+        g_Teardown.Session = m_Session;
+        g_Teardown.Patch = m_Patch;
+        g_Teardown.Sibling = m_SiblingPatch;
+        g_Teardown.Graph = m_Graph;
+        fixture.SetCloseHook(CloseFromTeardown, nullptr);
+        fixture.SetMode(BMLLifecycleFixtureMode::CloseOnTeardown);
+
+        m_TeardownOuterClose = m_Behavior->ClosePatch(
+            m_Session, reinterpret_cast<BML_BehaviorPatch>(m_Patch));
+
+        // The sibling's own teardown must not re-enter anything.
+        fixture.SetCloseHook(nullptr, nullptr);
+        fixture.SetMode(BMLLifecycleFixtureMode::Normal);
+
+        m_TeardownOuterStale = StalePatch();
+        m_TeardownSiblingQueued =
+            m_Test->ReadPatch(m_Session, m_SiblingPatch, &siblingState) ==
+                BML_OK &&
+            siblingState == BML_BEHAVIOR_TEST_PATCH_CLOSING;
+        m_TeardownWaitUntil = m_Frame + 20;
+        m_State = State::TeardownReentry;
+    }
+
+    bool SiblingStale() const {
+        std::uint32_t state = 0;
+        return m_Test && m_Session && m_SiblingPatch &&
+            m_Test->ReadPatch(m_Session, m_SiblingPatch, &state) != BML_OK;
+    }
+
+    void ObserveTeardownReentry() {
+        const bool siblingStale = SiblingStale();
+        if (!siblingStale && m_Frame <= m_TeardownWaitUntil)
+            return;
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        BMLLifecycleFixtureTrace trace;
+        const bool traced = fixture && fixture.ReadTrace(&trace) != 0;
+        const int nodes = m_Graph ? m_Graph->GetSubBehaviorCount() : -1;
+        const int links = m_Graph ? m_Graph->GetSubBehaviorLinkCount() : -1;
+        const bool restored = m_Graph && m_Anchor && m_SiblingAnchor &&
+            m_Anchor->GetID() == m_AnchorId &&
+            m_SiblingAnchor->GetID() == m_SiblingAnchorId &&
+            m_Anchor->GetOutBehaviorIO() == m_Graph->GetOutput(0) &&
+            m_SiblingAnchor->GetOutBehaviorIO() == m_Graph->GetOutput(1) &&
+            nodes == 0 && links == 2;
+        m_TeardownReentryPassed =
+            m_TeardownOuterClose == BML_OK &&
+            m_TeardownOuterStale && m_TeardownSiblingQueued &&
+            siblingStale && restored && traced &&
+            g_Teardown.Calls == 2 &&
+            g_Teardown.SelfClose == BML_ERROR_BUSY &&
+            g_Teardown.SiblingClose == BML_ERROR_BUSY &&
+            g_Teardown.Read == BML_OK &&
+            g_Teardown.State == BML_BEHAVIOR_TEST_PATCH_CLOSING &&
+            g_Teardown.SiblingRead == BML_OK &&
+            g_Teardown.SiblingState == BML_BEHAVIOR_TEST_PATCH_CLOSING &&
+            // The inverse restores the anchor and removes the Patch's own
+            // Link before it tears the node down, so the callback sees the
+            // node still present and one Link already gone.
+            g_Teardown.Nodes == 2 && g_Teardown.Links == 3 &&
+            trace.CloseHookCalls == 2 && trace.CloseHookAccepted == 1 &&
+            trace.CreateCount == 2 && trace.DetachCount == 2 &&
+            trace.DeleteCount == 2;
+        GetLogger()->Info(
+            "Behavior patch teardown reentry: status=%s outer=%d stale=%s queued=%s self=%d sibling=%d state=%u sibling_state=%u calls=%u nodes=%d links=%d detach=%u delete=%u restored=%s",
+            m_TeardownReentryPassed ? "pass" : "fail",
+            m_TeardownOuterClose,
+            m_TeardownOuterStale ? "true" : "false",
+            m_TeardownSiblingQueued ? "true" : "false",
+            g_Teardown.SelfClose, g_Teardown.SiblingClose,
+            static_cast<unsigned>(g_Teardown.State),
+            static_cast<unsigned>(g_Teardown.SiblingState),
+            static_cast<unsigned>(g_Teardown.Calls),
+            g_Teardown.Nodes, g_Teardown.Links,
+            static_cast<unsigned>(traced ? trace.DetachCount : 0),
+            static_cast<unsigned>(traced ? trace.DeleteCount : 0),
+            restored ? "true" : "false");
+        m_Patch = 0;
+        m_SiblingPatch = 0;
+        g_Teardown = {};
+        if (!m_TeardownReentryPassed) {
+            Finish(false, "teardown-reentry");
+            return;
+        }
+        DestroyGraph();
         m_State = State::CreateDeletion;
     }
 
@@ -1133,6 +1375,7 @@ private:
                    m_ExecutePassed &&
                    m_ClosePassed && m_RestorePassed && m_ResetPassed &&
                    m_GraphChangedPassed && m_CallbackClosePassed &&
+                   m_TeardownReentryPassed &&
                    m_DeletionPassed && m_RetirementPassed,
                m_RetirementPassed ? "complete" : "patch-retirement");
     }
@@ -1152,6 +1395,12 @@ private:
         }
         m_Anchor = nullptr;
         m_AnchorId = 0;
+        if (m_Graph && m_SiblingAnchor) {
+            m_Graph->RemoveSubBehaviorLink(m_SiblingAnchor);
+            context->DestroyObject(m_SiblingAnchor);
+        }
+        m_SiblingAnchor = nullptr;
+        m_SiblingAnchorId = 0;
         if (m_Graph && m_Baseline)
             m_Graph->RemoveSubBehavior(m_Baseline);
         if (m_Baseline)
@@ -1195,7 +1444,7 @@ private:
             return;
         m_Done = true;
         GetLogger()->Info(
-            "Behavior patch: status=%s reason=%s module=%s visual=%s durable=%s relations=%s apply=%s execute=%s close=%s restore=%s reset=%s deletion=%s retirement=%s hooks=%s graph_changed=%s callback_close=%s",
+            "Behavior patch: status=%s reason=%s module=%s visual=%s durable=%s relations=%s apply=%s execute=%s close=%s restore=%s reset=%s deletion=%s retirement=%s hooks=%s graph_changed=%s callback_close=%s teardown_reentry=%s",
             passed ? "pass" : "fail", reason,
             m_ModulePassed ? "true" : "false",
             m_VisualPassed ? "true" : "false",
@@ -1210,13 +1459,19 @@ private:
             m_RetirementPassed ? "true" : "false",
             m_DurableHooksPassed ? "true" : "false",
             m_GraphChangedPassed ? "true" : "false",
-            m_CallbackClosePassed ? "true" : "false");
+            m_CallbackClosePassed ? "true" : "false",
+            m_TeardownReentryPassed ? "true" : "false");
+        if (passed)
+            BML::PlayerTest::ProbeReport::Pass(reason);
+        else
+            BML::PlayerTest::ProbeReport::Fail(reason);
     }
 
     const BML_BehaviorInterface *m_Behavior = nullptr;
     const BML_BehaviorTestInterface *m_Test = nullptr;
     BML_BehaviorSession m_Session = nullptr;
     std::uintptr_t m_Patch = 0;
+    std::uintptr_t m_SiblingPatch = 0;
     std::uintptr_t m_Plan = 0;
     CK3dObject *m_Owner = nullptr;
     CKBehavior *m_Graph = nullptr;
@@ -1229,9 +1484,15 @@ private:
     CKBehaviorLink *m_Entry = nullptr;
     CKBehaviorLink *m_Anchor = nullptr;
     CK_ID m_AnchorId = 0;
+    CKBehaviorLink *m_SiblingAnchor = nullptr;
+    CK_ID m_SiblingAnchorId = 0;
     std::uint64_t m_DurableWorld = 0;
     int m_DurableWaitUntil = 0;
     int m_CallbackWaitUntil = 0;
+    int m_TeardownWaitUntil = 0;
+    int m_TeardownOuterClose = BML_ERROR_FAIL;
+    bool m_TeardownOuterStale = false;
+    bool m_TeardownSiblingQueued = false;
     State m_State = State::CreateVisual;
     int m_Frame = 0;
     int m_ExecuteStarted = 0;
@@ -1251,12 +1512,15 @@ private:
     bool m_ResetPassed = false;
     bool m_GraphChangedPassed = false;
     bool m_CallbackClosePassed = false;
+    bool m_TeardownReentryPassed = false;
     bool m_DeletionPassed = false;
     bool m_RetirementPassed = false;
     bool m_Done = false;
 };
 
 } // namespace
+
+BML_PLAYER_PROBE_READ_EXPORT()
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml) {
     return new BehaviorPatchTest(bml);
