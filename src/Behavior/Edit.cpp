@@ -580,11 +580,12 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         Status status = resolve(tap.Source, checked.Source);
         if (!status)
             return status;
-        if (!tap.Callback ||
-            !IsControlSource(checked.Source.Owner == Graph(),
-                             checked.Source.Slot.Kind)) {
+        // Topology models Out taps only. A graph Entry has no native Out to
+        // observe, so it is rejected here instead of after native mutation.
+        if (!tap.Callback || checked.Source.Owner == Graph() ||
+            checked.Source.Slot.Kind != SlotKind::Output) {
             return Failure(Error::TypeMismatch,
-                           "Tap requires a callback and an Entry/node Out source.");
+                           "Tap requires a callback and a node Out source.");
         }
         checked.Callback = tap.Callback;
         checked.Ordinal = tap.Ordinal;
@@ -720,6 +721,18 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         if (source != sink || !baselineCyclic)
             candidate[static_cast<std::uint64_t>(source)].push_back(
                 static_cast<std::uint64_t>(sink));
+    }
+    // The baseline condensation is a DAG. Its inter-component edges must take
+    // part in the final search, or a new Flow that closes a cycle through
+    // existing same-frame Links would pass as acyclic.
+    for (const auto &[from, targets] : baseline) {
+        const int source = baseComponents.Of(from);
+        for (std::uint64_t target : targets) {
+            const int sink = baseComponents.Of(target);
+            if (source >= 0 && sink >= 0 && source != sink)
+                candidate[static_cast<std::uint64_t>(source)].push_back(
+                    static_cast<std::uint64_t>(sink));
+        }
     }
     Components finalComponents(candidate);
     for (const Delta &edge : delta) {

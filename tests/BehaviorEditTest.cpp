@@ -135,6 +135,46 @@ TEST(BehaviorEdit, ExistingCycleDoesNotBlockAnUnrelatedFlow) {
     EXPECT_TRUE(edit.Validate(Base(true), checked));
 }
 
+TEST(BehaviorEdit, DetectsACycleClosedThroughExistingSameFrameLinks) {
+    GraphModel base = Base();
+    base.Links = {
+        {1, {}, {101, SlotKind::Output, 0}, {102, SlotKind::Input, 0}, 0},
+        {2, {}, {102, SlotKind::Output, 0}, {103, SlotKind::Input, 0}, 0},
+    };
+
+    Edit rejected = MakeEdit();
+    const Node a = rejected.Use(Native(101), Shape());
+    const Node c = rejected.Use(Native(103), Shape());
+    rejected.Flow(c.Out(), a.In());
+
+    CheckedEdit checked;
+    Status status = rejected.Validate(base, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::UnconfirmedSameFrameCycle);
+
+    Edit delayed = MakeEdit();
+    const Node delayedA = delayed.Use(Native(101), Shape());
+    const Node delayedC = delayed.Use(Native(103), Shape());
+    delayed.Flow(delayedC.Out(), delayedA.In(), 1);
+    EXPECT_TRUE(delayed.Validate(base, checked));
+
+    Edit confirmed = MakeEdit();
+    const Node confirmedA = confirmed.Use(Native(101), Shape());
+    const Node confirmedC = confirmed.Use(Native(103), Shape());
+    confirmed.Flow(confirmedC.Out(), confirmedA.In(), 0, Cycle::Confirmed);
+    EXPECT_TRUE(confirmed.Validate(base, checked));
+}
+
+TEST(BehaviorEdit, RejectsATapOnAGraphEntryBeforeMutation) {
+    Edit edit = MakeEdit();
+    edit.Tap(edit.Entry("Start"), FakeTap());
+
+    CheckedEdit checked;
+    Status status = edit.Validate(Base(), checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::TypeMismatch);
+}
+
 TEST(BehaviorEdit, ChecksEachDynamicInterfaceKindIndependently) {
     constexpr CKDWORD flags = CKBEHAVIOR_VARIABLEINPUTS |
                               CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
