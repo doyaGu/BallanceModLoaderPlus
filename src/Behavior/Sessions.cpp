@@ -280,6 +280,11 @@ RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
 }
 
 Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
+    // Runtime::State reports Closed off the game thread; without this guard a
+    // healthy Run would read as Failed with a WrongThread diagnostic.
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::shared_ptr<const Run> run = FindRun(runId);
     if (!run)
