@@ -6,8 +6,8 @@
 [跨 Mod 通信](imc.md)。
 
 如果只想要一条规则：凡是要拿到引擎对象、或只有它们提供的能力，走旧式 `IBML` 与
-`IMod`；读取游戏状态、接收 Loader 事件、控制 Loader 自己的界面，走 interface
-struct；要把接口发布给别的 Mod，走 IMC。
+`IMod`；读取游戏状态、接收 Loader 事件、控制 Loader 自己的界面以及编写 Behavior，
+走 interface struct；要把接口发布给别的 Mod，走 IMC。
 
 ## 为什么会有多种写法
 
@@ -73,6 +73,7 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 定时器 | `AddTimer`、`AddTimerLoop` | 无 | 只有旧式 C++。 |
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |
 | 已加载了哪些 Mod，以及依赖 | `GetModCount`、`GetMod`、`FindMod`、`RegisterDependency`、`CheckDependencies` | 无 | 只有旧式 C++。 |
+| 发现、配置、执行 Virtools Building Block，以及检查或编辑 Behavior Graph | 原始 CK SDK 与 `ExecuteBB` 兼容 helper | `Behavior.hpp` 的 `BML::Behavior` | 新代码使用 `BML::Behavior`。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用以及可恢复的 Patch/Plan 生命周期。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。 |
 | 把自己的接口发布给别的 Mod | 无 | IMC，最好从 `.imc` 文件生成 | 只有 IMC。自己定义 C++ 类，等于把自己的 vtable 布局和标准库塞进每个使用方的构建里；`BML_GetInterface` 也不是替代品，它交出的是 Loader 自己的接口，Mod 无法往里添加。IMC 到达的是原生使用方：脚本 Mod 目前既不能调用别的 Mod 的路由，也不能发布自己的。 |
 | 绘制自己的界面 | `Bui` 画 ImGui 控件，`BGui` 用游戏内 2D 实体 | 无 | 这两者都不是 `BML::UI`，后者控制的是 Loader 自己的界面，不画你的东西。 |
 | 字符串、路径、文件、内存分配 | 无 | `BML.h` 的 `BML_*` 函数 | 走 C 导出。它们返回的东西要用对应的 `BML_Free*` 释放，不能用 CRT 的 `free`。 |
@@ -104,5 +105,6 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 ## 延伸阅读
 
 - [原生 Mod API 概览](native-mod-api.md)
+- [Behavior 编写](behavior-authoring.md)
 - [跨 Mod 通信](imc.md)
 - [编写类型化 IMC 接口](imc-author-guide.md)

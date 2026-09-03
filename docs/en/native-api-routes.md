@@ -9,8 +9,8 @@ publishes for other mods. See [Inter-mod communication](imc.md) for that.
 If you are writing a new mod and want a single rule: use the legacy `IBML` and
 `IMod` interfaces for everything that hands you an engine object or that only
 they offer, use the interface structs for reading game state, for loader events,
-and for driving the loader's own UI, and use IMC for anything you publish to
-other mods.
+for driving the loader's own UI, and for Behavior authoring, and use IMC for
+anything you publish to other mods.
 
 ## Why there is more than one spelling
 
@@ -90,6 +90,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Timers | `AddTimer`, `AddTimerLoop` | none | Frozen C++ only. |
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
 | Which mods are loaded, and dependencies | `GetModCount`, `GetMod`, `FindMod`, `RegisterDependency`, `CheckDependencies` | none | Frozen C++ only. |
+| Discover, configure, and execute Virtools Building Blocks; inspect or edit Behavior graphs | raw CK SDK and `ExecuteBB` compatibility helpers | `BML::Behavior` from `Behavior.hpp` | Use `BML::Behavior` for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, and reversible Patch/Plan lifetimes. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself. |
 | Publishing an API of your own to other mods | none | IMC, ideally generated from a `.imc` file | IMC only. A C++ class of your own would put your vtable layout and your standard library in every consumer's build, and `BML_GetInterface` is no alternative: it hands out the loader's own interfaces and a mod cannot add to it. IMC reaches native consumers: a script mod can currently neither call another mod's route nor publish one of its own. |
 | Drawing your own UI | `Bui` for ImGui widgets, `BGui` for in-game 2D entities | none | Neither of these is `BML::UI`, which controls the loader's own UI and draws nothing of yours. |
 | Strings, paths, files, allocation | none | the `BML_*` functions of `BML.h` | The C exports. Release what they return with the matching `BML_Free*`, never with the CRT `free`. |
@@ -124,5 +125,6 @@ Three differences do show through:
 ## Further reading
 
 - [Native mod API overview](native-mod-api.md)
+- [Behavior authoring](behavior-authoring.md)
 - [Inter-mod communication](imc.md)
 - [Create a typed IMC API](imc-author-guide.md)

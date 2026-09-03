@@ -67,7 +67,7 @@ and deploy the Mod under `ModLoader/Mods`.
 | `DataShare.h` | Low-level, named in-process byte sharing |
 | `Types.h`, `TypeConvert.h` | Object references, vectors, and matrices, plus conversions to and from the Virtools types |
 | `Interface.h` | The versioned interface structs the loader hands out, and how to ask for one |
-| `Behavior.h` | Native Building Block discovery, declared/live Layouts, configured Runs, and owned Outcomes |
+| `Behavior.h`, `Behavior.hpp` | Virtools Building Block discovery, authoring, execution, graph inspection, and editing |
 | `Runtime.h`, `Scene.h`, `Gameplay.h`, `Speedrun.h`, `UI.h` | Loader capabilities reached through an interface struct, with inline C++ wrappers |
 | `Imc.h`, `ImcWire.hpp`, `ImcCpp.hpp` | IMC C/C++ runtime and wire format |
 | `Bui.h` | Ballance-style ImGui widgets |
@@ -209,22 +209,20 @@ checks in:
 - `BML::Scene` for object information, transforms, and named lookup;
 - `BML::Gameplay` for level, energy, catalog, checkpoint, and reset data;
 - `BML::UI` for the message board, mod/map menus, and HUD;
-- `BML::Speedrun` for the shared speedrun timer.
+- `BML::Speedrun` for the shared speedrun timer;
+- `BML::Behavior` for Virtools Building Block discovery, configured Runs,
+  copied Frames, graph inspection, Watches, Patches, and durable Plans.
 
 `Interface.h` documents the version rules: a struct grows only by appending a
 member and bumping its minor version, and `BML_IFACE_HAS` asks whether the
 running loader has a member added after the header the mod was built against.
 
 `bml.behavior` deliberately uses Virtools' own Prototype, Layout, Setting, Pin,
-Local, In, Out, and Pout vocabulary. Minor 1 adds exact Prototype discovery and
-declared/live Layout reads. Discovery returns a Prototype GUID plus provider
-generation; copy that generation into `BML_BehaviorBlock` so a later provider
-replacement is rejected instead of silently selected. The discovery and Layout
-functions use two-phase caller buffers: a short buffer reports the complete
-required record count and payload size without writing or consuming a partial
-result. Check the appended functions with `BML_IFACE_HAS`. They report the
-capability as unavailable when the running CK2 build cannot provide reliable
-declaration-retirement tracking.
+Local, In, Out, Pout, Graph, Patch, and Plan vocabulary. Its C interface is the
+stable transport seam; Native C++ Mods should normally use `Behavior.hpp`, which
+owns strings, arrays, callbacks, handles, and Frame bytes. See
+[Behavior authoring](behavior-authoring.md) for the complete ownership, thread,
+world-reset, error, and hot-path contracts.
 
 The native `BML::Gameplay` collection reads return complete snapshots in a
 caller-owned `std::vector`. Read the catalog during setup and refresh level
