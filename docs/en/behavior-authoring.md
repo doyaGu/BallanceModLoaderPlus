@@ -111,8 +111,13 @@ C++ `Take()` method owns and decodes the returned data.
 ## Inspect and watch graphs
 
 `Inspect` returns an owned Logical or Live graph view without exposing CK
-pointers. Node names are not identities and may repeat: enumerate all matches or
-ask for a unique match and handle ambiguity explicitly. Parameter reads follow
+pointers. Live shows the physical CK graph. Logical shows what an author edited:
+explicit Blocks and Links remain visible, while the Loader restores a spliced
+anchor's original endpoints and delay and hides its exact continuation Links and
+Tap/After Hook Blocks. If one of those Loader-owned physical relations changes
+behind the Patch, Logical inspection reports `GraphChanged` instead of guessing.
+Node names are not identities and may repeat: enumerate all matches or ask for a
+unique match and handle ambiguity explicitly. Parameter reads follow
 stored/direct/shared sources without evaluating a Parameter Operation.
 
 A Watch samples graph, Layout, or value state once per game frame. Portable

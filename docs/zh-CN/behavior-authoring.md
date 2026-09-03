@@ -96,8 +96,12 @@ C 的 `TakeFrames` 使用不消费的两阶段协议：第一次只测量完整 
 ## 检查和观察行为图
 
 `Inspect` 返回不含 CK pointer 的 owned Logical 或 Live Graph。Node name 不是 identity，
-而且可以重名；应枚举全部匹配，或请求 unique match 并显式处理歧义。Parameter 读取
-沿 stored/direct/shared source 取值，但不会求值 Parameter Operation。
+Live 是物理 CK graph；Logical 是作者实际编辑的 graph：显式添加的 Block 与 Link 仍然
+可见，Loader 会把 splice anchor 恢复为原始 endpoint 与 delay，并隐藏它精确记录的
+continuation Link 和 Tap/After HookBlock。如果这些由 Patch 占有的物理关系被外部改写，
+Logical inspection 会返回 `GraphChanged`，不会靠名称或图形状猜测。Node name 不是
+identity，而且可以重名；应枚举全部匹配，或请求 unique match 并显式处理歧义。
+Parameter 读取沿 stored/direct/shared source 取值，但不会求值 Parameter Operation。
 
 Watch 每个 game frame 采样一次 graph、Layout 或 value。portable CK2.1 没有可靠的
 exact parameter-data notification seam，因此公开接口只提供 sampled value change。
