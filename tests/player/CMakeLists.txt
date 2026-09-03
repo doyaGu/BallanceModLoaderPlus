@@ -40,6 +40,28 @@ if (NOT TARGET BML::BML)
     add_library(BML::BML ALIAS BML)
 endif ()
 
+# Shared Player acceptance helpers. Every driver Mod navigates the shipped menu
+# graph and captures frames the same way, so those units are compiled into each
+# Mod that needs them instead of being duplicated per driver.
+set(BML_PLAYER_SHARED_SOURCES
+        PlayerFrameCapture.cpp
+        PlayerFrameCapture.h
+        PlayerNavigator.cpp
+        PlayerNavigator.h
+)
+
+# Drives the Behavior Runtime acceptance flow on its own so the Behavior probes
+# do not interleave with the ExecuteBB scenario.
+bml_add_mod(BehaviorAcceptanceTest
+        BehaviorAcceptanceTest.cpp
+        ${BML_PLAYER_SHARED_SOURCES}
+        BehaviorRuntimeSemanticsApi.h
+)
+set_target_properties(BehaviorAcceptanceTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        FOLDER "Tests/Player"
+)
+
 bml_add_mod(ExecuteBBTest
         ExecuteBBTest.cpp
         BehaviorRuntimeSemanticsApi.h
