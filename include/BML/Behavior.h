@@ -745,8 +745,9 @@ typedef struct BML_BehaviorHookContext {
     BML_ObjectRef Owner;
 } BML_BehaviorHookContext;
 
-// Return codes an author callback may report. Any other value is reported to
-// Virtools as a behavior error, which stops the enclosing chain.
+// Return codes an author callback may report. Any other value stops the
+// enclosing chain: the Hook Block leaves every Out inactive and reports a
+// behavior error to Virtools.
 typedef enum BML_BehaviorHookResult {
     BML_BEHAVIOR_HOOK_OK = 0,
     // Keep the Hook Block active for one more frame. Its Outs still activate.

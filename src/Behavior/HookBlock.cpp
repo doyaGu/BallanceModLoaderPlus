@@ -18,8 +18,13 @@ int Run(const CKBehaviorContext &context) {
     // A Block whose author callback did not run stays transparent. The Hook is
     // spliced into a chain the host script owns, so swallowing the activation
     // would stop that script while the Patch is merely closing or Conflicted.
-    // A callback that ran and faulted is a real error and still stops here.
-    if (call.Invoked && call.Fault)
+    // A callback that ran and faulted, or that reported a CKBR error code, is
+    // a real error and stops here. CK2 discards a sub-behavior's return code
+    // (CKBehavior::Execute), so leaving every Out inactive is the only way to
+    // stop the enclosing chain.
+    const bool reportedError = call.Invoked &&
+        (call.ReturnCode & CKBR_GENERICERROR) == CKBR_GENERICERROR;
+    if (call.Invoked && (call.Fault || reportedError))
         return call.ReturnCode;
 
     CKBOOL autoActivateOutputs = TRUE;
