@@ -100,7 +100,15 @@ adds the native/script templates and editor API files to that installed tree.
 
 Unit and integration tests do not exercise Virtools or the real Player. Changes
 to hooks, lifecycle order, rendering, input, CK object access, native mod
-loading, or script hosting also require a Player smoke run.
+loading, or script hosting also require validation in the real Player. Choose
+the validation level that observes the behavior being changed:
+
+- `tests/smoke/Validate-BMLBallance.ps1` checks deployment, Mod loading,
+  exported runtime surfaces, shutdown, and installation restoration. It is a
+  process-integration smoke test, not proof of Building Block semantics.
+- A focused Player scenario drives the actual game path and checks an observable
+  world result. Use this level for behavior execution, physics epochs, graph
+  changes, lifecycle ordering, rendering, or input behavior.
 
 Set `BML_BALLANCE_ROOT` or pass `-BallanceRoot` to the smoke script:
 
@@ -116,16 +124,40 @@ backs up the installed loader, installs smoke assets, starts Player, validates
 the logs, and restores the previous installation unless `-KeepInstalled` is
 specified.
 
-The Behavior Runtime has its own Player runner, separate from the `ExecuteBBTest`
-scenario driver, so the two flows do not interleave. It installs the Behavior
-probe Mods with their two Virtools fixture plugins, drives the shipped menu graph
-into a level, and reports a single acceptance verdict:
+Player acceptance is split into one driver Mod and one probe Mod per subject.
+`PlayerFlowDriver` owns only the shipped flow: the menu graph into Level 01, the
+tutorial exit handshake, the frame captures, and the exit. It knows no subject
+under test. Every verdict comes from a probe Mod whose DLL exports
+`BMLPlayerProbeRead`; the driver discovers the loaded probes, waits for each one
+to report, and fails the run when a probe fails. A probe that reads gameplay
+state also exports `BMLPlayerProbeStart`, so the driver decides when it may
+touch the ball, the camera, or input. Which subjects a run covers is therefore
+decided by which probes the runner installs, not by the driver.
+
+The ExecuteBB probe physicalizes a body it owns itself, so it proves the
+ExecuteBB physics operations without depending on the retail ball:
 
 ```powershell
 cmake --build build-dev --config RelWithDebInfo --target BML `
-  BehaviorAcceptanceTest BehaviorRuntimeSemanticsTest BehaviorTransportTest `
-  BehaviorPatchTest BehaviorFacadeTest BehaviorLifecycleFixture `
-  BehaviorTransportFixture
+  PlayerFlowDriver ExecuteBBTest
+powershell -ExecutionPolicy Bypass `
+  -File tests/player/Invoke-ExecuteBBTest.ps1 `
+  -BallanceRoot "<Ballance-root>" `
+  -BuildDll "build-dev/bin/RelWithDebInfo/BMLPlus.dll"
+```
+
+Every runner shows the Player window by default and restores the installed
+loader, the test Mods, and the logs when it finishes.
+
+The Behavior Runtime probes cover the runtime semantics fixture, the transport
+seam, Patches, the published Plan and Hook facade, and the script hook a script
+Mod retires. They install together with their two Virtools fixture plugins:
+
+```powershell
+cmake --build build-dev --config RelWithDebInfo --target BML `
+  PlayerFlowDriver BehaviorRuntimeSemanticsTest BehaviorTransportTest `
+  BehaviorPatchTest BehaviorFacadeTest BehaviorScriptHookTest `
+  BehaviorLifecycleFixture BehaviorTransportFixture
 powershell -ExecutionPolicy Bypass `
   -File tests/player/Invoke-BehaviorAcceptanceTest.ps1 `
   -BallanceRoot "<Ballance-root>" `
@@ -134,13 +166,16 @@ powershell -ExecutionPolicy Bypass `
 
 Every probe path defaults to the directory holding the loader DLL, so one
 `-BuildDll` is enough. Add `-DisableAngelScript` when the install has no
-`AngelScript.dll`; the runner then skips the script Hook retirement check
-instead of failing it.
+`AngelScript.dll`; the script hook probe then reports SKIPPED instead of
+failing.
 
-The Behavior runner drives Player through `tests/player/BMLPlayerHarness.psm1`.
-That module starts Player, answers the FullScreen Setup dialog, captures window
-screenshots, and drives the tutorial exit key. Change it when startup or the
-tutorial handshake changes, not the runner.
+All runners share `tests/player/BMLPlayerHarness.psm1`. `Invoke-BMLPlayerRun`
+owns backing up and installing the touched files, starting Player, answering the
+FullScreen Setup dialog, capturing window screenshots, driving the tutorial exit
+key, and restoring the installation. `Get-BMLPlayerFlowChecks` turns the driver
+line and the probe verdicts into the checks every runner shares. Change that
+module when startup, the flow, or the probe protocol changes, not the individual
+runners.
 
 ## Find the owner of a change
 
@@ -243,7 +278,9 @@ in separate commits when they can be reviewed independently.
 
 - Build Debug and Release as Win32.
 - Run the relevant focused tests and the full test suite.
-- Run a Player smoke test for runtime-facing changes.
+- Run the appropriate real Player validation for runtime-facing changes. A
+  smoke run is sufficient only when process integration is the behavior under
+  test; game semantics require a focused Player scenario.
 - Verify generated IMC headers and locks when an interface changed.
 - Build both documentation sites with strict warnings.
 - Confirm that legacy native headers and exports were not changed accidentally.

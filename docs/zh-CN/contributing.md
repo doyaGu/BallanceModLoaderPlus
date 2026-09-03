@@ -93,8 +93,13 @@ API 文件。
 ## 运行时验证
 
 单元测试和集成测试不会运行 Virtools 或真实 Player。修改 Hook、生命周期顺序、
-渲染、输入、CK 对象访问、原生 Mod 装载或脚本宿主后，还必须执行 Player
-冒烟测试。
+渲染、输入、CK 对象访问、原生 Mod 装载或脚本宿主后，还必须在真实 Player 中验证。
+验证层级必须能观察到被修改的行为：
+
+- `tests/smoke/Validate-BMLBallance.ps1` 检查部署、Mod 加载、导出的运行时 interface、
+  关闭和安装恢复。它是进程集成冒烟测试，不能证明 Building Block 语义正确。
+- 定向 Player 场景沿真实游戏路径运行，并检查可观察的世界结果。行为执行、physics
+  epoch、行为图修改、生命周期顺序、渲染或输入语义必须使用这一层。
 
 设置 `BML_BALLANCE_ROOT`，或向脚本传入 `-BallanceRoot`：
 
@@ -109,15 +114,36 @@ powershell -ExecutionPolicy Bypass `
 资源、启动 Player、检查日志，并在结束后恢复原安装；只有显式传入
 `-KeepInstalled` 才会保留测试文件。
 
-Behavior Runtime 有独立的 Player runner，与 `ExecuteBBTest` 场景驱动分开，两条流程
-不再交织。它安装各个 Behavior probe Mod 和两个 Virtools fixture 插件，沿自带菜单图
-进入关卡，并只输出一条验收结论：
+Player 验收拆成一个驱动 Mod 加每个被测对象各一个 probe Mod。`PlayerFlowDriver`
+只负责自带流程：菜单图进入 Level 01、教程退出握手、抓帧和退出，它不认识任何被测
+对象。所有结论都来自导出 `BMLPlayerProbeRead` 的 probe Mod：驱动枚举已加载的
+probe，等每个 probe 报告结论，任一 probe 失败即整轮失败。读取 gameplay 状态的
+probe 还导出 `BMLPlayerProbeStart`，由驱动决定它何时可以碰球、相机或输入。因此
+一轮验收覆盖哪些对象，由 runner 安装了哪些 probe 决定，而不是由驱动决定。
+
+ExecuteBB probe 自己 Physicalize 一个自有物体，因此可以在不依赖原版球的前提下
+证明 ExecuteBB 的物理操作：
 
 ```powershell
 cmake --build build-dev --config RelWithDebInfo --target BML `
-  BehaviorAcceptanceTest BehaviorRuntimeSemanticsTest BehaviorTransportTest `
-  BehaviorPatchTest BehaviorFacadeTest BehaviorLifecycleFixture `
-  BehaviorTransportFixture
+  PlayerFlowDriver ExecuteBBTest
+powershell -ExecutionPolicy Bypass `
+  -File tests/player/Invoke-ExecuteBBTest.ps1 `
+  -BallanceRoot "<Ballance 根目录>" `
+  -BuildDll "build-dev/bin/RelWithDebInfo/BMLPlus.dll"
+```
+
+每个 runner 默认显示 Player 窗口，结束后恢复已安装的 Loader、测试 Mod 和日志。
+
+Behavior Runtime 的各 probe 覆盖运行时语义 fixture、transport 接缝、Patch、公开的
+Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两个 Virtools fixture
+插件一起安装：
+
+```powershell
+cmake --build build-dev --config RelWithDebInfo --target BML `
+  PlayerFlowDriver BehaviorRuntimeSemanticsTest BehaviorTransportTest `
+  BehaviorPatchTest BehaviorFacadeTest BehaviorScriptHookTest `
+  BehaviorLifecycleFixture BehaviorTransportFixture
 powershell -ExecutionPolicy Bypass `
   -File tests/player/Invoke-BehaviorAcceptanceTest.ps1 `
   -BallanceRoot "<Ballance 根目录>" `
@@ -125,12 +151,14 @@ powershell -ExecutionPolicy Bypass `
 ```
 
 各 probe 路径默认取 Loader DLL 所在目录，只传 `-BuildDll` 即可。安装目录没有
-`AngelScript.dll` 时补 `-DisableAngelScript`，runner 会跳过脚本 Hook 退休检查而
+`AngelScript.dll` 时补 `-DisableAngelScript`，脚本 Hook probe 会报告 SKIPPED 而
 不是判定失败。
 
-Behavior runner 通过 `tests/player/BMLPlayerHarness.psm1` 驱动 Player：启动 Player、
-应答 FullScreen Setup 对话框、抓取窗口截图、驱动教程退出键。启动流程或教程握手变化
-时改这个模块，不要改 runner 自身。
+所有 runner 共用 `tests/player/BMLPlayerHarness.psm1`。`Invoke-BMLPlayerRun` 负责
+备份并安装被改动的文件、启动 Player、应答 FullScreen Setup 对话框、抓取窗口截图、
+驱动教程退出键并恢复安装；`Get-BMLPlayerFlowChecks` 把驱动日志行和各 probe 结论
+转成所有 runner 共用的检查项。启动流程、验收流程或 probe 协议变化时改这个模块，
+不要各自改 runner。
 
 ## 找到修改的负责区域
 
@@ -219,7 +247,8 @@ Reject malformed event payloads
 
 - 使用 Win32 构建并测试 Debug 和 Release。
 - 运行相关的定向测试和完整测试套件。
-- 运行时相关修改通过 Player 冒烟测试。
+- 运行时相关修改完成与其语义匹配的真实 Player 验证。只有被测对象就是进程集成时，
+  冒烟测试才足够；游戏语义必须使用定向 Player 场景。
 - 修改接口后检查生成式 IMC 头和 `.imc.lock`。
 - 以严格模式构建中英文文档站点。
 - 确认没有意外修改旧式原生头文件和 DLL 导出。
