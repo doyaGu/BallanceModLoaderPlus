@@ -7,6 +7,10 @@ namespace BML::Behavior::HookBlock {
 
 using Callback = int (*)(const CKBehaviorContext *context, void *argument);
 
+// Native return code the C seam hands back when an author callback reported
+// BML_BEHAVIOR_HOOK_FAULT. Negative so it can never collide with a CKBR_* code.
+constexpr int CallbackFaulted = -2;
+
 class Hook;
 
 class Binding final : public CallbackResource {

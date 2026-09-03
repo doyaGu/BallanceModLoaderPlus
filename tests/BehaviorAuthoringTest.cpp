@@ -1706,7 +1706,9 @@ TEST(BehaviorAuthoring, ContainsHookCallbackFailuresAtTheCSeam) {
     BML_BehaviorHookContext context{};
     Init(&context);
     EXPECT_EQ(g_State.PlanHooks[0].Invoke(g_State.PlanHooks[0].State, &context),
-              static_cast<int>(HookResult::Error));
+              static_cast<int>(HookResult::Fault));
+    // A missing context is a Loader-side contract violation, not an author
+    // fault, so it is still reported as an explicit Error.
     EXPECT_EQ(g_State.PlanHooks[0].Invoke(g_State.PlanHooks[0].State, nullptr),
               static_cast<int>(HookResult::Error));
 }

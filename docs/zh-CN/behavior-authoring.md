@@ -121,7 +121,10 @@ mutation 前失败。关闭时会把 live graph 与 Patch after-image 对比；f
 `RevertConflict`，作者应恢复期望关系后重试，Loader 不会强行执行破坏性 inverse。
 
 Hook 与 Watch callback 在 game thread 运行。C++ thunk 会在异常跨越 C/DLL seam 前捕获
-全部异常，并报告 callback failure。callback 内或其他线程都可以请求 Close：新的 callback
+全部异常。抛出异常的 Hook callback 报告为 `HookResult::Fault`：Loader 保留第一个 fault
+作为 Hook 诊断，停止再调用该 callback，Hook Block 则透明放行这次激活，因此 Mod 的 bug
+不会停掉宿主脚本的链。返回 `HookResult::Error` 是显式决定，会让所有 Out 保持未激活，
+callback 仍然保留安装。callback 内或其他线程都可以请求 Close：新的 callback
 admission 立即停止，graph 恢复、native teardown 与 callback Release 则在后续 game-thread
 Behavior safe point 完成；Close 永远不会等待自己所在的 callback。
 

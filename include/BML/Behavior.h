@@ -745,13 +745,21 @@ typedef struct BML_BehaviorHookContext {
     BML_ObjectRef Owner;
 } BML_BehaviorHookContext;
 
-// Return codes an author callback may report. Any other value stops the
-// enclosing chain: the Hook Block leaves every Out inactive and reports a
-// behavior error to Virtools.
+// Return codes an author callback may report. Any other value is an explicit
+// error and stops the enclosing chain: the Hook Block leaves every Out inactive
+// and reports a behavior error to Virtools. CK2 itself discards a
+// sub-behavior's return code, so inactive Outs are the only way to stop a chain.
 typedef enum BML_BehaviorHookResult {
     BML_BEHAVIOR_HOOK_OK = 0,
     // Keep the Hook Block active for one more frame. Its Outs still activate.
-    BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME = 1
+    BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME = 1,
+    // The callback did not complete (for example it threw). The Loader keeps
+    // the first fault as the Hook diagnostic, stops invoking this callback
+    // occurrence, and lets the Hook Block stay transparent: its Outs activate
+    // as if no callback ran, so one Mod's bug does not stop the host script's
+    // chain. An explicit error return keeps stopping the chain and keeps the
+    // callback installed.
+    BML_BEHAVIOR_HOOK_FAULT = 2
 } BML_BehaviorHookResult;
 
 typedef void (BML_BEHAVIOR_CALL *BML_BehaviorHookRetain)(void *state);

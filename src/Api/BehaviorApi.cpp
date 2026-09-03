@@ -17,6 +17,7 @@
 
 #include "BML/ImcWire.hpp"
 #include "BML/TypeConvert.h"
+#include "Behavior/HookBlock.h"
 #include "Behavior/Patches.h"
 #include "Behavior/Sessions.h"
 #include "Behavior/FrameStore.h"
@@ -2504,6 +2505,7 @@ int InvokeHook(const CKBehaviorContext *native, void *argument) {
     switch (result) {
     case BML_BEHAVIOR_HOOK_OK: return CKBR_OK;
     case BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME: return CKBR_ACTIVATENEXTFRAME;
+    case BML_BEHAVIOR_HOOK_FAULT: return HookBlock::CallbackFaulted;
     default: return CKBR_BEHAVIORERROR;
     }
 }

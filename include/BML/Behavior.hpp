@@ -798,13 +798,17 @@ struct HookEvent {
 };
 
 enum class HookResult : int {
-    // Stops the enclosing chain: the Hook Block leaves every Out inactive. The
-    // facade also returns this when an author callback throws, so no C++
-    // exception crosses the C seam.
+    // Explicitly stops the enclosing chain: the Hook Block leaves every Out
+    // inactive. The callback stays installed and runs on the next activation.
     Error = -1,
     Ok = BML_BEHAVIOR_HOOK_OK,
     // Keep the Hook Block active for one more frame. Its Outs still activate.
     AgainNextFrame = BML_BEHAVIOR_HOOK_AGAIN_NEXT_FRAME,
+    // The callback did not complete. The facade returns this when an author
+    // callback throws, so no C++ exception crosses the C seam. The Loader keeps
+    // the first fault as the Hook diagnostic, stops invoking this occurrence,
+    // and lets the Hook Block pass the activation through.
+    Fault = BML_BEHAVIOR_HOOK_FAULT,
 };
 
 enum class CloseState {
@@ -2144,7 +2148,7 @@ struct HookFunction {
                 return static_cast<int>(std::invoke(callable));
             }
         } catch (...) {
-            return static_cast<int>(HookResult::Error);
+            return static_cast<int>(HookResult::Fault);
         }
     }
 

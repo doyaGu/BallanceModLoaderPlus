@@ -142,7 +142,12 @@ compares the graph with the Patch after-image. A foreign edit produces
 destructive inverse.
 
 Hook and Watch callbacks run on the game thread. The C++ thunks catch every
-exception before it can cross the C/DLL seam and report callback failure. A
+exception before it can cross the C/DLL seam. A Hook callback that throws is
+reported as `HookResult::Fault`: the Loader keeps the first fault as the Hook
+diagnostic, stops invoking that callback, and the Hook Block passes the
+activation through, so a Mod bug cannot stop the host script's chain. Returning
+`HookResult::Error` deliberately leaves every Out inactive and keeps the
+callback installed. A
 callback or another thread may request Close: new callback admission stops
 immediately, while graph restoration, native teardown, and callback Release run
 later at a game-thread Behavior safe point. Close never waits for its own active

@@ -246,6 +246,61 @@ TEST(BehaviorCallback, ExceptionsBecomeDiagnosticsAndDoNotEscape) {
     EXPECT_FALSE(unknown.Fault.Message.empty());
 }
 
+TEST(BehaviorCallback, HookFaultKeepsDiagnosticAndClosesAdmission) {
+    int calls = 0;
+    std::shared_ptr<HookBlock::Binding> binding = HookBlock::Bind(
+        [](const CKBehaviorContext *, void *argument) -> int {
+            ++*static_cast<int *>(argument);
+            throw std::runtime_error("hook failed");
+        },
+        &calls);
+
+    CallbackCall first = binding->Invoke(nullptr);
+    EXPECT_TRUE(first.Invoked);
+    EXPECT_EQ(first.Fault.Code, CallbackError::Exception);
+    EXPECT_EQ(binding->Diagnostic().Message, "hook failed");
+
+    CallbackCall second = binding->Invoke(nullptr);
+    EXPECT_FALSE(second.Invoked);
+    EXPECT_EQ(second.Fault.Code, CallbackError::AdmissionClosed);
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(binding->Diagnostic().Message, "hook failed");
+}
+
+TEST(BehaviorCallback, HookReportedFaultCodeCountsAsAFault) {
+    int calls = 0;
+    std::shared_ptr<HookBlock::Binding> binding = HookBlock::Bind(
+        [](const CKBehaviorContext *, void *argument) -> int {
+            ++*static_cast<int *>(argument);
+            return HookBlock::CallbackFaulted;
+        },
+        &calls);
+
+    CallbackCall first = binding->Invoke(nullptr);
+    EXPECT_TRUE(first.Invoked);
+    EXPECT_EQ(first.Fault.Code, CallbackError::Exception);
+    EXPECT_FALSE(binding->Invoke(nullptr).Invoked);
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(BehaviorCallback, HookErrorCodeKeepsTheCallbackInstalled) {
+    int calls = 0;
+    std::shared_ptr<HookBlock::Binding> binding = HookBlock::Bind(
+        [](const CKBehaviorContext *, void *argument) -> int {
+            ++*static_cast<int *>(argument);
+            return CKBR_BEHAVIORERROR;
+        },
+        &calls);
+
+    CallbackCall first = binding->Invoke(nullptr);
+    EXPECT_TRUE(first.Invoked);
+    EXPECT_FALSE(first.Fault);
+    EXPECT_EQ(first.ReturnCode, CKBR_BEHAVIORERROR);
+    EXPECT_TRUE(binding->Invoke(nullptr).Invoked);
+    EXPECT_EQ(calls, 2);
+    EXPECT_FALSE(binding->Diagnostic());
+}
+
 TEST(BehaviorCallback, OtherThreadCloseDoesNotWaitForInvocation) {
     ReferenceCounts counts;
     PlanCallbackState plan =
