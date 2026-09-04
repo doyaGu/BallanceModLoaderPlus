@@ -174,6 +174,12 @@ Node names are not identities. `FindAll` returns all matches; `Find` requires
 exactly one. Parameter reads follow stored, direct, and shared sources without
 evaluating a Parameter Operation.
 
+The string overloads are unique-name selectors: `node.Pout("Count")` remains
+unresolved when more than one Pout has that name, so the eventual operation
+reports the ambiguity instead of choosing the first one. Use `Named("Count", n)`
+for a specific name occurrence, or `At(n)` for a stable index in the current
+layout.
+
 Watches sample a graph, layout, or value once per game frame:
 
 ```cpp
@@ -207,10 +213,13 @@ they are intentionally different from snapshot `Node`, `Port`, and `Link`.
 one-graph Patch. A Plan rejects those world-bound identities because it must
 resolve against new scripts in later worlds.
 
-`Add(block)` copies the Block's native configuration at that call. Later
-changes to the original Block do not alter the Edit, and its Frame policy is
-not part of graph authoring. `Graph::Apply` verifies the snapshot fingerprint
-before mutation and returns a one-use `Patch`. `Session::Plan` accepts
+`Add(block)` copies the Block's native configuration and selected Prototype
+provider generation at that call. Later changes to the original Block do not
+alter the Edit, and a later installation cannot silently select a replacement
+provider. Its Frame policy is not part of graph authoring. Typed null is a
+durable literal; a non-null object reference remains world-bound and is rejected
+by `Plan`. `Graph::Apply` verifies the snapshot fingerprint before mutation and
+returns a one-use `Patch`. `Session::Plan` accepts
 `Scripts::Each(name)` or `Scripts::One(name)` and returns a `Plan` reconciled as
 matching scripts appear, reset, or disappear.
 

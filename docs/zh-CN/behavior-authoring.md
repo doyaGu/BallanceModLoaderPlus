@@ -161,6 +161,10 @@ splice anchor 恢复为 logical endpoint。若受 Patch 管理的基础设施被
 Node name 不是 identity。`FindAll` 返回全部匹配；`Find` 要求恰好一个。参数读取会跟随
 stored、direct、shared source，但不会为了取值执行 Parameter Operation。
 
+字符串重载使用 unique-name selector：当多个 Pout 同名时，`node.Pout("Count")` 会保持
+未解析，由后续操作报告歧义，而不是擅自选择第一项。需要指定同名 occurrence 时使用
+`Named("Count", n)`；需要当前 layout 中的稳定 index 时使用 `At(n)`。
+
 Watch 每个 game frame 采样一次 graph、layout 或 value：
 
 ```cpp
@@ -193,9 +197,11 @@ auto plan = m_Behavior.Plan(
 精确 live identity 引入一次性 Patch。Plan 必须在未来 world 的新 script 中重新解析，
 因此会拒绝这些 world-bound identity。
 
-`Add(block)` 在调用时复制 Block 的 native 配置。之后修改原 Block 不会影响 Edit；
-Block 的 Frame policy 也不属于 graph authoring。`Graph::Apply` 在 mutation 前核对
-snapshot fingerprint，并返回一次性 `Patch`。`Session::Plan` 接受
+`Add(block)` 在调用时复制 Block 的 native 配置和已选定的 Prototype provider
+generation。之后修改原 Block 不会影响 Edit，后续 installation 也不能悄悄换用另一份
+provider。Block 的 Frame policy 不属于 graph authoring。typed null 是 durable literal；
+非空 object reference 仍然绑定当前 world，因此 Plan 会拒绝。`Graph::Apply` 在 mutation
+前核对 snapshot fingerprint，并返回一次性 `Patch`。`Session::Plan` 接受
 `Scripts::Each(name)` 或 `Scripts::One(name)`，返回随匹配 script 出现、reset、删除而
 reconcile 的 `Plan`。
 
