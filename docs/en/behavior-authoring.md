@@ -114,7 +114,8 @@ C++ `Take()` method owns and decodes the returned data.
 pointers. Live shows the physical CK graph. Logical shows what an author edited:
 explicit Blocks and Links remain visible, while the Loader restores a spliced
 anchor's original endpoints and delay and hides its exact continuation Links and
-Tap/After Hook Blocks. If one of those Loader-owned physical relations changes
+Tap/Before/After Hook Blocks. A Redirect is the one exception: it deliberately
+changes where control goes, so Logical reports the new destination. If one of those Loader-owned physical relations changes
 behind the Patch, Logical inspection reports `GraphChanged` instead of guessing.
 Node names are not identities and may repeat: enumerate all matches or ask for a
 unique match and handle ambiguity explicitly. Parameter reads follow
@@ -155,6 +156,99 @@ callback. The same deferral applies inside the Loader's own inverse: a native
 teardown or EDITED callback that closes the Patch being torn down is answered
 `Busy`, and one that closes or applies another Patch has that request queued for
 the next safe point rather than nested under the running restoration.
+
+## Name what the graph already holds
+
+`Reference` turns a `CK_ID` or a live `CKObject *` into an object reference
+without handing the pointer back out, and `Inspect(CKBehavior *)` opens a Graph
+view on a Behavior the Mod already holds. A Patch then names those objects with
+`UseNode` and `UseLink` instead of searching for them, which is how a Mod edits
+the graph it built itself. A Plan refuses an identity reference and says so: it
+installs into scripts that do not exist yet, so a reference issued against one
+live world cannot describe them. Query by name or Prototype there instead.
+
+After `Apply`, `Resolve` reports the live object a program handle compiled to, so
+an author can read back the Block the Patch just added:
+
+```cpp
+auto edit = m_Behavior.Patch("extra-life");
+const auto counter = edit.Require("Counter_Active");
+const auto added = edit.Add(CKGUID(0x3333, 3),
+                            {pin("Amount", 1), setting("Mode", 2)});
+edit.Flow(counter.Out(), added.In());
+
+auto applied = edit.Apply(graph);
+const auto block = applied.Value().Resolve(added);
+```
+
+`Add` takes its literals in the same statement, and each literal deduces the
+Virtools type the parameter is going to hold. An integer of any width or
+signedness and an enumerator become an Int; a `float` or a `double` becomes a
+Float. Write `Value::As(type, literal)` when a slot wants a different Virtools
+type for the same bits.
+
+A written value reaches a Pin, a Local, or the Target. CK2 keeps such a value in
+the parameter's own buffer, which is exactly how a Local holds its state, so a
+`local(...)` literal is a write and needs no source. A Setting is not a
+destination a later write can name. Editing one can make the Block rebuild its
+whole layout, so a Setting is declared only on a Block the same program adds and
+travels with that Block's creation, where the Block hears one settings-edited
+message and reacquires its layout once. Naming a Setting on a Block that already
+exists is refused, and so is giving one parameter both a written value and a
+`Push` in the same Patch.
+
+## Put code and detours on a Link
+
+Three primitives cover the ways a Mod inserts itself into a chain it did not
+write:
+
+- `Tap(port, hook)` runs the callback on every Link leaving one Out.
+- `Before(link, hook)` runs the callback inside one Link, before the node that
+  Link feeds.
+- `After(path, hook)` runs the callback once the chain leaving a port has
+  finished.
+
+All three are infrastructure. Their Hook Blocks and continuation Links stay out
+of the Logical view, so another Mod inspecting the graph still sees the shape its
+author wrote.
+
+`Splice(link, block)` reroutes a Link through a Block and keeps the original
+destination at the end of the inserted chain, so several Patches can splice one
+Link and the Loader orders them. `Redirect(link, port)` is the opposite choice.
+It sends the Link somewhere else and drops the original destination while the
+Patch is open. Only one Patch at a time may redirect one Link; a second one is
+refused with `RedirectConflict` rather than silently losing a destination.
+Closing the Patch puts the Link back on its journaled target, and a foreign
+change to that target is reported as `RevertConflict`.
+
+A Patch may append an In, an Out, a Pin, or a Pout to any Behavior. CK2 appends
+those without consulting the variable-interface flags, so neither does the
+Loader. Those flags tell an author whether the Block's own code will read the new
+slot, which is a different question from whether CK2 allows the append. A Local
+is the exception: a Block addresses its Locals by index as private state, so
+appending one is refused with `InterfaceUnsupported`.
+
+## Park a Block inside a graph
+
+`Spawn` creates an Instance the Mod drives from its own code, outside any script.
+`Attach` parks the Block inside a live graph instead, linked to nothing: the
+graph never activates a parked Block, so the returned Instance is still what
+writes its Pins and pulses it. This is how a Block that has to live in a script,
+be saved with it, or be findable by name stays under Mod control. Closing the
+Instance removes the Block from the graph again.
+
+A Block that keeps itself running across frames (`CKBR_ACTIVATENEXTFRAME`) is
+no exception. Ballanced schedules every active sub-behavior, linked or not, so
+after each driven execution the Loader clears the Block's native active flag
+while the Run records the continuation: the Instance stays the only driver, and
+the graph's own scheduler never picks the Block up.
+
+```cpp
+auto parked = m_Behavior.Use(textPrototype)
+    .Setting("Font", 0)
+    .Attach(graph);
+parked.Value().Pulse("In");
+```
 
 ## Lifetimes
 

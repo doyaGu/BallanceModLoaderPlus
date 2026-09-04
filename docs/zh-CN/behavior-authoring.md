@@ -98,7 +98,8 @@ C 的 `TakeFrames` 使用不消费的两阶段协议：第一次只测量完整 
 `Inspect` 返回不含 CK pointer 的 owned Logical 或 Live Graph。Node name 不是 identity，
 Live 是物理 CK graph；Logical 是作者实际编辑的 graph：显式添加的 Block 与 Link 仍然
 可见，Loader 会把 splice anchor 恢复为原始 endpoint 与 delay，并隐藏它精确记录的
-continuation Link 和 Tap/After HookBlock。如果这些由 Patch 占有的物理关系被外部改写，
+continuation Link 和 Tap/Before/After HookBlock。Redirect 是唯一的例外：它是有意改变
+控制流去向，因此 Logical 报告新的目标。如果这些由 Patch 占有的物理关系被外部改写，
 Logical inspection 会返回 `GraphChanged`，不会靠名称或图形状猜测。Node name 不是
 identity，而且可以重名；应枚举全部匹配，或请求 unique match 并显式处理歧义。
 Parameter 读取沿 stored/direct/shared source 取值，但不会求值 Parameter Operation。
@@ -130,6 +131,85 @@ Behavior safe point 完成；Close 永远不会等待自己所在的 callback。
 Loader 自己的逆操作内部：native teardown 或 EDITED callback 若再次关闭正在拆除的 Patch，
 会得到 `Busy`；若关闭或应用另一个 Patch，该请求会排队到下一个 safe point，而不会嵌套在
 正在进行的恢复之下。
+
+## 指名 Graph 中已存在的对象
+
+`Reference` 把 `CK_ID` 或活的 `CKObject *` 转成 object reference，而不会把 pointer
+交还给作者；`Inspect(CKBehavior *)` 直接在 Mod 已经持有的 Behavior 上打开 Graph
+视图。之后 Patch 用 `UseNode` 与 `UseLink` 直接指名这些对象，不必再按名字查询，这
+正是 Mod 编辑自己创建的 Graph 时需要的方式。Plan 会拒绝 identity reference：durable
+Plan 要装进尚不存在的 script，一个针对某个 live world 发出的 reference 无法描述它们；
+在那里应改用名字或 Prototype 查询。
+
+`Apply` 之后，`Resolve` 报告 program handle 实际编译成的 live object，作者因此可以
+读回 Patch 刚刚添加的 Block：
+
+```cpp
+auto edit = m_Behavior.Patch("extra-life");
+const auto counter = edit.Require("Counter_Active");
+const auto added = edit.Add(CKGUID(0x3333, 3),
+                            {pin("Amount", 1), setting("Mode", 2)});
+edit.Flow(counter.Out(), added.In());
+
+auto applied = edit.Apply(graph);
+const auto block = applied.Value().Resolve(added);
+```
+
+`Add` 在同一条语句里接收 literal，每个 literal 会推导出该 parameter 将要持有的
+Virtools 类型：任意宽度、任意符号的整数和 enumerator 变成 Int，`float` 与 `double`
+变成 Float。若某个 slot 想用同样的 bit 但不同的 Virtools 类型，写
+`Value::As(type, literal)`。
+
+写入的值可以落到 Pin、Local 或 Target。CK2 把这种值保存在 parameter 自己的 buffer 里，
+Local 持有状态正是这种方式，所以 `local(...)` literal 就是一次写入，不需要来源。
+Setting 不是后续写入可以指名的目标：编辑一个 Setting 可能让 Block 重建整个 layout，
+因此 Setting 只能声明在同一个 program 添加的 Block 上，并随该 Block 的创建一起生效，
+Block 在那里收到一次 settings-edited 消息并重新获取一次 layout。给已经存在的 Block
+指名 Setting 会被拒绝；在同一个 Patch 里既给某个 parameter 写值又对它 `Push`
+同样会被拒绝。
+
+## 在 Link 上挂代码与改道
+
+三个原语覆盖了 Mod 插入他人写的链的方式：
+
+- `Tap(port, hook)` 在离开某个 Out 的每条 Link 上调用 callback。
+- `Before(link, hook)` 在一条 Link 内部、在该 Link 指向的 node 之前调用 callback。
+- `After(path, hook)` 在离开某个 Port 的链执行完毕后调用一次 callback。
+
+三者都是基础设施：它们的 Hook Block 与 continuation Link 不出现在 Logical 视图里，
+因此其他 Mod 检查该 Graph 时看到的仍是原作者写下的形状。
+
+`Splice(link, block)` 把一条 Link 改道穿过一个 Block，并把原目标保留在插入链的末端，
+所以多个 Patch 可以 splice 同一条 Link，由 Loader 排序。`Redirect(link, port)` 是相反
+的选择：它把 Link 送去别处，并在 Patch 打开期间丢弃原目标。同一条 Link 同时只允许一个
+Patch redirect，第二个会以 `RedirectConflict` 被拒绝，而不是悄悄丢掉一个目标。关闭
+Patch 会把 Link 放回 journal 记录的目标；如果该目标被外部改写，则报告
+`RevertConflict`。
+
+Patch 可以给任何 Behavior 追加 In、Out、Pin 或 Pout。CK2 追加这些 port 时并不检查
+variable-interface flag，Loader 也不检查：这些 flag 说明的是该 Block 自己的代码会不会
+读取新 slot，与 CK2 是否允许追加是两个不同的问题。Local 是例外：Block 按 index 把
+Local 当作私有状态使用，因此追加 Local 会以 `InterfaceUnsupported` 被拒绝。
+
+## 把 Block 停放进 Graph
+
+`Spawn` 创建由 Mod 自己代码驱动、位于任何 script 之外的 Instance。`Attach` 则把 Block
+停放进一个 live Graph，且不连接任何 Link：Graph 永远不会激活一个停放的 Block，所以写
+它的 Pin 和 pulse 它的仍然是返回的 Instance。需要存在于 script 中、随 script 保存、
+或能被按名字找到的 Block，由此仍然处在 Mod 控制之下。关闭 Instance 会把该 Block 从
+Graph 中移除。
+
+跨帧自续（`CKBR_ACTIVATENEXTFRAME`）的 Block 也不例外。Ballanced 会调度所有 active
+的 sub-behavior——无论有没有 Link 接到它——因此每次驱动执行之后，Loader 都会在 Run
+记下延续的同时清掉 Block 的原生 active flag：Instance 始终是唯一的驱动者，Graph 自己
+的调度器永远不会接管这个 Block。
+
+```cpp
+auto parked = m_Behavior.Use(textPrototype)
+    .Setting("Font", 0)
+    .Attach(graph);
+parked.Value().Pulse("In");
+```
 
 ## 生命周期
 
