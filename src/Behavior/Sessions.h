@@ -70,6 +70,9 @@ public:
     // Reads only Loader-owned identity and may be used by close requests from
     // any thread. It never enters CK2.
     Status ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const;
+    // Reads the active generation of a registered owner without opening a
+    // Session. The Loader uses it for the Patches its own modules own.
+    Status ReadOwner(const std::string &ownerId, SessionOwner &out) const;
 
     OpenRun Call(std::uintptr_t sessionId, CKBeObject *owner,
                  const Spec &block, const Slot &input);
@@ -77,6 +80,10 @@ public:
                   const Spec &block, const Slot &input);
     OpenRun Spawn(std::uintptr_t sessionId, CKBeObject *owner,
                   const Spec &block);
+    // Parks a Block inside a live graph and keeps a Run for it. The graph
+    // never activates the Block, so the Run is what drives it.
+    OpenRun Attach(std::uintptr_t sessionId, CKBehavior *graph,
+                   const Spec &block);
     RunResult Continue(std::uintptr_t runId);
     RunResult Pulse(std::uintptr_t runId, const Slot &input);
 

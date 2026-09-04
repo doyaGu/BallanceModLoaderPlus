@@ -213,6 +213,12 @@ ModContext::ModContext(CKContext *context)
                             return m_ObjectRefs.Resolve({
                                 reference.Domain, reference.Slot,
                                 reference.Generation});
+                        },
+                        [this](CKObject *object) {
+                            const BML_ObjectRef issued =
+                                m_ObjectRefs.Issue(object);
+                            return BML::Behavior::ObjectRef{
+                                issued.Domain, issued.Slot, issued.Generation};
                         }),
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
@@ -413,6 +419,14 @@ void ModContext::ProcessVirtoolsFrame() {
                         plans.Message.c_str());
     m_BehaviorPatches.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
+}
+
+BML::Behavior::SessionOwner ModContext::LoaderBehaviorOwner() const {
+    BML::Behavior::SessionOwner owner;
+    if (!m_BMLMod)
+        return owner;
+    (void) m_BehaviorSessions.ReadOwner(m_BMLMod->GetID(), owner);
+    return owner;
 }
 
 BML::Behavior::Status ModContext::RetireBehaviorEdits(

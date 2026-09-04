@@ -207,6 +207,13 @@ public:
                     const CKBehaviorContext *frame = nullptr);
     AttachResult AddToGraph(CKBehavior *parent, const Spec &spec,
                                 const CKBehaviorContext *frame = nullptr);
+    // Adds a Block to a live graph and keeps a managed handle for it, so the
+    // caller reads and writes its Slots through this Runtime instead of poking
+    // the native object. The handle also drives the Block: a parked Block that
+    // its parent graph never activates is executed by whoever holds the
+    // handle.
+    CreateResult AttachToGraph(CKBehavior *parent, const Spec &spec,
+                               const CKBehaviorContext *frame = nullptr);
 
     [[nodiscard]] Layout Describe(CKBehavior *behavior, std::uint64_t generation = 0) const;
     [[nodiscard]] Status Describe(const Instance &instance,
@@ -290,6 +297,13 @@ private:
         std::uint64_t Id = 0;
         std::uint64_t LayoutGeneration = 1;
         bool GraphResident = false;
+        // A graph-resident Block whose owner holds a Run handle. Its parent
+        // graph does not activate it, so Pulse and Step may execute it.  Each
+        // driven execution clears the native active flag: Ballanced schedules
+        // every ACTIVE sub-behavior, linked or not, so a continuation left
+        // flagged would also be executed by the parent graph.  The Run's
+        // ProcessTasks is the only continuation driver.
+        bool OwnerDriven = false;
         bool Expired = false;
         bool Poisoned = false;
         Lifecycle NativeLifecycle;
@@ -368,6 +382,10 @@ private:
                                                Record &record);
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
                                             const Spec &spec, Record &record);
+    // The shared body of AddToGraph and AttachToGraph. It hands back a
+    // managed handle only when the caller asked for one.
+    AttachResult Attach(CKBehavior *parent, const Spec &spec,
+                        const CKBehaviorContext *frame, Instance *handle);
     void PruneOwnedSources(Record &record);
     void PruneOwnedOperations(Record &record);
     void SweepRecords();

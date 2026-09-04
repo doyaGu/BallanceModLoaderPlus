@@ -219,6 +219,8 @@ std::uint32_t PublicError(Error error) noexcept {
     case Error::RevertConflict: return BML_BEHAVIOR_ERROR_REVERT_CONFLICT;
     case Error::TargetCardinality:
         return BML_BEHAVIOR_ERROR_TARGET_CARDINALITY;
+    case Error::RedirectConflict:
+        return BML_BEHAVIOR_ERROR_REDIRECT_CONFLICT;
     case Error::WrongThread: return BML_BEHAVIOR_ERROR_WRONG_THREAD;
     case Error::ExecutionFailed: return BML_BEHAVIOR_ERROR_NATIVE_ERROR;
     }
@@ -842,6 +844,40 @@ int BML_BEHAVIOR_CALL Spawn(BML_BehaviorSession session, BML_ObjectRef owner,
     return Guard([&] {
         return OpenRunEntry(OpenKind::Spawn, session, owner, block, nullptr,
                             outRun, info, status);
+    });
+}
+
+int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
+                                  BML_ObjectRef graph,
+                                  const BML_BehaviorBlock *block,
+                                  BML_BehaviorRun *outRun,
+                                  BML_BehaviorRunInfo *info,
+                                  BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!ValidOutputs(info, status) || !session || !block || !outRun)
+            return BML_ERROR_INVALID_PARAMETER;
+        *outRun = nullptr;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+
+        Status readStatus;
+        Spec definition;
+        if (!ReadBlock(*block, *context, definition, readStatus)) {
+            WriteStatus(status, readStatus);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        CKBehavior *parent = ReadBehavior(graph, *context, readStatus);
+        if (!parent) {
+            WriteStatus(status, readStatus);
+            return ResultCode(readStatus);
+        }
+        return OpenRunResult(
+            context->BehaviorSessions().Attach(
+                SessionId(session), parent, definition),
+            outRun, info, status);
     });
 }
 
@@ -2519,6 +2555,9 @@ enum class EditHandleKind {
 
 struct EditHandle {
     EditHandleKind Kind = EditHandleKind::Node;
+    // Set for a Node this program creates. A Setting belongs to the creation of
+    // a Block, so only an added Node accepts one.
+    bool Added = false;
     Node NodeValue;
     Link LinkValue;
     PathRef PathValue;
@@ -2531,6 +2570,9 @@ class EditProgram final {
 public:
     Status Build(const BML_BehaviorEditStep *steps, std::uint32_t count,
                  ModContext &context, GraphEdit &edit);
+    // Reports the symbolic Node each caller handle defined, so an applied
+    // Patch answers ResolvePatchNode in the caller's own handle space.
+    [[nodiscard]] BML::Behavior::Patches::HandleMap Nodes() const;
 
 private:
     static bool Defines(std::uint32_t kind) noexcept;
@@ -2555,6 +2597,8 @@ bool EditProgram::Defines(std::uint32_t kind) noexcept {
     case BML_BEHAVIOR_EDIT_FOLLOW:
     case BML_BEHAVIOR_EDIT_ADD_BLOCK:
     case BML_BEHAVIOR_EDIT_APPEND_SLOT:
+    case BML_BEHAVIOR_EDIT_USE_NODE:
+    case BML_BEHAVIOR_EDIT_USE_LINK:
         return true;
     default:
         return false;
@@ -2574,6 +2618,15 @@ Status EditProgram::Build(const BML_BehaviorEditStep *steps,
             return status;
     }
     return {};
+}
+
+BML::Behavior::Patches::HandleMap EditProgram::Nodes() const {
+    BML::Behavior::Patches::HandleMap nodes;
+    for (const auto &entry : m_Handles) {
+        if (entry.second.Kind == EditHandleKind::Node)
+            nodes.emplace(entry.first, entry.second.NodeValue.Value);
+    }
+    return nodes;
 }
 
 Status EditProgram::Step(const BML_BehaviorEditStep &step,
@@ -2626,11 +2679,34 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         defined.Kind = EditHandleKind::Path;
         defined.PathValue = edit.Follow(source);
         break;
+    case BML_BEHAVIOR_EDIT_USE_NODE: {
+        if (!step.Object.Domain) {
+            return InvalidValue(
+                "A used Behavior node needs an object reference.");
+        }
+        defined.Kind = EditHandleKind::Node;
+        defined.NodeValue = edit.UseNode(
+            BML::Behavior::ObjectRef{step.Object.Domain, step.Object.Slot,
+                                     step.Object.Generation});
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_USE_LINK: {
+        if (!step.Object.Domain) {
+            return InvalidValue(
+                "A used Behavior link needs an object reference.");
+        }
+        defined.Kind = EditHandleKind::Link;
+        defined.LinkValue = edit.UseLink(
+            BML::Behavior::ObjectRef{step.Object.Domain, step.Object.Slot,
+                                     step.Object.Generation});
+        break;
+    }
     case BML_BEHAVIOR_EDIT_ADD_BLOCK: {
         const CKGUID prototype = Guid(step.Prototype);
         if (!prototype.IsValid())
             return InvalidValue("An added Behavior Block needs a Prototype.");
         defined.Kind = EditHandleKind::Node;
+        defined.Added = true;
         defined.NodeValue = edit.Add(prototype);
         break;
     }
@@ -2698,6 +2774,29 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         edit.Bind(sink, binding.Literal());
         break;
     }
+    case BML_BEHAVIOR_EDIT_SETTING: {
+        const EditHandle *owner = nullptr;
+        if (status = Use(step.Sink.Handle, EditHandleKind::Node, owner); !status)
+            return status;
+        if (!owner->Added) {
+            return InvalidValue(
+                "A Behavior Setting requires a Block this program adds.");
+        }
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        if (sink.Selector.Kind != SlotKind::Setting)
+            return InvalidValue("A Behavior Setting step must name a Setting.");
+        Parameter::Binding binding;
+        if (!ReadValue(step.Value, context, binding, status))
+            return status;
+        if (binding.Kind() != Parameter::BindingKind::Value) {
+            return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR,
+                    "A symbolic Behavior edit cannot bind a live object."};
+        }
+        edit.Setting(owner->NodeValue, sink.Selector, binding.Literal());
+        break;
+    }
     case BML_BEHAVIOR_EDIT_BIND_PORT:
     case BML_BEHAVIOR_EDIT_SHARE:
     case BML_BEHAVIOR_EDIT_PUSH:
@@ -2731,6 +2830,16 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         edit.After(path->PathValue, std::move(hook));
         break;
     }
+    case BML_BEHAVIOR_EDIT_BEFORE: {
+        const EditHandle *link = nullptr;
+        if (status = Use(step.Target, EditHandleKind::Link, link); !status)
+            return status;
+        HookBlock::Hook hook;
+        if (status = ReadHook(step.Hook, hook); !status)
+            return status;
+        edit.Before(link->LinkValue, std::move(hook));
+        break;
+    }
     case BML_BEHAVIOR_EDIT_SPLICE: {
         const EditHandle *link = nullptr;
         if (status = Use(step.Target, EditHandleKind::Link, link); !status)
@@ -2750,6 +2859,18 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         if (status = ReadPort(step.Source, source); !status)
             return status;
         edit.Splice(link->LinkValue, sink, source, std::move(ordering));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_REDIRECT: {
+        const EditHandle *link = nullptr;
+        if (status = Use(step.Target, EditHandleKind::Link, link); !status)
+            return status;
+        std::vector<Order> ordering;
+        if (status = ReadOrdering(step, ordering); !status)
+            return status;
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        edit.Redirect(link->LinkValue, sink, std::move(ordering));
         break;
     }
     default:
@@ -3026,12 +3147,14 @@ int BML_BEHAVIOR_CALL ApplyPatch(
             return BML_ERROR_INVALID_PARAMETER;
         }
 
+        const BML::Behavior::Patches::HandleMap nodes = program.Nodes();
+
         PatchId id = 0;
         result = context->BehaviorPatches().Apply(
             owner,
             BML::Behavior::ObjectRef{spec->Graph.Domain, spec->Graph.Slot,
                                      spec->Graph.Generation},
-            std::move(name), std::move(edit), id);
+            std::move(name), std::move(edit), id, &nodes);
         WriteStatus(status, result);
         if (!result)
             return ResultCode(result);
@@ -3087,6 +3210,69 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
     });
 }
 
+int BML_BEHAVIOR_CALL Reference(BML_BehaviorSession session,
+                                std::uint32_t object,
+                                BML_ObjectRef *outReference,
+                                BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !outReference)
+            return BML_ERROR_INVALID_PARAMETER;
+        *outReference = BML_ObjectRef{};
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        CKContext *ck = context->GetCKContext();
+        CKObject *found = ck && object
+            ? ck->GetObject(static_cast<CK_ID>(object)) : nullptr;
+        if (!found || found->IsToBeDeleted())
+            return BML_ERROR_NOT_FOUND;
+        const BML_ObjectRef issued = context->ObjectRefs().Issue(found);
+        if (!issued.Domain)
+            return BML_ERROR_FAIL;
+        *outReference = issued;
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession session,
+                                      BML_BehaviorPatch patch,
+                                      std::uint32_t handle,
+                                      BML_ObjectRef *outNode,
+                                      BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !patch || !outNode || !handle)
+            return BML_ERROR_INVALID_PARAMETER;
+        *outNode = BML_ObjectRef{};
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        BML::Behavior::ObjectRef node;
+        result = context->BehaviorPatches().ResolveNode(
+            owner, PatchIdOf(patch), handle, node);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        *outNode = BML_ObjectRef{node.Domain, node.Slot, node.Generation};
+        return BML_OK;
+    });
+}
+
 const BML_BehaviorInterface kBehaviorInterface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -3120,6 +3306,9 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReadPatch,
     &ClosePatch,
     &ReadWatch,
+    &Reference,
+    &ResolvePatchNode,
+    &AttachBlock,
 };
 
 } // namespace

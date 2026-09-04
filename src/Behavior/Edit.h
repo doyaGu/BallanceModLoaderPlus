@@ -105,6 +105,15 @@ struct EditSplice {
     std::uint32_t Ordinal = 0;
 };
 
+// Sends one Link to a different destination. The original destination is
+// journaled so closing the Patch puts the Link back.
+struct EditRedirect {
+    Link Target;
+    Port Sink;
+    std::vector<Order> Ordering;
+    std::uint32_t Ordinal = 0;
+};
+
 struct InterfacePort {
     Node Owner;
     SlotInfo Slot;
@@ -155,12 +164,20 @@ struct CheckedSplice {
     std::uint32_t Ordinal = 0;
 };
 
+struct CheckedRedirect {
+    LinkBase Target;
+    ResolvedPort Sink;
+    std::vector<Order> Ordering;
+    std::uint32_t Ordinal = 0;
+};
+
 struct CheckedEdit {
     std::vector<CheckedFlow> Flows;
     std::vector<CheckedBind> Binds;
     std::vector<CheckedPush> Pushes;
     std::vector<CheckedTap> Taps;
     std::vector<CheckedSplice> Splices;
+    std::vector<CheckedRedirect> Redirects;
 };
 
 // A side-effect-free additive graph plan. Node and Port values are logical
@@ -196,6 +213,10 @@ public:
     void Splice(Link target, Node block, std::vector<Order> ordering = {});
     void Splice(Link target, Port input, Port output,
                 std::vector<Order> ordering = {});
+    // Sends a Link to a different In or Exit. The Link keeps its source and
+    // its delay; only its destination changes, and closing the Patch restores
+    // the original destination.
+    void Redirect(Link target, Port sink, std::vector<Order> ordering = {});
     Port AppendIn(Node node, std::string name);
     Port AppendOut(Node node, std::string name);
     Port AppendPin(Node node, std::string name, CKGUID type);
@@ -233,6 +254,7 @@ private:
     std::vector<EditTap> m_Taps;
     std::vector<EditLink> m_Links;
     std::vector<EditSplice> m_Splices;
+    std::vector<EditRedirect> m_Redirects;
     std::uint32_t m_NextNode = 1;
     std::uint32_t m_NextLink = 0;
     std::uint32_t m_NextAction = 1;

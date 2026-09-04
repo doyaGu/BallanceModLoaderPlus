@@ -1,6 +1,7 @@
 #include "BML/BML.h"
 #include "BML/Behavior.h"
 #include "BML/Gameplay.h"
+#include "BML/IVP.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
@@ -52,7 +53,7 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 88u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 64u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 128u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 140u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 48u);
 BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 44u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
@@ -70,11 +71,13 @@ BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,
 BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
                  sizeof(BML_BehaviorPortRef) == 44u);
 BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
-                 sizeof(BML_BehaviorEditStep) == 240u);
+                 sizeof(BML_BehaviorEditStep) == 252u);
 BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
                  sizeof(BML_BehaviorPlanSpec) == 36u);
 BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,
                  sizeof(BML_BehaviorPatchSpec) == 40u);
+BML_C_ABI_ASSERT(BmlIvpInterfaceSize, sizeof(BML_IvpInterface) == 56u);
+BML_C_ABI_ASSERT(BmlIvpSymbolSize, sizeof(BML_IvpSymbol) == 12u);
 #else
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
@@ -83,7 +86,7 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 104u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 96u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 256u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 280u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
@@ -101,12 +104,16 @@ BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,
 BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
                  sizeof(BML_BehaviorPortRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
-                 sizeof(BML_BehaviorEditStep) == 280u);
+                 sizeof(BML_BehaviorEditStep) == 296u);
 BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
                  sizeof(BML_BehaviorPlanSpec) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,
                  sizeof(BML_BehaviorPatchSpec) == 56u);
+BML_C_ABI_ASSERT(BmlIvpInterfaceSize, sizeof(BML_IvpInterface) == 104u);
+BML_C_ABI_ASSERT(BmlIvpSymbolSize, sizeof(BML_IvpSymbol) == 16u);
 #endif
+
+BML_C_ABI_ASSERT(BmlIvpApiInfoSize, sizeof(BML_IvpApiInfo) == 92u);
 
 void BML_TestCAbiMemoryOwnership(char **strings, wchar_t **wideStrings, size_t count) {
     BML_FreeStringArray(strings, count);
@@ -174,6 +181,28 @@ int BML_TestCAbiRuntimeInterface(void) {
         runtime->ReadScore(&score) != BML_OK)
         return 0;
     return state.Playing && clock.Frame >= 0 && score.HS >= 0;
+}
+
+int BML_TestCAbiIvpInterface(void *entity) {
+    const void *found = NULL;
+    const BML_IvpInterface *ivp = NULL;
+    BML_IvpApiInfo api = {0};
+    BML_IvpSymbol symbol = {0};
+    uintptr_t object = 0;
+    uintptr_t function = 0;
+
+    if (BML_GetInterface(BML_IVP_INTERFACE_ID, BML_IVP_INTERFACE_MAJOR, &found) != BML_OK)
+        return 0;
+    ivp = (const BML_IvpInterface *) found;
+    if (!BML_IFACE_HAS(ivp, BML_IvpInterface, GetSymbol))
+        return 0;
+    if (ivp->ReadApiInfo(&api) != BML_OK ||
+        ivp->GetRealObject(entity, &object) != BML_OK ||
+        ivp->GetSymbolCount() == 0u ||
+        ivp->GetSymbol(0u, &symbol) != BML_OK ||
+        ivp->ResolveSymbol(symbol.Name, &function) != BML_OK)
+        return 0;
+    return api.Architecture == BML_IVP_ARCH_X86 && object != 0u && function != 0u;
 }
 
 // The UI interface is mostly commands rather than reads, and its HUD bitmask is an

@@ -61,6 +61,7 @@ enum class Error {
     WorldBoundValue,
     RevertConflict,
     TargetCardinality,
+    RedirectConflict,
 };
 
 enum class Phase {

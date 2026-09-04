@@ -253,6 +253,9 @@ public:
     BML::Behavior::Patches &BehaviorPatches() noexcept {
         return m_BehaviorPatches;
     }
+    // The owner the Loader's built-in modules edit game scripts under: the BML
+    // Mod's active generation, or an empty owner before that Mod is registered.
+    BML::Behavior::SessionOwner LoaderBehaviorOwner() const;
     BML::Behavior::Plans &BehaviorPlans() noexcept {
         return m_BehaviorPlans;
     }

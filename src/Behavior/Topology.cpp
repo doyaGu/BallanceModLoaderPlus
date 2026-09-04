@@ -258,13 +258,25 @@ Status Topology::Normalize(PatchLayer &patch) const {
                   [](const Overlay &left, const Overlay &right) {
                       return left.Ordinal < right.Ordinal;
                   });
+        int redirects = 0;
         for (const Overlay &item : group.Overlays) {
-            if ((item.Kind != OverlayKind::Splice && item.Kind != OverlayKind::Tap) ||
+            if ((item.Kind != OverlayKind::Splice &&
+                 item.Kind != OverlayKind::Tap &&
+                 item.Kind != OverlayKind::Redirect) ||
                 !ordinals.insert(item.Ordinal).second) {
                 return Failure(Error::InvalidState,
                                "Patch action ordinals must be unique and name a Link "
                                "overlay kind.");
             }
+            if (item.Kind != OverlayKind::Redirect)
+                continue;
+            if (!ControlEndpoint(item.Target))
+                return Failure(Error::InvalidState,
+                               "A Redirect requires a control port to send the "
+                               "Link to.");
+            if (++redirects > 1)
+                return Failure(Error::RedirectConflict,
+                               "One Patch cannot redirect a Link twice.");
         }
     }
 
@@ -361,6 +373,14 @@ const std::vector<PatchOutTap> *
 Topology::Taps(const GraphEndpoint &out) const noexcept {
     const auto found = m_Taps.find(out);
     return found == m_Taps.end() ? nullptr : &found->second;
+}
+
+GraphEndpoint EffectiveSink(const LogicalLink &link) {
+    for (const OrderedOverlay &overlay : link.Overlays) {
+        if (overlay.Kind == OverlayKind::Redirect)
+            return overlay.Target;
+    }
+    return link.Base.Sink;
 }
 
 Status CompletePath(const GraphModel &graph, const GraphEndpoint &start,
@@ -565,16 +585,31 @@ Status Topology::Compose(const PatchMap &patches, LinkMap &links, TapMap &taps,
 
         link.Fingerprint = kHashOffset;
         Hash(link.Fingerprint, link.Base);
+        const PatchKey *redirected = nullptr;
         for (const std::size_t index : ordered) {
             const Group &group = groups[index];
             for (const Overlay &item : group.Value->Overlays) {
+                if (item.Kind == OverlayKind::Redirect) {
+                    if (redirected) {
+                        std::ostringstream message;
+                        message << "Patch " << PatchName(group.Patch)
+                                << " and Patch " << PatchName(*redirected)
+                                << " both redirect logical Link "
+                                << linkId.Value
+                                << ", so its destination is ambiguous.";
+                        return Failure(Error::RedirectConflict, message.str());
+                    }
+                    redirected = &group.Patch;
+                }
                 link.Overlays.push_back({group.Patch, group.Priority, item.Kind,
-                                         item.Ordinal, item.Fingerprint});
+                                         item.Ordinal, item.Fingerprint,
+                                         item.Target});
                 Hash(link.Fingerprint, group.Patch);
                 Hash(link.Fingerprint, static_cast<std::int32_t>(group.Priority));
                 Hash(link.Fingerprint, item.Kind);
                 Hash(link.Fingerprint, item.Ordinal);
                 Hash(link.Fingerprint, item.Fingerprint);
+                Hash(link.Fingerprint, item.Target);
             }
         }
     }

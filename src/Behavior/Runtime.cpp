@@ -245,6 +245,12 @@ public:
         CKBehavior *behavior = record ? m_Runtime.ResolveBehavior(*record) : nullptr;
         if (!record || !behavior || input.Index < 0 ||
             input.Index >= behavior->GetInputCount()) {
+            // Earlier inputs of a queued batch may already be activated; a
+            // partially activated OwnerDriven Block must not stay visible to
+            // the parent-graph scheduler while the Run fails.
+            if (behavior && record && record->GraphResident &&
+                record->OwnerDriven)
+                behavior->Activate(FALSE, FALSE);
             fault = {ExecutionError::ActivationFailed, CKBR_PARAMETERERROR,
                      "Resolved behavior input is no longer valid."};
             return false;
@@ -264,6 +270,16 @@ public:
             return result;
         }
 
+        // The host sets CKBEHAVIOR_ACTIVE when it schedules a Block: the
+        // engine's graph loop does it in CheckIOsActivation and
+        // FindNextBehaviorsToExecute, and ExecuteFunction only ever clears
+        // the flag, never sets it.  The Run is an OwnerDriven Block's host,
+        // so a continuation must set the flag before the native call or the
+        // post-Execute state reads as finished.
+        const bool hidden = record->GraphResident && record->OwnerDriven;
+        if (hidden)
+            behavior->Activate(TRUE, FALSE);
+
         ++record->LayoutGeneration;
         result.ReturnCode = m_Runtime.ExecuteNative(behavior, m_Frame);
         result.Retry = HasContinuation(result.ReturnCode);
@@ -277,12 +293,20 @@ public:
                             "Building Block destroyed itself during execution."};
             return result;
         }
-        // Ballanced's CKBehavior::ExecuteFunction updates CKBEHAVIOR_ACTIVE
-        // from CKBR_ACTIVATENEXTFRAME, while CheckBehaviorActivity updates the
-        // same flag from delayed links and active/waiting sub-behaviors.  The
-        // post-Execute flag is therefore the native continuation truth for
-        // both representations.
+        // Ballanced's ExecuteFunction clears CKBEHAVIOR_ACTIVE unless the
+        // Block asks for the next frame, while CheckBehaviorActivity keeps
+        // the parent active from delayed links and active/waiting
+        // sub-behaviors.  The post-Execute flag is therefore the native
+        // continuation truth for both representations.
         result.Active = behavior->IsActive() != FALSE;
+        // And the Run clears it again: Ballanced's CheckIOsActivation also
+        // schedules every ACTIVE sub-behavior whether or not a Link reaches
+        // it, so an OwnerDriven Block left ACTIVE would be executed by its
+        // parent graph as well as by ProcessTasks.  The continuation truth
+        // is captured above and the Run keeps the continuation, so the
+        // Block stays hidden from the parent graph's scheduler.
+        if (hidden)
+            behavior->Activate(FALSE, FALSE);
         return result;
     }
 
@@ -829,21 +853,10 @@ public:
         CKBehavior *behavior = Behavior(fault);
         if (!behavior || !m_Spec)
             return false;
-        const CKDWORD flags = behavior->GetFlags();
-        if (!m_Spec->m_AddedInputs.empty() &&
-            (flags & CKBEHAVIOR_VARIABLEINPUTS) == 0) {
-            return Fail(Failure(
-                            Error::InterfaceUnsupported,
-                            "Building Block does not permit dynamic inputs."),
-                        LifecycleError::BindingFailed, fault);
-        }
-        if (!m_Spec->m_AddedOutputs.empty() &&
-            (flags & CKBEHAVIOR_VARIABLEOUTPUTS) == 0) {
-            return Fail(Failure(
-                            Error::InterfaceUnsupported,
-                            "Building Block does not permit dynamic outputs."),
-                        LifecycleError::BindingFailed, fault);
-        }
+        // CKBehavior::CreateInput and CreateOutput never consult the
+        // variable-interface flags, so neither does this. A block whose code
+        // ignores the appended port is the author's problem, not an error the
+        // Runtime can detect.
         for (const std::string &name : m_Spec->m_AddedInputs) {
             if (!behavior->CreateInput(const_cast<CKSTRING>(name.c_str()))) {
                 return Fail(Failure(Error::CreateFailed,
@@ -1502,6 +1515,23 @@ CallResult Runtime::Call(CKBeObject *owner, const Spec &spec,
 
 AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
                                              const CKBehaviorContext *frame) {
+    return Attach(parent, spec, frame, nullptr);
+}
+
+CreateResult Runtime::AttachToGraph(CKBehavior *parent, const Spec &spec,
+                                    const CKBehaviorContext *frame) {
+    CreateResult created;
+    Instance handle;
+    AttachResult attached = Attach(parent, spec, frame, &handle);
+    created.Detail = std::move(attached.Detail);
+    created.Descriptor = std::move(attached.Descriptor);
+    created.Handle = std::move(handle);
+    return created;
+}
+
+AttachResult Runtime::Attach(CKBehavior *parent, const Spec &spec,
+                             const CKBehaviorContext *frame,
+                             Instance *handle) {
     AttachResult result;
     result.Detail = ReadyStatus();
     if (!result.Detail)
@@ -1521,6 +1551,7 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
     record.Id = m_NextInstanceId++;
     record.Parent = CaptureObject(parent);
     record.GraphResident = true;
+    record.OwnerDriven = handle != nullptr;
     record.KeepAlive = spec.m_KeepAlive;
     record.Protocol = Execution(spec.m_FrameRetention);
     CKBehavior *behavior = nullptr;
@@ -1543,6 +1574,8 @@ AttachResult Runtime::AddToGraph(CKBehavior *parent, const Spec &spec,
     m_Records.emplace(instanceId, std::move(record));
     result.Descriptor = Describe(
         behavior, m_Records.at(instanceId).LayoutGeneration);
+    if (handle)
+        *handle = Instance(m_Access, instanceId);
     return result;
 }
 
@@ -2929,7 +2962,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
         return {Failure(Error::InvalidState, "Behavior instance has expired."),
                 RunState::Failed, CKBR_BEHAVIORERROR, {}};
     const CKGUID prototypeGuid = record->PrototypeGuid;
-    if (record->GraphResident)
+    if (record->GraphResident && !record->OwnerDriven)
         return {Failure(Error::InvalidState,
                         "Graph-resident Building Blocks must be executed by their parent graph.",
                         CK_OK, CKBR_OK, Phase::Execution,
@@ -3524,6 +3557,7 @@ const char *DescribeError(Error error) {
     case Error::WorldBoundValue: return "world-bound value";
     case Error::RevertConflict: return "Patch revert conflict";
     case Error::TargetCardinality: return "target cardinality mismatch";
+    case Error::RedirectConflict: return "Link Redirect conflict";
     }
     return "unknown";
 }

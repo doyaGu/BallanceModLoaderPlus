@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <new>
@@ -106,6 +107,7 @@ enum class Error : std::uint32_t {
     Busy = BML_BEHAVIOR_ERROR_BUSY,
     Unavailable = BML_BEHAVIOR_ERROR_UNAVAILABLE,
     WrongThread = BML_BEHAVIOR_ERROR_WRONG_THREAD,
+    RedirectConflict = BML_BEHAVIOR_ERROR_REDIRECT_CONFLICT,
 };
 
 enum class Phase : std::uint32_t {
@@ -284,6 +286,24 @@ public:
     Value(BML_Mat4 value) : m_Type(CKPGUID_MATRIX), m_Kind(ValueKind::Mat4) {
         m_Data.Mat4 = value;
     }
+    // Any other integer, including an unsigned one or an enumerator, is an
+    // Int; any other real is a Float. Without these an author has to spell out
+    // the narrowing that the Virtools parameter is going to do anyway.
+    template <class T, std::enable_if_t<
+                           std::is_integral_v<T> && !std::is_same_v<T, bool>,
+                           int> = 0>
+    Value(T value) : m_Type(CKPGUID_INT), m_Kind(ValueKind::Int32) {
+        m_Data.Int32 = static_cast<std::int32_t>(value);
+    }
+    template <class T, std::enable_if_t<std::is_floating_point_v<T>, int> = 0>
+    Value(T value) : m_Type(CKPGUID_FLOAT), m_Kind(ValueKind::Float32) {
+        m_Data.Float32 = static_cast<float>(value);
+    }
+    template <class T, std::enable_if_t<std::is_enum_v<T>, int> = 0>
+    Value(T value) : m_Type(CKPGUID_INT), m_Kind(ValueKind::Int32) {
+        m_Data.Int32 = static_cast<std::int32_t>(
+            static_cast<std::underlying_type_t<T>>(value));
+    }
     Value(const Vx2DVector &value) : Value(Convert::ToVec2(value)) {}
     Value(const VxVector &value) : Value(Convert::ToVec3(value)) {}
     Value(const VxMatrix &value) : Value(Convert::ToMat4(value)) {}
@@ -331,37 +351,44 @@ private:
 struct Binding {
     Selector Slot;
     Behavior::Value Value;
+    // Which interface of the node carries this literal. A Block Builder already
+    // knows the kind from the verb that took the Binding, so only the edit
+    // language reads this back.
+    std::uint32_t Kind = BML_BEHAVIOR_SLOT_PIN;
 
     template <class T>
     Binding(Selector slot, T &&value)
         : Slot(std::move(slot)), Value(std::forward<T>(value)) {}
+    template <class T>
+    Binding(std::uint32_t kind, Selector slot, T &&value)
+        : Slot(std::move(slot)), Value(std::forward<T>(value)), Kind(kind) {}
 };
 
 using SettingStage = std::vector<Binding>;
 
 template <class T>
 Binding pin(Selector slot, T &&value) {
-    return {std::move(slot), std::forward<T>(value)};
+    return {BML_BEHAVIOR_SLOT_PIN, std::move(slot), std::forward<T>(value)};
 }
 template <class T>
 Binding pin(std::string_view name, T &&value) {
-    return {Selector::Unique(name), std::forward<T>(value)};
+    return pin(Selector::Unique(name), std::forward<T>(value));
 }
 template <class T>
 Binding setting(Selector slot, T &&value) {
-    return {std::move(slot), std::forward<T>(value)};
+    return {BML_BEHAVIOR_SLOT_SETTING, std::move(slot), std::forward<T>(value)};
 }
 template <class T>
 Binding setting(std::string_view name, T &&value) {
-    return {Selector::Unique(name), std::forward<T>(value)};
+    return setting(Selector::Unique(name), std::forward<T>(value));
 }
 template <class T>
 Binding local(Selector slot, T &&value) {
-    return {std::move(slot), std::forward<T>(value)};
+    return {BML_BEHAVIOR_SLOT_LOCAL, std::move(slot), std::forward<T>(value)};
 }
 template <class T>
 Binding local(std::string_view name, T &&value) {
-    return {Selector::Unique(name), std::forward<T>(value)};
+    return local(Selector::Unique(name), std::forward<T>(value));
 }
 
 struct FramePolicy {
@@ -1797,6 +1824,10 @@ public:
     }
     [[nodiscard]] Result<Instance> Spawn() const;
     [[nodiscard]] Result<Instance> Spawn(BML_ObjectRef owner) const;
+    // Parks this Block inside a live graph and keeps driving it. The graph
+    // does not activate a parked Block, so the returned Instance is what sets
+    // its Pins and pulses it. Closing the Instance removes the Block again.
+    [[nodiscard]] Result<Instance> Attach(BML_ObjectRef graph) const;
 
 private:
     Block(std::shared_ptr<Detail::SessionState> session,
@@ -2037,6 +2068,8 @@ public:
     [[nodiscard]] Result<Instance> Spawn() &&;
     [[nodiscard]] Result<Instance> Spawn(BML_ObjectRef owner) const &;
     [[nodiscard]] Result<Instance> Spawn(BML_ObjectRef owner) &&;
+    [[nodiscard]] Result<Instance> Attach(BML_ObjectRef graph) const &;
+    [[nodiscard]] Result<Instance> Attach(BML_ObjectRef graph) &&;
 
 private:
     Builder(std::shared_ptr<Detail::SessionState> session,
@@ -2309,6 +2342,30 @@ public:
         return Result<GraphPatchInfo>::Success(
             Detail::ReadPatchInfo(wire), Detail::ReadStatus(status));
     }
+    // Names the live object a node of this edit compiled to, by the handle the
+    // edit program used for it. Busy means the Patch has not reached its safe
+    // point yet, so nothing is live to name.
+    [[nodiscard]] Result<BML_ObjectRef> Resolve(std::uint32_t node) const {
+        if (!*this)
+            return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
+        if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface,
+                           ResolvePatchNode))
+            return Result<BML_ObjectRef>::Failure(BML_ERROR_VERSION_MISMATCH);
+        BML_ObjectRef reference{};
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_Session->Api->ResolvePatchNode(
+            m_Session->Handle, m_Handle, node, &reference, &status);
+        if (code != BML_OK)
+            return Result<BML_ObjectRef>::Failure(
+                code, Detail::ReadStatus(status));
+        return Result<BML_ObjectRef>::Success(
+            reference, Detail::ReadStatus(status));
+    }
+    // Accepts the Node handle an edit builder returned.
+    template <class Handle, class = decltype(Handle::Id)>
+    [[nodiscard]] Result<BML_ObjectRef> Resolve(const Handle &node) const {
+        return Resolve(static_cast<std::uint32_t>(node.Id));
+    }
     // A revert conflict keeps this handle live for Read and a later retry.
     [[nodiscard]] Result<CloseState> Close() noexcept {
         if (!m_Handle) {
@@ -2473,6 +2530,20 @@ public:
         step.Prototype = prototype;
         return Node{step.Result};
     }
+    // Names a node this Mod already holds a reference to, instead of searching
+    // the graph for it. Only a Patch can carry this; a Plan installs into
+    // scripts that do not exist yet, so it refuses a live reference.
+    [[nodiscard]] Node UseNode(BML_ObjectRef node) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_USE_NODE);
+        step.Object = node;
+        return Node{step.Result};
+    }
+    // Names a behavior link this Mod already holds a reference to.
+    [[nodiscard]] Link UseLink(BML_ObjectRef link) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_USE_LINK);
+        step.Object = link;
+        return Link{step.Result};
+    }
     // Names the one existing link between these ports.
     [[nodiscard]] Link Between(Port source, Port sink) {
         Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_LINK);
@@ -2500,6 +2571,34 @@ public:
         Step &step = Define(BML_BEHAVIOR_EDIT_ADD_BLOCK);
         step.Prototype = prototype;
         return Node{step.Result};
+    }
+    // Creates the Block and writes each literal into the slot it names, so one
+    // statement covers what the Block is and how it is configured. Each Binding
+    // remembers whether it came from pin, setting, or local. A setting travels
+    // with the creation of the Block, because editing one can rebuild the whole
+    // layout; a pin and a local are written once the Block exists.
+    [[nodiscard]] Node Add(Guid prototype,
+                           std::initializer_list<Behavior::Binding> bindings) {
+        const Node node = Add(prototype);
+        for (const Behavior::Binding &binding : bindings) {
+            const Port port{node.Id, binding.Kind, {}, binding.Slot};
+            if (binding.Kind == BML_BEHAVIOR_SLOT_SETTING)
+                Setting(port, binding.Value);
+            else
+                Bind(port, binding.Value);
+        }
+        return node;
+    }
+    // Declares the value of one Setting of a Block this program adds.
+    Final &Setting(Port setting, Behavior::Value value) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_SETTING, 0);
+        step.Sink = std::move(setting);
+        step.Value.emplace(std::move(value));
+        return Self();
+    }
+    // Declares the value of one Setting by name.
+    Final &Setting(Node owner, std::string_view name, Behavior::Value value) {
+        return Setting(owner.Setting(name), std::move(value));
     }
     [[nodiscard]] Slot AppendIn(Node owner, std::string_view name) {
         return Append(owner, BML_BEHAVIOR_SLOT_IN, name, {});
@@ -2571,6 +2670,14 @@ public:
         step.Hook = std::move(hook.m_Record);
         return Self();
     }
+    // Runs the callback on this link, before the node the link feeds. This is
+    // how a Mod puts its own code between two blocks it did not write.
+    Final &Before(Link target, Hook hook) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_BEFORE, 0);
+        step.Target = target.Id;
+        step.Hook = std::move(hook.m_Record);
+        return Self();
+    }
     // Runs the callback once the chain named by the path has finished.
     Final &After(Path path, Hook hook) {
         Step &step = Define(BML_BEHAVIOR_EDIT_AFTER, 0);
@@ -2604,6 +2711,18 @@ public:
         step.Ordering = std::move(ordering);
         return Self();
     }
+    // Sends a link to a different destination. The original destination is
+    // dropped while this Patch is open and restored when it closes, so unlike
+    // a splice this shows up in the Logical view of the graph. Only one Patch
+    // at a time may redirect one link.
+    Final &Redirect(Link link, Port sink,
+                    std::vector<PatchOrder> ordering = {}) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_REDIRECT, 0);
+        step.Target = link.Id;
+        step.Sink = std::move(sink);
+        step.Ordering = std::move(ordering);
+        return Self();
+    }
 
 protected:
     struct Step {
@@ -2622,6 +2741,7 @@ protected:
         std::optional<Behavior::Value> Value;
         std::shared_ptr<Detail::HookHolder> Hook;
         std::vector<PatchOrder> Ordering;
+        BML_ObjectRef Object{};
     };
 
     struct WireProgram {
@@ -2761,6 +2881,7 @@ inline void Detail::EditBuilder<Final>::Encode(WireProgram &out) const {
         if (step.Value)
             wire.Value = step.Value->Wire();
         wire.Hook = step.Hook ? &step.Hook->Function : nullptr;
+        wire.Object = step.Object;
         wire.OrderCount = static_cast<std::uint32_t>(step.Ordering.size());
         wire.Ordering = wire.OrderCount
             ? out.Ordering.data() + consumed : nullptr;
@@ -2913,6 +3034,37 @@ public:
     }
     [[nodiscard]] Result<Graph> Inspect(BML_ObjectRef root) const {
         return Graph::Read(m_State, root, View::Logical);
+    }
+    // Turns a CK object this Mod already holds into an interface reference.
+    // This is the entry point for a Mod that received a script from the game
+    // instead of searching for one by name.
+    [[nodiscard]] Result<BML_ObjectRef> Reference(CK_ID object) const {
+        if (!*this)
+            return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
+        if (!BML_IFACE_HAS(m_State->Api, BML_BehaviorInterface, Reference))
+            return Result<BML_ObjectRef>::Failure(BML_ERROR_VERSION_MISMATCH);
+        BML_ObjectRef reference{};
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_State->Api->Reference(
+            m_State->Handle, static_cast<std::uint32_t>(object), &reference,
+            &status);
+        if (code != BML_OK)
+            return Result<BML_ObjectRef>::Failure(
+                code, Detail::ReadStatus(status));
+        return Result<BML_ObjectRef>::Success(reference,
+                                              Detail::ReadStatus(status));
+    }
+    [[nodiscard]] Result<BML_ObjectRef> Reference(CKObject *object) const {
+        if (!object)
+            return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_PARAMETER);
+        return Reference(object->GetID());
+    }
+    // Reads the logical graph of a script this Mod already holds.
+    [[nodiscard]] Result<Graph> Inspect(CKBehavior *graph) const {
+        const Result<BML_ObjectRef> reference = Reference(graph);
+        if (!reference)
+            return Result<Graph>::Failure(reference.Code(), reference.Detail());
+        return Inspect(reference.Value());
     }
     // Opens a durable edit named within this Mod. Submitting a name that is
     // already live replaces the Plan carrying it.
@@ -4120,6 +4272,36 @@ inline Result<Instance> Block::Spawn(BML_ObjectRef owner) const {
     }
 }
 
+inline Result<Instance> Block::Attach(BML_ObjectRef graph) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle || !m_Definition)
+        return Result<Instance>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, AttachBlock))
+        return Result<Instance>::Failure(BML_ERROR_VERSION_MISMATCH);
+    try {
+        BML_BehaviorRun run = nullptr;
+        BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = m_Session->Api->AttachBlock(
+            m_Session->Handle, graph, &m_Definition->Wire,
+            &run, &info, &status);
+        if (code != BML_OK) {
+            if (run && m_Session->Api->CloseRun)
+                m_Session->Api->CloseRun(run);
+            return Result<Instance>::Failure(code, Detail::ReadStatus(status));
+        }
+        if (!run)
+            return Result<Instance>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+        return Result<Instance>::Success(
+            Instance(Detail::Run(m_Session, run)),
+            Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<Instance>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Instance>::Failure(BML_ERROR_FAIL);
+    }
+}
+
 inline Result<Behavior::Call> Builder::Call(const Selector &input) const & {
     auto block = Compile();
     if (!block)
@@ -4206,6 +4388,20 @@ inline Result<Instance> Builder::Spawn(BML_ObjectRef owner) && {
     if (!block)
         return Result<Instance>::Failure(block.Code(), block.Detail());
     return block->Spawn(owner);
+}
+
+inline Result<Instance> Builder::Attach(BML_ObjectRef graph) const & {
+    auto block = Compile();
+    if (!block)
+        return Result<Instance>::Failure(block.Code(), block.Detail());
+    return block->Attach(graph);
+}
+
+inline Result<Instance> Builder::Attach(BML_ObjectRef graph) && {
+    auto block = std::move(*this).Compile();
+    if (!block)
+        return Result<Instance>::Failure(block.Code(), block.Detail());
+    return block->Attach(graph);
 }
 
 inline Result<Task> Call::Continue() && {

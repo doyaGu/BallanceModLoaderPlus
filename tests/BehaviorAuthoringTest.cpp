@@ -32,6 +32,7 @@ struct CapturedStep {
     std::string SourceSlot;
     std::string SinkSlot;
     BML_BehaviorValue Value{};
+    BML_ObjectRef Object{};
     bool HasHook = false;
     std::vector<std::pair<std::uint32_t, std::string>> Ordering;
 };
@@ -100,6 +101,14 @@ struct FakeState {
     BML_ObjectRef BindNode{};
     std::string BindSource;
     std::vector<std::string> ConfiguredSettings;
+    int References = 0;
+    std::uint32_t ReferencedObject = 0;
+    int ReferenceCode = BML_OK;
+    int NodeResolves = 0;
+    std::uint32_t ResolvedHandle = 0;
+    int ResolveNodeCode = BML_OK;
+    int Attaches = 0;
+    BML_ObjectRef AttachGraph{};
 };
 
 FakeState g_State;
@@ -717,6 +726,7 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
         captured.SourceSlot = Copy(step.Source.Slot.Name);
         captured.SinkSlot = Copy(step.Sink.Slot.Name);
         captured.Value = step.Value;
+        captured.Object = step.Object;
         captured.HasHook = step.Hook != nullptr;
         for (std::uint32_t entry = 0; entry < step.OrderCount; ++entry) {
             captured.Ordering.push_back(
@@ -838,6 +848,46 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession, BML_BehaviorPatch) {
     return BML_OK;
 }
 
+int BML_BEHAVIOR_CALL Reference(BML_BehaviorSession, std::uint32_t object,
+                                BML_ObjectRef *outReference,
+                                BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.References;
+    g_State.ReferencedObject = object;
+    if (g_State.ReferenceCode != BML_OK)
+        return g_State.ReferenceCode;
+    outReference->Domain = 7;
+    outReference->Slot = object;
+    outReference->Generation = 2;
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession, BML_BehaviorPatch,
+                                       std::uint32_t handle,
+                                       BML_ObjectRef *outNode,
+                                       BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.NodeResolves;
+    g_State.ResolvedHandle = handle;
+    if (g_State.ResolveNodeCode != BML_OK)
+        return g_State.ResolveNodeCode;
+    outNode->Domain = 11;
+    outNode->Slot = handle;
+    outNode->Generation = 4;
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession, BML_ObjectRef graph,
+                                  const BML_BehaviorBlock *block,
+                                  BML_BehaviorRun *run,
+                                  BML_BehaviorRunInfo *info,
+                                  BML_BehaviorStatus *status) {
+    ++g_State.Attaches;
+    g_State.AttachGraph = graph;
+    return OpenRun(graph, block, nullptr, run, info, status,
+                   BML_BEHAVIOR_RUN_INSTANCE);
+}
+
 BML_BehaviorInterface g_Interface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -871,6 +921,9 @@ BML_BehaviorInterface g_Interface = {
     &ReadPatch,
     &ClosePatch,
     &ReadWatch,
+    &Reference,
+    &ResolvePatchNode,
+    &AttachBlock,
 };
 
 } // namespace
@@ -1766,6 +1819,248 @@ TEST(BehaviorAuthoring, AppliesTheSameEditLanguageToOneLiveGraph) {
         EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
         EXPECT_EQ(g_State.PatchCloses, 1);
         EXPECT_EQ(alive.use_count(), 2);
+    }
+    EXPECT_EQ(alive.use_count(), 1);
+}
+
+TEST(BehaviorAuthoring, NamesLiveNodesAndLinksByReference) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto reference = session.Reference(static_cast<CK_ID>(77));
+    ASSERT_TRUE(reference) << reference.Detail().Message;
+    EXPECT_EQ(g_State.References, 1);
+    EXPECT_EQ(g_State.ReferencedObject, 77u);
+    EXPECT_EQ(reference->Domain, 7u);
+    EXPECT_EQ(reference->Slot, 77u);
+    EXPECT_EQ(reference->Generation, 2u);
+
+    auto edit = session.Patch("by-reference");
+    const auto node = edit.UseNode(reference.Value());
+    const auto link = edit.UseLink({7, 78, 2});
+    edit.Splice(link, node);
+
+    auto applied = edit.Apply({41, 42, 43});
+    ASSERT_TRUE(applied) << applied.Detail().Message;
+    GraphPatch patch = std::move(applied).Value();
+
+    ASSERT_EQ(g_State.PatchSteps.size(), 3u);
+    EXPECT_EQ(g_State.PatchSteps[0].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_USE_NODE));
+    EXPECT_EQ(g_State.PatchSteps[0].Object.Domain, 7u);
+    EXPECT_EQ(g_State.PatchSteps[0].Object.Slot, 77u);
+    EXPECT_EQ(g_State.PatchSteps[1].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_USE_LINK));
+    EXPECT_EQ(g_State.PatchSteps[1].Object.Slot, 78u);
+    EXPECT_EQ(g_State.PatchSteps[2].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SPLICE));
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+}
+
+TEST(BehaviorAuthoring, CreatesABlockAndItsLiteralsInOneStatement) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    enum class Mode : std::uint8_t { Off = 0, On = 3 };
+    auto edit = session.Patch("configured");
+    const auto added = edit.Add(CKGUID(3, 4),
+                                {pin("Amount", 2.5),
+                                 setting("Rows", 7u),
+                                 local("Mode", Mode::On)});
+    edit.Flow(edit.Graph().Out(), added.In());
+
+    auto applied = edit.Apply({41, 42, 43});
+    ASSERT_TRUE(applied) << applied.Detail().Message;
+    GraphPatch patch = std::move(applied).Value();
+
+    ASSERT_EQ(g_State.PatchSteps.size(), 5u);
+    EXPECT_EQ(g_State.PatchSteps[0].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
+
+    const CapturedStep &amount = g_State.PatchSteps[1];
+    EXPECT_EQ(amount.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_BIND_VALUE));
+    EXPECT_EQ(amount.Sink.Handle, g_State.PatchSteps[0].Result);
+    EXPECT_EQ(amount.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_PIN));
+    EXPECT_EQ(amount.SinkSlot, "Amount");
+    // A double literal is the Float the Virtools parameter was going to hold.
+    EXPECT_EQ(amount.Value.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_FLOAT32));
+    EXPECT_FLOAT_EQ(amount.Value.Data.Float32, 2.5f);
+
+    const CapturedStep &rows = g_State.PatchSteps[2];
+    EXPECT_EQ(rows.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_SETTING));
+    EXPECT_EQ(rows.Value.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_INT32));
+    EXPECT_EQ(rows.Value.Data.Int32, 7);
+
+    const CapturedStep &mode = g_State.PatchSteps[3];
+    EXPECT_EQ(mode.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_LOCAL));
+    EXPECT_EQ(mode.Value.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_INT32));
+    EXPECT_EQ(mode.Value.Data.Int32, 3);
+    EXPECT_EQ(g_State.PatchSteps[4].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FLOW));
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+}
+
+TEST(BehaviorAuthoring, SendsALinkToANewDestination) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto edit = session.Patch("detour");
+    const auto existing = edit.Require("Counter_Active", CKGUID(1, 2));
+    const auto added = edit.Add(CKGUID(3, 4));
+    const auto link = edit.Between(existing.Out(), edit.Graph().In("Reset"));
+    edit.Redirect(link, added.In(), {after("Other", "hud")});
+
+    auto applied = edit.Apply({41, 42, 43});
+    ASSERT_TRUE(applied) << applied.Detail().Message;
+    GraphPatch patch = std::move(applied).Value();
+
+    ASSERT_EQ(g_State.PatchSteps.size(), 4u);
+    const CapturedStep &redirect = g_State.PatchSteps[3];
+    EXPECT_EQ(redirect.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REDIRECT));
+    EXPECT_EQ(redirect.Target, g_State.PatchSteps[2].Result);
+    EXPECT_EQ(redirect.Sink.Handle, g_State.PatchSteps[1].Result);
+    EXPECT_EQ(redirect.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_IN));
+    EXPECT_EQ(redirect.Node, 0u);
+    ASSERT_EQ(redirect.Ordering.size(), 1u);
+    EXPECT_EQ(redirect.Ordering[0].first,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_ORDER_AFTER));
+    EXPECT_EQ(redirect.Ordering[0].second, "Other/hud");
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+}
+
+TEST(BehaviorAuthoring, RejectsAReferenceForANullObject) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto missing = session.Reference(static_cast<CKObject *>(nullptr));
+    EXPECT_FALSE(missing);
+    EXPECT_EQ(missing.Code(), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(g_State.References, 0);
+
+    g_State.ReferenceCode = BML_ERROR_NOT_FOUND;
+    auto destroyed = session.Reference(static_cast<CK_ID>(5));
+    EXPECT_FALSE(destroyed);
+    EXPECT_EQ(destroyed.Code(), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(g_State.References, 1);
+}
+
+TEST(BehaviorAuthoring, ReadsBackTheLiveNodeAnAppliedEditNamed) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto edit = session.Patch("resolved");
+    const auto added = edit.Add(CKGUID(3, 4));
+    auto applied = edit.Apply({41, 42, 43});
+    ASSERT_TRUE(applied) << applied.Detail().Message;
+    GraphPatch patch = std::move(applied).Value();
+
+    auto resolved = patch.Resolve(added);
+    ASSERT_TRUE(resolved) << resolved.Detail().Message;
+    EXPECT_EQ(g_State.NodeResolves, 1);
+    EXPECT_EQ(g_State.ResolvedHandle, added.Id);
+    EXPECT_EQ(resolved->Domain, 11u);
+    EXPECT_EQ(resolved->Slot, added.Id);
+    EXPECT_EQ(resolved->Generation, 4u);
+
+    // A queued Patch has no live Node to name yet.
+    g_State.ResolveNodeCode = BML_ERROR_BUSY;
+    auto pending = patch.Resolve(added);
+    EXPECT_FALSE(pending);
+    EXPECT_EQ(pending.Code(), BML_ERROR_BUSY);
+
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+    auto closed = patch.Resolve(added);
+    EXPECT_FALSE(closed);
+    EXPECT_EQ(closed.Code(), BML_ERROR_INVALID_HANDLE);
+    EXPECT_EQ(g_State.NodeResolves, 2);
+}
+
+TEST(BehaviorAuthoring, ParksABlockInsideAGraphAndDrivesIt) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    const BML_ObjectRef graph{9, 10, 11};
+    auto attached = session.Use(CKGUID(3, 4))
+                        .Setting("Caption", "hello")
+                        .Attach(graph);
+    ASSERT_TRUE(attached) << attached.Detail().Message;
+    Instance instance = std::move(attached).Value();
+
+    EXPECT_EQ(g_State.Attaches, 1);
+    EXPECT_EQ(g_State.AttachGraph.Domain, graph.Domain);
+    EXPECT_EQ(g_State.AttachGraph.Slot, graph.Slot);
+    EXPECT_EQ(g_State.AttachGraph.Generation, graph.Generation);
+    ASSERT_EQ(g_State.RunOwners.size(), 1u);
+    EXPECT_EQ(g_State.RunOwners[0].Slot, graph.Slot);
+    EXPECT_EQ(g_State.SettingName, "Caption");
+    EXPECT_EQ(g_State.Text, "hello");
+
+    // The parked Block is driven through its handle, not by the graph.
+    auto pulsed = instance.Pulse(unique("In"));
+    ASSERT_TRUE(pulsed) << pulsed.Detail().Message;
+    EXPECT_EQ(g_State.Input, "In");
+
+    EXPECT_EQ(instance.Close().Value(), CloseState::Closed);
+    EXPECT_EQ(g_State.RunCloses, 1);
+}
+
+TEST(BehaviorAuthoring, ReportsAFailureWhenAGraphRefusesTheBlock) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    g_State.RunCode = BML_ERROR_NOT_FOUND;
+    auto attached = session.Use(CKGUID(3, 4)).Attach(BML_ObjectRef{1, 2, 3});
+    EXPECT_FALSE(attached);
+    EXPECT_EQ(attached.Code(), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(g_State.Attaches, 1);
+    EXPECT_EQ(g_State.RunCloses, 1);
+}
+
+TEST(BehaviorAuthoring, PutsACallbackOnALinkItNamed) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto alive = std::make_shared<int>(0);
+    {
+        auto edit = session.Patch("before");
+        const auto link = edit.UseLink({7, 78, 2});
+        edit.Before(link, [alive] {});
+        auto applied = edit.Apply({41, 42, 43});
+        ASSERT_TRUE(applied) << applied.Detail().Message;
+        GraphPatch patch = std::move(applied).Value();
+
+        ASSERT_EQ(g_State.PatchSteps.size(), 2u);
+        EXPECT_EQ(g_State.PatchSteps[1].Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_BEFORE));
+        EXPECT_EQ(g_State.PatchSteps[1].Target, g_State.PatchSteps[0].Result);
+        EXPECT_TRUE(g_State.PatchSteps[1].HasHook);
+        EXPECT_EQ(alive.use_count(), 2);
+        EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
     }
     EXPECT_EQ(alive.use_count(), 1);
 }

@@ -143,6 +143,14 @@ CreateResult Runtime::Instantiate(CKBeObject *, const Spec &spec,
     return {{}, Instance(m_Access, id), descriptor};
 }
 
+CreateResult Runtime::AttachToGraph(CKBehavior *parent, const Spec &spec,
+                                    const CKBehaviorContext *frame) {
+    if (!parent)
+        return {{Error::OwnerInvalid, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
+                 "The fake graph is not live."}, {}, {}};
+    return Instantiate(nullptr, spec, frame);
+}
+
 CallResult Runtime::Call(CKBeObject *owner, const Spec &spec,
                          const Slot &input, const CKBehaviorContext *frame) {
     CreateResult created = Instantiate(owner, spec, frame);

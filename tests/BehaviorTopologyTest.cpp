@@ -339,4 +339,58 @@ TEST(BehaviorTopology, RejectsAnUnlinkedSiblingOut) {
     EXPECT_TRUE(path.Links.empty());
 }
 
+TEST(BehaviorTopology, SendsARedirectedLinkToItsNewSinkAndKeepsSplicesInvisible) {
+    Topology topology;
+    const LinkId link = Identify(topology, Base(1, 100, 200));
+    const GraphEndpoint moved = Endpoint(300, SlotKind::Input, 1);
+
+    ASSERT_TRUE(topology.Set(
+        OverlayPatch("mod", "alpha", 0, link, {{OverlayKind::Splice, 1, 101}})));
+    EXPECT_EQ(EffectiveSink(*topology.Find(link)), Endpoint(200, SlotKind::Input, 0));
+
+    ASSERT_TRUE(topology.Set(
+        OverlayPatch("mod", "beta", 0, link,
+                     {{OverlayKind::Redirect, 2, 202, moved}})));
+    EXPECT_EQ(EffectiveSink(*topology.Find(link)), moved);
+    EXPECT_EQ(topology.Find(link)->Base.Sink, Endpoint(200, SlotKind::Input, 0));
+
+    EXPECT_TRUE(topology.Remove({"mod", "beta"}));
+    EXPECT_EQ(EffectiveSink(*topology.Find(link)), Endpoint(200, SlotKind::Input, 0));
+}
+
+TEST(BehaviorTopology, AdmitsOnlyOneRedirectPerLink) {
+    Topology topology;
+    const LinkId link = Identify(topology, Base(1, 100, 200));
+    const GraphEndpoint moved = Endpoint(300, SlotKind::Input, 0);
+    const GraphEndpoint other = Endpoint(400, SlotKind::Input, 0);
+
+    Status status = topology.Set(
+        OverlayPatch("mod", "twice", 0, link,
+                     {{OverlayKind::Redirect, 1, 101, moved},
+                      {OverlayKind::Redirect, 2, 202, other}}));
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::RedirectConflict);
+
+    ASSERT_TRUE(topology.Set(
+        OverlayPatch("mod", "alpha", 0, link,
+                     {{OverlayKind::Redirect, 1, 101, moved}})));
+    status = topology.Set(
+        OverlayPatch("mod", "beta", 0, link,
+                     {{OverlayKind::Redirect, 2, 202, other}}));
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::RedirectConflict);
+    EXPECT_EQ(EffectiveSink(*topology.Find(link)), moved);
+}
+
+TEST(BehaviorTopology, RejectsARedirectWithoutAControlDestination) {
+    Topology topology;
+    const LinkId link = Identify(topology, Base(1, 100, 200));
+    const Status status = topology.Set(
+        OverlayPatch("mod", "alpha", 0, link,
+                     {{OverlayKind::Redirect, 1, 101,
+                       Endpoint(300, SlotKind::InputParameter, 0)}}));
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::InvalidState);
+}
+
 } // namespace

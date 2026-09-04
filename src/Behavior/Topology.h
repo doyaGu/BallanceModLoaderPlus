@@ -50,12 +50,18 @@ struct Order {
 enum class OverlayKind {
     Splice,
     Tap,
+    // Sends the Link somewhere else. Unlike a Splice, which keeps the original
+    // destination at the end of the inserted chain, a Redirect replaces it, so
+    // at most one Patch may hold a Redirect on one Link.
+    Redirect,
 };
 
 struct Overlay {
     OverlayKind Kind = OverlayKind::Splice;
     std::uint32_t Ordinal = 0;
     std::uint64_t Fingerprint = 0;
+    // Where a Redirect sends the Link. Unused by the other kinds.
+    GraphEndpoint Target;
 };
 
 struct LinkOverlays {
@@ -89,6 +95,7 @@ struct OrderedOverlay {
     OverlayKind Kind = OverlayKind::Splice;
     std::uint32_t Ordinal = 0;
     std::uint64_t Fingerprint = 0;
+    GraphEndpoint Target;
 };
 
 struct LogicalLink {
@@ -97,6 +104,10 @@ struct LogicalLink {
     std::uint64_t Fingerprint = 0;
     std::vector<OrderedOverlay> Overlays;
 };
+
+// Where a Link ends once every Patch on it is composed: the Redirect target
+// when one Patch holds a Redirect, otherwise the native sink.
+GraphEndpoint EffectiveSink(const LogicalLink &link);
 
 // A unique, non-branching control-flow path in the logical graph. Links keep
 // their native anchor identity; End is the final Out/Exit reached after the

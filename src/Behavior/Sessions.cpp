@@ -158,6 +158,17 @@ Status Sessions::ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const {
     return {};
 }
 
+Status Sessions::ReadOwner(const std::string &ownerId,
+                           SessionOwner &out) const {
+    out = {};
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    const auto owner = m_Owners.find(ownerId);
+    if (owner == m_Owners.end() || owner->second.State != OwnerState::Active)
+        return Fail(Error::InvalidState, "The Mod is not an active Behavior owner.");
+    out = {owner->second.Id, owner->second.Generation};
+    return {};
+}
+
 OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
                         const Spec &block, const Slot &input) {
     Status ready = Ready();
@@ -223,6 +234,31 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
         session = *found;
     }
     CreateResult created = m_Runtime.Instantiate(owner, block);
+    if (!created)
+        return {std::move(created.Detail), 0, {}};
+    RunResult result;
+    result.State = RunState::Ready;
+    return AddRun(session, RunKind::Instance, std::move(created.Handle),
+                  std::move(result), created.Detached);
+}
+
+OpenRun Sessions::Attach(std::uintptr_t sessionId, CKBehavior *graph,
+                         const Spec &block) {
+    Status ready = Ready();
+    if (!ready)
+        return {std::move(ready), 0, {}};
+    if (!graph)
+        return {Fail(Error::OwnerInvalid,
+                     "Attach requires a live parent graph."), 0, {}};
+    Session session;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        Session *found = FindSession(sessionId);
+        if (!found || !SessionIsActive(*found))
+            return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
+        session = *found;
+    }
+    CreateResult created = m_Runtime.AttachToGraph(graph, block);
     if (!created)
         return {std::move(created.Detail), 0, {}};
     RunResult result;

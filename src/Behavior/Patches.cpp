@@ -19,9 +19,10 @@ Status Failure(Error error, std::string message,
 
 Patches::Patches(CKContext *context, Runtime &runtime,
                  PrototypeCatalog *catalog, GraphSource &graph,
-                 ResolveObject resolveObject)
+                 ResolveObject resolveObject, IssueObject issueObject)
     : m_Edit(context, runtime, catalog, graph),
       m_Graph(graph), m_ResolveObject(std::move(resolveObject)),
+      m_IssueObject(std::move(issueObject)),
       m_Thread(std::this_thread::get_id()) {}
 
 Patches::~Patches() {
@@ -66,7 +67,8 @@ Status Patches::Add(Edit &edit, Spec block, Node &out) {
 }
 
 Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
-                      PatchId &out) {
+                      PatchId &out,
+                      const std::map<std::uint32_t, Node> *handles) {
     out = 0;
     Status status = Ready();
     if (!status)
@@ -106,6 +108,8 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
             stored->second.Graph = static_cast<CK_ID>(graph.Id);
             stored->second.Value = std::move(patch);
             stored->second.Retiring = !status;
+            if (handles)
+                stored->second.Handles = *handles;
         } catch (...) {
             m_Patches.erase(stored);
             throw;
@@ -124,7 +128,8 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
 }
 
 Status Patches::Apply(const SessionOwner &owner, const ObjectRef &graph,
-                      std::string name, GraphEdit edit, PatchId &out) {
+                      std::string name, GraphEdit edit, PatchId &out,
+                      const HandleMap *authorNodes) {
     out = 0;
     Status status = Ready();
     if (!status)
@@ -134,7 +139,39 @@ Status Patches::Apply(const SessionOwner &owner, const ObjectRef &graph,
             Error::OwnerInvalid,
             "A Behavior Patch requires an owner, graph, and name.");
     }
-    return Install(owner, {owner.Id, std::move(name)}, graph, edit, out);
+    return Install(owner, {owner.Id, std::move(name)}, graph, edit, out,
+                   authorNodes);
+}
+
+Status Patches::ResolveNode(const SessionOwner &owner, PatchId patch,
+                            std::uint32_t handle, ObjectRef &out) const {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    const auto found = m_Patches.find(patch);
+    if (found == m_Patches.end() ||
+        found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::InvalidState,
+                       "The Behavior Patch handle is stale.");
+    const auto named = found->second.Handles.find(handle);
+    if (named == found->second.Handles.end())
+        return Failure(Error::QueryNotFound,
+                       "The Behavior Patch names no Node under this handle.");
+    CKBehavior *native = nullptr;
+    status = m_Edit.ResolveNode(found->second.Value, named->second, native);
+    if (!status)
+        return status;
+    if (!m_IssueObject)
+        return Failure(Error::InvalidState,
+                       "This Loader cannot issue object references.");
+    out = m_IssueObject(native);
+    if (out.IsNull())
+        return Failure(Error::CreateFailed,
+                       "The Loader could not issue a reference for the Node.");
+    return {};
 }
 
 class Patches::PlanWorld final : public Plan::World {
@@ -175,6 +212,12 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
     if (!owner || !target || name.empty())
         return Failure(Error::OwnerInvalid,
                        "A durable Behavior Edit requires an owner, script, and patch name.");
+    // A durable Plan installs into scripts that do not exist yet, so it cannot
+    // carry a reference issued against one live world.
+    if (edit.UsesIdentity())
+        return Failure(Error::InvalidState,
+                       "A durable Behavior Edit cannot name a Node or Link by "
+                       "reference; query it by name or Prototype instead.");
     status = edit.Validate();
     if (!status)
         return status;
@@ -192,13 +235,32 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
 
 Status Patches::Install(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const GraphEdit &edit,
-                        PatchId &out) {
+                        PatchId &out, const HandleMap *authorNodes) {
     out = 0;
     Edit resolved;
-    Status status = edit.Compile(patch, graph, *this, resolved);
-    if (status)
-        status = Apply(owner, resolved, out);
-    return status;
+    std::map<std::uint32_t, Node> compiled;
+    Status status = edit.Compile(patch, graph, *this, resolved, &compiled);
+    if (!status)
+        return status;
+
+    std::map<std::uint32_t, Node> handles;
+    try {
+        if (authorNodes) {
+            // Keep the author's own handles, so a Patch is read back through
+            // the names its program used rather than compiler-internal ones.
+            for (const auto &entry : *authorNodes) {
+                const auto found = compiled.find(entry.second);
+                if (found != compiled.end())
+                    handles.emplace(entry.first, found->second);
+            }
+        } else {
+            handles = compiled;
+        }
+    } catch (...) {
+        return Failure(Error::CreateFailed,
+                       "The Loader could not retain the Behavior Patch handles.");
+    }
+    return Apply(owner, resolved, out, &handles);
 }
 
 Status Patches::Begin(const PatchKey &patch, const ObjectRef &graph,
@@ -236,8 +298,15 @@ Status Patches::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
                   "A Behavior Link disappeared during compilation.");
 }
 
-Status Patches::Add(Edit &edit, CKGUID prototype, Node &out) {
-    return m_Edit.Add(edit, Spec(prototype), out);
+Status Patches::Add(Edit &edit, CKGUID prototype,
+                    const std::vector<std::pair<Slot, Value>> &settings,
+                    Node &out) {
+    Spec block(prototype);
+    // One stage, so the Block hears one CKM_BEHAVIORSETTINGSEDITED after every
+    // declared Setting is written and can rebuild its layout once.
+    for (const auto &[slot, value] : settings)
+        block.Setting(slot, value);
+    return m_Edit.Add(edit, std::move(block), out);
 }
 
 Status Patches::Tap(Edit &edit, Port source,
@@ -251,12 +320,12 @@ Status Patches::Tap(Edit &edit, Port source,
     return {};
 }
 
-Status Patches::After(Edit &edit, Link link,
-                      const HookBlock::Hook &hook) {
+Status Patches::Interpose(Edit &edit, Link link,
+                          const HookBlock::Hook &hook) {
     std::shared_ptr<HookBlock::Binding> binding = hook.Bind();
     if (!binding) {
         return Failure(Error::CallbackFailed,
-                       "The Path callback is no longer available.");
+                       "The Link callback is no longer available.");
     }
     Node block;
     Status status = m_Edit.Add(

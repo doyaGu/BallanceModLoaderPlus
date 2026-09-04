@@ -68,9 +68,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 128u);
+                        sizeof(BML_BehaviorInterface) == 140u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 128u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 140u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
                         sizeof(BML_BehaviorSlotRef) == 48u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
@@ -90,7 +90,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 44u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 240u);
+                        sizeof(BML_BehaviorEditStep) == 252u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,
@@ -108,9 +108,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 256u);
+                        sizeof(BML_BehaviorInterface) == 280u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 256u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 280u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
                         sizeof(BML_BehaviorSlotRef) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
@@ -130,7 +130,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 280u);
+                        sizeof(BML_BehaviorEditStep) == 296u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,

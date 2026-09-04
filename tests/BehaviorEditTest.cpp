@@ -30,6 +30,7 @@ Layout Shape(CKDWORD flags = 0) {
         SlotOf(SlotKind::InputParameter, 0, "Value", CKPGUID_INT),
         SlotOf(SlotKind::OutputParameter, 0, "Result", CKPGUID_INT),
         SlotOf(SlotKind::Local, 0, "State", CKPGUID_INT),
+        SlotOf(SlotKind::Setting, 1, "Mode", CKPGUID_INT),
     };
     return layout;
 }
@@ -175,40 +176,28 @@ TEST(BehaviorEdit, RejectsATapOnAGraphEntryBeforeMutation) {
     EXPECT_EQ(status.Code, Error::TypeMismatch);
 }
 
-TEST(BehaviorEdit, ChecksEachDynamicInterfaceKindIndependently) {
-    constexpr CKDWORD flags = CKBEHAVIOR_VARIABLEINPUTS |
-                              CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
-                              CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS |
-                              CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS;
+TEST(BehaviorEdit, AppendsPortsWithoutAskingForAVariableFlag) {
+    // CK2 appends ports to any Behavior, so a missing variable-interface flag
+    // is not a refusal. Only a Local, which the block addresses as private
+    // state, stays out of reach.
     Edit accepted = MakeEdit();
-    const Node node = accepted.Use(Native(101), Shape(flags));
+    const Node node = accepted.Use(Native(101), Shape());
     const Port input = accepted.AppendIn(node, "Again");
     const Port output = accepted.AppendPout(node, "Other", CKPGUID_INT);
     ASSERT_TRUE(input);
+    ASSERT_TRUE(output);
+    accepted.AppendOut(node, "Done");
+    accepted.AppendPin(node, "Extra", CKPGUID_INT);
     accepted.Flow(accepted.Entry(), node.In("Again"));
     accepted.Push(node.Pout("Other"), node.Local());
 
     CheckedEdit checked;
     EXPECT_TRUE(accepted.Validate(Base(), checked));
 
-    Edit internalOnly = MakeEdit();
-    const Node fixed = internalOnly.Use(Native(101), Shape(flags));
-    internalOnly.AppendOut(fixed, "Again");
-    Status status = internalOnly.Validate(Base(), checked);
-    EXPECT_FALSE(status);
-    EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
-
-    Edit pinInternalOnly = MakeEdit();
-    const Node fixedPin = pinInternalOnly.Use(Native(101), Shape(flags));
-    pinInternalOnly.AppendPin(fixedPin, "Again", CKPGUID_INT);
-    status = pinInternalOnly.Validate(Base(), checked);
-    EXPECT_FALSE(status);
-    EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
-
     Edit local = MakeEdit();
-    const Node noLocalFlag = local.Use(Native(101), Shape(0xffffffffu));
-    local.AppendLocal(noLocalFlag, "Again", CKPGUID_INT);
-    status = local.Validate(Base(), checked);
+    const Node everyFlag = local.Use(Native(101), Shape(0xffffffffu));
+    local.AppendLocal(everyFlag, "Again", CKPGUID_INT);
+    Status status = local.Validate(Base(), checked);
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
 }
@@ -229,6 +218,55 @@ TEST(BehaviorEdit, DistinguishesExistingAndAppendedDynamicPorts) {
     ASSERT_EQ(checked.Binds.size(), 2u);
     EXPECT_FALSE(checked.Binds[0].Target.Appended);
     EXPECT_TRUE(checked.Binds[1].Target.Appended);
+}
+
+TEST(BehaviorEdit, WritesAValueIntoALocalButNeverIntoASetting) {
+    // CK2 keeps a written value in the parameter itself, which is how a Local
+    // holds its state, so a Local takes one. A Setting is refused: editing one
+    // can rebuild the layout of the block, so it belongs to how the Block was
+    // created and not to a later write.
+    Edit local = MakeEdit();
+    const Node node = local.Use(Native(101), Shape());
+    local.Bind(node.Local("State"), Value{});
+    CheckedEdit checked;
+    ASSERT_TRUE(local.Validate(Base(), checked));
+    ASSERT_EQ(checked.Binds.size(), 1u);
+    EXPECT_EQ(checked.Binds[0].Kind, BindKind::Literal);
+    EXPECT_EQ(checked.Binds[0].Target.Slot.Kind, SlotKind::Local);
+
+    Edit setting = MakeEdit();
+    const Node target = setting.Use(Native(101), Shape());
+    // The internal Node has no Setting accessor, because a Setting is never a
+    // destination a later write can name. This test asks for one anyway to
+    // prove the validator refuses it.
+    setting.Bind(Port{target.Value, Slot::Named(SlotKind::Setting, "Mode")},
+                 Value{});
+    Status status = setting.Validate(Base(), checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::TypeMismatch);
+
+    // A relation still needs somewhere to read from, so only a Pin or the
+    // Target accepts one.
+    Edit relation = MakeEdit();
+    const Node source = relation.Use(Native(101), Shape());
+    const Node destination = relation.Use(Native(102), Shape());
+    relation.Bind(destination.Local("State"), source.Pout());
+    status = relation.Validate(Base(), checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::TypeMismatch);
+}
+
+TEST(BehaviorEdit, RefusesAWrittenValueAndAPushOnOneParameter) {
+    Edit edit = MakeEdit();
+    const Node source = edit.Use(Native(101), Shape());
+    const Node destination = edit.Use(Native(102), Shape());
+    edit.Bind(destination.Local("State"), Value{});
+    edit.Push(source.Pout(), destination.Local("State"));
+
+    CheckedEdit checked;
+    const Status status = edit.Validate(Base(), checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::InvalidState);
 }
 
 TEST(BehaviorEdit, RejectsSharedAndPushCyclesBeforeMutation) {
@@ -399,6 +437,99 @@ TEST(BehaviorEdit, RejectsConflictingOrSelfReferentialSpliceOrder) {
     status = self.Validate(graph, checked);
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::OverlayOrderCycle);
+}
+
+TEST(BehaviorEdit, SendsAnExactLinkToANodeInOrAGraphExit) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {1, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 1},
+        {2, {7, 32, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 3},
+    };
+
+    Edit edit = MakeEdit();
+    const Node block = edit.Use(Native(103), Shape());
+    edit.Redirect(edit.Use(ObjectRef{7, 32, 9}), block.In(),
+                  {{OrderKind::After, {"other", "patch"}}});
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(graph, checked));
+    ASSERT_EQ(checked.Redirects.size(), 1u);
+    EXPECT_EQ(checked.Redirects[0].Target.Anchor, (ObjectRef{7, 32, 9}));
+    EXPECT_EQ(checked.Redirects[0].Target.Delay, 3);
+    EXPECT_EQ(checked.Redirects[0].Sink.Owner, block);
+    ASSERT_EQ(checked.Redirects[0].Ordering.size(), 1u);
+
+    Edit boundary = MakeEdit();
+    boundary.Redirect(boundary.Use(ObjectRef{7, 31, 9}), boundary.Exit("Done"));
+    ASSERT_TRUE(boundary.Validate(graph, checked));
+    ASSERT_EQ(checked.Redirects.size(), 1u);
+    EXPECT_EQ(checked.Redirects[0].Sink.Owner, boundary.Graph());
+}
+
+TEST(BehaviorEdit, RejectsARedirectToAnOutAndARedirectDeclaredTwice) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {1, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 0},
+    };
+
+    Edit wrongWay = MakeEdit();
+    const Node node = wrongWay.Use(Native(103), Shape());
+    wrongWay.Redirect(wrongWay.Use(ObjectRef{7, 31, 9}), node.Out());
+    CheckedEdit checked;
+    Status status = wrongWay.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::TypeMismatch);
+
+    Edit twice = MakeEdit();
+    const Node first = twice.Use(Native(101), Shape());
+    const Node second = twice.Use(Native(102), Shape());
+    const Link target = twice.Use(ObjectRef{7, 31, 9});
+    twice.Redirect(target, first.In());
+    twice.Redirect(target, second.In());
+    status = twice.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::RedirectConflict);
+
+    Edit stale = MakeEdit();
+    const Node missing = stale.Use(Native(103), Shape());
+    stale.Redirect(stale.Use(ObjectRef{7, 99, 9}), missing.In());
+    status = stale.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::LinkNotFound);
+}
+
+TEST(BehaviorEdit, MakesASpliceAndARedirectOnOneLinkShareTheOrdering) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {1, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 0},
+    };
+
+    Edit shared = MakeEdit();
+    const Node block = shared.Use(Native(101), Shape());
+    const Node moved = shared.Use(Native(102), Shape());
+    const Link target = shared.Use(ObjectRef{7, 31, 9});
+    shared.Splice(target, block, {{OrderKind::After, {"other", "patch"}}});
+    shared.Redirect(target, moved.In(), {{OrderKind::After, {"other", "patch"}}});
+    CheckedEdit checked;
+    ASSERT_TRUE(shared.Validate(graph, checked));
+    EXPECT_EQ(checked.Splices.size(), 1u);
+    ASSERT_EQ(checked.Redirects.size(), 1u);
+    EXPECT_EQ(checked.Redirects[0].Ordering, checked.Splices[0].Ordering);
+
+    Edit conflicting = MakeEdit();
+    const Node other = conflicting.Use(Native(101), Shape());
+    const Node destination = conflicting.Use(Native(102), Shape());
+    const Link link = conflicting.Use(ObjectRef{7, 31, 9});
+    conflicting.Splice(link, other, {{OrderKind::Before, {"other", "patch"}}});
+    conflicting.Redirect(link, destination.In(),
+                         {{OrderKind::After, {"other", "patch"}}});
+    const Status status = conflicting.Validate(graph, checked);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::InvalidState);
 }
 
 } // namespace

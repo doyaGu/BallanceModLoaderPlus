@@ -121,6 +121,25 @@ std::uint64_t HashSplice(const LinkBase &link, std::uint32_t ordinal,
     return hash;
 }
 
+std::uint64_t HashRedirect(const LinkBase &link, std::uint32_t ordinal,
+                           const GraphEndpoint &sink) {
+    std::uint64_t hash = 1469598103934665603ull;
+    const auto add = [&](std::uint64_t value) {
+        for (int byte = 0; byte < 8; ++byte) {
+            hash ^= static_cast<unsigned char>(value >> (byte * 8));
+            hash *= 1099511628211ull;
+        }
+    };
+    add(link.Anchor.Domain);
+    add(link.Anchor.Slot);
+    add(link.Anchor.Generation);
+    add(ordinal);
+    add(sink.Node);
+    add(static_cast<std::uint64_t>(sink.Kind));
+    add(static_cast<std::uint32_t>(sink.Index));
+    return hash;
+}
+
 std::uint64_t HashBind(const GraphEndpoint &pin, const CheckedBind &bind) {
     std::uint64_t hash = 1469598103934665603ull;
     const auto add = [&](std::uint64_t value) {
@@ -201,6 +220,31 @@ GraphEndpoint DescribePin(CKParameterIn *input) {
                         SlotKind::InputParameter, index};
 }
 
+GraphEndpoint DescribeLocal(CKParameterLocal *local) {
+    CKBehavior *owner = local ? CKBehavior::Cast(local->GetOwner()) : nullptr;
+    if (!owner)
+        return {};
+    const int index = owner->GetLocalParameterPosition(local);
+    if (index < 0)
+        return {};
+    return {static_cast<std::uint32_t>(owner->GetID()),
+            owner->IsLocalParameterSetting(index) ? SlotKind::Setting
+                                                  : SlotKind::Local,
+            index};
+}
+
+// Copies the bytes CK2 keeps for one parameter. This is the whole value: the
+// buffer is the parameter, so the copy round-trips through SetValue for every
+// registered type without asking the type what it means.
+std::vector<CKBYTE> Snapshot(CKParameter *parameter) {
+    const int size = parameter ? parameter->GetDataSize() : 0;
+    const auto *bytes = size > 0
+        ? static_cast<const CKBYTE *>(parameter->GetReadDataPtr(FALSE))
+        : nullptr;
+    return bytes ? std::vector<CKBYTE>(bytes, bytes + size)
+                 : std::vector<CKBYTE>{};
+}
+
 bool ContainsLink(CKBehavior *graph, CKBehaviorLink *link) {
     if (!graph || !link)
         return false;
@@ -239,6 +283,18 @@ struct Patch::Journal {
         Stamp Target;
     };
 
+    // A value written straight into a Setting or a Local. CK2 keeps the value
+    // in the parameter's own buffer, so the bytes that were there are the only
+    // thing a revert can hand back, and the bytes this Patch wrote are what
+    // tells a revert whether anyone else has written since.
+    struct Written {
+        Stamp Parameter;
+        GraphEndpoint Slot;
+        std::vector<CKBYTE> Before;
+        std::vector<CKBYTE> Expected;
+        bool Reverted = false;
+    };
+
     struct Interface {
         Stamp Behavior;
         Stamp Port;
@@ -254,15 +310,21 @@ struct Patch::Journal {
     PatchKey Key;
     std::vector<std::shared_ptr<CallbackResource>> Callbacks;
     std::vector<Stamp> Nodes;
+    // Every Node this Edit named, borrowed or added, keyed by its Edit handle.
+    // Filled once the Edit reaches the graph, which is what makes a Pending
+    // Patch answer Busy instead of naming an object that does not exist yet.
+    std::map<std::uint32_t, Stamp> Handles;
     std::vector<Stamp> InfrastructureNodes;
     std::vector<Stamp> InfrastructureLinks;
     std::vector<Link> Links;
     std::vector<Binding> Binds;
+    std::vector<Written> Values;
     std::vector<Destination> Pushes;
     std::vector<Interface> Ports;
     PatchLayer Layer;
     RelationLayer Data;
     std::vector<std::pair<LinkId, std::uint32_t>> Splices;
+    std::vector<std::pair<LinkId, std::uint32_t>> Redirects;
     std::vector<RevertConflict> Conflicts;
 };
 
@@ -298,6 +360,11 @@ struct CKEdit::Links {
         Stamp Sink;
         std::vector<Key> Order;
         std::vector<Stamp> Continuations;
+        // Where the tail of this chain currently points. It is the native Sink
+        // until a Patch redirects the Link, and it returns there when that
+        // Patch closes.
+        Stamp Terminal;
+        bool Redirected = false;
     };
 
     struct Infrastructure {
@@ -406,7 +473,7 @@ Status CKEdit::PublishLogicalGraph(std::uint64_t graphId) {
     const auto chains = m_Links->Chains.find(graphId);
     if (topology != m_Topology.end() && chains != m_Links->Chains.end()) {
         for (const auto &[id, chain] : chains->second) {
-            if (chain.Order.empty())
+            if (chain.Order.empty() && !chain.Redirected)
                 continue;
             const LogicalLink *link = topology->second.Find(id);
             CKBehaviorLink *anchor = Resolve<CKBehaviorLink>(
@@ -415,9 +482,12 @@ Status CKEdit::PublishLogicalGraph(std::uint64_t graphId) {
             if (!link || !anchor || !Describe(anchor, live))
                 return Failure(Error::GraphChanged,
                                "A Splice anchor disappeared.");
+            // A Splice is infrastructure, so the Logical view keeps reporting
+            // the original destination. A Redirect is a deliberate change of
+            // destination, so the Logical view reports the new one.
             logical.Links.push_back(
                 {Native(chain.Anchor), live,
-                 GraphLinkShape{link->Base.Source, link->Base.Sink,
+                 GraphLinkShape{link->Base.Source, EffectiveSink(*link),
                                 link->Base.Delay}});
             for (Stamp continuation : chain.Continuations) {
                 CKBehaviorLink *native = Resolve<CKBehaviorLink>(
@@ -476,6 +546,8 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
         CKBehaviorLink *Anchor = nullptr;
         CKBehaviorIO *OldHead = nullptr;
         CKBehaviorIO *NewHead = nullptr;
+        CKBehaviorIO *Terminal = nullptr;
+        bool Redirected = false;
         std::vector<Links::Key> Order;
         std::vector<Stamp> Continuations;
     };
@@ -506,20 +578,33 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
             return Failure(Error::GraphChanged,
                            "A materialized Link lost its logical identity.");
         std::vector<Links::Key> order;
+        bool redirected = false;
+        Links::Key redirect;
         for (const OrderedOverlay &overlay : logical->Overlays) {
-            if (overlay.Kind == OverlayKind::Splice)
+            if (overlay.Kind == OverlayKind::Splice) {
                 order.push_back({overlay.Patch, overlay.Ordinal});
+            } else if (overlay.Kind == OverlayKind::Redirect) {
+                redirected = true;
+                redirect = {overlay.Patch, overlay.Ordinal};
+            }
         }
-        if (order == chain.Order)
-            continue;
 
         auto *anchor = Resolve<CKBehaviorLink>(
             m_Context, chain.Anchor, CKCID_BEHAVIORLINK);
         CKBehaviorIO *source = ResolveIo(m_Context, chain.Source);
-        CKBehaviorIO *sink = ResolveIo(m_Context, chain.Sink);
+        CKBehaviorIO *sink = ResolveIo(m_Context, chain.Terminal);
+        CKBehaviorIO *desired = redirected
+            ? siteInput(redirect) : ResolveIo(m_Context, chain.Sink);
+        if (!desired) {
+            discard();
+            return Failure(Error::GraphChanged,
+                           "A Link destination disappeared before publication.");
+        }
+        if (order == chain.Order && desired == sink)
+            continue;
         CKBehaviorIO *oldHead = chain.Order.empty()
             ? sink : siteInput(chain.Order.front());
-        if (!anchor || !source || !sink || !oldHead ||
+        if (!anchor || !source || !sink || !oldHead || !desired ||
             anchor->GetInBehaviorIO() != source ||
             anchor->GetOutBehaviorIO() != oldHead ||
             anchor->GetInitialActivationDelay() != chain.Base.Delay ||
@@ -552,8 +637,10 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
         change.Anchor = anchor;
         change.OldHead = oldHead;
         change.Order = order;
+        change.Terminal = desired;
+        change.Redirected = redirected;
         change.NewHead = order.empty()
-            ? sink : siteInput(order.front());
+            ? desired : siteInput(order.front());
         if (!change.NewHead) {
             discard();
             return Failure(Error::GraphChanged,
@@ -568,7 +655,7 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
                 ? nullptr : ResolveIo(m_Context, site->second.Output);
             CKBehaviorIO *to = index + 1 < order.size()
                 ? siteInput(order[index + 1])
-                : sink;
+                : desired;
             if (!from || !to) {
                 discard();
                 return Failure(Error::GraphChanged,
@@ -627,6 +714,8 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
         }
         change.Chain->Order = std::move(change.Order);
         change.Chain->Continuations = std::move(change.Continuations);
+        change.Chain->Terminal = Capture(change.Terminal);
+        change.Chain->Redirected = change.Redirected;
     }
     return {};
 }
@@ -770,6 +859,31 @@ Status CKEdit::ApplyNow(const Edit &edit,
             {OverlayKind::Splice, splice.Ordinal,
              HashSplice(splice.Target, splice.Ordinal,
                         splice.Input.Owner.Value)});
+    }
+    std::vector<LinkId> redirectLinks;
+    redirectLinks.reserve(checked.Redirects.size());
+    for (const CheckedRedirect &redirect : checked.Redirects) {
+        LinkId id;
+        status = topology.Identify(redirect.Target, id);
+        if (!status)
+            return status;
+        redirectLinks.push_back(id);
+
+        auto group = std::find_if(
+            spliceLayer.Links.begin(), spliceLayer.Links.end(),
+            [id](const LinkOverlays &candidate) { return candidate.Link == id; });
+        if (group == spliceLayer.Links.end()) {
+            spliceLayer.Links.push_back({id, redirect.Ordering, {}});
+            group = std::prev(spliceLayer.Links.end());
+        }
+        // The new destination may be a Node this Edit has not created yet, so
+        // the pre-check stands in the current sink and the authoritative
+        // endpoint is written once the graph holds every Node.
+        group->Overlays.push_back(
+            {OverlayKind::Redirect, redirect.Ordinal,
+             HashRedirect(redirect.Target, redirect.Ordinal,
+                          redirect.Target.Sink),
+             redirect.Target.Sink});
     }
     if (!spliceLayer.Links.empty()) {
         status = topology.Validate(spliceLayer);
@@ -1244,11 +1358,32 @@ Status CKEdit::ApplyNow(const Edit &edit,
     for (const CheckedBind &bind : checked.Binds) {
         CKObject *targetParameter = nullptr;
         status = parameter(bind.Target, targetParameter);
-        auto *target = status ? CKParameterIn::Cast(targetParameter) : nullptr;
-        if (!status || !target)
-            return fail(status ? Failure(Error::GraphChanged,
-                                         "A Bind destination is not a Pin.")
-                               : std::move(status));
+        if (!status)
+            return fail(std::move(status));
+        // A Local holds its value itself, so there is no source to install and
+        // nothing to create. The bytes go into the parameter and the bytes that
+        // were there go into the journal.
+        if (bind.Target.Slot.Kind == SlotKind::Local) {
+            auto *stored = CKParameterLocal::Cast(targetParameter);
+            if (!stored)
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "A written value names a slot that is not a stored parameter."));
+            Patch::Journal::Written change;
+            change.Parameter = Capture(stored);
+            change.Slot = DescribeLocal(stored);
+            change.Before = Snapshot(stored);
+            status = Parameter::Write(m_Context, stored, bind.Literal);
+            if (!status)
+                return fail(std::move(status));
+            change.Expected = Snapshot(stored);
+            patch->Values.push_back(std::move(change));
+            continue;
+        }
+        auto *target = CKParameterIn::Cast(targetParameter);
+        if (!target)
+            return fail(Failure(Error::GraphChanged,
+                                "A Bind destination is not a Pin."));
 
         Patch::Journal::Binding change;
         change.Input = Capture(target);
@@ -1387,13 +1522,12 @@ Status CKEdit::ApplyNow(const Edit &edit,
         found->Taps.push_back({tap.Ordinal, HashTap(source, tap.Ordinal)});
     }
 
-    for (std::size_t spliceIndex = 0;
-         spliceIndex < checked.Splices.size(); ++spliceIndex) {
-        const CheckedSplice &splice = checked.Splices[spliceIndex];
-        const LinkId id = spliceLinks[spliceIndex];
+    // Splice and Redirect both work on one bookkeeping chain per logical Link,
+    // so both open it the same way.
+    const auto openChain = [&](const LinkBase &target, LinkId id) -> Status {
         const auto nativeRecord = std::find_if(
             base.Links.begin(), base.Links.end(), [&](const GraphLink &candidate) {
-                return candidate.Object == splice.Target.Anchor;
+                return candidate.Object == target.Anchor;
             });
         CKBehaviorLink *anchor = nativeRecord == base.Links.end()
             ? nullptr
@@ -1403,28 +1537,44 @@ Status CKEdit::ApplyNow(const Edit &edit,
                    m_Context->GetObject(static_cast<CK_ID>(nativeRecord->Id))},
                   CKCID_BEHAVIORLINK);
         if (!anchor)
-            return fail(Failure(Error::LinkNotFound,
-                                "The exact native Link disappeared before Apply."));
+            return Failure(Error::LinkNotFound,
+                           "The exact native Link disappeared before Apply.");
 
         auto &chains = m_Links->Chains[graphId];
-        auto chain = chains.find(id);
+        const auto chain = chains.find(id);
         if (chain == chains.end()) {
             CKBehaviorIO *source = anchor->GetInBehaviorIO();
             CKBehaviorIO *sink = anchor->GetOutBehaviorIO();
             if (!source || !sink)
-                return fail(Failure(Error::GraphChanged,
-                                    "The selected Link lost an endpoint."));
+                return Failure(Error::GraphChanged,
+                               "The selected Link lost an endpoint.");
+            const LogicalLink *logical = topology.Find(id);
+            if (!logical)
+                return Failure(Error::GraphChanged,
+                               "The selected Link lost its logical identity.");
             Links::Chain value;
             value.Id = id;
-            value.Base = topology.Find(id)->Base;
+            value.Base = logical->Base;
             value.Anchor = Capture(anchor);
             value.Source = Capture(source);
             value.Sink = Capture(sink);
-            chain = chains.emplace(id, std::move(value)).first;
-        } else if (chain->second.Anchor.Address != anchor) {
-            return fail(Failure(Error::GraphChanged,
-                                "The selected Link anchor changed identity."));
+            value.Terminal = value.Sink;
+            chains.emplace(id, std::move(value));
+            return {};
         }
+        if (chain->second.Anchor.Address != anchor)
+            return Failure(Error::GraphChanged,
+                           "The selected Link anchor changed identity.");
+        return {};
+    };
+
+    for (std::size_t spliceIndex = 0;
+         spliceIndex < checked.Splices.size(); ++spliceIndex) {
+        const CheckedSplice &splice = checked.Splices[spliceIndex];
+        const LinkId id = spliceLinks[spliceIndex];
+        status = openChain(splice.Target, id);
+        if (!status)
+            return fail(std::move(status));
 
         CKBehaviorIO *input = nullptr;
         CKBehaviorIO *output = nullptr;
@@ -1444,6 +1594,56 @@ Status CKEdit::ApplyNow(const Edit &edit,
         // Keep the candidate in the journal as it is assembled so any later
         // validation or materialization failure can remove every admitted
         // Splice site, including sites recorded before the failure.
+        patch->Layer = layer;
+    }
+
+    for (std::size_t index = 0; index < checked.Redirects.size(); ++index) {
+        const CheckedRedirect &redirect = checked.Redirects[index];
+        const LinkId id = redirectLinks[index];
+        CKBehaviorIO *sink = nullptr;
+        status = control(redirect.Sink, sink);
+        if (!status)
+            return fail(std::move(status));
+        CKBehavior *owner = behaviorFor(redirect.Sink.Owner);
+        SlotInfo slot;
+        status = liveSlot(redirect.Sink, slot);
+        if (!status)
+            return fail(std::move(status));
+        const GraphEndpoint target{
+            static_cast<std::uint64_t>(
+                static_cast<std::uint32_t>(owner->GetID())),
+            slot.Kind, slot.NativeIndex};
+
+        const auto group = std::find_if(
+            layer.Links.begin(), layer.Links.end(),
+            [id](const LinkOverlays &candidate) { return candidate.Link == id; });
+        if (group == layer.Links.end())
+            return fail(Failure(Error::InvalidState,
+                                "A Redirect lost its Link group."));
+        const auto overlay = std::find_if(
+            group->Overlays.begin(), group->Overlays.end(),
+            [&](const Overlay &candidate) {
+                return candidate.Kind == OverlayKind::Redirect &&
+                    candidate.Ordinal == redirect.Ordinal;
+            });
+        if (overlay == group->Overlays.end())
+            return fail(Failure(Error::InvalidState,
+                                "A Redirect lost its Link overlay."));
+        overlay->Target = target;
+        overlay->Fingerprint =
+            HashRedirect(redirect.Target, redirect.Ordinal, target);
+
+        status = openChain(redirect.Target, id);
+        if (!status)
+            return fail(std::move(status));
+
+        const Links::Key key{edit.Key(), redirect.Ordinal};
+        auto &sites = m_Links->Sites[graphId];
+        if (sites.contains(key))
+            return fail(Failure(Error::InvalidState,
+                                "The Redirect action is already installed."));
+        sites.emplace(key, Links::Site{Capture(sink), {}});
+        patch->Redirects.emplace_back(id, redirect.Ordinal);
         patch->Layer = layer;
     }
 
@@ -1478,7 +1678,39 @@ Status CKEdit::ApplyNow(const Edit &edit,
         }
     }
 
+    for (const auto &entry : nodes)
+        patch->Handles.emplace(entry.first, Capture(entry.second));
+
     m_Active[graphId].insert(edit.Key());
+    return {};
+}
+
+Status CKEdit::ResolveNode(const Patch &patch, Node handle,
+                           CKBehavior *&out) const {
+    out = nullptr;
+    if (!handle)
+        return Failure(Error::InvalidState, "An Edit handle names no Node.");
+    if (!patch.m_Journal)
+        return Failure(Error::InvalidState, "The Patch is closed.");
+    const Patch::Journal &journal = *patch.m_Journal;
+    std::lock_guard<std::mutex> lock(journal.Mutex);
+    if (journal.State == PatchState::Pending)
+        return Failure(Error::Busy,
+                       "The Patch reaches its graph at the next safe point.",
+                       CK_OK);
+    if (journal.State != PatchState::Active)
+        return Failure(Error::InvalidState,
+                       "Only an active Patch names live Nodes.");
+    const auto found = journal.Handles.find(handle.Value);
+    if (found == journal.Handles.end())
+        return Failure(Error::QueryNotFound,
+                       "This Edit handle names no Node of the Patch.");
+    CKBehavior *native = Resolve<CKBehavior>(
+        m_Context, found->second, CKCID_BEHAVIOR);
+    if (!native)
+        return Failure(Error::GraphChanged,
+                       "The Node this Edit handle named is gone.");
+    out = native;
     return {};
 }
 
@@ -1546,6 +1778,10 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
                 (void) link;
                 graphSites->second.erase(Links::Key{patch.Key, ordinal});
             }
+            for (const auto &[link, ordinal] : patch.Redirects) {
+                (void) link;
+                graphSites->second.erase(Links::Key{patch.Key, ordinal});
+            }
         }
     }
 
@@ -1556,6 +1792,42 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             m_Context, item->Target, CKCID_PARAMETER);
         if (source && target && ContainsDestination(source, target))
             source->RemoveDestination(target);
+    }
+
+    for (auto item = patch.Values.rbegin(); item != patch.Values.rend(); ++item) {
+        if (item->Reverted)
+            continue;
+        auto *stored = Resolve<CKParameterLocal>(
+            m_Context, item->Parameter, CKCID_PARAMETERLOCAL);
+        if (!stored || item->Before.empty()) {
+            // The parameter went with its block, or never held a buffer, so
+            // there is nothing left to hand back.
+            item->Reverted = true;
+            continue;
+        }
+        if (Snapshot(stored) != item->Expected) {
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "A written Local changed after the Patch was published.");
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
+                          conflict});
+            remember(std::move(conflict));
+            continue;
+        }
+        const CKERROR error = stored->SetValue(
+            item->Before.data(), static_cast<int>(item->Before.size()));
+        if (error != CK_OK) {
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "Virtools rejected the previous Local value.", error);
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
+                          conflict});
+            remember(std::move(conflict));
+        } else {
+            item->Reverted = true;
+        }
     }
 
     for (auto item = patch.Binds.rbegin(); item != patch.Binds.rend(); ++item) {
@@ -1701,8 +1973,11 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
     // Patch can take the Pin, and keeps its key in the graph's active set so
     // the same key cannot be applied on top of the unfinished teardown.
     const bool pinsRetained = std::any_of(
-        patch.Binds.begin(), patch.Binds.end(),
-        [](const Patch::Journal::Binding &item) { return !item.Reverted; });
+            patch.Binds.begin(), patch.Binds.end(),
+            [](const Patch::Journal::Binding &item) { return !item.Reverted; }) ||
+        std::any_of(
+            patch.Values.begin(), patch.Values.end(),
+            [](const Patch::Journal::Written &item) { return !item.Reverted; });
     if (ownsLogicalGraph && !pinsRetained) {
         if (!patch.Data.Pins.empty()) {
             const auto relations = m_Relations.find(graphId);

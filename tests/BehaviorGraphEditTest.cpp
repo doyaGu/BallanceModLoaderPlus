@@ -1,6 +1,7 @@
 #include "Behavior/GraphEdit.h"
 
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <utility>
 
@@ -123,11 +124,16 @@ public:
         return {};
     }
 
-    Status Add(Edit &edit, CKGUID prototype, Node &out) override {
+    Status Add(Edit &edit, CKGUID prototype,
+               const std::vector<std::pair<Slot, Value>> &settings,
+               Node &out) override {
         ++Adds;
         AddedPrototypes.push_back(prototype);
-        out = edit.Add(Spec(prototype),
-                       Shape("In", "Out", AddedFlags));
+        // Spec is a world-bound value, so this world-free fake only records
+        // what the intent asked for.
+        for (const auto &entry : settings)
+            AddedSettings.push_back(entry);
+        out = edit.Add(Spec(prototype), Shape("In", "Out", AddedFlags));
         return {};
     }
 
@@ -141,12 +147,13 @@ public:
         return {};
     }
 
-    Status After(Edit &edit, Link link,
-                 const HookBlock::Hook &hook) override {
+    Status Interpose(Edit &edit, Link link,
+                     const HookBlock::Hook &hook) override {
         if (!hook)
             return {Error::CallbackFailed, CKERR_INVALIDPARAMETER,
                     CKBR_PARAMETERERROR, "missing hook"};
         ++Afters;
+        InterposedLinks.push_back(link);
         Node block = edit.Add(
             Spec(CKGUID(0x19038c0, 0x663902da)), Shape());
         edit.Splice(link, block);
@@ -154,6 +161,7 @@ public:
     }
 
     GraphModel Base;
+    std::vector<std::pair<Slot, Value>> AddedSettings;
     int Begins = 0;
     int Adds = 0;
     int Taps = 0;
@@ -162,6 +170,7 @@ public:
     CKDWORD AddedFlags = 0;
     std::vector<ObjectRef> UsedNodes;
     std::vector<ObjectRef> UsedLinks;
+    std::vector<Link> InterposedLinks;
     std::vector<CKGUID> AddedPrototypes;
 };
 
@@ -435,6 +444,52 @@ TEST(BehaviorGraphEdit, KeepsTypedNullAsADurableLiteral) {
     EXPECT_TRUE(checked.Binds[0].Literal.IsNull());
 }
 
+TEST(BehaviorGraphEdit, CarriesASettingWithTheBlockThatDeclaresIt) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node added = plan.Add(CKGUID(0x3333, 3));
+    plan.Setting(added, Slot::Named(SlotKind::Setting, "Mode"),
+                 Value::From(CKPGUID_INT, 2));
+
+    ASSERT_TRUE(plan.Validate());
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "setting"}, compiler.Base.Root, compiler, edit));
+    EXPECT_EQ(compiler.Adds, 1);
+    ASSERT_EQ(compiler.AddedSettings.size(), 1u);
+    EXPECT_EQ(compiler.AddedSettings[0].first.Kind, SlotKind::Setting);
+    const Value &declared = compiler.AddedSettings[0].second;
+    EXPECT_EQ(declared.Type(), CKPGUID_INT);
+    ASSERT_EQ(declared.Bytes().size(), sizeof(int));
+    int mode = 0;
+    std::memcpy(&mode, declared.Bytes().data(), sizeof(mode));
+    EXPECT_EQ(mode, 2);
+    // A Setting travels with the Block, so it is not an action the Edit
+    // replays afterwards.
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    EXPECT_TRUE(checked.Binds.empty());
+}
+
+TEST(BehaviorGraphEdit, RefusesASettingOnABlockItDidNotCreate) {
+    GraphEdit plan;
+    const Node wait = plan.RequireOne(
+        {"Wait Message", CKGUID(0x1111, 1)});
+    plan.Setting(wait, Slot::Named(SlotKind::Setting, "Mode"),
+                 Value::From(CKPGUID_INT, 2));
+    Status status = plan.Validate();
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
+
+    GraphEdit wrongSlot;
+    const Node added = wrongSlot.Add(CKGUID(0x3333, 3));
+    wrongSlot.Setting(added, Slot::Named(SlotKind::Local, "Mode"),
+                      Value::From(CKPGUID_INT, 2));
+    status = wrongSlot.Validate();
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::TypeMismatch);
+}
+
 TEST(BehaviorGraphEdit, CompletesAPathAgainAndTapsItsFinalOut) {
     FakeCompiler compiler(Model());
     GraphEdit plan;
@@ -504,6 +559,172 @@ TEST(BehaviorGraphEdit, RejectsAnAmbiguousPathBeforeInstallingAHook) {
     EXPECT_EQ(status.Code, Error::PathAmbiguous);
     EXPECT_EQ(compiler.Taps, 0);
     EXPECT_EQ(compiler.Afters, 0);
+}
+
+
+TEST(BehaviorGraphEdit, NamesANodeAndALinkTheAuthorAlreadyHolds) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.UseNode(Ref(101));
+    const Link edge = plan.UseLink(Ref(201));
+    const Node hook = plan.Add(CKGUID(0x3333, 3));
+    plan.Splice(edge, hook);
+    EXPECT_TRUE(plan.UsesIdentity());
+
+    Edit edit;
+    std::map<std::uint32_t, Node> handles;
+    const Status status = plan.Compile(
+        {"mod", "by-reference"}, compiler.Base.Root, compiler, edit, &handles);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.UsedNodes, (std::vector<ObjectRef>{Ref(101)}));
+    EXPECT_EQ(compiler.UsedLinks, (std::vector<ObjectRef>{Ref(201)}));
+    EXPECT_EQ(compiler.Adds, 1);
+
+    // Every named Node is reported back, including the graph itself.
+    EXPECT_EQ(handles.count(wait.Value), 1u);
+    EXPECT_EQ(handles.count(hook.Value), 1u);
+    EXPECT_EQ(handles.count(plan.Graph().Value), 1u);
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    ASSERT_EQ(checked.Splices.size(), 1u);
+    EXPECT_EQ(checked.Splices.front().Target.Anchor, Ref(201));
+}
+
+TEST(BehaviorGraphEdit, ReportsAQueriedNodeUnderItsOwnHandle) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message", CKGUID(0x1111, 1)});
+    EXPECT_FALSE(plan.UsesIdentity());
+
+    Edit edit;
+    std::map<std::uint32_t, Node> handles;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "queried"}, compiler.Base.Root, compiler, edit, &handles));
+    EXPECT_EQ(handles.count(wait.Value), 1u);
+}
+
+TEST(BehaviorGraphEdit, RejectsANodeReferenceOutsideTheTargetGraph) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    (void) plan.UseNode(Ref(999));
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "foreign-node"}, compiler.Base.Root, compiler, edit);
+    EXPECT_EQ(status.Code, Error::InvalidGraphLocality);
+    EXPECT_TRUE(compiler.UsedNodes.empty());
+}
+
+TEST(BehaviorGraphEdit, RejectsALinkReferenceOutsideTheTargetGraph) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    (void) plan.UseLink(Ref(999));
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "foreign-link"}, compiler.Base.Root, compiler, edit);
+    EXPECT_EQ(status.Code, Error::LinkNotFound);
+    EXPECT_TRUE(compiler.UsedLinks.empty());
+}
+
+TEST(BehaviorGraphEdit, ComposesIdentityNodesWithQueriedLinks) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node added = plan.Add(CKGUID(0x3333, 3));
+    (void) added;
+    const Node wait = plan.UseNode(Ref(101));
+    const Node sink = plan.RequireOne({"set Resetpoint"});
+    // An endpoint query cannot be mixed with a Link named by identity, so the
+    // two ways of naming the same edge stay separate.
+    const Link queried = plan.RequireOne(wait.Out(), sink.In());
+    (void) queried;
+
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "mixed"}, compiler.Base.Root, compiler, edit))
+        << "identity nodes and queried links compose";
+}
+
+TEST(BehaviorGraphEdit, PutsACallbackOnALinkTheAuthorNamed) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Link edge = plan.UseLink(Ref(201));
+    plan.Before(edge, HookBlock::Hook(Noop));
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "before"}, compiler.Base.Root, compiler, edit);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.UsedLinks, (std::vector<ObjectRef>{Ref(201)}));
+    EXPECT_EQ(compiler.Taps, 0);
+    EXPECT_EQ(compiler.Afters, 1);
+    ASSERT_EQ(compiler.InterposedLinks.size(), 1u);
+}
+
+TEST(BehaviorGraphEdit, PutsACallbackOnAQueriedLink) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    const Node sink = plan.RequireOne({"set Resetpoint"});
+    plan.Before(plan.RequireOne(wait.Out(), sink.In()),
+                HookBlock::Hook(Noop));
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "before-query"}, compiler.Base.Root, compiler, edit);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.Afters, 1);
+}
+
+TEST(BehaviorGraphEdit, RejectsABeforeWithoutALinkOrACallback) {
+    FakeCompiler compiler(Model());
+    GraphEdit missingHook;
+    missingHook.Before(missingHook.UseLink(Ref(201)), HookBlock::Hook());
+    Edit edit;
+    Status status = missingHook.Compile(
+        {"mod", "no-hook"}, compiler.Base.Root, compiler, edit);
+    EXPECT_EQ(status.Code, Error::InvalidState);
+
+    GraphEdit foreignLink;
+    foreignLink.Before(Link{}, HookBlock::Hook(Noop));
+    status = foreignLink.Compile(
+        {"mod", "no-link"}, compiler.Base.Root, compiler, edit);
+    EXPECT_EQ(status.Code, Error::InvalidState);
+    EXPECT_EQ(compiler.Afters, 0);
+}
+
+TEST(BehaviorGraphEdit, CompilesARedirectOntoTheExactLiveLink) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message", CKGUID(0x1111, 1)});
+    const Node sink = plan.RequireOne({"set Resetpoint", CKGUID(0x2222, 2)});
+    const Link edge = plan.RequireOne(wait.Out(), sink.In());
+    const Node detour = plan.Add(CKGUID(0x3333, 3));
+    plan.Redirect(edge, detour.In());
+    ASSERT_TRUE(plan.Validate());
+
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "detour"}, compiler.Base.Root, compiler, edit));
+    EXPECT_EQ(compiler.UsedLinks, (std::vector<ObjectRef>{Ref(201)}));
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    EXPECT_TRUE(checked.Splices.empty());
+    ASSERT_EQ(checked.Redirects.size(), 1u);
+    EXPECT_EQ(checked.Redirects.front().Target.Anchor, Ref(201));
+}
+
+TEST(BehaviorGraphEdit, RefusesARedirectThatNamesNothing) {
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    const Node sink = plan.RequireOne({"set Resetpoint"});
+    const Port stranger{9999, Slot::Only(SlotKind::Input)};
+    plan.Redirect(plan.RequireOne(wait.Out(), sink.In()), stranger);
+    const Status status = plan.Validate();
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::InvalidState);
 }
 
 } // namespace

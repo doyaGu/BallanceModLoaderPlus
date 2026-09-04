@@ -238,7 +238,8 @@ typedef enum BML_BehaviorError {
     BML_BEHAVIOR_ERROR_OPERATION_INVALID = 47,
     BML_BEHAVIOR_ERROR_BUSY = 48,
     BML_BEHAVIOR_ERROR_UNAVAILABLE = 49,
-    BML_BEHAVIOR_ERROR_WRONG_THREAD = 50
+    BML_BEHAVIOR_ERROR_WRONG_THREAD = 50,
+    BML_BEHAVIOR_ERROR_REDIRECT_CONFLICT = 51
 } BML_BehaviorError;
 
 typedef enum BML_BehaviorPhase {
@@ -845,7 +846,26 @@ typedef enum BML_BehaviorEditKind {
     BML_BEHAVIOR_EDIT_AFTER = 12,
     // Reroutes the link named by Target through Node, or through the Sink and
     // Source ports when Node is zero, keeping the delay of that link.
-    BML_BEHAVIOR_EDIT_SPLICE = 13
+    BML_BEHAVIOR_EDIT_SPLICE = 13,
+    // Result names the existing node Object refers to. The node must live
+    // directly inside the target graph.
+    BML_BEHAVIOR_EDIT_USE_NODE = 14,
+    // Result names the existing behavior link Object refers to.
+    BML_BEHAVIOR_EDIT_USE_LINK = 15,
+    // Inserts Hook inside the link named by Target, so the callback runs
+    // before the node that link feeds. The Hook Block is infrastructure and
+    // does not appear in the Logical view of the graph.
+    BML_BEHAVIOR_EDIT_BEFORE = 16,
+    // Sends the link named by Target to Sink instead of its own destination.
+    // Unlike a splice the original destination is dropped while the patch is
+    // open, so the Logical view of the graph reports the new one. Only one
+    // patch at a time may redirect one link.
+    BML_BEHAVIOR_EDIT_REDIRECT = 17,
+    // Writes Value into the Setting named by Sink, which must belong to a Block
+    // this same program adds. Editing a Setting can rebuild the layout of a
+    // Block, so a Setting is written through the creation of the Block and
+    // never poked into a Block that already exists.
+    BML_BEHAVIOR_EDIT_SETTING = 18
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {
@@ -884,6 +904,9 @@ typedef struct BML_BehaviorEditStep {
     const BML_BehaviorEditOrder *Ordering;
     uint32_t OrderCount;
     uint32_t Reserved;
+    // The node or link a USE step names. Identity is resolved once, against
+    // the graph this program is applied to, so a durable Plan cannot carry it.
+    BML_ObjectRef Object;
 } BML_BehaviorEditStep;
 
 typedef struct BML_BehaviorPlanSpec {
@@ -1125,20 +1148,47 @@ typedef struct BML_BehaviorInterface {
     int (BML_BEHAVIOR_CALL *ReadWatch)(BML_BehaviorWatch watch,
                                        BML_BehaviorWatchInfo *info,
                                        BML_BehaviorStatus *status);
+    // Issues a reference for a CK object the caller already holds, named by
+    // its CK_ID. This is how a Mod that received a CKBehavior from the game
+    // enters the Behavior interface without searching for it by name. An
+    // unknown or already destroyed ID is BML_ERROR_NOT_FOUND.
+    int (BML_BEHAVIOR_CALL *Reference)(BML_BehaviorSession session,
+                                       uint32_t object,
+                                       BML_ObjectRef *outReference,
+                                       BML_BehaviorStatus *status);
+    // Reads back the live node an applied edit program named, by the handle
+    // the program gave it. BML_ERROR_BUSY means the Patch has not reached its
+    // safe point yet, so no live node exists to name.
+    int (BML_BEHAVIOR_CALL *ResolvePatchNode)(BML_BehaviorSession session,
+                                              BML_BehaviorPatch patch,
+                                              uint32_t handle,
+                                              BML_ObjectRef *outNode,
+                                              BML_BehaviorStatus *status);
+    // Parks a Block inside the live graph Graph names and returns a Run for
+    // it. The graph does not activate a parked Block, so this Run is what
+    // drives it: Set writes its Pins, Pulse runs it once, and CloseRun removes
+    // it from the graph again. Graph must name a CKBehavior that owns
+    // sub-behaviors.
+    int (BML_BEHAVIOR_CALL *AttachBlock)(BML_BehaviorSession session,
+                                         BML_ObjectRef graph,
+                                         const BML_BehaviorBlock *block,
+                                         BML_BehaviorRun *outRun,
+                                         BML_BehaviorRunInfo *info,
+                                         BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 // The complete function table frozen for bml.behavior 1.0. Minor-compatible
-// revisions append functions after ReadWatch and leave all 1.0 DTO layouts
-// unchanged. Use BML_IFACE_HAS on a function appended by a later minor.
+// revisions append functions after AttachBlock and leave all 1.0 DTO
+// layouts unchanged. Use BML_IFACE_HAS on a function a later minor appended.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
-    (offsetof(BML_BehaviorInterface, ReadWatch) +                             \
-     sizeof(((BML_BehaviorInterface *) 0)->ReadWatch))
+    (offsetof(BML_BehaviorInterface, AttachBlock) +                           \
+     sizeof(((BML_BehaviorInterface *) 0)->AttachBlock))
 
 // The single capability checkpoint for the complete 1.0 surface. A Mod may
 // accept a later minor when this is true, then probe later additions with
 // BML_IFACE_HAS before calling them.
 #define BML_BEHAVIOR_HAS_1_0(iface)                                          \
-    BML_IFACE_HAS((iface), BML_BehaviorInterface, ReadWatch)
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, AttachBlock)
 
 #pragma pack(pop)
 

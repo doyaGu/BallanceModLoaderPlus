@@ -73,8 +73,24 @@ Port GraphEdit::Exit(std::string name) const {
 
 Node GraphEdit::RequireOne(NodeQuery query) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, std::move(query), CKGUID(), false});
+    m_Nodes.push_back({node, std::move(query), CKGUID(), {}, false, {}});
     return node;
+}
+
+Node GraphEdit::UseNode(const ObjectRef &node) {
+    EditNode entry;
+    entry.Handle = Node{NextNode()};
+    entry.Anchor = node;
+    m_Nodes.push_back(entry);
+    return entry.Handle;
+}
+
+Link GraphEdit::UseLink(const ObjectRef &link) {
+    EditLink entry;
+    entry.Handle = Link{NextLink()};
+    entry.Anchor = link;
+    m_Links.push_back(entry);
+    return entry.Handle;
 }
 
 Link GraphEdit::RequireOne(Port source, Port sink,
@@ -93,8 +109,18 @@ PathRef GraphEdit::Follow(Port start) {
 
 Node GraphEdit::Add(CKGUID prototype) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, {}, prototype, true});
+    m_Nodes.push_back({node, {}, prototype, {}, true});
     return node;
+}
+
+void GraphEdit::Setting(Node node, Slot slot, Value value) {
+    const auto owner = std::find_if(
+        m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &candidate) {
+            return candidate.Handle == node;
+        });
+    if (owner == m_Nodes.end())
+        return;
+    owner->Settings.emplace_back(std::move(slot), std::move(value));
 }
 
 void GraphEdit::Flow(Port source, Port sink, int delay, Cycle cycle) {
@@ -144,6 +170,11 @@ void GraphEdit::After(PathRef path, HookBlock::Hook hook) {
         path, std::move(hook), m_NextAction++});
 }
 
+void GraphEdit::Before(Link target, HookBlock::Hook hook) {
+    m_Actions.emplace_back(EditBefore{
+        target, std::move(hook), m_NextAction++});
+}
+
 void GraphEdit::Splice(Link target, Node block,
                        std::vector<Order> ordering) {
     Splice(target, block.In(), block.Out(), std::move(ordering));
@@ -154,6 +185,12 @@ void GraphEdit::Splice(Link target, Port input, Port output,
     m_Actions.emplace_back(EditSplice{
         target, {input.Owner}, std::move(input), std::move(output),
         std::move(ordering), m_NextAction++});
+}
+
+void GraphEdit::Redirect(Link target, Port sink,
+                         std::vector<Order> ordering) {
+    m_Actions.emplace_back(EditRedirect{
+        target, std::move(sink), std::move(ordering), m_NextAction++});
 }
 
 Port GraphEdit::AppendIn(Node node, std::string name) {
@@ -214,11 +251,31 @@ Status GraphEdit::Validate() const {
         if (node.Added && !node.Prototype.IsValid())
             return Failure(Error::PrototypeNotFound,
                            "An added Block requires a Prototype GUID.");
-        if (!node.Added && !node.Query)
+        if (node.Added && !node.Anchor.IsNull())
+            return Failure(Error::InvalidState,
+                           "An added Block cannot also name an existing Node.");
+        if (!node.Added && !node.Query && node.Anchor.IsNull())
             return Failure(Error::QueryNotFound,
                            "A Node query has no semantic identity.");
+        if (!node.Added && !node.Settings.empty())
+            return Failure(Error::InterfaceUnsupported,
+                           "Only an added Block can declare a Setting.");
+        for (const auto &[slot, value] : node.Settings) {
+            if (slot.Kind != SlotKind::Setting)
+                return Failure(Error::TypeMismatch,
+                               "A declared Setting must name a Setting slot.");
+            if (value.IsNull() && !value.Type().IsValid())
+                return Failure(Error::TypeMismatch,
+                               "A null Value requires a Virtools type GUID.");
+        }
     }
     for (const EditLink &link : m_Links) {
+        if (!link.Anchor.IsNull()) {
+            if (link.Source || link.Sink || link.Delay)
+                return Failure(Error::InvalidState,
+                               "A Link named by identity carries no query.");
+            continue;
+        }
         if (!link.Source || !link.Sink ||
             !existingNode(link.Source.Owner) ||
             !existingNode(link.Sink.Owner) ||
@@ -295,6 +352,10 @@ Status GraphEdit::Validate() const {
                 if (!item.Target || !port(item.Input) || !port(item.Output))
                     return Failure(Error::InvalidState,
                                    "A Splice names an unknown Link or Node.");
+            } else if constexpr (std::is_same_v<T, EditRedirect>) {
+                if (!item.Target || !port(item.Sink))
+                    return Failure(Error::InvalidState,
+                                   "A Redirect names an unknown Link or Node.");
             } else if constexpr (std::is_same_v<T, EditInterface>) {
                 if (!knownNode(item.Owner.Value) || item.Name.empty())
                     return Failure(Error::InvalidState,
@@ -335,6 +396,12 @@ Status GraphEdit::Validate() const {
                         Error::InvalidState,
                         "After requires a Path from this Graph Edit and a callback.");
                 }
+            } else if constexpr (std::is_same_v<T, EditBefore>) {
+                if (!item.Target || !item.Hook) {
+                    return Failure(
+                        Error::InvalidState,
+                        "Before requires a Link from this Graph Edit and a callback.");
+                }
             }
             return {};
         }, action);
@@ -344,8 +411,22 @@ Status GraphEdit::Validate() const {
     return {};
 }
 
+bool GraphEdit::UsesIdentity() const noexcept {
+    return std::any_of(m_Nodes.begin(), m_Nodes.end(),
+                       [](const EditNode &node) {
+                           return !node.Anchor.IsNull();
+                       }) ||
+        std::any_of(m_Links.begin(), m_Links.end(),
+                    [](const EditLink &link) {
+                        return !link.Anchor.IsNull();
+                    });
+}
+
 Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
-                          Compiler &compiler, Edit &out) const {
+                          Compiler &compiler, Edit &out,
+                          std::map<std::uint32_t, Node> *nodeHandles) const {
+    if (nodeHandles)
+        nodeHandles->clear();
     out = {};
     if (patch.Owner.empty() || patch.Name.empty() || graph.IsNull())
         return Failure(Error::InvalidState,
@@ -383,6 +464,11 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         for (const GraphNode &candidate : base.Nodes) {
             if (candidate.Parent != root->Id)
                 continue;
+            if (!item.Anchor.IsNull()) {
+                if (candidate.Object == item.Anchor)
+                    matches.push_back(&candidate);
+                continue;
+            }
             if (!item.Query.Name.empty() &&
                 candidate.Name != item.Query.Name)
                 continue;
@@ -391,9 +477,14 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                 continue;
             matches.push_back(&candidate);
         }
-        if (matches.empty())
+        if (matches.empty()) {
+            if (!item.Anchor.IsNull())
+                return Failure(
+                    Error::InvalidGraphLocality,
+                    "A Node named by identity is not in the target graph.");
             return Failure(Error::QueryNotFound,
                            "A Node query matched no Node.");
+        }
         if (matches.size() != 1) {
             std::ostringstream message;
             message << "A Node query matched " << matches.size()
@@ -411,6 +502,23 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
 
     std::map<std::uint32_t, Link> liveLinks;
     for (const EditLink &item : m_Links) {
+        if (!item.Anchor.IsNull()) {
+            const auto match = std::find_if(
+                base.Links.begin(), base.Links.end(),
+                [&](const GraphLink &candidate) {
+                    return candidate.Object == item.Anchor;
+                });
+            if (match == base.Links.end())
+                return Failure(
+                    Error::LinkNotFound,
+                    "A Link named by identity is not in the target graph.");
+            Link live;
+            status = compiler.UseLink(resolved, match->Object, live);
+            if (!status)
+                return status;
+            liveLinks.emplace(item.Handle.Value, live);
+            continue;
+        }
         const auto sourceNode = nodes.find(item.Source.Owner);
         const auto sinkNode = nodes.find(item.Sink.Owner);
         if (sourceNode == nodes.end() || sinkNode == nodes.end())
@@ -523,7 +631,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         if (!item.Added)
             continue;
         Node live;
-        status = compiler.Add(resolved, item.Prototype, live);
+        status = compiler.Add(resolved, item.Prototype, item.Settings, live);
         if (!status)
             return status;
         liveNodes.emplace(item.Handle.Value, live);
@@ -606,6 +714,16 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                     return current;
                 resolved.Splice(link->second, std::move(input),
                                 std::move(output), item.Ordering);
+            } else if constexpr (std::is_same_v<T, EditRedirect>) {
+                const auto link = liveLinks.find(item.Target.Value);
+                if (link == liveLinks.end())
+                    return Failure(Error::InvalidState,
+                                   "A Graph Edit Redirect names an unknown Link.");
+                Port sink;
+                Status current = port(item.Sink, sink);
+                if (!current)
+                    return current;
+                resolved.Redirect(link->second, std::move(sink), item.Ordering);
             } else if constexpr (std::is_same_v<T, EditInterface>) {
                 const auto owner = liveNodes.find(item.Owner.Value);
                 if (owner == liveNodes.end())
@@ -659,14 +777,25 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                 if (path->second.Links.empty())
                     return Failure(Error::GraphChanged,
                                    "A Path reached an Exit without a Link.");
-                return compiler.After(
+                return compiler.Interpose(
                     resolved, path->second.Links.back(), item.Hook);
+            } else if constexpr (std::is_same_v<T, EditBefore>) {
+                const auto link = liveLinks.find(item.Target.Value);
+                if (link == liveLinks.end()) {
+                    return Failure(Error::InvalidState,
+                                   "Before names an unknown Link.");
+                }
+                return compiler.Interpose(
+                    resolved, link->second, item.Hook);
             }
             return {};
         }, action);
         if (!status)
             return status;
     }
+
+    if (nodeHandles)
+        *nodeHandles = liveNodes;
 
     resolved.m_ExpectedFingerprint = base.Fingerprint;
     out = std::move(resolved);

@@ -27,6 +27,7 @@ enum class PatchState {
 enum class RevertSubject {
     PinSource,
     Link,
+    Value,
 };
 
 enum class PinSourceKind {
@@ -88,6 +89,10 @@ public:
     Status Add(Edit &edit, Spec block, Node &out,
                NodeRole role = NodeRole::Logical);
     Status Apply(const Edit &edit, Patch &out);
+    // Reads back the live Node an applied Edit gave this handle. Busy while
+    // the Patch is still waiting for its safe point.
+    Status ResolveNode(const Patch &patch, Node handle,
+                       CKBehavior *&out) const;
     Status Close(Patch &patch);
     void ProcessFrame();
 

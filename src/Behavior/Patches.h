@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "Behavior/CKEdit.h"
@@ -29,9 +30,15 @@ struct PatchInfo {
 class Patches final : private GraphEdit::Compiler {
 public:
     using ResolveObject = std::function<CKObject *(const ObjectRef &)>;
+    using IssueObject = std::function<ObjectRef(CKObject *)>;
+    // Maps the handle an author's own edit program used for a Node onto the
+    // handle the symbolic intent gave it, so a Patch can be read back through
+    // the names its author chose.
+    using HandleMap = std::map<std::uint32_t, std::uint32_t>;
 
     Patches(CKContext *context, Runtime &runtime, PrototypeCatalog *catalog,
-            GraphSource &graph, ResolveObject resolveObject);
+            GraphSource &graph, ResolveObject resolveObject,
+            IssueObject issueObject);
     ~Patches();
 
     Patches(const Patches &) = delete;
@@ -42,9 +49,15 @@ public:
     Status Use(Edit &edit, CKBehavior *behavior, Node &out);
     Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
     Status Add(Edit &edit, Spec block, Node &out);
-    Status Apply(const SessionOwner &owner, const Edit &edit, PatchId &out);
+    Status Apply(const SessionOwner &owner, const Edit &edit, PatchId &out,
+                 const std::map<std::uint32_t, Node> *handles = nullptr);
     Status Apply(const SessionOwner &owner, const ObjectRef &graph,
-                 std::string name, GraphEdit edit, PatchId &out);
+                 std::string name, GraphEdit edit, PatchId &out,
+                 const HandleMap *authorNodes = nullptr);
+    // Issues a reference for a Node this Patch named. Busy while the Patch is
+    // still waiting for its safe point.
+    Status ResolveNode(const SessionOwner &owner, PatchId patch,
+                       std::uint32_t handle, ObjectRef &out) const;
     Status Submit(Plans &plans, const SessionOwner &owner, Script target,
                   std::string name, GraphEdit edit, PlanId &out);
     Status Read(const SessionOwner &owner, PatchId patch,
@@ -65,6 +78,8 @@ private:
         CK_ID Graph = 0;
         Patch Value;
         bool Retiring = false;
+        // The author's handle for each Node, in the live Edit's own handles.
+        std::map<std::uint32_t, Node> Handles;
     };
 
     [[nodiscard]] Status Ready() const;
@@ -72,22 +87,25 @@ private:
     Status Close(OwnedPatch &patch);
     Status Install(const SessionOwner &owner, const PatchKey &patch,
                    const ObjectRef &graph, const GraphEdit &edit,
-                   PatchId &out);
+                   PatchId &out, const HandleMap *authorNodes = nullptr);
     void Collect();
 
     Status Begin(const PatchKey &patch, const ObjectRef &graph,
                  Edit &out, GraphModel &base) override;
     Status UseNode(Edit &edit, const ObjectRef &node, Node &out) override;
     Status UseLink(Edit &edit, const ObjectRef &link, Link &out) override;
-    Status Add(Edit &edit, CKGUID prototype, Node &out) override;
+    Status Add(Edit &edit, CKGUID prototype,
+               const std::vector<std::pair<Slot, Value>> &settings,
+               Node &out) override;
     Status Tap(Edit &edit, Port source,
                const HookBlock::Hook &hook) override;
-    Status After(Edit &edit, Link link,
-                 const HookBlock::Hook &hook) override;
+    Status Interpose(Edit &edit, Link link,
+                     const HookBlock::Hook &hook) override;
 
     CKEdit m_Edit;
     GraphSource &m_Graph;
     ResolveObject m_ResolveObject;
+    IssueObject m_IssueObject;
     std::thread::id m_Thread;
     mutable std::recursive_mutex m_Mutex;
     PatchId m_NextId = 1;

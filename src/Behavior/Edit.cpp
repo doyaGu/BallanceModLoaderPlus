@@ -53,6 +53,16 @@ bool IsBindTarget(SlotKind kind) {
     return kind == SlotKind::InputParameter || kind == SlotKind::Target;
 }
 
+// A Pin and the Target read a source, so only they can be given one. A literal
+// needs no source: CK2 keeps it in the parameter itself, which is also how a
+// Local holds its value, so a written value reaches a Local too. A Setting is
+// deliberately absent. Editing one can rebuild the whole layout of a block, so
+// a Setting is declared when the Block is created and never written into a
+// Block that already exists.
+bool IsLiteralTarget(SlotKind kind) {
+    return IsBindTarget(kind) || kind == SlotKind::Local;
+}
+
 bool IsDirectSource(SlotKind kind) {
     return kind == SlotKind::OutputParameter || kind == SlotKind::Local;
 }
@@ -371,6 +381,11 @@ void Edit::Splice(Link target, Port input, Port output,
                          std::move(output), std::move(ordering), NextOrdinal()});
 }
 
+void Edit::Redirect(Link target, Port sink, std::vector<Order> ordering) {
+    m_Redirects.push_back(
+        {target, std::move(sink), std::move(ordering), NextOrdinal()});
+}
+
 Port Edit::AppendIn(Node node, std::string name) {
     return Append(node, SlotKind::Input, std::move(name), CKGUID());
 }
@@ -472,11 +487,17 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         if (!node)
             return Failure(Error::InvalidState,
                            "A dynamic interface action names an unknown Node.");
-        const CKDWORD flag = InterfaceFlag(item.Slot.Kind);
-        if (!flag || (node->Shape.BehaviorFlags & flag) == 0) {
+        // CK2 appends Ins, Outs, and parameters to any Behavior without
+        // consulting the variable-interface flags: those flags declare intent
+        // to an editor, they do not gate CreateInput and friends. So an
+        // appended port is allowed everywhere, and the flag only tells the
+        // author whether the block's own code will read it. Locals and the
+        // Target are different: they are the block's private state and it
+        // addresses them by index, so appending one is refused.
+        if (!InterfaceFlag(item.Slot.Kind)) {
             return Failure(
                 Error::InterfaceUnsupported,
-                "The Building Block does not permit this dynamic interface kind.");
+                "Only Ins, Outs, and parameters can be appended to a Behavior.");
         }
         if ((item.Slot.Kind == SlotKind::InputParameter ||
              item.Slot.Kind == SlotKind::OutputParameter) &&
@@ -535,9 +556,15 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         Status status = resolve(bind.Target, checked.Target);
         if (!status)
             return status;
-        if (!IsBindTarget(checked.Target.Slot.Kind))
-            return Failure(Error::TypeMismatch,
-                           "Bind requires a Pin or Target destination.");
+        const bool literal = bind.Kind == BindKind::Literal;
+        if (literal ? !IsLiteralTarget(checked.Target.Slot.Kind)
+                    : !IsBindTarget(checked.Target.Slot.Kind)) {
+            return Failure(
+                Error::TypeMismatch,
+                literal
+                    ? "A written value requires a Pin, Local, or Target destination."
+                    : "Bind requires a Pin or Target destination.");
+        }
         checked.Kind = bind.Kind;
         checked.Literal = bind.Literal;
         checked.Ordinal = bind.Ordinal;
@@ -592,18 +619,22 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         out.Taps.push_back(std::move(checked));
     }
 
-    std::map<std::uint32_t, std::vector<Order>> spliceOrdering;
-    for (const EditSplice &splice : m_Splices) {
-        if (!splice.Target)
+    // Both Splice and Redirect name a Link this Edit borrowed, so both resolve
+    // its anchor the same way.
+    const auto anchoredLink = [&](Link handle, const char *verb,
+                                  LinkBase &out) -> Status {
+        if (!handle)
             return Failure(Error::InvalidState,
-                           "A Splice requires a Link from this Edit.");
+                           std::string("A ") + verb +
+                               " requires a Link from this Edit.");
         const auto declared = std::find_if(
             m_Links.begin(), m_Links.end(), [&](const EditLink &candidate) {
-                return candidate.Handle == splice.Target;
+                return candidate.Handle == handle;
             });
         if (declared == m_Links.end() || declared->Anchor.IsNull())
             return Failure(Error::LinkNotFound,
-                           "A Splice requires an exact native Link anchor.");
+                           std::string("A ") + verb +
+                               " requires an exact native Link anchor.");
         const auto native = std::find_if(
             base.Links.begin(), base.Links.end(), [&](const GraphLink &candidate) {
                 return candidate.Object == declared->Anchor;
@@ -621,6 +652,42 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         if (native->InitialDelay < 0)
             return Failure(Error::InvalidDelay,
                            "A selected Link has an invalid delay.");
+        out = {native->Object, native->Source, native->Target,
+               native->InitialDelay};
+        return {};
+    };
+
+    // Splice and Redirect both declare the ordering of one logical Link, so a
+    // Patch holding several actions on one Link must agree with itself.
+    std::map<std::uint32_t, std::vector<Order>> spliceOrdering;
+    const auto linkOrdering = [&](Link handle, std::vector<Order> ordering,
+                                  std::vector<Order> &out) -> Status {
+        std::sort(ordering.begin(), ordering.end(), OrderLess);
+        ordering.erase(std::unique(ordering.begin(), ordering.end()),
+                       ordering.end());
+        if (std::any_of(ordering.begin(), ordering.end(),
+                        [&](const Order &order) { return order.Other == m_Key; })) {
+            return Failure(Error::OverlayOrderCycle,
+                           "A Patch cannot order a Link against itself.");
+        }
+        const auto [known, inserted] =
+            spliceOrdering.emplace(handle.Value, ordering);
+        if (!inserted && known->second != ordering) {
+            return Failure(
+                Error::InvalidState,
+                "Actions on one Link in one Patch must share the Link ordering "
+                "declaration.");
+        }
+        out = std::move(ordering);
+        return {};
+    };
+
+    for (const EditSplice &splice : m_Splices) {
+        LinkBase anchored;
+        if (Status found = anchoredLink(splice.Target, "Splice", anchored);
+            !found) {
+            return found;
+        }
 
         CheckedSplice checked;
         Status status = resolve(splice.Input, checked.Input);
@@ -635,28 +702,45 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
             return Failure(Error::TypeMismatch,
                            "Splice requires an In and Out on the same node.");
         }
-        checked.Target = {native->Object, native->Source, native->Target,
-                          native->InitialDelay};
-        checked.Ordering = splice.Ordering;
-        std::sort(checked.Ordering.begin(), checked.Ordering.end(), OrderLess);
-        checked.Ordering.erase(
-            std::unique(checked.Ordering.begin(), checked.Ordering.end()),
-            checked.Ordering.end());
-        if (std::any_of(
-                checked.Ordering.begin(), checked.Ordering.end(),
-                [&](const Order &order) { return order.Other == m_Key; })) {
-            return Failure(Error::OverlayOrderCycle,
-                           "A Patch cannot order a Link against itself.");
-        }
-        const auto [knownOrder, inserted] = spliceOrdering.emplace(
-            splice.Target.Value, checked.Ordering);
-        if (!inserted && knownOrder->second != checked.Ordering) {
-            return Failure(
-                Error::InvalidState,
-                "Splices in one Patch must share the Link ordering declaration.");
+        checked.Target = anchored;
+        if (Status ordered = linkOrdering(splice.Target, splice.Ordering,
+                                          checked.Ordering);
+            !ordered) {
+            return ordered;
         }
         checked.Ordinal = splice.Ordinal;
         out.Splices.push_back(std::move(checked));
+    }
+
+    std::set<std::uint32_t> redirected;
+    for (const EditRedirect &redirect : m_Redirects) {
+        LinkBase anchored;
+        if (Status found = anchoredLink(redirect.Target, "Redirect", anchored);
+            !found) {
+            return found;
+        }
+        if (!redirected.insert(redirect.Target.Value).second)
+            return Failure(Error::RedirectConflict,
+                           "One Patch cannot redirect a Link twice.");
+
+        CheckedRedirect checked;
+        Status status = resolve(redirect.Sink, checked.Sink);
+        if (!status)
+            return status;
+        const bool sinkRoot = checked.Sink.Owner == Graph();
+        if (!IsControlSink(sinkRoot, checked.Sink.Slot.Kind)) {
+            return Failure(Error::TypeMismatch,
+                           "Redirect requires a node In or a graph Exit as its "
+                           "new destination.");
+        }
+        checked.Target = anchored;
+        if (Status ordered = linkOrdering(redirect.Target, redirect.Ordering,
+                                          checked.Ordering);
+            !ordered) {
+            return ordered;
+        }
+        checked.Ordinal = redirect.Ordinal;
+        out.Redirects.push_back(std::move(checked));
     }
 
     std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> baseline;
@@ -761,7 +845,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
     for (const CheckedBind &bind : out.Binds) {
         if (!bound.insert(DataKey(bind.Target)).second) {
             return Failure(Error::InvalidState,
-                           "A Pin or Target can have only one Bind in an Edit.");
+                           "A parameter can have only one Bind in an Edit.");
         }
         if (bind.Kind == BindKind::Shared)
             shares.emplace_back(DataKey(bind.Target), DataKey(bind.Source));
@@ -778,6 +862,11 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         if (!pushed.insert(edge).second) {
             return Failure(Error::InvalidState,
                            "The same Pout destination appears more than once in an Edit.");
+        }
+        if (bound.count(DataKey(push.Destination)) != 0) {
+            return Failure(
+                Error::InvalidState,
+                "A parameter cannot take both a written value and a Push in an Edit.");
         }
         pushes.push_back(edge);
     }
