@@ -28,7 +28,7 @@ namespace {
 using BML::Behavior::Hook;
 using BML::Behavior::HookEvent;
 using BML::Behavior::HookResult;
-using BML::Behavior::GraphPatchState;
+using BML::Behavior::PatchState;
 using BML::Behavior::PlanState;
 
 // An author's own enumeration. A Value deduces Int from it, so nothing here
@@ -341,7 +341,7 @@ private:
             return counters->Taps == 1 ? HookResult::AgainNextFrame
                                        : HookResult::Ok;
         });
-        Hook after([counters](const HookEvent &event) {
+        Hook afterHook([counters](const HookEvent &event) {
             ++counters->Afters;
             if (event.Block.Domain != 0)
                 ++counters->Blocks;
@@ -353,29 +353,30 @@ private:
                 ++counters->Frames;
         });
 
-        const BML::Behavior::Guid fixture(BML_LIFECYCLE_FIXTURE_GUID);
-        auto draft = m_Session.Plan("player-public-plan");
-        draft.OnSingle(kScriptName);
-        const auto source = draft.Require(kSourceName);
-        const auto sink = draft.Require(kSinkName);
-        const auto link = draft.Between(source.Out(0), sink.In(0));
-        draft.Tap(source.Out(0), tap);
-        draft.After(source.Out(0), after);
-        const auto block = draft.Add(fixture);
-        (void) draft.AppendIn(block, "Again");
-        (void) draft.AppendOut(block, "Finished");
-        const auto literal = draft.AppendPin(block, "Literal", CKPGUID_INT);
-        draft.Bind(literal, 41);
-        draft.Splice(link, block);
+        const CKGUID fixture(BML_LIFECYCLE_FIXTURE_GUID);
+        BML::Behavior::Edit edit;
+        const auto source = edit.Require(kSourceName);
+        const auto sink = edit.Require(kSinkName);
+        const auto link = edit.Between(source.Out(0), sink.In(0));
+        edit.Tap(source.Out(0), tap);
+        edit.After(source.Out(0), afterHook);
+        const auto block = edit.Add(m_Session.Use(fixture));
+        (void) edit.AppendIn(block, "Again");
+        (void) edit.AppendOut(block, "Finished");
+        const auto literal = edit.AppendPin(block, "Literal", CKPGUID_INT);
+        edit.Bind(literal, 41);
+        edit.Splice(link, block);
 
-        auto submitted = draft.Submit();
+        auto submitted = m_Session.Plan(
+            "player-public-plan", BML::Behavior::Scripts::One(kScriptName),
+            edit);
         if (!submitted) {
             GetLogger()->Error(
                 "Behavior plan submit failed: code=%d error=%u phase=%u detail=%s",
                 submitted.Code(),
-                static_cast<unsigned>(submitted.Detail().Error),
-                static_cast<unsigned>(submitted.Detail().Phase),
-                submitted.Detail().Message.c_str());
+                static_cast<unsigned>(submitted.GetStatus().Error),
+                static_cast<unsigned>(submitted.GetStatus().Phase),
+                submitted.GetStatus().Message.c_str());
             Finish(false, "submit");
             return;
         }
@@ -383,7 +384,7 @@ private:
 
         // A Plan the Loader accepted reconciles on the next frame, so it is
         // not installed yet and reads Reconciling with no matches.
-        const auto pending = m_Plan.Read();
+        const auto pending = m_Plan.Info();
         m_SubmitPassed = pending && pending->State == PlanState::Reconciling &&
             pending->Matches == 0 && pending->Installations == 0 &&
             !pending->Installed();
@@ -396,7 +397,7 @@ private:
     }
 
     void WaitActive() {
-        const auto info = m_Plan.Read();
+        const auto info = m_Plan.Info();
         if (info && info->Installed() && info->Matches == 1 &&
             info->Installations == 1 && info->World != 0) {
             if (!Installed()) {
@@ -452,7 +453,7 @@ private:
         BML::Behavior::Result<BML::Behavior::CloseState> closed;
         std::thread closer([&] { closed = m_Plan.Close(); });
         closer.join();
-        const auto closing = m_Plan.Read();
+        const auto closing = m_Plan.Info();
         if (!closed || closed.Value() != BML::Behavior::CloseState::Closing ||
             !m_Plan || !closing ||
             closing->State != PlanState::Retiring) {
@@ -502,11 +503,12 @@ private:
             state->Closing = closed &&
                 closed.Value() == BML::Behavior::CloseState::Closing;
         });
-        auto draft = m_Session.Plan("player-public-self-close");
-        draft.OnSingle(kScriptName);
-        const auto source = draft.Require(kSourceName);
-        draft.Tap(source.Out(0), hook);
-        auto submitted = draft.Submit();
+        BML::Behavior::Edit edit;
+        const auto source = edit.Require(kSourceName);
+        edit.Tap(source.Out(0), hook);
+        auto submitted = m_Session.Plan(
+            "player-public-self-close",
+            BML::Behavior::Scripts::One(kScriptName), edit);
         if (!submitted) {
             Finish(false, "self-close-submit");
             return;
@@ -517,7 +519,7 @@ private:
     }
 
     void WaitSelfActive() {
-        const auto info = m_SelfPlan.Read();
+        const auto info = m_SelfPlan.Info();
         if (info && info->Installed() && info->Matches == 1 &&
             info->Installations == 1) {
             RunGraph();
@@ -556,16 +558,16 @@ private:
         }
         m_AttachBlocks = m_Graph->GetSubBehaviorCount();
         m_AttachLinks = m_Graph->GetSubBehaviorLinkCount();
-        auto parked = m_Session
-            .Use(BML::Behavior::Guid(BML_LIFECYCLE_FIXTURE_GUID))
-            .Setting("Value", 9)
-            .Attach(graphRef.Value());
+        auto block = m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID));
+        block.Settings({{"Value", 9}});
+        auto parked = block.SpawnIn(graphRef.Value());
         if (!parked) {
             GetLogger()->Error(
                 "Behavior attach failed: code=%d error=%u phase=%u detail=%s",
-                parked.Code(), static_cast<unsigned>(parked.Detail().Error),
-                static_cast<unsigned>(parked.Detail().Phase),
-                parked.Detail().Message.c_str());
+                parked.Code(),
+                static_cast<unsigned>(parked.GetStatus().Error),
+                static_cast<unsigned>(parked.GetStatus().Phase),
+                parked.GetStatus().Message.c_str());
             Finish(false, "attach");
             return;
         }
@@ -674,15 +676,14 @@ private:
         }
         m_AttachBlocks = m_Graph->GetSubBehaviorCount();
         m_AttachLinks = m_Graph->GetSubBehaviorLinkCount();
-        auto parked = m_Session
-            .Use(BML::Behavior::Guid(BML_LIFECYCLE_FIXTURE_GUID))
-            .Attach(graphRef.Value());
+        auto parked = m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID))
+            .SpawnIn(graphRef.Value());
         if (!parked) {
             GetLogger()->Error(
                 "Behavior continuation attach failed: code=%d error=%u detail=%s",
                 parked.Code(),
-                static_cast<unsigned>(parked.Detail().Error),
-                parked.Detail().Message.c_str());
+                static_cast<unsigned>(parked.GetStatus().Error),
+                parked.GetStatus().Message.c_str());
             Finish(false, "continuation-attach");
             return;
         }
@@ -738,12 +739,12 @@ private:
             int code = 0;
             std::string detail = "<unreadable>";
             if (m_Parked) {
-                const auto info = m_Parked->Read();
+                const auto info = m_Parked->Info();
                 code = info.Code();
                 if (info)
                     state = static_cast<unsigned>(info.Value().State);
-                detail = info.Detail().Message.empty()
-                    ? "<empty>" : info.Detail().Message;
+                detail = info.GetStatus().Message.empty()
+                    ? "<empty>" : info.GetStatus().Message;
             }
             GetLogger()->Error(
                 "Behavior continuation timed out: runs=%u state=%u code=%d "
@@ -761,10 +762,7 @@ private:
     // and literals that deduce their own Virtools type.
     void IdentityEdits() {
         const auto graphRef = m_Session.Reference(m_Graph);
-        const auto sourceRef = m_Session.Reference(m_Source);
-        const auto sinkRef = m_Session.Reference(m_Sink);
-        const auto anchorRef = m_Session.Reference(m_Anchor);
-        if (!graphRef || !sourceRef || !sinkRef || !anchorRef) {
+        if (!graphRef) {
             Finish(false, "identity-reference");
             return;
         }
@@ -779,17 +777,41 @@ private:
 
         // A durable Plan installs into scripts that do not exist yet, so it
         // refuses a reference issued against this one live world.
-        auto durable = m_Session.Plan("player-public-identity-plan");
-        durable.OnSingle(kScriptName);
-        const auto anchored = durable.UseNode(sourceRef.Value());
+        const auto sourceNode = std::find_if(
+            opened->Nodes().begin(), opened->Nodes().end(),
+            [](const BML::Behavior::Node &node) {
+                return node.Name == kSourceName;
+            });
+        const auto sinkNode = std::find_if(
+            opened->Nodes().begin(), opened->Nodes().end(),
+            [](const BML::Behavior::Node &node) {
+                return node.Name == kSinkName;
+            });
+        const auto anchorLink = std::find_if(
+            opened->Links().begin(), opened->Links().end(),
+            [&](const BML::Behavior::Link &link) {
+                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+            });
+        if (sourceNode == opened->Nodes().end() ||
+            sinkNode == opened->Nodes().end() ||
+            anchorLink == opened->Links().end()) {
+            Finish(false, "identity-snapshot");
+            return;
+        }
+
+        BML::Behavior::Edit durable;
+        const auto anchored = durable.Use(*sourceNode);
         durable.Tap(anchored.Out(0), Hook([] { return HookResult::Ok; }));
-        const auto refused = durable.Submit();
+        const auto refused = m_Session.Plan(
+            "player-public-identity-plan",
+            BML::Behavior::Scripts::One(kScriptName), durable);
         if (refused ||
-            refused.Detail().Error != BML::Behavior::Error::StateInvalid) {
+            refused.GetStatus().Error !=
+                BML::Behavior::Error::WorldBoundValue) {
             GetLogger()->Error(
                 "Behavior identity plan was not refused: code=%d error=%u",
                 refused.Code(),
-                static_cast<unsigned>(refused.Detail().Error));
+                static_cast<unsigned>(refused.GetStatus().Error));
             Finish(false, "plan-identity");
             return;
         }
@@ -801,12 +823,13 @@ private:
                 ++identity->Blocks;
         });
 
-        const BML::Behavior::Guid fixture(BML_LIFECYCLE_FIXTURE_GUID);
-        auto edit = m_Session.Patch("player-public-identity");
-        const auto sink = edit.UseNode(sinkRef.Value());
-        const auto anchor = edit.UseLink(anchorRef.Value());
-        const auto block = edit.Add(
-            fixture, {BML::Behavior::setting("Value", 41u)});
+        const CKGUID fixture(BML_LIFECYCLE_FIXTURE_GUID);
+        auto configured = m_Session.Use(fixture);
+        configured.Settings({{"Value", 41u}});
+        BML::Behavior::Edit edit;
+        const auto sink = edit.Use(*sinkNode);
+        const auto anchor = edit.Use(*anchorLink);
+        const auto block = edit.Add(configured);
         const auto amount = edit.AppendPin(block, "Amount", CKPGUID_FLOAT);
         const auto mode = edit.AppendPin(block, "Mode", CKPGUID_INT);
         (void) edit.AppendPout(block, "Report", CKPGUID_INT);
@@ -816,14 +839,14 @@ private:
         edit.Redirect(anchor, block.In());
         edit.Flow(block.Out(), sink.In());
 
-        auto applied = edit.Apply(graphRef.Value());
+        auto applied = opened->Apply("player-public-identity", edit);
         if (!applied) {
             GetLogger()->Error(
                 "Behavior identity apply failed: code=%d error=%u phase=%u detail=%s",
                 applied.Code(),
-                static_cast<unsigned>(applied.Detail().Error),
-                static_cast<unsigned>(applied.Detail().Phase),
-                applied.Detail().Message.c_str());
+                static_cast<unsigned>(applied.GetStatus().Error),
+                static_cast<unsigned>(applied.GetStatus().Phase),
+                applied.GetStatus().Message.c_str());
             Finish(false, "identity-apply");
             return;
         }
@@ -869,7 +892,7 @@ private:
                 static_cast<std::uint32_t>(m_Source->GetID()) ||
             anchor->Target.Node != added->Id ||
             !(added->Prototype ==
-                BML::Behavior::Guid(BML_LIFECYCLE_FIXTURE_GUID))) {
+                CKGUID(BML_LIFECYCLE_FIXTURE_GUID))) {
             GetLogger()->Error(
                 "Behavior identity view wrong: nodes=%u links=%u block=%s anchor=%s",
                 static_cast<unsigned>(view->Nodes().size()),
@@ -882,9 +905,9 @@ private:
         // the Float pin, an enumerator and an unsigned became Ints. The Setting
         // travelled with the creation of the Block, so the fixture heard the
         // settings-edited message and normalized 41 to its own 77.
-        const auto amount = view->Read(BML::Behavior::pin(block, "Amount"));
-        const auto mode = view->Read(BML::Behavior::pin(block, "Mode"));
-        const auto value = view->Read(BML::Behavior::setting(block, "Value"));
+        const auto amount = view->Read(added->Pin("Amount"));
+        const auto mode = view->Read(added->Pin("Mode"));
+        const auto value = view->Read(added->Setting("Value"));
         const bool deduced = amount && mode && value &&
             std::holds_alternative<float>(amount->Data) &&
             std::get<float>(amount->Data) == 2.5f &&
@@ -1003,28 +1026,28 @@ private:
             Finish(false, "patch-inspect");
             return;
         }
-        auto edit = inspected->Patch("player-public-patch");
+        BML::Behavior::Edit edit;
         const auto source = edit.Require(kSourceName);
         const auto sink = edit.Require(kSinkName);
         const auto link = edit.Between(source.Out(), sink.In());
-        const auto block = edit.Add(BML::Behavior::Guid(
-            BML_LIFECYCLE_FIXTURE_GUID));
+        const auto block = edit.Add(m_Session.Use(
+            CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
         edit.Splice(link, block);
 
-        auto applied = edit.Apply();
+        auto applied = inspected->Apply("player-public-patch", edit);
         if (!applied) {
             GetLogger()->Error(
                 "Behavior patch apply failed: code=%d error=%u phase=%u detail=%s",
                 applied.Code(),
-                static_cast<unsigned>(applied.Detail().Error),
-                static_cast<unsigned>(applied.Detail().Phase),
-                applied.Detail().Message.c_str());
+                static_cast<unsigned>(applied.GetStatus().Error),
+                static_cast<unsigned>(applied.GetStatus().Phase),
+                applied.GetStatus().Message.c_str());
             Finish(false, "patch-apply");
             return;
         }
         m_Patch = std::move(applied).Value();
-        const auto info = m_Patch.Read();
-        m_PatchPassed = info && info->State == GraphPatchState::Active &&
+        const auto info = m_Patch.Info();
+        m_PatchPassed = info && info->State == PatchState::Active &&
             info->Installed() && info->Conflicts == 0 && PatchInstalled();
         if (!m_PatchPassed) {
             Finish(false, "patch-state");
@@ -1034,7 +1057,7 @@ private:
     }
 
     void ClosePatch() {
-        // The GraphPatch owns the native Session it still needs. Releasing the
+        // The Patch owns the native Session it still needs. Releasing the
         // original facade value must not make the Patch stale before restore.
         m_Session.Close();
         m_PatchSink = m_Anchor ? m_Anchor->GetOutBehaviorIO() : nullptr;
@@ -1046,10 +1069,10 @@ private:
         BML::Behavior::Result<BML::Behavior::CloseState> closed;
         std::thread closer([&] { closed = m_Patch.Close(); });
         closer.join();
-        const auto closing = m_Patch.Read();
+        const auto closing = m_Patch.Info();
         if (!closed || closed.Value() != BML::Behavior::CloseState::Closing ||
             !m_Patch || !closing ||
-            closing->State != GraphPatchState::Closing) {
+            closing->State != PatchState::Closing) {
             Finish(false, "patch-thread-close");
             return;
         }
@@ -1058,8 +1081,8 @@ private:
     }
 
     void WaitPatchConflict() {
-        const auto conflicted = m_Patch.Read();
-        if (!conflicted || conflicted->State != GraphPatchState::Conflicted) {
+        const auto conflicted = m_Patch.Info();
+        if (!conflicted || conflicted->State != PatchState::Conflicted) {
             if (m_Frame > m_WaitUntil)
                 Finish(false, "patch-conflict");
             return;
@@ -1135,8 +1158,8 @@ private:
     BML::Behavior::Session m_Session;
     BML::Behavior::Plan m_Plan;
     BML::Behavior::Plan m_SelfPlan;
-    BML::Behavior::GraphPatch m_Patch;
-    BML::Behavior::GraphPatch m_IdentityPatch;
+    BML::Behavior::Patch m_Patch;
+    BML::Behavior::Patch m_IdentityPatch;
     std::optional<BML::Behavior::Instance> m_Parked;
     // What the Before callback recorded. The count returning to one proves the
     // Loader released the callback state the Patch owned.
