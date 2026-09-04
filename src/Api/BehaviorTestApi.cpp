@@ -3,7 +3,7 @@
 #include <cstring>
 
 #include "Behavior/Patches.h"
-#include "Behavior/Text2D.h"
+#include "Behavior/Blocks/Text2D.h"
 #include "Loader/ModContext.h"
 
 namespace BML::Api {

@@ -30,7 +30,7 @@
 #include "Behavior/Plan.h"
 #include "Behavior/PrototypeCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
-#include "Behavior/PhysicsForce.h"
+#include "Behavior/Blocks/PhysicsForce.h"
 
 // The ids themselves are public, since BML_GetLoaderPath takes them. This name
 // stays for the loader's own call sites and for the script binding.

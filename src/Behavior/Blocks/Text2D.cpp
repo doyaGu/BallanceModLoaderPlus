@@ -1,4 +1,4 @@
-#include "Behavior/Text2D.h"
+#include "Behavior/Blocks/Text2D.h"
 
 #include "BML/Guids/Interface.h"
 #include <string>
@@ -83,7 +83,7 @@ CKBehavior *Add(Runtime &runtime, CKBehavior *graph, const Options &options) {
     return added ? added.Block : nullptr;
 }
 
-CKParameter *Live::Find(const Slot &slot) const {
+CKParameter *View::Find(const Slot &slot) const {
     if (!*this)
         return nullptr;
     const LiveLayout layout(m_Context, m_Block, m_Block->GetPrototypeGuid(),
@@ -94,7 +94,7 @@ CKParameter *Live::Find(const Slot &slot) const {
     return layout.Parameter(resolved);
 }
 
-Status Live::Write(const Slot &slot, const Parameter::Binding &value) {
+Status View::Write(const Slot &slot, const Parameter::Binding &value) {
     CKParameter *parameter = Find(slot);
     if (!parameter)
         return Failure(Error::SlotNotFound,
@@ -102,50 +102,50 @@ Status Live::Write(const Slot &slot, const Parameter::Binding &value) {
     return Parameter::Write(m_Context, parameter, value);
 }
 
-Status Live::SetFont(int index) {
+Status View::SetFont(int index) {
     return Write(PinSlot(FontPin, CKPGUID_FONT),
                  Value::From(CKPGUID_FONT, index));
 }
 
-Status Live::SetText(const char *text) {
+Status View::SetText(const char *text) {
     return Write(PinSlot(TextPin, CKPGUID_STRING),
                  Value::String(text ? text : ""));
 }
 
-Status Live::SetAlignment(int alignment) {
+Status View::SetAlignment(int alignment) {
     return Write(PinSlot(AlignmentPin, CKPGUID_ALIGNMENT),
                  Value::From(CKPGUID_ALIGNMENT, alignment));
 }
 
-Status Live::SetOffset(const Vx2DVector &offset) {
+Status View::SetOffset(const Vx2DVector &offset) {
     return Write(PinSlot(OffsetPin, CKPGUID_2DVECTOR),
                  Value::From(CKPGUID_2DVECTOR, offset));
 }
 
-Status Live::SetCaretMaterial(CKMaterial *material) {
+Status View::SetCaretMaterial(CKMaterial *material) {
     return Write(PinSlot(CaretMaterialPin, CKPGUID_MATERIAL),
                  Parameter::Binding::Object(CKPGUID_MATERIAL, material));
 }
 
-Status Live::SetFlags(int flags) {
+Status View::SetFlags(int flags) {
     return Write(FlagsSlot(), Value::From(CKPGUID_TEXTPROPERTIES, flags));
 }
 
-int Live::Font() const {
+int View::Font() const {
     return Read<int>(Find(PinSlot(FontPin, CKPGUID_FONT)), 0);
 }
 
-const char *Live::Text() const {
+const char *View::Text() const {
     CKParameter *parameter = Find(PinSlot(TextPin, CKPGUID_STRING));
     return parameter ? static_cast<const char *>(parameter->GetReadDataPtr())
                      : nullptr;
 }
 
-int Live::Flags() const {
+int View::Flags() const {
     return Read<int>(Find(FlagsSlot()), 0);
 }
 
-void Live::Draw() {
+void View::Draw() {
     if (!*this)
         return;
     m_Block->ActivateInput(kDrawInput);

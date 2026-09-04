@@ -97,18 +97,18 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Layout.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Hook.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/HookBlock.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/ObjectLoad.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/ObjectLoad.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/FrameStore.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Parameter.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Value.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Physicalize.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsForce.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/PhysicsImpulse.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/Physicalize.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/PhysicsForce.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/PhysicsImpulse.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Relations.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/SendMessage.cpp
-        ${PROJECT_SOURCE_DIR}/src/Behavior/Text2D.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/SendMessage.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Blocks/Text2D.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
 )
 target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE

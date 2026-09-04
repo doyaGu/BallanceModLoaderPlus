@@ -316,16 +316,16 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Plan.h
         Behavior/Relations.h
         Behavior/HookBlock.h
-        Behavior/ObjectLoad.h
-        Behavior/Physicalize.h
-        Behavior/PhysicsForce.h
-        Behavior/PhysicsImpulse.h
-        Behavior/PhysicsWakeUp.h
+        Behavior/Blocks/ObjectLoad.h
+        Behavior/Blocks/Physicalize.h
+        Behavior/Blocks/PhysicsForce.h
+        Behavior/Blocks/PhysicsImpulse.h
+        Behavior/Blocks/PhysicsWakeUp.h
         Behavior/Runtime.h
-        Behavior/SendMessage.h
+        Behavior/Blocks/SendMessage.h
         Behavior/Sessions.h
         Behavior/Status.h
-        Behavior/Text2D.h
+        Behavior/Blocks/Text2D.h
         Behavior/Topology.h
         Behavior/Watch.h
 )
@@ -349,15 +349,15 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Relations.cpp
         Behavior/Hook.cpp
         Behavior/HookBlock.cpp
-        Behavior/ObjectLoad.cpp
-        Behavior/Physicalize.cpp
-        Behavior/PhysicsForce.cpp
-        Behavior/PhysicsImpulse.cpp
-        Behavior/PhysicsWakeUp.cpp
+        Behavior/Blocks/ObjectLoad.cpp
+        Behavior/Blocks/Physicalize.cpp
+        Behavior/Blocks/PhysicsForce.cpp
+        Behavior/Blocks/PhysicsImpulse.cpp
+        Behavior/Blocks/PhysicsWakeUp.cpp
         Behavior/Runtime.cpp
-        Behavior/SendMessage.cpp
+        Behavior/Blocks/SendMessage.cpp
         Behavior/Sessions.cpp
-        Behavior/Text2D.cpp
+        Behavior/Blocks/Text2D.cpp
         Behavior/Topology.cpp
         Behavior/Watch.cpp
 )

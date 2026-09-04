@@ -1,4 +1,4 @@
-#include "Behavior/SendMessage.h"
+#include "Behavior/Blocks/SendMessage.h"
 
 #include "BML/Guids/Logics.h"
 

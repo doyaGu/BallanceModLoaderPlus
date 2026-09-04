@@ -4,8 +4,8 @@
 #include <utility>
 #include <vector>
 
-#include "Behavior/ObjectLoad.h"
-#include "Behavior/PhysicsForce.h"
+#include "Behavior/Blocks/ObjectLoad.h"
+#include "Behavior/Blocks/PhysicsForce.h"
 #include "Behavior/Runtime.h"
 
 namespace BML {

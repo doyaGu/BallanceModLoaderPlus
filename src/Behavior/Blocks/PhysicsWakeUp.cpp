@@ -1,4 +1,4 @@
-#include "Behavior/PhysicsWakeUp.h"
+#include "Behavior/Blocks/PhysicsWakeUp.h"
 
 #include "BML/Guids/physics_RT.h"
 

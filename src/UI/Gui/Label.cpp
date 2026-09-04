@@ -1,14 +1,14 @@
 #include "BML/Gui/Label.h"
 
 #include "Loader/ModContext.h"
-#include "Behavior/Text2D.h"
+#include "Behavior/Blocks/Text2D.h"
 
 using namespace BGui;
 
 namespace {
 // Every function below writes or reads one Slot of the same Block, so each one
 // opens a view on it and lets the Text2D module say which Slot that is.
-BML::Behavior::Text2D::Live Text(CKBehavior *block) {
+BML::Behavior::Text2D::View Text(CKBehavior *block) {
     return {BML_GetCKContext(), block};
 }
 } // namespace

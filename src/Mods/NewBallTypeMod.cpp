@@ -6,8 +6,8 @@
 #include "BML/Guids/Narratives.h"
 
 #include "Loader/ModContext.h"
-#include "Behavior/ObjectLoad.h"
-#include "Behavior/Physicalize.h"
+#include "Behavior/Blocks/ObjectLoad.h"
+#include "Behavior/Blocks/Physicalize.h"
 
 using namespace ScriptHelper;
 

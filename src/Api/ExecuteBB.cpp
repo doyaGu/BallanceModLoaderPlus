@@ -5,13 +5,13 @@
 #include "UI/GameFontCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/HookBlock.h"
-#include "Behavior/ObjectLoad.h"
-#include "Behavior/Physicalize.h"
-#include "Behavior/PhysicsForce.h"
-#include "Behavior/PhysicsImpulse.h"
-#include "Behavior/PhysicsWakeUp.h"
-#include "Behavior/SendMessage.h"
-#include "Behavior/Text2D.h"
+#include "Behavior/Blocks/ObjectLoad.h"
+#include "Behavior/Blocks/Physicalize.h"
+#include "Behavior/Blocks/PhysicsForce.h"
+#include "Behavior/Blocks/PhysicsImpulse.h"
+#include "Behavior/Blocks/PhysicsWakeUp.h"
+#include "Behavior/Blocks/SendMessage.h"
+#include "Behavior/Blocks/Text2D.h"
 
 namespace {
 

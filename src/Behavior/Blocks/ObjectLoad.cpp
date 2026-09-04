@@ -1,4 +1,4 @@
-#include "Behavior/ObjectLoad.h"
+#include "Behavior/Blocks/ObjectLoad.h"
 
 #include "BML/Guids/Narratives.h"
 

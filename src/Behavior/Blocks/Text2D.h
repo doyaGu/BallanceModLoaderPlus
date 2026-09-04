@@ -32,9 +32,9 @@ CKBehavior *Add(Runtime &runtime, CKBehavior *graph, const Options &options);
 // already holds the Block writes what it means instead of counting parameters.
 // The view owns nothing and keeps no state, so it is built for one statement and
 // dropped; the Block stays the caller's.
-class Live final {
+class View final {
 public:
-    Live(CKContext *context, CKBehavior *block) noexcept
+    View(CKContext *context, CKBehavior *block) noexcept
         : m_Context(context), m_Block(block) {}
 
     [[nodiscard]] explicit operator bool() const noexcept {
