@@ -171,6 +171,10 @@ $facadeSelfClose = [regex]::Match($log,
 $facadePatch = [regex]::Match($log,
     'Behavior graph patch: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'apply=(?<apply>true|false) close=(?<close>true|false)')
+$facadeIdentity = [regex]::Match($log,
+    'Behavior identity: status=(?<status>pass|fail) attach=(?<attach>true|false) ' +
+    'continuation=(?<continuation>true|false) ' +
+    'identity=(?<identity>true|false) befores=(?<befores>[0-9]+)')
 $scriptHook = [regex]::Match($log,
     'Behavior script hook: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'installed=(?<installed>true|false) frames=(?<frames>[0-9]+)')
@@ -237,6 +241,12 @@ $checks['BehaviorGraphPatchFacade'] = $facadePatch.Success -and
     $facadePatch.Groups['status'].Value -eq 'pass' -and
     $facadePatch.Groups['apply'].Value -eq 'true' -and
     $facadePatch.Groups['close'].Value -eq 'true'
+$checks['BehaviorIdentityFacade'] = $facadeIdentity.Success -and
+    $facadeIdentity.Groups['status'].Value -eq 'pass' -and
+    $facadeIdentity.Groups['attach'].Value -eq 'true' -and
+    $facadeIdentity.Groups['continuation'].Value -eq 'true' -and
+    $facadeIdentity.Groups['identity'].Value -eq 'true' -and
+    [int]$facadeIdentity.Groups['befores'].Value -ge 1
 $checks['BehaviorPatchVisual'] =
     $run.Captures.'BehaviorPatch-baseline'.Captured -and
     $run.Captures.'BehaviorPatch-active'.Captured -and

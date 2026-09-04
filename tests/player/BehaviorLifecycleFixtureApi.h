@@ -44,11 +44,17 @@ struct BMLLifecycleFixtureTrace {
     std::int32_t FinalNormalizedValue = 0;
     std::uint32_t CloseHookCalls = 0;
     std::uint32_t CloseHookAccepted = 0;
+    // Executions of the block function. RunTimes keeps the time of the first
+    // eight executions; two equal entries are two executions inside one
+    // engine frame, which is how a double-driven Block is detected.
+    std::uint32_t RunCount = 0;
+    float RunTimes[8]{};
 };
 
 using BMLLifecycleFixtureCloseHook = int (*)(CKBehavior *, void *);
 using BMLLifecycleFixtureResetTraceFn = void (*)();
 using BMLLifecycleFixtureSetModeFn = void (*)(BMLLifecycleFixtureMode);
+using BMLLifecycleFixtureSetContinuationFn = void (*)(std::int32_t frames);
 using BMLLifecycleFixtureSetCloseHookFn = void (*)(
     BMLLifecycleFixtureCloseHook, void *);
 using BMLLifecycleFixtureReadTraceFn = int (*)(

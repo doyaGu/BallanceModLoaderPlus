@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -1060,11 +1061,27 @@ private:
                     link.Pending == BML::Behavior::TruthValue::Unknown;
         }
         auto live = graph.Live();
-        const bool liveShape = live &&
+        // Live contains Logical rather than equalling it. A Splice, a Tap, a
+        // Before, or an After adds Loader-owned Blocks and continuation Links
+        // that the Logical view deliberately hides, so the only durable
+        // relation is that every Node and Link an author can see is also
+        // physically there.
+        bool liveShape = live &&
             live->Mode() == BML::Behavior::View::Live &&
-            live->Nodes().size() == graph.Nodes().size() &&
-            live->Links().size() == graph.Links().size() &&
-            live->Fingerprint() == graph.Fingerprint();
+            live->Nodes().size() >= graph.Nodes().size() &&
+            live->Links().size() >= graph.Links().size();
+        if (liveShape) {
+            std::set<std::uint64_t> liveNodes;
+            for (const BML::Behavior::Node &node : live->Nodes())
+                liveNodes.insert(node.Id);
+            std::set<std::uint64_t> liveLinks;
+            for (const BML::Behavior::Link &link : live->Links())
+                liveLinks.insert(link.Id);
+            for (const BML::Behavior::Node &node : graph.Nodes())
+                liveShape = liveShape && liveNodes.count(node.Id) == 1;
+            for (const BML::Behavior::Link &link : graph.Links())
+                liveShape = liveShape && liveLinks.count(link.Id) == 1;
+        }
         m_InspectPassed = nmoShape && delayOne && delayTwo &&
             portablePending && liveShape;
         GetLogger()->Info(

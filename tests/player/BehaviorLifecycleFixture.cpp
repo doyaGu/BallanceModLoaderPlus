@@ -20,6 +20,10 @@ BMLLifecycleFixtureTrace g_Trace;
 BMLLifecycleFixtureMode g_Mode = BMLLifecycleFixtureMode::Normal;
 BMLLifecycleFixtureCloseHook g_CloseHook = nullptr;
 void *g_CloseArgument = nullptr;
+// Executions remaining before Run returns CKBR_OK instead of
+// CKBR_ACTIVATENEXTFRAME; a parked multi-frame Block is driven by one party
+// per frame, so the recorded RunTimes expose a second driver.
+std::int32_t g_ContinuationFrames = 0;
 
 bool HasConnectedLink(CKBehavior *parent, CKBehavior *behavior) {
     if (!parent || !behavior)
@@ -102,8 +106,17 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
 }
 
 int Run(const CKBehaviorContext &context) {
+    CKTimeManager *time = context.Context
+        ? context.Context->GetTimeManager() : nullptr;
+    if (g_Trace.RunCount < std::size(g_Trace.RunTimes))
+        g_Trace.RunTimes[g_Trace.RunCount] = time ? time->GetTime() : -1.0f;
+    ++g_Trace.RunCount;
     if (context.Behavior && context.Behavior->GetOutputCount() > 0)
         context.Behavior->ActivateOutput(0);
+    if (g_ContinuationFrames > 0) {
+        --g_ContinuationFrames;
+        return CKBR_ACTIVATENEXTFRAME;
+    }
     return CKBR_OK;
 }
 
@@ -179,11 +192,17 @@ extern "C" __declspec(dllexport) void BMLLifecycleFixtureResetTrace() {
     g_Trace = {};
     g_Trace.Size = sizeof(g_Trace);
     g_Trace.Version = 1;
+    g_ContinuationFrames = 0;
 }
 
 extern "C" __declspec(dllexport) void BMLLifecycleFixtureSetMode(
     BMLLifecycleFixtureMode mode) {
     g_Mode = mode;
+}
+
+extern "C" __declspec(dllexport) void BMLLifecycleFixtureSetContinuation(
+    std::int32_t frames) {
+    g_ContinuationFrames = frames;
 }
 
 extern "C" __declspec(dllexport) void BMLLifecycleFixtureSetCloseHook(

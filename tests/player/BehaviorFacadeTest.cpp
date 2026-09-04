@@ -5,6 +5,11 @@
 #include "Api/BehaviorTestApi.h"
 #include "BehaviorLifecycleFixtureApi.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 #include "BML/Behavior.hpp"
 #include "BML/IMod.h"
 #include "CKAll.h"
@@ -12,7 +17,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <thread>
+#include <variant>
 
 #include "PlayerProbe.h"
 
@@ -23,6 +30,13 @@ using BML::Behavior::HookEvent;
 using BML::Behavior::HookResult;
 using BML::Behavior::GraphPatchState;
 using BML::Behavior::PlanState;
+
+// An author's own enumeration. A Value deduces Int from it, so nothing here
+// spells out the narrowing the Virtools parameter is going to do anyway.
+enum class FacadeMode : std::uint8_t {
+    Off = 0,
+    On = 3,
+};
 
 constexpr const char *kScriptName = "__BML_Public_Plan";
 constexpr const char *kSourceName = "Public Plan Source";
@@ -103,6 +117,12 @@ public:
         case State::SubmitSelfClose: SubmitSelfClose(); break;
         case State::WaitSelfActive: WaitSelfActive(); break;
         case State::WaitSelfRetired: WaitSelfRetired(); break;
+        case State::AttachBlock: AttachBlock(); break;
+        case State::WaitAttachRemoved: WaitAttachRemoved(); break;
+        case State::AttachContinuing: AttachContinuing(); break;
+        case State::WaitContinuationDone: WaitContinuationDone(); break;
+        case State::WaitIdentityHook: WaitIdentityHook(); break;
+        case State::WaitIdentityRestored: WaitIdentityRestored(); break;
         case State::ClosePatch: ClosePatch(); break;
         case State::WaitPatchConflict: WaitPatchConflict(); break;
         case State::WaitPatchRetired: WaitPatchRetired(); break;
@@ -128,6 +148,12 @@ private:
         SubmitSelfClose,
         WaitSelfActive,
         WaitSelfRetired,
+        AttachBlock,
+        WaitAttachRemoved,
+        AttachContinuing,
+        WaitContinuationDone,
+        WaitIdentityHook,
+        WaitIdentityRestored,
         ClosePatch,
         WaitPatchConflict,
         WaitPatchRetired,
@@ -262,12 +288,7 @@ private:
     }
 
     bool PublicViews() {
-        BML_ObjectRef reference{};
-        if (m_Test->ReferenceObject(
-                m_Session.Handle(), m_Graph, &reference) != BML_OK) {
-            return false;
-        }
-        auto logical = m_Session.Inspect(reference);
+        auto logical = m_Session.Inspect(m_Graph);
         if (!logical)
             return false;
         auto live = logical->Live();
@@ -517,11 +538,408 @@ private:
                 return;
             }
             m_SelfClosePassed = true;
-            ApplyPatch();
+            m_State = State::AttachBlock;
             return;
         }
         if (m_Frame > m_WaitUntil)
             Finish(false, "self-close-retirement");
+    }
+
+    // A parked Block lives in the graph without being linked to it. The graph
+    // never activates it, so the Instance the Mod holds is still what writes
+    // its settings and pulses it.
+    void AttachBlock() {
+        const auto graphRef = m_Session.Reference(m_Graph);
+        if (!graphRef || !m_Graph) {
+            Finish(false, "attach-reference");
+            return;
+        }
+        m_AttachBlocks = m_Graph->GetSubBehaviorCount();
+        m_AttachLinks = m_Graph->GetSubBehaviorLinkCount();
+        auto parked = m_Session
+            .Use(BML::Behavior::Guid(BML_LIFECYCLE_FIXTURE_GUID))
+            .Setting("Value", 9)
+            .Attach(graphRef.Value());
+        if (!parked) {
+            GetLogger()->Error(
+                "Behavior attach failed: code=%d error=%u phase=%u detail=%s",
+                parked.Code(), static_cast<unsigned>(parked.Detail().Error),
+                static_cast<unsigned>(parked.Detail().Phase),
+                parked.Detail().Message.c_str());
+            Finish(false, "attach");
+            return;
+        }
+        m_Parked = std::move(parked).Value();
+        const bool resident =
+            m_Graph->GetSubBehaviorCount() == m_AttachBlocks + 1 &&
+            m_Graph->GetSubBehaviorLinkCount() == m_AttachLinks;
+        const auto pulsed = m_Parked->Pulse("In");
+        const bool ran = pulsed &&
+            pulsed.Value() == BML::Behavior::PulseResult::Ran;
+        if (!resident || !ran) {
+            GetLogger()->Error(
+                "Behavior attach shape wrong: resident=%s ran=%s blocks=%d links=%d",
+                resident ? "true" : "false", ran ? "true" : "false",
+                m_Graph->GetSubBehaviorCount(),
+                m_Graph->GetSubBehaviorLinkCount());
+            (void) m_Parked->Close();
+            m_Parked.reset();
+            Finish(false, "attach-shape");
+            return;
+        }
+        const auto closed = m_Parked->Close();
+        if (!closed) {
+            Finish(false, "attach-close");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitAttachRemoved;
+    }
+
+    void WaitAttachRemoved() {
+        if (m_Graph &&
+            m_Graph->GetSubBehaviorCount() == m_AttachBlocks &&
+            m_Graph->GetSubBehaviorLinkCount() == m_AttachLinks) {
+            m_Parked.reset();
+            m_AttachPassed = true;
+            if (m_ContinuationPassed)
+                IdentityEdits();
+            else
+                m_State = State::AttachContinuing;
+            return;
+        }
+        if (m_Frame > m_WaitUntil) {
+            GetLogger()->Error(
+                "Behavior attach removal timed out: blocks=%d links=%d",
+                m_Graph ? m_Graph->GetSubBehaviorCount() : -1,
+                m_Graph ? m_Graph->GetSubBehaviorLinkCount() : -1);
+            Finish(false, "attach-removal");
+        }
+    }
+
+    struct LifecycleFixtureExports {
+        BMLLifecycleFixtureResetTraceFn ResetTrace = nullptr;
+        BMLLifecycleFixtureSetContinuationFn SetContinuation = nullptr;
+        BMLLifecycleFixtureReadTraceFn ReadTrace = nullptr;
+
+        explicit operator bool() const {
+            return ResetTrace && SetContinuation && ReadTrace;
+        }
+    };
+
+    static LifecycleFixtureExports ResolveLifecycleFixture() {
+        LifecycleFixtureExports exports;
+        HMODULE module = ::GetModuleHandleA("BehaviorLifecycleFixture.dll");
+        if (!module)
+            return exports;
+        exports.ResetTrace = reinterpret_cast<BMLLifecycleFixtureResetTraceFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureResetTrace"));
+        exports.SetContinuation =
+            reinterpret_cast<BMLLifecycleFixtureSetContinuationFn>(
+                ::GetProcAddress(module, "BMLLifecycleFixtureSetContinuation"));
+        exports.ReadTrace = reinterpret_cast<BMLLifecycleFixtureReadTraceFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureReadTrace"));
+        return exports;
+    }
+
+    // Keeps the parent script executing every frame, the worst case for a
+    // parked Block: Ballanced schedules every ACTIVE sub-behavior, linked or
+    // not, so a continuation left flagged would also be run by the graph.
+    void KickScript() {
+        CKScene *scene = m_BML && m_BML->GetCKContext()
+            ? m_BML->GetCKContext()->GetCurrentScene() : nullptr;
+        if (!scene || !m_Graph || !m_Owner)
+            return;
+        scene->Activate(m_Owner, TRUE);
+        m_Graph->Activate(TRUE, FALSE);
+        m_Graph->ActivateInput(0, TRUE);
+    }
+
+    // A multi-frame parked Block keeps itself running with
+    // CKBR_ACTIVATENEXTFRAME. The Instance must stay the only driver: one
+    // execution per engine frame, so no two recorded RunTimes may coincide
+    // even while the parent script runs every frame.
+    void AttachContinuing() {
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        if (!fixture) {
+            Finish(false, "continuation-fixture-exports");
+            return;
+        }
+        fixture.ResetTrace();
+        fixture.SetContinuation(3);
+        const auto graphRef = m_Session.Reference(m_Graph);
+        if (!graphRef || !m_Graph) {
+            Finish(false, "continuation-reference");
+            return;
+        }
+        m_AttachBlocks = m_Graph->GetSubBehaviorCount();
+        m_AttachLinks = m_Graph->GetSubBehaviorLinkCount();
+        auto parked = m_Session
+            .Use(BML::Behavior::Guid(BML_LIFECYCLE_FIXTURE_GUID))
+            .Attach(graphRef.Value());
+        if (!parked) {
+            GetLogger()->Error(
+                "Behavior continuation attach failed: code=%d error=%u detail=%s",
+                parked.Code(),
+                static_cast<unsigned>(parked.Detail().Error),
+                parked.Detail().Message.c_str());
+            Finish(false, "continuation-attach");
+            return;
+        }
+        m_Parked = std::move(parked).Value();
+        const auto pulsed = m_Parked->Pulse("In");
+        if (!pulsed || pulsed.Value() != BML::Behavior::PulseResult::Ran) {
+            Finish(false, "continuation-pulse");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitContinuationDone;
+    }
+
+    void WaitContinuationDone() {
+        KickScript();
+        BMLLifecycleFixtureTrace trace;
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        if (!fixture || !fixture.ReadTrace(&trace)) {
+            Finish(false, "continuation-trace");
+            return;
+        }
+        if (trace.RunCount >= 4) {
+            fixture.SetContinuation(0);
+            bool sameFrame = false;
+            for (std::uint32_t i = 0; i < 4 && !sameFrame; ++i)
+                for (std::uint32_t j = i + 1; j < 4; ++j)
+                    if (trace.RunTimes[i] == trace.RunTimes[j]) {
+                        sameFrame = true;
+                        break;
+                    }
+            if (trace.RunCount != 4 || sameFrame) {
+                GetLogger()->Error(
+                    "Behavior continuation drove the Block %u times, "
+                    "same-frame executions=%s",
+                    trace.RunCount, sameFrame ? "true" : "false");
+                (void) m_Parked->Close();
+                m_Parked.reset();
+                Finish(false, "continuation-drive");
+                return;
+            }
+            const auto closed = m_Parked->Close();
+            if (!closed) {
+                Finish(false, "continuation-close");
+                return;
+            }
+            m_ContinuationPassed = true;
+            m_WaitUntil = m_Frame + 30;
+            m_State = State::WaitAttachRemoved;
+            return;
+        }
+        if (m_Frame > m_WaitUntil) {
+            unsigned state = 999u;
+            int code = 0;
+            std::string detail = "<unreadable>";
+            if (m_Parked) {
+                const auto info = m_Parked->Read();
+                code = info.Code();
+                if (info)
+                    state = static_cast<unsigned>(info.Value().State);
+                detail = info.Detail().Message.empty()
+                    ? "<empty>" : info.Detail().Message;
+            }
+            GetLogger()->Error(
+                "Behavior continuation timed out: runs=%u state=%u code=%d "
+                "detail=%s",
+                trace.RunCount, state, code, detail.c_str());
+            (void) m_Parked->Close();
+            m_Parked.reset();
+            Finish(false, "continuation-timeout");
+        }
+    }
+
+    // Everything the identity surface added, written the way an author would:
+    // public references instead of a test affordance, post-Apply resolution, a
+    // Before Hook, a Redirect, ports appended with no variable-interface flag,
+    // and literals that deduce their own Virtools type.
+    void IdentityEdits() {
+        const auto graphRef = m_Session.Reference(m_Graph);
+        const auto sourceRef = m_Session.Reference(m_Source);
+        const auto sinkRef = m_Session.Reference(m_Sink);
+        const auto anchorRef = m_Session.Reference(m_Anchor);
+        if (!graphRef || !sourceRef || !sinkRef || !anchorRef) {
+            Finish(false, "identity-reference");
+            return;
+        }
+        // Inspect takes the Behavior itself, so a Mod editing the graph it
+        // built needs no name lookup at all.
+        const auto opened = m_Session.Inspect(m_Graph);
+        if (!opened || opened->Nodes().size() != 3 ||
+            opened->Links().size() != 3) {
+            Finish(false, "identity-inspect");
+            return;
+        }
+
+        // A durable Plan installs into scripts that do not exist yet, so it
+        // refuses a reference issued against this one live world.
+        auto durable = m_Session.Plan("player-public-identity-plan");
+        durable.OnSingle(kScriptName);
+        const auto anchored = durable.UseNode(sourceRef.Value());
+        durable.Tap(anchored.Out(0), Hook([] { return HookResult::Ok; }));
+        const auto refused = durable.Submit();
+        if (refused ||
+            refused.Detail().Error != BML::Behavior::Error::StateInvalid) {
+            GetLogger()->Error(
+                "Behavior identity plan was not refused: code=%d error=%u",
+                refused.Code(),
+                static_cast<unsigned>(refused.Detail().Error));
+            Finish(false, "plan-identity");
+            return;
+        }
+
+        auto identity = m_Identity;
+        Hook interposed([identity](const HookEvent &event) {
+            ++identity->Befores;
+            if (event.Block.Domain != 0)
+                ++identity->Blocks;
+        });
+
+        const BML::Behavior::Guid fixture(BML_LIFECYCLE_FIXTURE_GUID);
+        auto edit = m_Session.Patch("player-public-identity");
+        const auto sink = edit.UseNode(sinkRef.Value());
+        const auto anchor = edit.UseLink(anchorRef.Value());
+        const auto block = edit.Add(
+            fixture, {BML::Behavior::setting("Value", 41u)});
+        const auto amount = edit.AppendPin(block, "Amount", CKPGUID_FLOAT);
+        const auto mode = edit.AppendPin(block, "Mode", CKPGUID_INT);
+        (void) edit.AppendPout(block, "Report", CKPGUID_INT);
+        edit.Bind(amount, 2.5);
+        edit.Bind(mode, FacadeMode::On);
+        edit.Before(anchor, interposed);
+        edit.Redirect(anchor, block.In());
+        edit.Flow(block.Out(), sink.In());
+
+        auto applied = edit.Apply(graphRef.Value());
+        if (!applied) {
+            GetLogger()->Error(
+                "Behavior identity apply failed: code=%d error=%u phase=%u detail=%s",
+                applied.Code(),
+                static_cast<unsigned>(applied.Detail().Error),
+                static_cast<unsigned>(applied.Detail().Phase),
+                applied.Detail().Message.c_str());
+            Finish(false, "identity-apply");
+            return;
+        }
+        m_IdentityPatch = std::move(applied).Value();
+
+        const auto blockRef = m_IdentityPatch.Resolve(block);
+        if (!blockRef || !blockRef->Domain) {
+            Finish(false, "identity-resolve");
+            return;
+        }
+        if (!IdentityViews(blockRef.Value())) {
+            Finish(false, "identity-views");
+            return;
+        }
+        RunGraph();
+        m_State = State::WaitIdentityHook;
+    }
+
+    bool IdentityViews(BML_ObjectRef block) {
+        const auto view = m_Session.Inspect(m_Graph);
+        if (!view)
+            return false;
+        // The Before HookBlock and its continuation Link stay infrastructure,
+        // so Logical keeps the four Nodes and four Links the author wrote. The
+        // Redirect is the exception: it changes where control goes, so the
+        // anchor Link now reports the added Block as its destination.
+        const auto added = std::find_if(
+            view->Nodes().begin(), view->Nodes().end(),
+            [&](const BML::Behavior::Node &node) {
+                return node.Object.Domain == block.Domain &&
+                    node.Object.Slot == block.Slot &&
+                    node.Object.Generation == block.Generation;
+            });
+        const auto anchor = std::find_if(
+            view->Links().begin(), view->Links().end(),
+            [&](const BML::Behavior::Link &link) {
+                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+            });
+        if (view->Nodes().size() != 4 || view->Links().size() != 4 ||
+            added == view->Nodes().end() ||
+            anchor == view->Links().end() ||
+            anchor->Source.Node !=
+                static_cast<std::uint32_t>(m_Source->GetID()) ||
+            anchor->Target.Node != added->Id ||
+            !(added->Prototype ==
+                BML::Behavior::Guid(BML_LIFECYCLE_FIXTURE_GUID))) {
+            GetLogger()->Error(
+                "Behavior identity view wrong: nodes=%u links=%u block=%s anchor=%s",
+                static_cast<unsigned>(view->Nodes().size()),
+                static_cast<unsigned>(view->Links().size()),
+                added == view->Nodes().end() ? "missing" : "found",
+                anchor == view->Links().end() ? "missing" : "found");
+            return false;
+        }
+        // Each literal reached CK2 as the type its slot holds: a double became
+        // the Float pin, an enumerator and an unsigned became Ints. The Setting
+        // travelled with the creation of the Block, so the fixture heard the
+        // settings-edited message and normalized 41 to its own 77.
+        const auto amount = view->Read(BML::Behavior::pin(block, "Amount"));
+        const auto mode = view->Read(BML::Behavior::pin(block, "Mode"));
+        const auto value = view->Read(BML::Behavior::setting(block, "Value"));
+        const bool deduced = amount && mode && value &&
+            std::holds_alternative<float>(amount->Data) &&
+            std::get<float>(amount->Data) == 2.5f &&
+            std::holds_alternative<std::int32_t>(mode->Data) &&
+            std::get<std::int32_t>(mode->Data) == 3 &&
+            std::holds_alternative<std::int32_t>(value->Data) &&
+            std::get<std::int32_t>(value->Data) == 77;
+        if (!deduced) {
+            GetLogger()->Error(
+                "Behavior identity literals wrong: amount=%d mode=%d value=%d",
+                amount.Code(), mode.Code(), value.Code());
+        }
+        return deduced;
+    }
+
+    void WaitIdentityHook() {
+        if (m_Identity->Befores >= 1) {
+            if (m_Identity->Blocks != m_Identity->Befores) {
+                GetLogger()->Error(
+                    "Behavior Before context incomplete: befores=%u blocks=%u",
+                    m_Identity->Befores, m_Identity->Blocks);
+                Finish(false, "identity-hook-context");
+                return;
+            }
+            const auto closed = m_IdentityPatch.Close();
+            if (!closed) {
+                Finish(false, "identity-close-request");
+                return;
+            }
+            m_WaitUntil = m_Frame + 30;
+            m_State = State::WaitIdentityRestored;
+            return;
+        }
+        if (m_Frame > m_WaitUntil) {
+            GetLogger()->Error("Behavior Before hook timed out: befores=%u",
+                               m_Identity->Befores);
+            Finish(false, "identity-hook");
+        }
+    }
+
+    void WaitIdentityRestored() {
+        if (!Restored()) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "identity-restore");
+            return;
+        }
+        const auto closed = m_IdentityPatch.Close();
+        if (!closed ||
+            closed.Value() != BML::Behavior::CloseState::Closed ||
+            m_IdentityPatch || m_Identity.use_count() != 1) {
+            Finish(false, "identity-close");
+            return;
+        }
+        m_IdentityPassed = true;
+        ApplyPatch();
     }
 
     bool RejectsMalformedPort(BML_ObjectRef graph) {
@@ -571,17 +989,16 @@ private:
     }
 
     void ApplyPatch() {
-        BML_ObjectRef reference{};
-        if (m_Test->ReferenceObject(
-                m_Session.Handle(), m_Graph, &reference) != BML_OK) {
+        const auto reference = m_Session.Reference(m_Graph);
+        if (!reference) {
             Finish(false, "patch-reference");
             return;
         }
-        if (!RejectsMalformedPort(reference)) {
+        if (!RejectsMalformedPort(reference.Value())) {
             Finish(false, "malformed-port");
             return;
         }
-        auto inspected = m_Session.Inspect(reference);
+        auto inspected = m_Session.Inspect(reference.Value());
         if (!inspected) {
             Finish(false, "patch-inspect");
             return;
@@ -676,6 +1093,9 @@ private:
         m_Done = true;
         if (!passed) {
             (void) m_Patch.Close();
+            (void) m_IdentityPatch.Close();
+            if (m_Parked)
+                (void) m_Parked->Close();
             (void) m_Plan.Close();
             (void) m_SelfPlan.Close();
             DestroyGraph();
@@ -694,6 +1114,13 @@ private:
             m_SelfClosePassed ? "pass" : "fail", m_SelfClose->Calls,
             m_SelfClose->Closing ? "true" : "false");
         GetLogger()->Info(
+            "Behavior identity: status=%s attach=%s continuation=%s identity=%s befores=%u",
+            (m_AttachPassed && m_ContinuationPassed && m_IdentityPassed)
+                ? "pass" : "fail",
+            m_AttachPassed ? "true" : "false",
+            m_ContinuationPassed ? "true" : "false",
+            m_IdentityPassed ? "true" : "false", m_Identity->Befores);
+        GetLogger()->Info(
             "Behavior graph patch: status=%s reason=%s apply=%s close=%s",
             passed ? "pass" : "fail", reason,
             m_PatchPassed ? "true" : "false",
@@ -709,6 +1136,16 @@ private:
     BML::Behavior::Plan m_Plan;
     BML::Behavior::Plan m_SelfPlan;
     BML::Behavior::GraphPatch m_Patch;
+    BML::Behavior::GraphPatch m_IdentityPatch;
+    std::optional<BML::Behavior::Instance> m_Parked;
+    // What the Before callback recorded. The count returning to one proves the
+    // Loader released the callback state the Patch owned.
+    struct IdentityState {
+        std::uint32_t Befores = 0;
+        std::uint32_t Blocks = 0;
+    };
+    std::shared_ptr<IdentityState> m_Identity =
+        std::make_shared<IdentityState>();
     std::shared_ptr<Counters> m_Counters = std::make_shared<Counters>();
     struct SelfCloseState {
         std::uint32_t Calls = 0;
@@ -725,6 +1162,9 @@ private:
     CKBehaviorLink *m_Exit = nullptr;
     CKBehaviorIO *m_PatchSink = nullptr;
     CK_ID m_AnchorId = 0;
+    int m_AttachBlocks = 0;
+    int m_AttachLinks = 0;
+    bool m_ContinuationPassed = false;
     State m_State = State::Submit;
     int m_Frame = 0;
     int m_WaitUntil = 0;
@@ -735,6 +1175,8 @@ private:
     bool m_ClosePassed = false;
     bool m_ReleasePassed = false;
     bool m_SelfClosePassed = false;
+    bool m_AttachPassed = false;
+    bool m_IdentityPassed = false;
     bool m_PatchPassed = false;
     bool m_PatchClosePassed = false;
     bool m_Done = false;
