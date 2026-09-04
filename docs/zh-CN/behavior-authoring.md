@@ -1,224 +1,242 @@
 # Behavior 编写
 
-`BML/Behavior.hpp` 是原生 C++ Mod 编写 Virtools Building Block 的主要接口；
-`BML/Behavior.h` 是供其他语言和工具链使用的稳定 C seam。两者表达的是同一组
-Session、Prototype、Layout、Block、Run、Frame、Graph、Watch、Patch 和 Plan。
+`BML/Behavior.hpp` 是原生 C++ Mod 使用和修改 Virtools Behavior 的接口；
+`BML/Behavior.h` 是它下面的 C ABI。C++ 层直接表达 Virtools 对象模型，不把 wire
+结构暴露给作者：
 
-## 从 Session 开始
+```text
+Prototype -> configured Block -> Call / Task / Instance -> Frames
+```
 
-在 Mod 初始化阶段打开一个 Session。Loader 会核对调用 DLL，并把 Session 绑定到
-该 Mod 的当前 generation；可选 `ownerId` 只能用于确认身份，不能冒充另一个 Mod。
+- `Prototype` 表示一个已注册的 Building Block 实现。
+- `Block` 是可复制的配置值，此时还没有创建 `CKBehavior`。
+- `Call`、`Task`、`Instance` 各自拥有一个 live `CKBehavior`。
+- `Frames` 持有 native Execute 后复制出的结果。
+- `Node` 表示 graph snapshot 中已经存在的 Behavior。
+
+## 打开 Session
+
+在 Mod 初始化阶段打开一个 Session。Loader 会核对调用 DLL，并把它绑定到该 Mod
+的当前 generation。可选 owner id 只能确认身份，不能冒充另一个 Mod。
 
 ```cpp
-auto opened = BML::Behavior::Session::Open();
+using namespace BML::Behavior;
+
+auto opened = Session::Open();
 if (!opened) {
     GetLogger()->Error("Behavior unavailable: %s",
-                       opened.Detail().Message.c_str());
+                       opened.GetStatus().Message.c_str());
     return;
 }
 m_Behavior = std::move(opened).Value();
 ```
 
-从 Session 创建的值共同持有底层 Session。释放最初的 `Session` 值，不会让仍存活的
-Block、Run、Watch、Patch 或 Plan 失效；最后一个持有者才关闭底层 Session。
+通过 Session 创建的对象会保留自己所需的底层 Session。移动或关闭最初的
+`Session` 值不会使仍存活的 Block、run、Watch、Patch 或 Plan 失效；最后一个持有者
+才会关闭 native Session。
 
-Prototype 发现和 declared Layout 读取不会创建 live `CKBehavior`。发现结果带有
-provider generation；把它保存在交给 `Use` 的 `Prototype` 中，provider 重载后就会
-明确失败，而不是把旧定义静默绑定到新的 DLL。
+Session 跨 world reset 保持有效，run 与绑定当前 world 的 graph 对象不会。Mod
+generation 退出后，所属对象全部 stale。
 
-## 编译可复用的 Block
+## 配置 Block
 
-Builder 描述 Target、Setting stage、Pin、Local 和 Frame policy。Setting 必须分 stage，
-因为一次 `SETTINGSEDITED` callback 可能重建 native Layout，后续值必须在新 Layout 上
-重新解析。
+`Session::Use` 直接返回 `Block`。配置方法修改当前值，并返回自身以便链式调用：
 
 ```cpp
-using namespace BML::Behavior;
-
-auto compiled = m_Behavior.Use(Prototype(myPrototype, providerGeneration))
+auto block = m_Behavior.Use(prototype)
     .TargetOwner()
-    .Setting("Mode", 2)
-    .NextStage()
-    .Setting("Detail", 4)
-    .Pin("Strength", 12.0f)
-    .Frames(signals(64))
-    .Compile();
+    .Settings({{"Mode", 2}, {"Detail", 4}})
+    .Settings({{"Created Later", 9}})
+    .Pins({{"Strength", 12.0f}})
+    .Locals({{"Accumulator", 0.0f}})
+    .Frames(Signals(64));
+
+auto checked = block.Validate();       // 可选
+auto call = block.Call("Run");          // 这里也会自动完成同样的验证
 ```
 
-Builder 适合一次性调用。会重复或逐帧使用时，应在初始化阶段调用一次 `Compile()`，
-保存 immutable Block。编译后的 Block 自己持有字符串和值，复用同一份 C descriptor，
-不会为每个 Run 重新发现 declared Layout。
+每次 `Settings({...})` 调用就是一个 Setting stage。Virtools 会在一个 stage 后发送
+`SETTINGSEDITED`，BB 可以在 callback 中重建 layout，因此下一 stage 必须在新 layout
+上重新解析。所有 Setting stage 完成后才应用 Pin 和 Local。
 
-selector 必须明确：可以使用 index、name + occurrence 或 unique name。unique-name
-selector 遇到重名会失败，绝不擅自选择第一个。live Layout 的 Slot 还携带 Layout
-generation；Setting 或 native callback 改变 Layout 后，旧 Slot 会明确 stale。
+`Block` 使用 copy-on-write。副本在未修改时共享配置和已验证的 wire 表示；修改某个
+副本的 `Target`、`Settings`、`Pins`、`Locals` 或 `Frames`，只会让该副本的缓存失效。
+首次验证成功时会固定 Prototype provider generation；provider 被替换后，旧 Block
+会明确 stale，不会悄悄换成另一份 native 实现。
 
-## 根据 Behavior 选择 Run
+selector 必须明确：`At(index)`、`Named(name, occurrence)` 或 `Unique(name)`。
+unique selector 遇到重名会失败，不会选择第一个。
 
-- `Call` 只 Execute 一次；若 native continuation 仍存在，必须显式把它移动进
-  `Continue()`，并继续使用同一个 native Instance。
-- `Start` 首次 Execute 后由 Loader 在后续 game frame 推进 native continuation。
-- `Spawn` 创建 idle Instance，Mod 按需用 `Pulse` 提供 logical In。
+## 选择由谁驱动 Execute
 
-同一 Instance 每个 game frame 最多 Execute 一次。同 frame 的第二次或重入 Pulse 会
-排队；同一个 logical In 的重复 Pulse 会合并，不同 In 保留首次进入顺序。`Ready`
-只表示没有 native 或 queued continuation，不表示 BB 已经释放 Local 中的状态或从
-manager 注销；Run 会一直持有 native Instance，直到显式关闭或当前 world 结束。
+`Call`、`Task`、`Instance` 是三个独立的 move-only 类型。它们都只拥有一个 native
+Behavior，区别只是后续 native Execute 由谁推进：
 
-native Execute 的错误写入 Frame。若在安全 Execute 之前就失败，例如 selector 无效、
-类型不兼容、Layout stale 或 Prototype 不可用，则返回失败的 `Result`，不会创建 Run。
-
-## 读取 Frame
-
-每次 native Execute 都会在清除 active Out 之前形成一个 immutable Frame。Frame 包含
-sequence、game frame、native result、continuation、active Out、已复制的 Pout 值和
-diagnostic。object Pout 在对象仍 live 时签发 `BML_ObjectRef`；之后读取 Frame 不会再
-访问原 CK object。
-
-四种 policy 的准确保留语义如下：
-
-- `signals(n)`：保留首次 Execute、带 active Out 的 Execute、失败以及不再 continuation
-  的 Frame，普通容量为 `n`。
-- `eachFrame(n)`：保留每次 Execute，普通容量为 `n`。
-- `latest()`：分别保留最新 continuing Frame、最新失败和不再 continuation 的 Frame；
-  三者 sequence 不同时可能同时读到。
-- `ignore()`：忽略普通 Frame，但仍保留失败与不再 continuation 的 Frame，执行错误不会
-  静默消失。
-
-有界存储不会为新 Frame 丢掉旧 Frame。容量满时会在独立 terminal slot 写入
-`FrameQueueFull` 并停止 Run。需要完整序列时及时 Take；不需要每个中间值时使用
-`latest()` 或 `ignore()`。
-
-C 的 `TakeFrames` 使用不消费的两阶段协议：第一次只测量完整 header 与 payload；容量
-不足时只写 required count/size，不写半条 Frame，也不消费。第二次成功时按 sequence
-顺序复制完整 batch，并原子消费那一批。C++ 的 `Take()` 负责持有和解码返回数据。
-
-## 检查和观察行为图
-
-`Inspect` 返回不含 CK pointer 的 owned Logical 或 Live Graph。Node name 不是 identity，
-Live 是物理 CK graph；Logical 是作者实际编辑的 graph：显式添加的 Block 与 Link 仍然
-可见，Loader 会把 splice anchor 恢复为原始 endpoint 与 delay，并隐藏它精确记录的
-continuation Link 和 Tap/Before/After HookBlock。Redirect 是唯一的例外：它是有意改变
-控制流去向，因此 Logical 报告新的目标。如果这些由 Patch 占有的物理关系被外部改写，
-Logical inspection 会返回 `GraphChanged`，不会靠名称或图形状猜测。Node name 不是
-identity，而且可以重名；应枚举全部匹配，或请求 unique match 并显式处理歧义。
-Parameter 读取沿 stored/direct/shared source 取值，但不会求值 Parameter Operation。
-
-Watch 每个 game frame 采样一次 graph、Layout 或 value。portable CK2.1 没有可靠的
-exact parameter-data notification seam，因此公开接口只提供 sampled value change。
-读取源或调用作者 callback 失败后，Watch 进入 `Failed`、停止 polling，并保留第一个
-diagnostic，直到作者读取并关闭；它不会再静默消失。
-
-## Patch 一个 Graph，或维护一个 Plan
-
-Patch 修改一个确定的 live Graph，并持有精确恢复所需的 journal。Plan 保存针对 exact
-script name 的 symbolic intent，world 或 script instance 变化后重新建立新的 Patch
-installation。两类 Builder 有意分开：Patch 以 `Apply` 结束；Plan 还要描述 target，
-并以 `Submit` 结束。
-
-Graph edit 使用明确的 Node、Port、Link 与 Path query。重名、歧义 Path、跨 Graph
-引用、未经确认的 same-frame cycle、source conflict 和 ordering cycle 都会在 native
-mutation 前失败。关闭时会把 live graph 与 Patch after-image 对比；foreign edit 会产生
-`RevertConflict`，作者应恢复期望关系后重试，Loader 不会强行执行破坏性 inverse。
-
-Hook 与 Watch callback 在 game thread 运行。C++ thunk 会在异常跨越 C/DLL seam 前捕获
-全部异常。抛出异常的 Hook callback 报告为 `HookResult::Fault`：Loader 保留第一个 fault
-作为 Hook 诊断，停止再调用该 callback，Hook Block 则透明放行这次激活，因此 Mod 的 bug
-不会停掉宿主脚本的链。返回 `HookResult::Error` 是显式决定，会让所有 Out 保持未激活，
-callback 仍然保留安装。callback 内或其他线程都可以请求 Close：新的 callback
-admission 立即停止，graph 恢复、native teardown 与 callback Release 则在后续 game-thread
-Behavior safe point 完成；Close 永远不会等待自己所在的 callback。这一延后规则同样适用于
-Loader 自己的逆操作内部：native teardown 或 EDITED callback 若再次关闭正在拆除的 Patch，
-会得到 `Busy`；若关闭或应用另一个 Patch，该请求会排队到下一个 safe point，而不会嵌套在
-正在进行的恢复之下。
-
-## 指名 Graph 中已存在的对象
-
-`Reference` 把 `CK_ID` 或活的 `CKObject *` 转成 object reference，而不会把 pointer
-交还给作者；`Inspect(CKBehavior *)` 直接在 Mod 已经持有的 Behavior 上打开 Graph
-视图。之后 Patch 用 `UseNode` 与 `UseLink` 直接指名这些对象，不必再按名字查询，这
-正是 Mod 编辑自己创建的 Graph 时需要的方式。Plan 会拒绝 identity reference：durable
-Plan 要装进尚不存在的 script，一个针对某个 live world 发出的 reference 无法描述它们；
-在那里应改用名字或 Prototype 查询。
-
-`Apply` 之后，`Resolve` 报告 program handle 实际编译成的 live object，作者因此可以
-读回 Patch 刚刚添加的 Block：
+- `Call` 只 Execute 一次；若仍有 native continuation，把它移动到 `Continue()`，
+  Loader 会继续托管同一个 Instance。
+- `Start` 首次 Execute 后返回 `Task`，后续 native continuation 由 Loader 按 game
+  frame 推进。
+- `Spawn` 创建 idle `Instance`，Mod 用 `Pulse` 驱动。
+- `SpawnIn(graph)` 创建同样的受控 Instance，但把它作为未连接节点放入 live graph；
+  Close 时会从 graph 中移除。
 
 ```cpp
-auto edit = m_Behavior.Patch("extra-life");
-const auto counter = edit.Require("Counter_Active");
-const auto added = edit.Add(CKGUID(0x3333, 3),
-                            {pin("Amount", 1), setting("Mode", 2)});
-edit.Flow(counter.Out(), added.In());
+auto once = block.Call("Run");
+auto task = block.Start("Run", Latest());
+auto instance = block.Spawn();
+auto parked = block.SpawnIn(graph);
 
-auto applied = edit.Apply(graph);
-const auto block = applied.Value().Resolve(added);
+if (instance)
+    instance->Pulse("Reset");
 ```
 
-`Add` 在同一条语句里接收 literal，每个 literal 会推导出该 parameter 将要持有的
-Virtools 类型：任意宽度、任意符号的整数和 enumerator 变成 Int，`float` 与 `double`
-变成 Float。若某个 slot 想用同样的 bit 但不同的 Virtools 类型，写
-`Value::As(type, literal)`。
+传给 `Call`、`Start`、`Spawn` 或 `SpawnIn` 的可选 policy 只覆盖本次 run，不会修改
+Block 的默认 Frame policy。
 
-写入的值可以落到 Pin、Local 或 Target。CK2 把这种值保存在 parameter 自己的 buffer 里，
-Local 持有状态正是这种方式，所以 `local(...)` literal 就是一次写入，不需要来源。
-Setting 不是后续写入可以指名的目标：编辑一个 Setting 可能让 Block 重建整个 layout，
-因此 Setting 只能声明在同一个 program 添加的 Block 上，并随该 Block 的创建一起生效，
-Block 在那里收到一次 settings-edited 消息并重新获取一次 layout。给已经存在的 Block
-指名 Setting 会被拒绝；在同一个 Patch 里既给某个 parameter 写值又对它 `Push`
-同样会被拒绝。
+同一 Instance 在一个 game frame 内最多 Execute 一次。同 frame 或重入的 Pulse 会
+排队；同一个 logical In 的重复 admission 会合并，不同 In 保持首次 admission 顺序。
+`Ready` 只表示没有 native continuation 和 queued In，不表示 BB 已释放 Local 或
+manager 中的状态。
 
-## 在 Link 上挂代码与改道
+三种 run 都提供 `Info`、`Take`、`Layout`、`Inspect`、`Set`、`Bind`、`Settings` 和
+`Close`。只有 `Call` 提供 `Continue`；只有 `Task` 和 `Instance` 提供 `Pulse`。live
+`Slot` 带有 layout generation；Setting 或 callback 改变 layout 后，旧 Slot 会失败。
 
-三个原语覆盖了 Mod 插入他人写的链的方式：
+## 取得 Frames
 
-- `Tap(port, hook)` 在离开某个 Out 的每条 Link 上调用 callback。
-- `Before(link, hook)` 在一条 Link 内部、在该 Link 指向的 node 之前调用 callback。
-- `After(path, hook)` 在离开某个 Port 的链执行完毕后调用一次 callback。
-
-三者都是基础设施：它们的 Hook Block 与 continuation Link 不出现在 Logical 视图里，
-因此其他 Mod 检查该 Graph 时看到的仍是原作者写下的形状。
-
-`Splice(link, block)` 把一条 Link 改道穿过一个 Block，并把原目标保留在插入链的末端，
-所以多个 Patch 可以 splice 同一条 Link，由 Loader 排序。`Redirect(link, port)` 是相反
-的选择：它把 Link 送去别处，并在 Patch 打开期间丢弃原目标。同一条 Link 同时只允许一个
-Patch redirect，第二个会以 `RedirectConflict` 被拒绝，而不是悄悄丢掉一个目标。关闭
-Patch 会把 Link 放回 journal 记录的目标；如果该目标被外部改写，则报告
-`RevertConflict`。
-
-Patch 可以给任何 Behavior 追加 In、Out、Pin 或 Pout。CK2 追加这些 port 时并不检查
-variable-interface flag，Loader 也不检查：这些 flag 说明的是该 Block 自己的代码会不会
-读取新 slot，与 CK2 是否允许追加是两个不同的问题。Local 是例外：Block 按 index 把
-Local 当作私有状态使用，因此追加 Local 会以 `InterfaceUnsupported` 被拒绝。
-
-## 把 Block 停放进 Graph
-
-`Spawn` 创建由 Mod 自己代码驱动、位于任何 script 之外的 Instance。`Attach` 则把 Block
-停放进一个 live Graph，且不连接任何 Link：Graph 永远不会激活一个停放的 Block，所以写
-它的 Pin 和 pulse 它的仍然是返回的 Instance。需要存在于 script 中、随 script 保存、
-或能被按名字找到的 Block，由此仍然处在 Mod 控制之下。关闭 Instance 会把该 Block 从
-Graph 中移除。
-
-跨帧自续（`CKBR_ACTIVATENEXTFRAME`）的 Block 也不例外。Ballanced 会调度所有 active
-的 sub-behavior——无论有没有 Link 接到它——因此每次驱动执行之后，Loader 都会在 Run
-记下延续的同时清掉 Block 的原生 active flag：Instance 始终是唯一的驱动者，Graph 自己
-的调度器永远不会接管这个 Block。pulse 后的输入 IO 保持 Block 留下的样子：WaitForAll
-这类等待型 Block 会让已到达的输入跨帧保持 active，并在完成时自行清除。
+每次 native Execute 都会在清除 active Out 前形成一个 immutable Frame，记录
+sequence、game frame、native return code、continuation、active Out、已复制的 Pout
+和 diagnostic。object Pout 在对象仍 live 时签发 `ObjectRef`；之后读取它不会再次访问
+原参数或 CK object。
 
 ```cpp
-auto parked = m_Behavior.Use(textPrototype)
-    .Setting("Font", 0)
-    .Attach(graph);
-parked.Value().Pulse("In");
+Frames frames;
+frames.Reserve(16, 4096);
+
+if (auto taken = task->Take(frames)) {
+    for (Frame frame : frames) {
+        if (frame.HasOut("Done")) {
+            auto speed = frame.Pout<float>("Speed");
+            if (speed)
+                Use(speed.Value());
+        }
+    }
+}
 ```
 
-## 生命周期
+`Take()` 是方便的自动分配版本。`Take(Frames&)` 优先复用已有 header/payload 容量；
+容量足够时只调用一次 C seam，不分配 record 或 string。`Frame`、`Out`、`Pout` 都是
+所属 `Frames` 的轻量只读 view；任何对该 `Frames` 的修改都会使这些 view 失效。只有
+整个 wire batch 通过验证后，才会产生公开 view。
 
-| 事件 | Session | Run | Watch | Graph Patch | Plan |
-| --- | --- | --- | --- | --- | --- |
-| 显式 Close | 最后一个 facade owner 释放后关闭 | 立即 stale；必要时延后 native teardown | 立即 stale；callback state 在 safe point 退休 | restore pending/conflicted 时仍可读 | retirement pending/conflicted 时仍可读 |
-| world reset | 保留 | 关闭 | 关闭 | 随旧 Graph 关闭 | 保留，并在新 world 重新 reconcile |
-| Mod unload/reload | owner generation 退休，全部 handle stale | DLL 卸载前关闭 | callback 代码卸载前关闭 | 先恢复；无法立即完成时由 Loader 持有到安全点 | callback 代码卸载前退休 |
+Frame policy 的含义是：
 
-除 Close 请求外，所有操作都要求 game thread。callback 或 C descriptor 中的 borrowed
-pointer 只在本次调用期间有效，不能保存。
+- `Signals(n)`：首次 Execute、产生信号的 Execute、失败和 terminal Frame。
+- `EachFrame(n)`：每次 Execute。
+- `Latest()`：最新 continuing、failure、terminal Frame；sequence 不同时分别保留。
+- `Ignore()`：不保留普通 Frame，但 failure 与 terminal 状态仍可见。
+
+有界存储不会为新 Frame 丢弃旧 Frame。容量满时会停止 run，并在独立 terminal slot
+记录 `FrameQueueFull`。Take 后会释放普通容量。
+
+## 读取 graph
+
+`Session::Inspect` 和 run 的 `Inspect` 返回 immutable graph snapshot。
+`Graph::Root()` 返回 `Node`；Node 直接提供 `In`、`Out`、`Pin`、`Pout`、`Setting`、
+`Local` 和 `Target` port。
+
+```cpp
+auto snapshot = m_Behavior.Inspect(script);
+auto counter = snapshot->Find("Counter_Active");
+if (counter) {
+    auto value = snapshot->Read(counter->Pout("Count"));
+}
+```
+
+`Logical()` 重新读取作者视图，`Live()` 重新读取物理 CK graph。Logical 保留显式 Block
+和 Link，但会隐藏 Tap/Before/After 所属的精确 HookBlock 与 continuation Link，并把
+splice anchor 恢复为 logical endpoint。若受 Patch 管理的基础设施被外部修改，则返回
+`GraphChanged`，不会猜测结果。
+
+Node name 不是 identity。`FindAll` 返回全部匹配；`Find` 要求恰好一个。参数读取会跟随
+stored、direct、shared source，但不会为了取值执行 Parameter Operation。
+
+Watch 每个 game frame 采样一次 graph、layout 或 value：
+
+```cpp
+auto watch = snapshot->Watch(GraphChanged{}, [](const Change &change) {
+    OnGraphChanged(change);
+});
+```
+
+用 `Info()` 读取 Watch 状态。观察失败或 callback 失败后，Watch 留在 `Failed`，保留
+首个 `Status`，并停止后续 callback。
+
+## 用一个 Edit 表达 graph 修改
+
+`Edit` 是唯一的 symbolic graph transformation。同一 Edit 既能应用到一个精确
+snapshot，也能作为跨 world Plan 保留：
+
+```cpp
+Edit edit;
+auto source = edit.Require("Counter_Active");
+auto added = edit.Add(block);
+edit.Flow(source.Out(), added.In());
+
+auto patch = graph.Apply("extra-life", edit);
+auto plan = m_Behavior.Plan(
+    "extra-life", Scripts::One("Gameplay_Events"), edit);
+```
+
+`Edit::Node`、`Edit::Port`、`Edit::Link`、`Edit::Path` 是 symbolic value，与 snapshot
+的 `Node`、`Port`、`Link` 有意分开。`Use(snapshotNode)` 和 `Use(snapshotLink)` 可把
+精确 live identity 引入一次性 Patch。Plan 必须在未来 world 的新 script 中重新解析，
+因此会拒绝这些 world-bound identity。
+
+`Add(block)` 在调用时复制 Block 的 native 配置。之后修改原 Block 不会影响 Edit；
+Block 的 Frame policy 也不属于 graph authoring。`Graph::Apply` 在 mutation 前核对
+snapshot fingerprint，并返回一次性 `Patch`。`Session::Plan` 接受
+`Scripts::Each(name)` 或 `Scripts::One(name)`，返回随匹配 script 出现、reset、删除而
+reconcile 的 `Plan`。
+
+Patch 和 Plan 都用 `Info()` 与 `Close()`。Close 会执行带检查的 inverse；若有外部改动，
+返回 `RevertConflict` 并保持 handle 可读，作者修复冲突后可以再次 Close。
+
+Hook、splice、redirect、dynamic port、data relation 和 ordering 都是 `Edit` 的方法。
+Hook callback 在 game thread 执行。异常不会越过 DLL seam；Close 会立即停止新的
+callback admission，graph restore、native teardown 则在 Behavior safe point 完成，
+不会等待发起 Close 的当前 callback。
+
+## 已命名的零售 Building Block
+
+`BML/Behavior/Blocks.hpp` 汇总一组 header-only retail BB adapter：Object Load、
+Physicalize、Physics Force、Physics Impulse、Physics Wake Up、Send Message 和 2D Text。
+每个独立 header 都定义 `Options`，以及 `Make(Session, Options) -> Result<Block>`。
+
+```cpp
+#include <BML/Behavior/Blocks/Text2D.hpp>
+
+Blocks::Text2D::Options options;
+options.Text = "score";
+options.FontIndex = 2;
+
+auto made = Blocks::Text2D::Make(m_Behavior, options);
+if (made) {
+    auto text = std::move(made).Value().SpawnIn(graph);
+}
+```
+
+adapter 只保存对应 BB 的 Prototype 和参数知识。创建、lifecycle、execution、teardown
+仍与任意 `Session::Use` Block 一样经过 Behavior Runtime。新的 Native Mod 不应再使用
+legacy ExecuteBB API。
+
+## 生命周期摘要
+
+| 事件 | Session | Run | Watch/Patch | Plan |
+| --- | --- | --- | --- | --- |
+| 显式 Close | 最后一个持有者关闭 native Session | 关闭 admission；teardown 可能在 safe point 完成 | closure 或 conflict 未结束时仍可读 | installation 退出期间仍可读 |
+| world reset | 保持有效 | 关闭 | 随旧 graph 关闭 | 保持有效，在新 world reconcile |
+| Mod unload/reload | owner generation 退出 | DLL unload 前关闭 | callback 与 graph 状态在 DLL unload 前退出 | callback code unload 前退出 |
+
+除 Close 请求外，Behavior 操作都要求 game thread。不要在调用结束后保存 callback 中的
+borrowed pointer 或 C descriptor。
