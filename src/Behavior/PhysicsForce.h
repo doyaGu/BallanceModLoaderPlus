@@ -5,20 +5,11 @@
 #include <optional>
 #include <unordered_map>
 
-#include "Behavior/Runtime.h"
+#include "Behavior/Blocks.h"
 
 namespace BML::Behavior::PhysicsForce {
 
-struct Options {
-    CK3dEntity *Target = nullptr;
-    VxVector Position{0.0f, 0.0f, 0.0f};
-    CK3dEntity *PositionReference = nullptr;
-    VxVector Direction{0.0f, 0.0f, 0.0f};
-    CK3dEntity *DirectionReference = nullptr;
-    float Magnitude = 0.0f;
-};
-
-Spec Make(const Options &options);
+using Options = Blocks::PhysicsForce::Options;
 
 // Physics Force stores its native handle in a local parameter, so Create and
 // Shutdown must run on the same configured instance for each target.

@@ -318,16 +318,13 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Plan.h
         Behavior/Relations.h
         Behavior/HookBlock.h
-        Behavior/Blocks/ObjectLoad.h
-        Behavior/Blocks/Physicalize.h
-        Behavior/Blocks/PhysicsForce.h
-        Behavior/Blocks/PhysicsImpulse.h
-        Behavior/Blocks/PhysicsWakeUp.h
+        Behavior/Blocks.h
+        Behavior/Blocks/Definition.h
+        Behavior/PhysicsForce.h
         Behavior/Runtime.h
-        Behavior/Blocks/SendMessage.h
         Behavior/Sessions.h
         Behavior/Status.h
-        Behavior/Blocks/Text2D.h
+        Behavior/Text2DView.h
         Behavior/Topology.h
         Behavior/Watch.h
 )
@@ -351,15 +348,10 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Relations.cpp
         Behavior/Hook.cpp
         Behavior/HookBlock.cpp
-        Behavior/Blocks/ObjectLoad.cpp
-        Behavior/Blocks/Physicalize.cpp
-        Behavior/Blocks/PhysicsForce.cpp
-        Behavior/Blocks/PhysicsImpulse.cpp
-        Behavior/Blocks/PhysicsWakeUp.cpp
+        Behavior/PhysicsForce.cpp
         Behavior/Runtime.cpp
-        Behavior/Blocks/SendMessage.cpp
         Behavior/Sessions.cpp
-        Behavior/Blocks/Text2D.cpp
+        Behavior/Text2DView.cpp
         Behavior/Topology.cpp
         Behavior/Watch.cpp
 )

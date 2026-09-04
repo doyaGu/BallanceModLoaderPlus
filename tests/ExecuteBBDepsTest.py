@@ -25,7 +25,6 @@ def main() -> None:
     behavior = source / "Behavior"
     facade = source / "Api" / "ExecuteBB.cpp"
     block_names = {
-        "HookBlock",
         "ObjectLoad",
         "Physicalize",
         "PhysicsForce",
@@ -37,10 +36,24 @@ def main() -> None:
 
     if not facade.is_file():
         fail("ExecuteBB API facade is missing")
+    public_blocks = root / "include" / "BML" / "Behavior" / "Blocks"
     for name in block_names:
+        if not (public_blocks / f"{name}.hpp").is_file():
+            fail(f"{name} public Building Block adapter is missing")
+        for suffix in (".h", ".cpp"):
+            if (behavior / "Blocks" / f"{name}{suffix}").exists():
+                fail(
+                    f"{name} still has a duplicate private Building Block "
+                    f"implementation ({suffix})"
+                )
+    for name in ("HookBlock", "PhysicsForce", "Text2DView"):
         for suffix in (".h", ".cpp"):
             if not (behavior / f"{name}{suffix}").is_file():
-                fail(f"{name} Building Block module is missing {suffix}")
+                fail(f"{name} Behavior runtime module is missing {suffix}")
+    if not (behavior / "Blocks.h").is_file():
+        fail("the private Building Block adapter umbrella is missing")
+    if not (behavior / "Blocks" / "Definition.h").is_file():
+        fail("the private Building Block definition adapter is missing")
     for legacy in ("Specs.h", "Specs.cpp", "Forces.h", "Forces.cpp"):
         if (behavior / legacy).exists():
             fail(f"mechanism-based Behavior bucket still exists: Behavior/{legacy}")
@@ -50,7 +63,8 @@ def main() -> None:
         "Loader/ModContext.h",
         "UI/GameFontCatalog.h",
         "Api/ExecuteBBAdapter.h",
-        *(f"Behavior/{name}.h" for name in block_names),
+        "Behavior/HookBlock.h",
+        "Behavior/Blocks.h",
     }
     missing = required - includes(facade)
     if missing:
@@ -95,7 +109,12 @@ def main() -> None:
             )
 
     runtime_files = (behavior / "Runtime.h", behavior / "Runtime.cpp")
-    block_headers = {f"Behavior/{name}.h" for name in block_names}
+    block_headers = {
+        "Behavior/Blocks.h",
+        "Behavior/HookBlock.h",
+        "Behavior/PhysicsForce.h",
+        "Behavior/Text2DView.h",
+    }
     leaks = set().union(*(includes(path) for path in runtime_files)) & block_headers
     if leaks:
         fail(

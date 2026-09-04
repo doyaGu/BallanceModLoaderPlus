@@ -3,7 +3,7 @@
 #include <cstring>
 
 #include "Behavior/Patches.h"
-#include "Behavior/Blocks/Text2D.h"
+#include "Behavior/Blocks.h"
 #include "Loader/ModContext.h"
 
 namespace BML::Api {
@@ -119,7 +119,7 @@ int BML_BEHAVIOR_CALL InstallTextSplice(
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
 
-        Behavior::Text2D::Options options;
+        Behavior::Blocks::Text2D::Options options;
         options.Target = static_cast<CK2dEntity *>(rawTarget);
         options.FontIndex = context->GetGameFonts().Resolve(GameFont::Normal);
         options.Text = text;
@@ -135,7 +135,8 @@ int BML_BEHAVIOR_CALL InstallTextSplice(
                 edit, static_cast<CKBehaviorLink *>(rawLink), anchor);
         Behavior::Node node;
         if (status)
-            status = patches.Add(edit, Behavior::Text2D::Make(options), node);
+            status = patches.Add(
+                edit, Behavior::Blocks::Text2D::Make(options), node);
         if (status)
             edit.Splice(anchor, node);
         if (status)

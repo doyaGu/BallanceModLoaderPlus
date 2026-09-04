@@ -26,6 +26,7 @@
 #include "BML/Types.h"
 #include "BML/Behavior.h"
 #include "BML/Behavior.hpp"
+#include "BML/Behavior/Blocks.hpp"
 #include "BML/Imc.h"
 #include "BML/ImcWire.hpp"
 #include "BML/ImcCpp.hpp"

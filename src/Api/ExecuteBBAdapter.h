@@ -4,8 +4,8 @@
 #include <utility>
 #include <vector>
 
-#include "Behavior/Blocks/ObjectLoad.h"
-#include "Behavior/Blocks/PhysicsForce.h"
+#include "Behavior/Blocks.h"
+#include "Behavior/PhysicsForce.h"
 #include "Behavior/Runtime.h"
 
 namespace BML {
@@ -21,10 +21,10 @@ public:
     Behavior::RunResult Run(CKBeObject *owner, const Behavior::Spec &spec,
                             int input = 0);
     Behavior::RunResult SetPhysicsForce(
-        const Behavior::PhysicsForce::Options &options);
+        const Behavior::Blocks::PhysicsForce::Options &options);
     Behavior::RunResult UnsetPhysicsForce(CK3dEntity *target);
     std::pair<XObjectArray *, CKObject *> LoadObjects(
-        const Behavior::ObjectLoad::Options &options, bool rename);
+        const Behavior::Blocks::ObjectLoad::Options &options, bool rename);
     CKBehavior *AddToGraph(CKBehavior *parent, const Behavior::Spec &spec);
     void ProcessFrame();
     void Reset();

@@ -14,13 +14,9 @@
 
 #include "Behavior/HookBlock.h"
 #include "Behavior/CKEdit.h"
-#include "Behavior/Blocks/ObjectLoad.h"
-#include "Behavior/Blocks/Physicalize.h"
-#include "Behavior/Blocks/PhysicsForce.h"
-#include "Behavior/Blocks/PhysicsImpulse.h"
+#include "Behavior/Blocks.h"
+#include "Behavior/PhysicsForce.h"
 #include "Behavior/Runtime.h"
-#include "Behavior/Blocks/SendMessage.h"
-#include "Behavior/Blocks/Text2D.h"
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/physics_RT.h"
@@ -613,25 +609,28 @@ private:
     }
 
     void RunStaticChecks() {
-        Physicalize::Options physicalize;
+        Blocks::Physicalize::Options physicalize;
         physicalize.Target = m_Owner;
+        physicalize.Geometry = Blocks::Physicalize::Shape::Ball;
         CreateResult dynamic = m_Runtime.Instantiate(
-            m_Owner, Physicalize::Ball(physicalize));
+            m_Owner, Blocks::Physicalize::Make(physicalize));
         if (!dynamic) {
             Fail("dynamic-create");
         } else if (HasDuplicateSettingLocal(dynamic.Descriptor)) {
             Fail("setting-alias");
         } else {
+            physicalize.Geometry = Blocks::Physicalize::Shape::Concave;
             Status concave = m_Runtime.Reconfigure(
-                dynamic.Handle, Physicalize::Concave(physicalize));
+                dynamic.Handle, Blocks::Physicalize::Make(physicalize));
             CKBehavior *behavior = dynamic.Handle.Get();
             CKParameterIn *shape = behavior &&
                 behavior->GetInputParameterCount() == 12
                 ? behavior->GetInputParameter(11) : nullptr;
             const bool concaveLayout = concave && shape && shape->GetName() &&
                 std::string(shape->GetName()) == "concave 1";
+            physicalize.Geometry = Blocks::Physicalize::Shape::Ball;
             Status ball = m_Runtime.Reconfigure(
-                dynamic.Handle, Physicalize::Ball(physicalize));
+                dynamic.Handle, Blocks::Physicalize::Make(physicalize));
             behavior = dynamic.Handle.Get();
             CKParameterIn *position = behavior &&
                 behavior->GetInputParameterCount() == 13
@@ -647,16 +646,17 @@ private:
                 Fail("dynamic-reconfigure");
         }
 
-        ObjectLoad::Options objectLoad;
+        Blocks::ObjectLoad::Options objectLoad;
         CreateResult loader = m_Runtime.Instantiate(
-            nullptr, ObjectLoad::Make(objectLoad));
-        Text2D::Options text;
-        CreateResult text2d = m_Runtime.Instantiate(nullptr, Text2D::Make(text));
-        PhysicsImpulse::Options impulse;
+            nullptr, Blocks::ObjectLoad::Make(objectLoad));
+        Blocks::Text2D::Options text;
+        CreateResult text2d = m_Runtime.Instantiate(
+            nullptr, Blocks::Text2D::Make(text));
+        Blocks::PhysicsImpulse::Options impulse;
         impulse.Target = m_Owner;
         impulse.DirectionAsPoint = TRUE;
         CreateResult physicsImpulse = m_Runtime.Instantiate(
-            m_Owner, PhysicsImpulse::Make(impulse));
+            m_Owner, Blocks::PhysicsImpulse::Make(impulse));
         CKBehavior *impulseBehavior = physicsImpulse.Handle.Get();
         CKParameterIn *secondPosition = impulseBehavior
             ? impulseBehavior->GetInputParameter(2) : nullptr;
@@ -2462,7 +2462,8 @@ private:
                 return;
             }
             CreateResult sender = m_Runtime.Instantiate(
-                m_Owner, SendMessage::Make(kProbeMessageName, m_Owner));
+                m_Owner, Blocks::SendMessage::Make(
+                    {kProbeMessageName, m_Owner}));
             if (!sender) {
                 Fail("message-sender-create");
                 m_State = State::MessageCleanup;
@@ -2737,14 +2738,16 @@ private:
     }
 
     void PhysicalizeBody() {
-        Physicalize::Options options;
+        Blocks::Physicalize::Options options;
         options.Target = m_Owner;
         options.EnableCollision = FALSE;
         options.LinearDamping = 0.1f;
         options.RotationalDamping = 0.1f;
 
+        options.Geometry = Blocks::Physicalize::Shape::Ball;
+        options.Radius = 2.0f;
         CreateResult created = m_Runtime.Instantiate(
-            m_Owner, Physicalize::Ball(options, VxVector(), 2.0f));
+            m_Owner, Blocks::Physicalize::Make(options));
         if (!created) {
             Fail("physics-force-physicalize-create");
             m_State = State::LifecycleFixture;
@@ -3444,14 +3447,14 @@ private:
     }
 
     Spec RuntimeText(CK2dEntity *display, const char *text) const {
-        Text2D::Options options;
+        Blocks::Text2D::Options options;
         options.Target = display;
         options.FontIndex = m_VisualFont;
         options.Text = text;
         options.Alignment = 5;
         options.Margin = VxRect(8.0f, 8.0f, 8.0f, 8.0f);
         options.Flags = 1;
-        Spec spec = Text2D::Make(options);
+        Spec spec = Blocks::Text2D::Make(options);
         spec.Frames(FrameRetention::EachFrame(4));
         return spec;
     }

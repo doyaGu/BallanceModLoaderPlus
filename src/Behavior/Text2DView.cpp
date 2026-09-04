@@ -1,4 +1,4 @@
-#include "Behavior/Blocks/Text2D.h"
+#include "Behavior/Text2DView.h"
 
 #include "BML/Guids/Interface.h"
 #include <string>
@@ -7,7 +7,7 @@
 #include "Behavior/Layout.h"
 #include "Behavior/Parameter.h"
 
-namespace BML::Behavior::Text2D {
+namespace BML::Behavior::Text2DView {
 namespace {
 
 // The retail prototype's parameter order. Nothing outside this file needs it.
@@ -48,38 +48,9 @@ T Read(CKParameter *parameter, T fallback) {
 
 } // namespace
 
-Spec Make(const Options &options) {
-    Spec spec(VT_INTERFACE_2DTEXT);
-    spec.Target(CKPGUID_2DENTITY, options.Target)
-        .Input(Slot::At(SlotKind::InputParameter, FontPin, CKPGUID_FONT),
-               Value::From(CKPGUID_FONT, options.FontIndex))
-        .Input(Slot::At(SlotKind::InputParameter, TextPin, CKPGUID_STRING),
-               Value::String(options.Text))
-        .Input(Slot::At(SlotKind::InputParameter, AlignmentPin, CKPGUID_ALIGNMENT),
-               Value::From(CKPGUID_ALIGNMENT, options.Alignment))
-        .Input(Slot::At(SlotKind::InputParameter, MarginPin, CKPGUID_RECT),
-               Value::From(CKPGUID_RECT, options.Margin))
-        .Input(Slot::At(SlotKind::InputParameter, OffsetPin, CKPGUID_2DVECTOR),
-               Value::From(CKPGUID_2DVECTOR, options.Offset))
-        .Input(Slot::At(SlotKind::InputParameter, IndentationPin, CKPGUID_2DVECTOR),
-               Value::From(CKPGUID_2DVECTOR, options.ParagraphIndentation))
-        .Input(Slot::At(SlotKind::InputParameter, BackgroundPin,
-                        CKPGUID_MATERIAL),
-               Parameter::Binding::Object(
-                   CKPGUID_MATERIAL, options.BackgroundMaterial))
-        .Input(Slot::At(SlotKind::InputParameter, CaretSizePin, CKPGUID_PERCENTAGE),
-               Value::From(CKPGUID_PERCENTAGE, options.CaretSize))
-        .Input(Slot::At(SlotKind::InputParameter, CaretMaterialPin,
-                        CKPGUID_MATERIAL),
-               Parameter::Binding::Object(
-                   CKPGUID_MATERIAL, options.CaretMaterial))
-        .Setting(Slot::At(SlotKind::Setting, kFlagsSetting, CKPGUID_TEXTPROPERTIES),
-                 Value::From(CKPGUID_TEXTPROPERTIES, options.Flags));
-    return spec;
-}
-
 CKBehavior *Add(Runtime &runtime, CKBehavior *graph, const Options &options) {
-    const AttachResult added = runtime.AddToGraph(graph, Make(options));
+    const AttachResult added = runtime.AddToGraph(
+        graph, Blocks::Text2D::Make(options));
     return added ? added.Block : nullptr;
 }
 
@@ -152,4 +123,4 @@ void View::Draw() {
     m_Block->Execute(0);
 }
 
-} // namespace BML::Behavior::Text2D
+} // namespace BML::Behavior::Text2DView

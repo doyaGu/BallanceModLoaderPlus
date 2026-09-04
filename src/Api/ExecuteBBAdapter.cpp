@@ -19,7 +19,7 @@ Behavior::RunResult ExecuteBBAdapter::Run(
 }
 
 Behavior::RunResult ExecuteBBAdapter::SetPhysicsForce(
-    const Behavior::PhysicsForce::Options &options) {
+    const Behavior::Blocks::PhysicsForce::Options &options) {
     return m_PhysicsForce.Set(options);
 }
 
@@ -28,10 +28,10 @@ Behavior::RunResult ExecuteBBAdapter::UnsetPhysicsForce(CK3dEntity *target) {
 }
 
 std::pair<XObjectArray *, CKObject *> ExecuteBBAdapter::LoadObjects(
-    const Behavior::ObjectLoad::Options &options, bool rename) {
+    const Behavior::Blocks::ObjectLoad::Options &options, bool rename) {
     m_LastObjectLoad.Reset();
     Behavior::CreateResult created = m_Runtime.Instantiate(
-        nullptr, Behavior::ObjectLoad::Make(options));
+        nullptr, Behavior::Blocks::ObjectLoad::Make(options));
     if (!created)
         return {nullptr, nullptr};
     Behavior::RunResult executed = m_Runtime.Pulse(

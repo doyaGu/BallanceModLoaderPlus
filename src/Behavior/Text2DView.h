@@ -1,27 +1,11 @@
-#ifndef BML_BEHAVIOR_TEXT2D_H
-#define BML_BEHAVIOR_TEXT2D_H
+#ifndef BML_BEHAVIOR_TEXT2DVIEW_H
+#define BML_BEHAVIOR_TEXT2DVIEW_H
 
-#include <string>
+#include "Behavior/Blocks.h"
 
-#include "Behavior/Runtime.h"
+namespace BML::Behavior::Text2DView {
 
-namespace BML::Behavior::Text2D {
-
-struct Options {
-    CK2dEntity *Target = nullptr;
-    int FontIndex = 0;
-    std::string Text;
-    int Alignment = 0;
-    VxRect Margin{2.0f, 2.0f, 2.0f, 2.0f};
-    Vx2DVector Offset{0.0f, 0.0f};
-    Vx2DVector ParagraphIndentation{0.0f, 0.0f};
-    CKMaterial *BackgroundMaterial = nullptr;
-    float CaretSize = 0.1f;
-    CKMaterial *CaretMaterial = nullptr;
-    int Flags = 1;
-};
-
-Spec Make(const Options &options);
+using Options = Blocks::Text2D::Options;
 
 // Adds a 2D Text Block to a live graph and hands back the Block itself, which
 // is what a caller that keeps drawing the text holds on to.
@@ -67,6 +51,6 @@ private:
     CKBehavior *m_Block = nullptr;
 };
 
-} // namespace BML::Behavior::Text2D
+} // namespace BML::Behavior::Text2DView
 
-#endif // BML_BEHAVIOR_TEXT2D_H
+#endif // BML_BEHAVIOR_TEXT2DVIEW_H

@@ -6,8 +6,7 @@
 #include "BML/Guids/Narratives.h"
 
 #include "Loader/ModContext.h"
-#include "Behavior/Blocks/ObjectLoad.h"
-#include "Behavior/Blocks/Physicalize.h"
+#include "Behavior/Blocks.h"
 
 using namespace ScriptHelper;
 
@@ -150,7 +149,7 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     }
 
     for (BallTypeInfo &info: m_BallTypes) {
-        BML::Behavior::ObjectLoad::Options definition;
+        BML::Behavior::Blocks::ObjectLoad::Options definition;
         definition.File = path + info.m_File;
         XObjectArray *objects = context->ExecuteBB().LoadObjects(definition, false).first;
         if (!objects) {
@@ -492,11 +491,14 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
         CKParameter *ballName = CreateParamString(graph, "Pin", info.m_ObjName.c_str());
         sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(ballName);
         CKBehavior *newPhy;
-        BML::Behavior::Physicalize::Options definition;
-        BML::Behavior::Spec spec = info.m_Radius > 0
-            ? BML::Behavior::Physicalize::Ball(
-                definition, VxVector(0.0f, 0.0f, 0.0f), info.m_Radius)
-            : BML::Behavior::Physicalize::Convex(definition);
+        BML::Behavior::Blocks::Physicalize::Options definition;
+        if (info.m_Radius > 0) {
+            definition.Geometry =
+                BML::Behavior::Blocks::Physicalize::Shape::Ball;
+            definition.Radius = info.m_Radius;
+        }
+        BML::Behavior::Spec spec =
+            BML::Behavior::Blocks::Physicalize::Make(definition);
         spec.TargetShared(CKPGUID_3DENTITY, physicalize->GetTargetParameter());
         for (int i = 0; i < 11; ++i) {
             spec.Input(BML::Behavior::Slot::At(

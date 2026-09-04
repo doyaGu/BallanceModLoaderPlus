@@ -1,4 +1,4 @@
-#include "Behavior/Blocks/PhysicsForce.h"
+#include "Behavior/PhysicsForce.h"
 
 #include <utility>
 #include <vector>
@@ -17,24 +17,6 @@ bool ContainsId(const CK_ID *ids, int count, CK_ID id) {
 }
 
 } // namespace
-
-Spec Make(const Options &options) {
-    Spec spec(PHYSICS_RT_PHYSICSFORCE);
-    spec.Target(CKPGUID_3DENTITY, options.Target)
-        .Input(Slot::At(SlotKind::InputParameter, 0, CKPGUID_VECTOR),
-               Value::From(CKPGUID_VECTOR, options.Position))
-        .Input(Slot::At(SlotKind::InputParameter, 1, CKPGUID_3DENTITY),
-               Parameter::Binding::Object(
-                   CKPGUID_3DENTITY, options.PositionReference))
-        .Input(Slot::At(SlotKind::InputParameter, 2, CKPGUID_VECTOR),
-               Value::From(CKPGUID_VECTOR, options.Direction))
-        .Input(Slot::At(SlotKind::InputParameter, 3, CKPGUID_3DENTITY),
-               Parameter::Binding::Object(
-                   CKPGUID_3DENTITY, options.DirectionReference))
-        .Input(Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
-               Value::From(CKPGUID_FLOAT, options.Magnitude));
-    return spec;
-}
 
 Sessions::StoredOptions Sessions::Capture(const Options &options) const {
     StoredOptions stored;
@@ -118,7 +100,8 @@ RunResult Sessions::Create(const StoredOptions &stored) {
                 RunState::Failed, CKBR_OK, {}};
     }
 
-    CreateResult created = m_Runtime.Instantiate(options.Target, Make(options));
+    CreateResult created = m_Runtime.Instantiate(
+        options.Target, Blocks::PhysicsForce::Make(options));
     if (!created)
         return {std::move(created.Detail), RunState::Failed, CKBR_BEHAVIORERROR, {}};
     RunResult result = m_Runtime.Pulse(
@@ -184,7 +167,7 @@ RunResult Sessions::Set(const Options &options) {
                 RunState::Failed, CKBR_OK, {}};
     }
     Status reconfigured = m_Runtime.Reconfigure(
-        existing->second.Block, Make(pendingOptions));
+        existing->second.Block, Blocks::PhysicsForce::Make(pendingOptions));
     if (!reconfigured)
         return {std::move(reconfigured), RunState::Failed, CKBR_PARAMETERERROR, {}};
     return Pending("Pending Physics Force updated before native controller creation.");
@@ -233,7 +216,7 @@ RunResult Sessions::Clear(CK3dEntity *target) {
     }
     Options cancellation;
     Status cancelled = m_Runtime.Reconfigure(
-        it->second.Block, Make(cancellation));
+        it->second.Block, Blocks::PhysicsForce::Make(cancellation));
     if (!cancelled)
         return {std::move(cancelled), RunState::Failed, CKBR_PARAMETERERROR, {}};
     it->second.Stopping = true;
@@ -327,7 +310,8 @@ void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         session.Replacement.reset();
         if (session.Block.Get() && !HasNativeController(session)) {
             Options cancellation;
-            (void) m_Runtime.Reconfigure(session.Block, Make(cancellation));
+            (void) m_Runtime.Reconfigure(
+                session.Block, Blocks::PhysicsForce::Make(cancellation));
         }
         session.RetireAfterFrame = m_PhysicsFrame + 1;
         m_Retiring.push_back(std::move(session));

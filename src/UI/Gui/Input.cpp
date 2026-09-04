@@ -1,7 +1,7 @@
 #include "BML/Gui/Input.h"
 
 #include "Loader/ModContext.h"
-#include "Behavior/Blocks/Text2D.h"
+#include "Behavior/Text2DView.h"
 
 using namespace BGui;
 
@@ -10,7 +10,7 @@ CKMaterial *g_Caret = nullptr;
 namespace {
 // The caret is drawn by the same Block the Label owns, so the field asks the
 // Text2D module for the Slots it needs instead of numbering the parameters.
-BML::Behavior::Text2D::View Text(CKBehavior *block) {
+BML::Behavior::Text2DView::View Text(CKBehavior *block) {
     return {BML_GetCKContext(), block};
 }
 } // namespace
