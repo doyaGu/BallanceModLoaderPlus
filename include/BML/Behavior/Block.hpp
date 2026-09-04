@@ -3,6 +3,13 @@
 
 #include "BML/Behavior/Run.hpp"
 
+#include <initializer_list>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <string_view>
+#include <vector>
+
 namespace BML::Behavior {
 
 class Block {

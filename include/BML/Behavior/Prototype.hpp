@@ -3,6 +3,13 @@
 
 #include "BML/Behavior/Value.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
 namespace BML::Behavior {
 
 struct Prototype {
@@ -76,16 +83,6 @@ struct Slot {
     std::optional<ValueKind> Value;
     std::string Name;
     std::string TypeName;
-
-    [[nodiscard]] BML_BehaviorSlotRef Wire() const noexcept {
-        BML_BehaviorSlotRef slot{};
-        slot.StructSize = sizeof(slot);
-        slot.Kind = static_cast<std::uint32_t>(Kind);
-        slot.LayoutGeneration = Generation;
-        slot.Type = Detail::WireGuid(Type);
-        slot.Slot = Selector::At(Index).Wire();
-        return slot;
-    }
 };
 
 struct Layout {

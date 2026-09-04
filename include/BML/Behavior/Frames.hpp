@@ -3,6 +3,17 @@
 
 #include "BML/Behavior/Value.hpp"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <iterator>
+#include <limits>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
 namespace BML::Behavior {
 
 struct FramePolicy {

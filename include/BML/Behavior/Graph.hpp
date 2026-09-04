@@ -4,6 +4,14 @@
 #include "BML/Behavior/Frames.hpp"
 #include "BML/Behavior/Prototype.hpp"
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 namespace BML::Behavior {
 
 enum class View : std::uint32_t {
@@ -118,24 +126,24 @@ struct Link {
 };
 
 inline Port Node::Select(SlotKind kind, Selector slot) const {
-    const BML_BehaviorSelector wanted = slot.Wire();
+    const Port *match = nullptr;
     for (const Port &port : Ports) {
-        if (port.Kind != kind)
+        if (port.Kind != kind ||
+            !slot.Matches(port.Index, port.Occurrence, port.Name))
             continue;
-        const bool match = wanted.Kind == BML_BEHAVIOR_SELECTOR_ONLY ||
-            (wanted.Kind == BML_BEHAVIOR_SELECTOR_INDEX &&
-             wanted.Index == port.Index) ||
-            ((wanted.Kind == BML_BEHAVIOR_SELECTOR_NAME ||
-              wanted.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME) &&
-             std::string_view(wanted.Name.Data, wanted.Name.Length) == port.Name &&
-             (wanted.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME ||
-              wanted.Occurrence == port.Occurrence));
-        if (match) {
-            Port selected = port;
-            selected.Object = Object;
-            selected.Slot = std::move(slot);
-            return selected;
+        if (match && slot.RequiresUniqueMatch()) {
+            match = nullptr;
+            break;
         }
+        match = &port;
+        if (!slot.RequiresUniqueMatch())
+            break;
+    }
+    if (match) {
+        Port selected = *match;
+        selected.Object = Object;
+        selected.Slot = std::move(slot);
+        return selected;
     }
     Port selected;
     selected.Object = Object;

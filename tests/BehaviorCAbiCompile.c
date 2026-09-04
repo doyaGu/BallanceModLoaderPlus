@@ -89,8 +89,14 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
                         sizeof(BML_BehaviorEditOrder) == 24u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 44u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditPrototypeOffset,
+                        offsetof(BML_BehaviorEditStep, Prototype) == 40u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditGenerationOffset,
+                        offsetof(BML_BehaviorEditStep, Prototype) +
+                            offsetof(BML_BehaviorPrototypeRef, Generation) ==
+                            56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 252u);
+                        sizeof(BML_BehaviorEditStep) == 272u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,
@@ -129,8 +135,14 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
                         sizeof(BML_BehaviorEditOrder) == 40u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 56u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditPrototypeOffset,
+                        offsetof(BML_BehaviorEditStep, Prototype) == 48u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorEditGenerationOffset,
+                        offsetof(BML_BehaviorEditStep, Prototype) +
+                            offsetof(BML_BehaviorPrototypeRef, Generation) ==
+                            64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 296u);
+                        sizeof(BML_BehaviorEditStep) == 312u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,

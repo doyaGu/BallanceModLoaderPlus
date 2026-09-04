@@ -3,6 +3,11 @@
 
 #include "BML/Behavior/Edit.hpp"
 
+#include <memory>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 namespace BML::Behavior {
 
 class Session {

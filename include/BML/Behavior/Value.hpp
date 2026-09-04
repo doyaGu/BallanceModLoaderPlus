@@ -5,34 +5,28 @@
 #include "BML/TypeConvert.h"
 #include "CKAll.h"
 
-#include <algorithm>
-#include <atomic>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <functional>
-#include <initializer_list>
-#include <iterator>
-#include <limits>
-#include <memory>
-#include <new>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
-#include <variant>
-#include <vector>
 
 namespace BML::Behavior {
 
 
 using ObjectRef = BML_ObjectRef;
 
+class Selector;
+class Value;
+class Frame;
+struct Node;
+struct Slot;
+
 namespace Detail {
 
 class Run;
+struct Wire;
 
 inline BML_BehaviorGuid WireGuid(CKGUID guid) noexcept {
     return {guid.d1, guid.d2};
@@ -233,21 +227,31 @@ public:
         return Selector(name);
     }
 
-    [[nodiscard]] BML_BehaviorSelector Wire() const noexcept {
-        BML_BehaviorSelector selector{};
-        selector.StructSize = sizeof(selector);
-        selector.Kind = m_Kind;
-        selector.Index = m_Index;
-        selector.Occurrence = m_Occurrence;
-        selector.Name = {m_Name.data(), static_cast<std::uint32_t>(m_Name.size())};
-        return selector;
+private:
+    [[nodiscard]] bool Matches(std::int32_t index, std::int32_t occurrence,
+                               std::string_view name) const noexcept {
+        if (m_Kind == BML_BEHAVIOR_SELECTOR_ONLY)
+            return true;
+        if (m_Kind == BML_BEHAVIOR_SELECTOR_INDEX)
+            return m_Index == index;
+        if (m_Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME)
+            return m_Name == name;
+        return m_Kind == BML_BEHAVIOR_SELECTOR_NAME &&
+            m_Name == name && m_Occurrence == occurrence;
+    }
+    [[nodiscard]] bool RequiresUniqueMatch() const noexcept {
+        return m_Kind == BML_BEHAVIOR_SELECTOR_ONLY ||
+            m_Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME;
     }
 
-private:
     std::uint32_t m_Kind = BML_BEHAVIOR_SELECTOR_ONLY;
     std::int32_t m_Index = 0;
     std::int32_t m_Occurrence = 0;
     std::string m_Name;
+
+    friend struct Detail::Wire;
+    friend class Frame;
+    friend struct Node;
 };
 
 inline Selector At(std::int32_t index) { return Selector::At(index); }
@@ -354,17 +358,10 @@ public:
 
     [[nodiscard]] CKGUID Type() const noexcept { return m_Type; }
     [[nodiscard]] ValueKind Kind() const noexcept { return m_Kind; }
-
-    [[nodiscard]] BML_BehaviorValue Wire() const noexcept {
-        BML_BehaviorValue value{};
-        value.StructSize = sizeof(value);
-        value.Kind = static_cast<std::uint32_t>(m_Kind);
-        value.Type = Detail::WireGuid(m_Type);
-        value.Data = m_Data;
-        if (m_Kind == ValueKind::Utf8)
-            value.Data.Utf8 = {m_Text.data(),
-                               static_cast<std::uint32_t>(m_Text.size())};
-        return value;
+    [[nodiscard]] bool IsNull() const noexcept {
+        return m_Kind == ValueKind::Object &&
+            m_Data.Object.Domain == 0 && m_Data.Object.Slot == 0 &&
+            m_Data.Object.Generation == 0;
     }
 
 private:
@@ -374,6 +371,8 @@ private:
     ValueKind m_Kind = ValueKind::Int32;
     BML_BehaviorValueData m_Data{};
     std::string m_Text;
+
+    friend struct Detail::Wire;
 };
 
 struct SlotValue {

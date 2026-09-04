@@ -3,9 +3,79 @@
 
 #include "BML/Behavior/Graph.hpp"
 
+#include <algorithm>
+#include <functional>
+#include <new>
+#include <utility>
+
 namespace BML::Behavior {
 
 namespace Detail {
+
+struct Wire {
+    [[nodiscard]] static BML_BehaviorSelector From(
+        const Behavior::Selector &source) noexcept {
+        BML_BehaviorSelector selector{};
+        selector.StructSize = sizeof(selector);
+        selector.Kind = source.m_Kind;
+        selector.Index = source.m_Index;
+        selector.Occurrence = source.m_Occurrence;
+        selector.Name = {
+            source.m_Name.data(),
+            static_cast<std::uint32_t>(source.m_Name.size())};
+        return selector;
+    }
+
+    [[nodiscard]] static BML_BehaviorValue From(
+        const Behavior::Value &source) noexcept {
+        BML_BehaviorValue value{};
+        value.StructSize = sizeof(value);
+        value.Kind = static_cast<std::uint32_t>(source.m_Kind);
+        value.Type = WireGuid(source.m_Type);
+        value.Data = source.m_Data;
+        if (source.m_Kind == ValueKind::Utf8) {
+            value.Data.Utf8 = {
+                source.m_Text.data(),
+                static_cast<std::uint32_t>(source.m_Text.size())};
+        }
+        return value;
+    }
+
+    [[nodiscard]] static BML_BehaviorSlotRef From(
+        const Behavior::Slot &source) noexcept {
+        BML_BehaviorSlotRef slot{};
+        slot.StructSize = sizeof(slot);
+        slot.Kind = static_cast<std::uint32_t>(source.Kind);
+        slot.LayoutGeneration = source.Generation;
+        slot.Type = WireGuid(source.Type);
+        slot.Slot = From(Selector::At(source.Index));
+        return slot;
+    }
+};
+
+struct PortKey {
+    std::uint64_t Node = 0;
+    std::uint32_t Kind = 0;
+    std::int32_t Index = 0;
+
+    friend bool operator==(const PortKey &left,
+                           const PortKey &right) noexcept {
+        return left.Node == right.Node && left.Kind == right.Kind &&
+            left.Index == right.Index;
+    }
+};
+
+struct PortKeyHash {
+    std::size_t operator()(const PortKey &key) const noexcept {
+        const std::size_t node = std::hash<std::uint64_t>{}(key.Node);
+        const std::uint64_t slot =
+            (static_cast<std::uint64_t>(key.Kind) << 32u) |
+            static_cast<std::uint32_t>(key.Index);
+        const std::size_t port = std::hash<std::uint64_t>{}(slot);
+        return node ^ (port + static_cast<std::size_t>(0x9e3779b9u) +
+                       (node << 6u) + (node >> 2u));
+    }
+};
 
 inline BML_BehaviorString Text(std::string_view value) noexcept {
     return {value.data(), static_cast<std::uint32_t>(value.size())};
@@ -116,6 +186,15 @@ inline bool TextAt(const std::vector<std::uint8_t> &payload,
 
 inline bool KnownSlotKind(std::uint32_t kind) noexcept {
     return kind >= BML_BEHAVIOR_SLOT_IN && kind <= BML_BEHAVIOR_SLOT_TARGET;
+}
+
+inline bool KnownTruth(std::uint32_t value) noexcept {
+    return value == BML_BEHAVIOR_FALSE || value == BML_BEHAVIOR_TRUE ||
+        value == BML_BEHAVIOR_UNKNOWN;
+}
+
+inline bool KnownFlag(std::uint32_t value) noexcept {
+    return value == 0 || value == 1;
 }
 
 inline bool KnownValueKind(std::uint32_t kind) noexcept {
@@ -618,22 +697,12 @@ inline Status Frame::GetStatus(std::size_t index) const {
     return status;
 }
 inline bool Frame::HasOut(const Selector &selector) const {
-    const BML_BehaviorSelector wanted = selector.Wire();
     bool found = false;
     for (std::size_t index = 0; index < OutCount(); ++index) {
         const Out out = GetOut(index);
-        const bool match = wanted.Kind == BML_BEHAVIOR_SELECTOR_ONLY ||
-            (wanted.Kind == BML_BEHAVIOR_SELECTOR_INDEX &&
-             wanted.Index == out.Index()) ||
-            ((wanted.Kind == BML_BEHAVIOR_SELECTOR_NAME ||
-              wanted.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME) &&
-             std::string_view(wanted.Name.Data, wanted.Name.Length) == out.Name() &&
-             (wanted.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME ||
-              wanted.Occurrence == out.Occurrence()));
-        if (!match)
+        if (!selector.Matches(out.Index(), out.Occurrence(), out.Name()))
             continue;
-        if (wanted.Kind != BML_BEHAVIOR_SELECTOR_ONLY &&
-            wanted.Kind != BML_BEHAVIOR_SELECTOR_UNIQUE_NAME)
+        if (!selector.RequiresUniqueMatch())
             return true;
         if (found)
             return false;
@@ -643,22 +712,13 @@ inline bool Frame::HasOut(const Selector &selector) const {
 }
 template <class T>
 inline Result<T> Frame::Pout(const Selector &selector) const {
-    const BML_BehaviorSelector wanted = selector.Wire();
     std::optional<std::size_t> found;
     for (std::size_t index = 0; index < PoutCount(); ++index) {
         auto value = GetPout(index);
-        const bool match = wanted.Kind == BML_BEHAVIOR_SELECTOR_ONLY ||
-            (wanted.Kind == BML_BEHAVIOR_SELECTOR_INDEX &&
-             wanted.Index == value.Index()) ||
-            ((wanted.Kind == BML_BEHAVIOR_SELECTOR_NAME ||
-              wanted.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME) &&
-             std::string_view(wanted.Name.Data, wanted.Name.Length) == value.Name() &&
-             (wanted.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME ||
-              wanted.Occurrence == value.Occurrence()));
-        if (!match)
+        if (!selector.Matches(
+                value.Index(), value.Occurrence(), value.Name()))
             continue;
-        if (wanted.Kind != BML_BEHAVIOR_SELECTOR_ONLY &&
-            wanted.Kind != BML_BEHAVIOR_SELECTOR_UNIQUE_NAME)
+        if (!selector.RequiresUniqueMatch())
             return value.Get<T>();
         if (found) {
             Status status;
@@ -787,7 +847,7 @@ public:
     [[nodiscard]] Result<PulseResult> Pulse(const Selector &input) const {
         if (!*this)
             return Result<PulseResult>::Failure(BML_ERROR_INVALID_HANDLE);
-        const BML_BehaviorSelector selector = input.Wire();
+        const BML_BehaviorSelector selector = Wire::From(input);
         BML_BehaviorRunInfo info = EmptyRunInfo();
         BML_BehaviorStatus status = EmptyStatus();
         std::uint32_t admission = 0;

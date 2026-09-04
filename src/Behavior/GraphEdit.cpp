@@ -73,7 +73,7 @@ Port GraphEdit::Exit(std::string name) const {
 
 Node GraphEdit::RequireOne(NodeQuery query) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, std::move(query), CKGUID(), {}, false, {}});
+    m_Nodes.push_back({node, std::move(query), PrototypeRef{}, {}, false, {}});
     return node;
 }
 
@@ -108,8 +108,12 @@ PathRef GraphEdit::Follow(Port start) {
 }
 
 Node GraphEdit::Add(CKGUID prototype) {
+    return Add(PrototypeRef{prototype, 0});
+}
+
+Node GraphEdit::Add(PrototypeRef prototype) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, {}, prototype, {}, true});
+    m_Nodes.push_back({node, {}, std::move(prototype), {}, true});
     return node;
 }
 
@@ -259,7 +263,7 @@ Status GraphEdit::Validate() const {
     };
 
     for (const EditNode &node : m_Nodes) {
-        if (node.Added && !node.Prototype.IsValid())
+        if (node.Added && !node.Prototype.Guid.IsValid())
             return Failure(Error::PrototypeNotFound,
                            "An added Block requires a Prototype GUID.");
         if (node.Added && !node.Anchor.IsNull())

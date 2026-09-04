@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Behavior/Edit.h"
+#include "Behavior/PrototypeCatalog.h"
 
 namespace BML::Behavior {
 
@@ -35,7 +36,9 @@ struct PathRef {
 };
 
 // Canonical graph-edit intent. Handles are symbolic identities within this
-// value; no CK object, NativeRef, Layout, or provider generation is retained.
+// value; no CK object, NativeRef, or Layout is retained. An added Block keeps
+// the Prototype provider generation selected by its author so later Plan
+// installations cannot silently switch implementations.
 // Compile resolves the complete query before the live Edit mutates a graph.
 // UseNode and UseLink are the one exception: they anchor on an ObjectRef the
 // author already holds, which makes the intent single-world. UsesIdentity
@@ -58,7 +61,7 @@ public:
         // Creates one Block. Settings are part of what the Block is, so they
         // arrive with the Prototype and are written through the Block's own
         // creation lifecycle rather than poked in afterwards.
-        virtual Status Add(Edit &edit, CKGUID prototype,
+        virtual Status Add(Edit &edit, PrototypeRef prototype,
                            const SettingStages &settings,
                            Node &out) = 0;
         virtual Status Tap(Edit &edit, Port source,
@@ -86,6 +89,7 @@ public:
     Link UseLink(const ObjectRef &link);
     PathRef Follow(Port start);
     Node Add(CKGUID prototype);
+    Node Add(PrototypeRef prototype);
     // Declares the value of one Setting of a Block this intent adds. A Setting
     // can rebuild the layout of a block, so only an added Block accepts one.
     Status Setting(Node node, Slot slot, Value value,
@@ -134,7 +138,7 @@ private:
     struct EditNode {
         Node Handle;
         NodeQuery Query;
-        CKGUID Prototype = CKGUID();
+        PrototypeRef Prototype;
         SettingStages Settings;
         bool Added = false;
         // Set instead of Query when the author named the Node by identity.

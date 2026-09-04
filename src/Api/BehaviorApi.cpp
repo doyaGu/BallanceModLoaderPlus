@@ -2661,7 +2661,17 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         std::string name;
         if (!ReadString(step.Name, name))
             return InvalidValue("A Behavior node name is not valid UTF-8 text.");
-        NodeQuery query{std::move(name), Guid(step.Prototype)};
+        const CKGUID prototype = Guid(step.Prototype.Prototype);
+        if ((prototype.IsValid() || step.Prototype.Generation != 0) &&
+            step.Prototype.StructSize < sizeof(step.Prototype)) {
+            return InvalidValue(
+                "A required Behavior node has an unsupported Prototype reference.");
+        }
+        if (step.Prototype.Generation != 0) {
+            return InvalidValue(
+                "A required Behavior node matches a Prototype GUID, not a provider generation.");
+        }
+        NodeQuery query{std::move(name), prototype};
         if (!query) {
             return InvalidValue(
                 "A required Behavior node needs a name or a Prototype.");
@@ -2711,12 +2721,17 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_ADD_BLOCK: {
-        const CKGUID prototype = Guid(step.Prototype);
+        if (step.Prototype.StructSize < sizeof(step.Prototype)) {
+            return InvalidValue(
+                "An added Behavior Block has an unsupported Prototype reference.");
+        }
+        const CKGUID prototype = Guid(step.Prototype.Prototype);
         if (!prototype.IsValid())
             return InvalidValue("An added Behavior Block needs a Prototype.");
         defined.Kind = EditHandleKind::Node;
         defined.Added = true;
-        defined.NodeValue = edit.Add(prototype);
+        defined.NodeValue = edit.Add(
+            PrototypeRef{prototype, step.Prototype.Generation});
         break;
     }
     case BML_BEHAVIOR_EDIT_APPEND_SLOT: {

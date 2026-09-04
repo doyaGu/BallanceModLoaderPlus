@@ -896,8 +896,9 @@ typedef struct BML_BehaviorEditStep {
     int32_t Delay;
     // Node name to require, or the name of an appended slot.
     BML_BehaviorString Name;
-    // Prototype to require or to create.
-    BML_BehaviorGuid Prototype;
+    // Prototype to require or to create. REQUIRE_NODE matches only the GUID;
+    // ADD_BLOCK also pins the provider Generation when it is nonzero.
+    BML_BehaviorPrototypeRef Prototype;
     // Virtools parameter type of an appended Pin, Pout, or Local.
     BML_BehaviorGuid Type;
     BML_BehaviorPortRef Source;

@@ -94,7 +94,7 @@ private:
                  Edit &out, GraphModel &base) override;
     Status UseNode(Edit &edit, const ObjectRef &node, Node &out) override;
     Status UseLink(Edit &edit, const ObjectRef &link, Link &out) override;
-    Status Add(Edit &edit, CKGUID prototype,
+    Status Add(Edit &edit, PrototypeRef prototype,
                const GraphEdit::SettingStages &settings,
                Node &out) override;
     Status Tap(Edit &edit, Port source,

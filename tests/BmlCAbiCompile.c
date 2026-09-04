@@ -71,7 +71,7 @@ BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,
 BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
                  sizeof(BML_BehaviorPortRef) == 44u);
 BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
-                 sizeof(BML_BehaviorEditStep) == 252u);
+                 sizeof(BML_BehaviorEditStep) == 272u);
 BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
                  sizeof(BML_BehaviorPlanSpec) == 36u);
 BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,
@@ -104,7 +104,7 @@ BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,
 BML_C_ABI_ASSERT(BmlBehaviorPortRefSize,
                  sizeof(BML_BehaviorPortRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorEditStepSize,
-                 sizeof(BML_BehaviorEditStep) == 296u);
+                 sizeof(BML_BehaviorEditStep) == 312u);
 BML_C_ABI_ASSERT(BmlBehaviorPlanSpecSize,
                  sizeof(BML_BehaviorPlanSpec) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorPatchSpecSize,

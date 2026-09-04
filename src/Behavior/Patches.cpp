@@ -298,10 +298,11 @@ Status Patches::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
                   "A Behavior Link disappeared during compilation.");
 }
 
-Status Patches::Add(Edit &edit, CKGUID prototype,
+Status Patches::Add(Edit &edit, PrototypeRef prototype,
                     const GraphEdit::SettingStages &settings,
                     Node &out) {
-    Spec block(prototype);
+    Spec block(prototype.Guid);
+    block.PrototypeGeneration(prototype.Generation);
     bool first = true;
     for (const GraphEdit::Settings &stage : settings) {
         if (!first)

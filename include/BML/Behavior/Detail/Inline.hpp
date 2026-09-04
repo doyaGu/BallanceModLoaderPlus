@@ -3,6 +3,14 @@
 
 #include "BML/Behavior/Session.hpp"
 
+#include <functional>
+#include <limits>
+#include <memory>
+#include <new>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+
 namespace BML::Behavior {
 
 namespace Detail {
@@ -305,7 +313,7 @@ inline std::string SelectorLabel(const BML_BehaviorSelector &selector) {
 
 inline Status CheckSetting(const Behavior::Layout &layout,
                            const SlotValue &binding) {
-    const BML_BehaviorSelector selector = binding.Slot.Wire();
+    const BML_BehaviorSelector selector = Wire::From(binding.Slot);
     std::vector<const Behavior::Slot *> matches;
     for (const Behavior::Slot &slot : layout.Slots) {
         if (slot.Kind != SlotKind::Setting)
@@ -413,8 +421,8 @@ inline CompiledBlock::CompiledBlock(BlockDefinition definition)
         for (const SlotValue &binding : stage) {
             BML_BehaviorBinding wire{};
             wire.StructSize = sizeof(wire);
-            wire.Slot = binding.Slot.Wire();
-            wire.Value = binding.Data.Wire();
+            wire.Slot = Wire::From(binding.Slot);
+            wire.Value = Wire::From(binding.Data);
             bindings.push_back(wire);
         }
         SettingBindings.push_back(std::move(bindings));
@@ -432,8 +440,8 @@ inline CompiledBlock::CompiledBlock(BlockDefinition definition)
         for (const SlotValue &binding : from) {
             BML_BehaviorBinding wire{};
             wire.StructSize = sizeof(wire);
-            wire.Slot = binding.Slot.Wire();
-            wire.Value = binding.Data.Wire();
+            wire.Slot = Wire::From(binding.Slot);
+            wire.Value = Wire::From(binding.Data);
             to.push_back(wire);
         }
     };
@@ -722,6 +730,11 @@ inline Result<Graph> Graph::Decode(
     graph.m_Generation = wire.Generation;
     graph.m_Fingerprint = wire.Fingerprint;
     graph.m_Nodes.reserve(wire.NodeCount);
+    std::unordered_set<std::uint64_t> nodes;
+    std::unordered_map<Detail::PortKey,
+                       std::pair<std::size_t, std::size_t>,
+                       Detail::PortKeyHash> ports;
+    nodes.reserve(wire.NodeCount);
     for (std::uint32_t index = 0; index < wire.NodeCount; ++index) {
         BML_BehaviorGraphNode record{};
         if (!Detail::RecordAt(payload, wire.NodeOffset, index, record) ||
@@ -735,6 +748,9 @@ inline Result<Graph> Graph::Decode(
         node.Prototype = Detail::NativeGuid(record.Prototype);
         node.Priority = record.Priority;
         node.Active = record.Active != 0;
+        if (!node.Id || !nodes.emplace(node.Id).second ||
+            !Detail::KnownFlag(record.Active))
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
         if (!Detail::TextAt(payload, record.Name.Offset,
                             record.Name.Length, node.Name))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
@@ -748,7 +764,10 @@ inline Result<Graph> Graph::Decode(
             Port port;
             port.Object = node.Object;
             port.Node = portRecord.Node;
-            if (!Detail::KnownSlotKind(portRecord.Kind))
+            if (portRecord.Node != node.Id || portRecord.Index < 0 ||
+                portRecord.Occurrence < 0 ||
+                !Detail::KnownSlotKind(portRecord.Kind) ||
+                !Detail::KnownFlag(portRecord.Active))
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
             port.Kind = static_cast<SlotKind>(portRecord.Kind);
             port.Slot = Selector::At(portRecord.Index);
@@ -756,40 +775,48 @@ inline Result<Graph> Graph::Decode(
             port.Occurrence = portRecord.Occurrence;
             port.Active = portRecord.Active != 0;
             if (!Detail::TextAt(payload, portRecord.Name.Offset,
-                                portRecord.Name.Length, port.Name))
+                                 portRecord.Name.Length, port.Name))
+                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            if (!ports.emplace(
+                    Detail::PortKey{
+                        node.Id, portRecord.Kind, portRecord.Index},
+                    std::make_pair(graph.m_Nodes.size(),
+                                   node.Ports.size())).second)
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
             node.Ports.push_back(std::move(port));
         }
         graph.m_Nodes.push_back(std::move(node));
     }
-    const auto objectFor = [&](std::uint64_t id) {
-        for (const Node &node : graph.m_Nodes) {
-            if (node.Id == id)
-                return node.Object;
-        }
-        return BML_ObjectRef{};
+    const auto endpoint = [&](std::uint64_t nodeId, std::uint32_t kind,
+                              std::int32_t index, Port &out) {
+        const auto port = ports.find(
+            Detail::PortKey{nodeId, kind, index});
+        if (port == ports.end())
+            return false;
+        out = graph.m_Nodes[port->second.first].Ports[port->second.second];
+        return true;
     };
     graph.m_Links.reserve(wire.LinkCount);
+    std::unordered_set<std::uint64_t> links;
+    links.reserve(wire.LinkCount);
     for (std::uint32_t index = 0; index < wire.LinkCount; ++index) {
         BML_BehaviorGraphLink record{};
         if (!Detail::RecordAt(payload, wire.LinkOffset, index, record))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        if (!Detail::KnownSlotKind(record.SourceKind) ||
-            !Detail::KnownSlotKind(record.TargetKind))
+        if (!record.Id || !links.emplace(record.Id).second ||
+            record.SourceIndex < 0 || record.TargetIndex < 0 ||
+            !Detail::KnownSlotKind(record.SourceKind) ||
+            !Detail::KnownSlotKind(record.TargetKind) ||
+            !Detail::KnownTruth(record.Pending))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
         Link link;
         link.Id = record.Id;
         link.Object = record.Object;
-        link.Source.Object = objectFor(record.SourceNode);
-        link.Source.Node = record.SourceNode;
-        link.Source.Kind = static_cast<SlotKind>(record.SourceKind);
-        link.Source.Slot = Selector::At(record.SourceIndex);
-        link.Source.Index = record.SourceIndex;
-        link.Target.Object = objectFor(record.TargetNode);
-        link.Target.Node = record.TargetNode;
-        link.Target.Kind = static_cast<SlotKind>(record.TargetKind);
-        link.Target.Slot = Selector::At(record.TargetIndex);
-        link.Target.Index = record.TargetIndex;
+        if (!endpoint(record.SourceNode, record.SourceKind,
+                      record.SourceIndex, link.Source) ||
+            !endpoint(record.TargetNode, record.TargetKind,
+                      record.TargetIndex, link.Target))
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
         link.InitialDelay = record.InitialDelay;
         link.RemainingDelay = record.RemainingDelay;
         link.Pending = static_cast<TruthValue>(record.Pending);
@@ -851,8 +878,8 @@ inline Result<std::uint64_t> Detail::Run::Set(
     const Behavior::Slot &slot, const Behavior::Value &value) const {
     if (!*this || !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Set))
         return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
-    BML_BehaviorSlotRef target = slot.Wire();
-    const BML_BehaviorValue wire = value.Wire();
+    BML_BehaviorSlotRef target = Wire::From(slot);
+    const BML_BehaviorValue wire = Wire::From(value);
     BML_BehaviorStatus status = EmptyStatus();
     std::uint64_t generation = 0;
     const int code = m_Session->Api->Set(
@@ -871,8 +898,8 @@ inline Result<std::uint64_t> Detail::Run::Set(
     target.StructSize = sizeof(target);
     target.Kind = static_cast<std::uint32_t>(kind);
     target.Type = Detail::WireGuid(value.Type());
-    target.Slot = slot.Wire();
-    const BML_BehaviorValue wire = value.Wire();
+    target.Slot = Wire::From(slot);
+    const BML_BehaviorValue wire = Wire::From(value);
     BML_BehaviorStatus status = EmptyStatus();
     std::uint64_t generation = 0;
     const int code = m_Session->Api->Set(
@@ -887,12 +914,12 @@ inline Result<std::uint64_t> Detail::Run::Bind(
     Relation relation) const {
     if (!*this || !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Bind))
         return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
-    BML_BehaviorSlotRef target = slot.Wire();
+    BML_BehaviorSlotRef target = Wire::From(slot);
     BML_BehaviorValueRef value{};
     value.StructSize = sizeof(value);
     value.Kind = static_cast<std::uint32_t>(source.Kind);
     value.Node = source.Object;
-    value.Slot = source.Slot.Wire();
+    value.Slot = Wire::From(source.Slot);
     BML_BehaviorStatus status = EmptyStatus();
     std::uint64_t generation = 0;
     const int code = m_Session->Api->Bind(
@@ -914,8 +941,8 @@ inline Result<std::uint64_t> Detail::Run::Settings(
         for (const SlotValue &value : values) {
             BML_BehaviorBinding wire{};
             wire.StructSize = sizeof(wire);
-            wire.Slot = value.Slot.Wire();
-            wire.Value = value.Data.Wire();
+            wire.Slot = Wire::From(value.Slot);
+            wire.Value = Wire::From(value.Data);
             bindings.push_back(wire);
         }
         BML_BehaviorSettingStage stage{};
@@ -949,7 +976,7 @@ inline Result<ObservedValue> Graph::Read(const Port &port) const {
         !port.Object.Domain)
         return Result<ObservedValue>::Failure(BML_ERROR_INVALID_HANDLE);
     try {
-        BML_BehaviorSelector selector = port.Slot.Wire();
+        BML_BehaviorSelector selector = Detail::Wire::From(port.Slot);
         BML_BehaviorGraphValue wire{};
         wire.StructSize = sizeof(wire);
         BML_BehaviorStatus status = Detail::EmptyStatus();
@@ -1070,7 +1097,7 @@ Result<Behavior::Watch> Graph::Watch(
     spec.View = static_cast<std::uint32_t>(m_View);
     spec.Node = change.Value.Object;
     spec.SlotKind = static_cast<std::uint32_t>(change.Value.Kind);
-    spec.Slot = change.Value.Slot.Wire();
+    spec.Slot = Detail::Wire::From(change.Value.Slot);
     spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
     return OpenWatch(spec, std::forward<Function>(callback));
 }
@@ -1127,7 +1154,7 @@ Result<Handle> Block::Open(Function function, ObjectRef owner,
         BML_BehaviorSelector selector{};
         const BML_BehaviorSelector *selectorPointer = nullptr;
         if (input) {
-            selector = input->Wire();
+            selector = Detail::Wire::From(*input);
             selectorPointer = &selector;
         }
         BML_BehaviorRun run = nullptr;
@@ -1268,6 +1295,15 @@ inline Result<Instance> Block::SpawnIn(
 }
 
 inline void Edit::Encode(WireProgram &out) const {
+    const auto encodePort = [](const Port &source) {
+        BML_BehaviorPortRef port{};
+        port.StructSize = sizeof(port);
+        port.Handle = source.Handle;
+        port.Kind = source.Kind;
+        port.Type = Detail::WireGuid(source.Type);
+        port.Slot = Detail::Wire::From(source.Slot);
+        return port;
+    };
     std::size_t orderCount = 0;
     for (const Step &step : m_Steps)
         orderCount += step.Ordering.size();
@@ -1299,12 +1335,14 @@ inline void Edit::Encode(WireProgram &out) const {
         wire.SlotKind = step.SlotKind;
         wire.Delay = step.Delay;
         wire.Name = Detail::Text(step.Name);
-        wire.Prototype = Detail::WireGuid(step.Prototype);
+        wire.Prototype.StructSize = sizeof(wire.Prototype);
+        wire.Prototype.Prototype = Detail::WireGuid(step.PrototypeRef.Id);
+        wire.Prototype.Generation = step.PrototypeRef.Generation;
         wire.Type = Detail::WireGuid(step.Type);
-        wire.Source = step.Source.Wire();
-        wire.Sink = step.Sink.Wire();
+        wire.Source = encodePort(step.Source);
+        wire.Sink = encodePort(step.Sink);
         if (step.Value)
-            wire.Value = step.Value->Wire();
+            wire.Value = Detail::Wire::From(*step.Value);
         wire.Hook = step.Hook ? &step.Hook->Function : nullptr;
         wire.Object = step.Object;
         wire.OrderCount = static_cast<std::uint32_t>(step.Ordering.size());
@@ -1336,7 +1374,8 @@ inline Result<void> Edit::Validate(
             const bool liveReference =
                 step.Kind == BML_BEHAVIOR_EDIT_USE_NODE ||
                 step.Kind == BML_BEHAVIOR_EDIT_USE_LINK ||
-                (step.Value && step.Value->Kind() == ValueKind::Object);
+                (step.Value && step.Value->Kind() == ValueKind::Object &&
+                 !step.Value->IsNull());
             if (!liveReference)
                 continue;
             Status status;

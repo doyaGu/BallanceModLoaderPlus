@@ -3,6 +3,9 @@
 
 #include "BML/Behavior/Detail/Wire.hpp"
 
+#include <initializer_list>
+#include <utility>
+
 namespace BML::Behavior {
 
 class Call {

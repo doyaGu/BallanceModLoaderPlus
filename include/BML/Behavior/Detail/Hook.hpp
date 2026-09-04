@@ -3,6 +3,13 @@
 
 #include "BML/Behavior/Block.hpp"
 
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <type_traits>
+#include <utility>
+
 namespace BML::Behavior {
 
 namespace Detail {

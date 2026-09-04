@@ -3,6 +3,15 @@
 
 #include "BML/Behavior/Detail/Hook.hpp"
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
 namespace BML::Behavior {
 
 class Hook {
@@ -217,16 +226,6 @@ public:
         std::uint32_t Kind = 0;
         CKGUID Type{0, 0};
         Behavior::Selector Slot;
-
-        [[nodiscard]] BML_BehaviorPortRef Wire() const noexcept {
-            BML_BehaviorPortRef port{};
-            port.StructSize = sizeof(port);
-            port.Handle = Handle;
-            port.Kind = Kind;
-            port.Type = Detail::WireGuid(Type);
-            port.Slot = Slot.Wire();
-            return port;
-        }
     };
 
     // A node of the matched script, either required or added by the program.
@@ -340,12 +339,12 @@ public:
         std::string_view name, CKGUID prototype = CKGUID(0, 0)) {
         Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_NODE);
         step.Name.assign(name);
-        step.Prototype = prototype;
+        step.PrototypeRef = Prototype(prototype);
         return Node{step.Result};
     }
     [[nodiscard]] Node Require(CKGUID prototype) {
         Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_NODE);
-        step.Prototype = prototype;
+        step.PrototypeRef = Prototype(prototype);
         return Node{step.Result};
     }
     // Names a node this Mod already holds a reference to, instead of searching
@@ -396,7 +395,7 @@ public:
                 m_Status = compiled.GetStatus();
             }
             Step &failed = Define(BML_BEHAVIOR_EDIT_ADD_BLOCK);
-            failed.Prototype = fallback.Id;
+            failed.PrototypeRef = fallback;
             return Node{failed.Result};
         }
         if (m_Session && m_Session != block.m_Session && m_Code == BML_OK) {
@@ -411,7 +410,7 @@ public:
 
         const Detail::BlockDefinition definition = compiled.Value()->Definition;
         Step &step = Define(BML_BEHAVIOR_EDIT_ADD_BLOCK);
-        step.Prototype = definition.PrototypeRef.Id;
+        step.PrototypeRef = definition.PrototypeRef;
         const Node node{step.Result};
         m_Blocks.push_back(definition);
 
@@ -584,7 +583,7 @@ private:
         std::uint32_t SlotKind = 0;
         std::int32_t Delay = 0;
         std::string Name;
-        CKGUID Prototype{0, 0};
+        Behavior::Prototype PrototypeRef;
         CKGUID Type{0, 0};
         Port Source;
         Port Sink;

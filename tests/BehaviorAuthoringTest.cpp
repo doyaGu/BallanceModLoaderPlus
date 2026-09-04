@@ -28,7 +28,7 @@ struct CapturedStep {
     std::uint32_t SlotKind = 0;
     std::int32_t Delay = 0;
     std::string Name;
-    BML_BehaviorGuid Prototype{};
+    BML_BehaviorPrototypeRef Prototype{};
     BML_BehaviorGuid Type{};
     BML_BehaviorPortRef Source{};
     BML_BehaviorPortRef Sink{};
@@ -68,6 +68,12 @@ struct FakeState {
     bool MalformedLayout = false;
     bool NullRun = false;
     bool DuplicateGraphNames = false;
+    bool MissingGraphEndpoint = false;
+    bool DuplicateGraphNode = false;
+    bool DuplicateGraphPort = false;
+    bool DuplicateGraphLink = false;
+    bool InvalidGraphPortFlag = false;
+    bool InvalidGraphOccurrence = false;
     bool NullInterface = false;
     std::uint32_t PrototypeMatch = 0;
     std::string PrototypeName;
@@ -555,13 +561,15 @@ int BML_BEHAVIOR_CALL ReadLiveLayout(
 std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
                                        BML_BehaviorGraph &graph) {
     const std::uint32_t nodeOffset = 0;
-    const std::uint32_t nodeCount = g_State.DuplicateGraphNames ? 2u : 1u;
+    const std::uint32_t nodeCount =
+        g_State.DuplicateGraphNames || g_State.DuplicateGraphNode ? 2u : 1u;
+    const std::uint32_t linkCount = g_State.DuplicateGraphLink ? 2u : 1u;
     const std::uint32_t linkOffset =
         nodeCount * sizeof(BML_BehaviorGraphNode);
     const std::uint32_t portOffset = linkOffset +
-        sizeof(BML_BehaviorGraphLink);
+        linkCount * sizeof(BML_BehaviorGraphLink);
     std::vector<std::uint8_t> payload(
-        portOffset + sizeof(BML_BehaviorGraphPort));
+        portOffset + 2 * sizeof(BML_BehaviorGraphPort));
 
     BML_BehaviorGraphNode node{};
     node.StructSize = sizeof(node);
@@ -571,7 +579,7 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     node.Priority = 7;
     node.Active = 1;
     node.PortOffset = portOffset;
-    node.PortCount = 1;
+    node.PortCount = 2;
     node.Name.Offset = static_cast<std::uint32_t>(payload.size());
     node.Name.Length = 4;
     payload.insert(payload.end(), {'R', 'o', 'o', 't'});
@@ -586,11 +594,23 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     port.Name.Length = 3;
     payload.insert(payload.end(), {'R', 'u', 'n'});
 
+    BML_BehaviorGraphPort output{};
+    output.StructSize = sizeof(output);
+    output.Node = node.Id;
+    output.Kind = g_State.DuplicateGraphPort
+        ? BML_BEHAVIOR_SLOT_IN : BML_BEHAVIOR_SLOT_OUT;
+    output.Index = 0;
+    output.Occurrence = g_State.InvalidGraphOccurrence ? -1 : 0;
+    output.Active = g_State.InvalidGraphPortFlag ? 2u : 1u;
+    output.Name.Offset = static_cast<std::uint32_t>(payload.size());
+    output.Name.Length = 4;
+    payload.insert(payload.end(), {'D', 'o', 'n', 'e'});
+
     BML_BehaviorGraphLink link{};
     link.StructSize = sizeof(link);
     link.Id = 201;
     link.Object = {31, 32, 33};
-    link.SourceNode = node.Id;
+    link.SourceNode = g_State.MissingGraphEndpoint ? 999u : node.Id;
     link.SourceKind = BML_BEHAVIOR_SLOT_OUT;
     link.SourceIndex = 0;
     link.TargetNode = node.Id;
@@ -601,9 +621,9 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     link.Pending = BML_BEHAVIOR_UNKNOWN;
 
     std::memcpy(payload.data() + nodeOffset, &node, sizeof(node));
-    if (g_State.DuplicateGraphNames) {
+    if (nodeCount == 2) {
         BML_BehaviorGraphNode duplicate = node;
-        duplicate.Id = 102;
+        duplicate.Id = g_State.DuplicateGraphNode ? node.Id : 102;
         duplicate.Object = {root.Domain, root.Slot + 1, root.Generation};
         duplicate.PortOffset = 0;
         duplicate.PortCount = 0;
@@ -611,7 +631,13 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
                     sizeof(duplicate));
     }
     std::memcpy(payload.data() + linkOffset, &link, sizeof(link));
+    if (g_State.DuplicateGraphLink) {
+        std::memcpy(payload.data() + linkOffset + sizeof(link),
+                    &link, sizeof(link));
+    }
     std::memcpy(payload.data() + portOffset, &port, sizeof(port));
+    std::memcpy(payload.data() + portOffset + sizeof(port),
+                &output, sizeof(output));
 
     graph = {};
     graph.StructSize = sizeof(graph);
@@ -622,7 +648,7 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     graph.NodeOffset = nodeOffset;
     graph.NodeCount = nodeCount;
     graph.LinkOffset = linkOffset;
-    graph.LinkCount = 1;
+    graph.LinkCount = linkCount;
     return payload;
 }
 
@@ -1596,13 +1622,18 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     ASSERT_TRUE(foundNode);
     EXPECT_EQ(foundNode->Prototype, CKGUID(21, 22));
     EXPECT_TRUE(foundNode->Active);
-    ASSERT_EQ(foundNode->Ports.size(), 1u);
+    ASSERT_EQ(foundNode->Ports.size(), 2u);
     EXPECT_EQ(foundNode->Ports[0].Name, "Run");
     EXPECT_TRUE(foundNode->Ports[0].Active);
     ASSERT_EQ(graph.Links().size(), 1u);
     EXPECT_EQ(graph.Links()[0].Source.Node, 101u);
     EXPECT_EQ(graph.Links()[0].Source.Kind, SlotKind::Out);
+    EXPECT_EQ(graph.Links()[0].Source.Name, "Done");
+    EXPECT_EQ(graph.Links()[0].Source.Occurrence, 0);
+    EXPECT_TRUE(graph.Links()[0].Source.Active);
     EXPECT_EQ(graph.Links()[0].Target.Kind, SlotKind::In);
+    EXPECT_EQ(graph.Links()[0].Target.Name, "Run");
+    EXPECT_TRUE(graph.Links()[0].Target.Active);
     EXPECT_EQ(graph.Links()[0].InitialDelay, 2);
     EXPECT_EQ(graph.Links()[0].RemainingDelay, 1);
     EXPECT_EQ(graph.Links()[0].Pending, TruthValue::Unknown);
@@ -1611,6 +1642,44 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     ASSERT_TRUE(live);
     EXPECT_EQ(live.Value().Mode(), View::Live);
     EXPECT_EQ(g_State.GraphView, BML_BEHAVIOR_GRAPH_LIVE);
+}
+
+TEST(BehaviorAuthoring, PreservesSelectorCardinalityOnSnapshotNodes) {
+    Node node;
+    node.Id = 101;
+    node.Object = {41, 42, 43};
+    node.Ports = {
+        {{}, node.Id, SlotKind::Pin, Selector::At(0), 0, 0, false, "Value"},
+        {{}, node.Id, SlotKind::Pin, Selector::At(1), 1, 1, false, "Value"},
+    };
+
+    EXPECT_EQ(node.Pin(0).Index, 0);
+    EXPECT_EQ(node.Pin(Named("Value", 1)).Index, 1);
+    EXPECT_EQ(node.Pin("Value").Index, -1);
+    EXPECT_EQ(node.Pin().Index, -1);
+}
+
+TEST(BehaviorAuthoring, RejectsIncoherentGraphSnapshots) {
+    const std::vector<bool FakeState::*> faults = {
+        &FakeState::MissingGraphEndpoint,
+        &FakeState::DuplicateGraphNode,
+        &FakeState::DuplicateGraphPort,
+        &FakeState::DuplicateGraphLink,
+        &FakeState::InvalidGraphPortFlag,
+        &FakeState::InvalidGraphOccurrence,
+    };
+    for (std::size_t index = 0; index < faults.size(); ++index) {
+        SCOPED_TRACE(index);
+        g_State = {};
+        g_State.*faults[index] = true;
+        auto opened = Session::Open();
+        ASSERT_TRUE(opened);
+        Session session = std::move(opened).Value();
+
+        auto inspected = session.Inspect({41, 42, 43});
+        EXPECT_FALSE(inspected);
+        EXPECT_EQ(inspected.Code(), BML_ERROR_MALFORMED_MESSAGE);
+    }
 }
 
 TEST(BehaviorAuthoring, RequiresExplicitChoiceForDuplicateNodeNames) {
@@ -1843,7 +1912,7 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
         EXPECT_EQ(require.Kind,
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_NODE));
         EXPECT_EQ(require.Name, "Counter_Active");
-        EXPECT_EQ(require.Prototype.Data1, 1u);
+        EXPECT_EQ(require.Prototype.Prototype.Data1, 1u);
         EXPECT_EQ(require.Result, BML_BEHAVIOR_EDIT_GRAPH + 1u);
 
         const CapturedStep &append = g_State.PlanSteps[2];
@@ -2093,6 +2162,8 @@ TEST(BehaviorAuthoring, CreatesABlockAndItsLiteralsInOneStatement) {
     ASSERT_EQ(g_State.PatchSteps.size(), 5u);
     EXPECT_EQ(g_State.PatchSteps[0].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
+    EXPECT_EQ(g_State.PatchSteps[0].Prototype.Generation,
+              g_State.ProviderGeneration);
 
     const CapturedStep &caption = g_State.PatchSteps[1];
     EXPECT_EQ(caption.Kind,
@@ -2158,6 +2229,10 @@ TEST(BehaviorAuthoring, ReusesOneEditAndKeepsItsBlockSnapshotAndSettingStages) {
     ASSERT_EQ(g_State.PlanSteps.size(), g_State.PatchSteps.size());
     EXPECT_EQ(g_State.PatchSteps[0].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
+    EXPECT_EQ(g_State.PatchSteps[0].Prototype.Generation,
+              g_State.ProviderGeneration);
+    EXPECT_EQ(g_State.PlanSteps[0].Prototype.Generation,
+              g_State.ProviderGeneration);
     EXPECT_EQ(g_State.PatchSteps[1].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SETTING));
     EXPECT_EQ(g_State.PatchSteps[1].Flags & BML_BEHAVIOR_EDIT_SETTING_STAGE,
@@ -2177,6 +2252,40 @@ TEST(BehaviorAuthoring, ReusesOneEditAndKeepsItsBlockSnapshotAndSettingStages) {
                   g_State.PatchSteps[index].SinkSlot);
     }
     EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+    EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
+}
+
+TEST(BehaviorAuthoring, KeepsTypedNullValuesInDurablePlans) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    Block block = session.Use(CKGUID(3, 4));
+    block.NullTarget(CKPGUID_OBJECT);
+    Edit edit;
+    const auto added = edit.Add(block);
+    edit.Bind(added.Pin("Optional", CKPGUID_OBJECT),
+              Value::Null(CKPGUID_OBJECT));
+
+    auto submitted = session.Plan(
+        "typed-null", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    Plan plan = std::move(submitted).Value();
+
+    ASSERT_EQ(g_State.PlanSteps.size(), 3u);
+    EXPECT_EQ(g_State.PlanSteps[0].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
+    for (std::size_t index = 1; index < g_State.PlanSteps.size(); ++index) {
+        const CapturedStep &binding = g_State.PlanSteps[index];
+        EXPECT_EQ(binding.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_BIND_VALUE));
+        EXPECT_EQ(binding.Value.Kind,
+                  static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_OBJECT));
+        EXPECT_EQ(binding.Value.Data.Object.Domain, 0u);
+        EXPECT_EQ(binding.Value.Data.Object.Slot, 0u);
+        EXPECT_EQ(binding.Value.Data.Object.Generation, 0u);
+    }
     EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
 }
 

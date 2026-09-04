@@ -124,7 +124,7 @@ public:
         return {};
     }
 
-    Status Add(Edit &edit, CKGUID prototype,
+    Status Add(Edit &edit, PrototypeRef prototype,
                const GraphEdit::SettingStages &settings,
                Node &out) override {
         ++Adds;
@@ -132,7 +132,9 @@ public:
         // Spec is a world-bound value, so this world-free fake only records
         // what the intent asked for.
         AddedSettings = settings;
-        out = edit.Add(Spec(prototype), Shape("In", "Out", AddedFlags));
+        out = edit.Add(
+            Spec(prototype.Guid).PrototypeGeneration(prototype.Generation),
+            Shape("In", "Out", AddedFlags));
         return {};
     }
 
@@ -170,7 +172,7 @@ public:
     std::vector<ObjectRef> UsedNodes;
     std::vector<ObjectRef> UsedLinks;
     std::vector<Link> InterposedLinks;
-    std::vector<CKGUID> AddedPrototypes;
+    std::vector<PrototypeRef> AddedPrototypes;
 };
 
 GraphEdit SpliceEdit(std::optional<int> delay = std::nullopt) {
@@ -196,12 +198,26 @@ TEST(BehaviorGraphEdit, ResolvesSemanticNodesAndAnExactLinkBeforeAdding) {
     EXPECT_EQ(compiler.UsedLinks,
               (std::vector<ObjectRef>{Ref(201)}));
     ASSERT_EQ(compiler.AddedPrototypes.size(), 1u);
-    EXPECT_EQ(compiler.AddedPrototypes.front(), CKGUID(0x3333, 3));
+    EXPECT_EQ(compiler.AddedPrototypes.front().Guid, CKGUID(0x3333, 3));
+    EXPECT_EQ(compiler.AddedPrototypes.front().Generation, 0u);
 
     CheckedEdit checked;
     ASSERT_TRUE(edit.Validate(compiler.Base, checked));
     ASSERT_EQ(checked.Splices.size(), 1u);
     EXPECT_EQ(checked.Splices.front().Target.Anchor, Ref(201));
+}
+
+TEST(BehaviorGraphEdit, KeepsTheSelectedProviderForEveryInstallation) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    (void) plan.Add(PrototypeRef{CKGUID(0x3333, 3), 91});
+
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "provider"}, compiler.Base.Root, compiler, edit));
+    ASSERT_EQ(compiler.AddedPrototypes.size(), 1u);
+    EXPECT_EQ(compiler.AddedPrototypes.front().Guid, CKGUID(0x3333, 3));
+    EXPECT_EQ(compiler.AddedPrototypes.front().Generation, 91u);
 }
 
 TEST(BehaviorGraphEdit, AcceptsTheOnlyPortSelectorFromThePublicDsl) {

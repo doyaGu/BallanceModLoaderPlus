@@ -884,7 +884,8 @@ private:
         steps[0].StructSize = sizeof(steps[0]);
         steps[0].Kind = BML_BEHAVIOR_EDIT_ADD_BLOCK;
         steps[0].Result = 2;
-        steps[0].Prototype = {
+        steps[0].Prototype.StructSize = sizeof(steps[0].Prototype);
+        steps[0].Prototype.Prototype = {
             static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d1),
             static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d2)};
 
