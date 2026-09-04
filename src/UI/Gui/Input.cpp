@@ -1,16 +1,24 @@
 #include "BML/Gui/Input.h"
 
-#include "BML/ScriptHelper.h"
 #include "Loader/ModContext.h"
+#include "Behavior/Text2D.h"
 
 using namespace BGui;
 
 CKMaterial *g_Caret = nullptr;
 
+namespace {
+// The caret is drawn by the same Block the Label owns, so the field asks the
+// Text2D module for the Slots it needs instead of numbering the parameters.
+BML::Behavior::Text2D::Live Text(CKBehavior *block) {
+    return {BML_GetCKContext(), block};
+}
+} // namespace
+
 Input::Input(const char *name) : Label(name) {
     m_2dEntity->UseSourceRect();
-    ScriptHelper::SetParamObject(m_Text2d->GetInputParameter(8)->GetRealSource(), ::g_Caret);
-    ScriptHelper::SetParamString(m_Text2d->GetInputParameter(1)->GetRealSource(), "\b");
+    Text(m_Text2d).SetCaretMaterial(::g_Caret);
+    Text(m_Text2d).SetText("\b");
 }
 
 void Input::InvokeCallback(CKDWORD key) {
@@ -80,7 +88,7 @@ void Input::OnCharTyped(CKDWORD key) {
         InvokeCallback(key);
         std::string str = m_Text;
         str.insert(m_Caret, 1, '\b');
-        ScriptHelper::SetParamString(m_Text2d->GetInputParameter(1)->GetRealSource(), str.c_str());
+        Text(m_Text2d).SetText(str.c_str());
     }
 }
 
@@ -91,7 +99,7 @@ const char *Input::GetText() {
 void Input::SetText(const char *text) {
     m_Text = text;
     m_Caret = m_Text.size();
-    ScriptHelper::SetParamString(m_Text2d->GetInputParameter(1)->GetRealSource(), (m_Text + '\b').c_str());
+    Text(m_Text2d).SetText((m_Text + '\b').c_str());
 }
 
 void Input::GetFocus() {

@@ -1,19 +1,23 @@
 #include "BML/Gui/Label.h"
 
-#include "BML/ScriptHelper.h"
 #include "Loader/ModContext.h"
 #include "Behavior/Text2D.h"
 
 using namespace BGui;
 
+namespace {
+// Every function below writes or reads one Slot of the same Block, so each one
+// opens a view on it and lets the Text2D module say which Slot that is.
+BML::Behavior::Text2D::Live Text(CKBehavior *block) {
+    return {BML_GetCKContext(), block};
+}
+} // namespace
+
 Label::Label(const char *name) : Element(name) {
     ModContext *context = BML_GetModContext();
-    BML::Behavior::Text2D::Options definition;
-    definition.Target = m_2dEntity;
-    definition.FontIndex = context->GetGameFonts().Resolve(BML::GameFont::None);
-    BML::Behavior::AttachResult created = context->Behaviors().AddToGraph(
-        context->GetScriptByName("Level_Init"), BML::Behavior::Text2D::Make(definition));
-    m_Text2d = created ? created.Block : nullptr;
+    m_Text2d = BML::Behavior::Text2D::Add(
+        context->Behaviors(), context->GetScriptByName("Level_Init"),
+        {m_2dEntity, context->GetGameFonts().Resolve(BML::GameFont::None)});
 }
 
 Label::~Label() {
@@ -23,43 +27,40 @@ Label::~Label() {
 }
 
 const char *Label::GetText() {
-    return ScriptHelper::GetParamString(m_Text2d->GetInputParameter(1)->GetRealSource());
+    return Text(m_Text2d).Text();
 }
 
 void Label::SetText(const char *text) {
-    ScriptHelper::SetParamString(m_Text2d->GetInputParameter(1)->GetRealSource(), text);
+    Text(m_Text2d).SetText(text);
 }
 
 ExecuteBB::FontType Label::GetFont() {
-    ModContext *context = BML_GetModContext();
-    const int font = ScriptHelper::GetParamValue<int>(m_Text2d->GetInputParameter(0)->GetRealSource());
-    return static_cast<ExecuteBB::FontType>(context->GetGameFonts().Identify(font));
+    const BML::GameFontCatalog &fonts = BML_GetModContext()->GetGameFonts();
+    return static_cast<ExecuteBB::FontType>(
+        fonts.Identify(Text(m_Text2d).Font()));
 }
 
 void Label::SetFont(ExecuteBB::FontType font) {
-    ModContext *context = BML_GetModContext();
-    const BML::GameFont gameFont = static_cast<BML::GameFont>(font);
-    ScriptHelper::SetParamValue(m_Text2d->GetInputParameter(0)->GetRealSource(),
-                                context->GetGameFonts().Resolve(gameFont));
+    const BML::GameFontCatalog &fonts = BML_GetModContext()->GetGameFonts();
+    Text(m_Text2d).SetFont(fonts.Resolve(static_cast<BML::GameFont>(font)));
 }
 
 void Label::SetAlignment(int align) {
-    ScriptHelper::SetParamValue(m_Text2d->GetInputParameter(2)->GetRealSource(), align);
+    Text(m_Text2d).SetAlignment(align);
 }
 
 int Label::GetTextFlags() {
-    return ScriptHelper::GetParamValue<int>(m_Text2d->GetLocalParameter(0));
+    return Text(m_Text2d).Flags();
 }
 
 void Label::SetTextFlags(int flags) {
-    ScriptHelper::SetParamValue(m_Text2d->GetLocalParameter(0), flags);
+    Text(m_Text2d).SetFlags(flags);
 }
 
 void Label::SetOffset(Vx2DVector offset) {
-    ScriptHelper::SetParamValue(m_Text2d->GetInputParameter(4)->GetRealSource(), offset);
+    Text(m_Text2d).SetOffset(offset);
 }
 
 void Label::Process() {
-    m_Text2d->ActivateInput(0);
-    m_Text2d->Execute(0);
+    Text(m_Text2d).Draw();
 }
