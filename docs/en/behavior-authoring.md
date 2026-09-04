@@ -241,7 +241,9 @@ A Block that keeps itself running across frames (`CKBR_ACTIVATENEXTFRAME`) is
 no exception. Ballanced schedules every active sub-behavior, linked or not, so
 after each driven execution the Loader clears the Block's native active flag
 while the Run records the continuation: the Instance stays the only driver, and
-the graph's own scheduler never picks the Block up.
+the graph's own scheduler never picks the Block up. A pulse leaves the input
+IOs as the Block kept them: a waiting Block such as WaitForAll holds its
+reached inputs active across frames and clears them itself when it completes.
 
 ```cpp
 auto parked = m_Behavior.Use(textPrototype)

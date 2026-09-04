@@ -304,7 +304,10 @@ public:
         // it, so an OwnerDriven Block left ACTIVE would be executed by its
         // parent graph as well as by ProcessTasks.  The continuation truth
         // is captured above and the Run keeps the continuation, so the
-        // Block stays hidden from the parent graph's scheduler.
+        // Block stays hidden from the parent graph's scheduler.  The input
+        // IOs stay as the Block left them: a waiting Block such as
+        // WaitForAll keeps its reached inputs active across frames and
+        // clears them itself when it completes.
         if (hidden)
             behavior->Activate(FALSE, FALSE);
         return result;
@@ -1407,7 +1410,8 @@ Status Runtime::CreateBehavior(const Spec &spec, CKBehavior *&behavior,
 }
 
 Status Runtime::CheckDetached(
-    const Spec &spec, DetachedCompatibility &compatibility) const {
+    const Spec &spec, DetachedCompatibility &compatibility,
+    bool graphResident) const {
     compatibility = DetachedCompatibility::Unverified;
     if (!m_Catalog)
         return {};
@@ -1416,7 +1420,8 @@ Status Runtime::CheckDetached(
         {spec.Prototype(), spec.PrototypeGeneration()}, compatibility);
     if (!status)
         return status;
-    if (compatibility == DetachedCompatibility::GraphOnly) {
+    if (!graphResident &&
+        compatibility == DetachedCompatibility::GraphOnly) {
         return Failure(
             Error::DetachedUnsupported,
             "This Building Block requires a parent graph and cannot be run detached.",
@@ -1522,16 +1527,19 @@ CreateResult Runtime::AttachToGraph(CKBehavior *parent, const Spec &spec,
                                     const CKBehaviorContext *frame) {
     CreateResult created;
     Instance handle;
-    AttachResult attached = Attach(parent, spec, frame, &handle);
+    DetachedCompatibility detached = DetachedCompatibility::Unverified;
+    AttachResult attached = Attach(parent, spec, frame, &handle, &detached);
     created.Detail = std::move(attached.Detail);
     created.Descriptor = std::move(attached.Descriptor);
     created.Handle = std::move(handle);
+    created.Detached = detached;
     return created;
 }
 
 AttachResult Runtime::Attach(CKBehavior *parent, const Spec &spec,
                              const CKBehaviorContext *frame,
-                             Instance *handle) {
+                             Instance *handle,
+                             DetachedCompatibility *detached) {
     AttachResult result;
     result.Detail = ReadyStatus();
     if (!result.Detail)
@@ -1543,6 +1551,12 @@ AttachResult Runtime::Attach(CKBehavior *parent, const Spec &spec,
             "Parent graph is invalid, retiring, or belongs to another CKContext.");
         return result;
     }
+    // A graph-resident Block runs where a GraphOnly Block belongs, so the
+    // catalog answer is reported rather than enforced here.  A Prototype the
+    // catalog never heard of still parks fine; it just reports Unverified.
+    DetachedCompatibility compatibility = DetachedCompatibility::Unverified;
+    if (detached && !CheckDetached(spec, compatibility, true))
+        compatibility = DetachedCompatibility::Unverified;
     result.Detail = ValidateTarget(parent->GetOwner(), spec);
     if (!result.Detail)
         return result;
@@ -1576,6 +1590,8 @@ AttachResult Runtime::Attach(CKBehavior *parent, const Spec &spec,
         behavior, m_Records.at(instanceId).LayoutGeneration);
     if (handle)
         *handle = Instance(m_Access, instanceId);
+    if (detached)
+        *detached = compatibility;
     return result;
 }
 

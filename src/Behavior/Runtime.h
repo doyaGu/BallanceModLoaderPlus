@@ -354,7 +354,8 @@ private:
     [[nodiscard]] Status ResolvePrototype(CKGUID guid,
                                           std::uint64_t generation = 0) const;
     [[nodiscard]] Status CheckDetached(
-        const Spec &spec, DetachedCompatibility &compatibility) const;
+        const Spec &spec, DetachedCompatibility &compatibility,
+        bool graphResident = false) const;
     [[nodiscard]] Status ValidateTarget(CKBeObject *owner,
                                         const Spec &spec) const;
     [[nodiscard]] Status CreateBehavior(const Spec &spec,
@@ -383,9 +384,12 @@ private:
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
                                             const Spec &spec, Record &record);
     // The shared body of AddToGraph and AttachToGraph. It hands back a
-    // managed handle only when the caller asked for one.
+    // managed handle only when the caller asked for one, and reports what
+    // the catalog knows about detached support without refusing a GraphOnly
+    // Block: a parent graph is exactly where such a Block belongs.
     AttachResult Attach(CKBehavior *parent, const Spec &spec,
-                        const CKBehaviorContext *frame, Instance *handle);
+                        const CKBehaviorContext *frame, Instance *handle,
+                        DetachedCompatibility *detached = nullptr);
     void PruneOwnedSources(Record &record);
     void PruneOwnedOperations(Record &record);
     void SweepRecords();

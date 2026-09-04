@@ -202,7 +202,8 @@ Graph 中移除。
 跨帧自续（`CKBR_ACTIVATENEXTFRAME`）的 Block 也不例外。Ballanced 会调度所有 active
 的 sub-behavior——无论有没有 Link 接到它——因此每次驱动执行之后，Loader 都会在 Run
 记下延续的同时清掉 Block 的原生 active flag：Instance 始终是唯一的驱动者，Graph 自己
-的调度器永远不会接管这个 Block。
+的调度器永远不会接管这个 Block。pulse 后的输入 IO 保持 Block 留下的样子：WaitForAll
+这类等待型 Block 会让已到达的输入跨帧保持 active，并在完成时自行清除。
 
 ```cpp
 auto parked = m_Behavior.Use(textPrototype)
