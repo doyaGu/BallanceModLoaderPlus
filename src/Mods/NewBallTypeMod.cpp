@@ -152,18 +152,7 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     for (BallTypeInfo &info: m_BallTypes) {
         BML::Behavior::ObjectLoad::Options definition;
         definition.File = path + info.m_File;
-        BML::Behavior::CreateResult load = context->Behaviors().Instantiate(
-            nullptr, BML::Behavior::ObjectLoad::Make(definition));
-        if (!load) {
-            GetLogger()->Error("Cannot load ball type %s: %s", info.m_Name.c_str(),
-                               load.Detail.Message.c_str());
-            return;
-        }
-        BML::Behavior::RunResult executed = context->Behaviors().Pulse(
-            load.Handle, BML::Behavior::Slot::At(BML::Behavior::SlotKind::Input, 0));
-        CKBehavior *loader = load.Handle.Get();
-        XObjectArray *objects = executed && loader
-            ? *static_cast<XObjectArray **>(loader->GetOutputParameterWriteDataPtr(0)) : nullptr;
+        XObjectArray *objects = context->ExecuteBB().LoadObjects(definition, false).first;
         if (!objects) {
             GetLogger()->Error("Cannot load ball type %s: Object Load returned no object array",
                                info.m_Name.c_str());
