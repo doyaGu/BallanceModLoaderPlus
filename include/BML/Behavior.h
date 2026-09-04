@@ -873,7 +873,10 @@ typedef enum BML_BehaviorEditFlags {
     BML_BEHAVIOR_EDIT_HAS_DELAY = 1u << 0,
     // BML_BEHAVIOR_EDIT_FLOW may close a same-frame cycle. Without this the
     // edit is rejected instead.
-    BML_BEHAVIOR_EDIT_CONFIRM_CYCLE = 1u << 1
+    BML_BEHAVIOR_EDIT_CONFIRM_CYCLE = 1u << 1,
+    // Starts a later Setting stage for the Block named by Sink. The first
+    // Setting of a Block starts its first stage without this flag.
+    BML_BEHAVIOR_EDIT_SETTING_STAGE = 1u << 2
 } BML_BehaviorEditFlags;
 
 // One step of an edit program. Only the fields its Kind documents are read,

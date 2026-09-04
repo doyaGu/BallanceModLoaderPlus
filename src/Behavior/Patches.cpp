@@ -299,13 +299,17 @@ Status Patches::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
 }
 
 Status Patches::Add(Edit &edit, CKGUID prototype,
-                    const std::vector<std::pair<Slot, Value>> &settings,
+                    const GraphEdit::SettingStages &settings,
                     Node &out) {
     Spec block(prototype);
-    // One stage, so the Block hears one CKM_BEHAVIORSETTINGSEDITED after every
-    // declared Setting is written and can rebuild its layout once.
-    for (const auto &[slot, value] : settings)
-        block.Setting(slot, value);
+    bool first = true;
+    for (const GraphEdit::Settings &stage : settings) {
+        if (!first)
+            block.RefreshLayout();
+        first = false;
+        for (const auto &[slot, value] : stage)
+            block.Setting(slot, value);
+    }
     return m_Edit.Add(edit, std::move(block), out);
 }
 

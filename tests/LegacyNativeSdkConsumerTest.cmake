@@ -114,6 +114,16 @@ set(consumer_source_dir "${work_root}/NativeQuickStartMod")
 foreach(required_sdk_path
         "${install_root}/lib/cmake/BML/BMLConfig.cmake"
         "${install_root}/lib/BMLPlus.lib"
+        "${install_root}/include/BML/IVP/IVP.h"
+        "${install_root}/include/BML/IVP/Attacher.h"
+        "${install_root}/include/BML/IVP/Car.h"
+        "${install_root}/include/BML/IVP/ConstraintCar.h"
+        "${install_root}/include/BML/IVP/Forcefield.h"
+        "${install_root}/include/BML/IVP/ObjectAttach.h"
+        "${install_root}/include/BML/IVP/RaycastCar.h"
+        "${install_root}/include/BML/IVP/Reaction.h"
+        "${install_root}/include/BML/IVP/detail/AddressEntries.inc"
+        "${install_root}/include/BML/IVP/detail/DataAddresses.inc"
         "${native_template}/CMakeLists.txt"
         "${native_template}/src/HelloMod.cpp"
         "${native_scaffolder}")
@@ -149,6 +159,7 @@ file(READ "${consumer_source_dir}/src/QuickStartMod.cpp" generated_native_source
 # sufficient for authoring, while the Player probes exercise the live path.
 set(behavior_facade_probe [=[
 #include <BML/Behavior.hpp>
+#include <BML/IVP/IVP.h>
 
 #include <type_traits>
 
@@ -156,18 +167,22 @@ namespace {
 static_assert(std::is_move_constructible_v<BML::Behavior::Session>);
 static_assert(!std::is_copy_constructible_v<BML::Behavior::Session>);
 static_assert(std::is_copy_constructible_v<BML::Behavior::Block>);
+static_assert(sizeof(IVP_FLOAT) == sizeof(float));
+static_assert(sizeof(IVP_DOUBLE) == sizeof(double));
+static_assert(static_cast<std::uint32_t>(
+                  BML::IVP::ABI::Address::RealObjectEnableCollision) ==
+              0x00009350u);
 
 [[maybe_unused]] void CompileBehaviorAuthoringSurface() {
     using namespace BML::Behavior;
     auto session = Session::Open();
     if (!session)
         return;
-    auto block = session->Use(Guid(0x12345678u, 0x9abcdef0u))
-        .Setting("Mode", 1)
-        .Pin("Value", 2.0f)
-        .Frames(latest())
-        .Compile();
-    (void) block;
+    auto block = session->Use(CKGUID(0x12345678u, 0x9abcdef0u));
+    block.Settings({{"Mode", 1}})
+        .Pins({{"Value", 2.0f}})
+        .Frames(Latest());
+    (void) block.Validate();
 }
 } // namespace
 

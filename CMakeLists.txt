@@ -63,6 +63,10 @@ set(CKANGELSCRIPT_ROOT "${PROJECT_SOURCE_DIR}/../CKAngelScript" CACHE PATH "Opti
 set(BML_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
 set(BML_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
 
+# Curated inventories drive source-tree validation, installation, and
+# installed-consumer tests in every subdirectory.
+include("${PROJECT_SOURCE_DIR}/cmake/BMLBehaviorBlocksPublicSurface.cmake")
+
 find_package(VirtoolsSDK REQUIRED)
 
 if (BML_ENABLE_ANGELSCRIPT)

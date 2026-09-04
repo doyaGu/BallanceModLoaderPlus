@@ -90,7 +90,9 @@ set(BML_PUBLIC_HEADERS
         ${BML_INCLUDE_DIR}/BML/ImcCpp.hpp
         ${BML_INCLUDE_DIR}/BML/TypeConvert.h
         ${BML_INCLUDE_DIR}/BML/Behavior.h
-        ${BML_INCLUDE_DIR}/BML/Behavior.hpp
+        ${BML_PUBLIC_BEHAVIOR_CPP_HEADERS}
+        ${BML_PUBLIC_BEHAVIOR_CPP_DETAIL_HEADERS}
+        ${BML_PUBLIC_BEHAVIOR_BLOCK_HEADERS}
         ${BML_INCLUDE_DIR}/BML/Runtime.h
         ${BML_INCLUDE_DIR}/BML/Scene.h
         ${BML_INCLUDE_DIR}/BML/Gameplay.h

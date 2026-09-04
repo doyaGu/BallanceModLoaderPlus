@@ -572,14 +572,14 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
     switch (from.Frames.Kind) {
     case BML_BEHAVIOR_FRAMES_SIGNALS:
         if (!from.Frames.Limit) {
-            status = InvalidValue("signals(n) requires a nonzero RunFrame limit.");
+            status = InvalidValue("Signals(n) requires a nonzero RunFrame limit.");
             return false;
         }
         to.Frames(FrameRetention::Signals(from.Frames.Limit));
         break;
     case BML_BEHAVIOR_FRAMES_EACH_FRAME:
         if (!from.Frames.Limit) {
-            status = InvalidValue("eachFrame(n) requires a nonzero RunFrame limit.");
+            status = InvalidValue("EachFrame(n) requires a nonzero RunFrame limit.");
             return false;
         }
         to.Frames(FrameRetention::EachFrame(from.Frames.Limit));
@@ -2633,6 +2633,15 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
                          ModContext &context, GraphEdit &edit) {
     if (step.StructSize < sizeof(step))
         return InvalidValue("A Behavior edit step has an unsupported StructSize.");
+    std::uint32_t allowedFlags = 0;
+    if (step.Kind == BML_BEHAVIOR_EDIT_REQUIRE_LINK)
+        allowedFlags = BML_BEHAVIOR_EDIT_HAS_DELAY;
+    else if (step.Kind == BML_BEHAVIOR_EDIT_FLOW)
+        allowedFlags = BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
+    else if (step.Kind == BML_BEHAVIOR_EDIT_SETTING)
+        allowedFlags = BML_BEHAVIOR_EDIT_SETTING_STAGE;
+    if (step.Flags & ~allowedFlags)
+        return InvalidValue("A Behavior edit step contains an unsupported flag.");
     if (Defines(step.Kind)) {
         if (step.Result == 0 || step.Result == BML_BEHAVIOR_EDIT_GRAPH ||
             m_Handles.find(step.Result) != m_Handles.end()) {
@@ -2794,7 +2803,11 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
                     CKBR_PARAMETERERROR,
                     "A symbolic Behavior edit cannot bind a live object."};
         }
-        edit.Setting(owner->NodeValue, sink.Selector, binding.Literal());
+        status = edit.Setting(
+            owner->NodeValue, sink.Selector, binding.Literal(),
+            (step.Flags & BML_BEHAVIOR_EDIT_SETTING_STAGE) != 0);
+        if (!status)
+            return status;
         break;
     }
     case BML_BEHAVIOR_EDIT_BIND_PORT:

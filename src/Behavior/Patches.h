@@ -95,7 +95,7 @@ private:
     Status UseNode(Edit &edit, const ObjectRef &node, Node &out) override;
     Status UseLink(Edit &edit, const ObjectRef &link, Link &out) override;
     Status Add(Edit &edit, CKGUID prototype,
-               const std::vector<std::pair<Slot, Value>> &settings,
+               const GraphEdit::SettingStages &settings,
                Node &out) override;
     Status Tap(Edit &edit, Port source,
                const HookBlock::Hook &hook) override;

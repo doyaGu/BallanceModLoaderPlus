@@ -14,6 +14,7 @@
 
 #include "Vx2dVector.h"
 #include "VxMatrix.h"
+#include "VxRect.h"
 #include "VxVector.h"
 
 namespace BML::Convert {
@@ -36,6 +37,10 @@ inline VxVector ToVxVector(const BML_Vec3 &value) {
 
 /* Explicit element copies deliberately avoid VxMatrix's private storage and
  * any ABI-dependent padding.  BML_Mat4 is always row-major m[row][col]. */
+inline BML_Rect ToRect(const VxRect &value) {
+    return {value.left, value.top, value.right, value.bottom};
+}
+
 inline BML_Mat4 ToMat4(const VxMatrix &value) {
     return {value[0][0], value[0][1], value[0][2], value[0][3],
             value[1][0], value[1][1], value[1][2], value[1][3],

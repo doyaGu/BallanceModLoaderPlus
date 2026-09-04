@@ -113,14 +113,25 @@ Node GraphEdit::Add(CKGUID prototype) {
     return node;
 }
 
-void GraphEdit::Setting(Node node, Slot slot, Value value) {
+Status GraphEdit::Setting(Node node, Slot slot, Value value,
+                          bool nextStage) {
     const auto owner = std::find_if(
         m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &candidate) {
             return candidate.Handle == node;
         });
     if (owner == m_Nodes.end())
-        return;
-    owner->Settings.emplace_back(std::move(slot), std::move(value));
+        return Failure(Error::InvalidState,
+                       "A Setting names an unknown Block.");
+    if (!owner->Added)
+        return Failure(Error::InterfaceUnsupported,
+                       "Only an added Block can declare a Setting.");
+    if (nextStage && owner->Settings.empty())
+        return Failure(Error::InvalidState,
+                       "A later Setting stage requires an earlier stage.");
+    if (owner->Settings.empty() || nextStage)
+        owner->Settings.emplace_back();
+    owner->Settings.back().emplace_back(std::move(slot), std::move(value));
+    return {};
 }
 
 void GraphEdit::Flow(Port source, Port sink, int delay, Cycle cycle) {
@@ -260,13 +271,20 @@ Status GraphEdit::Validate() const {
         if (!node.Added && !node.Settings.empty())
             return Failure(Error::InterfaceUnsupported,
                            "Only an added Block can declare a Setting.");
-        for (const auto &[slot, value] : node.Settings) {
-            if (slot.Kind != SlotKind::Setting)
-                return Failure(Error::TypeMismatch,
-                               "A declared Setting must name a Setting slot.");
-            if (value.IsNull() && !value.Type().IsValid())
-                return Failure(Error::TypeMismatch,
-                               "A null Value requires a Virtools type GUID.");
+        for (const Settings &stage : node.Settings) {
+            if (stage.empty())
+                return Failure(Error::InvalidState,
+                               "A declared Setting stage cannot be empty.");
+            for (const auto &[slot, value] : stage) {
+                if (slot.Kind != SlotKind::Setting)
+                    return Failure(
+                        Error::TypeMismatch,
+                        "A declared Setting must name a Setting slot.");
+                if (value.IsNull() && !value.Type().IsValid())
+                    return Failure(
+                        Error::TypeMismatch,
+                        "A null Value requires a Virtools type GUID.");
+            }
         }
     }
     for (const EditLink &link : m_Links) {

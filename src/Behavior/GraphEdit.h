@@ -42,6 +42,9 @@ struct PathRef {
 // reports that, and a durable Plan refuses such an edit.
 class GraphEdit final {
 public:
+    using Settings = std::vector<std::pair<Slot, Value>>;
+    using SettingStages = std::vector<Settings>;
+
     class Compiler {
     public:
         virtual ~Compiler() = default;
@@ -56,7 +59,7 @@ public:
         // arrive with the Prototype and are written through the Block's own
         // creation lifecycle rather than poked in afterwards.
         virtual Status Add(Edit &edit, CKGUID prototype,
-                           const std::vector<std::pair<Slot, Value>> &settings,
+                           const SettingStages &settings,
                            Node &out) = 0;
         virtual Status Tap(Edit &edit, Port source,
                            const HookBlock::Hook &hook) = 0;
@@ -85,7 +88,8 @@ public:
     Node Add(CKGUID prototype);
     // Declares the value of one Setting of a Block this intent adds. A Setting
     // can rebuild the layout of a block, so only an added Block accepts one.
-    void Setting(Node node, Slot slot, Value value);
+    Status Setting(Node node, Slot slot, Value value,
+                   bool nextStage = false);
 
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
@@ -131,7 +135,7 @@ private:
         Node Handle;
         NodeQuery Query;
         CKGUID Prototype = CKGUID();
-        std::vector<std::pair<Slot, Value>> Settings;
+        SettingStages Settings;
         bool Added = false;
         // Set instead of Query when the author named the Node by identity.
         ObjectRef Anchor;

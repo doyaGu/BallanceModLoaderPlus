@@ -74,6 +74,51 @@ add_bml_test(BehaviorAuthoringTest
         DEPENDENCIES VirtoolsSDK::CK2 VirtoolsSDK::VxMath
 )
 
+# Every public C++ Behavior domain header must compile on its own. The umbrella
+# remains the convenient include, not a hidden ordering requirement.
+set(BML_BEHAVIOR_HEADER_COMPILE_SOURCES)
+foreach(BML_BEHAVIOR_HEADER IN LISTS BML_BEHAVIOR_CPP_PUBLIC_RELATIVE_HEADERS)
+    string(REPLACE "/" "_" BML_BEHAVIOR_HEADER_STEM
+            "${BML_BEHAVIOR_HEADER}")
+    set(BML_BEHAVIOR_HEADER_SOURCE
+            "${CMAKE_CURRENT_BINARY_DIR}/behavior-public-headers/${BML_BEHAVIOR_HEADER_STEM}.cpp")
+    file(WRITE "${BML_BEHAVIOR_HEADER_SOURCE}"
+            "#include <${BML_BEHAVIOR_HEADER}>\n")
+    list(APPEND BML_BEHAVIOR_HEADER_COMPILE_SOURCES
+            "${BML_BEHAVIOR_HEADER_SOURCE}")
+endforeach()
+add_library(BehaviorHeadersCompile OBJECT
+        ${BML_BEHAVIOR_HEADER_COMPILE_SOURCES})
+target_include_directories(BehaviorHeadersCompile PRIVATE "${BML_INCLUDE_DIR}")
+target_link_libraries(BehaviorHeadersCompile PRIVATE
+        VirtoolsSDK::CK2 VirtoolsSDK::VxMath)
+target_compile_definitions(BehaviorHeadersCompile PRIVATE "BML_EXPORTS")
+set_target_properties(BehaviorHeadersCompile PROPERTIES FOLDER "Tests")
+set_property(TARGET BehaviorHeadersCompile PROPERTY CXX_STANDARD 17)
+
+# Every named Block adapter must compile through its own installed include.
+set(BML_BEHAVIOR_BLOCK_HEADER_COMPILE_SOURCES)
+foreach(BML_BEHAVIOR_BLOCK_HEADER
+        IN LISTS BML_BEHAVIOR_BLOCK_PUBLIC_RELATIVE_HEADERS)
+    string(REPLACE "/" "_" BML_BEHAVIOR_BLOCK_HEADER_STEM
+            "${BML_BEHAVIOR_BLOCK_HEADER}")
+    set(BML_BEHAVIOR_BLOCK_HEADER_SOURCE
+            "${CMAKE_CURRENT_BINARY_DIR}/behavior-block-public-headers/${BML_BEHAVIOR_BLOCK_HEADER_STEM}.cpp")
+    file(WRITE "${BML_BEHAVIOR_BLOCK_HEADER_SOURCE}"
+            "#include <${BML_BEHAVIOR_BLOCK_HEADER}>\n")
+    list(APPEND BML_BEHAVIOR_BLOCK_HEADER_COMPILE_SOURCES
+            "${BML_BEHAVIOR_BLOCK_HEADER_SOURCE}")
+endforeach()
+add_library(BehaviorBlockHeadersCompile OBJECT
+        ${BML_BEHAVIOR_BLOCK_HEADER_COMPILE_SOURCES})
+target_include_directories(BehaviorBlockHeadersCompile PRIVATE
+        "${BML_INCLUDE_DIR}")
+target_link_libraries(BehaviorBlockHeadersCompile PRIVATE
+        VirtoolsSDK::CK2 VirtoolsSDK::VxMath)
+target_compile_definitions(BehaviorBlockHeadersCompile PRIVATE "BML_EXPORTS")
+set_target_properties(BehaviorBlockHeadersCompile PROPERTIES FOLDER "Tests")
+set_property(TARGET BehaviorBlockHeadersCompile PROPERTY CXX_STANDARD 17)
+
 # imc/test.sample.imc is the authoring input behind the generated header the
 # generator tests compile against. The loader publishes no .imc interface of its
 # own, so this sample is what keeps the generator, its lock format, and the

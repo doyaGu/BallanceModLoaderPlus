@@ -125,14 +125,13 @@ public:
     }
 
     Status Add(Edit &edit, CKGUID prototype,
-               const std::vector<std::pair<Slot, Value>> &settings,
+               const GraphEdit::SettingStages &settings,
                Node &out) override {
         ++Adds;
         AddedPrototypes.push_back(prototype);
         // Spec is a world-bound value, so this world-free fake only records
         // what the intent asked for.
-        for (const auto &entry : settings)
-            AddedSettings.push_back(entry);
+        AddedSettings = settings;
         out = edit.Add(Spec(prototype), Shape("In", "Out", AddedFlags));
         return {};
     }
@@ -161,7 +160,7 @@ public:
     }
 
     GraphModel Base;
-    std::vector<std::pair<Slot, Value>> AddedSettings;
+    GraphEdit::SettingStages AddedSettings;
     int Begins = 0;
     int Adds = 0;
     int Taps = 0;
@@ -448,8 +447,9 @@ TEST(BehaviorGraphEdit, CarriesASettingWithTheBlockThatDeclaresIt) {
     FakeCompiler compiler(Model());
     GraphEdit plan;
     const Node added = plan.Add(CKGUID(0x3333, 3));
-    plan.Setting(added, Slot::Named(SlotKind::Setting, "Mode"),
-                 Value::From(CKPGUID_INT, 2));
+    ASSERT_TRUE(plan.Setting(
+        added, Slot::Named(SlotKind::Setting, "Mode"),
+        Value::From(CKPGUID_INT, 2)));
 
     ASSERT_TRUE(plan.Validate());
     Edit edit;
@@ -457,8 +457,9 @@ TEST(BehaviorGraphEdit, CarriesASettingWithTheBlockThatDeclaresIt) {
         {"mod", "setting"}, compiler.Base.Root, compiler, edit));
     EXPECT_EQ(compiler.Adds, 1);
     ASSERT_EQ(compiler.AddedSettings.size(), 1u);
-    EXPECT_EQ(compiler.AddedSettings[0].first.Kind, SlotKind::Setting);
-    const Value &declared = compiler.AddedSettings[0].second;
+    ASSERT_EQ(compiler.AddedSettings[0].size(), 1u);
+    EXPECT_EQ(compiler.AddedSettings[0][0].first.Kind, SlotKind::Setting);
+    const Value &declared = compiler.AddedSettings[0][0].second;
     EXPECT_EQ(declared.Type(), CKPGUID_INT);
     ASSERT_EQ(declared.Bytes().size(), sizeof(int));
     int mode = 0;
@@ -475,19 +476,41 @@ TEST(BehaviorGraphEdit, RefusesASettingOnABlockItDidNotCreate) {
     GraphEdit plan;
     const Node wait = plan.RequireOne(
         {"Wait Message", CKGUID(0x1111, 1)});
-    plan.Setting(wait, Slot::Named(SlotKind::Setting, "Mode"),
-                 Value::From(CKPGUID_INT, 2));
-    Status status = plan.Validate();
+    Status status = plan.Setting(
+        wait, Slot::Named(SlotKind::Setting, "Mode"),
+        Value::From(CKPGUID_INT, 2));
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
 
     GraphEdit wrongSlot;
     const Node added = wrongSlot.Add(CKGUID(0x3333, 3));
-    wrongSlot.Setting(added, Slot::Named(SlotKind::Local, "Mode"),
-                      Value::From(CKPGUID_INT, 2));
+    ASSERT_TRUE(wrongSlot.Setting(
+        added, Slot::Named(SlotKind::Local, "Mode"),
+        Value::From(CKPGUID_INT, 2)));
     status = wrongSlot.Validate();
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::TypeMismatch);
+}
+
+TEST(BehaviorGraphEdit, PreservesSettingStageBoundaries) {
+    FakeCompiler compiler(Model());
+    GraphEdit edit;
+    const Node added = edit.Add(CKGUID(0x3333, 3));
+    ASSERT_TRUE(edit.Setting(
+        added, Slot::Named(SlotKind::Setting, "Mode"),
+        Value::From(CKPGUID_INT, 2)));
+    ASSERT_TRUE(edit.Setting(
+        added, Slot::Named(SlotKind::Setting, "Created Later"),
+        Value::From(CKPGUID_INT, 9), true));
+
+    Edit compiled;
+    ASSERT_TRUE(edit.Compile(
+        {"mod", "setting-stages"}, compiler.Base.Root, compiler, compiled));
+    ASSERT_EQ(compiler.AddedSettings.size(), 2u);
+    ASSERT_EQ(compiler.AddedSettings[0].size(), 1u);
+    ASSERT_EQ(compiler.AddedSettings[1].size(), 1u);
+    EXPECT_EQ(compiler.AddedSettings[0][0].first.Name, "Mode");
+    EXPECT_EQ(compiler.AddedSettings[1][0].first.Name, "Created Later");
 }
 
 TEST(BehaviorGraphEdit, CompletesAPathAgainAndTapsItsFinalOut) {
