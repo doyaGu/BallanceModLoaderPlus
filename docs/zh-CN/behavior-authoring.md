@@ -1,6 +1,6 @@
 # Behavior 编写
 
-`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的 C++ interface。它既能创建和执行任意已注册 Building Block，也能读取和修改已有 Behavior graph。`BML/Behavior.h` 是同一能力的 C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 仍在发布前开发阶段，目前只支持 Win32 Native C++ Mod，源码兼容性尚未冻结。
+`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的 C++ interface。它能创建和执行任意已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。`BML/Behavior.h` 是同一能力的 C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 仍在发布前开发阶段，目前只支持 Win32 Native C++ Mod，源码兼容性尚未冻结。
 
 ## 1. 对象模型
 
@@ -10,6 +10,8 @@ Prototype -> Block -> Call / Task / Instance -> Frames
                          +--------------------> live CKBehavior
 
 existing CKBehavior graph -> Graph snapshot -> Edit -> Patch / Plan
+
+CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 ```
 
 | 对象 | 含义 |
@@ -18,6 +20,7 @@ existing CKBehavior graph -> Graph snapshot -> Edit -> Patch / Plan
 | `Block` | 尚未实例化的 BB 配置；可复制，修改采用 copy-on-write |
 | `Call` / `Task` / `Instance` | 各自拥有一个真实 `CKBehavior`，区别只是由谁继续 Execute |
 | `Frames` | 从 native Execute 复制出的控制流结果和可选 Pout 值 |
+| `Script` | 一个 owner-scoped 的顶层 graph-backed `CKBehavior` |
 | `Graph` | 某个时刻的 immutable Behavior graph snapshot |
 | `Edit` | 尚未安装的 symbolic graph transformation |
 | `Patch` | 应用于一个确定 graph snapshot 的 Edit |
@@ -40,9 +43,9 @@ if (!opened) {
 m_Behavior = std::move(opened).Value();
 ```
 
-Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。
+Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。
 
-由 Session 创建的对象持有自己所需的 Session lease。移动或关闭最初的 `Session` 值，不会使仍存活的 Block、run、Watch、Patch 或 Plan 立即失效。
+由 Session 创建的对象持有自己所需的 Session lease。移动或关闭最初的 `Session` 值，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 立即失效。
 
 ### 查找 Prototype
 
@@ -72,11 +75,12 @@ auto block = m_Behavior.Use(prototype)
     .Settings({{"Mode", 2}, {"Detail", 4}})
     .Settings({{"Created Later", 9}})
     .Pins({{"Strength", 12.0f}})
-    .Locals({{"Accumulator", 0.0f}})
-    .Frames(Signals(64).Pouts());
+    .Locals({{"Accumulator", 0.0f}});
+
+auto task = block.Start("Run", Signals(64).Pouts());
 ```
 
-每次 `Settings({...})` 是一个 Setting stage。一个 stage 写完后，Runtime 会发送 `SETTINGSEDITED`；BB 可以在 callback 中重建 interface，所以下一个 stage 必须在新的 live Layout 上重新解析。全部 Setting stage 完成后，Runtime 才应用 Pin 和 Local。
+每次 `Settings({...})` 是一个 Setting stage。一个 stage 写完后，Runtime 会发送 `SETTINGSEDITED`；BB 可以在 callback 中重建 interface，所以下一个 stage 必须在新的 live Layout 上重新解析。全部 Setting stage 完成后，Runtime 才应用 Pin 和 Local。Frame retention 属于每次 Call、Task 或 Instance，而不是可复用的 Block。
 
 Target 有三种形式：`TargetOwner()`、`Target(type, object)` 和 `NullTarget(type)`。slot selector 也必须明确：`At(index)`、`Named(name, occurrence)` 或 `Unique(name)`。字符串重载等价于 `Unique(name)`，重名时不会擅自选择第一项。
 
@@ -105,7 +109,7 @@ if (instance)
     instance->Pulse("Reset");
 ```
 
-传给创建函数的 Frame policy 只覆盖本次 run。`Call::Continue()` 保留同一个 native Instance；它不是重新激活或重新创建。
+Frame policy 只属于本次 run；可复用的 Block 不保存观察策略。`Call::Continue()` 保留同一个 native Instance；它不是重新激活或重新创建。
 
 同一 Instance 每个 game frame 最多 Execute 一次。同 frame 或 callback 重入的 Pulse 会排队；相同 logical In 合并，不同 In 保持首次 admission 顺序。`Ready` 只表示没有 native continuation 和 queued In，不表示 BB 已经释放 Local、manager 注册或其他持久状态。
 
@@ -176,11 +180,13 @@ if (!snapshot)
     return;
 
 auto counter = snapshot->Find("Counter_Active");
-if (counter)
+if (counter) {
     auto value = snapshot->Read(counter->Pout("Count"));
+    // 在 snapshot 有效期间使用 value。
+}
 ```
 
-`Graph::Find` 要求名称恰好匹配一个 Node；`FindAll` 返回全部匹配。Node、Port 和 Link 是指向共享 snapshot allocation 的轻量 view。Port 保留所属 Node 的 layout generation；把旧 snapshot 的 Port 用于新的 live Layout 会失败。
+`Graph::Find` 要求名称恰好匹配一个 Node；`FindAll` 返回全部匹配。Node、Port、Link 和 ParameterOperation 都是指向共享 snapshot allocation 的轻量 view。`Graph::Operations()` 列出每个真实 `CKParameterOperation`，包括 operation GUID、精确的 result/input type tuple、graph owner 和 object identity。Port 保留所属 Node 的 layout generation；把旧 snapshot 的 Port 用于新的 live Layout 会失败。
 
 `Logical()` 重新读取作者可见的 graph，`Live()` 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。若其他代码改坏了 Patch 所声明的 after-image，Runtime 返回 `GraphChanged`，不会根据名称或形状猜测。
 
@@ -188,7 +194,36 @@ if (counter)
 
 Watch 每个 game frame 采样一次 graph、layout 或 value。callback 或观察失败后，Watch 保留第一条 `Status`，进入 `Failed` 并停止后续 callback。
 
-## 8. 修改 graph
+## 8. 创建 Script graph
+
+`Session::CreateScript` 在当前 Scene 中创建一个由 live `CKBeObject` 拥有的顶层 Script，并在返回前安装初始 `Edit`。Script 初始不激活，因此 Virtools 不会调度一个只完成了一半的 graph：
+
+```cpp
+Edit body;
+auto root = body.Graph();
+body.AppendIn(root, "Start");
+body.AppendOut(root, "Done");
+auto left = body.AppendLocal(root, "Left", CKPGUID_FLOAT);
+auto sum = body.AddOperation(
+    addition, CKPGUID_FLOAT, CKPGUID_FLOAT, CKPGUID_FLOAT);
+body.Bind(left, 2.0f)
+    .Bind(sum.Input(0), left)
+    .Bind(sum.Input(1), 3.0f);
+
+auto created = m_Behavior.CreateScript(owner, "My Script", body);
+if (!created)
+    return;
+Script script = std::move(created).Value();
+script.Activate(true);
+```
+
+`CreateScript` 只执行一次 native `AddScript`，同时建立 owner 与 Scene membership，然后编译并应用完整 Edit。validation、lifecycle、callback 或 graph 任一阶段失败都不会返回 Script handle；未发布的 root 会被移除，也不会进入 Plan。安装后的初始 graph 由 Script 自身拥有，不要求作者额外保存第二个 Patch handle。
+
+`Edit::Graph()` 表示正在编写的 symbolic graph root；这里不能用 `Use()` 导入 snapshot root。root 可以拥有 In、Out、Pin、Pout 和 Local。`AddOperation` 创建一个由 graph 拥有的真实 `CKParameterOperation`；Virtools 根据 operation GUID 和精确的 result/input type tuple 选择函数，并在 consumer 读取 result 时惰性求值。每个已声明的 operation input 都必须绑定。后续增量修改仍使用 `Script::Apply()`。激活请求在下一个 Behavior safe point 应用，并排在待处理 Patch reconcile 之后。即使 Script 已经 active，传入 `true` 仍会明确请求 Virtools reset 语义。
+
+Script 关闭也在 safe point 完成：首次 `Close()` 可能返回 `CloseState::Closing`；完成 deactivate、从 owner 移除和 native destruction 后，再次调用返回 `Closed`。应先关闭 Script，再销毁 owner；Mod unload 和 world reset 会自动执行相同的退役流程。
+
+## 9. 修改 graph
 
 `Edit` 是唯一的 symbolic graph transformation：
 
@@ -207,6 +242,8 @@ auto plan = m_Behavior.Plan(
 
 `Add(block)` 会复制 Block 配置和已经固定的 provider generation；之后修改原 Block 不影响 Edit。Block 的 Frame policy 不属于 graph authoring。
 
+安装时，所有新增 Block 都会先完成 `CREATE`、`ATTACH` 和 Setting stages，再建立 graph parameter relation。每个新增 Block 唯一一次最终 `EDITED` callback 能看到这些 relation；只有 callback 完成并重新验证 Layout 后，Patch 才建立 control Flow。被修改 value 或 parameter relation 的已有 Block 同样在安装后收到一次 `EDITED`，并在成功恢复后再收到一次；只有 control Flow 的 Patch 不发送 block-level `EDITED`。
+
 常用 transformation：
 
 - `Flow` / `FlowCycle`：增加 Behavior Link；
@@ -214,7 +251,17 @@ auto plan = m_Behavior.Plan(
 - `Tap` / `Before` / `After`：安装 callback；
 - `Splice`：让现有 Link 经过新增 Block；
 - `Redirect`：暂时改变 Link destination；
-- `AppendIn/Out/Pin/Pout/Local`：扩展 dynamic interface。
+- `AppendIn/Out/Pin/Pout`：扩展 dynamic interface；
+- `AppendLocal`：用于 graph root 或同一 Edit 新增的 Block。Local 属于其实现，
+  Edit 不能向借用的既有 Node 添加 Local；
+- `AddOperation`：增加由 graph 拥有、惰性求值的 Parameter Operation。
+- `Replace`：用 public interface 完全相同的 configured Block 替换一个 idle child Node。
+
+`Replace` 保留原有 Link 对象及其 delay、Pin 与 Target source、Pout destination、
+名称、priority 和 owner。Settings 与 Locals 是实现私有状态，因此 replacement
+使用自身 Block 配置，不复制原 Node 的私有状态。关闭 Patch 时，会先恢复同一个
+原 Node 及上述全部 relation，再销毁 replacement Block。若 Node 仍 active 或
+public interface 不一致，替换会直接失败，不会按位置猜测适配。
 
 `Graph::Apply` 将 Edit 应用到一个精确 fingerprint，返回一次性 `Patch`。`Session::Plan` 使用 `Scripts::Each(name)` 或 `Scripts::One(name)`，在匹配 script 出现、删除或 world reset 后重新 reconcile。
 
@@ -222,7 +269,7 @@ auto plan = m_Behavior.Plan(
 
 Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
 
-## 9. 已命名的 retail BB
+## 10. 已命名的 retail BB
 
 `BML/Behavior/Blocks.hpp` 汇总 BML+ 已知的 header-only adapter，例如 Object Load、Physicalize、Physics Force、Physics Impulse、Physics Wake Up、Send Message 和 2D Text。每个 header 只封装该 BB 的 Prototype、Options 和 slot knowledge：
 
@@ -234,22 +281,23 @@ options.Text = "score";
 options.FontIndex = 2;
 
 auto made = Blocks::Text2D::Make(m_Behavior, options);
-if (made)
+if (made) {
     auto text = std::move(made).Value().SpawnIn(graph);
+}
 ```
 
 这些 adapter 仍返回普通 `Block`，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 legacy ExecuteBB interface。
 
-## 10. 生命周期、错误与性能
+## 11. 生命周期、错误与性能
 
-| 事件 | Session | Run | Watch / Patch | Plan |
-| --- | --- | --- | --- | --- |
-| 显式 Close | 最后一个 lease 关闭 native Session | 停止 admission，safe point 完成 teardown | closure/conflict 期间仍可读 | installation 退役期间仍可读 |
-| world reset | 保持有效 | 关闭 | 随旧 graph 关闭 | 保持有效，在新 world reconcile |
-| Mod unload/reload | owner generation 退出 | DLL unload 前关闭 | callback 和 graph state 先退役 | callback code unload 前退役 |
+| 事件 | Session | Run | Script | Watch / Patch | Plan |
+| --- | --- | --- | --- | --- | --- |
+| 显式 Close | 最后一个 lease 关闭 native Session | 停止 admission，safe point 完成 teardown | 先关闭初始 graph，再在 safe point deactivate、离开 owner，然后销毁 | closure/conflict 期间仍可读 | installation 退役期间仍可读 |
+| world reset | 保持有效 | 关闭 | 随旧 world 关闭 | 随旧 graph 关闭 | 保持有效，在新 world reconcile |
+| Mod unload/reload | owner generation 退出 | DLL unload 前关闭 | 离开 owner，并在 DLL unload 前关闭 | callback 和 graph state 先退役 | callback code unload 前退役 |
 
 除 Close 外，Behavior 操作要求 game thread。所有 `Result<T>` 都同时包含稳定错误类别和 `Status`；控制流只应判断 error/phase，不应解析 message 文本。
 
-高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`Take(Frames&)` 在容量足够时避免额外分配；Node、Port、Link 和 Frame 都是 view，不复制 record 或 string。
+高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`Take(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation 和 Frame 都是 view，不复制 record 或 string。
 
-当前公开 interface 不包含 Transform expression lowering、通用 Node replacement、AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。
+当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language；它尚不包含 AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。

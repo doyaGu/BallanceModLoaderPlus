@@ -1,6 +1,6 @@
 # Behavior authoring
 
-`BML/Behavior.hpp` is the C++ interface for Native Mods that use Virtools Behaviors. It can create and execute any registered Building Block and inspect or edit an existing Behavior graph. `BML/Behavior.h` exposes the same module as a C seam; C++ authors normally do not need its wire DTOs. This interface is still under pre-release development, currently supports Win32 Native C++ Mods only, and has not frozen source compatibility.
+`BML/Behavior.hpp` is the C++ interface for Native Mods that use Virtools Behaviors. It can create and execute any registered Building Block, create a top-level Script graph, and inspect or edit Behavior graphs. `BML/Behavior.h` exposes the same module as a C seam; C++ authors normally do not need its wire DTOs. This interface is still under pre-release development, currently supports Win32 Native C++ Mods only, and has not frozen source compatibility.
 
 ## 1. Object model
 
@@ -10,6 +10,8 @@ Prototype -> Block -> Call / Task / Instance -> Frames
                          +--------------------> live CKBehavior
 
 existing CKBehavior graph -> Graph snapshot -> Edit -> Patch / Plan
+
+CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 ```
 
 | Object | Meaning |
@@ -18,6 +20,7 @@ existing CKBehavior graph -> Graph snapshot -> Edit -> Patch / Plan
 | `Block` | A copyable BB configuration; it does not own a `CKBehavior` yet |
 | `Call` / `Task` / `Instance` | Each owns one real `CKBehavior`; only execution ownership differs |
 | `Frames` | Copied control-flow results and optional Pout values from native Execute |
+| `Script` | One owner-scoped, top-level graph-backed `CKBehavior` |
 | `Graph` | An immutable snapshot of a Behavior graph |
 | `Edit` | A symbolic graph transformation that has not been installed |
 | `Patch` | An Edit installed on one exact graph snapshot |
@@ -40,9 +43,9 @@ if (!opened) {
 m_Behavior = std::move(opened).Value();
 ```
 
-The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.
+The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Scripts, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.
 
-Objects created through a Session retain their own Session lease. Moving or closing the original `Session` value does not immediately invalidate a live Block, run, Watch, Patch, or Plan.
+Objects created through a Session retain their own Session lease. Moving or closing the original `Session` value does not immediately invalidate a live Block, run, Script, Watch, Patch, or Plan.
 
 ### Find a Prototype
 
@@ -72,11 +75,12 @@ auto block = m_Behavior.Use(prototype)
     .Settings({{"Mode", 2}, {"Detail", 4}})
     .Settings({{"Created Later", 9}})
     .Pins({{"Strength", 12.0f}})
-    .Locals({{"Accumulator", 0.0f}})
-    .Frames(Signals(64).Pouts());
+    .Locals({{"Accumulator", 0.0f}});
+
+auto task = block.Start("Run", Signals(64).Pouts());
 ```
 
-Each `Settings({...})` call is one Setting stage. Runtime sends `SETTINGSEDITED` after a stage; the BB may rebuild its interface in that callback, so the next stage is resolved against the new live Layout. Pins and Locals are applied after all Setting stages.
+Each `Settings({...})` call is one Setting stage. Runtime sends `SETTINGSEDITED` after a stage; the BB may rebuild its interface in that callback, so the next stage is resolved against the new live Layout. Pins and Locals are applied after all Setting stages. Frame retention belongs to each Call, Task, or Instance rather than to the reusable Block.
 
 Targets are explicit: `TargetOwner()`, `Target(type, object)`, or `NullTarget(type)`. Slot selectors are explicit too: `At(index)`, `Named(name, occurrence)`, or `Unique(name)`. A string overload means `Unique(name)` and never silently selects the first duplicate.
 
@@ -105,7 +109,7 @@ if (instance)
     instance->Pulse("Reset");
 ```
 
-A Frame policy passed here overrides the Block default for this run only. `Call::Continue()` keeps the same native Instance; it does not create or reactivate another one.
+A Frame policy belongs to that run only; the reusable Block has no observation policy. `Call::Continue()` keeps the same native Instance; it does not create or reactivate another one.
 
 An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. `Ready` means no native continuation and no queued In. It does not mean the BB released Local or manager state.
 
@@ -176,11 +180,13 @@ if (!snapshot)
     return;
 
 auto counter = snapshot->Find("Counter_Active");
-if (counter)
+if (counter) {
     auto value = snapshot->Read(counter->Pout("Count"));
+    // Use value while snapshot is alive.
+}
 ```
 
-`Graph::Find` requires exactly one matching Node; `FindAll` returns all matches. Node, Port, and Link are lightweight views into one shared snapshot allocation. A Port retains its Node's layout generation, so it cannot be used against a later incompatible Layout.
+`Graph::Find` requires exactly one matching Node; `FindAll` returns all matches. Node, Port, Link, and ParameterOperation are lightweight views into one shared snapshot allocation. `Graph::Operations()` reports each native `CKParameterOperation`, including its operation GUID, exact result/input type tuple, graph owner, and object identity. A Port retains its Node's layout generation, so it cannot be used against a later incompatible Layout.
 
 `Logical()` rereads the author-visible graph; `Live()` rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. If foreign code changes a claimed after-image, Runtime reports `GraphChanged` instead of guessing by name or shape.
 
@@ -188,7 +194,36 @@ if (counter)
 
 Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first `Status`, moves the Watch to `Failed`, and stops later callbacks.
 
-## 8. Edit a graph
+## 8. Create a Script graph
+
+`Session::CreateScript` creates a top-level Script owned by a live `CKBeObject` in the current Scene and installs its initial `Edit` before returning. The Script starts inactive, so Virtools cannot schedule a partially defined graph:
+
+```cpp
+Edit body;
+auto root = body.Graph();
+body.AppendIn(root, "Start");
+body.AppendOut(root, "Done");
+auto left = body.AppendLocal(root, "Left", CKPGUID_FLOAT);
+auto sum = body.AddOperation(
+    addition, CKPGUID_FLOAT, CKPGUID_FLOAT, CKPGUID_FLOAT);
+body.Bind(left, 2.0f)
+    .Bind(sum.Input(0), left)
+    .Bind(sum.Input(1), 3.0f);
+
+auto created = m_Behavior.CreateScript(owner, "My Script", body);
+if (!created)
+    return;
+Script script = std::move(created).Value();
+script.Activate(true);
+```
+
+`CreateScript` performs the one native `AddScript` operation that establishes both owner and Scene membership. It then compiles and applies the complete Edit. A validation, lifecycle, callback, or graph failure returns no Script handle, removes the unpublished root, and publishes nothing to Plans. The installed body belongs to the Script rather than to a second public Patch handle.
+
+`Edit::Graph()` denotes the symbolic root of the graph being authored; the snapshot root must not be imported with `Use()` for this purpose. The root may own In, Out, Pin, Pout, and Local parameters. `AddOperation` adds a real graph-owned `CKParameterOperation`; Virtools selects its function from the operation GUID and the exact result/input type tuple, and evaluates its result lazily when a consumer reads it. Every declared operation input must be bound. `Script::Apply()` remains available for later incremental edits. An accepted activation request is applied at the next Behavior safe point, after pending Patches have reconciled. Passing `true` requests Virtools reset semantics even if the Script is already active.
+
+Script closure is also completed at a safe point: `Close()` can first return `CloseState::Closing`, and a later call returns `Closed` after deactivation, owner removal, and native destruction. Close the Script before destroying its owner; Mod unload and world reset perform the same retirement automatically.
+
+## 9. Edit a graph
 
 `Edit` is the single symbolic graph transformation:
 
@@ -207,6 +242,8 @@ auto plan = m_Behavior.Plan(
 
 `Add(block)` copies the Block configuration and pinned provider generation. Later changes to the source Block do not affect the Edit. Frame policy is not part of graph authoring.
 
+During installation, every added Block completes `CREATE`, `ATTACH`, and its Setting stages before graph parameter relations are installed. Its one final `EDITED` callback sees those relations; only then does the Patch add control Flow. Existing Blocks whose values or parameter relations change likewise receive one `EDITED` after installation and one after successful restoration. A Patch containing only control Flow does not send block-level `EDITED` callbacks.
+
 Common transformations are:
 
 - `Flow` / `FlowCycle` for Behavior Links;
@@ -214,7 +251,19 @@ Common transformations are:
 - `Tap` / `Before` / `After` for callbacks;
 - `Splice` for routing an existing Link through a Block;
 - `Redirect` for temporarily changing a Link destination;
-- `AppendIn/Out/Pin/Pout/Local` for dynamic interfaces.
+- `AppendIn/Out/Pin/Pout` for dynamic interfaces;
+- `AppendLocal` for the graph root or a Block added by the same Edit. A Local
+  belongs to its implementation, so an Edit cannot add one to a borrowed Node;
+- `AddOperation` for a graph-owned, lazily evaluated Parameter Operation.
+- `Replace` for exchanging one idle child Node for a configured Block with the
+  same public interface.
+
+`Replace` preserves the original Link objects, delays, Pin and Target sources,
+Pout destinations, name, priority, and owner. Settings and Locals are private
+state, so the replacement uses its own Block configuration rather than copying
+them. Closing the Patch restores the exact original Node and all of those
+relations before the replacement Block is destroyed. Replacement refuses an
+active Node or a public-interface mismatch instead of adapting by position.
 
 `Graph::Apply` verifies one exact fingerprint and returns a `Patch`. `Session::Plan` uses `Scripts::Each(name)` or `Scripts::One(name)` and reconciles after script creation, deletion, and world reset.
 
@@ -222,7 +271,7 @@ Patch and Plan expose `Info()` and `Close()`. Close compares the Links, sources,
 
 Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
 
-## 9. Named retail BBs
+## 10. Named retail BBs
 
 `BML/Behavior/Blocks.hpp` collects header-only adapters for known retail BBs, including Object Load, Physicalize, Physics Force, Physics Impulse, Physics Wake Up, Send Message, and 2D Text. Each header contains only that BB's Prototype, Options, and slot knowledge:
 
@@ -234,22 +283,23 @@ options.Text = "score";
 options.FontIndex = 2;
 
 auto made = Blocks::Text2D::Make(m_Behavior, options);
-if (made)
+if (made) {
     auto text = std::move(made).Value().SpawnIn(graph);
+}
 ```
 
 These adapters return ordinary Blocks and do not bypass lifecycle, execution, or teardown. New Native Mod code should not use the legacy ExecuteBB interface.
 
-## 10. Lifetime, errors, and performance
+## 11. Lifetime, errors, and performance
 
-| Event | Session | Run | Watch / Patch | Plan |
-| --- | --- | --- | --- | --- |
-| Explicit Close | Last lease closes native Session | Admission stops; teardown finishes at a safe point | Readable during closure or conflict | Readable while installations retire |
-| World reset | Survives | Closes | Closes with the old graph | Survives and reconciles in the next world |
-| Mod unload/reload | Owner generation retires | Closes before DLL unload | Callback and graph state retire first | Retires before callback code unloads |
+| Event | Session | Run | Script | Watch / Patch | Plan |
+| --- | --- | --- | --- | --- | --- |
+| Explicit Close | Last lease closes native Session | Admission stops; teardown finishes at a safe point | Closes its initial graph, deactivates, leaves its owner, then destroys at a safe point | Readable during closure or conflict | Readable while installations retire |
+| World reset | Survives | Closes | Closes with the old world | Closes with the old graph | Survives and reconciles in the next world |
+| Mod unload/reload | Owner generation retires | Closes before DLL unload | Leaves its owner and closes before DLL unload | Callback and graph state retire first | Retires before callback code unloads |
 
 Except for Close, Behavior operations require the game thread. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
 
-Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `Take(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, and Frame values are views rather than copied records.
+Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `Take(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, and Frame values are views rather than copied records.
 
-The current public interface does not include Transform expression lowering, general Node replacement, an AngelScript Behavior projection, or third-party parameter-format registration. Unsupported Virtools parameter types fail explicitly; they are never guessed to be arbitrary bytes.
+The current public interface exposes native Parameter Operations but does not add a second expression language over them. It does not include an AngelScript Behavior projection or third-party parameter-format registration. Unsupported Virtools parameter types fail explicitly; they are never guessed to be arbitrary bytes.
