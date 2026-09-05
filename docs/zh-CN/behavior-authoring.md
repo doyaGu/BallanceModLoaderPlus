@@ -49,20 +49,30 @@ auto block = m_Behavior.Use(prototype)
     .Settings({{"Created Later", 9}})
     .Pins({{"Strength", 12.0f}})
     .Locals({{"Accumulator", 0.0f}})
-    .Frames(Signals(64));
+    .Frames(Signals(64).Pouts());
 
-auto checked = block.Validate();       // 可选
-auto call = block.Call("Run");          // 这里也会自动完成同样的验证
+auto checked = block.Validate();       // 可选的 declared-layout 检查
+auto call = block.Call("Run");         // 这里始终完成 native admission 检查
 ```
 
 每次 `Settings({...})` 调用就是一个 Setting stage。Virtools 会在一个 stage 后发送
 `SETTINGSEDITED`，BB 可以在 callback 中重建 layout，因此下一 stage 必须在新 layout
 上重新解析。所有 Setting stage 完成后才应用 Pin 和 Local。
 
-`Block` 使用 copy-on-write。副本在未修改时共享配置和已验证的 wire 表示；修改某个
+`Block` 使用 copy-on-write。副本在未修改时共享配置和已编译的 wire 表示；修改某个
 副本的 `Target`、`Settings`、`Pins`、`Locals` 或 `Frames`，只会让该副本的缓存失效。
-首次验证成功时会固定 Prototype provider generation；provider 被替换后，旧 Block
-会明确 stale，不会悄悄换成另一份 native 实现。
+`Validate()` 不创建 `CKBehavior`，只检查 Prototype 声明中可知的内容：Target，以及
+initial declared layout 中已经存在的 selector 和 type。provider 无法提供声明 layout 时，
+它返回 `Unavailable`；Prototype 不可 target 时，显式 Target 也会直接失败。Setting
+callback 新建的 slot、后续 Setting stage、Pin 和 Local
+只能在打开 run 时由 native lifecycle 按当时的 live layout 解析。即使没有调用
+`Validate()`，打开 run 也会完成全部 admission 检查。首次能够识别 provider 的 declared
+检查或 run admission 成功时固定其 generation；之后 provider 被替换，旧 Block 会明确
+stale，不会悄悄换成另一份 native 实现。`RunInfo::PrototypeRef` 会在 identity 可用时报告
+该 native Behavior 实际选中的 provider；generation 为零表示 Loader 无法跟踪它。如果
+Virtools declaration 的 retirement 无法可靠观测，discovery 和 `Validate()` 不可用；即时
+run 仍可用但 generation 为零，已固定 generation 的 Block 和 durable Edit 会被拒绝，
+不会在 provider reload 后继续信任旧 identity。
 
 selector 必须明确：`At(index)`、`Named(name, occurrence)` 或 `Unique(name)`。
 unique selector 遇到重名会失败，不会选择第一个。
@@ -100,14 +110,17 @@ manager 中的状态。
 
 三种 run 都提供 `Info`、`Take`、`Layout`、`Inspect`、`Set`、`Bind`、`Settings` 和
 `Close`。只有 `Call` 提供 `Continue`；只有 `Task` 和 `Instance` 提供 `Pulse`。live
-`Slot` 带有 layout generation；Setting 或 callback 改变 layout 后，旧 Slot 会失败。
+`Slot` 带有 layout generation；lifecycle callback 边界，或 Execute 确实改变原生
+interface 后，旧 Slot 会失败。稳定的 Execute 不会让现有 Slot 和 Port 失效。
 
 ## 取得 Frames
 
 每次 native Execute 都会在清除 active Out 前形成一个 immutable Frame，记录
-sequence、game frame、native return code、continuation、active Out、已复制的 Pout
-和 diagnostic。object Pout 在对象仍 live 时签发 `ObjectRef`；之后读取它不会再次访问
-原参数或 CK object。
+sequence、game frame、native return code、continuation、active Out 和 diagnostic。
+Pout capture 是独立且显式的 policy：只有对 `Signals`、`EachFrame`、`Latest` 或
+`Ignore` 调用 `.Pouts()`，保留下来的 Frame 才会拥有 Pout 值；否则 Runtime 不读取
+Pout。object Pout 在对象仍 live 时签发 `ObjectRef`；之后读取它不会再次访问原参数或
+CK object。
 
 ```cpp
 Frames frames;
@@ -136,14 +149,18 @@ Frame policy 的含义是：
 - `Latest()`：最新 continuing、failure、terminal Frame；sequence 不同时分别保留。
 - `Ignore()`：不保留普通 Frame，但 failure 与 terminal 状态仍可见。
 
+这四种 policy 决定保留哪些 Frame，`.Pouts()` 决定这些 Frame 是否捕获参数 payload；
+两者相互独立。
+
 有界存储不会为新 Frame 丢弃旧 Frame。容量满时会停止 run，并在独立 terminal slot
 记录 `FrameQueueFull`。Take 后会释放普通容量。
 
 ## 读取 graph
 
-`Session::Inspect` 和 run 的 `Inspect` 返回 immutable graph snapshot。
-`Graph::Root()` 返回 `Node`；Node 直接提供 `In`、`Out`、`Pin`、`Pout`、`Setting`、
-`Local` 和 `Target` port。
+`Session::Inspect` 和 run 的 `Inspect` 返回 immutable graph snapshot。一个共享的
+snapshot allocation 只保存一份 Node、Port 和 Link record；`Graph::Root()`、
+`Nodes()`、`Links()`、`Find`、`FindAll` 以及 Node 的 port accessor 返回指向它的轻量
+view。Node 直接提供 `In`、`Out`、`Pin`、`Pout`、`Setting`、`Local` 和 `Target` port。
 
 ```cpp
 auto snapshot = m_Behavior.Inspect(script);
@@ -161,9 +178,13 @@ splice anchor 恢复为 logical endpoint。若受 Patch 管理的基础设施被
 Node name 不是 identity。`FindAll` 返回全部匹配；`Find` 要求恰好一个。参数读取会跟随
 stored、direct、shared source，但不会为了取值执行 Parameter Operation。
 
-字符串重载使用 unique-name selector：当多个 Pout 同名时，`node.Pout("Count")` 会保持
-未解析，由后续操作报告歧义，而不是擅自选择第一项。需要指定同名 occurrence 时使用
-`Named("Count", n)`；需要当前 layout 中的稳定 index 时使用 `At(n)`。
+字符串重载使用 unique-name selector：名称不存在或有歧义时，`node.Pout("Count")`
+立即返回空 `Port`，不会选择第一项。指定同名 occurrence 使用 `Named("Count", n)`；
+指定当前 snapshot 中的精确 index 使用 `At(n)`。Port 带有所属 Node 的 layout
+generation；live layout 改变后再 Read 或 Bind 会返回 `LayoutChanged`，不会把原 ordinal
+重新解释为另一个参数。Layout identity 改变时 Graph fingerprint 也会变化，因此即使
+interface 重建后形状相同，旧 snapshot 也不能再 Apply。单纯的 execution activity 不属于
+layout 变化。
 
 Watch 每个 game frame 采样一次 graph、layout 或 value：
 
@@ -197,9 +218,13 @@ auto plan = m_Behavior.Plan(
 精确 live identity 引入一次性 Patch。Plan 必须在未来 world 的新 script 中重新解析，
 因此会拒绝这些 world-bound identity。
 
+每个 symbolic value 都属于创建它的那个 `Edit`。混用不同 Edit 的 value 会在 program
+提交前被拒绝，`Patch` 也只能解析其来源 Edit 中的 symbolic Node。
+
 `Add(block)` 在调用时复制 Block 的 native 配置和已选定的 Prototype provider
 generation。之后修改原 Block 不会影响 Edit，后续 installation 也不能悄悄换用另一份
-provider。Block 的 Frame policy 不属于 graph authoring。typed null 是 durable literal；
+provider。provider identity 不可用时，`Add` 会把 Edit 标记为不可提交，不会保存未固定
+generation 的 Prototype。Block 的 Frame policy 不属于 graph authoring。typed null 是 durable literal；
 非空 object reference 仍然绑定当前 world，因此 Plan 会拒绝。`Graph::Apply` 在 mutation
 前核对 snapshot fingerprint，并返回一次性 `Patch`。`Session::Plan` 接受
 `Scripts::Each(name)` 或 `Scripts::One(name)`，返回随匹配 script 出现、reset、删除而
