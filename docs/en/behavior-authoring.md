@@ -256,7 +256,9 @@ Common transformations are:
   belongs to its implementation, so an Edit cannot add one to a borrowed Node;
 - `AddOperation` for a graph-owned, lazily evaluated Parameter Operation.
 - `Replace` for exchanging one idle child Node for a configured Block with the
-  same public interface.
+  same public interface;
+- `Remove` for taking one existing child Node and all of its incoming and
+  outgoing Behavior Links out of the graph for the lifetime of the Patch.
 
 `Replace` preserves the original Link objects, delays, Pin and Target sources,
 Pout destinations, name, priority, and owner. Settings and Locals are private
@@ -264,6 +266,22 @@ state, so the replacement uses its own Block configuration rather than copying
 them. Closing the Patch restores the exact original Node and all of those
 relations before the replacement Block is destroyed. Replacement refuses an
 active Node or a public-interface mismatch instead of adapting by position.
+
+`Remove` is reversible graph membership, not object destruction. The Patch
+keeps the exact Node and incident Link objects, disconnects the Links while
+they are parked, and restores their original endpoints and delays when it
+closes. This prevents an active sibling's output port from traversing a Link
+that no longer belongs to the graph. Applying a removal requires the selected
+Node, its control ports, and every incident Link source to be idle;
+an already-active non-target sink no longer depends on that Link. CK2 does not
+expose delayed-list membership through the retail SDK. At an execution
+boundary, a Link outside that list has a remaining delay of zero or its initial
+delay; any other positive remaining delay is therefore treated as in-flight and
+rejected. This remains true when a graph was deactivated without a reset, since
+that operation leaves its delayed list intact. Unrelated graph work may remain
+active. A Node edit is exclusive with active Link overlays and prevents later
+Patches until it closes, so no overlay can retain a physical chain through a
+parked Node.
 
 `Graph::Apply` verifies one exact fingerprint and returns a `Patch`. `Session::Plan` uses `Scripts::Each(name)` or `Scripts::One(name)` and reconciles after script creation, deletion, and world reset.
 

@@ -255,13 +255,27 @@ auto plan = m_Behavior.Plan(
 - `AppendLocal`：用于 graph root 或同一 Edit 新增的 Block。Local 属于其实现，
   Edit 不能向借用的既有 Node 添加 Local；
 - `AddOperation`：增加由 graph 拥有、惰性求值的 Parameter Operation。
-- `Replace`：用 public interface 完全相同的 configured Block 替换一个 idle child Node。
+- `Replace`：用 public interface 完全相同的 configured Block 替换一个 idle child Node；
+- `Remove`：在 Patch 存续期间，将一个既有 child Node 及其所有入/出 Behavior Link
+  移出 graph。
 
 `Replace` 保留原有 Link 对象及其 delay、Pin 与 Target source、Pout destination、
 名称、priority 和 owner。Settings 与 Locals 是实现私有状态，因此 replacement
 使用自身 Block 配置，不复制原 Node 的私有状态。关闭 Patch 时，会先恢复同一个
 原 Node 及上述全部 relation，再销毁 replacement Block。若 Node 仍 active 或
 public interface 不一致，替换会直接失败，不会按位置猜测适配。
+
+`Remove` 改变的是可恢复的 graph membership，不是销毁对象。Patch 保留同一个 Node
+和所有关联 Link；Link 在停放期间与原 endpoint 断开，关闭 Patch 时再恢复原 endpoint
+与 delay。这样，仍在运行的兄弟 Block 就无法从自己的 output port 遍历一条已经不属于
+graph 的 Link。应用 Remove 时，目标 Node、它的 control port 以及每条关联 Link 的
+source 都必须 idle；
+非目标 sink 已经 active 时不再依赖这条 Link。零售 SDK 不公开 CK2 delayed list 的
+成员关系；在一次执行边界上，不在该 list 中的 Link，其 remaining delay
+只会是 0 或 initial delay，因此其他正数状态一律按 in-flight 处理并拒绝。即使 graph
+通过不带 reset 的方式被 deactivate，这条规则仍成立，因为该操作不会清空 delayed
+list。graph 内无关的工作可以保持 active。Node edit 与已有 Link overlay 互斥，并在
+关闭前拒绝后续 Patch，避免 overlay 的物理 chain 穿过已经移出的 Node。
 
 `Graph::Apply` 将 Edit 应用到一个精确 fingerprint，返回一次性 `Patch`。`Session::Plan` 使用 `Scripts::Each(name)` 或 `Scripts::One(name)`，在匹配 script 出现、删除或 world reset 后重新 reconcile。
 
