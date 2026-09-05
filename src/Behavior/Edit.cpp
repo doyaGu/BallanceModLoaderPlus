@@ -410,6 +410,10 @@ void Edit::Replace(Node target, Node replacement) {
     m_Replacements.push_back({target, replacement, NextOrdinal()});
 }
 
+void Edit::Remove(Node target) {
+    m_Removals.push_back({target, NextOrdinal()});
+}
+
 Port Edit::AppendIn(Node node, std::string name) {
     return Append(node, SlotKind::Input, std::move(name), CKGUID());
 }
@@ -517,7 +521,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
                            "A borrowed Edit Node does not belong to the target graph.");
     }
 
-    std::set<std::uint32_t> replaced;
+    std::set<std::uint32_t> parked;
     const auto publicShape = [](const Layout &layout, SlotKind kind) {
         std::vector<const SlotInfo *> result;
         for (const SlotInfo &slot : layout.Slots) {
@@ -539,7 +543,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
                 Error::InvalidState,
                 "Replace requires a borrowed child Node and an authored replacement Block.");
         }
-        if (!replaced.insert(item.Target.Value).second) {
+        if (!parked.insert(item.Target.Value).second) {
             return Failure(Error::InvalidState,
                            "One Edit cannot replace the same Node twice.");
         }
@@ -582,45 +586,73 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         out.Replacements.push_back(
             {item.Target, item.Replacement, item.Ordinal});
     }
-    const auto replacedPort = [&](const Port &port) {
-        return replaced.contains(port.Owner);
+    for (const EditRemove &item : m_Removals) {
+        const EditNode *target = Find(item.Target);
+        if (!target || target == &m_Nodes.front() || target->Block) {
+            return Failure(Error::InvalidState,
+                           "Remove requires a borrowed child Node.");
+        }
+        if (!parked.insert(item.Target.Value).second) {
+            return Failure(
+                Error::InvalidState,
+                "One Edit cannot replace and remove the same Node, or remove it twice.");
+        }
+        const auto liveTarget = std::find_if(
+            base.Nodes.begin(), base.Nodes.end(),
+            [&](const GraphNode &candidate) {
+                return candidate.Id == target->Native.Id;
+            });
+        if (liveTarget == base.Nodes.end() || liveTarget->Active ||
+            std::any_of(liveTarget->Ports.begin(), liveTarget->Ports.end(),
+                        [](const GraphPort &port) {
+                            return (port.Kind == SlotKind::Input ||
+                                    port.Kind == SlotKind::Output) &&
+                                port.Active;
+                        })) {
+            return Failure(Error::Busy,
+                           "Only an idle Behavior Node can be removed.");
+        }
+        out.Removals.push_back({item.Target, item.Ordinal});
+    }
+    const auto parkedPort = [&](const Port &port) {
+        return parked.contains(port.Owner);
     };
-    if (!replaced.empty()) {
+    if (!parked.empty()) {
         for (const InterfacePort &item : m_Interface) {
-            if (replaced.contains(item.Owner.Value))
+            if (parked.contains(item.Owner.Value))
                 return Failure(
                     Error::InvalidState,
-                    "A replaced Node cannot also receive an interface edit.");
+                    "A parked Node cannot also receive an interface edit.");
         }
         for (const EditFlow &item : m_Flows) {
-            if (replacedPort(item.Source) || replacedPort(item.Sink))
+            if (parkedPort(item.Source) || parkedPort(item.Sink))
                 return Failure(
                     Error::InvalidState,
-                    "Use the replacement Node, not the parked Node, in Flow.");
+                    "A parked Node cannot participate in Flow.");
         }
         for (const EditBind &item : m_Binds) {
-            if (replacedPort(item.Target) ||
-                (item.Kind != BindKind::Literal && replacedPort(item.Source)))
+            if (parkedPort(item.Target) ||
+                (item.Kind != BindKind::Literal && parkedPort(item.Source)))
                 return Failure(
                     Error::InvalidState,
-                    "Use the replacement Node, not the parked Node, in Bind.");
+                    "A parked Node cannot participate in Bind.");
         }
         for (const EditPush &item : m_Pushes) {
-            if (replacedPort(item.Source) || replacedPort(item.Destination))
+            if (parkedPort(item.Source) || parkedPort(item.Destination))
                 return Failure(
                     Error::InvalidState,
-                    "Use the replacement Node, not the parked Node, in Push.");
+                    "A parked Node cannot participate in Push.");
         }
         for (const EditTap &item : m_Taps) {
-            if (replacedPort(item.Source))
+            if (parkedPort(item.Source))
                 return Failure(
                     Error::InvalidState,
-                    "Use the replacement Node, not the parked Node, in Tap.");
+                    "A parked Node cannot participate in Tap.");
         }
         if (!m_Splices.empty() || !m_Redirects.empty()) {
             return Failure(
                 Error::InvalidState,
-                "Replace cannot share one Patch with Link overlays.");
+                "A Node edit cannot share one Patch with Link overlays.");
         }
     }
 

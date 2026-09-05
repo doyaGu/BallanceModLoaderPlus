@@ -2905,6 +2905,13 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         defined.NodeValue = edit.Replace(target->NodeValue, std::move(block));
         break;
     }
+    case BML_BEHAVIOR_EDIT_REMOVE_NODE: {
+        const EditHandle *target = nullptr;
+        if (status = Use(step.Target, EditHandleKind::Node, target); !status)
+            return status;
+        edit.Remove(target->NodeValue);
+        break;
+    }
     case BML_BEHAVIOR_EDIT_ADD_OPERATION: {
         if (step.Operation.StructSize < sizeof(step.Operation)) {
             return InvalidValue(

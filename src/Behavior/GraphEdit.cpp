@@ -129,6 +129,10 @@ Node GraphEdit::Replace(Node target, BlockSpec block) {
     return replacement;
 }
 
+void GraphEdit::Remove(Node target) {
+    m_Removals.push_back({target, m_NextAction++});
+}
+
 ParameterOperation GraphEdit::AddOperation(
     CKGUID operation, CKGUID result, CKGUID input1, CKGUID input2) {
     const ParameterOperation handle{NextNode()};
@@ -278,7 +282,7 @@ Status GraphEdit::Validate() const {
             return Failure(Error::QueryNotFound,
                            "A Node query has no semantic identity.");
     }
-    std::set<std::uint32_t> replaced;
+    std::set<std::uint32_t> parked;
     for (const EditReplace &item : m_Replacements) {
         if (!existingNode(item.Target.Value) || item.Target == Graph() ||
             !addedNode(item.Replacement.Value)) {
@@ -286,14 +290,25 @@ Status GraphEdit::Validate() const {
                 Error::InvalidState,
                 "Replace requires an existing child Node and one replacement Block.");
         }
-        if (!replaced.insert(item.Target.Value).second) {
+        if (!parked.insert(item.Target.Value).second) {
             return Failure(Error::InvalidState,
                            "One Edit cannot replace the same Node twice.");
         }
     }
-    if (!replaced.empty()) {
+    for (const EditRemove &item : m_Removals) {
+        if (!existingNode(item.Target.Value) || item.Target == Graph()) {
+            return Failure(Error::InvalidState,
+                           "Remove requires an existing child Node.");
+        }
+        if (!parked.insert(item.Target.Value).second) {
+            return Failure(
+                Error::InvalidState,
+                "One Edit cannot replace and remove the same Node, or remove it twice.");
+        }
+    }
+    if (!parked.empty()) {
         const auto usesParked = [&](const Port &port) {
-            return replaced.contains(port.Owner);
+            return parked.contains(port.Owner);
         };
         for (const Action &action : m_Actions) {
             const Status compatible = std::visit(
@@ -302,27 +317,27 @@ Status GraphEdit::Validate() const {
                     if constexpr (std::is_same_v<T, EditFlow>) {
                         if (usesParked(item.Source) || usesParked(item.Sink))
                             return Failure(Error::InvalidState,
-                                           "Use the replacement Node in Flow.");
+                                           "A parked Node cannot participate in Flow.");
                     } else if constexpr (std::is_same_v<T, EditBind>) {
                         if (usesParked(item.Target) ||
                             (item.Kind != BindKind::Literal &&
                              usesParked(item.Source)))
                             return Failure(Error::InvalidState,
-                                           "Use the replacement Node in Bind.");
+                                           "A parked Node cannot participate in Bind.");
                     } else if constexpr (std::is_same_v<T, EditPush>) {
                         if (usesParked(item.Source) ||
                             usesParked(item.Destination))
                             return Failure(Error::InvalidState,
-                                           "Use the replacement Node in Push.");
+                                           "A parked Node cannot participate in Push.");
                     } else if constexpr (std::is_same_v<T, EditInterface>) {
-                        if (replaced.contains(item.Owner.Value))
+                        if (parked.contains(item.Owner.Value))
                             return Failure(
                                 Error::InvalidState,
-                                "A replaced Node cannot receive an interface edit.");
+                                "A parked Node cannot receive an interface edit.");
                     } else if constexpr (std::is_same_v<T, EditTap>) {
                         if (usesParked(item.Source))
                             return Failure(Error::InvalidState,
-                                           "Use the replacement Node in Tap.");
+                                           "A parked Node cannot participate in Tap.");
                     } else if constexpr (
                         std::is_same_v<T, EditSplice> ||
                         std::is_same_v<T, EditRedirect> ||
@@ -330,7 +345,7 @@ Status GraphEdit::Validate() const {
                         std::is_same_v<T, EditBefore>) {
                         return Failure(
                             Error::InvalidState,
-                            "Replace cannot share one Patch with Link overlays.");
+                            "A Node edit cannot share one Patch with Link overlays.");
                     }
                     return {};
                 }, action);
@@ -750,6 +765,15 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                            "A replacement lost one of its Nodes during compilation.");
         }
         resolved.Replace(target->second, replacement->second);
+    }
+    for (const EditRemove &item : m_Removals) {
+        const auto target = liveNodes.find(item.Target.Value);
+        if (target == liveNodes.end()) {
+            return Failure(
+                Error::InvalidState,
+                "A removal lost its Node during compilation.");
+        }
+        resolved.Remove(target->second);
     }
 
     using PortKey = std::tuple<std::uint32_t, SlotKind, int>;

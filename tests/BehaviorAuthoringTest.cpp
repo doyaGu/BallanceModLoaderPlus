@@ -3020,6 +3020,32 @@ TEST(BehaviorAuthoring, EncodesANodeReplacementAsOneDomainStep) {
     EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
 }
 
+TEST(BehaviorAuthoring, EncodesNodeRemovalWithoutDefiningAHandle) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    Edit edit;
+    const auto removed = edit.Require("Counter_Active", CKGUID(1, 2));
+    edit.Remove(removed);
+
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    auto applied = inspected->Apply("removal", edit);
+    ASSERT_TRUE(applied) << applied.GetStatus().Message;
+    Patch patch = std::move(applied).Value();
+
+    ASSERT_EQ(g_State.PatchSteps.size(), 2u);
+    const CapturedStep &step = g_State.PatchSteps[1];
+    EXPECT_EQ(step.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REMOVE_NODE));
+    EXPECT_EQ(step.Target, g_State.PatchSteps[0].Result);
+    EXPECT_EQ(step.Result, 0u);
+    EXPECT_FALSE(step.HasBlock);
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+}
+
 TEST(BehaviorAuthoring, RejectsAReferenceForANullObject) {
     g_State = {};
     auto opened = Session::Open();

@@ -565,6 +565,19 @@ public:
         }
         return replacement;
     }
+    // Removes an existing child Node and its incident control-flow Links for
+    // the lifetime of the Patch. The Links are disconnected while parked; the
+    // exact native objects, endpoints, and delays are restored when the Patch
+    // closes. Remove never destroys the Node. Unrelated Nodes in the graph may
+    // remain active, but this Node, its control ports, and every incident Link
+    // source must be idle, with no in-flight delay.
+    Edit &Remove(Node target) {
+        if (!Require(target, "Removal target"))
+            return *this;
+        Step &step = Define(BML_BEHAVIOR_EDIT_REMOVE_NODE, 0);
+        step.Target = target.m_Id;
+        return *this;
+    }
     // Adds one native Parameter Operation to the graph. Virtools chooses the
     // concrete function from the operation GUID and this exact type tuple.
     [[nodiscard]] Operation AddOperation(

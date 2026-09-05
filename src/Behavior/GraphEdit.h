@@ -85,6 +85,7 @@ public:
     Node Add(PrototypeRef prototype);
     Node Add(BlockSpec block);
     Node Replace(Node target, BlockSpec block);
+    void Remove(Node target);
     ParameterOperation AddOperation(CKGUID operation, CKGUID result,
                                     CKGUID input1, CKGUID input2);
 
@@ -192,6 +193,11 @@ private:
         std::uint32_t Ordinal = 0;
     };
 
+    struct EditRemove {
+        Node Target;
+        std::uint32_t Ordinal = 0;
+    };
+
     using Action = std::variant<EditFlow, EditBind, EditPush, EditSplice,
                                 EditRedirect, EditInterface, EditTap,
                                 EditAfter, EditBefore>;
@@ -206,6 +212,7 @@ private:
     std::vector<EditLink> m_Links;
     std::vector<EditPath> m_Paths;
     std::vector<EditReplace> m_Replacements;
+    std::vector<EditRemove> m_Removals;
     std::vector<Action> m_Actions;
     std::uint32_t m_NextNode = 1;
     std::uint32_t m_NextLink = 0;

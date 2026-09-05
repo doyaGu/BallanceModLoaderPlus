@@ -946,7 +946,14 @@ typedef enum BML_BehaviorEditKind {
     // Block. Result names the replacement. The two Nodes must expose the same
     // public control and parameter interface; private Settings and Locals are
     // owned by their respective Blocks and are not copied.
-    BML_BEHAVIOR_EDIT_REPLACE_BLOCK = 19
+    BML_BEHAVIOR_EDIT_REPLACE_BLOCK = 19,
+    // Removes the existing child Node named by Target, together with every
+    // behavior link entering or leaving it. The Patch keeps the exact native
+    // objects, disconnects the Links while they are parked, and restores their
+    // original endpoints when it closes; it does not destroy the Node.
+    // The Node, its control ports, and every incident Link source must be idle.
+    // A Link with an in-flight activation delay cannot be removed.
+    BML_BEHAVIOR_EDIT_REMOVE_NODE = 20
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {

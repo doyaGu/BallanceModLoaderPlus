@@ -124,10 +124,9 @@ private:
     std::map<std::uint64_t, Topology> m_Topology;
     std::map<std::uint64_t, Relations> m_Relations;
     std::map<std::uint64_t, std::set<PatchKey>> m_Active;
-    // A replacement changes the logical identity behind a graph's native
-    // Links and parameter relations. Other Patches wait until its exact
-    // inverse has restored the original Node.
-    std::set<std::uint64_t> m_Replacing;
+    // Replace and Remove park native graph members. Other Patches wait until
+    // their exact inverse has restored those Nodes and Links.
+    std::set<std::uint64_t> m_NodeEdits;
     std::unique_ptr<Links> m_Links;
     std::mutex m_QueueMutex;
     std::vector<Request> m_Queue;

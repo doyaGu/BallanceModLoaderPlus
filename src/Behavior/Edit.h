@@ -145,6 +145,16 @@ struct CheckedReplace {
     std::uint32_t Ordinal = 0;
 };
 
+struct EditRemove {
+    Node Target;
+    std::uint32_t Ordinal = 0;
+};
+
+struct CheckedRemove {
+    Node Target;
+    std::uint32_t Ordinal = 0;
+};
+
 struct InterfacePort {
     std::uint32_t Identity = 0;
     Node Owner;
@@ -223,6 +233,7 @@ struct CheckedEdit {
     std::vector<CheckedSplice> Splices;
     std::vector<CheckedRedirect> Redirects;
     std::vector<CheckedReplace> Replacements;
+    std::vector<CheckedRemove> Removals;
 };
 
 // A side-effect-free additive graph plan. Node and Port values are logical
@@ -265,6 +276,7 @@ public:
     // the original destination.
     void Redirect(Link target, Port sink, std::vector<Order> ordering = {});
     void Replace(Node target, Node replacement);
+    void Remove(Node target);
     Port AppendIn(Node node, std::string name);
     Port AppendOut(Node node, std::string name);
     Port AppendPin(Node node, std::string name, CKGUID type);
@@ -307,6 +319,7 @@ private:
     std::vector<EditSplice> m_Splices;
     std::vector<EditRedirect> m_Redirects;
     std::vector<EditReplace> m_Replacements;
+    std::vector<EditRemove> m_Removals;
     std::uint32_t m_NextNode = 1;
     std::uint32_t m_NextLink = 0;
     std::uint32_t m_NextAction = 1;

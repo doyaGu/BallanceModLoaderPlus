@@ -551,6 +551,69 @@ TEST(BehaviorGraphEdit, RejectsReplacementInterfaceDriftAndParkedNodeUse) {
     EXPECT_EQ(reused.Validate().Code, Error::InvalidState);
 }
 
+TEST(BehaviorGraphEdit, ResolvesRemovalOfAnIdleChildNode) {
+    FakeCompiler compiler(Model());
+    GraphEdit graph;
+    const Node removed = graph.RequireOne({"Wait Message"});
+    graph.Remove(removed);
+
+    ASSERT_TRUE(graph.Validate());
+    Edit resolved;
+    const Status compiled = graph.Compile(
+        {"mod", "remove"}, compiler.Base.Root, compiler, resolved);
+    ASSERT_TRUE(compiled) << compiled.Message;
+    CheckedEdit checked;
+    const Status status = resolved.Validate(compiler.Base, checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Removals.size(), 1u);
+    EXPECT_EQ(compiler.Adds, 0);
+}
+
+TEST(BehaviorGraphEdit, RejectsUnsafeOrContradictoryNodeRemoval) {
+    GraphEdit reused;
+    const Node removed = reused.RequireOne({"Wait Message"});
+    reused.Remove(removed);
+    reused.Flow(removed.Out(), reused.Exit("Done"));
+    EXPECT_EQ(reused.Validate().Code, Error::InvalidState);
+
+    GraphEdit duplicate;
+    const Node twice = duplicate.RequireOne({"Wait Message"});
+    duplicate.Remove(twice);
+    duplicate.Remove(twice);
+    EXPECT_EQ(duplicate.Validate().Code, Error::InvalidState);
+
+    FakeCompiler compiler(Model());
+    compiler.Base.Nodes.front().Active = true;
+    GraphEdit active;
+    const Node target = active.RequireOne({"Wait Message"});
+    active.Remove(target);
+    Edit resolved;
+    ASSERT_TRUE(active.Compile(
+        {"mod", "active-remove"}, compiler.Base.Root, compiler, resolved));
+    CheckedEdit checked;
+    EXPECT_TRUE(resolved.Validate(compiler.Base, checked));
+}
+
+TEST(BehaviorGraphEdit, CompilesAdjacentReplaceAndRemoveTogether) {
+    FakeCompiler compiler(Model());
+    GraphEdit graph;
+    const Node removed = graph.RequireOne({"Wait Message"});
+    const Node original = graph.RequireOne({"set Resetpoint"});
+    (void) graph.Replace(original, BlockSpec(CKGUID(0x3333, 3)));
+    graph.Remove(removed);
+
+    ASSERT_TRUE(graph.Validate());
+    Edit resolved;
+    const Status compiled = graph.Compile(
+        {"mod", "replace-remove"}, compiler.Base.Root, compiler, resolved);
+    ASSERT_TRUE(compiled) << compiled.Message;
+    CheckedEdit checked;
+    const Status checkedStatus = resolved.Validate(compiler.Base, checked);
+    ASSERT_TRUE(checkedStatus) << checkedStatus.Message;
+    EXPECT_EQ(checked.Replacements.size(), 1u);
+    EXPECT_EQ(checked.Removals.size(), 1u);
+}
+
 TEST(BehaviorGraphEdit, RejectsIncompleteAndCyclicParameterOperations) {
     FakeCompiler compiler(Model());
     GraphEdit incomplete;

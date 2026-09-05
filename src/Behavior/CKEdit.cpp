@@ -268,6 +268,20 @@ bool ContainsNode(CKBehavior *graph, CKBehavior *node) {
     return false;
 }
 
+bool MayBePending(CKBehaviorLink *link) {
+    if (!link)
+        return false;
+    // At a CK2 execution boundary an admitted delayed Link has already been
+    // decremented. A Link outside the delayed list is either reset to its
+    // initial delay or has completed at zero. The retail SDK does not expose
+    // delayed-list membership, so every other positive state is treated as
+    // in-flight. This also remains safe if somebody deactivates the graph
+    // without resetting it, which leaves CK2's delayed list intact.
+    const int remaining = link->GetActivationDelay();
+    return remaining > 0 &&
+        remaining != link->GetInitialActivationDelay();
+}
+
 } // namespace
 
 struct Patch::Journal {
@@ -366,6 +380,24 @@ struct Patch::Journal {
         bool Restored = false;
     };
 
+    struct Removal {
+        Stamp Node;
+        bool Removed = false;
+        bool Restored = false;
+    };
+
+    struct RemovedLink {
+        Stamp Value;
+        Stamp Source;
+        Stamp Sink;
+        int InitialDelay = 0;
+        int Delay = 0;
+        bool Removed = false;
+        bool SourceDetached = false;
+        bool SinkDetached = false;
+        bool Restored = false;
+    };
+
     CKEdit *Editor = nullptr;
     mutable std::mutex Mutex;
     PatchState State = PatchState::Pending;
@@ -375,7 +407,7 @@ struct Patch::Journal {
     bool GraphObserved = false;
     bool RestoredEdited = false;
     bool RestoredGraph = false;
-    bool ReplacementClaim = false;
+    bool NodeEditClaim = false;
     Stamp Graph;
     PatchKey Key;
     std::vector<std::shared_ptr<CallbackResource>> Callbacks;
@@ -399,6 +431,10 @@ struct Patch::Journal {
     std::vector<Interface> Ports;
     std::vector<Operation> Operations;
     std::vector<Replacement> Replacements;
+    std::vector<Removal> Removals;
+    std::vector<RemovedLink> RemovedLinks;
+    Stamp DetachedSource;
+    Stamp DetachedSink;
     PatchLayer Layer;
     RelationLayer Data;
     std::vector<std::pair<LinkId, std::uint32_t>> Splices;
@@ -508,7 +544,7 @@ void CKEdit::AdoptGraph(CKBehavior *graph) {
         m_Topology.erase(graphId);
         m_Relations.erase(graphId);
         m_Active.erase(graphId);
-        m_Replacing.erase(graphId);
+        m_NodeEdits.erase(graphId);
         m_Links->Chains.erase(graphId);
         m_Links->Sites.erase(graphId);
         m_Links->Patches.erase(graphId);
@@ -910,10 +946,18 @@ Status CKEdit::ApplyNow(const Edit &edit,
         status = edit.Validate(base, checked);
     if (!status)
         return status;
-    if (m_Replacing.contains(graphId)) {
+    if (m_NodeEdits.contains(graphId)) {
         return Failure(
             Error::SourceConflict,
-            "This graph already has an active Node replacement.");
+            "This graph already has an active Node edit.");
+    }
+    if (!checked.Replacements.empty() || !checked.Removals.empty()) {
+        const auto layered = m_Links->Patches.find(graphId);
+        if (layered != m_Links->Patches.end() && !layered->second.empty()) {
+            return Failure(
+                Error::SourceConflict,
+                "A Node edit requires a graph without active Link overlays.");
+        }
     }
 
     Topology &topology = m_Topology[graphId];
@@ -1001,8 +1045,8 @@ Status CKEdit::ApplyNow(const Edit &edit,
     patch->Graph = Capture(graph);
     patch->Key = edit.Key();
     AdoptGraph(graph);
-    if (!checked.Replacements.empty())
-        patch->ReplacementClaim = m_Replacing.insert(graphId).second;
+    if (!checked.Replacements.empty() || !checked.Removals.empty())
+        patch->NodeEditClaim = m_NodeEdits.insert(graphId).second;
 
     std::unordered_map<std::uint32_t, Stamp> nodes;
     nodes.emplace(edit.Graph().Value, patch->Graph);
@@ -1040,6 +1084,48 @@ Status CKEdit::ApplyNow(const Edit &edit,
     };
     const auto graphFor = [&]() -> CKBehavior * {
         return Resolve<CKBehavior>(m_Context, patch->Graph, CKCID_BEHAVIOR);
+    };
+    const auto validateRemoved = [&]() -> Status {
+        CKBehavior *currentGraph = graphFor();
+        if (!currentGraph)
+            return Failure(Error::GraphChanged,
+                           "The edited Behavior graph disappeared.",
+                           CKERR_INVALIDOBJECT);
+        for (const Patch::Journal::Removal &item : patch->Removals) {
+            if (!item.Removed)
+                continue;
+            CKBehavior *node = Resolve<CKBehavior>(
+                m_Context, item.Node, CKCID_BEHAVIOR);
+            if (!node || ContainsNode(currentGraph, node)) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A removed Behavior Node changed identity during Apply.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        for (const Patch::Journal::RemovedLink &item : patch->RemovedLinks) {
+            if (!item.Removed)
+                continue;
+            CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                m_Context, item.Value, CKCID_BEHAVIORLINK);
+            CKBehaviorIO *source = ResolveIo(
+                m_Context, item.SourceDetached
+                    ? patch->DetachedSource : item.Source);
+            CKBehaviorIO *sink = ResolveIo(
+                m_Context, item.SinkDetached
+                    ? patch->DetachedSink : item.Sink);
+            if (!link || ContainsLink(currentGraph, link) ||
+                !source || !sink || link->GetInBehaviorIO() != source ||
+                link->GetOutBehaviorIO() != sink ||
+                link->GetInitialActivationDelay() != item.InitialDelay ||
+                link->GetActivationDelay() != item.Delay) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A removed Behavior Link changed identity during Apply.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        return {};
     };
     const auto validateNodes = [&]() -> Status {
         CKBehavior *currentGraph = graphFor();
@@ -2505,9 +2591,21 @@ Status CKEdit::ApplyNow(const Edit &edit,
                     continue;
                 CKBehaviorLink *link = Resolve<CKBehaviorLink>(
                     m_Context, change.Link, CKCID_BEHAVIORLINK);
+                const auto removed = std::find_if(
+                    patch->RemovedLinks.begin(), patch->RemovedLinks.end(),
+                    [&](const Patch::Journal::RemovedLink &item) {
+                        return !item.Restored && item.Value == change.Link;
+                    });
+                const bool parked = removed != patch->RemovedLinks.end();
                 if (!link ||
-                    Capture(link->GetInBehaviorIO()) != change.InstalledSource ||
-                    Capture(link->GetOutBehaviorIO()) != change.InstalledSink) {
+                    (parked &&
+                     (removed->Source != change.InstalledSource ||
+                      removed->Sink != change.InstalledSink)) ||
+                    (!parked &&
+                     (Capture(link->GetInBehaviorIO()) !=
+                          change.InstalledSource ||
+                      Capture(link->GetOutBehaviorIO()) !=
+                          change.InstalledSink))) {
                     return Failure(
                         Error::GraphChanged,
                         "A replacement Link endpoint changed during Apply.",
@@ -2618,9 +2716,160 @@ Status CKEdit::ApplyNow(const Edit &edit,
         replacement.OriginalRemoved = true;
         nodes.erase(item.Target.Value);
     }
+
+    if (!checked.Removals.empty()) {
+        graph = graphFor();
+        if (!graph) {
+            return fail(Failure(
+                Error::GraphChanged,
+                "The Behavior graph disappeared before Node removal.",
+                CKERR_INVALIDOBJECT));
+        }
+
+        std::unordered_set<CKBehavior *> removedNodes;
+        for (const CheckedRemove &item : checked.Removals) {
+            CKBehavior *node = behaviorFor(item.Target);
+            if (!node || !ContainsNode(graph, node) || node->IsActive()) {
+                return fail(Failure(
+                    Error::Busy,
+                    "A removal target is no longer an idle child Node."));
+            }
+            for (int port = 0; port < node->GetInputCount(); ++port) {
+                CKBehaviorIO *input = node->GetInput(port);
+                if (input && input->IsActive()) {
+                    return fail(Failure(
+                        Error::Busy,
+                        "A Behavior Node with an active In cannot be removed."));
+                }
+            }
+            for (int port = 0; port < node->GetOutputCount(); ++port) {
+                CKBehaviorIO *output = node->GetOutput(port);
+                if (output && output->IsActive()) {
+                    return fail(Failure(
+                        Error::Busy,
+                        "A Behavior Node with an active Out cannot be removed."));
+                }
+            }
+            patch->Removals.push_back({Capture(node)});
+            removedNodes.insert(node);
+        }
+
+        std::vector<CKBehaviorLink *> incidentLinks;
+        incidentLinks.reserve(
+            static_cast<std::size_t>(graph->GetSubBehaviorLinkCount()));
+        for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
+            CKBehaviorLink *link = graph->GetSubBehaviorLink(index);
+            CKBehaviorIO *source = link ? link->GetInBehaviorIO() : nullptr;
+            CKBehaviorIO *sink = link ? link->GetOutBehaviorIO() : nullptr;
+            CKBehavior *sourceNode = source
+                ? CKBehavior::Cast(source->GetOwner()) : nullptr;
+            CKBehavior *sinkNode = sink
+                ? CKBehavior::Cast(sink->GetOwner()) : nullptr;
+            if (removedNodes.contains(sourceNode) ||
+                removedNodes.contains(sinkNode)) {
+                if (!source || !sink) {
+                    return fail(Failure(
+                        Error::GraphChanged,
+                        "A removal target has a Link without both endpoints.",
+                        CKERR_INVALIDOBJECT));
+                }
+                if (source->IsActive()) {
+                    return fail(Failure(
+                        Error::Busy,
+                        "Behavior Link " +
+                            std::to_string(static_cast<std::uint32_t>(
+                                link->GetID())) +
+                            " has an active source."));
+                }
+                if (MayBePending(link)) {
+                    return fail(Failure(
+                        Error::Busy,
+                        "A delayed Behavior Link may still be pending."));
+                }
+                incidentLinks.push_back(link);
+                patch->RemovedLinks.push_back(
+                    {Capture(link), Capture(source), Capture(sink),
+                     link->GetInitialActivationDelay(),
+                     link->GetActivationDelay()});
+            }
+        }
+
+        if (!incidentLinks.empty()) {
+            auto *detachedSource = CKBehaviorIO::Cast(m_Context->CreateObject(
+                CKCID_BEHAVIORIO, nullptr, CK_OBJECTCREATION_DYNAMIC));
+            auto *detachedSink = CKBehaviorIO::Cast(m_Context->CreateObject(
+                CKCID_BEHAVIORIO, nullptr, CK_OBJECTCREATION_DYNAMIC));
+            if (!detachedSource || !detachedSink) {
+                if (detachedSource)
+                    m_Context->DestroyObject(detachedSource);
+                if (detachedSink)
+                    m_Context->DestroyObject(detachedSink);
+                return fail(Failure(
+                    Error::CreateFailed,
+                    "Virtools could not create detached Behavior Link endpoints.",
+                    CKERR_OUTOFMEMORY));
+            }
+            detachedSource->SetType(CK_BEHAVIORIO_OUT);
+            detachedSink->SetType(CK_BEHAVIORIO_IN);
+            patch->DetachedSource = Capture(detachedSource);
+            patch->DetachedSink = Capture(detachedSink);
+        }
+
+        for (std::size_t index = 0; index < incidentLinks.size(); ++index) {
+            CKBehaviorLink *link = incidentLinks[index];
+            if (graph->RemoveSubBehaviorLink(link) != link ||
+                ContainsLink(graph, link)) {
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "Virtools could not remove a Behavior Link.",
+                    CKERR_INVALIDOBJECT));
+            }
+            auto &removed = patch->RemovedLinks[index];
+            removed.Removed = true;
+            CKBehaviorIO *detachedSource = ResolveIo(
+                m_Context, patch->DetachedSource);
+            CKBehaviorIO *detachedSink = ResolveIo(
+                m_Context, patch->DetachedSink);
+            if (!detachedSource || !detachedSink)
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "A detached Behavior Link endpoint disappeared.",
+                    CKERR_INVALIDOBJECT));
+            CKERROR detached = link->SetInBehaviorIO(detachedSource);
+            if (detached != CK_OK)
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "Virtools could not detach a Behavior Link source.",
+                    detached));
+            removed.SourceDetached = true;
+            detached = link->SetOutBehaviorIO(detachedSink);
+            if (detached != CK_OK)
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "Virtools could not detach a Behavior Link sink.",
+                    detached));
+            removed.SinkDetached = true;
+        }
+        for (std::size_t index = 0; index < checked.Removals.size(); ++index) {
+            const CheckedRemove &item = checked.Removals[index];
+            CKBehavior *node = Resolve<CKBehavior>(
+                m_Context, patch->Removals[index].Node, CKCID_BEHAVIOR);
+            if (!node || graph->RemoveSubBehavior(node) != node ||
+                ContainsNode(graph, node)) {
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "Virtools could not remove a Behavior Node.",
+                    CKERR_INVALIDOBJECT));
+            }
+            patch->Removals[index].Removed = true;
+            nodes.erase(item.Target.Value);
+        }
+    }
     status = validatePorts();
     if (status)
         status = validateRelations();
+    if (status)
+        status = validateRemoved();
     if (!status)
         return fail(std::move(status));
 
@@ -2847,6 +3096,8 @@ Status CKEdit::ApplyNow(const Edit &edit,
     status = validatePorts();
     if (status)
         status = validateRelations();
+    if (status)
+        status = validateRemoved();
     if (!status)
         return fail(std::move(status));
     graph = graphFor();
@@ -2929,11 +3180,50 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         noteConflict({subject, {}, {}, {}, {}, {}, conflict});
         return conflict;
     };
-    if (graph && m_Replacing.contains(graphId) &&
-        !patch.ReplacementClaim) {
+    if (!graph) {
+        // RemoveSubBehavior and RemoveSubBehaviorLink make the parked objects
+        // independent from their former graph. If that graph is deleted while
+        // the Patch is open, retire those objects explicitly; otherwise CK2
+        // has no remaining owner that can delete them.
+        for (Patch::Journal::RemovedLink &removed : patch.RemovedLinks) {
+            if (removed.Restored)
+                continue;
+            if (CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                    m_Context, removed.Value, CKCID_BEHAVIORLINK))
+                m_Context->DestroyObject(link);
+            removed.Removed = false;
+            removed.SourceDetached = false;
+            removed.SinkDetached = false;
+            removed.Restored = true;
+        }
+        for (Patch::Journal::Removal &removal : patch.Removals) {
+            if (removal.Restored)
+                continue;
+            if (CKBehavior *node = Resolve<CKBehavior>(
+                    m_Context, removal.Node, CKCID_BEHAVIOR))
+                m_Context->DestroyObject(node);
+            removal.Removed = false;
+            removal.Restored = true;
+        }
+        // Replace also parks its original Node. It obeys the same ownership
+        // rule when the graph disappears before the Patch closes.
+        for (Patch::Journal::Replacement &replacement : patch.Replacements) {
+            if (replacement.Restored)
+                continue;
+            if (replacement.OriginalRemoved) {
+                if (CKBehavior *original = Resolve<CKBehavior>(
+                        m_Context, replacement.Original, CKCID_BEHAVIOR))
+                    m_Context->DestroyObject(original);
+                replacement.OriginalRemoved = false;
+            }
+            replacement.Restored = true;
+        }
+    }
+    if (graph && m_NodeEdits.contains(graphId) &&
+        !patch.NodeEditClaim) {
         return replacementConflict(
             RevertSubject::Node,
-            "This Patch cannot close while the graph contains an active Node replacement.");
+            "This Patch cannot close while the graph contains an active Node edit.");
     }
     if (graph) {
         for (const Patch::Journal::Replacement &replacement :
@@ -2956,9 +3246,21 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                     continue;
                 CKBehaviorLink *link = Resolve<CKBehaviorLink>(
                     m_Context, change.Link, CKCID_BEHAVIORLINK);
+                const auto removed = std::find_if(
+                    patch.RemovedLinks.begin(), patch.RemovedLinks.end(),
+                    [&](const Patch::Journal::RemovedLink &item) {
+                        return !item.Restored && item.Value == change.Link;
+                    });
+                const bool parked = removed != patch.RemovedLinks.end();
                 if (!link ||
-                    Capture(link->GetInBehaviorIO()) != change.InstalledSource ||
-                    Capture(link->GetOutBehaviorIO()) != change.InstalledSink) {
+                    (parked &&
+                     (removed->Source != change.InstalledSource ||
+                      removed->Sink != change.InstalledSink)) ||
+                    (!parked &&
+                     (Capture(link->GetInBehaviorIO()) !=
+                          change.InstalledSource ||
+                      Capture(link->GetOutBehaviorIO()) !=
+                          change.InstalledSink))) {
                     return replacementConflict(
                         RevertSubject::Link,
                         "A replacement Link changed after the Patch was published.");
@@ -3001,6 +3303,39 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                         RevertSubject::PinSource,
                         "A replacement Pout destination changed after the Patch was published.");
                 }
+            }
+        }
+        for (const Patch::Journal::Removal &removal : patch.Removals) {
+            if (removal.Restored)
+                continue;
+            CKBehavior *node = Resolve<CKBehavior>(
+                m_Context, removal.Node, CKCID_BEHAVIOR);
+            if (!node || ContainsNode(graph, node) == removal.Removed) {
+                return replacementConflict(
+                    RevertSubject::Node,
+                    "A removed Behavior Node changed after the Patch was published.");
+            }
+        }
+        for (const Patch::Journal::RemovedLink &removed :
+             patch.RemovedLinks) {
+            if (removed.Restored)
+                continue;
+            CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                m_Context, removed.Value, CKCID_BEHAVIORLINK);
+            CKBehaviorIO *source = ResolveIo(
+                m_Context, removed.SourceDetached
+                    ? patch.DetachedSource : removed.Source);
+            CKBehaviorIO *sink = ResolveIo(
+                m_Context, removed.SinkDetached
+                    ? patch.DetachedSink : removed.Sink);
+            if (!link || ContainsLink(graph, link) == removed.Removed ||
+                !source || !sink || link->GetInBehaviorIO() != source ||
+                link->GetOutBehaviorIO() != sink ||
+                link->GetInitialActivationDelay() != removed.InitialDelay ||
+                link->GetActivationDelay() != removed.Delay) {
+                return replacementConflict(
+                    RevertSubject::Link,
+                    "A removed Behavior Link changed after the Patch was published.");
             }
         }
     }
@@ -3248,6 +3583,106 @@ Status CKEdit::Undo(Patch::Journal &patch) {
             patch.Values.begin(), patch.Values.end(),
             [](const Patch::Journal::Written &item) { return !item.Reverted; });
     if (!pinsRetained) {
+        for (auto item = patch.Removals.rbegin();
+             item != patch.Removals.rend(); ++item) {
+            if (item->Restored)
+                continue;
+            graph = Resolve<CKBehavior>(
+                m_Context, patch.Graph, CKCID_BEHAVIOR);
+            if (!graph) {
+                item->Restored = true;
+                continue;
+            }
+            CKBehavior *node = Resolve<CKBehavior>(
+                m_Context, item->Node, CKCID_BEHAVIOR);
+            if (!node) {
+                remember(replacementConflict(
+                    RevertSubject::Node,
+                    "The removed Behavior Node no longer exists."));
+                continue;
+            }
+            if (item->Removed) {
+                const CKERROR added = graph->AddSubBehavior(node);
+                if (added != CK_OK || !ContainsNode(graph, node)) {
+                    remember(replacementConflict(
+                        RevertSubject::Node,
+                        "Virtools could not restore a removed Behavior Node."));
+                    continue;
+                }
+                item->Removed = false;
+            }
+            item->Restored = true;
+        }
+
+        const bool removalNodesRestored = std::all_of(
+            patch.Removals.begin(), patch.Removals.end(),
+            [](const Patch::Journal::Removal &item) {
+                return item.Restored;
+            });
+        if (removalNodesRestored) {
+            for (auto item = patch.RemovedLinks.rbegin();
+                 item != patch.RemovedLinks.rend(); ++item) {
+                if (item->Restored)
+                    continue;
+                graph = Resolve<CKBehavior>(
+                    m_Context, patch.Graph, CKCID_BEHAVIOR);
+                if (!graph) {
+                    item->Restored = true;
+                    continue;
+                }
+                CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                    m_Context, item->Value, CKCID_BEHAVIORLINK);
+                CKBehaviorIO *source = ResolveIo(m_Context, item->Source);
+                CKBehaviorIO *sink = ResolveIo(m_Context, item->Sink);
+                if (!link || !source || !sink) {
+                    remember(replacementConflict(
+                        RevertSubject::Link,
+                        "A removed Behavior Link cannot be restored."));
+                    continue;
+                }
+                if (item->SourceDetached) {
+                    const CKERROR restored = link->SetInBehaviorIO(source);
+                    if (restored != CK_OK) {
+                        remember(replacementConflict(
+                            RevertSubject::Link,
+                            "Virtools could not restore a Behavior Link source."));
+                        continue;
+                    }
+                    item->SourceDetached = false;
+                }
+                if (item->SinkDetached) {
+                    const CKERROR restored = link->SetOutBehaviorIO(sink);
+                    if (restored != CK_OK) {
+                        remember(replacementConflict(
+                            RevertSubject::Link,
+                            "Virtools could not restore a Behavior Link sink."));
+                        continue;
+                    }
+                    item->SinkDetached = false;
+                }
+                if (link->GetInBehaviorIO() != source ||
+                    link->GetOutBehaviorIO() != sink) {
+                    remember(replacementConflict(
+                        RevertSubject::Link,
+                        "A removed Behavior Link cannot be restored."));
+                    continue;
+                }
+                if (item->Removed) {
+                    link->SetInitialActivationDelay(item->InitialDelay);
+                    link->SetActivationDelay(item->Delay);
+                    const CKERROR added = graph->AddSubBehaviorLink(link);
+                    if (added != CK_OK || !ContainsLink(graph, link)) {
+                        remember(replacementConflict(
+                            RevertSubject::Link,
+                            "Virtools could not restore a removed Behavior Link."));
+                        continue;
+                    }
+                    item->Removed = false;
+                }
+                item->Restored = true;
+            }
+        }
+
         for (auto item = patch.Replacements.rbegin();
              item != patch.Replacements.rend(); ++item) {
             if (item->Restored)
@@ -3372,11 +3807,32 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         [](const Patch::Journal::Replacement &item) {
             return item.Restored;
         });
-    if (!replacementsRestored)
+    const bool removalsRestored = std::all_of(
+            patch.Removals.begin(), patch.Removals.end(),
+            [](const Patch::Journal::Removal &item) {
+                return item.Restored;
+            }) &&
+        std::all_of(
+            patch.RemovedLinks.begin(), patch.RemovedLinks.end(),
+            [](const Patch::Journal::RemovedLink &item) {
+                return item.Restored;
+            });
+    if (!replacementsRestored || !removalsRestored)
         return first;
-    if (patch.ReplacementClaim) {
-        m_Replacing.erase(graphId);
-        patch.ReplacementClaim = false;
+    if (patch.DetachedSource.Id) {
+        if (CKBehaviorIO *source = ResolveIo(
+                m_Context, patch.DetachedSource))
+            m_Context->DestroyObject(source);
+        patch.DetachedSource = {};
+    }
+    if (patch.DetachedSink.Id) {
+        if (CKBehaviorIO *sink = ResolveIo(m_Context, patch.DetachedSink))
+            m_Context->DestroyObject(sink);
+        patch.DetachedSink = {};
+    }
+    if (patch.NodeEditClaim) {
+        m_NodeEdits.erase(graphId);
+        patch.NodeEditClaim = false;
     }
 
     for (auto item = patch.Operations.rbegin();
@@ -3586,6 +4042,10 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         if (active == m_Active.end() || active->second.empty()) {
             if (active != m_Active.end())
                 m_Active.erase(active);
+            // No Patch owns a logical projection now. Retaining the last
+            // published Link inventory would make a later native Node edit
+            // look like an out-of-band graph change.
+            m_Graph.SetLogicalGraph(Native(patch.Graph), {});
             m_Topology.erase(graphId);
             m_Relations.erase(graphId);
             if (m_Links) {

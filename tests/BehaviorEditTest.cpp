@@ -136,6 +136,69 @@ TEST(BehaviorEdit, ExistingCycleDoesNotBlockAnUnrelatedFlow) {
     EXPECT_TRUE(edit.Validate(Base(true), checked));
 }
 
+TEST(BehaviorEdit, RemovesAnIdleChildWhileUnrelatedGraphWorkIsActive) {
+    Edit edit = MakeEdit();
+    const Node removed = edit.Use(Native(101), Shape());
+    edit.Remove(removed);
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(Base(), checked));
+    ASSERT_EQ(checked.Removals.size(), 1u);
+    EXPECT_EQ(checked.Removals[0].Target, removed);
+
+    GraphModel activeGraph = Base();
+    activeGraph.Nodes.front().Active = true;
+    EXPECT_TRUE(edit.Validate(activeGraph, checked));
+
+    GraphModel activeNode = Base();
+    activeNode.Nodes[1].Active = true;
+    EXPECT_EQ(edit.Validate(activeNode, checked).Code, Error::Busy);
+
+    GraphModel activePort = Base();
+    activePort.Nodes[1].Ports.push_back(
+        {SlotKind::Input, 0, 0, 0, CKGUID(), false, "In", true});
+    EXPECT_EQ(edit.Validate(activePort, checked).Code, Error::Busy);
+}
+
+TEST(BehaviorEdit, RejectsRemovalOfRootOwnedOrReusedNodes) {
+    CheckedEdit checked;
+
+    Edit root = MakeEdit();
+    root.Remove(root.Graph());
+    EXPECT_EQ(root.Validate(Base(), checked).Code, Error::InvalidState);
+
+    Edit authored = MakeEdit();
+    const Node added = authored.Add(BlockSpec(CKGUID(1, 2)), Shape());
+    authored.Remove(added);
+    EXPECT_EQ(authored.Validate(Base(), checked).Code, Error::InvalidState);
+
+    Edit reused = MakeEdit();
+    const Node removed = reused.Use(Native(101), Shape());
+    reused.Remove(removed);
+    reused.Flow(removed.Out(), reused.Exit());
+    EXPECT_EQ(reused.Validate(Base(), checked).Code, Error::InvalidState);
+}
+
+TEST(BehaviorEdit, AllowsAdjacentReplaceAndRemoveInOneEdit) {
+    GraphModel base = Base();
+    base.Links = {
+        {1, {}, {101, SlotKind::Output, 0},
+                {102, SlotKind::Input, 0}, 0},
+    };
+    Edit edit = MakeEdit();
+    const Node removed = edit.Use(Native(101), Shape());
+    const Node original = edit.Use(Native(102), Shape());
+    const Node replacement = edit.Add(BlockSpec(CKGUID(1, 2)), Shape());
+    edit.Replace(original, replacement);
+    edit.Remove(removed);
+
+    CheckedEdit checked;
+    const Status status = edit.Validate(base, checked);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(checked.Replacements.size(), 1u);
+    EXPECT_EQ(checked.Removals.size(), 1u);
+}
+
 TEST(BehaviorEdit, DetectsACycleClosedThroughExistingSameFrameLinks) {
     GraphModel base = Base();
     base.Links = {
