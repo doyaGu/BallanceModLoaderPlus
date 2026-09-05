@@ -41,8 +41,11 @@ struct NativeRef {
 
 struct GraphPort {
     SlotKind Kind = SlotKind::Input;
+    std::uint64_t LayoutGeneration = 0;
     int Index = -1;
     int Occurrence = 0;
+    CKGUID Type = CKGUID();
+    bool Dynamic = false;
     std::string Name;
     bool Active = false;
 };
@@ -51,6 +54,7 @@ struct GraphNode {
     std::uint64_t Id = 0;
     ObjectRef Object;
     std::uint64_t Parent = 0;
+    std::uint64_t LayoutGeneration = 0;
     CKGUID Prototype = CKGUID();
     std::string Name;
     int Priority = 0;
@@ -152,7 +156,9 @@ public:
     virtual Status Read(const NativeRef &root, GraphView view,
                         GraphModel &out) = 0;
     virtual Status ReadLayout(const NativeRef &node, Layout &out) = 0;
-    virtual Status ReadValue(const NativeRef &node, const Slot &slot,
+    virtual Status ReadValue(const NativeRef &node,
+                             std::uint64_t layoutGeneration,
+                             const Slot &slot,
                              ReadMode mode, GraphValue &out) = 0;
     virtual Status GraphFingerprint(const NativeRef &root, GraphView view,
                                     std::uint64_t &out) = 0;

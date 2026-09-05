@@ -14,13 +14,32 @@
 
 namespace BML::Behavior {
 
+namespace Detail {
+template <class T>
+inline constexpr bool FitsBehaviorInt =
+    std::is_integral_v<T> && !std::is_same_v<T, bool> &&
+    ((std::is_signed_v<T> && sizeof(T) <= 4) ||
+     (std::is_unsigned_v<T> && sizeof(T) < 4));
+
+template <class T, bool = std::is_enum_v<T>>
+struct EnumFitsBehaviorInt : std::false_type {};
+
+template <class T>
+struct EnumFitsBehaviorInt<T, true>
+    : std::bool_constant<
+          (std::is_signed_v<std::underlying_type_t<T>> &&
+           sizeof(std::underlying_type_t<T>) <= 4) ||
+          (std::is_unsigned_v<std::underlying_type_t<T>> &&
+           sizeof(std::underlying_type_t<T>) < 4)> {};
+} // namespace Detail
+
 
 using ObjectRef = BML_ObjectRef;
 
 class Selector;
 class Value;
 class Frame;
-struct Node;
+class Node;
 struct Slot;
 
 namespace Detail {
@@ -251,7 +270,7 @@ private:
 
     friend struct Detail::Wire;
     friend class Frame;
-    friend struct Node;
+    friend class Node;
 };
 
 inline Selector At(std::int32_t index) { return Selector::At(index); }
@@ -317,24 +336,30 @@ public:
     Value(BML_Mat4 value) : m_Type(CKPGUID_MATRIX), m_Kind(ValueKind::Mat4) {
         m_Data.Mat4 = value;
     }
-    // Any other integer, including an unsigned one or an enumerator, is an
-    // Int; any other real is a Float. Without these an author has to spell out
-    // the narrowing that the Virtools parameter is going to do anyway.
+    // Accept only integer domains whose complete range fits a Virtools Int.
+    // Wider values must be narrowed explicitly at the authoring boundary.
     template <class T, std::enable_if_t<
-                           std::is_integral_v<T> && !std::is_same_v<T, bool>,
+                           Detail::FitsBehaviorInt<T>,
                            int> = 0>
     Value(T value) : m_Type(CKPGUID_INT), m_Kind(ValueKind::Int32) {
         m_Data.Int32 = static_cast<std::int32_t>(value);
     }
-    template <class T, std::enable_if_t<std::is_floating_point_v<T>, int> = 0>
-    Value(T value) : m_Type(CKPGUID_FLOAT), m_Kind(ValueKind::Float32) {
-        m_Data.Float32 = static_cast<float>(value);
-    }
-    template <class T, std::enable_if_t<std::is_enum_v<T>, int> = 0>
+    template <class T, std::enable_if_t<
+                           Detail::EnumFitsBehaviorInt<T>::value,
+                           int> = 0>
     Value(T value) : m_Type(CKPGUID_INT), m_Kind(ValueKind::Int32) {
         m_Data.Int32 = static_cast<std::int32_t>(
             static_cast<std::underlying_type_t<T>>(value));
     }
+    template <class T, std::enable_if_t<
+                           (std::is_integral_v<T> &&
+                            !std::is_same_v<T, bool> &&
+                            !Detail::FitsBehaviorInt<T>) ||
+                           (std::is_floating_point_v<T> &&
+                            !std::is_same_v<T, float>) ||
+                           (std::is_enum_v<T> &&
+                            !Detail::EnumFitsBehaviorInt<T>::value), int> = 0>
+    Value(T) = delete;
     Value(const Vx2DVector &value) : Value(Convert::ToVec2(value)) {}
     Value(const VxVector &value) : Value(Convert::ToVec3(value)) {}
     Value(const VxRect &value) : Value(Convert::ToRect(value)) {}

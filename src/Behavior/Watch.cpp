@@ -79,10 +79,21 @@ Status Watch::ReadBaseline() {
         return m_Source.GraphFingerprint(
             m_Spec.Root, m_Spec.View, m_Fingerprint);
     case WatchKind::LayoutChanged:
+        if (m_Spec.LayoutGeneration) {
+            Layout layout;
+            Status status = m_Source.ReadLayout(m_Spec.Node, layout);
+            if (!status)
+                return status;
+            if (layout.Generation != m_Spec.LayoutGeneration)
+                return Failure(
+                    Error::StaleLayout,
+                    "The watched Node belongs to an older Behavior Layout.");
+        }
         return m_Source.LayoutFingerprint(m_Spec.Node, m_Fingerprint);
     case WatchKind::SampledValueChanged:
         return m_Source.ReadValue(
-            m_Spec.Node, m_Spec.ValueSlot, m_Spec.Read, m_Value);
+            m_Spec.Node, m_Spec.LayoutGeneration, m_Spec.ValueSlot,
+            m_Spec.Read, m_Value);
     }
     return Failure(Error::InvalidState, "The Behavior Watch kind is invalid.");
 }
@@ -118,7 +129,8 @@ Status Watch::Poll(std::uint64_t frame) {
     case WatchKind::SampledValueChanged: {
         GraphValue current;
         status = m_Source.ReadValue(
-            m_Spec.Node, m_Spec.ValueSlot, m_Spec.Read, current);
+            m_Spec.Node, m_Spec.LayoutGeneration, m_Spec.ValueSlot,
+            m_Spec.Read, current);
         if (!status)
             break;
         changed = current != m_Value;

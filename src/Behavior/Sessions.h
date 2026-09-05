@@ -32,6 +32,7 @@ struct RunInfo {
     RunState State = RunState::Ready;
     Status LastStatus;
     DetachedCompatibility Detached = DetachedCompatibility::Unverified;
+    PrototypeRef Prototype;
 };
 
 struct OpenRun {
@@ -99,6 +100,7 @@ public:
                std::uint64_t &currentGeneration);
     Status Bind(std::uintptr_t runId, std::uint64_t layoutGeneration,
                 const Slot &slot, CKBehavior *source,
+                std::uint64_t sourceLayoutGeneration,
                 const Slot &sourceSlot, Parameter::BindingKind relation,
                 std::uint64_t &currentGeneration);
     Status Configure(std::uintptr_t runId, const Spec &settings,
@@ -109,7 +111,8 @@ public:
                      GraphView view, GraphModel &out);
     Status ReadNodeLayout(std::uintptr_t sessionId, void *node, Layout &out);
     Status ReadGraphValue(std::uintptr_t sessionId, void *node,
-                          const Slot &slot, ReadMode mode, GraphValue &out);
+                          std::uint64_t layoutGeneration, const Slot &slot,
+                          ReadMode mode, GraphValue &out);
     Status OpenWatch(std::uintptr_t sessionId, void *root, void *node,
                      WatchSpec spec, PlanCallbackState state,
                      WatchBinding::Function callback,
@@ -165,7 +168,8 @@ private:
     [[nodiscard]] bool SessionIsActive(const Session &session) const;
     [[nodiscard]] OpenRun AddRun(const Session &session, RunKind kind,
                                  Instance block, RunResult result,
-                                 DetachedCompatibility compatibility);
+                                 DetachedCompatibility compatibility,
+                                 PrototypeRef prototype);
     void QueueClose(std::shared_ptr<Run> run);
     void CloseQueuedRuns();
     void CloseOwner(const std::string &ownerId, std::uint64_t generation);

@@ -32,6 +32,12 @@ public:
         const Behavior::Slot &slot, T &&value) const {
         return m_Run.Set(slot, Behavior::Value(std::forward<T>(value)));
     }
+    template <class T>
+    [[nodiscard]] Result<std::uint64_t> Set(
+        SlotKind kind, const Selector &slot, T &&value) const {
+        return m_Run.Set(kind, slot,
+                         Behavior::Value(std::forward<T>(value)));
+    }
     [[nodiscard]] Result<std::uint64_t> Bind(
         const Behavior::Slot &slot, const Port &source,
         Relation relation = Relation::Direct) const {
@@ -80,6 +86,12 @@ public:
     [[nodiscard]] Result<std::uint64_t> Set(
         const Behavior::Slot &slot, T &&value) const {
         return m_Run.Set(slot, Behavior::Value(std::forward<T>(value)));
+    }
+    template <class T>
+    [[nodiscard]] Result<std::uint64_t> Set(
+        SlotKind kind, const Selector &slot, T &&value) const {
+        return m_Run.Set(kind, slot,
+                         Behavior::Value(std::forward<T>(value)));
     }
     [[nodiscard]] Result<std::uint64_t> Bind(
         const Behavior::Slot &slot, const Port &source,

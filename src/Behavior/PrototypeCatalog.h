@@ -84,6 +84,7 @@ public:
     Status Find(const PrototypeQuery &query,
                 std::vector<PrototypeInfo> &out);
     Status DeclaredLayout(PrototypeRef prototype, Layout &out);
+    Status Resolve(PrototypeRef prototype, PrototypeRef &out);
     Status Validate(PrototypeRef prototype);
     Status Detached(PrototypeRef prototype,
                     DetachedCompatibility &out);

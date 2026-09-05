@@ -569,31 +569,39 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
                       context, to, status))
         return false;
 
+    if (from.Frames.Flags & ~BML_BEHAVIOR_FRAME_POLICY_POUTS) {
+        status = InvalidValue("The Behavior Frame policy has unknown flags.");
+        return false;
+    }
+    FrameRetention retention;
     switch (from.Frames.Kind) {
     case BML_BEHAVIOR_FRAMES_SIGNALS:
         if (!from.Frames.Limit) {
             status = InvalidValue("Signals(n) requires a nonzero RunFrame limit.");
             return false;
         }
-        to.Frames(FrameRetention::Signals(from.Frames.Limit));
+        retention = FrameRetention::Signals(from.Frames.Limit);
         break;
     case BML_BEHAVIOR_FRAMES_EACH_FRAME:
         if (!from.Frames.Limit) {
             status = InvalidValue("EachFrame(n) requires a nonzero RunFrame limit.");
             return false;
         }
-        to.Frames(FrameRetention::EachFrame(from.Frames.Limit));
+        retention = FrameRetention::EachFrame(from.Frames.Limit);
         break;
     case BML_BEHAVIOR_FRAMES_LATEST:
-        to.Frames(FrameRetention::Latest());
+        retention = FrameRetention::Latest();
         break;
     case BML_BEHAVIOR_FRAMES_NONE:
-        to.Frames(FrameRetention::Ignore());
+        retention = FrameRetention::Ignore();
         break;
     default:
         status = InvalidValue("The Behavior RunFrame policy is unknown.");
         return false;
     }
+    if (from.Frames.Flags & BML_BEHAVIOR_FRAME_POLICY_POUTS)
+        retention = retention.Pouts();
+    to.Frames(retention);
     return true;
 }
 
@@ -624,6 +632,9 @@ void WriteRunInfo(BML_BehaviorRunInfo *out, const RunInfo &info) noexcept {
     out->State = PublicRunState(info.State);
     out->Flags = info.Detached == DetachedCompatibility::Unverified
         ? BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED : 0;
+    out->Prototype.StructSize = sizeof(out->Prototype);
+    out->Prototype.Prototype = Guid(info.Prototype.Guid);
+    out->Prototype.Generation = info.Prototype.Generation;
     out->Status.StructSize = sizeof(out->Status);
     WriteStatus(&out->Status, info.LastStatus);
 }
@@ -960,12 +971,55 @@ std::uint32_t PublicPoutKind(PoutKind kind) noexcept {
     return static_cast<std::uint32_t>(kind) + 1u;
 }
 
-class FrameBatch final {
+class WireFrames final : public BML::Behavior::FrameBatch {
 public:
-    explicit FrameBatch(bool materialize) noexcept
-        : m_Materialize(materialize) {}
+    WireFrames(BML_BehaviorRunFrame *headers,
+               std::uint32_t headerCapacity,
+               std::uint32_t headerStride,
+               void *payload,
+               std::uint32_t payloadCapacity,
+               std::uint32_t *headerCount,
+               std::uint32_t *payloadSize) noexcept
+        : m_Headers(reinterpret_cast<std::uint8_t *>(headers)),
+          m_HeaderCapacity(headerCapacity), m_HeaderStride(headerStride),
+          m_Payload(static_cast<std::uint8_t *>(payload)),
+          m_PayloadCapacity(payloadCapacity), m_OutHeaderCount(headerCount),
+          m_OutPayloadSize(payloadSize) {}
 
+    bool Measure(const RunFrame &frame) override {
+        return !m_Writing && Add(frame);
+    }
+
+    BML::Behavior::FrameBatchResult Ready() override {
+        if (m_HeaderCount > UINT32_MAX || m_PayloadSize > UINT32_MAX ||
+            !FitsStrided(m_HeaderCount, m_HeaderStride,
+                         sizeof(BML_BehaviorRunFrame)))
+            return BML::Behavior::FrameBatchResult::Failed;
+        *m_OutHeaderCount = static_cast<std::uint32_t>(m_HeaderCount);
+        *m_OutPayloadSize = static_cast<std::uint32_t>(m_PayloadSize);
+        if (m_HeaderCapacity < m_HeaderCount ||
+            m_PayloadCapacity < m_PayloadSize)
+            return BML::Behavior::FrameBatchResult::Insufficient;
+        m_ExpectedHeaders = m_HeaderCount;
+        m_ExpectedPayload = m_PayloadSize;
+        m_HeaderCount = 0;
+        m_PayloadSize = 0;
+        m_Writing = true;
+        return BML::Behavior::FrameBatchResult::Complete;
+    }
+
+    bool Write(const RunFrame &frame) override {
+        return m_Writing && Add(frame) &&
+            m_HeaderCount <= m_ExpectedHeaders &&
+            m_PayloadSize <= m_ExpectedPayload;
+    }
+
+private:
     bool Add(const RunFrame &frame) {
+        if (m_Writing &&
+            (m_HeaderCount >= m_ExpectedHeaders ||
+             m_HeaderCount >= m_HeaderCapacity || !m_Headers))
+            return false;
         BML_BehaviorRunFrame header{};
         header.StructSize = sizeof(header);
         header.Sequence = frame.Sequence;
@@ -980,36 +1034,12 @@ public:
         if (!AddOuts(frame, header) || !AddPouts(frame, header) ||
             !AddDiagnostic(frame, header))
             return false;
-        if (m_Materialize) {
-            m_Headers.push_back(header);
-            m_Sequences.push_back(frame.Sequence);
-        }
+        if (m_Writing)
+            std::memcpy(m_Headers + m_HeaderCount * m_HeaderStride,
+                        &header, sizeof(header));
         ++m_HeaderCount;
         return true;
     }
-
-    [[nodiscard]] std::size_t HeaderCount() const noexcept {
-        return m_HeaderCount;
-    }
-
-    [[nodiscard]] std::size_t PayloadSize() const noexcept {
-        return m_PayloadSize;
-    }
-
-    [[nodiscard]] const std::vector<BML_BehaviorRunFrame> &Headers() const
-        noexcept {
-        return m_Headers;
-    }
-
-    [[nodiscard]] const std::vector<std::uint8_t> &Payload() const noexcept {
-        return m_Payload;
-    }
-
-    [[nodiscard]] const std::vector<std::uint64_t> &Sequences() const noexcept {
-        return m_Sequences;
-    }
-
-private:
     bool Align(std::size_t alignment) {
         const std::size_t remainder = m_PayloadSize % alignment;
         if (!remainder)
@@ -1018,8 +1048,10 @@ private:
         if (m_PayloadSize > UINT32_MAX ||
             padding > UINT32_MAX - m_PayloadSize)
             return false;
-        if (m_Materialize)
-            m_Payload.insert(m_Payload.end(), padding, 0);
+        if (!CanWrite(padding))
+            return false;
+        if (m_Writing)
+            std::memset(m_Payload + m_PayloadSize, 0, padding);
         m_PayloadSize += padding;
         return true;
     }
@@ -1028,11 +1060,11 @@ private:
         if ((!data && size) || m_PayloadSize > UINT32_MAX ||
             size > UINT32_MAX || size > UINT32_MAX - m_PayloadSize)
             return false;
+        if (!CanWrite(size))
+            return false;
         offset = static_cast<std::uint32_t>(m_PayloadSize);
-        if (m_Materialize && size) {
-            const auto *bytes = static_cast<const std::uint8_t *>(data);
-            m_Payload.insert(m_Payload.end(), bytes, bytes + size);
-        }
+        if (m_Writing && size)
+            std::memcpy(m_Payload + m_PayloadSize, data, size);
         m_PayloadSize += size;
         return true;
     }
@@ -1045,20 +1077,29 @@ private:
         if (m_PayloadSize > UINT32_MAX ||
             bytes > UINT32_MAX - m_PayloadSize)
             return false;
+        if (!CanWrite(bytes))
+            return false;
         offset = static_cast<std::uint32_t>(m_PayloadSize);
-        if (m_Materialize)
-            m_Payload.resize(m_Payload.size() + bytes, 0);
+        if (m_Writing)
+            std::memset(m_Payload + m_PayloadSize, 0, bytes);
         m_PayloadSize += bytes;
         return true;
     }
 
     template <typename T>
-    void StoreRecord(std::uint32_t base, std::size_t index,
+    bool StoreRecord(std::uint32_t base, std::size_t index,
                      const T &record) {
-        if (m_Materialize) {
-            std::memcpy(m_Payload.data() + base + index * sizeof(T),
-                        &record, sizeof(record));
-        }
+        if (!m_Writing)
+            return true;
+        const std::size_t at = static_cast<std::size_t>(base) +
+            index * sizeof(T);
+        if (!m_Payload || at > m_ExpectedPayload ||
+            sizeof(T) > m_ExpectedPayload - at ||
+            at > m_PayloadCapacity ||
+            sizeof(T) > m_PayloadCapacity - at)
+            return false;
+        std::memcpy(m_Payload + at, &record, sizeof(record));
+        return true;
     }
 
     bool AddOuts(const RunFrame &frame,
@@ -1078,7 +1119,8 @@ private:
             record.NameLength = static_cast<std::uint32_t>(out.Name.size());
             if (!Append(out.Name.data(), out.Name.size(), record.NameOffset))
                 return false;
-            StoreRecord(header.OutOffset, index, record);
+            if (!StoreRecord(header.OutOffset, index, record))
+                return false;
         }
         return true;
     }
@@ -1103,7 +1145,8 @@ private:
             if (!Append(pout.Name.data(), pout.Name.size(), record.NameOffset) ||
                 !AddPoutValue(pout, record))
                 return false;
-            StoreRecord(header.PoutOffset, index, record);
+            if (!StoreRecord(header.PoutOffset, index, record))
+                return false;
         }
         return true;
     }
@@ -1170,16 +1213,30 @@ private:
         if (!Append(frame.Fault.Message.data(), frame.Fault.Message.size(),
                     record.MessageOffset))
             return false;
-        StoreRecord(header.DiagnosticOffset, 0, record);
-        return true;
+        return StoreRecord(header.DiagnosticOffset, 0, record);
     }
 
-    const bool m_Materialize;
+    [[nodiscard]] bool CanWrite(std::size_t size) const noexcept {
+        if (!m_Writing)
+            return true;
+        return m_Payload && m_PayloadSize <= m_ExpectedPayload &&
+            size <= m_ExpectedPayload - m_PayloadSize &&
+            m_PayloadSize <= m_PayloadCapacity &&
+            size <= m_PayloadCapacity - m_PayloadSize;
+    }
+
+    std::uint8_t *m_Headers = nullptr;
+    std::size_t m_HeaderCapacity = 0;
+    std::size_t m_HeaderStride = 0;
+    std::uint8_t *m_Payload = nullptr;
+    std::size_t m_PayloadCapacity = 0;
+    std::uint32_t *m_OutHeaderCount = nullptr;
+    std::uint32_t *m_OutPayloadSize = nullptr;
+    bool m_Writing = false;
     std::size_t m_HeaderCount = 0;
     std::size_t m_PayloadSize = 0;
-    std::vector<BML_BehaviorRunFrame> m_Headers;
-    std::vector<std::uint8_t> m_Payload;
-    std::vector<std::uint64_t> m_Sequences;
+    std::size_t m_ExpectedHeaders = 0;
+    std::size_t m_ExpectedPayload = 0;
 };
 
 int BML_BEHAVIOR_CALL TakeFrames(
@@ -1203,42 +1260,18 @@ int BML_BEHAVIOR_CALL TakeFrames(
         if (!store)
             return BML_ERROR_INVALID_HANDLE;
 
-        const std::vector<RunFrame> frames = store->Read();
-        FrameBatch measured(false);
-        for (const RunFrame &frame : frames) {
-            if (!measured.Add(frame))
-                return BML_ERROR_OUT_OF_MEMORY;
-        }
-        if (measured.HeaderCount() > UINT32_MAX ||
-            measured.PayloadSize() > UINT32_MAX)
-            return BML_ERROR_OUT_OF_MEMORY;
-        if (!FitsStrided(measured.HeaderCount(), headerStride,
-                         sizeof(BML_BehaviorRunFrame)))
-            return BML_ERROR_OUT_OF_MEMORY;
-        *outHeaderCount = static_cast<std::uint32_t>(measured.HeaderCount());
-        *outPayloadSize = static_cast<std::uint32_t>(measured.PayloadSize());
-        if (headerCapacity < measured.HeaderCount() ||
-            payloadCapacity < measured.PayloadSize())
+        WireFrames batch(headers, headerCapacity, headerStride,
+                         payload, payloadCapacity,
+                         outHeaderCount, outPayloadSize);
+        switch (store->Take(batch)) {
+        case BML::Behavior::FrameBatchResult::Complete:
+            return BML_OK;
+        case BML::Behavior::FrameBatchResult::Insufficient:
             return BML_ERROR_BUFFER_TOO_SMALL;
-
-        FrameBatch batch(true);
-        for (const RunFrame &frame : frames) {
-            if (!batch.Add(frame))
-                return BML_ERROR_OUT_OF_MEMORY;
+        case BML::Behavior::FrameBatchResult::Failed:
+            return BML_ERROR_OUT_OF_MEMORY;
         }
-        if (batch.HeaderCount() != measured.HeaderCount() ||
-            batch.PayloadSize() != measured.PayloadSize())
-            return BML_ERROR_BUSY;
-
-        auto *headerBytes = reinterpret_cast<std::uint8_t *>(headers);
-        for (std::size_t index = 0; index < batch.Headers().size(); ++index)
-            std::memcpy(headerBytes + index * headerStride,
-                        &batch.Headers()[index], sizeof(batch.Headers()[index]));
-        if (!batch.Payload().empty())
-            std::memcpy(payload, batch.Payload().data(), batch.Payload().size());
-        if (!store->Consume(batch.Sequences()))
-            return BML_ERROR_BUSY;
-        return BML_OK;
+        return BML_ERROR_FAIL;
     });
 }
 
@@ -1462,8 +1495,6 @@ bool AddLayout(const Layout &from, BehaviorPayload &payload,
         record.Kind = BML_BEHAVIOR_KIND_GRAPH;
         break;
     }
-    if (from.MaterializedNow)
-        record.Flags |= BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW;
     record.CompatibleClass = from.CompatibleClass;
     record.PrototypeFlags = from.PrototypeFlags;
     record.BehaviorFlags = from.BehaviorFlags;
@@ -1719,6 +1750,7 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
         record.Object = {node.Object.Domain, node.Object.Slot,
                          node.Object.Generation};
         record.Parent = node.Parent;
+        record.LayoutGeneration = node.LayoutGeneration;
         record.Prototype = Guid(node.Prototype);
         record.Priority = node.Priority;
         record.Active = node.Active ? 1u : 0u;
@@ -1736,9 +1768,13 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
             BML_BehaviorGraphPort portRecord{};
             portRecord.StructSize = sizeof(portRecord);
             portRecord.Node = node.Id;
+            portRecord.LayoutGeneration = port.LayoutGeneration;
             portRecord.Kind = PublicSlotKind(port.Kind);
+            if (port.Dynamic)
+                portRecord.Flags |= BML_BEHAVIOR_SLOT_DYNAMIC;
             portRecord.Index = port.Index;
             portRecord.Occurrence = port.Occurrence;
+            portRecord.Type = Guid(port.Type);
             portRecord.Active = port.Active ? 1u : 0u;
             if (!payload.Text(port.Name, portRecord.Name))
                 return false;
@@ -2000,6 +2036,7 @@ int BML_BEHAVIOR_CALL ReadNodeLayout(
 
 int BML_BEHAVIOR_CALL ReadGraphValue(
     BML_BehaviorSession session, BML_ObjectRef node, std::uint32_t slotKind,
+    std::uint64_t layoutGeneration,
     const BML_BehaviorSelector *slot, std::uint32_t read,
     BML_BehaviorGraphValue *value, void *payload,
     std::uint32_t payloadCapacity, std::uint32_t *outPayloadSize,
@@ -2026,6 +2063,13 @@ int BML_BEHAVIOR_CALL ReadGraphValue(
         }
         Status result;
         Slot selector;
+        if (slot->Kind == BML_BEHAVIOR_SELECTOR_INDEX &&
+            layoutGeneration == 0) {
+            result = InvalidValue(
+                "An indexed graph port requires its Layout generation.");
+            WriteStatus(status, result);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
         if (!ReadSelector(*slot, nativeKind, CKGUID(), selector, result)) {
             WriteStatus(status, result);
             return BML_ERROR_INVALID_PARAMETER;
@@ -2037,8 +2081,8 @@ int BML_BEHAVIOR_CALL ReadGraphValue(
         }
         GraphValue source;
         result = context->BehaviorSessions().ReadGraphValue(
-            SessionId(session), native, selector, ReadMode::NonForcing,
-            source);
+            SessionId(session), native, layoutGeneration, selector,
+            ReadMode::NonForcing, source);
         WriteStatus(status, result);
         if (!result)
             return ResultCode(result);
@@ -2204,6 +2248,7 @@ int BML_BEHAVIOR_CALL OpenWatch(
             }
         }
         if (spec.Kind == WatchKind::SampledValueChanged) {
+            spec.LayoutGeneration = source->LayoutGeneration;
             SlotKind kind;
             switch (source->SlotKind) {
             case BML_BEHAVIOR_SLOT_PIN: kind = SlotKind::InputParameter; break;
@@ -2213,11 +2258,20 @@ int BML_BEHAVIOR_CALL OpenWatch(
             case BML_BEHAVIOR_SLOT_TARGET: kind = SlotKind::Target; break;
             default: return BML_ERROR_INVALID_PARAMETER;
             }
-            if (!ReadSelector(source->Slot, kind, CKGUID(),
+            if ((source->Slot.Kind == BML_BEHAVIOR_SELECTOR_INDEX &&
+                 source->LayoutGeneration == 0) ||
+                !ReadSelector(source->Slot, kind, CKGUID(),
                               spec.ValueSlot, result)) {
+                if (result)
+                    result = InvalidValue(
+                        "An indexed watched port requires its Layout generation.");
                 WriteStatus(status, result);
                 return BML_ERROR_INVALID_PARAMETER;
             }
+        } else if (spec.Kind == WatchKind::LayoutChanged) {
+            if (!source->LayoutGeneration)
+                return BML_ERROR_INVALID_PARAMETER;
+            spec.LayoutGeneration = source->LayoutGeneration;
         }
 
         const BML_BehaviorWatchFunction function = *callback;
@@ -2428,6 +2482,8 @@ int BML_BEHAVIOR_CALL Bind(
         Status result;
         if (!ReadLiveSlot(*slot, targetSlot, result) ||
             !ReadSlotKind(source->Kind, sourceKind) ||
+            (source->Slot.Kind == BML_BEHAVIOR_SELECTOR_INDEX &&
+             source->LayoutGeneration == 0) ||
             !ReadSelector(source->Slot, sourceKind, CKGUID(),
                           sourceSlot, result)) {
             if (result)
@@ -2453,7 +2509,8 @@ int BML_BEHAVIOR_CALL Bind(
         }
         result = context->BehaviorSessions().Bind(
             RunId(run), slot->LayoutGeneration, targetSlot, native,
-            sourceSlot, nativeRelation, *outLayoutGeneration);
+            source->LayoutGeneration, sourceSlot, nativeRelation,
+            *outLayoutGeneration);
         WriteStatus(status, result);
         return ResultCode(result);
     });
@@ -2728,6 +2785,10 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         const CKGUID prototype = Guid(step.Prototype.Prototype);
         if (!prototype.IsValid())
             return InvalidValue("An added Behavior Block needs a Prototype.");
+        if (!step.Prototype.Generation) {
+            return InvalidValue(
+                "An added Behavior Block needs a fixed Prototype provider generation.");
+        }
         defined.Kind = EditHandleKind::Node;
         defined.Added = true;
         defined.NodeValue = edit.Add(

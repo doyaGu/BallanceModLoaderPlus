@@ -216,6 +216,8 @@ public:
                                const CKBehaviorContext *frame = nullptr);
 
     [[nodiscard]] Layout Describe(CKBehavior *behavior, std::uint64_t generation = 0) const;
+    [[nodiscard]] std::uint64_t LayoutGeneration(
+        CKBehavior *behavior) const noexcept;
     [[nodiscard]] Status Describe(const Instance &instance,
                                   Layout &layout) const;
     [[nodiscard]] Status Resolve(CKBehavior *behavior, const Slot &selector,
@@ -294,6 +296,7 @@ private:
         ObjectStamp Parent;
         CKGUID PrototypeGuid;
         CKBehaviorPrototype *Prototype = nullptr;
+        std::uint64_t ProviderGeneration = 0;
         std::uint64_t Id = 0;
         std::uint64_t LayoutGeneration = 1;
         bool GraphResident = false;
@@ -351,8 +354,8 @@ private:
     [[nodiscard]] ObjectStamp CaptureObject(CKObject *object) const;
     [[nodiscard]] CKObject *ResolveObject(ObjectStamp object) const;
     [[nodiscard]] CKBehavior *ResolveBehavior(const Record &record) const;
-    [[nodiscard]] Status ResolvePrototype(CKGUID guid,
-                                          std::uint64_t generation = 0) const;
+    [[nodiscard]] Status ResolvePrototype(PrototypeRef requested,
+                                          PrototypeRef &selected) const;
     [[nodiscard]] Status CheckDetached(
         const Spec &spec, DetachedCompatibility &compatibility,
         bool graphResident = false) const;

@@ -44,19 +44,19 @@ bool ExecutionInput::operator==(const ExecutionInput &other) const noexcept {
 }
 
 FrameRetention FrameRetention::Signals(std::size_t capacity) {
-    return {RetentionKind::Signals, capacity};
+    return {RetentionKind::Signals, capacity, false};
 }
 
 FrameRetention FrameRetention::EachFrame(std::size_t capacity) {
-    return {RetentionKind::EachFrame, capacity};
+    return {RetentionKind::EachFrame, capacity, false};
 }
 
 FrameRetention FrameRetention::Latest() {
-    return {RetentionKind::Latest, 1};
+    return {RetentionKind::Latest, 1, false};
 }
 
 FrameRetention FrameRetention::Ignore() {
-    return {RetentionKind::Ignore, 0};
+    return {RetentionKind::Ignore, 0, false};
 }
 
 Execution::Execution(FrameRetention retention)
@@ -232,7 +232,7 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
     frame.NativeContinuation = m_NativeContinuation;
     frame.QueuedInput = !m_QueuedInputs.empty();
 
-    if (!native.Fault && m_Frames->KeepsPouts(frame)) {
+    if (!fatal && m_Frames->KeepsPouts(frame)) {
         ExecutionFault poutFault;
         if (!adapter.ReadPouts(frame.Pouts, poutFault)) {
             if (!poutFault)

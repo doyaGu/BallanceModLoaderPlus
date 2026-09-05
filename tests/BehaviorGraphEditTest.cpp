@@ -21,11 +21,13 @@ NativeRef Native(std::uint64_t id) {
 }
 
 GraphPort In(int index = 0, std::string name = "In") {
-    return {SlotKind::Input, index, 0, std::move(name)};
+    return {SlotKind::Input, 0, index, 0, CKGUID(), false,
+            std::move(name), false};
 }
 
 GraphPort Out(int index = 0, std::string name = "Out") {
-    return {SlotKind::Output, index, 0, std::move(name)};
+    return {SlotKind::Output, 0, index, 0, CKGUID(), false,
+            std::move(name), false};
 }
 
 SlotInfo SlotOf(SlotKind kind, int index, std::string name) {

@@ -45,7 +45,7 @@ public:
                 CKBR_PARAMETERERROR, "Not used by this test."};
     }
 
-    Status ReadValue(const NativeRef &, const Slot &, ReadMode,
+    Status ReadValue(const NativeRef &, std::uint64_t, const Slot &, ReadMode,
                      GraphValue &) override {
         return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
                 CKBR_PARAMETERERROR, "Not used by this test."};
@@ -534,6 +534,7 @@ TEST(BehaviorSessions, LiveEditsHonorLayoutGeneration) {
         static_cast<std::uintptr_t>(77));
     ASSERT_TRUE(sessions.Bind(
         run.Id, 2, pin, source,
+        0,
         Slot::Named(SlotKind::OutputParameter, "Value"),
         Parameter::BindingKind::Direct, generation));
     EXPECT_EQ(generation, 2u);

@@ -131,6 +131,7 @@ typedef struct BML_BehaviorSlotRef {
 typedef struct BML_BehaviorValueRef {
     uint32_t StructSize;
     uint32_t Kind;
+    uint64_t LayoutGeneration;
     BML_ObjectRef Node;
     BML_BehaviorSelector Slot;
 } BML_BehaviorValueRef;
@@ -165,10 +166,18 @@ typedef enum BML_BehaviorFramePolicyKind {
     BML_BEHAVIOR_FRAMES_NONE = 4
 } BML_BehaviorFramePolicyKind;
 
+typedef enum BML_BehaviorFramePolicyFlags {
+    BML_BEHAVIOR_FRAME_POLICY_NONE = 0,
+    // Copy every readable Pout into each retained Frame. Without this flag a
+    // Frame reports execution and active Outs without reading Pouts.
+    BML_BEHAVIOR_FRAME_POLICY_POUTS = 1u << 0
+} BML_BehaviorFramePolicyFlags;
+
 typedef struct BML_BehaviorFramePolicy {
     uint32_t StructSize;
     uint32_t Kind;
     uint32_t Limit;
+    uint32_t Flags;
 } BML_BehaviorFramePolicy;
 
 typedef struct BML_BehaviorBlock {
@@ -279,6 +288,14 @@ typedef struct BML_BehaviorStatus {
 // diagnostic; Message is explanatory text and must not be parsed for control
 // flow. MessageLength follows the truncation rule in BML/Interface.h.
 
+// Prototype discovery names one provider registration, not only a GUID.
+// Generation is process-local and never denotes a CK pointer or DLL handle.
+typedef struct BML_BehaviorPrototypeRef {
+    uint32_t StructSize;
+    BML_BehaviorGuid Prototype;
+    uint64_t Generation;
+} BML_BehaviorPrototypeRef;
+
 typedef enum BML_BehaviorRunKind {
     BML_BEHAVIOR_RUN_CALL = 1,
     BML_BEHAVIOR_RUN_TASK = 2,
@@ -304,6 +321,9 @@ typedef struct BML_BehaviorRunInfo {
     uint32_t Kind;
     uint32_t State;
     uint32_t Flags;
+    // The exact Prototype provider used to create this native Behavior.
+    // Generation may be zero only when provider identity is unavailable.
+    BML_BehaviorPrototypeRef Prototype;
     BML_BehaviorStatus Status;
 } BML_BehaviorRunInfo;
 
@@ -385,14 +405,6 @@ typedef struct BML_BehaviorDiagnosticRecord {
     uint32_t MessageLength;
 } BML_BehaviorDiagnosticRecord;
 
-// Prototype discovery names one provider registration, not only a GUID.
-// Generation is process-local and never denotes a CK pointer or DLL handle.
-typedef struct BML_BehaviorPrototypeRef {
-    uint32_t StructSize;
-    BML_BehaviorGuid Prototype;
-    uint64_t Generation;
-} BML_BehaviorPrototypeRef;
-
 typedef enum BML_BehaviorPrototypeMatch {
     BML_BEHAVIOR_MATCH_PROTOTYPE = 1u << 0,
     BML_BEHAVIOR_MATCH_NAME = 1u << 1,
@@ -466,10 +478,6 @@ typedef enum BML_BehaviorSlotFlags {
     BML_BEHAVIOR_SLOT_VALUE_SUPPORTED = 1u << 1
 } BML_BehaviorSlotFlags;
 
-typedef enum BML_BehaviorLayoutFlags {
-    BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW = 1u << 0
-} BML_BehaviorLayoutFlags;
-
 typedef struct BML_BehaviorSlotRecord {
     uint32_t StructSize;
     uint32_t Kind;
@@ -488,6 +496,7 @@ typedef struct BML_BehaviorLayout {
     BML_BehaviorPrototypeRef Prototype;
     uint64_t LayoutGeneration;
     uint32_t Kind;
+    // Reserved for future Layout facts; must be zero in v1.
     uint32_t Flags;
     int32_t CompatibleClass;
     uint32_t PrototypeFlags;
@@ -518,9 +527,12 @@ typedef enum BML_BehaviorTruth {
 typedef struct BML_BehaviorGraphPort {
     uint32_t StructSize;
     uint64_t Node;
+    uint64_t LayoutGeneration;
     uint32_t Kind;
+    uint32_t Flags;
     int32_t Index;
     int32_t Occurrence;
+    BML_BehaviorGuid Type;
     uint32_t Active;
     BML_BehaviorText Name;
 } BML_BehaviorGraphPort;
@@ -530,6 +542,7 @@ typedef struct BML_BehaviorGraphNode {
     uint64_t Id;
     BML_ObjectRef Object;
     uint64_t Parent;
+    uint64_t LayoutGeneration;
     BML_BehaviorGuid Prototype;
     int32_t Priority;
     uint32_t Active;
@@ -669,6 +682,7 @@ typedef struct BML_BehaviorWatchSpec {
     BML_ObjectRef Root;
     BML_ObjectRef Node;
     uint32_t SlotKind;
+    uint64_t LayoutGeneration;
     BML_BehaviorSelector Slot;
     uint32_t Read;
 } BML_BehaviorWatchSpec;
@@ -897,7 +911,7 @@ typedef struct BML_BehaviorEditStep {
     // Node name to require, or the name of an appended slot.
     BML_BehaviorString Name;
     // Prototype to require or to create. REQUIRE_NODE matches only the GUID;
-    // ADD_BLOCK also pins the provider Generation when it is nonzero.
+    // ADD_BLOCK requires a nonzero provider Generation.
     BML_BehaviorPrototypeRef Prototype;
     // Virtools parameter type of an appended Pin, Pout, or Local.
     BML_BehaviorGuid Type;
@@ -1058,6 +1072,7 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorSession session,
         BML_ObjectRef node,
         uint32_t slotKind,
+        uint64_t layoutGeneration,
         const BML_BehaviorSelector *slot,
         uint32_t read,
         BML_BehaviorGraphValue *value,

@@ -39,8 +39,8 @@ GraphNode GraphNodeWithPorts(std::uint64_t id, std::uint64_t parent,
     node.Parent = parent;
     node.Name = std::move(name);
     node.Ports = {
-        {SlotKind::Input, 0, 0, "In", false},
-        {SlotKind::Output, 0, 0, "Out", false},
+        {SlotKind::Input, 0, 0, 0, CKGUID(), false, "In", false},
+        {SlotKind::Output, 0, 0, 0, CKGUID(), false, "Out", false},
     };
     return node;
 }
@@ -323,7 +323,7 @@ TEST(BehaviorTopology, RejectsAnUnlinkedSiblingOut) {
         GraphNodeWithPorts(102, 100, "Sink"),
     };
     graph.Nodes[1].Ports.push_back(
-        {SlotKind::Output, 1, 0, "Other", false});
+        {SlotKind::Output, 0, 1, 0, CKGUID(), false, "Other", false});
     graph.Links = {
         {1, {9, 1, 4}, Endpoint(100, SlotKind::Input, 0),
          Endpoint(101, SlotKind::Input, 0), 0},

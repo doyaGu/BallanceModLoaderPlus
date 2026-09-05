@@ -280,7 +280,9 @@ public:
         if (hidden)
             behavior->Activate(TRUE, FALSE);
 
-        ++record->LayoutGeneration;
+        const bool dynamicLayout = IsLayoutDynamic(behavior);
+        const std::uint64_t layoutBefore =
+            dynamicLayout ? LayoutIdentity(behavior) : 0;
         result.ReturnCode = m_Runtime.ExecuteNative(behavior, m_Frame);
         result.Retry = HasContinuation(result.ReturnCode);
         result.Error = IsExecutionError(result.ReturnCode);
@@ -293,6 +295,8 @@ public:
                             "Building Block destroyed itself during execution."};
             return result;
         }
+        if (dynamicLayout && LayoutIdentity(behavior) != layoutBefore)
+            ++record->LayoutGeneration;
         // Ballanced's ExecuteFunction clears CKBEHAVIOR_ACTIVE unless the
         // Block asks for the next frame, while CheckBehaviorActivity keeps
         // the parent active from delayed links and active/waiting
@@ -1226,10 +1230,13 @@ Status Runtime::ReadyStatus() const {
     return {};
 }
 
-Status Runtime::ResolvePrototype(CKGUID guid, std::uint64_t generation) const {
-    if (m_Catalog) {
+Status Runtime::ResolvePrototype(PrototypeRef requested,
+                                 PrototypeRef &selected) const {
+    selected = {};
+    const CKGUID guid = requested.Guid;
+    if (m_Catalog && m_Catalog->TracksRetirement()) {
         Layout layout;
-        Status status = m_Catalog->DeclaredLayout({guid, generation}, layout);
+        Status status = m_Catalog->DeclaredLayout(requested, layout);
         if (!status)
             return status;
         for (const ManagerRequirement &manager : layout.Managers) {
@@ -1245,7 +1252,14 @@ Status Runtime::ResolvePrototype(CKGUID guid, std::uint64_t generation) const {
                 return missing;
             }
         }
+        selected = {guid, layout.ProviderGeneration};
         return {};
+    }
+    if (requested.Generation) {
+        return Failure(
+            Error::Unavailable,
+            "The requested Building Block provider generation cannot be verified because provider retirement is not observable.",
+            CK_OK, CKBR_OK, Phase::PrototypeResolution, guid);
     }
     if (!CKGetPrototypeFromGuid(guid)) {
         return Failure(Error::PrototypeNotFound,
@@ -1270,11 +1284,12 @@ Status Runtime::ResolvePrototype(CKGUID guid, std::uint64_t generation) const {
             }
         }
     }
+    selected = {guid, 0};
     return {};
 }
 
 Status Runtime::ValidateTarget(CKBeObject *owner, const Spec &spec) const {
-    if (!m_Catalog)
+    if (!m_Catalog || !m_Catalog->TracksRetirement())
         return {};
     Layout declared;
     Status status = m_Catalog->DeclaredLayout(
@@ -1374,8 +1389,9 @@ Status Runtime::ValidateTarget(CKBeObject *owner, const Spec &spec) const {
 Status Runtime::CreateBehavior(const Spec &spec, CKBehavior *&behavior,
                                Record &record) const {
     behavior = nullptr;
-    Status status = ResolvePrototype(spec.Prototype(),
-                                     spec.PrototypeGeneration());
+    PrototypeRef selected;
+    Status status = ResolvePrototype(
+        {spec.Prototype(), spec.PrototypeGeneration()}, selected);
     if (!status)
         return status;
 
@@ -1406,6 +1422,7 @@ Status Runtime::CreateBehavior(const Spec &spec, CKBehavior *&behavior,
 
     record.PrototypeGuid = spec.Prototype();
     record.Prototype = prototype;
+    record.ProviderGeneration = selected.Generation;
     return {};
 }
 
@@ -1413,7 +1430,7 @@ Status Runtime::CheckDetached(
     const Spec &spec, DetachedCompatibility &compatibility,
     bool graphResident) const {
     compatibility = DetachedCompatibility::Unverified;
-    if (!m_Catalog)
+    if (!m_Catalog || !m_Catalog->TracksRetirement())
         return {};
 
     Status status = m_Catalog->Detached(
@@ -1598,15 +1615,33 @@ AttachResult Runtime::Attach(CKBehavior *parent, const Spec &spec,
 Layout Runtime::Describe(CKBehavior *behavior, std::uint64_t generation) const {
     if (!ReadyStatus() || !behavior)
         return {};
+    if (!generation)
+        generation = LayoutGeneration(behavior);
     Layout declared;
     const Layout *metadata = nullptr;
-    if (m_Catalog) {
+    if (m_Catalog && m_Catalog->TracksRetirement()) {
         if (m_Catalog->DeclaredLayout(
                 {PrototypeGuid(behavior), 0}, declared))
             metadata = &declared;
     }
-    return LiveLayout(m_Context, behavior, PrototypeGuid(behavior),
-                      PrototypeOf(behavior)).Describe(generation, metadata);
+    Layout layout = LiveLayout(
+        m_Context, behavior, PrototypeGuid(behavior), PrototypeOf(behavior))
+        .Describe(generation, metadata);
+    const Record *record = FindRecord(behavior);
+    if (record && record->ProviderGeneration) {
+        layout.ProviderGeneration = record->ProviderGeneration;
+    } else if (m_Catalog && m_Catalog->TracksRetirement() &&
+               !layout.ProviderGeneration) {
+        PrototypeRef selected;
+        if (m_Catalog->Resolve({layout.Prototype, 0}, selected))
+            layout.ProviderGeneration = selected.Generation;
+    }
+    return layout;
+}
+
+std::uint64_t Runtime::LayoutGeneration(CKBehavior *behavior) const noexcept {
+    const Record *record = FindRecord(behavior);
+    return record ? record->LayoutGeneration : 0;
 }
 
 Status Runtime::Describe(const Instance &instance, Layout &layout) const {

@@ -112,6 +112,36 @@ TEST_F(CatalogFixture, FindsCopiedDeclarationsInGuidOrder) {
     EXPECT_EQ(Source->DeclarationReads, 1);
 }
 
+TEST_F(CatalogFixture, ResolvesProviderIdentityWithoutReadingItsLayout) {
+    PrototypeRef selected;
+    ASSERT_TRUE(Catalog->Resolve({CKGUID(0x1000, 1), 0}, selected));
+    EXPECT_EQ(selected.Guid, CKGUID(0x1000, 1));
+    EXPECT_NE(selected.Generation, 0u);
+    EXPECT_EQ(Source->LayoutReads, 0);
+
+    PrototypeRef repeated;
+    ASSERT_TRUE(Catalog->Resolve(selected, repeated));
+    EXPECT_EQ(repeated.Generation, selected.Generation);
+}
+
+TEST_F(CatalogFixture, DoesNotInventIdentityWithoutRetirementTracking) {
+    Source->Tracks = false;
+
+    std::vector<PrototypeInfo> found;
+    Status status = Catalog->Find({}, found);
+    EXPECT_EQ(status.Code, Error::Unavailable);
+    EXPECT_TRUE(found.empty());
+    EXPECT_EQ(Source->DeclarationReads, 0);
+
+    Source->Declarations[1] =
+        Prototype(CKGUID(0x1000, 1), "replacement", "Replacement");
+    PrototypeRef selected;
+    status = Catalog->Resolve({CKGUID(0x1000, 1), 0}, selected);
+    EXPECT_EQ(status.Code, Error::Unavailable);
+    EXPECT_EQ(selected.Generation, 0u);
+    EXPECT_EQ(Source->DeclarationReads, 0);
+}
+
 TEST_F(CatalogFixture, AppliesOnlyExplicitExactFilters) {
     PrototypeQuery query;
     query.MatchName = true;
@@ -233,7 +263,6 @@ TEST_F(CatalogFixture, DeclaredLayoutIsCachedPerProviderGeneration) {
 
     Layout initial;
     ASSERT_TRUE(Catalog->DeclaredLayout(first, initial));
-    EXPECT_TRUE(initial.MaterializedNow);
     EXPECT_EQ(initial.ProviderGeneration, first.Generation);
     EXPECT_EQ(initial.ProviderName, "alpha");
     EXPECT_EQ(initial.CompatibleClass, CKCID_3DENTITY);
@@ -241,7 +270,6 @@ TEST_F(CatalogFixture, DeclaredLayoutIsCachedPerProviderGeneration) {
 
     Layout cached;
     ASSERT_TRUE(Catalog->DeclaredLayout(first, cached));
-    EXPECT_FALSE(cached.MaterializedNow);
     EXPECT_EQ(Source->LayoutReads, 1);
     ASSERT_EQ(cached.Slots.size(), 1u);
     EXPECT_EQ(cached.Slots.front().Name, "In");

@@ -77,12 +77,53 @@ struct PortKeyHash {
     }
 };
 
+struct ObjectKey {
+    explicit ObjectKey(BML_ObjectRef object) noexcept
+        : Domain(object.Domain), Slot(object.Slot),
+          Generation(object.Generation) {}
+
+    std::uint32_t Domain = 0;
+    std::uint32_t Slot = 0;
+    std::uint32_t Generation = 0;
+
+    friend bool operator==(const ObjectKey &left,
+                           const ObjectKey &right) noexcept {
+        return left.Domain == right.Domain && left.Slot == right.Slot &&
+            left.Generation == right.Generation;
+    }
+};
+
+struct ObjectKeyHash {
+    std::size_t operator()(const ObjectKey &key) const noexcept {
+        std::size_t value = std::hash<std::uint32_t>{}(key.Domain);
+        const auto combine = [&](std::uint32_t part) {
+            const std::size_t hashed = std::hash<std::uint32_t>{}(part);
+            value ^= hashed + static_cast<std::size_t>(0x9e3779b9u) +
+                (value << 6u) + (value >> 2u);
+        };
+        combine(key.Slot);
+        combine(key.Generation);
+        return value;
+    }
+};
+
 inline BML_BehaviorString Text(std::string_view value) noexcept {
     return {value.data(), static_cast<std::uint32_t>(value.size())};
 }
 
+inline bool KnownError(std::uint32_t value) noexcept;
+inline bool KnownPhase(std::uint32_t value) noexcept;
+inline bool ValidStatus(const BML_BehaviorStatus &value) noexcept;
+
+inline int WireCode(int code,
+                    const BML_BehaviorStatus &status) noexcept {
+    return ValidStatus(status) ? code : BML_ERROR_MALFORMED_MESSAGE;
+}
+
 inline Status ReadStatus(const BML_BehaviorStatus &source) {
     Status status;
+    if (!ValidStatus(source))
+        return status;
     status.Error = static_cast<Behavior::Error>(source.Error);
     status.Phase = static_cast<Behavior::Phase>(source.Phase);
     status.CkError = source.CkError;
@@ -105,8 +146,22 @@ inline BML_BehaviorStatus EmptyStatus() noexcept {
 inline BML_BehaviorRunInfo EmptyRunInfo() noexcept {
     BML_BehaviorRunInfo info{};
     info.StructSize = sizeof(info);
+    info.Prototype.StructSize = sizeof(info.Prototype);
     info.Status.StructSize = sizeof(info.Status);
     return info;
+}
+
+inline bool ValidRunInfo(const BML_BehaviorRunInfo &info) noexcept {
+    return info.StructSize >= sizeof(info) &&
+        info.Prototype.StructSize >= sizeof(info.Prototype) &&
+        ValidStatus(info.Status) &&
+        info.Kind >= BML_BEHAVIOR_RUN_CALL &&
+        info.Kind <= BML_BEHAVIOR_RUN_INSTANCE &&
+        info.State >= BML_BEHAVIOR_RUN_READY &&
+        info.State <= BML_BEHAVIOR_RUN_FAILED &&
+        (info.Flags & ~BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED) == 0 &&
+        (info.Prototype.Prototype.Data1 != 0 ||
+         info.Prototype.Prototype.Data2 != 0);
 }
 
 inline RunInfo ReadRunInfo(const BML_BehaviorRunInfo &source) {
@@ -115,6 +170,8 @@ inline RunInfo ReadRunInfo(const BML_BehaviorRunInfo &source) {
             (source.Flags & BML_BEHAVIOR_RUN_UNVERIFIED_DETACHED) != 0
                 ? DetachedSupport::Unverified
                 : DetachedSupport::Verified,
+            Prototype(NativeGuid(source.Prototype.Prototype),
+                      source.Prototype.Generation),
             ReadStatus(source.Status)};
 }
 
@@ -197,6 +254,51 @@ inline bool KnownFlag(std::uint32_t value) noexcept {
     return value == 0 || value == 1;
 }
 
+inline bool ValidObjectRef(BML_ObjectRef value) noexcept {
+    return value.Domain == 0
+        ? value.Slot == 0 && value.Generation == 0
+        : value.Slot != 0 && value.Generation != 0;
+}
+
+inline bool KnownError(std::uint32_t value) noexcept {
+    return value <= BML_BEHAVIOR_ERROR_REDIRECT_CONFLICT;
+}
+
+inline bool KnownPhase(std::uint32_t value) noexcept {
+    return value <= BML_BEHAVIOR_PHASE_EDIT;
+}
+
+inline bool ValidStatus(const BML_BehaviorStatus &value) noexcept {
+    return value.StructSize >= sizeof(value) && KnownError(value.Error) &&
+        KnownPhase(value.Phase);
+}
+
+inline bool KnownWatchState(std::uint32_t value) noexcept {
+    return value >= BML_BEHAVIOR_WATCH_ACTIVE &&
+        value <= BML_BEHAVIOR_WATCH_FAILED;
+}
+
+inline bool KnownPlanState(std::uint32_t value) noexcept {
+    return value >= BML_BEHAVIOR_PLAN_RECONCILING &&
+        value <= BML_BEHAVIOR_PLAN_RETIRING;
+}
+
+inline bool KnownPatchState(std::uint32_t value) noexcept {
+    return value >= BML_BEHAVIOR_PATCH_PENDING &&
+        value <= BML_BEHAVIOR_PATCH_FAILED;
+}
+
+inline bool KnownObservationState(std::uint32_t value) noexcept {
+    return value == BML_BEHAVIOR_VALUE_AVAILABLE ||
+        value == BML_BEHAVIOR_VALUE_INDETERMINATE ||
+        value == BML_BEHAVIOR_VALUE_UNSUPPORTED;
+}
+
+inline bool KnownRelation(std::uint32_t value) noexcept {
+    return value >= BML_BEHAVIOR_VALUE_STORED &&
+        value <= BML_BEHAVIOR_VALUE_OPERATION;
+}
+
 inline bool KnownValueKind(std::uint32_t kind) noexcept {
     switch (kind) {
     case BML_BEHAVIOR_VALUE_BOOL:
@@ -228,6 +330,7 @@ inline bool ReadLayout(const BML_BehaviorLayout &wire,
         (wire.Kind != BML_BEHAVIOR_KIND_FUNCTION &&
          wire.Kind != BML_BEHAVIOR_KIND_CALLBACK &&
          wire.Kind != BML_BEHAVIOR_KIND_GRAPH) ||
+        wire.Flags != 0 ||
         !RecordsFit<BML_BehaviorManagerInfo>(
             payload, wire.ManagerOffset, wire.ManagerCount) ||
         !RecordsFit<BML_BehaviorSlotRecord>(
@@ -240,8 +343,6 @@ inline bool ReadLayout(const BML_BehaviorLayout &wire,
         NativeGuid(wire.Prototype.Prototype), wire.Prototype.Generation);
     decoded.Generation = wire.LayoutGeneration;
     decoded.Kind = static_cast<BehaviorKind>(wire.Kind);
-    decoded.MaterializedNow =
-        (wire.Flags & BML_BEHAVIOR_LAYOUT_MATERIALIZED_NOW) != 0;
     decoded.CompatibleClass = wire.CompatibleClass;
     decoded.PrototypeFlags = wire.PrototypeFlags;
     decoded.BehaviorFlags = wire.BehaviorFlags;
@@ -386,7 +487,7 @@ inline bool ReadPoutData(const BML_BehaviorPoutRecord &record,
         return false;
     switch (record.Kind) {
     case BML_BEHAVIOR_VALUE_BOOL:
-        if (record.ValueSize != 4) return false;
+        if (record.ValueSize != 4 || Load32(data) > 1u) return false;
         value = Load32(data) != 0;
         return true;
     case BML_BEHAVIOR_VALUE_INT32:
@@ -403,7 +504,13 @@ inline bool ReadPoutData(const BML_BehaviorPoutRecord &record,
         return true;
     case BML_BEHAVIOR_VALUE_OBJECT:
         if (record.ValueSize != 12) return false;
-        value = BML_ObjectRef{Load32(data), Load32(data + 4), Load32(data + 8)};
+        {
+            const BML_ObjectRef object{
+                Load32(data), Load32(data + 4), Load32(data + 8)};
+            if (!ValidObjectRef(object))
+                return false;
+            value = object;
+        }
         return true;
     case BML_BEHAVIOR_VALUE_VEC2: {
         BML_Vec2 decoded{};
@@ -470,7 +577,8 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
     bool first = true;
     for (std::size_t frameIndex = 0; frameIndex < m_Count; ++frameIndex) {
         const BML_BehaviorRunFrame &header = m_Headers[frameIndex];
-        if (header.StructSize < sizeof(header) ||
+        if (header.StructSize < sizeof(header) || !header.Sequence ||
+            !Detail::KnownError(header.Error) ||
             (!first && header.Sequence <= previousSequence) ||
             (header.Continuation & ~(BML_BEHAVIOR_CONTINUATION_NATIVE |
                                      BML_BEHAVIOR_CONTINUATION_QUEUED_INPUT)) != 0)
@@ -490,6 +598,7 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
             BML_BehaviorOutRecord record{};
             const std::uint8_t *name = nullptr;
             if (!Record(header.OutOffset, index, record) ||
+                record.Index < 0 || record.Occurrence < 0 ||
                 !Bytes(record.NameOffset, record.NameLength, name))
                 return false;
         }
@@ -499,6 +608,7 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
             const std::uint8_t *name = nullptr;
             const std::uint8_t *value = nullptr;
             if (!Record(header.PoutOffset, index, record) ||
+                record.Index < 0 || record.Occurrence < 0 ||
                 !Detail::KnownValueKind(record.Kind) ||
                 record.ValueOffset % BML_BEHAVIOR_VALUE_ALIGNMENT != 0 ||
                 !Bytes(record.NameOffset, record.NameLength, name) ||
@@ -524,7 +634,11 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
             }();
             if (record.ValueSize != expected ||
                 (record.Kind == BML_BEHAVIOR_VALUE_BOOL &&
-                 Detail::Load32(value) > 1u))
+                 Detail::Load32(value) > 1u) ||
+                (record.Kind == BML_BEHAVIOR_VALUE_OBJECT &&
+                 !Detail::ValidObjectRef(
+                     {Detail::Load32(value), Detail::Load32(value + 4),
+                      Detail::Load32(value + 8)})))
                 return false;
         }
 
@@ -532,6 +646,8 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
             BML_BehaviorDiagnosticRecord record{};
             const std::uint8_t *message = nullptr;
             if (!Record(header.DiagnosticOffset, index, record) ||
+                !Detail::KnownError(record.Error) ||
+                !Detail::KnownPhase(record.Phase) ||
                 !Bytes(record.MessageOffset, record.MessageLength, message))
                 return false;
         }
@@ -763,9 +879,13 @@ public:
             return Result<RunInfo>::Failure(BML_ERROR_INVALID_HANDLE);
         BML_BehaviorRunInfo info = EmptyRunInfo();
         BML_BehaviorStatus status = EmptyStatus();
-        const int code = m_Session->Api->ReadRun(m_Handle, &info, &status);
+        const int code = WireCode(
+            m_Session->Api->ReadRun(m_Handle, &info, &status), status);
         if (code != BML_OK)
             return Result<RunInfo>::Failure(code, ReadStatus(status));
+        if (!Matches(info, m_Kind))
+            return Result<RunInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE,
+                                            ReadStatus(status));
         return Result<RunInfo>::Success(ReadRunInfo(info), ReadStatus(status));
     }
 
@@ -792,6 +912,7 @@ public:
             frames.m_Payload.empty() ? nullptr : frames.m_Payload.data(),
             static_cast<std::uint32_t>(frames.m_Payload.size()),
             &frameCount, &payloadSize, &status);
+        code = WireCode(code, status);
         try {
             if (code == BML_ERROR_BUFFER_TOO_SMALL) {
                 frames.Reserve(frameCount, payloadSize);
@@ -806,6 +927,7 @@ public:
                     frames.m_Payload.empty() ? nullptr : frames.m_Payload.data(),
                     static_cast<std::uint32_t>(frames.m_Payload.size()),
                     &writtenFrames, &writtenBytes, &status);
+                code = WireCode(code, status);
                 frameCount = writtenFrames;
                 payloadSize = writtenBytes;
             }
@@ -851,10 +973,17 @@ public:
         BML_BehaviorRunInfo info = EmptyRunInfo();
         BML_BehaviorStatus status = EmptyStatus();
         std::uint32_t admission = 0;
-        const int code = m_Session->Api->Pulse(
-            m_Handle, &selector, &admission, &info, &status);
+        const int code = WireCode(
+            m_Session->Api->Pulse(
+                m_Handle, &selector, &admission, &info, &status),
+            status);
         if (code != BML_OK)
             return Result<PulseResult>::Failure(code, ReadStatus(status));
+        if (!Matches(info, m_Kind) ||
+            (admission != BML_BEHAVIOR_ADMISSION_EXECUTED &&
+             admission != BML_BEHAVIOR_ADMISSION_QUEUED))
+            return Result<PulseResult>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
         return Result<PulseResult>::Success(static_cast<PulseResult>(admission),
                                             ReadStatus(status));
     }
@@ -874,25 +1003,42 @@ public:
 
 private:
     Run(std::shared_ptr<SessionState> session,
-        BML_BehaviorRun handle) noexcept
-        : m_Session(std::move(session)), m_Handle(handle) {}
+        BML_BehaviorRun handle, RunKind kind, Prototype prototype) noexcept
+        : m_Session(std::move(session)), m_Handle(handle), m_Kind(kind),
+          m_Prototype(prototype) {}
+
+    [[nodiscard]] bool Matches(const BML_BehaviorRunInfo &info,
+                               RunKind kind) const noexcept {
+        if (!ValidRunInfo(info) ||
+            info.Kind != static_cast<std::uint32_t>(kind))
+            return false;
+        const CKGUID prototype = NativeGuid(info.Prototype.Prototype);
+        return prototype == m_Prototype.Id &&
+            info.Prototype.Generation == m_Prototype.Generation;
+    }
 
     void MoveFrom(Run &other) noexcept {
         m_Session = std::move(other.m_Session);
         m_Handle = std::exchange(other.m_Handle, nullptr);
+        m_Kind = other.m_Kind;
+        m_Prototype = other.m_Prototype;
     }
 
     std::shared_ptr<SessionState> m_Session;
     BML_BehaviorRun m_Handle = nullptr;
+    RunKind m_Kind = RunKind::Instance;
+    Prototype m_Prototype;
 
     friend class ::BML::Behavior::Block;
     friend class ::BML::Behavior::Call;
 };
 
 struct CompiledBlock {
-    explicit CompiledBlock(BlockDefinition definition);
+    explicit CompiledBlock(BlockDefinition definition,
+                           bool declared = false);
 
     BlockDefinition Definition;
+    bool Declared = false;
     BML_BehaviorBlock Wire{};
     std::vector<std::vector<BML_BehaviorBinding>> SettingBindings;
     std::vector<BML_BehaviorSettingStage> SettingStages;
@@ -912,7 +1058,7 @@ class Compiler final {
 public:
     [[nodiscard]] Result<std::shared_ptr<const CompiledBlock>> operator()(
         const std::shared_ptr<SessionState> &session,
-        BlockDefinition definition) const;
+        BlockDefinition definition, bool requireDeclared = false) const;
 };
 
 } // namespace Detail
@@ -927,10 +1073,13 @@ inline Result<WatchInfo> Watch::Info() const {
     info.StructSize = sizeof(info);
     info.Diagnostic.StructSize = sizeof(info.Diagnostic);
     BML_BehaviorStatus status = Detail::EmptyStatus();
-    const int code = m_Session->Api->ReadWatch(m_Handle, &info, &status);
+    const int code = Detail::WireCode(
+        m_Session->Api->ReadWatch(m_Handle, &info, &status), status);
     if (code != BML_OK)
         return Result<WatchInfo>::Failure(code, Detail::ReadStatus(status));
-    if (info.StructSize < sizeof(info))
+    if (info.StructSize < sizeof(info) ||
+        !Detail::KnownWatchState(info.State) ||
+        !Detail::ValidStatus(info.Diagnostic))
         return Result<WatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     return Result<WatchInfo>::Success(
         {static_cast<WatchState>(info.State),

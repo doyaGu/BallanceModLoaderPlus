@@ -31,7 +31,7 @@ public:
         return {};
     }
 
-    Status ReadValue(const NativeRef &, const Slot &, ReadMode,
+    Status ReadValue(const NativeRef &, std::uint64_t, const Slot &, ReadMode,
                      GraphValue &out) override {
         out = Value;
         return ValueStatus;
@@ -92,6 +92,14 @@ WatchSpec ValueSpec() {
     return spec;
 }
 
+WatchSpec LayoutSpec(std::uint64_t generation) {
+    WatchSpec spec;
+    spec.Kind = WatchKind::LayoutChanged;
+    spec.Node = {2, reinterpret_cast<void *>(2)};
+    spec.LayoutGeneration = generation;
+    return spec;
+}
+
 TEST(BehaviorWatch, GraphWatchUsesTheSelectedViewAndOnlyReportsChanges) {
     FakeGraph source;
     std::vector<WatchEvent> events;
@@ -130,6 +138,17 @@ TEST(BehaviorWatch, SampledValueWatchDoesNotClaimBetweenSampleWrites) {
     EXPECT_EQ(calls, 1);
     ASSERT_TRUE(watch->Poll(3));
     EXPECT_EQ(calls, 1);
+}
+
+TEST(BehaviorWatch, RejectsANodeFromAnOlderLayout) {
+    FakeGraph source;
+    std::shared_ptr<Watch> watch;
+    const Status status = Watch::Open(
+        source, LayoutSpec(source.LayoutMark - 1),
+        PlanCallbackState::Static(), [](const WatchEvent &) {}, watch);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::StaleLayout);
+    EXPECT_FALSE(watch);
 }
 
 TEST(BehaviorWatch, NonForcingValueCanBecomeIndeterminate) {

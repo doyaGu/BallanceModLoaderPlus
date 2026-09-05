@@ -42,21 +42,6 @@ Status Failure(Error error, std::string message,
     return status;
 }
 
-int Occurrence(CKBehavior *behavior, CKBehaviorIO *io, bool input,
-               int index) {
-    const char *name = io && io->GetName() ? io->GetName() : "";
-    int occurrence = 0;
-    for (int current = 0; current < index; ++current) {
-        CKBehaviorIO *candidate = input ? behavior->GetInput(current)
-                                        : behavior->GetOutput(current);
-        const char *candidateName = candidate && candidate->GetName()
-            ? candidate->GetName() : "";
-        if (std::strcmp(name, candidateName) == 0)
-            ++occurrence;
-    }
-    return occurrence;
-}
-
 class CKGraphSource final : public GraphSource {
 public:
     CKGraphSource(CKContext *context, Runtime &runtime,
@@ -116,6 +101,7 @@ public:
             return Failure(Error::InvalidState,
                            "The inspected Behavior node is stale.");
         out = m_Runtime.Describe(behavior);
+        out.Generation = TrackLayout(behavior);
         // A script graph created by an author has no prototype GUID, but its
         // boundary and data layout are still native CKBehavior state.  A
         // prototype identifies a reusable BB; it is not a prerequisite for
@@ -123,7 +109,9 @@ public:
         return {};
     }
 
-    Status ReadValue(const NativeRef &node, const Slot &slot,
+    Status ReadValue(const NativeRef &node,
+                     std::uint64_t layoutGeneration,
+                     const Slot &slot,
                      ReadMode mode, GraphValue &out) override {
         out = {};
         if (mode != ReadMode::NonForcing)
@@ -133,6 +121,9 @@ public:
         if (!behavior)
             return Failure(Error::InvalidState,
                            "The inspected Behavior node is stale.");
+        if (layoutGeneration && TrackLayout(behavior) != layoutGeneration)
+            return Failure(Error::StaleLayout,
+                           "The inspected port belongs to an older Behavior Layout.");
 
         SlotInfo resolved;
         Status status = m_Runtime.Resolve(behavior, slot, resolved);
@@ -252,59 +243,36 @@ public:
         if (!behavior)
             return Failure(Error::InvalidState,
                            "The watched Behavior node is stale.");
-        out = kHashOffset;
-        const CKGUID prototype = Prototype(behavior);
-        Hash(out, prototype.d1);
-        Hash(out, prototype.d2);
-        Hash(out, behavior->GetCompatibleClassID());
-        // UseTarget adds or removes the Target slot of a live Layout.
-        CKParameterIn *target = behavior->GetTargetParameter();
-        Hash(out, static_cast<int>(target != nullptr));
-        if (target) {
-            const CKGUID type = target->GetGUID();
-            Hash(out, type.d1);
-            Hash(out, type.d2);
-        }
-        Hash(out, behavior->GetInputCount());
-        Hash(out, behavior->GetOutputCount());
-        Hash(out, behavior->GetInputParameterCount());
-        Hash(out, behavior->GetOutputParameterCount());
-        Hash(out, behavior->GetLocalParameterCount());
-        for (int index = 0; index < behavior->GetInputCount(); ++index) {
-            CKBehaviorIO *io = behavior->GetInput(index);
-            HashText(out, io ? io->GetName() : nullptr);
-        }
-        for (int index = 0; index < behavior->GetOutputCount(); ++index) {
-            CKBehaviorIO *io = behavior->GetOutput(index);
-            HashText(out, io ? io->GetName() : nullptr);
-        }
-        for (int index = 0; index < behavior->GetInputParameterCount(); ++index) {
-            CKParameterIn *parameter = behavior->GetInputParameter(index);
-            HashText(out, parameter ? parameter->GetName() : nullptr);
-            const CKGUID type = parameter ? parameter->GetGUID() : CKGUID();
-            Hash(out, type.d1);
-            Hash(out, type.d2);
-        }
-        for (int index = 0; index < behavior->GetOutputParameterCount(); ++index) {
-            CKParameterOut *parameter = behavior->GetOutputParameter(index);
-            HashText(out, parameter ? parameter->GetName() : nullptr);
-            const CKGUID type = parameter ? parameter->GetGUID() : CKGUID();
-            Hash(out, type.d1);
-            Hash(out, type.d2);
-        }
-        for (int index = 0; index < behavior->GetLocalParameterCount(); ++index) {
-            CKParameterLocal *parameter = behavior->GetLocalParameter(index);
-            HashText(out, parameter ? parameter->GetName() : nullptr);
-            const CKGUID type = parameter ? parameter->GetGUID() : CKGUID();
-            Hash(out, type.d1);
-            Hash(out, type.d2);
-            const CKBOOL setting = behavior->IsLocalParameterSetting(index);
-            Hash(out, setting);
-        }
+        out = TrackLayout(behavior);
         return {};
     }
 
 private:
+    Status FingerprintLayout(CKBehavior *behavior,
+                             std::uint64_t &out) const {
+        out = LayoutIdentity(behavior);
+        return {};
+    }
+
+    std::uint64_t TrackLayout(CKBehavior *behavior) const {
+        std::uint64_t fingerprint = 0;
+        if (!FingerprintLayout(behavior, fingerprint))
+            return 0;
+        // Runtime generations also change at lifecycle callback boundaries,
+        // including a layout that changes and returns to the same shape before
+        // it can be observed. The native fingerprint additionally covers graph
+        // edits and provider changes outside Runtime ownership.
+        Hash(fingerprint, m_Runtime.LayoutGeneration(behavior));
+        Generation &state = m_LayoutGenerations[behavior->GetID()];
+        if (state.Address != behavior || state.Fingerprint != fingerprint) {
+            state.Address = behavior;
+            state.Fingerprint = fingerprint;
+            if (state.Value != (std::numeric_limits<std::uint64_t>::max)())
+                ++state.Value;
+        }
+        return state.Value;
+    }
+
     struct LogicalState {
         NativeRef Root;
         LogicalGraph Graph;
@@ -371,25 +339,31 @@ private:
         }
         node.Parent = parent ? static_cast<std::uint64_t>(
             static_cast<std::uint32_t>(parent->GetID())) : 0;
+        node.LayoutGeneration = TrackLayout(behavior);
         node.Prototype = Prototype(behavior);
         node.Name = behavior->GetName() ? behavior->GetName() : "";
         node.Priority = behavior->GetPriority();
         node.Active = behavior->IsActive() != FALSE;
-        node.Ports.reserve(static_cast<std::size_t>(
-            behavior->GetInputCount() + behavior->GetOutputCount()));
-        for (int index = 0; index < behavior->GetInputCount(); ++index) {
-            CKBehaviorIO *io = behavior->GetInput(index);
-            node.Ports.push_back({SlotKind::Input, index,
-                                  Occurrence(behavior, io, true, index),
-                                  io && io->GetName() ? io->GetName() : "",
-                                  io && io->IsActive()});
-        }
-        for (int index = 0; index < behavior->GetOutputCount(); ++index) {
-            CKBehaviorIO *io = behavior->GetOutput(index);
-            node.Ports.push_back({SlotKind::Output, index,
-                                  Occurrence(behavior, io, false, index),
-                                  io && io->GetName() ? io->GetName() : "",
-                                  io && io->IsActive()});
+        const Layout layout = m_Runtime.Describe(
+            behavior, node.LayoutGeneration);
+        node.Ports.reserve(layout.Slots.size());
+        for (const SlotInfo &slot : layout.Slots) {
+            GraphPort port;
+            port.Kind = slot.Kind;
+            port.LayoutGeneration = node.LayoutGeneration;
+            port.Index = slot.Index;
+            port.Occurrence = slot.Occurrence;
+            port.Type = slot.Type;
+            port.Dynamic = slot.Dynamic;
+            port.Name = slot.Name;
+            if (slot.Kind == SlotKind::Input) {
+                CKBehaviorIO *io = behavior->GetInput(slot.Index);
+                port.Active = io && io->IsActive();
+            } else if (slot.Kind == SlotKind::Output) {
+                CKBehaviorIO *io = behavior->GetOutput(slot.Index);
+                port.Active = io && io->IsActive();
+            }
+            node.Ports.push_back(std::move(port));
         }
         out.Nodes.push_back(std::move(node));
         return {};
@@ -575,9 +549,9 @@ private:
         Hash(out, childCount);
         Hash(out, graph.Links.size());
         for (const GraphNode &node : graph.Nodes) {
-            if (node.Parent == 0)
-                continue;
             Hash(out, node.Id);
+            Hash(out, node.Parent);
+            Hash(out, node.LayoutGeneration);
             Hash(out, node.Prototype.d1);
             Hash(out, node.Prototype.d2);
             HashText(out, node.Name.c_str());
@@ -587,6 +561,9 @@ private:
                 Hash(out, port.Kind);
                 Hash(out, port.Index);
                 Hash(out, port.Occurrence);
+                Hash(out, port.Type.d1);
+                Hash(out, port.Type.d2);
+                Hash(out, port.Dynamic);
                 HashText(out, port.Name.c_str());
             }
         }
@@ -697,6 +674,7 @@ private:
     Runtime &m_Runtime;
     std::function<ObjectRef(const void *)> m_IssueObjectRef;
     std::unordered_map<CK_ID, std::array<Generation, 2>> m_Generations;
+    mutable std::unordered_map<CK_ID, Generation> m_LayoutGenerations;
     std::unordered_map<std::uint64_t, LogicalState> m_Logical;
 };
 

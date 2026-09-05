@@ -151,11 +151,17 @@ enum class RetentionKind {
 struct FrameRetention {
     RetentionKind Kind = RetentionKind::Signals;
     std::size_t Capacity = 64;
+    bool IncludePouts = false;
 
     static FrameRetention Signals(std::size_t capacity = 64);
     static FrameRetention EachFrame(std::size_t capacity);
     static FrameRetention Latest();
     static FrameRetention Ignore();
+    [[nodiscard]] FrameRetention Pouts(bool include = true) const noexcept {
+        FrameRetention retention = *this;
+        retention.IncludePouts = include;
+        return retention;
+    }
 };
 
 struct FrameOverflow {

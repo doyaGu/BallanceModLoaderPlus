@@ -119,11 +119,21 @@ struct Layout {
     CKDWORD PrototypeFlags = 0;
     CKDWORD BehaviorFlags = 0;
     std::uint64_t Generation = 0;
-    bool MaterializedNow = false;
     std::vector<CKGUID> RequiredManagers;
     std::vector<ManagerRequirement> Managers;
     std::vector<SlotInfo> Slots;
 };
+
+// Identifies the live native interface of one CKBehavior. It includes the
+// identity and declaration of every control and parameter slot, so replacing
+// a slot with an equivalent-looking CK object still changes the identity.
+// Stored parameter values and execution activity are deliberately excluded.
+[[nodiscard]] std::uint64_t LayoutIdentity(CKBehavior *behavior) noexcept;
+
+// Virtools requires a Behavior whose Execute function may create, remove, or
+// retype interface elements to declare the corresponding internally-created
+// flags. Static Blocks therefore do not need an interface scan around Execute.
+[[nodiscard]] bool IsLayoutDynamic(CKBehavior *behavior) noexcept;
 
 // A resolved slot is valid only for one configured live Layout.
 struct SlotRef {

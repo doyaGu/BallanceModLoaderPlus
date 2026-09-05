@@ -190,7 +190,9 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
     if (result.Detail && !called.Detail)
         result.Detail = std::move(called.Detail);
     return AddRun(session, RunKind::Call, std::move(called.Handle),
-                  std::move(result), called.Detached);
+                  std::move(result), called.Detached,
+                  {called.Descriptor.Prototype,
+                   called.Descriptor.ProviderGeneration});
 }
 
 OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
@@ -217,7 +219,9 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
             result.Detail = std::move(continued);
     }
     return AddRun(session, RunKind::Task, std::move(created.Handle),
-                  std::move(result), created.Detached);
+                  std::move(result), created.Detached,
+                  {created.Descriptor.Prototype,
+                   created.Descriptor.ProviderGeneration});
 }
 
 OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
@@ -239,7 +243,9 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
     RunResult result;
     result.State = RunState::Ready;
     return AddRun(session, RunKind::Instance, std::move(created.Handle),
-                  std::move(result), created.Detached);
+                  std::move(result), created.Detached,
+                  {created.Descriptor.Prototype,
+                   created.Descriptor.ProviderGeneration});
 }
 
 OpenRun Sessions::Attach(std::uintptr_t sessionId, CKBehavior *graph,
@@ -264,7 +270,9 @@ OpenRun Sessions::Attach(std::uintptr_t sessionId, CKBehavior *graph,
     RunResult result;
     result.State = RunState::Ready;
     return AddRun(session, RunKind::Instance, std::move(created.Handle),
-                  std::move(result), created.Detached);
+                  std::move(result), created.Detached,
+                  {created.Descriptor.Prototype,
+                   created.Descriptor.ProviderGeneration});
 }
 
 RunResult Sessions::Continue(std::uintptr_t runId) {
@@ -411,7 +419,9 @@ Status Sessions::Set(std::uintptr_t runId,
 
 Status Sessions::Bind(std::uintptr_t runId,
                       std::uint64_t layoutGeneration, const Slot &slot,
-                      CKBehavior *source, const Slot &sourceSlot,
+                      CKBehavior *source,
+                      std::uint64_t sourceLayoutGeneration,
+                      const Slot &sourceSlot,
                       Parameter::BindingKind relation,
                       std::uint64_t &currentGeneration) {
     currentGeneration = 0;
@@ -429,6 +439,22 @@ Status Sessions::Bind(std::uintptr_t runId,
     }
     if (slot.Kind != SlotKind::InputParameter)
         return Fail(Error::InvalidState, "Bind accepts a live Pin.");
+    if (sourceLayoutGeneration) {
+        if (!m_Graph)
+            return Fail(Error::Unavailable,
+                        "Behavior graph inspection is unavailable.");
+        NativeRef reference;
+        Layout sourceLayout;
+        Status sourceStatus = m_Graph->Refer(source, reference);
+        if (sourceStatus)
+            sourceStatus = m_Graph->ReadLayout(reference, sourceLayout);
+        if (!sourceStatus)
+            return sourceStatus;
+        if (sourceLayout.Generation != sourceLayoutGeneration) {
+            return Fail(Error::StaleLayout,
+                        "The source Behavior Layout has changed.");
+        }
+    }
     SlotRef resolved;
     Status status = m_Runtime.Resolve(run->Block, slot, resolved);
     if (status)
@@ -514,6 +540,7 @@ Status Sessions::ReadNodeLayout(std::uintptr_t sessionId, void *node,
 }
 
 Status Sessions::ReadGraphValue(std::uintptr_t sessionId, void *node,
+                                std::uint64_t layoutGeneration,
                                 const Slot &slot, ReadMode mode,
                                 GraphValue &out) {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
@@ -529,7 +556,8 @@ Status Sessions::ReadGraphValue(std::uintptr_t sessionId, void *node,
                     "Behavior graph inspection is unavailable.");
     NativeRef reference;
     Status status = m_Graph->Refer(node, reference);
-    return status ? m_Graph->ReadValue(reference, slot, mode, out) : status;
+    return status ? m_Graph->ReadValue(
+        reference, layoutGeneration, slot, mode, out) : status;
 }
 
 Status Sessions::OpenWatch(std::uintptr_t sessionId, void *root, void *node,
@@ -745,7 +773,8 @@ bool Sessions::SessionIsActive(const Session &session) const {
 
 OpenRun Sessions::AddRun(const Session &session, RunKind kind,
                           Instance block, RunResult result,
-                          DetachedCompatibility compatibility) {
+                          DetachedCompatibility compatibility,
+                          PrototypeRef prototype) {
     std::shared_ptr<FrameStore> frames = m_Runtime.Frames(block);
     const bool nativeExecuted = frames && !frames->Read().empty();
     if (!result && !nativeExecuted) {
@@ -762,6 +791,7 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
     run->Info.State = result.State;
     run->Info.LastStatus = result.Detail;
     run->Info.Detached = compatibility;
+    run->Info.Prototype = prototype;
     run->Block = std::move(block);
     run->Frames = std::move(frames);
 

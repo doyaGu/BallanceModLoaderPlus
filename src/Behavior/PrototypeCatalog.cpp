@@ -95,6 +95,10 @@ Status PrototypeCatalog::Refresh() {
     if (!m_Source)
         return Failure(Error::ContextExpired,
                        "The Behavior Prototype source is unavailable.");
+    if (!m_Source->TracksRetirement())
+        return Failure(
+            Error::Unavailable,
+            "Behavior Prototype identity is unavailable because provider retirement cannot be observed.");
 
     std::vector<CKGUID> retired;
     bool retireAll = false;
@@ -245,6 +249,20 @@ Status PrototypeCatalog::Validate(PrototypeRef prototype) {
     return {};
 }
 
+Status PrototypeCatalog::Resolve(PrototypeRef prototype, PrototypeRef &out) {
+    out = {};
+    Status status = Validate(prototype);
+    if (!status)
+        return status;
+    const Entry *entry = FindEntry(prototype.Guid);
+    if (!entry)
+        return Failure(Error::PrototypeNotFound,
+                       "Building Block Prototype is unavailable.",
+                       prototype.Guid);
+    out = entry->Info.Ref;
+    return {};
+}
+
 Status PrototypeCatalog::Detached(PrototypeRef prototype,
                                   DetachedCompatibility &out) {
     out = DetachedCompatibility::Unverified;
@@ -288,7 +306,6 @@ Status PrototypeCatalog::DeclaredLayout(PrototypeRef prototype, Layout &out) {
     const auto cached = m_Layouts.find(prototype.Guid);
     if (cached != m_Layouts.end() && cached->second.Generation == generation) {
         out = cached->second.Value;
-        out.MaterializedNow = false;
         return {};
     }
 
@@ -319,7 +336,6 @@ Status PrototypeCatalog::DeclaredLayout(PrototypeRef prototype, Layout &out) {
     layout.RequiredManagers.clear();
     for (const ManagerRequirement &manager : layout.Managers)
         layout.RequiredManagers.push_back(manager.Guid);
-    layout.MaterializedNow = true;
     m_Layouts[prototype.Guid] = CachedLayout{generation, layout};
     out = std::move(layout);
     return {};

@@ -90,7 +90,6 @@ struct Layout {
     Prototype PrototypeRef;
     std::uint64_t Generation = 0;
     BehaviorKind Kind = BehaviorKind::Function;
-    bool MaterializedNow = false;
     std::int32_t CompatibleClass = 0;
     std::uint32_t PrototypeFlags = 0;
     std::uint32_t BehaviorFlags = 0;
@@ -104,8 +103,20 @@ struct Layout {
     std::vector<Slot> Slots;
 
     [[nodiscard]] const Slot *Find(
+        SlotKind kind, std::string_view name) const noexcept {
+        const Slot *found = nullptr;
+        for (const Slot &slot : Slots) {
+            if (slot.Kind != kind || slot.Name != name)
+                continue;
+            if (found)
+                return nullptr;
+            found = &slot;
+        }
+        return found;
+    }
+    [[nodiscard]] const Slot *Find(
         SlotKind kind, std::string_view name,
-        std::int32_t occurrence = 0) const noexcept {
+        std::int32_t occurrence) const noexcept {
         const auto found = std::find_if(
             Slots.begin(), Slots.end(), [&](const Slot &slot) {
                 return slot.Kind == kind && slot.Name == name &&

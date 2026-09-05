@@ -78,6 +78,15 @@ public:
                                  values.end());
         return *this;
     }
+    Block &Locals(std::vector<SlotValue> values) {
+        if (values.empty())
+            return *this;
+        Detail::BlockDefinition &definition = Change();
+        definition.Locals.insert(definition.Locals.end(),
+                                 std::make_move_iterator(values.begin()),
+                                 std::make_move_iterator(values.end()));
+        return *this;
+    }
     Block &Frames(FramePolicy policy) {
         Change().Frames = policy;
         return *this;
@@ -139,11 +148,13 @@ private:
               Detail::BlockDefinition(prototype))) {}
 
     template <class Handle, class Function>
-    Result<Handle> Open(Function function, ObjectRef owner,
+    Result<Handle> Open(Function function, RunKind kind, ObjectRef owner,
                         const Selector *input,
                         std::optional<FramePolicy> frames) const;
     [[nodiscard]] Result<std::shared_ptr<const Detail::CompiledBlock>>
-    Compile() const;
+    Compile(bool requireDeclared = false) const;
+    [[nodiscard]] Status Accept(const BML_BehaviorRunInfo &info,
+                                RunKind kind) const;
     Detail::BlockDefinition &Change();
 
     std::shared_ptr<Detail::SessionState> m_Session;

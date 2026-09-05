@@ -29,9 +29,9 @@ BML_C_ABI_ASSERT(BmlBehaviorSlotRecordSize,
 BML_C_ABI_ASSERT(BmlBehaviorLayoutSize,
                  sizeof(BML_BehaviorLayout) == 128u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphPortSize,
-                 sizeof(BML_BehaviorGraphPort) == 40u);
+                 sizeof(BML_BehaviorGraphPort) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphNodeSize,
-                 sizeof(BML_BehaviorGraphNode) == 72u);
+                 sizeof(BML_BehaviorGraphNode) == 80u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphLinkSize,
                  sizeof(BML_BehaviorGraphLink) == 80u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphSize,
@@ -55,7 +55,7 @@ BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 140u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 48u);
-BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 44u);
+BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 56u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
                  sizeof(BML_BehaviorWatchValue) == 92u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
@@ -63,7 +63,7 @@ BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
 BML_C_ABI_ASSERT(BmlBehaviorWatchFunctionSize,
                  sizeof(BML_BehaviorWatchFunction) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchSpecSize,
-                 sizeof(BML_BehaviorWatchSpec) == 68u);
+                 sizeof(BML_BehaviorWatchSpec) == 80u);
 BML_C_ABI_ASSERT(BmlBehaviorHookFunctionSize,
                  sizeof(BML_BehaviorHookFunction) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,
@@ -88,7 +88,7 @@ BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 280u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 56u);
-BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 56u);
+BML_C_ABI_ASSERT(BmlBehaviorValueRefSize, sizeof(BML_BehaviorValueRef) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchValueSize,
                  sizeof(BML_BehaviorWatchValue) == 96u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
@@ -96,7 +96,7 @@ BML_C_ABI_ASSERT(BmlBehaviorWatchEventSize,
 BML_C_ABI_ASSERT(BmlBehaviorWatchFunctionSize,
                  sizeof(BML_BehaviorWatchFunction) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorWatchSpecSize,
-                 sizeof(BML_BehaviorWatchSpec) == 80u);
+                 sizeof(BML_BehaviorWatchSpec) == 88u);
 BML_C_ABI_ASSERT(BmlBehaviorHookFunctionSize,
                  sizeof(BML_BehaviorHookFunction) == 40u);
 BML_C_ABI_ASSERT(BmlBehaviorEditOrderSize,

@@ -89,7 +89,10 @@ struct HookFunction {
     static int BML_BEHAVIOR_CALL Invoke(
         void *state, const BML_BehaviorHookContext *source) noexcept {
         try {
-            if (!state || !source || source->StructSize < sizeof(*source))
+            if (!state || !source || source->StructSize < sizeof(*source) ||
+                !ValidObjectRef(source->Block) || !source->Block.Domain ||
+                !ValidObjectRef(source->Script) ||
+                !ValidObjectRef(source->Owner))
                 return static_cast<int>(HookResult::Error);
             HookEvent event;
             event.DeltaTime = source->DeltaTime;

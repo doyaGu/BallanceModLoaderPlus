@@ -1,5 +1,7 @@
 #include "Behavior/Layout.h"
 
+#include <cstdint>
+#include <cstring>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -8,6 +10,66 @@
 
 namespace BML::Behavior {
 namespace {
+
+constexpr std::uint64_t kIdentityOffset = 1469598103934665603ull;
+constexpr std::uint64_t kIdentityPrime = 1099511628211ull;
+
+constexpr CKDWORD kLayoutFlags =
+    static_cast<CKDWORD>(CKBEHAVIOR_TARGETABLE) |
+    static_cast<CKDWORD>(CKBEHAVIOR_VARIABLEINPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_VARIABLEOUTPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_VARIABLEPARAMETERINPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDINPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDLOCALPARAMS);
+
+constexpr CKDWORD kExecuteLayoutFlags =
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDINPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS) |
+    static_cast<CKDWORD>(CKBEHAVIOR_INTERNALLYCREATEDLOCALPARAMS);
+
+void IdentityBytes(std::uint64_t &identity, const void *data,
+                   std::size_t size) noexcept {
+    const auto *bytes = static_cast<const unsigned char *>(data);
+    for (std::size_t index = 0; index < size; ++index) {
+        identity ^= bytes[index];
+        identity *= kIdentityPrime;
+    }
+}
+
+template <class T>
+void IdentityPart(std::uint64_t &identity, const T &value) noexcept {
+    IdentityBytes(identity, &value, sizeof(value));
+}
+
+void IdentityText(std::uint64_t &identity, const char *text) noexcept {
+    const std::size_t size = text ? std::strlen(text) : 0;
+    IdentityPart(identity, size);
+    if (size)
+        IdentityBytes(identity, text, size);
+}
+
+void IdentityObject(std::uint64_t &identity, CKObject *object) noexcept {
+    const auto address = reinterpret_cast<std::uintptr_t>(object);
+    const CK_ID id = object ? object->GetID() : 0;
+    IdentityPart(identity, address);
+    IdentityPart(identity, id);
+    IdentityText(identity, object ? object->GetName() : nullptr);
+}
+
+template <class Parameter>
+void IdentityParameter(std::uint64_t &identity,
+                       Parameter *parameter) noexcept {
+    IdentityObject(identity, parameter);
+    const CKGUID type = parameter ? parameter->GetGUID() : CKGUID();
+    IdentityPart(identity, type.d1);
+    IdentityPart(identity, type.d2);
+}
 
 const char *SlotKindName(SlotKind kind) {
     switch (kind) {
@@ -267,6 +329,53 @@ Status SlotFailure(Error error, std::string message, CKGUID prototype,
 }
 
 } // namespace
+
+std::uint64_t LayoutIdentity(CKBehavior *behavior) noexcept {
+    std::uint64_t identity = kIdentityOffset;
+    if (!behavior)
+        return identity;
+
+    const CKGUID prototype = behavior->GetPrototypeGuid();
+    IdentityPart(identity, prototype.d1);
+    IdentityPart(identity, prototype.d2);
+    IdentityPart(identity, behavior->GetCompatibleClassID());
+    const CKDWORD layoutFlags =
+        static_cast<CKDWORD>(behavior->GetFlags()) & kLayoutFlags;
+    IdentityPart(identity, layoutFlags);
+    const CKBOOL function = behavior->IsUsingFunction();
+    IdentityPart(identity, function);
+
+    IdentityParameter(identity, behavior->GetTargetParameter());
+
+    IdentityPart(identity, behavior->GetInputCount());
+    for (int index = 0; index < behavior->GetInputCount(); ++index)
+        IdentityObject(identity, behavior->GetInput(index));
+
+    IdentityPart(identity, behavior->GetOutputCount());
+    for (int index = 0; index < behavior->GetOutputCount(); ++index)
+        IdentityObject(identity, behavior->GetOutput(index));
+
+    IdentityPart(identity, behavior->GetInputParameterCount());
+    for (int index = 0; index < behavior->GetInputParameterCount(); ++index)
+        IdentityParameter(identity, behavior->GetInputParameter(index));
+
+    IdentityPart(identity, behavior->GetOutputParameterCount());
+    for (int index = 0; index < behavior->GetOutputParameterCount(); ++index)
+        IdentityParameter(identity, behavior->GetOutputParameter(index));
+
+    IdentityPart(identity, behavior->GetLocalParameterCount());
+    for (int index = 0; index < behavior->GetLocalParameterCount(); ++index) {
+        IdentityParameter(identity, behavior->GetLocalParameter(index));
+        const CKBOOL setting = behavior->IsLocalParameterSetting(index);
+        IdentityPart(identity, setting);
+    }
+    return identity;
+}
+
+bool IsLayoutDynamic(CKBehavior *behavior) noexcept {
+    return behavior &&
+        (static_cast<CKDWORD>(behavior->GetFlags()) & kExecuteLayoutFlags) != 0;
+}
 
 Layout LiveLayout::Describe(std::uint64_t generation,
                             const Layout *declared) const {

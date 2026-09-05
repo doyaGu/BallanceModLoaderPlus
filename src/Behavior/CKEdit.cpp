@@ -787,9 +787,9 @@ Status CKEdit::Add(Edit &edit, Spec block, Node &out, NodeRole role) {
     Status status = Ready();
     if (!status)
         return status;
-    if (!m_Catalog)
+    if (!m_Catalog || !m_Catalog->TracksRetirement())
         return Failure(Error::Unavailable,
-                       "Behavior Prototype discovery is unavailable.");
+                       "Behavior Prototype identity is unavailable.");
     Layout declared;
     status = m_Catalog->DeclaredLayout(
         {block.Prototype(), block.PrototypeGeneration()}, declared);

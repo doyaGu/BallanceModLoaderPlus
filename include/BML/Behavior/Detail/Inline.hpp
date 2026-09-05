@@ -88,6 +88,7 @@ inline Result<std::vector<PrototypeInfo>> FindPrototypes(
             session->Handle, &wireQuery, nullptr, 0,
             sizeof(BML_BehaviorPrototypeInfo), nullptr, 0, &count,
             &payloadSize, &status);
+        code = WireCode(code, status);
         if (code == BML_OK && count == 0 && payloadSize == 0)
             return Result<std::vector<PrototypeInfo>>::Success(
                 {}, ReadStatus(status));
@@ -104,6 +105,7 @@ inline Result<std::vector<PrototypeInfo>> FindPrototypes(
             session->Handle, &wireQuery, records.data(), count,
             sizeof(BML_BehaviorPrototypeInfo), payload.data(), payloadSize,
             &writtenCount, &writtenBytes, &status);
+        code = WireCode(code, status);
         if (code != BML_OK)
             return Result<std::vector<PrototypeInfo>>::Failure(
                 code, ReadStatus(status));
@@ -143,7 +145,8 @@ inline Result<std::vector<PrototypeInfo>> FindPrototypes(
             info.Managers.reserve(record.ManagerCount);
             for (std::uint32_t index = 0; index < record.ManagerCount; ++index) {
                 BML_BehaviorManagerInfo manager{};
-                if (!RecordAt(payload, record.ManagerOffset, index, manager))
+                if (!RecordAt(payload, record.ManagerOffset, index, manager) ||
+                    !KnownFlag(manager.Available))
                     return Result<std::vector<PrototypeInfo>>::Failure(
                         BML_ERROR_MALFORMED_MESSAGE, ReadStatus(status));
                 info.Managers.push_back(
@@ -179,6 +182,7 @@ inline Result<Behavior::Layout> ReadDeclared(
     std::uint32_t payloadSize = 0;
     int code = session->Api->ReadDeclaredLayout(
         session->Handle, &requested, &wire, nullptr, 0, &payloadSize, &status);
+    code = WireCode(code, status);
     if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
         return Result<Behavior::Layout>::Failure(code, ReadStatus(status));
     if (code == BML_OK && payloadSize != 0) {
@@ -198,6 +202,7 @@ inline Result<Behavior::Layout> ReadDeclared(
         code = session->Api->ReadDeclaredLayout(
             session->Handle, &requested, &wire, payload.data(), payloadSize,
             &written, &status);
+        code = WireCode(code, status);
         if (code != BML_OK)
             return Result<Behavior::Layout>::Failure(code, ReadStatus(status));
         if (written != payload.size()) {
@@ -277,7 +282,8 @@ inline Status CheckDefinition(const BlockDefinition &definition) {
     if ((bounded && !definition.Frames.Limit) ||
         (!bounded && definition.Frames.Limit) ||
         (!bounded && definition.Frames.Kind != BML_BEHAVIOR_FRAMES_LATEST &&
-         definition.Frames.Kind != BML_BEHAVIOR_FRAMES_NONE)) {
+         definition.Frames.Kind != BML_BEHAVIOR_FRAMES_NONE) ||
+        (definition.Frames.Flags & ~BML_BEHAVIOR_FRAME_POLICY_POUTS)) {
         return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
                           BML_BEHAVIOR_PHASE_NONE,
                           definition.PrototypeRef, CKGUID(0, 0),
@@ -405,8 +411,21 @@ inline Status CheckSetting(const Behavior::Layout &layout,
     return {};
 }
 
-inline CompiledBlock::CompiledBlock(BlockDefinition definition)
-    : Definition(std::move(definition)) {
+inline Status CheckTarget(const Behavior::Layout &layout,
+                          const BlockDefinition &definition) {
+    if (definition.TargetKind == BML_BEHAVIOR_TARGET_OWNER)
+        return {};
+    if ((layout.BehaviorFlags & CKBEHAVIOR_TARGETABLE) != 0)
+        return {};
+    return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
+                      BML_BEHAVIOR_PHASE_TARGET,
+                      layout.PrototypeRef, definition.TargetType,
+                      "The Prototype does not declare an explicit Target.");
+}
+
+inline CompiledBlock::CompiledBlock(BlockDefinition definition,
+                                    bool declared)
+    : Definition(std::move(definition)), Declared(declared) {
     while (Definition.Settings.size() > 1 &&
            Definition.Settings.back().empty())
         Definition.Settings.pop_back();
@@ -463,12 +482,13 @@ inline CompiledBlock::CompiledBlock(BlockDefinition definition)
     Wire.Frames.StructSize = sizeof(Wire.Frames);
     Wire.Frames.Kind = Definition.Frames.Kind;
     Wire.Frames.Limit = Definition.Frames.Limit;
+    Wire.Frames.Flags = Definition.Frames.Flags;
     Wire.PrototypeGeneration = Definition.PrototypeRef.Generation;
 }
 
 inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
     const std::shared_ptr<SessionState> &session,
-    BlockDefinition definition) const {
+    BlockDefinition definition, bool requireDeclared) const {
     if (!session || !session->Api || !session->Handle) {
         return Result<std::shared_ptr<const CompiledBlock>>::Failure(
             BML_ERROR_INVALID_HANDLE);
@@ -481,8 +501,11 @@ inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
     auto declared = ReadDeclared(session, definition.PrototypeRef);
     if (!declared) {
         if (declared.Code() == BML_ERROR_UNAVAILABLE) {
+            if (requireDeclared)
+                return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+                    declared.Code(), declared.GetStatus());
             std::shared_ptr<const CompiledBlock> block =
-                std::make_shared<CompiledBlock>(std::move(definition));
+                std::make_shared<CompiledBlock>(std::move(definition), false);
             return Result<std::shared_ptr<const CompiledBlock>>::Success(
                 std::move(block));
         }
@@ -498,9 +521,14 @@ inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
             }
         }
     }
+    checked = CheckTarget(declared.Value(), definition);
+    if (!checked) {
+        return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+            BML_ERROR_FAIL, std::move(checked));
+    }
     definition.PrototypeRef = declared.Value().PrototypeRef;
     std::shared_ptr<const CompiledBlock> block =
-        std::make_shared<CompiledBlock>(std::move(definition));
+        std::make_shared<CompiledBlock>(std::move(definition), true);
     return Result<std::shared_ptr<const CompiledBlock>>::Success(
         std::move(block), declared.GetStatus());
 }
@@ -521,7 +549,9 @@ namespace Detail {
 inline bool ReadObserved(const BML_BehaviorGraphValue &source,
                          const std::vector<std::uint8_t> &payload,
                          ObservedValue &out) {
-    if (source.StructSize < sizeof(source))
+    if (source.StructSize < sizeof(source) ||
+        !KnownObservationState(source.State) ||
+        !KnownRelation(source.Relation))
         return false;
     out = {};
     out.State = static_cast<ObservationState>(source.State);
@@ -538,13 +568,20 @@ inline bool ReadObserved(const BML_BehaviorGraphValue &source,
     value.Kind = source.Kind;
     value.ValueOffset = source.ValueOffset;
     value.ValueSize = source.ValueSize;
-    return ReadPoutData(value, payload, out.Data);
+    if (!ReadPoutData(value, payload, out.Data))
+        return false;
+    if (source.Kind == BML_BEHAVIOR_VALUE_OBJECT &&
+        !ValidObjectRef(std::get<BML_ObjectRef>(out.Data)))
+        return false;
+    return true;
 }
 
 inline bool ReadWatchValue(const BML_BehaviorWatchValue &source,
                            ObservedValue &out) {
     if (source.StructSize < sizeof(source) ||
-        source.Value.StructSize < sizeof(source.Value))
+        source.Value.StructSize < sizeof(source.Value) ||
+        !KnownObservationState(source.State) ||
+        !KnownRelation(source.Relation))
         return false;
     out = {};
     out.State = static_cast<ObservationState>(source.State);
@@ -558,6 +595,8 @@ inline bool ReadWatchValue(const BML_BehaviorWatchValue &source,
     out.Kind = static_cast<ValueKind>(source.Value.Kind);
     switch (source.Value.Kind) {
     case BML_BEHAVIOR_VALUE_BOOL:
+        if (!KnownFlag(source.Value.Data.Bool))
+            return false;
         out.Data = source.Value.Data.Bool != 0;
         break;
     case BML_BEHAVIOR_VALUE_INT32:
@@ -582,14 +621,20 @@ inline bool ReadWatchValue(const BML_BehaviorWatchValue &source,
     case BML_BEHAVIOR_VALUE_COLOR: out.Data = source.Value.Data.Color; break;
     case BML_BEHAVIOR_VALUE_BOX: out.Data = source.Value.Data.Box; break;
     case BML_BEHAVIOR_VALUE_MAT4: out.Data = source.Value.Data.Mat4; break;
-    case BML_BEHAVIOR_VALUE_OBJECT: out.Data = source.Value.Data.Object; break;
+    case BML_BEHAVIOR_VALUE_OBJECT:
+        if (!ValidObjectRef(source.Value.Data.Object))
+            return false;
+        out.Data = source.Value.Data.Object;
+        break;
     default: return false;
     }
     return true;
 }
 
 inline bool ReadChange(const BML_BehaviorWatchEvent *source, Change &out) {
-    if (!source || source->StructSize < sizeof(*source))
+    if (!source || source->StructSize < sizeof(*source) ||
+        source->Kind < BML_BEHAVIOR_WATCH_GRAPH ||
+        source->Kind > BML_BEHAVIOR_WATCH_SAMPLED_VALUE)
         return false;
     out = {};
     out.Kind = static_cast<ChangeKind>(source->Kind);
@@ -638,7 +683,8 @@ struct WatchFunction {
 inline Result<Graph> Graph::Read(
     std::shared_ptr<Detail::SessionState> session,
     BML_ObjectRef root, View view) {
-    if (!session || !session->Api || !session->Handle || !root.Domain)
+    if (!session || !session->Api || !session->Handle ||
+        !Detail::ValidObjectRef(root) || !root.Domain)
         return Result<Graph>::Failure(BML_ERROR_INVALID_HANDLE);
     try {
         BML_BehaviorGraph wire{};
@@ -648,6 +694,7 @@ inline Result<Graph> Graph::Read(
         int code = session->Api->Inspect(
             session->Handle, root, static_cast<std::uint32_t>(view),
             &wire, nullptr, 0, &payloadSize, &status);
+        code = Detail::WireCode(code, status);
         if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
             return Result<Graph>::Failure(code, Detail::ReadStatus(status));
         std::vector<std::uint8_t> payload(payloadSize);
@@ -659,12 +706,13 @@ inline Result<Graph> Graph::Read(
             code = session->Api->Inspect(
                 session->Handle, root, static_cast<std::uint32_t>(view),
                 &wire, payload.data(), payloadSize, &written, &status);
+            code = Detail::WireCode(code, status);
             if (code != BML_OK)
                 return Result<Graph>::Failure(code, Detail::ReadStatus(status));
             if (written != payload.size())
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
         }
-        return Decode(std::move(session), view, wire, payload, status);
+        return Decode(std::move(session), view, root, wire, payload, status);
     } catch (const std::bad_alloc &) {
         return Result<Graph>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -686,6 +734,7 @@ inline Result<Graph> Graph::ReadRun(
         int code = session->Api->InspectRun(
             run, static_cast<std::uint32_t>(view), &wire, nullptr, 0,
             &payloadSize, &status);
+        code = Detail::WireCode(code, status);
         if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
             return Result<Graph>::Failure(code, Detail::ReadStatus(status));
         std::vector<std::uint8_t> payload(payloadSize);
@@ -697,12 +746,13 @@ inline Result<Graph> Graph::ReadRun(
             code = session->Api->InspectRun(
                 run, static_cast<std::uint32_t>(view), &wire,
                 payload.data(), payloadSize, &written, &status);
+            code = Detail::WireCode(code, status);
             if (code != BML_OK)
                 return Result<Graph>::Failure(code, Detail::ReadStatus(status));
             if (written != payload.size())
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
         }
-        return Decode(std::move(session), view, wire, payload, status);
+        return Decode(std::move(session), view, {}, wire, payload, status);
     } catch (const std::bad_alloc &) {
         return Result<Graph>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -712,11 +762,15 @@ inline Result<Graph> Graph::ReadRun(
 
 inline Result<Graph> Graph::Decode(
     std::shared_ptr<Detail::SessionState> session, View view,
+    BML_ObjectRef expectedRoot,
     const BML_BehaviorGraph &wire,
     const std::vector<std::uint8_t> &payload,
     const BML_BehaviorStatus &status) {
     if (wire.StructSize < sizeof(wire) ||
         wire.View != static_cast<std::uint32_t>(view) ||
+        !Detail::ValidObjectRef(wire.Root) || !wire.Root.Domain ||
+        (expectedRoot.Domain &&
+         !(Detail::ObjectKey(expectedRoot) == Detail::ObjectKey(wire.Root))) ||
         !Detail::RecordsFit<BML_BehaviorGraphNode>(
             payload, wire.NodeOffset, wire.NodeCount) ||
         !Detail::RecordsFit<BML_BehaviorGraphLink>(
@@ -729,48 +783,81 @@ inline Result<Graph> Graph::Decode(
     graph.m_View = view;
     graph.m_Generation = wire.Generation;
     graph.m_Fingerprint = wire.Fingerprint;
-    graph.m_Nodes.reserve(wire.NodeCount);
-    std::unordered_set<std::uint64_t> nodes;
-    std::unordered_map<Detail::PortKey,
-                       std::pair<std::size_t, std::size_t>,
+    auto data = std::make_shared<Detail::GraphData>();
+    std::size_t portCount = 0;
+    for (std::uint32_t index = 0; index < wire.NodeCount; ++index) {
+        BML_BehaviorGraphNode record{};
+        if (!Detail::RecordAt(payload, wire.NodeOffset, index, record) ||
+            !Detail::RecordsFit<BML_BehaviorGraphPort>(
+                payload, record.PortOffset, record.PortCount) ||
+            record.PortCount >
+                (std::numeric_limits<std::size_t>::max)() - portCount)
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        portCount += record.PortCount;
+    }
+    data->Nodes.reserve(wire.NodeCount);
+    data->Ports.reserve(portCount);
+    if (wire.LinkCount >
+        (std::numeric_limits<std::size_t>::max)() - wire.NodeCount)
+        return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    const std::size_t identityCount =
+        static_cast<std::size_t>(wire.NodeCount) + wire.LinkCount;
+    std::unordered_set<std::uint64_t> identities;
+    std::unordered_set<Detail::ObjectKey, Detail::ObjectKeyHash> objects;
+    std::unordered_map<Detail::PortKey, std::size_t,
                        Detail::PortKeyHash> ports;
-    nodes.reserve(wire.NodeCount);
+    identities.reserve(identityCount);
+    objects.reserve(identityCount);
+    ports.reserve(portCount);
     for (std::uint32_t index = 0; index < wire.NodeCount; ++index) {
         BML_BehaviorGraphNode record{};
         if (!Detail::RecordAt(payload, wire.NodeOffset, index, record) ||
             !Detail::RecordsFit<BML_BehaviorGraphPort>(
                 payload, record.PortOffset, record.PortCount))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        Node node;
+        Detail::GraphNodeData node;
         node.Id = record.Id;
         node.Object = record.Object;
         node.Parent = record.Parent;
+        node.LayoutGeneration = record.LayoutGeneration;
         node.Prototype = Detail::NativeGuid(record.Prototype);
         node.Priority = record.Priority;
         node.Active = record.Active != 0;
-        if (!node.Id || !nodes.emplace(node.Id).second ||
+        if (!node.Id || !Detail::ValidObjectRef(node.Object) ||
+            !node.Object.Domain || !node.LayoutGeneration ||
+            !identities.emplace(node.Id).second ||
+            !objects.emplace(node.Object).second ||
             !Detail::KnownFlag(record.Active))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
         if (!Detail::TextAt(payload, record.Name.Offset,
                             record.Name.Length, node.Name))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        node.Ports.reserve(record.PortCount);
+        node.PortOffset = data->Ports.size();
+        node.PortCount = record.PortCount;
+        const std::size_t nodeIndex = data->Nodes.size();
         for (std::uint32_t portIndex = 0;
              portIndex < record.PortCount; ++portIndex) {
             BML_BehaviorGraphPort portRecord{};
             if (!Detail::RecordAt(payload, record.PortOffset,
                                   portIndex, portRecord))
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-            Port port;
-            port.Object = node.Object;
-            port.Node = portRecord.Node;
+            Detail::GraphPortData port;
+            port.Node = nodeIndex;
+            port.LayoutGeneration = portRecord.LayoutGeneration;
             if (portRecord.Node != node.Id || portRecord.Index < 0 ||
+                portRecord.LayoutGeneration != node.LayoutGeneration ||
                 portRecord.Occurrence < 0 ||
                 !Detail::KnownSlotKind(portRecord.Kind) ||
-                !Detail::KnownFlag(portRecord.Active))
+                (portRecord.Flags & ~BML_BEHAVIOR_SLOT_DYNAMIC) != 0 ||
+                !Detail::KnownFlag(portRecord.Active) ||
+                (portRecord.Kind != BML_BEHAVIOR_SLOT_IN &&
+                 portRecord.Kind != BML_BEHAVIOR_SLOT_OUT &&
+                 portRecord.Active != 0))
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
             port.Kind = static_cast<SlotKind>(portRecord.Kind);
-            port.Slot = Selector::At(portRecord.Index);
+            port.Type = Detail::NativeGuid(portRecord.Type);
+            port.Dynamic =
+                (portRecord.Flags & BML_BEHAVIOR_SLOT_DYNAMIC) != 0;
             port.Index = portRecord.Index;
             port.Occurrence = portRecord.Occurrence;
             port.Active = portRecord.Active != 0;
@@ -780,36 +867,59 @@ inline Result<Graph> Graph::Decode(
             if (!ports.emplace(
                     Detail::PortKey{
                         node.Id, portRecord.Kind, portRecord.Index},
-                    std::make_pair(graph.m_Nodes.size(),
-                                   node.Ports.size())).second)
+                    data->Ports.size()).second)
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-            node.Ports.push_back(std::move(port));
+            data->Ports.push_back(std::move(port));
         }
-        graph.m_Nodes.push_back(std::move(node));
+        data->Nodes.push_back(std::move(node));
+    }
+    std::size_t rootCount = 0;
+    std::uint64_t rootId = 0;
+    for (std::size_t index = 0; index < data->Nodes.size(); ++index) {
+        const Detail::GraphNodeData &node = data->Nodes[index];
+        const bool root = node.Object.Domain == graph.m_Root.Domain &&
+            node.Object.Slot == graph.m_Root.Slot &&
+            node.Object.Generation == graph.m_Root.Generation;
+        if (!root)
+            continue;
+        if (node.Parent != 0)
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        ++rootCount;
+        rootId = node.Id;
+        data->Root = index;
+    }
+    if (rootCount != 1)
+        return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    for (const Detail::GraphNodeData &node : data->Nodes) {
+        if (node.Id != rootId && node.Parent != rootId)
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     }
     const auto endpoint = [&](std::uint64_t nodeId, std::uint32_t kind,
-                              std::int32_t index, Port &out) {
+                              std::int32_t index, std::size_t &out) {
         const auto port = ports.find(
             Detail::PortKey{nodeId, kind, index});
         if (port == ports.end())
             return false;
-        out = graph.m_Nodes[port->second.first].Ports[port->second.second];
+        out = port->second;
         return true;
     };
-    graph.m_Links.reserve(wire.LinkCount);
-    std::unordered_set<std::uint64_t> links;
-    links.reserve(wire.LinkCount);
+    data->Links.reserve(wire.LinkCount);
     for (std::uint32_t index = 0; index < wire.LinkCount; ++index) {
         BML_BehaviorGraphLink record{};
         if (!Detail::RecordAt(payload, wire.LinkOffset, index, record))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        if (!record.Id || !links.emplace(record.Id).second ||
+        if (!record.Id || !Detail::ValidObjectRef(record.Object) ||
+            !record.Object.Domain ||
+            !identities.emplace(record.Id).second ||
+            !objects.emplace(record.Object).second ||
             record.SourceIndex < 0 || record.TargetIndex < 0 ||
-            !Detail::KnownSlotKind(record.SourceKind) ||
-            !Detail::KnownSlotKind(record.TargetKind) ||
+            (record.SourceKind != BML_BEHAVIOR_SLOT_IN &&
+             record.SourceKind != BML_BEHAVIOR_SLOT_OUT) ||
+            (record.TargetKind != BML_BEHAVIOR_SLOT_IN &&
+             record.TargetKind != BML_BEHAVIOR_SLOT_OUT) ||
             !Detail::KnownTruth(record.Pending))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        Link link;
+        Detail::GraphLinkData link;
         link.Id = record.Id;
         link.Object = record.Object;
         if (!endpoint(record.SourceNode, record.SourceKind,
@@ -820,8 +930,9 @@ inline Result<Graph> Graph::Decode(
         link.InitialDelay = record.InitialDelay;
         link.RemainingDelay = record.RemainingDelay;
         link.Pending = static_cast<TruthValue>(record.Pending);
-        graph.m_Links.push_back(std::move(link));
+        data->Links.push_back(std::move(link));
     }
+    graph.m_Data = std::move(data);
     return Result<Graph>::Success(std::move(graph),
                                   Detail::ReadStatus(status));
 }
@@ -836,6 +947,7 @@ inline Result<Behavior::Layout> Detail::Run::Layout() const {
         std::uint32_t payloadSize = 0;
         int code = m_Session->Api->ReadLiveLayout(
             m_Handle, &wire, nullptr, 0, &payloadSize, &status);
+        code = WireCode(code, status);
         if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
             return Result<Behavior::Layout>::Failure(code, ReadStatus(status));
         std::vector<std::uint8_t> payload(payloadSize);
@@ -847,6 +959,7 @@ inline Result<Behavior::Layout> Detail::Run::Layout() const {
             code = m_Session->Api->ReadLiveLayout(
                 m_Handle, &wire, payload.data(), payloadSize,
                 &written, &status);
+            code = WireCode(code, status);
             if (code != BML_OK)
                 return Result<Behavior::Layout>::Failure(
                     code, ReadStatus(status));
@@ -856,7 +969,10 @@ inline Result<Behavior::Layout> Detail::Run::Layout() const {
         }
         Behavior::Layout layout;
         if (!ReadLayout(wire, payload, layout) ||
-            layout.Origin != LayoutOrigin::Live)
+            layout.Origin != LayoutOrigin::Live ||
+            layout.PrototypeRef.Id != m_Prototype.Id ||
+            (m_Prototype.Generation &&
+             layout.PrototypeRef.Generation != m_Prototype.Generation))
             return Result<Behavior::Layout>::Failure(
                 BML_ERROR_MALFORMED_MESSAGE);
         return Result<Behavior::Layout>::Success(
@@ -874,6 +990,58 @@ inline Result<Graph> Detail::Run::Inspect(View view) const {
     return Graph::ReadRun(m_Session, m_Handle, view);
 }
 
+inline Result<Behavior::Slot> ResolveLiveSlot(
+    const Behavior::Layout &layout, SlotKind kind,
+    const Selector &selector) {
+    const BML_BehaviorSelector wire = Detail::Wire::From(selector);
+    const Behavior::Slot *match = nullptr;
+    for (const Behavior::Slot &slot : layout.Slots) {
+        if (slot.Kind != kind)
+            continue;
+        bool selected = false;
+        switch (wire.Kind) {
+        case BML_BEHAVIOR_SELECTOR_ONLY:
+            selected = true;
+            break;
+        case BML_BEHAVIOR_SELECTOR_INDEX:
+            selected = slot.Index == wire.Index;
+            break;
+        case BML_BEHAVIOR_SELECTOR_NAME:
+            selected = slot.Occurrence == wire.Occurrence &&
+                slot.Name == std::string_view(
+                    wire.Name.Data ? wire.Name.Data : "", wire.Name.Length);
+            break;
+        case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
+            selected = slot.Name == std::string_view(
+                wire.Name.Data ? wire.Name.Data : "", wire.Name.Length);
+            break;
+        default:
+            return Result<Behavior::Slot>::Failure(
+                BML_ERROR_INVALID_PARAMETER);
+        }
+        if (!selected)
+            continue;
+        if (match) {
+            Status status;
+            status.Error = Error::SlotAmbiguous;
+            status.Phase = Phase::Binding;
+            status.Message = "The live Behavior slot selector is ambiguous.";
+            return Result<Behavior::Slot>::Failure(
+                BML_ERROR_FAIL, std::move(status));
+        }
+        match = &slot;
+    }
+    if (!match) {
+        Status status;
+        status.Error = Error::SlotNotFound;
+        status.Phase = Phase::Binding;
+        status.Message = "The live Behavior slot selector did not match.";
+        return Result<Behavior::Slot>::Failure(
+            BML_ERROR_NOT_FOUND, std::move(status));
+    }
+    return Result<Behavior::Slot>::Success(*match);
+}
+
 inline Result<std::uint64_t> Detail::Run::Set(
     const Behavior::Slot &slot, const Behavior::Value &value) const {
     if (!*this || !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Set))
@@ -882,8 +1050,10 @@ inline Result<std::uint64_t> Detail::Run::Set(
     const BML_BehaviorValue wire = Wire::From(value);
     BML_BehaviorStatus status = EmptyStatus();
     std::uint64_t generation = 0;
-    const int code = m_Session->Api->Set(
-        m_Handle, &target, &wire, &generation, &status);
+    const int code = WireCode(
+        m_Session->Api->Set(
+            m_Handle, &target, &wire, &generation, &status),
+        status);
     return code == BML_OK
         ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
         : Result<std::uint64_t>::Failure(code, ReadStatus(status));
@@ -892,21 +1062,17 @@ inline Result<std::uint64_t> Detail::Run::Set(
 inline Result<std::uint64_t> Detail::Run::Set(
     SlotKind kind, const Selector &slot,
     const Behavior::Value &value) const {
-    if (!*this || !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Set))
+    if (!*this)
         return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
-    BML_BehaviorSlotRef target{};
-    target.StructSize = sizeof(target);
-    target.Kind = static_cast<std::uint32_t>(kind);
-    target.Type = Detail::WireGuid(value.Type());
-    target.Slot = Wire::From(slot);
-    const BML_BehaviorValue wire = Wire::From(value);
-    BML_BehaviorStatus status = EmptyStatus();
-    std::uint64_t generation = 0;
-    const int code = m_Session->Api->Set(
-        m_Handle, &target, &wire, &generation, &status);
-    return code == BML_OK
-        ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
-        : Result<std::uint64_t>::Failure(code, ReadStatus(status));
+    auto layout = Layout();
+    if (!layout)
+        return Result<std::uint64_t>::Failure(
+            layout.Code(), layout.GetStatus());
+    auto resolved = ResolveLiveSlot(layout.Value(), kind, slot);
+    if (!resolved)
+        return Result<std::uint64_t>::Failure(
+            resolved.Code(), resolved.GetStatus());
+    return Set(resolved.Value(), value);
 }
 
 inline Result<std::uint64_t> Detail::Run::Bind(
@@ -917,14 +1083,17 @@ inline Result<std::uint64_t> Detail::Run::Bind(
     BML_BehaviorSlotRef target = Wire::From(slot);
     BML_BehaviorValueRef value{};
     value.StructSize = sizeof(value);
-    value.Kind = static_cast<std::uint32_t>(source.Kind);
-    value.Node = source.Object;
-    value.Slot = Wire::From(source.Slot);
+    value.Kind = static_cast<std::uint32_t>(source.Kind());
+    value.LayoutGeneration = source.LayoutGeneration();
+    value.Node = source.Object();
+    value.Slot = Wire::From(source.Slot());
     BML_BehaviorStatus status = EmptyStatus();
     std::uint64_t generation = 0;
-    const int code = m_Session->Api->Bind(
-        m_Handle, &target, &value,
-        static_cast<std::uint32_t>(relation), &generation, &status);
+    const int code = WireCode(
+        m_Session->Api->Bind(
+            m_Handle, &target, &value,
+            static_cast<std::uint32_t>(relation), &generation, &status),
+        status);
     return code == BML_OK
         ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
         : Result<std::uint64_t>::Failure(code, ReadStatus(status));
@@ -951,8 +1120,10 @@ inline Result<std::uint64_t> Detail::Run::Settings(
         stage.SettingCount = static_cast<std::uint32_t>(bindings.size());
         BML_BehaviorStatus status = EmptyStatus();
         std::uint64_t generation = 0;
-        const int code = m_Session->Api->Configure(
-            m_Handle, &stage, 1, &generation, &status);
+        const int code = WireCode(
+            m_Session->Api->Configure(
+                m_Handle, &stage, 1, &generation, &status),
+            status);
         return code == BML_OK
             ? Result<std::uint64_t>::Success(generation, ReadStatus(status))
             : Result<std::uint64_t>::Failure(code, ReadStatus(status));
@@ -971,21 +1142,94 @@ inline Result<Graph> Graph::Live() const {
     return Read(m_Session, m_Root, View::Live);
 }
 
-inline Result<ObservedValue> Graph::Read(const Port &port) const {
-    if (!m_Session || !m_Session->Api || !m_Session->Handle ||
-        !port.Object.Domain)
-        return Result<ObservedValue>::Failure(BML_ERROR_INVALID_HANDLE);
+inline Result<Behavior::Layout> Graph::Layout(const Node &node) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+        return Result<Behavior::Layout>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!node || node.m_Graph != m_Data) {
+        Status status;
+        status.Error = Error::GraphLocalityInvalid;
+        status.Phase = Phase::Layout;
+        status.Message = "The Node belongs to a different Graph snapshot.";
+        return Result<Behavior::Layout>::Failure(
+            BML_ERROR_INVALID_PARAMETER, std::move(status));
+    }
     try {
-        BML_BehaviorSelector selector = Detail::Wire::From(port.Slot);
+        BML_BehaviorLayout wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        std::uint32_t payloadSize = 0;
+        int code = m_Session->Api->ReadNodeLayout(
+            m_Session->Handle, node.Object(), &wire, nullptr, 0,
+            &payloadSize, &status);
+        code = Detail::WireCode(code, status);
+        if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+            return Result<Behavior::Layout>::Failure(
+                code, Detail::ReadStatus(status));
+        std::vector<std::uint8_t> payload(payloadSize);
+        if (payloadSize) {
+            wire = {};
+            wire.StructSize = sizeof(wire);
+            status = Detail::EmptyStatus();
+            std::uint32_t written = 0;
+            code = m_Session->Api->ReadNodeLayout(
+                m_Session->Handle, node.Object(), &wire, payload.data(),
+                payloadSize, &written, &status);
+            code = Detail::WireCode(code, status);
+            if (code != BML_OK)
+                return Result<Behavior::Layout>::Failure(
+                    code, Detail::ReadStatus(status));
+            if (written != payload.size())
+                return Result<Behavior::Layout>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE);
+        }
+        Behavior::Layout layout;
+        if (!Detail::ReadLayout(wire, payload, layout) ||
+            layout.Origin != LayoutOrigin::Live ||
+            layout.PrototypeRef.Id != node.Prototype())
+            return Result<Behavior::Layout>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE);
+        if (layout.Generation != node.LayoutGeneration()) {
+            Status changed;
+            changed.Error = Error::LayoutChanged;
+            changed.Phase = Phase::Binding;
+            changed.Message =
+                "The Node belongs to an older Behavior Layout.";
+            return Result<Behavior::Layout>::Failure(
+                BML_ERROR_FAIL, std::move(changed));
+        }
+        return Result<Behavior::Layout>::Success(
+            std::move(layout), Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<Behavior::Layout>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Behavior::Layout>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<ObservedValue> Graph::Read(const Port &port) const {
+    if (!m_Session || !m_Session->Api || !m_Session->Handle)
+        return Result<ObservedValue>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (!port || port.m_Graph != m_Data) {
+        Status status;
+        status.Error = Error::GraphLocalityInvalid;
+        status.Phase = Phase::Binding;
+        status.Message = "The Port belongs to a different Graph snapshot.";
+        return Result<ObservedValue>::Failure(
+            BML_ERROR_INVALID_PARAMETER, std::move(status));
+    }
+    try {
+        BML_BehaviorSelector selector = Detail::Wire::From(port.Slot());
         BML_BehaviorGraphValue wire{};
         wire.StructSize = sizeof(wire);
         BML_BehaviorStatus status = Detail::EmptyStatus();
         std::uint32_t payloadSize = 0;
         int code = m_Session->Api->ReadValue(
-            m_Session->Handle, port.Object,
-            static_cast<std::uint32_t>(port.Kind), &selector,
+            m_Session->Handle, port.Object(),
+            static_cast<std::uint32_t>(port.Kind()), port.LayoutGeneration(),
+            &selector,
             BML_BEHAVIOR_READ_NON_FORCING, &wire, nullptr, 0,
             &payloadSize, &status);
+        code = Detail::WireCode(code, status);
         if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
             return Result<ObservedValue>::Failure(
                 code, Detail::ReadStatus(status));
@@ -996,10 +1240,12 @@ inline Result<ObservedValue> Graph::Read(const Port &port) const {
             status = Detail::EmptyStatus();
             std::uint32_t written = 0;
             code = m_Session->Api->ReadValue(
-                m_Session->Handle, port.Object,
-                static_cast<std::uint32_t>(port.Kind), &selector,
+                m_Session->Handle, port.Object(),
+                static_cast<std::uint32_t>(port.Kind()),
+                port.LayoutGeneration(), &selector,
                 BML_BEHAVIOR_READ_NON_FORCING, &wire, payload.data(),
                 payloadSize, &written, &status);
+            code = Detail::WireCode(code, status);
             if (code != BML_OK)
                 return Result<ObservedValue>::Failure(
                     code, Detail::ReadStatus(status));
@@ -1037,19 +1283,20 @@ Result<Behavior::Watch> Graph::OpenWatch(
         function.Invoke = &Holder::Invoke;
         BML_BehaviorWatch handle = nullptr;
         BML_BehaviorStatus status = Detail::EmptyStatus();
-        const int code = m_Session->Api->Watch(
-            m_Session->Handle, &spec, &function, &handle, &status);
+        const int code = Detail::WireCode(
+            m_Session->Api->Watch(
+                m_Session->Handle, &spec, &function, &handle, &status),
+            status);
+        Behavior::Watch owned(m_Session, handle);
         Holder::Release(holder);
         holder = nullptr;
         if (code != BML_OK || !handle) {
-            if (handle)
-                (void) m_Session->Api->CloseWatch(handle);
             return Result<Behavior::Watch>::Failure(
                 code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
                 Detail::ReadStatus(status));
         }
         return Result<Behavior::Watch>::Success(
-            Behavior::Watch(m_Session, handle),
+            std::move(owned),
             Detail::ReadStatus(status));
     } catch (const std::bad_alloc &) {
         if (holder)
@@ -1083,6 +1330,7 @@ Result<Behavior::Watch> Graph::Watch(
     spec.Kind = BML_BEHAVIOR_WATCH_LAYOUT;
     spec.View = static_cast<std::uint32_t>(m_View);
     spec.Node = change.Node;
+    spec.LayoutGeneration = change.LayoutGeneration;
     spec.Slot.StructSize = sizeof(spec.Slot);
     spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
     return OpenWatch(spec, std::forward<Function>(callback));
@@ -1095,9 +1343,10 @@ Result<Behavior::Watch> Graph::Watch(
     spec.StructSize = sizeof(spec);
     spec.Kind = BML_BEHAVIOR_WATCH_SAMPLED_VALUE;
     spec.View = static_cast<std::uint32_t>(m_View);
-    spec.Node = change.Value.Object;
-    spec.SlotKind = static_cast<std::uint32_t>(change.Value.Kind);
-    spec.Slot = Detail::Wire::From(change.Value.Slot);
+    spec.Node = change.Value.Object();
+    spec.SlotKind = static_cast<std::uint32_t>(change.Value.Kind());
+    spec.LayoutGeneration = change.Value.LayoutGeneration();
+    spec.Slot = Detail::Wire::From(change.Value.Slot());
     spec.Read = BML_BEHAVIOR_READ_NON_FORCING;
     return OpenWatch(spec, std::forward<Function>(callback));
 }
@@ -1112,16 +1361,19 @@ inline Detail::BlockDefinition &Block::Change() {
     return m_State->Definition;
 }
 
-inline Result<std::shared_ptr<const Detail::CompiledBlock>> Block::Compile() const {
+inline Result<std::shared_ptr<const Detail::CompiledBlock>> Block::Compile(
+    bool requireDeclared) const {
     if (!m_Session || !m_Session->Api || !m_Session->Handle || !m_State)
         return Result<std::shared_ptr<const Detail::CompiledBlock>>::Failure(
             BML_ERROR_INVALID_HANDLE);
-    if (m_State->Compiled) {
+    if (m_State->Compiled &&
+        (!requireDeclared || m_State->Compiled->Declared)) {
         return Result<std::shared_ptr<const Detail::CompiledBlock>>::Success(
             m_State->Compiled);
     }
     try {
-        auto compiled = Detail::Compiler{}(m_Session, m_State->Definition);
+        auto compiled = Detail::Compiler{}(
+            m_Session, m_State->Definition, requireDeclared);
         if (!compiled)
             return compiled;
         m_State->Definition = compiled.Value()->Definition;
@@ -1137,14 +1389,55 @@ inline Result<std::shared_ptr<const Detail::CompiledBlock>> Block::Compile() con
 }
 
 inline Result<void> Block::Validate() const {
-    auto compiled = Compile();
+    auto compiled = Compile(true);
     if (!compiled)
         return Result<void>::Failure(compiled.Code(), compiled.GetStatus());
     return Result<void>::Success(compiled.GetStatus());
 }
 
+inline Status Block::Accept(const BML_BehaviorRunInfo &info,
+                            RunKind kind) const {
+    Status status;
+    const auto reject = [&](Error error, std::string message) {
+        status.Error = error;
+        status.Phase = Phase::Prototype;
+        status.Prototype = m_State
+            ? m_State->Definition.PrototypeRef.Id : CKGUID(0, 0);
+        status.Message = std::move(message);
+    };
+    if (!m_State || !Detail::ValidRunInfo(info) ||
+        info.Kind != static_cast<std::uint32_t>(kind)) {
+        reject(Error::StateInvalid,
+               "The Behavior Run description is malformed.");
+        return status;
+    }
+
+    const Prototype actual(
+        Detail::NativeGuid(info.Prototype.Prototype),
+        info.Prototype.Generation);
+    const Prototype selected = m_State->Definition.PrototypeRef;
+    if (!Detail::HasGuid(actual.Id) || actual.Id != selected.Id) {
+        reject(Error::PrototypeChanged,
+               "The created Behavior does not use the selected Prototype.");
+        return status;
+    }
+    if (selected.Generation &&
+        actual.Generation != selected.Generation) {
+        reject(Error::PrototypeChanged,
+               "The created Behavior uses another Prototype provider generation.");
+        return status;
+    }
+    if (!selected.Generation && actual.Generation) {
+        // This is the first authoritative provider identity for a Block whose
+        // declared Layout was unavailable. All unchanged copies share it.
+        m_State->Definition.PrototypeRef = actual;
+        m_State->Compiled.reset();
+    }
+    return status;
+}
+
 template <class Handle, class Function>
-Result<Handle> Block::Open(Function function, ObjectRef owner,
+Result<Handle> Block::Open(Function function, RunKind kind, ObjectRef owner,
                            const Selector *input,
                            std::optional<FramePolicy> frames) const {
     auto compiled = Compile();
@@ -1164,10 +1457,12 @@ Result<Handle> Block::Open(Function function, ObjectRef owner,
         if (frames) {
             wire.Frames.Kind = frames->Kind;
             wire.Frames.Limit = frames->Limit;
+            wire.Frames.Flags = frames->Flags;
         }
-        const int code = function(
-            m_Session->Handle, owner, &wire, selectorPointer,
-            &run, &info, &status);
+        const int code = Detail::WireCode(
+            function(m_Session->Handle, owner, &wire, selectorPointer,
+                     &run, &info, &status),
+            status);
         if (code != BML_OK) {
             if (run && m_Session->Api->CloseRun)
                 m_Session->Api->CloseRun(run);
@@ -1176,8 +1471,17 @@ Result<Handle> Block::Open(Function function, ObjectRef owner,
         if (!run)
             return Result<Handle>::Failure(
                 BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+        const Prototype prototype(
+            Detail::NativeGuid(info.Prototype.Prototype),
+            info.Prototype.Generation);
+        Detail::Run owned(m_Session, run, kind, prototype);
+        Status accepted = Accept(info, kind);
+        if (!accepted) {
+            return Result<Handle>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, std::move(accepted));
+        }
         return Result<Handle>::Success(
-            Handle(Detail::Run(m_Session, run)),
+            Handle(std::move(owned)),
             Detail::ReadStatus(status));
     } catch (const std::bad_alloc &) {
         return Result<Handle>::Failure(BML_ERROR_OUT_OF_MEMORY);
@@ -1196,7 +1500,8 @@ inline Result<Behavior::Call> Block::Call(
     std::optional<FramePolicy> frames) const {
     if (!m_Session || !m_Session->Api)
         return Result<Behavior::Call>::Failure(BML_ERROR_INVALID_HANDLE);
-    return Open<Behavior::Call>(m_Session->Api->Call, owner, &input, frames);
+    return Open<Behavior::Call>(m_Session->Api->Call, RunKind::Call,
+                                owner, &input, frames);
 }
 
 inline Result<Task> Block::Start(
@@ -1209,7 +1514,8 @@ inline Result<Task> Block::Start(
     std::optional<FramePolicy> frames) const {
     if (!m_Session || !m_Session->Api)
         return Result<Task>::Failure(BML_ERROR_INVALID_HANDLE);
-    return Open<Task>(m_Session->Api->Start, owner, &input, frames);
+    return Open<Task>(m_Session->Api->Start, RunKind::Task,
+                      owner, &input, frames);
 }
 
 inline Result<Instance> Block::Spawn(
@@ -1230,10 +1536,12 @@ inline Result<Instance> Block::Spawn(
         if (frames) {
             wire.Frames.Kind = frames->Kind;
             wire.Frames.Limit = frames->Limit;
+            wire.Frames.Flags = frames->Flags;
         }
-        const int code = m_Session->Api->Spawn(
-            m_Session->Handle, owner, &wire,
-            &run, &info, &status);
+        const int code = Detail::WireCode(
+            m_Session->Api->Spawn(
+                m_Session->Handle, owner, &wire, &run, &info, &status),
+            status);
         if (code != BML_OK) {
             if (run && m_Session->Api->CloseRun)
                 m_Session->Api->CloseRun(run);
@@ -1242,8 +1550,18 @@ inline Result<Instance> Block::Spawn(
         if (!run)
             return Result<Instance>::Failure(
                 BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+        const Prototype prototype(
+            Detail::NativeGuid(info.Prototype.Prototype),
+            info.Prototype.Generation);
+        Detail::Run owned(
+            m_Session, run, RunKind::Instance, prototype);
+        Status accepted = Accept(info, RunKind::Instance);
+        if (!accepted) {
+            return Result<Instance>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, std::move(accepted));
+        }
         return Result<Instance>::Success(
-            Instance(Detail::Run(m_Session, run)),
+            Instance(std::move(owned)),
             Detail::ReadStatus(status));
     } catch (const std::bad_alloc &) {
         return Result<Instance>::Failure(BML_ERROR_OUT_OF_MEMORY);
@@ -1267,10 +1585,12 @@ inline Result<Instance> Block::SpawnIn(
         if (frames) {
             wire.Frames.Kind = frames->Kind;
             wire.Frames.Limit = frames->Limit;
+            wire.Frames.Flags = frames->Flags;
         }
-        const int code = m_Session->Api->AttachBlock(
-            m_Session->Handle, graph, &wire,
-            &run, &info, &status);
+        const int code = Detail::WireCode(
+            m_Session->Api->AttachBlock(
+                m_Session->Handle, graph, &wire, &run, &info, &status),
+            status);
         if (code != BML_OK) {
             if (run && m_Session->Api->CloseRun)
                 m_Session->Api->CloseRun(run);
@@ -1279,8 +1599,18 @@ inline Result<Instance> Block::SpawnIn(
         if (!run)
             return Result<Instance>::Failure(
                 BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
+        const Prototype prototype(
+            Detail::NativeGuid(info.Prototype.Prototype),
+            info.Prototype.Generation);
+        Detail::Run owned(
+            m_Session, run, RunKind::Instance, prototype);
+        Status accepted = Accept(info, RunKind::Instance);
+        if (!accepted) {
+            return Result<Instance>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, std::move(accepted));
+        }
         return Result<Instance>::Success(
-            Instance(Detail::Run(m_Session, run)),
+            Instance(std::move(owned)),
             Detail::ReadStatus(status));
     } catch (const std::bad_alloc &) {
         return Result<Instance>::Failure(BML_ERROR_OUT_OF_MEMORY);
@@ -1298,10 +1628,10 @@ inline void Edit::Encode(WireProgram &out) const {
     const auto encodePort = [](const Port &source) {
         BML_BehaviorPortRef port{};
         port.StructSize = sizeof(port);
-        port.Handle = source.Handle;
-        port.Kind = source.Kind;
-        port.Type = Detail::WireGuid(source.Type);
-        port.Slot = Detail::Wire::From(source.Slot);
+        port.Handle = source.m_Id;
+        port.Kind = source.m_Kind;
+        port.Type = Detail::WireGuid(source.m_Type);
+        port.Slot = Detail::Wire::From(source.m_Slot);
         return port;
     };
     std::size_t orderCount = 0;
@@ -1431,17 +1761,19 @@ inline Result<Patch> Graph::Apply(std::string_view name,
 
         BML_BehaviorPatch handle = nullptr;
         BML_BehaviorStatus status = Detail::EmptyStatus();
-        const int code = m_Session->Api->ApplyPatch(
-            m_Session->Handle, &spec, &handle, nullptr, &status);
+        const int code = Detail::WireCode(
+            m_Session->Api->ApplyPatch(
+                m_Session->Handle, &spec, &handle, nullptr, &status),
+            status);
+        Patch owned(m_Session, handle, edit.m_Identity);
         if (code != BML_OK || !handle) {
-            if (handle)
-                (void) m_Session->Api->ClosePatch(m_Session->Handle, handle);
             return Result<Patch>::Failure(
                 code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
                 Detail::ReadStatus(status));
         }
         return Result<Patch>::Success(
-            Patch(m_Session, handle), Detail::ReadStatus(status));
+            std::move(owned),
+            Detail::ReadStatus(status));
     } catch (const std::bad_alloc &) {
         return Result<Patch>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -1473,17 +1805,18 @@ inline Result<Plan> Session::Plan(std::string_view name,
 
         BML_BehaviorPlan handle = nullptr;
         BML_BehaviorStatus status = Detail::EmptyStatus();
-        const int code = m_State->Api->SubmitPlan(
-            m_State->Handle, &spec, &handle, nullptr, &status);
+        const int code = Detail::WireCode(
+            m_State->Api->SubmitPlan(
+                m_State->Handle, &spec, &handle, nullptr, &status),
+            status);
+        Behavior::Plan owned(m_State, handle);
         if (code != BML_OK || !handle) {
-            if (handle)
-                (void) m_State->Api->ClosePlan(m_State->Handle, handle);
             return Result<Behavior::Plan>::Failure(
                 code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
                 Detail::ReadStatus(status));
         }
         return Result<Behavior::Plan>::Success(
-            Behavior::Plan(m_State, handle), Detail::ReadStatus(status));
+            std::move(owned), Detail::ReadStatus(status));
     } catch (const std::bad_alloc &) {
         return Result<Behavior::Plan>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -1496,10 +1829,16 @@ inline Result<Task> Call::Continue() && {
         return Result<Task>::Failure(BML_ERROR_INVALID_HANDLE);
     BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
     BML_BehaviorStatus status = Detail::EmptyStatus();
-    const int code = m_Run.m_Session->Api->Continue(
-        m_Run.m_Handle, &info, &status);
+    const int code = Detail::WireCode(
+        m_Run.m_Session->Api->Continue(
+            m_Run.m_Handle, &info, &status),
+        status);
     if (code != BML_OK)
         return Result<Task>::Failure(code, Detail::ReadStatus(status));
+    if (!m_Run.Matches(info, RunKind::Task))
+        return Result<Task>::Failure(BML_ERROR_MALFORMED_MESSAGE,
+                                     Detail::ReadStatus(status));
+    m_Run.m_Kind = RunKind::Task;
     return Result<Task>::Success(Task(std::move(m_Run)),
                                  Detail::ReadStatus(status));
 }

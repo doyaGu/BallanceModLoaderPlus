@@ -388,7 +388,7 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     ASSERT_EQ(signalFrames.size(), 2u);
     EXPECT_EQ(signalFrames[0].Sequence, 1u);
     EXPECT_EQ(signalFrames[1].Sequence, 3u);
-    EXPECT_EQ(signalsAdapter.PoutReads, 2);
+    EXPECT_EQ(signalsAdapter.PoutReads, 0);
 
     Execution each(FrameRetention::EachFrame(4));
     FakeExecutionAdapter eachAdapter;
@@ -397,7 +397,7 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     ASSERT_TRUE(each.Pulse(ExecutionInput::At(0, 1), 1, eachAdapter));
     ASSERT_TRUE(each.Step(2, eachAdapter));
     EXPECT_EQ(each.Take().size(), 2u);
-    EXPECT_EQ(eachAdapter.PoutReads, 2);
+    EXPECT_EQ(eachAdapter.PoutReads, 0);
 
     Execution latest(FrameRetention::Latest());
     FakeExecutionAdapter latestAdapter;
@@ -411,7 +411,7 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     ASSERT_EQ(latestFrames.size(), 2u);
     EXPECT_EQ(latestFrames[0].Sequence, 2u);
     EXPECT_EQ(latestFrames[1].Sequence, 3u);
-    EXPECT_EQ(latestAdapter.PoutReads, 3);
+    EXPECT_EQ(latestAdapter.PoutReads, 0);
 
     Execution ignore(FrameRetention::Ignore());
     FakeExecutionAdapter ignoreAdapter;
@@ -426,6 +426,21 @@ TEST(BehaviorExecution, RetentionPoliciesKeepTheLastNonContinuingFrame) {
     EXPECT_EQ(ignored[0].Sequence, 2u);
     EXPECT_EQ(ignoreAdapter.OutputReads, 2);
     EXPECT_EQ(ignoreAdapter.PoutReads, 0);
+}
+
+TEST(BehaviorExecution, DoesNotReadPoutsUnlessThePolicyRequestsThem) {
+    Execution execution(FrameRetention::Signals());
+    FakeExecutionAdapter adapter;
+    adapter.ReadFailure = {ExecutionError::UnsupportedPout, 7,
+                           "unsupported Pout"};
+
+    const ExecutionResult result =
+        execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
+    ASSERT_TRUE(result);
+    EXPECT_EQ(adapter.PoutReads, 0);
+    EXPECT_NE(execution.State(), ExecutionState::Failed);
+    ASSERT_TRUE(result.Frame);
+    EXPECT_FALSE(result.Frame->Fault);
 }
 
 TEST(BehaviorExecution, FullFrameQueueUsesIndependentFailureSlot) {
@@ -488,7 +503,7 @@ TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {
 }
 
 TEST(BehaviorExecution, ReadsActiveOutAndPoutBeforeClearingTheOut) {
-    Execution execution;
+    Execution execution(FrameRetention::Signals().Pouts());
     FakeExecutionAdapter adapter;
     adapter.Outputs[0].Active = true;
     Pout value;
@@ -517,7 +532,7 @@ TEST(BehaviorExecution, ReadsActiveOutAndPoutBeforeClearingTheOut) {
 }
 
 TEST(BehaviorExecution, PoutValuesAreOwnedAndKeepNameOccurrences) {
-    Execution execution;
+    Execution execution(FrameRetention::Signals().Pouts());
     FakeExecutionAdapter adapter;
     Pout first;
     first.Index = 0;
@@ -550,7 +565,7 @@ TEST(BehaviorExecution, PoutFailureStopsTheExecutionAfterNativeCapture) {
     }};
     for (const ExecutionFault &fault : faults) {
         SCOPED_TRACE(fault.Message);
-        Execution execution;
+        Execution execution(FrameRetention::Signals().Pouts());
         FakeExecutionAdapter adapter;
         adapter.Outputs[0].Active = true;
         adapter.ReadFailure = fault;
@@ -577,7 +592,7 @@ TEST(BehaviorExecution, PoutFailureStopsTheExecutionAfterNativeCapture) {
 }
 
 TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
-    Execution execution;
+    Execution execution(FrameRetention::Signals().Pouts());
     FakeExecutionAdapter adapter;
     adapter.Outputs[0].Active = true;
     adapter.Pouts.push_back(Pout{});
@@ -599,7 +614,7 @@ TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
 }
 
 TEST(BehaviorExecution, PoutFailureRemainsTheTerminalCaptureDiagnostic) {
-    Execution execution;
+    Execution execution(FrameRetention::Signals().Pouts());
     FakeExecutionAdapter adapter;
     adapter.Outputs[0].Active = true;
     adapter.ReadFailure = {ExecutionError::PoutReadFailed, 2,
@@ -631,7 +646,7 @@ TEST(BehaviorExecution, PoutFailureDoesNotReplaceAFatalNativeDiagnostic) {
 
     for (const Case &test : cases) {
         SCOPED_TRACE(static_cast<int>(test.Expected));
-        Execution execution;
+        Execution execution(FrameRetention::Signals().Pouts());
         FakeExecutionAdapter adapter;
         adapter.Native.push_back(test.Native);
         adapter.ReadFailure = {ExecutionError::PoutReadFailed, 23,
@@ -640,7 +655,7 @@ TEST(BehaviorExecution, PoutFailureDoesNotReplaceAFatalNativeDiagnostic) {
         const ExecutionResult result =
             execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
         ASSERT_TRUE(result.Frame);
-        EXPECT_EQ(adapter.PoutReads, 1);
+        EXPECT_EQ(adapter.PoutReads, 0);
         EXPECT_EQ(result.Frame->Fault.Code, test.Expected);
         EXPECT_EQ(result.Frame->Fault.NativeCode, test.Native.ReturnCode);
         EXPECT_EQ(execution.Failure().Code, test.Expected);
@@ -727,6 +742,55 @@ TEST(BehaviorExecution, ConsumeRejectsAReadWhenTheVisibleBatchChanged) {
     ASSERT_EQ(retained.size(), 2u);
     EXPECT_EQ(retained[0].Sequence, 1u);
     EXPECT_EQ(retained[1].Sequence, 2u);
+}
+
+TEST(BehaviorExecution, FrameStoreWritesOneLockedBatchAndConsumesOnSuccess) {
+    class Batch final : public FrameBatch {
+    public:
+        bool Measure(const RunFrame &frame) override {
+            Measured.push_back(&frame);
+            return true;
+        }
+        FrameBatchResult Ready() override {
+            return Available ? FrameBatchResult::Complete
+                             : FrameBatchResult::Insufficient;
+        }
+        bool Write(const RunFrame &frame) override {
+            Written.push_back(&frame);
+            Sequences.push_back(frame.Sequence);
+            return true;
+        }
+
+        bool Available = false;
+        std::vector<const RunFrame *> Measured;
+        std::vector<const RunFrame *> Written;
+        std::vector<std::uint64_t> Sequences;
+    };
+
+    FrameStore frames(FrameRetention::Latest());
+    RunFrame first;
+    first.Sequence = 1;
+    first.NativeContinuation = true;
+    ASSERT_FALSE(frames.Retain(std::move(first)).Overflowed);
+    RunFrame final;
+    final.Sequence = 2;
+    ASSERT_FALSE(frames.Retain(std::move(final)).Overflowed);
+
+    Batch small;
+    EXPECT_EQ(frames.Take(small), FrameBatchResult::Insufficient);
+    EXPECT_EQ(small.Measured.size(), 2u);
+    EXPECT_TRUE(small.Written.empty());
+    EXPECT_EQ(frames.Read().size(), 2u);
+
+    Batch accepted;
+    accepted.Available = true;
+    EXPECT_EQ(frames.Take(accepted), FrameBatchResult::Complete);
+    ASSERT_EQ(accepted.Measured.size(), 2u);
+    ASSERT_EQ(accepted.Written.size(), 2u);
+    EXPECT_EQ(accepted.Measured[0], accepted.Written[0]);
+    EXPECT_EQ(accepted.Measured[1], accepted.Written[1]);
+    EXPECT_LT(accepted.Sequences[0], accepted.Sequences[1]);
+    EXPECT_TRUE(frames.Read().empty());
 }
 
 } // namespace

@@ -40,18 +40,31 @@ public:
         BML_BehaviorSession handle = nullptr;
         BML_BehaviorStatus status = Detail::EmptyStatus();
         code = api->OpenSession(Detail::Text(ownerId), &handle, &status);
-        if (code != BML_OK || !handle)
-            return Result<Session>::Failure(code, Detail::ReadStatus(status));
+        code = Detail::WireCode(code, status);
+        struct SessionHandle {
+            const BML_BehaviorInterface *Api = nullptr;
+            BML_BehaviorSession Value = nullptr;
+            ~SessionHandle() {
+                if (Api && Value)
+                    (void) Api->CloseSession(Value);
+            }
+        } owned{api, handle};
         try {
+            if (code != BML_OK || !handle)
+                return Result<Session>::Failure(
+                    code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                    Detail::ReadStatus(status));
             Session session;
             session.m_State = std::make_shared<Detail::SessionState>();
             session.m_State->Api = api;
             session.m_State->Handle = handle;
+            owned.Value = nullptr;
             return Result<Session>::Success(std::move(session),
                                             Detail::ReadStatus(status));
         } catch (const std::bad_alloc &) {
-            (void) api->CloseSession(handle);
             return Result<Session>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        } catch (...) {
+            return Result<Session>::Failure(BML_ERROR_FAIL);
         }
     }
 
@@ -84,12 +97,17 @@ public:
             return Result<BML_ObjectRef>::Failure(BML_ERROR_VERSION_MISMATCH);
         BML_ObjectRef reference{};
         BML_BehaviorStatus status = Detail::EmptyStatus();
-        const int code = m_State->Api->Reference(
-            m_State->Handle, static_cast<std::uint32_t>(object), &reference,
-            &status);
+        const int code = Detail::WireCode(
+            m_State->Api->Reference(
+                m_State->Handle, static_cast<std::uint32_t>(object),
+                &reference, &status),
+            status);
         if (code != BML_OK)
             return Result<BML_ObjectRef>::Failure(
                 code, Detail::ReadStatus(status));
+        if (!Detail::ValidObjectRef(reference) || !reference.Domain)
+            return Result<BML_ObjectRef>::Failure(
+                BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
         return Result<BML_ObjectRef>::Success(reference,
                                               Detail::ReadStatus(status));
     }

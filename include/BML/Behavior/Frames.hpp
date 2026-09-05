@@ -1,7 +1,7 @@
 #ifndef BML_BEHAVIOR_FRAMES_HPP
 #define BML_BEHAVIOR_FRAMES_HPP
 
-#include "BML/Behavior/Value.hpp"
+#include "BML/Behavior/Prototype.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -19,16 +20,37 @@ namespace BML::Behavior {
 struct FramePolicy {
     std::uint32_t Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
     std::uint32_t Limit = 64;
+    std::uint32_t Flags = BML_BEHAVIOR_FRAME_POLICY_NONE;
+
+    [[nodiscard]] FramePolicy Pouts(bool include = true) const noexcept {
+        FramePolicy policy = *this;
+        if (include)
+            policy.Flags |= BML_BEHAVIOR_FRAME_POLICY_POUTS;
+        else
+            policy.Flags &= ~BML_BEHAVIOR_FRAME_POLICY_POUTS;
+        return policy;
+    }
+    [[nodiscard]] bool IncludesPouts() const noexcept {
+        return (Flags & BML_BEHAVIOR_FRAME_POLICY_POUTS) != 0;
+    }
 };
 
 inline FramePolicy Signals(std::uint32_t limit = 64) {
-    return {BML_BEHAVIOR_FRAMES_SIGNALS, limit};
+    return {BML_BEHAVIOR_FRAMES_SIGNALS, limit,
+            BML_BEHAVIOR_FRAME_POLICY_NONE};
 }
 inline FramePolicy EachFrame(std::uint32_t limit) {
-    return {BML_BEHAVIOR_FRAMES_EACH_FRAME, limit};
+    return {BML_BEHAVIOR_FRAMES_EACH_FRAME, limit,
+            BML_BEHAVIOR_FRAME_POLICY_NONE};
 }
-inline FramePolicy Latest() { return {BML_BEHAVIOR_FRAMES_LATEST, 0}; }
-inline FramePolicy Ignore() { return {BML_BEHAVIOR_FRAMES_NONE, 0}; }
+inline FramePolicy Latest() {
+    return {BML_BEHAVIOR_FRAMES_LATEST, 0,
+            BML_BEHAVIOR_FRAME_POLICY_NONE};
+}
+inline FramePolicy Ignore() {
+    return {BML_BEHAVIOR_FRAMES_NONE, 0,
+            BML_BEHAVIOR_FRAME_POLICY_NONE};
+}
 
 enum class RunKind : std::uint32_t {
     Call = BML_BEHAVIOR_RUN_CALL,
@@ -74,6 +96,7 @@ struct RunInfo {
     RunKind Kind = RunKind::Instance;
     RunState State = RunState::Ready;
     DetachedSupport Detached = DetachedSupport::Verified;
+    Prototype PrototypeRef;
     Status LastStatus;
 };
 
@@ -170,19 +193,43 @@ class Frames {
 public:
     class Iterator {
     public:
+        class Arrow {
+        public:
+            explicit Arrow(Frame value) : m_Value(std::move(value)) {}
+            [[nodiscard]] const Frame *operator->() const noexcept {
+                return &m_Value;
+            }
+
+        private:
+            Frame m_Value;
+        };
+
         using difference_type = std::ptrdiff_t;
         using value_type = Frame;
-        using pointer = void;
+        using pointer = Arrow;
         using reference = Frame;
-        using iterator_category = std::bidirectional_iterator_tag;
+        using iterator_category = std::random_access_iterator_tag;
 
         [[nodiscard]] Frame operator*() const { return (*m_Frames)[m_Index]; }
+        [[nodiscard]] Arrow operator->() const { return Arrow(**this); }
+        [[nodiscard]] Frame operator[](difference_type value) const {
+            return (*m_Frames)[static_cast<std::size_t>(
+                static_cast<difference_type>(m_Index) + value)];
+        }
         Iterator &operator++() { ++m_Index; return *this; }
         Iterator operator++(int) { Iterator copy = *this; ++*this; return copy; }
         Iterator &operator--() { --m_Index; return *this; }
-        Iterator &operator+=(difference_type value) { m_Index += value; return *this; }
-        Iterator &operator-=(difference_type value) { m_Index -= value; return *this; }
+        Iterator operator--(int) { Iterator copy = *this; --*this; return copy; }
+        Iterator &operator+=(difference_type value) {
+            m_Index = static_cast<std::size_t>(
+                static_cast<difference_type>(m_Index) + value);
+            return *this;
+        }
+        Iterator &operator-=(difference_type value) { return *this += -value; }
         friend Iterator operator+(Iterator it, difference_type value) {
+            return it += value;
+        }
+        friend Iterator operator+(difference_type value, Iterator it) {
             return it += value;
         }
         friend Iterator operator-(Iterator it, difference_type value) {
@@ -196,6 +243,12 @@ public:
             return left.m_Frames == right.m_Frames && left.m_Index == right.m_Index;
         }
         friend bool operator!=(Iterator left, Iterator right) { return !(left == right); }
+        friend bool operator<(Iterator left, Iterator right) {
+            return left.m_Index < right.m_Index;
+        }
+        friend bool operator>(Iterator left, Iterator right) { return right < left; }
+        friend bool operator<=(Iterator left, Iterator right) { return !(right < left); }
+        friend bool operator>=(Iterator left, Iterator right) { return !(left < right); }
 
     private:
         Iterator(const Frames *frames, std::size_t index)

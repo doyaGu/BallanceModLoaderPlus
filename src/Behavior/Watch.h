@@ -22,6 +22,7 @@ struct WatchSpec {
     GraphView View = GraphView::Logical;
     NativeRef Root;
     NativeRef Node;
+    std::uint64_t LayoutGeneration = 0;
     Slot ValueSlot;
     ReadMode Read = ReadMode::NonForcing;
 };

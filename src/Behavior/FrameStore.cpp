@@ -21,11 +21,13 @@ FrameStore::FrameStore(FrameRetention retention)
     : m_Retention(retention) {}
 
 bool FrameStore::KeepsPouts(const RunFrame &frame) const noexcept {
+    if (!m_Retention.IncludePouts)
+        return false;
     switch (m_Retention.Kind) {
     case RetentionKind::Latest:
         return true;
     case RetentionKind::Ignore:
-        return false;
+        return HasNoContinuation(frame) || static_cast<bool>(frame.Fault);
     case RetentionKind::Signals:
     case RetentionKind::EachFrame:
         return ShouldRetain(frame);
@@ -92,21 +94,28 @@ bool FrameStore::Consume(std::span<const std::uint64_t> sequences) {
     std::lock_guard<std::mutex> lock(m_Mutex);
     if (!MatchesLocked(sequences))
         return false;
-    m_Frames.clear();
-    m_Latest.reset();
-    m_LastError.reset();
-    m_NonContinuing.reset();
+    ClearLocked();
     return true;
 }
 
 std::vector<RunFrame> FrameStore::Take() {
     std::lock_guard<std::mutex> lock(m_Mutex);
     std::vector<RunFrame> drained = ReadLocked();
-    m_Frames.clear();
-    m_Latest.reset();
-    m_LastError.reset();
-    m_NonContinuing.reset();
+    ClearLocked();
     return drained;
+}
+
+FrameBatchResult FrameStore::Take(FrameBatch &batch) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    if (!VisitLocked(batch, false))
+        return FrameBatchResult::Failed;
+    const FrameBatchResult ready = batch.Ready();
+    if (ready != FrameBatchResult::Complete)
+        return ready;
+    if (!VisitLocked(batch, true))
+        return FrameBatchResult::Failed;
+    ClearLocked();
+    return FrameBatchResult::Complete;
 }
 
 bool FrameStore::ShouldRetain(const RunFrame &frame) const noexcept {
@@ -184,6 +193,53 @@ bool FrameStore::MatchesLocked(
     current.erase(std::unique(current.begin(), current.end()), current.end());
     return current.size() == sequences.size() &&
         std::equal(current.begin(), current.end(), sequences.begin());
+}
+
+const RunFrame *FrameStore::NextLocked(
+    std::uint64_t after, bool first) const noexcept {
+    const RunFrame *next = nullptr;
+    const auto consider = [&](const RunFrame &candidate) {
+        if ((!first && candidate.Sequence <= after) ||
+            (next && next->Sequence <= candidate.Sequence))
+            return;
+        next = &candidate;
+    };
+
+    const auto stored = std::upper_bound(
+        m_Frames.begin(), m_Frames.end(), after,
+        [](std::uint64_t sequence, const RunFrame &frame) {
+            return sequence < frame.Sequence;
+        });
+    if (first && !m_Frames.empty())
+        consider(m_Frames.front());
+    else if (stored != m_Frames.end())
+        consider(*stored);
+    if (m_Latest)
+        consider(*m_Latest);
+    if (m_LastError)
+        consider(*m_LastError);
+    if (m_NonContinuing)
+        consider(*m_NonContinuing);
+    return next;
+}
+
+bool FrameStore::VisitLocked(FrameBatch &batch, bool write) const {
+    std::uint64_t sequence = 0;
+    bool first = true;
+    while (const RunFrame *frame = NextLocked(sequence, first)) {
+        if (write ? !batch.Write(*frame) : !batch.Measure(*frame))
+            return false;
+        sequence = frame->Sequence;
+        first = false;
+    }
+    return true;
+}
+
+void FrameStore::ClearLocked() noexcept {
+    m_Frames.clear();
+    m_Latest.reset();
+    m_LastError.reset();
+    m_NonContinuing.reset();
 }
 
 } // namespace BML::Behavior
