@@ -297,12 +297,12 @@ private:
         const auto logicalAnchor = std::find_if(
             logical->Links().begin(), logical->Links().end(),
             [&](const BML::Behavior::Link &link) {
-                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+                return link.Id() == static_cast<std::uint32_t>(m_AnchorId);
             });
         const auto liveAnchor = std::find_if(
             live->Links().begin(), live->Links().end(),
             [&](const BML::Behavior::Link &link) {
-                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+                return link.Id() == static_cast<std::uint32_t>(m_AnchorId);
             });
         return logical->Mode() == BML::Behavior::View::Logical &&
             live->Mode() == BML::Behavior::View::Live &&
@@ -312,11 +312,11 @@ private:
             live->Nodes().size() == 6 && live->Links().size() == 6 &&
             logicalAnchor != logical->Links().end() &&
             liveAnchor != live->Links().end() &&
-            logicalAnchor->Source.Node ==
+            logicalAnchor->Source().Node() ==
                 static_cast<std::uint32_t>(m_Source->GetID()) &&
-            logicalAnchor->Target.Node ==
+            logicalAnchor->Target().Node() ==
                 static_cast<std::uint32_t>(m_Sink->GetID()) &&
-            liveAnchor->Target.Node != logicalAnchor->Target.Node &&
+            liveAnchor->Target().Node() != logicalAnchor->Target().Node() &&
             logical->Fingerprint() != live->Fingerprint();
     }
 
@@ -780,17 +780,17 @@ private:
         const auto sourceNode = std::find_if(
             opened->Nodes().begin(), opened->Nodes().end(),
             [](const BML::Behavior::Node &node) {
-                return node.Name == kSourceName;
+                return node.Name() == kSourceName;
             });
         const auto sinkNode = std::find_if(
             opened->Nodes().begin(), opened->Nodes().end(),
             [](const BML::Behavior::Node &node) {
-                return node.Name == kSinkName;
+                return node.Name() == kSinkName;
             });
         const auto anchorLink = std::find_if(
             opened->Links().begin(), opened->Links().end(),
             [&](const BML::Behavior::Link &link) {
-                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+                return link.Id() == static_cast<std::uint32_t>(m_AnchorId);
             });
         if (sourceNode == opened->Nodes().end() ||
             sinkNode == opened->Nodes().end() ||
@@ -825,7 +825,7 @@ private:
 
         const CKGUID fixture(BML_LIFECYCLE_FIXTURE_GUID);
         auto configured = m_Session.Use(fixture);
-        configured.Settings({{"Value", 41u}});
+        configured.Settings({{"Value", std::int32_t{41}}});
         BML::Behavior::Edit edit;
         const auto sink = edit.Use(*sinkNode);
         const auto anchor = edit.Use(*anchorLink);
@@ -833,7 +833,7 @@ private:
         const auto amount = edit.AppendPin(block, "Amount", CKPGUID_FLOAT);
         const auto mode = edit.AppendPin(block, "Mode", CKPGUID_INT);
         (void) edit.AppendPout(block, "Report", CKPGUID_INT);
-        edit.Bind(amount, 2.5);
+        edit.Bind(amount, 2.5f);
         edit.Bind(mode, FacadeMode::On);
         edit.Before(anchor, interposed);
         edit.Redirect(anchor, block.In());
@@ -876,22 +876,23 @@ private:
         const auto added = std::find_if(
             view->Nodes().begin(), view->Nodes().end(),
             [&](const BML::Behavior::Node &node) {
-                return node.Object.Domain == block.Domain &&
-                    node.Object.Slot == block.Slot &&
-                    node.Object.Generation == block.Generation;
+                const BML_ObjectRef object = node.Object();
+                return object.Domain == block.Domain &&
+                    object.Slot == block.Slot &&
+                    object.Generation == block.Generation;
             });
         const auto anchor = std::find_if(
             view->Links().begin(), view->Links().end(),
             [&](const BML::Behavior::Link &link) {
-                return link.Id == static_cast<std::uint32_t>(m_AnchorId);
+                return link.Id() == static_cast<std::uint32_t>(m_AnchorId);
             });
         if (view->Nodes().size() != 4 || view->Links().size() != 4 ||
             added == view->Nodes().end() ||
             anchor == view->Links().end() ||
-            anchor->Source.Node !=
+            anchor->Source().Node() !=
                 static_cast<std::uint32_t>(m_Source->GetID()) ||
-            anchor->Target.Node != added->Id ||
-            !(added->Prototype ==
+            anchor->Target().Node() != added->Id() ||
+            !(added->Prototype() ==
                 CKGUID(BML_LIFECYCLE_FIXTURE_GUID))) {
             GetLogger()->Error(
                 "Behavior identity view wrong: nodes=%u links=%u block=%s anchor=%s",
@@ -901,10 +902,9 @@ private:
                 anchor == view->Links().end() ? "missing" : "found");
             return false;
         }
-        // Each literal reached CK2 as the type its slot holds: a double became
-        // the Float pin, an enumerator and an unsigned became Ints. The Setting
-        // travelled with the creation of the Block, so the fixture heard the
-        // settings-edited message and normalized 41 to its own 77.
+        // Each literal reached CK2 as the type its slot holds: float remained
+        // Float and the small enumerator became Int. The Setting travelled with
+        // creation, so the fixture normalized 41 to its own 77.
         const auto amount = view->Read(added->Pin("Amount"));
         const auto mode = view->Read(added->Pin("Mode"));
         const auto value = view->Read(added->Setting("Value"));

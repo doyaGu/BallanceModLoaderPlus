@@ -114,6 +114,7 @@ struct BlockArguments {
         Block.Frames = Dto<BML_BehaviorFramePolicy>();
         Block.Frames.Kind = retention;
         Block.Frames.Limit = limit;
+        Block.Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
         Block.PrototypeGeneration = generation;
     }
 };
@@ -188,6 +189,7 @@ struct EchoBlockArguments {
         Block.Frames = Dto<BML_BehaviorFramePolicy>();
         Block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
         Block.Frames.Limit = 64;
+        Block.Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
         Block.PrototypeGeneration = generation;
     }
 };
@@ -227,6 +229,7 @@ struct DynamicBlockArguments {
         Block.Frames = Dto<BML_BehaviorFramePolicy>();
         Block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
         Block.Frames.Limit = 64;
+        Block.Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
         Block.PrototypeGeneration = generation;
     }
 };
@@ -1054,11 +1057,11 @@ private:
         bool delayTwo = false;
         bool portablePending = true;
         for (const BML::Behavior::Link &link : graph.Links()) {
-            delayOne = delayOne || link.InitialDelay == 1;
-            delayTwo = delayTwo || link.InitialDelay == 2;
-            if (link.InitialDelay > 0)
+            delayOne = delayOne || link.InitialDelay() == 1;
+            delayTwo = delayTwo || link.InitialDelay() == 2;
+            if (link.InitialDelay() > 0)
                 portablePending = portablePending &&
-                    link.Pending == BML::Behavior::TruthValue::Unknown;
+                    link.Pending() == BML::Behavior::TruthValue::Unknown;
         }
         auto live = graph.Live();
         // Live contains Logical rather than equalling it. A Splice, a Tap, a
@@ -1073,14 +1076,14 @@ private:
         if (liveShape) {
             std::set<std::uint64_t> liveNodes;
             for (const BML::Behavior::Node &node : live->Nodes())
-                liveNodes.insert(node.Id);
+                liveNodes.insert(node.Id());
             std::set<std::uint64_t> liveLinks;
             for (const BML::Behavior::Link &link : live->Links())
-                liveLinks.insert(link.Id);
+                liveLinks.insert(link.Id());
             for (const BML::Behavior::Node &node : graph.Nodes())
-                liveShape = liveShape && liveNodes.count(node.Id) == 1;
+                liveShape = liveShape && liveNodes.count(node.Id()) == 1;
             for (const BML::Behavior::Link &link : graph.Links())
-                liveShape = liveShape && liveLinks.count(link.Id) == 1;
+                liveShape = liveShape && liveLinks.count(link.Id()) == 1;
         }
         m_InspectPassed = nmoShape && delayOne && delayTwo &&
             portablePending && liveShape;
@@ -1116,14 +1119,15 @@ private:
         }
         BML::Behavior::Graph graph = std::move(inspected).Value();
         const auto rootMatch = graph.Find("__BML_BehaviorTransport_Graph");
-        const BML::Behavior::Node *rootNode = rootMatch
-            ? &rootMatch.Value() : nullptr;
-        const BML::Behavior::Node *child = nullptr;
+        const BML::Behavior::Node rootNode = rootMatch
+            ? rootMatch.Value() : BML::Behavior::Node{};
+        BML::Behavior::Node child;
         if (rootNode) {
             const CKGUID fixture(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID);
             for (const BML::Behavior::Node &node : graph.Nodes()) {
-                if (node.Parent == rootNode->Id && node.Prototype == fixture) {
-                    child = &node;
+                if (node.Parent() == rootNode.Id() &&
+                    node.Prototype() == fixture) {
+                    child = node;
                     break;
                 }
             }
@@ -1141,15 +1145,15 @@ private:
         bool exit = false;
         for (const BML::Behavior::Link &link : graph.Links()) {
             entry = entry ||
-                (link.Source.Node == rootNode->Id &&
-                 link.Source.Kind == BML::Behavior::SlotKind::In &&
-                 link.Target.Node == child->Id &&
-                 link.Target.Kind == BML::Behavior::SlotKind::In);
+                (link.Source().Node() == rootNode.Id() &&
+                 link.Source().Kind() == BML::Behavior::SlotKind::In &&
+                 link.Target().Node() == child.Id() &&
+                 link.Target().Kind() == BML::Behavior::SlotKind::In);
             exit = exit ||
-                (link.Source.Node == child->Id &&
-                 link.Source.Kind == BML::Behavior::SlotKind::Out &&
-                 link.Target.Node == rootNode->Id &&
-                 link.Target.Kind == BML::Behavior::SlotKind::Out);
+                (link.Source().Node() == child.Id() &&
+                 link.Source().Kind() == BML::Behavior::SlotKind::Out &&
+                 link.Target().Node() == rootNode.Id() &&
+                 link.Target().Kind() == BML::Behavior::SlotKind::Out);
         }
         if (!entry || !exit) {
             GetLogger()->Error(
@@ -1158,7 +1162,7 @@ private:
             return false;
         }
 
-        const auto execution = child->Local("Executions");
+        const auto execution = child.Local("Executions");
         auto baseline = graph.Read(execution);
         const std::int32_t *baselineValue = baseline
             ? std::get_if<std::int32_t>(&baseline->Data) : nullptr;
@@ -1178,7 +1182,7 @@ private:
         }
         m_WatchBaseline = *baselineValue;
         BML_SceneObjectInfo childInfo{};
-        if (m_Scene->ReadObject(child->Object, &childInfo) != BML_OK ||
+        if (m_Scene->ReadObject(child.Object(), &childInfo) != BML_OK ||
             childInfo.Id == 0) {
             GetLogger()->Error("Behavior watch graph failed: child-identity");
             return false;
@@ -1215,7 +1219,7 @@ private:
                 throw std::runtime_error("player watch failure");
             });
         auto layoutWatch = graph.Watch(
-            BML::Behavior::LayoutChanged(*child),
+            BML::Behavior::LayoutChanged(child),
             [this](const BML::Behavior::Change &change) {
                 const bool valid = change.Kind ==
                         BML::Behavior::ChangeKind::Layout &&
@@ -1329,7 +1333,7 @@ private:
             m_Prototype.Generation);
 
         auto plain = m_CppSession.Use(prototype);
-        plain.Frames(BML::Behavior::Signals(4));
+        plain.Frames(BML::Behavior::Signals(4).Pouts());
         if (!plain.Validate())
             return false;
 
@@ -1364,7 +1368,8 @@ private:
         BML::Behavior::Instance boundInstance = std::move(bound).Value();
         auto boundLayout = boundInstance.Layout();
         const BML::Behavior::Slot *boundPin = boundLayout
-            ? boundLayout->Find(BML::Behavior::SlotKind::Pin, "Number")
+            ? boundLayout->Find(
+                  BML::Behavior::SlotKind::Pin, "Number", 0)
             : nullptr;
         if (!boundPin) {
             GetLogger()->Error("Behavior live edit: stage=bind-layout");
@@ -1420,7 +1425,7 @@ private:
         auto sharedTargetLayout = sharedTargetInstance.Layout();
         const BML::Behavior::Slot *sharedTargetPin = sharedTargetLayout
             ? sharedTargetLayout->Find(
-                  BML::Behavior::SlotKind::Pin, "Number")
+                  BML::Behavior::SlotKind::Pin, "Number", 0)
             : nullptr;
         if (!sharedSourceGraph || !sharedTargetPin)
             return false;
@@ -1478,6 +1483,7 @@ private:
             return false;
 
         auto dynamicBlock = m_CppSession.Use(prototype);
+        dynamicBlock.Frames(BML::Behavior::Signals(4).Pouts());
         dynamicBlock.Pins({
             {BML::Behavior::Named("Number", 0), std::int32_t{321}}});
         auto dynamic = dynamicBlock.Spawn();
@@ -1492,7 +1498,8 @@ private:
         BML::Behavior::Instance dynamicInstance = std::move(dynamic).Value();
         auto before = dynamicInstance.Layout();
         const BML::Behavior::Slot *oldNumber = before
-            ? before->Find(BML::Behavior::SlotKind::Pin, "Number") : nullptr;
+            ? before->Find(
+                  BML::Behavior::SlotKind::Pin, "Number", 0) : nullptr;
         if (!oldNumber) {
             GetLogger()->Error("Behavior live edit: stage=configure-layout-before");
             return false;
@@ -1637,6 +1644,66 @@ private:
         GetLogger()->Info(
             "Behavior live edit: status=pass direct=true shared=true configure=multi-stage stale=true pin=true local=true replay=true");
 
+        auto mutatingBlock = m_CppSession.Use(prototype);
+        mutatingBlock.Settings({{"Extended Layout", true}});
+        auto mutating = mutatingBlock.Spawn();
+        if (!mutating)
+            return false;
+        BML::Behavior::Instance mutatingInstance =
+            std::move(mutating).Value();
+        auto mutationBefore = mutatingInstance.Inspect();
+        auto mutationLayoutBefore = mutatingInstance.Layout();
+        auto mutationAdmission = mutatingInstance.Pulse("Change Layout");
+        auto mutationFrames = mutatingInstance.Take();
+        auto staleAfterMutation = mutationBefore
+            ? mutationBefore->Read(
+                  mutationBefore->Root().Local("Executions"))
+            : BML::Behavior::Result<BML::Behavior::ObservedValue>::Failure(
+                  BML_ERROR_FAIL);
+        auto mutationLayoutAfter = mutatingInstance.Layout();
+        auto mutationAfter = mutatingInstance.Inspect();
+        const BML::Behavior::Slot *createdDuringExecute = mutationLayoutAfter
+            ? mutationLayoutAfter->Find(
+                  BML::Behavior::SlotKind::Local,
+                  "Created During Execute")
+            : nullptr;
+        if (!mutationBefore || !mutationLayoutBefore || !mutationAdmission ||
+            mutationAdmission.Value() != BML::Behavior::PulseResult::Ran ||
+            !mutationFrames || mutationFrames->Size() != 1 ||
+            staleAfterMutation ||
+            staleAfterMutation.GetStatus().Error !=
+                BML::Behavior::Error::LayoutChanged ||
+            !mutationLayoutAfter || !mutationAfter || !createdDuringExecute ||
+            mutationLayoutAfter->Generation <=
+                mutationLayoutBefore->Generation ||
+            mutationAfter->Generation() <= mutationBefore->Generation() ||
+            mutationAfter->Fingerprint() == mutationBefore->Fingerprint()) {
+            GetLogger()->Error(
+                "Behavior live edit: stage=execute-layout layout_before=%llu layout_after=%llu graph_before=%llu graph_after=%llu fingerprint_changed=%s error=%u",
+                mutationLayoutBefore
+                    ? static_cast<unsigned long long>(
+                          mutationLayoutBefore->Generation)
+                    : 0,
+                mutationLayoutAfter
+                    ? static_cast<unsigned long long>(
+                          mutationLayoutAfter->Generation)
+                    : 0,
+                mutationBefore
+                    ? static_cast<unsigned long long>(
+                          mutationBefore->Generation())
+                    : 0,
+                mutationAfter
+                    ? static_cast<unsigned long long>(
+                          mutationAfter->Generation())
+                    : 0,
+                mutationBefore && mutationAfter &&
+                    mutationBefore->Fingerprint() != mutationAfter->Fingerprint()
+                    ? "true" : "false",
+                static_cast<unsigned>(
+                    staleAfterMutation.GetStatus().Error));
+            return false;
+        }
+
         const BML::Behavior::Prototype graphPrototype(
             CKGUID(BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID),
             m_GraphPrototype.Generation);
@@ -1657,6 +1724,7 @@ private:
 
         auto targeted = m_CppSession.Use(prototype)
             .TargetOwner()
+            .Frames(BML::Behavior::Signals(4).Pouts())
             .Call(m_InputObjectRef, "Read Target");
         if (!targeted)
             return false;

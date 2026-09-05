@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "PlayerProbe.h"
 
@@ -175,6 +176,10 @@ public:
             m_Behavior->OpenSession({}, &m_Session, &status) != BML_OK ||
             !m_Session) {
             Finish(false, "session");
+            return;
+        }
+        if (!FindFixturePrototype()) {
+            Finish(false, "fixture-prototype");
         }
     }
 
@@ -249,6 +254,46 @@ public:
     }
 
 private:
+    bool FindFixturePrototype() {
+        BML_BehaviorPrototypeQuery query{};
+        query.StructSize = sizeof(query);
+        query.Match = BML_BEHAVIOR_MATCH_PROTOTYPE;
+        query.Prototype = {
+            static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d1),
+            static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d2)};
+
+        std::uint32_t count = 0;
+        std::uint32_t payloadSize = 0;
+        BML_BehaviorStatus status{};
+        status.StructSize = sizeof(status);
+        const int measured = m_Behavior->FindPrototypes(
+            m_Session, &query, nullptr, 0,
+            sizeof(BML_BehaviorPrototypeInfo), nullptr, 0,
+            &count, &payloadSize, &status);
+        if (measured != BML_ERROR_BUFFER_TOO_SMALL || count != 1)
+            return false;
+
+        BML_BehaviorPrototypeInfo prototype{};
+        std::vector<std::uint8_t> payload(payloadSize);
+        status = {};
+        status.StructSize = sizeof(status);
+        std::uint32_t actualCount = 0;
+        std::uint32_t actualPayloadSize = 0;
+        const int read = m_Behavior->FindPrototypes(
+            m_Session, &query, &prototype, 1,
+            sizeof(BML_BehaviorPrototypeInfo),
+            payload.empty() ? nullptr : payload.data(), payloadSize,
+            &actualCount, &actualPayloadSize, &status);
+        if (read != BML_OK || actualCount != 1 ||
+            actualPayloadSize != payloadSize ||
+            prototype.StructSize < sizeof(prototype) ||
+            prototype.Ref.StructSize < sizeof(prototype.Ref) ||
+            !prototype.Ref.Generation)
+            return false;
+        m_FixturePrototype = prototype.Ref;
+        return true;
+    }
+
     enum class State {
         CreateVisual,
         ShowBaseline,
@@ -884,10 +929,7 @@ private:
         steps[0].StructSize = sizeof(steps[0]);
         steps[0].Kind = BML_BEHAVIOR_EDIT_ADD_BLOCK;
         steps[0].Result = 2;
-        steps[0].Prototype.StructSize = sizeof(steps[0].Prototype);
-        steps[0].Prototype.Prototype = {
-            static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d1),
-            static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d2)};
+        steps[0].Prototype = m_FixturePrototype;
 
         steps[1].StructSize = sizeof(steps[1]);
         steps[1].Kind = BML_BEHAVIOR_EDIT_REQUIRE_LINK;
@@ -1471,6 +1513,7 @@ private:
     const BML_BehaviorInterface *m_Behavior = nullptr;
     const BML_BehaviorTestInterface *m_Test = nullptr;
     BML_BehaviorSession m_Session = nullptr;
+    BML_BehaviorPrototypeRef m_FixturePrototype{};
     std::uintptr_t m_Patch = 0;
     std::uintptr_t m_SiblingPatch = 0;
     std::uintptr_t m_Plan = 0;

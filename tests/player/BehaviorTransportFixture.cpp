@@ -174,6 +174,18 @@ int FindPout(CKBehavior *behavior, const char *name) {
     return -1;
 }
 
+int FindLocal(CKBehavior *behavior, const char *name) {
+    if (!behavior)
+        return -1;
+    for (int index = 0; index < behavior->GetLocalParameterCount(); ++index) {
+        CKParameterLocal *local = behavior->GetLocalParameter(index);
+        if (local && local->GetName() &&
+            std::strcmp(local->GetName(), name) == 0)
+            return index;
+    }
+    return -1;
+}
+
 int Run(const CKBehaviorContext &context) {
     CKBehavior *behavior = context.Behavior;
     if (!behavior || !context.Context)
@@ -232,6 +244,12 @@ int Run(const CKBehaviorContext &context) {
         behavior->ActivateOutput(dynamicOutput);
     }
 
+    const int changeLayout = FindInput(behavior, "Change Layout");
+    if (changeLayout >= 0 && behavior->IsInputActive(changeLayout) &&
+        FindLocal(behavior, "Created During Execute") < 0 &&
+        !behavior->CreateLocalParameter("Created During Execute", CKPGUID_INT))
+        return CKBR_BEHAVIORERROR;
+
     CKBOOL retry = FALSE;
     behavior->GetLocalParameterValue(SettingRetry, &retry);
     if (retry && executions == 1)
@@ -262,6 +280,9 @@ CKERROR Lifecycle(const CKBehaviorContext &context) {
             if (FindPout(context.Behavior, "Dynamic Value") < 0 &&
                 !context.Behavior->CreateOutputParameter(
                     "Dynamic Value", CKPGUID_INT))
+                return CKERR_OUTOFMEMORY;
+            if (FindInput(context.Behavior, "Change Layout") < 0 &&
+                !context.Behavior->CreateInput("Change Layout"))
                 return CKERR_OUTOFMEMORY;
         }
         return CK_OK;
@@ -356,7 +377,8 @@ CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
         CKBEHAVIOR_TARGETABLE | CKBEHAVIOR_INTERNALLYCREATEDINPUTS |
         CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS |
         CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS |
-        CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS));
+        CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS |
+        CKBEHAVIOR_INTERNALLYCREATEDLOCALPARAMS));
     created->SetFlags(CK_BEHAVIORPROTOTYPE_NORMAL);
     *prototype = created;
     return CK_OK;
