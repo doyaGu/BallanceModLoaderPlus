@@ -126,11 +126,12 @@ Runtime::~Runtime() {
     g_FakeInstances.clear();
 }
 
-CreateResult Runtime::Instantiate(CKBeObject *, const Spec &spec,
-                                  const CKBehaviorContext *) {
+CreateResult Runtime::Instantiate(CKBeObject *, const BlockSpec &spec,
+                                  const CKBehaviorContext *,
+                                  FrameRetention retention) {
     const std::uint64_t id = m_NextInstanceId++;
     FakeInstance instance;
-    instance.Frames = std::make_shared<FrameStore>(spec.m_FrameRetention);
+    instance.Frames = std::make_shared<FrameStore>(retention);
     instance.Descriptor.Prototype = spec.m_Prototype;
     instance.Descriptor.ProviderGeneration = spec.m_PrototypeGeneration;
     instance.Descriptor.Generation = 1;
@@ -143,17 +144,19 @@ CreateResult Runtime::Instantiate(CKBeObject *, const Spec &spec,
     return {{}, Instance(m_Access, id), descriptor};
 }
 
-CreateResult Runtime::AttachToGraph(CKBehavior *parent, const Spec &spec,
-                                    const CKBehaviorContext *frame) {
+CreateResult Runtime::AttachToGraph(CKBehavior *parent, const BlockSpec &spec,
+                                    const CKBehaviorContext *frame,
+                                    FrameRetention retention) {
     if (!parent)
         return {{Error::OwnerInvalid, CKERR_INVALIDOBJECT, CKBR_BEHAVIORERROR,
                  "The fake graph is not live."}, {}, {}};
-    return Instantiate(nullptr, spec, frame);
+    return Instantiate(nullptr, spec, frame, retention);
 }
 
-CallResult Runtime::Call(CKBeObject *owner, const Spec &spec,
-                         const Slot &input, const CKBehaviorContext *frame) {
-    CreateResult created = Instantiate(owner, spec, frame);
+CallResult Runtime::Call(CKBeObject *owner, const BlockSpec &spec,
+                         const Slot &input, const CKBehaviorContext *frame,
+                         FrameRetention retention) {
+    CreateResult created = Instantiate(owner, spec, frame, retention);
     if (!created)
         return {created.Detail, {}, {}, created.Descriptor};
     RunResult run = Pulse(created.Handle, input, frame);
@@ -301,7 +304,7 @@ Status Runtime::Bind(Instance &instance, const SlotRef &slot,
     return SetInput(instance, slot, Parameter::Binding{});
 }
 
-Status Runtime::Configure(Instance &instance, const Spec &,
+Status Runtime::Configure(Instance &instance, const BlockSpec &,
                           const CKBehaviorContext *) {
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     FakeInstance *found = FindFake(instance.m_Id);

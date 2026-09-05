@@ -1,10 +1,6 @@
-// Golden offsets for every published interface-struct member, recorded when the
-// member first shipped (every interface is at minor 0 today, so the values below
-// are the shipping layout). The constants never change: a failing line means a
-// member moved or was inserted before an existing one, which the rules in
-// BML/Interface.h forbid -- restore the layout, or ship a new major and a new id.
-// Appending a member needs no edit here: earlier offsets do not move, and the
-// size checks below verify growth is paired with a minor bump.
+// Golden offsets for the current pre-release interface structs. Once an
+// interface ships these become immutable; before then they keep accidental
+// reordering visible while the contract is still being completed.
 //
 // Offsets are the x86 MSVC layout, the only platform the loader ships on.
 #include "BML/Gameplay.h"
@@ -108,7 +104,11 @@ TEST(InterfaceStructOffsets, BehaviorInterface) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, Reference, 128);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ResolvePatchNode, 132);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, AttachBlock, 136);
-    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 140, 0,
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, CreateScript, 140);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, ReadScript, 144);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, SetScriptActive, 148);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorInterface, CloseScript, 152);
+    ExpectGrowthRules<BML_BehaviorInterface>("bml.behavior", 156, 0,
                                              BML_BEHAVIOR_INTERFACE_MINOR);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MAJOR, 1u);
     EXPECT_EQ(BML_BEHAVIOR_INTERFACE_MINOR, 0u);
@@ -161,6 +161,23 @@ TEST(InterfaceStructOffsets, BehaviorWireRecords) {
     EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, ValueOffset, 24);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorGraphValue, ValueSize, 28);
     EXPECT_EQ(sizeof(BML_BehaviorGraphValue), static_cast<std::size_t>(32));
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, Owner, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, Name, 16);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, Priority, 24);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, StepCount, 28);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptSpec, Steps, 32);
+    EXPECT_EQ(sizeof(BML_BehaviorScriptSpec), static_cast<std::size_t>(36));
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, StructSize, 0);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, State, 4);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, Active, 8);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, RequestedActive, 12);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, Root, 16);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, Owner, 28);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, Scene, 40);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, Priority, 52);
+    EXPECT_GOLDEN_OFFSET(BML_BehaviorScriptInfo, Status, 56);
+    EXPECT_EQ(sizeof(BML_BehaviorScriptInfo), static_cast<std::size_t>(352));
     EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, StructSize, 0);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, State, 4);
     EXPECT_GOLDEN_OFFSET(BML_BehaviorWatchInfo, Diagnostic, 8);

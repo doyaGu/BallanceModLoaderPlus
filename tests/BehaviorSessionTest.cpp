@@ -115,7 +115,7 @@ struct ReentrantOwnerRegistration {
         self.Opened = self.Owner->OpenSession(self.OwnerId, self.Session);
         if (self.Opened) {
             self.Run = self.Owner->Spawn(
-                self.Session, nullptr, Spec(CKGUID(21, 22)));
+                self.Session, nullptr, BlockSpec(CKGUID(21, 22)));
         }
     }
 
@@ -279,7 +279,7 @@ TEST(BehaviorSessions, ReadyCallKeepsItsInstanceUntilTheRunCloses) {
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
-    Spec block(CKGUID(1, 2));
+    BlockSpec block(CKGUID(1, 2));
     OpenRun run = sessions.Call(
         session, nullptr, block, Input("Run"));
     ASSERT_TRUE(run);
@@ -309,7 +309,7 @@ TEST(BehaviorSessions, ReadsTheGraphOwnedByTheRun) {
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
-    OpenRun run = sessions.Spawn(session, nullptr, Spec(CKGUID(1, 2)));
+    OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(1, 2)));
     ASSERT_TRUE(run);
 
     GraphModel graph;
@@ -510,7 +510,7 @@ TEST(BehaviorSessions, LiveEditsHonorLayoutGeneration) {
     ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
-    OpenRun run = sessions.Spawn(session, nullptr, Spec(CKGUID(1, 2)));
+    OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(1, 2)));
     ASSERT_TRUE(run);
 
     Slot pin = Slot::Named(SlotKind::InputParameter, "Value", CKPGUID_INT);
@@ -523,7 +523,7 @@ TEST(BehaviorSessions, LiveEditsHonorLayoutGeneration) {
     EXPECT_EQ(stale.Code, Error::StaleLayout);
     EXPECT_EQ(generation, 0u);
 
-    Spec settings;
+    BlockSpec settings;
     ASSERT_TRUE(sessions.Configure(run.Id, settings, generation));
     EXPECT_EQ(generation, 2u);
     EXPECT_EQ(sessions.Set(run.Id, 1, pin, value, generation).Code,
@@ -547,7 +547,7 @@ TEST(BehaviorSessions, ContinuePromotesTheSameCallAndRetainsBothFrames) {
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
-    Spec block(CKGUID(3, 4));
+    BlockSpec block(CKGUID(3, 4));
     OpenRun run = sessions.Call(
         session, nullptr, block, Input("Pending"));
     ASSERT_TRUE(run);
@@ -595,7 +595,7 @@ TEST(BehaviorSessions, FailedActivationStillUsesRunOwnedTeardown) {
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
     OpenRun run = sessions.Call(
-        session, nullptr, Spec(CKGUID(11, 12)), Input("Fail"));
+        session, nullptr, BlockSpec(CKGUID(11, 12)), Input("Fail"));
     ASSERT_TRUE(run);
     EXPECT_EQ(run.Info.State, RunState::Failed);
     EXPECT_EQ(run.Info.LastStatus.Code, Error::ExecutionFailed);
@@ -622,7 +622,7 @@ TEST(BehaviorSessions, StartIsManagedFromItsFirstExecution) {
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
     OpenRun run = sessions.Start(
-        session, nullptr, Spec(CKGUID(5, 6)),
+        session, nullptr, BlockSpec(CKGUID(5, 6)),
         Input("Pending"));
     ASSERT_TRUE(run);
     EXPECT_EQ(run.Info.Kind, RunKind::Task);
@@ -650,7 +650,7 @@ TEST(BehaviorSessions, ManagedFailureUpdatesRunStateAndDiagnostic) {
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
     OpenRun run = sessions.Start(
-        session, nullptr, Spec(CKGUID(15, 16)), Input("PendingFail"));
+        session, nullptr, BlockSpec(CKGUID(15, 16)), Input("PendingFail"));
     ASSERT_TRUE(run);
     ASSERT_EQ(run.Info.State, RunState::Pending);
     ASSERT_TRUE(run.Info.LastStatus);
@@ -673,7 +673,7 @@ TEST(BehaviorSessions, RejectedPulseDoesNotChangeTheRunState) {
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
     OpenRun run = sessions.Spawn(
-        session, nullptr, Spec(CKGUID(13, 14)));
+        session, nullptr, BlockSpec(CKGUID(13, 14)));
     ASSERT_TRUE(run);
 
     RunResult rejected = sessions.Pulse(run.Id, Input("Missing"));
@@ -700,7 +700,7 @@ TEST(BehaviorSessions, WorldResetClosesRunsButKeepsTheSession) {
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
 
-    OpenRun instance = sessions.Spawn(session, nullptr, Spec(CKGUID(7, 8)));
+    OpenRun instance = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(7, 8)));
     ASSERT_TRUE(instance);
     ASSERT_EQ(LiveBehaviorSessionInstances(), 1u);
     RunResult pulse = sessions.Pulse(
@@ -716,7 +716,7 @@ TEST(BehaviorSessions, WorldResetClosesRunsButKeepsTheSession) {
     EXPECT_EQ(sessions.ReadRun(instance.Id, stale).Code, Error::InvalidState);
 
     OpenRun afterReset = sessions.Spawn(
-        session, nullptr, Spec(CKGUID(7, 8)));
+        session, nullptr, BlockSpec(CKGUID(7, 8)));
     EXPECT_TRUE(afterReset);
 }
 
@@ -726,7 +726,7 @@ TEST(BehaviorSessions, OffThreadSessionCloseDefersNativeTeardown) {
     ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
     std::uintptr_t session = 0;
     ASSERT_TRUE(sessions.OpenSession("mod", session));
-    OpenRun run = sessions.Spawn(session, nullptr, Spec(CKGUID(9, 10)));
+    OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(9, 10)));
     ASSERT_TRUE(run);
     ASSERT_EQ(LiveBehaviorSessionInstances(), 1u);
 

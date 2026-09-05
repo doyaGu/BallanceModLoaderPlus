@@ -50,8 +50,10 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphNodeSize,
                         sizeof(BML_BehaviorGraphNode) == 80u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphLinkSize,
                         sizeof(BML_BehaviorGraphLink) == 80u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphOperationSize,
+                        sizeof(BML_BehaviorGraphOperation) == 80u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphSize,
-                        sizeof(BML_BehaviorGraph) == 56u);
+                        sizeof(BML_BehaviorGraph) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphValueSize,
                         sizeof(BML_BehaviorGraphValue) == 32u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanInfoSize,
@@ -62,6 +64,8 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorHookContextSize,
                         sizeof(BML_BehaviorHookContext) == 52u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorWatchInfoSize,
                         sizeof(BML_BehaviorWatchInfo) == 304u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptInfoSize,
+                        sizeof(BML_BehaviorScriptInfo) == 352u);
 
 #if UINTPTR_MAX == UINT32_MAX
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSelectorSize,
@@ -70,15 +74,17 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBindingSize,
                         sizeof(BML_BehaviorBinding) == 108u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGenerationOffset,
                         offsetof(BML_BehaviorBlock,
-                                 PrototypeGeneration) == 80u);
+                                 PrototypeGeneration) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
-                        sizeof(BML_BehaviorBlock) == 88u);
+                        sizeof(BML_BehaviorBlock) == 72u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 140u);
+                        sizeof(BML_BehaviorInterface) == 156u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 140u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 156u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
+                        sizeof(BML_BehaviorScriptSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
                         sizeof(BML_BehaviorSlotRef) == 48u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
@@ -95,6 +101,8 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorHookFunctionSize,
                         sizeof(BML_BehaviorHookFunction) == 20u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
                         sizeof(BML_BehaviorEditOrder) == 24u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorOperationSpecSize,
+                        sizeof(BML_BehaviorOperationSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 44u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditPrototypeOffset,
@@ -104,7 +112,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorEditGenerationOffset,
                             offsetof(BML_BehaviorPrototypeRef, Generation) ==
                             56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 272u);
+                        sizeof(BML_BehaviorEditStep) == 312u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,
@@ -122,9 +130,11 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 280u);
+                        sizeof(BML_BehaviorInterface) == 312u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 280u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 312u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
+                        sizeof(BML_BehaviorScriptSpec) == 48u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
                         sizeof(BML_BehaviorSlotRef) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorValueRefSize,
@@ -141,6 +151,8 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorHookFunctionSize,
                         sizeof(BML_BehaviorHookFunction) == 40u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditOrderSize,
                         sizeof(BML_BehaviorEditOrder) == 40u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorOperationSpecSize,
+                        sizeof(BML_BehaviorOperationSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPortRefSize,
                         sizeof(BML_BehaviorPortRef) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditPrototypeOffset,
@@ -150,7 +162,7 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorEditGenerationOffset,
                             offsetof(BML_BehaviorPrototypeRef, Generation) ==
                             64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorEditStepSize,
-                        sizeof(BML_BehaviorEditStep) == 312u);
+                        sizeof(BML_BehaviorEditStep) == 352u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPlanSpecSize,
                         sizeof(BML_BehaviorPlanSpec) == 56u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPatchSpecSize,
@@ -183,6 +195,28 @@ static int BML_BEHAVIOR_CALL BehaviorWatchSignature(
 static BML_BehaviorWatchCallback BehaviorWatchPointer =
     &BehaviorWatchSignature;
 
+static int BML_BEHAVIOR_CALL BehaviorCreateScriptSignature(
+    BML_BehaviorSession session,
+    const BML_BehaviorScriptSpec *spec,
+    BML_BehaviorScript *script,
+    BML_BehaviorScriptInfo *info,
+    BML_BehaviorStatus *status) {
+    (void) session;
+    (void) spec;
+    (void) script;
+    (void) info;
+    (void) status;
+    return BML_OK;
+}
+
+static int (BML_BEHAVIOR_CALL *BehaviorCreateScriptPointer)(
+    BML_BehaviorSession,
+    const BML_BehaviorScriptSpec *,
+    BML_BehaviorScript *,
+    BML_BehaviorScriptInfo *,
+    BML_BehaviorStatus *) = &BehaviorCreateScriptSignature;
+
 int BML_TestBehaviorCAbi(void) {
-    return BehaviorOpenSessionPointer != 0 && BehaviorWatchPointer != 0;
+    return BehaviorOpenSessionPointer != 0 && BehaviorWatchPointer != 0 &&
+           BehaviorCreateScriptPointer != 0;
 }

@@ -20,6 +20,12 @@ namespace {
 
 using namespace BML::Behavior;
 
+struct CapturedBinding {
+    std::string Slot;
+    BML_BehaviorValue Value{};
+    std::string Text;
+};
+
 struct CapturedStep {
     std::uint32_t Kind = 0;
     std::uint32_t Result = 0;
@@ -30,6 +36,12 @@ struct CapturedStep {
     std::int32_t Delay = 0;
     std::string Name;
     BML_BehaviorPrototypeRef Prototype{};
+    bool HasBlock = false;
+    BML_BehaviorPrototypeRef BlockPrototype{};
+    BML_BehaviorTarget BlockTarget{};
+    std::vector<std::vector<CapturedBinding>> Settings;
+    std::vector<CapturedBinding> Pins;
+    std::vector<CapturedBinding> Locals;
     BML_BehaviorGuid Type{};
     BML_BehaviorPortRef Source{};
     BML_BehaviorPortRef Sink{};
@@ -37,6 +49,7 @@ struct CapturedStep {
     std::string SinkSlot;
     BML_BehaviorValue Value{};
     BML_ObjectRef Object{};
+    BML_BehaviorOperationSpec Operation{};
     bool HasHook = false;
     std::vector<std::pair<std::uint32_t, std::string>> Ordering;
 };
@@ -156,6 +169,20 @@ struct FakeState {
     bool MalformedCallStatus = false;
     int Attaches = 0;
     BML_ObjectRef AttachGraph{};
+    int ScriptCreates = 0;
+    int ScriptCreateCode = BML_OK;
+    int ScriptReads = 0;
+    int ScriptActivityChanges = 0;
+    int ScriptCloses = 0;
+    bool ScriptActive = false;
+    bool ScriptRequestedActive = false;
+    bool ScriptReset = false;
+    bool MalformedScriptInfo = false;
+    BML_ObjectRef ScriptOwner{};
+    std::string ScriptName;
+    std::int32_t ScriptPriority = 0;
+    std::vector<CapturedStep> ScriptSteps;
+    std::vector<BML_BehaviorHookFunction> ScriptHooks;
 };
 
 FakeState g_State;
@@ -203,6 +230,7 @@ int BML_BEHAVIOR_CALL CloseSession(BML_BehaviorSession) {
 
 int OpenRun(BML_ObjectRef owner,
             const BML_BehaviorBlock *block,
+            const BML_BehaviorFramePolicy *frames,
             const BML_BehaviorSelector *input,
             BML_BehaviorRun *run,
             BML_BehaviorRunInfo *info,
@@ -213,9 +241,9 @@ int OpenRun(BML_ObjectRef owner,
     if (block)
         g_State.Blocks.push_back(*block);
     g_State.Generation = block->PrototypeGeneration;
-    g_State.FrameKind = block->Frames.Kind;
-    g_State.FrameLimit = block->Frames.Limit;
-    g_State.FrameFlags = block->Frames.Flags;
+    g_State.FrameKind = frames->Kind;
+    g_State.FrameLimit = frames->Limit;
+    g_State.FrameFlags = frames->Flags;
     if (input) {
         g_State.SelectorKind = input->Kind;
         g_State.Input.assign(input->Name.Data, input->Name.Length);
@@ -258,30 +286,33 @@ int OpenRun(BML_ObjectRef owner,
 
 int BML_BEHAVIOR_CALL CallRun(BML_BehaviorSession, BML_ObjectRef owner,
                               const BML_BehaviorBlock *block,
+                              const BML_BehaviorFramePolicy *frames,
                               const BML_BehaviorSelector *input,
                               BML_BehaviorRun *run,
                               BML_BehaviorRunInfo *info,
                               BML_BehaviorStatus *status) {
-    return OpenRun(owner, block, input, run, info, status,
+    return OpenRun(owner, block, frames, input, run, info, status,
                    BML_BEHAVIOR_RUN_CALL);
 }
 
 int BML_BEHAVIOR_CALL StartRun(BML_BehaviorSession, BML_ObjectRef owner,
                                const BML_BehaviorBlock *block,
+                               const BML_BehaviorFramePolicy *frames,
                                const BML_BehaviorSelector *input,
                                BML_BehaviorRun *run,
                                BML_BehaviorRunInfo *info,
                                BML_BehaviorStatus *status) {
-    return OpenRun(owner, block, input, run, info, status,
+    return OpenRun(owner, block, frames, input, run, info, status,
                    BML_BEHAVIOR_RUN_TASK);
 }
 
 int BML_BEHAVIOR_CALL SpawnRun(BML_BehaviorSession, BML_ObjectRef owner,
                                const BML_BehaviorBlock *block,
+                               const BML_BehaviorFramePolicy *frames,
                                BML_BehaviorRun *run,
                                BML_BehaviorRunInfo *info,
                                BML_BehaviorStatus *status) {
-    return OpenRun(owner, block, nullptr, run, info, status,
+    return OpenRun(owner, block, frames, nullptr, run, info, status,
                    BML_BEHAVIOR_RUN_INSTANCE);
 }
 
@@ -625,8 +656,10 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
         linkCount * sizeof(BML_BehaviorGraphLink);
     const std::uint32_t portCount =
         g_State.DuplicateGraphPortNames ? 6u : 5u;
+    const std::uint32_t operationOffset = portOffset +
+        portCount * sizeof(BML_BehaviorGraphPort);
     std::vector<std::uint8_t> payload(
-        portOffset + portCount * sizeof(BML_BehaviorGraphPort));
+        operationOffset + sizeof(BML_BehaviorGraphOperation));
 
     BML_BehaviorGraphNode node{};
     node.StructSize = sizeof(node);
@@ -702,6 +735,18 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     link.RemainingDelay = 1;
     link.Pending = BML_BEHAVIOR_UNKNOWN;
 
+    BML_BehaviorGraphOperation operation{};
+    operation.StructSize = sizeof(operation);
+    operation.Id = 301;
+    operation.Object = {61, 62, 63};
+    operation.Owner = node.Id;
+    operation.Function = {71, 72};
+    operation.Result = {81, 82};
+    operation.Input1 = {91, 92};
+    operation.Name.Offset = static_cast<std::uint32_t>(payload.size());
+    operation.Name.Length = 3;
+    payload.insert(payload.end(), {'A', 'd', 'd'});
+
     std::memcpy(payload.data() + nodeOffset, &node, sizeof(node));
     if (nodeCount == 2) {
         BML_BehaviorGraphNode duplicate = node;
@@ -737,6 +782,8 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
         std::memcpy(payload.data() + portOffset + 5 * sizeof(port),
                     &repeated, sizeof(repeated));
     }
+    std::memcpy(payload.data() + operationOffset, &operation,
+                sizeof(operation));
 
     graph = {};
     graph.StructSize = sizeof(graph);
@@ -750,6 +797,8 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     graph.NodeCount = nodeCount;
     graph.LinkOffset = linkOffset;
     graph.LinkCount = linkCount;
+    graph.OperationOffset = operationOffset;
+    graph.OperationCount = 1;
     return payload;
 }
 
@@ -958,6 +1007,19 @@ std::string Copy(BML_BehaviorString text) {
 void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
                   std::vector<CapturedStep> &capturedSteps,
                   std::vector<BML_BehaviorHookFunction> &hooks) {
+    const auto captureBindings = [](const BML_BehaviorBinding *bindings,
+                                    std::uint32_t count) {
+        std::vector<CapturedBinding> captured;
+        for (std::uint32_t index = 0; index < count; ++index) {
+            CapturedBinding binding;
+            binding.Slot = Copy(bindings[index].Slot.Name);
+            binding.Value = bindings[index].Value;
+            if (binding.Value.Kind == BML_BEHAVIOR_VALUE_UTF8)
+                binding.Text = Copy(binding.Value.Data.Utf8);
+            captured.push_back(std::move(binding));
+        }
+        return captured;
+    };
     capturedSteps.clear();
     hooks.clear();
     for (std::uint32_t index = 0; index < count; ++index) {
@@ -972,6 +1034,26 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
         captured.Delay = step.Delay;
         captured.Name = Copy(step.Name);
         captured.Prototype = step.Prototype;
+        if (step.Block) {
+            captured.HasBlock = true;
+            captured.BlockPrototype.StructSize =
+                sizeof(captured.BlockPrototype);
+            captured.BlockPrototype.Prototype = step.Block->Prototype;
+            captured.BlockPrototype.Generation =
+                step.Block->PrototypeGeneration;
+            captured.BlockTarget = step.Block->Target;
+            for (std::uint32_t stage = 0;
+                 stage < step.Block->SettingStageCount; ++stage) {
+                const BML_BehaviorSettingStage &settings =
+                    step.Block->SettingStages[stage];
+                captured.Settings.push_back(captureBindings(
+                    settings.Settings, settings.SettingCount));
+            }
+            captured.Pins = captureBindings(
+                step.Block->Pins, step.Block->PinCount);
+            captured.Locals = captureBindings(
+                step.Block->Locals, step.Block->LocalCount);
+        }
         captured.Type = step.Type;
         captured.Source = step.Source;
         captured.Sink = step.Sink;
@@ -979,6 +1061,7 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
         captured.SinkSlot = Copy(step.Sink.Slot.Name);
         captured.Value = step.Value;
         captured.Object = step.Object;
+        captured.Operation = step.Operation;
         captured.HasHook = step.Hook != nullptr;
         for (std::uint32_t entry = 0; entry < step.OrderCount; ++entry) {
             captured.Ordering.push_back(
@@ -1138,13 +1221,86 @@ int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession, BML_BehaviorPatch,
 
 int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession, BML_ObjectRef graph,
                                   const BML_BehaviorBlock *block,
+                                  const BML_BehaviorFramePolicy *frames,
                                   BML_BehaviorRun *run,
                                   BML_BehaviorRunInfo *info,
                                   BML_BehaviorStatus *status) {
     ++g_State.Attaches;
     g_State.AttachGraph = graph;
-    return OpenRun(graph, block, nullptr, run, info, status,
+    return OpenRun(graph, block, frames, nullptr, run, info, status,
                    BML_BEHAVIOR_RUN_INSTANCE);
+}
+
+void DescribeScript(BML_BehaviorScriptInfo *info) {
+    if (!info)
+        return;
+    Init(info);
+    info->State = BML_BEHAVIOR_SCRIPT_READY;
+    info->Active = g_State.ScriptActive ? 1u : 0u;
+    info->RequestedActive = g_State.ScriptRequestedActive ? 1u : 0u;
+    info->Root = {13, 21, 1};
+    info->Owner = g_State.ScriptOwner;
+    info->Scene = {13, 22, 1};
+    info->Priority = g_State.ScriptPriority;
+    Init(&info->Status);
+    if (g_State.MalformedScriptInfo)
+        info->Root = {};
+}
+
+int BML_BEHAVIOR_CALL CreateScript(
+    BML_BehaviorSession, const BML_BehaviorScriptSpec *spec,
+    BML_BehaviorScript *script, BML_BehaviorScriptInfo *info,
+    BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.ScriptCreates;
+    g_State.ScriptOwner = spec->Owner;
+    g_State.ScriptName = Copy(spec->Name);
+    g_State.ScriptPriority = spec->Priority;
+    CaptureSteps(spec->Steps, spec->StepCount, g_State.ScriptSteps,
+                 g_State.ScriptHooks);
+    if (g_State.ScriptCreateCode != BML_OK) {
+        g_State.ScriptHooks.clear();
+        return g_State.ScriptCreateCode;
+    }
+    for (const BML_BehaviorHookFunction &hook : g_State.ScriptHooks) {
+        if (hook.Retain)
+            hook.Retain(hook.State);
+    }
+    *script = reinterpret_cast<BML_BehaviorScript>(0x501u);
+    DescribeScript(info);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReadScript(BML_BehaviorSession, BML_BehaviorScript,
+                                  BML_BehaviorScriptInfo *info,
+                                  BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.ScriptReads;
+    DescribeScript(info);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL SetScriptActive(
+    BML_BehaviorSession, BML_BehaviorScript, std::uint32_t active,
+    std::uint32_t reset, BML_BehaviorScriptInfo *info,
+    BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.ScriptActivityChanges;
+    g_State.ScriptRequestedActive = active != 0;
+    g_State.ScriptReset = reset != 0;
+    DescribeScript(info);
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL CloseScript(BML_BehaviorSession,
+                                   BML_BehaviorScript) {
+    ++g_State.ScriptCloses;
+    for (const BML_BehaviorHookFunction &hook : g_State.ScriptHooks) {
+        if (hook.Release)
+            hook.Release(hook.State);
+    }
+    g_State.ScriptHooks.clear();
+    return BML_OK;
 }
 
 BML_BehaviorInterface g_Interface = {
@@ -1183,6 +1339,10 @@ BML_BehaviorInterface g_Interface = {
     &Reference,
     &ResolvePatchNode,
     &AttachBlock,
+    &CreateScript,
+    &ReadScript,
+    &SetScriptActive,
+    &CloseScript,
 };
 
 } // namespace
@@ -1202,7 +1362,6 @@ extern "C" int BML_GetInterface(const char *id, std::uint16_t major,
 template <class T>
 concept ConfigurableBlock = requires(T &value) {
     value.Settings({{"Value", std::int32_t{1}}});
-    value.Frames(Signals(1));
 };
 
 template <class T>
@@ -1300,12 +1459,12 @@ TEST(BehaviorAuthoring, OwnsBlockTextAndUsesDomainSelectors) {
     std::string settingName = "Caption";
     std::string text = "owned text";
     Block block = session.Use(Prototype(CKGUID(11, 22), 37));
-    block.Settings({{settingName, text}}).Frames(EachFrame(8));
+    block.Settings({{settingName, text}});
     ASSERT_TRUE(block.Validate());
     settingName.assign("changed");
     text.assign("changed");
 
-    auto called = block.Call();
+    auto called = block.Call(Selector::Only(), EachFrame(8));
     ASSERT_TRUE(called) << called.Code();
     EXPECT_EQ(g_State.Owner, "test.mod");
     EXPECT_EQ(g_State.SelectorKind, BML_BEHAVIOR_SELECTOR_ONLY);
@@ -1437,20 +1596,19 @@ TEST(BehaviorAuthoring, CopiesBlocksOnWriteAndKeepsValidatedCopiesCached) {
     EXPECT_EQ(g_State.Text, "original");
 }
 
-TEST(BehaviorAuthoring, OverridesAConfiguredFramePolicyForOneRun) {
+TEST(BehaviorAuthoring, SuppliesFramePolicyForEachRun) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
     Session session = std::move(opened).Value();
 
     Block block = session.Use(CKGUID(5, 6));
-    block.Frames(Signals(8));
     auto called = block.Call("Run", Latest());
     ASSERT_TRUE(called);
     EXPECT_EQ(g_State.FrameKind, BML_BEHAVIOR_FRAMES_LATEST);
     EXPECT_EQ(g_State.FrameLimit, 0u);
 
-    auto started = block.Start("Run");
+    auto started = block.Start("Run", Signals(8));
     ASSERT_TRUE(started);
     EXPECT_EQ(g_State.FrameKind, BML_BEHAVIOR_FRAMES_SIGNALS);
     EXPECT_EQ(g_State.FrameLimit, 8u);
@@ -1463,8 +1621,7 @@ TEST(BehaviorAuthoring, RequestsPoutsIndependentlyOfFrameRetention) {
     Session session = std::move(opened).Value();
 
     auto started = session.Use(CKGUID(1, 2))
-        .Frames(Signals(8).Pouts())
-        .Start("Run");
+        .Start("Run", Signals(8).Pouts());
     ASSERT_TRUE(started);
     EXPECT_EQ(g_State.FrameKind, BML_BEHAVIOR_FRAMES_SIGNALS);
     EXPECT_EQ(g_State.FrameLimit, 8u);
@@ -1847,7 +2004,7 @@ TEST(BehaviorAuthoring, RequiresAResolvedProviderForDurableEdits) {
     auto applied = inspected->Apply("resolved", resolved);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
     ASSERT_FALSE(g_State.PatchSteps.empty());
-    EXPECT_EQ(g_State.PatchSteps.front().Prototype.Generation,
+    EXPECT_EQ(g_State.PatchSteps.front().BlockPrototype.Generation,
               g_State.ProviderGeneration);
 }
 
@@ -1980,6 +2137,15 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     EXPECT_EQ(graph.Links()[0].InitialDelay(), 2);
     EXPECT_EQ(graph.Links()[0].RemainingDelay(), 1);
     EXPECT_EQ(graph.Links()[0].Pending(), TruthValue::Unknown);
+    ASSERT_EQ(graph.Operations().size(), 1u);
+    EXPECT_EQ(graph.Operations()[0].Id(), 301u);
+    EXPECT_EQ(graph.Operations()[0].Object().Domain, 61u);
+    EXPECT_EQ(graph.Operations()[0].Owner(), 101u);
+    EXPECT_EQ(graph.Operations()[0].Function(), CKGUID(71, 72));
+    EXPECT_EQ(graph.Operations()[0].Result(), CKGUID(81, 82));
+    EXPECT_EQ(graph.Operations()[0].Input1(), CKGUID(91, 92));
+    EXPECT_EQ(graph.Operations()[0].Input2(), CKGUID(0, 0));
+    EXPECT_EQ(graph.Operations()[0].Name(), "Add");
 
     auto live = graph.Live();
     ASSERT_TRUE(live);
@@ -2606,41 +2772,37 @@ TEST(BehaviorAuthoring, CreatesABlockAndItsLiteralsInOneStatement) {
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
     Patch patch = std::move(applied).Value();
 
-    ASSERT_EQ(g_State.PatchSteps.size(), 5u);
+    ASSERT_EQ(g_State.PatchSteps.size(), 2u);
     EXPECT_EQ(g_State.PatchSteps[0].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
-    EXPECT_EQ(g_State.PatchSteps[0].Prototype.Generation,
+    EXPECT_TRUE(g_State.PatchSteps[0].HasBlock);
+    EXPECT_EQ(g_State.PatchSteps[0].BlockPrototype.Generation,
               g_State.ProviderGeneration);
 
-    const CapturedStep &caption = g_State.PatchSteps[1];
-    EXPECT_EQ(caption.Kind,
-              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SETTING));
-    EXPECT_EQ(caption.Sink.Handle, g_State.PatchSteps[0].Result);
-    EXPECT_EQ(caption.Sink.Kind,
-              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_SETTING));
-    EXPECT_EQ(caption.SinkSlot, "Caption");
+    const CapturedStep &addedBlock = g_State.PatchSteps[0];
+    ASSERT_EQ(addedBlock.Settings.size(), 1u);
+    ASSERT_EQ(addedBlock.Settings[0].size(), 1u);
+    const CapturedBinding &caption = addedBlock.Settings[0][0];
+    EXPECT_EQ(caption.Slot, "Caption");
     EXPECT_EQ(caption.Value.Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_UTF8));
+    EXPECT_EQ(caption.Text, "rows");
 
-    const CapturedStep &amount = g_State.PatchSteps[2];
-    EXPECT_EQ(amount.Kind,
-              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_BIND_VALUE));
-    EXPECT_EQ(amount.Sink.Kind,
-              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_PIN));
-    EXPECT_EQ(amount.SinkSlot, "Value");
+    ASSERT_EQ(addedBlock.Pins.size(), 1u);
+    const CapturedBinding &amount = addedBlock.Pins[0];
+    EXPECT_EQ(amount.Slot, "Value");
     // A double literal is the Float the Virtools parameter was going to hold.
     EXPECT_EQ(amount.Value.Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_FLOAT32));
     EXPECT_FLOAT_EQ(amount.Value.Data.Float32, 2.5f);
 
-    const CapturedStep &mode = g_State.PatchSteps[3];
-    EXPECT_EQ(mode.SinkSlot, "State");
-    EXPECT_EQ(mode.Sink.Kind,
-              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_LOCAL));
+    ASSERT_EQ(addedBlock.Locals.size(), 1u);
+    const CapturedBinding &mode = addedBlock.Locals[0];
+    EXPECT_EQ(mode.Slot, "State");
     EXPECT_EQ(mode.Value.Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_INT32));
     EXPECT_EQ(mode.Value.Data.Int32, 3);
-    EXPECT_EQ(g_State.PatchSteps[4].Kind,
+    EXPECT_EQ(g_State.PatchSteps[1].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FLOW));
     EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
 }
@@ -2672,23 +2834,21 @@ TEST(BehaviorAuthoring, ReusesOneEditAndKeepsItsBlockSnapshotAndSettingStages) {
     ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
     Plan plan = std::move(submitted).Value();
 
-    ASSERT_EQ(g_State.PatchSteps.size(), 4u);
+    ASSERT_EQ(g_State.PatchSteps.size(), 2u);
     ASSERT_EQ(g_State.PlanSteps.size(), g_State.PatchSteps.size());
     EXPECT_EQ(g_State.PatchSteps[0].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
-    EXPECT_EQ(g_State.PatchSteps[0].Prototype.Generation,
+    EXPECT_EQ(g_State.PatchSteps[0].BlockPrototype.Generation,
               g_State.ProviderGeneration);
-    EXPECT_EQ(g_State.PlanSteps[0].Prototype.Generation,
+    EXPECT_EQ(g_State.PlanSteps[0].BlockPrototype.Generation,
               g_State.ProviderGeneration);
+    ASSERT_EQ(g_State.PatchSteps[0].Settings.size(), 2u);
+    ASSERT_EQ(g_State.PatchSteps[0].Settings[0].size(), 1u);
+    ASSERT_EQ(g_State.PatchSteps[0].Settings[1].size(), 1u);
+    EXPECT_EQ(g_State.PatchSteps[0].Settings[0][0].Text, "first");
+    EXPECT_EQ(g_State.PatchSteps[0].Settings[1][0].Slot, "Retry");
+    EXPECT_TRUE(g_State.PatchSteps[0].Pins.empty());
     EXPECT_EQ(g_State.PatchSteps[1].Kind,
-              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SETTING));
-    EXPECT_EQ(g_State.PatchSteps[1].Flags & BML_BEHAVIOR_EDIT_SETTING_STAGE,
-              0u);
-    EXPECT_EQ(g_State.PatchSteps[2].Kind,
-              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_SETTING));
-    EXPECT_NE(g_State.PatchSteps[2].Flags & BML_BEHAVIOR_EDIT_SETTING_STAGE,
-              0u);
-    EXPECT_EQ(g_State.PatchSteps[3].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FLOW));
     for (std::size_t index = 0; index < g_State.PatchSteps.size(); ++index) {
         EXPECT_EQ(g_State.PlanSteps[index].Kind,
@@ -2720,9 +2880,12 @@ TEST(BehaviorAuthoring, KeepsTypedNullValuesInDurablePlans) {
     ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
     Plan plan = std::move(submitted).Value();
 
-    ASSERT_EQ(g_State.PlanSteps.size(), 3u);
+    ASSERT_EQ(g_State.PlanSteps.size(), 2u);
     EXPECT_EQ(g_State.PlanSteps[0].Kind,
               static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
+    EXPECT_EQ(g_State.PlanSteps[0].BlockTarget.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_TARGET_NULL));
+    EXPECT_EQ(g_State.PlanSteps[0].BlockTarget.Object.Domain, 0u);
     for (std::size_t index = 1; index < g_State.PlanSteps.size(); ++index) {
         const CapturedStep &binding = g_State.PlanSteps[index];
         EXPECT_EQ(binding.Kind,
@@ -2762,6 +2925,16 @@ TEST(BehaviorAuthoring, RejectsCrossSessionAndWorldBoundPlans) {
         "world-bound", Scripts::Each("Gameplay_Events"), worldBound);
     EXPECT_FALSE(durable);
     EXPECT_EQ(durable.GetStatus().Error, Error::WorldBoundValue);
+    EXPECT_EQ(g_State.PlanSubmits, 0);
+
+    Edit objectBlock;
+    Block bound = first.Use(CKGUID(3, 4));
+    bound.Target(CKPGUID_OBJECT, {7, 8, 9});
+    (void) objectBlock.Add(bound);
+    auto retained = first.Plan(
+        "object-block", Scripts::Each("Gameplay_Events"), objectBlock);
+    EXPECT_FALSE(retained);
+    EXPECT_EQ(retained.GetStatus().Error, Error::WorldBoundValue);
     EXPECT_EQ(g_State.PlanSubmits, 0);
 }
 
@@ -2813,6 +2986,37 @@ TEST(BehaviorAuthoring, SendsALinkToANewDestination) {
     EXPECT_EQ(redirect.Ordering[0].first,
               static_cast<std::uint32_t>(BML_BEHAVIOR_ORDER_AFTER));
     EXPECT_EQ(redirect.Ordering[0].second, "Other/hud");
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+}
+
+TEST(BehaviorAuthoring, EncodesANodeReplacementAsOneDomainStep) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    Edit edit;
+    const auto original = edit.Require("Counter_Active", CKGUID(1, 2));
+    Block block = session.Use(CKGUID(3, 4));
+    block.Pins({{"Value", 7}});
+    const auto replacement = edit.Replace(original, block);
+
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    auto applied = inspected->Apply("replacement", edit);
+    ASSERT_TRUE(applied) << applied.GetStatus().Message;
+    Patch patch = std::move(applied).Value();
+
+    ASSERT_EQ(g_State.PatchSteps.size(), 2u);
+    const CapturedStep &step = g_State.PatchSteps[1];
+    EXPECT_EQ(step.Kind,
+              static_cast<std::uint32_t>(
+                  BML_BEHAVIOR_EDIT_REPLACE_BLOCK));
+    EXPECT_EQ(step.Target, g_State.PatchSteps[0].Result);
+    EXPECT_NE(step.Result, 0u);
+    EXPECT_TRUE(step.HasBlock);
+    EXPECT_EQ(step.BlockPrototype.Prototype.Data1, 3u);
+    EXPECT_TRUE(patch.Resolve(replacement));
     EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
 }
 
@@ -2960,6 +3164,116 @@ TEST(BehaviorAuthoring, ParksABlockInsideAGraphAndDrivesIt) {
 
     EXPECT_EQ(instance.Close().Value(), CloseState::Closed);
     EXPECT_EQ(g_State.RunCloses, 1);
+}
+
+TEST(BehaviorAuthoring, OwnsAndAuthorsATopLevelScript) {
+    g_State = {};
+    auto opened = Session::Open("test.mod");
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    const BML_ObjectRef owner{7, 45, 2};
+    Edit body;
+    const auto root = body.Graph();
+    (void) body.AppendIn(root, "Start");
+    (void) body.AppendOut(root, "Done");
+    const auto seed = body.AppendLocal(root, "Seed", CKGUID(31, 32));
+    const auto sum = body.AddOperation(
+        CKGUID(41, 42), CKGUID(31, 32),
+        CKGUID(31, 32), CKGUID(31, 32));
+    body.Bind(seed, 40)
+        .Bind(sum.Input(0), seed)
+        .Bind(sum.Input(1), 2);
+
+    auto created = session.CreateScript(
+        owner, "Authored Script", body, -3);
+    ASSERT_TRUE(created);
+    Script script = std::move(created).Value();
+    EXPECT_EQ(g_State.ScriptCreates, 1);
+    EXPECT_EQ(g_State.ScriptName, "Authored Script");
+    EXPECT_EQ(g_State.ScriptPriority, -3);
+    ASSERT_EQ(g_State.ScriptSteps.size(), 7u);
+    EXPECT_EQ(g_State.ScriptSteps[0].Kind,
+              BML_BEHAVIOR_EDIT_APPEND_SLOT);
+    EXPECT_EQ(g_State.ScriptSteps[0].Target, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.ScriptSteps[0].Name, "Start");
+    EXPECT_EQ(g_State.ScriptSteps[1].Name, "Done");
+    EXPECT_EQ(g_State.ScriptSteps[2].Name, "Seed");
+    EXPECT_EQ(g_State.ScriptSteps[2].Target, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.ScriptSteps[3].Kind,
+              BML_BEHAVIOR_EDIT_ADD_OPERATION);
+    EXPECT_EQ(g_State.ScriptSteps[3].Operation.Operation.Data1, 41u);
+    EXPECT_EQ(g_State.ScriptSteps[3].Operation.Result.Data1, 31u);
+    EXPECT_EQ(g_State.ScriptSteps[3].Operation.Input1.Data1, 31u);
+    EXPECT_EQ(g_State.ScriptSteps[3].Operation.Input2.Data1, 31u);
+    EXPECT_EQ(g_State.ScriptSteps[5].Sink.Handle,
+              g_State.ScriptSteps[3].Result);
+    EXPECT_EQ(g_State.ScriptSteps[5].Source.Handle,
+              g_State.ScriptSteps[2].Result);
+    EXPECT_EQ(g_State.ScriptOwner.Domain, owner.Domain);
+    EXPECT_EQ(g_State.ScriptOwner.Slot, owner.Slot);
+    EXPECT_EQ(script.Object().Domain, 13u);
+    EXPECT_EQ(script.Object().Slot, 21u);
+
+    auto info = script.Info();
+    ASSERT_TRUE(info);
+    EXPECT_EQ(info->State, ScriptState::Ready);
+    EXPECT_FALSE(info->Active);
+    EXPECT_FALSE(info->RequestedActive);
+    EXPECT_EQ(info->Priority, -3);
+
+    auto graph = script.Inspect();
+    ASSERT_TRUE(graph);
+    EXPECT_EQ(graph->Root().Object().Domain, script.Object().Domain);
+    EXPECT_EQ(graph->Root().Object().Slot, script.Object().Slot);
+
+    auto activation = script.Activate(true);
+    ASSERT_TRUE(activation);
+    EXPECT_TRUE(activation->RequestedActive);
+    EXPECT_FALSE(activation->Active);
+    EXPECT_TRUE(g_State.ScriptReset);
+    auto deactivation = script.Deactivate();
+    ASSERT_TRUE(deactivation);
+    EXPECT_FALSE(deactivation->RequestedActive);
+    EXPECT_EQ(g_State.ScriptActivityChanges, 2);
+
+    ASSERT_TRUE(script.Close());
+    EXPECT_EQ(g_State.ScriptCloses, 1);
+    EXPECT_FALSE(script);
+}
+
+TEST(BehaviorAuthoring, RejectsAMalformedScriptWithoutLeakingItsHandle) {
+    g_State = {};
+    auto opened = Session::Open("test.mod");
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    g_State.MalformedScriptInfo = true;
+    Edit body;
+
+    auto created = session.CreateScript(
+        {7, 45, 2}, "Malformed", body, 0);
+
+    EXPECT_FALSE(created);
+    EXPECT_EQ(created.Code(), BML_ERROR_MALFORMED_MESSAGE);
+    EXPECT_EQ(g_State.ScriptCloses, 1);
+}
+
+TEST(BehaviorAuthoring, DoesNotReceiveARejectedScriptHandle) {
+    g_State = {};
+    auto opened = Session::Open("test.mod");
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    Edit body;
+    (void) body.Require("Missing");
+    g_State.ScriptCreateCode = BML_ERROR_NOT_FOUND;
+
+    auto created = session.CreateScript(
+        BML_ObjectRef{7, 45, 2}, "Rejected", body);
+
+    EXPECT_FALSE(created);
+    EXPECT_EQ(created.Code(), BML_ERROR_NOT_FOUND);
+    EXPECT_EQ(g_State.ScriptCreates, 1);
+    EXPECT_EQ(g_State.ScriptCloses, 0);
+    EXPECT_FALSE(g_State.ScriptSteps.empty());
 }
 
 TEST(BehaviorAuthoring, ReportsAFailureWhenAGraphRefusesTheBlock) {

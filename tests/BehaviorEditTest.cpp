@@ -210,14 +210,22 @@ TEST(BehaviorEdit, DistinguishesExistingAndAppendedDynamicPorts) {
     const Node target = edit.Use(Native(101), std::move(dynamic));
     const Node source = edit.Use(Native(102), Shape());
     const Port appended = edit.AppendPin(target, "Other", CKPGUID_INT);
+    const Port another = edit.AppendPin(target, "Other", CKPGUID_INT);
     edit.Share(target.Pin("Value"), source.Pin());
     edit.Share(appended, source.Pin());
+    edit.Share(another, source.Pin());
 
     CheckedEdit checked;
     ASSERT_TRUE(edit.Validate(Base(), checked));
-    ASSERT_EQ(checked.Binds.size(), 2u);
+    ASSERT_EQ(checked.Binds.size(), 3u);
     EXPECT_FALSE(checked.Binds[0].Target.Appended);
     EXPECT_TRUE(checked.Binds[1].Target.Appended);
+    EXPECT_TRUE(checked.Binds[2].Target.Appended);
+    EXPECT_NE(appended.Interface, 0u);
+    EXPECT_NE(another.Interface, 0u);
+    EXPECT_NE(appended.Interface, another.Interface);
+    EXPECT_EQ(checked.Binds[1].Target.Interface, appended.Interface);
+    EXPECT_EQ(checked.Binds[2].Target.Interface, another.Interface);
 }
 
 TEST(BehaviorEdit, WritesAValueIntoALocalButNeverIntoASetting) {

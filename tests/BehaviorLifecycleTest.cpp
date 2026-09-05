@@ -113,6 +113,13 @@ public:
         return true;
     }
 
+    bool ApplyInterface(LifecycleFault &fault) override {
+        Events.emplace_back("INTERFACE");
+        if (FailAt == "INTERFACE")
+            return Fail(fault, "interface creation failed");
+        return true;
+    }
+
     bool ApplyBindings(LifecycleFault &fault) override {
         Events.emplace_back("BIND");
         if (FailAt == "BIND")
@@ -206,6 +213,48 @@ TEST(BehaviorLifecycle, ConfiguresInFixedOrderAndReplaysStageZero) {
                  });
     EXPECT_EQ(actual, callbacks);
     EXPECT_GT(adapter.Generation, 1u);
+}
+
+TEST(BehaviorLifecycle, KeepsCreatedBlockConfiguringUntilRelationsAreReady) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+
+    ASSERT_TRUE(lifecycle.Create({true, {true}}, adapter));
+    EXPECT_EQ(lifecycle.State(), LifecycleState::Configuring);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Create], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Attach], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::SettingsEdited], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Edited], 0);
+    EXPECT_EQ(std::count(adapter.Events.begin(), adapter.Events.end(), "BIND"),
+              0);
+
+    ASSERT_TRUE(lifecycle.Edit(adapter));
+    EXPECT_EQ(lifecycle.State(), LifecycleState::Ready);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Edited], 1);
+    EXPECT_EQ(std::count(adapter.Events.begin(), adapter.Events.end(), "BIND"),
+              1);
+}
+
+TEST(BehaviorLifecycle, CreatesBlockInterfaceBeforeFinalRelations) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+
+    ASSERT_TRUE(lifecycle.Create({true, {false}, true}, adapter));
+    EXPECT_EQ(lifecycle.State(), LifecycleState::Configuring);
+    const auto interface = std::find(
+        adapter.Events.begin(), adapter.Events.end(), "INTERFACE");
+    ASSERT_NE(interface, adapter.Events.end());
+    const std::size_t interfaceIndex = static_cast<std::size_t>(
+        std::distance(adapter.Events.begin(), interface));
+    EXPECT_EQ(std::count(adapter.Events.begin(), adapter.Events.end(), "BIND"),
+              0);
+
+    ASSERT_TRUE(lifecycle.Edit(adapter));
+    const auto binding = std::find(
+        adapter.Events.begin(), adapter.Events.end(), "BIND");
+    ASSERT_NE(binding, adapter.Events.end());
+    EXPECT_LT(interfaceIndex, static_cast<std::size_t>(
+        std::distance(adapter.Events.begin(), binding)));
 }
 
 TEST(BehaviorLifecycle, OwnerlessEmptySettingsSkipAttachAndSettingsCallback) {

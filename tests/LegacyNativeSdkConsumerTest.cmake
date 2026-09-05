@@ -180,9 +180,9 @@ static_assert(static_cast<std::uint32_t>(
         return;
     auto block = session->Use(CKGUID(0x12345678u, 0x9abcdef0u));
     block.Settings({{"Mode", 1}})
-        .Pins({{"Value", 2.0f}})
-        .Frames(Latest());
+        .Pins({{"Value", 2.0f}});
     (void) block.Validate();
+    (void) block.Start("Run", Latest());
 }
 } // namespace
 

@@ -89,7 +89,7 @@ int BML_BEHAVIOR_CALL InstallSplice(
         Behavior::Node node;
         if (status)
             status = patches.Add(
-                edit, Behavior::Spec(CKGUID(prototype.Data1,
+                edit, Behavior::BlockSpec(CKGUID(prototype.Data1,
                                              prototype.Data2)), node);
         if (status)
             edit.Splice(anchor, node);

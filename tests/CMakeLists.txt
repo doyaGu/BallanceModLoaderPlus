@@ -321,6 +321,17 @@ add_bml_test(BehaviorLifecycleTest
         ${BML_SOURCE_DIR}/Behavior/Lifecycle.cpp
 )
 
+add_bml_test(BehaviorScriptTest
+        SOURCES
+        BehaviorScriptTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Script.cpp
+)
+target_compile_definitions(BehaviorScriptTest PRIVATE
+        BML_BEHAVIOR_SCRIPT_DOMAIN_ONLY=1)
+target_include_directories(BehaviorScriptTest PRIVATE
+        "${VIRTOOLS_SDK_INCLUDE_DIR}"
+)
+
 add_bml_test(BehaviorCallbackTest
         SOURCES
         BehaviorCallbackTest.cpp
@@ -375,6 +386,8 @@ add_bml_test(BehaviorEditTest
 add_bml_test(BehaviorGraphEditTest
         SOURCES
         BehaviorGraphEditTest.cpp
+        BehaviorBlockTestStubs.cpp
+        ${BML_SOURCE_DIR}/Behavior/Block.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
         ${BML_SOURCE_DIR}/Behavior/GraphEdit.cpp
         ${BML_SOURCE_DIR}/Behavior/Edit.cpp

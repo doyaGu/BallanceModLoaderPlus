@@ -126,17 +126,14 @@ public:
         return {};
     }
 
-    Status Add(Edit &edit, PrototypeRef prototype,
-               const GraphEdit::SettingStages &settings,
-               Node &out) override {
+    Status Add(Edit &edit, BlockSpec block, Node &out) override {
         ++Adds;
-        AddedPrototypes.push_back(prototype);
-        // Spec is a world-bound value, so this world-free fake only records
-        // what the intent asked for.
-        AddedSettings = settings;
-        out = edit.Add(
-            Spec(prototype.Guid).PrototypeGeneration(prototype.Generation),
-            Shape("In", "Out", AddedFlags));
+        AddedPrototypes.push_back(
+            {block.Prototype(), block.PrototypeGeneration()});
+        AddedSettings = block.Settings();
+        Layout shape = AddedShape;
+        shape.BehaviorFlags = AddedFlags;
+        out = edit.Add(std::move(block), std::move(shape));
         return {};
     }
 
@@ -158,19 +155,20 @@ public:
         ++Afters;
         InterposedLinks.push_back(link);
         Node block = edit.Add(
-            Spec(CKGUID(0x19038c0, 0x663902da)), Shape());
+            BlockSpec(CKGUID(0x19038c0, 0x663902da)), Shape());
         edit.Splice(link, block);
         return {};
     }
 
     GraphModel Base;
-    GraphEdit::SettingStages AddedSettings;
+    std::vector<std::vector<BlockSpec::Binding>> AddedSettings;
     int Begins = 0;
     int Adds = 0;
     int Taps = 0;
     int Afters = 0;
     CKDWORD NodeFlags = 0;
     CKDWORD AddedFlags = 0;
+    Layout AddedShape = Shape();
     std::vector<ObjectRef> UsedNodes;
     std::vector<ObjectRef> UsedLinks;
     std::vector<Link> InterposedLinks;
@@ -443,6 +441,144 @@ TEST(BehaviorGraphEdit, ResolvesDynamicPortsForTheCurrentLayout) {
     EXPECT_TRUE(checked.Pushes[0].Source.Appended);
 }
 
+TEST(BehaviorGraphEdit, AppendsPrivateStateToTheGraphOrAnAddedBlock) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node added = plan.Add(CKGUID(0x3333, 3));
+    const Port state = plan.AppendLocal(added, "Scratch", CKPGUID_INT);
+    plan.Bind(state, Value::From(CKPGUID_INT, 7));
+
+    ASSERT_TRUE(plan.Validate());
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "local"}, compiler.Base.Root, compiler, edit));
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    ASSERT_EQ(checked.Binds.size(), 1u);
+    EXPECT_EQ(checked.Binds[0].Target.Slot.Kind, SlotKind::Local);
+    EXPECT_TRUE(checked.Binds[0].Target.Appended);
+
+    GraphEdit rootState;
+    const Port enabled = rootState.AppendLocal(
+        rootState.Graph(), "Enabled", CKPGUID_BOOL);
+    rootState.Bind(enabled, Value::From(CKPGUID_BOOL, TRUE));
+    ASSERT_TRUE(rootState.Validate());
+    Edit rootEdit;
+    ASSERT_TRUE(rootState.Compile(
+        {"mod", "root-local"}, compiler.Base.Root, compiler, rootEdit));
+    ASSERT_TRUE(rootEdit.Validate(compiler.Base, checked));
+    ASSERT_EQ(checked.Binds.size(), 1u);
+    EXPECT_EQ(checked.Binds[0].Target.Owner, rootEdit.Graph());
+    EXPECT_EQ(checked.Binds[0].Target.Slot.Kind, SlotKind::Local);
+
+    GraphEdit borrowed;
+    const Node existing = borrowed.RequireOne({"Wait Message"});
+    (void) borrowed.AppendLocal(existing, "Scratch", CKPGUID_INT);
+    const Status rejected = borrowed.Validate();
+    EXPECT_EQ(rejected.Code, Error::InterfaceUnsupported);
+}
+
+TEST(BehaviorGraphEdit, ComposesNativeParameterOperationsWithGraphPorts) {
+    FakeCompiler compiler(Model());
+    GraphEdit graph;
+    const Node sink = graph.RequireOne({"set Resetpoint"});
+    const Port base = graph.AppendLocal(graph.Graph(), "Base", CKPGUID_INT);
+    const ParameterOperation sum = graph.AddOperation(
+        CKGUID(0x12345678, 0x87654321), CKPGUID_INT,
+        CKPGUID_INT, CKPGUID_INT);
+    graph.Bind(base, Value::From(CKPGUID_INT, 40));
+    graph.Bind(sum.Input(0), base);
+    graph.Bind(sum.Input(1), Value::From(CKPGUID_INT, 2));
+    graph.Bind(sink.Pin("Value"), sum.Result());
+
+    Edit resolved;
+    ASSERT_TRUE(graph.Compile(
+        {"mod", "operation"}, compiler.Base.Root, compiler, resolved));
+    CheckedEdit checked;
+    const Status status = resolved.Validate(compiler.Base, checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Binds.size(), 4u);
+    EXPECT_TRUE(checked.Binds[1].Target.Operation);
+    EXPECT_TRUE(checked.Binds[2].Target.Operation);
+    EXPECT_TRUE(checked.Binds[3].Source.Operation);
+}
+
+TEST(BehaviorGraphEdit, ReplacesAnIdleNodeThroughItsPublicInterface) {
+    FakeCompiler compiler(Model());
+    GraphEdit graph;
+    const Node original = graph.RequireOne(
+        {"Wait Message", CKGUID(0x1111, 1)});
+    BlockSpec block(CKGUID(0x3333, 3));
+    const Node replacement = graph.Replace(original, std::move(block));
+    graph.Flow(replacement.Out(), graph.Exit("Done"));
+
+    Edit resolved;
+    const Status compiled = graph.Compile(
+        {"mod", "replace"}, compiler.Base.Root, compiler, resolved);
+    ASSERT_TRUE(compiled) << compiled.Message;
+    CheckedEdit checked;
+    const Status status = resolved.Validate(compiler.Base, checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Replacements.size(), 1u);
+    EXPECT_EQ(compiler.Adds, 1);
+    EXPECT_EQ(checked.Flows.size(), 1u);
+}
+
+TEST(BehaviorGraphEdit, RejectsReplacementInterfaceDriftAndParkedNodeUse) {
+    FakeCompiler mismatch(Model());
+    mismatch.AddedShape.Slots.erase(
+        std::remove_if(mismatch.AddedShape.Slots.begin(),
+                       mismatch.AddedShape.Slots.end(),
+                       [](const SlotInfo &slot) {
+                           return slot.Kind == SlotKind::OutputParameter;
+                       }),
+        mismatch.AddedShape.Slots.end());
+    GraphEdit changed;
+    const Node original = changed.RequireOne({"Wait Message"});
+    (void) changed.Replace(original, BlockSpec(CKGUID(0x3333, 3)));
+    Edit resolved;
+    const Status compiled = changed.Compile(
+        {"mod", "replace-shape"}, mismatch.Base.Root, mismatch, resolved);
+    ASSERT_TRUE(compiled) << compiled.Message;
+    CheckedEdit checked;
+    EXPECT_EQ(resolved.Validate(mismatch.Base, checked).Code,
+              Error::InterfaceUnsupported);
+
+    GraphEdit reused;
+    const Node parked = reused.RequireOne({"Wait Message"});
+    (void) reused.Replace(parked, BlockSpec(CKGUID(0x3333, 3)));
+    reused.Flow(parked.Out(), reused.Exit("Done"));
+    EXPECT_EQ(reused.Validate().Code, Error::InvalidState);
+}
+
+TEST(BehaviorGraphEdit, RejectsIncompleteAndCyclicParameterOperations) {
+    FakeCompiler compiler(Model());
+    GraphEdit incomplete;
+    const ParameterOperation missing = incomplete.AddOperation(
+        CKGUID(0x12345678, 1), CKPGUID_INT, CKPGUID_INT, CKPGUID_NONE);
+    (void) missing;
+    Edit resolved;
+    ASSERT_TRUE(incomplete.Compile(
+        {"mod", "missing-operation-input"}, compiler.Base.Root,
+        compiler, resolved));
+    CheckedEdit checked;
+    EXPECT_EQ(resolved.Validate(compiler.Base, checked).Code,
+              Error::OperationInvalid);
+
+    GraphEdit cyclic;
+    const ParameterOperation first = cyclic.AddOperation(
+        CKGUID(0x12345678, 1), CKPGUID_INT, CKPGUID_INT, CKPGUID_NONE);
+    const ParameterOperation second = cyclic.AddOperation(
+        CKGUID(0x12345678, 1), CKPGUID_INT, CKPGUID_INT, CKPGUID_NONE);
+    cyclic.Bind(first.Input(0), second.Result());
+    cyclic.Bind(second.Input(0), first.Result());
+    ASSERT_TRUE(cyclic.Compile(
+        {"mod", "operation-cycle"}, compiler.Base.Root,
+        compiler, resolved));
+    EXPECT_EQ(resolved.Validate(compiler.Base, checked).Code,
+              Error::OperationInvalid);
+}
+
 TEST(BehaviorGraphEdit, KeepsTypedNullAsADurableLiteral) {
     FakeCompiler compiler(Model());
     GraphEdit plan;
@@ -464,10 +600,10 @@ TEST(BehaviorGraphEdit, KeepsTypedNullAsADurableLiteral) {
 TEST(BehaviorGraphEdit, CarriesASettingWithTheBlockThatDeclaresIt) {
     FakeCompiler compiler(Model());
     GraphEdit plan;
-    const Node added = plan.Add(CKGUID(0x3333, 3));
-    ASSERT_TRUE(plan.Setting(
-        added, Slot::Named(SlotKind::Setting, "Mode"),
-        Value::From(CKPGUID_INT, 2)));
+    BlockSpec block(CKGUID(0x3333, 3));
+    block.Setting(Slot::Named(SlotKind::Setting, "Mode"),
+                  Value::From(CKPGUID_INT, 2));
+    (void) plan.Add(std::move(block));
 
     ASSERT_TRUE(plan.Validate());
     Edit edit;
@@ -476,8 +612,8 @@ TEST(BehaviorGraphEdit, CarriesASettingWithTheBlockThatDeclaresIt) {
     EXPECT_EQ(compiler.Adds, 1);
     ASSERT_EQ(compiler.AddedSettings.size(), 1u);
     ASSERT_EQ(compiler.AddedSettings[0].size(), 1u);
-    EXPECT_EQ(compiler.AddedSettings[0][0].first.Kind, SlotKind::Setting);
-    const Value &declared = compiler.AddedSettings[0][0].second;
+    EXPECT_EQ(compiler.AddedSettings[0][0].Target.Kind, SlotKind::Setting);
+    const Value &declared = compiler.AddedSettings[0][0].Source.Literal();
     EXPECT_EQ(declared.Type(), CKPGUID_INT);
     ASSERT_EQ(declared.Bytes().size(), sizeof(int));
     int mode = 0;
@@ -490,36 +626,16 @@ TEST(BehaviorGraphEdit, CarriesASettingWithTheBlockThatDeclaresIt) {
     EXPECT_TRUE(checked.Binds.empty());
 }
 
-TEST(BehaviorGraphEdit, RefusesASettingOnABlockItDidNotCreate) {
-    GraphEdit plan;
-    const Node wait = plan.RequireOne(
-        {"Wait Message", CKGUID(0x1111, 1)});
-    Status status = plan.Setting(
-        wait, Slot::Named(SlotKind::Setting, "Mode"),
-        Value::From(CKPGUID_INT, 2));
-    EXPECT_FALSE(status);
-    EXPECT_EQ(status.Code, Error::InterfaceUnsupported);
-
-    GraphEdit wrongSlot;
-    const Node added = wrongSlot.Add(CKGUID(0x3333, 3));
-    ASSERT_TRUE(wrongSlot.Setting(
-        added, Slot::Named(SlotKind::Local, "Mode"),
-        Value::From(CKPGUID_INT, 2)));
-    status = wrongSlot.Validate();
-    EXPECT_FALSE(status);
-    EXPECT_EQ(status.Code, Error::TypeMismatch);
-}
-
 TEST(BehaviorGraphEdit, PreservesSettingStageBoundaries) {
     FakeCompiler compiler(Model());
     GraphEdit edit;
-    const Node added = edit.Add(CKGUID(0x3333, 3));
-    ASSERT_TRUE(edit.Setting(
-        added, Slot::Named(SlotKind::Setting, "Mode"),
-        Value::From(CKPGUID_INT, 2)));
-    ASSERT_TRUE(edit.Setting(
-        added, Slot::Named(SlotKind::Setting, "Created Later"),
-        Value::From(CKPGUID_INT, 9), true));
+    BlockSpec block(CKGUID(0x3333, 3));
+    block.Setting(Slot::Named(SlotKind::Setting, "Mode"),
+                  Value::From(CKPGUID_INT, 2));
+    block.NextSettingStage().Setting(
+        Slot::Named(SlotKind::Setting, "Created Later"),
+        Value::From(CKPGUID_INT, 9));
+    (void) edit.Add(std::move(block));
 
     Edit compiled;
     ASSERT_TRUE(edit.Compile(
@@ -527,8 +643,8 @@ TEST(BehaviorGraphEdit, PreservesSettingStageBoundaries) {
     ASSERT_EQ(compiler.AddedSettings.size(), 2u);
     ASSERT_EQ(compiler.AddedSettings[0].size(), 1u);
     ASSERT_EQ(compiler.AddedSettings[1].size(), 1u);
-    EXPECT_EQ(compiler.AddedSettings[0][0].first.Name, "Mode");
-    EXPECT_EQ(compiler.AddedSettings[1][0].first.Name, "Created Later");
+    EXPECT_EQ(compiler.AddedSettings[0][0].Target.Name, "Mode");
+    EXPECT_EQ(compiler.AddedSettings[1][0].Target.Name, "Created Later");
 }
 
 TEST(BehaviorGraphEdit, CompletesAPathAgainAndTapsItsFinalOut) {
