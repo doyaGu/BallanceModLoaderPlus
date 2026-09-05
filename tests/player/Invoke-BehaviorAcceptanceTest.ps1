@@ -173,6 +173,12 @@ $facadePatch = [regex]::Match($log,
     'apply=(?<apply>true|false) close=(?<close>true|false)')
 $facadeReplacement = [regex]::Match($log,
     'Behavior node replacement: status=(?<status>pass|fail)')
+$facadeRemoval = [regex]::Match($log,
+    'Behavior node removal: status=(?<status>pass|fail) ' +
+    'lifecycle=(?<lifecycle>true|false) restore=(?<restore>true|false) ' +
+    'pending=(?<pending>true|false) ' +
+    'active_peer=(?<activePeer>true|false) ' +
+    'isolation=(?<isolation>true|false)')
 $facadeIdentity = [regex]::Match($log,
     'Behavior identity: status=(?<status>pass|fail) attach=(?<attach>true|false) ' +
     'continuation=(?<continuation>true|false) ' +
@@ -251,6 +257,13 @@ $checks['BehaviorGraphPatchFacade'] = $facadePatch.Success -and
     $facadePatch.Groups['close'].Value -eq 'true'
 $checks['BehaviorNodeReplacementFacade'] = $facadeReplacement.Success -and
     $facadeReplacement.Groups['status'].Value -eq 'pass'
+$checks['BehaviorNodeRemovalFacade'] = $facadeRemoval.Success -and
+    $facadeRemoval.Groups['status'].Value -eq 'pass' -and
+    $facadeRemoval.Groups['lifecycle'].Value -eq 'true' -and
+    $facadeRemoval.Groups['restore'].Value -eq 'true' -and
+    $facadeRemoval.Groups['pending'].Value -eq 'true' -and
+    $facadeRemoval.Groups['activePeer'].Value -eq 'true' -and
+    $facadeRemoval.Groups['isolation'].Value -eq 'true'
 $checks['BehaviorIdentityFacade'] = $facadeIdentity.Success -and
     $facadeIdentity.Groups['status'].Value -eq 'pass' -and
     $facadeIdentity.Groups['attach'].Value -eq 'true' -and

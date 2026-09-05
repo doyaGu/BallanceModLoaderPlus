@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -39,15 +40,30 @@ constexpr const char *kScriptName = "__BML_Public_Plan";
 constexpr const char *kSourceName = "Public Plan Source";
 constexpr const char *kSinkName = "Public Plan Sink";
 
+std::uint32_t g_RemovalSourceRuns = 0;
+std::uint32_t g_RemovalPeerRuns = 0;
+
 int RunPlanNode(const CKBehaviorContext &context) {
     CKBehavior *behavior = context.Behavior;
     if (!behavior)
         return CKBR_BEHAVIORERROR;
+    if (behavior->GetName() &&
+        std::strcmp(behavior->GetName(), kSourceName) == 0)
+        ++g_RemovalSourceRuns;
     for (int index = 0; index < behavior->GetInputCount(); ++index)
         behavior->ActivateInput(index, FALSE);
     for (int index = 0; index < behavior->GetOutputCount(); ++index)
         behavior->ActivateOutput(index);
     return CKBR_OK;
+}
+
+int RunActivePeer(const CKBehaviorContext &context) {
+    CKBehavior *behavior = context.Behavior;
+    if (!behavior)
+        return CKBR_BEHAVIORERROR;
+    ++g_RemovalPeerRuns;
+    behavior->ActivateOutput(0);
+    return CKBR_ACTIVATENEXTFRAME;
 }
 
 // What the two author callbacks record. The probe holds one reference and each
@@ -116,6 +132,13 @@ public:
         case State::CloseReplacement: CloseReplacement(); break;
         case State::WaitReplacementRestored: WaitReplacementRestored(); break;
         case State::WaitReplacementRemoved: WaitReplacementRemoved(); break;
+        case State::ArmPendingRemoval: ArmPendingRemoval(); break;
+        case State::RejectPendingRemoval: RejectPendingRemoval(); break;
+        case State::InstallRemoval: InstallRemoval(); break;
+        case State::WaitRemovalInactive: WaitRemovalInactive(); break;
+        case State::ObserveRemovalIsolation: ObserveRemovalIsolation(); break;
+        case State::CloseRemoval: CloseRemoval(); break;
+        case State::WaitRemovalRestored: WaitRemovalRestored(); break;
         case State::ClosePatch: ClosePatch(); break;
         case State::WaitPatchConflict: WaitPatchConflict(); break;
         case State::WaitPatchRetired: WaitPatchRetired(); break;
@@ -128,6 +151,7 @@ public:
         (void) m_SelfPlan.Close();
         (void) m_Patch.Close();
         (void) m_ReplacementPatch.Close();
+        (void) m_RemovalPatch.Close();
         if (m_ReplacementOriginal)
             (void) m_ReplacementOriginal->Close();
         DestroyGraph();
@@ -155,6 +179,13 @@ private:
         CloseReplacement,
         WaitReplacementRestored,
         WaitReplacementRemoved,
+        ArmPendingRemoval,
+        RejectPendingRemoval,
+        InstallRemoval,
+        WaitRemovalInactive,
+        ObserveRemovalIsolation,
+        CloseRemoval,
+        WaitRemovalRestored,
         ClosePatch,
         WaitPatchConflict,
         WaitPatchRetired,
@@ -307,6 +338,8 @@ private:
         m_Graph = nullptr;
         m_Source = nullptr;
         m_Sink = nullptr;
+        m_RemovalPeer = nullptr;
+        m_RemovalPeerLink = nullptr;
         m_Entry = nullptr;
         m_Anchor = nullptr;
         m_Exit = nullptr;
@@ -334,7 +367,7 @@ private:
             return false;
         m_Graph->ActivateInput(0, FALSE);
         m_Graph->ActivateOutput(0, FALSE);
-        const auto activation = m_AuthoredScript.Activate(true);
+        const auto activation = m_AuthoredScript.Activate(false);
         if (!activation || !activation->RequestedActive)
             return false;
         m_Graph->ActivateInput(0, TRUE);
@@ -1259,6 +1292,15 @@ private:
         return false;
     }
 
+    static bool HasLink(CKBehavior *graph, CKBehaviorLink *link) {
+        if (!graph || !link)
+            return false;
+        for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index)
+            if (graph->GetSubBehaviorLink(index) == link)
+                return true;
+        return false;
+    }
+
     void InstallReplacement() {
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
         const auto graphRef = m_Session.Reference(m_Graph);
@@ -1506,11 +1548,373 @@ private:
             m_ReplacementOriginal.reset();
             m_ReplacementOriginalNode = nullptr;
             m_ReplacementPassed = true;
-            ApplyPatch();
+            m_WaitUntil = m_Frame + 30;
+            m_State = State::ArmPendingRemoval;
             return;
         }
         if (m_Frame > m_WaitUntil)
             Finish(false, "replacement-original-removal");
+    }
+
+    void ArmPendingRemoval() {
+        if (!m_Graph || !m_Source || !m_Entry) {
+            Finish(false, "removal-pending-context");
+            return;
+        }
+        if (m_Graph->IsActive()) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "removal-pending-arm");
+            return;
+        }
+        m_Entry->SetInitialActivationDelay(4);
+        m_Entry->SetActivationDelay(4);
+        KickScript();
+        m_WaitUntil = m_Frame + 3;
+        m_State = State::RejectPendingRemoval;
+    }
+
+    void RejectPendingRemoval() {
+        if (!m_Graph || !m_Source || !m_Entry) {
+            Finish(false, "removal-pending-context");
+            return;
+        }
+        if (!m_Graph->IsActive() || m_Entry->GetActivationDelay() <= 0 ||
+            m_Entry->GetActivationDelay() >=
+                m_Entry->GetInitialActivationDelay()) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "removal-pending-not-observed");
+            return;
+        }
+        // CKBehavior::Activate(FALSE, FALSE) preserves the delayed list. The
+        // edit must reject the in-flight Link from its delay state rather than
+        // trusting the graph's active flag.
+        m_Graph->Activate(FALSE, FALSE);
+        if (m_Graph->IsActive()) {
+            Finish(false, "removal-pending-deactivate");
+            return;
+        }
+        const auto graph = m_Session.Inspect(m_Graph);
+        if (!graph) {
+            Finish(false, "removal-pending-inspect");
+            return;
+        }
+        const auto target = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [&](const BML::Behavior::Node &node) {
+                return node.Id() ==
+                    static_cast<std::uint32_t>(m_Source->GetID());
+            });
+        if (target == graph->Nodes().end()) {
+            Finish(false, "removal-pending-target");
+            return;
+        }
+        BML::Behavior::Edit edit;
+        const auto removed = edit.Use(*target);
+        edit.Remove(removed);
+        const auto applied = graph->Apply("player-pending-node-removal", edit);
+        if (applied || applied.Code() != BML_ERROR_BUSY ||
+            applied.GetStatus().Error != BML::Behavior::Error::Busy) {
+            Finish(false, "removal-pending-admission");
+            return;
+        }
+        m_PendingRemovalRejected = true;
+        m_Graph->Activate(FALSE, TRUE);
+        m_Entry->SetInitialActivationDelay(0);
+        m_Entry->SetActivationDelay(0);
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::InstallRemoval;
+    }
+
+    void InstallRemoval() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        if (!context || !m_Graph || !m_Source || !m_Entry || !m_Anchor) {
+            Finish(false, "removal-context");
+            return;
+        }
+        // Keep one disconnected peer scheduled through the Apply safe point.
+        // It proves that Remove depends on the target and its incident Links,
+        // not on an unrelated graph-wide active flag.
+        if (!m_RemovalPeer &&
+            !AddNode("Public Removal Active Peer", m_RemovalPeer)) {
+            Finish(false, "removal-active-peer-create");
+            return;
+        }
+        m_RemovalPeer->SetFunction(RunActivePeer);
+        if (!m_RemovalPeerLink) {
+            m_RemovalPeerLink = AddLink(
+                m_RemovalPeer->GetOutput(0), m_Source->GetInput(0));
+            if (!m_RemovalPeerLink) {
+                Finish(false, "removal-active-peer-link");
+                return;
+            }
+        }
+        // Give the existing sink the same public interface as the lifecycle
+        // fixture. Replacing that sink in the same Edit makes the removed
+        // anchor Link pass through Replace and then Remove, exercising their
+        // exact inverse order on Close.
+        if (m_Sink->GetInputParameterCount() == 0 &&
+            !m_Sink->CreateInputParameter(
+                const_cast<CKSTRING>("Source"), CKPGUID_INT)) {
+            Finish(false, "removal-adjacent-replacement-pin");
+            return;
+        }
+        m_Graph->ActivateInput(0, FALSE);
+        m_RemovalPeer->Activate(TRUE, FALSE);
+        m_Graph->Activate(TRUE, FALSE);
+        m_RemovalWithActivePeer = m_Graph->IsActive() &&
+            m_RemovalPeer->IsActive() &&
+            !m_Source->IsActive() && !m_Source->GetInput(0)->IsActive() &&
+            !m_Source->GetOutput(0)->IsActive();
+        if (!m_RemovalWithActivePeer) {
+            Finish(false, "removal-active-peer");
+            return;
+        }
+        const auto graph = m_Session.Inspect(m_Graph);
+        if (!graph) {
+            Finish(false, "removal-inspect");
+            return;
+        }
+        const auto target = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [&](const BML::Behavior::Node &node) {
+                return node.Id() ==
+                    static_cast<std::uint32_t>(m_Source->GetID());
+            });
+        if (target == graph->Nodes().end()) {
+            Finish(false, "removal-target");
+            return;
+        }
+        const auto replaced = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [&](const BML::Behavior::Node &node) {
+                return node.Id() ==
+                    static_cast<std::uint32_t>(m_Sink->GetID());
+            });
+        if (replaced == graph->Nodes().end()) {
+            Finish(false, "removal-adjacent-replacement-target");
+            return;
+        }
+
+        m_RemovalNodeId = m_Source->GetID();
+        m_RemovalEntryId = m_Entry->GetID();
+        m_RemovalAnchorId = m_Anchor->GetID();
+        m_RemovalPeerLinkId = m_RemovalPeerLink->GetID();
+        m_RemovalEntrySource = m_Entry->GetInBehaviorIO();
+        m_RemovalEntrySink = m_Entry->GetOutBehaviorIO();
+        m_RemovalAnchorSource = m_Anchor->GetInBehaviorIO();
+        m_RemovalAnchorSink = m_Anchor->GetOutBehaviorIO();
+        m_RemovalPeerLinkSource = m_RemovalPeerLink->GetInBehaviorIO();
+        m_RemovalPeerLinkSink = m_RemovalPeerLink->GetOutBehaviorIO();
+        m_RemovalEntryDelay = m_Entry->GetInitialActivationDelay();
+        m_RemovalAnchorDelay = m_Anchor->GetInitialActivationDelay();
+        m_RemovalPeerLinkDelay =
+            m_RemovalPeerLink->GetInitialActivationDelay();
+        m_RemovalNodesBefore = graph->Nodes().size();
+        m_RemovalLinksBefore = graph->Links().size();
+
+        BML::Behavior::Edit edit;
+        const auto removed = edit.Use(*target);
+        const auto originalSink = edit.Use(*replaced);
+        const auto replacement = edit.Replace(
+            originalSink,
+            m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
+        (void) replacement;
+        edit.Remove(removed);
+        auto applied = graph->Apply("player-node-removal", edit);
+        if (!applied) {
+            GetLogger()->Error(
+                "Behavior removal failed: code=%d error=%u phase=%u detail=%s entry=%u/%s anchor=%u/%s",
+                applied.Code(),
+                static_cast<unsigned>(applied.GetStatus().Error),
+                static_cast<unsigned>(applied.GetStatus().Phase),
+                applied.GetStatus().Message.c_str(),
+                static_cast<unsigned>(m_RemovalEntryId),
+                m_RemovalEntrySource && m_RemovalEntrySource->IsActive()
+                    ? "active" : "idle",
+                static_cast<unsigned>(m_RemovalAnchorId),
+                m_RemovalAnchorSource && m_RemovalAnchorSource->IsActive()
+                    ? "active" : "idle");
+            Finish(false, "removal-apply");
+            return;
+        }
+        m_RemovalPatch = std::move(applied).Value();
+        const auto parked = m_RemovalPatch.Resolve(removed);
+        const auto visible = m_Session.Inspect(m_Graph);
+        const bool removedCorrectly = !parked && visible &&
+            m_Graph->IsActive() && m_RemovalPeer->IsActive() &&
+            context->GetObject(m_RemovalNodeId) == m_Source &&
+            context->GetObject(m_RemovalEntryId) == m_Entry &&
+            context->GetObject(m_RemovalAnchorId) == m_Anchor &&
+            context->GetObject(m_RemovalPeerLinkId) == m_RemovalPeerLink &&
+            !HasNode(m_Graph, m_Source) &&
+            m_Source->GetOwner() == m_Graph->GetOwner() &&
+            !HasLink(m_Graph, m_Entry) && !HasLink(m_Graph, m_Anchor) &&
+            !HasLink(m_Graph, m_RemovalPeerLink) &&
+            m_Entry->GetInBehaviorIO() && m_Entry->GetOutBehaviorIO() &&
+            m_Entry->GetInBehaviorIO() != m_RemovalEntrySource &&
+            m_Entry->GetOutBehaviorIO() != m_RemovalEntrySink &&
+            m_Anchor->GetInBehaviorIO() == m_Entry->GetInBehaviorIO() &&
+            m_Anchor->GetOutBehaviorIO() == m_Entry->GetOutBehaviorIO() &&
+            m_RemovalPeerLink->GetInBehaviorIO() ==
+                m_Entry->GetInBehaviorIO() &&
+            m_RemovalPeerLink->GetOutBehaviorIO() ==
+                m_Entry->GetOutBehaviorIO() &&
+            !m_Entry->GetInBehaviorIO()->GetOwner() &&
+            !m_Entry->GetOutBehaviorIO()->GetOwner() &&
+            m_Entry->GetInBehaviorIO()->GetType() == CK_BEHAVIORIO_OUT &&
+            m_Entry->GetOutBehaviorIO()->GetType() == CK_BEHAVIORIO_IN &&
+            !m_Entry->GetInBehaviorIO()->IsActive() &&
+            !m_Entry->GetOutBehaviorIO()->IsActive() &&
+            m_Entry->GetInitialActivationDelay() == m_RemovalEntryDelay &&
+            m_Anchor->GetInitialActivationDelay() == m_RemovalAnchorDelay &&
+            m_RemovalPeerLink->GetInitialActivationDelay() ==
+                m_RemovalPeerLinkDelay &&
+            visible->Nodes().size() + 1 == m_RemovalNodesBefore &&
+            visible->Links().size() + 3 == m_RemovalLinksBefore;
+        if (!removedCorrectly) {
+            Finish(false, "removal-shape");
+            return;
+        }
+        // Establish a real inactive -> active Scene transition without reset.
+        // A reset would erase the active peer and would no longer test native
+        // continuation scheduling through its output port.
+        const auto deactivation = m_AuthoredScript.Deactivate();
+        if (!deactivation || deactivation->RequestedActive) {
+            Finish(false, "removal-isolation-deactivation");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitRemovalInactive;
+    }
+
+    void WaitRemovalInactive() {
+        const auto info = m_AuthoredScript.Info();
+        if (!info) {
+            Finish(false, "removal-isolation-script");
+            return;
+        }
+        if (info->Active || info->RequestedActive) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "removal-isolation-deactivation-timeout");
+            return;
+        }
+        m_RemovalPeer->Activate(TRUE, FALSE);
+        m_Graph->Activate(TRUE, FALSE);
+        m_RemovalSourceRunsBefore = g_RemovalSourceRuns;
+        m_RemovalPeerRunsBefore = g_RemovalPeerRuns;
+        const auto activation = m_AuthoredScript.Activate(false);
+        if (!activation || !activation->RequestedActive) {
+            Finish(false, "removal-isolation-activation");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::ObserveRemovalIsolation;
+    }
+
+    void ObserveRemovalIsolation() {
+        if (g_RemovalSourceRuns != m_RemovalSourceRunsBefore) {
+            Finish(false, "removal-source-ran");
+            return;
+        }
+        if (g_RemovalPeerRuns == m_RemovalPeerRunsBefore &&
+            m_Frame <= m_WaitUntil)
+            return;
+        m_RemovalIsolated = m_Graph && m_RemovalPeer &&
+            m_RemovalPeerLink && g_RemovalPeerRuns > m_RemovalPeerRunsBefore &&
+            m_Graph->IsActive() && m_RemovalPeer->IsActive() &&
+            !m_Source->IsActive() && !m_Source->GetInput(0)->IsActive() &&
+            !m_Source->GetOutput(0)->IsActive() &&
+            !HasLink(m_Graph, m_RemovalPeerLink);
+        if (!m_RemovalIsolated) {
+            GetLogger()->Error(
+                "Behavior removal isolation failed: source=%u/%u peer=%u/%u "
+                "graph=%s peer_active=%s node=%s in=%s out=%s link=%s",
+                g_RemovalSourceRuns, m_RemovalSourceRunsBefore,
+                g_RemovalPeerRuns, m_RemovalPeerRunsBefore,
+                m_Graph && m_Graph->IsActive() ? "active" : "idle",
+                m_RemovalPeer && m_RemovalPeer->IsActive()
+                    ? "active" : "idle",
+                m_Source && m_Source->IsActive() ? "active" : "idle",
+                m_Source && m_Source->GetInput(0)->IsActive()
+                    ? "active" : "idle",
+                m_Source && m_Source->GetOutput(0)->IsActive()
+                    ? "active" : "idle",
+                m_Graph && m_RemovalPeerLink &&
+                        HasLink(m_Graph, m_RemovalPeerLink)
+                    ? "resident" : "parked");
+            Finish(false, "removal-isolation");
+            return;
+        }
+        m_State = State::CloseRemoval;
+    }
+
+    void CloseRemoval() {
+        const auto closed = m_RemovalPatch.Close();
+        if (!closed) {
+            Finish(false, "removal-close-request");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitRemovalRestored;
+    }
+
+    void WaitRemovalRestored() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        const auto visible = context && m_Graph
+            ? m_Session.Inspect(m_Graph)
+            : BML::Behavior::Result<BML::Behavior::Graph>{};
+        const bool restored = context && visible &&
+            context->GetObject(m_RemovalNodeId) == m_Source &&
+            context->GetObject(m_RemovalEntryId) == m_Entry &&
+            context->GetObject(m_RemovalAnchorId) == m_Anchor &&
+            context->GetObject(m_RemovalPeerLinkId) == m_RemovalPeerLink &&
+            HasNode(m_Graph, m_Source) && m_Source->GetParent() == m_Graph &&
+            HasNode(m_Graph, m_Sink) && m_Sink->GetParent() == m_Graph &&
+            HasLink(m_Graph, m_Entry) && HasLink(m_Graph, m_Anchor) &&
+            HasLink(m_Graph, m_RemovalPeerLink) &&
+            m_Entry->GetInBehaviorIO() == m_RemovalEntrySource &&
+            m_Entry->GetOutBehaviorIO() == m_RemovalEntrySink &&
+            m_Anchor->GetInBehaviorIO() == m_RemovalAnchorSource &&
+            m_Anchor->GetOutBehaviorIO() == m_RemovalAnchorSink &&
+            m_RemovalPeerLink->GetInBehaviorIO() ==
+                m_RemovalPeerLinkSource &&
+            m_RemovalPeerLink->GetOutBehaviorIO() ==
+                m_RemovalPeerLinkSink &&
+            m_Entry->GetInitialActivationDelay() == m_RemovalEntryDelay &&
+            m_Anchor->GetInitialActivationDelay() == m_RemovalAnchorDelay &&
+            m_RemovalPeerLink->GetInitialActivationDelay() ==
+                m_RemovalPeerLinkDelay &&
+            visible->Nodes().size() == m_RemovalNodesBefore &&
+            visible->Links().size() == m_RemovalLinksBefore;
+        if (!restored) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "removal-restore");
+            return;
+        }
+        const auto closed = m_RemovalPatch.Close();
+        if (!closed || closed.Value() != BML::Behavior::CloseState::Closed ||
+            m_RemovalPatch) {
+            Finish(false, "removal-close");
+            return;
+        }
+        m_Graph->Activate(FALSE, TRUE);
+        if (!m_RemovalPeerLink ||
+            m_Graph->RemoveSubBehaviorLink(m_RemovalPeerLink) !=
+                m_RemovalPeerLink) {
+            Finish(false, "removal-active-peer-link-remove");
+            return;
+        }
+        context->DestroyObject(m_RemovalPeerLink);
+        m_RemovalPeerLink = nullptr;
+        if (!m_RemovalPeer ||
+            m_Graph->RemoveSubBehavior(m_RemovalPeer) != m_RemovalPeer) {
+            Finish(false, "removal-active-peer-remove");
+            return;
+        }
+        context->DestroyObject(m_RemovalPeer);
+        m_RemovalPeer = nullptr;
+        m_RemovalPassed = true;
+        ApplyPatch();
     }
 
     bool RejectsMalformedPort(BML_ObjectRef graph) {
@@ -1696,6 +2100,7 @@ private:
             (void) m_Patch.Close();
             (void) m_IdentityPatch.Close();
             (void) m_ReplacementPatch.Close();
+            (void) m_RemovalPatch.Close();
             if (m_ReplacementOriginal)
                 (void) m_ReplacementOriginal->Close();
             if (m_Parked)
@@ -1733,6 +2138,14 @@ private:
             "Behavior node replacement: status=%s",
             m_ReplacementPassed ? "pass" : "fail");
         GetLogger()->Info(
+            "Behavior node removal: status=%s lifecycle=%s restore=%s pending=%s active_peer=%s isolation=%s",
+            m_RemovalPassed ? "pass" : "fail",
+            m_RemovalPassed ? "true" : "false",
+            m_RemovalPassed ? "true" : "false",
+            m_PendingRemovalRejected ? "true" : "false",
+            m_RemovalWithActivePeer ? "true" : "false",
+            m_RemovalIsolated ? "true" : "false");
+        GetLogger()->Info(
             "Behavior authored script: status=%s atomic=%s create=%s edit=%s operation=%s activity=%s close=%s",
             m_ScriptPassed ? "pass" : "fail",
             m_AtomicScriptPassed ? "true" : "false",
@@ -1754,6 +2167,7 @@ private:
     BML::Behavior::Patch m_Patch;
     BML::Behavior::Patch m_IdentityPatch;
     BML::Behavior::Patch m_ReplacementPatch;
+    BML::Behavior::Patch m_RemovalPatch;
     std::optional<BML::Behavior::Instance> m_Parked;
     std::optional<BML::Behavior::Instance> m_ReplacementOriginal;
     // What the Before callback recorded. The count returning to one proves the
@@ -1775,6 +2189,8 @@ private:
     CKBehavior *m_Graph = nullptr;
     CKBehavior *m_Source = nullptr;
     CKBehavior *m_Sink = nullptr;
+    CKBehavior *m_RemovalPeer = nullptr;
+    CKBehaviorLink *m_RemovalPeerLink = nullptr;
     CKBehaviorLink *m_Entry = nullptr;
     CKBehaviorLink *m_Anchor = nullptr;
     CKBehaviorLink *m_Exit = nullptr;
@@ -1783,6 +2199,12 @@ private:
     CKBehavior *m_ReplacementInstalledNode = nullptr;
     CKBehaviorLink *m_ReplacementEntry = nullptr;
     CKBehaviorLink *m_ReplacementExit = nullptr;
+    CKBehaviorIO *m_RemovalEntrySource = nullptr;
+    CKBehaviorIO *m_RemovalEntrySink = nullptr;
+    CKBehaviorIO *m_RemovalAnchorSource = nullptr;
+    CKBehaviorIO *m_RemovalAnchorSink = nullptr;
+    CKBehaviorIO *m_RemovalPeerLinkSource = nullptr;
+    CKBehaviorIO *m_RemovalPeerLinkSink = nullptr;
     CKBehaviorIO *m_PatchSink = nullptr;
     CK_ID m_AnchorId = 0;
     CK_ID m_AuthoredRootId = 0;
@@ -1791,6 +2213,17 @@ private:
     CK_ID m_ReplacementInstalledId = 0;
     CK_ID m_ReplacementEntryId = 0;
     CK_ID m_ReplacementExitId = 0;
+    CK_ID m_RemovalNodeId = 0;
+    CK_ID m_RemovalEntryId = 0;
+    CK_ID m_RemovalAnchorId = 0;
+    CK_ID m_RemovalPeerLinkId = 0;
+    int m_RemovalEntryDelay = 0;
+    int m_RemovalAnchorDelay = 0;
+    int m_RemovalPeerLinkDelay = 0;
+    std::uint32_t m_RemovalSourceRunsBefore = 0;
+    std::uint32_t m_RemovalPeerRunsBefore = 0;
+    std::size_t m_RemovalNodesBefore = 0;
+    std::size_t m_RemovalLinksBefore = 0;
     int m_AttachBlocks = 0;
     int m_AttachLinks = 0;
     bool m_ContinuationPassed = false;
@@ -1809,6 +2242,10 @@ private:
     bool m_PatchPassed = false;
     bool m_PatchClosePassed = false;
     bool m_ReplacementPassed = false;
+    bool m_RemovalPassed = false;
+    bool m_PendingRemovalRejected = false;
+    bool m_RemovalWithActivePeer = false;
+    bool m_RemovalIsolated = false;
     bool m_AtomicScriptPassed = false;
     bool m_ScriptDefined = false;
     bool m_OperationPassed = false;
