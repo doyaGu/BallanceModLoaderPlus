@@ -1,26 +1,34 @@
 # Behavior authoring
 
-`BML/Behavior.hpp` is the Native C++ interface for using and editing Virtools
-Behaviors. `BML/Behavior.h` is the underlying C ABI. The C++ interface follows
-the Virtools object model instead of exposing the wire representation:
+`BML/Behavior.hpp` is the C++ interface for Native Mods that use Virtools Behaviors. It can create and execute any registered Building Block and inspect or edit an existing Behavior graph. `BML/Behavior.h` exposes the same module as a C seam; C++ authors normally do not need its wire DTOs. This interface is still under pre-release development, currently supports Win32 Native C++ Mods only, and has not frozen source compatibility.
+
+## 1. Object model
 
 ```text
-Prototype -> configured Block -> Call / Task / Instance -> Frames
+Prototype -> Block -> Call / Task / Instance -> Frames
+                         |
+                         +--------------------> live CKBehavior
+
+existing CKBehavior graph -> Graph snapshot -> Edit -> Patch / Plan
 ```
 
-- A `Prototype` identifies one registered Building Block implementation.
-- A `Block` is a copyable configuration. It has no `CKBehavior` yet.
-- A `Call`, `Task`, or `Instance` owns one live `CKBehavior`.
-- `Frames` owns the results copied after native executions.
-- A `Node` is a Behavior that already exists in a graph snapshot.
+| Object | Meaning |
+| --- | --- |
+| `Prototype` | One registered BB provider, identified by GUID and provider generation |
+| `Block` | A copyable BB configuration; it does not own a `CKBehavior` yet |
+| `Call` / `Task` / `Instance` | Each owns one real `CKBehavior`; only execution ownership differs |
+| `Frames` | Copied control-flow results and optional Pout values from native Execute |
+| `Graph` | An immutable snapshot of a Behavior graph |
+| `Edit` | A symbolic graph transformation that has not been installed |
+| `Patch` | An Edit installed on one exact graph snapshot |
+| `Plan` | An Edit reconciled against selected scripts across worlds |
 
-## Open a Session
+## 2. Open a Session
 
-Open a Session during Mod setup. The Loader verifies the calling DLL and binds
-the Session to that Mod generation. An optional owner id can confirm the
-identity; it cannot impersonate another Mod.
+Open a `Session` during Mod initialization:
 
 ```cpp
+#include <BML/Behavior.hpp>
 using namespace BML::Behavior;
 
 auto opened = Session::Open();
@@ -32,17 +40,31 @@ if (!opened) {
 m_Behavior = std::move(opened).Value();
 ```
 
-Objects created through a Session retain the native Session they need. Moving
-or closing the original `Session` value does not invalidate a live Block, run,
-Watch, Patch, or Plan. The final owner closes the native Session.
+The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.
 
-Sessions survive world reset. Their runs and world-bound graph objects do not.
-All objects become stale when the owning Mod generation retires.
+Objects created through a Session retain their own Session lease. Moving or closing the original `Session` value does not immediately invalidate a live Block, run, Watch, Patch, or Plan.
 
-## Configure a Block
+### Find a Prototype
 
-`Session::Use` returns a `Block` directly. Configuration methods mutate that
-value and return it for chaining:
+Use a known `CKGUID` directly, or query the catalog when the GUID is unknown or the current provider identity must be pinned:
+
+```cpp
+PrototypeQuery query;
+query.Name = "Physicalize";
+
+auto found = m_Behavior.Prototypes(query);
+if (!found || found->size() != 1)
+    return;
+
+Prototype prototype = found->front().Ref;
+auto declared = m_Behavior.Layout(prototype);
+```
+
+An empty `PrototypeQuery` returns every discoverable registration. `Session::Layout(prototype)` reads the declared Layout without creating a native Instance or sending lifecycle callbacks.
+
+## 3. Configure any Building Block
+
+`Session::Use` creates a `Block` from a Prototype:
 
 ```cpp
 auto block = m_Behavior.Use(prototype)
@@ -52,50 +74,26 @@ auto block = m_Behavior.Use(prototype)
     .Pins({{"Strength", 12.0f}})
     .Locals({{"Accumulator", 0.0f}})
     .Frames(Signals(64).Pouts());
-
-auto checked = block.Validate();       // optional declared-layout check
-auto call = block.Call("Run");         // native admission is always checked here
 ```
 
-Each `Settings({...})` call is one Setting stage. Virtools sends
-`SETTINGSEDITED` after a stage, and a Building Block may rebuild its layout in
-that callback. The next stage is therefore resolved against the new layout.
-Pins and Locals are applied after all Setting stages.
+Each `Settings({...})` call is one Setting stage. Runtime sends `SETTINGSEDITED` after a stage; the BB may rebuild its interface in that callback, so the next stage is resolved against the new live Layout. Pins and Locals are applied after all Setting stages.
 
-`Block` uses copy-on-write. Copies share their configuration and compiled wire
-form until one copy is changed. `Target`, `Settings`, `Pins`, `Locals`, and
-`Frames` invalidate only the changed copy's cache. `Validate()` checks what the
-registered Prototype declares without creating a `CKBehavior`: the Target and
-the selectors and types that exist in the initial declared layout. It returns
-`Unavailable` when the provider cannot supply that layout. It also rejects an
-explicit Target when the Prototype is not targetable. Slots created by a
-Setting callback, later Setting stages, Pins, and Locals are necessarily
-resolved by the native lifecycle when a run is opened. Opening a run performs
-all admission checks even when `Validate()` was not called. The first
-successful declared check or run admission that can identify the provider
-fixes its generation; replacing that provider then makes the old Block stale
-instead of silently changing its native implementation.
-`RunInfo::PrototypeRef` reports that identity when it is available; a zero
-generation means the Loader cannot track this provider. If Virtools
-declaration retirement cannot be observed, discovery and `Validate()` are
-unavailable, immediate runs remain usable with generation zero, and a pinned
-Block or durable Edit is rejected rather than trusted across provider reload.
+Targets are explicit: `TargetOwner()`, `Target(type, object)`, or `NullTarget(type)`. Slot selectors are explicit too: `At(index)`, `Named(name, occurrence)`, or `Unique(name)`. A string overload means `Unique(name)` and never silently selects the first duplicate.
 
-Selectors are explicit: use `At(index)`, `Named(name, occurrence)`, or
-`Unique(name)`. A unique selector fails if the name occurs more than once.
+`Block::Validate()` is an optional declared-Layout check and does not create a `CKBehavior`. It can check only the Target, selectors, and types present in the Prototype's initial declaration. Slots created by Setting callbacks are checked during real run admission. Admission performs the complete native checks even when `Validate()` was not called.
 
-## Choose who drives Execute
+The first validation or admission that can identify a provider pins its generation. If another provider later registers the same GUID, the old Block becomes stale instead of changing implementation. When provider retirement cannot be tracked, immediate runs may use generation zero, but such a Block cannot enter a durable cross-world Edit.
 
-`Call`, `Task`, and `Instance` are separate move-only types. Each owns exactly
-one native Behavior; they differ only in how later native executions happen.
+## 4. Choose who owns Execute
 
-- `Call` executes once. If it reports native continuation, move it into
-  `Continue()` to let the Loader manage that same Instance.
-- `Start` executes once and returns a `Task`; the Loader advances its native
-  continuation on later game frames.
-- `Spawn` creates an idle `Instance`; the Mod drives it with `Pulse`.
-- `SpawnIn(graph)` creates the same driven Instance as an unconnected child of
-  a live graph. Closing it removes the node again.
+The three run types own the same native kind of object:
+
+| Operation | First Execute | Later Execute |
+| --- | --- | --- |
+| `Call(input)` | Immediately, once | Only after moving the Call into `Continue()` |
+| `Start(input)` | Immediately, once | Loader advances native continuation per game frame |
+| `Spawn()` | None | The Mod drives it with `Pulse(input)` |
+| `SpawnIn(graph)` | None | Like Spawn, but parked as an unconnected graph node |
 
 ```cpp
 auto once = block.Call("Run");
@@ -107,35 +105,32 @@ if (instance)
     instance->Pulse("Reset");
 ```
 
-An optional policy passed to `Call`, `Start`, `Spawn`, or `SpawnIn` overrides
-the Block's Frame policy for that run only.
+A Frame policy passed here overrides the Block default for this run only. `Call::Continue()` keeps the same native Instance; it does not create or reactivate another one.
 
-One Instance executes at most once in one game frame. A same-frame or reentrant
-Pulse is queued. Repeated admissions of the same logical In coalesce; distinct
-Ins keep first-admission order. `Ready` means there is no native continuation
-and no queued In. It does not mean that the Building Block has released state
-held in Locals or in a manager.
+An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. `Ready` means no native continuation and no queued In. It does not mean the BB released Local or manager state.
 
-All three run types provide `Info`, `Take`, `Layout`, `Inspect`, `Set`, `Bind`,
-`Settings`, and `Close`. Only `Call` provides `Continue`; only `Task` and
-`Instance` provide `Pulse`. Live `Slot` values carry a layout generation and
-fail after a lifecycle callback boundary, or after Execute actually changes the
-native interface. A stable Execute preserves existing Slot and Port values.
+All run types provide `Info()`, `Take()`, `Layout()`, `Inspect()`, `Set()`, `Bind()`, `Settings()`, and `Close()`. Only `Call` provides `Continue()`; `Task` and `Instance` provide `Pulse()`.
 
-## Take Frames
+## 5. Read Frames
 
-Every native Execute forms one immutable Frame before its active Outs are
-cleared. It records sequence, game frame, native return code, continuation,
-active Outs, and diagnostics. Pout capture is an independent, explicit policy:
-use `.Pouts()` on `Signals`, `EachFrame`, `Latest`, or `Ignore` when the retained
-Frames must also own Pout values. Without it, Runtime does not read Pouts.
-Object Pouts contain an `ObjectRef` issued while the object was live; reading
-them later never touches the original parameter or CK object.
+Every native Execute creates one immutable Frame before Runtime clears that execution's active Outs. It records sequence, game frame, native result, continuation, active Outs, and diagnostics.
+
+Frame retention and Pout capture are independent:
+
+| Policy | Retained Frames |
+| --- | --- |
+| `Signals(n)` | First, signalled, failure, and non-continuing Frames |
+| `EachFrame(n)` | Every Execute |
+| `Latest()` | Latest continuing, failure, and non-continuing Frames |
+| `Ignore()` | No ordinary Frames; failure and non-continuing Frames remain visible |
+
+Runtime reads Pouts only when the policy includes `.Pouts()`:
 
 ```cpp
+auto task = block.Start("Run", Signals(64).Pouts());
+
 Frames frames;
 frames.Reserve(16, 4096);
-
 if (auto taken = task->Take(frames)) {
     for (Frame frame : frames) {
         if (frame.HasOut("Done")) {
@@ -147,77 +142,55 @@ if (auto taken = task->Take(frames)) {
 }
 ```
 
-`Take()` is the convenient allocating form. `Take(Frames&)` reuses the
-existing header and payload capacity; when it is sufficient, the operation
-performs one C call and allocates no record or string objects. A `Frame`, `Out`,
-or `Pout` is a lightweight view into its owning `Frames`. Any modification of
-that `Frames` invalidates all such views. The complete wire batch is validated
-before any public view can be produced.
+`Take()` allocates as needed. `Take(Frames&)` reuses existing header and payload buffers; with sufficient capacity it makes one C call and allocates no record or string objects. `Frame`, `Out`, and `Pout` are read-only views into their owning `Frames` and become invalid after that `Frames` is modified.
 
-Frame policies are:
+An object Pout receives an `ObjectRef` while the object is live. Later Frame reads never touch the original CK parameter or object. If any Pout cannot be read or encoded, Runtime discards that incomplete Pout batch but preserves the same Frame's active Outs and diagnostic.
 
-- `Signals(n)`: first Execute, signalled Executes, failures, and terminal Frame.
-- `EachFrame(n)`: every Execute.
-- `Latest()`: the latest continuing, failure, and terminal Frames when distinct.
-- `Ignore()`: no ordinary Frames, but failures and terminal state remain visible.
+A Frame without continuation does not mean its run handle has closed: a `Ready` Instance can still accept another Pulse. Admission stops only on failure, explicit close, or queue overflow.
 
-The four policies decide which Frames are retained; `.Pouts()` decides what
-parameter payload those retained Frames capture. These choices are orthogonal.
+A bounded store does not discard an old Frame to admit a new one. It stops the run and reports `FrameQueueFull` in a separate failure slot. Taking Frames releases ordinary queue capacity.
 
-A bounded store does not discard an older Frame to admit a newer one. It stops
-the run and records `FrameQueueFull` in the terminal slot. Taking Frames frees
-regular capacity.
+## 6. Use the live Layout
 
-## Read a graph
-
-`Session::Inspect` and a run's `Inspect` return immutable graph snapshots.
-One shared snapshot allocation owns each Node, Port, and Link record exactly
-once; `Graph::Root()`, `Nodes()`, `Links()`, `Find`, `FindAll`, and a Node's port
-accessors return lightweight views into it. Every Node directly names its `In`,
-`Out`, `Pin`, `Pout`, `Setting`, `Local`, and `Target` ports.
+A run's `Layout()` describes its configured native interface. A `Slot` carries the Instance identity and layout generation and can be passed directly to `Set()` or `Bind()`:
 
 ```cpp
-auto snapshot = m_Behavior.Inspect(script);
-auto counter = snapshot->Find("Counter_Active");
-if (counter) {
-    auto value = snapshot->Read(counter->Pout("Count"));
+auto layout = instance->Layout();
+if (layout) {
+    if (auto strength = layout->Find(SlotKind::Pin, "Strength"))
+        instance->Set(*strength, 20.0f);
 }
 ```
 
-`Logical()` rereads the author-visible graph; `Live()` rereads the physical CK
-graph. Logical inspection keeps explicit Blocks and Links but hides the exact
-Hook Blocks and continuation Links owned by Tap/Before/After and restores a
-spliced anchor's logical endpoints. A foreign change to claimed infrastructure
-is reported as `GraphChanged` rather than guessed around.
+A lifecycle callback boundary invalidates old Slots because the provider may rebuild a same-shaped interface. Ordinary Execute advances the layout generation only when Target, In/Out, Pin/Pout, Setting, or Local identity actually changes. A stale Slot or Port returns `LayoutChanged` instead of retargeting an old ordinal.
 
-Node names are not identities. `FindAll` returns all matches; `Find` requires
-exactly one. Parameter reads follow stored, direct, and shared sources without
-evaluating a Parameter Operation.
+`Settings({...})` applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible.
 
-The string overloads are unique-name selectors: `node.Pout("Count")` returns an
-empty `Port` immediately when the name is missing or ambiguous. Use
-`Named("Count", n)` for a specific name occurrence, or `At(n)` for an exact
-index in this snapshot. A Port carries its Node's layout generation; reading or
-binding it after the live layout changes returns `LayoutChanged` instead of
-retargeting the same ordinal. A Layout identity change also changes the Graph
-fingerprint, so an old snapshot cannot be applied after a same-shaped interface
-was rebuilt. Execution activity alone is not a layout change.
+## 7. Inspect a graph
 
-Watches sample a graph, layout, or value once per game frame:
+`Session::Inspect` and a run's `Inspect` return immutable `Graph` snapshots:
 
 ```cpp
-auto watch = snapshot->Watch(GraphChanged{}, [](const Change &change) {
-    OnGraphChanged(change);
-});
+auto snapshot = m_Behavior.Inspect(script);
+if (!snapshot)
+    return;
+
+auto counter = snapshot->Find("Counter_Active");
+if (counter)
+    auto value = snapshot->Read(counter->Pout("Count"));
 ```
 
-Use `Info()` to read Watch state. Observation or callback failure leaves it in
-`Failed` with its first `Status` and stops later callbacks.
+`Graph::Find` requires exactly one matching Node; `FindAll` returns all matches. Node, Port, and Link are lightweight views into one shared snapshot allocation. A Port retains its Node's layout generation, so it cannot be used against a later incompatible Layout.
 
-## Describe one symbolic Edit
+`Logical()` rereads the author-visible graph; `Live()` rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. If foreign code changes a claimed after-image, Runtime reports `GraphChanged` instead of guessing by name or shape.
 
-`Edit` is the sole symbolic graph transformation. The same Edit can be applied
-to one exact snapshot or retained as a cross-world Plan:
+`Graph::Read` follows stored, direct, and shared sources without evaluating a Parameter Operation. Operation values are reported as indeterminate.
+
+Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first `Status`, moves the Watch to `Failed`, and stops later callbacks.
+
+## 8. Edit a graph
+
+`Edit` is the single symbolic graph transformation:
 
 ```cpp
 Edit edit;
@@ -230,44 +203,28 @@ auto plan = m_Behavior.Plan(
     "extra-life", Scripts::One("Gameplay_Events"), edit);
 ```
 
-`Edit::Node`, `Edit::Port`, `Edit::Link`, and `Edit::Path` are symbolic values;
-they are intentionally different from snapshot `Node`, `Port`, and `Link`.
-`Use(snapshotNode)` and `Use(snapshotLink)` import exact live identities for a
-one-graph Patch. A Plan rejects those world-bound identities because it must
-resolve against new scripts in later worlds.
+`Edit::Node`, `Edit::Port`, `Edit::Link`, and `Edit::Path` are authoring symbols, not graph snapshot views. Symbols belong to the Edit that created them. `Use(snapshotNode)` and `Use(snapshotLink)` import exact world-bound identities and are valid only for a Patch. A Plan must resolve again in future worlds, so it rejects those identities and non-null ObjectRefs.
 
-Every symbolic value belongs to the `Edit` that created it. Mixing values from
-different Edits is rejected before a program is submitted, and a `Patch` only
-resolves symbolic Nodes from its source Edit.
+`Add(block)` copies the Block configuration and pinned provider generation. Later changes to the source Block do not affect the Edit. Frame policy is not part of graph authoring.
 
-`Add(block)` copies the Block's native configuration and selected Prototype
-provider generation at that call. Later changes to the original Block do not
-alter the Edit, and a later installation cannot silently select a replacement
-provider. If provider identity is unavailable, `Add` leaves the Edit
-unavailable instead of storing an unpinned Prototype. Its Frame policy is not
-part of graph authoring. Typed null is a
-durable literal; a non-null object reference remains world-bound and is rejected
-by `Plan`. `Graph::Apply` verifies the snapshot fingerprint before mutation and
-returns a one-use `Patch`. `Session::Plan` accepts
-`Scripts::Each(name)` or `Scripts::One(name)` and returns a `Plan` reconciled as
-matching scripts appear, reset, or disappear.
+Common transformations are:
 
-Patch and Plan use `Info()` and `Close()`. Closing performs a checked inverse;
-a foreign change yields `RevertConflict` and keeps the handle readable so the
-conflict can be repaired and closure retried.
+- `Flow` / `FlowCycle` for Behavior Links;
+- `Bind` / `Share` / `Push` for parameter relations;
+- `Tap` / `Before` / `After` for callbacks;
+- `Splice` for routing an existing Link through a Block;
+- `Redirect` for temporarily changing a Link destination;
+- `AppendIn/Out/Pin/Pout/Local` for dynamic interfaces.
 
-Hooks, splices, redirects, dynamic ports, data relations, and ordering are
-methods on `Edit`. Hook callbacks run on the game thread. Exceptions are caught
-before crossing the DLL seam, callback admission closes immediately, and graph
-restoration plus native teardown occur at a Behavior safe point without waiting
-for the callback that requested closure.
+`Graph::Apply` verifies one exact fingerprint and returns a `Patch`. `Session::Plan` uses `Scripts::Each(name)` or `Scripts::One(name)` and reconciles after script creation, deletion, and world reset.
 
-## Named retail Building Blocks
+Patch and Plan expose `Info()` and `Close()`. Close compares the Links, sources, and graph after-images still owned by that installation. A foreign change produces `RevertConflict`; the handle remains readable and Close can be retried after the conflict is repaired.
 
-`BML/Behavior/Blocks.hpp` collects header-only adapters for the retail Building
-Blocks used by BML+: Object Load, Physicalize, Physics Force, Physics Impulse,
-Physics Wake Up, Send Message, and 2D Text. Each individual header defines an
-`Options` value and `Make(Session, Options) -> Result<Block>`.
+Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
+
+## 9. Named retail BBs
+
+`BML/Behavior/Blocks.hpp` collects header-only adapters for known retail BBs, including Object Load, Physicalize, Physics Force, Physics Impulse, Physics Wake Up, Send Message, and 2D Text. Each header contains only that BB's Prototype, Options, and slot knowledge:
 
 ```cpp
 #include <BML/Behavior/Blocks/Text2D.hpp>
@@ -277,23 +234,22 @@ options.Text = "score";
 options.FontIndex = 2;
 
 auto made = Blocks::Text2D::Make(m_Behavior, options);
-if (made) {
+if (made)
     auto text = std::move(made).Value().SpawnIn(graph);
-}
 ```
 
-The adapters contain only the Prototype and parameter knowledge of that
-specific BB. Creation, lifecycle, execution, and teardown still go through the
-same Behavior Runtime as an arbitrary `Session::Use` Block. New Native Mod code
-should not use the legacy ExecuteBB API.
+These adapters return ordinary Blocks and do not bypass lifecycle, execution, or teardown. New Native Mod code should not use the legacy ExecuteBB interface.
 
-## Lifetime summary
+## 10. Lifetime, errors, and performance
 
-| Event | Session | Run | Watch/Patch | Plan |
+| Event | Session | Run | Watch / Patch | Plan |
 | --- | --- | --- | --- | --- |
-| Explicit Close | Last owner closes native Session | Admission closes; teardown may finish at a safe point | Remains readable while closure or conflict is pending | Remains readable while installations retire |
-| World reset | Survives | Closed | Closed with the old graph | Survives and reconciles in the next world |
-| Mod unload/reload | Owner generation retires | Closed before DLL unload | Callback and graph state retire before DLL unload | Retired before callback code unloads |
+| Explicit Close | Last lease closes native Session | Admission stops; teardown finishes at a safe point | Readable during closure or conflict | Readable while installations retire |
+| World reset | Survives | Closes | Closes with the old graph | Survives and reconciles in the next world |
+| Mod unload/reload | Owner generation retires | Closes before DLL unload | Callback and graph state retire first | Retires before callback code unloads |
 
-Except for Close requests, Behavior operations require the game thread. Never
-retain a callback's borrowed pointers or C descriptors after that call returns.
+Except for Close, Behavior operations require the game thread. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
+
+Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `Take(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, and Frame values are views rather than copied records.
+
+The current public interface does not include Transform expression lowering, general Node replacement, an AngelScript Behavior projection, or third-party parameter-format registration. Unsupported Virtools parameter types fail explicitly; they are never guessed to be arbitrary bytes.
