@@ -72,10 +72,10 @@ CKObjectDeclaration *Declaration() {
 
 } // namespace
 
-Spec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount) {
-    Spec spec(HOOKS_HOOKBLOCK_GUID);
+BlockSpec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount) {
+    BlockSpec spec(HOOKS_HOOKBLOCK_GUID);
     if (!binding || inputCount < 0 || outputCount < 0)
-        return Spec();
+        return BlockSpec();
     CKBOOL autoActivate = TRUE;
     Binding *nativeBinding = binding.get();
     void *argument = binding->Argument();
@@ -93,7 +93,7 @@ Spec Make(std::shared_ptr<Binding> binding, int inputCount, int outputCount) {
     return spec;
 }
 
-Spec Make(Callback callback, void *argument, int inputCount, int outputCount) {
+BlockSpec Make(Callback callback, void *argument, int inputCount, int outputCount) {
     return Make(Bind(callback, argument), inputCount, outputCount);
 }
 

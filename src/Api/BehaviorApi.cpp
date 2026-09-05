@@ -19,6 +19,7 @@
 #include "BML/TypeConvert.h"
 #include "Behavior/HookBlock.h"
 #include "Behavior/Patches.h"
+#include "Behavior/Script.h"
 #include "Behavior/Sessions.h"
 #include "Behavior/FrameStore.h"
 #include "Loader/ModContext.h"
@@ -43,7 +44,7 @@ using BML::Behavior::RunResult;
 using BML::Behavior::RunState;
 using BML::Behavior::Slot;
 using BML::Behavior::SlotKind;
-using BML::Behavior::Spec;
+using BML::Behavior::BlockSpec;
 using BML::Behavior::Status;
 using BML::Behavior::Value;
 using BML::Behavior::Layout;
@@ -70,15 +71,20 @@ using BML::Behavior::PatchId;
 using BML::Behavior::PatchInfo;
 using BML::Behavior::PatchKey;
 using BML::Behavior::PatchState;
+using BML::Behavior::ParameterOperation;
 using BML::Behavior::PathRef;
 using BML::Behavior::PlanCallbackState;
 using BML::Behavior::PlanId;
 using BML::Behavior::PlanInfo;
 using BML::Behavior::PlanState;
 using BML::Behavior::Port;
-using BML::Behavior::Script;
+using BML::Behavior::ScriptSelection;
 using BML::Behavior::SessionOwner;
 using BML::Behavior::TargetSet;
+using BML::Behavior::Internal::ScriptResult;
+using BML::Behavior::Internal::ScriptId;
+using BML::Behavior::Internal::ScriptInfo;
+using BML::Behavior::Internal::ScriptState;
 namespace HookBlock = BML::Behavior::HookBlock;
 namespace Parameter = BML::Behavior::Parameter;
 
@@ -483,7 +489,7 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
 }
 
 bool ReadBindings(const BML_BehaviorBinding *bindings, std::uint32_t count,
-                  SlotKind kind, ModContext &context, Spec &block,
+                  SlotKind kind, ModContext &context, BlockSpec &block,
                   Status &status) {
     if (count && !bindings) {
         status = InvalidValue("A Behavior binding array is missing.");
@@ -512,10 +518,9 @@ bool ReadBindings(const BML_BehaviorBinding *bindings, std::uint32_t count,
 }
 
 bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
-               Spec &to, Status &status) {
+               BlockSpec &to, Status &status) {
     if (from.StructSize < sizeof(from) ||
-        from.Target.StructSize < sizeof(from.Target) ||
-        from.Frames.StructSize < sizeof(from.Frames)) {
+        from.Target.StructSize < sizeof(from.Target)) {
         status = InvalidValue("The Behavior Block has an unsupported StructSize.");
         return false;
     }
@@ -526,7 +531,7 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
         return false;
     }
 
-    to = Spec(Guid(from.Prototype));
+    to = BlockSpec(Guid(from.Prototype));
     to.PrototypeGeneration(from.PrototypeGeneration);
     switch (from.Target.Kind) {
     case BML_BEHAVIOR_TARGET_OWNER:
@@ -558,7 +563,7 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
             return false;
         }
         if (stage)
-            to.RefreshLayout();
+            to.NextSettingStage();
         if (!ReadBindings(settings.Settings, settings.SettingCount,
                           SlotKind::Setting, context, to, status))
             return false;
@@ -569,25 +574,34 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
                       context, to, status))
         return false;
 
-    if (from.Frames.Flags & ~BML_BEHAVIOR_FRAME_POLICY_POUTS) {
+    return true;
+}
+
+bool ReadFrames(const BML_BehaviorFramePolicy &from,
+                FrameRetention &retention, Status &status) {
+    if (from.StructSize < sizeof(from)) {
+        status = InvalidValue(
+            "The Behavior Frame policy has an unsupported StructSize.");
+        return false;
+    }
+    if (from.Flags & ~BML_BEHAVIOR_FRAME_POLICY_POUTS) {
         status = InvalidValue("The Behavior Frame policy has unknown flags.");
         return false;
     }
-    FrameRetention retention;
-    switch (from.Frames.Kind) {
+    switch (from.Kind) {
     case BML_BEHAVIOR_FRAMES_SIGNALS:
-        if (!from.Frames.Limit) {
+        if (!from.Limit) {
             status = InvalidValue("Signals(n) requires a nonzero RunFrame limit.");
             return false;
         }
-        retention = FrameRetention::Signals(from.Frames.Limit);
+        retention = FrameRetention::Signals(from.Limit);
         break;
     case BML_BEHAVIOR_FRAMES_EACH_FRAME:
-        if (!from.Frames.Limit) {
+        if (!from.Limit) {
             status = InvalidValue("EachFrame(n) requires a nonzero RunFrame limit.");
             return false;
         }
-        retention = FrameRetention::EachFrame(from.Frames.Limit);
+        retention = FrameRetention::EachFrame(from.Limit);
         break;
     case BML_BEHAVIOR_FRAMES_LATEST:
         retention = FrameRetention::Latest();
@@ -599,9 +613,8 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
         status = InvalidValue("The Behavior RunFrame policy is unknown.");
         return false;
     }
-    if (from.Frames.Flags & BML_BEHAVIOR_FRAME_POLICY_POUTS)
+    if (from.Flags & BML_BEHAVIOR_FRAME_POLICY_POUTS)
         retention = retention.Pouts();
-    to.Frames(retention);
     return true;
 }
 
@@ -639,6 +652,38 @@ void WriteRunInfo(BML_BehaviorRunInfo *out, const RunInfo &info) noexcept {
     WriteStatus(&out->Status, info.LastStatus);
 }
 
+std::uint32_t PublicScriptState(ScriptState state) noexcept {
+    switch (state) {
+    case ScriptState::Ready: return BML_BEHAVIOR_SCRIPT_READY;
+    case ScriptState::Closing: return BML_BEHAVIOR_SCRIPT_CLOSING;
+    case ScriptState::Failed: return BML_BEHAVIOR_SCRIPT_FAILED;
+    }
+    return BML_BEHAVIOR_SCRIPT_FAILED;
+}
+
+void WriteScriptInfo(BML_BehaviorScriptInfo *out,
+                     const ScriptInfo &info) noexcept {
+    if (!out)
+        return;
+    *out = {};
+    out->StructSize = sizeof(*out);
+    out->State = PublicScriptState(info.State);
+    out->Active = info.Active ? 1u : 0u;
+    out->RequestedActive = info.RequestedActive ? 1u : 0u;
+    out->Root = {info.Identity.Root.Reference.Domain,
+                 info.Identity.Root.Reference.Slot,
+                 info.Identity.Root.Reference.Generation};
+    out->Owner = {info.Identity.Owner.Reference.Domain,
+                  info.Identity.Owner.Reference.Slot,
+                  info.Identity.Owner.Reference.Generation};
+    out->Scene = {info.Identity.Scene.Reference.Domain,
+                  info.Identity.Scene.Reference.Slot,
+                  info.Identity.Scene.Reference.Generation};
+    out->Priority = info.Priority;
+    out->Status.StructSize = sizeof(out->Status);
+    WriteStatus(&out->Status, info.LastStatus);
+}
+
 bool ValidOutputs(BML_BehaviorRunInfo *info,
                   BML_BehaviorStatus *status) noexcept {
     const bool statusValid = PrepareStatus(status);
@@ -657,6 +702,10 @@ std::uintptr_t WatchId(BML_BehaviorWatch watch) noexcept {
     return reinterpret_cast<std::uintptr_t>(watch);
 }
 
+ScriptId ScriptIdOf(BML_BehaviorScript script) noexcept {
+    return static_cast<ScriptId>(reinterpret_cast<std::uintptr_t>(script));
+}
+
 BML_BehaviorSession SessionHandle(std::uintptr_t id) noexcept {
     return reinterpret_cast<BML_BehaviorSession>(id);
 }
@@ -667,6 +716,11 @@ BML_BehaviorRun RunHandle(std::uintptr_t id) noexcept {
 
 BML_BehaviorWatch WatchHandle(std::uintptr_t id) noexcept {
     return reinterpret_cast<BML_BehaviorWatch>(id);
+}
+
+BML_BehaviorScript ScriptHandle(ScriptId id) noexcept {
+    return reinterpret_cast<BML_BehaviorScript>(
+        static_cast<std::uintptr_t>(id));
 }
 
 CKBeObject *ReadOwner(BML_ObjectRef owner, ModContext &context,
@@ -772,7 +826,9 @@ int BML_BEHAVIOR_CALL CloseSession(BML_BehaviorSession session) {
         ModContext *context = BML_GetModContext();
         if (!context)
             return BML_ERROR_FROZEN;
-        context->BehaviorSessions().CloseSession(SessionId(session));
+        const std::uintptr_t id = SessionId(session);
+        context->BehaviorScripts().CloseSession(id);
+        context->BehaviorSessions().CloseSession(id);
         return BML_OK;
     });
 }
@@ -782,11 +838,12 @@ enum class OpenKind { Call, Start, Spawn };
 int OpenRunEntry(OpenKind kind, BML_BehaviorSession session,
                  BML_ObjectRef ownerReference,
                  const BML_BehaviorBlock *block,
+                 const BML_BehaviorFramePolicy *frames,
                  const BML_BehaviorSelector *input,
                  BML_BehaviorRun *outRun,
                  BML_BehaviorRunInfo *info,
                  BML_BehaviorStatus *status) {
-    if (!ValidOutputs(info, status) || !session || !block || !outRun ||
+    if (!ValidOutputs(info, status) || !session || !block || !frames || !outRun ||
         (kind != OpenKind::Spawn && !input))
         return BML_ERROR_INVALID_PARAMETER;
     *outRun = nullptr;
@@ -797,8 +854,13 @@ int OpenRunEntry(OpenKind kind, BML_BehaviorSession session,
         return BML_ERROR_WRONG_THREAD;
 
     Status readStatus;
-    Spec definition;
-    if (!ReadBlock(*block, *context, definition, readStatus)) {
+    BlockSpec spec;
+    if (!ReadBlock(*block, *context, spec, readStatus)) {
+        WriteStatus(status, readStatus);
+        return BML_ERROR_INVALID_PARAMETER;
+    }
+    FrameRetention retention;
+    if (!ReadFrames(*frames, retention, readStatus)) {
         WriteStatus(status, readStatus);
         return BML_ERROR_INVALID_PARAMETER;
     }
@@ -816,44 +878,47 @@ int OpenRunEntry(OpenKind kind, BML_BehaviorSession session,
 
     Sessions &sessions = context->BehaviorSessions();
     const auto opened = kind == OpenKind::Call
-        ? sessions.Call(SessionId(session), owner, definition, in)
+        ? sessions.Call(SessionId(session), owner, spec, in, retention)
         : kind == OpenKind::Start
-            ? sessions.Start(SessionId(session), owner, definition, in)
-            : sessions.Spawn(SessionId(session), owner, definition);
+            ? sessions.Start(SessionId(session), owner, spec, in, retention)
+            : sessions.Spawn(SessionId(session), owner, spec, retention);
     return OpenRunResult(opened, outRun, info, status);
 }
 
 int BML_BEHAVIOR_CALL Call(BML_BehaviorSession session, BML_ObjectRef owner,
                            const BML_BehaviorBlock *block,
+                           const BML_BehaviorFramePolicy *frames,
                            const BML_BehaviorSelector *input,
                            BML_BehaviorRun *outRun,
                            BML_BehaviorRunInfo *info,
                            BML_BehaviorStatus *status) {
     return Guard([&] {
-        return OpenRunEntry(OpenKind::Call, session, owner, block, input,
+        return OpenRunEntry(OpenKind::Call, session, owner, block, frames, input,
                             outRun, info, status);
     });
 }
 
 int BML_BEHAVIOR_CALL Start(BML_BehaviorSession session, BML_ObjectRef owner,
                             const BML_BehaviorBlock *block,
+                            const BML_BehaviorFramePolicy *frames,
                             const BML_BehaviorSelector *input,
                             BML_BehaviorRun *outRun,
                             BML_BehaviorRunInfo *info,
                             BML_BehaviorStatus *status) {
     return Guard([&] {
-        return OpenRunEntry(OpenKind::Start, session, owner, block, input,
+        return OpenRunEntry(OpenKind::Start, session, owner, block, frames, input,
                             outRun, info, status);
     });
 }
 
 int BML_BEHAVIOR_CALL Spawn(BML_BehaviorSession session, BML_ObjectRef owner,
                             const BML_BehaviorBlock *block,
+                            const BML_BehaviorFramePolicy *frames,
                             BML_BehaviorRun *outRun,
                             BML_BehaviorRunInfo *info,
                             BML_BehaviorStatus *status) {
     return Guard([&] {
-        return OpenRunEntry(OpenKind::Spawn, session, owner, block, nullptr,
+        return OpenRunEntry(OpenKind::Spawn, session, owner, block, frames, nullptr,
                             outRun, info, status);
     });
 }
@@ -861,11 +926,13 @@ int BML_BEHAVIOR_CALL Spawn(BML_BehaviorSession session, BML_ObjectRef owner,
 int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
                                   BML_ObjectRef graph,
                                   const BML_BehaviorBlock *block,
+                                  const BML_BehaviorFramePolicy *frames,
                                   BML_BehaviorRun *outRun,
                                   BML_BehaviorRunInfo *info,
                                   BML_BehaviorStatus *status) {
     return Guard([&] {
-        if (!ValidOutputs(info, status) || !session || !block || !outRun)
+        if (!ValidOutputs(info, status) || !session || !block || !frames ||
+            !outRun)
             return BML_ERROR_INVALID_PARAMETER;
         *outRun = nullptr;
         ModContext *context = BML_GetModContext();
@@ -875,8 +942,13 @@ int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
             return BML_ERROR_WRONG_THREAD;
 
         Status readStatus;
-        Spec definition;
-        if (!ReadBlock(*block, *context, definition, readStatus)) {
+        BlockSpec spec;
+        if (!ReadBlock(*block, *context, spec, readStatus)) {
+            WriteStatus(status, readStatus);
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        FrameRetention retention;
+        if (!ReadFrames(*frames, retention, readStatus)) {
             WriteStatus(status, readStatus);
             return BML_ERROR_INVALID_PARAMETER;
         }
@@ -887,7 +959,7 @@ int BML_BEHAVIOR_CALL AttachBlock(BML_BehaviorSession session,
         }
         return OpenRunResult(
             context->BehaviorSessions().Attach(
-                SessionId(session), parent, definition),
+                SessionId(session), parent, spec, retention),
             outRun, info, status);
     });
 }
@@ -1729,10 +1801,12 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
     graph.Root = {source.Root.Domain, source.Root.Slot, source.Root.Generation};
     graph.Generation = source.Generation;
     graph.Fingerprint = source.Fingerprint;
-    if (source.Nodes.size() > UINT32_MAX || source.Links.size() > UINT32_MAX)
+    if (source.Nodes.size() > UINT32_MAX || source.Links.size() > UINT32_MAX ||
+        source.Operations.size() > UINT32_MAX)
         return false;
     graph.NodeCount = static_cast<std::uint32_t>(source.Nodes.size());
     graph.LinkCount = static_cast<std::uint32_t>(source.Links.size());
+    graph.OperationCount = static_cast<std::uint32_t>(source.Operations.size());
     if (!source.Nodes.empty() &&
         !payload.Reserve<BML_BehaviorGraphNode>(
             source.Nodes.size(), graph.NodeOffset))
@@ -1740,6 +1814,10 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
     if (!source.Links.empty() &&
         !payload.Reserve<BML_BehaviorGraphLink>(
             source.Links.size(), graph.LinkOffset))
+        return false;
+    if (!source.Operations.empty() &&
+        !payload.Reserve<BML_BehaviorGraphOperation>(
+            source.Operations.size(), graph.OperationOffset))
         return false;
 
     for (std::size_t index = 0; index < source.Nodes.size(); ++index) {
@@ -1800,6 +1878,22 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
         record.RemainingDelay = link.RemainingDelay;
         record.Pending = PublicTruth(link.Pending);
         payload.Store(graph.LinkOffset, index, record);
+    }
+    for (std::size_t index = 0; index < source.Operations.size(); ++index) {
+        const auto &operation = source.Operations[index];
+        BML_BehaviorGraphOperation record{};
+        record.StructSize = sizeof(record);
+        record.Id = operation.Id;
+        record.Object = {operation.Object.Domain, operation.Object.Slot,
+                         operation.Object.Generation};
+        record.Owner = operation.Owner;
+        record.Function = Guid(operation.Function);
+        record.Result = Guid(operation.Result);
+        record.Input1 = Guid(operation.Input1);
+        record.Input2 = Guid(operation.Input2);
+        if (!payload.Text(operation.Name, record.Name))
+            return false;
+        payload.Store(graph.OperationOffset, index, record);
     }
     return true;
 }
@@ -2530,7 +2624,7 @@ int BML_BEHAVIOR_CALL Configure(
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
-        Spec settings;
+        BlockSpec settings;
         Status result;
         for (std::uint32_t index = 0; index < stageCount; ++index) {
             const BML_BehaviorSettingStage &stage = stages[index];
@@ -2541,7 +2635,7 @@ int BML_BEHAVIOR_CALL Configure(
                 return ResultCode(result);
             }
             if (index)
-                settings.RefreshLayout();
+                settings.NextSettingStage();
             if (!ReadBindings(stage.Settings, stage.SettingCount,
                               SlotKind::Setting, *context, settings,
                               result)) {
@@ -2605,6 +2699,7 @@ int InvokeHook(const CKBehaviorContext *native, void *argument) {
 
 enum class EditHandleKind {
     Node,
+    Operation,
     Link,
     Path,
     Port,
@@ -2612,10 +2707,8 @@ enum class EditHandleKind {
 
 struct EditHandle {
     EditHandleKind Kind = EditHandleKind::Node;
-    // Set for a Node this program creates. A Setting belongs to the creation of
-    // a Block, so only an added Node accepts one.
-    bool Added = false;
     Node NodeValue;
+    ParameterOperation OperationValue;
     Link LinkValue;
     PathRef PathValue;
     Port PortValue;
@@ -2656,6 +2749,8 @@ bool EditProgram::Defines(std::uint32_t kind) noexcept {
     case BML_BEHAVIOR_EDIT_APPEND_SLOT:
     case BML_BEHAVIOR_EDIT_USE_NODE:
     case BML_BEHAVIOR_EDIT_USE_LINK:
+    case BML_BEHAVIOR_EDIT_ADD_OPERATION:
+    case BML_BEHAVIOR_EDIT_REPLACE_BLOCK:
         return true;
     default:
         return false;
@@ -2695,8 +2790,6 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         allowedFlags = BML_BEHAVIOR_EDIT_HAS_DELAY;
     else if (step.Kind == BML_BEHAVIOR_EDIT_FLOW)
         allowedFlags = BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
-    else if (step.Kind == BML_BEHAVIOR_EDIT_SETTING)
-        allowedFlags = BML_BEHAVIOR_EDIT_SETTING_STAGE;
     if (step.Flags & ~allowedFlags)
         return InvalidValue("A Behavior edit step contains an unsupported flag.");
     if (Defines(step.Kind)) {
@@ -2778,21 +2871,62 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         break;
     }
     case BML_BEHAVIOR_EDIT_ADD_BLOCK: {
-        if (step.Prototype.StructSize < sizeof(step.Prototype)) {
-            return InvalidValue(
-                "An added Behavior Block has an unsupported Prototype reference.");
-        }
-        const CKGUID prototype = Guid(step.Prototype.Prototype);
-        if (!prototype.IsValid())
+        if (!step.Block)
+            return InvalidValue("An added Behavior Block is missing.");
+        BlockSpec block;
+        if (!ReadBlock(*step.Block, context, block, status))
+            return status;
+        if (!block.Prototype().IsValid())
             return InvalidValue("An added Behavior Block needs a Prototype.");
-        if (!step.Prototype.Generation) {
+        if (!block.PrototypeGeneration()) {
             return InvalidValue(
                 "An added Behavior Block needs a fixed Prototype provider generation.");
         }
         defined.Kind = EditHandleKind::Node;
-        defined.Added = true;
-        defined.NodeValue = edit.Add(
-            PrototypeRef{prototype, step.Prototype.Generation});
+        defined.NodeValue = edit.Add(std::move(block));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_REPLACE_BLOCK: {
+        const EditHandle *target = nullptr;
+        if (status = Use(step.Target, EditHandleKind::Node, target); !status)
+            return status;
+        if (!step.Block)
+            return InvalidValue("A replacement Behavior Block is missing.");
+        BlockSpec block;
+        if (!ReadBlock(*step.Block, context, block, status))
+            return status;
+        if (!block.Prototype().IsValid())
+            return InvalidValue("A replacement Behavior Block needs a Prototype.");
+        if (!block.PrototypeGeneration()) {
+            return InvalidValue(
+                "A replacement Behavior Block needs a fixed Prototype provider generation.");
+        }
+        defined.Kind = EditHandleKind::Node;
+        defined.NodeValue = edit.Replace(target->NodeValue, std::move(block));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_ADD_OPERATION: {
+        if (step.Operation.StructSize < sizeof(step.Operation)) {
+            return InvalidValue(
+                "A Behavior Parameter Operation has an unsupported StructSize.");
+        }
+        const CKGUID operation = Guid(step.Operation.Operation);
+        const CKGUID result = Guid(step.Operation.Result);
+        const CKGUID input1 = Guid(step.Operation.Input1);
+        const CKGUID input2 = Guid(step.Operation.Input2);
+        if (!operation.IsValid() || !result.IsValid() ||
+            result == CKPGUID_NONE) {
+            return InvalidValue(
+                "A Behavior Parameter Operation needs an operation GUID and result type.");
+        }
+        if (input2.IsValid() && input2 != CKPGUID_NONE &&
+            (!input1.IsValid() || input1 == CKPGUID_NONE)) {
+            return InvalidValue(
+                "A Behavior Parameter Operation cannot have a second input without its first input.");
+        }
+        defined.Kind = EditHandleKind::Operation;
+        defined.OperationValue = edit.AddOperation(
+            operation, result, input1, input2);
         break;
     }
     case BML_BEHAVIOR_EDIT_APPEND_SLOT: {
@@ -2857,33 +2991,6 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
                     "A symbolic Behavior edit cannot bind a live object."};
         }
         edit.Bind(sink, binding.Literal());
-        break;
-    }
-    case BML_BEHAVIOR_EDIT_SETTING: {
-        const EditHandle *owner = nullptr;
-        if (status = Use(step.Sink.Handle, EditHandleKind::Node, owner); !status)
-            return status;
-        if (!owner->Added) {
-            return InvalidValue(
-                "A Behavior Setting requires a Block this program adds.");
-        }
-        if (status = ReadPort(step.Sink, sink); !status)
-            return status;
-        if (sink.Selector.Kind != SlotKind::Setting)
-            return InvalidValue("A Behavior Setting step must name a Setting.");
-        Parameter::Binding binding;
-        if (!ReadValue(step.Value, context, binding, status))
-            return status;
-        if (binding.Kind() != Parameter::BindingKind::Value) {
-            return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
-                    CKBR_PARAMETERERROR,
-                    "A symbolic Behavior edit cannot bind a live object."};
-        }
-        status = edit.Setting(
-            owner->NodeValue, sink.Selector, binding.Literal(),
-            (step.Flags & BML_BEHAVIOR_EDIT_SETTING_STAGE) != 0);
-        if (!status)
-            return status;
         break;
     }
     case BML_BEHAVIOR_EDIT_BIND_PORT:
@@ -2999,12 +3106,24 @@ Status EditProgram::ReadPort(const BML_BehaviorPortRef &from, Port &out) const {
     if (!ReadSlotKind(from.Kind, kind))
         return InvalidValue("A Behavior port names an unknown slot kind.");
     Status status = Use(from.Handle, EditHandleKind::Node, handle);
-    if (!status)
-        return status;
+    if (!status) {
+        status = Use(from.Handle, EditHandleKind::Operation, handle);
+        if (!status)
+            return InvalidValue(
+                "A Behavior port owner is neither a Node nor a Parameter Operation.");
+        if (kind != SlotKind::InputParameter &&
+            kind != SlotKind::OutputParameter) {
+            return InvalidValue(
+                "A Parameter Operation exposes only Pin and Pout ports.");
+        }
+    }
     Slot slot;
     if (!ReadSelector(from.Slot, kind, Guid(from.Type), slot, status))
         return status;
-    out = Port{handle->NodeValue.Value, std::move(slot)};
+    out = Port{handle->Kind == EditHandleKind::Node
+                   ? handle->NodeValue.Value
+                   : handle->OperationValue.Value,
+               std::move(slot)};
     return {};
 }
 
@@ -3143,7 +3262,7 @@ int BML_BEHAVIOR_CALL SubmitPlan(
         PlanId id = 0;
         result = context->BehaviorPatches().Submit(
             context->BehaviorPlans(), owner,
-            Script{std::move(script), targets}, std::move(name),
+            ScriptSelection{std::move(script), targets}, std::move(name),
             std::move(edit), id);
         WriteStatus(status, result);
         if (!result)
@@ -3362,6 +3481,133 @@ int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession session,
     });
 }
 
+int BML_BEHAVIOR_CALL CreateScript(
+    BML_BehaviorSession session, const BML_BehaviorScriptSpec *spec,
+    BML_BehaviorScript *outScript, BML_BehaviorScriptInfo *info,
+    BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !HasStructSize(spec) ||
+            !outScript || (info && !HasStructSize(info)) ||
+            (spec->StepCount && !spec->Steps) || !spec->Owner.Domain)
+            return BML_ERROR_INVALID_PARAMETER;
+        *outScript = nullptr;
+        std::string name;
+        if (!ReadString(spec->Name, name))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        GraphEdit body;
+        EditProgram program;
+        result = program.Build(
+            spec->Steps, spec->StepCount, *context, body);
+        if (!result) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        CKBeObject *nativeOwner = ReadOwner(spec->Owner, *context, result);
+        if (!nativeOwner) {
+            WriteStatus(status, result);
+            return BML_ERROR_OBJECT_INVALID;
+        }
+        ScriptResult opened = context->BehaviorScripts().Create(
+            owner, SessionId(session), nativeOwner, std::move(name),
+            spec->Priority, std::move(body));
+        WriteStatus(status, opened.Result);
+        if (!opened)
+            return ResultCode(opened.Result);
+        *outScript = ScriptHandle(opened.Id);
+        WriteScriptInfo(info, opened.Info);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadScript(
+    BML_BehaviorSession session, BML_BehaviorScript script,
+    BML_BehaviorScriptInfo *info, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !script ||
+            !HasStructSize(info))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        ScriptInfo read;
+        result = context->BehaviorScripts().Read(
+            owner, ScriptIdOf(script), read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        WriteScriptInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL SetScriptActive(
+    BML_BehaviorSession session, BML_BehaviorScript script,
+    std::uint32_t active, std::uint32_t reset,
+    BML_BehaviorScriptInfo *info, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !script ||
+            (info && !HasStructSize(info)) || active > 1 || reset > 1 ||
+            (!active && reset))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        ScriptInfo read;
+        result = context->BehaviorScripts().SetActive(
+            owner, ScriptIdOf(script), active != 0, reset != 0, read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        WriteScriptInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL CloseScript(BML_BehaviorSession session,
+                                  BML_BehaviorScript script) {
+    return Guard([&] {
+        if (!session || !script)
+            return BML_ERROR_INVALID_HANDLE;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result))
+            return ResultCode(result);
+        return ResultCode(context->BehaviorScripts().Close(
+            owner, ScriptIdOf(script)));
+    });
+}
+
 const BML_BehaviorInterface kBehaviorInterface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -3398,6 +3644,10 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &Reference,
     &ResolvePatchNode,
     &AttachBlock,
+    &CreateScript,
+    &ReadScript,
+    &SetScriptActive,
+    &CloseScript,
 };
 
 } // namespace

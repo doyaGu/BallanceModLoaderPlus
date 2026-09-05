@@ -331,16 +331,6 @@ public:
                                  CKGUID type = CKGUID(0, 0)) const {
             return Local(Behavior::Selector::Unique(name), type);
         }
-        [[nodiscard]] Port Setting(Behavior::Selector slot) const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_SETTING, CKGUID(0, 0),
-                    std::move(slot)};
-        }
-        [[nodiscard]] Port Setting(std::int32_t index) const {
-            return Setting(Behavior::Selector::At(index));
-        }
-        [[nodiscard]] Port Setting(std::string_view name) const {
-            return Setting(Behavior::Selector::Unique(name));
-        }
         [[nodiscard]] Port Target() const {
             return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_TARGET, CKGUID(0, 0), {}};
         }
@@ -405,6 +395,40 @@ public:
             : m_Edit(std::move(edit)), m_Id(id) {}
         std::shared_ptr<const Detail::EditIdentity> m_Edit;
         std::uint32_t m_Id = 0;
+
+        friend class Edit;
+    };
+
+    // A CKParameterOperation declared by this Edit. It has no control-flow
+    // ports: Input addresses one of its parameter inputs and Result is the
+    // lazily evaluated output parameter.
+    class Operation {
+    public:
+        Operation() = default;
+
+        [[nodiscard]] Port Input(std::int32_t index) const {
+            const CKGUID type = index == 0 ? m_Input1 :
+                index == 1 ? m_Input2 : CKGUID(0, 0);
+            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_PIN, type,
+                    Behavior::Selector::At(index)};
+        }
+        [[nodiscard]] Port Result() const {
+            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_POUT, m_Result,
+                    Behavior::Selector::At(0)};
+        }
+
+    private:
+        Operation(std::shared_ptr<const Detail::EditIdentity> edit,
+                  std::uint32_t id, CKGUID result, CKGUID input1,
+                  CKGUID input2)
+            : m_Edit(std::move(edit)), m_Id(id), m_Result(result),
+              m_Input1(input1), m_Input2(input2) {}
+
+        std::shared_ptr<const Detail::EditIdentity> m_Edit;
+        std::uint32_t m_Id = 0;
+        CKGUID m_Result{0, 0};
+        CKGUID m_Input1{0, 0};
+        CKGUID m_Input2{0, 0};
 
         friend class Edit;
     };
@@ -490,7 +514,7 @@ public:
     // changes to the source Block cannot change this Edit.
     [[nodiscard]] Node Add(const Block &block) {
         const Prototype fallback = block.m_State
-            ? block.m_State->Definition.PrototypeRef : Prototype{};
+            ? block.m_State->Spec.PrototypeRef : Prototype{};
         auto compiled = block.Compile();
         if (!compiled) {
             if (m_Code == BML_OK) {
@@ -511,56 +535,47 @@ public:
             m_Session = block.m_Session;
         }
 
-        const Detail::BlockDefinition definition = compiled.Value()->Definition;
-        if (!definition.PrototypeRef.Generation && m_Code == BML_OK) {
+        const std::shared_ptr<const Detail::CompiledBlock> compiledBlock =
+            compiled.Value();
+        if (!compiledBlock->Spec.PrototypeRef.Generation &&
+            m_Code == BML_OK) {
             m_Code = BML_ERROR_UNAVAILABLE;
             m_Status.Error = Behavior::Error::Unavailable;
             m_Status.Phase = Behavior::Phase::Prototype;
-            m_Status.Prototype = definition.PrototypeRef.Id;
+            m_Status.Prototype = compiledBlock->Spec.PrototypeRef.Id;
             m_Status.Message =
                 "A Block must resolve its Prototype provider before it can be added to an Edit.";
         }
         Step &step = Define(BML_BEHAVIOR_EDIT_ADD_BLOCK);
-        step.PrototypeRef = definition.PrototypeRef;
+        step.Block = compiledBlock;
         const Node node{m_Identity, step.Result};
-        m_Blocks.push_back(definition);
-
-        bool firstStage = true;
-        for (const auto &stage : definition.Settings) {
-            bool firstSetting = true;
-            for (const SlotValue &value : stage) {
-                Setting(node.Setting(value.Slot), value.Data);
-                if (!firstStage && firstSetting)
-                    m_Steps.back().Flags |= BML_BEHAVIOR_EDIT_SETTING_STAGE;
-                firstSetting = false;
-            }
-            if (!stage.empty())
-                firstStage = false;
-        }
-        for (const SlotValue &value : definition.Pins)
-            Bind(node.Pin(value.Slot, value.Data.Type()), value.Data);
-        for (const SlotValue &value : definition.Locals)
-            Bind(node.Local(value.Slot, value.Data.Type()), value.Data);
-        if (definition.TargetKind == BML_BEHAVIOR_TARGET_NULL) {
-            Bind(node.Target(), Value::Null(definition.TargetType));
-        } else if (definition.TargetKind == BML_BEHAVIOR_TARGET_OBJECT) {
-            Bind(node.Target(), Value::Object(definition.TargetType,
-                                              definition.TargetObject));
-        }
         return node;
     }
-    // Declares the value of one Setting of a Block this program adds.
-    Edit &Setting(Port setting, Behavior::Value value) {
-        if (!Require(setting, "Setting"))
-            return *this;
-        Step &step = Define(BML_BEHAVIOR_EDIT_SETTING, 0);
-        step.Sink = std::move(setting);
-        step.Value.emplace(std::move(value));
-        return *this;
+    // Replaces an existing child Node while preserving its public graph
+    // relations. The replacement Block owns its own Settings and Locals.
+    // Closing the Patch restores the exact original Node.
+    [[nodiscard]] Node Replace(Node target, const Block &block) {
+        if (!Require(target, "Replacement target"))
+            return {};
+        Node replacement = Add(block);
+        if (!m_Steps.empty()) {
+            Step &step = m_Steps.back();
+            step.Kind = BML_BEHAVIOR_EDIT_REPLACE_BLOCK;
+            step.Target = target.m_Id;
+        }
+        return replacement;
     }
-    // Declares the value of one Setting by name.
-    Edit &Setting(Node owner, std::string_view name, Behavior::Value value) {
-        return Setting(owner.Setting(name), std::move(value));
+    // Adds one native Parameter Operation to the graph. Virtools chooses the
+    // concrete function from the operation GUID and this exact type tuple.
+    [[nodiscard]] Operation AddOperation(
+        CKGUID operation, CKGUID result, CKGUID input1 = CKGUID(0, 0),
+        CKGUID input2 = CKGUID(0, 0)) {
+        Step &step = Define(BML_BEHAVIOR_EDIT_ADD_OPERATION);
+        step.Operation = operation;
+        step.OperationResult = result;
+        step.OperationInput1 = input1;
+        step.OperationInput2 = input2;
+        return Operation{m_Identity, step.Result, result, input1, input2};
     }
     [[nodiscard]] Slot AppendIn(Node owner, std::string_view name) {
         return Append(owner, BML_BEHAVIOR_SLOT_IN, name, CKGUID(0, 0));
@@ -574,6 +589,9 @@ public:
     [[nodiscard]] Slot AppendPout(Node owner, std::string_view name, CKGUID type) {
         return Append(owner, BML_BEHAVIOR_SLOT_POUT, name, type);
     }
+    // A Local belongs to the private state of a graph or Block. It can be
+    // added to Graph(), or to a Block created by this Edit, never to a
+    // borrowed child Node.
     [[nodiscard]] Slot AppendLocal(Node owner, std::string_view name,
                                    CKGUID type) {
         return Append(owner, BML_BEHAVIOR_SLOT_LOCAL, name, type);
@@ -733,6 +751,7 @@ private:
         std::int32_t Delay = 0;
         std::string Name;
         Behavior::Prototype PrototypeRef;
+        std::shared_ptr<const Detail::CompiledBlock> Block;
         CKGUID Type{0, 0};
         Port Source;
         Port Sink;
@@ -740,6 +759,10 @@ private:
         std::shared_ptr<Detail::HookHolder> Hook;
         std::vector<PatchOrder> Ordering;
         BML_ObjectRef Object{};
+        CKGUID Operation{0, 0};
+        CKGUID OperationResult{0, 0};
+        CKGUID OperationInput1{0, 0};
+        CKGUID OperationInput2{0, 0};
     };
 
     struct WireProgram {
@@ -797,7 +820,6 @@ private:
     std::shared_ptr<const Detail::EditIdentity> m_Identity;
     int m_Code = BML_OK;
     Status m_Status;
-    std::vector<Detail::BlockDefinition> m_Blocks;
     std::uint32_t m_NextHandle = BML_BEHAVIOR_EDIT_GRAPH + 1u;
     std::vector<Step> m_Steps;
 

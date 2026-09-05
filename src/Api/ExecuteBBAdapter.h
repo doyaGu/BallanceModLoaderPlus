@@ -18,14 +18,14 @@ public:
                      Behavior::PhysicsForce::Sessions &physicsForce)
         : m_Runtime(runtime), m_PhysicsForce(physicsForce) {}
 
-    Behavior::RunResult Run(CKBeObject *owner, const Behavior::Spec &spec,
+    Behavior::RunResult Run(CKBeObject *owner, const Behavior::BlockSpec &spec,
                             int input = 0);
     Behavior::RunResult SetPhysicsForce(
         const Behavior::Blocks::PhysicsForce::Options &options);
     Behavior::RunResult UnsetPhysicsForce(CK3dEntity *target);
     std::pair<XObjectArray *, CKObject *> LoadObjects(
         const Behavior::Blocks::ObjectLoad::Options &options, bool rename);
-    CKBehavior *AddToGraph(CKBehavior *parent, const Behavior::Spec &spec);
+    CKBehavior *AddToGraph(CKBehavior *parent, const Behavior::BlockSpec &spec);
     void ProcessFrame();
     void Reset();
 

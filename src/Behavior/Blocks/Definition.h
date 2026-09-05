@@ -6,12 +6,13 @@
 #include <type_traits>
 #include <utility>
 
-#include "Behavior/Runtime.h"
+#include "Behavior/Block.h"
+#include "Behavior/Value.h"
 
 namespace BML::Behavior::Blocks::Detail {
 
 // Lowers the same concrete Block definition used by the public headers into
-// Runtime's private Spec. It contains no knowledge of any particular Block.
+// Runtime's private BlockSpec. It contains no knowledge of any particular Block.
 class Definition final {
 public:
     explicit Definition(CKGUID prototype) : m_Spec(prototype) {}
@@ -52,9 +53,9 @@ public:
                        Literal(type, std::forward<T>(value)));
     }
 
-    void NextStage() { m_Spec.RefreshLayout(); }
+    void NextStage() { m_Spec.NextSettingStage(); }
 
-    [[nodiscard]] Spec Build() && { return std::move(m_Spec); }
+    [[nodiscard]] BlockSpec Build() && { return std::move(m_Spec); }
 
 private:
     template <class T>
@@ -74,7 +75,7 @@ private:
         }
     }
 
-    Spec m_Spec;
+    BlockSpec m_Spec;
 };
 
 } // namespace BML::Behavior::Blocks::Detail

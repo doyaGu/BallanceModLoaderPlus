@@ -220,6 +220,27 @@ ModContext::ModContext(CKContext *context)
                             return BML::Behavior::ObjectRef{
                                 issued.Domain, issued.Slot, issued.Generation};
                         }),
+      m_BehaviorScripts(
+          BML::Behavior::Internal::MakeCKScriptWorld(
+              context, m_BehaviorPatches, [this](const void *object) {
+                  if (!object)
+                      return BML::Behavior::ObjectRef{};
+                  const BML_ObjectRef reference = m_ObjectRefs.Issue(
+                      const_cast<CKObject *>(
+                          static_cast<const CKObject *>(object)));
+                  return BML::Behavior::ObjectRef{
+                      reference.Domain, reference.Slot,
+                      reference.Generation};
+              }),
+          [this](std::string_view name,
+                 const BML::Behavior::ObjectRef &script) {
+              const BML::Behavior::Status status =
+                  m_BehaviorPlans.LoadScript(std::string(name), script);
+              if (!status && m_Logger)
+                  m_Logger->Error(
+                      "Failed to publish an authored Behavior Script: %s",
+                      status.Message.c_str());
+          }),
       m_PhysicsForce(context, m_Behaviors),
       m_ExecuteBB(m_Behaviors, m_PhysicsForce) {
     assert(context != nullptr);
@@ -369,6 +390,7 @@ void ModContext::ResetVirtoolsWorld() {
     if (!plans && m_Logger)
         m_Logger->Error("Failed to leave the current Behavior Plan world: %s",
                         plans.Message.c_str());
+    m_BehaviorScripts.ResetWorld();
     m_BehaviorPatches.ResetWorld();
     m_BehaviorSessions.ResetWorld();
     m_Behaviors.ResetWorld();
@@ -379,6 +401,11 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
     // Runtime owners observe the deletion first; public references are the
     // final observer because they do not participate in native teardown.
     m_PhysicsForce.ObjectsToBeDeleted(ids, count);
+    if (ids && count > 0) {
+        for (int index = 0; index < count; ++index)
+            m_BehaviorScripts.ObjectToBeDeleted(
+                static_cast<std::uint32_t>(ids[index]));
+    }
     m_BehaviorPatches.ObjectsToBeDeleted(ids, count);
     // Dropping the target only marks the world dirty. Reconciliation waits for
     // the next Loader frame: Virtools is still inside DeleteObjects here, so a
@@ -418,6 +445,7 @@ void ModContext::ProcessVirtoolsFrame() {
         m_Logger->Error("Failed to reconcile Behavior Plans: %s",
                         plans.Message.c_str());
     m_BehaviorPatches.ProcessFrame();
+    m_BehaviorScripts.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
 }
 
@@ -735,6 +763,12 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
             if (!edits && m_Logger)
                 m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
                                 mod->GetID(), edits.Message.c_str());
+            const BML::Behavior::Status scripts =
+                m_BehaviorScripts.RetireOwner(mod->GetID());
+            if (!scripts && m_Logger)
+                m_Logger->Error(
+                    "Failed to retire Behavior Scripts for Mod %s: %s",
+                    mod->GetID(), scripts.Message.c_str());
             m_BehaviorSessions.RetireOwner(mod->GetID());
         } catch (...) {
             if (m_Logger)
@@ -753,6 +787,7 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
         try {
             m_ImcRuntime.CleanupOwner(mod->GetID());
             (void) RetireBehaviorEdits(mod->GetID());
+            (void) m_BehaviorScripts.RetireOwner(mod->GetID());
             m_BehaviorSessions.RetireOwner(mod->GetID());
         } catch (...) {
             if (m_Logger)
@@ -2834,6 +2869,15 @@ bool ModContext::UnregisterMod(IMod *mod) {
             if (m_Logger)
                 m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
                                 modIdCopy.c_str(), edits.Message.c_str());
+            return false;
+        }
+        const BML::Behavior::Status scripts =
+            m_BehaviorScripts.RetireOwner(modIdCopy);
+        if (!scripts) {
+            if (m_Logger)
+                m_Logger->Error(
+                    "Failed to retire Behavior Scripts for Mod %s: %s",
+                    modIdCopy.c_str(), scripts.Message.c_str());
             return false;
         }
         m_BehaviorSessions.RetireOwner(modIdCopy);

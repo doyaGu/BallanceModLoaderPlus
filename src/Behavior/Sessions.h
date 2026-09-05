@@ -76,15 +76,19 @@ public:
     Status ReadOwner(const std::string &ownerId, SessionOwner &out) const;
 
     OpenRun Call(std::uintptr_t sessionId, CKBeObject *owner,
-                 const Spec &block, const Slot &input);
+                 const BlockSpec &block, const Slot &input,
+                 FrameRetention retention = FrameRetention::Signals());
     OpenRun Start(std::uintptr_t sessionId, CKBeObject *owner,
-                  const Spec &block, const Slot &input);
+                  const BlockSpec &block, const Slot &input,
+                  FrameRetention retention = FrameRetention::Signals());
     OpenRun Spawn(std::uintptr_t sessionId, CKBeObject *owner,
-                  const Spec &block);
+                  const BlockSpec &block,
+                  FrameRetention retention = FrameRetention::Signals());
     // Parks a Block inside a live graph and keeps a Run for it. The graph
     // never activates the Block, so the Run is what drives it.
     OpenRun Attach(std::uintptr_t sessionId, CKBehavior *graph,
-                   const Spec &block);
+                   const BlockSpec &block,
+                   FrameRetention retention = FrameRetention::Signals());
     RunResult Continue(std::uintptr_t runId);
     RunResult Pulse(std::uintptr_t runId, const Slot &input);
 
@@ -103,7 +107,7 @@ public:
                 std::uint64_t sourceLayoutGeneration,
                 const Slot &sourceSlot, Parameter::BindingKind relation,
                 std::uint64_t &currentGeneration);
-    Status Configure(std::uintptr_t runId, const Spec &settings,
+    Status Configure(std::uintptr_t runId, const BlockSpec &settings,
                      std::uint64_t &layoutGeneration);
     Status ReadGraph(std::uintptr_t runId, GraphView view,
                      GraphModel &out);

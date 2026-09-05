@@ -95,7 +95,7 @@ void Concave(Definition &block, const Options &options, CKMesh *mesh) {
 } // namespace Detail
 
 #ifdef BML_BEHAVIOR_INTERNAL
-inline Spec Make(const Options &options) {
+inline BlockSpec Make(const Options &options) {
     Blocks::Detail::Definition block(PHYSICS_RT_PHYSICALIZE);
     switch (options.Geometry) {
     case Shape::Convex:

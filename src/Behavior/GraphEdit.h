@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "Behavior/Block.h"
 #include "Behavior/Edit.h"
 #include "Behavior/PrototypeCatalog.h"
 
@@ -45,9 +46,6 @@ struct PathRef {
 // reports that, and a durable Plan refuses such an edit.
 class GraphEdit final {
 public:
-    using Settings = std::vector<std::pair<Slot, Value>>;
-    using SettingStages = std::vector<Settings>;
-
     class Compiler {
     public:
         virtual ~Compiler() = default;
@@ -58,12 +56,7 @@ public:
                                Node &out) = 0;
         virtual Status UseLink(Edit &edit, const ObjectRef &link,
                                Link &out) = 0;
-        // Creates one Block. Settings are part of what the Block is, so they
-        // arrive with the Prototype and are written through the Block's own
-        // creation lifecycle rather than poked in afterwards.
-        virtual Status Add(Edit &edit, PrototypeRef prototype,
-                           const SettingStages &settings,
-                           Node &out) = 0;
+        virtual Status Add(Edit &edit, BlockSpec block, Node &out) = 0;
         virtual Status Tap(Edit &edit, Port source,
                            const HookBlock::Hook &hook) = 0;
         // Puts a callback inside one Link, so control reaches the callback
@@ -90,10 +83,10 @@ public:
     PathRef Follow(Port start);
     Node Add(CKGUID prototype);
     Node Add(PrototypeRef prototype);
-    // Declares the value of one Setting of a Block this intent adds. A Setting
-    // can rebuild the layout of a block, so only an added Block accepts one.
-    Status Setting(Node node, Slot slot, Value value,
-                   bool nextStage = false);
+    Node Add(BlockSpec block);
+    Node Replace(Node target, BlockSpec block);
+    ParameterOperation AddOperation(CKGUID operation, CKGUID result,
+                                    CKGUID input1, CKGUID input2);
 
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
@@ -138,9 +131,7 @@ private:
     struct EditNode {
         Node Handle;
         NodeQuery Query;
-        PrototypeRef Prototype;
-        SettingStages Settings;
-        bool Added = false;
+        std::optional<BlockSpec> Block;
         // Set instead of Query when the author named the Node by identity.
         ObjectRef Anchor;
     };
@@ -153,6 +144,14 @@ private:
         // Set instead of the endpoint query when the author named the Link by
         // identity.
         ObjectRef Anchor;
+    };
+
+    struct Operation {
+        ParameterOperation Handle;
+        CKGUID Guid = CKGUID();
+        CKGUID Result = CKGUID();
+        CKGUID Input1 = CKGUID();
+        CKGUID Input2 = CKGUID();
     };
 
     struct EditInterface {
@@ -187,6 +186,12 @@ private:
         std::uint32_t Ordinal = 0;
     };
 
+    struct EditReplace {
+        Node Target;
+        Node Replacement;
+        std::uint32_t Ordinal = 0;
+    };
+
     using Action = std::variant<EditFlow, EditBind, EditPush, EditSplice,
                                 EditRedirect, EditInterface, EditTap,
                                 EditAfter, EditBefore>;
@@ -197,8 +202,10 @@ private:
     Port Append(Node node, SlotKind kind, std::string name, CKGUID type);
 
     std::vector<EditNode> m_Nodes;
+    std::vector<Operation> m_Operations;
     std::vector<EditLink> m_Links;
     std::vector<EditPath> m_Paths;
+    std::vector<EditReplace> m_Replacements;
     std::vector<Action> m_Actions;
     std::uint32_t m_NextNode = 1;
     std::uint32_t m_NextLink = 0;

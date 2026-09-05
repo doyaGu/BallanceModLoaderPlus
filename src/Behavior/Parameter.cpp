@@ -1,7 +1,9 @@
 #include "Behavior/Parameter.h"
 
 #include <algorithm>
+#include <cstring>
 #include <utility>
+#include <vector>
 
 #include "Behavior/Status.h"
 
@@ -53,6 +55,89 @@ namespace {
 bool HasProviderRepresentation(const CKParameterTypeDesc &type) noexcept {
     return type.CreateDefaultFunction || type.DeleteFunction ||
            type.CopyFunction || type.SaveLoadFunction || type.CheckFunction;
+}
+
+bool RequiresSerializedValue(const CKParameterTypeDesc &type) noexcept {
+    // CreateDefaultFunction only establishes an initial value (Matrix is the
+    // canonical example), while CheckFunction validates otherwise ordinary
+    // storage (all object parameters use it). Neither makes the buffer own a
+    // resource. A registered destructor does; a SaveLoadFunction supplies the
+    // corresponding semantic representation used below for comparison.
+    return type.DeleteFunction || type.SaveLoadFunction;
+}
+
+bool OwnsStoredValue(const CKParameterTypeDesc &type) noexcept {
+    // CKParameter::SetValue replaces the registered buffer directly. That is
+    // safe for ordinary and manager-coded scalar values, including types that
+    // merely provide SaveLoadFunction. A DeleteFunction is the CK contract
+    // that the bytes themselves own state which must not be fabricated from a
+    // caller buffer.
+    return type.DeleteFunction != nullptr;
+}
+
+Status ValueType(CKContext *context, CKParameter *parameter,
+                 CKParameterTypeDesc *&type) {
+    type = nullptr;
+    CKParameterManager *manager = context
+        ? context->GetParameterManager() : nullptr;
+    if (!manager || !parameter) {
+        return {Error::ParameterTypeUnavailable, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR,
+                "Virtools parameter type information is unavailable."};
+    }
+    type = manager->GetParameterTypeDescription(parameter->GetGUID());
+    if (!type || !type->Valid || !type->CopyFunction) {
+        return {Error::ParameterTypeUnavailable, CKERR_INVALIDPARAMETERTYPE,
+                CKBR_PARAMETERERROR,
+                "The Virtools parameter type has no value-copy semantics."};
+    }
+    if (RequiresSerializedValue(*type) && !type->SaveLoadFunction) {
+        return {Error::ParameterTypeUnsupported, CKERR_INVALIDPARAMETERTYPE,
+                CKBR_PARAMETERERROR,
+                "The Virtools parameter type cannot preserve and compare an owned value."};
+    }
+    return {};
+}
+
+bool RawEqual(CKParameter *left, CKParameter *right) {
+    if (!left || !right || left->GetDataSize() != right->GetDataSize())
+        return false;
+    const int size = left->GetDataSize();
+    if (size == 0)
+        return true;
+    const void *leftBytes = left->GetReadDataPtr(FALSE);
+    const void *rightBytes = right->GetReadDataPtr(FALSE);
+    return leftBytes && rightBytes &&
+           std::memcmp(leftBytes, rightBytes, static_cast<std::size_t>(size)) == 0;
+}
+
+Status Serialized(CKParameterTypeDesc *type, CKParameter *parameter,
+                  std::vector<CKBYTE> &bytes) {
+    bytes.clear();
+    if (!type || !type->SaveLoadFunction || !parameter) {
+        return {Error::ParameterTypeUnsupported, CKERR_INVALIDPARAMETERTYPE,
+                CKBR_PARAMETERERROR,
+                "The Virtools parameter type has no serialized value representation."};
+    }
+    CKStateChunk *chunk = nullptr;
+    type->SaveLoadFunction(parameter, &chunk, FALSE);
+    if (!chunk) {
+        return {Error::ValueWriteFailed, CKERR_INVALIDPARAMETER,
+                CKBR_PARAMETERERROR,
+                "The Virtools parameter provider did not serialize its value."};
+    }
+    const int size = chunk->ConvertToBuffer(nullptr);
+    if (size < 0) {
+        DeleteCKStateChunk(chunk);
+        return {Error::ValueWriteFailed, CKERR_INVALIDPARAMETER,
+                CKBR_PARAMETERERROR,
+                "Virtools failed to serialize a parameter value."};
+    }
+    bytes.resize(static_cast<std::size_t>(size));
+    if (size > 0)
+        chunk->ConvertToBuffer(bytes.data());
+    DeleteCKStateChunk(chunk);
+    return {};
 }
 
 bool Derived(CKParameterManager *manager, CKGUID type, CKGUID base) noexcept {
@@ -270,7 +355,21 @@ Status Write(CKContext *context, CKParameter *parameter,
 
     CKERROR error = CK_OK;
     switch (value.Kind()) {
-    case ValueKind::Raw:
+    case ValueKind::Raw: {
+        CKParameterManager *manager = context->GetParameterManager();
+        CKParameterTypeDesc *type = manager
+            ? manager->GetParameterTypeDescription(parameter->GetGUID())
+            : nullptr;
+        if (!type || !type->Valid) {
+            return {Error::ParameterTypeUnavailable,
+                    CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                    "The Virtools parameter type is unavailable."};
+        }
+        if (OwnsStoredValue(*type)) {
+            return {Error::ParameterTypeUnsupported,
+                    CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                    "A parameter type with owned value semantics cannot be written as raw bytes."};
+        }
         if (value.Bytes().empty())
             return {Error::ValueWriteFailed, CKERR_INVALIDPARAMETER,
                     CKBR_PARAMETERERROR, "Raw parameter value is empty."};
@@ -283,6 +382,7 @@ Status Write(CKContext *context, CKParameter *parameter,
         error = parameter->SetValue(
             value.Bytes().data(), static_cast<int>(value.Bytes().size()));
         break;
+    }
     case ValueKind::Text:
         error = parameter->SetStringValue(
             const_cast<CKSTRING>(value.StringValue().c_str()));
@@ -358,6 +458,64 @@ Status Write(CKContext *context, CKParameter *parameter,
         ? Status{}
         : Status{Error::ValueWriteFailed, error, CKBR_PARAMETERERROR,
                  "CKParameter rejected the binding."};
+}
+
+Status Clone(CKContext *context, CKParameter *source,
+             CKParameterLocal *&out) {
+    out = nullptr;
+    CKParameterTypeDesc *type = nullptr;
+    Status status = ValueType(context, source, type);
+    if (!status)
+        return status;
+
+    CKParameterLocal *copy = context->CreateCKParameterLocal(
+        nullptr, source->GetGUID(), TRUE);
+    if (!copy) {
+        return {Error::CreateFailed, CKERR_OUTOFMEMORY,
+                CKBR_PARAMETERERROR,
+                "Virtools could not create an owned parameter value."};
+    }
+    const CKERROR copied = copy->CopyValue(source, FALSE);
+    if (copied != CK_OK) {
+        context->DestroyObject(copy);
+        return {Error::ValueWriteFailed, copied, CKBR_PARAMETERERROR,
+                "Virtools rejected a parameter value copy."};
+    }
+    bool equivalent = false;
+    Status compared = Equal(context, copy, source, equivalent);
+    if (!compared || !equivalent) {
+        context->DestroyObject(copy);
+        if (!compared)
+            return compared;
+        return {Error::ParameterTypeUnsupported,
+                CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                "The Virtools parameter type did not produce an equivalent owned value."};
+    }
+    out = copy;
+    return {};
+}
+
+Status Equal(CKContext *context, CKParameter *left,
+             CKParameter *right, bool &equal) {
+    equal = false;
+    if (!left || !right || left->GetGUID() != right->GetGUID())
+        return {};
+    CKParameterTypeDesc *type = nullptr;
+    Status status = ValueType(context, left, type);
+    if (!status)
+        return status;
+    if (!type->SaveLoadFunction) {
+        equal = RawEqual(left, right);
+        return {};
+    }
+    std::vector<CKBYTE> leftBytes;
+    std::vector<CKBYTE> rightBytes;
+    status = Serialized(type, left, leftBytes);
+    if (status)
+        status = Serialized(type, right, rightBytes);
+    if (status)
+        equal = leftBytes == rightBytes;
+    return status;
 }
 
 } // namespace Parameter

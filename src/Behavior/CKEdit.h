@@ -25,6 +25,7 @@ enum class PatchState {
 };
 
 enum class RevertSubject {
+    Node,
     PinSource,
     Link,
     Value,
@@ -86,7 +87,7 @@ public:
     Status Begin(CKBehavior *graph, PatchKey key, Edit &out);
     Status Use(Edit &edit, CKBehavior *behavior, Node &out);
     Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
-    Status Add(Edit &edit, Spec block, Node &out,
+    Status Add(Edit &edit, BlockSpec block, Node &out,
                NodeRole role = NodeRole::Logical);
     Status Apply(const Edit &edit, Patch &out);
     // Reads back the live Node an applied Edit gave this handle. Busy while
@@ -104,7 +105,7 @@ private:
     Status ApplyNow(const Edit &edit,
                     const std::shared_ptr<Patch::Journal> &journal);
     Status CloseNow(const std::shared_ptr<Patch::Journal> &journal);
-    Status Undo(Patch::Journal &journal, bool notify);
+    Status Undo(Patch::Journal &journal);
     Status Materialize(std::uint64_t graphId, CKBehavior *graph);
     Status PublishLogicalGraph(std::uint64_t graphId);
     void AdoptGraph(CKBehavior *graph);
@@ -123,6 +124,10 @@ private:
     std::map<std::uint64_t, Topology> m_Topology;
     std::map<std::uint64_t, Relations> m_Relations;
     std::map<std::uint64_t, std::set<PatchKey>> m_Active;
+    // A replacement changes the logical identity behind a graph's native
+    // Links and parameter relations. Other Patches wait until its exact
+    // inverse has restored the original Node.
+    std::set<std::uint64_t> m_Replacing;
     std::unique_ptr<Links> m_Links;
     std::mutex m_QueueMutex;
     std::vector<Request> m_Queue;

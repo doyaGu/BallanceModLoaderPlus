@@ -154,6 +154,18 @@ private:
 [[nodiscard]] Status Write(CKContext *context, CKParameter *parameter,
                            const Binding &binding);
 
+// Owns a Virtools value in an ordinary CKParameterLocal so registered copy,
+// save/load, and destruction functions remain authoritative. The caller owns
+// the returned parameter and destroys it through CKContext.
+[[nodiscard]] Status Clone(CKContext *context, CKParameter *source,
+                           CKParameterLocal *&out);
+
+// Compares two values through the registered save/load representation when
+// the parameter type owns non-trivial state, and through the parameter buffer
+// for ordinary value types.
+[[nodiscard]] Status Equal(CKContext *context, CKParameter *left,
+                           CKParameter *right, bool &equal);
+
 } // namespace Parameter
 } // namespace BML::Behavior
 

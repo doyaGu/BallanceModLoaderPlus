@@ -73,7 +73,7 @@ Port GraphEdit::Exit(std::string name) const {
 
 Node GraphEdit::RequireOne(NodeQuery query) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, std::move(query), PrototypeRef{}, {}, false, {}});
+    m_Nodes.push_back({node, std::move(query), std::nullopt, {}});
     return node;
 }
 
@@ -108,34 +108,32 @@ PathRef GraphEdit::Follow(Port start) {
 }
 
 Node GraphEdit::Add(CKGUID prototype) {
-    return Add(PrototypeRef{prototype, 0});
+    return Add(BlockSpec(prototype));
 }
 
 Node GraphEdit::Add(PrototypeRef prototype) {
+    BlockSpec block(prototype.Guid);
+    block.PrototypeGeneration(prototype.Generation);
+    return Add(std::move(block));
+}
+
+Node GraphEdit::Add(BlockSpec block) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, {}, std::move(prototype), {}, true});
+    m_Nodes.push_back({node, {}, std::move(block), {}});
     return node;
 }
 
-Status GraphEdit::Setting(Node node, Slot slot, Value value,
-                          bool nextStage) {
-    const auto owner = std::find_if(
-        m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &candidate) {
-            return candidate.Handle == node;
-        });
-    if (owner == m_Nodes.end())
-        return Failure(Error::InvalidState,
-                       "A Setting names an unknown Block.");
-    if (!owner->Added)
-        return Failure(Error::InterfaceUnsupported,
-                       "Only an added Block can declare a Setting.");
-    if (nextStage && owner->Settings.empty())
-        return Failure(Error::InvalidState,
-                       "A later Setting stage requires an earlier stage.");
-    if (owner->Settings.empty() || nextStage)
-        owner->Settings.emplace_back();
-    owner->Settings.back().emplace_back(std::move(slot), std::move(value));
-    return {};
+Node GraphEdit::Replace(Node target, BlockSpec block) {
+    const Node replacement = Add(std::move(block));
+    m_Replacements.push_back({target, replacement, m_NextAction++});
+    return replacement;
+}
+
+ParameterOperation GraphEdit::AddOperation(
+    CKGUID operation, CKGUID result, CKGUID input1, CKGUID input2) {
+    const ParameterOperation handle{NextNode()};
+    m_Operations.push_back({handle, operation, result, input1, input2});
+    return handle;
 }
 
 void GraphEdit::Flow(Port source, Port sink, int delay, Cycle cycle) {
@@ -252,43 +250,106 @@ Status GraphEdit::Validate() const {
             m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &node) {
                 return node.Handle.Value == value;
             });
-        return found != m_Nodes.end() && !found->Added;
+        return found != m_Nodes.end() && !found->Block;
     };
     const auto addedNode = [&](std::uint32_t value) {
         const auto found = std::find_if(
             m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &node) {
                 return node.Handle.Value == value;
             });
-        return found != m_Nodes.end() && found->Added;
+        return found != m_Nodes.end() && found->Block.has_value();
     };
-
+    const auto operation = [&](std::uint32_t value) -> const Operation * {
+        const auto found = std::find_if(
+            m_Operations.begin(), m_Operations.end(),
+            [&](const Operation &candidate) {
+                return candidate.Handle.Value == value;
+            });
+        return found == m_Operations.end() ? nullptr : &*found;
+    };
     for (const EditNode &node : m_Nodes) {
-        if (node.Added && !node.Prototype.Guid.IsValid())
+        if (node.Block && !node.Block->Prototype().IsValid())
             return Failure(Error::PrototypeNotFound,
                            "An added Block requires a Prototype GUID.");
-        if (node.Added && !node.Anchor.IsNull())
+        if (node.Block && !node.Anchor.IsNull())
             return Failure(Error::InvalidState,
                            "An added Block cannot also name an existing Node.");
-        if (!node.Added && !node.Query && node.Anchor.IsNull())
+        if (!node.Block && !node.Query && node.Anchor.IsNull())
             return Failure(Error::QueryNotFound,
                            "A Node query has no semantic identity.");
-        if (!node.Added && !node.Settings.empty())
-            return Failure(Error::InterfaceUnsupported,
-                           "Only an added Block can declare a Setting.");
-        for (const Settings &stage : node.Settings) {
-            if (stage.empty())
-                return Failure(Error::InvalidState,
-                               "A declared Setting stage cannot be empty.");
-            for (const auto &[slot, value] : stage) {
-                if (slot.Kind != SlotKind::Setting)
-                    return Failure(
-                        Error::TypeMismatch,
-                        "A declared Setting must name a Setting slot.");
-                if (value.IsNull() && !value.Type().IsValid())
-                    return Failure(
-                        Error::TypeMismatch,
-                        "A null Value requires a Virtools type GUID.");
-            }
+    }
+    std::set<std::uint32_t> replaced;
+    for (const EditReplace &item : m_Replacements) {
+        if (!existingNode(item.Target.Value) || item.Target == Graph() ||
+            !addedNode(item.Replacement.Value)) {
+            return Failure(
+                Error::InvalidState,
+                "Replace requires an existing child Node and one replacement Block.");
+        }
+        if (!replaced.insert(item.Target.Value).second) {
+            return Failure(Error::InvalidState,
+                           "One Edit cannot replace the same Node twice.");
+        }
+    }
+    if (!replaced.empty()) {
+        const auto usesParked = [&](const Port &port) {
+            return replaced.contains(port.Owner);
+        };
+        for (const Action &action : m_Actions) {
+            const Status compatible = std::visit(
+                [&](const auto &item) -> Status {
+                    using T = std::decay_t<decltype(item)>;
+                    if constexpr (std::is_same_v<T, EditFlow>) {
+                        if (usesParked(item.Source) || usesParked(item.Sink))
+                            return Failure(Error::InvalidState,
+                                           "Use the replacement Node in Flow.");
+                    } else if constexpr (std::is_same_v<T, EditBind>) {
+                        if (usesParked(item.Target) ||
+                            (item.Kind != BindKind::Literal &&
+                             usesParked(item.Source)))
+                            return Failure(Error::InvalidState,
+                                           "Use the replacement Node in Bind.");
+                    } else if constexpr (std::is_same_v<T, EditPush>) {
+                        if (usesParked(item.Source) ||
+                            usesParked(item.Destination))
+                            return Failure(Error::InvalidState,
+                                           "Use the replacement Node in Push.");
+                    } else if constexpr (std::is_same_v<T, EditInterface>) {
+                        if (replaced.contains(item.Owner.Value))
+                            return Failure(
+                                Error::InvalidState,
+                                "A replaced Node cannot receive an interface edit.");
+                    } else if constexpr (std::is_same_v<T, EditTap>) {
+                        if (usesParked(item.Source))
+                            return Failure(Error::InvalidState,
+                                           "Use the replacement Node in Tap.");
+                    } else if constexpr (
+                        std::is_same_v<T, EditSplice> ||
+                        std::is_same_v<T, EditRedirect> ||
+                        std::is_same_v<T, EditAfter> ||
+                        std::is_same_v<T, EditBefore>) {
+                        return Failure(
+                            Error::InvalidState,
+                            "Replace cannot share one Patch with Link overlays.");
+                    }
+                    return {};
+                }, action);
+            if (!compatible)
+                return compatible;
+        }
+    }
+    for (const Operation &item : m_Operations) {
+        if (!item.Guid.IsValid() || !item.Result.IsValid() ||
+            item.Result == CKPGUID_NONE) {
+            return Failure(
+                Error::OperationInvalid,
+                "A Parameter Operation requires an operation GUID and result type.");
+        }
+        if (item.Input2.IsValid() && item.Input2 != CKPGUID_NONE &&
+            (!item.Input1.IsValid() || item.Input1 == CKPGUID_NONE)) {
+            return Failure(
+                Error::OperationInvalid,
+                "A Parameter Operation cannot have a second input without its first input.");
         }
     }
     for (const EditLink &link : m_Links) {
@@ -335,7 +396,21 @@ Status GraphEdit::Validate() const {
     using SymbolKey = std::tuple<std::uint32_t, SlotKind, int>;
     std::set<SymbolKey> interface;
     const auto port = [&](const Port &value) {
-        if (!value || !knownNode(value.Owner))
+        if (!value)
+            return false;
+        if (const Operation *owner = operation(value.Owner)) {
+            if (value.Selector.UsesName() || value.Selector.RequireOnly)
+                return false;
+            if (value.Selector.Kind == SlotKind::OutputParameter)
+                return value.Selector.Index == 0;
+            if (value.Selector.Kind != SlotKind::InputParameter ||
+                value.Selector.Index < 0 || value.Selector.Index > 1)
+                return false;
+            const CKGUID type = value.Selector.Index == 0
+                ? owner->Input1 : owner->Input2;
+            return type.IsValid() && type != CKPGUID_NONE;
+        }
+        if (!knownNode(value.Owner))
             return false;
         return value.Selector.UsesName() || value.Selector.RequireOnly ||
             value.Selector.Index >= 0 ||
@@ -382,13 +457,13 @@ Status GraphEdit::Validate() const {
                 if (!knownNode(item.Owner.Value) || item.Name.empty())
                     return Failure(Error::InvalidState,
                                    "A dynamic interface requires a Node and name.");
-                // Edit::Validate never admits a dynamic Local; reject it at
-                // Submit instead of at every installation.
-                if (item.Kind == SlotKind::Local)
+                if (item.Kind == SlotKind::Local &&
+                    item.Owner != Graph() && !addedNode(item.Owner.Value))
                     return Failure(Error::InterfaceUnsupported,
-                                   "Dynamic Locals are not supported by Graph Edits.");
+                                   "A Local can be appended only to the graph root or a Block added by this Edit.");
                 if ((item.Kind == SlotKind::InputParameter ||
-                     item.Kind == SlotKind::OutputParameter) &&
+                     item.Kind == SlotKind::OutputParameter ||
+                     item.Kind == SlotKind::Local) &&
                     !item.Type.IsValid()) {
                     return Failure(Error::TypeMismatch,
                                    "A dynamic parameter requires a Virtools type GUID.");
@@ -436,7 +511,8 @@ Status GraphEdit::Validate() const {
 bool GraphEdit::UsesIdentity() const noexcept {
     return std::any_of(m_Nodes.begin(), m_Nodes.end(),
                        [](const EditNode &node) {
-                           return !node.Anchor.IsNull();
+                           return !node.Anchor.IsNull() ||
+                               (node.Block && node.Block->WorldBound());
                        }) ||
         std::any_of(m_Links.begin(), m_Links.end(),
                     [](const EditLink &link) {
@@ -480,7 +556,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     liveNodes.emplace(Graph().Value, resolved.Graph());
 
     for (const EditNode &item : m_Nodes) {
-        if (item.Added)
+        if (item.Block)
             continue;
         std::vector<const GraphNode *> matches;
         for (const GraphNode &candidate : base.Nodes) {
@@ -520,6 +596,13 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
             return status;
         nodes.emplace(item.Handle.Value, matches.front());
         liveNodes.emplace(item.Handle.Value, live);
+    }
+
+    std::map<std::uint32_t, ParameterOperation> liveOperations;
+    for (const Operation &item : m_Operations) {
+        const ParameterOperation live = resolved.AddOperation(
+            item.Guid, item.Result, item.Input1, item.Input2);
+        liveOperations.emplace(item.Handle.Value, live);
     }
 
     std::map<std::uint32_t, Link> liveLinks;
@@ -650,13 +733,23 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     }
 
     for (const EditNode &item : m_Nodes) {
-        if (!item.Added)
+        if (!item.Block)
             continue;
         Node live;
-        status = compiler.Add(resolved, item.Prototype, item.Settings, live);
+        status = compiler.Add(resolved, *item.Block, live);
         if (!status)
             return status;
         liveNodes.emplace(item.Handle.Value, live);
+    }
+
+    for (const EditReplace &item : m_Replacements) {
+        const auto target = liveNodes.find(item.Target.Value);
+        const auto replacement = liveNodes.find(item.Replacement.Value);
+        if (target == liveNodes.end() || replacement == liveNodes.end()) {
+            return Failure(Error::InvalidState,
+                           "A replacement lost one of its Nodes during compilation.");
+        }
+        resolved.Replace(target->second, replacement->second);
     }
 
     using PortKey = std::tuple<std::uint32_t, SlotKind, int>;
@@ -676,10 +769,15 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
             return {};
         }
         const auto owner = liveNodes.find(symbolic.Owner);
-        if (owner == liveNodes.end())
+        if (owner != liveNodes.end()) {
+            live = {owner->second.Value, symbolic.Selector};
+            return {};
+        }
+        const auto operation = liveOperations.find(symbolic.Owner);
+        if (operation == liveOperations.end())
             return Failure(Error::InvalidState,
-                           "A Graph Edit action names an unknown Node.");
-        live = {owner->second.Value, symbolic.Selector};
+                           "A Graph Edit action names an unknown graph object.");
+        live = {operation->second.Value, symbolic.Selector};
         return {};
     };
 

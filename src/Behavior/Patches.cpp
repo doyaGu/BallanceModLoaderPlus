@@ -62,7 +62,7 @@ Status Patches::Use(Edit &edit, CKBehaviorLink *link, Link &out) {
     return m_Edit.Use(edit, link, out);
 }
 
-Status Patches::Add(Edit &edit, Spec block, Node &out) {
+Status Patches::Add(Edit &edit, BlockSpec block, Node &out) {
     return m_Edit.Add(edit, std::move(block), out);
 }
 
@@ -203,7 +203,8 @@ private:
 };
 
 Status Patches::Submit(Plans &plans, const SessionOwner &owner,
-                       Script target, std::string name, GraphEdit edit,
+                       ScriptSelection target, std::string name,
+                       GraphEdit edit,
                        PlanId &out) {
     out = 0;
     Status status = Ready();
@@ -215,9 +216,10 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
     // A durable Plan installs into scripts that do not exist yet, so it cannot
     // carry a reference issued against one live world.
     if (edit.UsesIdentity())
-        return Failure(Error::InvalidState,
-                       "A durable Behavior Edit cannot name a Node or Link by "
-                       "reference; query it by name or Prototype instead.");
+        return Failure(
+            Error::WorldBoundValue,
+            "A durable Behavior Edit cannot retain a live Object, Node, or "
+            "Link; query graph objects by name or Prototype instead.");
     status = edit.Validate();
     if (!status)
         return status;
@@ -296,22 +298,6 @@ Status Patches::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
         ? m_Edit.Use(edit, native, out)
         : Failure(Error::GraphChanged,
                   "A Behavior Link disappeared during compilation.");
-}
-
-Status Patches::Add(Edit &edit, PrototypeRef prototype,
-                    const GraphEdit::SettingStages &settings,
-                    Node &out) {
-    Spec block(prototype.Guid);
-    block.PrototypeGeneration(prototype.Generation);
-    bool first = true;
-    for (const GraphEdit::Settings &stage : settings) {
-        if (!first)
-            block.RefreshLayout();
-        first = false;
-        for (const auto &[slot, value] : stage)
-            block.Setting(slot, value);
-    }
-    return m_Edit.Add(edit, std::move(block), out);
 }
 
 Status Patches::Tap(Edit &edit, Port source,

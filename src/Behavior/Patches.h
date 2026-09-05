@@ -48,7 +48,7 @@ public:
                  std::string name, Edit &out);
     Status Use(Edit &edit, CKBehavior *behavior, Node &out);
     Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
-    Status Add(Edit &edit, Spec block, Node &out);
+    Status Add(Edit &edit, BlockSpec block, Node &out) override;
     Status Apply(const SessionOwner &owner, const Edit &edit, PatchId &out,
                  const std::map<std::uint32_t, Node> *handles = nullptr);
     Status Apply(const SessionOwner &owner, const ObjectRef &graph,
@@ -58,7 +58,8 @@ public:
     // still waiting for its safe point.
     Status ResolveNode(const SessionOwner &owner, PatchId patch,
                        std::uint32_t handle, ObjectRef &out) const;
-    Status Submit(Plans &plans, const SessionOwner &owner, Script target,
+    Status Submit(Plans &plans, const SessionOwner &owner,
+                  ScriptSelection target,
                   std::string name, GraphEdit edit, PlanId &out);
     Status Read(const SessionOwner &owner, PatchId patch,
                 PatchInfo &out) const;
@@ -94,9 +95,6 @@ private:
                  Edit &out, GraphModel &base) override;
     Status UseNode(Edit &edit, const ObjectRef &node, Node &out) override;
     Status UseLink(Edit &edit, const ObjectRef &link, Link &out) override;
-    Status Add(Edit &edit, PrototypeRef prototype,
-               const GraphEdit::SettingStages &settings,
-               Node &out) override;
     Status Tap(Edit &edit, Port source,
                const HookBlock::Hook &hook) override;
     Status Interpose(Edit &edit, Link link,

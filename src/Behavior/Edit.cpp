@@ -220,6 +220,10 @@ bool HasSelfLoop(
 }
 
 std::uint64_t DataKey(const ResolvedPort &port) {
+    if (port.Interface != 0) {
+        return (static_cast<std::uint64_t>(port.Owner.Value) << 32u) |
+               0x80000000u | port.Interface;
+    }
     return (static_cast<std::uint64_t>(port.Owner.Value) << 32u) |
            (static_cast<std::uint64_t>(port.Slot.Kind) << 24u) |
            static_cast<std::uint32_t>(port.Slot.NativeIndex);
@@ -285,6 +289,14 @@ Port Node::Target() const {
     return {Value, Slot::At(SlotKind::Target, 0)};
 }
 
+Port ParameterOperation::Input(int index) const {
+    return {Value, Slot::At(SlotKind::InputParameter, index)};
+}
+
+Port ParameterOperation::Result() const {
+    return {Value, Slot::At(SlotKind::OutputParameter, 0)};
+}
+
 Edit::Edit(PatchKey key, NativeRef graph, Layout layout)
     : m_Key(std::move(key)) {
     m_Nodes.push_back(
@@ -316,7 +328,7 @@ Link Edit::Use(ObjectRef anchor) {
     return link;
 }
 
-Node Edit::Add(Spec block, Layout declared, NodeRole role) {
+Node Edit::Add(BlockSpec block, Layout declared, NodeRole role) {
     const Node node{++m_NextNode};
     m_Nodes.push_back(
         {node, {}, std::move(declared), std::move(block), role});
@@ -326,6 +338,14 @@ Node Edit::Add(Spec block, Layout declared, NodeRole role) {
     for (const std::string &name : added.Block->m_AddedOutputs)
         (void) Append(node, SlotKind::Output, name, CKGUID(), true);
     return node;
+}
+
+ParameterOperation Edit::AddOperation(CKGUID operation, CKGUID result,
+                                      CKGUID input1, CKGUID input2) {
+    const ParameterOperation handle{++m_NextNode};
+    m_Operations.push_back(
+        {handle, operation, result, input1, input2, NextOrdinal()});
+    return handle;
 }
 
 void Edit::Flow(Port source, Port sink, int delay, Cycle cycle) {
@@ -386,6 +406,10 @@ void Edit::Redirect(Link target, Port sink, std::vector<Order> ordering) {
         {target, std::move(sink), std::move(ordering), NextOrdinal()});
 }
 
+void Edit::Replace(Node target, Node replacement) {
+    m_Replacements.push_back({target, replacement, NextOrdinal()});
+}
+
 Port Edit::AppendIn(Node node, std::string name) {
     return Append(node, SlotKind::Input, std::move(name), CKGUID());
 }
@@ -411,6 +435,7 @@ Port Edit::Append(Node node, SlotKind kind, std::string name, CKGUID type,
     EditNode *owner = Find(node);
     int index = 0;
     int occurrence = 0;
+    std::uint32_t identity = 0;
     if (owner) {
         for (const SlotInfo &candidate : owner->Shape.Slots) {
             if (candidate.Kind != kind)
@@ -422,10 +447,11 @@ Port Edit::Append(Node node, SlotKind kind, std::string name, CKGUID type,
         SlotInfo slot{kind, index, index, name, type, 0, occurrence};
         slot.Dynamic = true;
         owner->Shape.Slots.push_back(slot);
+        identity = NextOrdinal();
         m_Interface.push_back(
-            {node, std::move(slot), NextOrdinal(), inBlockSpec});
+            {identity, node, std::move(slot), identity, inBlockSpec});
     }
-    return {node.Value, Slot::At(kind, index, type)};
+    return {node.Value, Slot::At(kind, index, type), identity};
 }
 
 const Edit::EditNode *Edit::Find(Node node) const noexcept {
@@ -438,6 +464,15 @@ const Edit::EditNode *Edit::Find(Node node) const noexcept {
 Edit::EditNode *Edit::Find(Node node) noexcept {
     return const_cast<EditNode *>(
         std::as_const(*this).Find(node));
+}
+
+const EditOperation *Edit::Find(ParameterOperation operation) const noexcept {
+    const auto found = std::find_if(
+        m_Operations.begin(), m_Operations.end(),
+        [&](const EditOperation &candidate) {
+            return candidate.Handle == operation;
+        });
+    return found == m_Operations.end() ? nullptr : &*found;
 }
 
 std::uint32_t Edit::NextOrdinal() noexcept { return m_NextAction++; }
@@ -482,6 +517,113 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
                            "A borrowed Edit Node does not belong to the target graph.");
     }
 
+    std::set<std::uint32_t> replaced;
+    const auto publicShape = [](const Layout &layout, SlotKind kind) {
+        std::vector<const SlotInfo *> result;
+        for (const SlotInfo &slot : layout.Slots) {
+            if (slot.Kind == kind)
+                result.push_back(&slot);
+        }
+        std::sort(result.begin(), result.end(),
+                  [](const SlotInfo *left, const SlotInfo *right) {
+                      return left->Index < right->Index;
+                  });
+        return result;
+    };
+    for (const EditReplace &item : m_Replacements) {
+        const EditNode *target = Find(item.Target);
+        const EditNode *replacement = Find(item.Replacement);
+        if (!target || target == &m_Nodes.front() || target->Block ||
+            !replacement || !replacement->Block) {
+            return Failure(
+                Error::InvalidState,
+                "Replace requires a borrowed child Node and an authored replacement Block.");
+        }
+        if (!replaced.insert(item.Target.Value).second) {
+            return Failure(Error::InvalidState,
+                           "One Edit cannot replace the same Node twice.");
+        }
+        const auto liveTarget = std::find_if(
+            base.Nodes.begin(), base.Nodes.end(),
+            [&](const GraphNode &candidate) {
+                return candidate.Id == target->Native.Id;
+            });
+        if (liveTarget == base.Nodes.end() || liveTarget->Active ||
+            std::any_of(liveTarget->Ports.begin(), liveTarget->Ports.end(),
+                        [](const GraphPort &port) {
+                            return (port.Kind == SlotKind::Input ||
+                                    port.Kind == SlotKind::Output) &&
+                                port.Active;
+                        })) {
+            return Failure(Error::Busy,
+                           "Only an idle Behavior Node can be replaced.");
+        }
+        for (SlotKind kind : {SlotKind::Input, SlotKind::Output,
+                              SlotKind::Target,
+                              SlotKind::InputParameter,
+                              SlotKind::OutputParameter}) {
+            const auto before = publicShape(target->Shape, kind);
+            const auto after = publicShape(replacement->Shape, kind);
+            if (before.size() != after.size())
+                return Failure(
+                    Error::InterfaceUnsupported,
+                    "A replacement Block has a different public Behavior interface.");
+            for (std::size_t index = 0; index < before.size(); ++index) {
+                if (before[index]->Index != after[index]->Index ||
+                    before[index]->Name != after[index]->Name ||
+                    before[index]->Occurrence != after[index]->Occurrence ||
+                    before[index]->Type != after[index]->Type) {
+                    return Failure(
+                        Error::InterfaceUnsupported,
+                        "A replacement Block changed a public Behavior port.");
+                }
+            }
+        }
+        out.Replacements.push_back(
+            {item.Target, item.Replacement, item.Ordinal});
+    }
+    const auto replacedPort = [&](const Port &port) {
+        return replaced.contains(port.Owner);
+    };
+    if (!replaced.empty()) {
+        for (const InterfacePort &item : m_Interface) {
+            if (replaced.contains(item.Owner.Value))
+                return Failure(
+                    Error::InvalidState,
+                    "A replaced Node cannot also receive an interface edit.");
+        }
+        for (const EditFlow &item : m_Flows) {
+            if (replacedPort(item.Source) || replacedPort(item.Sink))
+                return Failure(
+                    Error::InvalidState,
+                    "Use the replacement Node, not the parked Node, in Flow.");
+        }
+        for (const EditBind &item : m_Binds) {
+            if (replacedPort(item.Target) ||
+                (item.Kind != BindKind::Literal && replacedPort(item.Source)))
+                return Failure(
+                    Error::InvalidState,
+                    "Use the replacement Node, not the parked Node, in Bind.");
+        }
+        for (const EditPush &item : m_Pushes) {
+            if (replacedPort(item.Source) || replacedPort(item.Destination))
+                return Failure(
+                    Error::InvalidState,
+                    "Use the replacement Node, not the parked Node, in Push.");
+        }
+        for (const EditTap &item : m_Taps) {
+            if (replacedPort(item.Source))
+                return Failure(
+                    Error::InvalidState,
+                    "Use the replacement Node, not the parked Node, in Tap.");
+        }
+        if (!m_Splices.empty() || !m_Redirects.empty()) {
+            return Failure(
+                Error::InvalidState,
+                "Replace cannot share one Patch with Link overlays.");
+        }
+    }
+
     for (const InterfacePort &item : m_Interface) {
         const EditNode *node = Find(item.Owner);
         if (!node)
@@ -491,16 +633,19 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         // consulting the variable-interface flags: those flags declare intent
         // to an editor, they do not gate CreateInput and friends. So an
         // appended port is allowed everywhere, and the flag only tells the
-        // author whether the block's own code will read it. Locals and the
-        // Target are different: they are the block's private state and it
-        // addresses them by index, so appending one is refused.
-        if (!InterfaceFlag(item.Slot.Kind)) {
+        // author whether the block's own code will read it. A Local is private
+        // state, so an Edit may append one only to its graph root or to a Block
+        // the same Edit owns.
+        const bool ownedLocal = item.Slot.Kind == SlotKind::Local &&
+            (item.Owner == Graph() || node->Block);
+        if (!InterfaceFlag(item.Slot.Kind) && !ownedLocal) {
             return Failure(
                 Error::InterfaceUnsupported,
-                "Only Ins, Outs, and parameters can be appended to a Behavior.");
+                "A Local can be appended only to the graph root or a Block added by this Edit.");
         }
         if ((item.Slot.Kind == SlotKind::InputParameter ||
-             item.Slot.Kind == SlotKind::OutputParameter) &&
+             item.Slot.Kind == SlotKind::OutputParameter ||
+             item.Slot.Kind == SlotKind::Local) &&
             !item.Slot.Type.IsValid()) {
             return Failure(Error::TypeMismatch,
                            "A dynamic parameter requires a Virtools type GUID.");
@@ -508,23 +653,80 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
     }
 
     const auto resolve = [&](const Port &port, ResolvedPort &resolved) {
-        const EditNode *node = Find({port.Owner});
-        if (!node)
+        const EditNode *node = Find(Node{port.Owner});
+        const EditOperation *operation = Find(ParameterOperation{port.Owner});
+        if (!node && !operation)
             return Failure(Error::InvalidState,
-                           "An Edit action names an unknown Node.",
+                           "An Edit action names an unknown graph object.",
                            &port.Selector);
-        resolved.Owner = node->Handle;
+        resolved.Owner = {port.Owner};
         resolved.Selector = port.Selector;
-        Status status = Resolve(node->Shape, port.Selector, resolved.Slot);
-        if (!status)
-            return status;
-        resolved.Appended = std::any_of(
-            m_Interface.begin(), m_Interface.end(),
-            [&](const InterfacePort &item) {
-                return item.Owner == resolved.Owner &&
-                    item.Slot.Kind == resolved.Slot.Kind &&
-                    item.Slot.NativeIndex == resolved.Slot.NativeIndex;
-            });
+        resolved.Interface = port.Interface;
+        resolved.Operation = operation != nullptr;
+        if (operation) {
+            if (port.Interface != 0 || port.Selector.UsesName() ||
+                port.Selector.RequireOnly) {
+                return Failure(
+                    Error::InvalidState,
+                    "A Parameter Operation port must use its fixed index.",
+                    &port.Selector);
+            }
+            CKGUID type;
+            if (port.Selector.Kind == SlotKind::InputParameter &&
+                port.Selector.Index >= 0 && port.Selector.Index <= 1) {
+                type = port.Selector.Index == 0
+                    ? operation->Input1 : operation->Input2;
+            } else if (port.Selector.Kind == SlotKind::OutputParameter &&
+                       port.Selector.Index == 0) {
+                type = operation->Result;
+            } else {
+                return Failure(
+                    Error::TypeMismatch,
+                    "A Parameter Operation exposes Pin 0, Pin 1, and Pout 0 only.",
+                    &port.Selector);
+            }
+            if (!type.IsValid() || type == CKPGUID_NONE) {
+                return Failure(
+                    Error::SlotNotFound,
+                    "The selected input is absent from this Parameter Operation overload.",
+                    &port.Selector);
+            }
+            resolved.Slot = {
+                port.Selector.Kind, port.Selector.Index,
+                port.Selector.Index, port.Selector.Kind == SlotKind::InputParameter
+                    ? (port.Selector.Index == 0 ? "Pin 0" : "Pin 1")
+                    : "Pout 0",
+                type, 0, 0};
+            return Status{};
+        }
+        resolved.Owner = node->Handle;
+        if (port.Interface != 0) {
+            const auto declared = std::find_if(
+                m_Interface.begin(), m_Interface.end(),
+                [&](const InterfacePort &item) {
+                    return item.Identity == port.Interface &&
+                           item.Owner == resolved.Owner;
+                });
+            if (declared == m_Interface.end()) {
+                return Failure(
+                    Error::InvalidState,
+                    "An Edit Port names an unknown interface declaration.",
+                    &port.Selector);
+            }
+            resolved.Slot = declared->Slot;
+            resolved.Appended = true;
+        } else {
+            Status status = Resolve(node->Shape, port.Selector, resolved.Slot);
+            if (!status)
+                return status;
+            resolved.Appended = std::any_of(
+                m_Interface.begin(), m_Interface.end(),
+                [&](const InterfacePort &item) {
+                    return item.Owner == resolved.Owner &&
+                        item.Slot.Kind == resolved.Slot.Kind &&
+                        item.Slot.NativeIndex == resolved.Slot.NativeIndex;
+                });
+        }
         return Status{};
     };
 
@@ -600,6 +802,25 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         }
         checked.Ordinal = push.Ordinal;
         out.Pushes.push_back(std::move(checked));
+    }
+
+    for (const EditOperation &operation : m_Operations) {
+        if (!operation.Operation.IsValid() ||
+            !operation.Result.IsValid() || operation.Result == CKPGUID_NONE) {
+            Status invalid = Failure(
+                Error::OperationInvalid,
+                "A Parameter Operation requires an operation GUID and result type.");
+            invalid.Details.OperationGuid = operation.Operation;
+            return invalid;
+        }
+        if (operation.Input2.IsValid() && operation.Input2 != CKPGUID_NONE &&
+            (!operation.Input1.IsValid() || operation.Input1 == CKPGUID_NONE)) {
+            Status invalid = Failure(
+                Error::OperationInvalid,
+                "A Parameter Operation cannot have a second input without its first input.");
+            invalid.Details.OperationGuid = operation.Operation;
+            return invalid;
+        }
     }
 
     for (const EditTap &tap : m_Taps) {
@@ -850,9 +1071,41 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         if (bind.Kind == BindKind::Shared)
             shares.emplace_back(DataKey(bind.Target), DataKey(bind.Source));
     }
+    const auto operationInputKey = [](ParameterOperation operation,
+                                      int index) {
+        return (static_cast<std::uint64_t>(operation.Value) << 32u) |
+               (static_cast<std::uint64_t>(SlotKind::InputParameter) << 24u) |
+               static_cast<std::uint32_t>(index);
+    };
+    for (const EditOperation &operation : m_Operations) {
+        const bool first = operation.Input1.IsValid() &&
+            operation.Input1 != CKPGUID_NONE;
+        const bool second = operation.Input2.IsValid() &&
+            operation.Input2 != CKPGUID_NONE;
+        if ((first && !bound.contains(operationInputKey(operation.Handle, 0))) ||
+            (second && !bound.contains(operationInputKey(operation.Handle, 1)))) {
+            Status invalid = Failure(
+                Error::OperationInvalid,
+                "Every input of a Parameter Operation must have one Bind.");
+            invalid.Details.OperationGuid = operation.Operation;
+            return invalid;
+        }
+    }
     if (HasCycle(shares))
         return Failure(Error::SharedSourceCycle,
                        "The candidate shared-source graph contains a cycle.");
+
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> operationEdges;
+    for (const CheckedBind &bind : out.Binds) {
+        if (bind.Kind != BindKind::Direct || !bind.Target.Operation ||
+            !bind.Source.Operation)
+            continue;
+        operationEdges.emplace_back(bind.Source.Owner.Value,
+                                    bind.Target.Owner.Value);
+    }
+    if (HasCycle(operationEdges))
+        return Failure(Error::OperationInvalid,
+                       "The candidate Parameter Operation graph contains a cycle.");
 
     std::set<std::pair<std::uint64_t, std::uint64_t>> pushed;
     std::vector<std::pair<std::uint64_t, std::uint64_t>> pushes;

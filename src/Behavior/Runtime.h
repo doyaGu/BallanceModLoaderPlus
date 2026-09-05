@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "CKAll.h"
+#include "Behavior/Block.h"
 #include "Behavior/Callback.h"
 #include "Behavior/Execution.h"
 #include "Behavior/Lifecycle.h"
@@ -26,94 +27,6 @@
 #include "Behavior/Status.h"
 
 namespace BML::Behavior {
-
-class Operation {
-public:
-    explicit Operation(CKGUID operation = CKGUID()) : m_Operation(operation) {}
-
-    Operation &Result(CKGUID type);
-    Operation &Input1(Parameter::Binding value);
-    Operation &Input2(Parameter::Binding value);
-
-    [[nodiscard]] CKGUID Guid() const noexcept { return m_Operation; }
-    [[nodiscard]] CKGUID ResultType() const noexcept { return m_ResultType; }
-
-private:
-    CKGUID m_Operation = CKGUID();
-    CKGUID m_ResultType = CKGUID();
-    Parameter::Binding m_Input1;
-    Parameter::Binding m_Input2;
-    bool m_HasInput1 = false;
-    bool m_HasInput2 = false;
-
-    friend class Runtime;
-    friend class Edit;
-    friend class CKEdit;
-};
-
-enum class TargetMode {
-    Owner,
-    Explicit,
-    ExplicitNull,
-};
-
-class Spec {
-public:
-    explicit Spec(CKGUID prototype = CKGUID()) : m_Prototype(prototype) { m_SettingStages.emplace_back(); }
-
-    Spec &TargetOwner();
-    Spec &Target(CKGUID type, CKObject *object);
-    Spec &NullTarget(CKGUID type);
-    Spec &TargetSource(CKGUID type, CKParameter *source);
-    Spec &TargetShared(CKGUID type, CKParameterIn *source);
-    Spec &Setting(Slot slot, Parameter::Binding value);
-    Spec &RefreshLayout();
-    Spec &Input(Slot slot, Parameter::Binding value);
-    Spec &Input(Slot slot, Operation operation);
-    Spec &Local(Slot slot, Parameter::Binding value);
-    Spec &AddInput(std::string name);
-    Spec &AddOutput(std::string name);
-    Spec &Frames(FrameRetention retention);
-    Spec &KeepAlive(std::shared_ptr<CallbackResource> resource);
-    Spec &PrototypeGeneration(std::uint64_t generation) noexcept {
-        m_PrototypeGeneration = generation;
-        return *this;
-    }
-
-    [[nodiscard]] CKGUID Prototype() const noexcept { return m_Prototype; }
-    [[nodiscard]] std::uint64_t PrototypeGeneration() const noexcept {
-        return m_PrototypeGeneration;
-    }
-
-private:
-    struct Binding {
-        Slot Target;
-        Parameter::Binding Source;
-    };
-
-    struct OperationBinding {
-        Slot Target;
-        Operation Definition;
-    };
-
-    CKGUID m_Prototype = CKGUID();
-    std::uint64_t m_PrototypeGeneration = 0;
-    TargetMode m_TargetMode = TargetMode::Owner;
-    CKGUID m_TargetType = CKGUID();
-    Parameter::Binding m_TargetValue;
-    std::vector<std::vector<Binding>> m_SettingStages;
-    std::vector<Binding> m_Inputs;
-    std::vector<OperationBinding> m_Operations;
-    std::vector<Binding> m_Locals;
-    std::vector<std::string> m_AddedInputs;
-    std::vector<std::string> m_AddedOutputs;
-    std::vector<std::shared_ptr<CallbackResource>> m_KeepAlive;
-    FrameRetention m_FrameRetention = FrameRetention::Signals();
-
-    friend class Runtime;
-    friend class Edit;
-    friend class CKEdit;
-};
 
 enum class RunState {
     Ready,
@@ -201,19 +114,22 @@ public:
     Runtime(const Runtime &) = delete;
     Runtime &operator=(const Runtime &) = delete;
 
-    CreateResult Instantiate(CKBeObject *owner, const Spec &spec,
-                               const CKBehaviorContext *frame = nullptr);
-    CallResult Call(CKBeObject *owner, const Spec &spec, const Slot &input,
-                    const CKBehaviorContext *frame = nullptr);
-    AttachResult AddToGraph(CKBehavior *parent, const Spec &spec,
+    CreateResult Instantiate(CKBeObject *owner, const BlockSpec &spec,
+                             const CKBehaviorContext *frame = nullptr,
+                             FrameRetention retention = FrameRetention::Signals());
+    CallResult Call(CKBeObject *owner, const BlockSpec &spec, const Slot &input,
+                    const CKBehaviorContext *frame = nullptr,
+                    FrameRetention retention = FrameRetention::Signals());
+    AttachResult AddToGraph(CKBehavior *parent, const BlockSpec &spec,
                                 const CKBehaviorContext *frame = nullptr);
     // Adds a Block to a live graph and keeps a managed handle for it, so the
     // caller reads and writes its Slots through this Runtime instead of poking
     // the native object. The handle also drives the Block: a parked Block that
     // its parent graph never activates is executed by whoever holds the
     // handle.
-    CreateResult AttachToGraph(CKBehavior *parent, const Spec &spec,
-                               const CKBehaviorContext *frame = nullptr);
+    CreateResult AttachToGraph(CKBehavior *parent, const BlockSpec &spec,
+                               const CKBehaviorContext *frame = nullptr,
+                               FrameRetention retention = FrameRetention::Signals());
 
     [[nodiscard]] Layout Describe(CKBehavior *behavior, std::uint64_t generation = 0) const;
     [[nodiscard]] std::uint64_t LayoutGeneration(
@@ -243,13 +159,13 @@ public:
     Status Bind(Instance &instance, const SlotRef &slot,
                 CKBehavior *source, const Slot &sourceSlot,
                 Parameter::BindingKind relation);
-    Status Configure(Instance &instance, const Spec &settings,
+    Status Configure(Instance &instance, const BlockSpec &settings,
                      const CKBehaviorContext *frame = nullptr);
     // Settings can rebuild arbitrary parts of the live layout.  Reconfigure
     // therefore takes the complete desired spec and reapplies target, locals,
     // and inputs after every settings stage; there is no misleading one-field
     // SetSetting operation.
-    Status Reconfigure(Instance &instance, const Spec &spec,
+    Status Reconfigure(Instance &instance, const BlockSpec &spec,
                                const CKBehaviorContext *frame = nullptr);
 
     RunResult Pulse(Instance &instance, const Slot &input,
@@ -284,13 +200,6 @@ private:
         }
     };
 
-    struct OwnedOperation {
-        ObjectStamp Owner;
-        ObjectStamp Operation;
-        std::vector<ObjectStamp> Sources;
-        bool AddedToOwner = false;
-    };
-
     struct Record {
         ObjectStamp Behavior;
         ObjectStamp Parent;
@@ -314,9 +223,8 @@ private:
         // The Target, Pins, Locals, and operations that define the current
         // live instance. Settings are deliberately not retained: each stage
         // is an event and must not be replayed by a later Configure call.
-        Spec Desired;
+        BlockSpec Desired;
         std::vector<ObjectStamp> OwnedSources;
-        std::vector<OwnedOperation> OwnedOperations;
         std::vector<std::shared_ptr<CallbackResource>> KeepAlive;
     };
 
@@ -324,7 +232,6 @@ private:
         ObjectStamp Behavior;
         ObjectStamp Parent;
         std::vector<ObjectStamp> Sources;
-        std::vector<OwnedOperation> Operations;
         std::vector<std::shared_ptr<CallbackResource>> KeepAlive;
         int Frames = 2;
         bool DestroyBehavior = false;
@@ -357,11 +264,11 @@ private:
     [[nodiscard]] Status ResolvePrototype(PrototypeRef requested,
                                           PrototypeRef &selected) const;
     [[nodiscard]] Status CheckDetached(
-        const Spec &spec, DetachedCompatibility &compatibility,
+        const BlockSpec &spec, DetachedCompatibility &compatibility,
         bool graphResident = false) const;
     [[nodiscard]] Status ValidateTarget(CKBeObject *owner,
-                                        const Spec &spec) const;
-    [[nodiscard]] Status CreateBehavior(const Spec &spec,
+                                        const BlockSpec &spec) const;
+    [[nodiscard]] Status CreateBehavior(const BlockSpec &spec,
                                         CKBehavior *&behavior,
                                         Record &record) const;
     [[nodiscard]] CKGUID PrototypeGuid(CKBehavior *behavior) const;
@@ -373,43 +280,57 @@ private:
     [[nodiscard]] Status BindInput(CKBehavior *behavior, Record &record,
                                            const SlotInfo &slot,
                                            const Parameter::Binding &value);
-    [[nodiscard]] Status BindOperation(CKBehavior *behavior, Record &record,
-                                               const SlotInfo &slot,
-                                               const Operation &operation);
     [[nodiscard]] Status EnsurePrototypeLayout(CKBehavior *behavior,
                                                        CKBehaviorPrototype *prototype,
                                                        bool afterSettings);
     [[nodiscard]] Status EnsurePrototypeDefaults(CKBehavior *behavior,
                                                          CKBehaviorPrototype *prototype,
                                                          Record &record);
-    [[nodiscard]] Status ApplyBindings(CKBehavior *behavior, const Spec &spec,
+    [[nodiscard]] Status ApplyBindings(CKBehavior *behavior, const BlockSpec &spec,
                                                Record &record);
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
-                                            const Spec &spec, Record &record);
+                                            const BlockSpec &spec, Record &record);
     // The shared body of AddToGraph and AttachToGraph. It hands back a
     // managed handle only when the caller asked for one, and reports what
     // the catalog knows about detached support without refusing a GraphOnly
     // Block: a parent graph is exactly where such a Block belongs.
-    AttachResult Attach(CKBehavior *parent, const Spec &spec,
+    AttachResult Attach(CKBehavior *parent, const BlockSpec &spec,
                         const CKBehaviorContext *frame, Instance *handle,
-                        DetachedCompatibility *detached = nullptr);
+                        DetachedCompatibility *detached = nullptr,
+                        FrameRetention retention = FrameRetention::Ignore());
     void PruneOwnedSources(Record &record);
-    void PruneOwnedOperations(Record &record);
     void SweepRecords();
-    void DetachOperation(OwnedOperation &operation);
+    class NativeLifecycleAdapter;
     [[nodiscard]] Status Configure(CKBehavior *behavior,
                                            CKBeObject *owner, CKBehavior *parent,
-                                           const Spec &spec,
+                                           const BlockSpec &spec,
                                            const CKBehaviorContext *frame,
                                            Record &record);
+    [[nodiscard]] Status CreateBlock(CKBehavior *behavior,
+                                     CKBeObject *owner, CKBehavior *parent,
+                                     const BlockSpec &spec,
+                                     const CKBehaviorContext *frame,
+                                     Record &record);
+    [[nodiscard]] Status EditBlock(CKBehavior *behavior,
+                                   CKBeObject *owner, CKBehavior *parent,
+                                   const BlockSpec &spec,
+                                   const CKBehaviorContext *frame,
+                                   Record &record);
+    [[nodiscard]] Status LifecycleStatus(
+        const NativeLifecycleAdapter &adapter, const Record &record) const;
+    [[nodiscard]] AttachResult CreateInGraph(
+        CKBehavior *parent, const BlockSpec &spec,
+        const CKBehaviorContext *frame = nullptr);
+    [[nodiscard]] Status EditInGraph(
+        CKBehavior *behavior, const BlockSpec &spec,
+        const CKBehaviorContext *frame = nullptr);
     [[nodiscard]] Status ApplySettings(
         Instance &instance,
-        const std::vector<std::vector<Spec::Binding>> &settings,
-        const Spec &desired, const CKBehaviorContext *frame);
+        const std::vector<std::vector<BlockSpec::Binding>> &settings,
+        const BlockSpec &desired, const CKBehaviorContext *frame);
     [[nodiscard]] Status CallCallback(Record &record, CKDWORD message,
                                       const CKBehaviorContext *frame) const;
     class NativeAdapter;
-    class NativeLifecycleAdapter;
     [[nodiscard]] RunResult Execute(std::uint64_t instanceId,
                                     const ExecutionInput *input, bool once,
                                     const CKBehaviorContext *frame);
@@ -420,7 +341,6 @@ private:
     void Release(std::uint64_t instanceId);
     void QueueDestroy(Record &record);
     void QueueSourceDestroy(ObjectStamp source, int frames = 2);
-    void QueueOperationDestroy(OwnedOperation operation, int frames = 2);
     void DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior);
     void DrainDeferredReleases();
     void DrainCloseQueue(bool force = false);
@@ -447,6 +367,7 @@ private:
     std::vector<Record *> m_ConfiguringRecords;
 
     friend class Instance;
+    friend class CKEdit;
 };
 
 const char *DescribeError(Error error);

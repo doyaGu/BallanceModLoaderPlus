@@ -47,6 +47,11 @@ Lifecycle &Lifecycle::operator=(Lifecycle &&other) noexcept {
 
 bool Lifecycle::Configure(const LifecyclePlan &plan,
                           LifecycleAdapter &adapter) {
+    return Create(plan, adapter) && Edit(adapter);
+}
+
+bool Lifecycle::Create(const LifecyclePlan &plan,
+                       LifecycleAdapter &adapter) {
     if (m_State != LifecycleState::New) {
         RecordFailure(Fault(LifecycleError::InvalidState,
                              "Behavior lifecycle was configured more than once."));
@@ -124,6 +129,44 @@ bool Lifecycle::Configure(const LifecyclePlan &plan,
                               m_Identity, layout, fault)) {
             return FailConfiguration(std::move(fault), adapter);
         }
+    }
+
+    if (plan.HasInterface) {
+        if (!adapter.ApplyInterface(fault)) {
+            SupplyFault(fault, LifecycleError::BindingFailed,
+                        "Behavior interface could not be created.");
+            return FailConfiguration(std::move(fault), adapter);
+        }
+        if (!adapter.Reflect(layout, fault)) {
+            SupplyFault(fault, LifecycleError::LayoutFailed,
+                        "Behavior layout could not be reflected after its interface was created.");
+            return FailConfiguration(std::move(fault), adapter);
+        }
+    }
+
+    if (CloseRequested()) {
+        RecordFailure(Fault(LifecycleError::Cancelled,
+                            "Behavior lifecycle was closed during creation."));
+        Drain(adapter);
+        return false;
+    }
+    return true;
+}
+
+bool Lifecycle::Edit(LifecycleAdapter &adapter) {
+    if (m_State != LifecycleState::Configuring) {
+        RecordFailure(Fault(
+            LifecycleError::InvalidState,
+            "Behavior lifecycle was edited outside configuration."));
+        return false;
+    }
+
+    LifecycleLayout layout;
+    LifecycleFault fault;
+    if (!adapter.Reflect(layout, fault)) {
+        SupplyFault(fault, LifecycleError::LayoutFailed,
+                    "Behavior layout could not be reflected before EDITED.");
+        return FailConfiguration(std::move(fault), adapter);
     }
 
     if (!adapter.ApplyBindings(fault)) {

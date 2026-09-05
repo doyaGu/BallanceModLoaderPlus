@@ -35,7 +35,7 @@ void Define(Definition &block, const Options &options) {
 } // namespace Detail
 
 #ifdef BML_BEHAVIOR_INTERNAL
-inline Spec Make(const Options &options) {
+inline BlockSpec Make(const Options &options) {
     Blocks::Detail::Definition block(PHYSICS_RT_PHYSICSFORCE);
     Detail::Define(block, options);
     return std::move(block).Build();

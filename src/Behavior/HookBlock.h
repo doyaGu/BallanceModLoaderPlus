@@ -82,10 +82,10 @@ std::shared_ptr<Binding> Bind(Callback callback, void *argument = nullptr);
 std::shared_ptr<Binding> Bind(PlanCallbackState state, Callback callback,
                               void *argument = nullptr);
 
-Spec Make(std::shared_ptr<Binding> binding,
+BlockSpec Make(std::shared_ptr<Binding> binding,
           int inputCount = 1, int outputCount = 1);
 
-Spec Make(Callback callback, void *argument = nullptr,
+BlockSpec Make(Callback callback, void *argument = nullptr,
           int inputCount = 1, int outputCount = 1);
 
 void Register(XObjectDeclarationArray *registry);

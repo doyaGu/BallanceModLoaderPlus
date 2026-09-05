@@ -28,6 +28,7 @@ typedef struct BML_BehaviorRun__ *BML_BehaviorRun;
 typedef struct BML_BehaviorWatch__ *BML_BehaviorWatch;
 typedef struct BML_BehaviorPlan__ *BML_BehaviorPlan;
 typedef struct BML_BehaviorPatch__ *BML_BehaviorPatch;
+typedef struct BML_BehaviorScript__ *BML_BehaviorScript;
 
 #pragma pack(push, 8)
 
@@ -190,7 +191,6 @@ typedef struct BML_BehaviorBlock {
     uint32_t PinCount;
     const BML_BehaviorBinding *Locals;
     uint32_t LocalCount;
-    BML_BehaviorFramePolicy Frames;
     // Zero selects the current provider. A nonzero generation pins the
     // Prototype provider selected by FindPrototypes.
     uint64_t PrototypeGeneration;
@@ -326,6 +326,41 @@ typedef struct BML_BehaviorRunInfo {
     BML_BehaviorPrototypeRef Prototype;
     BML_BehaviorStatus Status;
 } BML_BehaviorRunInfo;
+
+// A top-level Script is a graph-backed CKBehavior owned by one CKBeObject and
+// participating in the Scene that was current when it was created. It starts
+// inactive so its graph can be authored before Virtools schedules it.
+typedef enum BML_BehaviorScriptState {
+    BML_BEHAVIOR_SCRIPT_READY = 1,
+    BML_BEHAVIOR_SCRIPT_CLOSING = 2,
+    BML_BEHAVIOR_SCRIPT_FAILED = 3
+} BML_BehaviorScriptState;
+
+typedef struct BML_BehaviorScriptSpec {
+    uint32_t StructSize;
+    BML_ObjectRef Owner;
+    BML_BehaviorString Name;
+    int32_t Priority;
+    // The complete initial graph. Handle BML_BEHAVIOR_EDIT_GRAPH denotes the
+    // new Script root. The Loader validates and applies every step before it
+    // publishes the Script or returns its handle.
+    uint32_t StepCount;
+    const struct BML_BehaviorEditStep *Steps;
+} BML_BehaviorScriptSpec;
+
+typedef struct BML_BehaviorScriptInfo {
+    uint32_t StructSize;
+    uint32_t State;
+    // Active is the current Scene state. RequestedActive is the state that
+    // will be applied at the next Behavior safe point.
+    uint32_t Active;
+    uint32_t RequestedActive;
+    BML_ObjectRef Root;
+    BML_ObjectRef Owner;
+    BML_ObjectRef Scene;
+    int32_t Priority;
+    BML_BehaviorStatus Status;
+} BML_BehaviorScriptInfo;
 
 typedef enum BML_BehaviorAdmission {
     BML_BEHAVIOR_ADMISSION_EXECUTED = 1,
@@ -566,6 +601,20 @@ typedef struct BML_BehaviorGraphLink {
     uint32_t Pending;
 } BML_BehaviorGraphLink;
 
+// One CKParameterOperation owned by the graph. Function and the parameter
+// type tuple identify the exact registered Virtools operation overload.
+typedef struct BML_BehaviorGraphOperation {
+    uint32_t StructSize;
+    uint64_t Id;
+    BML_ObjectRef Object;
+    uint64_t Owner;
+    BML_BehaviorGuid Function;
+    BML_BehaviorGuid Result;
+    BML_BehaviorGuid Input1;
+    BML_BehaviorGuid Input2;
+    BML_BehaviorText Name;
+} BML_BehaviorGraphOperation;
+
 // All offsets are relative to the payload passed to Inspect.
 typedef struct BML_BehaviorGraph {
     uint32_t StructSize;
@@ -577,6 +626,8 @@ typedef struct BML_BehaviorGraph {
     uint32_t NodeCount;
     uint32_t LinkOffset;
     uint32_t LinkCount;
+    uint32_t OperationOffset;
+    uint32_t OperationCount;
 } BML_BehaviorGraph;
 
 typedef enum BML_BehaviorReadMode {
@@ -813,6 +864,17 @@ typedef struct BML_BehaviorEditOrder {
     BML_BehaviorString Name;
 } BML_BehaviorEditOrder;
 
+// One native CKParameterOperation overload. Operation identifies the
+// registered Virtools operation type; the three parameter type GUIDs select
+// its concrete function. A zero input type means that input is absent.
+typedef struct BML_BehaviorOperationSpec {
+    uint32_t StructSize;
+    BML_BehaviorGuid Operation;
+    BML_BehaviorGuid Result;
+    BML_BehaviorGuid Input1;
+    BML_BehaviorGuid Input2;
+} BML_BehaviorOperationSpec;
+
 // Steps name each other through caller-assigned handles in one namespace per
 // edit. Handle 1 always denotes the target graph itself; every other handle
 // must be defined by an earlier step before a later step reads it.
@@ -842,7 +904,9 @@ typedef enum BML_BehaviorEditKind {
     BML_BEHAVIOR_EDIT_FOLLOW = 3,
     // Result names a new Block created from Prototype.
     BML_BEHAVIOR_EDIT_ADD_BLOCK = 4,
-    // Result names a slot appended to Target, of SlotKind, called Name.
+    // Result names a slot appended to Target, of SlotKind, called Name. A
+    // Local may be appended to the graph root or to a Block created by this
+    // same edit, never to a borrowed child node.
     BML_BEHAVIOR_EDIT_APPEND_SLOT = 5,
     // Adds a behavior link from Source to Sink.
     BML_BEHAVIOR_EDIT_FLOW = 6,
@@ -875,11 +939,14 @@ typedef enum BML_BehaviorEditKind {
     // open, so the Logical view of the graph reports the new one. Only one
     // patch at a time may redirect one link.
     BML_BEHAVIOR_EDIT_REDIRECT = 17,
-    // Writes Value into the Setting named by Sink, which must belong to a Block
-    // this same program adds. Editing a Setting can rebuild the layout of a
-    // Block, so a Setting is written through the creation of the Block and
-    // never poked into a Block that already exists.
-    BML_BEHAVIOR_EDIT_SETTING = 18
+    // Result names a CKParameterOperation owned by the target graph. Its
+    // inputs and result are addressed as Pin 0, Pin 1, and Pout 0 on Result.
+    BML_BEHAVIOR_EDIT_ADD_OPERATION = 18,
+    // Replaces the existing child Node named by Target with the configured
+    // Block. Result names the replacement. The two Nodes must expose the same
+    // public control and parameter interface; private Settings and Locals are
+    // owned by their respective Blocks and are not copied.
+    BML_BEHAVIOR_EDIT_REPLACE_BLOCK = 19
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {
@@ -888,9 +955,6 @@ typedef enum BML_BehaviorEditFlags {
     // BML_BEHAVIOR_EDIT_FLOW may close a same-frame cycle. Without this the
     // edit is rejected instead.
     BML_BEHAVIOR_EDIT_CONFIRM_CYCLE = 1u << 1,
-    // Starts a later Setting stage for the Block named by Sink. The first
-    // Setting of a Block starts its first stage without this flag.
-    BML_BEHAVIOR_EDIT_SETTING_STAGE = 1u << 2
 } BML_BehaviorEditFlags;
 
 // One step of an edit program. Only the fields its Kind documents are read,
@@ -910,9 +974,12 @@ typedef struct BML_BehaviorEditStep {
     int32_t Delay;
     // Node name to require, or the name of an appended slot.
     BML_BehaviorString Name;
-    // Prototype to require or to create. REQUIRE_NODE matches only the GUID;
-    // ADD_BLOCK requires a nonzero provider Generation.
+    // Prototype matched by REQUIRE_NODE.
     BML_BehaviorPrototypeRef Prototype;
+    // Complete configured Block created by ADD_BLOCK. Its Prototype provider
+    // generation must already be resolved. The Loader deep-copies the Block
+    // with the edit program.
+    const BML_BehaviorBlock *Block;
     // Virtools parameter type of an appended Pin, Pout, or Local.
     BML_BehaviorGuid Type;
     BML_BehaviorPortRef Source;
@@ -925,6 +992,8 @@ typedef struct BML_BehaviorEditStep {
     // The node or link a USE step names. Identity is resolved once, against
     // the graph this program is applied to, so a durable Plan cannot carry it.
     BML_ObjectRef Object;
+    // Concrete native operation overload created by ADD_OPERATION.
+    BML_BehaviorOperationSpec Operation;
 } BML_BehaviorEditStep;
 
 typedef struct BML_BehaviorPlanSpec {
@@ -956,9 +1025,10 @@ typedef struct BML_BehaviorPatchSpec {
 typedef struct BML_BehaviorInterface {
     BML_InterfaceHeader Header;
 
-    // Except for the five Close functions, every function in this Interface
+    // Except for the six Close functions, every function in this Interface
     // must be called on the game thread. CloseSession, CloseRun, CloseWatch,
-    // ClosePlan, and ClosePatch may be called from any thread. They close new
+    // ClosePlan, ClosePatch, and CloseScript may be called from any thread.
+    // They close new
     // admission immediately and never wait for a running callback or Execute;
     // native teardown and callback Release finish at a later game-thread safe
     // point. Repeating CloseSession, CloseRun, or CloseWatch with the same
@@ -977,6 +1047,7 @@ typedef struct BML_BehaviorInterface {
     int (BML_BEHAVIOR_CALL *Call)(BML_BehaviorSession session,
                                   BML_ObjectRef owner,
                                   const BML_BehaviorBlock *block,
+                                  const BML_BehaviorFramePolicy *frames,
                                   const BML_BehaviorSelector *input,
                                   BML_BehaviorRun *outRun,
                                   BML_BehaviorRunInfo *info,
@@ -984,6 +1055,7 @@ typedef struct BML_BehaviorInterface {
     int (BML_BEHAVIOR_CALL *Start)(BML_BehaviorSession session,
                                    BML_ObjectRef owner,
                                    const BML_BehaviorBlock *block,
+                                   const BML_BehaviorFramePolicy *frames,
                                    const BML_BehaviorSelector *input,
                                    BML_BehaviorRun *outRun,
                                    BML_BehaviorRunInfo *info,
@@ -991,6 +1063,7 @@ typedef struct BML_BehaviorInterface {
     int (BML_BEHAVIOR_CALL *Spawn)(BML_BehaviorSession session,
                                    BML_ObjectRef owner,
                                    const BML_BehaviorBlock *block,
+                                   const BML_BehaviorFramePolicy *frames,
                                    BML_BehaviorRun *outRun,
                                    BML_BehaviorRunInfo *info,
                                    BML_BehaviorStatus *status);
@@ -1191,23 +1264,53 @@ typedef struct BML_BehaviorInterface {
     int (BML_BEHAVIOR_CALL *AttachBlock)(BML_BehaviorSession session,
                                          BML_ObjectRef graph,
                                          const BML_BehaviorBlock *block,
+                                         const BML_BehaviorFramePolicy *frames,
                                          BML_BehaviorRun *outRun,
                                          BML_BehaviorRunInfo *info,
                                          BML_BehaviorStatus *status);
+    // Creates an inactive top-level Virtools Script and applies its initial
+    // graph as one admission. Owner must be a live CKBeObject in the current
+    // Scene. AddScript establishes both owner and scene membership. Failure
+    // returns no Script handle and retires the unpublished root; success
+    // leaves the initial graph owned by the Script until CloseScript,
+    // Session/Mod retirement, external deletion, or world reset.
+    int (BML_BEHAVIOR_CALL *CreateScript)(
+        BML_BehaviorSession session,
+        const BML_BehaviorScriptSpec *spec,
+        BML_BehaviorScript *outScript,
+        BML_BehaviorScriptInfo *info,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadScript)(
+        BML_BehaviorSession session,
+        BML_BehaviorScript script,
+        BML_BehaviorScriptInfo *info,
+        BML_BehaviorStatus *status);
+    // Activity changes are admitted immediately and applied at the next
+    // game-thread Behavior safe point. The last request before that point wins.
+    int (BML_BEHAVIOR_CALL *SetScriptActive)(
+        BML_BehaviorSession session,
+        BML_BehaviorScript script,
+        uint32_t active,
+        uint32_t reset,
+        BML_BehaviorScriptInfo *info,
+        BML_BehaviorStatus *status);
+    // BML_ERROR_BUSY means teardown was admitted and will finish at a later
+    // safe point. Repeating the call after retirement returns BML_OK.
+    int (BML_BEHAVIOR_CALL *CloseScript)(BML_BehaviorSession session,
+                                         BML_BehaviorScript script);
 } BML_BehaviorInterface;
 
-// The complete function table frozen for bml.behavior 1.0. Minor-compatible
-// revisions append functions after AttachBlock and leave all 1.0 DTO
-// layouts unchanged. Use BML_IFACE_HAS on a function a later minor appended.
+// The complete pre-release function table for bml.behavior 1.0. Use
+// BML_IFACE_HAS on a function a later minor appends.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
-    (offsetof(BML_BehaviorInterface, AttachBlock) +                           \
-     sizeof(((BML_BehaviorInterface *) 0)->AttachBlock))
+    (offsetof(BML_BehaviorInterface, CloseScript) +                           \
+     sizeof(((BML_BehaviorInterface *) 0)->CloseScript))
 
 // The single capability checkpoint for the complete 1.0 surface. A Mod may
 // accept a later minor when this is true, then probe later additions with
 // BML_IFACE_HAS before calling them.
 #define BML_BEHAVIOR_HAS_1_0(iface)                                          \
-    BML_IFACE_HAS((iface), BML_BehaviorInterface, AttachBlock)
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, CloseScript)
 
 #pragma pack(pop)
 

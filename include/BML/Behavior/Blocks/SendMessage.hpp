@@ -35,7 +35,7 @@ void Define(Definition &block, const Options &options) {
 // derived from CKPGUID_STRING. The text travels as the Message type's string
 // form, which registers the message name.
 #ifdef BML_BEHAVIOR_INTERNAL
-inline Spec Make(const Options &options) {
+inline BlockSpec Make(const Options &options) {
     Blocks::Detail::Definition block(VT_LOGICS_SENDMESSAGE);
     Detail::Define(block, options);
     return std::move(block).Build();

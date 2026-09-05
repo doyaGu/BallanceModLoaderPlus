@@ -85,11 +85,23 @@ struct GraphLinkData {
     TruthValue Pending = TruthValue::Unknown;
 };
 
+struct GraphOperationData {
+    std::uint64_t Id = 0;
+    BML_ObjectRef Object{};
+    std::uint64_t Owner = 0;
+    CKGUID Function{0, 0};
+    CKGUID Result{0, 0};
+    CKGUID Input1{0, 0};
+    CKGUID Input2{0, 0};
+    std::string Name;
+};
+
 struct GraphData {
     std::size_t Root = 0;
     std::vector<GraphNodeData> Nodes;
     std::vector<GraphPortData> Ports;
     std::vector<GraphLinkData> Links;
+    std::vector<GraphOperationData> Operations;
 };
 
 } // namespace Detail
@@ -223,6 +235,31 @@ private:
     template <class> friend class GraphRange;
     friend class Graph;
     friend class Edit;
+};
+
+class ParameterOperation {
+public:
+    ParameterOperation() = default;
+    [[nodiscard]] explicit operator bool() const noexcept;
+    [[nodiscard]] std::uint64_t Id() const noexcept;
+    [[nodiscard]] BML_ObjectRef Object() const noexcept;
+    [[nodiscard]] std::uint64_t Owner() const noexcept;
+    [[nodiscard]] CKGUID Function() const noexcept;
+    [[nodiscard]] CKGUID Result() const noexcept;
+    [[nodiscard]] CKGUID Input1() const noexcept;
+    [[nodiscard]] CKGUID Input2() const noexcept;
+    [[nodiscard]] std::string_view Name() const noexcept;
+
+private:
+    ParameterOperation(std::shared_ptr<const Detail::GraphData> graph,
+                       std::size_t index) noexcept
+        : m_Graph(std::move(graph)), m_Index(index) {}
+
+    std::shared_ptr<const Detail::GraphData> m_Graph;
+    std::size_t m_Index = 0;
+
+    template <class> friend class GraphRange;
+    friend class Graph;
 };
 
 template <class ViewType>
@@ -400,6 +437,35 @@ inline Port Link::Target() const noexcept { return (*this) ? Port(m_Graph, m_Gra
 inline std::int32_t Link::InitialDelay() const noexcept { return (*this) ? m_Graph->Links[m_Index].InitialDelay : 0; }
 inline std::int32_t Link::RemainingDelay() const noexcept { return (*this) ? m_Graph->Links[m_Index].RemainingDelay : 0; }
 inline TruthValue Link::Pending() const noexcept { return (*this) ? m_Graph->Links[m_Index].Pending : TruthValue::Unknown; }
+
+inline ParameterOperation::operator bool() const noexcept {
+    return m_Graph && m_Index < m_Graph->Operations.size();
+}
+inline std::uint64_t ParameterOperation::Id() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Id : 0;
+}
+inline BML_ObjectRef ParameterOperation::Object() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Object : BML_ObjectRef{};
+}
+inline std::uint64_t ParameterOperation::Owner() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Owner : 0;
+}
+inline CKGUID ParameterOperation::Function() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Function : CKGUID(0, 0);
+}
+inline CKGUID ParameterOperation::Result() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Result : CKGUID(0, 0);
+}
+inline CKGUID ParameterOperation::Input1() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Input1 : CKGUID(0, 0);
+}
+inline CKGUID ParameterOperation::Input2() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Input2 : CKGUID(0, 0);
+}
+inline std::string_view ParameterOperation::Name() const noexcept {
+    return (*this) ? std::string_view(m_Graph->Operations[m_Index].Name)
+                   : std::string_view{};
+}
 
 inline Port Node::In(Selector slot) const {
     return Select(SlotKind::In, std::move(slot));
@@ -615,6 +681,11 @@ public:
             ? GraphRange<Link>(m_Data, 0, m_Data->Links.size())
             : GraphRange<Link>{};
     }
+    [[nodiscard]] GraphRange<ParameterOperation> Operations() const noexcept {
+        return m_Data
+            ? GraphRange<ParameterOperation>(m_Data, 0, m_Data->Operations.size())
+            : GraphRange<ParameterOperation>{};
+    }
     [[nodiscard]] std::vector<Node> FindAll(
         std::string_view name) const {
         std::vector<Node> matches;
@@ -691,6 +762,7 @@ private:
     std::shared_ptr<const Detail::GraphData> m_Data;
 
     friend class Session;
+    friend class Script;
     friend class Detail::Run;
     friend class Block;
 };

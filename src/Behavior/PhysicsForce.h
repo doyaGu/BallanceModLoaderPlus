@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 #include "Behavior/Blocks.h"
+#include "Behavior/Runtime.h"
 
 namespace BML::Behavior::PhysicsForce {
 

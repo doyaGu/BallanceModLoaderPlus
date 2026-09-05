@@ -25,6 +25,7 @@
 #include "Gameplay/GameSession.h"
 #include "UI/GameFontCatalog.h"
 #include "Behavior/Runtime.h"
+#include "Behavior/Script.h"
 #include "Behavior/Sessions.h"
 #include "Behavior/Patches.h"
 #include "Behavior/Plan.h"
@@ -249,6 +250,9 @@ public:
     const BML::Behavior::Runtime &Behaviors() const noexcept { return m_Behaviors; }
     BML::Behavior::Sessions &BehaviorSessions() noexcept {
         return m_BehaviorSessions;
+    }
+    BML::Behavior::Internal::Scripts &BehaviorScripts() noexcept {
+        return m_BehaviorScripts;
     }
     BML::Behavior::Patches &BehaviorPatches() noexcept {
         return m_BehaviorPatches;
@@ -475,6 +479,7 @@ private:
     BML::Behavior::Sessions m_BehaviorSessions;
     BML::Behavior::Patches m_BehaviorPatches;
     BML::Behavior::Plans m_BehaviorPlans;
+    BML::Behavior::Internal::Scripts m_BehaviorScripts;
     BML::Behavior::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;

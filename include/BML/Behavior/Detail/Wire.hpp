@@ -185,8 +185,8 @@ struct SessionState {
     }
 };
 
-struct BlockDefinition {
-    explicit BlockDefinition(Behavior::Prototype prototype)
+struct BlockSpec {
+    explicit BlockSpec(Behavior::Prototype prototype)
         : PrototypeRef(prototype) {}
 
     Behavior::Prototype PrototypeRef;
@@ -196,7 +196,6 @@ struct BlockDefinition {
     std::vector<std::vector<SlotValue>> Settings;
     std::vector<SlotValue> Pins;
     std::vector<SlotValue> Locals;
-    FramePolicy Frames = Signals();
 };
 
 template <class T>
@@ -1034,10 +1033,10 @@ private:
 };
 
 struct CompiledBlock {
-    explicit CompiledBlock(BlockDefinition definition,
+    explicit CompiledBlock(BlockSpec spec,
                            bool declared = false);
 
-    BlockDefinition Definition;
+    BlockSpec Spec;
     bool Declared = false;
     BML_BehaviorBlock Wire{};
     std::vector<std::vector<BML_BehaviorBinding>> SettingBindings;
@@ -1047,10 +1046,10 @@ struct CompiledBlock {
 };
 
 struct BlockState {
-    explicit BlockState(BlockDefinition definition)
-        : Definition(std::move(definition)) {}
+    explicit BlockState(BlockSpec spec)
+        : Spec(std::move(spec)) {}
 
-    BlockDefinition Definition;
+    BlockSpec Spec;
     mutable std::shared_ptr<const CompiledBlock> Compiled;
 };
 
@@ -1058,7 +1057,7 @@ class Compiler final {
 public:
     [[nodiscard]] Result<std::shared_ptr<const CompiledBlock>> operator()(
         const std::shared_ptr<SessionState> &session,
-        BlockDefinition definition, bool requireDeclared = false) const;
+        BlockSpec spec, bool requireDeclared = false) const;
 };
 
 } // namespace Detail

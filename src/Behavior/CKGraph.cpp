@@ -387,6 +387,37 @@ private:
                 return status;
         }
 
+        out.Operations.reserve(static_cast<std::size_t>(
+            graph->GetParameterOperationCount()));
+        for (int index = 0; index < graph->GetParameterOperationCount(); ++index) {
+            CKParameterOperation *operation = graph->GetParameterOperation(index);
+            if (!Valid(operation) || operation->GetOwner() != graph)
+                return Failure(Error::InvalidState,
+                               "A graph Parameter Operation disappeared during inspection.");
+            CKParameterOut *result = operation->GetOutParameter();
+            if (!Valid(result))
+                return Failure(Error::InvalidState,
+                               "A graph Parameter Operation has no result parameter.");
+            GraphOperation record;
+            record.Id = static_cast<std::uint64_t>(
+                static_cast<std::uint32_t>(operation->GetID()));
+            if (references) {
+                status = Issue(operation, record.Object);
+                if (!status)
+                    return status;
+            }
+            record.Owner = static_cast<std::uint64_t>(
+                static_cast<std::uint32_t>(graph->GetID()));
+            record.Function = operation->GetOperationGuid();
+            record.Result = result->GetGUID();
+            CKParameterIn *input1 = operation->GetInParameter1();
+            CKParameterIn *input2 = operation->GetInParameter2();
+            record.Input1 = Valid(input1) ? input1->GetGUID() : CKPGUID_NONE;
+            record.Input2 = Valid(input2) ? input2->GetGUID() : CKPGUID_NONE;
+            record.Name = operation->GetName() ? operation->GetName() : "";
+            out.Operations.push_back(std::move(record));
+        }
+
         out.Links.reserve(static_cast<std::size_t>(
             graph->GetSubBehaviorLinkCount()));
         for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
@@ -548,6 +579,7 @@ private:
             [](const GraphNode &node) { return node.Parent != 0; }));
         Hash(out, childCount);
         Hash(out, graph.Links.size());
+        Hash(out, graph.Operations.size());
         for (const GraphNode &node : graph.Nodes) {
             Hash(out, node.Id);
             Hash(out, node.Parent);
@@ -576,6 +608,19 @@ private:
             Hash(out, link.Target.Kind);
             Hash(out, link.Target.Index);
             Hash(out, link.InitialDelay);
+        }
+        for (const GraphOperation &operation : graph.Operations) {
+            Hash(out, operation.Id);
+            Hash(out, operation.Owner);
+            Hash(out, operation.Function.d1);
+            Hash(out, operation.Function.d2);
+            Hash(out, operation.Result.d1);
+            Hash(out, operation.Result.d2);
+            Hash(out, operation.Input1.d1);
+            Hash(out, operation.Input1.d2);
+            Hash(out, operation.Input2.d1);
+            Hash(out, operation.Input2.d2);
+            HashText(out, operation.Name.c_str());
         }
         return out;
     }

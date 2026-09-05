@@ -301,6 +301,7 @@ set(BML_HOOK_SOURCES
 )
 
 set(BML_BEHAVIOR_PRIVATE_HEADERS
+        Behavior/Block.h
         Behavior/Callback.h
         Behavior/CKEdit.h
         Behavior/Graph.h
@@ -322,6 +323,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Blocks/Definition.h
         Behavior/PhysicsForce.h
         Behavior/Runtime.h
+        Behavior/Script.h
         Behavior/Sessions.h
         Behavior/Status.h
         Behavior/Text2DView.h
@@ -330,6 +332,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
 )
 
 set(BML_BEHAVIOR_SOURCES
+        Behavior/Block.cpp
         Behavior/Callback.cpp
         Behavior/CKEdit.cpp
         Behavior/CKGraph.cpp
@@ -350,6 +353,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/HookBlock.cpp
         Behavior/PhysicsForce.cpp
         Behavior/Runtime.cpp
+        Behavior/Script.cpp
         Behavior/Sessions.cpp
         Behavior/Text2DView.cpp
         Behavior/Topology.cpp

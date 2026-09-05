@@ -1,9 +1,10 @@
 #ifndef BML_BEHAVIOR_SESSION_HPP
 #define BML_BEHAVIOR_SESSION_HPP
 
-#include "BML/Behavior/Edit.hpp"
+#include "BML/Behavior/Script.hpp"
 
 #include <memory>
+#include <new>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -122,6 +123,72 @@ public:
         if (!reference)
             return Result<Graph>::Failure(reference.Code(), reference.GetStatus());
         return Inspect(reference.Value());
+    }
+    // Creates the root and installs body before returning one inactive Script.
+    // A rejected body publishes no Script and returns no partial handle.
+    [[nodiscard]] Result<Behavior::Script> CreateScript(
+        BML_ObjectRef owner, std::string_view name, const Edit &body,
+        std::int32_t priority = 0) const {
+        if (!*this)
+            return Result<Behavior::Script>::Failure(
+                BML_ERROR_INVALID_HANDLE);
+        if (!BML_IFACE_HAS(m_State->Api, BML_BehaviorInterface,
+                           CreateScript) || !owner.Domain)
+            return Result<Behavior::Script>::Failure(
+                owner.Domain ? BML_ERROR_VERSION_MISMATCH
+                             : BML_ERROR_INVALID_PARAMETER);
+
+        Result<void> valid = body.Validate(m_State);
+        if (!valid)
+            return Result<Behavior::Script>::Failure(
+                valid.Code(), valid.GetStatus());
+        try {
+            Edit::WireProgram program;
+            body.Encode(program);
+            BML_BehaviorScriptSpec spec{};
+            spec.StructSize = sizeof(spec);
+            spec.Owner = owner;
+            spec.Name = Detail::Text(name);
+            spec.Priority = priority;
+            spec.StepCount = static_cast<std::uint32_t>(
+                program.Steps.size());
+            spec.Steps = program.Steps.empty()
+                ? nullptr : program.Steps.data();
+            BML_BehaviorScript handle = nullptr;
+            BML_BehaviorScriptInfo info{};
+            info.StructSize = sizeof(info);
+            BML_BehaviorStatus status = Detail::EmptyStatus();
+            const int code = Detail::WireCode(
+                m_State->Api->CreateScript(
+                    m_State->Handle, &spec, &handle, &info, &status),
+                status);
+            Behavior::Script owned(m_State, handle, info.Root);
+            if (code != BML_OK || !handle)
+                return Result<Behavior::Script>::Failure(
+                    code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                    Detail::ReadStatus(status));
+            if (!Detail::ValidScriptInfo(info) ||
+                !Detail::SameScriptObject(info.Owner, owner))
+                return Result<Behavior::Script>::Failure(
+                    BML_ERROR_MALFORMED_MESSAGE,
+                    Detail::ReadStatus(status));
+            return Result<Behavior::Script>::Success(
+                std::move(owned), Detail::ReadStatus(status));
+        } catch (const std::bad_alloc &) {
+            return Result<Behavior::Script>::Failure(
+                BML_ERROR_OUT_OF_MEMORY);
+        } catch (...) {
+            return Result<Behavior::Script>::Failure(BML_ERROR_FAIL);
+        }
+    }
+    [[nodiscard]] Result<Behavior::Script> CreateScript(
+        CKBeObject *owner, std::string_view name, const Edit &body,
+        std::int32_t priority = 0) const {
+        const Result<BML_ObjectRef> reference = Reference(owner);
+        return reference
+            ? CreateScript(reference.Value(), name, body, priority)
+            : Result<Behavior::Script>::Failure(
+                  reference.Code(), reference.GetStatus());
     }
     // Retains one symbolic Edit and reconciles it against the selected scripts.
     // Submitting a name that is already live replaces the Plan carrying it.

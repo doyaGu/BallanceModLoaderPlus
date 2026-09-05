@@ -244,64 +244,51 @@ inline Result<Behavior::Layout> ReadDeclared(
                                               ReadStatus(status));
 }
 
-inline Status CheckDefinition(const BlockDefinition &definition) {
+inline Status CheckBlock(const BlockSpec &spec) {
     constexpr std::size_t maximum =
         (std::numeric_limits<std::uint32_t>::max)();
-    if (!definition.PrototypeRef.Id.IsValid()) {
+    if (!spec.PrototypeRef.Id.IsValid()) {
         return BlockError(BML_BEHAVIOR_ERROR_PROTOTYPE_NOT_FOUND,
                           BML_BEHAVIOR_PHASE_PROTOTYPE,
-                          definition.PrototypeRef, CKGUID(0, 0),
+                          spec.PrototypeRef, CKGUID(0, 0),
                           "A Block requires a Prototype GUID.");
     }
-    if ((definition.TargetKind == BML_BEHAVIOR_TARGET_OBJECT ||
-         definition.TargetKind == BML_BEHAVIOR_TARGET_NULL) &&
-        !definition.TargetType.IsValid()) {
+    if ((spec.TargetKind == BML_BEHAVIOR_TARGET_OBJECT ||
+         spec.TargetKind == BML_BEHAVIOR_TARGET_NULL) &&
+        !spec.TargetType.IsValid()) {
         return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
                           BML_BEHAVIOR_PHASE_TARGET,
-                          definition.PrototypeRef, CKGUID(0, 0),
+                          spec.PrototypeRef, CKGUID(0, 0),
                           "An explicit Target requires a parameter type.");
     }
-    if (definition.TargetKind == BML_BEHAVIOR_TARGET_OBJECT &&
-        !definition.TargetObject.Domain) {
+    if (spec.TargetKind == BML_BEHAVIOR_TARGET_OBJECT &&
+        !spec.TargetObject.Domain) {
         return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
                           BML_BEHAVIOR_PHASE_TARGET,
-                          definition.PrototypeRef, definition.TargetType,
+                          spec.PrototypeRef, spec.TargetType,
                           "An explicit Target requires a live object reference.");
     }
-    if (definition.TargetKind != BML_BEHAVIOR_TARGET_OWNER &&
-        definition.TargetKind != BML_BEHAVIOR_TARGET_OBJECT &&
-        definition.TargetKind != BML_BEHAVIOR_TARGET_NULL) {
+    if (spec.TargetKind != BML_BEHAVIOR_TARGET_OWNER &&
+        spec.TargetKind != BML_BEHAVIOR_TARGET_OBJECT &&
+        spec.TargetKind != BML_BEHAVIOR_TARGET_NULL) {
         return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
                           BML_BEHAVIOR_PHASE_TARGET,
-                          definition.PrototypeRef, definition.TargetType,
+                          spec.PrototypeRef, spec.TargetType,
                           "The Block Target kind is unknown.");
     }
-    const bool bounded =
-        definition.Frames.Kind == BML_BEHAVIOR_FRAMES_SIGNALS ||
-        definition.Frames.Kind == BML_BEHAVIOR_FRAMES_EACH_FRAME;
-    if ((bounded && !definition.Frames.Limit) ||
-        (!bounded && definition.Frames.Limit) ||
-        (!bounded && definition.Frames.Kind != BML_BEHAVIOR_FRAMES_LATEST &&
-         definition.Frames.Kind != BML_BEHAVIOR_FRAMES_NONE) ||
-        (definition.Frames.Flags & ~BML_BEHAVIOR_FRAME_POLICY_POUTS)) {
+    if (spec.Settings.size() > maximum ||
+        spec.Pins.size() > maximum ||
+        spec.Locals.size() > maximum) {
         return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
                           BML_BEHAVIOR_PHASE_NONE,
-                          definition.PrototypeRef, CKGUID(0, 0),
-                          "The Block Frame policy is invalid.");
-    }
-    if (definition.Settings.size() > maximum ||
-        definition.Pins.size() > maximum ||
-        definition.Locals.size() > maximum) {
-        return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
-                          BML_BEHAVIOR_PHASE_NONE,
-                          definition.PrototypeRef, CKGUID(0, 0),
+                          spec.PrototypeRef, CKGUID(0, 0),
                           "The Block contains too many bindings.");
     }
-    for (const auto &stage : definition.Settings) {
+    for (const auto &stage : spec.Settings) {
         if (stage.size() > maximum) {
             return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
                               BML_BEHAVIOR_PHASE_SETTINGS,
-                              definition.PrototypeRef, CKGUID(0, 0),
+                              spec.PrototypeRef, CKGUID(0, 0),
                               "A Block contains too many Settings in one stage.");
         }
     }
@@ -412,29 +399,29 @@ inline Status CheckSetting(const Behavior::Layout &layout,
 }
 
 inline Status CheckTarget(const Behavior::Layout &layout,
-                          const BlockDefinition &definition) {
-    if (definition.TargetKind == BML_BEHAVIOR_TARGET_OWNER)
+                          const BlockSpec &spec) {
+    if (spec.TargetKind == BML_BEHAVIOR_TARGET_OWNER)
         return {};
     if ((layout.BehaviorFlags & CKBEHAVIOR_TARGETABLE) != 0)
         return {};
     return BlockError(BML_BEHAVIOR_ERROR_TARGET_INVALID,
                       BML_BEHAVIOR_PHASE_TARGET,
-                      layout.PrototypeRef, definition.TargetType,
+                      layout.PrototypeRef, spec.TargetType,
                       "The Prototype does not declare an explicit Target.");
 }
 
-inline CompiledBlock::CompiledBlock(BlockDefinition definition,
+inline CompiledBlock::CompiledBlock(BlockSpec spec,
                                     bool declared)
-    : Definition(std::move(definition)), Declared(declared) {
-    while (Definition.Settings.size() > 1 &&
-           Definition.Settings.back().empty())
-        Definition.Settings.pop_back();
-    if (Definition.Settings.size() == 1 && Definition.Settings.front().empty())
-        Definition.Settings.clear();
+    : Spec(std::move(spec)), Declared(declared) {
+    while (Spec.Settings.size() > 1 &&
+           Spec.Settings.back().empty())
+        Spec.Settings.pop_back();
+    if (Spec.Settings.size() == 1 && Spec.Settings.front().empty())
+        Spec.Settings.clear();
 
-    SettingBindings.reserve(Definition.Settings.size());
-    SettingStages.reserve(Definition.Settings.size());
-    for (const std::vector<SlotValue> &stage : Definition.Settings) {
+    SettingBindings.reserve(Spec.Settings.size());
+    SettingStages.reserve(Spec.Settings.size());
+    for (const std::vector<SlotValue> &stage : Spec.Settings) {
         std::vector<BML_BehaviorBinding> bindings;
         bindings.reserve(stage.size());
         for (const SlotValue &binding : stage) {
@@ -464,56 +451,52 @@ inline CompiledBlock::CompiledBlock(BlockDefinition definition,
             to.push_back(wire);
         }
     };
-    add(Definition.Pins, Pins);
-    add(Definition.Locals, Locals);
+    add(Spec.Pins, Pins);
+    add(Spec.Locals, Locals);
 
     Wire.StructSize = sizeof(Wire);
-    Wire.Prototype = WireGuid(Definition.PrototypeRef.Id);
+    Wire.Prototype = WireGuid(Spec.PrototypeRef.Id);
     Wire.Target.StructSize = sizeof(Wire.Target);
-    Wire.Target.Kind = Definition.TargetKind;
-    Wire.Target.Type = WireGuid(Definition.TargetType);
-    Wire.Target.Object = Definition.TargetObject;
+    Wire.Target.Kind = Spec.TargetKind;
+    Wire.Target.Type = WireGuid(Spec.TargetType);
+    Wire.Target.Object = Spec.TargetObject;
     Wire.SettingStages = SettingStages.empty() ? nullptr : SettingStages.data();
     Wire.SettingStageCount = static_cast<std::uint32_t>(SettingStages.size());
     Wire.Pins = Pins.empty() ? nullptr : Pins.data();
     Wire.PinCount = static_cast<std::uint32_t>(Pins.size());
     Wire.Locals = Locals.empty() ? nullptr : Locals.data();
     Wire.LocalCount = static_cast<std::uint32_t>(Locals.size());
-    Wire.Frames.StructSize = sizeof(Wire.Frames);
-    Wire.Frames.Kind = Definition.Frames.Kind;
-    Wire.Frames.Limit = Definition.Frames.Limit;
-    Wire.Frames.Flags = Definition.Frames.Flags;
-    Wire.PrototypeGeneration = Definition.PrototypeRef.Generation;
+    Wire.PrototypeGeneration = Spec.PrototypeRef.Generation;
 }
 
 inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
     const std::shared_ptr<SessionState> &session,
-    BlockDefinition definition, bool requireDeclared) const {
+    BlockSpec spec, bool requireDeclared) const {
     if (!session || !session->Api || !session->Handle) {
         return Result<std::shared_ptr<const CompiledBlock>>::Failure(
             BML_ERROR_INVALID_HANDLE);
     }
-    Status checked = CheckDefinition(definition);
+    Status checked = CheckBlock(spec);
     if (!checked) {
         return Result<std::shared_ptr<const CompiledBlock>>::Failure(
             BML_ERROR_INVALID_PARAMETER, std::move(checked));
     }
-    auto declared = ReadDeclared(session, definition.PrototypeRef);
+    auto declared = ReadDeclared(session, spec.PrototypeRef);
     if (!declared) {
         if (declared.Code() == BML_ERROR_UNAVAILABLE) {
             if (requireDeclared)
                 return Result<std::shared_ptr<const CompiledBlock>>::Failure(
                     declared.Code(), declared.GetStatus());
             std::shared_ptr<const CompiledBlock> block =
-                std::make_shared<CompiledBlock>(std::move(definition), false);
+                std::make_shared<CompiledBlock>(std::move(spec), false);
             return Result<std::shared_ptr<const CompiledBlock>>::Success(
                 std::move(block));
         }
         return Result<std::shared_ptr<const CompiledBlock>>::Failure(
             declared.Code(), declared.GetStatus());
     }
-    if (!definition.Settings.empty()) {
-        for (const SlotValue &setting : definition.Settings.front()) {
+    if (!spec.Settings.empty()) {
+        for (const SlotValue &setting : spec.Settings.front()) {
             checked = CheckSetting(declared.Value(), setting);
             if (!checked) {
                 return Result<std::shared_ptr<const CompiledBlock>>::Failure(
@@ -521,14 +504,14 @@ inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
             }
         }
     }
-    checked = CheckTarget(declared.Value(), definition);
+    checked = CheckTarget(declared.Value(), spec);
     if (!checked) {
         return Result<std::shared_ptr<const CompiledBlock>>::Failure(
             BML_ERROR_FAIL, std::move(checked));
     }
-    definition.PrototypeRef = declared.Value().PrototypeRef;
+    spec.PrototypeRef = declared.Value().PrototypeRef;
     std::shared_ptr<const CompiledBlock> block =
-        std::make_shared<CompiledBlock>(std::move(definition), true);
+        std::make_shared<CompiledBlock>(std::move(spec), true);
     return Result<std::shared_ptr<const CompiledBlock>>::Success(
         std::move(block), declared.GetStatus());
 }
@@ -774,7 +757,9 @@ inline Result<Graph> Graph::Decode(
         !Detail::RecordsFit<BML_BehaviorGraphNode>(
             payload, wire.NodeOffset, wire.NodeCount) ||
         !Detail::RecordsFit<BML_BehaviorGraphLink>(
-            payload, wire.LinkOffset, wire.LinkCount))
+            payload, wire.LinkOffset, wire.LinkCount) ||
+        !Detail::RecordsFit<BML_BehaviorGraphOperation>(
+            payload, wire.OperationOffset, wire.OperationCount))
         return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
 
     Graph graph;
@@ -798,10 +783,14 @@ inline Result<Graph> Graph::Decode(
     data->Nodes.reserve(wire.NodeCount);
     data->Ports.reserve(portCount);
     if (wire.LinkCount >
-        (std::numeric_limits<std::size_t>::max)() - wire.NodeCount)
+            (std::numeric_limits<std::size_t>::max)() - wire.NodeCount ||
+        wire.OperationCount >
+            (std::numeric_limits<std::size_t>::max)() - wire.NodeCount -
+                wire.LinkCount)
         return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     const std::size_t identityCount =
-        static_cast<std::size_t>(wire.NodeCount) + wire.LinkCount;
+        static_cast<std::size_t>(wire.NodeCount) + wire.LinkCount +
+        wire.OperationCount;
     std::unordered_set<std::uint64_t> identities;
     std::unordered_set<Detail::ObjectKey, Detail::ObjectKeyHash> objects;
     std::unordered_map<Detail::PortKey, std::size_t,
@@ -931,6 +920,31 @@ inline Result<Graph> Graph::Decode(
         link.RemainingDelay = record.RemainingDelay;
         link.Pending = static_cast<TruthValue>(record.Pending);
         data->Links.push_back(std::move(link));
+    }
+    data->Operations.reserve(wire.OperationCount);
+    for (std::uint32_t index = 0; index < wire.OperationCount; ++index) {
+        BML_BehaviorGraphOperation record{};
+        if (!Detail::RecordAt(payload, wire.OperationOffset, index, record))
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        Detail::GraphOperationData operation;
+        operation.Id = record.Id;
+        operation.Object = record.Object;
+        operation.Owner = record.Owner;
+        operation.Function = Detail::NativeGuid(record.Function);
+        operation.Result = Detail::NativeGuid(record.Result);
+        operation.Input1 = Detail::NativeGuid(record.Input1);
+        operation.Input2 = Detail::NativeGuid(record.Input2);
+        if (!operation.Id || operation.Owner != rootId ||
+            !Detail::ValidObjectRef(operation.Object) ||
+            !operation.Object.Domain || !operation.Function.IsValid() ||
+            !operation.Result.IsValid() ||
+            (!operation.Input1.IsValid() && operation.Input2.IsValid()) ||
+            !identities.emplace(operation.Id).second ||
+            !objects.emplace(operation.Object).second ||
+            !Detail::TextAt(payload, record.Name.Offset,
+                            record.Name.Length, operation.Name))
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        data->Operations.push_back(std::move(operation));
     }
     graph.m_Data = std::move(data);
     return Result<Graph>::Success(std::move(graph),
@@ -1351,14 +1365,14 @@ Result<Behavior::Watch> Graph::Watch(
     return OpenWatch(spec, std::forward<Function>(callback));
 }
 
-inline Detail::BlockDefinition &Block::Change() {
+inline Detail::BlockSpec &Block::Change() {
     if (!m_State)
         throw std::logic_error("Cannot configure an empty Behavior Block.");
     if (m_State.use_count() != 1)
-        m_State = std::make_shared<Detail::BlockState>(m_State->Definition);
+        m_State = std::make_shared<Detail::BlockState>(m_State->Spec);
     else
         m_State->Compiled.reset();
-    return m_State->Definition;
+    return m_State->Spec;
 }
 
 inline Result<std::shared_ptr<const Detail::CompiledBlock>> Block::Compile(
@@ -1373,10 +1387,10 @@ inline Result<std::shared_ptr<const Detail::CompiledBlock>> Block::Compile(
     }
     try {
         auto compiled = Detail::Compiler{}(
-            m_Session, m_State->Definition, requireDeclared);
+            m_Session, m_State->Spec, requireDeclared);
         if (!compiled)
             return compiled;
-        m_State->Definition = compiled.Value()->Definition;
+        m_State->Spec = compiled.Value()->Spec;
         m_State->Compiled = compiled.Value();
         return compiled;
     } catch (const std::bad_alloc &) {
@@ -1402,7 +1416,7 @@ inline Status Block::Accept(const BML_BehaviorRunInfo &info,
         status.Error = error;
         status.Phase = Phase::Prototype;
         status.Prototype = m_State
-            ? m_State->Definition.PrototypeRef.Id : CKGUID(0, 0);
+            ? m_State->Spec.PrototypeRef.Id : CKGUID(0, 0);
         status.Message = std::move(message);
     };
     if (!m_State || !Detail::ValidRunInfo(info) ||
@@ -1415,7 +1429,7 @@ inline Status Block::Accept(const BML_BehaviorRunInfo &info,
     const Prototype actual(
         Detail::NativeGuid(info.Prototype.Prototype),
         info.Prototype.Generation);
-    const Prototype selected = m_State->Definition.PrototypeRef;
+    const Prototype selected = m_State->Spec.PrototypeRef;
     if (!Detail::HasGuid(actual.Id) || actual.Id != selected.Id) {
         reject(Error::PrototypeChanged,
                "The created Behavior does not use the selected Prototype.");
@@ -1430,7 +1444,7 @@ inline Status Block::Accept(const BML_BehaviorRunInfo &info,
     if (!selected.Generation && actual.Generation) {
         // This is the first authoritative provider identity for a Block whose
         // declared Layout was unavailable. All unchanged copies share it.
-        m_State->Definition.PrototypeRef = actual;
+        m_State->Spec.PrototypeRef = actual;
         m_State->Compiled.reset();
     }
     return status;
@@ -1438,8 +1452,7 @@ inline Status Block::Accept(const BML_BehaviorRunInfo &info,
 
 template <class Handle, class Function>
 Result<Handle> Block::Open(Function function, RunKind kind, ObjectRef owner,
-                           const Selector *input,
-                           std::optional<FramePolicy> frames) const {
+                           const Selector *input, FramePolicy frames) const {
     auto compiled = Compile();
     if (!compiled)
         return Result<Handle>::Failure(compiled.Code(), compiled.GetStatus());
@@ -1454,13 +1467,13 @@ Result<Handle> Block::Open(Function function, RunKind kind, ObjectRef owner,
         BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
         BML_BehaviorStatus status = Detail::EmptyStatus();
         BML_BehaviorBlock wire = compiled.Value()->Wire;
-        if (frames) {
-            wire.Frames.Kind = frames->Kind;
-            wire.Frames.Limit = frames->Limit;
-            wire.Frames.Flags = frames->Flags;
-        }
+        BML_BehaviorFramePolicy wireFrames{};
+        wireFrames.StructSize = sizeof(wireFrames);
+        wireFrames.Kind = frames.Kind;
+        wireFrames.Limit = frames.Limit;
+        wireFrames.Flags = frames.Flags;
         const int code = Detail::WireCode(
-            function(m_Session->Handle, owner, &wire, selectorPointer,
+            function(m_Session->Handle, owner, &wire, &wireFrames, selectorPointer,
                      &run, &info, &status),
             status);
         if (code != BML_OK) {
@@ -1491,13 +1504,13 @@ Result<Handle> Block::Open(Function function, RunKind kind, ObjectRef owner,
 }
 
 inline Result<Behavior::Call> Block::Call(
-    const Selector &input, std::optional<FramePolicy> frames) const {
+    const Selector &input, FramePolicy frames) const {
     return Call(ObjectRef{}, input, frames);
 }
 
 inline Result<Behavior::Call> Block::Call(
     ObjectRef owner, const Selector &input,
-    std::optional<FramePolicy> frames) const {
+    FramePolicy frames) const {
     if (!m_Session || !m_Session->Api)
         return Result<Behavior::Call>::Failure(BML_ERROR_INVALID_HANDLE);
     return Open<Behavior::Call>(m_Session->Api->Call, RunKind::Call,
@@ -1505,13 +1518,13 @@ inline Result<Behavior::Call> Block::Call(
 }
 
 inline Result<Task> Block::Start(
-    const Selector &input, std::optional<FramePolicy> frames) const {
+    const Selector &input, FramePolicy frames) const {
     return Start(ObjectRef{}, input, frames);
 }
 
 inline Result<Task> Block::Start(
     ObjectRef owner, const Selector &input,
-    std::optional<FramePolicy> frames) const {
+    FramePolicy frames) const {
     if (!m_Session || !m_Session->Api)
         return Result<Task>::Failure(BML_ERROR_INVALID_HANDLE);
     return Open<Task>(m_Session->Api->Start, RunKind::Task,
@@ -1519,12 +1532,12 @@ inline Result<Task> Block::Start(
 }
 
 inline Result<Instance> Block::Spawn(
-    std::optional<FramePolicy> frames) const {
+    FramePolicy frames) const {
     return Spawn(ObjectRef{}, frames);
 }
 
 inline Result<Instance> Block::Spawn(
-    ObjectRef owner, std::optional<FramePolicy> frames) const {
+    ObjectRef owner, FramePolicy frames) const {
     auto compiled = Compile();
     if (!compiled)
         return Result<Instance>::Failure(compiled.Code(), compiled.GetStatus());
@@ -1533,14 +1546,15 @@ inline Result<Instance> Block::Spawn(
         BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
         BML_BehaviorStatus status = Detail::EmptyStatus();
         BML_BehaviorBlock wire = compiled.Value()->Wire;
-        if (frames) {
-            wire.Frames.Kind = frames->Kind;
-            wire.Frames.Limit = frames->Limit;
-            wire.Frames.Flags = frames->Flags;
-        }
+        BML_BehaviorFramePolicy wireFrames{};
+        wireFrames.StructSize = sizeof(wireFrames);
+        wireFrames.Kind = frames.Kind;
+        wireFrames.Limit = frames.Limit;
+        wireFrames.Flags = frames.Flags;
         const int code = Detail::WireCode(
             m_Session->Api->Spawn(
-                m_Session->Handle, owner, &wire, &run, &info, &status),
+                m_Session->Handle, owner, &wire, &wireFrames,
+                &run, &info, &status),
             status);
         if (code != BML_OK) {
             if (run && m_Session->Api->CloseRun)
@@ -1571,7 +1585,7 @@ inline Result<Instance> Block::Spawn(
 }
 
 inline Result<Instance> Block::SpawnIn(
-    ObjectRef graph, std::optional<FramePolicy> frames) const {
+    ObjectRef graph, FramePolicy frames) const {
     auto compiled = Compile();
     if (!compiled)
         return Result<Instance>::Failure(compiled.Code(), compiled.GetStatus());
@@ -1582,14 +1596,15 @@ inline Result<Instance> Block::SpawnIn(
         BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
         BML_BehaviorStatus status = Detail::EmptyStatus();
         BML_BehaviorBlock wire = compiled.Value()->Wire;
-        if (frames) {
-            wire.Frames.Kind = frames->Kind;
-            wire.Frames.Limit = frames->Limit;
-            wire.Frames.Flags = frames->Flags;
-        }
+        BML_BehaviorFramePolicy wireFrames{};
+        wireFrames.StructSize = sizeof(wireFrames);
+        wireFrames.Kind = frames.Kind;
+        wireFrames.Limit = frames.Limit;
+        wireFrames.Flags = frames.Flags;
         const int code = Detail::WireCode(
             m_Session->Api->AttachBlock(
-                m_Session->Handle, graph, &wire, &run, &info, &status),
+                m_Session->Handle, graph, &wire, &wireFrames,
+                &run, &info, &status),
             status);
         if (code != BML_OK) {
             if (run && m_Session->Api->CloseRun)
@@ -1620,7 +1635,7 @@ inline Result<Instance> Block::SpawnIn(
 }
 
 inline Result<Instance> Block::SpawnIn(
-    const Graph &graph, std::optional<FramePolicy> frames) const {
+    const Graph &graph, FramePolicy frames) const {
     return SpawnIn(graph.m_Root, frames);
 }
 
@@ -1668,6 +1683,7 @@ inline void Edit::Encode(WireProgram &out) const {
         wire.Prototype.StructSize = sizeof(wire.Prototype);
         wire.Prototype.Prototype = Detail::WireGuid(step.PrototypeRef.Id);
         wire.Prototype.Generation = step.PrototypeRef.Generation;
+        wire.Block = step.Block ? &step.Block->Wire : nullptr;
         wire.Type = Detail::WireGuid(step.Type);
         wire.Source = encodePort(step.Source);
         wire.Sink = encodePort(step.Sink);
@@ -1675,6 +1691,11 @@ inline void Edit::Encode(WireProgram &out) const {
             wire.Value = Detail::Wire::From(*step.Value);
         wire.Hook = step.Hook ? &step.Hook->Function : nullptr;
         wire.Object = step.Object;
+        wire.Operation.StructSize = sizeof(wire.Operation);
+        wire.Operation.Operation = Detail::WireGuid(step.Operation);
+        wire.Operation.Result = Detail::WireGuid(step.OperationResult);
+        wire.Operation.Input1 = Detail::WireGuid(step.OperationInput1);
+        wire.Operation.Input2 = Detail::WireGuid(step.OperationInput2);
         wire.OrderCount = static_cast<std::uint32_t>(step.Ordering.size());
         wire.Ordering = wire.OrderCount
             ? out.Ordering.data() + consumed : nullptr;
@@ -1701,11 +1722,28 @@ inline Result<void> Edit::Validate(
     }
     if (durable) {
         for (const Step &step : m_Steps) {
-            const bool liveReference =
+            bool liveReference =
                 step.Kind == BML_BEHAVIOR_EDIT_USE_NODE ||
                 step.Kind == BML_BEHAVIOR_EDIT_USE_LINK ||
                 (step.Value && step.Value->Kind() == ValueKind::Object &&
                  !step.Value->IsNull());
+            if (step.Block) {
+                const Detail::BlockSpec &block = step.Block->Spec;
+                liveReference = liveReference ||
+                    (block.TargetKind == BML_BEHAVIOR_TARGET_OBJECT &&
+                     Detail::ValidObjectRef(block.TargetObject));
+                const auto containsObject = [](const auto &values) {
+                    return std::any_of(values.begin(), values.end(),
+                        [](const SlotValue &value) {
+                            return value.Data.Kind() == ValueKind::Object &&
+                                !value.Data.IsNull();
+                        });
+                };
+                liveReference = liveReference || containsObject(block.Pins) ||
+                    containsObject(block.Locals);
+                for (const auto &stage : block.Settings)
+                    liveReference = liveReference || containsObject(stage);
+            }
             if (!liveReference)
                 continue;
             Status status;
@@ -1716,11 +1754,6 @@ inline Result<void> Edit::Validate(
             return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER,
                                          std::move(status));
         }
-    }
-    for (const Detail::BlockDefinition &block : m_Blocks) {
-        auto compiled = Detail::Compiler{}(session, block);
-        if (!compiled)
-            return Result<void>::Failure(compiled.Code(), compiled.GetStatus());
     }
     return Result<void>::Success();
 }

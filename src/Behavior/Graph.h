@@ -81,6 +81,17 @@ struct GraphLink {
     Truth Pending = Truth::Unknown;
 };
 
+struct GraphOperation {
+    std::uint64_t Id = 0;
+    ObjectRef Object;
+    std::uint64_t Owner = 0;
+    CKGUID Function = CKGUID();
+    CKGUID Result = CKGUID();
+    CKGUID Input1 = CKGUID();
+    CKGUID Input2 = CKGUID();
+    std::string Name;
+};
+
 struct GraphModel {
     GraphView View = GraphView::Logical;
     ObjectRef Root;
@@ -88,6 +99,7 @@ struct GraphModel {
     std::uint64_t Fingerprint = 0;
     std::vector<GraphNode> Nodes;
     std::vector<GraphLink> Links;
+    std::vector<GraphOperation> Operations;
 };
 
 // CKEdit owns the logical identity of resources claimed by a Patch. The CK

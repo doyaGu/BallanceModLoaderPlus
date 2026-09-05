@@ -1,6 +1,7 @@
 #include "Behavior/CKEdit.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <functional>
 #include <limits>
@@ -35,6 +36,12 @@ struct Stamp {
 
 Stamp Capture(CKObject *object) {
     return {object ? object->GetID() : 0, object};
+}
+
+Stamp Capture(NativeRef native) {
+    return {static_cast<CK_ID>(native.Id),
+            const_cast<CKObject *>(
+                static_cast<const CKObject *>(native.Address))};
 }
 
 NativeRef Native(Stamp stamp) {
@@ -78,6 +85,11 @@ using ParameterId = std::uint64_t;
 constexpr ParameterId kPlannedParameter = 1ull << 63u;
 
 ParameterId PlanParameter(const ResolvedPort &port) {
+    if (port.Interface != 0) {
+        return kPlannedParameter |
+               (static_cast<ParameterId>(port.Owner.Value) << 32u) |
+               0x80000000u | port.Interface;
+    }
     return kPlannedParameter |
            (static_cast<ParameterId>(port.Owner.Value) << 32u) |
            (static_cast<ParameterId>(port.Slot.Kind) << 24u) |
@@ -233,23 +245,24 @@ GraphEndpoint DescribeLocal(CKParameterLocal *local) {
             index};
 }
 
-// Copies the bytes CK2 keeps for one parameter. This is the whole value: the
-// buffer is the parameter, so the copy round-trips through SetValue for every
-// registered type without asking the type what it means.
-std::vector<CKBYTE> Snapshot(CKParameter *parameter) {
-    const int size = parameter ? parameter->GetDataSize() : 0;
-    const auto *bytes = size > 0
-        ? static_cast<const CKBYTE *>(parameter->GetReadDataPtr(FALSE))
-        : nullptr;
-    return bytes ? std::vector<CKBYTE>(bytes, bytes + size)
-                 : std::vector<CKBYTE>{};
-}
-
 bool ContainsLink(CKBehavior *graph, CKBehaviorLink *link) {
     if (!graph || !link)
         return false;
     for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
         if (graph->GetSubBehaviorLink(index) == link)
+            return true;
+    }
+    return false;
+}
+
+bool ContainsNode(CKBehavior *graph, CKBehavior *node) {
+    // Membership is the graph fact used by scheduling. Retail CK2 may retain
+    // a cached GetParent() value after removal, so parent identity alone does
+    // not prove that a Behavior is still a sub-behavior.
+    if (!graph || !node)
+        return false;
+    for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
+        if (graph->GetSubBehavior(index) == node)
             return true;
     }
     return false;
@@ -272,6 +285,9 @@ struct Patch::Journal {
         Stamp Literal;
         PinSource Before;
         PinSource Expected;
+        // Inputs owned by a Parameter Operation disappear with the Operation;
+        // teardown never restores their previous source.
+        bool OwnedTarget = false;
         // Set once this Pin has been handed back to its previous source. A
         // Conflicted Patch is closed again later, and a Pin that already
         // reverted must not be touched twice.
@@ -283,22 +299,71 @@ struct Patch::Journal {
         Stamp Target;
     };
 
-    // A value written straight into a Setting or a Local. CK2 keeps the value
-    // in the parameter's own buffer, so the bytes that were there are the only
-    // thing a revert can hand back, and the bytes this Patch wrote are what
-    // tells a revert whether anyone else has written since.
+    // A value written straight into a Local. Before and Expected are ordinary
+    // CKParameterLocal objects so the registered Virtools value semantics own
+    // every non-trivial representation kept by the journal.
     struct Written {
         Stamp Parameter;
         GraphEndpoint Slot;
-        std::vector<CKBYTE> Before;
-        std::vector<CKBYTE> Expected;
+        Stamp Before;
+        Stamp Expected;
         bool Reverted = false;
     };
 
     struct Interface {
+        std::uint32_t Identity = 0;
         Stamp Behavior;
         Stamp Port;
         SlotKind Kind = SlotKind::Input;
+    };
+
+    struct Operation {
+        Stamp Owner;
+        Stamp Value;
+    };
+
+    struct Replacement {
+        struct PortPair {
+            Stamp Original;
+            Stamp Installed;
+            SlotKind Kind = SlotKind::Input;
+            int Index = -1;
+        };
+
+        struct LinkEndpoint {
+            Stamp Link;
+            Stamp OriginalSource;
+            Stamp OriginalSink;
+            Stamp InstalledSource;
+            Stamp InstalledSink;
+            bool Applied = false;
+        };
+
+        struct InputSource {
+            Stamp Input;
+            Stamp OriginalDirect;
+            Stamp OriginalShared;
+            Stamp InstalledDirect;
+            Stamp InstalledShared;
+            bool Applied = false;
+        };
+
+        struct Destination {
+            Stamp OriginalSource;
+            Stamp InstalledSource;
+            Stamp OriginalParameter;
+            Stamp InstalledParameter;
+            bool Applied = false;
+        };
+
+        Stamp Original;
+        Stamp Installed;
+        std::vector<PortPair> Ports;
+        std::vector<LinkEndpoint> Links;
+        std::vector<InputSource> Inputs;
+        std::vector<Destination> Destinations;
+        bool OriginalRemoved = false;
+        bool Restored = false;
     };
 
     CKEdit *Editor = nullptr;
@@ -306,6 +371,11 @@ struct Patch::Journal {
     PatchState State = PatchState::Pending;
     Status LastStatus;
     bool Queued = false;
+    bool Published = false;
+    bool GraphObserved = false;
+    bool RestoredEdited = false;
+    bool RestoredGraph = false;
+    bool ReplacementClaim = false;
     Stamp Graph;
     PatchKey Key;
     std::vector<std::shared_ptr<CallbackResource>> Callbacks;
@@ -316,11 +386,19 @@ struct Patch::Journal {
     std::map<std::uint32_t, Stamp> Handles;
     std::vector<Stamp> InfrastructureNodes;
     std::vector<Stamp> InfrastructureLinks;
+    // Existing Blocks whose parameter state or relations this Patch changes.
+    // Apply and successful teardown each send exactly one EDITED callback.
+    std::vector<Stamp> EditedNodes;
+    // Apply can fail after only part of EditedNodes has observed the proposed
+    // graph. Those Blocks alone observe the checked inverse.
+    std::vector<Stamp> ObservedEditedNodes;
     std::vector<Link> Links;
     std::vector<Binding> Binds;
     std::vector<Written> Values;
     std::vector<Destination> Pushes;
     std::vector<Interface> Ports;
+    std::vector<Operation> Operations;
+    std::vector<Replacement> Replacements;
     PatchLayer Layer;
     RelationLayer Data;
     std::vector<std::pair<LinkId, std::uint32_t>> Splices;
@@ -430,6 +508,7 @@ void CKEdit::AdoptGraph(CKBehavior *graph) {
         m_Topology.erase(graphId);
         m_Relations.erase(graphId);
         m_Active.erase(graphId);
+        m_Replacing.erase(graphId);
         m_Links->Chains.erase(graphId);
         m_Links->Sites.erase(graphId);
         m_Links->Patches.erase(graphId);
@@ -782,7 +861,7 @@ Status CKEdit::Use(Edit &edit, CKBehaviorLink *link, Link &out) {
     return {};
 }
 
-Status CKEdit::Add(Edit &edit, Spec block, Node &out, NodeRole role) {
+Status CKEdit::Add(Edit &edit, BlockSpec block, Node &out, NodeRole role) {
     out = {};
     Status status = Ready();
     if (!status)
@@ -831,6 +910,11 @@ Status CKEdit::ApplyNow(const Edit &edit,
         status = edit.Validate(base, checked);
     if (!status)
         return status;
+    if (m_Replacing.contains(graphId)) {
+        return Failure(
+            Error::SourceConflict,
+            "This graph already has an active Node replacement.");
+    }
 
     Topology &topology = m_Topology[graphId];
     Relations &relations = m_Relations[graphId];
@@ -894,6 +978,9 @@ Status CKEdit::ApplyNow(const Edit &edit,
     RelationLayer relationLayer;
     relationLayer.Patch = edit.Key();
     for (const CheckedBind &bind : checked.Binds) {
+        if (bind.Target.Slot.Kind != SlotKind::InputParameter &&
+            bind.Target.Slot.Kind != SlotKind::Target)
+            continue;
         const Edit::EditNode *target = edit.Find(bind.Target.Owner);
         if (!target || target->Block || bind.Target.Appended)
             continue;
@@ -914,9 +1001,11 @@ Status CKEdit::ApplyNow(const Edit &edit,
     patch->Graph = Capture(graph);
     patch->Key = edit.Key();
     AdoptGraph(graph);
+    if (!checked.Replacements.empty())
+        patch->ReplacementClaim = m_Replacing.insert(graphId).second;
 
-    std::unordered_map<std::uint32_t, CKBehavior *> nodes;
-    nodes.emplace(edit.Graph().Value, graph);
+    std::unordered_map<std::uint32_t, Stamp> nodes;
+    nodes.emplace(edit.Graph().Value, patch->Graph);
     for (std::size_t index = 1; index < edit.m_Nodes.size(); ++index) {
         const Edit::EditNode &node = edit.m_Nodes[index];
         if (node.Block)
@@ -928,11 +1017,11 @@ Status CKEdit::ApplyNow(const Edit &edit,
                              CKERR_INVALIDOBJECT);
             break;
         }
-        nodes.emplace(node.Handle.Value, native);
+        nodes.emplace(node.Handle.Value, Capture(native));
     }
 
     const auto fail = [&](Status failure) {
-        Status reverted = Undo(*patch, false);
+        Status reverted = Undo(*patch);
         if (!reverted) {
             if (!failure.Message.empty())
                 reverted.Message = failure.Message + " " + reverted.Message;
@@ -945,12 +1034,125 @@ Status CKEdit::ApplyNow(const Edit &edit,
 
     const auto behaviorFor = [&](Node node) -> CKBehavior * {
         const auto found = nodes.find(node.Value);
-        return found == nodes.end() ? nullptr : found->second;
+        return found == nodes.end()
+            ? nullptr
+            : Resolve<CKBehavior>(m_Context, found->second, CKCID_BEHAVIOR);
     };
+    const auto graphFor = [&]() -> CKBehavior * {
+        return Resolve<CKBehavior>(m_Context, patch->Graph, CKCID_BEHAVIOR);
+    };
+    const auto validateNodes = [&]() -> Status {
+        CKBehavior *currentGraph = graphFor();
+        if (!currentGraph || currentGraph->IsUsingFunction()) {
+            return Failure(
+                Error::GraphChanged,
+                "The edited Behavior graph changed identity during a callback.",
+                CKERR_INVALIDOBJECT);
+        }
+        for (const auto &[handle, stamp] : nodes) {
+            CKBehavior *current = Resolve<CKBehavior>(
+                m_Context, stamp, CKCID_BEHAVIOR);
+            if (!current || (handle != edit.Graph().Value &&
+                             current->GetParent() != currentGraph)) {
+                return Failure(
+                    Error::GraphChanged,
+                    "An Edit Node changed identity during a callback.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        for (Stamp stamp : patch->Nodes) {
+            CKBehavior *current = Resolve<CKBehavior>(
+                m_Context, stamp, CKCID_BEHAVIOR);
+            if (!current || current->GetParent() != currentGraph) {
+                return Failure(
+                    Error::GraphChanged,
+                    "An Edit-owned Block changed identity during a callback.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        for (const Patch::Journal::Operation &item : patch->Operations) {
+            auto *operation = Resolve<CKParameterOperation>(
+                m_Context, item.Value, CKCID_PARAMETEROPERATION);
+            if (!operation || operation->GetOwner() != currentGraph) {
+                return Failure(
+                    Error::GraphChanged,
+                    "An Edit-owned Parameter Operation changed identity during a callback.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        return {};
+    };
+
+    const auto visitPorts = [&](auto &&visitor) -> Status {
+        for (CheckedFlow &flow : checked.Flows) {
+            Status current = visitor(flow.Source);
+            if (current)
+                current = visitor(flow.Sink);
+            if (!current)
+                return current;
+        }
+        for (CheckedBind &bind : checked.Binds) {
+            Status current = visitor(bind.Target);
+            if (current && bind.Kind != BindKind::Literal)
+                current = visitor(bind.Source);
+            if (!current)
+                return current;
+        }
+        for (CheckedPush &push : checked.Pushes) {
+            Status current = visitor(push.Source);
+            if (current)
+                current = visitor(push.Destination);
+            if (!current)
+                return current;
+        }
+        for (CheckedTap &tap : checked.Taps) {
+            Status current = visitor(tap.Source);
+            if (!current)
+                return current;
+        }
+        for (CheckedSplice &splice : checked.Splices) {
+            Status current = visitor(splice.Input);
+            if (current)
+                current = visitor(splice.Output);
+            if (!current)
+                return current;
+        }
+        for (CheckedRedirect &redirect : checked.Redirects) {
+            Status current = visitor(redirect.Sink);
+            if (!current)
+                return current;
+        }
+        return {};
+    };
+
+    // Borrowed graph Ports exist before any added Block can run a lifecycle
+    // callback. Pin their exact CK identities now so a callback cannot replace
+    // a peer Port with a same-shaped object and redirect this Edit silently.
+    status = visitPorts([&](ResolvedPort &port) -> Status {
+        const Edit::EditNode *node = edit.Find(port.Owner);
+        if (!node || node->Block || port.Interface != 0 || port.Native)
+            return {};
+        CKBehavior *behavior = behaviorFor(port.Owner);
+        SlotInfo live;
+        Status current = m_Runtime.Resolve(behavior, port.Selector, live);
+        CKObject *object = current
+            ? m_Runtime.ResolveSlotObject(behavior, live) : nullptr;
+        if (!current || !object)
+            return current ? Failure(
+                Error::GraphChanged,
+                "A selected graph Port disappeared before Apply.",
+                CKERR_INVALIDOBJECT) : current;
+        port.Native = Native(Capture(object));
+        return {};
+    });
+    if (!status)
+        return fail(std::move(status));
 
     const auto parameterBeforeApply = [&](const ResolvedPort &port,
                                           CKObject *&value) -> Status {
         value = nullptr;
+        if (port.Operation)
+            return {};
         const Edit::EditNode *node = edit.Find(port.Owner);
         if (!node)
             return Failure(Error::InvalidState,
@@ -1181,39 +1383,68 @@ Status CKEdit::ApplyNow(const Edit &edit,
         }
     }
 
-    // Added Nodes enter their complete Runtime lifecycle before any control
-    // path can reach them.
+    // CREATE every authored Block first. Their Block-defined control
+    // interface is already present, but parameter relations and the single
+    // final EDITED callback wait until all Nodes exist.
+    std::unordered_map<std::uint32_t, BlockSpec> addedSpecs;
     for (const Edit::EditNode &node : edit.m_Nodes) {
         if (!node.Block)
             continue;
-        AttachResult added = m_Runtime.AddToGraph(graph, *node.Block);
+        auto [spec, inserted] = addedSpecs.emplace(
+            node.Handle.Value, *node.Block);
+        if (!inserted)
+            return fail(Failure(Error::InvalidState,
+                                "An added Node is declared more than once."));
+        AttachResult added = m_Runtime.CreateInGraph(graph, spec->second);
         if (!added || !added.Block)
             return fail(added.Detail);
-        nodes.emplace(node.Handle.Value, added.Block);
         const Stamp stamp = Capture(added.Block);
+        nodes.emplace(node.Handle.Value, stamp);
         patch->Nodes.push_back(stamp);
         if (node.Role == NodeRole::Infrastructure)
             patch->InfrastructureNodes.push_back(stamp);
+        status = validateNodes();
+        if (!status)
+            return fail(std::move(status));
+        graph = graphFor();
     }
 
-    std::unordered_map<std::uint32_t, CKBehavior *> tapNodes;
+    std::unordered_map<std::uint32_t, Stamp> tapNodes;
     for (const CheckedTap &tap : checked.Taps) {
-        AttachResult added = m_Runtime.AddToGraph(
-            graph, HookBlock::Make(tap.Callback, 1, 0));
+        BlockSpec observerSpec = HookBlock::Make(tap.Callback, 1, 0);
+        AttachResult added = m_Runtime.CreateInGraph(graph, observerSpec);
         if (!added || !added.Block)
             return fail(added.Detail);
-        tapNodes.emplace(tap.Ordinal, added.Block);
+        status = m_Runtime.EditInGraph(added.Block, observerSpec);
+        if (!status)
+            return fail(std::move(status));
         const Stamp node = Capture(added.Block);
+        tapNodes.emplace(tap.Ordinal, node);
         patch->Nodes.push_back(node);
         patch->InfrastructureNodes.push_back(node);
+        status = validateNodes();
+        if (!status)
+            return fail(std::move(status));
+        graph = graphFor();
     }
 
-    std::unordered_set<CKBehavior *> changed;
+    const auto isAdded = [&](Node handle) {
+        const Edit::EditNode *node = edit.Find(handle);
+        return node && node->Block.has_value();
+    };
+    const auto rememberEdited = [&](CKBehavior *behavior) {
+        if (!behavior || behavior == graph)
+            return;
+        const Stamp stamp = Capture(behavior);
+        if (std::find(patch->EditedNodes.begin(), patch->EditedNodes.end(),
+                      stamp) == patch->EditedNodes.end())
+            patch->EditedNodes.push_back(stamp);
+    };
+    std::unordered_map<std::uint32_t, Stamp> interfacePorts;
     for (const InterfacePort &item : edit.m_Interface) {
         if (item.InBlockSpec)
             continue;
-        const auto owner = nodes.find(item.Owner.Value);
-        CKBehavior *behavior = owner == nodes.end() ? nullptr : owner->second;
+        CKBehavior *behavior = behaviorFor(item.Owner);
         if (!behavior)
             return fail(Failure(Error::InvalidState,
                                 "A dynamic interface Node is unavailable."));
@@ -1236,6 +1467,10 @@ Status CKEdit::ApplyNow(const Edit &edit,
             created = behavior->CreateOutputParameter(
                 const_cast<CKSTRING>(item.Slot.Name.c_str()), item.Slot.Type);
             break;
+        case SlotKind::Local:
+            created = behavior->CreateLocalParameter(
+                const_cast<CKSTRING>(item.Slot.Name.c_str()), item.Slot.Type);
+            break;
         default:
             return fail(Failure(Error::InterfaceUnsupported,
                                 "This dynamic interface kind is not supported."));
@@ -1245,26 +1480,165 @@ Status CKEdit::ApplyNow(const Edit &edit,
                                 "Virtools failed to append a Behavior port.",
                                 CKERR_OUTOFMEMORY));
         patch->Ports.push_back(
-            {Capture(behavior), Capture(created), item.Slot.Kind});
-        changed.insert(behavior);
+            {item.Identity, Capture(behavior), Capture(created),
+             item.Slot.Kind});
+        interfacePorts.emplace(item.Identity, Capture(created));
+        if (!isAdded(item.Owner))
+            rememberEdited(behavior);
     }
 
-    for (CKBehavior *behavior : changed) {
-        const int result = behavior->CallCallbackFunction(CKM_BEHAVIOREDITED);
-        if (result != CK_OK)
-            return fail(Failure(Error::CallbackFailed,
-                                "A dynamic interface EDITED callback failed.",
-                                result));
+    std::unordered_map<std::uint32_t, Stamp> operations;
+    for (const EditOperation &item : edit.m_Operations) {
+        std::ostringstream name;
+        name << "__BML_Operation_" << graph->GetID() << '_'
+             << item.Handle.Value;
+        CKParameterOperation *operation = m_Context->CreateCKParameterOperation(
+            const_cast<CKSTRING>(name.str().c_str()), item.Operation,
+            item.Result, item.Input1, item.Input2);
+        if (!operation) {
+            Status failed = Failure(
+                Error::CreateFailed,
+                "Virtools failed to create a Parameter Operation.",
+                CKERR_OUTOFMEMORY);
+            failed.Details.OperationGuid = item.Operation;
+            return fail(std::move(failed));
+        }
+        if (!operation->GetOutParameter() ||
+            !operation->GetOperationFunction()) {
+            m_Context->DestroyObject(operation);
+            Status failed = Failure(
+                Error::OperationInvalid,
+                "No native Parameter Operation function matches the requested type tuple.",
+                CKERR_INVALIDPARAMETER);
+            failed.Details.OperationGuid = item.Operation;
+            return fail(std::move(failed));
+        }
+        const CKERROR added = graph->AddParameterOperation(operation);
+        if (added != CK_OK) {
+            m_Context->DestroyObject(operation);
+            Status failed = Failure(
+                Error::OperationInvalid,
+                "Virtools rejected the Parameter Operation graph ownership.",
+                added);
+            failed.Details.OperationGuid = item.Operation;
+            return fail(std::move(failed));
+        }
+        const Stamp stamp = Capture(operation);
+        patch->Operations.push_back({Capture(graph), stamp});
+        operations.emplace(item.Handle.Value, stamp);
     }
+
+    const auto exactSlot = [&](CKBehavior *behavior, Stamp exact,
+                               SlotKind kind, SlotInfo &slot) -> Status {
+        CKObject *object = m_Context && exact.Id
+            ? m_Context->GetObject(exact.Id) : nullptr;
+        if (!behavior || !object || object != exact.Address ||
+            object->IsToBeDeleted()) {
+            return Failure(Error::GraphChanged,
+                           "A selected Behavior Port changed identity during Apply.",
+                           CKERR_INVALIDOBJECT);
+        }
+        const Layout layout = m_Runtime.Describe(behavior);
+        for (const SlotInfo &candidate : layout.Slots) {
+            if (candidate.Kind == kind &&
+                m_Runtime.ResolveSlotObject(behavior, candidate) == object) {
+                slot = candidate;
+                return {};
+            }
+        }
+        return Failure(Error::GraphChanged,
+                       "A selected Behavior Port left its owning Block during Apply.",
+                       CKERR_INVALIDOBJECT);
+    };
 
     const auto liveSlot = [&](const ResolvedPort &port, SlotInfo &slot) {
         CKBehavior *behavior = behaviorFor(port.Owner);
         if (!behavior)
-            return Failure(Error::InvalidState,
+            return Failure(Error::GraphChanged,
                            "An Edit Node disappeared during Apply.",
                            CKERR_INVALIDOBJECT);
-        return m_Runtime.Resolve(behavior, port.Selector, slot);
+        Status resolved;
+        if (port.Native) {
+            resolved = exactSlot(
+                behavior, Capture(port.Native), port.Slot.Kind, slot);
+        } else if (port.Interface != 0) {
+            const auto found = interfacePorts.find(port.Interface);
+            resolved = found == interfacePorts.end()
+                ? Failure(Error::GraphChanged,
+                          "An Edit interface Port was not created.",
+                          CKERR_INVALIDOBJECT)
+                : exactSlot(behavior, found->second, port.Slot.Kind, slot);
+        } else {
+            resolved = m_Runtime.Resolve(behavior, port.Selector, slot);
+        }
+        if (!resolved)
+            return resolved;
+        const bool changedKind = slot.Kind != port.Slot.Kind;
+        const bool changedType = port.Slot.Type.IsValid() &&
+                                 slot.Type != port.Slot.Type;
+        const bool changedIndexedSlot = !port.Native &&
+            port.Interface == 0 && !port.Selector.UsesName() &&
+            !port.Selector.RequireOnly &&
+            (slot.Name != port.Slot.Name ||
+             slot.Occurrence != port.Slot.Occurrence);
+        if (changedKind || changedType || changedIndexedSlot) {
+            return Failure(
+                Error::GraphChanged,
+                "A selected Behavior port changed identity during Apply.");
+        }
+        return Status{};
     };
+
+    // Added Blocks and Edit-declared interface Ports now exist. Bind every
+    // remaining symbolic endpoint to the exact CK object that it denotes.
+    status = visitPorts([&](ResolvedPort &port) -> Status {
+        if (port.Native)
+            return {};
+        if (port.Operation) {
+            const auto found = operations.find(port.Owner.Value);
+            auto *operation = found == operations.end()
+                ? nullptr : Resolve<CKParameterOperation>(
+                    m_Context, found->second, CKCID_PARAMETEROPERATION);
+            CKObject *parameter = nullptr;
+            CKGUID type;
+            if (operation && port.Slot.Kind == SlotKind::InputParameter) {
+                CKParameterIn *input = port.Slot.NativeIndex == 0
+                    ? operation->GetInParameter1()
+                    : operation->GetInParameter2();
+                parameter = input;
+                if (input)
+                    type = input->GetGUID();
+            } else if (operation &&
+                       port.Slot.Kind == SlotKind::OutputParameter) {
+                CKParameterOut *output = operation->GetOutParameter();
+                parameter = output;
+                if (output)
+                    type = output->GetGUID();
+            }
+            if (!parameter || type != port.Slot.Type) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A Parameter Operation port does not match its declared type.",
+                    CKERR_INVALIDOBJECT);
+            }
+            port.Native = Native(Capture(parameter));
+            return {};
+        }
+        CKBehavior *behavior = behaviorFor(port.Owner);
+        SlotInfo live;
+        Status current = liveSlot(port, live);
+        if (!current)
+            return current;
+        CKObject *object = m_Runtime.ResolveSlotObject(behavior, live);
+        if (!object)
+            return Failure(Error::GraphChanged,
+                           "A selected Behavior Port disappeared before publication.",
+                           CKERR_INVALIDOBJECT);
+        port.Native = Native(Capture(object));
+        return {};
+    });
+    if (!status)
+        return fail(std::move(status));
 
     const auto control = [&](const ResolvedPort &port,
                              CKBehaviorIO *&io) -> Status {
@@ -1285,8 +1659,22 @@ Status CKEdit::ApplyNow(const Edit &edit,
     };
 
     const auto parameter = [&](const ResolvedPort &port,
-                               CKObject *&value) -> Status {
+                                CKObject *&value) -> Status {
         value = nullptr;
+        if (port.Native) {
+            CKObject *native = m_Context->GetObject(
+                static_cast<CK_ID>(port.Native.Id));
+            if (!native || native != port.Native.Address || native->IsToBeDeleted() ||
+                (!CKIsChildClassOf(native, CKCID_PARAMETER) &&
+                 !CKIsChildClassOf(native, CKCID_PARAMETERIN))) {
+                return Failure(
+                    Error::GraphChanged,
+                    "An Edit data port changed identity during Apply.",
+                    CKERR_INVALIDOBJECT);
+            }
+            value = native;
+            return {};
+        }
         CKBehavior *behavior = behaviorFor(port.Owner);
         SlotInfo slot;
         Status result = liveSlot(port, slot);
@@ -1343,16 +1731,361 @@ Status CKEdit::ApplyNow(const Edit &edit,
         return {};
     };
 
-    for (const CheckedFlow &flow : checked.Flows) {
-        CKBehaviorIO *source = nullptr;
-        CKBehaviorIO *sink = nullptr;
-        status = control(flow.Source, source);
-        if (status)
-            status = control(flow.Sink, sink);
-        if (status)
-            status = addLink(source, sink, flow.Delay);
-        if (!status)
-            return fail(std::move(status));
+    // A replacement preserves the public graph role of an idle Node. CK2's
+    // RemoveSubBehavior only removes parent membership; it deliberately keeps
+    // the owner and native lifecycle state. That lets the Patch park the exact
+    // original object and restore it without inventing DETACH/DELETE callbacks.
+    std::unordered_map<CKObject *, CKObject *> replacementPorts;
+    std::unordered_map<CKObject *, std::size_t> replacementOwners;
+    std::unordered_set<CKObject *> installedPorts;
+    std::unordered_set<CKBehavior *> originalNodes;
+    std::unordered_set<CKParameter *> privateState;
+    const auto slots = [](const Layout &layout, SlotKind kind) {
+        std::vector<const SlotInfo *> result;
+        for (const SlotInfo &slot : layout.Slots) {
+            if (slot.Kind == kind)
+                result.push_back(&slot);
+        }
+        std::sort(result.begin(), result.end(),
+                  [](const SlotInfo *left, const SlotInfo *right) {
+                      return left->Index < right->Index;
+                  });
+        return result;
+    };
+    const std::array<SlotKind, 5> publicKinds{
+        SlotKind::Input, SlotKind::Output, SlotKind::Target,
+        SlotKind::InputParameter, SlotKind::OutputParameter};
+
+    for (const CheckedReplace &item : checked.Replacements) {
+        CKBehavior *original = behaviorFor(item.Target);
+        CKBehavior *installed = behaviorFor(item.Replacement);
+        if (!original || !installed || original == installed ||
+            original->GetParent() != graph || installed->GetParent() != graph) {
+            return fail(Failure(
+                Error::InvalidGraphLocality,
+                "A replacement Node left the target graph before Apply.",
+                CKERR_INVALIDOBJECT));
+        }
+        if (original->IsActive()) {
+            return fail(Failure(
+                Error::Busy,
+                "A running Behavior Node cannot be replaced."));
+        }
+        for (int index = 0; index < original->GetInputCount(); ++index) {
+            CKBehaviorIO *io = original->GetInput(index);
+            if (io && io->IsActive())
+                return fail(Failure(
+                    Error::Busy,
+                    "A Behavior Node with an active In cannot be replaced."));
+        }
+        for (int index = 0; index < original->GetOutputCount(); ++index) {
+            CKBehaviorIO *io = original->GetOutput(index);
+            if (io && io->IsActive())
+                return fail(Failure(
+                    Error::Busy,
+                    "A Behavior Node with an active Out cannot be replaced."));
+        }
+
+        Patch::Journal::Replacement replacement;
+        replacement.Original = Capture(original);
+        replacement.Installed = Capture(installed);
+        originalNodes.insert(original);
+        const std::size_t ownerIndex = patch->Replacements.size();
+        const Layout originalLayout = m_Runtime.Describe(original);
+        const Layout installedLayout = m_Runtime.Describe(installed);
+        for (SlotKind kind : publicKinds) {
+            const auto before = slots(originalLayout, kind);
+            const auto after = slots(installedLayout, kind);
+            if (before.size() != after.size()) {
+                return fail(Failure(
+                    Error::InterfaceUnsupported,
+                    "A replacement Block has a different public Behavior interface."));
+            }
+            for (std::size_t index = 0; index < before.size(); ++index) {
+                const SlotInfo &oldSlot = *before[index];
+                const SlotInfo &newSlot = *after[index];
+                if (oldSlot.Index != newSlot.Index ||
+                    oldSlot.Name != newSlot.Name ||
+                    oldSlot.Occurrence != newSlot.Occurrence ||
+                    oldSlot.Type != newSlot.Type) {
+                    return fail(Failure(
+                        Error::InterfaceUnsupported,
+                        "A replacement Block changed a public Behavior port."));
+                }
+                CKObject *oldPort = m_Runtime.ResolveSlotObject(
+                    original, oldSlot);
+                CKObject *newPort = m_Runtime.ResolveSlotObject(
+                    installed, newSlot);
+                if (!oldPort || !newPort) {
+                    return fail(Failure(
+                        Error::GraphChanged,
+                        "A replacement public port disappeared before Apply.",
+                        CKERR_INVALIDOBJECT));
+                }
+                replacement.Ports.push_back(
+                    {Capture(oldPort), Capture(newPort), kind, oldSlot.Index});
+                replacementPorts.emplace(oldPort, newPort);
+                replacementOwners.emplace(oldPort, ownerIndex);
+                installedPorts.insert(newPort);
+            }
+        }
+        for (const SlotInfo &slot : originalLayout.Slots) {
+            if (slot.Kind != SlotKind::Setting &&
+                slot.Kind != SlotKind::Local)
+                continue;
+            if (auto *state = CKParameter::Cast(
+                    m_Runtime.ResolveSlotObject(original, slot)))
+                privateState.insert(state);
+        }
+
+        if (const char *name = original->GetName())
+            installed->SetName(const_cast<CKSTRING>(name));
+        installed->SetPriority(original->GetPriority());
+        patch->Replacements.push_back(std::move(replacement));
+    }
+
+    const auto isPrivateParameter = [&](CKParameter *parameter) {
+        if (!parameter)
+            return false;
+        if (privateState.contains(parameter))
+            return true;
+        CKBehavior *owner = CKBehavior::Cast(parameter->GetOwner());
+        return owner && originalNodes.contains(owner) &&
+            !replacementPorts.contains(parameter);
+    };
+
+    // Preserve the original Pin and Target source relations in the
+    // replacement BlockSpec. Explicit Bind actions that follow this step may
+    // deliberately override them before the Block's single EDITED callback.
+    for (std::size_t index = 0; index < checked.Replacements.size(); ++index) {
+        const CheckedReplace &item = checked.Replacements[index];
+        const auto spec = addedSpecs.find(item.Replacement.Value);
+        if (spec == addedSpecs.end())
+            return fail(Failure(Error::InvalidState,
+                                "A replacement Block lost its configuration."));
+        BlockSpec &block = spec->second;
+        for (const Patch::Journal::Replacement::PortPair &pair :
+             patch->Replacements[index].Ports) {
+            if (pair.Kind != SlotKind::InputParameter &&
+                pair.Kind != SlotKind::Target)
+                continue;
+            auto *oldInput = Resolve<CKParameterIn>(
+                m_Context, pair.Original, CKCID_PARAMETERIN);
+            auto *newInput = Resolve<CKParameterIn>(
+                m_Context, pair.Installed, CKCID_PARAMETERIN);
+            if (!oldInput || !newInput)
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "A replacement Pin changed identity before Apply.",
+                    CKERR_INVALIDOBJECT));
+
+            CKParameterIn *shared = oldInput->GetSharedSource();
+            CKParameter *direct = shared ? nullptr : oldInput->GetDirectSource();
+            if (shared) {
+                const auto mapped = replacementPorts.find(shared);
+                if (mapped != replacementPorts.end())
+                    shared = CKParameterIn::Cast(mapped->second);
+                if (!shared)
+                    return fail(Failure(
+                        Error::TypeMismatch,
+                        "A replacement could not preserve a shared Pin source."));
+                if (pair.Kind == SlotKind::Target)
+                    block.TargetShared(newInput->GetGUID(), shared);
+                else
+                    block.Input(Slot::At(pair.Kind, pair.Index,
+                                         newInput->GetGUID()),
+                                Parameter::Binding::Shared(shared));
+            } else if (direct) {
+                if (isPrivateParameter(direct))
+                    return fail(Failure(
+                        Error::InterfaceUnsupported,
+                        "A replacement public Pin depends on the original Block's private state."));
+                const auto mapped = replacementPorts.find(direct);
+                if (mapped != replacementPorts.end())
+                    direct = CKParameter::Cast(mapped->second);
+                if (!direct)
+                    return fail(Failure(
+                        Error::TypeMismatch,
+                        "A replacement could not preserve a direct Pin source."));
+                if (pair.Kind == SlotKind::Target)
+                    block.TargetSource(newInput->GetGUID(), direct);
+                else
+                    block.Input(Slot::At(pair.Kind, pair.Index,
+                                         newInput->GetGUID()),
+                                Parameter::Binding::Direct(direct));
+            }
+        }
+    }
+
+    const auto relationOwnerInGraph = [&](CKObject *parameter) {
+        CKObject *owner = nullptr;
+        if (auto *input = CKParameterIn::Cast(parameter))
+            owner = input->GetOwner();
+        else if (auto *value = CKParameter::Cast(parameter))
+            owner = value->GetOwner();
+        if (CKBehavior *behavior = CKBehavior::Cast(owner))
+            return behavior == graph || behavior->GetParent() == graph;
+        if (auto *operation = CKParameterOperation::Cast(owner))
+            return operation->GetOwner() == graph;
+        return false;
+    };
+
+    // Find every graph-local Pin that reads a public parameter of a parked
+    // Node. CKParameterIn does not expose reverse users, so CK2's exact
+    // ParameterIn object list is the authoritative relation inventory.
+    const int inputCount = m_Context->GetObjectsCountByClassID(
+        CKCID_PARAMETERIN);
+    CK_ID *inputIds = m_Context->GetObjectsListByClassID(CKCID_PARAMETERIN);
+    for (int index = 0; index < inputCount; ++index) {
+        auto *input = CKParameterIn::Cast(m_Context->GetObject(inputIds[index]));
+        if (!input || input->IsToBeDeleted() ||
+            replacementPorts.contains(input) || installedPorts.contains(input))
+            continue;
+        CKParameterIn *oldShared = input->GetSharedSource();
+        CKParameter *oldDirect = oldShared ? nullptr : input->GetDirectSource();
+        CKObject *oldSource = oldShared
+            ? static_cast<CKObject *>(oldShared)
+            : static_cast<CKObject *>(oldDirect);
+        const auto mapped = replacementPorts.find(oldSource);
+        if (mapped == replacementPorts.end()) {
+            if (oldDirect && isPrivateParameter(oldDirect)) {
+                return fail(Failure(
+                    Error::InvalidGraphLocality,
+                    "A parameter outside the replaced Node reads its private state."));
+            }
+            continue;
+        }
+        if (!relationOwnerInGraph(input)) {
+            return fail(Failure(
+                Error::InvalidGraphLocality,
+                "A parameter outside the target graph reads the replaced Node."));
+        }
+        const std::size_t owner = replacementOwners.at(oldSource);
+        auto &change = patch->Replacements[owner].Inputs.emplace_back();
+        change.Input = Capture(input);
+        change.OriginalDirect = Capture(oldDirect);
+        change.OriginalShared = Capture(oldShared);
+        if (oldShared) {
+            auto *newShared = CKParameterIn::Cast(mapped->second);
+            if (!newShared)
+                return fail(Failure(
+                    Error::TypeMismatch,
+                    "A shared Pin source does not map to a replacement Pin."));
+            change.InstalledShared = Capture(newShared);
+        } else {
+            auto *newDirect = CKParameter::Cast(mapped->second);
+            if (!newDirect)
+                return fail(Failure(
+                    Error::TypeMismatch,
+                    "A direct Pin source does not map to a replacement parameter."));
+            change.InstalledDirect = Capture(newDirect);
+        }
+    }
+
+    // Settings, Locals and other non-public parameters stay with the parked
+    // implementation. A graph relation that writes one of them cannot be
+    // transferred to the replacement without pretending it is public state.
+    const int outputCount = m_Context->GetObjectsCountByClassID(
+        CKCID_PARAMETEROUT);
+    CK_ID *outputIds = m_Context->GetObjectsListByClassID(
+        CKCID_PARAMETEROUT);
+    for (int index = 0; index < outputCount; ++index) {
+        auto *source = CKParameterOut::Cast(
+            m_Context->GetObject(outputIds[index]));
+        if (!source || source->IsToBeDeleted() ||
+            installedPorts.contains(source))
+            continue;
+        for (int destinationIndex = 0;
+             destinationIndex < source->GetDestinationCount();
+             ++destinationIndex) {
+            if (isPrivateParameter(source->GetDestination(destinationIndex)))
+                return fail(Failure(
+                    Error::InterfaceUnsupported,
+                    "A graph Pout writes the original Block's private state."));
+        }
+    }
+
+    for (const auto &[oldObject, newObject] : replacementPorts) {
+        auto *oldOutput = CKParameterOut::Cast(oldObject);
+        auto *newOutput = CKParameterOut::Cast(newObject);
+        if (!oldOutput || !newOutput)
+            continue;
+        std::vector<CKParameter *> destinations;
+        for (int index = 0; index < oldOutput->GetDestinationCount(); ++index)
+            destinations.push_back(oldOutput->GetDestination(index));
+        for (CKParameter *destination : destinations) {
+            if (!destination || destination->IsToBeDeleted())
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "A Pout destination disappeared before replacement.",
+                    CKERR_INVALIDOBJECT));
+            if (privateState.contains(destination))
+                return fail(Failure(
+                    Error::InvalidGraphLocality,
+                    "A Pout destination belongs to the original Block's private state."));
+            CKParameter *originalDestination = destination;
+            const auto mapped = replacementPorts.find(destination);
+            if (mapped != replacementPorts.end())
+                destination = CKParameter::Cast(mapped->second);
+            if (!destination || !relationOwnerInGraph(destination))
+                return fail(Failure(
+                    Error::InvalidGraphLocality,
+                    "A Pout destination lies outside the replacement graph."));
+            if (ContainsDestination(newOutput, destination))
+                return fail(Failure(
+                    Error::SourceConflict,
+                    "The replacement Pout already owns an original destination."));
+            const std::size_t owner = replacementOwners.at(oldObject);
+            patch->Replacements[owner].Destinations.push_back(
+                {Capture(oldOutput), Capture(newOutput),
+                 Capture(originalDestination), Capture(destination)});
+        }
+    }
+
+    for (auto &replacement : patch->Replacements) {
+        for (auto &change : replacement.Inputs) {
+            CKParameterIn *input = Resolve<CKParameterIn>(
+                m_Context, change.Input, CKCID_PARAMETERIN);
+            CKERROR error = CKERR_INVALIDOBJECT;
+            if (input && change.InstalledShared.Id) {
+                error = input->ShareSourceWith(Resolve<CKParameterIn>(
+                    m_Context, change.InstalledShared, CKCID_PARAMETERIN));
+            } else if (input) {
+                error = input->SetDirectSource(Resolve<CKParameter>(
+                    m_Context, change.InstalledDirect, CKCID_PARAMETER));
+            }
+            if (error != CK_OK)
+                return fail(Failure(
+                    Error::TypeMismatch,
+                    "Virtools rejected a replacement Pin source.", error));
+            change.Applied = true;
+            if (CKBehavior *owner = CKBehavior::Cast(input->GetOwner()))
+                rememberEdited(owner);
+        }
+        for (auto &change : replacement.Destinations) {
+            CKParameterOut *oldOutput = Resolve<CKParameterOut>(
+                m_Context, change.OriginalSource, CKCID_PARAMETEROUT);
+            CKParameterOut *newOutput = Resolve<CKParameterOut>(
+                m_Context, change.InstalledSource, CKCID_PARAMETEROUT);
+            CKParameter *originalDestination = Resolve<CKParameter>(
+                m_Context, change.OriginalParameter, CKCID_PARAMETER);
+            CKParameter *installedDestination = Resolve<CKParameter>(
+                m_Context, change.InstalledParameter, CKCID_PARAMETER);
+            if (!oldOutput || !newOutput || !originalDestination ||
+                !installedDestination)
+                return fail(Failure(
+                    Error::GraphChanged,
+                    "A replacement Pout relation changed before Apply.",
+                    CKERR_INVALIDOBJECT));
+            const CKERROR error = newOutput->AddDestination(
+                installedDestination, TRUE);
+            if (error != CK_OK)
+                return fail(Failure(
+                    Error::TypeMismatch,
+                    "Virtools rejected a replacement Pout destination.", error));
+            oldOutput->RemoveDestination(originalDestination);
+            change.Applied = true;
+        }
     }
 
     for (const CheckedBind &bind : checked.Binds) {
@@ -1360,9 +2093,73 @@ Status CKEdit::ApplyNow(const Edit &edit,
         status = parameter(bind.Target, targetParameter);
         if (!status)
             return fail(std::move(status));
-        // A Local holds its value itself, so there is no source to install and
-        // nothing to create. The bytes go into the parameter and the bytes that
-        // were there go into the journal.
+
+        const Edit::EditNode *targetNode = edit.Find(bind.Target.Owner);
+        if (targetNode && targetNode->Block) {
+            const auto found = addedSpecs.find(bind.Target.Owner.Value);
+            if (found == addedSpecs.end())
+                return fail(Failure(Error::InvalidState,
+                                    "An added Block lost its configuration."));
+            BlockSpec &spec = found->second;
+            SlotInfo liveTarget;
+            status = liveSlot(bind.Target, liveTarget);
+            if (!status)
+                return fail(std::move(status));
+            Slot target = Slot::At(
+                liveTarget.Kind, liveTarget.Index, liveTarget.Type);
+
+            if (bind.Kind == BindKind::Literal) {
+                if (target.Kind == SlotKind::InputParameter) {
+                    spec.Input(std::move(target), bind.Literal);
+                } else if (target.Kind == SlotKind::Local) {
+                    spec.Local(std::move(target), bind.Literal);
+                } else if (target.Kind == SlotKind::Target) {
+                    spec.m_TargetMode = bind.Literal.IsNull()
+                        ? TargetMode::ExplicitNull : TargetMode::Explicit;
+                    spec.m_TargetType = bind.Target.Slot.Type;
+                    spec.m_TargetValue = Parameter::Binding(bind.Literal);
+                } else {
+                    return fail(Failure(
+                        Error::TypeMismatch,
+                        "A Block value requires a Pin, Local, or Target."));
+                }
+                continue;
+            }
+
+            CKObject *sourceObject = nullptr;
+            status = parameter(bind.Source, sourceObject);
+            if (!status)
+                return fail(std::move(status));
+            if (bind.Kind == BindKind::Direct) {
+                CKParameter *source = CKParameter::Cast(sourceObject);
+                if (!source)
+                    return fail(Failure(
+                        Error::TypeMismatch,
+                        "A direct Bind source is not a stored parameter."));
+                if (target.Kind == SlotKind::Target)
+                    spec.TargetSource(bind.Target.Slot.Type, source);
+                else
+                    spec.Input(std::move(target),
+                               Parameter::Binding::Direct(source));
+            } else {
+                CKParameterIn *source = CKParameterIn::Cast(sourceObject);
+                if (!source)
+                    return fail(Failure(Error::TypeMismatch,
+                                        "A shared Bind source is not a Pin."));
+                if (target.Kind == SlotKind::Target)
+                    spec.TargetShared(bind.Target.Slot.Type, source);
+                else
+                    spec.Input(std::move(target),
+                               Parameter::Binding::Shared(source));
+            }
+            continue;
+        }
+
+        if (!bind.Target.Operation)
+            rememberEdited(behaviorFor(bind.Target.Owner));
+        // A Local holds its value itself, so there is no source relation to
+        // install. Keep both journal values in ordinary CK parameters so the
+        // registered Virtools copy and destruction semantics remain in force.
         if (bind.Target.Slot.Kind == SlotKind::Local) {
             auto *stored = CKParameterLocal::Cast(targetParameter);
             if (!stored)
@@ -1372,12 +2169,20 @@ Status CKEdit::ApplyNow(const Edit &edit,
             Patch::Journal::Written change;
             change.Parameter = Capture(stored);
             change.Slot = DescribeLocal(stored);
-            change.Before = Snapshot(stored);
+            CKParameterLocal *before = nullptr;
+            status = Parameter::Clone(m_Context, stored, before);
+            if (!status)
+                return fail(std::move(status));
+            change.Before = Capture(before);
+            patch->Values.push_back(std::move(change));
             status = Parameter::Write(m_Context, stored, bind.Literal);
             if (!status)
                 return fail(std::move(status));
-            change.Expected = Snapshot(stored);
-            patch->Values.push_back(std::move(change));
+            CKParameterLocal *expected = nullptr;
+            status = Parameter::Clone(m_Context, stored, expected);
+            if (!status)
+                return fail(std::move(status));
+            patch->Values.back().Expected = Capture(expected);
             continue;
         }
         auto *target = CKParameterIn::Cast(targetParameter);
@@ -1391,6 +2196,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
         change.PreviousDirect = Capture(target->GetDirectSource());
         change.PreviousShared = Capture(target->GetSharedSource());
         change.Before = DescribeSource(target);
+        change.OwnedTarget = bind.Target.Operation;
 
         CKERROR error = CK_OK;
         if (bind.Kind == BindKind::Direct) {
@@ -1480,13 +2286,383 @@ Status CKEdit::ApplyNow(const Edit &edit,
             return fail(Failure(Error::TypeMismatch,
                                 "Virtools rejected a Push relation.", error));
         patch->Pushes.push_back({Capture(source), Capture(destination)});
+        if (!isAdded(push.Source.Owner))
+            rememberEdited(behaviorFor(push.Source.Owner));
+    }
+
+    const auto validatePorts = [&]() -> Status {
+        Status current = validateNodes();
+        if (!current)
+            return current;
+        current = visitPorts([&](ResolvedPort &port) -> Status {
+            if (port.Operation) {
+                CKObject *native = nullptr;
+                return parameter(port, native);
+            }
+            SlotInfo live;
+            return liveSlot(port, live);
+        });
+        if (!current)
+            return current;
+        for (const Patch::Journal::Interface &item : patch->Ports) {
+            CKBehavior *owner = Resolve<CKBehavior>(
+                m_Context, item.Behavior, CKCID_BEHAVIOR);
+            SlotInfo live;
+            current = exactSlot(owner, item.Port, item.Kind, live);
+            if (!current)
+                return current;
+        }
+        for (const Patch::Journal::Replacement &replacement :
+             patch->Replacements) {
+            CKBehavior *original = Resolve<CKBehavior>(
+                m_Context, replacement.Original, CKCID_BEHAVIOR);
+            CKBehavior *installed = Resolve<CKBehavior>(
+                m_Context, replacement.Installed, CKCID_BEHAVIOR);
+            if (!original || !installed)
+                return Failure(
+                    Error::GraphChanged,
+                    "A replacement Node changed identity during Apply.",
+                    CKERR_INVALIDOBJECT);
+            for (const auto &pair : replacement.Ports) {
+                CKObject *oldPort = m_Context->GetObject(pair.Original.Id);
+                CKObject *newPort = m_Context->GetObject(pair.Installed.Id);
+                if (oldPort != pair.Original.Address ||
+                    newPort != pair.Installed.Address || !oldPort || !newPort ||
+                    oldPort->IsToBeDeleted() || newPort->IsToBeDeleted()) {
+                    return Failure(
+                        Error::GraphChanged,
+                        "A replacement public port changed identity during Apply.",
+                        CKERR_INVALIDOBJECT);
+                }
+                const auto owns = [&](CKBehavior *behavior,
+                                      CKObject *port) {
+                    const Layout layout = m_Runtime.Describe(behavior);
+                    return std::any_of(
+                        layout.Slots.begin(), layout.Slots.end(),
+                        [&](const SlotInfo &slot) {
+                            return slot.Kind == pair.Kind &&
+                                slot.Index == pair.Index &&
+                                m_Runtime.ResolveSlotObject(behavior, slot) ==
+                                    port;
+                        });
+                };
+                if (!owns(original, oldPort) || !owns(installed, newPort)) {
+                    return Failure(
+                        Error::GraphChanged,
+                        "A replacement public port left its Node during Apply.",
+                        CKERR_INVALIDOBJECT);
+                }
+            }
+        }
+        return {};
+    };
+
+    const auto captureNormalization = [&](Stamp receiver) -> Status {
+        CKBehavior *behavior = Resolve<CKBehavior>(
+            m_Context, receiver, CKCID_BEHAVIOR);
+        if (!behavior || behavior->GetParent() != graphFor()) {
+            return Failure(
+                Error::GraphChanged,
+                "A Block changed identity during its EDITED callback.",
+                CKERR_INVALIDOBJECT);
+        }
+        const std::uint64_t behaviorId = static_cast<std::uint32_t>(
+            behavior->GetID());
+        for (Patch::Journal::Written &change : patch->Values) {
+            if (change.Slot.Node != behaviorId)
+                continue;
+            CKParameterLocal *stored = Resolve<CKParameterLocal>(
+                m_Context, change.Parameter, CKCID_PARAMETERLOCAL);
+            if (!stored) {
+                return Failure(
+                    Error::GraphChanged,
+                    "An EDITED callback replaced a Local owned by the Patch.",
+                    CKERR_INVALIDOBJECT);
+            }
+            CKParameterLocal *expected = nullptr;
+            Status copied = Parameter::Clone(m_Context, stored, expected);
+            if (!copied)
+                return copied;
+            CKParameterLocal *previous = Resolve<CKParameterLocal>(
+                m_Context, change.Expected, CKCID_PARAMETERLOCAL);
+            change.Expected = Capture(expected);
+            if (previous)
+                m_Context->DestroyObject(previous);
+        }
+        for (Patch::Journal::Binding &change : patch->Binds) {
+            if (change.Pin.Node != behaviorId)
+                continue;
+            CKParameterIn *input = Resolve<CKParameterIn>(
+                m_Context, change.Input, CKCID_PARAMETERIN);
+            if (!input) {
+                return Failure(
+                    Error::GraphChanged,
+                    "An EDITED callback replaced a Pin owned by the Patch.",
+                    CKERR_INVALIDOBJECT);
+            }
+            CKParameterIn *shared = input->GetSharedSource();
+            CKParameter *direct = shared ? nullptr : input->GetDirectSource();
+            change.InstalledShared = Capture(shared);
+            change.InstalledDirect = Capture(direct);
+            change.Expected = DescribeSource(input);
+        }
+        return {};
+    };
+
+    const auto validateRelations = [&]() -> Status {
+        for (const Patch::Journal::Written &change : patch->Values) {
+            CKParameterLocal *stored = Resolve<CKParameterLocal>(
+                m_Context, change.Parameter, CKCID_PARAMETERLOCAL);
+            CKParameterLocal *expected = Resolve<CKParameterLocal>(
+                m_Context, change.Expected, CKCID_PARAMETERLOCAL);
+            if (!stored || !expected) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A written Local changed identity during an EDITED callback.",
+                    CKERR_INVALIDOBJECT);
+            }
+            bool equal = false;
+            Status compared = Parameter::Equal(
+                m_Context, stored, expected, equal);
+            if (!compared)
+                return compared;
+            if (!equal) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A different Block changed a written Local during an EDITED callback.");
+            }
+        }
+        for (const Patch::Journal::Binding &change : patch->Binds) {
+            CKParameterIn *input = Resolve<CKParameterIn>(
+                m_Context, change.Input, CKCID_PARAMETERIN);
+            if (!input || Capture(input->GetSharedSource()) !=
+                              change.InstalledShared ||
+                Capture(input->GetSharedSource()
+                            ? nullptr : input->GetDirectSource()) !=
+                    change.InstalledDirect) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A different Block changed a published Pin relation during an EDITED callback.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        for (const Patch::Journal::Destination &change : patch->Pushes) {
+            CKParameterOut *source = Resolve<CKParameterOut>(
+                m_Context, change.Source, CKCID_PARAMETEROUT);
+            CKParameter *target = Resolve<CKParameter>(
+                m_Context, change.Target, CKCID_PARAMETER);
+            if (!source || !target || !ContainsDestination(source, target)) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A Pout destination changed during an EDITED callback.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        for (const Patch::Journal::Replacement &replacement :
+             patch->Replacements) {
+            for (const auto &change : replacement.Inputs) {
+                if (!change.Applied)
+                    continue;
+                CKParameterIn *input = Resolve<CKParameterIn>(
+                    m_Context, change.Input, CKCID_PARAMETERIN);
+                CKParameterIn *shared = Resolve<CKParameterIn>(
+                    m_Context, change.InstalledShared, CKCID_PARAMETERIN);
+                CKParameter *direct = Resolve<CKParameter>(
+                    m_Context, change.InstalledDirect, CKCID_PARAMETER);
+                const bool unchanged = change.InstalledShared.Id
+                    ? input && input->GetSharedSource() == shared
+                    : input && input->GetSharedSource() == nullptr &&
+                        input->GetDirectSource() == direct;
+                if (!unchanged)
+                    return Failure(
+                        Error::GraphChanged,
+                        "A replacement Pin source changed during Apply.",
+                        CKERR_INVALIDOBJECT);
+            }
+            for (const auto &change : replacement.Destinations) {
+                if (!change.Applied)
+                    continue;
+                CKParameterOut *oldOutput = Resolve<CKParameterOut>(
+                    m_Context, change.OriginalSource, CKCID_PARAMETEROUT);
+                CKParameterOut *newOutput = Resolve<CKParameterOut>(
+                    m_Context, change.InstalledSource, CKCID_PARAMETEROUT);
+                CKParameter *originalDestination = Resolve<CKParameter>(
+                    m_Context, change.OriginalParameter, CKCID_PARAMETER);
+                CKParameter *installedDestination = Resolve<CKParameter>(
+                    m_Context, change.InstalledParameter, CKCID_PARAMETER);
+                if (!oldOutput || !newOutput || !originalDestination ||
+                    !installedDestination ||
+                    ContainsDestination(oldOutput, originalDestination) ||
+                    !ContainsDestination(newOutput, installedDestination)) {
+                    return Failure(
+                        Error::GraphChanged,
+                        "A replacement Pout destination changed during Apply.",
+                        CKERR_INVALIDOBJECT);
+                }
+            }
+            for (const auto &change : replacement.Links) {
+                if (!change.Applied)
+                    continue;
+                CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                    m_Context, change.Link, CKCID_BEHAVIORLINK);
+                if (!link ||
+                    Capture(link->GetInBehaviorIO()) != change.InstalledSource ||
+                    Capture(link->GetOutBehaviorIO()) != change.InstalledSink) {
+                    return Failure(
+                        Error::GraphChanged,
+                        "A replacement Link endpoint changed during Apply.",
+                        CKERR_INVALIDOBJECT);
+                }
+            }
+        }
+        return {};
+    };
+
+    const auto validateEdited = [&](Stamp receiver,
+                                    bool captureFinal) -> Status {
+        Status current = validatePorts();
+        if (current && captureFinal)
+            current = captureNormalization(receiver);
+        if (current)
+            current = validateRelations();
+        return current;
+    };
+
+    // Finish each authored Block only after every graph parameter relation is
+    // present. Runtime sends the Block's one lifecycle EDITED callback and
+    // reflects the resulting layout before any control Flow can reach it.
+    for (const Edit::EditNode &node : edit.m_Nodes) {
+        if (!node.Block)
+            continue;
+        const auto behavior = nodes.find(node.Handle.Value);
+        const auto spec = addedSpecs.find(node.Handle.Value);
+        if (behavior == nodes.end() || spec == addedSpecs.end())
+            return fail(Failure(Error::InvalidState,
+                                "An added Block disappeared before EDITED."));
+        CKBehavior *live = Resolve<CKBehavior>(
+            m_Context, behavior->second, CKCID_BEHAVIOR);
+        if (!live)
+            return fail(Failure(Error::GraphChanged,
+                                "An added Block disappeared before EDITED.",
+                                CKERR_INVALIDOBJECT));
+        status = m_Runtime.EditInGraph(live, spec->second);
+        if (status)
+            status = validateEdited(behavior->second, false);
+        if (!status)
+            return fail(std::move(status));
+        graph = graphFor();
+    }
+
+    // Keep each native Link object and its current delay state. Only its exact
+    // endpoint objects change, so a delayed activation remains the same Link
+    // in CK2's scheduler rather than being recreated or guessed from fields.
+    std::vector<CKBehaviorLink *> graphLinks;
+    graphLinks.reserve(static_cast<std::size_t>(graph->GetSubBehaviorLinkCount()));
+    for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index)
+        graphLinks.push_back(graph->GetSubBehaviorLink(index));
+    for (CKBehaviorLink *link : graphLinks) {
+        if (!link)
+            return fail(Failure(Error::GraphChanged,
+                                "A graph Link disappeared during replacement."));
+        CKBehaviorIO *oldSource = link->GetInBehaviorIO();
+        CKBehaviorIO *oldSink = link->GetOutBehaviorIO();
+        const auto source = replacementPorts.find(oldSource);
+        const auto sink = replacementPorts.find(oldSink);
+        if (source == replacementPorts.end() &&
+            sink == replacementPorts.end())
+            continue;
+        auto *newSource = source == replacementPorts.end()
+            ? oldSource : static_cast<CKBehaviorIO *>(source->second);
+        auto *newSink = sink == replacementPorts.end()
+            ? oldSink : static_cast<CKBehaviorIO *>(sink->second);
+        const std::size_t owner = source != replacementPorts.end()
+            ? replacementOwners.at(oldSource)
+            : replacementOwners.at(oldSink);
+        auto &change = patch->Replacements[owner].Links.emplace_back();
+        change.Link = Capture(link);
+        change.OriginalSource = Capture(oldSource);
+        change.OriginalSink = Capture(oldSink);
+        change.InstalledSource = Capture(newSource);
+        change.InstalledSink = Capture(newSink);
+        CKERROR error = CK_OK;
+        if (newSource != oldSource)
+            error = link->SetInBehaviorIO(newSource);
+        if (error == CK_OK && newSink != oldSink)
+            error = link->SetOutBehaviorIO(newSink);
+        if (error != CK_OK) {
+            if (newSource != oldSource)
+                (void) link->SetInBehaviorIO(oldSource);
+            return fail(Failure(
+                Error::GraphChanged,
+                "Virtools rejected a replacement Link endpoint.", error));
+        }
+        change.Applied = true;
+    }
+
+    for (std::size_t index = 0; index < checked.Replacements.size(); ++index) {
+        const CheckedReplace &item = checked.Replacements[index];
+        auto &replacement = patch->Replacements[index];
+        CKBehavior *original = Resolve<CKBehavior>(
+            m_Context, replacement.Original, CKCID_BEHAVIOR);
+        graph = graphFor();
+        if (!graph || !original || graph->RemoveSubBehavior(original) != original)
+            return fail(Failure(
+                Error::GraphChanged,
+                "Virtools could not park the original Behavior Node.",
+                CKERR_INVALIDOBJECT));
+        if (ContainsNode(graph, original))
+            return fail(Failure(
+                Error::GraphChanged,
+                "Virtools kept the parked Behavior Node in its graph.",
+                CKERR_INVALIDOBJECT));
+        replacement.OriginalRemoved = true;
+        nodes.erase(item.Target.Value);
+    }
+    status = validatePorts();
+    if (status)
+        status = validateRelations();
+    if (!status)
+        return fail(std::move(status));
+
+    for (Stamp edited : patch->EditedNodes) {
+        CKBehavior *behavior = Resolve<CKBehavior>(
+            m_Context, edited, CKCID_BEHAVIOR);
+        if (!behavior)
+            return fail(Failure(Error::GraphChanged,
+                                "A changed Block disappeared before EDITED."));
+        patch->ObservedEditedNodes.push_back(edited);
+        const int result = behavior->CallCallbackFunction(CKM_BEHAVIOREDITED);
+        if (result != CK_OK)
+            return fail(Failure(Error::CallbackFailed,
+                                "A Block EDITED callback failed.", result));
+        status = validateEdited(edited, true);
+        if (!status)
+            return fail(std::move(status));
+        graph = graphFor();
+    }
+
+    // Control Flow is installed last, after every Block has observed and
+    // validated its final parameter relations.
+    for (const CheckedFlow &flow : checked.Flows) {
+        CKBehaviorIO *source = nullptr;
+        CKBehaviorIO *sink = nullptr;
+        status = control(flow.Source, source);
+        if (status)
+            status = control(flow.Sink, sink);
+        if (status)
+            status = addLink(source, sink, flow.Delay);
+        if (!status)
+            return fail(std::move(status));
     }
 
     for (const CheckedTap &tap : checked.Taps) {
         CKBehaviorIO *source = nullptr;
         status = control(tap.Source, source);
         const auto observer = tapNodes.find(tap.Ordinal);
-        CKBehavior *block = observer == tapNodes.end() ? nullptr : observer->second;
+        CKBehavior *block = observer == tapNodes.end()
+            ? nullptr
+            : Resolve<CKBehavior>(m_Context, observer->second,
+                                  CKCID_BEHAVIOR);
         if (status && (!block || !block->GetInput(0)))
             status = Failure(Error::GraphChanged,
                              "A Tap observer disappeared during Apply.");
@@ -1663,10 +2839,22 @@ Status CKEdit::ApplyNow(const Edit &edit,
             return fail(std::move(status));
     }
 
+    patch->GraphObserved = true;
     const int edited = graph->CallCallbackFunction(CKM_BEHAVIOREDITED);
     if (edited != CK_OK)
         return fail(Failure(Error::CallbackFailed,
                             "The graph EDITED callback failed.", edited));
+    status = validatePorts();
+    if (status)
+        status = validateRelations();
+    if (!status)
+        return fail(std::move(status));
+    graph = graphFor();
+    if (!graph)
+        return fail(Failure(
+            Error::GraphChanged,
+            "The graph changed identity during its EDITED callback.",
+            CKERR_INVALIDOBJECT));
 
     for (const Patch::Journal::Link &item : patch->Links) {
         CKBehaviorLink *link = Resolve<CKBehaviorLink>(
@@ -1679,9 +2867,10 @@ Status CKEdit::ApplyNow(const Edit &edit,
     }
 
     for (const auto &entry : nodes)
-        patch->Handles.emplace(entry.first, Capture(entry.second));
+        patch->Handles.emplace(entry.first, entry.second);
 
     m_Active[graphId].insert(edit.Key());
+    patch->Published = true;
     return {};
 }
 
@@ -1714,7 +2903,7 @@ Status CKEdit::ResolveNode(const Patch &patch, Node handle,
     return {};
 }
 
-Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
+Status CKEdit::Undo(Patch::Journal &patch) {
     Status first;
     {
         std::lock_guard<std::mutex> lock(patch.Mutex);
@@ -1728,9 +2917,93 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         if (!status && first)
             first = std::move(status);
     };
-    auto *graph = Resolve<CKBehavior>(m_Context, patch.Graph, CKCID_BEHAVIOR);
     const std::uint64_t graphId = patch.Graph.Id
         ? static_cast<std::uint32_t>(patch.Graph.Id) : 0;
+
+    auto *graph = Resolve<CKBehavior>(m_Context, patch.Graph, CKCID_BEHAVIOR);
+    const auto replacementConflict = [&](RevertSubject subject,
+                                         std::string message) {
+        Status conflict = Failure(Error::RevertConflict, std::move(message),
+                                  CKERR_INVALIDOBJECT);
+        conflict.Details.Stage = Phase::Teardown;
+        noteConflict({subject, {}, {}, {}, {}, {}, conflict});
+        return conflict;
+    };
+    if (graph && m_Replacing.contains(graphId) &&
+        !patch.ReplacementClaim) {
+        return replacementConflict(
+            RevertSubject::Node,
+            "This Patch cannot close while the graph contains an active Node replacement.");
+    }
+    if (graph) {
+        for (const Patch::Journal::Replacement &replacement :
+             patch.Replacements) {
+            if (replacement.Restored)
+                continue;
+            CKBehavior *original = Resolve<CKBehavior>(
+                m_Context, replacement.Original, CKCID_BEHAVIOR);
+            CKBehavior *installed = Resolve<CKBehavior>(
+                m_Context, replacement.Installed, CKCID_BEHAVIOR);
+            if (!original || !installed || installed->GetParent() != graph ||
+                ContainsNode(graph, original) ==
+                    replacement.OriginalRemoved) {
+                return replacementConflict(
+                    RevertSubject::Node,
+                    "A Node replacement changed after the Patch was published.");
+            }
+            for (const auto &change : replacement.Links) {
+                if (!change.Applied)
+                    continue;
+                CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                    m_Context, change.Link, CKCID_BEHAVIORLINK);
+                if (!link ||
+                    Capture(link->GetInBehaviorIO()) != change.InstalledSource ||
+                    Capture(link->GetOutBehaviorIO()) != change.InstalledSink) {
+                    return replacementConflict(
+                        RevertSubject::Link,
+                        "A replacement Link changed after the Patch was published.");
+                }
+            }
+            for (const auto &change : replacement.Inputs) {
+                if (!change.Applied)
+                    continue;
+                CKParameterIn *input = Resolve<CKParameterIn>(
+                    m_Context, change.Input, CKCID_PARAMETERIN);
+                CKParameterIn *shared = Resolve<CKParameterIn>(
+                    m_Context, change.InstalledShared, CKCID_PARAMETERIN);
+                CKParameter *direct = Resolve<CKParameter>(
+                    m_Context, change.InstalledDirect, CKCID_PARAMETER);
+                const bool unchanged = change.InstalledShared.Id
+                    ? input && input->GetSharedSource() == shared
+                    : input && input->GetSharedSource() == nullptr &&
+                        input->GetDirectSource() == direct;
+                if (!unchanged)
+                    return replacementConflict(
+                        RevertSubject::PinSource,
+                        "A replacement Pin source changed after the Patch was published.");
+            }
+            for (const auto &change : replacement.Destinations) {
+                if (!change.Applied)
+                    continue;
+                CKParameterOut *oldOutput = Resolve<CKParameterOut>(
+                    m_Context, change.OriginalSource, CKCID_PARAMETEROUT);
+                CKParameterOut *newOutput = Resolve<CKParameterOut>(
+                    m_Context, change.InstalledSource, CKCID_PARAMETEROUT);
+                CKParameter *originalDestination = Resolve<CKParameter>(
+                    m_Context, change.OriginalParameter, CKCID_PARAMETER);
+                CKParameter *installedDestination = Resolve<CKParameter>(
+                    m_Context, change.InstalledParameter, CKCID_PARAMETER);
+                if (!oldOutput || !newOutput || !originalDestination ||
+                    !installedDestination ||
+                    ContainsDestination(oldOutput, originalDestination) ||
+                    !ContainsDestination(newOutput, installedDestination)) {
+                    return replacementConflict(
+                        RevertSubject::PinSource,
+                        "A replacement Pout destination changed after the Patch was published.");
+                }
+            }
+        }
+    }
     const auto registeredRoot = m_Links->Roots.find(graphId);
     const bool ownsLogicalGraph =
         registeredRoot != m_Links->Roots.end() &&
@@ -1799,13 +3072,64 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             continue;
         auto *stored = Resolve<CKParameterLocal>(
             m_Context, item->Parameter, CKCID_PARAMETERLOCAL);
-        if (!stored || item->Before.empty()) {
-            // The parameter went with its block, or never held a buffer, so
-            // there is nothing left to hand back.
+        auto *before = Resolve<CKParameterLocal>(
+            m_Context, item->Before, CKCID_PARAMETERLOCAL);
+        auto *expected = Resolve<CKParameterLocal>(
+            m_Context, item->Expected, CKCID_PARAMETERLOCAL);
+        const auto releaseCopies = [&] {
+            if (before)
+                m_Context->DestroyObject(before);
+            if (expected && expected != before)
+                m_Context->DestroyObject(expected);
+            item->Before = {};
+            item->Expected = {};
+        };
+        if (!stored) {
+            // The parameter went with its Block, so there is nothing left to
+            // hand back. The journal still owns and releases both copies.
             item->Reverted = true;
+            releaseCopies();
             continue;
         }
-        if (Snapshot(stored) != item->Expected) {
+        if (!before) {
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "The previous Local value disappeared from the Patch journal.",
+                CKERR_INVALIDOBJECT);
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
+                          conflict});
+            remember(std::move(conflict));
+            continue;
+        }
+        if (item->Expected.Id && !expected) {
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "The installed Local value disappeared from the Patch journal.",
+                CKERR_INVALIDOBJECT);
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
+                          conflict});
+            remember(std::move(conflict));
+            continue;
+        }
+        bool unchanged = true;
+        Status compared;
+        if (expected)
+            compared = Parameter::Equal(
+                m_Context, stored, expected, unchanged);
+        if (!compared) {
+            Status conflict = Failure(
+                Error::RevertConflict,
+                "The written Local value could not be compared through its Virtools type.",
+                compared.CkError);
+            conflict.Details.Stage = Phase::Teardown;
+            noteConflict({RevertSubject::Value, item->Slot, {}, {}, {}, {},
+                          conflict});
+            remember(std::move(conflict));
+            continue;
+        }
+        if (!unchanged) {
             Status conflict = Failure(
                 Error::RevertConflict,
                 "A written Local changed after the Patch was published.");
@@ -1815,8 +3139,7 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             remember(std::move(conflict));
             continue;
         }
-        const CKERROR error = stored->SetValue(
-            item->Before.data(), static_cast<int>(item->Before.size()));
+        const CKERROR error = stored->CopyValue(before, FALSE);
         if (error != CK_OK) {
             Status conflict = Failure(
                 Error::RevertConflict,
@@ -1827,6 +3150,7 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             remember(std::move(conflict));
         } else {
             item->Reverted = true;
+            releaseCopies();
         }
     }
 
@@ -1835,6 +3159,16 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             continue;
         auto *input = Resolve<CKParameterIn>(
             m_Context, item->Input, CKCID_PARAMETERIN);
+        if (item->OwnedTarget) {
+            if (input) {
+                if (input->GetSharedSource())
+                    (void) input->ShareSourceWith(nullptr);
+                else
+                    (void) input->SetDirectSource(nullptr);
+            }
+            item->Reverted = true;
+            continue;
+        }
         if (!input) {
             // Nothing is left to hand back, so the revert is settled even
             // though the owner still hears about the missing Pin.
@@ -1856,7 +3190,8 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             m_Context, item->InstalledShared, CKCID_PARAMETERIN);
         const bool unchanged = item->InstalledShared.Id
             ? input->GetSharedSource() == installedShared
-            : input->GetDirectSource() == installedDirect;
+            : input->GetSharedSource() == nullptr &&
+                input->GetDirectSource() == installedDirect;
         if (!unchanged) {
             Status conflict = Failure(
                 Error::RevertConflict,
@@ -1903,6 +3238,169 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         }
     }
 
+    // Restore replacement relations while the installed Block still has its
+    // complete public interface. Ports introduced by this Patch are removed
+    // only after the original Node once again owns every native relation.
+    const bool pinsRetained = std::any_of(
+            patch.Binds.begin(), patch.Binds.end(),
+            [](const Patch::Journal::Binding &item) { return !item.Reverted; }) ||
+        std::any_of(
+            patch.Values.begin(), patch.Values.end(),
+            [](const Patch::Journal::Written &item) { return !item.Reverted; });
+    if (!pinsRetained) {
+        for (auto item = patch.Replacements.rbegin();
+             item != patch.Replacements.rend(); ++item) {
+            if (item->Restored)
+                continue;
+            graph = Resolve<CKBehavior>(
+                m_Context, patch.Graph, CKCID_BEHAVIOR);
+            if (!graph) {
+                item->Restored = true;
+                continue;
+            }
+            CKBehavior *original = Resolve<CKBehavior>(
+                m_Context, item->Original, CKCID_BEHAVIOR);
+            if (!original) {
+                remember(replacementConflict(
+                    RevertSubject::Node,
+                    "The original replacement Node no longer exists."));
+                continue;
+            }
+            if (item->OriginalRemoved) {
+                const CKERROR added = graph->AddSubBehavior(original);
+                if (added != CK_OK) {
+                    remember(replacementConflict(
+                        RevertSubject::Node,
+                        "Virtools could not restore the original Behavior Node."));
+                    continue;
+                }
+                item->OriginalRemoved = false;
+            }
+
+            bool restored = true;
+            for (auto change = item->Links.rbegin();
+                 change != item->Links.rend(); ++change) {
+                if (!change->Applied)
+                    continue;
+                CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                    m_Context, change->Link, CKCID_BEHAVIORLINK);
+                CKBehaviorIO *source = ResolveIo(
+                    m_Context, change->OriginalSource);
+                CKBehaviorIO *sink = ResolveIo(
+                    m_Context, change->OriginalSink);
+                CKERROR error = link && source && sink
+                    ? link->SetInBehaviorIO(source) : CKERR_INVALIDOBJECT;
+                if (error == CK_OK)
+                    error = link->SetOutBehaviorIO(sink);
+                if (error != CK_OK) {
+                    remember(replacementConflict(
+                        RevertSubject::Link,
+                        "Virtools could not restore a replacement Link."));
+                    restored = false;
+                    break;
+                }
+                change->Applied = false;
+            }
+            if (!restored)
+                continue;
+
+            for (auto change = item->Inputs.rbegin();
+                 change != item->Inputs.rend(); ++change) {
+                if (!change->Applied)
+                    continue;
+                CKParameterIn *input = Resolve<CKParameterIn>(
+                    m_Context, change->Input, CKCID_PARAMETERIN);
+                CKERROR error = CKERR_INVALIDOBJECT;
+                if (input && change->OriginalShared.Id) {
+                    error = input->ShareSourceWith(Resolve<CKParameterIn>(
+                        m_Context, change->OriginalShared,
+                        CKCID_PARAMETERIN));
+                } else if (input) {
+                    error = input->SetDirectSource(Resolve<CKParameter>(
+                        m_Context, change->OriginalDirect,
+                        CKCID_PARAMETER));
+                }
+                if (error != CK_OK) {
+                    remember(replacementConflict(
+                        RevertSubject::PinSource,
+                        "Virtools could not restore a replacement Pin source."));
+                    restored = false;
+                    break;
+                }
+                change->Applied = false;
+            }
+            if (!restored)
+                continue;
+
+            for (auto change = item->Destinations.rbegin();
+                 change != item->Destinations.rend(); ++change) {
+                if (!change->Applied)
+                    continue;
+                CKParameterOut *oldOutput = Resolve<CKParameterOut>(
+                    m_Context, change->OriginalSource,
+                    CKCID_PARAMETEROUT);
+                CKParameterOut *newOutput = Resolve<CKParameterOut>(
+                    m_Context, change->InstalledSource,
+                    CKCID_PARAMETEROUT);
+                CKParameter *originalDestination = Resolve<CKParameter>(
+                    m_Context, change->OriginalParameter,
+                    CKCID_PARAMETER);
+                CKParameter *installedDestination = Resolve<CKParameter>(
+                    m_Context, change->InstalledParameter,
+                    CKCID_PARAMETER);
+                const CKERROR error = oldOutput && newOutput &&
+                        originalDestination && installedDestination
+                    ? oldOutput->AddDestination(originalDestination, TRUE)
+                    : CKERR_INVALIDOBJECT;
+                if (error != CK_OK) {
+                    remember(replacementConflict(
+                        RevertSubject::PinSource,
+                        "Virtools could not restore a replacement Pout destination."));
+                    restored = false;
+                    break;
+                }
+                newOutput->RemoveDestination(installedDestination);
+                change->Applied = false;
+            }
+            if (restored)
+                item->Restored = true;
+        }
+    }
+
+    const bool replacementsRestored = std::all_of(
+        patch.Replacements.begin(), patch.Replacements.end(),
+        [](const Patch::Journal::Replacement &item) {
+            return item.Restored;
+        });
+    if (!replacementsRestored)
+        return first;
+    if (patch.ReplacementClaim) {
+        m_Replacing.erase(graphId);
+        patch.ReplacementClaim = false;
+    }
+
+    for (auto item = patch.Operations.rbegin();
+         item != patch.Operations.rend(); ++item) {
+        auto *operation = Resolve<CKParameterOperation>(
+            m_Context, item->Value, CKCID_PARAMETEROPERATION);
+        if (!operation)
+            continue;
+        const Stamp result = Capture(operation->GetOutParameter());
+        const bool retained = std::any_of(
+            patch.Binds.begin(), patch.Binds.end(),
+            [&](const Patch::Journal::Binding &binding) {
+                return !binding.Reverted && binding.InstalledDirect == result;
+            });
+        if (retained)
+            continue;
+        auto *owner = Resolve<CKBehavior>(
+            m_Context, item->Owner, CKCID_BEHAVIOR);
+        if (owner)
+            (void) owner->RemoveParameterOperation(operation);
+        m_Context->DestroyObject(operation);
+        item->Value = {};
+    }
+
     for (auto item = patch.Links.rbegin(); item != patch.Links.rend(); ++item) {
         CKBehaviorLink *link = Resolve<CKBehaviorLink>(
             m_Context, item->Value, CKCID_BEHAVIORLINK);
@@ -1913,9 +3411,6 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         m_Context->DestroyObject(link);
     }
 
-    // Apply notified each block that received a dynamic port; Close notifies
-    // the same blocks once their ports are gone.
-    std::vector<Stamp> portOwners;
     for (auto item = patch.Ports.rbegin(); item != patch.Ports.rend(); ++item) {
         CKBehavior *behavior = Resolve<CKBehavior>(
             m_Context, item->Behavior, CKCID_BEHAVIOR);
@@ -1950,14 +3445,17 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             removed = index >= 0 ? behavior->RemoveOutputParameter(index) : nullptr;
             break;
         }
+        case SlotKind::Local: {
+            auto *parameter = static_cast<CKParameterLocal *>(port);
+            const int index = behavior->GetLocalParameterPosition(parameter);
+            removed = index >= 0 ? behavior->RemoveLocalParameter(index) : nullptr;
+            break;
+        }
         default:
             break;
         }
         if (removed == port) {
             m_Context->DestroyObject(removed);
-            if (std::find(portOwners.begin(), portOwners.end(),
-                          item->Behavior) == portOwners.end())
-                portOwners.push_back(item->Behavior);
         }
     }
 
@@ -1972,12 +3470,6 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
     // owns. Until that clears, the Patch keeps its relation claim so no other
     // Patch can take the Pin, and keeps its key in the graph's active set so
     // the same key cannot be applied on top of the unfinished teardown.
-    const bool pinsRetained = std::any_of(
-            patch.Binds.begin(), patch.Binds.end(),
-            [](const Patch::Journal::Binding &item) { return !item.Reverted; }) ||
-        std::any_of(
-            patch.Values.begin(), patch.Values.end(),
-            [](const Patch::Journal::Written &item) { return !item.Reverted; });
     if (ownsLogicalGraph && !pinsRetained) {
         if (!patch.Data.Pins.empty()) {
             const auto relations = m_Relations.find(graphId);
@@ -2001,14 +3493,15 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
             m_Context->DestroyObject(literal);
     }
 
+    // Restore the graph before retiring Blocks introduced by this Patch. A
+    // Block can still inspect its parent during native teardown, but no graph
+    // relation may continue to depend on a Block once it is destroyed.
     for (auto item = patch.Nodes.rbegin(); item != patch.Nodes.rend(); ++item) {
         CKBehavior *node = Resolve<CKBehavior>(
             m_Context, *item, CKCID_BEHAVIOR);
         if (!node)
             continue;
         Status closed = m_Runtime.Close(node);
-        // Forget the Node once the Runtime disowns it. Asking again on a retry
-        // would report a Block this Behavior Runtime no longer owns.
         if (closed)
             *item = {};
         remember(std::move(closed));
@@ -2021,25 +3514,72 @@ Status CKEdit::Undo(Patch::Journal &patch, bool notify) {
         remember(PublishLogicalGraph(graphId));
     }
 
-    if (notify) {
-        for (Stamp owner : portOwners) {
+    // Closing an authored Block runs native teardown callbacks, and publishing
+    // the Logical view can invoke author observers. Either may delete or
+    // replace the graph, so no graph pointer from before those calls survives
+    // this boundary.
+    graph = Resolve<CKBehavior>(m_Context, patch.Graph, CKCID_BEHAVIOR);
+
+    // Only now is the previous graph observable again: data relations and
+    // interface changes are gone, added Blocks have retired, and the Logical
+    // view has been republished. Notify only Blocks that actually observed the
+    // candidate state when Apply failed before publication.
+    const std::vector<Stamp> &observedBlocks = patch.Published
+        ? patch.EditedNodes : patch.ObservedEditedNodes;
+    if (graph && !pinsRetained && !patch.RestoredEdited &&
+        !observedBlocks.empty()) {
+        for (Stamp edited : observedBlocks) {
+            graph = Resolve<CKBehavior>(
+                m_Context, patch.Graph, CKCID_BEHAVIOR);
+            if (!graph) {
+                remember(Failure(
+                    Error::GraphChanged,
+                    "The graph disappeared before its Blocks observed Patch teardown.",
+                    CKERR_INVALIDOBJECT));
+                break;
+            }
             CKBehavior *block = Resolve<CKBehavior>(
-                m_Context, owner, CKCID_BEHAVIOR);
+                m_Context, edited, CKCID_BEHAVIOR);
             if (!block)
                 continue;
             const int result = block->CallCallbackFunction(CKM_BEHAVIOREDITED);
-            if (result != CK_OK)
-                remember(Failure(Error::CallbackFailed,
-                                 "A block EDITED callback failed while the Patch closed.",
-                                 result));
+            if (result != CK_OK) {
+                remember(Failure(
+                    Error::CallbackFailed,
+                    "A Block EDITED callback failed while the Patch closed.",
+                    result));
+                continue;
+            }
+            graph = Resolve<CKBehavior>(
+                m_Context, patch.Graph, CKCID_BEHAVIOR);
+            block = Resolve<CKBehavior>(m_Context, edited, CKCID_BEHAVIOR);
+            if (!graph || !block || block->GetParent() != graph) {
+                remember(Failure(
+                    Error::GraphChanged,
+                    "A Block or its graph changed identity during its teardown EDITED callback.",
+                    CKERR_INVALIDOBJECT));
+                continue;
+            }
+            (void) m_Runtime.Describe(block);
         }
+        patch.RestoredEdited = true;
     }
-    if (notify && graph) {
+
+    graph = Resolve<CKBehavior>(m_Context, patch.Graph, CKCID_BEHAVIOR);
+    if (graph && !pinsRetained && !patch.RestoredGraph &&
+        (patch.Published || patch.GraphObserved)) {
         const int result = graph->CallCallbackFunction(CKM_BEHAVIOREDITED);
         if (result != CK_OK)
             remember(Failure(Error::CallbackFailed,
                              "The graph EDITED callback failed while the Patch closed.",
                              result));
+        else if (!Resolve<CKBehavior>(
+                     m_Context, patch.Graph, CKCID_BEHAVIOR))
+            remember(Failure(
+                Error::GraphChanged,
+                "The graph changed identity during its teardown EDITED callback.",
+                CKERR_INVALIDOBJECT));
+        patch.RestoredGraph = true;
     }
     if (ownsLogicalGraph && !pinsRetained) {
         const auto active = m_Active.find(graphId);
@@ -2158,7 +3698,7 @@ Status CKEdit::CloseNow(const std::shared_ptr<Patch::Journal> &patch) {
     Status status;
     {
         PublishingScope publishing(m_Publishing);
-        status = Undo(*patch, true);
+        status = Undo(*patch);
     }
     {
         std::lock_guard<std::mutex> lock(patch->Mutex);

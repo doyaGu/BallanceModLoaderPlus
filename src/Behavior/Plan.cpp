@@ -17,7 +17,7 @@ Status Failure(Error error, std::string message) {
 
 } // namespace
 
-Plan::Plan(PatchKey patch, Script target)
+Plan::Plan(PatchKey patch, ScriptSelection target)
     : m_Patch(std::move(patch)), m_Target(std::move(target)) {}
 
 bool Plan::RefLess::operator()(const ObjectRef &left,
@@ -198,7 +198,7 @@ void Plans::Mark(std::string_view name) noexcept {
 }
 
 Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
-                     Script target,
+                     ScriptSelection target,
                      std::shared_ptr<Plan::World> world, PlanId &out) {
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     out = 0;

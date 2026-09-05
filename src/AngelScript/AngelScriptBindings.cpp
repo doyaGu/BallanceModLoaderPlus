@@ -1554,7 +1554,7 @@ static bool BMLAS_Physics_HasTarget(CK3dEntity *target, ModContext *&context) {
 }
 
 static bool BMLAS_RunBehavior(ModContext &context, CKBeObject *owner,
-                              const BML::Behavior::Spec &spec, int input = 0) {
+                              const BML::Behavior::BlockSpec &spec, int input = 0) {
     BML::Behavior::CreateResult created = context.Behaviors().Instantiate(owner, spec);
     if (!created)
         return false;

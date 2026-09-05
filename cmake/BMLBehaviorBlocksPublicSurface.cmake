@@ -12,6 +12,7 @@ set(BML_BEHAVIOR_CPP_PUBLIC_RELATIVE_HEADERS
         BML/Behavior/Run.hpp
         BML/Behavior/Block.hpp
         BML/Behavior/Edit.hpp
+        BML/Behavior/Script.hpp
         BML/Behavior/Session.hpp
 )
 

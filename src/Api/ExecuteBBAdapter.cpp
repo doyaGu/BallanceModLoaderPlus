@@ -6,7 +6,7 @@
 namespace BML {
 
 Behavior::RunResult ExecuteBBAdapter::Run(
-    CKBeObject *owner, const Behavior::Spec &spec, int input) {
+    CKBeObject *owner, const Behavior::BlockSpec &spec, int input) {
     Behavior::CreateResult created = m_Runtime.Instantiate(owner, spec);
     if (!created)
         return {std::move(created.Detail), Behavior::RunState::Failed,
@@ -64,7 +64,7 @@ std::pair<XObjectArray *, CKObject *> ExecuteBBAdapter::LoadObjects(
 }
 
 CKBehavior *ExecuteBBAdapter::AddToGraph(
-    CKBehavior *parent, const Behavior::Spec &spec) {
+    CKBehavior *parent, const Behavior::BlockSpec &spec) {
     Behavior::AttachResult created = m_Runtime.AddToGraph(parent, spec);
     return created ? created.Block : nullptr;
 }

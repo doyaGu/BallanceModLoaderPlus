@@ -170,7 +170,8 @@ Status Sessions::ReadOwner(const std::string &ownerId,
 }
 
 OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
-                        const Spec &block, const Slot &input) {
+                       const BlockSpec &block, const Slot &input,
+                       FrameRetention retention) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), 0, {}};
@@ -183,7 +184,7 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
         session = *found;
     }
 
-    CallResult called = m_Runtime.Call(owner, block, input);
+    CallResult called = m_Runtime.Call(owner, block, input, nullptr, retention);
     if (!called.Handle)
         return {std::move(called.Detail), 0, {}};
     RunResult result = std::move(called.Run);
@@ -196,7 +197,8 @@ OpenRun Sessions::Call(std::uintptr_t sessionId, CKBeObject *owner,
 }
 
 OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
-                         const Spec &block, const Slot &input) {
+                        const BlockSpec &block, const Slot &input,
+                        FrameRetention retention) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), 0, {}};
@@ -209,7 +211,8 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
         session = *found;
     }
 
-    CreateResult created = m_Runtime.Instantiate(owner, block);
+    CreateResult created = m_Runtime.Instantiate(owner, block, nullptr,
+                                                 retention);
     if (!created)
         return {std::move(created.Detail), 0, {}};
     RunResult result = m_Runtime.StartTask(created.Handle, input);
@@ -225,7 +228,7 @@ OpenRun Sessions::Start(std::uintptr_t sessionId, CKBeObject *owner,
 }
 
 OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
-                         const Spec &block) {
+                        const BlockSpec &block, FrameRetention retention) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), 0, {}};
@@ -237,7 +240,8 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
             return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
         session = *found;
     }
-    CreateResult created = m_Runtime.Instantiate(owner, block);
+    CreateResult created = m_Runtime.Instantiate(owner, block, nullptr,
+                                                 retention);
     if (!created)
         return {std::move(created.Detail), 0, {}};
     RunResult result;
@@ -249,7 +253,7 @@ OpenRun Sessions::Spawn(std::uintptr_t sessionId, CKBeObject *owner,
 }
 
 OpenRun Sessions::Attach(std::uintptr_t sessionId, CKBehavior *graph,
-                         const Spec &block) {
+                         const BlockSpec &block, FrameRetention retention) {
     Status ready = Ready();
     if (!ready)
         return {std::move(ready), 0, {}};
@@ -264,7 +268,8 @@ OpenRun Sessions::Attach(std::uintptr_t sessionId, CKBehavior *graph,
             return {Fail(Error::InvalidState, "The Behavior session is stale."), 0, {}};
         session = *found;
     }
-    CreateResult created = m_Runtime.AttachToGraph(graph, block);
+    CreateResult created = m_Runtime.AttachToGraph(graph, block, nullptr,
+                                                   retention);
     if (!created)
         return {std::move(created.Detail), 0, {}};
     RunResult result;
@@ -465,7 +470,7 @@ Status Sessions::Bind(std::uintptr_t runId,
     return status;
 }
 
-Status Sessions::Configure(std::uintptr_t runId, const Spec &settings,
+Status Sessions::Configure(std::uintptr_t runId, const BlockSpec &settings,
                            std::uint64_t &layoutGeneration) {
     layoutGeneration = 0;
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);

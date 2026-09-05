@@ -2,6 +2,7 @@
 #define BML_BEHAVIOR_TEXT2DVIEW_H
 
 #include "Behavior/Blocks.h"
+#include "Behavior/Runtime.h"
 
 namespace BML::Behavior::Text2DView {
 

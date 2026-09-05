@@ -24,7 +24,7 @@ enum class TargetSet {
 // A durable script selection is evaluated against every root script currently
 // known to the Loader. Name matching is exact and every matching instance has
 // its own world-scoped installation unless One is requested.
-struct Script {
+struct ScriptSelection {
     std::string Name;
     TargetSet Instances = TargetSet::Each;
 
@@ -32,7 +32,8 @@ struct Script {
         return !Name.empty();
     }
 
-    friend bool operator==(const Script &, const Script &) = default;
+    friend bool operator==(const ScriptSelection &,
+                           const ScriptSelection &) = default;
 };
 
 enum class PlanState {
@@ -55,14 +56,16 @@ public:
         virtual Status Close(Installation installation) = 0;
     };
 
-    Plan(PatchKey patch, Script target);
+    Plan(PatchKey patch, ScriptSelection target);
 
     Status Reconcile(std::vector<ObjectRef> targets, Epoch epoch, World &world);
     Status LeaveWorld(World &world);
     Status Retire(World &world);
 
     [[nodiscard]] const PatchKey &Key() const noexcept { return m_Patch; }
-    [[nodiscard]] const Script &Target() const noexcept { return m_Target; }
+    [[nodiscard]] const ScriptSelection &Target() const noexcept {
+        return m_Target;
+    }
     [[nodiscard]] PlanState State() const noexcept { return m_State; }
     [[nodiscard]] Epoch WorldEpoch() const noexcept { return m_Epoch; }
     [[nodiscard]] std::size_t Size() const noexcept { return m_Installed.size(); }
@@ -78,7 +81,7 @@ private:
     Status CloseAll(World &world);
 
     PatchKey m_Patch;
-    Script m_Target;
+    ScriptSelection m_Target;
     // A Plan the Loader has accepted but never reconciled is Reconciling, not
     // Unsatisfied. Unsatisfied means a pass ran and found no usable target.
     PlanState m_State = PlanState::Reconciling;
@@ -106,7 +109,7 @@ public:
     Plans() = default;
 
     Status Submit(PatchKey patch, std::uint64_t ownerGeneration,
-                  Script target,
+                  ScriptSelection target,
                   std::shared_ptr<Plan::World> world, PlanId &out);
     Status Read(PlanId id, PlanInfo &out) const;
     Status Read(std::string_view owner, std::uint64_t ownerGeneration,
@@ -138,7 +141,7 @@ private:
 
         Record(PlanId id, std::uint64_t ownerGeneration,
                std::shared_ptr<Plan::World> world,
-               PatchKey patch, Script target)
+               PatchKey patch, ScriptSelection target)
             : Id(id), OwnerGeneration(ownerGeneration),
               World(std::move(world)),
               Value(std::move(patch), std::move(target)) {}

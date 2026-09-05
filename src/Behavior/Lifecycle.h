@@ -81,6 +81,7 @@ struct LifecyclePlan {
     // An entry records whether that stage contains at least one Setting. Stage
     // zero is always present conceptually, even when this vector is empty.
     std::vector<bool> SettingStages;
+    bool HasInterface = false;
 };
 
 struct LifecycleLedger {
@@ -105,6 +106,7 @@ public:
     virtual bool Revalidate(const LifecycleIdentity &identity,
                             LifecycleFault &fault) = 0;
     virtual bool Reflect(LifecycleLayout &layout, LifecycleFault &fault) = 0;
+    virtual bool ApplyInterface(LifecycleFault &fault) = 0;
     virtual bool ApplyBindings(LifecycleFault &fault) = 0;
     virtual bool ReconcileBindings(const LifecycleLayout &layout,
                                    LifecycleFault &fault) = 0;
@@ -122,6 +124,12 @@ public:
     Lifecycle &operator=(Lifecycle &&other) noexcept;
 
     bool Configure(const LifecyclePlan &plan, LifecycleAdapter &adapter);
+    // CREATE, ATTACH, and Setting stages establish the native Block while it
+    // remains Configuring. Edit applies its parameter bindings, sends the
+    // unique EDITED callback, and makes it Ready. Graph installation uses the
+    // boundary to establish relations between newly created Blocks first.
+    bool Create(const LifecyclePlan &plan, LifecycleAdapter &adapter);
+    bool Edit(LifecycleAdapter &adapter);
 
     // RequestClose only closes admission. Native callbacks and graph mutation
     // are performed by Drain at a game-thread safe point.

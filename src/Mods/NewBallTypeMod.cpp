@@ -497,7 +497,7 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
                 BML::Behavior::Blocks::Physicalize::Shape::Ball;
             definition.Radius = info.m_Radius;
         }
-        BML::Behavior::Spec spec =
+        BML::Behavior::BlockSpec spec =
             BML::Behavior::Blocks::Physicalize::Make(definition);
         spec.TargetShared(CKPGUID_3DENTITY, physicalize->GetTargetParameter());
         for (int i = 0; i < 11; ++i) {
