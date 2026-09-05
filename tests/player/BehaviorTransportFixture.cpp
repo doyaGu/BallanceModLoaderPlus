@@ -6,6 +6,8 @@
 #include <Windows.h>
 
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 
 #include "CKAll.h"
 
@@ -297,7 +299,87 @@ CKERROR Lifecycle(const CKBehaviorContext &context) {
     return CK_OK;
 }
 
-void CopyProviderValue(CKParameter *, CKParameter *) {}
+CKERROR CreateProviderValue(CKParameter *parameter) {
+    if (!parameter)
+        return CKERR_INVALIDPARAMETER;
+    int *value = new int(0);
+    const CKERROR error = parameter->SetValue(&value, sizeof(value));
+    if (error != CK_OK)
+        delete value;
+    return error;
+}
+
+void DeleteProviderValue(CKParameter *parameter) {
+    int *value = nullptr;
+    if (parameter)
+        (void) parameter->GetValue(&value, FALSE);
+    delete value;
+    value = nullptr;
+    if (parameter)
+        (void) parameter->SetValue(&value, sizeof(value));
+}
+
+void CopyProviderValue(CKParameter *destination, CKParameter *source) {
+    int *left = nullptr;
+    int *right = nullptr;
+    if (!destination || !source ||
+        destination->GetValue(&left, FALSE) != CK_OK ||
+        source->GetValue(&right, FALSE) != CK_OK || !right) {
+        return;
+    }
+    if (!left) {
+        left = new int(0);
+        if (destination->SetValue(&left, sizeof(left)) != CK_OK) {
+            delete left;
+            return;
+        }
+    }
+    *left = *right;
+}
+
+void SaveProviderValue(CKParameter *parameter, CKStateChunk **chunk,
+                       CKBOOL load) {
+    if (!parameter || !chunk)
+        return;
+    if (!load) {
+        int *value = nullptr;
+        (void) parameter->GetValue(&value, FALSE);
+        CKStateChunk *saved = CreateCKStateChunk(CKCID_PARAMETER, nullptr);
+        if (!saved)
+            return;
+        saved->StartWrite();
+        saved->WriteInt(value ? *value : 0);
+        saved->CloseChunk();
+        *chunk = saved;
+        return;
+    }
+    if (!*chunk)
+        return;
+    (*chunk)->StartRead();
+    const int saved = (*chunk)->ReadInt();
+    int *value = nullptr;
+    if (parameter->GetValue(&value, FALSE) == CK_OK && value)
+        *value = saved;
+}
+
+int StringProviderValue(CKParameter *parameter, char *text,
+                        CKBOOL readFromString) {
+    if (!parameter)
+        return 0;
+    int *value = nullptr;
+    if (parameter->GetValue(&value, FALSE) != CK_OK || !value)
+        return 0;
+    if (readFromString) {
+        if (!text)
+            return 0;
+        *value = static_cast<int>(std::strtol(text, nullptr, 10));
+        return 0;
+    }
+    const int size = std::snprintf(nullptr, 0, "%d", *value) + 1;
+    if (text)
+        std::snprintf(text, static_cast<std::size_t>(size), "%d", *value);
+    return size;
+}
 
 CKERROR InitFixture(CKContext *context) {
     CKParameterManager *parameters = context
@@ -308,8 +390,12 @@ CKERROR InitFixture(CKContext *context) {
     type.Guid = BML_BEHAVIOR_PROVIDER_VALUE_GUID;
     type.DerivedFrom = CKPGUID_INT;
     type.TypeName = "BML Provider Value";
-    type.DefaultSize = sizeof(int);
+    type.DefaultSize = sizeof(int *);
+    type.CreateDefaultFunction = CreateProviderValue;
+    type.DeleteFunction = DeleteProviderValue;
+    type.SaveLoadFunction = SaveProviderValue;
     type.CopyFunction = CopyProviderValue;
+    type.StringFunction = StringProviderValue;
     return parameters->RegisterParameterType(&type);
 }
 

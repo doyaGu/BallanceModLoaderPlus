@@ -88,6 +88,7 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         BehaviorRuntimeSemantics.h
         BehaviorLifecycleFixtureApi.h
         ${BML_PLAYER_PROBE_SOURCES}
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Block.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Callback.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKEdit.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/CKGraph.cpp
@@ -125,12 +126,11 @@ bml_add_player_test(BehaviorPatchTest
 # This Mod links the normal import library and reaches Patches owned by BMLPlus.dll.
 target_include_directories(BehaviorPatchTest PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
-# The published Plan and Hook facade, authored the way a Mod would author it.
-# It reaches into src only for ObserveScript, which puts a script the probe
-# created itself into the Plans world the game normally feeds.
+# The published Script, Plan, and Hook facade, authored the way a Mod would
+# author it. The Script is created, edited, activated, and retired entirely
+# through the public Behavior interface.
 bml_add_player_test(BehaviorFacadeTest
         BehaviorFacadeTest.cpp
         BehaviorLifecycleFixtureApi.h
         ${BML_PLAYER_PROBE_SOURCES}
 )
-target_include_directories(BehaviorFacadeTest PRIVATE ${PROJECT_SOURCE_DIR}/src)

@@ -171,10 +171,18 @@ $facadeSelfClose = [regex]::Match($log,
 $facadePatch = [regex]::Match($log,
     'Behavior graph patch: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'apply=(?<apply>true|false) close=(?<close>true|false)')
+$facadeReplacement = [regex]::Match($log,
+    'Behavior node replacement: status=(?<status>pass|fail)')
 $facadeIdentity = [regex]::Match($log,
     'Behavior identity: status=(?<status>pass|fail) attach=(?<attach>true|false) ' +
     'continuation=(?<continuation>true|false) ' +
     'identity=(?<identity>true|false) befores=(?<befores>[0-9]+)')
+$authoredScript = [regex]::Match($log,
+    'Behavior authored script: status=(?<status>pass|fail) ' +
+    'atomic=(?<atomic>true|false) ' +
+    'create=(?<create>true|false) edit=(?<edit>true|false) ' +
+    'operation=(?<operation>true|false) ' +
+    'activity=(?<activity>true|false) close=(?<close>true|false)')
 $scriptHook = [regex]::Match($log,
     'Behavior script hook: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'installed=(?<installed>true|false) frames=(?<frames>[0-9]+)')
@@ -241,12 +249,22 @@ $checks['BehaviorGraphPatchFacade'] = $facadePatch.Success -and
     $facadePatch.Groups['status'].Value -eq 'pass' -and
     $facadePatch.Groups['apply'].Value -eq 'true' -and
     $facadePatch.Groups['close'].Value -eq 'true'
+$checks['BehaviorNodeReplacementFacade'] = $facadeReplacement.Success -and
+    $facadeReplacement.Groups['status'].Value -eq 'pass'
 $checks['BehaviorIdentityFacade'] = $facadeIdentity.Success -and
     $facadeIdentity.Groups['status'].Value -eq 'pass' -and
     $facadeIdentity.Groups['attach'].Value -eq 'true' -and
     $facadeIdentity.Groups['continuation'].Value -eq 'true' -and
     $facadeIdentity.Groups['identity'].Value -eq 'true' -and
     [int]$facadeIdentity.Groups['befores'].Value -ge 1
+$checks['BehaviorAuthoredScript'] = $authoredScript.Success -and
+    $authoredScript.Groups['status'].Value -eq 'pass' -and
+    $authoredScript.Groups['atomic'].Value -eq 'true' -and
+    $authoredScript.Groups['create'].Value -eq 'true' -and
+    $authoredScript.Groups['edit'].Value -eq 'true' -and
+    $authoredScript.Groups['operation'].Value -eq 'true' -and
+    $authoredScript.Groups['activity'].Value -eq 'true' -and
+    $authoredScript.Groups['close'].Value -eq 'true'
 $checks['BehaviorPatchVisual'] =
     $run.Captures.'BehaviorPatch-baseline'.Captured -and
     $run.Captures.'BehaviorPatch-active'.Captured -and

@@ -16,6 +16,9 @@ enum class BMLLifecycleFixtureMode : std::uint32_t {
     // Runs the close hook from the RESET, DETACH and DELETE callbacks, that
     // is from inside the native teardown the Loader drives for the block.
     CloseOnTeardown = 2,
+    NormalizeOnEdited = 3,
+    FailFirstEdited = 4,
+    InsertPinOnSettingsEdited = 5,
 };
 
 struct BMLLifecycleFixtureEvent {
@@ -26,6 +29,13 @@ struct BMLLifecycleFixtureEvent {
     std::uint32_t ParentVisible = 0;
     std::uint32_t LinkVisible = 0;
     std::uint32_t SourceVisible = 0;
+    std::uint32_t InputCount = 0;
+    std::uint32_t OutputCount = 0;
+    std::uint32_t PinCount = 0;
+    std::uint32_t PoutCount = 0;
+    std::uint32_t LocalCount = 0;
+    std::int32_t LocalValue = 0;
+    std::uint32_t BoundSourceCount = 0;
 };
 
 struct BMLLifecycleFixtureTrace {
@@ -52,11 +62,14 @@ struct BMLLifecycleFixtureTrace {
 };
 
 using BMLLifecycleFixtureCloseHook = int (*)(CKBehavior *, void *);
+using BMLLifecycleFixtureEditedHook = int (*)(CKBehavior *, void *);
 using BMLLifecycleFixtureResetTraceFn = void (*)();
 using BMLLifecycleFixtureSetModeFn = void (*)(BMLLifecycleFixtureMode);
 using BMLLifecycleFixtureSetContinuationFn = void (*)(std::int32_t frames);
 using BMLLifecycleFixtureSetCloseHookFn = void (*)(
     BMLLifecycleFixtureCloseHook, void *);
+using BMLLifecycleFixtureSetEditedHookFn = void (*)(
+    BMLLifecycleFixtureEditedHook, void *);
 using BMLLifecycleFixtureReadTraceFn = int (*)(
     BMLLifecycleFixtureTrace *);
 

@@ -24,17 +24,107 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <memory>
 #include <initializer_list>
 #include <sstream>
+#include <new>
 #include <thread>
 #include <utility>
 
 namespace {
 
 using namespace BML::Behavior;
+
+const CKGUID kProviderLocalGuid(0x1d129e67, 0x6e702c4a);
+
+CKERROR CreateProviderLocalValue(CKParameter *parameter) {
+    if (!parameter)
+        return CKERR_INVALIDPARAMETER;
+    int *value = new (std::nothrow) int(0);
+    if (!value)
+        return CKERR_OUTOFMEMORY;
+    const CKERROR error = parameter->SetValue(&value, sizeof(value));
+    if (error != CK_OK)
+        delete value;
+    return error;
+}
+
+void DeleteProviderLocalValue(CKParameter *parameter) {
+    int *value = nullptr;
+    if (parameter)
+        (void) parameter->GetValue(&value, FALSE);
+    delete value;
+    value = nullptr;
+    if (parameter)
+        (void) parameter->SetValue(&value, sizeof(value));
+}
+
+void CopyProviderLocalValue(CKParameter *destination,
+                            CKParameter *source) {
+    int *left = nullptr;
+    int *right = nullptr;
+    if (!destination || !source ||
+        destination->GetValue(&left, FALSE) != CK_OK ||
+        source->GetValue(&right, FALSE) != CK_OK || !right) {
+        return;
+    }
+    if (!left) {
+        left = new (std::nothrow) int(0);
+        if (!left || destination->SetValue(&left, sizeof(left)) != CK_OK) {
+            delete left;
+            return;
+        }
+    }
+    *left = *right;
+}
+
+void SaveProviderLocalValue(CKParameter *parameter, CKStateChunk **chunk,
+                            CKBOOL load) {
+    if (!parameter || !chunk)
+        return;
+    if (!load) {
+        int *value = nullptr;
+        (void) parameter->GetValue(&value, FALSE);
+        CKStateChunk *saved = CreateCKStateChunk(CKCID_PARAMETER, nullptr);
+        if (!saved)
+            return;
+        saved->StartWrite();
+        saved->WriteInt(value ? *value : 0);
+        saved->CloseChunk();
+        *chunk = saved;
+        return;
+    }
+    if (!*chunk)
+        return;
+    (*chunk)->StartRead();
+    const int saved = (*chunk)->ReadInt();
+    int *value = nullptr;
+    if (parameter->GetValue(&value, FALSE) == CK_OK && value)
+        *value = saved;
+}
+
+int StringProviderLocalValue(CKParameter *parameter, char *text,
+                             CKBOOL readFromString) {
+    if (!parameter)
+        return 0;
+    int *value = nullptr;
+    if (parameter->GetValue(&value, FALSE) != CK_OK || !value)
+        return 0;
+    if (readFromString) {
+        if (!text)
+            return 0;
+        *value = static_cast<int>(std::strtol(text, nullptr, 10));
+        return 0;
+    }
+    const int size = std::snprintf(nullptr, 0, "%d", *value) + 1;
+    if (text)
+        std::snprintf(text, static_cast<std::size_t>(size), "%d", *value);
+    return size;
+}
 
 // Named once so the Wait Message pin, the Send Message pin and the Message
 // Manager registration all speak of the same message.
@@ -196,6 +286,45 @@ int ProbePatchClose(const CKBehaviorContext *context, void *argument) {
     return CKBR_OK;
 }
 
+struct PeerPortChange {
+    CKContext *Context = nullptr;
+    CKBehavior *Peer = nullptr;
+    CKParameterLocal *Removed = nullptr;
+    bool Changed = false;
+};
+
+int ReplacePeerLocal(CKBehavior *, void *argument) {
+    auto *change = static_cast<PeerPortChange *>(argument);
+    if (!change || !change->Context || !change->Peer || change->Changed)
+        return CK_OK;
+    const int position = change->Peer->GetLocalParameterCount() > 1 ? 1 : -1;
+    change->Removed = position >= 0
+        ? change->Peer->RemoveLocalParameter(position) : nullptr;
+    CKParameterLocal *replacement = change->Removed
+        ? change->Peer->CreateLocalParameter(
+              const_cast<CKSTRING>("State"), CKPGUID_INT)
+        : nullptr;
+    change->Changed = change->Removed && replacement;
+    return change->Changed ? CK_OK : CKERR_INVALIDOBJECT;
+}
+
+struct EditedSelfDelete {
+    CK_ID Id = 0;
+    bool Destroyed = false;
+};
+
+int DeleteEditedBlock(CKBehavior *behavior, void *argument) {
+    auto *change = static_cast<EditedSelfDelete *>(argument);
+    if (!behavior || !argument || change->Destroyed)
+        return CK_OK;
+    CKContext *context = behavior->GetCKContext();
+    change->Id = behavior->GetID();
+    change->Destroyed = context &&
+        context->DestroyObject(behavior) == CK_OK &&
+        context->GetObject(change->Id) == nullptr;
+    return change->Destroyed ? CK_OK : CKERR_INVALIDOBJECT;
+}
+
 int ProbeRecursivePump(const CKBehaviorContext *, void *argument) {
     auto *probe = static_cast<RecursivePumpProbe *>(argument);
     if (!probe || !probe->Owner)
@@ -302,11 +431,11 @@ bool HasSettings(const Layout &layout, int expectedCount) {
     return count == expectedCount && !HasDuplicateSettingLocal(layout);
 }
 
-Spec PhysicsForceBase(CK3dObject *owner) {
+BlockSpec PhysicsForceBase(CK3dObject *owner) {
     const VxVector zero(0.0f, 0.0f, 0.0f);
     const VxVector direction(1.0f, 0.0f, 0.0f);
 
-    Spec spec(PHYSICS_RT_PHYSICSFORCE);
+    BlockSpec spec(PHYSICS_RT_PHYSICSFORCE);
     spec.Target(CKPGUID_3DENTITY, owner)
         .Input(Slot::At(SlotKind::InputParameter, 0, CKPGUID_VECTOR),
                Value::From(CKPGUID_VECTOR, zero))
@@ -319,27 +448,15 @@ Spec PhysicsForceBase(CK3dObject *owner) {
     return spec;
 }
 
-Spec PhysicsForceWithOperation(CK3dObject *owner, CKGUID operationGuid) {
-    const float left = 2.0f;
-    const float right = 3.0f;
-    Spec spec = PhysicsForceBase(owner);
-    spec.Input(Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
-               Operation(operationGuid)
-                   .Result(CKPGUID_FLOAT)
-                   .Input1(Value::From(CKPGUID_FLOAT, left))
-                   .Input2(Value::From(CKPGUID_FLOAT, right)));
-    return spec;
-}
-
-Spec PhysicsForceWithSource(CK3dObject *owner, CKParameter *magnitude) {
-    Spec spec = PhysicsForceBase(owner);
+BlockSpec PhysicsForceWithSource(CK3dObject *owner, CKParameter *magnitude) {
+    BlockSpec spec = PhysicsForceBase(owner);
     spec.Input(Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
                Parameter::Binding::Direct(magnitude));
     return spec;
 }
 
-Spec PhysicsForceWithMagnitude(CK3dObject *owner, float magnitude) {
-    Spec spec = PhysicsForceBase(owner);
+BlockSpec PhysicsForceWithMagnitude(CK3dObject *owner, float magnitude) {
+    BlockSpec spec = PhysicsForceBase(owner);
     spec.Input(Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
                Value::From(CKPGUID_FLOAT, magnitude));
     return spec;
@@ -421,19 +538,6 @@ public:
         case State::SelfDeleteStart: StartSelfDelete(); break;
         case State::SelfDeleteWait1:
         case State::SelfDeleteWait2: WaitForSelfDelete(); break;
-        case State::OperationCreate: CreateSharedOperation(); break;
-        case State::OperationShared1:
-        case State::OperationShared2:
-        case State::OperationShared3: AdvanceSharedOperation(); break;
-        case State::OperationRelease: ReleaseSharedOperation(); break;
-        case State::OperationCleanup1:
-        case State::OperationCleanup2:
-        case State::OperationCleanup3: AdvanceOperationCleanup(); break;
-        case State::RuntimeCloseStart: StartRuntimeClose(); break;
-        case State::RuntimeCloseRelease: ReleaseRuntimeCloseConsumer(); break;
-        case State::RuntimeCloseCleanup1:
-        case State::RuntimeCloseCleanup2:
-        case State::RuntimeCloseCleanup3: AdvanceRuntimeCloseCleanup(); break;
         case State::GraphSchedulerStart: StartGraphScheduler(); break;
         case State::GraphSchedulerWaitFirst:
         case State::GraphSchedulerWaitSecond:
@@ -530,19 +634,6 @@ private:
         SelfDeleteStart,
         SelfDeleteWait1,
         SelfDeleteWait2,
-        OperationCreate,
-        OperationShared1,
-        OperationShared2,
-        OperationShared3,
-        OperationRelease,
-        OperationCleanup1,
-        OperationCleanup2,
-        OperationCleanup3,
-        RuntimeCloseStart,
-        RuntimeCloseRelease,
-        RuntimeCloseCleanup1,
-        RuntimeCloseCleanup2,
-        RuntimeCloseCleanup3,
         GraphSchedulerStart,
         GraphSchedulerWaitFirst,
         GraphSchedulerWaitSecond,
@@ -815,7 +906,7 @@ private:
 
     void StartWaitAll() {
         CreateResult created = m_Runtime.Instantiate(
-            m_Owner, Spec(VT_LOGICS_WAITFORALL));
+            m_Owner, BlockSpec(VT_LOGICS_WAITFORALL));
         if (!created) {
             Fail("wait-all-create");
             m_State = State::SameFramePulseStart;
@@ -950,10 +1041,10 @@ private:
 
     void StartLatestFrames() {
         m_LatestFrames.CompleteAfter = 4;
-        Spec spec = HookBlock::Make(
+        BlockSpec spec = HookBlock::Make(
             ProbeCountedExecution, &m_LatestFrames, 1, 0);
-        spec.Frames(FrameRetention::Latest());
-        CreateResult created = m_Runtime.Instantiate(m_Owner, spec);
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, spec, nullptr, FrameRetention::Latest());
         if (!created) {
             Fail("frame-latest-create");
             m_State = State::FrameFullStart;
@@ -992,10 +1083,10 @@ private:
 
     void StartFullFrames() {
         m_FullFrames.CompleteAfter = 10;
-        Spec spec = HookBlock::Make(
+        BlockSpec spec = HookBlock::Make(
             ProbeCountedExecution, &m_FullFrames, 1, 0);
-        spec.Frames(FrameRetention::EachFrame(1));
-        CreateResult created = m_Runtime.Instantiate(m_Owner, spec);
+        CreateResult created = m_Runtime.Instantiate(
+            m_Owner, spec, nullptr, FrameRetention::EachFrame(1));
         if (!created) {
             Fail("frame-full-create");
             m_State = State::DetachedGraphStart;
@@ -1329,7 +1420,7 @@ private:
             m_Owner, HookBlock::Make(ProbeSelfDelete, &m_SelfDelete));
         if (!created) {
             Fail("self-delete-create");
-            m_State = State::OperationCreate;
+            m_State = State::GraphSchedulerStart;
             return;
         }
         m_SelfDeleteInstance = std::move(created.Handle);
@@ -1367,172 +1458,7 @@ private:
             Fail("self-delete-retained");
         }
         m_SelfDeleteInstance.Reset();
-        m_State = State::OperationCreate;
-    }
-
-    void CreateSharedOperation() {
-        CKParameterManager *parameters = m_Context->GetParameterManager();
-        const CKGUID addition = parameters
-            ? parameters->OperationNameToGuid(const_cast<char *>("Addition"))
-            : CKGUID();
-        if (!addition.IsValid()) {
-            Fail("addition-missing");
-            m_State = State::GraphOwnership;
-            return;
-        }
-        m_Addition = addition;
-
-        CreateResult operation = m_Runtime.Instantiate(
-            m_Owner, PhysicsForceWithOperation(m_Owner, addition));
-        m_OperationInstance = std::move(operation.Handle);
-        CKBehavior *producerBehavior = m_OperationInstance.Get();
-        m_OperationProducerId = producerBehavior ? producerBehavior->GetID() : 0;
-        CKParameterIn *magnitude = operation && producerBehavior
-            ? producerBehavior->GetInputParameter(4) : nullptr;
-        m_OperationOutput = magnitude ? magnitude->GetDirectSource() : nullptr;
-        CKObject *operationObject = m_OperationOutput
-            ? m_OperationOutput->GetOwner() : nullptr;
-        m_OperationId = operationObject &&
-            CKIsChildClassOf(operationObject, CKCID_PARAMETEROPERATION)
-            ? operationObject->GetID() : 0;
-        if (!operation || !m_OperationId) {
-            Fail("operation-create");
-            m_State = State::GraphOwnership;
-            return;
-        }
-
-        CreateResult consumer = m_ConsumerRuntime.Instantiate(
-            m_Owner, PhysicsForceWithSource(m_Owner, m_OperationOutput));
-        m_ConsumerInstance = std::move(consumer.Handle);
-        m_ConsumerMagnitude = consumer && m_ConsumerInstance.Get()
-            ? m_ConsumerInstance.Get()->GetInputParameter(4) : nullptr;
-        const float replacement = 7.0f;
-        Status rebound = m_Runtime.SetInput(
-            m_OperationInstance,
-            Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
-            Value::From(CKPGUID_FLOAT, replacement));
-        if (!consumer || !rebound)
-            Fail("operation-bind");
-        m_OperationInstance.Reset();
-        m_State = State::OperationShared1;
-    }
-
-    void AdvanceSharedOperation() {
-        ProcessRuntimeFrame("operation-frame-context-restore");
-        ProcessConsumerFrame("consumer-frame-context-restore");
-        if (m_State == State::OperationShared1) {
-            m_State = State::OperationShared2;
-        } else if (m_State == State::OperationShared2) {
-            m_State = State::OperationShared3;
-        } else {
-            const bool retained = m_Context->GetObject(m_OperationId) != nullptr &&
-                m_ConsumerMagnitude &&
-                m_ConsumerMagnitude->GetDirectSource() == m_OperationOutput &&
-                m_Context->GetObject(m_OperationProducerId) == nullptr;
-            if (!retained)
-                Fail("operation-shared");
-            m_State = State::OperationRelease;
-        }
-    }
-
-    void ReleaseSharedOperation() {
-        const float replacement = 7.0f;
-        Status rebound = m_ConsumerRuntime.SetInput(
-            m_ConsumerInstance,
-            Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
-            Value::From(CKPGUID_FLOAT, replacement));
-        if (!rebound)
-            Fail("operation-consumer-rebind");
-        m_State = State::OperationCleanup1;
-    }
-
-    void AdvanceOperationCleanup() {
-        ProcessRuntimeFrame("operation-cleanup-context-restore");
-        ProcessConsumerFrame("consumer-cleanup-context-restore");
-        if (m_State == State::OperationCleanup1) {
-            m_State = State::OperationCleanup2;
-        } else if (m_State == State::OperationCleanup2) {
-            m_State = State::OperationCleanup3;
-        } else {
-            if (m_Context->GetObject(m_OperationId) != nullptr)
-                Fail("operation-retained");
-            m_OperationOutput = nullptr;
-            m_ConsumerInstance.Reset();
-            m_State = State::RuntimeCloseStart;
-        }
-    }
-
-    void StartRuntimeClose() {
-        m_ClosingRuntime = std::make_unique<Runtime>(
-            m_Context, std::function<ObjectRef(const void *)>{}, nullptr,
-            &m_Runtime);
-        CreateResult operation = m_ClosingRuntime->Instantiate(
-            m_Owner, PhysicsForceWithOperation(m_Owner, m_Addition));
-        m_ClosingProducerInstance = std::move(operation.Handle);
-        CKBehavior *producer = m_ClosingProducerInstance.Get();
-        m_ClosingProducerId = producer ? producer->GetID() : 0;
-        CKParameterIn *magnitude = operation && producer
-            ? producer->GetInputParameter(4) : nullptr;
-        m_ClosingOutput = magnitude ? magnitude->GetDirectSource() : nullptr;
-        CKObject *operationObject = m_ClosingOutput
-            ? m_ClosingOutput->GetOwner() : nullptr;
-        m_ClosingOperationId = operationObject &&
-            CKIsChildClassOf(operationObject, CKCID_PARAMETEROPERATION)
-            ? operationObject->GetID() : 0;
-
-        CreateResult consumer = m_ConsumerRuntime.Instantiate(
-            m_Owner, PhysicsForceWithSource(m_Owner, m_ClosingOutput));
-        m_ClosingConsumerInstance = std::move(consumer.Handle);
-        m_ClosingConsumerMagnitude = consumer && m_ClosingConsumerInstance.Get()
-            ? m_ClosingConsumerInstance.Get()->GetInputParameter(4) : nullptr;
-        if (!operation || !consumer || !m_ClosingProducerId ||
-            !m_ClosingOperationId || !m_ClosingConsumerMagnitude) {
-            Fail("runtime-close-create");
-        }
-
-        m_ClosingRuntime.reset();
-        const bool producerClosed =
-            m_Context->GetObject(m_ClosingProducerId) == nullptr;
-        const bool handleExpired = !m_ClosingProducerInstance &&
-            m_ClosingProducerInstance.Get() == nullptr &&
-            m_ClosingProducerInstance.LayoutGeneration() == 0;
-        const bool sharedOperationSurvived =
-            m_Context->GetObject(m_ClosingOperationId) != nullptr &&
-            m_ClosingConsumerMagnitude &&
-            m_ClosingConsumerMagnitude->GetDirectSource() == m_ClosingOutput;
-        m_ClosingProducerInstance.Reset();
-        if (!producerClosed || !handleExpired || !sharedOperationSurvived)
-            Fail("runtime-close-shared");
-        m_State = State::RuntimeCloseRelease;
-    }
-
-    void ReleaseRuntimeCloseConsumer() {
-        const float replacement = 11.0f;
-        Status rebound = m_ConsumerRuntime.SetInput(
-            m_ClosingConsumerInstance,
-            Slot::At(SlotKind::InputParameter, 4, CKPGUID_FLOAT),
-            Value::From(CKPGUID_FLOAT, replacement));
-        if (!rebound || !m_ClosingConsumerMagnitude ||
-            m_ClosingConsumerMagnitude->GetDirectSource() == m_ClosingOutput) {
-            Fail("runtime-close-rebind");
-        }
-        m_State = State::RuntimeCloseCleanup1;
-    }
-
-    void AdvanceRuntimeCloseCleanup() {
-        ProcessRuntimeFrame("runtime-close-main-context-restore");
-        ProcessConsumerFrame("runtime-close-consumer-context-restore");
-        if (m_State == State::RuntimeCloseCleanup1) {
-            m_State = State::RuntimeCloseCleanup2;
-        } else if (m_State == State::RuntimeCloseCleanup2) {
-            m_State = State::RuntimeCloseCleanup3;
-        } else {
-            if (m_Context->GetObject(m_ClosingOperationId) != nullptr)
-                Fail("runtime-close-retained");
-            m_ClosingOutput = nullptr;
-            m_ClosingConsumerInstance.Reset();
-            m_State = State::GraphSchedulerStart;
-        }
+        m_State = State::GraphSchedulerStart;
     }
 
     void StartGraphScheduler() {
@@ -1705,34 +1631,22 @@ private:
         const CKERROR ownerStatus = graph->SetOwner(m_Owner, FALSE);
         AttachResult attached = ownerStatus == CK_OK
             ? m_Runtime.AddToGraph(
-                  graph, PhysicsForceWithOperation(m_Owner, m_Addition))
+                  graph, PhysicsForceWithMagnitude(m_Owner, 5.0f))
             : AttachResult{};
         CKBehavior *block = attached.Block;
-        CKParameterIn *magnitude = block
-            ? block->GetInputParameter(4) : nullptr;
-        CKParameter *operationOutput = magnitude
-            ? magnitude->GetDirectSource() : nullptr;
-        CKObject *operationObject = operationOutput
-            ? operationOutput->GetOwner() : nullptr;
         const CK_ID blockId = block ? block->GetID() : 0;
-        const CK_ID graphOperationId = operationObject
-            ? operationObject->GetID() : 0;
         const bool placed = attached && block &&
             block->GetParent() == graph && block->GetOwner() == m_Owner &&
             graph->GetSubBehaviorCount() == 1 &&
             graph->GetSubBehavior(0) == block &&
-            graph->GetParameterOperationCount() == 1 &&
-            graph->GetParameterOperation(0) == operationObject &&
-            operationObject &&
-            CKIsChildClassOf(operationObject, CKCID_PARAMETEROPERATION);
+            graph->GetParameterOperationCount() == 0;
 
         const ContextSnapshot before = CaptureContext(m_Context);
         m_Runtime.ResetWorld();
         if (!ContextRestored(m_Context, before))
             Fail("reset-context-restore");
-        const bool cleaned = blockId != 0 && graphOperationId != 0 &&
+        const bool cleaned = blockId != 0 &&
             m_Context->GetObject(blockId) == nullptr &&
-            m_Context->GetObject(graphOperationId) == nullptr &&
             graph->GetSubBehaviorCount() == 0 &&
             graph->GetParameterOperationCount() == 0;
         if (!placed || !cleaned)
@@ -1741,10 +1655,10 @@ private:
         m_State = State::SpliceStart;
     }
 
-    Spec LifecycleSpec() const {
+    BlockSpec LifecycleSpec() const {
         const int setting = 42;
         const int source = 9;
-        Spec spec(BML_LIFECYCLE_FIXTURE_GUID);
+        BlockSpec spec(BML_LIFECYCLE_FIXTURE_GUID);
         spec.Setting(Slot::Named(SlotKind::Setting, "Value", CKPGUID_INT),
                      Value::From(CKPGUID_INT, setting))
             .Input(Slot::Named(SlotKind::InputParameter, "Source", CKPGUID_INT),
@@ -2031,6 +1945,148 @@ private:
             return;
         }
         const Layout fixtureLayout = m_Runtime.Describe(m_EditSource);
+
+        const auto setFixtureMode =
+            reinterpret_cast<BMLLifecycleFixtureSetModeFn>(
+                LifecycleFixtureExport("BMLLifecycleFixtureSetMode"));
+        const auto setEditedHook =
+            reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
+                LifecycleFixtureExport("BMLLifecycleFixtureSetEditedHook"));
+        if (!setFixtureMode || !setEditedHook) {
+            Fail("additive-edit-fixture-control");
+            m_State = State::AdditiveEditClose;
+            return;
+        }
+
+        // A Setting callback may extend the live interface before the Edit
+        // creates its own Port. The Port returned by AppendPin denotes the
+        // exact CKParameterIn created for that declaration, not the index it
+        // happened to have in the prototype Layout.
+        setFixtureMode(
+            BMLLifecycleFixtureMode::InsertPinOnSettingsEdited);
+        Edit shifted;
+        Patch shiftedPatch;
+        Node shiftedNode;
+        Status shiftedStatus = m_Editor->Begin(
+            m_EditFixture, {"player", "setting-interface-shift"}, shifted);
+        if (shiftedStatus) {
+            shiftedNode = shifted.Add(LifecycleSpec(), fixtureLayout);
+            const Port patchPin = shifted.AppendPin(
+                shiftedNode, "Patch Value", CKPGUID_INT);
+            const int patchValue = 31;
+            shifted.Bind(patchPin,
+                         Value::From(CKPGUID_INT, patchValue));
+            shiftedStatus = m_Editor->Apply(shifted, shiftedPatch);
+        }
+        CKBehavior *shiftedBlock = nullptr;
+        if (shiftedStatus)
+            shiftedStatus = m_Editor->ResolveNode(
+                shiftedPatch, shiftedNode, shiftedBlock);
+        CKParameterIn *providerPin = nullptr;
+        CKParameterIn *patchPin = nullptr;
+        if (shiftedStatus && shiftedBlock) {
+            for (int index = 0;
+                 index < shiftedBlock->GetInputParameterCount(); ++index) {
+                CKParameterIn *candidate =
+                    shiftedBlock->GetInputParameter(index);
+                const char *name = candidate ? candidate->GetName() : nullptr;
+                if (name && std::strcmp(name, "Provider Pin") == 0)
+                    providerPin = candidate;
+                else if (name && std::strcmp(name, "Patch Value") == 0)
+                    patchPin = candidate;
+            }
+        }
+        int observedPatchValue = 0;
+        CKParameter *patchSource = patchPin
+            ? patchPin->GetRealSource() : nullptr;
+        const bool exactInterface = shiftedStatus && shiftedPatch &&
+            providerPin && !providerPin->GetRealSource() && patchSource &&
+            patchSource->GetValue(&observedPatchValue, TRUE) == CK_OK &&
+            observedPatchValue == 31;
+        if (shiftedPatch)
+            (void) m_Editor->Close(shiftedPatch);
+        setFixtureMode(BMLLifecycleFixtureMode::Normal);
+        if (!exactInterface)
+            Fail("additive-edit-symbolic-interface");
+
+        // The EDITED callback belongs to its receiver, but it can still touch
+        // another Block in the same graph. Replacing a source Local with a
+        // same-shaped parameter must invalidate the candidate instead of
+        // letting the receiver's callback normalize that foreign change.
+        AttachResult changedPeer = m_Runtime.AddToGraph(
+            m_EditFixture, LifecycleSpec());
+        PeerPortChange peerChange{m_Context, changedPeer.Block};
+        Edit crossNode;
+        Patch crossNodePatch;
+        Node crossTarget;
+        Node crossSource;
+        Status crossStatus = changedPeer
+            ? m_Editor->Begin(
+                  m_EditFixture, {"player", "cross-node-edited"}, crossNode)
+            : Status{Error::CreateFailed, CKERR_INVALIDOBJECT,
+                     CKBR_PARAMETERERROR,
+                     "The cross-node callback fixture was not created."};
+        if (crossStatus)
+            crossStatus = m_Editor->Use(
+                crossNode, m_EditSource, crossTarget);
+        if (crossStatus)
+            crossStatus = m_Editor->Use(
+                crossNode, changedPeer.Block, crossSource);
+        if (crossStatus) {
+            crossNode.Bind(crossTarget.Pin("Source"),
+                           crossSource.Local("State"));
+            setEditedHook(ReplacePeerLocal, &peerChange);
+            crossStatus = m_Editor->Apply(crossNode, crossNodePatch);
+            setEditedHook(nullptr, nullptr);
+        }
+        const bool crossNodeRejected = !crossStatus &&
+            crossStatus.Code == Error::GraphChanged && !crossNodePatch &&
+            peerChange.Changed;
+        if (crossNodePatch)
+            (void) m_Editor->Close(crossNodePatch);
+        if (peerChange.Removed)
+            m_Context->DestroyObject(peerChange.Removed);
+        if (changedPeer.Block)
+            (void) m_Runtime.Close(changedPeer.Block);
+        m_Runtime.ProcessFrame();
+        if (!crossNodeRejected)
+            Fail("additive-edit-cross-node-callback");
+
+        // CK callbacks are synchronous. A Block may delete itself while its
+        // EDITED callback is on the stack, so CKEdit must reacquire the Stamp
+        // before it inspects anything about the receiver.
+        AttachResult selfDelete = m_Runtime.AddToGraph(
+            m_EditFixture, LifecycleSpec());
+        EditedSelfDelete selfDeleteChange;
+        Edit deleting;
+        Patch deletingPatch;
+        Node deletingNode;
+        Status deletingStatus = selfDelete
+            ? m_Editor->Begin(
+                  m_EditFixture, {"player", "edited-self-delete"}, deleting)
+            : Status{Error::CreateFailed, CKERR_INVALIDOBJECT,
+                     CKBR_PARAMETERERROR,
+                     "The self-delete callback fixture was not created."};
+        if (deletingStatus)
+            deletingStatus = m_Editor->Use(
+                deleting, selfDelete.Block, deletingNode);
+        if (deletingStatus) {
+            const int replacement = 23;
+            deleting.Bind(deletingNode.Local("State"),
+                          Value::From(CKPGUID_INT, replacement));
+            setEditedHook(DeleteEditedBlock, &selfDeleteChange);
+            deletingStatus = m_Editor->Apply(deleting, deletingPatch);
+            setEditedHook(nullptr, nullptr);
+        }
+        const bool selfDeleteRejected = !deletingStatus &&
+            deletingStatus.Code == Error::GraphChanged && !deletingPatch &&
+            selfDeleteChange.Destroyed && selfDeleteChange.Id != 0 &&
+            m_Context->GetObject(selfDeleteChange.Id) == nullptr;
+        if (deletingPatch)
+            (void) m_Editor->Close(deletingPatch);
+        m_Runtime.ProcessFrame();
+        if (!selfDeleteRejected)
+            Fail("additive-edit-self-delete-callback");
 
         AttachResult peer = m_Runtime.AddToGraph(
             m_EditFixture, LifecycleSpec());
@@ -2396,7 +2452,7 @@ private:
             return;
         }
 
-        Spec wait(VT_LOGICS_WAITMESSAGE);
+        BlockSpec wait(VT_LOGICS_WAITMESSAGE);
         wait.Target(CKPGUID_BEOBJECT, m_Owner)
             .Input(Slot::At(SlotKind::InputParameter, 0, CKPGUID_MESSAGE),
                    Value::Text(CKPGUID_MESSAGE, kProbeMessageName));
@@ -2560,6 +2616,8 @@ private:
             const_cast<CKSTRING>("Relation Other Baseline"), CKPGUID_INT, TRUE);
         CKParameterIn *pin = nullptr;
         CKParameterIn *otherPin = nullptr;
+        CKBehavior *providerNode = nullptr;
+        bool providerTypeRegistered = false;
         bool passed = graph && node && baseline && foreign && otherBaseline;
         if (passed) {
             graph->UseGraph();
@@ -2706,6 +2764,87 @@ private:
                 pin->GetDirectSource() == baseline;
         }
 
+        if (passed) {
+            // This Local owns a heap value through its registered parameter
+            // callbacks. Patch journaling must copy, compare, restore, and
+            // destroy it through those callbacks rather than memcpy the
+            // pointer stored in CKParameter's buffer.
+            CKParameterManager *parameters =
+                m_Context->GetParameterManager();
+            CKParameterTypeDesc providerType;
+            providerType.Guid = kProviderLocalGuid;
+            providerType.DerivedFrom = CKPGUID_INT;
+            providerType.TypeName = "BML Provider Local";
+            providerType.DefaultSize = sizeof(int *);
+            providerType.CreateDefaultFunction = CreateProviderLocalValue;
+            providerType.DeleteFunction = DeleteProviderLocalValue;
+            providerType.SaveLoadFunction = SaveProviderLocalValue;
+            providerType.CopyFunction = CopyProviderLocalValue;
+            providerType.StringFunction = StringProviderLocalValue;
+            providerTypeRegistered = parameters &&
+                parameters->RegisterParameterType(&providerType) == CK_OK;
+            passed = providerTypeRegistered;
+            providerNode = CKBehavior::Cast(m_Context->CreateObject(
+                CKCID_BEHAVIOR,
+                const_cast<CKSTRING>("Provider-owned Local"),
+                CK_OBJECTCREATION_DYNAMIC));
+            CKParameterLocal *providerLocal = nullptr;
+            if (providerNode) {
+                providerNode->UseFunction();
+                providerNode->SetFunction(RunRelationNode);
+                providerLocal = providerNode->CreateLocalParameter(
+                    const_cast<CKSTRING>("Provider State"),
+                    kProviderLocalGuid);
+            }
+            passed = providerNode && providerLocal &&
+                providerLocal->SetStringValue(
+                    const_cast<CKSTRING>("7")) == CK_OK &&
+                graph->AddSubBehavior(providerNode) == CK_OK;
+
+            Patch providerPatch;
+            Edit providerEdit;
+            Node provider;
+            Status status = passed
+                ? m_Editor->Begin(
+                      graph, {"player", "provider-local"}, providerEdit)
+                : Status{Error::CreateFailed, CKERR_INVALIDOBJECT,
+                         CKBR_PARAMETERERROR,
+                         "The provider-owned Local was not created."};
+            if (status)
+                status = m_Editor->Use(
+                    providerEdit, providerNode, provider);
+            if (status) {
+                providerEdit.Bind(
+                    provider.Local("Provider State"),
+                    Value::Text(kProviderLocalGuid, "41"));
+                status = m_Editor->Apply(providerEdit, providerPatch);
+            }
+            char current[32]{};
+            const bool installedProviderValue = status && providerPatch &&
+                providerLocal->GetStringValue(current, FALSE) > 0 &&
+                std::strcmp(current, "41") == 0;
+            const Status restored = providerPatch
+                ? m_Editor->Close(providerPatch) : Status{};
+            std::memset(current, 0, sizeof(current));
+            const bool restoredProviderValue = restored && !providerPatch &&
+                providerLocal->GetStringValue(current, FALSE) > 0 &&
+                std::strcmp(current, "7") == 0;
+            if (!installedProviderValue || !restoredProviderValue) {
+                std::string applyMessage = status.Message;
+                std::replace(applyMessage.begin(), applyMessage.end(), ' ', '_');
+                std::ostringstream detail;
+                detail << "relations-provider-local"
+                       << "-apply-" << static_cast<unsigned>(status.Code)
+                       << '-' << applyMessage
+                       << "-close-" << static_cast<unsigned>(restored.Code)
+                       << "-installed-" << installedProviderValue
+                       << "-value-" << current;
+                Fail(detail.str().c_str());
+            }
+            passed = passed && installedProviderValue &&
+                restoredProviderValue;
+        }
+
         if (!passed)
             Fail("relations-revert-conflict");
         m_RelationsPassed = passed;
@@ -2717,6 +2856,14 @@ private:
             (void) graph->RemoveSubBehavior(node);
         if (node)
             m_Context->DestroyObject(node);
+        if (providerNode) {
+            if (graph)
+                (void) graph->RemoveSubBehavior(providerNode);
+            m_Context->DestroyObject(providerNode);
+        }
+        if (providerTypeRegistered)
+            (void) m_Context->GetParameterManager()->UnRegisterParameterType(
+                kProviderLocalGuid);
         if (graph)
             m_Context->DestroyObject(graph);
         if (baseline)
@@ -2856,7 +3003,7 @@ private:
                 shutdown.ActiveOutputs[0] == 1 &&
                 remainingReadable && remaining == nullptr;
         } else {
-            Spec cancel = PhysicsForceWithMagnitude(nullptr, 0.0f);
+            BlockSpec cancel = PhysicsForceWithMagnitude(nullptr, 0.0f);
             m_PhysicsForceCancelled = static_cast<bool>(
                 m_Runtime.Reconfigure(m_PhysicsForceInstance, cancel));
         }
@@ -3221,7 +3368,7 @@ private:
         auto makeSpec = [&]() {
             const int setting = 42;
             const int source = 9;
-            Spec spec(BML_LIFECYCLE_FIXTURE_GUID);
+            BlockSpec spec(BML_LIFECYCLE_FIXTURE_GUID);
             spec.Setting(Slot::Named(SlotKind::Setting, "Value", CKPGUID_INT),
                          Value::From(CKPGUID_INT, setting))
                 .Input(Slot::Named(SlotKind::InputParameter, "Source", CKPGUID_INT),
@@ -3446,7 +3593,7 @@ private:
         return display;
     }
 
-    Spec RuntimeText(CK2dEntity *display, const char *text) const {
+    BlockSpec RuntimeText(CK2dEntity *display, const char *text) const {
         Blocks::Text2D::Options options;
         options.Target = display;
         options.FontIndex = m_VisualFont;
@@ -3454,9 +3601,7 @@ private:
         options.Alignment = 5;
         options.Margin = VxRect(8.0f, 8.0f, 8.0f, 8.0f);
         options.Flags = 1;
-        Spec spec = Blocks::Text2D::Make(options);
-        spec.Frames(FrameRetention::EachFrame(4));
-        return spec;
+        return Blocks::Text2D::Make(options);
     }
 
     static bool FirstExecution(const RunResult &run) {
@@ -3508,22 +3653,21 @@ private:
         m_VisualTaskProbe.CompleteAfter = 2;
         m_VisualPulseProbe.CompleteAfter = 2;
         auto makeProbe = [](CountedExecutionProbe &probe) {
-            Spec spec = HookBlock::Make(
-                ProbeCountedExecution, &probe, 1, 1);
-            spec.Frames(FrameRetention::EachFrame(4));
-            return spec;
+            return HookBlock::Make(ProbeCountedExecution, &probe, 1, 1);
         };
 
         CallResult call = WithContextCheck("runtime-visual-call-context", [&] {
             return m_Runtime.Call(
                 m_Owner, makeProbe(m_VisualCallProbe),
-                Slot::At(SlotKind::Input, 0));
+                Slot::At(SlotKind::Input, 0), nullptr,
+                FrameRetention::EachFrame(4));
         });
         const bool callPassed = call && FirstExecution(call.Run);
         m_VisualCall = std::move(call.Handle);
 
         CreateResult task = m_Runtime.Instantiate(
-            m_Owner, makeProbe(m_VisualTaskProbe));
+            m_Owner, makeProbe(m_VisualTaskProbe), nullptr,
+            FrameRetention::EachFrame(4));
         m_VisualTask = std::move(task.Handle);
         RunResult started = task
             ? WithContextCheck("runtime-visual-start-context", [&] {
@@ -3534,7 +3678,8 @@ private:
         const bool startPassed = task && FirstExecution(started);
 
         CreateResult instance = m_Runtime.Instantiate(
-            m_Owner, makeProbe(m_VisualPulseProbe));
+            m_Owner, makeProbe(m_VisualPulseProbe), nullptr,
+            FrameRetention::EachFrame(4));
         m_VisualPulse = std::move(instance.Handle);
         RunResult pulsed = instance
             ? WithContextCheck("runtime-visual-pulse-context", [&] {
@@ -3783,21 +3928,7 @@ private:
     Instance m_RecursivePumpInstance;
     Instance m_ReentrantReleaseInstance;
     Instance m_SelfDeleteInstance;
-    Instance m_OperationInstance;
-    Instance m_ConsumerInstance;
-    std::unique_ptr<Runtime> m_ClosingRuntime;
-    Instance m_ClosingProducerInstance;
-    Instance m_ClosingConsumerInstance;
     CK_ID m_ReentrantReleaseId = 0;
-    CKGUID m_Addition = CKGUID();
-    CKParameter *m_OperationOutput = nullptr;
-    CKParameterIn *m_ConsumerMagnitude = nullptr;
-    CK_ID m_OperationId = 0;
-    CK_ID m_OperationProducerId = 0;
-    CKParameter *m_ClosingOutput = nullptr;
-    CKParameterIn *m_ClosingConsumerMagnitude = nullptr;
-    CK_ID m_ClosingOperationId = 0;
-    CK_ID m_ClosingProducerId = 0;
     CKBehavior *m_Graph = nullptr;
     CKBehaviorLink *m_GraphEntryLink = nullptr;
     CKBehaviorLink *m_GraphImmediateLink = nullptr;

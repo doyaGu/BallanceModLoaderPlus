@@ -1,8 +1,5 @@
-// Exercises the published Patch, Plan, and Hook surface the way a Mod author would:
-// only BML/Behavior.hpp, no private Behavior headers. The one test affordance
-// is ObserveScript, which puts a script this probe created itself into the
-// Plans world; the game feeds real scripts in the same way when it loads them.
-#include "Api/BehaviorTestApi.h"
+// Exercises the published Script, Patch, Plan, and Hook surface the way a Mod
+// author would: only BML/Behavior.hpp, with no private Behavior API.
 #include "BehaviorLifecycleFixtureApi.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -82,15 +79,6 @@ public:
 
     void OnLoad() override {
         BML::PlayerTest::ProbeReport::Reset();
-        const void *found = nullptr;
-        if (BML_GetInterface(BML_BEHAVIOR_TEST_INTERFACE_ID,
-                             BML_BEHAVIOR_TEST_INTERFACE_MAJOR,
-                             &found) != BML_OK) {
-            Finish(false, "test-interface");
-            return;
-        }
-        m_Test = static_cast<const BML_BehaviorTestInterface *>(found);
-
         auto session = BML::Behavior::Session::Open();
         if (!session) {
             Finish(false, "session");
@@ -102,9 +90,10 @@ public:
     void OnStartLevel() override { m_LevelStarted = true; }
 
     void OnProcess() override {
-        if (m_Done || !m_LevelStarted || !m_Test ||
+        if (m_Done || !m_LevelStarted ||
             (!m_Session && m_State != State::WaitPatchConflict &&
-             m_State != State::WaitPatchRetired))
+             m_State != State::WaitPatchRetired &&
+             m_State != State::WaitScriptClosed))
             return;
         ++m_Frame;
         switch (m_State) {
@@ -123,9 +112,14 @@ public:
         case State::WaitContinuationDone: WaitContinuationDone(); break;
         case State::WaitIdentityHook: WaitIdentityHook(); break;
         case State::WaitIdentityRestored: WaitIdentityRestored(); break;
+        case State::InstallReplacement: InstallReplacement(); break;
+        case State::CloseReplacement: CloseReplacement(); break;
+        case State::WaitReplacementRestored: WaitReplacementRestored(); break;
+        case State::WaitReplacementRemoved: WaitReplacementRemoved(); break;
         case State::ClosePatch: ClosePatch(); break;
         case State::WaitPatchConflict: WaitPatchConflict(); break;
         case State::WaitPatchRetired: WaitPatchRetired(); break;
+        case State::WaitScriptClosed: WaitScriptClosed(); break;
         }
     }
 
@@ -133,8 +127,11 @@ public:
         (void) m_Plan.Close();
         (void) m_SelfPlan.Close();
         (void) m_Patch.Close();
-        m_Session.Close();
+        (void) m_ReplacementPatch.Close();
+        if (m_ReplacementOriginal)
+            (void) m_ReplacementOriginal->Close();
         DestroyGraph();
+        m_Session.Close();
     }
 
 private:
@@ -154,9 +151,14 @@ private:
         WaitContinuationDone,
         WaitIdentityHook,
         WaitIdentityRestored,
+        InstallReplacement,
+        CloseReplacement,
+        WaitReplacementRestored,
+        WaitReplacementRemoved,
         ClosePatch,
         WaitPatchConflict,
         WaitPatchRetired,
+        WaitScriptClosed,
     };
 
     CKBehaviorLink *AddLink(CKBehaviorIO *source, CKBehaviorIO *sink) {
@@ -201,23 +203,87 @@ private:
             CKCID_3DOBJECT, const_cast<CKSTRING>("__BML_Public_Plan_Owner"),
             static_cast<CK_OBJECTCREATION_OPTIONS>(
                 CK_OBJECTCREATION_DYNAMIC | CK_OBJECTCREATION_ACTIVATE)));
-        m_Graph = CKBehavior::Cast(context->CreateObject(
-            CKCID_BEHAVIOR, const_cast<CKSTRING>(kScriptName),
-            CK_OBJECTCREATION_DYNAMIC));
-        if (!m_Owner || !m_Graph || level->AddObject(m_Owner) != CK_OK)
+        if (!m_Owner || level->AddObject(m_Owner) != CK_OK)
             return false;
         if (scene != level->GetLevelScene())
             (void) scene->AddObject(m_Owner);
         scene->Activate(m_Owner, TRUE);
 
-        m_Graph->UseGraph();
-        m_Graph->SetType(CKBEHAVIORTYPE_SCRIPT);
-        if (m_Graph->SetOwner(m_Owner, FALSE) != CK_OK ||
-            !m_Graph->CreateInput("Start") ||
-            !m_Graph->CreateOutput("Done") ||
-            m_Owner->AddScript(m_Graph) != CK_OK) {
+        const int scriptsBefore = m_Owner->GetScriptCount();
+        BML::Behavior::Edit rejectedBody;
+        (void) rejectedBody.Require("__BML_Missing_Initial_Node");
+        auto rejected = m_Session.CreateScript(
+            m_Owner, "__BML_Rejected_Script", rejectedBody);
+        if (rejected || m_Owner->GetScriptCount() != scriptsBefore)
             return false;
-        }
+        m_AtomicScriptPassed = true;
+
+        BML::Behavior::Edit shape;
+        const auto root = shape.Graph();
+        (void) shape.AppendIn(root, "Start");
+        (void) shape.AppendOut(root, "Done");
+        CKParameterManager *parameters = context->GetParameterManager();
+        const CKGUID addition = parameters
+            ? parameters->OperationNameToGuid(
+                  const_cast<CKSTRING>("Addition"))
+            : CKGUID();
+        if (!addition.IsValid())
+            return false;
+        const auto left = shape.AppendLocal(
+            root, "Left", CKPGUID_FLOAT);
+        const auto replacementSource = shape.AppendLocal(
+            root, "Replacement Source", CKPGUID_INT);
+        const auto sum = shape.AddOperation(
+            addition, CKPGUID_FLOAT, CKPGUID_FLOAT, CKPGUID_FLOAT);
+        shape.Bind(left, 2.0f)
+            .Bind(replacementSource, 23)
+            .Bind(sum.Input(0), left)
+            .Bind(sum.Input(1), 3.0f);
+        auto created = m_Session.CreateScript(
+            m_Owner, kScriptName, shape);
+        if (!created)
+            return false;
+        m_AuthoredScript = std::move(created).Value();
+        const auto createdInfo = m_AuthoredScript.Info();
+        auto authored = m_AuthoredScript.Inspect();
+        if (!createdInfo || createdInfo->State !=
+                BML::Behavior::ScriptState::Ready ||
+            createdInfo->Active || createdInfo->RequestedActive || !authored ||
+            !authored->Root().In("Start") || !authored->Root().Out("Done") ||
+            !authored->Root().Local("Left") ||
+            authored->Operations().size() != 1 ||
+            authored->Operations()[0].Function() != addition ||
+            authored->Operations()[0].Result() != CKPGUID_FLOAT ||
+            authored->Operations()[0].Input1() != CKPGUID_FLOAT ||
+            authored->Operations()[0].Input2() != CKPGUID_FLOAT)
+            return false;
+        m_ScriptDefined = true;
+        m_AuthoredRootId = static_cast<CK_ID>(authored->Root().Id());
+        m_Graph = CKBehavior::Cast(context->GetObject(m_AuthoredRootId));
+        m_ReplacementSource = m_Graph
+            ? m_Graph->GetLocalParameter(1) : nullptr;
+        if (!m_Graph || m_Graph->GetOwner() != m_Owner ||
+            !m_ReplacementSource ||
+            m_Graph->GetType() != CKBEHAVIORTYPE_SCRIPT ||
+            !m_Graph->IsInScene(scene) || scene->IsObjectActive(m_Graph))
+            return false;
+        CKParameterOperation *nativeOperation =
+            m_Graph->GetParameterOperationCount() == 1
+                ? m_Graph->GetParameterOperation(0) : nullptr;
+        float operationResult = 0.0f;
+        const CKERROR operationError =
+            nativeOperation && nativeOperation->GetOutParameter()
+                ? nativeOperation->GetOutParameter()->GetValue(
+                      &operationResult, TRUE)
+                : CKERR_INVALIDOBJECT;
+        if (!nativeOperation ||
+            nativeOperation->GetOperationGuid() != addition ||
+            !nativeOperation->GetOutParameter() ||
+            operationError != CK_OK || operationResult != 5.0f)
+            return false;
+        m_AuthoredOperationId = nativeOperation->GetID();
+        m_OperationPassed = true;
+
         if (!AddNode(kSourceName, m_Source) || !AddNode(kSinkName, m_Sink))
             return false;
         m_Entry = AddLink(m_Graph->GetInput(0), m_Source->GetInput(0));
@@ -234,32 +300,46 @@ private:
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
         if (!context)
             return;
-        if (m_Graph && m_Owner)
-            (void) m_Owner->RemoveScript(m_Graph->GetID());
-        if (m_Graph)
-            context->DestroyObject(m_Graph);
+        if (m_AuthoredScript)
+            (void) m_AuthoredScript.Close();
+        const bool rootLive = m_AuthoredRootId != 0 &&
+            context->GetObject(m_AuthoredRootId) != nullptr;
         m_Graph = nullptr;
         m_Source = nullptr;
         m_Sink = nullptr;
         m_Entry = nullptr;
         m_Anchor = nullptr;
         m_Exit = nullptr;
+        m_ReplacementSource = nullptr;
+        m_ReplacementOriginalNode = nullptr;
+        m_ReplacementInstalledNode = nullptr;
+        m_ReplacementEntry = nullptr;
+        m_ReplacementExit = nullptr;
         m_AnchorId = 0;
-        if (m_Owner)
+        m_ReplacementOriginalId = 0;
+        m_ReplacementInstalledId = 0;
+        m_ReplacementEntryId = 0;
+        m_ReplacementExitId = 0;
+        if (m_Owner && !rootLive)
             context->DestroyObject(m_Owner);
-        m_Owner = nullptr;
+        if (!rootLive) {
+            m_Owner = nullptr;
+            m_AuthoredRootId = 0;
+            m_AuthoredOperationId = 0;
+        }
     }
 
-    void RunGraph() {
-        CKScene *scene = m_BML && m_BML->GetCKContext()
-            ? m_BML->GetCKContext()->GetCurrentScene() : nullptr;
-        if (!scene || !m_Graph)
-            return;
+    bool RunGraph() {
+        if (!m_Graph || !m_AuthoredScript)
+            return false;
         m_Graph->ActivateInput(0, FALSE);
         m_Graph->ActivateOutput(0, FALSE);
-        scene->Activate(m_Graph, TRUE);
+        const auto activation = m_AuthoredScript.Activate(true);
+        if (!activation || !activation->RequestedActive)
+            return false;
         m_Graph->ActivateInput(0, TRUE);
         m_WaitUntil = m_Frame + 30;
+        return true;
     }
 
     bool Installed() const {
@@ -328,11 +408,6 @@ private:
             DestroyGraph();
             return;
         }
-        if (m_Test->ObserveScript(m_Session.Handle(), m_Graph) != BML_OK) {
-            Finish(false, "observe");
-            return;
-        }
-
         auto counters = m_Counters;
         Hook tap([counters]() {
             ++counters->Taps;
@@ -409,7 +484,10 @@ private:
                 return;
             }
             m_InstallPassed = true;
-            RunGraph();
+            if (!RunGraph()) {
+                Finish(false, "script-activate");
+                return;
+            }
             m_State = State::WaitHooks;
             return;
         }
@@ -522,7 +600,10 @@ private:
         const auto info = m_SelfPlan.Info();
         if (info && info->Installed() && info->Matches == 1 &&
             info->Installations == 1) {
-            RunGraph();
+            if (!RunGraph()) {
+                Finish(false, "script-reset");
+                return;
+            }
             m_State = State::WaitSelfRetired;
             return;
         }
@@ -572,6 +653,12 @@ private:
             return;
         }
         m_Parked = std::move(parked).Value();
+        if (!ExistingBlockEdits() || !FailedExistingBlockEdit()) {
+            (void) m_Parked->Close();
+            m_Parked.reset();
+            Finish(false, "existing-block-edits");
+            return;
+        }
         const bool resident =
             m_Graph->GetSubBehaviorCount() == m_AttachBlocks + 1 &&
             m_Graph->GetSubBehaviorLinkCount() == m_AttachLinks;
@@ -621,11 +708,12 @@ private:
 
     struct LifecycleFixtureExports {
         BMLLifecycleFixtureResetTraceFn ResetTrace = nullptr;
+        BMLLifecycleFixtureSetModeFn SetMode = nullptr;
         BMLLifecycleFixtureSetContinuationFn SetContinuation = nullptr;
         BMLLifecycleFixtureReadTraceFn ReadTrace = nullptr;
 
         explicit operator bool() const {
-            return ResetTrace && SetContinuation && ReadTrace;
+            return ResetTrace && SetMode && SetContinuation && ReadTrace;
         }
     };
 
@@ -636,12 +724,154 @@ private:
             return exports;
         exports.ResetTrace = reinterpret_cast<BMLLifecycleFixtureResetTraceFn>(
             ::GetProcAddress(module, "BMLLifecycleFixtureResetTrace"));
+        exports.SetMode = reinterpret_cast<BMLLifecycleFixtureSetModeFn>(
+            ::GetProcAddress(module, "BMLLifecycleFixtureSetMode"));
         exports.SetContinuation =
             reinterpret_cast<BMLLifecycleFixtureSetContinuationFn>(
                 ::GetProcAddress(module, "BMLLifecycleFixtureSetContinuation"));
         exports.ReadTrace = reinterpret_cast<BMLLifecycleFixtureReadTraceFn>(
             ::GetProcAddress(module, "BMLLifecycleFixtureReadTrace"));
         return exports;
+    }
+
+    static const BMLLifecycleFixtureEvent *FindFixtureEvent(
+        const BMLLifecycleFixtureTrace &trace, std::uint32_t behavior,
+        CKDWORD message, std::uint32_t occurrence) {
+        const std::uint32_t capacity = static_cast<std::uint32_t>(
+            std::size(trace.Events));
+        const std::uint32_t count = (std::min)(trace.EventCount, capacity);
+        for (std::uint32_t index = 0; index < count; ++index) {
+            const BMLLifecycleFixtureEvent &event = trace.Events[index];
+            if (event.BehaviorId != behavior || event.Message != message)
+                continue;
+            if (occurrence-- == 0)
+                return &event;
+        }
+        return nullptr;
+    }
+
+    bool ExistingBlockEdits() {
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        auto graph = m_Session.Inspect(m_Graph);
+        if (!fixture || !graph)
+            return false;
+        const auto found = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [](const BML::Behavior::Node &node) {
+                return node.Prototype() ==
+                    CKGUID(BML_LIFECYCLE_FIXTURE_GUID);
+            });
+        if (found == graph->Nodes().end())
+            return false;
+        const std::uint32_t behavior = static_cast<std::uint32_t>(found->Id());
+
+        struct RestoreMode {
+            BMLLifecycleFixtureSetModeFn Set = nullptr;
+            ~RestoreMode() {
+                if (Set)
+                    Set(BMLLifecycleFixtureMode::Normal);
+            }
+        } restoreMode{fixture.SetMode};
+        fixture.ResetTrace();
+        fixture.SetMode(BMLLifecycleFixtureMode::NormalizeOnEdited);
+        BML::Behavior::Edit data;
+        const auto existing = data.Use(*found);
+        const auto value = data.AppendPin(existing, "Patch Value", CKPGUID_INT);
+        data.Bind(value, 83);
+        data.Bind(existing.Local("State"), 83);
+        auto applied = graph->Apply("player-existing-data", data);
+        if (!applied)
+            return false;
+        BMLLifecycleFixtureTrace trace;
+        if (!fixture.ReadTrace(&trace))
+            return false;
+        const BMLLifecycleFixtureEvent *installed = FindFixtureEvent(
+            trace, behavior, CKM_BEHAVIOREDITED, 0);
+        const bool installVisible = trace.EditedCount == 1 && installed &&
+            installed->OwnerVisible && installed->ParentVisible &&
+            !installed->LinkVisible && installed->InputCount == 1 &&
+            installed->OutputCount == 1 && installed->PinCount == 2 &&
+            installed->PoutCount == 0 && installed->LocalCount == 2 &&
+            installed->LocalValue == 83 && installed->BoundSourceCount == 2;
+        const auto closed = applied->Close();
+        if (!installVisible || !closed || !fixture.ReadTrace(&trace))
+            return false;
+        const BMLLifecycleFixtureEvent *restored = FindFixtureEvent(
+            trace, behavior, CKM_BEHAVIOREDITED, 1);
+        const bool restoreVisible = trace.EditedCount == 2 && restored &&
+            restored->OwnerVisible && restored->ParentVisible &&
+            !restored->LinkVisible && restored->InputCount == 1 &&
+            restored->OutputCount == 1 && restored->PinCount == 1 &&
+            restored->PoutCount == 0 && restored->LocalCount == 2 &&
+            restored->LocalValue == 5 && restored->BoundSourceCount == 1;
+        if (!restoreVisible)
+            return false;
+
+        fixture.SetMode(BMLLifecycleFixtureMode::Normal);
+
+        graph = m_Session.Inspect(m_Graph);
+        if (!graph)
+            return false;
+        const auto current = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [behavior](const BML::Behavior::Node &node) {
+                return node.Id() == behavior;
+            });
+        if (current == graph->Nodes().end())
+            return false;
+
+        fixture.ResetTrace();
+        BML::Behavior::Edit flow;
+        const auto flowed = flow.Use(*current);
+        flow.Flow(flow.Graph().In(0), flowed.In(0));
+        auto linked = graph->Apply("player-existing-flow", flow);
+        if (!linked || !fixture.ReadTrace(&trace) || trace.EditedCount != 0)
+            return false;
+        const auto unlinked = linked->Close();
+        return unlinked && fixture.ReadTrace(&trace) && trace.EditedCount == 0;
+    }
+
+    bool FailedExistingBlockEdit() {
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        auto graph = m_Session.Inspect(m_Graph);
+        if (!fixture || !graph)
+            return false;
+        const auto found = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [](const BML::Behavior::Node &node) {
+                return node.Prototype() ==
+                    CKGUID(BML_LIFECYCLE_FIXTURE_GUID);
+            });
+        if (found == graph->Nodes().end())
+            return false;
+        const std::uint32_t behavior = static_cast<std::uint32_t>(found->Id());
+        struct RestoreMode {
+            BMLLifecycleFixtureSetModeFn Set = nullptr;
+            ~RestoreMode() {
+                if (Set)
+                    Set(BMLLifecycleFixtureMode::Normal);
+            }
+        } restoreMode{fixture.SetMode};
+
+        fixture.ResetTrace();
+        fixture.SetMode(BMLLifecycleFixtureMode::FailFirstEdited);
+        BML::Behavior::Edit data;
+        const auto existing = data.Use(*found);
+        data.Bind(existing.Local("State"), 83);
+        const auto applied = graph->Apply("player-failed-existing-data", data);
+        if (applied)
+            return false;
+
+        BMLLifecycleFixtureTrace trace;
+        if (!fixture.ReadTrace(&trace) || trace.EditedCount != 2)
+            return false;
+        const BMLLifecycleFixtureEvent *candidate = FindFixtureEvent(
+            trace, behavior, CKM_BEHAVIOREDITED, 0);
+        const BMLLifecycleFixtureEvent *restored = FindFixtureEvent(
+            trace, behavior, CKM_BEHAVIOREDITED, 1);
+        return candidate && candidate->LocalCount == 2 &&
+            candidate->LocalValue == 83 && restored &&
+            restored->LocalCount == 2 && restored->LocalValue == 5;
     }
 
     // Keeps the parent script executing every frame, the worst case for a
@@ -833,12 +1063,20 @@ private:
         const auto amount = edit.AppendPin(block, "Amount", CKPGUID_FLOAT);
         const auto mode = edit.AppendPin(block, "Mode", CKPGUID_INT);
         (void) edit.AppendPout(block, "Report", CKPGUID_INT);
+        const auto scratch = edit.AppendLocal(block, "Scratch", CKPGUID_INT);
         edit.Bind(amount, 2.5f);
         edit.Bind(mode, FacadeMode::On);
+        edit.Bind(scratch, 17);
         edit.Before(anchor, interposed);
         edit.Redirect(anchor, block.In());
         edit.Flow(block.Out(), sink.In());
 
+        const LifecycleFixtureExports fixtureApi = ResolveLifecycleFixture();
+        if (!fixtureApi) {
+            Finish(false, "identity-fixture-exports");
+            return;
+        }
+        fixtureApi.ResetTrace();
         auto applied = opened->Apply("player-public-identity", edit);
         if (!applied) {
             GetLogger()->Error(
@@ -857,11 +1095,45 @@ private:
             Finish(false, "identity-resolve");
             return;
         }
+        const auto installed = m_Session.Inspect(m_Graph);
+        if (!installed) {
+            Finish(false, "identity-lifecycle-view");
+            return;
+        }
+        const auto installedBlock = std::find_if(
+            installed->Nodes().begin(), installed->Nodes().end(),
+            [&](const BML::Behavior::Node &node) {
+                const BML_ObjectRef object = node.Object();
+                return object.Domain == blockRef->Domain &&
+                    object.Slot == blockRef->Slot &&
+                    object.Generation == blockRef->Generation;
+            });
+        BMLLifecycleFixtureTrace trace;
+        const bool traced = installedBlock != installed->Nodes().end() &&
+            fixtureApi.ReadTrace(&trace);
+        const BMLLifecycleFixtureEvent *edited = traced
+            ? FindFixtureEvent(trace,
+                               static_cast<std::uint32_t>(installedBlock->Id()),
+                               CKM_BEHAVIOREDITED, 0)
+            : nullptr;
+        if (!edited || trace.CreateCount != 1 || trace.AttachCount != 1 ||
+            trace.SettingsEditedCount != 1 || trace.EditedCount != 1 ||
+            !edited->OwnerVisible || !edited->ParentVisible ||
+            edited->LinkVisible || edited->InputCount != 1 ||
+            edited->OutputCount != 1 || edited->PinCount != 3 ||
+            edited->PoutCount != 1 || edited->LocalCount != 3 ||
+            edited->BoundSourceCount != 3) {
+            Finish(false, "identity-lifecycle-order");
+            return;
+        }
         if (!IdentityViews(blockRef.Value())) {
             Finish(false, "identity-views");
             return;
         }
-        RunGraph();
+        if (!RunGraph()) {
+            Finish(false, "script-restart");
+            return;
+        }
         m_State = State::WaitIdentityHook;
     }
 
@@ -908,13 +1180,16 @@ private:
         const auto amount = view->Read(added->Pin("Amount"));
         const auto mode = view->Read(added->Pin("Mode"));
         const auto value = view->Read(added->Setting("Value"));
-        const bool deduced = amount && mode && value &&
+        const auto scratch = view->Read(added->Local("Scratch"));
+        const bool deduced = amount && mode && value && scratch &&
             std::holds_alternative<float>(amount->Data) &&
             std::get<float>(amount->Data) == 2.5f &&
             std::holds_alternative<std::int32_t>(mode->Data) &&
             std::get<std::int32_t>(mode->Data) == 3 &&
             std::holds_alternative<std::int32_t>(value->Data) &&
-            std::get<std::int32_t>(value->Data) == 77;
+            std::get<std::int32_t>(value->Data) == 77 &&
+            std::holds_alternative<std::int32_t>(scratch->Data) &&
+            std::get<std::int32_t>(scratch->Data) == 17;
         if (!deduced) {
             GetLogger()->Error(
                 "Behavior identity literals wrong: amount=%d mode=%d value=%d",
@@ -962,7 +1237,280 @@ private:
             return;
         }
         m_IdentityPassed = true;
-        ApplyPatch();
+        m_State = State::InstallReplacement;
+    }
+
+    static bool HasDestination(CKParameterOut *source,
+                               CKParameter *destination) {
+        if (!source || !destination)
+            return false;
+        for (int index = 0; index < source->GetDestinationCount(); ++index)
+            if (source->GetDestination(index) == destination)
+                return true;
+        return false;
+    }
+
+    static bool HasNode(CKBehavior *graph, CKBehavior *node) {
+        if (!graph || !node)
+            return false;
+        for (int index = 0; index < graph->GetSubBehaviorCount(); ++index)
+            if (graph->GetSubBehavior(index) == node)
+                return true;
+        return false;
+    }
+
+    void InstallReplacement() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        const auto graphRef = m_Session.Reference(m_Graph);
+        if (!context || !m_Graph || !m_ReplacementSource || !graphRef) {
+            Finish(false, "replacement-context");
+            return;
+        }
+
+        auto original = m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID))
+            .Settings({{"Value", 19}})
+            .SpawnIn(graphRef.Value());
+        if (!original) {
+            Finish(false, "replacement-original");
+            return;
+        }
+        m_ReplacementOriginal = std::move(original).Value();
+        const auto originalView = m_ReplacementOriginal->Inspect(
+            BML::Behavior::View::Live);
+        m_ReplacementOriginalNode = originalView
+            ? CKBehavior::Cast(context->GetObject(
+                  static_cast<CK_ID>(originalView->Root().Id())))
+            : nullptr;
+        if (!m_ReplacementOriginalNode ||
+            m_ReplacementOriginalNode->GetParent() != m_Graph) {
+            Finish(false, "replacement-original-view");
+            return;
+        }
+        m_ReplacementOriginalId = m_ReplacementOriginalNode->GetID();
+        m_ReplacementOriginalNode->SetName("Public Replacement Original");
+        m_ReplacementOriginalNode->SetPriority(271);
+        CKParameterIn *originalPin =
+            m_ReplacementOriginalNode->GetInputParameter(0);
+        CKParameterOut *originalPout =
+            m_ReplacementOriginalNode->CreateOutputParameter(
+                const_cast<CKSTRING>("Result"), CKPGUID_INT);
+        m_ReplacementEntry = AddLink(
+            m_Source->GetOutput(0),
+            m_ReplacementOriginalNode->GetInput(0));
+        m_ReplacementExit = AddLink(
+            m_ReplacementOriginalNode->GetOutput(0),
+            m_Sink->GetInput(0));
+        if (!originalPin || !originalPout || !m_ReplacementEntry ||
+            !m_ReplacementExit ||
+            originalPin->SetDirectSource(m_ReplacementSource) != CK_OK ||
+            originalPout->AddDestination(m_ReplacementSource, TRUE) != CK_OK) {
+            Finish(false, "replacement-relations");
+            return;
+        }
+        m_ReplacementEntryId = m_ReplacementEntry->GetID();
+        m_ReplacementExitId = m_ReplacementExit->GetID();
+
+        const auto graph = m_Session.Inspect(m_Graph);
+        if (!graph) {
+            Finish(false, "replacement-inspect");
+            return;
+        }
+        const auto target = std::find_if(
+            graph->Nodes().begin(), graph->Nodes().end(),
+            [&](const BML::Behavior::Node &node) {
+                return node.Id() ==
+                    static_cast<std::uint32_t>(m_ReplacementOriginalId);
+            });
+        if (target == graph->Nodes().end()) {
+            Finish(false, "replacement-target");
+            return;
+        }
+
+        BML::Behavior::Edit edit;
+        const auto existing = edit.Use(*target);
+        auto block = m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID))
+            .Settings({{"Value", 31}});
+        const auto replacement = edit.Replace(existing, block);
+        (void) edit.AppendPout(replacement, "Result", CKPGUID_INT);
+        auto applied = graph->Apply("player-node-replacement", edit);
+        if (!applied) {
+            GetLogger()->Error(
+                "Behavior replacement failed: code=%d error=%u phase=%u detail=%s",
+                applied.Code(),
+                static_cast<unsigned>(applied.GetStatus().Error),
+                static_cast<unsigned>(applied.GetStatus().Phase),
+                applied.GetStatus().Message.c_str());
+            Finish(false, "replacement-apply");
+            return;
+        }
+        m_ReplacementPatch = std::move(applied).Value();
+        const auto parked = m_ReplacementPatch.Resolve(existing);
+        const auto installed = m_ReplacementPatch.Resolve(replacement);
+        const auto live = m_Session.Inspect(m_Graph);
+        if (parked || !installed || !live) {
+            Finish(false, "replacement-resolve");
+            return;
+        }
+        const BML_ObjectRef installedRef = installed.Value();
+        const auto installedNode = std::find_if(
+            live->Nodes().begin(), live->Nodes().end(),
+            [&](const BML::Behavior::Node &node) {
+                const BML_ObjectRef object = node.Object();
+                return object.Domain == installedRef.Domain &&
+                    object.Slot == installedRef.Slot &&
+                    object.Generation == installedRef.Generation;
+            });
+        m_ReplacementInstalledNode = installedNode != live->Nodes().end()
+            ? CKBehavior::Cast(context->GetObject(
+                  static_cast<CK_ID>(installedNode->Id())))
+            : nullptr;
+        m_ReplacementInstalledId = m_ReplacementInstalledNode
+            ? m_ReplacementInstalledNode->GetID() : 0;
+        CKParameterIn *installedPin = m_ReplacementInstalledNode
+            ? m_ReplacementInstalledNode->GetInputParameter(0) : nullptr;
+        CKParameterOut *installedPout = m_ReplacementInstalledNode
+            ? m_ReplacementInstalledNode->GetOutputParameter(0) : nullptr;
+        const bool installedCorrectly = m_ReplacementInstalledNode &&
+            !HasNode(m_Graph, m_ReplacementOriginalNode) &&
+            m_ReplacementOriginalNode->GetOwner() == m_Graph->GetOwner() &&
+            m_ReplacementInstalledNode->GetParent() == m_Graph &&
+            m_ReplacementInstalledNode->GetOwner() == m_Graph->GetOwner() &&
+            std::string_view(m_ReplacementInstalledNode->GetName()) ==
+                "Public Replacement Original" &&
+            m_ReplacementInstalledNode->GetPriority() == 271 &&
+            m_ReplacementEntry->GetID() == m_ReplacementEntryId &&
+            m_ReplacementExit->GetID() == m_ReplacementExitId &&
+            m_ReplacementEntry->GetOutBehaviorIO() ==
+                m_ReplacementInstalledNode->GetInput(0) &&
+            m_ReplacementExit->GetInBehaviorIO() ==
+                m_ReplacementInstalledNode->GetOutput(0) &&
+            installedPin &&
+            installedPin->GetDirectSource() == m_ReplacementSource &&
+            !HasDestination(originalPout, m_ReplacementSource) &&
+            HasDestination(installedPout, m_ReplacementSource);
+        if (!installedCorrectly) {
+            GetLogger()->Error(
+                "Behavior replacement shape: node=%s old_parked=%s old_owner=%s "
+                "new_parent=%s new_owner=%s name=%s priority=%d entry=%s "
+                "exit=%s pin=%s old_pout=%s new_pout=%s",
+                m_ReplacementInstalledNode ? "true" : "false",
+                !HasNode(m_Graph, m_ReplacementOriginalNode)
+                    ? "true" : "false",
+                m_ReplacementOriginalNode->GetOwner() == m_Graph->GetOwner()
+                    ? "true" : "false",
+                m_ReplacementInstalledNode &&
+                        m_ReplacementInstalledNode->GetParent() == m_Graph
+                    ? "true" : "false",
+                m_ReplacementInstalledNode &&
+                        m_ReplacementInstalledNode->GetOwner() ==
+                            m_Graph->GetOwner()
+                    ? "true" : "false",
+                m_ReplacementInstalledNode &&
+                        m_ReplacementInstalledNode->GetName()
+                    ? m_ReplacementInstalledNode->GetName() : "<null>",
+                m_ReplacementInstalledNode
+                    ? m_ReplacementInstalledNode->GetPriority() : -1,
+                m_ReplacementInstalledNode &&
+                        m_ReplacementEntry->GetOutBehaviorIO() ==
+                            m_ReplacementInstalledNode->GetInput(0)
+                    ? "true" : "false",
+                m_ReplacementInstalledNode &&
+                        m_ReplacementExit->GetInBehaviorIO() ==
+                            m_ReplacementInstalledNode->GetOutput(0)
+                    ? "true" : "false",
+                installedPin &&
+                        installedPin->GetDirectSource() == m_ReplacementSource
+                    ? "true" : "false",
+                HasDestination(originalPout, m_ReplacementSource)
+                    ? "true" : "false",
+                HasDestination(installedPout, m_ReplacementSource)
+                    ? "true" : "false");
+            Finish(false, "replacement-installed-shape");
+            return;
+        }
+        m_State = State::CloseReplacement;
+    }
+
+    void CloseReplacement() {
+        const auto closed = m_ReplacementPatch.Close();
+        if (!closed) {
+            Finish(false, "replacement-close-request");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitReplacementRestored;
+    }
+
+    void WaitReplacementRestored() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        CKParameterIn *originalPin = m_ReplacementOriginalNode
+            ? m_ReplacementOriginalNode->GetInputParameter(0) : nullptr;
+        CKParameterOut *originalPout = m_ReplacementOriginalNode
+            ? m_ReplacementOriginalNode->GetOutputParameter(0) : nullptr;
+        const bool restored = context && m_Graph &&
+            m_ReplacementOriginalNode &&
+            HasNode(m_Graph, m_ReplacementOriginalNode) &&
+            (!m_ReplacementInstalledId ||
+             !context->GetObject(m_ReplacementInstalledId)) &&
+            m_ReplacementEntry &&
+            m_ReplacementEntry->GetID() == m_ReplacementEntryId &&
+            m_ReplacementEntry->GetOutBehaviorIO() ==
+                m_ReplacementOriginalNode->GetInput(0) &&
+            m_ReplacementExit &&
+            m_ReplacementExit->GetID() == m_ReplacementExitId &&
+            m_ReplacementExit->GetInBehaviorIO() ==
+                m_ReplacementOriginalNode->GetOutput(0) &&
+            originalPin &&
+            originalPin->GetDirectSource() == m_ReplacementSource &&
+            HasDestination(originalPout, m_ReplacementSource);
+        if (!restored) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "replacement-restore");
+            return;
+        }
+        const auto closed = m_ReplacementPatch.Close();
+        if (!closed || closed.Value() != BML::Behavior::CloseState::Closed ||
+            m_ReplacementPatch) {
+            Finish(false, "replacement-close");
+            return;
+        }
+
+        m_Graph->RemoveSubBehaviorLink(m_ReplacementEntry);
+        m_Graph->RemoveSubBehaviorLink(m_ReplacementExit);
+        context->DestroyObject(m_ReplacementEntry);
+        context->DestroyObject(m_ReplacementExit);
+        m_ReplacementEntry = nullptr;
+        m_ReplacementExit = nullptr;
+        if (originalPout)
+            originalPout->RemoveDestination(m_ReplacementSource);
+        const auto originalClosed = m_ReplacementOriginal->Close();
+        if (!originalClosed) {
+            Finish(false, "replacement-original-close");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitReplacementRemoved;
+    }
+
+    void WaitReplacementRemoved() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        if (context &&
+            (!m_ReplacementOriginalId ||
+             !context->GetObject(m_ReplacementOriginalId)) && Restored()) {
+            const auto closed = m_ReplacementOriginal->Close();
+            if (!closed ||
+                closed.Value() != BML::Behavior::CloseState::Closed) {
+                Finish(false, "replacement-original-retired");
+                return;
+            }
+            m_ReplacementOriginal.reset();
+            m_ReplacementOriginalNode = nullptr;
+            m_ReplacementPassed = true;
+            ApplyPatch();
+            return;
+        }
+        if (m_Frame > m_WaitUntil)
+            Finish(false, "replacement-original-removal");
     }
 
     bool RejectsMalformedPort(BML_ObjectRef graph) {
@@ -1102,12 +1650,42 @@ private:
     void WaitPatchRetired() {
         if (Restored()) {
             m_PatchClosePassed = true;
-            DestroyGraph();
-            Finish(true, "done");
+            const auto closed = m_AuthoredScript.Close();
+            if (!closed || closed.Value() !=
+                    BML::Behavior::CloseState::Closing) {
+                Finish(false, "script-close-request");
+                return;
+            }
+            m_WaitUntil = m_Frame + 30;
+            m_State = State::WaitScriptClosed;
             return;
         }
         if (m_Frame > m_WaitUntil)
             Finish(false, "patch-retirement");
+    }
+
+    void WaitScriptClosed() {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        if (!context) {
+            Finish(false, "script-close-context");
+            return;
+        }
+        if ((m_AuthoredRootId && context->GetObject(m_AuthoredRootId)) ||
+            (m_AuthoredOperationId &&
+             context->GetObject(m_AuthoredOperationId))) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "script-close");
+            return;
+        }
+        const auto closed = m_AuthoredScript.Close();
+        if (!closed || closed.Value() != BML::Behavior::CloseState::Closed ||
+            m_AuthoredScript) {
+            Finish(false, "script-close-handle");
+            return;
+        }
+        m_ScriptPassed = true;
+        DestroyGraph();
+        Finish(true, "done");
     }
 
     void Finish(bool passed, const char *reason) {
@@ -1117,6 +1695,9 @@ private:
         if (!passed) {
             (void) m_Patch.Close();
             (void) m_IdentityPatch.Close();
+            (void) m_ReplacementPatch.Close();
+            if (m_ReplacementOriginal)
+                (void) m_ReplacementOriginal->Close();
             if (m_Parked)
                 (void) m_Parked->Close();
             (void) m_Plan.Close();
@@ -1148,19 +1729,33 @@ private:
             passed ? "pass" : "fail", reason,
             m_PatchPassed ? "true" : "false",
             m_PatchClosePassed ? "true" : "false");
+        GetLogger()->Info(
+            "Behavior node replacement: status=%s",
+            m_ReplacementPassed ? "pass" : "fail");
+        GetLogger()->Info(
+            "Behavior authored script: status=%s atomic=%s create=%s edit=%s operation=%s activity=%s close=%s",
+            m_ScriptPassed ? "pass" : "fail",
+            m_AtomicScriptPassed ? "true" : "false",
+            m_AuthoredRootId || m_ScriptPassed ? "true" : "false",
+            m_ScriptDefined ? "true" : "false",
+            m_OperationPassed ? "true" : "false",
+            m_InstallPassed ? "true" : "false",
+            m_ScriptPassed ? "true" : "false");
         if (passed)
             BML::PlayerTest::ProbeReport::Pass(reason);
         else
             BML::PlayerTest::ProbeReport::Fail(reason);
     }
 
-    const BML_BehaviorTestInterface *m_Test = nullptr;
     BML::Behavior::Session m_Session;
+    BML::Behavior::Script m_AuthoredScript;
     BML::Behavior::Plan m_Plan;
     BML::Behavior::Plan m_SelfPlan;
     BML::Behavior::Patch m_Patch;
     BML::Behavior::Patch m_IdentityPatch;
+    BML::Behavior::Patch m_ReplacementPatch;
     std::optional<BML::Behavior::Instance> m_Parked;
+    std::optional<BML::Behavior::Instance> m_ReplacementOriginal;
     // What the Before callback recorded. The count returning to one proves the
     // Loader released the callback state the Patch owned.
     struct IdentityState {
@@ -1183,8 +1778,19 @@ private:
     CKBehaviorLink *m_Entry = nullptr;
     CKBehaviorLink *m_Anchor = nullptr;
     CKBehaviorLink *m_Exit = nullptr;
+    CKParameterLocal *m_ReplacementSource = nullptr;
+    CKBehavior *m_ReplacementOriginalNode = nullptr;
+    CKBehavior *m_ReplacementInstalledNode = nullptr;
+    CKBehaviorLink *m_ReplacementEntry = nullptr;
+    CKBehaviorLink *m_ReplacementExit = nullptr;
     CKBehaviorIO *m_PatchSink = nullptr;
     CK_ID m_AnchorId = 0;
+    CK_ID m_AuthoredRootId = 0;
+    CK_ID m_AuthoredOperationId = 0;
+    CK_ID m_ReplacementOriginalId = 0;
+    CK_ID m_ReplacementInstalledId = 0;
+    CK_ID m_ReplacementEntryId = 0;
+    CK_ID m_ReplacementExitId = 0;
     int m_AttachBlocks = 0;
     int m_AttachLinks = 0;
     bool m_ContinuationPassed = false;
@@ -1202,6 +1808,11 @@ private:
     bool m_IdentityPassed = false;
     bool m_PatchPassed = false;
     bool m_PatchClosePassed = false;
+    bool m_ReplacementPassed = false;
+    bool m_AtomicScriptPassed = false;
+    bool m_ScriptDefined = false;
+    bool m_OperationPassed = false;
+    bool m_ScriptPassed = false;
     bool m_Done = false;
 };
 

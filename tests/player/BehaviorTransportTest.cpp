@@ -95,6 +95,7 @@ struct BlockArguments {
     BML_BehaviorBinding Retry = Dto<BML_BehaviorBinding>();
     BML_BehaviorSettingStage Stage = Dto<BML_BehaviorSettingStage>();
     BML_BehaviorBlock Block = Dto<BML_BehaviorBlock>();
+    BML_BehaviorFramePolicy Frames = Dto<BML_BehaviorFramePolicy>();
 
     BlockArguments(bool retry, std::uint32_t retention,
                    std::uint32_t limit, std::uint64_t generation) {
@@ -111,10 +112,9 @@ struct BlockArguments {
         Block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
         Block.SettingStages = &Stage;
         Block.SettingStageCount = 1;
-        Block.Frames = Dto<BML_BehaviorFramePolicy>();
-        Block.Frames.Kind = retention;
-        Block.Frames.Limit = limit;
-        Block.Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
+        Frames.Kind = retention;
+        Frames.Limit = limit;
+        Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
         Block.PrototypeGeneration = generation;
     }
 };
@@ -124,6 +124,7 @@ struct EchoBlockArguments {
     BML_BehaviorBinding Retry = Dto<BML_BehaviorBinding>();
     BML_BehaviorSettingStage Stage = Dto<BML_BehaviorSettingStage>();
     BML_BehaviorBlock Block = Dto<BML_BehaviorBlock>();
+    BML_BehaviorFramePolicy Frames = Dto<BML_BehaviorFramePolicy>();
 
     explicit EchoBlockArguments(BML_ObjectRef object,
                                 std::uint64_t generation) {
@@ -186,10 +187,9 @@ struct EchoBlockArguments {
         Block.SettingStageCount = 1;
         Block.Pins = Pins.data();
         Block.PinCount = static_cast<std::uint32_t>(Pins.size());
-        Block.Frames = Dto<BML_BehaviorFramePolicy>();
-        Block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
-        Block.Frames.Limit = 64;
-        Block.Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
+        Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        Frames.Limit = 64;
+        Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
         Block.PrototypeGeneration = generation;
     }
 };
@@ -200,6 +200,7 @@ struct DynamicBlockArguments {
     std::array<BML_BehaviorSettingStage, 2> Stages{};
     BML_BehaviorBinding DynamicPin = Dto<BML_BehaviorBinding>();
     BML_BehaviorBlock Block = Dto<BML_BehaviorBlock>();
+    BML_BehaviorFramePolicy Frames = Dto<BML_BehaviorFramePolicy>();
 
     explicit DynamicBlockArguments(std::uint64_t generation) {
         Extended = Bind(Named("Extended Layout"),
@@ -226,10 +227,9 @@ struct DynamicBlockArguments {
         Block.SettingStageCount = static_cast<std::uint32_t>(Stages.size());
         Block.Pins = &DynamicPin;
         Block.PinCount = 1;
-        Block.Frames = Dto<BML_BehaviorFramePolicy>();
-        Block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
-        Block.Frames.Limit = 64;
-        Block.Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
+        Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        Frames.Limit = 64;
+        Frames.Flags = BML_BEHAVIOR_FRAME_POLICY_POUTS;
         Block.PrototypeGeneration = generation;
     }
 };
@@ -831,7 +831,8 @@ private:
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         const int result = m_Behavior->Call(
-            m_Session, {}, &arguments.Block, &input, &run, &info, &status);
+            m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+            &run, &info, &status);
         return result == BML_ERROR_INVALID_PARAMETER && !run &&
             status.Error == BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNSUPPORTED &&
             status.Phase == BML_BEHAVIOR_PHASE_BINDING;
@@ -845,7 +846,8 @@ private:
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         const int result = m_Behavior->Call(
-            m_Session, {}, &arguments.Block, &input, &run, &info, &status);
+            m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+            &run, &info, &status);
         return result == BML_ERROR_FAIL && !run &&
             status.Error == BML_BEHAVIOR_ERROR_PROTOTYPE_CHANGED &&
             status.Phase == BML_BEHAVIOR_PHASE_PROTOTYPE;
@@ -861,7 +863,8 @@ private:
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         const int result = m_Behavior->Call(
-            m_Session, {}, &arguments.Block, &input, &run, &info, &status);
+            m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+            &run, &info, &status);
         return result == BML_ERROR_INVALID_PARAMETER && !run &&
             status.Error == BML_BEHAVIOR_ERROR_TYPE_MISMATCH;
     }
@@ -872,8 +875,9 @@ private:
         BML_BehaviorSelector input = Named(inputName);
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
-                                &run, &info, &status) == BML_OK && run;
+        return m_Behavior->Call(
+                   m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+                   &run, &info, &status) == BML_OK && run;
     }
 
     bool OpenStart(BML_BehaviorRun &run, std::uint32_t limit) {
@@ -882,8 +886,9 @@ private:
         BML_BehaviorSelector input = Named("Run");
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Start(m_Session, {}, &arguments.Block, &input,
-                                 &run, &info, &status) == BML_OK && run;
+        return m_Behavior->Start(
+                   m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+                   &run, &info, &status) == BML_OK && run;
     }
 
     bool OpenPendingCall(BML_BehaviorRun &run) {
@@ -892,8 +897,9 @@ private:
         BML_BehaviorSelector input = Named("Run");
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
-                                &run, &info, &status) == BML_OK && run &&
+        return m_Behavior->Call(
+                   m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+                   &run, &info, &status) == BML_OK && run &&
             info.Kind == BML_BEHAVIOR_RUN_CALL &&
             info.State == BML_BEHAVIOR_RUN_PENDING;
     }
@@ -904,8 +910,9 @@ private:
                                  m_Prototype.Generation);
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Spawn(m_Session, {}, &arguments.Block, &run,
-                                 &info, &status) == BML_OK && run;
+        return m_Behavior->Spawn(
+                   m_Session, {}, &arguments.Block, &arguments.Frames,
+                   &run, &info, &status) == BML_OK && run;
     }
 
     bool OpenEcho(BML_BehaviorRun &run) {
@@ -914,16 +921,18 @@ private:
         BML_BehaviorSelector input = Named("Echo");
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
-                                &run, &info, &status) == BML_OK && run;
+        return m_Behavior->Call(
+                   m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+                   &run, &info, &status) == BML_OK && run;
     }
 
     bool OpenDynamic(BML_BehaviorRun &run) {
         DynamicBlockArguments arguments(m_Prototype.Generation);
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Spawn(m_Session, {}, &arguments.Block, &run,
-                                 &info, &status) == BML_OK && run;
+        return m_Behavior->Spawn(
+                   m_Session, {}, &arguments.Block, &arguments.Frames,
+                   &run, &info, &status) == BML_OK && run;
     }
 
     bool OpenTarget(BML_BehaviorRun &run, std::uint32_t targetKind,
@@ -936,8 +945,9 @@ private:
         BML_BehaviorSelector input = Named("Read Target");
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Call(m_Session, owner, &arguments.Block, &input,
-                                &run, &info, &status) == BML_OK && run;
+        return m_Behavior->Call(
+                   m_Session, owner, &arguments.Block, &arguments.Frames,
+                   &input, &run, &info, &status) == BML_OK && run;
     }
 
     bool RejectAmbiguousSelector() {
@@ -948,7 +958,8 @@ private:
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         const int result = m_Behavior->Call(
-            m_Session, {}, &arguments.Block, &input, &run, &info, &status);
+            m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+            &run, &info, &status);
         return result == BML_ERROR_FAIL && !run &&
             status.Error == BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS &&
             status.Phase == BML_BEHAVIOR_PHASE_EXECUTION;
@@ -960,8 +971,9 @@ private:
         BML_BehaviorSelector input = Occurrence("Duplicate", 1);
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
-                                &run, &info, &status) == BML_OK && run;
+        return m_Behavior->Call(
+                   m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+                   &run, &info, &status) == BML_OK && run;
     }
 
     bool OpenIndexed(BML_BehaviorRun &run) {
@@ -970,8 +982,9 @@ private:
         BML_BehaviorSelector input = Indexed(0);
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        return m_Behavior->Call(m_Session, {}, &arguments.Block, &input,
-                                &run, &info, &status) == BML_OK && run;
+        return m_Behavior->Call(
+                   m_Session, {}, &arguments.Block, &arguments.Frames, &input,
+                   &run, &info, &status) == BML_OK && run;
     }
 
     bool OpenWaitForAll() {
@@ -979,13 +992,13 @@ private:
         block.Prototype = Guid(VT_LOGICS_WAITFORALL);
         block.Target = Dto<BML_BehaviorTarget>();
         block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
-        block.Frames = Dto<BML_BehaviorFramePolicy>();
-        block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
-        block.Frames.Limit = 64;
         block.PrototypeGeneration = m_WaitForAllPrototype.Generation;
+        BML_BehaviorFramePolicy frames = Dto<BML_BehaviorFramePolicy>();
+        frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        frames.Limit = 64;
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
-        if (m_Behavior->Spawn(m_Session, {}, &block, &m_WaitForAll,
+        if (m_Behavior->Spawn(m_Session, {}, &block, &frames, &m_WaitForAll,
                               &info, &status) != BML_OK || !m_WaitForAll)
             return false;
         return Pulse(m_WaitForAll, "In 0",
@@ -998,14 +1011,14 @@ private:
         block.Prototype = Guid(BML_BEHAVIOR_TRANSPORT_GRAPH_FIXTURE_GUID);
         block.Target = Dto<BML_BehaviorTarget>();
         block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
-        block.Frames = Dto<BML_BehaviorFramePolicy>();
-        block.Frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
-        block.Frames.Limit = 64;
         block.PrototypeGeneration = m_GraphPrototype.Generation;
+        BML_BehaviorFramePolicy frames = Dto<BML_BehaviorFramePolicy>();
+        frames.Kind = BML_BEHAVIOR_FRAMES_SIGNALS;
+        frames.Limit = 64;
         BML_BehaviorRunInfo info = Dto<BML_BehaviorRunInfo>();
         BML_BehaviorStatus status = Dto<BML_BehaviorStatus>();
         const int spawned = m_Behavior->Spawn(
-            m_Session, {}, &block, &m_Graph, &info, &status);
+            m_Session, {}, &block, &frames, &m_Graph, &info, &status);
         if (spawned != BML_OK || !m_Graph) {
             const HMODULE fixture = GetModuleHandleA(
                 "BehaviorTransportFixture.dll");
@@ -1333,11 +1346,10 @@ private:
             m_Prototype.Generation);
 
         auto plain = m_CppSession.Use(prototype);
-        plain.Frames(BML::Behavior::Signals(4).Pouts());
         if (!plain.Validate())
             return false;
 
-        auto called = plain.Call("Run");
+        auto called = plain.Call("Run", BML::Behavior::Signals(4).Pouts());
         if (!called)
             return false;
         BML::Behavior::Call call = std::move(called).Value();
@@ -1358,7 +1370,7 @@ private:
             return false;
 
         auto source = call.Inspect();
-        auto bound = plain.Spawn();
+        auto bound = plain.Spawn(BML::Behavior::Signals().Pouts());
         if (!source || !bound) {
             GetLogger()->Error(
                 "Behavior live edit: stage=bind-open source=%d bound=%d",
@@ -1414,7 +1426,7 @@ private:
         sharedSourceBlock.Pins({
             {BML::Behavior::Named("Number", 0), std::int32_t{84}}});
         auto sharedSource = sharedSourceBlock.Spawn();
-        auto sharedTarget = plain.Spawn();
+        auto sharedTarget = plain.Spawn(BML::Behavior::Signals().Pouts());
         if (!sharedSource || !sharedTarget)
             return false;
         BML::Behavior::Instance sharedSourceInstance =
@@ -1473,7 +1485,7 @@ private:
             return false;
         m_CppCall.emplace(std::move(pending).Value());
 
-        auto spawned = plain.Spawn();
+        auto spawned = plain.Spawn(BML::Behavior::Signals(4).Pouts());
         if (!spawned)
             return false;
         m_CppInstance.emplace(std::move(spawned).Value());
@@ -1483,10 +1495,10 @@ private:
             return false;
 
         auto dynamicBlock = m_CppSession.Use(prototype);
-        dynamicBlock.Frames(BML::Behavior::Signals(4).Pouts());
         dynamicBlock.Pins({
             {BML::Behavior::Named("Number", 0), std::int32_t{321}}});
-        auto dynamic = dynamicBlock.Spawn();
+        auto dynamic = dynamicBlock.Spawn(
+            BML::Behavior::Signals(4).Pouts());
         if (!dynamic) {
             GetLogger()->Error(
                 "Behavior live edit: stage=configure-open code=%d error=%u message=%s",
@@ -1724,8 +1736,8 @@ private:
 
         auto targeted = m_CppSession.Use(prototype)
             .TargetOwner()
-            .Frames(BML::Behavior::Signals(4).Pouts())
-            .Call(m_InputObjectRef, "Read Target");
+            .Call(m_InputObjectRef, "Read Target",
+                  BML::Behavior::Signals(4).Pouts());
         if (!targeted)
             return false;
         BML::Behavior::Call targetCall = std::move(targeted).Value();

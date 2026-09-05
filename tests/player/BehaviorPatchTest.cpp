@@ -925,11 +925,18 @@ private:
     // endpoints, then route that Link through the Block.
     int ApplySplice(BML_ObjectRef graph, const char *name,
                     BML_BehaviorPatch *out, BML_BehaviorStatus *status) {
+        BML_BehaviorBlock block{};
+        block.StructSize = sizeof(block);
+        block.Prototype = m_FixturePrototype.Prototype;
+        block.Target.StructSize = sizeof(block.Target);
+        block.Target.Kind = BML_BEHAVIOR_TARGET_OWNER;
+        block.PrototypeGeneration = m_FixturePrototype.Generation;
+
         BML_BehaviorEditStep steps[3]{};
         steps[0].StructSize = sizeof(steps[0]);
         steps[0].Kind = BML_BEHAVIOR_EDIT_ADD_BLOCK;
         steps[0].Result = 2;
-        steps[0].Prototype = m_FixturePrototype;
+        steps[0].Block = &block;
 
         steps[1].StructSize = sizeof(steps[1]);
         steps[1].Kind = BML_BEHAVIOR_EDIT_REQUIRE_LINK;

@@ -20,6 +20,8 @@ BMLLifecycleFixtureTrace g_Trace;
 BMLLifecycleFixtureMode g_Mode = BMLLifecycleFixtureMode::Normal;
 BMLLifecycleFixtureCloseHook g_CloseHook = nullptr;
 void *g_CloseArgument = nullptr;
+BMLLifecycleFixtureEditedHook g_EditedHook = nullptr;
+void *g_EditedArgument = nullptr;
 // Executions remaining before Run returns CKBR_OK instead of
 // CKBR_ACTIVATENEXTFRAME; a parked multi-frame Block is driven by one party
 // per frame, so the recorded RunTimes expose a second driver.
@@ -61,6 +63,9 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
     int setting = 0;
     if (behavior->GetLocalParameterCount() > 0)
         behavior->GetLocalParameterValue(0, &setting);
+    int local = 0;
+    if (behavior->GetLocalParameterCount() > 1)
+        behavior->GetLocalParameterValue(1, &local);
 
     Count(context.CallbackMessage);
     if (g_Trace.EventCount < std::size(g_Trace.Events)) {
@@ -76,6 +81,23 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
         CKParameterIn *input = behavior->GetInputParameterCount() > 0
             ? behavior->GetInputParameter(0) : nullptr;
         event.SourceVisible = input && input->GetRealSource() ? 1u : 0u;
+        event.InputCount = static_cast<std::uint32_t>(
+            behavior->GetInputCount());
+        event.OutputCount = static_cast<std::uint32_t>(
+            behavior->GetOutputCount());
+        event.PinCount = static_cast<std::uint32_t>(
+            behavior->GetInputParameterCount());
+        event.PoutCount = static_cast<std::uint32_t>(
+            behavior->GetOutputParameterCount());
+        event.LocalCount = static_cast<std::uint32_t>(
+            behavior->GetLocalParameterCount());
+        event.LocalValue = local;
+        for (int index = 0; index < behavior->GetInputParameterCount();
+             ++index) {
+            CKParameterIn *pin = behavior->GetInputParameter(index);
+            if (pin && pin->GetRealSource())
+                ++event.BoundSourceCount;
+        }
     }
 
     if (context.CallbackMessage == CKM_BEHAVIORCREATE ||
@@ -87,12 +109,40 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
         const int normalized = 77;
         behavior->SetLocalParameterValue(0, &normalized);
         g_Trace.FinalNormalizedValue = normalized;
-    } else if (context.CallbackMessage == CKM_BEHAVIOREDITED &&
-               g_Mode == BMLLifecycleFixtureMode::CloseOnEdited &&
-               g_CloseHook) {
-        ++g_Trace.CloseHookCalls;
-        if (g_CloseHook(behavior, g_CloseArgument) != 0)
-            ++g_Trace.CloseHookAccepted;
+        if (g_Mode ==
+                BMLLifecycleFixtureMode::InsertPinOnSettingsEdited &&
+            !behavior->CreateInputParameter(
+                const_cast<CKSTRING>("Provider Pin"), CKPGUID_INT)) {
+            return CKERR_OUTOFMEMORY;
+        }
+    } else if (context.CallbackMessage == CKM_BEHAVIOREDITED) {
+        if (g_EditedHook) {
+            const int result = g_EditedHook(behavior, g_EditedArgument);
+            if (result != CK_OK)
+                return result;
+        }
+        if (g_Mode == BMLLifecycleFixtureMode::NormalizeOnEdited &&
+            g_Trace.EditedCount == 1) {
+            const int normalized = 91;
+            behavior->SetLocalParameterValue(1, &normalized);
+            for (int index = 0; index < behavior->GetInputParameterCount();
+                 ++index) {
+                CKParameterIn *pin = behavior->GetInputParameter(index);
+                if (pin && pin->GetName() &&
+                    std::strcmp(pin->GetName(), "Patch Value") == 0) {
+                    (void) pin->SetDirectSource(nullptr);
+                    break;
+                }
+            }
+        } else if (g_Mode == BMLLifecycleFixtureMode::FailFirstEdited &&
+                   g_Trace.EditedCount == 1) {
+            return CKERR_INVALIDPARAMETER;
+        } else if (g_Mode == BMLLifecycleFixtureMode::CloseOnEdited &&
+                   g_CloseHook) {
+            ++g_Trace.CloseHookCalls;
+            if (g_CloseHook(behavior, g_CloseArgument) != 0)
+                ++g_Trace.CloseHookAccepted;
+        }
     } else if ((context.CallbackMessage == CKM_BEHAVIORRESET ||
                 context.CallbackMessage == CKM_BEHAVIORDETACH ||
                 context.CallbackMessage == CKM_BEHAVIORDELETE) &&
@@ -130,6 +180,7 @@ CKERROR CreatePrototype(CKBehaviorPrototype **prototype) {
     created->DeclareInput("In");
     created->DeclareOutput("Out");
     created->DeclareSetting("Value", CKPGUID_INT, "15");
+    created->DeclareLocalParameter("State", CKPGUID_INT, "5");
     created->DeclareInParameter("Source", CKPGUID_INT, "3");
     created->SetFunction(Run);
     created->SetBehaviorCallbackFct(
@@ -209,6 +260,12 @@ extern "C" __declspec(dllexport) void BMLLifecycleFixtureSetCloseHook(
     BMLLifecycleFixtureCloseHook hook, void *argument) {
     g_CloseHook = hook;
     g_CloseArgument = argument;
+}
+
+extern "C" __declspec(dllexport) void BMLLifecycleFixtureSetEditedHook(
+    BMLLifecycleFixtureEditedHook hook, void *argument) {
+    g_EditedHook = hook;
+    g_EditedArgument = argument;
 }
 
 extern "C" __declspec(dllexport) int BMLLifecycleFixtureReadTrace(
