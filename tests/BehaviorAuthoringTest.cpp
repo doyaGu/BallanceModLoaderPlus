@@ -109,12 +109,15 @@ struct FakeState {
     bool InvalidGraphLinkKind = false;
     bool InvalidGraphPortFlag = false;
     bool InvalidGraphOccurrence = false;
+    std::size_t GraphPadding = 0;
+    bool InvalidGraphPayloadSize = false;
     bool NullInterface = false;
     std::uint32_t PrototypeMatch = 0;
     std::string PrototypeName;
     std::vector<BML_BehaviorGuid> RequiredManagers;
     std::uint32_t GraphView = 0;
     std::uint64_t GraphFingerprint = 0x713;
+    int GraphInspects = 0;
     int WatchCloses = 0;
     int WatchOpenCode = BML_OK;
     int WatchCloseCode = BML_OK;
@@ -784,6 +787,7 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     }
     std::memcpy(payload.data() + operationOffset, &operation,
                 sizeof(operation));
+    payload.resize(payload.size() + g_State.GraphPadding);
 
     graph = {};
     graph.StructSize = sizeof(graph);
@@ -806,6 +810,7 @@ int BML_BEHAVIOR_CALL InspectGraph(
     BML_BehaviorSession, BML_ObjectRef root, std::uint32_t view,
     BML_BehaviorGraph *graph, void *payload, std::uint32_t payloadCapacity,
     std::uint32_t *payloadSize, BML_BehaviorStatus *status) {
+    ++g_State.GraphInspects;
     g_State.GraphView = view;
     BML_BehaviorGraph wire{};
     const BML_ObjectRef returnedRoot = g_State.ReturnsAnotherGraph
@@ -817,6 +822,10 @@ int BML_BEHAVIOR_CALL InspectGraph(
     if (payloadCapacity < bytes.size())
         return BML_ERROR_BUFFER_TOO_SMALL;
     *graph = wire;
+    if (g_State.InvalidGraphPayloadSize) {
+        *payloadSize = payloadCapacity + 1;
+        return BML_OK;
+    }
     if (!bytes.empty())
         std::memcpy(payload, bytes.data(), bytes.size());
     return BML_OK;
@@ -2313,6 +2322,39 @@ TEST(BehaviorAuthoring, RejectsViewsFromAnotherGraphSnapshot) {
     EXPECT_FALSE(layout);
     EXPECT_EQ(layout.Code(), BML_ERROR_INVALID_PARAMETER);
     EXPECT_EQ(layout.GetStatus().Error, Error::GraphLocalityInvalid);
+}
+
+TEST(BehaviorAuthoring, ReusesGraphPayloadCapacityBetweenInspections) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    ASSERT_TRUE(session.Inspect({41, 42, 43}));
+    EXPECT_EQ(g_State.GraphInspects, 2);
+
+    ASSERT_TRUE(session.Inspect({41, 42, 43}));
+    EXPECT_EQ(g_State.GraphInspects, 3);
+
+    g_State.GraphPadding = 4096;
+    ASSERT_TRUE(session.Inspect({41, 42, 43}));
+    EXPECT_EQ(g_State.GraphInspects, 5);
+
+    g_State.GraphPadding = 0;
+    ASSERT_TRUE(session.Inspect({41, 42, 43}));
+    EXPECT_EQ(g_State.GraphInspects, 6);
+}
+
+TEST(BehaviorAuthoring, RejectsGraphPayloadSizesBeyondTheProvidedBuffer) {
+    g_State = {};
+    g_State.InvalidGraphPayloadSize = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    auto inspected = session.Inspect({41, 42, 43});
+    EXPECT_FALSE(inspected);
+    EXPECT_EQ(inspected.Code(), BML_ERROR_MALFORMED_MESSAGE);
 }
 
 TEST(BehaviorAuthoring, OwnsWatchCallbackAndReportsDomainChanges) {

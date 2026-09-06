@@ -671,31 +671,23 @@ inline Result<Graph> Graph::Read(
         return Result<Graph>::Failure(BML_ERROR_INVALID_HANDLE);
     try {
         BML_BehaviorGraph wire{};
-        wire.StructSize = sizeof(wire);
         BML_BehaviorStatus status = Detail::EmptyStatus();
         std::uint32_t payloadSize = 0;
-        int code = session->Api->Inspect(
-            session->Handle, root, static_cast<std::uint32_t>(view),
-            &wire, nullptr, 0, &payloadSize, &status);
-        code = Detail::WireCode(code, status);
-        if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+        const int code = Detail::ReadPayload(
+            *session, [&](void *payload, std::uint32_t capacity,
+                          std::uint32_t &written) {
+                wire = {};
+                wire.StructSize = sizeof(wire);
+                status = Detail::EmptyStatus();
+                return Detail::WireCode(session->Api->Inspect(
+                    session->Handle, root, static_cast<std::uint32_t>(view),
+                    &wire, payload, capacity, &written, &status), status);
+            }, payloadSize);
+        if (code != BML_OK)
             return Result<Graph>::Failure(code, Detail::ReadStatus(status));
-        std::vector<std::uint8_t> payload(payloadSize);
-        if (payloadSize) {
-            wire = {};
-            wire.StructSize = sizeof(wire);
-            status = Detail::EmptyStatus();
-            std::uint32_t written = 0;
-            code = session->Api->Inspect(
-                session->Handle, root, static_cast<std::uint32_t>(view),
-                &wire, payload.data(), payloadSize, &written, &status);
-            code = Detail::WireCode(code, status);
-            if (code != BML_OK)
-                return Result<Graph>::Failure(code, Detail::ReadStatus(status));
-            if (written != payload.size())
-                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        }
-        return Decode(std::move(session), view, root, wire, payload, status);
+        const std::uint8_t *payload = session->Buffer.data();
+        return Decode(std::move(session), view, root, wire,
+                      payload, payloadSize, status);
     } catch (const std::bad_alloc &) {
         return Result<Graph>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -711,31 +703,23 @@ inline Result<Graph> Graph::ReadRun(
         return Result<Graph>::Failure(BML_ERROR_INVALID_HANDLE);
     try {
         BML_BehaviorGraph wire{};
-        wire.StructSize = sizeof(wire);
         BML_BehaviorStatus status = Detail::EmptyStatus();
         std::uint32_t payloadSize = 0;
-        int code = session->Api->InspectRun(
-            run, static_cast<std::uint32_t>(view), &wire, nullptr, 0,
-            &payloadSize, &status);
-        code = Detail::WireCode(code, status);
-        if (code != BML_OK && code != BML_ERROR_BUFFER_TOO_SMALL)
+        const int code = Detail::ReadPayload(
+            *session, [&](void *payload, std::uint32_t capacity,
+                          std::uint32_t &written) {
+                wire = {};
+                wire.StructSize = sizeof(wire);
+                status = Detail::EmptyStatus();
+                return Detail::WireCode(session->Api->InspectRun(
+                    run, static_cast<std::uint32_t>(view), &wire,
+                    payload, capacity, &written, &status), status);
+            }, payloadSize);
+        if (code != BML_OK)
             return Result<Graph>::Failure(code, Detail::ReadStatus(status));
-        std::vector<std::uint8_t> payload(payloadSize);
-        if (payloadSize) {
-            wire = {};
-            wire.StructSize = sizeof(wire);
-            status = Detail::EmptyStatus();
-            std::uint32_t written = 0;
-            code = session->Api->InspectRun(
-                run, static_cast<std::uint32_t>(view), &wire,
-                payload.data(), payloadSize, &written, &status);
-            code = Detail::WireCode(code, status);
-            if (code != BML_OK)
-                return Result<Graph>::Failure(code, Detail::ReadStatus(status));
-            if (written != payload.size())
-                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        }
-        return Decode(std::move(session), view, {}, wire, payload, status);
+        const std::uint8_t *payload = session->Buffer.data();
+        return Decode(std::move(session), view, {}, wire,
+                      payload, payloadSize, status);
     } catch (const std::bad_alloc &) {
         return Result<Graph>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -747,8 +731,9 @@ inline Result<Graph> Graph::Decode(
     std::shared_ptr<Detail::SessionState> session, View view,
     BML_ObjectRef expectedRoot,
     const BML_BehaviorGraph &wire,
-    const std::vector<std::uint8_t> &payload,
+    const std::uint8_t *payloadData, std::size_t payloadSize,
     const BML_BehaviorStatus &status) {
+    const Detail::PayloadView payload{payloadData, payloadSize};
     if (wire.StructSize < sizeof(wire) ||
         wire.View != static_cast<std::uint32_t>(view) ||
         !Detail::ValidObjectRef(wire.Root) || !wire.Root.Domain ||

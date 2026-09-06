@@ -178,12 +178,42 @@ inline RunInfo ReadRunInfo(const BML_BehaviorRunInfo &source) {
 struct SessionState {
     const BML_BehaviorInterface *Api = nullptr;
     BML_BehaviorSession Handle = nullptr;
+    std::vector<std::uint8_t> Buffer;
 
     ~SessionState() {
         if (Api && Handle)
             (void) Api->CloseSession(Handle);
     }
 };
+
+struct PayloadView {
+    const std::uint8_t *Data = nullptr;
+    std::size_t Size = 0;
+
+    [[nodiscard]] const std::uint8_t *data() const noexcept { return Data; }
+    [[nodiscard]] std::size_t size() const noexcept { return Size; }
+};
+
+template <class Reader>
+int ReadPayload(SessionState &session, Reader &&read,
+                std::uint32_t &payloadSize) {
+    auto &payload = session.Buffer;
+    payloadSize = 0;
+    int code = read(payload.empty() ? nullptr : payload.data(),
+                    static_cast<std::uint32_t>(payload.size()), payloadSize);
+    if (code == BML_ERROR_BUFFER_TOO_SMALL) {
+        if (payloadSize <= payload.size())
+            return BML_ERROR_MALFORMED_MESSAGE;
+        payload.resize(payloadSize);
+        std::uint32_t written = 0;
+        code = read(payload.data(), static_cast<std::uint32_t>(payload.size()),
+                    written);
+        payloadSize = written;
+    }
+    if (code == BML_OK && payloadSize > payload.size())
+        return BML_ERROR_MALFORMED_MESSAGE;
+    return code;
+}
 
 struct BlockSpec {
     explicit BlockSpec(Behavior::Prototype prototype)
@@ -198,8 +228,8 @@ struct BlockSpec {
     std::vector<SlotValue> Locals;
 };
 
-template <class T>
-bool RecordAt(const std::vector<std::uint8_t> &payload,
+template <class T, class Payload>
+bool RecordAt(const Payload &payload,
               std::uint32_t offset, std::uint32_t index, T &record) noexcept {
     const std::uint64_t at = static_cast<std::uint64_t>(offset) +
         static_cast<std::uint64_t>(index) * sizeof(T);
@@ -209,15 +239,16 @@ bool RecordAt(const std::vector<std::uint8_t> &payload,
     return record.StructSize >= sizeof(T);
 }
 
-template <class T>
-bool RecordsFit(const std::vector<std::uint8_t> &payload,
+template <class T, class Payload>
+bool RecordsFit(const Payload &payload,
                 std::uint32_t offset, std::uint32_t count) noexcept {
     const std::uint64_t end = static_cast<std::uint64_t>(offset) +
         static_cast<std::uint64_t>(count) * sizeof(T);
     return end <= payload.size();
 }
 
-inline bool BytesAt(const std::vector<std::uint8_t> &payload,
+template <class Payload>
+bool BytesAt(const Payload &payload,
                     std::uint32_t offset, std::uint32_t size,
                     const std::uint8_t *&data) noexcept {
     if (static_cast<std::uint64_t>(offset) + size > payload.size())
@@ -226,7 +257,8 @@ inline bool BytesAt(const std::vector<std::uint8_t> &payload,
     return true;
 }
 
-inline bool TextAt(const std::vector<std::uint8_t> &payload,
+template <class Payload>
+bool TextAt(const Payload &payload,
                    std::uint32_t offset, std::uint32_t size,
                    std::string &text) {
     if (!size) {

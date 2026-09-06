@@ -748,7 +748,7 @@ private:
         std::shared_ptr<Detail::SessionState> session, View view,
         BML_ObjectRef expectedRoot,
         const BML_BehaviorGraph &wire,
-        const std::vector<std::uint8_t> &payload,
+        const std::uint8_t *payload, std::size_t payloadSize,
         const BML_BehaviorStatus &status);
     template <class Function>
     Result<Behavior::Watch> OpenWatch(BML_BehaviorWatchSpec spec,
