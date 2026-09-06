@@ -5,18 +5,15 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
-// Windows.h defines SendMessage as SendMessageA, which would rename the
-// Loader's SendMessage namespace at this translation unit only.
-#ifdef SendMessage
-#undef SendMessage
-#endif
 #include <stdexcept>
 
 #include "Behavior/HookBlock.h"
 #include "Behavior/CKEdit.h"
-#include "Behavior/Blocks.h"
+#include "BML/Behavior/Blocks.hpp"
+#include "Behavior/Block.h"
 #include "Behavior/PhysicsForce.h"
 #include "Behavior/Runtime.h"
+#include "Behavior/Sessions.h"
 #include "BML/Guids/Interface.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/physics_RT.h"
@@ -37,7 +34,8 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
+namespace Blocks = BML::Behavior::Blocks;
 
 const CKGUID kProviderLocalGuid(0x1d129e67, 0x6e702c4a);
 
@@ -704,7 +702,7 @@ private:
         physicalize.Target = m_Owner;
         physicalize.Geometry = Blocks::Physicalize::Shape::Ball;
         CreateResult dynamic = m_Runtime.Instantiate(
-            m_Owner, Blocks::Physicalize::Make(physicalize));
+            m_Owner, BlockSpec::From(physicalize));
         if (!dynamic) {
             Fail("dynamic-create");
         } else if (HasDuplicateSettingLocal(dynamic.Descriptor)) {
@@ -712,7 +710,7 @@ private:
         } else {
             physicalize.Geometry = Blocks::Physicalize::Shape::Concave;
             Status concave = m_Runtime.Reconfigure(
-                dynamic.Handle, Blocks::Physicalize::Make(physicalize));
+                dynamic.Handle, BlockSpec::From(physicalize));
             CKBehavior *behavior = dynamic.Handle.Get();
             CKParameterIn *shape = behavior &&
                 behavior->GetInputParameterCount() == 12
@@ -721,7 +719,7 @@ private:
                 std::string(shape->GetName()) == "concave 1";
             physicalize.Geometry = Blocks::Physicalize::Shape::Ball;
             Status ball = m_Runtime.Reconfigure(
-                dynamic.Handle, Blocks::Physicalize::Make(physicalize));
+                dynamic.Handle, BlockSpec::From(physicalize));
             behavior = dynamic.Handle.Get();
             CKParameterIn *position = behavior &&
                 behavior->GetInputParameterCount() == 13
@@ -739,15 +737,15 @@ private:
 
         Blocks::ObjectLoad::Options objectLoad;
         CreateResult loader = m_Runtime.Instantiate(
-            nullptr, Blocks::ObjectLoad::Make(objectLoad));
+            nullptr, BlockSpec::From(objectLoad));
         Blocks::Text2D::Options text;
         CreateResult text2d = m_Runtime.Instantiate(
-            nullptr, Blocks::Text2D::Make(text));
+            nullptr, BlockSpec::From(text));
         Blocks::PhysicsImpulse::Options impulse;
         impulse.Target = m_Owner;
         impulse.DirectionAsPoint = TRUE;
         CreateResult physicsImpulse = m_Runtime.Instantiate(
-            m_Owner, Blocks::PhysicsImpulse::Make(impulse));
+            m_Owner, BlockSpec::From(impulse));
         CKBehavior *impulseBehavior = physicsImpulse.Handle.Get();
         CKParameterIn *secondPosition = impulseBehavior
             ? impulseBehavior->GetInputParameter(2) : nullptr;
@@ -2518,8 +2516,8 @@ private:
                 return;
             }
             CreateResult sender = m_Runtime.Instantiate(
-                m_Owner, Blocks::SendMessage::Make(
-                    {kProbeMessageName, m_Owner}));
+                m_Owner, BlockSpec::From(
+                    Blocks::Send::Options{kProbeMessageName, m_Owner}));
             if (!sender) {
                 Fail("message-sender-create");
                 m_State = State::MessageCleanup;
@@ -2894,7 +2892,7 @@ private:
         options.Geometry = Blocks::Physicalize::Shape::Ball;
         options.Radius = 2.0f;
         CreateResult created = m_Runtime.Instantiate(
-            m_Owner, Blocks::Physicalize::Make(options));
+            m_Owner, BlockSpec::From(options));
         if (!created) {
             Fail("physics-force-physicalize-create");
             m_State = State::LifecycleFixture;
@@ -3484,6 +3482,29 @@ private:
         if (resetGraph)
             m_Context->DestroyObject(resetGraph);
 
+        bool sessionResetPassed = false;
+        resetTrace();
+        {
+            Runtime sessionRuntime(m_Context);
+            Sessions sessions(sessionRuntime);
+            std::uintptr_t session = 0;
+            const bool registered = sessions.RegisterOwner(
+                "behavior-runtime-session-reset") != 0;
+            const bool opened = registered && static_cast<bool>(
+                sessions.OpenSession(
+                    "behavior-runtime-session-reset", session));
+            const OpenRun sessionBlock = opened
+                ? sessions.Spawn(session, m_Owner, makeSpec()) : OpenRun{};
+            sessions.ResetWorld();
+            const BMLLifecycleFixtureTrace sessionReset = read();
+            sessionResetPassed = sessionBlock &&
+                messagesAre(sessionReset,
+                            {CKM_BEHAVIORCREATE, CKM_BEHAVIORATTACH,
+                             CKM_BEHAVIORSETTINGSEDITED, CKM_BEHAVIOREDITED,
+                             CKM_BEHAVIORRESET, CKM_BEHAVIORDETACH,
+                             CKM_BEHAVIORDELETE});
+        }
+
         resetTrace();
         setMode(BMLLifecycleFixtureMode::CloseOnEdited);
         setCloseHook(CloseLifecycleFixture, &m_Runtime);
@@ -3505,12 +3526,15 @@ private:
         if (selfCloseGraph)
             m_Context->DestroyObject(selfCloseGraph);
 
-        m_LifecyclePassed = normalPassed && resetPassed && selfClosePassed;
+        m_LifecyclePassed = normalPassed && resetPassed &&
+            sessionResetPassed && selfClosePassed;
         if (!m_LifecyclePassed) {
             if (!normalPassed)
                 Fail("lifecycle-normal");
             if (!resetPassed)
                 Fail("lifecycle-reset");
+            if (!sessionResetPassed)
+                Fail("lifecycle-session-reset");
             if (!selfClosePassed)
                 Fail("lifecycle-self-close");
         }
@@ -3601,7 +3625,7 @@ private:
         options.Alignment = 5;
         options.Margin = VxRect(8.0f, 8.0f, 8.0f, 8.0f);
         options.Flags = 1;
-        return Blocks::Text2D::Make(options);
+        return BlockSpec::From(options);
     }
 
     static bool FirstExecution(const RunResult &run) {

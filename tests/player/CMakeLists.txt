@@ -105,8 +105,10 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/PrototypeCatalog.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Relations.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Runtime.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Sessions.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Text2DView.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
+        ${PROJECT_SOURCE_DIR}/src/Behavior/Watch.cpp
 )
 target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE
         ${PROJECT_SOURCE_DIR}/src
