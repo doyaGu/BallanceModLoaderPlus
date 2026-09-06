@@ -1,7 +1,9 @@
 #include "Gameplay/GameplayTweaks.h"
 
 #include <cstring>
+#include <utility>
 
+#include "BML/Guids/TT_ParticleSystems_RT.h"
 #include "BML/IBML.h"
 #include "BML/IConfig.h"
 #include "BML/ILogger.h"
@@ -45,6 +47,16 @@ bool GameplayTweaks::OnModifyConfig(const char *category, const char *key, IProp
 void GameplayTweaks::OnLoad(IBML &bml, ILogger &logger) {
     m_BML = &bml;
     m_Logger = &logger;
+
+    auto session = BML::Behavior::Session::Open("BML");
+    if (session) {
+        m_Behavior = std::move(session).Value();
+    } else {
+        m_Logger->Warn("Behavior authoring is unavailable: %s",
+                       session.GetStatus().Message.empty()
+                           ? "could not open the BML session"
+                           : session.GetStatus().Message.c_str());
+    }
 }
 
 void GameplayTweaks::OnUnload() {
@@ -52,6 +64,8 @@ void GameplayTweaks::OnUnload() {
     // Module. Restore their original links before dropping the borrowed pointers.
     ApplyOverclock(false, false);
     ClearOverclockPatch();
+    m_ExtraLifePatches.clear();
+    m_Behavior.Close();
     m_Logger = nullptr;
     m_BML = nullptr;
 }
@@ -76,6 +90,7 @@ void GameplayTweaks::OnLoadScript(CKBehavior *script) {
 
 void GameplayTweaks::OnExitGame() {
     ClearOverclockPatch();
+    m_ExtraLifePatches.clear();
 }
 
 void GameplayTweaks::ApplyLanternAlphaTest(bool enabled) {
@@ -106,24 +121,39 @@ void GameplayTweaks::PatchLanternAlphaTest(CKBehavior *script) {
 }
 
 void GameplayTweaks::PatchExtraLife(CKBehavior *script) {
-    CKBehavior *emitter = FindFirstBB(script, "SphericalParticleSystem");
-    if (!emitter) {
+    const auto report = [this](const BML::Behavior::Status &status) {
         if (m_Logger)
-            m_Logger->Warn("Life-ball freeze fix is unavailable in the current particle graph");
+            m_Logger->Warn(
+                "Life-ball freeze fix could not edit the particle graph: %s",
+                status.Message.empty() ? "Behavior edit failed"
+                                       : status.Message.c_str());
+    };
+
+    if (!m_Behavior) {
+        if (m_Logger)
+            m_Logger->Warn("Life-ball freeze fix requires Behavior authoring");
         return;
     }
 
-    CKParameterIn *realTimeMode = emitter->CreateInputParameter("Real-Time Mode", CKPGUID_BOOL);
-    if (realTimeMode) {
-        realTimeMode->SetDirectSource(
-            CreateParamValue<CKBOOL>(script, "Real-Time Mode", CKPGUID_BOOL, TRUE));
+    auto graph = m_Behavior.Inspect(script);
+    if (!graph) {
+        report(graph.GetStatus());
+        return;
     }
 
-    CKParameterIn *deltaTime = emitter->CreateInputParameter("DeltaTime", CKPGUID_FLOAT);
-    if (deltaTime) {
-        deltaTime->SetDirectSource(
-            CreateParamValue<float>(script, "DeltaTime", CKPGUID_FLOAT, 20.0f));
+    BML::Behavior::Edit edit;
+    const auto emitter = edit.Require(
+        "SphericalParticleSystem",
+        TT_PARTICLESYSTEMS_RT_SPHERICALPARTICLESYSTEM);
+    edit.Bind(edit.AppendPin(emitter, "Real-Time Mode", CKPGUID_BOOL), true)
+        .Bind(edit.AppendPin(emitter, "DeltaTime", CKPGUID_FLOAT), 20.0f);
+
+    auto patch = graph->Apply("gameplay-extra-life", edit);
+    if (!patch) {
+        report(patch.GetStatus());
+        return;
     }
+    m_ExtraLifePatches.push_back(std::move(patch).Value());
 }
 
 void GameplayTweaks::DiscoverOverclockPatch(CKBehavior *script) {

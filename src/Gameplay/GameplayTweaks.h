@@ -1,6 +1,10 @@
 #ifndef BML_GAMEPLAYTWEAKS_H
 #define BML_GAMEPLAYTWEAKS_H
 
+#include <vector>
+
+#include "BML/Behavior.hpp"
+
 class CKBehavior;
 class CKBehaviorIO;
 class CKBehaviorLink;
@@ -39,6 +43,9 @@ private:
 
     CKBehaviorLink *m_OverclockLinks[3] = {};
     CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
+
+    BML::Behavior::Session m_Behavior;
+    std::vector<BML::Behavior::Patch> m_ExtraLifePatches;
 };
 
 #endif // BML_GAMEPLAYTWEAKS_H

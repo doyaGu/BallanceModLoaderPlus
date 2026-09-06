@@ -8,6 +8,7 @@
 #include <Windows.h>
 
 #include "BML/Behavior.hpp"
+#include "BML/Guids/TT_ParticleSystems_RT.h"
 #include "BML/IMod.h"
 #include "CKAll.h"
 
@@ -105,6 +106,18 @@ public:
 
     void OnStartLevel() override { m_LevelStarted = true; }
 
+    void OnLoadScript(const char *, CKBehavior *script) override {
+        const char *name = script ? script->GetName() : nullptr;
+        if (!name || (std::strcmp(name,
+                    "P_Extra_Life_Particle_Blob Script") != 0 &&
+                      std::strcmp(name,
+                    "P_Extra_Life_Particle_Fizz Script") != 0))
+            return;
+        if (std::find(m_GameplayScripts.begin(), m_GameplayScripts.end(),
+                      script) == m_GameplayScripts.end())
+            m_GameplayScripts.push_back(script);
+    }
+
     void OnProcess() override {
         if (m_Done || !m_LevelStarted ||
             (!m_Session && m_State != State::WaitPatchConflict &&
@@ -113,6 +126,7 @@ public:
             return;
         ++m_Frame;
         switch (m_State) {
+        case State::CheckGameplay: CheckGameplay(); break;
         case State::Submit: SubmitPlan(); break;
         case State::WaitActive: WaitActive(); break;
         case State::WaitHooks: WaitHooks(); break;
@@ -160,6 +174,7 @@ public:
 
 private:
     enum class State {
+        CheckGameplay,
         Submit,
         WaitActive,
         WaitHooks,
@@ -191,6 +206,46 @@ private:
         WaitPatchRetired,
         WaitScriptClosed,
     };
+
+    bool HasExtraLifePatch(CKBehavior *script) const {
+        auto graph = m_Session.Inspect(script);
+        if (!graph)
+            return false;
+        auto emitter = graph->Find("SphericalParticleSystem");
+        if (!emitter || !(emitter->Prototype() == CKGUID(
+                TT_PARTICLESYSTEMS_RT_SPHERICALPARTICLESYSTEM)))
+            return false;
+
+        const auto realTime = graph->Read(emitter->Pin("Real-Time Mode"));
+        const auto delta = graph->Read(emitter->Pin("DeltaTime"));
+        const bool *realTimeValue = realTime
+            ? std::get_if<bool>(&realTime->Data) : nullptr;
+        const float *deltaValue = delta
+            ? std::get_if<float>(&delta->Data) : nullptr;
+        return realTime && delta &&
+            realTime->State == BML::Behavior::ObservationState::Available &&
+            delta->State == BML::Behavior::ObservationState::Available &&
+            realTime->Source == BML::Behavior::Relation::Direct &&
+            delta->Source == BML::Behavior::Relation::Direct &&
+            realTime->Type == CKPGUID_BOOL && delta->Type == CKPGUID_FLOAT &&
+            realTimeValue && *realTimeValue &&
+            deltaValue && *deltaValue == 20.0f;
+    }
+
+    void CheckGameplay() {
+        const bool applied = m_GameplayScripts.size() == 2 &&
+            std::all_of(m_GameplayScripts.begin(), m_GameplayScripts.end(),
+                        [this](CKBehavior *script) {
+                            return HasExtraLifePatch(script);
+                        });
+        if (applied) {
+            m_GameplayPatchPassed = true;
+            m_State = State::Submit;
+            return;
+        }
+        if (m_Frame > 60)
+            Finish(false, "gameplay-patch");
+    }
 
     CKBehaviorLink *AddLink(CKBehaviorIO *source, CKBehaviorIO *sink) {
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
@@ -2154,6 +2209,12 @@ private:
             m_OperationPassed ? "true" : "false",
             m_InstallPassed ? "true" : "false",
             m_ScriptPassed ? "true" : "false");
+        GetLogger()->Info(
+            "Behavior gameplay patch: status=%s scripts=%u realtime=%s delta=%s",
+            m_GameplayPatchPassed ? "pass" : "fail",
+            static_cast<unsigned>(m_GameplayScripts.size()),
+            m_GameplayPatchPassed ? "true" : "false",
+            m_GameplayPatchPassed ? "true" : "false");
         if (passed)
             BML::PlayerTest::ProbeReport::Pass(reason);
         else
@@ -2170,6 +2231,7 @@ private:
     BML::Behavior::Patch m_RemovalPatch;
     std::optional<BML::Behavior::Instance> m_Parked;
     std::optional<BML::Behavior::Instance> m_ReplacementOriginal;
+    std::vector<CKBehavior *> m_GameplayScripts;
     // What the Before callback recorded. The count returning to one proves the
     // Loader released the callback state the Patch owned.
     struct IdentityState {
@@ -2227,7 +2289,7 @@ private:
     int m_AttachBlocks = 0;
     int m_AttachLinks = 0;
     bool m_ContinuationPassed = false;
-    State m_State = State::Submit;
+    State m_State = State::CheckGameplay;
     int m_Frame = 0;
     int m_WaitUntil = 0;
     bool m_LevelStarted = false;
@@ -2250,6 +2312,7 @@ private:
     bool m_ScriptDefined = false;
     bool m_OperationPassed = false;
     bool m_ScriptPassed = false;
+    bool m_GameplayPatchPassed = false;
     bool m_Done = false;
 };
 

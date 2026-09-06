@@ -189,6 +189,10 @@ $authoredScript = [regex]::Match($log,
     'create=(?<create>true|false) edit=(?<edit>true|false) ' +
     'operation=(?<operation>true|false) ' +
     'activity=(?<activity>true|false) close=(?<close>true|false)')
+$gameplayPatch = [regex]::Match($log,
+    'Behavior gameplay patch: status=(?<status>pass|fail) ' +
+    'scripts=(?<scripts>[0-9]+) realtime=(?<realtime>true|false) ' +
+    'delta=(?<delta>true|false)')
 $scriptHook = [regex]::Match($log,
     'Behavior script hook: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'installed=(?<installed>true|false) frames=(?<frames>[0-9]+)')
@@ -278,6 +282,11 @@ $checks['BehaviorAuthoredScript'] = $authoredScript.Success -and
     $authoredScript.Groups['operation'].Value -eq 'true' -and
     $authoredScript.Groups['activity'].Value -eq 'true' -and
     $authoredScript.Groups['close'].Value -eq 'true'
+$checks['BehaviorGameplayMigration'] = $gameplayPatch.Success -and
+    $gameplayPatch.Groups['status'].Value -eq 'pass' -and
+    [int]$gameplayPatch.Groups['scripts'].Value -eq 2 -and
+    $gameplayPatch.Groups['realtime'].Value -eq 'true' -and
+    $gameplayPatch.Groups['delta'].Value -eq 'true'
 $checks['BehaviorPatchVisual'] =
     $run.Captures.'BehaviorPatch-baseline'.Captured -and
     $run.Captures.'BehaviorPatch-active'.Captured -and
