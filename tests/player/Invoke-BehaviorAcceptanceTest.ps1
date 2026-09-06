@@ -115,6 +115,17 @@ if ($DisableAngelScript) {
     $install += @{ Source = $ScriptMod; Destination = $scriptModRelative }
 }
 
+# The real Player must not load MSVC Debug CRT clients. Besides requiring a
+# developer runtime that is absent from a retail installation, mixing Debug
+# Mod binaries with the retail Player does not exercise the shipping ABI.
+$nativeArtifacts = @($BuildDll) + @($install | ForEach-Object Source)
+$debugArtifacts = @($nativeArtifacts | Where-Object {
+    [System.IO.Path]::GetFullPath($_) -match '(?i)(^|[\\/])Debug([\\/]|$)'
+})
+if ($debugArtifacts.Count -gt 0) {
+    throw "Behavior Player acceptance requires Release or RelWithDebInfo native artifacts; Debug artifact: $($debugArtifacts[0])"
+}
+
 $run = Invoke-BMLPlayerRun -BallanceRoot $BallanceRoot -LoaderDll $BuildDll `
     -Install $install -Remove $remove `
     -Environment @{
