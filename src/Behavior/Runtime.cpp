@@ -211,9 +211,6 @@ public:
                 return false;
             }
             resolved.Index = input.Index;
-            CKBehaviorIO *io = behavior->GetInput(input.Index);
-            resolved.Name = io && io->GetName() ? io->GetName() : "";
-            resolved.Occurrence = Occurrence(behavior, input.Index, resolved.Name);
             return true;
         }
 
@@ -227,8 +224,6 @@ public:
             return false;
         }
         resolved.Index = slot.NativeIndex;
-        resolved.Name = slot.Name;
-        resolved.Occurrence = input.Occurrence;
         return true;
     }
 
@@ -2590,6 +2585,7 @@ Status Runtime::Continue(Instance &instance) {
         return Failure(Error::InvalidState,
                        "Only a pending behavior instance can be continued.");
     record->Protocol.Continue();
+    QueueFrame(*record);
     return {};
 }
 
@@ -2632,24 +2628,27 @@ Status Runtime::InstanceFailure(const Instance &instance) const {
     return ExecutionFailure(fault, record->PrototypeGuid);
 }
 
-void Runtime::ProcessTasks(const CKBehaviorContext *frame) {
+bool Runtime::ProcessTasks(const CKBehaviorContext *frame) {
     if (!ReadyStatus())
-        return;
+        return false;
     if (m_ProcessingTasks)
-        return;
+        return false;
     FlagScope processing(m_ProcessingTasks);
-    std::vector<std::uint64_t> tasks;
-    tasks.reserve(m_Records.size());
-    for (const auto &[instanceId, record] : m_Records) {
-        if (record.Protocol.NeedsFrame())
-            tasks.push_back(instanceId);
-    }
-    for (std::uint64_t instanceId : tasks) {
+    bool executed = false;
+    m_FrameRecords.assign(m_FrameQueue.begin(), m_FrameQueue.end());
+    m_FrameQueue.clear();
+    for (std::uint64_t instanceId : m_FrameRecords) {
         auto it = m_Records.find(instanceId);
-        if (it == m_Records.end() || !it->second.Protocol.NeedsFrame())
+        if (it == m_Records.end())
             continue;
+        it->second.QueuedForFrame = false;
+        if (!it->second.Protocol.NeedsFrame())
+            continue;
+        executed = true;
         (void) Execute(instanceId, nullptr, false, frame);
     }
+    m_FrameRecords.clear();
+    return executed;
 }
 
 void Runtime::ProcessFrame() {
@@ -2661,10 +2660,16 @@ void Runtime::ProcessFrame() {
     ++m_Frame;
     DrainDeferredReleases();
     SweepRecords();
-    DrainCloseQueue();
-    ProcessTasks(&m_Context->m_BehaviorContext);
-    SweepRecords();
-    DrainCloseQueue();
+    const bool lifecycleRan = DrainCloseQueue();
+    const bool behaviorRan = ProcessTasks(&m_Context->m_BehaviorContext);
+    // Native execution and lifecycle callbacks can delete or replace any CK
+    // object. With neither, the records validated above cannot change during
+    // this Runtime safe point, so repeating the full CK identity walk adds no
+    // information.
+    if (lifecycleRan || behaviorRan) {
+        SweepRecords();
+        DrainCloseQueue();
+    }
     AdoptSharedBindings();
     for (PendingDestroy &pending : m_PendingDestroy) {
         if (pending.Frames > 0)
@@ -2715,8 +2720,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
     if (executed.Frame) {
         result.ReturnCode = executed.Frame->ReturnCode;
         result.Detail.BehaviorResult = executed.Frame->ReturnCode;
-        for (const ExecutionOutput &output : executed.Frame->ActiveOutputs)
-            result.ActiveOutputs.push_back(output.Index);
+        result.ActiveOutputs = std::move(executed.Frame->ActiveOutputs);
     }
 
     if (executed.Fault) {
@@ -2738,6 +2742,7 @@ RunResult Runtime::Execute(std::uint64_t instanceId,
         else
             result.State = RunState::Ready;
     }
+    QueueFrame(*record);
 
     if (record->Expired || ResolveBehavior(*record) != behavior) {
         for (ObjectStamp source : record->OwnedSources)
@@ -2871,6 +2876,13 @@ void Runtime::DrainDeferredReleases() {
         Release(instanceId);
 }
 
+void Runtime::QueueFrame(Record &record) {
+    if (!record.Protocol.NeedsFrame() || record.QueuedForFrame)
+        return;
+    record.QueuedForFrame = true;
+    m_FrameQueue.push_back(record.Id);
+}
+
 void Runtime::Release(std::uint64_t instanceId) {
     auto it = m_Records.find(instanceId);
     if (it == m_Records.end())
@@ -2899,7 +2911,8 @@ void Runtime::CloseCallbacks(Record &record) noexcept {
     }
 }
 
-void Runtime::DrainCloseQueue(bool force) {
+bool Runtime::DrainCloseQueue(bool force) {
+    bool lifecycleRan = false;
     for (auto it = m_Records.begin(); it != m_Records.end();) {
         Record &record = it->second;
         if (!record.NativeLifecycle.CloseRequested() ||
@@ -2907,6 +2920,7 @@ void Runtime::DrainCloseQueue(bool force) {
             ++it;
             continue;
         }
+        lifecycleRan = true;
         NativeLifecycleAdapter adapter(*this, record, nullptr, nullptr,
                                        nullptr, nullptr);
         (void) record.NativeLifecycle.Drain(adapter);
@@ -2915,6 +2929,7 @@ void Runtime::DrainCloseQueue(bool force) {
     }
     if (force)
         DestroyReady(DestroyMode::Reset);
+    return lifecycleRan;
 }
 
 void Runtime::QueueSourceDestroy(ObjectStamp source, int frames) {

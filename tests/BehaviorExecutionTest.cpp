@@ -29,6 +29,7 @@ public:
 
     bool Resolve(const ExecutionInput &input, ResolvedInput &resolved,
                  ExecutionFault &fault) override {
+        ++ResolveCalls;
         if (input.Selector == InputSelector::Index) {
             if (input.LayoutGeneration != LayoutGeneration) {
                 fault = {ExecutionError::LayoutStale, 0,
@@ -40,8 +41,7 @@ public:
                          "The indexed input does not exist."};
                 return false;
             }
-            resolved = {input.Index, Inputs[input.Index].Name,
-                        Occurrence(input.Index)};
+            resolved = {input.Index};
             return true;
         }
 
@@ -67,7 +67,7 @@ public:
             return false;
         }
         const int index = matches[input.Occurrence];
-        resolved = {index, Inputs[index].Name, input.Occurrence};
+        resolved = {index};
         return true;
     }
 
@@ -155,6 +155,7 @@ public:
     std::uint64_t LayoutGeneration = 1;
     bool WaitForAll = false;
     int Calls = 0;
+    int ResolveCalls = 0;
     int OutputReads = 0;
     int PoutReads = 0;
     std::vector<Input> Inputs;
@@ -168,6 +169,21 @@ public:
     std::function<void(std::vector<Pout> &)> OnRead;
     std::function<void(const std::vector<ExecutionOutput> &)> OnClear;
 };
+
+TEST(BehaviorExecution, ResolvesImmediateInputOnceAndQueuedInputAgainAtExecution) {
+    Execution execution(FrameRetention::Ignore());
+    FakeExecutionAdapter adapter({"A", "B"});
+
+    ASSERT_TRUE(execution.Pulse(ExecutionInput::Named("A"), 1, adapter));
+    EXPECT_EQ(adapter.ResolveCalls, 1);
+
+    ASSERT_EQ(execution.Pulse(ExecutionInput::Named("B"), 1, adapter).State,
+              AdmissionState::Queued);
+    EXPECT_EQ(adapter.ResolveCalls, 2);
+
+    ASSERT_TRUE(execution.Step(2, adapter));
+    EXPECT_EQ(adapter.ResolveCalls, 3);
+}
 
 NativeExecution FunctionResult(int code, bool retry = false,
                                bool error = false, bool breakpoint = false) {
@@ -202,7 +218,7 @@ TEST(BehaviorExecution, WaitForAllKeepsInputsAndQueuesSameFramePulse) {
     EXPECT_FALSE(completed.Frame->NativeContinuation);
     EXPECT_FALSE(completed.Frame->QueuedInput);
     ASSERT_EQ(completed.Frame->ActiveOutputs.size(), 1u);
-    EXPECT_EQ(completed.Frame->ActiveOutputs[0].Name, "Out");
+    EXPECT_EQ(completed.Frame->ActiveOutputs[0], 0);
     EXPECT_FALSE(adapter.Inputs[0].Active);
     EXPECT_FALSE(adapter.Inputs[1].Active);
     EXPECT_FALSE(adapter.Outputs[0].Active);
@@ -313,7 +329,7 @@ TEST(BehaviorExecution, RetryErrorContinuesButFatalAndBreakClose) {
     ExecutionResult retryResult = retry.Pulse(ExecutionInput::At(0, 1), 1,
                                               retryAdapter);
     ASSERT_TRUE(retryResult.Frame);
-    EXPECT_EQ(retryResult.Frame->Fault.Code, ExecutionError::NativeFailed);
+    EXPECT_EQ(retryResult.Fault.Code, ExecutionError::NativeFailed);
     EXPECT_TRUE(retryResult.Frame->NativeContinuation);
     EXPECT_EQ(retry.State(), ExecutionState::Pending);
 
@@ -333,7 +349,7 @@ TEST(BehaviorExecution, RetryErrorContinuesButFatalAndBreakClose) {
     ExecutionResult breakResult = breakpoint.Pulse(ExecutionInput::At(0, 1), 1,
                                                    breakAdapter);
     ASSERT_TRUE(breakResult.Frame);
-    EXPECT_EQ(breakResult.Frame->Fault.Code, ExecutionError::UnsupportedBreak);
+    EXPECT_EQ(breakResult.Fault.Code, ExecutionError::UnsupportedBreak);
     EXPECT_FALSE(breakResult.Frame->NativeContinuation);
     EXPECT_FALSE(breakResult.Frame->QueuedInput);
     EXPECT_EQ(breakpoint.State(), ExecutionState::Failed);
@@ -440,7 +456,7 @@ TEST(BehaviorExecution, DoesNotReadPoutsUnlessThePolicyRequestsThem) {
     EXPECT_EQ(adapter.PoutReads, 0);
     EXPECT_NE(execution.State(), ExecutionState::Failed);
     ASSERT_TRUE(result.Frame);
-    EXPECT_FALSE(result.Frame->Fault);
+    EXPECT_FALSE(result.Fault);
 }
 
 TEST(BehaviorExecution, FullFrameQueueUsesIndependentFailureSlot) {
@@ -458,10 +474,9 @@ TEST(BehaviorExecution, FullFrameQueueUsesIndependentFailureSlot) {
     // Run's Failed state contradicts.
     EXPECT_EQ(overflowed.Fault.Code, ExecutionError::FrameQueueFull);
     ASSERT_TRUE(overflowed.Frame);
-    EXPECT_EQ(overflowed.Frame->Fault.Code, ExecutionError::FrameQueueFull);
     EXPECT_FALSE(overflowed.Frame->NativeContinuation);
-    ASSERT_TRUE(overflowed.Frame->Overflow);
-    EXPECT_EQ(overflowed.Frame->Overflow->Capacity, 1u);
+    ASSERT_TRUE(overflowed.Overflow);
+    EXPECT_EQ(overflowed.Overflow->Capacity, 1u);
 
     auto frames = execution.Take();
     ASSERT_EQ(frames.size(), 2u);
@@ -486,6 +501,103 @@ TEST(BehaviorExecution, QueueFullPreservesTheDroppedNativeFault) {
     EXPECT_EQ(frames[0].Overflow->Cause.NativeCode, 10);
 }
 
+TEST(BehaviorExecution, FrameQueueFullTerminalOwnsTheCapturedPayload) {
+    class PayloadBatch final : public FrameBatch {
+    public:
+        bool Measure(const RunFrame &) override { return true; }
+        FrameBatchResult Ready() override { return FrameBatchResult::Complete; }
+        bool Write(const RunFrame &frame) override {
+            if (frame.Sequence != 2)
+                return true;
+            OutArray = reinterpret_cast<std::uintptr_t>(
+                frame.ActiveOutputs.data());
+            OutName = reinterpret_cast<std::uintptr_t>(
+                frame.ActiveOutputs.front().Name.data());
+            PoutArray = reinterpret_cast<std::uintptr_t>(frame.Pouts.data());
+            PoutText = reinterpret_cast<std::uintptr_t>(
+                frame.Pouts.front().Text.data());
+            return true;
+        }
+
+        std::uintptr_t OutArray = 0;
+        std::uintptr_t OutName = 0;
+        std::uintptr_t PoutArray = 0;
+        std::uintptr_t PoutText = 0;
+    };
+
+    FrameStore frames(FrameRetention::EachFrame(1));
+    RunFrame first;
+    first.Sequence = 1;
+    ASSERT_FALSE(frames.Retain(std::move(first)).Overflowed);
+
+    RunFrame terminal;
+    terminal.Sequence = 2;
+    terminal.NativeContinuation = true;
+    terminal.ActiveOutputs.push_back(
+        {0, std::string(128, 'o'), 0});
+    Pout pout;
+    pout.Index = 0;
+    pout.Name = std::string(128, 'n');
+    pout.Kind = PoutKind::Utf8;
+    pout.Text = std::string(1024, 'v');
+    terminal.Pouts.push_back(std::move(pout));
+
+    const auto outArray = reinterpret_cast<std::uintptr_t>(
+        terminal.ActiveOutputs.data());
+    const auto outName = reinterpret_cast<std::uintptr_t>(
+        terminal.ActiveOutputs.front().Name.data());
+    const auto poutArray = reinterpret_cast<std::uintptr_t>(
+        terminal.Pouts.data());
+    const auto poutText = reinterpret_cast<std::uintptr_t>(
+        terminal.Pouts.front().Text.data());
+
+    ASSERT_TRUE(frames.Retain(std::move(terminal)).Overflowed);
+    PayloadBatch batch;
+    ASSERT_EQ(frames.Take(batch), FrameBatchResult::Complete);
+    EXPECT_EQ(batch.OutArray, outArray);
+    EXPECT_EQ(batch.OutName, outName);
+    EXPECT_EQ(batch.PoutArray, poutArray);
+    EXPECT_EQ(batch.PoutText, poutText);
+}
+
+TEST(BehaviorExecution, FrameTakeTransfersTheCapturedPayload) {
+    FrameStore frames(FrameRetention::EachFrame(4));
+    RunFrame captured;
+    captured.Sequence = 1;
+    captured.ActiveOutputs.push_back(
+        {0, std::string(128, 'o'), 0});
+    Pout pout;
+    pout.Index = 0;
+    pout.Name = std::string(128, 'n');
+    pout.Kind = PoutKind::Utf8;
+    pout.Text = std::string(1024, 'v');
+    captured.Pouts.push_back(std::move(pout));
+
+    const auto outArray = reinterpret_cast<std::uintptr_t>(
+        captured.ActiveOutputs.data());
+    const auto outName = reinterpret_cast<std::uintptr_t>(
+        captured.ActiveOutputs.front().Name.data());
+    const auto poutArray = reinterpret_cast<std::uintptr_t>(
+        captured.Pouts.data());
+    const auto poutText = reinterpret_cast<std::uintptr_t>(
+        captured.Pouts.front().Text.data());
+
+    ASSERT_FALSE(frames.Retain(std::move(captured)).Overflowed);
+    const std::vector<RunFrame> taken = frames.Take();
+    ASSERT_EQ(taken.size(), 1u);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(
+                  taken[0].ActiveOutputs.data()),
+              outArray);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(
+                  taken[0].ActiveOutputs.front().Name.data()),
+              outName);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(taken[0].Pouts.data()),
+              poutArray);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(
+                  taken[0].Pouts.front().Text.data()),
+              poutText);
+}
+
 TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {
     Execution execution;
     FakeExecutionAdapter adapter;
@@ -496,7 +608,7 @@ TEST(BehaviorExecution, CloseDuringExecuteDefersStateTransition) {
     ASSERT_TRUE(result.Frame);
     EXPECT_FALSE(result.Frame->NativeContinuation);
     EXPECT_FALSE(result.Frame->QueuedInput);
-    EXPECT_EQ(result.Frame->Fault.Code, ExecutionError::Cancelled);
+    EXPECT_EQ(result.Fault.Code, ExecutionError::Cancelled);
     EXPECT_EQ(execution.State(), ExecutionState::Closing);
     execution.MarkClosed();
     EXPECT_EQ(execution.State(), ExecutionState::Closed);
@@ -526,8 +638,11 @@ TEST(BehaviorExecution, ReadsActiveOutAndPoutBeforeClearingTheOut) {
         execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
     ASSERT_TRUE(result.Frame);
     ASSERT_EQ(result.Frame->ActiveOutputs.size(), 1u);
-    ASSERT_EQ(result.Frame->Pouts.size(), 1u);
-    EXPECT_EQ(result.Frame->Pouts[0].Int32, 42);
+    EXPECT_EQ(result.Frame->ActiveOutputs[0], 0);
+    const auto frames = execution.Take();
+    ASSERT_EQ(frames.size(), 1u);
+    ASSERT_EQ(frames[0].Pouts.size(), 1u);
+    EXPECT_EQ(frames[0].Pouts[0].Int32, 42);
     EXPECT_FALSE(adapter.Outputs[0].Active);
 }
 
@@ -605,9 +720,12 @@ TEST(BehaviorExecution, DynamicPoutFailureKeepsOutAndUsesNativeSequence) {
     EXPECT_EQ(result.Frame->Sequence, 1u);
     EXPECT_FALSE(result.Frame->NativeContinuation);
     EXPECT_FALSE(result.Frame->QueuedInput);
-    EXPECT_EQ(result.Frame->Fault.Code, ExecutionError::UnsupportedPout);
+    EXPECT_EQ(result.Fault.Code, ExecutionError::UnsupportedPout);
     ASSERT_EQ(result.Frame->ActiveOutputs.size(), 1u);
-    EXPECT_TRUE(result.Frame->Pouts.empty());
+    EXPECT_EQ(result.Frame->ActiveOutputs[0], 0);
+    const auto frames = execution.Take();
+    ASSERT_EQ(frames.size(), 1u);
+    EXPECT_TRUE(frames[0].Pouts.empty());
     EXPECT_EQ(execution.NextSequence(), 2u);
     EXPECT_EQ(execution.State(), ExecutionState::Failed);
     EXPECT_EQ(execution.Failure().Code, ExecutionError::UnsupportedPout);
@@ -626,8 +744,8 @@ TEST(BehaviorExecution, PoutFailureRemainsTheTerminalCaptureDiagnostic) {
         execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
     ASSERT_TRUE(result.Frame);
     EXPECT_EQ(result.Frame->Sequence, 1u);
-    EXPECT_EQ(result.Frame->Fault.Code, ExecutionError::PoutReadFailed);
-    EXPECT_EQ(result.Frame->Fault.NativeCode, 2);
+    EXPECT_EQ(result.Fault.Code, ExecutionError::PoutReadFailed);
+    EXPECT_EQ(result.Fault.NativeCode, 2);
     ASSERT_EQ(result.Frame->ActiveOutputs.size(), 1u);
     EXPECT_EQ(execution.State(), ExecutionState::Failed);
     EXPECT_EQ(execution.Failure().Code, ExecutionError::PoutReadFailed);
@@ -656,8 +774,8 @@ TEST(BehaviorExecution, PoutFailureDoesNotReplaceAFatalNativeDiagnostic) {
             execution.Pulse(ExecutionInput::At(0, 1), 1, adapter);
         ASSERT_TRUE(result.Frame);
         EXPECT_EQ(adapter.PoutReads, 0);
-        EXPECT_EQ(result.Frame->Fault.Code, test.Expected);
-        EXPECT_EQ(result.Frame->Fault.NativeCode, test.Native.ReturnCode);
+        EXPECT_EQ(result.Fault.Code, test.Expected);
+        EXPECT_EQ(result.Fault.NativeCode, test.Native.ReturnCode);
         EXPECT_EQ(execution.Failure().Code, test.Expected);
         EXPECT_EQ(execution.Failure().NativeCode, test.Native.ReturnCode);
     }

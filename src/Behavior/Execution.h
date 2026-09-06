@@ -68,8 +68,6 @@ struct ExecutionInput {
 
 struct ResolvedInput {
     int Index = -1;
-    std::string Name;
-    int Occurrence = 0;
 };
 
 struct ExecutionOutput {
@@ -183,6 +181,19 @@ struct RunFrame {
     std::optional<FrameOverflow> Overflow;
 };
 
+// The synchronous result describes the Execute that just happened. Captured
+// Out names and Pout values belong to the retained RunFrame and are read
+// through FrameStore; duplicating them here would copy the complete payload on
+// every Execute.
+struct FrameInfo {
+    std::uint64_t Sequence = 0;
+    std::uint64_t Frame = 0;
+    int ReturnCode = 0;
+    bool NativeContinuation = false;
+    bool QueuedInput = false;
+    std::vector<int> ActiveOutputs;
+};
+
 enum class AdmissionState {
     Executed,
     Queued,
@@ -192,7 +203,8 @@ enum class AdmissionState {
 struct ExecutionResult {
     AdmissionState State = AdmissionState::Failed;
     ExecutionFault Fault;
-    std::optional<RunFrame> Frame;
+    std::optional<FrameInfo> Frame;
+    std::optional<FrameOverflow> Overflow;
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return State != AdmissionState::Failed;
@@ -231,13 +243,13 @@ public:
 private:
     ExecutionResult Admit(const ExecutionInput &input, std::uint64_t frame,
                           ExecutionAdapter &adapter, bool managed);
-    ExecutionResult Run(std::uint64_t frame, ExecutionAdapter &adapter);
+    ExecutionResult Run(std::uint64_t frame, ExecutionAdapter &adapter,
+                        const ResolvedInput *admitted = nullptr);
     bool Queue(const ExecutionInput &input);
     void FailBeforeExecute(ExecutionFault fault) noexcept;
-    // Stores the Frame. On retention overflow the Run fails and `returned` is
-    // rewritten to the failure Frame the store kept, so the caller never
-    // receives a success that the Run's state contradicts.
-    void Retain(RunFrame frame, RunFrame &returned);
+    // Stores the Frame. On retention overflow the synchronous result is
+    // rewritten to match the terminal Frame kept by the store.
+    void Retain(RunFrame frame, ExecutionResult &result);
 
     ExecutionState m_State = ExecutionState::Idle;
     bool m_Managed = false;
@@ -246,6 +258,10 @@ private:
     std::uint64_t m_LastFrame = static_cast<std::uint64_t>(-1);
     std::uint64_t m_NextSequence = 1;
     std::vector<ExecutionInput> m_QueuedInputs;
+    // Resolved native inputs are scratch for one Execute. Logical selectors
+    // remain in m_QueuedInputs only when they must cross a frame boundary and
+    // therefore need resolving against the then-current Layout.
+    std::vector<ResolvedInput> m_ResolvedInputs;
     std::shared_ptr<class FrameStore> m_Frames;
     ExecutionFault m_Failure;
 };

@@ -182,7 +182,7 @@ public:
     [[nodiscard]] std::shared_ptr<FrameStore> Frames(
         const Instance &instance) const;
     [[nodiscard]] Status InstanceFailure(const Instance &instance) const;
-    void ProcessTasks(const CKBehaviorContext *frame = nullptr);
+    bool ProcessTasks(const CKBehaviorContext *frame = nullptr);
     void ProcessFrame();
     void ClosePending();
 
@@ -218,6 +218,7 @@ private:
         bool OwnerDriven = false;
         bool Expired = false;
         bool Poisoned = false;
+        bool QueuedForFrame = false;
         Lifecycle NativeLifecycle;
         Execution Protocol;
         // The Target, Pins, Locals, and operations that define the current
@@ -343,7 +344,8 @@ private:
     void QueueSourceDestroy(ObjectStamp source, int frames = 2);
     void DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior);
     void DrainDeferredReleases();
-    void DrainCloseQueue(bool force = false);
+    void QueueFrame(Record &record);
+    bool DrainCloseQueue(bool force = false);
     static void CloseCallbacks(Record &record) noexcept;
     void AdoptSharedBindings();
     void Close();
@@ -360,6 +362,8 @@ private:
     bool m_ForceDestroyPending = false;
     std::mutex m_DeferredMutex;
     std::vector<std::uint64_t> m_DeferredReleases;
+    std::vector<std::uint64_t> m_FrameQueue;
+    std::vector<std::uint64_t> m_FrameRecords;
     std::shared_ptr<Instance::Access> m_Access;
     std::shared_ptr<SharedBindings> m_SharedBindings;
     bool m_ProcessingFrame = false;

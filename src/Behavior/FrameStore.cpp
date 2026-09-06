@@ -72,17 +72,22 @@ FrameAppendResult FrameStore::Retain(RunFrame frame) {
         return {};
     }
 
-    RunFrame failureFrame = frame;
-    failureFrame.NativeContinuation = false;
-    failureFrame.QueuedInput = false;
-    failureFrame.Overflow = FrameOverflow{1, m_Retention.Kind,
-                                         m_Retention.Capacity,
-                                         failureFrame.Fault};
-    failureFrame.Fault = QueueFullFault(frame.ReturnCode);
-    const ExecutionFault fault = failureFrame.Fault;
-    const std::optional<FrameOverflow> overflow = failureFrame.Overflow;
-    StoreNonContinuing(std::move(failureFrame));
+    frame.NativeContinuation = false;
+    frame.QueuedInput = false;
+    frame.Overflow = FrameOverflow{1, m_Retention.Kind,
+                                   m_Retention.Capacity,
+                                   std::move(frame.Fault)};
+    frame.Fault = QueueFullFault(frame.ReturnCode);
+    const ExecutionFault fault = frame.Fault;
+    const std::optional<FrameOverflow> overflow = frame.Overflow;
+    StoreNonContinuing(std::move(frame));
     return {true, fault, overflow};
+}
+
+bool FrameStore::Empty() const {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_Frames.empty() && !m_Latest && !m_LastError &&
+           !m_NonContinuing;
 }
 
 std::vector<RunFrame> FrameStore::Read() const {
@@ -100,7 +105,28 @@ bool FrameStore::Consume(std::span<const std::uint64_t> sequences) {
 
 std::vector<RunFrame> FrameStore::Take() {
     std::lock_guard<std::mutex> lock(m_Mutex);
-    std::vector<RunFrame> drained = ReadLocked();
+    std::vector<RunFrame> drained;
+    drained.reserve(m_Frames.size() + (m_Latest ? 1u : 0u) +
+                    (m_LastError ? 1u : 0u) +
+                    (m_NonContinuing ? 1u : 0u));
+    for (RunFrame &frame : m_Frames)
+        drained.push_back(std::move(frame));
+    if (m_Latest)
+        drained.push_back(std::move(*m_Latest));
+    if (m_LastError)
+        drained.push_back(std::move(*m_LastError));
+    if (m_NonContinuing)
+        drained.push_back(std::move(*m_NonContinuing));
+    std::sort(drained.begin(), drained.end(),
+              [](const RunFrame &left, const RunFrame &right) {
+                  return left.Sequence < right.Sequence;
+              });
+    drained.erase(
+        std::unique(drained.begin(), drained.end(),
+                    [](const RunFrame &left, const RunFrame &right) {
+                        return left.Sequence == right.Sequence;
+                    }),
+        drained.end());
     ClearLocked();
     return drained;
 }

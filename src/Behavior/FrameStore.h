@@ -45,6 +45,7 @@ public:
 
     [[nodiscard]] bool KeepsPouts(const RunFrame &frame) const noexcept;
     [[nodiscard]] FrameAppendResult Retain(RunFrame frame);
+    [[nodiscard]] bool Empty() const;
     [[nodiscard]] std::vector<RunFrame> Read() const;
     bool Consume(std::span<const std::uint64_t> sequences);
     [[nodiscard]] std::vector<RunFrame> Take();

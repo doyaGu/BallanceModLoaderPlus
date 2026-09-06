@@ -101,15 +101,15 @@ ExecutionResult Execution::Admit(const ExecutionInput &input, std::uint64_t fram
     if (managed)
         m_Managed = true;
 
-    Queue(input);
     if (m_State == ExecutionState::Running || m_State == ExecutionState::Pending ||
         m_LastFrame == frame) {
+        Queue(input);
         if (m_State != ExecutionState::Running)
             m_State = ExecutionState::Pending;
         return {AdmissionState::Queued, {}, std::nullopt};
     }
 
-    return Run(frame, adapter);
+    return Run(frame, adapter, &resolved);
 }
 
 ExecutionResult Execution::Step(std::uint64_t frame, ExecutionAdapter &adapter) {
@@ -129,23 +129,28 @@ ExecutionResult Execution::Step(std::uint64_t frame, ExecutionAdapter &adapter) 
     return Run(frame, adapter);
 }
 
-ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter) {
-    std::vector<ResolvedInput> resolved;
-    resolved.reserve(m_QueuedInputs.size());
-    for (const ExecutionInput &input : m_QueuedInputs) {
-        ResolvedInput entry;
-        ExecutionFault fault;
-        if (!adapter.Resolve(input, entry, fault)) {
-            if (!fault)
-                fault = Fault(ExecutionError::SelectorNotFound,
-                              "Queued behavior input no longer resolves.");
-            FailBeforeExecute(fault);
-            return {AdmissionState::Failed, std::move(fault), std::nullopt};
+ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter,
+                               const ResolvedInput *admitted) {
+    m_ResolvedInputs.clear();
+    if (admitted) {
+        m_ResolvedInputs.push_back(*admitted);
+    } else {
+        m_ResolvedInputs.reserve(m_QueuedInputs.size());
+        for (const ExecutionInput &input : m_QueuedInputs) {
+            ResolvedInput entry;
+            ExecutionFault fault;
+            if (!adapter.Resolve(input, entry, fault)) {
+                if (!fault)
+                    fault = Fault(ExecutionError::SelectorNotFound,
+                                  "Queued behavior input no longer resolves.");
+                FailBeforeExecute(fault);
+                return {AdmissionState::Failed, std::move(fault), std::nullopt};
+            }
+            m_ResolvedInputs.push_back(entry);
         }
-        resolved.push_back(std::move(entry));
     }
 
-    for (const ResolvedInput &input : resolved) {
+    for (const ResolvedInput &input : m_ResolvedInputs) {
         ExecutionFault fault;
         if (!adapter.Activate(input, fault)) {
             if (!fault)
@@ -287,10 +292,21 @@ ExecutionResult Execution::Run(std::uint64_t ordinal, ExecutionAdapter &adapter)
         m_Managed = false;
     }
 
-    RunFrame returned = frame;
-    Retain(std::move(frame), returned);
+    FrameInfo info;
+    info.Sequence = frame.Sequence;
+    info.Frame = frame.Frame;
+    info.ReturnCode = frame.ReturnCode;
+    info.NativeContinuation = frame.NativeContinuation;
+    info.QueuedInput = frame.QueuedInput;
+    info.ActiveOutputs.reserve(frame.ActiveOutputs.size());
+    for (const ExecutionOutput &output : frame.ActiveOutputs)
+        info.ActiveOutputs.push_back(output.Index);
+
+    ExecutionResult result{AdmissionState::Executed, frame.Fault,
+                           std::move(info)};
+    Retain(std::move(frame), result);
     running.Disarm();
-    return {AdmissionState::Executed, returned.Fault, returned};
+    return result;
 }
 
 void Execution::Continue() noexcept {
@@ -347,15 +363,17 @@ void Execution::FailBeforeExecute(ExecutionFault fault) noexcept {
     m_State = ExecutionState::Failed;
 }
 
-void Execution::Retain(RunFrame frame, RunFrame &returned) {
-    FrameAppendResult result = m_Frames->Retain(std::move(frame));
-    if (!result.Overflowed)
+void Execution::Retain(RunFrame frame, ExecutionResult &execution) {
+    FrameAppendResult retained = m_Frames->Retain(std::move(frame));
+    if (!retained.Overflowed)
         return;
-    returned.Fault = result.Failure;
-    returned.Overflow = std::move(result.Overflow);
-    returned.NativeContinuation = false;
-    returned.QueuedInput = false;
-    m_Failure = std::move(result.Failure);
+    m_Failure = retained.Failure;
+    execution.Fault = std::move(retained.Failure);
+    execution.Overflow = std::move(retained.Overflow);
+    if (execution.Frame) {
+        execution.Frame->NativeContinuation = false;
+        execution.Frame->QueuedInput = false;
+    }
     m_Managed = false;
     m_NativeContinuation = false;
     m_QueuedInputs.clear();

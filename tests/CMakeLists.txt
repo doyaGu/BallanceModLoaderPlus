@@ -292,6 +292,13 @@ add_bml_test(BehaviorExecutionTest
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
 )
 
+add_bml_test(BehaviorExecutionAllocationTest
+        SOURCES
+        BehaviorExecutionAllocationTest.cpp
+        ${BML_SOURCE_DIR}/Behavior/Execution.cpp
+        ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp
+)
+
 add_bml_test(BehaviorSessionTest
         SOURCES
         BehaviorSessionTest.cpp
