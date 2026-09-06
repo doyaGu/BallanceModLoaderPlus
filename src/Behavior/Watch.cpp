@@ -11,10 +11,6 @@ Status Failure(Error error, std::string message) {
     return {error, CK_OK, CKBR_BEHAVIORERROR, std::move(message)};
 }
 
-} // namespace
-
-namespace {
-
 std::size_t Mix(std::size_t seed, std::size_t value) noexcept {
     // boost::hash_combine's inexpensive avalanche is sufficient for native
     // identities that are already well distributed pointers and object ids.
@@ -54,14 +50,14 @@ void WatchReadings::ForgetUnused(Readings &readings) {
     }
 }
 
-void WatchReadings::Clear() noexcept {
-    ++m_Frame;
-    if (m_Frame == 0) {
+void WatchReadings::BeginFrame(std::uint64_t frame) noexcept {
+    if (frame == 0) {
         m_Graphs.clear();
         m_Layouts.clear();
         m_Frame = 1;
         return;
     }
+    m_Frame = frame;
     if ((m_Frame & 0xffu) == 0) {
         ForgetUnused(m_Graphs);
         ForgetUnused(m_Layouts);
@@ -129,7 +125,7 @@ bool WatchBinding::RetireAtSafePoint() noexcept {
 }
 
 Status Watch::Open(GraphSource &source, WatchSpec spec,
-    PlanCallbackState state,
+                   PlanCallbackState state,
                    WatchBinding::Function callback,
                    std::shared_ptr<Watch> &out) {
     out.reset();

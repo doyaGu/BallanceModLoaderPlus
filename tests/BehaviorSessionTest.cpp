@@ -460,7 +460,7 @@ TEST(BehaviorSessions, GraphWatchReadingsKeepLogicalAndLiveSeparate) {
     EXPECT_EQ(graph->GraphFingerprintCalls, baselineReads + 2);
 }
 
-TEST(BehaviorSessions, DistinctWatchesReuseTheirFrameIndexes) {
+TEST(BehaviorSessions, DistinctWatchTargetsDoNotAllocateAfterWarmup) {
     constexpr int kWatchCount = 128;
 
     Runtime runtime(nullptr);
@@ -503,6 +503,7 @@ TEST(BehaviorSessions, DistinctWatchesReuseTheirFrameIndexes) {
 
 TEST(BehaviorSessions, StableGraphWatchesDoNotAllocateWhilePolling) {
     constexpr int kWatchCount = 32;
+    constexpr std::uint64_t kSteadyFrames = 1024;
 
     FakeGraphSource directSource;
     std::shared_ptr<Watch> directWatch;
@@ -532,19 +533,24 @@ TEST(BehaviorSessions, StableGraphWatchesDoNotAllocateWhilePolling) {
     sessions.ProcessFrame();
 
     const std::size_t directAllocations = CountAllocations([&] {
-        directReadings.Clear();
-        for (int index = 0; index < kWatchCount; ++index)
-            (void) directWatch->Poll(2, directReadings);
+        for (std::uint64_t frame = 2; frame <= kSteadyFrames + 1; ++frame) {
+            directReadings.BeginFrame(frame);
+            for (int index = 0; index < kWatchCount; ++index)
+                (void) directWatch->Poll(frame, directReadings);
+        }
     });
 
     Runtime emptyRuntime(nullptr);
     auto emptySource = std::make_unique<FakeGraphSource>();
     Sessions emptySessions(emptyRuntime, nullptr, std::move(emptySource));
-    emptySessions.ProcessFrame();
-    const std::size_t emptyFrameAllocations =
-        CountAllocations([&] { emptySessions.ProcessFrame(); });
-    const std::size_t sessionAllocations =
-        CountAllocations([&] { sessions.ProcessFrame(); });
+    const std::size_t emptyFrameAllocations = CountAllocations([&] {
+        for (std::uint64_t frame = 0; frame < kSteadyFrames; ++frame)
+            emptySessions.ProcessFrame();
+    });
+    const std::size_t sessionAllocations = CountAllocations([&] {
+        for (std::uint64_t frame = 0; frame < kSteadyFrames; ++frame)
+            sessions.ProcessFrame();
+    });
 
     EXPECT_EQ(sessionAllocations,
               directAllocations + emptyFrameAllocations);

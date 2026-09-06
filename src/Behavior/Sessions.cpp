@@ -689,7 +689,7 @@ void Sessions::ProcessFrame() {
     }
     if (runsClosed)
         m_Runtime.ClosePending();
-    m_WatchReadings.Clear();
+    m_WatchReadings.BeginFrame(frame);
 
     for (const auto &[id, watch] : m_FrameWatches) {
         // The frame snapshot keeps the Watch alive. CloseWatch closes its

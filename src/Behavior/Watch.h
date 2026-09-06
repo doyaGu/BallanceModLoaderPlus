@@ -48,12 +48,12 @@ struct WatchInfo {
     Status Diagnostic;
 };
 
-// One polling frame observes a graph or Layout once, even when several
+// One polling frame observes a graph or layout once, even when several
 // Watches ask the same question. Baselines remain independent because a Watch
 // may be opened between native graph changes.
 class WatchReadings final {
 public:
-    void Clear() noexcept;
+    void BeginFrame(std::uint64_t frame) noexcept;
     Status GraphFingerprint(GraphSource &source, const NativeRef &root,
                             GraphView view, std::uint64_t &out);
     Status LayoutFingerprint(GraphSource &source, const NativeRef &node,
