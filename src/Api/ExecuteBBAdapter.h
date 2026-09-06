@@ -4,7 +4,9 @@
 #include <utility>
 #include <vector>
 
-#include "Behavior/Blocks.h"
+#include "Behavior/Block.h"
+#include "BML/Behavior/Blocks/ObjectLoad.hpp"
+#include "BML/Behavior/Blocks/PhysicsForce.hpp"
 #include "Behavior/PhysicsForce.h"
 #include "Behavior/Runtime.h"
 
@@ -14,26 +16,26 @@ namespace BML {
 // the state needed by operations that outlive one call.
 class ExecuteBBAdapter final {
 public:
-    ExecuteBBAdapter(Behavior::Runtime &runtime,
-                     Behavior::PhysicsForce::Sessions &physicsForce)
+    ExecuteBBAdapter(Behavior::Internal::Runtime &runtime,
+                     Behavior::Internal::PhysicsForce::Sessions &physicsForce)
         : m_Runtime(runtime), m_PhysicsForce(physicsForce) {}
 
-    Behavior::RunResult Run(CKBeObject *owner, const Behavior::BlockSpec &spec,
+    Behavior::Internal::RunResult Run(CKBeObject *owner, const Behavior::Internal::BlockSpec &spec,
                             int input = 0);
-    Behavior::RunResult SetPhysicsForce(
+    Behavior::Internal::RunResult SetPhysicsForce(
         const Behavior::Blocks::PhysicsForce::Options &options);
-    Behavior::RunResult UnsetPhysicsForce(CK3dEntity *target);
+    Behavior::Internal::RunResult UnsetPhysicsForce(CK3dEntity *target);
     std::pair<XObjectArray *, CKObject *> LoadObjects(
         const Behavior::Blocks::ObjectLoad::Options &options, bool rename);
-    CKBehavior *AddToGraph(CKBehavior *parent, const Behavior::BlockSpec &spec);
+    CKBehavior *AddToGraph(CKBehavior *parent, const Behavior::Internal::BlockSpec &spec);
     void ProcessFrame();
     void Reset();
 
 private:
-    Behavior::Runtime &m_Runtime;
-    Behavior::PhysicsForce::Sessions &m_PhysicsForce;
-    Behavior::Instance m_LastObjectLoad;
-    std::vector<Behavior::Instance> m_Tasks;
+    Behavior::Internal::Runtime &m_Runtime;
+    Behavior::Internal::PhysicsForce::Sessions &m_PhysicsForce;
+    Behavior::Internal::Instance m_LastObjectLoad;
+    std::vector<Behavior::Internal::Instance> m_Tasks;
     unsigned int m_LoadCount = 0;
 };
 

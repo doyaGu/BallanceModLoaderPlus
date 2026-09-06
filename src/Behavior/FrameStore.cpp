@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 ExecutionFault QueueFullFault(int nativeCode) {
@@ -242,4 +242,4 @@ void FrameStore::ClearLocked() noexcept {
     m_NonContinuing.reset();
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

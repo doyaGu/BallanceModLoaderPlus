@@ -1,6 +1,6 @@
 #include "Behavior/HookBlock.h"
 
-namespace BML::Behavior::HookBlock {
+namespace BML::Behavior::Internal::HookBlock {
 
 Binding::Binding(PlanCallbackState state, Callback callback, void *argument)
     : Binding(std::move(state), callback, argument, true) {}
@@ -83,4 +83,4 @@ std::shared_ptr<Binding> Hook::Bind() const {
         ? std::move(binding) : nullptr;
 }
 
-} // namespace BML::Behavior::HookBlock
+} // namespace BML::Behavior::Internal::HookBlock

@@ -5,7 +5,7 @@
 
 #include "CKAll.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 Value Value::Raw(CKGUID type, const void *data, std::size_t size) {
     Value value;
@@ -41,4 +41,4 @@ Value Value::Null(CKGUID type) {
     return value;
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

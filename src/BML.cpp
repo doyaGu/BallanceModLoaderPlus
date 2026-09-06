@@ -54,7 +54,7 @@ PLUGIN_EXPORT CKPluginInfo *CKGetPluginInfo(int Index) {
 PLUGIN_EXPORT void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg);
 
 void RegisterBehaviorDeclarations(XObjectDeclarationArray *reg) {
-    BML::Behavior::HookBlock::Register(reg);
+    BML::Behavior::Internal::HookBlock::Register(reg);
 }
 
 static LPVOID g_CreateCKBehaviorPrototypeRunTimeTarget = nullptr;

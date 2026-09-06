@@ -8,7 +8,7 @@
 
 #include "Behavior/Value.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 static_assert(std::is_copy_constructible_v<Value>);
@@ -56,4 +56,4 @@ TEST(BehaviorValue, RepresentsTypedNullWithoutWorldState) {
 }
 
 } // namespace
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

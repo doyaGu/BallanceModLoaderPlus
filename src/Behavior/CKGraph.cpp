@@ -8,7 +8,7 @@
 
 #include "Behavior/Runtime.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 constexpr std::uint64_t kHashOffset = 1469598103934665603ull;
@@ -732,4 +732,4 @@ std::unique_ptr<GraphSource> MakeCKGraphSource(
         context, runtime, std::move(issueObjectRef));
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

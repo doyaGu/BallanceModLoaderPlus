@@ -9,7 +9,7 @@
 #include "Behavior/Callback.h"
 #include "Behavior/Graph.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class WatchKind {
     GraphChanged,
@@ -102,6 +102,6 @@ private:
     std::atomic<bool> m_Open{true};
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_WATCH_H

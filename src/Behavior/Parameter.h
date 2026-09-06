@@ -8,11 +8,8 @@
 #include "CKAll.h"
 #include "Behavior/Value.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 struct Status;
-}
-
-namespace BML::Behavior {
 namespace Parameter {
 
 enum class BindingKind : std::uint32_t {
@@ -167,6 +164,6 @@ private:
                            CKParameter *right, bool &equal);
 
 } // namespace Parameter
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_PARAMETER_H

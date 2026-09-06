@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 namespace {
 
@@ -322,4 +322,4 @@ void Lifecycle::RecordFailure(LifecycleFault fault) noexcept {
         m_Failure = std::move(fault);
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

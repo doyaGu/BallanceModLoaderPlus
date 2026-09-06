@@ -25,7 +25,7 @@ int Dispatch(const CKBehaviorContext *, void *argument) {
     return CKBR_OK;
 }
 
-BML::Behavior::ObjectRef Reference(CKObject *object) {
+BML::Behavior::Internal::ObjectRef Reference(CKObject *object) {
     ModContext *context = BML_GetModContext();
     if (!context || !object)
         return {};
@@ -86,30 +86,30 @@ public:
                    Callback<Method>());
     }
 
-    BML::Behavior::Status Install(std::string name,
+    BML::Behavior::Internal::Status Install(std::string name,
                                   std::vector<std::uintptr_t> &installed);
 
 private:
     template<void (Receiver::*Method)()>
-    [[nodiscard]] BML::Behavior::HookBlock::Hook Callback() const {
+    [[nodiscard]] BML::Behavior::Internal::HookBlock::Hook Callback() const {
         return {&Dispatch<Method>, m_Receiver};
     }
 
     CKBehavior *m_Graph = nullptr;
     Receiver *m_Receiver = nullptr;
-    BML::Behavior::GraphEdit m_Plan;
+    BML::Behavior::Internal::GraphEdit m_Plan;
 };
 
-BML::Behavior::Status Hooks::Install(std::string name,
+BML::Behavior::Internal::Status Hooks::Install(std::string name,
                                      std::vector<std::uintptr_t> &installed) {
     ModContext *context = BML_GetModContext();
     if (!context) {
-        return {BML::Behavior::Error::InvalidState, CK_OK, CKBR_OK,
+        return {BML::Behavior::Internal::Error::InvalidState, CK_OK, CKBR_OK,
                 "The Loader is not available."};
     }
 
-    BML::Behavior::PatchId patch = 0;
-    const BML::Behavior::Status status = context->BehaviorPatches().Apply(
+    BML::Behavior::Internal::PatchId patch = 0;
+    const BML::Behavior::Internal::Status status = context->BehaviorPatches().Apply(
         context->LoaderBehaviorOwner(), Reference(m_Graph), std::move(name),
         std::move(m_Plan), patch);
     if (status && patch)
@@ -128,7 +128,7 @@ void GameEventHooks::OnUnload() {
     // Closing each Patch takes the callbacks out of the graphs that still hold
     // them, so no hook can reach a receiver this Mod no longer owns.
     if (ModContext *context = BML_GetModContext()) {
-        const BML::Behavior::SessionOwner owner =
+        const BML::Behavior::Internal::SessionOwner owner =
             context->LoaderBehaviorOwner();
         for (std::uintptr_t patch : m_Installed)
             (void) context->BehaviorPatches().Close(owner, patch);
@@ -271,7 +271,7 @@ void GameEventHooks::PatchBaseEventHandler(CKBehavior *script) {
     hooks.After<&Receiver::OnPostEndLevel>(
         highscore, highscore->GetOutputPosition(highscoreOutput));
 
-    const BML::Behavior::Status status =
+    const BML::Behavior::Internal::Status status =
         hooks.Install("Event_handler", m_Installed);
     if (!status) {
         RejectPatch("Event_handler", status.Message.c_str());
@@ -282,7 +282,7 @@ void GameEventHooks::PatchBaseEventHandler(CKBehavior *script) {
     // belongs to a Patch of that graph and not of the script above it.
     Hooks reset(resetLevel, *m_Receiver);
     reset.Before<&Receiver::OnPreResetLevel>(preResetLevel);
-    const BML::Behavior::Status resetStatus =
+    const BML::Behavior::Internal::Status resetStatus =
         reset.Install("Event_handler reset Level", m_Installed);
     if (!resetStatus)
         RejectPatch("Event_handler", resetStatus.Message.c_str());
@@ -314,7 +314,7 @@ void GameEventHooks::PatchGameplayIngame(CKBehavior *script) {
     Hooks cameraHooks(camera, *m_Receiver);
     cameraHooks.After<&Receiver::OnCamNavActive>(cameraOn);
     cameraHooks.After<&Receiver::OnCamNavInactive>(cameraOff);
-    const BML::Behavior::Status cameraStatus =
+    const BML::Behavior::Internal::Status cameraStatus =
         cameraHooks.Install("Gameplay_Ingame CamNav", m_Installed);
     if (!cameraStatus)
         RejectPatch("Gameplay_Ingame", cameraStatus.Message.c_str());
@@ -322,7 +322,7 @@ void GameEventHooks::PatchGameplayIngame(CKBehavior *script) {
     Hooks ballHooks(ball, *m_Receiver);
     ballHooks.After<&Receiver::OnBallNavActive>(ballOn);
     ballHooks.After<&Receiver::OnBallNavInactive>(ballOff);
-    const BML::Behavior::Status ballStatus =
+    const BML::Behavior::Internal::Status ballStatus =
         ballHooks.Install("Gameplay_Ingame BallNav", m_Installed);
     if (!ballStatus)
         RejectPatch("Gameplay_Ingame", ballStatus.Message.c_str());
@@ -372,7 +372,7 @@ void GameEventHooks::PatchGameplayEnergy(CKBehavior *script) {
     hooks.After<&Receiver::OnPostSubLife>(postSubLife);
     hooks.Before<&Receiver::OnExtraPoint>(extraPointLink);
 
-    const BML::Behavior::Status status =
+    const BML::Behavior::Internal::Status status =
         hooks.Install("Gameplay_Energy", m_Installed);
     if (!status)
         RejectPatch("Gameplay_Energy", status.Message.c_str());
@@ -410,7 +410,7 @@ void GameEventHooks::PatchGameplayEvents(CKBehavior *script) {
     hooks.Before<&Receiver::OnGameOver>(gameOverLink);
     hooks.Before<&Receiver::OnLevelFinish>(levelFinishLink);
 
-    const BML::Behavior::Status status =
+    const BML::Behavior::Internal::Status status =
         hooks.Install("Gameplay_Events", m_Installed);
     if (!status)
         RejectPatch("Gameplay_Events", status.Message.c_str());

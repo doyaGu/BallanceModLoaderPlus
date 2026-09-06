@@ -6,7 +6,7 @@
 
 #include "Behavior/FrameStore.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 Status Fail(Error error, std::string message) {
@@ -929,4 +929,4 @@ void Sessions::CollectWatches() {
     }
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

@@ -13,7 +13,7 @@
 #include "Behavior/Edit.h"
 #include "Behavior/PrototypeCatalog.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 // A Node query contains semantic identity only and is resolved against the
 // target graph each time this edit is compiled. An empty field is not a
@@ -221,6 +221,6 @@ private:
     std::uint32_t m_NextAction = 1;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_GRAPHEDIT_H

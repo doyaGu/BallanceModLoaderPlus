@@ -11,7 +11,7 @@
 
 #include "Behavior/Topology.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 using Epoch = std::uint64_t;
 using Installation = std::uint64_t;
@@ -163,6 +163,6 @@ private:
     std::map<ObjectRef, std::string, RefLess> m_Scripts;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_PLAN_H

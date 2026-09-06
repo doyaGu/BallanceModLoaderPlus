@@ -26,7 +26,7 @@
 #include "Behavior/PrototypeCatalog.h"
 #include "Behavior/Status.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class RunState {
     Ready,
@@ -373,6 +373,6 @@ private:
 const char *DescribeError(Error error);
 const char *DescribePhase(Phase phase);
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_RUNTIME_H

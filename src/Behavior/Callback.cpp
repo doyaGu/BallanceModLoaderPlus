@@ -5,7 +5,7 @@
 #include <mutex>
 #include <vector>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 struct PlanCallbackState::Control {
     mutable std::mutex Mutex;
@@ -312,4 +312,4 @@ bool CallbackLease::IsCurrentInvocation() const noexcept {
                   m_Lease.get()) != g_InvocationStack.end();
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

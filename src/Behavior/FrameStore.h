@@ -9,7 +9,7 @@
 
 #include "Behavior/Execution.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 struct FrameAppendResult {
     bool Overflowed = false;
@@ -70,6 +70,6 @@ private:
     std::optional<RunFrame> m_NonContinuing;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_FRAMESTORE_H

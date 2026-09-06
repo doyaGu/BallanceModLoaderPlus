@@ -9,7 +9,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 NativeRef Native(std::uint64_t id) {
     return {id, reinterpret_cast<const void *>(

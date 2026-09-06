@@ -8,7 +8,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 GraphEndpoint Pin(std::uint64_t node, int index = 0) {
     return {node, SlotKind::InputParameter, index};

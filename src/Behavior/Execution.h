@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class ExecutionState {
     Idle,
@@ -250,6 +250,6 @@ private:
     ExecutionFault m_Failure;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_EXECUTION_H

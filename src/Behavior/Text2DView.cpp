@@ -7,7 +7,7 @@
 #include "Behavior/Layout.h"
 #include "Behavior/Parameter.h"
 
-namespace BML::Behavior::Text2DView {
+namespace BML::Behavior::Internal::Text2DView {
 namespace {
 
 // The retail prototype's parameter order. Nothing outside this file needs it.
@@ -50,7 +50,7 @@ T Read(CKParameter *parameter, T fallback) {
 
 CKBehavior *Add(Runtime &runtime, CKBehavior *graph, const Options &options) {
     const AttachResult added = runtime.AddToGraph(
-        graph, Blocks::Text2D::Make(options));
+        graph, BML::Behavior::Internal::BlockSpec::From(options));
     return added ? added.Block : nullptr;
 }
 
@@ -123,4 +123,4 @@ void View::Draw() {
     m_Block->Execute(0);
 }
 
-} // namespace BML::Behavior::Text2DView
+} // namespace BML::Behavior::Internal::Text2DView

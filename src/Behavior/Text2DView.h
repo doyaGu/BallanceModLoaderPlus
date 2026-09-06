@@ -1,12 +1,13 @@
 #ifndef BML_BEHAVIOR_TEXT2DVIEW_H
 #define BML_BEHAVIOR_TEXT2DVIEW_H
 
-#include "Behavior/Blocks.h"
+#include "BML/Behavior/Blocks/Text2D.hpp"
+#include "Behavior/Block.h"
 #include "Behavior/Runtime.h"
 
-namespace BML::Behavior::Text2DView {
+namespace BML::Behavior::Internal::Text2DView {
 
-using Options = Blocks::Text2D::Options;
+using Options = BML::Behavior::Blocks::Text2D::Options;
 
 // Adds a 2D Text Block to a live graph and hands back the Block itself, which
 // is what a caller that keeps drawing the text holds on to.
@@ -52,6 +53,6 @@ private:
     CKBehavior *m_Block = nullptr;
 };
 
-} // namespace BML::Behavior::Text2DView
+} // namespace BML::Behavior::Internal::Text2DView
 
 #endif // BML_BEHAVIOR_TEXT2DVIEW_H

@@ -3,6 +3,7 @@
 #define BML_BEHAVIOR_DETAIL_BLOCKS_HPP
 
 #include "BML/Behavior.hpp"
+#include "BML/Behavior/Detail/BlockAccess.hpp"
 
 namespace BML::Behavior::Detail {
 

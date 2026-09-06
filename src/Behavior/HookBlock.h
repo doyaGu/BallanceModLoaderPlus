@@ -3,7 +3,7 @@
 
 #include "Behavior/Runtime.h"
 
-namespace BML::Behavior::HookBlock {
+namespace BML::Behavior::Internal::HookBlock {
 
 using Callback = int (*)(const CKBehaviorContext *context, void *argument);
 
@@ -90,6 +90,6 @@ BlockSpec Make(Callback callback, void *argument = nullptr,
 
 void Register(XObjectDeclarationArray *registry);
 
-} // namespace BML::Behavior::HookBlock
+} // namespace BML::Behavior::Internal::HookBlock
 
 #endif // BML_BEHAVIOR_HOOKBLOCK_H

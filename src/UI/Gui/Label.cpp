@@ -8,14 +8,14 @@ using namespace BGui;
 namespace {
 // Every function below writes or reads one Slot of the same Block, so each one
 // opens a view on it and lets the Text2D module say which Slot that is.
-BML::Behavior::Text2DView::View Text(CKBehavior *block) {
+BML::Behavior::Internal::Text2DView::View Text(CKBehavior *block) {
     return {BML_GetCKContext(), block};
 }
 } // namespace
 
 Label::Label(const char *name) : Element(name) {
     ModContext *context = BML_GetModContext();
-    m_Text2d = BML::Behavior::Text2DView::Add(
+    m_Text2d = BML::Behavior::Internal::Text2DView::Add(
         context->Behaviors(), context->GetScriptByName("Level_Init"),
         {m_2dEntity, context->GetGameFonts().Resolve(BML::GameFont::None)});
 }

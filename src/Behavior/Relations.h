@@ -7,7 +7,7 @@
 
 #include "Behavior/Topology.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class RelationKind {
     Bind,
@@ -79,6 +79,6 @@ private:
     std::uint64_t m_Fingerprint = 0;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_RELATIONS_H

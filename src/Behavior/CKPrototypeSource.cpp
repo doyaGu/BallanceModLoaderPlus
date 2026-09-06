@@ -13,7 +13,7 @@
 
 #include <MinHook.h>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 using RemoveDeclaration = CKERROR(__cdecl *)(CKObjectDeclaration *);
@@ -341,4 +341,4 @@ std::unique_ptr<PrototypeSource> MakeCKPrototypeSource(CKContext *context) {
     return std::make_unique<CKPrototypeSource>(context);
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

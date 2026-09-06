@@ -5,7 +5,7 @@
 
 #include "BML/Guids/physics_RT.h"
 
-namespace BML::Behavior::PhysicsForce {
+namespace BML::Behavior::Internal::PhysicsForce {
 namespace {
 
 bool ContainsId(const CK_ID *ids, int count, CK_ID id) {
@@ -101,7 +101,7 @@ RunResult Sessions::Create(const StoredOptions &stored) {
     }
 
     CreateResult created = m_Runtime.Instantiate(
-        options.Target, Blocks::PhysicsForce::Make(options));
+        options.Target, BML::Behavior::Internal::BlockSpec::From(options));
     if (!created)
         return {std::move(created.Detail), RunState::Failed, CKBR_BEHAVIORERROR, {}};
     RunResult result = m_Runtime.Pulse(
@@ -167,7 +167,7 @@ RunResult Sessions::Set(const Options &options) {
                 RunState::Failed, CKBR_OK, {}};
     }
     Status reconfigured = m_Runtime.Reconfigure(
-        existing->second.Block, Blocks::PhysicsForce::Make(pendingOptions));
+        existing->second.Block, BML::Behavior::Internal::BlockSpec::From(pendingOptions));
     if (!reconfigured)
         return {std::move(reconfigured), RunState::Failed, CKBR_PARAMETERERROR, {}};
     return Pending("Pending Physics Force updated before native controller creation.");
@@ -216,7 +216,7 @@ RunResult Sessions::Clear(CK3dEntity *target) {
     }
     Options cancellation;
     Status cancelled = m_Runtime.Reconfigure(
-        it->second.Block, Blocks::PhysicsForce::Make(cancellation));
+        it->second.Block, BML::Behavior::Internal::BlockSpec::From(cancellation));
     if (!cancelled)
         return {std::move(cancelled), RunState::Failed, CKBR_PARAMETERERROR, {}};
     it->second.Stopping = true;
@@ -311,7 +311,7 @@ void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         if (session.Block.Get() && !HasNativeController(session)) {
             Options cancellation;
             (void) m_Runtime.Reconfigure(
-                session.Block, Blocks::PhysicsForce::Make(cancellation));
+                session.Block, BML::Behavior::Internal::BlockSpec::From(cancellation));
         }
         session.RetireAfterFrame = m_PhysicsFrame + 1;
         m_Retiring.push_back(std::move(session));
@@ -337,4 +337,4 @@ void Sessions::Reset() {
     m_PhysicsFrame = 0;
 }
 
-} // namespace BML::Behavior::PhysicsForce
+} // namespace BML::Behavior::Internal::PhysicsForce

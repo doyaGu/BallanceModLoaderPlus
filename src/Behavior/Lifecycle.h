@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class LifecycleState {
     New,
@@ -173,6 +173,6 @@ private:
     std::atomic<bool> m_ResetRequested{false};
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_LIFECYCLE_H

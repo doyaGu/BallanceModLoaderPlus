@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 struct ObjectRef {
     std::uint32_t Domain = 0;
@@ -15,6 +15,6 @@ struct ObjectRef {
     friend bool operator==(const ObjectRef &, const ObjectRef &) = default;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_OBJECTREF_H

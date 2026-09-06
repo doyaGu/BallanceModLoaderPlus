@@ -319,8 +319,6 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Plan.h
         Behavior/Relations.h
         Behavior/HookBlock.h
-        Behavior/Blocks.h
-        Behavior/Blocks/Definition.h
         Behavior/PhysicsForce.h
         Behavior/Runtime.h
         Behavior/Script.h

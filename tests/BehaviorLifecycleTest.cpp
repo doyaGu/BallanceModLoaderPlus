@@ -11,7 +11,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 const char *Name(LifecycleCallback callback) {
     switch (callback) {

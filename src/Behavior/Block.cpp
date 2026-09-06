@@ -4,7 +4,7 @@
 
 #include "Behavior/Value.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 bool SameSelector(const Slot &left, const Slot &right) {
@@ -137,4 +137,4 @@ bool BlockSpec::WorldBound() const noexcept {
     return false;
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

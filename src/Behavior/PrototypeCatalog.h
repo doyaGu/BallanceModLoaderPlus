@@ -10,7 +10,7 @@
 
 #include "Behavior/Status.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 struct ProviderInfo {
     CKGUID Guid = CKGUID();
@@ -133,6 +133,6 @@ private:
     std::unordered_set<std::string> m_RetiredProviders;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_PROTOTYPECATALOG_H

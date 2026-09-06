@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <sstream>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 Status Failure(Error error, std::string message, CKERROR ckError = CK_OK,
@@ -3221,4 +3221,4 @@ const char *DescribePhase(Phase phase) {
     return "unknown";
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

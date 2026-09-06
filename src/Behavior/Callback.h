@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class CallbackLeaseState {
     Open,
@@ -166,6 +166,6 @@ CallbackCall InvokeCallback(CallbackLease &lease, int exceptionReturnCode,
     }
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_CALLBACK_H

@@ -7,7 +7,7 @@
 
 #include "CKTypes.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class ValueKind {
     Raw,
@@ -47,6 +47,6 @@ private:
     std::string m_Text;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_VALUE_H

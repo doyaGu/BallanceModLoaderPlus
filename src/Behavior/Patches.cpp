@@ -4,7 +4,7 @@
 #include <set>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 Status Failure(Error error, std::string message,
@@ -458,4 +458,4 @@ void Patches::Collect() {
     }
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

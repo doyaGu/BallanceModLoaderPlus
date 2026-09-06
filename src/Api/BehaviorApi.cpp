@@ -26,67 +26,67 @@
 
 namespace {
 
-using BML::Behavior::AdmissionState;
-using BML::Behavior::Sessions;
-using BML::Behavior::Error;
-using BML::Behavior::ExecutionError;
-using BML::Behavior::RunFrame;
-using BML::Behavior::FrameRetention;
-using BML::Behavior::Phase;
-using BML::Behavior::Pout;
-using BML::Behavior::PoutKind;
-using BML::Behavior::PrototypeInfo;
-using BML::Behavior::PrototypeQuery;
-using BML::Behavior::PrototypeRef;
-using BML::Behavior::RunInfo;
-using BML::Behavior::RunKind;
-using BML::Behavior::RunResult;
-using BML::Behavior::RunState;
-using BML::Behavior::Slot;
-using BML::Behavior::SlotKind;
-using BML::Behavior::BlockSpec;
-using BML::Behavior::Status;
-using BML::Behavior::Value;
-using BML::Behavior::Layout;
-using BML::Behavior::ManagerRequirement;
-using BML::Behavior::GraphModel;
-using BML::Behavior::GraphValue;
-using BML::Behavior::GraphView;
-using BML::Behavior::ReadMode;
-using BML::Behavior::Truth;
-using BML::Behavior::ValueRelation;
-using BML::Behavior::ValueState;
-using BML::Behavior::WatchEvent;
-using BML::Behavior::WatchKind;
-using BML::Behavior::WatchSpec;
-using BML::Behavior::Cycle;
-using BML::Behavior::DetachedCompatibility;
-using BML::Behavior::GraphEdit;
-using BML::Behavior::Link;
-using BML::Behavior::Node;
-using BML::Behavior::NodeQuery;
-using BML::Behavior::Order;
-using BML::Behavior::OrderKind;
-using BML::Behavior::PatchId;
-using BML::Behavior::PatchInfo;
-using BML::Behavior::PatchKey;
-using BML::Behavior::PatchState;
-using BML::Behavior::ParameterOperation;
-using BML::Behavior::PathRef;
-using BML::Behavior::PlanCallbackState;
-using BML::Behavior::PlanId;
-using BML::Behavior::PlanInfo;
-using BML::Behavior::PlanState;
-using BML::Behavior::Port;
-using BML::Behavior::ScriptSelection;
-using BML::Behavior::SessionOwner;
-using BML::Behavior::TargetSet;
+using BML::Behavior::Internal::AdmissionState;
+using BML::Behavior::Internal::Sessions;
+using BML::Behavior::Internal::Error;
+using BML::Behavior::Internal::ExecutionError;
+using BML::Behavior::Internal::RunFrame;
+using BML::Behavior::Internal::FrameRetention;
+using BML::Behavior::Internal::Phase;
+using BML::Behavior::Internal::Pout;
+using BML::Behavior::Internal::PoutKind;
+using BML::Behavior::Internal::PrototypeInfo;
+using BML::Behavior::Internal::PrototypeQuery;
+using BML::Behavior::Internal::PrototypeRef;
+using BML::Behavior::Internal::RunInfo;
+using BML::Behavior::Internal::RunKind;
+using BML::Behavior::Internal::RunResult;
+using BML::Behavior::Internal::RunState;
+using BML::Behavior::Internal::Slot;
+using BML::Behavior::Internal::SlotKind;
+using BML::Behavior::Internal::BlockSpec;
+using BML::Behavior::Internal::Status;
+using BML::Behavior::Internal::Value;
+using BML::Behavior::Internal::Layout;
+using BML::Behavior::Internal::ManagerRequirement;
+using BML::Behavior::Internal::GraphModel;
+using BML::Behavior::Internal::GraphValue;
+using BML::Behavior::Internal::GraphView;
+using BML::Behavior::Internal::ReadMode;
+using BML::Behavior::Internal::Truth;
+using BML::Behavior::Internal::ValueRelation;
+using BML::Behavior::Internal::ValueState;
+using BML::Behavior::Internal::WatchEvent;
+using BML::Behavior::Internal::WatchKind;
+using BML::Behavior::Internal::WatchSpec;
+using BML::Behavior::Internal::Cycle;
+using BML::Behavior::Internal::DetachedCompatibility;
+using BML::Behavior::Internal::GraphEdit;
+using BML::Behavior::Internal::Link;
+using BML::Behavior::Internal::Node;
+using BML::Behavior::Internal::NodeQuery;
+using BML::Behavior::Internal::Order;
+using BML::Behavior::Internal::OrderKind;
+using BML::Behavior::Internal::PatchId;
+using BML::Behavior::Internal::PatchInfo;
+using BML::Behavior::Internal::PatchKey;
+using BML::Behavior::Internal::PatchState;
+using BML::Behavior::Internal::ParameterOperation;
+using BML::Behavior::Internal::PathRef;
+using BML::Behavior::Internal::PlanCallbackState;
+using BML::Behavior::Internal::PlanId;
+using BML::Behavior::Internal::PlanInfo;
+using BML::Behavior::Internal::PlanState;
+using BML::Behavior::Internal::Port;
+using BML::Behavior::Internal::ScriptSelection;
+using BML::Behavior::Internal::SessionOwner;
+using BML::Behavior::Internal::TargetSet;
 using BML::Behavior::Internal::ScriptResult;
 using BML::Behavior::Internal::ScriptId;
 using BML::Behavior::Internal::ScriptInfo;
 using BML::Behavior::Internal::ScriptState;
-namespace HookBlock = BML::Behavior::HookBlock;
-namespace Parameter = BML::Behavior::Parameter;
+namespace HookBlock = BML::Behavior::Internal::HookBlock;
+namespace Parameter = BML::Behavior::Internal::Parameter;
 
 template <typename T>
 bool HasStructSize(const T *value) noexcept {
@@ -368,8 +368,8 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
         return false;
     }
     CKParameterManager *parameters = context.GetParameterManager();
-    const BML::Behavior::Parameter::Type parameterType =
-        BML::Behavior::Parameter::Describe(parameters, type);
+    const BML::Behavior::Internal::Parameter::Type parameterType =
+        BML::Behavior::Internal::Parameter::Describe(parameters, type);
     if (!parameterType.Valid) {
         status = {Error::ParameterTypeUnavailable,
                   CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
@@ -387,7 +387,7 @@ bool ReadValue(const BML_BehaviorValue &from, ModContext &context,
         return false;
     }
     const auto typeMatchesKind = [&] {
-        using Form = BML::Behavior::Parameter::Form;
+        using Form = BML::Behavior::Internal::Parameter::Form;
         switch (from.Kind) {
         case BML_BEHAVIOR_VALUE_BOOL: return parameterType.ValueForm == Form::Bool;
         case BML_BEHAVIOR_VALUE_INT32: return parameterType.ValueForm == Form::Int32;
@@ -775,7 +775,7 @@ int ResultCode(const Status &status) noexcept {
     return status ? BML_OK : BML_ERROR_FAIL;
 }
 
-int OpenRunResult(const BML::Behavior::OpenRun &opened,
+int OpenRunResult(const BML::Behavior::Internal::OpenRun &opened,
                   BML_BehaviorRun *outRun,
                   BML_BehaviorRunInfo *info,
                   BML_BehaviorStatus *status) {
@@ -1043,7 +1043,7 @@ std::uint32_t PublicPoutKind(PoutKind kind) noexcept {
     return static_cast<std::uint32_t>(kind) + 1u;
 }
 
-class WireFrames final : public BML::Behavior::FrameBatch {
+class WireFrames final : public BML::Behavior::Internal::FrameBatch {
 public:
     WireFrames(BML_BehaviorRunFrame *headers,
                std::uint32_t headerCapacity,
@@ -1062,22 +1062,22 @@ public:
         return !m_Writing && Add(frame);
     }
 
-    BML::Behavior::FrameBatchResult Ready() override {
+    BML::Behavior::Internal::FrameBatchResult Ready() override {
         if (m_HeaderCount > UINT32_MAX || m_PayloadSize > UINT32_MAX ||
             !FitsStrided(m_HeaderCount, m_HeaderStride,
                          sizeof(BML_BehaviorRunFrame)))
-            return BML::Behavior::FrameBatchResult::Failed;
+            return BML::Behavior::Internal::FrameBatchResult::Failed;
         *m_OutHeaderCount = static_cast<std::uint32_t>(m_HeaderCount);
         *m_OutPayloadSize = static_cast<std::uint32_t>(m_PayloadSize);
         if (m_HeaderCapacity < m_HeaderCount ||
             m_PayloadCapacity < m_PayloadSize)
-            return BML::Behavior::FrameBatchResult::Insufficient;
+            return BML::Behavior::Internal::FrameBatchResult::Insufficient;
         m_ExpectedHeaders = m_HeaderCount;
         m_ExpectedPayload = m_PayloadSize;
         m_HeaderCount = 0;
         m_PayloadSize = 0;
         m_Writing = true;
-        return BML::Behavior::FrameBatchResult::Complete;
+        return BML::Behavior::Internal::FrameBatchResult::Complete;
     }
 
     bool Write(const RunFrame &frame) override {
@@ -1327,7 +1327,7 @@ int BML_BEHAVIOR_CALL TakeFrames(
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
-        std::shared_ptr<BML::Behavior::FrameStore> store =
+        std::shared_ptr<BML::Behavior::Internal::FrameStore> store =
             context->BehaviorSessions().Frames(RunId(run));
         if (!store)
             return BML_ERROR_INVALID_HANDLE;
@@ -1336,11 +1336,11 @@ int BML_BEHAVIOR_CALL TakeFrames(
                          payload, payloadCapacity,
                          outHeaderCount, outPayloadSize);
         switch (store->Take(batch)) {
-        case BML::Behavior::FrameBatchResult::Complete:
+        case BML::Behavior::Internal::FrameBatchResult::Complete:
             return BML_OK;
-        case BML::Behavior::FrameBatchResult::Insufficient:
+        case BML::Behavior::Internal::FrameBatchResult::Insufficient:
             return BML_ERROR_BUFFER_TOO_SMALL;
-        case BML::Behavior::FrameBatchResult::Failed:
+        case BML::Behavior::Internal::FrameBatchResult::Failed:
             return BML_ERROR_OUT_OF_MEMORY;
         }
         return BML_ERROR_FAIL;
@@ -1550,20 +1550,20 @@ bool AddLayout(const Layout &from, BehaviorPayload &payload,
                BML_BehaviorLayout &record) {
     record = {};
     record.StructSize = sizeof(record);
-    record.Origin = from.Origin == BML::Behavior::LayoutOrigin::Declared
+    record.Origin = from.Origin == BML::Behavior::Internal::LayoutOrigin::Declared
         ? BML_BEHAVIOR_LAYOUT_DECLARED : BML_BEHAVIOR_LAYOUT_LIVE;
     record.Prototype.StructSize = sizeof(record.Prototype);
     record.Prototype.Prototype = Guid(from.Prototype);
     record.Prototype.Generation = from.ProviderGeneration;
     record.LayoutGeneration = from.Generation;
     switch (from.Kind) {
-    case BML::Behavior::BehaviorKind::Function:
+    case BML::Behavior::Internal::BehaviorKind::Function:
         record.Kind = BML_BEHAVIOR_KIND_FUNCTION;
         break;
-    case BML::Behavior::BehaviorKind::Callback:
+    case BML::Behavior::Internal::BehaviorKind::Callback:
         record.Kind = BML_BEHAVIOR_KIND_CALLBACK;
         break;
-    case BML::Behavior::BehaviorKind::Graph:
+    case BML::Behavior::Internal::BehaviorKind::Graph:
         record.Kind = BML_BEHAVIOR_KIND_GRAPH;
         break;
     }
@@ -1588,7 +1588,7 @@ bool AddLayout(const Layout &from, BehaviorPayload &payload,
             from.Slots.size(), record.SlotOffset))
         return false;
     for (std::size_t index = 0; index < from.Slots.size(); ++index) {
-        const BML::Behavior::SlotInfo &slot = from.Slots[index];
+        const BML::Behavior::Internal::SlotInfo &slot = from.Slots[index];
         BML_BehaviorSlotRecord output{};
         output.StructSize = sizeof(output);
         output.Kind = PublicSlotKind(slot.Kind);
@@ -1773,18 +1773,18 @@ std::uint32_t PublicWatchKind(WatchKind kind) noexcept {
     return 0;
 }
 
-std::uint32_t PublicWatchState(BML::Behavior::WatchState state) noexcept {
+std::uint32_t PublicWatchState(BML::Behavior::Internal::WatchState state) noexcept {
     switch (state) {
-    case BML::Behavior::WatchState::Active:
+    case BML::Behavior::Internal::WatchState::Active:
         return BML_BEHAVIOR_WATCH_ACTIVE;
-    case BML::Behavior::WatchState::Failed:
+    case BML::Behavior::Internal::WatchState::Failed:
         return BML_BEHAVIOR_WATCH_FAILED;
     }
     return BML_BEHAVIOR_WATCH_FAILED;
 }
 
 void WriteWatchInfo(BML_BehaviorWatchInfo *out,
-                    const BML::Behavior::WatchInfo &info) noexcept {
+                    const BML::Behavior::Internal::WatchInfo &info) noexcept {
     *out = {};
     out->StructSize = sizeof(*out);
     out->State = PublicWatchState(info.State);
@@ -1967,7 +1967,7 @@ bool AddGraphValue(const GraphValue &source, BehaviorPayload &payload,
         return payload.Value(value->data(), value->size(), record.ValueOffset);
     }
     case Parameter::Form::Object: {
-        const auto *value = std::get_if<BML::Behavior::ObjectRef>(&source.Data);
+        const auto *value = std::get_if<BML::Behavior::Internal::ObjectRef>(&source.Data);
         if (!value)
             return false;
         BML::Imc::Wire::Detail::Store32(bytes, value->Domain);
@@ -2229,7 +2229,7 @@ bool WriteWatchValue(const GraphValue &source,
         return value != nullptr && value->size() <= UINT32_MAX;
     }
     case Parameter::Form::Object: {
-        const auto *value = std::get_if<BML::Behavior::ObjectRef>(&source.Data);
+        const auto *value = std::get_if<BML::Behavior::Internal::ObjectRef>(&source.Data);
         if (value) out.Value.Data.Object = {
             value->Domain, value->Slot, value->Generation};
         return value != nullptr;
@@ -2369,10 +2369,10 @@ int BML_BEHAVIOR_CALL OpenWatch(
         }
 
         const BML_BehaviorWatchFunction function = *callback;
-        BML::Behavior::PlanCallbackState state = callback->Retain
-            ? BML::Behavior::PlanCallbackState::Retained(
+        BML::Behavior::Internal::PlanCallbackState state = callback->Retain
+            ? BML::Behavior::Internal::PlanCallbackState::Retained(
                   callback->State, callback->Retain, callback->Release)
-            : BML::Behavior::PlanCallbackState::Static(callback->State);
+            : BML::Behavior::Internal::PlanCallbackState::Static(callback->State);
         std::uintptr_t id = 0;
         result = context->BehaviorSessions().OpenWatch(
             SessionId(session), root, node, std::move(spec), std::move(state),
@@ -2434,7 +2434,7 @@ int BML_BEHAVIOR_CALL ReadWatch(BML_BehaviorWatch watch,
             return BML_ERROR_FROZEN;
         if (!context->IsMainThread())
             return BML_ERROR_WRONG_THREAD;
-        BML::Behavior::WatchInfo current;
+        BML::Behavior::Internal::WatchInfo current;
         const Status result = context->BehaviorSessions().ReadWatch(
             WatchId(watch), current);
         WriteStatus(status, result);
@@ -2722,7 +2722,7 @@ public:
                  ModContext &context, GraphEdit &edit);
     // Reports the symbolic Node each caller handle defined, so an applied
     // Patch answers ResolvePatchNode in the caller's own handle space.
-    [[nodiscard]] BML::Behavior::Patches::HandleMap Nodes() const;
+    [[nodiscard]] BML::Behavior::Internal::Patches::HandleMap Nodes() const;
 
 private:
     static bool Defines(std::uint32_t kind) noexcept;
@@ -2772,8 +2772,8 @@ Status EditProgram::Build(const BML_BehaviorEditStep *steps,
     return {};
 }
 
-BML::Behavior::Patches::HandleMap EditProgram::Nodes() const {
-    BML::Behavior::Patches::HandleMap nodes;
+BML::Behavior::Internal::Patches::HandleMap EditProgram::Nodes() const {
+    BML::Behavior::Internal::Patches::HandleMap nodes;
     for (const auto &entry : m_Handles) {
         if (entry.second.Kind == EditHandleKind::Node)
             nodes.emplace(entry.first, entry.second.NodeValue.Value);
@@ -2855,7 +2855,7 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         }
         defined.Kind = EditHandleKind::Node;
         defined.NodeValue = edit.UseNode(
-            BML::Behavior::ObjectRef{step.Object.Domain, step.Object.Slot,
+            BML::Behavior::Internal::ObjectRef{step.Object.Domain, step.Object.Slot,
                                      step.Object.Generation});
         break;
     }
@@ -2866,7 +2866,7 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         }
         defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.UseLink(
-            BML::Behavior::ObjectRef{step.Object.Domain, step.Object.Slot,
+            BML::Behavior::Internal::ObjectRef{step.Object.Domain, step.Object.Slot,
                                      step.Object.Generation});
         break;
     }
@@ -3362,12 +3362,12 @@ int BML_BEHAVIOR_CALL ApplyPatch(
             return BML_ERROR_INVALID_PARAMETER;
         }
 
-        const BML::Behavior::Patches::HandleMap nodes = program.Nodes();
+        const BML::Behavior::Internal::Patches::HandleMap nodes = program.Nodes();
 
         PatchId id = 0;
         result = context->BehaviorPatches().Apply(
             owner,
-            BML::Behavior::ObjectRef{spec->Graph.Domain, spec->Graph.Slot,
+            BML::Behavior::Internal::ObjectRef{spec->Graph.Domain, spec->Graph.Slot,
                                      spec->Graph.Generation},
             std::move(name), std::move(edit), id, &nodes);
         WriteStatus(status, result);
@@ -3477,7 +3477,7 @@ int BML_BEHAVIOR_CALL ResolvePatchNode(BML_BehaviorSession session,
             WriteStatus(status, result);
             return ResultCode(result);
         }
-        BML::Behavior::ObjectRef node;
+        BML::Behavior::Internal::ObjectRef node;
         result = context->BehaviorPatches().ResolveNode(
             owner, PatchIdOf(patch), handle, node);
         WriteStatus(status, result);

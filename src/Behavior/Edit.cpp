@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 constexpr std::uint64_t kPlanNode = 1ull << 63u;
@@ -1161,4 +1161,4 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
     return {};
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 Status Failure(Error error, std::string message) {
@@ -946,4 +946,4 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     return {};
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

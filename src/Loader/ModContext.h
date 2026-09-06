@@ -246,28 +246,28 @@ public:
 
     BML::GameSessionSnapshot ReadGameSession() const noexcept { return m_GameSession.Read(); }
     BML::ObjectRefs &ObjectRefs() noexcept { return m_ObjectRefs; }
-    BML::Behavior::Runtime &Behaviors() noexcept { return m_Behaviors; }
-    const BML::Behavior::Runtime &Behaviors() const noexcept { return m_Behaviors; }
-    BML::Behavior::Sessions &BehaviorSessions() noexcept {
+    BML::Behavior::Internal::Runtime &Behaviors() noexcept { return m_Behaviors; }
+    const BML::Behavior::Internal::Runtime &Behaviors() const noexcept { return m_Behaviors; }
+    BML::Behavior::Internal::Sessions &BehaviorSessions() noexcept {
         return m_BehaviorSessions;
     }
     BML::Behavior::Internal::Scripts &BehaviorScripts() noexcept {
         return m_BehaviorScripts;
     }
-    BML::Behavior::Patches &BehaviorPatches() noexcept {
+    BML::Behavior::Internal::Patches &BehaviorPatches() noexcept {
         return m_BehaviorPatches;
     }
     // The owner the Loader's built-in modules edit game scripts under: the BML
     // Mod's active generation, or an empty owner before that Mod is registered.
-    BML::Behavior::SessionOwner LoaderBehaviorOwner() const;
-    BML::Behavior::Plans &BehaviorPlans() noexcept {
+    BML::Behavior::Internal::SessionOwner LoaderBehaviorOwner() const;
+    BML::Behavior::Internal::Plans &BehaviorPlans() noexcept {
         return m_BehaviorPlans;
     }
-    BML::Behavior::PrototypeCatalog &BehaviorPrototypes() noexcept {
+    BML::Behavior::Internal::PrototypeCatalog &BehaviorPrototypes() noexcept {
         return m_BehaviorPrototypes;
     }
     BML::ExecuteBBAdapter &ExecuteBB() noexcept { return m_ExecuteBB; }
-    BML::Behavior::PhysicsForce::Sessions &PhysicsForce() noexcept {
+    BML::Behavior::Internal::PhysicsForce::Sessions &PhysicsForce() noexcept {
         return m_PhysicsForce;
     }
     void VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count);
@@ -465,7 +465,7 @@ private:
     void FillCallbackMap(IMod *mod);
     void SnapshotConfigMetadata();
     void FlushConfigChanges(bool saveAll = false, bool dispatchNotifications = true);
-    BML::Behavior::Status RetireBehaviorEdits(const std::string &ownerId);
+    BML::Behavior::Internal::Status RetireBehaviorEdits(const std::string &ownerId);
     void DeactivateActiveMods(bool dispatchPendingNotifications);
     void RollbackModActivation();
 
@@ -474,13 +474,13 @@ private:
     int m_Flags = 0;
     BML::GameSession m_GameSession;
     BML::ObjectRefs m_ObjectRefs;
-    BML::Behavior::PrototypeCatalog m_BehaviorPrototypes;
-    BML::Behavior::Runtime m_Behaviors;
-    BML::Behavior::Sessions m_BehaviorSessions;
-    BML::Behavior::Patches m_BehaviorPatches;
-    BML::Behavior::Plans m_BehaviorPlans;
+    BML::Behavior::Internal::PrototypeCatalog m_BehaviorPrototypes;
+    BML::Behavior::Internal::Runtime m_Behaviors;
+    BML::Behavior::Internal::Sessions m_BehaviorSessions;
+    BML::Behavior::Internal::Patches m_BehaviorPatches;
+    BML::Behavior::Internal::Plans m_BehaviorPlans;
     BML::Behavior::Internal::Scripts m_BehaviorScripts;
-    BML::Behavior::PhysicsForce::Sessions m_PhysicsForce;
+    BML::Behavior::Internal::PhysicsForce::Sessions m_PhysicsForce;
     BML::ExecuteBBAdapter m_ExecuteBB;
     BML::GameFontCatalog m_GameFonts;
 #if BML_ENABLE_ANGELSCRIPT

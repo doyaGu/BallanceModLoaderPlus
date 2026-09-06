@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 constexpr std::uint64_t kHashOffset = 1469598103934665603ull;
@@ -391,4 +391,4 @@ Status Relations::Compose(const LayerMap &layers, PinMap &pins,
     return {};
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

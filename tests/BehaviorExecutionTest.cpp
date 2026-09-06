@@ -12,7 +12,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 class FakeExecutionAdapter final : public ExecutionAdapter {
 public:

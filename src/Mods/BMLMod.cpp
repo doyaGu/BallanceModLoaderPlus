@@ -615,8 +615,8 @@ void BMLMod::OnEditScript_Menu_OptionsMenu(CKBehavior *script) {
     CreateLink(graph, down_sop, graph->GetOutput(4), 5);
     FindNextLink(script, graph, nullptr, 3, 0)->SetInBehaviorIO(graph->GetOutput(4));
 
-    BML::Behavior::AttachResult hook = GetRuntimeContext()->Behaviors().AddToGraph(
-        script, BML::Behavior::HookBlock::Make([](const CKBehaviorContext *, void *) -> int {
+    BML::Behavior::Internal::AttachResult hook = GetRuntimeContext()->Behaviors().AddToGraph(
+        script, BML::Behavior::Internal::HookBlock::Make([](const CKBehaviorContext *, void *) -> int {
             BML_GetModContext()->OpenModsMenu();
             return CKBR_OK;
         }));

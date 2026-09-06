@@ -5,7 +5,7 @@
 #include <tuple>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 Status Failure(Error error, std::string message) {
@@ -459,4 +459,4 @@ std::size_t Plans::Size() const {
     return m_Plans.size();
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

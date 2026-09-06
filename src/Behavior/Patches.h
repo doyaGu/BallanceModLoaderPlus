@@ -15,7 +15,7 @@
 #include "Behavior/Plan.h"
 #include "Behavior/Sessions.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 using PatchId = std::uintptr_t;
 
@@ -110,6 +110,6 @@ private:
     std::map<PatchId, OwnedPatch> m_Patches;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_PATCHES_H

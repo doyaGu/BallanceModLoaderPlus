@@ -6,7 +6,7 @@
 
 #include "Behavior/Layout.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class Error {
     None,
@@ -111,6 +111,6 @@ struct Status {
     explicit operator bool() const noexcept { return Code == Error::None; }
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_STATUS_H

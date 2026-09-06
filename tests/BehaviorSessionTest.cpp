@@ -6,14 +6,14 @@
 
 #include <gtest/gtest.h>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 void AdvanceBehaviorSessionRuntime();
 std::size_t LiveBehaviorSessionInstances();
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 class FakeGraphSource final : public GraphSource {
 public:

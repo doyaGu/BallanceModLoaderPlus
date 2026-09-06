@@ -5,7 +5,7 @@
 #include <limits>
 #include <sstream>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 std::string GuidText(CKGUID guid) {
@@ -341,4 +341,4 @@ Status PrototypeCatalog::DeclaredLayout(PrototypeRef prototype, Layout &out) {
     return {};
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

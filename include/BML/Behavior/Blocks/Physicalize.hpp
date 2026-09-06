@@ -8,11 +8,7 @@
 #include <string_view>
 
 #include "CKAll.h"
-#ifdef BML_BEHAVIOR_INTERNAL
-#include "Behavior/Blocks/Definition.h"
-#else
 #include "BML/Behavior/Detail/Blocks.hpp"
-#endif
 #include "BML/Guids/physics_RT.h"
 
 namespace BML::Behavior::Blocks {
@@ -25,6 +21,10 @@ enum class Shape {
 };
 
 struct Options {
+    [[nodiscard]] static CKGUID Prototype() noexcept {
+        return PHYSICS_RT_PHYSICALIZE;
+    }
+
     CK3dEntity *Target = nullptr;
     CKBOOL Fixed = FALSE;
     float Friction = 0.7f;
@@ -42,6 +42,12 @@ struct Options {
     CKMesh *Mesh = nullptr;
     VxVector Center{0.0f, 0.0f, 0.0f};
     float Radius = 2.0f;
+
+private:
+    template <class Definition>
+    void Configure(Definition &block) const;
+
+    friend class BML::Behavior::Detail::BlockAccess;
 };
 
 namespace Detail {
@@ -94,40 +100,26 @@ void Concave(Definition &block, const Options &options, CKMesh *mesh) {
 }
 } // namespace Detail
 
-#ifdef BML_BEHAVIOR_INTERNAL
-inline BlockSpec Make(const Options &options) {
-    Blocks::Detail::Definition block(PHYSICS_RT_PHYSICALIZE);
-    switch (options.Geometry) {
+template <class Definition>
+void Options::Configure(Definition &block) const {
+    switch (Geometry) {
     case Shape::Convex:
-        Detail::Convex(block, options, options.Mesh);
+        Detail::Convex(block, *this, Mesh);
         break;
     case Shape::Ball:
-        Detail::Ball(block, options, options.Center, options.Radius);
+        Detail::Ball(block, *this, Center, Radius);
         break;
     case Shape::Concave:
-        Detail::Concave(block, options, options.Mesh);
+        Detail::Concave(block, *this, Mesh);
         break;
     }
-    return std::move(block).Build();
 }
-#else
-inline Result<Block> Make(const Session &session, const Options &options) {
-    BML::Behavior::Detail::Definition block(session, PHYSICS_RT_PHYSICALIZE);
-    switch (options.Geometry) {
-    case Shape::Convex:
-        Detail::Convex(block, options, options.Mesh);
-        break;
-    case Shape::Ball:
-        Detail::Ball(block, options, options.Center, options.Radius);
-        break;
-    case Shape::Concave:
-        Detail::Concave(block, options, options.Mesh);
-        break;
-    }
-    return std::move(block).Build();
-}
-#endif
 
+inline Result<Block> Make(const Session &session, const Options &options) {
+    BML::Behavior::Detail::Definition block(session, Options::Prototype());
+    BML::Behavior::Detail::BlockAccess::Configure(options, block);
+    return std::move(block).Build();
+}
 
 } // namespace Physicalize
 } // namespace BML::Behavior::Blocks

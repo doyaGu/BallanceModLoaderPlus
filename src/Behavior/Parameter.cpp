@@ -7,7 +7,7 @@
 
 #include "Behavior/Status.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 namespace Parameter {
 
@@ -519,4 +519,4 @@ Status Equal(CKContext *context, CKParameter *left,
 }
 
 } // namespace Parameter
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

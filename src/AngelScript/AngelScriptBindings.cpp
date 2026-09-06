@@ -43,7 +43,8 @@
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
 #include "UI/GameFontCatalog.h"
-#include "Behavior/Blocks.h"
+#include "Behavior/Block.h"
+#include "BML/Behavior/Blocks.hpp"
 #include "UI/Overlay.h"
 
 static constexpr const char *kExtensionName = "BML";
@@ -1280,12 +1281,12 @@ static BMLAS_ObjectLoadResult *BMLAS_CK_LoadObject(const BMLAS_ObjectLoadOptions
     definition.ReuseMeshes = options.ReuseMeshes ? TRUE : FALSE;
     definition.ReuseMaterials = options.ReuseMaterials ? TRUE : FALSE;
     definition.Dynamic = options.Dynamic ? TRUE : FALSE;
-    BML::Behavior::CreateResult load = ctx->Behaviors().Instantiate(
-        nullptr, BML::Behavior::Blocks::ObjectLoad::Make(definition));
+    BML::Behavior::Internal::CreateResult load = ctx->Behaviors().Instantiate(
+        nullptr, BML::Behavior::Internal::BlockSpec::From(definition));
     if (!load)
         return BMLAS_CreateObjectLoadResult(ctx->GetCKContext(), false, 0, {});
-    BML::Behavior::RunResult executed = ctx->Behaviors().Pulse(
-        load.Handle, BML::Behavior::Slot::At(BML::Behavior::SlotKind::Input, 0));
+    BML::Behavior::Internal::RunResult executed = ctx->Behaviors().Pulse(
+        load.Handle, BML::Behavior::Internal::Slot::At(BML::Behavior::Internal::SlotKind::Input, 0));
     CKBehavior *loader = load.Handle.Get();
     XObjectArray *loaded = executed && loader
         ? *static_cast<XObjectArray **>(loader->GetOutputParameterWriteDataPtr(0)) : nullptr;
@@ -1344,8 +1345,8 @@ static CKBehavior *BMLAS_Text_Create2DText(CKBehavior *ownerScript,
     recipe.CaretSize = definition.CaretSize;
     recipe.CaretMaterial = caretMaterial;
     recipe.Flags = definition.Flags;
-    BML::Behavior::AttachResult created = ctx->Behaviors().AddToGraph(
-        ownerScript, BML::Behavior::Blocks::Text2D::Make(recipe));
+    BML::Behavior::Internal::AttachResult created = ctx->Behaviors().AddToGraph(
+        ownerScript, BML::Behavior::Internal::BlockSpec::From(recipe));
     return created ? created.Block : nullptr;
 }
 
@@ -1554,13 +1555,13 @@ static bool BMLAS_Physics_HasTarget(CK3dEntity *target, ModContext *&context) {
 }
 
 static bool BMLAS_RunBehavior(ModContext &context, CKBeObject *owner,
-                              const BML::Behavior::BlockSpec &spec, int input = 0) {
-    BML::Behavior::CreateResult created = context.Behaviors().Instantiate(owner, spec);
+                              const BML::Behavior::Internal::BlockSpec &spec, int input = 0) {
+    BML::Behavior::Internal::CreateResult created = context.Behaviors().Instantiate(owner, spec);
     if (!created)
         return false;
-    BML::Behavior::RunResult result = context.Behaviors().Pulse(
-        created.Handle, BML::Behavior::Slot::At(BML::Behavior::SlotKind::Input, input));
-    return result && result.State == BML::Behavior::RunState::Ready;
+    BML::Behavior::Internal::RunResult result = context.Behaviors().Pulse(
+        created.Handle, BML::Behavior::Internal::Slot::At(BML::Behavior::Internal::SlotKind::Input, input));
+    return result && result.State == BML::Behavior::Internal::RunState::Ready;
 }
 
 static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
@@ -1575,7 +1576,7 @@ static bool BMLAS_Physics_PhysicalizeConvex(CK3dEntity *target,
     options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Convex;
     options.Mesh = mesh;
     return BMLAS_RunBehavior(
-        *context, target, BML::Behavior::Blocks::Physicalize::Make(options));
+        *context, target, BML::Behavior::Internal::BlockSpec::From(options));
 }
 
 static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
@@ -1592,7 +1593,7 @@ static bool BMLAS_Physics_PhysicalizeBall(CK3dEntity *target,
     options.Center = center;
     options.Radius = radius;
     return BMLAS_RunBehavior(
-        *context, target, BML::Behavior::Blocks::Physicalize::Make(options));
+        *context, target, BML::Behavior::Internal::BlockSpec::From(options));
 }
 
 static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
@@ -1607,7 +1608,7 @@ static bool BMLAS_Physics_PhysicalizeConcave(CK3dEntity *target,
     options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Concave;
     options.Mesh = mesh;
     return BMLAS_RunBehavior(
-        *context, target, BML::Behavior::Blocks::Physicalize::Make(options));
+        *context, target, BML::Behavior::Internal::BlockSpec::From(options));
 }
 
 static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
@@ -1619,7 +1620,7 @@ static bool BMLAS_Physics_Unphysicalize(CK3dEntity *target) {
     auto options = BMLAS_MakePhysicalizeOptions(
         target, BMLAS_PhysicalizeDefinition());
     return BMLAS_RunBehavior(
-        *context, target, BML::Behavior::Blocks::Physicalize::Make(options), 1);
+        *context, target, BML::Behavior::Internal::BlockSpec::From(options), 1);
 }
 
 static bool BMLAS_Physics_SetForce(CK3dEntity *target,
@@ -1658,7 +1659,7 @@ static bool BMLAS_Physics_Impulse(CK3dEntity *target,
     ModContext *context = nullptr;
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
-    return BMLAS_RunBehavior(*context, target, BML::Behavior::Blocks::PhysicsImpulse::Make(
+    return BMLAS_RunBehavior(*context, target, BML::Behavior::Internal::BlockSpec::From(
         BMLAS_MakeForceOptions<BML::Behavior::Blocks::PhysicsImpulse::Options>(
             target, position, positionReference, direction, directionReference, impulse)));
 }
@@ -1670,7 +1671,8 @@ static bool BMLAS_Physics_WakeUp(CK3dEntity *target) {
     if (!BMLAS_Physics_HasTarget(target, context))
         return false;
     return BMLAS_RunBehavior(
-        *context, target, BML::Behavior::Blocks::PhysicsWakeUp::Make({target}));
+        *context, target, BML::Behavior::Internal::BlockSpec::From(
+            BML::Behavior::Blocks::PhysicsWakeUp::Options{target}));
 }
 
 static BML::ScriptTimerRef *BMLAS_AddTimer(asIScriptObject *timer) {

@@ -11,7 +11,7 @@
 #include "Behavior/HookBlock.h"
 #include "Behavior/Topology.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 struct Node;
 
@@ -329,6 +329,6 @@ private:
     friend class GraphEdit;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_EDIT_H

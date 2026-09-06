@@ -17,12 +17,10 @@
 
 class CKContext;
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
+
 class GraphEdit;
 class Patches;
-}
-
-namespace BML::Behavior::Internal {
 
 using ScriptId = std::uintptr_t;
 using ScriptBodyId = std::uintptr_t;

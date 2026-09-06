@@ -9,7 +9,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 class FakeGraph final : public GraphSource {
 public:

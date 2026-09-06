@@ -38,7 +38,7 @@ struct ScriptHookBlockEntry {
     CKBehaviorIO *OriginalEndpoint = nullptr;
     HookBlockPatchEndpoint PatchedEndpoint = HookBlockPatchEndpoint::None;
     asIScriptFunction *Callback = nullptr; // Borrowed from Binding's plan state.
-    std::shared_ptr<Behavior::HookBlock::Binding> Binding;
+    std::shared_ptr<Behavior::Internal::HookBlock::Binding> Binding;
     bool Enabled = true;
     bool AutoActivateOutputs = true;
     bool Retiring = false;
@@ -212,7 +212,7 @@ static bool RestoreHookBlockGraph(
     bool closed = true;
     if (entry.Block) {
         if (state && state->Context) {
-            Behavior::Status status = state->Context->Behaviors().Close(entry.Block);
+            Behavior::Internal::Status status = state->Context->Behaviors().Close(entry.Block);
             closed = static_cast<bool>(status);
             if (!closed)
                 RecordHookBlockDiagnostic(state, status.Message);
@@ -383,19 +383,19 @@ static std::unique_ptr<ScriptHookBlockEntry> CreateHookBlockEntry(
     entry->Name = name.empty() ? DefaultHookBlockName(entry->Id) : name;
     entry->OwnerScript = ownerScript;
     entry->Callback = callback;
-    Behavior::PlanCallbackState callbackState =
-        Behavior::PlanCallbackState::Retained(
+    Behavior::Internal::PlanCallbackState callbackState =
+        Behavior::Internal::PlanCallbackState::Retained(
             callback, RetainScriptHookBlockFunction,
             ReleaseScriptHookBlockFunction);
-    entry->Binding = Behavior::HookBlock::Bind(
+    entry->Binding = Behavior::Internal::HookBlock::Bind(
         std::move(callbackState), ScriptHookBlockCallback, entry.get());
     if (!entry->Binding) {
         RecordHookBlockDiagnostic(state, "HookBlock callback binding failed.");
         return nullptr;
     }
 
-    Behavior::AttachResult created = state->Context->Behaviors().AddToGraph(
-        ownerScript, Behavior::HookBlock::Make(
+    Behavior::Internal::AttachResult created = state->Context->Behaviors().AddToGraph(
+        ownerScript, Behavior::Internal::HookBlock::Make(
             entry->Binding, inputCount, outputCount));
     entry->Block = created ? created.Block : nullptr;
     if (!entry->Block) {

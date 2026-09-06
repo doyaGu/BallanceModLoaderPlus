@@ -11,7 +11,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 GraphEndpoint Endpoint(std::uint64_t node, SlotKind kind, int index) {
     return {node, kind, index};

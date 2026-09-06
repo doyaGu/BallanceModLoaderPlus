@@ -5,7 +5,8 @@
 #include "UI/GameFontCatalog.h"
 #include "Api/ExecuteBBAdapter.h"
 #include "Behavior/HookBlock.h"
-#include "Behavior/Blocks.h"
+#include "Behavior/Block.h"
+#include "BML/Behavior/Blocks.hpp"
 
 namespace {
 
@@ -15,19 +16,19 @@ BML::ExecuteBBAdapter *GetAdapter() {
 }
 
 void ReportFailure(const char *operation,
-                         const BML::Behavior::RunResult &result) {
+                         const BML::Behavior::Internal::RunResult &result) {
     if (result)
         return;
     ModContext *context = BML_GetModContext();
     ILogger *logger = context ? context->GetLogger() : nullptr;
     if (!logger)
         return;
-    const BML::Behavior::Status &status = result.Detail;
+    const BML::Behavior::Internal::Status &status = result.Detail;
     logger->Error(
         "ExecuteBB::%s failed: error=%s phase=%s ck_error=%d behavior_result=%d message=%s",
         operation ? operation : "<unknown>",
-        BML::Behavior::DescribeError(status.Code),
-        BML::Behavior::DescribePhase(status.Details.Stage),
+        BML::Behavior::Internal::DescribeError(status.Code),
+        BML::Behavior::Internal::DescribePhase(status.Details.Stage),
         static_cast<int>(status.CkError), status.BehaviorResult,
         status.Message.empty() ? "<none>" : status.Message.c_str());
 }
@@ -111,7 +112,7 @@ void PhysicalizeConvex(CK3dEntity *target, CKBOOL fixed, float friction, float e
         options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Convex;
         options.Mesh = mesh;
         const auto result = adapter->Run(
-            target, BML::Behavior::Blocks::Physicalize::Make(options));
+            target, BML::Behavior::Internal::BlockSpec::From(options));
         ReportFailure("PhysicalizeConvex", result);
     }
 }
@@ -129,7 +130,7 @@ void PhysicalizeBall(CK3dEntity *target, CKBOOL fixed, float friction, float ela
         options.Center = ballCenter;
         options.Radius = ballRadius;
         const auto result = adapter->Run(
-            target, BML::Behavior::Blocks::Physicalize::Make(options));
+            target, BML::Behavior::Internal::BlockSpec::From(options));
         ReportFailure("PhysicalizeBall", result);
     }
 }
@@ -146,7 +147,7 @@ void PhysicalizeConcave(CK3dEntity *target, CKBOOL fixed, float friction, float 
         options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Concave;
         options.Mesh = mesh;
         const auto result = adapter->Run(
-            target, BML::Behavior::Blocks::Physicalize::Make(options));
+            target, BML::Behavior::Internal::BlockSpec::From(options));
         ReportFailure("PhysicalizeConcave", result);
     }
 }
@@ -157,7 +158,7 @@ void Unphysicalize(CK3dEntity *target) {
             target, FALSE, 0.7f, 0.4f, 1.0f, "", FALSE, TRUE, FALSE,
             0.1f, 0.1f, "", VxVector());
         const auto result = adapter->Run(
-            target, BML::Behavior::Blocks::Physicalize::Make(options), 1);
+            target, BML::Behavior::Internal::BlockSpec::From(options), 1);
         ReportFailure("Unphysicalize", result);
     }
 }
@@ -182,7 +183,7 @@ void UnsetPhysicsForce(CK3dEntity *target) {
 void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
                     VxVector direction, CK3dEntity *dirRef, float impulse) {
     if (auto *adapter = GetAdapter()) {
-        const auto result = adapter->Run(target, BML::Behavior::Blocks::PhysicsImpulse::Make(
+        const auto result = adapter->Run(target, BML::Behavior::Internal::BlockSpec::From(
             MakeForceOptions<BML::Behavior::Blocks::PhysicsImpulse::Options>(
                 target, position, posRef, direction, dirRef, impulse)));
         ReportFailure("PhysicsImpulse", result);
@@ -192,7 +193,8 @@ void PhysicsImpulse(CK3dEntity *target, VxVector position, CK3dEntity *posRef,
 void PhysicsWakeUp(CK3dEntity *target) {
     if (auto *adapter = GetAdapter()) {
         const auto result = adapter->Run(
-            target, BML::Behavior::Blocks::PhysicsWakeUp::Make({target}));
+            target, BML::Behavior::Internal::BlockSpec::From(
+                BML::Behavior::Blocks::PhysicsWakeUp::Options{target}));
         ReportFailure("PhysicsWakeUp", result);
     }
 }
@@ -225,7 +227,7 @@ CKBehavior *Create2DText(CKBehavior *script, CK2dEntity *target, FontType font, 
     definition.Flags = flags;
     auto *adapter = GetAdapter();
     return adapter ? adapter->AddToGraph(
-        script, BML::Behavior::Blocks::Text2D::Make(definition)) : nullptr;
+        script, BML::Behavior::Internal::BlockSpec::From(definition)) : nullptr;
 }
 
 CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target, CKBOOL fixed,
@@ -241,7 +243,7 @@ CKBehavior *CreatePhysicalizeConvex(CKBehavior *script, CK3dEntity *target, CKBO
     options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Convex;
     options.Mesh = mesh;
     return adapter ? adapter->AddToGraph(
-        script, BML::Behavior::Blocks::Physicalize::Make(options)) : nullptr;
+        script, BML::Behavior::Internal::BlockSpec::From(options)) : nullptr;
 }
 
 CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target, CKBOOL fixed,
@@ -258,7 +260,7 @@ CKBehavior *CreatePhysicalizeBall(CKBehavior *script, CK3dEntity *target, CKBOOL
     options.Center = ballCenter;
     options.Radius = ballRadius;
     return adapter ? adapter->AddToGraph(
-        script, BML::Behavior::Blocks::Physicalize::Make(options)) : nullptr;
+        script, BML::Behavior::Internal::BlockSpec::From(options)) : nullptr;
 }
 
 CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKBOOL fixed,
@@ -274,14 +276,14 @@ CKBehavior *CreatePhysicalizeConcave(CKBehavior *script, CK3dEntity *target, CKB
     options.Geometry = BML::Behavior::Blocks::Physicalize::Shape::Concave;
     options.Mesh = mesh;
     return adapter ? adapter->AddToGraph(
-        script, BML::Behavior::Blocks::Physicalize::Make(options)) : nullptr;
+        script, BML::Behavior::Internal::BlockSpec::From(options)) : nullptr;
 }
 
 CKBehavior *CreateSetPhysicsForce(CKBehavior *script, CK3dEntity *target, VxVector position,
                                   CK3dEntity *posRef, VxVector direction,
                                   CK3dEntity *directionRef, float force) {
     auto *adapter = GetAdapter();
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::Blocks::PhysicsForce::Make(
+    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
         MakeForceOptions<BML::Behavior::Blocks::PhysicsForce::Options>(
             target, position, posRef, direction, directionRef, force))) : nullptr;
 }
@@ -290,7 +292,7 @@ CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target, VxVecto
                                  CK3dEntity *posRef, VxVector direction, CK3dEntity *dirRef,
                                  float impulse) {
     auto *adapter = GetAdapter();
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::Blocks::PhysicsImpulse::Make(
+    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
         MakeForceOptions<BML::Behavior::Blocks::PhysicsImpulse::Options>(
             target, position, posRef, direction, dirRef, impulse))) : nullptr;
 }
@@ -298,14 +300,15 @@ CKBehavior *CreatePhysicsImpulse(CKBehavior *script, CK3dEntity *target, VxVecto
 CKBehavior *CreatePhysicsWakeUp(CKBehavior *script, CK3dEntity *target) {
     auto *adapter = GetAdapter();
     return adapter ? adapter->AddToGraph(
-        script, BML::Behavior::Blocks::PhysicsWakeUp::Make({target})) : nullptr;
+        script, BML::Behavior::Internal::BlockSpec::From(
+            BML::Behavior::Blocks::PhysicsWakeUp::Options{target})) : nullptr;
 }
 
 CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file, const char *mastername,
                              CK_CLASSID filter, CKBOOL addToScene, CKBOOL reuseMesh,
                              CKBOOL reuseMtl, CKBOOL dynamic) {
     auto *adapter = GetAdapter();
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::Blocks::ObjectLoad::Make(
+    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::BlockSpec::From(
         MakeObjectLoadOptions(file, mastername, filter,
                               addToScene, reuseMesh, reuseMtl, dynamic))) : nullptr;
 }
@@ -313,14 +316,15 @@ CKBehavior *CreateObjectLoad(CKBehavior *script, const char *file, const char *m
 CKBehavior *CreateSendMessage(CKBehavior *script, const char *msg, CKBeObject *dest) {
     auto *adapter = GetAdapter();
     return adapter ? adapter->AddToGraph(
-        script, BML::Behavior::Blocks::SendMessage::Make(
-            {msg ? msg : "", dest})) : nullptr;
+        script, BML::Behavior::Internal::BlockSpec::From(
+            BML::Behavior::Blocks::Send::Options{
+                msg ? msg : "", dest})) : nullptr;
 }
 
 CKBehavior *CreateHookBlock(CKBehavior *script, CKBehaviorCallback callback, void *arg,
                             int inCount, int outCount) {
     auto *adapter = GetAdapter();
-    return adapter ? adapter->AddToGraph(script, BML::Behavior::HookBlock::Make(
+    return adapter ? adapter->AddToGraph(script, BML::Behavior::Internal::HookBlock::Make(
         callback, arg, inCount, outCount)) : nullptr;
 }
 

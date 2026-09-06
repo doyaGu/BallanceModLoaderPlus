@@ -6,7 +6,9 @@
 #include "BML/Guids/Narratives.h"
 
 #include "Loader/ModContext.h"
-#include "Behavior/Blocks.h"
+#include "Behavior/Block.h"
+#include "BML/Behavior/Blocks/ObjectLoad.hpp"
+#include "BML/Behavior/Blocks/Physicalize.hpp"
 
 using namespace ScriptHelper;
 
@@ -497,27 +499,27 @@ void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
                 BML::Behavior::Blocks::Physicalize::Shape::Ball;
             definition.Radius = info.m_Radius;
         }
-        BML::Behavior::BlockSpec spec =
-            BML::Behavior::Blocks::Physicalize::Make(definition);
+        BML::Behavior::Internal::BlockSpec spec =
+            BML::Behavior::Internal::BlockSpec::From(definition);
         spec.TargetShared(CKPGUID_3DENTITY, physicalize->GetTargetParameter());
         for (int i = 0; i < 11; ++i) {
-            spec.Input(BML::Behavior::Slot::At(
-                           BML::Behavior::SlotKind::InputParameter, i),
-                       BML::Behavior::Parameter::Binding::Shared(
+            spec.Input(BML::Behavior::Internal::Slot::At(
+                           BML::Behavior::Internal::SlotKind::InputParameter, i),
+                       BML::Behavior::Internal::Parameter::Binding::Shared(
                            physicalize->GetInputParameter(i)));
         }
         if (info.m_Radius > 0) {
             // The radius remains literal; the position follows the graph input.
         } else {
-            spec.Input(BML::Behavior::Slot::At(
-                           BML::Behavior::SlotKind::InputParameter, 11, CKPGUID_MESH),
-                       BML::Behavior::Parameter::Binding::Direct(
+            spec.Input(BML::Behavior::Internal::Slot::At(
+                           BML::Behavior::Internal::SlotKind::InputParameter, 11, CKPGUID_MESH),
+                       BML::Behavior::Internal::Parameter::Binding::Direct(
                            op->GetOutputParameter(0)));
         }
         auto *context = dynamic_cast<ModContext *>(m_BML);
-        BML::Behavior::AttachResult created = context
+        BML::Behavior::Internal::AttachResult created = context
             ? context->Behaviors().AddToGraph(graph, spec)
-            : BML::Behavior::AttachResult{};
+            : BML::Behavior::Internal::AttachResult{};
         newPhy = created ? created.Block : nullptr;
 
         if (!newPhy) {

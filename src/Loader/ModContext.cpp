@@ -159,9 +159,9 @@ namespace {
         return utils::CombinePathW(utils::CombinePathW(tempDirectory, kPackagesDirectoryName), archiveName);
     }
 
-    BML::Behavior::GraphSource &RequireBehaviorGraph(
-        BML::Behavior::Sessions &sessions) {
-        BML::Behavior::GraphSource *graph = sessions.Graph();
+    BML::Behavior::Internal::GraphSource &RequireBehaviorGraph(
+        BML::Behavior::Internal::Sessions &sessions) {
+        BML::Behavior::Internal::GraphSource *graph = sessions.Graph();
         if (!graph)
             throw std::runtime_error("Behavior graph adapter is unavailable.");
         return *graph;
@@ -185,31 +185,31 @@ CKRenderContext *BML_GetRenderContext() {
 
 ModContext::ModContext(CKContext *context)
     : m_ObjectRefs(context),
-      m_BehaviorPrototypes(BML::Behavior::MakeCKPrototypeSource(context)),
+      m_BehaviorPrototypes(BML::Behavior::Internal::MakeCKPrototypeSource(context)),
       m_Behaviors(context, [this](const void *object) {
           if (!object)
-              return BML::Behavior::ObjectRef{};
+              return BML::Behavior::Internal::ObjectRef{};
           const BML_ObjectRef reference = m_ObjectRefs.Issue(
               const_cast<CKObject *>(static_cast<const CKObject *>(object)));
-          return BML::Behavior::ObjectRef{
+          return BML::Behavior::Internal::ObjectRef{
               reference.Domain, reference.Slot, reference.Generation};
       }, &m_BehaviorPrototypes),
       m_BehaviorSessions(
           m_Behaviors, &m_BehaviorPrototypes,
-          BML::Behavior::MakeCKGraphSource(
+          BML::Behavior::Internal::MakeCKGraphSource(
               context, m_Behaviors, [this](const void *object) {
                   if (!object)
-                      return BML::Behavior::ObjectRef{};
+                      return BML::Behavior::Internal::ObjectRef{};
                   const BML_ObjectRef reference = m_ObjectRefs.Issue(
                       const_cast<CKObject *>(
                           static_cast<const CKObject *>(object)));
-                  return BML::Behavior::ObjectRef{
+                  return BML::Behavior::Internal::ObjectRef{
                       reference.Domain, reference.Slot,
                       reference.Generation};
               })),
       m_BehaviorPatches(context, m_Behaviors, &m_BehaviorPrototypes,
                         RequireBehaviorGraph(m_BehaviorSessions),
-                        [this](const BML::Behavior::ObjectRef &reference) {
+                        [this](const BML::Behavior::Internal::ObjectRef &reference) {
                             return m_ObjectRefs.Resolve({
                                 reference.Domain, reference.Slot,
                                 reference.Generation});
@@ -217,24 +217,24 @@ ModContext::ModContext(CKContext *context)
                         [this](CKObject *object) {
                             const BML_ObjectRef issued =
                                 m_ObjectRefs.Issue(object);
-                            return BML::Behavior::ObjectRef{
+                            return BML::Behavior::Internal::ObjectRef{
                                 issued.Domain, issued.Slot, issued.Generation};
                         }),
       m_BehaviorScripts(
           BML::Behavior::Internal::MakeCKScriptWorld(
               context, m_BehaviorPatches, [this](const void *object) {
                   if (!object)
-                      return BML::Behavior::ObjectRef{};
+                      return BML::Behavior::Internal::ObjectRef{};
                   const BML_ObjectRef reference = m_ObjectRefs.Issue(
                       const_cast<CKObject *>(
                           static_cast<const CKObject *>(object)));
-                  return BML::Behavior::ObjectRef{
+                  return BML::Behavior::Internal::ObjectRef{
                       reference.Domain, reference.Slot,
                       reference.Generation};
               }),
           [this](std::string_view name,
-                 const BML::Behavior::ObjectRef &script) {
-              const BML::Behavior::Status status =
+                 const BML::Behavior::Internal::ObjectRef &script) {
+              const BML::Behavior::Internal::Status status =
                   m_BehaviorPlans.LoadScript(std::string(name), script);
               if (!status && m_Logger)
                   m_Logger->Error(
@@ -386,14 +386,13 @@ void ModContext::ResetVirtoolsWorld() {
     // to the API seam and are reset only after internal teardown is complete.
     m_ExecuteBB.Reset();
     m_PhysicsForce.Reset();
-    const BML::Behavior::Status plans = m_BehaviorPlans.ResetWorld();
+    const BML::Behavior::Internal::Status plans = m_BehaviorPlans.ResetWorld();
     if (!plans && m_Logger)
         m_Logger->Error("Failed to leave the current Behavior Plan world: %s",
                         plans.Message.c_str());
     m_BehaviorScripts.ResetWorld();
     m_BehaviorPatches.ResetWorld();
     m_BehaviorSessions.ResetWorld();
-    m_Behaviors.ResetWorld();
     m_ObjectRefs.Reset();
 }
 
@@ -427,7 +426,7 @@ void ModContext::BehaviorScriptLoaded(CKBehavior *script) {
         return;
     const BML_ObjectRef reference = m_ObjectRefs.Issue(script);
     const char *name = script->GetName();
-    const BML::Behavior::Status status = m_BehaviorPlans.LoadScript(
+    const BML::Behavior::Internal::Status status = m_BehaviorPlans.LoadScript(
         name ? name : "",
         {reference.Domain, reference.Slot, reference.Generation});
     if (!status && m_Logger)
@@ -440,7 +439,7 @@ void ModContext::ProcessVirtoolsFrame() {
     m_PhysicsForce.ProcessFrame();
     m_Behaviors.ProcessFrame();
     m_BehaviorSessions.ProcessFrame();
-    const BML::Behavior::Status plans = m_BehaviorPlans.ProcessFrame();
+    const BML::Behavior::Internal::Status plans = m_BehaviorPlans.ProcessFrame();
     if (!plans && m_Logger)
         m_Logger->Error("Failed to reconcile Behavior Plans: %s",
                         plans.Message.c_str());
@@ -449,23 +448,23 @@ void ModContext::ProcessVirtoolsFrame() {
     m_ExecuteBB.ProcessFrame();
 }
 
-BML::Behavior::SessionOwner ModContext::LoaderBehaviorOwner() const {
-    BML::Behavior::SessionOwner owner;
+BML::Behavior::Internal::SessionOwner ModContext::LoaderBehaviorOwner() const {
+    BML::Behavior::Internal::SessionOwner owner;
     if (!m_BMLMod)
         return owner;
     (void) m_BehaviorSessions.ReadOwner(m_BMLMod->GetID(), owner);
     return owner;
 }
 
-BML::Behavior::Status ModContext::RetireBehaviorEdits(
+BML::Behavior::Internal::Status ModContext::RetireBehaviorEdits(
     const std::string &ownerId) {
     // A Plan can be waiting on a Patch request that was already queued by an
     // off-thread Close. Request Plan retirement, complete every owned Patch at
     // the CK edit safe point, then collect Plans whose installations closed.
     (void) m_BehaviorPlans.RetireOwner(ownerId);
-    const BML::Behavior::Status patches =
+    const BML::Behavior::Internal::Status patches =
         m_BehaviorPatches.RetireOwner(ownerId);
-    const BML::Behavior::Status plans =
+    const BML::Behavior::Internal::Status plans =
         m_BehaviorPlans.RetireOwner(ownerId);
     if (!plans)
         return plans;
@@ -758,12 +757,12 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
                 m_Logger->Error("Unknown exception in a Mod unload callback.");
         }
         try {
-            const BML::Behavior::Status edits =
+            const BML::Behavior::Internal::Status edits =
                 RetireBehaviorEdits(mod->GetID());
             if (!edits && m_Logger)
                 m_Logger->Error("Failed to retire Behavior edits for Mod %s: %s",
                                 mod->GetID(), edits.Message.c_str());
-            const BML::Behavior::Status scripts =
+            const BML::Behavior::Internal::Status scripts =
                 m_BehaviorScripts.RetireOwner(mod->GetID());
             if (!scripts && m_Logger)
                 m_Logger->Error(
@@ -2863,7 +2862,7 @@ bool ModContext::UnregisterMod(IMod *mod) {
                 return false;
             modIdCopy = id->first;
         }
-        const BML::Behavior::Status edits =
+        const BML::Behavior::Internal::Status edits =
             RetireBehaviorEdits(modIdCopy);
         if (!edits) {
             if (m_Logger)
@@ -2871,7 +2870,7 @@ bool ModContext::UnregisterMod(IMod *mod) {
                                 modIdCopy.c_str(), edits.Message.c_str());
             return false;
         }
-        const BML::Behavior::Status scripts =
+        const BML::Behavior::Internal::Status scripts =
             m_BehaviorScripts.RetireOwner(modIdCopy);
         if (!scripts) {
             if (m_Logger)

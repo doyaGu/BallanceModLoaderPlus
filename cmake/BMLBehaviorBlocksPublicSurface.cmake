@@ -24,6 +24,7 @@ foreach(BML_BEHAVIOR_CPP_PUBLIC_RELATIVE_HEADER
 endforeach()
 
 set(BML_PUBLIC_BEHAVIOR_CPP_DETAIL_HEADERS
+        ${BML_INCLUDE_DIR}/BML/Behavior/Detail/BlockAccess.hpp
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/Wire.hpp
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/Hook.hpp
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/Inline.hpp

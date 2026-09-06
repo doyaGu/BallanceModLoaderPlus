@@ -9,7 +9,7 @@
 
 #include "Behavior/Graph.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 struct LinkId {
     std::uint64_t Value = 0;
@@ -176,6 +176,6 @@ private:
     std::uint64_t m_Fingerprint = 0;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_TOPOLOGY_H

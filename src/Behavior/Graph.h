@@ -15,7 +15,7 @@
 #include "Behavior/ObjectRef.h"
 #include "Behavior/Status.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class GraphView {
     Logical,
@@ -188,6 +188,6 @@ class Runtime;
     CKContext *context, Runtime &runtime,
     std::function<ObjectRef(const void *)> issueObjectRef);
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_GRAPH_H

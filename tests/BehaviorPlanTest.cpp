@@ -11,7 +11,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 ObjectRef Target(std::uint32_t slot, std::uint32_t generation = 1) {
     return {3, slot, generation};

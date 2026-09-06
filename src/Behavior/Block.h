@@ -4,15 +4,18 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "CKAll.h"
+#include "BML/Behavior/Detail/BlockAccess.hpp"
 #include "Behavior/Callback.h"
 #include "Behavior/Layout.h"
 #include "Behavior/Parameter.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class TargetMode {
     Owner,
@@ -33,6 +36,13 @@ public:
         m_SettingStages.emplace_back();
     }
 
+    template <class Options>
+    [[nodiscard]] static BlockSpec From(const Options &options) {
+        BlockSpec block(Options::Prototype());
+        BML::Behavior::Detail::BlockAccess::Configure(options, block);
+        return block;
+    }
+
     BlockSpec &TargetOwner();
     BlockSpec &Target(CKGUID type, CKObject *object);
     BlockSpec &NullTarget(CKGUID type);
@@ -45,6 +55,41 @@ public:
     BlockSpec &AddInput(std::string name);
     BlockSpec &AddOutput(std::string name);
     BlockSpec &KeepAlive(std::shared_ptr<CallbackResource> resource);
+
+    template <class T>
+    BlockSpec &Pin(std::string_view name, CKGUID type, T &&value) {
+        return Input(Slot::Named(SlotKind::InputParameter,
+                                 std::string(name), type),
+                     Literal(type, std::forward<T>(value)));
+    }
+    template <class T>
+    BlockSpec &Pin(int index, CKGUID type, T &&value) {
+        return Input(Slot::At(SlotKind::InputParameter, index, type),
+                     Literal(type, std::forward<T>(value)));
+    }
+    BlockSpec &ObjectPin(std::string_view name, CKGUID type,
+                         CKObject *object) {
+        return Input(Slot::Named(SlotKind::InputParameter,
+                                 std::string(name), type),
+                     Parameter::Binding::Object(type, object));
+    }
+    BlockSpec &ObjectPin(int index, CKGUID type, CKObject *object) {
+        return Input(Slot::At(SlotKind::InputParameter, index, type),
+                     Parameter::Binding::Object(type, object));
+    }
+    template <class T>
+    BlockSpec &Setting(std::string_view name, CKGUID type, T &&value) {
+        return Setting(Slot::Named(SlotKind::Setting,
+                                   std::string(name), type),
+                       Literal(type, std::forward<T>(value)));
+    }
+    template <class T>
+    BlockSpec &Setting(int index, CKGUID type, T &&value) {
+        return Setting(Slot::At(SlotKind::Setting, index, type),
+                       Literal(type, std::forward<T>(value)));
+    }
+    BlockSpec &NextStage() { return NextSettingStage(); }
+
     BlockSpec &PrototypeGeneration(std::uint64_t generation) noexcept {
         m_PrototypeGeneration = generation;
         return *this;
@@ -67,6 +112,23 @@ public:
     }
 
 private:
+    template <class T>
+    static Parameter::Binding Literal(CKGUID type, T &&value) {
+        using Source = std::remove_cv_t<std::remove_reference_t<T>>;
+        if constexpr (std::is_same_v<Source, std::string> ||
+                      std::is_same_v<Source, std::string_view>) {
+            return Value::Text(type, std::string(value));
+        } else if constexpr (std::is_same_v<Source, const char *> ||
+                             std::is_same_v<Source, char *>) {
+            return Value::Text(type, value ? std::string(value) : std::string());
+        } else if constexpr (std::is_same_v<Source, bool>) {
+            const CKBOOL native = value ? TRUE : FALSE;
+            return Value::From(type, native);
+        } else {
+            return Value::From(type, value);
+        }
+    }
+
     CKGUID m_Prototype = CKGUID();
     std::uint64_t m_PrototypeGeneration = 0;
     TargetMode m_TargetMode = TargetMode::Owner;
@@ -84,6 +146,5 @@ private:
     friend class CKEdit;
 };
 
-} // namespace BML::Behavior
-
+} // namespace BML::Behavior::Internal
 #endif // BML_BEHAVIOR_BLOCK_H

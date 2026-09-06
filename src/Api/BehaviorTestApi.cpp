@@ -3,7 +3,8 @@
 #include <cstring>
 
 #include "Behavior/Patches.h"
-#include "Behavior/Blocks.h"
+#include "Behavior/Block.h"
+#include "BML/Behavior/Blocks/Text2D.hpp"
 #include "Loader/ModContext.h"
 
 namespace BML::Api {
@@ -40,13 +41,13 @@ std::uintptr_t SessionId(BML_BehaviorSession session) {
     return reinterpret_cast<std::uintptr_t>(session);
 }
 
-int Result(const Behavior::Status &status) {
+int Result(const Behavior::Internal::Status &status) {
     if (status)
         return BML_OK;
     switch (status.Code) {
-    case Behavior::Error::WrongThread: return BML_ERROR_WRONG_THREAD;
-    case Behavior::Error::OwnerInvalid: return BML_ERROR_ACCESS_DENIED;
-    case Behavior::Error::Unavailable: return BML_ERROR_UNAVAILABLE;
+    case Behavior::Internal::Error::WrongThread: return BML_ERROR_WRONG_THREAD;
+    case Behavior::Internal::Error::OwnerInvalid: return BML_ERROR_ACCESS_DENIED;
+    case Behavior::Internal::Error::Unavailable: return BML_ERROR_UNAVAILABLE;
     default: return BML_ERROR_FAIL;
     }
 }
@@ -56,7 +57,7 @@ bool Ready(ModContext *context) {
 }
 
 bool Owner(ModContext &context, BML_BehaviorSession session,
-           Behavior::SessionOwner &out) {
+           Behavior::Internal::SessionOwner &out) {
     return session &&
            context.BehaviorSessions().ReadOwner(SessionId(session), out);
 }
@@ -74,22 +75,22 @@ int BML_BEHAVIOR_CALL InstallSplice(
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
 
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
 
-        Behavior::Edit edit;
-        Behavior::Patches &patches = context->BehaviorPatches();
-        Behavior::Status status = patches.Begin(
+        Behavior::Internal::Edit edit;
+        Behavior::Internal::Patches &patches = context->BehaviorPatches();
+        Behavior::Internal::Status status = patches.Begin(
             owner, static_cast<CKBehavior *>(rawGraph), name, edit);
-        Behavior::Link anchor;
+        Behavior::Internal::Link anchor;
         if (status)
             status = patches.Use(
                 edit, static_cast<CKBehaviorLink *>(rawLink), anchor);
-        Behavior::Node node;
+        Behavior::Internal::Node node;
         if (status)
             status = patches.Add(
-                edit, Behavior::BlockSpec(CKGUID(prototype.Data1,
+                edit, Behavior::Internal::BlockSpec(CKGUID(prototype.Data1,
                                              prototype.Data2)), node);
         if (status)
             edit.Splice(anchor, node);
@@ -115,7 +116,7 @@ int BML_BEHAVIOR_CALL InstallTextSplice(
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
 
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
 
@@ -125,18 +126,18 @@ int BML_BEHAVIOR_CALL InstallTextSplice(
         options.Text = text;
         options.Alignment = BottomLeftAlignment;
 
-        Behavior::Edit edit;
-        Behavior::Patches &patches = context->BehaviorPatches();
-        Behavior::Status status = patches.Begin(
+        Behavior::Internal::Edit edit;
+        Behavior::Internal::Patches &patches = context->BehaviorPatches();
+        Behavior::Internal::Status status = patches.Begin(
             owner, static_cast<CKBehavior *>(rawGraph), name, edit);
-        Behavior::Link anchor;
+        Behavior::Internal::Link anchor;
         if (status)
             status = patches.Use(
                 edit, static_cast<CKBehaviorLink *>(rawLink), anchor);
-        Behavior::Node node;
+        Behavior::Internal::Node node;
         if (status)
             status = patches.Add(
-                edit, Behavior::Blocks::Text2D::Make(options), node);
+                edit, Behavior::Internal::BlockSpec::From(options), node);
         if (status)
             edit.Splice(anchor, node);
         if (status)
@@ -158,11 +159,11 @@ int BML_BEHAVIOR_CALL ReadPatch(BML_BehaviorSession session,
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::PatchInfo info;
-        const Behavior::Status status =
+        Behavior::Internal::PatchInfo info;
+        const Behavior::Internal::Status status =
             context->BehaviorPatches().Read(owner, patch, info);
         if (!status)
             return Result(status);
@@ -182,7 +183,7 @@ int BML_BEHAVIOR_CALL ClosePatch(BML_BehaviorSession session,
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
         return Result(context->BehaviorPatches().Close(owner, patch));
@@ -197,7 +198,7 @@ int BML_BEHAVIOR_CALL ResetPatches(BML_BehaviorSession session) {
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
         context->BehaviorPatches().ResetWorld();
@@ -213,10 +214,10 @@ int BML_BEHAVIOR_CALL RetirePatches(BML_BehaviorSession session) {
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::Status status =
+        Behavior::Internal::Status status =
             context->BehaviorPlans().RetireOwner(owner.Id);
         if (status)
             status = context->BehaviorPatches().RetireOwner(owner.Id);
@@ -235,7 +236,7 @@ int BML_BEHAVIOR_CALL ObserveScript(BML_BehaviorSession session,
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
         context->BehaviorScriptLoaded(static_cast<CKBehavior *>(rawScript));
@@ -259,48 +260,48 @@ int BML_BEHAVIOR_CALL SubmitEdit(
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::GraphEdit edit;
-        const Behavior::Node source = edit.RequireOne({sourceNode});
-        const Behavior::Node sink = edit.RequireOne({sinkNode});
-        const Behavior::Link link = edit.RequireOne(source.Out(), sink.In());
+        Behavior::Internal::GraphEdit edit;
+        const Behavior::Internal::Node source = edit.RequireOne({sourceNode});
+        const Behavior::Internal::Node sink = edit.RequireOne({sinkNode});
+        const Behavior::Internal::Link link = edit.RequireOne(source.Out(), sink.In());
         g_Hooks = {};
         edit.Tap(
             source.Out(),
-            Behavior::HookBlock::Hook(
-                Behavior::PlanCallbackState::Retained(
+            Behavior::Internal::HookBlock::Hook(
+                Behavior::Internal::PlanCallbackState::Retained(
                     &g_Hooks, RetainHook, ReleaseHook),
                 CountHook, &g_Hooks.Taps));
         edit.After(
             edit.Follow(source.Out()),
-            Behavior::HookBlock::Hook(
-                Behavior::PlanCallbackState::Retained(
+            Behavior::Internal::HookBlock::Hook(
+                Behavior::Internal::PlanCallbackState::Retained(
                     &g_Hooks, RetainHook, ReleaseHook),
                 CountHook, &g_Hooks.Afters));
-        const Behavior::Node block = edit.Add(
+        const Behavior::Internal::Node block = edit.Add(
             CKGUID(prototype.Data1, prototype.Data2));
         (void) edit.AppendIn(block, "Again");
         (void) edit.AppendOut(block, "Finished");
-        const Behavior::Port literal = edit.AppendPin(
+        const Behavior::Internal::Port literal = edit.AppendPin(
             block, "Literal", CKPGUID_INT);
-        const Behavior::Port direct = edit.AppendPin(
+        const Behavior::Internal::Port direct = edit.AppendPin(
             block, "Direct", CKPGUID_INT);
-        const Behavior::Port shared = edit.AppendPin(
+        const Behavior::Internal::Port shared = edit.AppendPin(
             block, "Shared", CKPGUID_INT);
-        const Behavior::Port value = edit.AppendPout(
+        const Behavior::Internal::Port value = edit.AppendPout(
             block, "Value", CKPGUID_INT);
-        const Behavior::Port destination = edit.AppendPout(
+        const Behavior::Internal::Port destination = edit.AppendPout(
             block, "Destination", CKPGUID_INT);
         const int number = 41;
-        edit.Bind(literal, Behavior::Value::From(CKPGUID_INT, number));
+        edit.Bind(literal, Behavior::Internal::Value::From(CKPGUID_INT, number));
         edit.Bind(direct, value);
         edit.Share(shared, block.Pin("Source"));
         edit.Push(value, destination);
         edit.Splice(link, block);
-        Behavior::PlanId plan = 0;
-        const Behavior::Status status = context->BehaviorPatches().Submit(
+        Behavior::Internal::PlanId plan = 0;
+        const Behavior::Internal::Status status = context->BehaviorPatches().Submit(
             context->BehaviorPlans(), owner, {script}, name,
             std::move(edit), plan);
         if (status)
@@ -326,11 +327,11 @@ int BML_BEHAVIOR_CALL ReadPlan(
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::PlanInfo info;
-        const Behavior::Status status = context->BehaviorPlans().Read(
+        Behavior::Internal::PlanInfo info;
+        const Behavior::Internal::Status status = context->BehaviorPlans().Read(
             owner.Id, owner.Generation, plan, info);
         if (!status)
             return Result(status);
@@ -353,7 +354,7 @@ int BML_BEHAVIOR_CALL ClosePlan(BML_BehaviorSession session,
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
         return Result(context->BehaviorPlans().Close(
@@ -369,10 +370,10 @@ int BML_BEHAVIOR_CALL ResetPlans(BML_BehaviorSession session) {
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
     try {
-        Behavior::SessionOwner owner;
+        Behavior::Internal::SessionOwner owner;
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
-        Behavior::Status status = context->BehaviorPlans().ResetWorld();
+        Behavior::Internal::Status status = context->BehaviorPlans().ResetWorld();
         context->BehaviorPatches().ResetWorld();
         return Result(status);
     } catch (...) {
@@ -390,7 +391,7 @@ int BML_BEHAVIOR_CALL ReadHooks(
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
-    Behavior::SessionOwner owner;
+    Behavior::Internal::SessionOwner owner;
     if (!Owner(*context, session, owner))
         return BML_ERROR_ACCESS_DENIED;
     *retains = g_Hooks.Retains;
@@ -410,7 +411,7 @@ int BML_BEHAVIOR_CALL ReferenceObject(
     if (!Ready(context))
         return context && !context->IsMainThread()
             ? BML_ERROR_WRONG_THREAD : BML_ERROR_FAIL;
-    Behavior::SessionOwner owner;
+    Behavior::Internal::SessionOwner owner;
     if (!Owner(*context, session, owner))
         return BML_ERROR_ACCESS_DENIED;
     *reference = context->ObjectRefs().Issue(

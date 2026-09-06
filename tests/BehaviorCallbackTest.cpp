@@ -8,7 +8,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 struct ReferenceCounts {
     int Retains = 0;

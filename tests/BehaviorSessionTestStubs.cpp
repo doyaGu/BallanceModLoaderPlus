@@ -6,7 +6,7 @@
 
 #include "Behavior/FrameStore.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 struct FakeInstance {
@@ -332,4 +332,4 @@ Status PrototypeCatalog::DeclaredLayout(PrototypeRef, Layout &) {
 
 void Runtime::ClosePending() {}
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

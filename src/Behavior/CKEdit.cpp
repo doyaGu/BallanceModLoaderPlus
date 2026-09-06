@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 Status Failure(Error error, std::string message,
@@ -4294,4 +4294,4 @@ std::uint64_t CKEdit::TopologyFingerprint(CKBehavior *graph) const {
     return found == m_Topology.end() ? 0 : found->second.Fingerprint();
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

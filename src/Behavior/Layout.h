@@ -9,7 +9,7 @@
 #include "CKAll.h"
 #include "Behavior/Parameter.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 struct Status;
 
@@ -169,6 +169,6 @@ private:
     CKBehaviorPrototype *m_Declaration = nullptr;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_LAYOUT_H

@@ -12,7 +12,6 @@
 
 namespace {
 
-using namespace BML::Behavior;
 using namespace BML::Behavior::Internal;
 using ScriptSet = BML::Behavior::Internal::Scripts;
 

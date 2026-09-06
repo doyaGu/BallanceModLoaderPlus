@@ -13,7 +13,7 @@
 #include "Behavior/PrototypeCatalog.h"
 #include "Behavior/Relations.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class PatchState {
     Pending,
@@ -142,6 +142,6 @@ private:
     int m_Publishing = 0;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_CKEDIT_H

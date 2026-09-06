@@ -10,7 +10,7 @@
 
 namespace {
 
-using namespace BML::Behavior;
+using namespace BML::Behavior::Internal;
 
 PrototypeInfo Prototype(CKGUID guid, std::string provider,
                         std::string name) {

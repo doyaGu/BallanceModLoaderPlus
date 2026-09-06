@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 namespace {
 
@@ -362,4 +362,4 @@ void Execution::Retain(RunFrame frame, RunFrame &returned) {
     m_State = ExecutionState::Failed;
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

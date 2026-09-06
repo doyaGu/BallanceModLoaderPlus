@@ -5,12 +5,12 @@
 #include <optional>
 #include <unordered_map>
 
-#include "Behavior/Blocks.h"
+#include "BML/Behavior/Blocks/PhysicsForce.hpp"
 #include "Behavior/Runtime.h"
 
-namespace BML::Behavior::PhysicsForce {
+namespace BML::Behavior::Internal::PhysicsForce {
 
-using Options = Blocks::PhysicsForce::Options;
+using Options = BML::Behavior::Blocks::PhysicsForce::Options;
 
 // Physics Force stores its native handle in a local parameter, so Create and
 // Shutdown must run on the same configured instance for each target.
@@ -88,6 +88,6 @@ private:
     std::list<Session> m_Retiring;
 };
 
-} // namespace BML::Behavior::PhysicsForce
+} // namespace BML::Behavior::Internal::PhysicsForce
 
 #endif // BML_BEHAVIOR_PHYSICSFORCE_H

@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 Status Failure(Error error, std::string message) {
@@ -180,4 +180,4 @@ bool Watch::RetireAtSafePoint() noexcept {
     return !m_Binding || m_Binding->RetireAtSafePoint();
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal

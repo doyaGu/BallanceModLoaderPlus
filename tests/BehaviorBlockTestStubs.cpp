@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace BML::Behavior::Parameter {
+namespace BML::Behavior::Internal::Parameter {
 
 Binding::Binding(Value value)
     : m_Kind(BindingKind::Value), m_Type(value.Type()),
@@ -41,4 +41,4 @@ Binding Binding::Shared(CKParameterIn *source) {
     return binding;
 }
 
-} // namespace BML::Behavior::Parameter
+} // namespace BML::Behavior::Internal::Parameter

@@ -2,7 +2,7 @@
 
 #include "BML/Guids/Hooks.h"
 
-namespace BML::Behavior::HookBlock {
+namespace BML::Behavior::Internal::HookBlock {
 namespace {
 
 int Run(const CKBehaviorContext &context) {
@@ -101,4 +101,4 @@ void Register(XObjectDeclarationArray *registry) {
     CKStoreDeclaration(registry, Declaration());
 }
 
-} // namespace BML::Behavior::HookBlock
+} // namespace BML::Behavior::Internal::HookBlock

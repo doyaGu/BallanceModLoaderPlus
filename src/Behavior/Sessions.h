@@ -12,7 +12,7 @@
 #include "Behavior/Runtime.h"
 #include "Behavior/Watch.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 
 enum class OwnerState {
     Active,
@@ -197,6 +197,6 @@ private:
     std::uint64_t m_Frame = 0;
 };
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
 
 #endif // BML_BEHAVIOR_SESSIONS_H

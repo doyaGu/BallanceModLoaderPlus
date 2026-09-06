@@ -8,7 +8,7 @@
 
 #include "Behavior/Status.h"
 
-namespace BML::Behavior {
+namespace BML::Behavior::Internal {
 namespace {
 
 constexpr std::uint64_t kIdentityOffset = 1469598103934665603ull;
@@ -580,4 +580,4 @@ CKParameter *LiveLayout::Parameter(const SlotInfo &slot) const {
     return nullptr;
 }
 
-} // namespace BML::Behavior
+} // namespace BML::Behavior::Internal
