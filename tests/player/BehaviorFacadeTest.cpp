@@ -720,6 +720,11 @@ private:
     // never activates it, so the Instance the Mod holds is still what writes
     // its settings and pulses it.
     void AttachBlock() {
+        if (!FailedLiveSettings()) {
+            Finish(false, "live-settings-failure");
+            return;
+        }
+        m_SettingsFailurePassed = true;
         const auto graphRef = m_Session.Reference(m_Graph);
         if (!graphRef || !m_Graph) {
             Finish(false, "attach-reference");
@@ -836,6 +841,44 @@ private:
                 return &event;
         }
         return nullptr;
+    }
+
+    bool FailedLiveSettings() {
+        const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
+        if (!fixture)
+            return false;
+        struct RestoreMode {
+            BMLLifecycleFixtureSetModeFn Set = nullptr;
+            ~RestoreMode() {
+                if (Set)
+                    Set(BMLLifecycleFixtureMode::Normal);
+            }
+        } restoreMode{fixture.SetMode};
+
+        fixture.SetMode(BMLLifecycleFixtureMode::Normal);
+        auto spawned = m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID))
+            .Spawn();
+        if (!spawned)
+            return false;
+        BML::Behavior::Instance instance = std::move(spawned).Value();
+
+        fixture.ResetTrace();
+        fixture.SetMode(BMLLifecycleFixtureMode::FailFirstEdited);
+        const auto configured = instance.Settings({{"Value", 23}});
+        const auto info = instance.Info();
+        const auto pulsed = instance.Pulse("In");
+        const auto repeated = instance.Settings({{"Value", 29}});
+        const auto closed = instance.Close();
+        return !configured && configured.GetStatus().Error ==
+                BML::Behavior::Error::CallbackFailed &&
+            configured.GetStatus().Phase == BML::Behavior::Phase::Callback &&
+            info && info->State == BML::Behavior::RunState::Failed &&
+            info->LastStatus.Error == BML::Behavior::Error::CallbackFailed &&
+            !pulsed && pulsed.GetStatus().Error ==
+                BML::Behavior::Error::CallbackFailed &&
+            !repeated && repeated.GetStatus().Error ==
+                BML::Behavior::Error::CallbackFailed &&
+            closed && closed.Value() == BML::Behavior::CloseState::Closed;
     }
 
     bool ExistingBlockEdits() {
@@ -2178,6 +2221,12 @@ private:
             m_SelfClosePassed ? "pass" : "fail", m_SelfClose->Calls,
             m_SelfClose->Closing ? "true" : "false");
         GetLogger()->Info(
+            "Behavior live settings failure: status=%s terminal=%s diagnostic=%s admission=%s",
+            m_SettingsFailurePassed ? "pass" : "fail",
+            m_SettingsFailurePassed ? "true" : "false",
+            m_SettingsFailurePassed ? "true" : "false",
+            m_SettingsFailurePassed ? "closed" : "open");
+        GetLogger()->Info(
             "Behavior identity: status=%s attach=%s continuation=%s identity=%s befores=%u",
             (m_AttachPassed && m_ContinuationPassed && m_IdentityPassed)
                 ? "pass" : "fail",
@@ -2299,6 +2348,7 @@ private:
     bool m_ClosePassed = false;
     bool m_ReleasePassed = false;
     bool m_SelfClosePassed = false;
+    bool m_SettingsFailurePassed = false;
     bool m_AttachPassed = false;
     bool m_IdentityPassed = false;
     bool m_PatchPassed = false;

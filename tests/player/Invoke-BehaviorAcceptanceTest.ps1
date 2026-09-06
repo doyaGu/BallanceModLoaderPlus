@@ -168,6 +168,10 @@ $facade = [regex]::Match($log,
 $facadeSelfClose = [regex]::Match($log,
     'Behavior self-close: status=(?<status>pass|fail) calls=(?<calls>[0-9]+) ' +
     'closing=(?<closing>true|false)')
+$liveSettingsFailure = [regex]::Match($log,
+    'Behavior live settings failure: status=(?<status>pass|fail) ' +
+    'terminal=(?<terminal>true|false) diagnostic=(?<diagnostic>true|false) ' +
+    'admission=(?<admission>closed|open)')
 $facadePatch = [regex]::Match($log,
     'Behavior graph patch: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'apply=(?<apply>true|false) close=(?<close>true|false)')
@@ -255,6 +259,11 @@ $checks['BehaviorHookSelfClose'] = $facadeSelfClose.Success -and
     $facadeSelfClose.Groups['status'].Value -eq 'pass' -and
     [int]$facadeSelfClose.Groups['calls'].Value -eq 1 -and
     $facadeSelfClose.Groups['closing'].Value -eq 'true'
+$checks['BehaviorLiveSettingsFailure'] = $liveSettingsFailure.Success -and
+    $liveSettingsFailure.Groups['status'].Value -eq 'pass' -and
+    $liveSettingsFailure.Groups['terminal'].Value -eq 'true' -and
+    $liveSettingsFailure.Groups['diagnostic'].Value -eq 'true' -and
+    $liveSettingsFailure.Groups['admission'].Value -eq 'closed'
 $checks['BehaviorGraphPatchFacade'] = $facadePatch.Success -and
     $facadePatch.Groups['status'].Value -eq 'pass' -and
     $facadePatch.Groups['apply'].Value -eq 'true' -and
