@@ -35,6 +35,8 @@ RunState RunStateOf(ExecutionState state) noexcept {
 
 void RefreshRunInfo(const Runtime &runtime, const Instance &instance,
                     RunInfo &info) {
+    if (info.State == RunState::Failed && info.LastStatus.Code != Error::None)
+        return;
     info.State = RunStateOf(runtime.State(instance));
     if (info.State != RunState::Failed)
         return;
@@ -483,8 +485,13 @@ Status Sessions::Configure(std::uintptr_t runId, const BlockSpec &settings,
     if (!run || !run->Block)
         return Fail(Error::InvalidState, "Behavior Run handle is stale.");
     Status status = m_Runtime.Configure(run->Block, settings);
-    if (status)
+    if (status) {
         layoutGeneration = run->Block.LayoutGeneration();
+    } else {
+        run->Info.State = RunState::Failed;
+        if (run->Info.LastStatus.Code == Error::None)
+            run->Info.LastStatus = status;
+    }
     return status;
 }
 

@@ -217,7 +217,11 @@ private:
         // ProcessTasks is the only continuation driver.
         bool OwnerDriven = false;
         bool Expired = false;
-        bool Poisoned = false;
+        // A failed live Setting stage may have changed the provider-owned
+        // Layout or relations. The native instance remains owned for
+        // inspection and teardown, but it can no longer accept mutation or
+        // execution.
+        Status Failure;
         bool QueuedForFrame = false;
         Lifecycle NativeLifecycle;
         Execution Protocol;

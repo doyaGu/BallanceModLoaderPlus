@@ -916,6 +916,43 @@ TEST(BehaviorSessions, LiveEditsHonorLayoutGeneration) {
     EXPECT_EQ(generation, 2u);
 }
 
+TEST(BehaviorSessions, FailedLiveSettingsMakeTheRunTerminal) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(1, 2)));
+    ASSERT_TRUE(run);
+
+    BlockSpec settings(CKGUID(91, 92));
+    std::uint64_t generation = 0;
+    const Status failed = sessions.Configure(run.Id, settings, generation);
+    ASSERT_EQ(failed.Code, Error::CallbackFailed);
+    EXPECT_EQ(generation, 0u);
+
+    RunInfo info;
+    ASSERT_TRUE(sessions.ReadRun(run.Id, info));
+    EXPECT_EQ(info.State, RunState::Failed);
+    EXPECT_EQ(info.LastStatus.Code, Error::CallbackFailed);
+    EXPECT_EQ(info.LastStatus.CkError, CKERR_INVALIDPARAMETER);
+
+    const Status repeated = sessions.Configure(run.Id, settings, generation);
+    EXPECT_EQ(repeated.Code, Error::CallbackFailed);
+    EXPECT_EQ(repeated.CkError, CKERR_INVALIDPARAMETER);
+    EXPECT_EQ(generation, 0u);
+
+    const RunResult rejected = sessions.Pulse(run.Id, Input("Run"));
+    EXPECT_FALSE(rejected);
+    EXPECT_EQ(rejected.Detail.Code, Error::CallbackFailed);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+
+    sessions.CloseRun(run.Id);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+}
+
 TEST(BehaviorSessions, ContinuePromotesTheSameCallAndRetainsBothFrames) {
     Runtime runtime(nullptr);
     Sessions sessions(runtime);

@@ -201,7 +201,12 @@ RunResult Runtime::StartTask(Instance &instance, const Slot &input,
 Status Runtime::Continue(Instance &instance) {
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     FakeInstance *found = FindFake(instance.m_Id);
-    if (!found || found->State != ExecutionState::Pending)
+    if (!found)
+        return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                CKBR_BEHAVIORERROR, "The fake Behavior is not pending."};
+    if (found->Failure.Code != Error::None)
+        return found->Failure;
+    if (found->State != ExecutionState::Pending)
         return {Error::InvalidState, CKERR_INVALIDOBJECT,
                 CKBR_BEHAVIORERROR, "The fake Behavior is not pending."};
     return {};
@@ -216,6 +221,10 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
                  CKBR_BEHAVIORERROR, "The fake Behavior is stale."},
                 RunState::Failed, CKBR_BEHAVIORERROR, {},
                 AdmissionState::Failed};
+    if (found->Failure.Code != Error::None) {
+        return {found->Failure, RunState::Failed, CKBR_BEHAVIORERROR, {},
+                AdmissionState::Failed};
+    }
     if (input.Name == "Missing") {
         return {{Error::SlotNotFound, CK_OK, CKBR_PARAMETERERROR,
                  "The fake Behavior input does not exist."},
@@ -334,13 +343,23 @@ Status Runtime::Bind(Instance &instance, const SlotRef &slot,
     return SetInput(instance, slot, Parameter::Binding{});
 }
 
-Status Runtime::Configure(Instance &instance, const BlockSpec &,
+Status Runtime::Configure(Instance &instance, const BlockSpec &settings,
                           const CKBehaviorContext *) {
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     FakeInstance *found = FindFake(instance.m_Id);
     if (!found)
         return {Error::InvalidState, CKERR_INVALIDOBJECT,
                 CKBR_PARAMETERERROR, "The fake Behavior is stale."};
+    if (found->Failure.Code != Error::None)
+        return found->Failure;
+    if (settings.Prototype() == CKGUID(91, 92)) {
+        found->Failure = {Error::CallbackFailed, CKERR_INVALIDPARAMETER,
+                          CKBR_BEHAVIORERROR,
+                          "The fake Setting callback failed."};
+        found->Failure.Details.Stage = Phase::LifecycleCallback;
+        found->State = ExecutionState::Failed;
+        return found->Failure;
+    }
     ++found->Descriptor.Generation;
     return {};
 }

@@ -1651,9 +1651,8 @@ Status Runtime::Resolve(const Instance &instance,
     CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
     if (!record || !behavior)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Poisoned)
-        return Failure(Error::InvalidState,
-                       "Behavior instance requires a complete successful reconfiguration.");
+    if (record->Failure.Code != Error::None)
+        return record->Failure;
     Status status = Resolve(behavior, selector, slot.Slot);
     if (!status)
         return status;
@@ -1706,9 +1705,8 @@ CKParameter *Runtime::Parameter(const Instance &instance, const Slot &selector,
     Status resolved;
     if (!record || !behavior) {
         resolved = Failure(Error::InvalidState, "Behavior instance has expired.");
-    } else if (record->Poisoned) {
-        resolved = Failure(Error::InvalidState,
-                           "Behavior instance requires a complete successful reconfiguration.");
+    } else if (record->Failure.Code != Error::None) {
+        resolved = record->Failure;
     } else {
         resolved = Resolve(behavior, selector, slot);
     }
@@ -1724,9 +1722,8 @@ CKParameter *Runtime::Parameter(const Instance &instance,
     const Record *record = ready ? FindRecord(instance) : nullptr;
     if (ready && !record)
         ready = Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (ready && record->Poisoned)
-        ready = Failure(Error::InvalidState,
-                        "Behavior instance requires a complete successful reconfiguration.");
+    if (ready && record->Failure.Code != Error::None)
+        ready = record->Failure;
     if (ready)
         ready = ValidateSlot(*record, slot);
     if (status)
@@ -2264,9 +2261,8 @@ Status Runtime::SetInput(Instance &instance,
     CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
     if (!record || !behavior)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Poisoned)
-        return Failure(Error::InvalidState,
-                       "Behavior instance requires a complete successful reconfiguration.");
+    if (record->Failure.Code != Error::None)
+        return record->Failure;
     if (record->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState,
                        "Inputs can only be rebound while the instance is idle.");
@@ -2309,9 +2305,8 @@ Status Runtime::SetLocal(Instance &instance,
     CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
     if (!record || !behavior)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
-    if (record->Poisoned)
-        return Failure(Error::InvalidState,
-                       "Behavior instance requires a complete successful reconfiguration.");
+    if (record->Failure.Code != Error::None)
+        return record->Failure;
     if (record->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState,
                        "Locals can only be edited while the instance is idle.");
@@ -2392,6 +2387,8 @@ Status Runtime::Reconfigure(Instance &instance, const BlockSpec &spec,
     CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
     if (!record || !behavior)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
+    if (record->Failure.Code != Error::None)
+        return record->Failure;
     if (record->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState,
                        "Reconfiguration requires an idle behavior instance.");
@@ -2427,12 +2424,11 @@ Status Runtime::ApplySettings(
     CKBehavior *behavior = record ? ResolveBehavior(*record) : nullptr;
     if (!record || !behavior)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
+    if (record->Failure.Code != Error::None)
+        return record->Failure;
     if (record->Protocol.State() != ExecutionState::Idle)
         return Failure(Error::InvalidState,
                        "Configuration requires an idle behavior instance.");
-    if (record->Poisoned)
-        return Failure(Error::InvalidState,
-                       "Behavior instance requires a complete successful reconfiguration.");
 
     CKBehaviorPrototype *prototype = record->Prototype;
     if (!prototype)
@@ -2440,74 +2436,81 @@ Status Runtime::ApplySettings(
                        "Building Block Prototype is unavailable.");
     CKBeObject *owner = behavior->GetOwner();
     const std::uint64_t instanceId = record->Id;
-    record->Poisoned = true;
+    const auto fail = [this, instanceId](Status failure) {
+        Record *current = FindRecord(instanceId);
+        if (current && current->Failure.Code == Error::None)
+            current->Failure = failure;
+        return failure;
+    };
     ++record->LayoutGeneration;
     Status status = EnsurePrototypeLayout(behavior, prototype, true);
     if (!status)
-        return status;
+        return fail(std::move(status));
     status = BindTarget(behavior, owner, desired, *record);
     if (!status)
-        return status;
+        return fail(std::move(status));
     for (const auto &stage : settings) {
         for (const BlockSpec::Binding &binding : stage) {
             SlotInfo setting;
             status = Resolve(behavior, binding.Target, setting);
-            if (!status)
-                return Annotate(std::move(status), Phase::Settings,
-                                record->PrototypeGuid, &binding.Target);
+            if (!status) {
+                status = Annotate(std::move(status), Phase::Settings,
+                                  record->PrototypeGuid, &binding.Target);
+                return fail(std::move(status));
+            }
             status = Parameter::Write(
                 m_Context, ResolveParameter(behavior, setting), binding.Source);
-            if (!status)
-                return Annotate(std::move(status), Phase::Settings,
-                                record->PrototypeGuid, &binding.Target);
+            if (!status) {
+                status = Annotate(std::move(status), Phase::Settings,
+                                  record->PrototypeGuid, &binding.Target);
+                return fail(std::move(status));
+            }
         }
         if (stage.empty())
             continue;
         ++record->LayoutGeneration;
         status = CallCallback(*record, CKM_BEHAVIORSETTINGSEDITED, frame);
         if (!status)
-            return status;
+            return fail(std::move(status));
         status = Reacquire(instanceId, behavior, record);
         if (!status)
-            return status;
+            return fail(std::move(status));
         owner = behavior->GetOwner();
         prototype = record->Prototype;
         status = EnsurePrototypeLayout(behavior, prototype, true);
         if (!status)
-            return status;
+            return fail(std::move(status));
         status = BindTarget(behavior, owner, desired, *record);
         if (!status)
-            return status;
+            return fail(std::move(status));
         status = EnsurePrototypeDefaults(behavior, prototype, *record);
         if (!status)
-            return status;
+            return fail(std::move(status));
     }
     status = ApplyBindings(behavior, desired, *record);
     if (!status)
-        return status;
+        return fail(std::move(status));
     ++record->LayoutGeneration;
     status = CallCallback(*record, CKM_BEHAVIOREDITED, frame);
     if (!status)
-        return status;
+        return fail(std::move(status));
     status = Reacquire(instanceId, behavior, record);
     if (!status)
-        return status;
+        return fail(std::move(status));
     owner = behavior->GetOwner();
     prototype = record->Prototype;
     status = EnsurePrototypeLayout(behavior, prototype, true);
     if (!status)
-        return status;
+        return fail(std::move(status));
     status = BindTarget(behavior, owner, desired, *record);
     if (!status)
-        return status;
+        return fail(std::move(status));
     status = EnsurePrototypeDefaults(behavior, prototype, *record);
     if (!status)
-        return status;
+        return fail(std::move(status));
     status = ApplyBindings(behavior, desired, *record);
     PruneOwnedSources(*record);
-    if (status)
-        record->Poisoned = false;
-    return status;
+    return status ? status : fail(std::move(status));
 }
 
 RunResult Runtime::Pulse(Instance &instance, const Slot &input,
@@ -2539,10 +2542,8 @@ RunResult Runtime::Pulse(Instance &instance,
     if (!record || !behavior)
         return {Failure(Error::InvalidState, "Behavior instance has expired."),
                 RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    if (record->Poisoned)
-        return {Failure(Error::InvalidState,
-                        "Behavior instance requires a complete successful reconfiguration."),
-                RunState::Failed, CKBR_BEHAVIORERROR, {}};
+    if (record->Failure.Code != Error::None)
+        return {record->Failure, RunState::Failed, CKBR_BEHAVIORERROR, {}};
     Status status = ValidateSlot(*record, input);
     if (!status)
         return {std::move(status), RunState::Failed, CKBR_PARAMETERERROR, {}};
@@ -2562,10 +2563,8 @@ RunResult Runtime::Step(Instance &instance, const CKBehaviorContext *frame) {
     if (!record)
         return {Failure(Error::InvalidState, "Behavior instance has expired."),
                 RunState::Failed, CKBR_BEHAVIORERROR, {}};
-    if (record->Poisoned)
-        return {Failure(Error::InvalidState,
-                        "Behavior instance requires a complete successful reconfiguration."),
-                RunState::Failed, CKBR_BEHAVIORERROR, {}};
+    if (record->Failure.Code != Error::None)
+        return {record->Failure, RunState::Failed, CKBR_BEHAVIORERROR, {}};
     return Execute(record->Id, nullptr, false, frame);
 }
 
@@ -2581,6 +2580,8 @@ Status Runtime::Continue(Instance &instance) {
     Record *record = FindRecord(instance);
     if (!record)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
+    if (record->Failure.Code != Error::None)
+        return record->Failure;
     if (record->Protocol.State() != ExecutionState::Pending)
         return Failure(Error::InvalidState,
                        "Only a pending behavior instance can be continued.");
@@ -2600,7 +2601,10 @@ ExecutionState Runtime::State(const Instance &instance) const {
     if (!ReadyStatus())
         return ExecutionState::Closed;
     const Record *record = FindRecord(instance);
-    return record ? record->Protocol.State() : ExecutionState::Closed;
+    if (!record)
+        return ExecutionState::Closed;
+    return record->Failure.Code == Error::None
+        ? record->Protocol.State() : ExecutionState::Failed;
 }
 
 std::vector<RunFrame> Runtime::Take(Instance &instance) {
@@ -2622,6 +2626,8 @@ Status Runtime::InstanceFailure(const Instance &instance) const {
     const Record *record = FindRecord(instance);
     if (!record)
         return Failure(Error::InvalidState, "Behavior instance has expired.");
+    if (record->Failure.Code != Error::None)
+        return record->Failure;
     const ExecutionFault &fault = record->Protocol.Failure();
     if (!fault)
         return {};
