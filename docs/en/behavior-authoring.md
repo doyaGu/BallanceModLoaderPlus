@@ -168,7 +168,7 @@ if (layout) {
 
 A lifecycle callback boundary invalidates old Slots because the provider may rebuild a same-shaped interface. Ordinary Execute advances the layout generation only when Target, In/Out, Pin/Pout, Setting, or Local identity actually changes. A stale Slot or Port returns `LayoutChanged` instead of retargeting an old ordinal.
 
-`Settings({...})` applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible.
+`Settings({...})` applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible. Once native mutation begins, any write, callback, Layout, or relation failure makes the run `Failed`: `Info()` preserves the first `Status`, later mutation and execution are rejected with that same diagnostic, and the native Instance remains owned until `Close()`.
 
 ## 7. Inspect a graph
 

@@ -168,7 +168,7 @@ if (layout) {
 
 lifecycle callback 边界会使旧 Slot 失效，因为 provider 可能重建了相同形状的 interface。普通 Execute 只有在 Target、In/Out、Pin/Pout、Setting 或 Local identity 实际变化时才推进 layout generation。旧 Slot 或 Port 会返回 `LayoutChanged`，不会按旧 ordinal 写错参数。
 
-`Settings({...})` 可对 live run 应用新的 Setting stage。Runtime 会重新取得 Layout，并恢复仍然唯一且类型匹配的 Target、Pin、Local 和 source relation。
+`Settings({...})` 可对 live run 应用新的 Setting stage。Runtime 会重新取得 Layout，并恢复仍然唯一且类型匹配的 Target、Pin、Local 和 source relation。native mutation 一旦开始，任何写入、callback、Layout 或 relation 失败都会让 run 进入 `Failed`：`Info()` 保留首个 `Status`，后续 mutation 和 execution 返回同一 diagnostic，而 native Instance 仍由该 run 持有，直到 `Close()`。
 
 ## 7. 读取 graph
 

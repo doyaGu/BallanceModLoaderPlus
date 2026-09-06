@@ -307,8 +307,10 @@ typedef enum BML_BehaviorRunState {
     // native Behavior instance and any state established by that instance.
     BML_BEHAVIOR_RUN_READY = 1,
     BML_BEHAVIOR_RUN_PENDING = 2,
-    // Execution cannot continue. This does not release the native instance;
-    // CloseRun or the enclosing ownership boundary performs teardown.
+    // Mutation or execution cannot continue. Native execution failure, Frame
+    // overflow, and a failed live Setting stage are terminal. This does not
+    // release the native instance; CloseRun or the enclosing ownership
+    // boundary performs teardown.
     BML_BEHAVIOR_RUN_FAILED = 3
 } BML_BehaviorRunState;
 
@@ -1214,7 +1216,9 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorStatus *status);
     // Each non-empty stage is written against the current Layout and followed
     // by one CKM_BEHAVIORSETTINGSEDITED. Existing Target, Pin, and Local
-    // bindings are then restored against the resulting Layout.
+    // bindings are then restored against the resulting Layout. Once native
+    // mutation begins, any failure makes the Run FAILED and closes further
+    // mutation and execution admission while preserving the first Status.
     int (BML_BEHAVIOR_CALL *Configure)(
         BML_BehaviorRun run,
         const BML_BehaviorSettingStage *stages,
