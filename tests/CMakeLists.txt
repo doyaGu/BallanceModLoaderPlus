@@ -109,6 +109,12 @@ foreach(BML_BEHAVIOR_BLOCK_HEADER
     list(APPEND BML_BEHAVIOR_BLOCK_HEADER_COMPILE_SOURCES
             "${BML_BEHAVIOR_BLOCK_HEADER_SOURCE}")
 endforeach()
+set(BML_BEHAVIOR_BLOCK_WINDOWS_FIRST_SOURCE
+        "${CMAKE_CURRENT_BINARY_DIR}/behavior-block-public-headers/WindowsFirst.cpp")
+file(WRITE "${BML_BEHAVIOR_BLOCK_WINDOWS_FIRST_SOURCE}"
+        "#include <Windows.h>\n#include <BML/Behavior/Blocks.hpp>\n")
+list(APPEND BML_BEHAVIOR_BLOCK_HEADER_COMPILE_SOURCES
+        "${BML_BEHAVIOR_BLOCK_WINDOWS_FIRST_SOURCE}")
 add_library(BehaviorBlockHeadersCompile OBJECT
         ${BML_BEHAVIOR_BLOCK_HEADER_COMPILE_SOURCES})
 target_include_directories(BehaviorBlockHeadersCompile PRIVATE
