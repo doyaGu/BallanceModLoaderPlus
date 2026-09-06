@@ -20,6 +20,9 @@ struct FakeInstance {
 
 std::mutex g_FakeMutex;
 std::unordered_map<std::uint64_t, FakeInstance> g_FakeInstances;
+std::size_t g_StateReads = 0;
+std::size_t g_WorldResets = 0;
+std::size_t g_ClosePendingCalls = 0;
 
 RunFrame MakeFrame(FakeInstance &instance, bool endsActivation) {
     RunFrame frame;
@@ -60,6 +63,31 @@ void AdvanceBehaviorSessionRuntime() {
 std::size_t LiveBehaviorSessionInstances() {
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     return g_FakeInstances.size();
+}
+
+void ResetBehaviorSessionRuntimeStateReads() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    g_StateReads = 0;
+}
+
+std::size_t BehaviorSessionRuntimeStateReads() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    return g_StateReads;
+}
+
+std::size_t BehaviorSessionRuntimeWorldResets() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    return g_WorldResets;
+}
+
+void ResetBehaviorSessionRuntimeClosePendingCalls() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    g_ClosePendingCalls = 0;
+}
+
+std::size_t BehaviorSessionRuntimeClosePendingCalls() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    return g_ClosePendingCalls;
 }
 
 Instance::~Instance() {
@@ -115,6 +143,7 @@ Runtime::Runtime(CKContext *context,
     m_Access->Owner = this;
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     g_FakeInstances.clear();
+    g_WorldResets = 0;
 }
 
 Runtime::~Runtime() {
@@ -230,6 +259,7 @@ RunResult Runtime::Pulse(Instance &instance, const Slot &input,
 
 ExecutionState Runtime::State(const Instance &instance) const {
     std::lock_guard<std::mutex> lock(g_FakeMutex);
+    ++g_StateReads;
     const FakeInstance *found = FindFake(instance.m_Id);
     return found ? found->State : ExecutionState::Closed;
 }
@@ -330,6 +360,14 @@ Status PrototypeCatalog::DeclaredLayout(PrototypeRef, Layout &) {
             "No Prototype Catalog is present in the Session golden test."};
 }
 
-void Runtime::ClosePending() {}
+void Runtime::ClosePending() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    ++g_ClosePendingCalls;
+}
 
+void Runtime::ResetWorld() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    ++g_WorldResets;
+    g_FakeInstances.clear();
+}
 } // namespace BML::Behavior::Internal

@@ -191,12 +191,11 @@ public:
         if (!graph)
             return Failure(Error::InvalidState,
                            "The watched Behavior graph is stale.");
-        GraphModel model;
-        Status status = ReadGraph(graph, false, model);
+        Status status = ReadGraph(graph, false, m_FingerprintModel, false);
         if (status && view == GraphView::Logical)
-            status = ApplyLogical(graph, model);
+            status = ApplyLogical(graph, m_FingerprintModel);
         if (status)
-            out = Fingerprint(model);
+            out = Fingerprint(m_FingerprintModel);
         return status;
     }
 
@@ -328,7 +327,7 @@ private:
     }
 
     Status AddNode(CKBehavior *behavior, CKBehavior *parent,
-                   bool references, GraphModel &out) const {
+                   bool references, bool ports, GraphModel &out) const {
         GraphNode node;
         node.Id = static_cast<std::uint64_t>(
             static_cast<std::uint32_t>(behavior->GetID()));
@@ -344,37 +343,45 @@ private:
         node.Name = behavior->GetName() ? behavior->GetName() : "";
         node.Priority = behavior->GetPriority();
         node.Active = behavior->IsActive() != FALSE;
-        const Layout layout = m_Runtime.Describe(
-            behavior, node.LayoutGeneration);
-        node.Ports.reserve(layout.Slots.size());
-        for (const SlotInfo &slot : layout.Slots) {
-            GraphPort port;
-            port.Kind = slot.Kind;
-            port.LayoutGeneration = node.LayoutGeneration;
-            port.Index = slot.Index;
-            port.Occurrence = slot.Occurrence;
-            port.Type = slot.Type;
-            port.Dynamic = slot.Dynamic;
-            port.Name = slot.Name;
-            if (slot.Kind == SlotKind::Input) {
-                CKBehaviorIO *io = behavior->GetInput(slot.Index);
-                port.Active = io && io->IsActive();
-            } else if (slot.Kind == SlotKind::Output) {
-                CKBehaviorIO *io = behavior->GetOutput(slot.Index);
-                port.Active = io && io->IsActive();
+        if (ports) {
+            const Layout layout = m_Runtime.Describe(
+                behavior, node.LayoutGeneration);
+            node.Ports.reserve(layout.Slots.size());
+            for (const SlotInfo &slot : layout.Slots) {
+                GraphPort port;
+                port.Kind = slot.Kind;
+                port.LayoutGeneration = node.LayoutGeneration;
+                port.Index = slot.Index;
+                port.Occurrence = slot.Occurrence;
+                port.Type = slot.Type;
+                port.Dynamic = slot.Dynamic;
+                port.Name = slot.Name;
+                if (slot.Kind == SlotKind::Input) {
+                    CKBehaviorIO *io = behavior->GetInput(slot.Index);
+                    port.Active = io && io->IsActive();
+                } else if (slot.Kind == SlotKind::Output) {
+                    CKBehaviorIO *io = behavior->GetOutput(slot.Index);
+                    port.Active = io && io->IsActive();
+                }
+                node.Ports.push_back(std::move(port));
             }
-            node.Ports.push_back(std::move(port));
         }
         out.Nodes.push_back(std::move(node));
         return {};
     }
 
     Status ReadGraph(CKBehavior *graph, bool references,
-                     GraphModel &out) const {
-        out = {};
+                     GraphModel &out, bool ports = true) const {
+        out.View = GraphView::Logical;
+        out.Root = {};
+        out.Generation = 0;
+        out.Fingerprint = 0;
+        out.Nodes.clear();
+        out.Links.clear();
+        out.Operations.clear();
         out.Nodes.reserve(static_cast<std::size_t>(
             graph->GetSubBehaviorCount()) + 1u);
-        Status status = AddNode(graph, nullptr, references, out);
+        Status status = AddNode(graph, nullptr, references, ports, out);
         if (!status)
             return status;
         for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
@@ -382,7 +389,7 @@ private:
             if (!Valid(child))
                 return Failure(Error::InvalidState,
                                "A graph node disappeared during inspection.");
-            status = AddNode(child, graph, references, out);
+            status = AddNode(child, graph, references, ports, out);
             if (!status)
                 return status;
         }
@@ -546,7 +553,8 @@ private:
             });
         }
 
-        std::vector<std::uint64_t> hidden;
+        std::vector<std::uint64_t> &hidden = m_HiddenNodes;
+        hidden.clear();
         hidden.reserve(state.Graph.InfrastructureNodes.size() +
                        state.RetiredNodes.size());
         for (const NativeRef &node : state.Graph.InfrastructureNodes)
@@ -588,16 +596,9 @@ private:
             Hash(out, node.Prototype.d2);
             HashText(out, node.Name.c_str());
             Hash(out, node.Priority);
-            Hash(out, node.Ports.size());
-            for (const GraphPort &port : node.Ports) {
-                Hash(out, port.Kind);
-                Hash(out, port.Index);
-                Hash(out, port.Occurrence);
-                Hash(out, port.Type.d1);
-                Hash(out, port.Type.d2);
-                Hash(out, port.Dynamic);
-                HashText(out, port.Name.c_str());
-            }
+            // LayoutGeneration already represents the identity, name, type,
+            // order, and dynamic character of every public port. Hashing the
+            // materialized port list again would add no change sensitivity.
         }
         for (const GraphLink &link : graph.Links) {
             Hash(out, link.Id);
@@ -721,6 +722,8 @@ private:
     std::unordered_map<CK_ID, std::array<Generation, 2>> m_Generations;
     mutable std::unordered_map<CK_ID, Generation> m_LayoutGenerations;
     std::unordered_map<std::uint64_t, LogicalState> m_Logical;
+    GraphModel m_FingerprintModel;
+    std::vector<std::uint64_t> m_HiddenNodes;
 };
 
 } // namespace

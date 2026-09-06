@@ -51,8 +51,10 @@ Sessions::Sessions(Runtime &runtime, PrototypeCatalog *catalog,
       m_Thread(std::this_thread::get_id()) {}
 
 Sessions::~Sessions() {
-    ResetWorld();
-    CollectWatches();
+    if (std::this_thread::get_id() == m_Thread) {
+        RetireWorldHandles();
+        m_Runtime.ClosePending();
+    }
 }
 
 std::uint64_t Sessions::RegisterOwner(std::string ownerId) {
@@ -666,37 +668,36 @@ void Sessions::CloseRun(std::uintptr_t runId) {
 }
 
 void Sessions::ProcessFrame() {
-    if (std::this_thread::get_id() != m_Thread)
+    if (std::this_thread::get_id() != m_Thread || m_ProcessingFrame)
         return;
+    m_ProcessingFrame = true;
+    struct FrameEnd final {
+        bool &Processing;
+        ~FrameEnd() { Processing = false; }
+    } frameEnd{m_ProcessingFrame};
+
     std::uint64_t frame = 0;
-    std::vector<std::pair<std::uintptr_t, std::shared_ptr<Watch>>> watches;
+    bool runsClosed = false;
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         frame = ++m_Frame;
-        CloseQueuedRuns();
-        for (auto &[id, entry] : m_Runs) {
-            Run &run = *entry;
-            if (!run.Block)
-                continue;
-            RefreshRunInfo(m_Runtime, run.Block, run.Info);
-        }
-        watches.reserve(m_Watches.size());
+        runsClosed = CloseQueuedRuns();
+        m_FrameWatches.clear();
+        m_FrameWatches.reserve(m_Watches.size());
         for (const auto &[id, watch] : m_Watches)
-            watches.emplace_back(id, watch.Value);
+            m_FrameWatches.emplace_back(id, watch.Value);
     }
+    if (runsClosed)
+        m_Runtime.ClosePending();
+    m_WatchReadings.Clear();
 
-    for (const auto &[id, watch] : watches) {
-        {
-            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-            const auto current = m_Watches.find(id);
-            if (current == m_Watches.end() || current->second.Value != watch)
-                continue;
-        }
-        if (watch->Read().State == WatchState::Failed) {
-            (void) watch->RetireAtSafePoint();
+    for (const auto &[id, watch] : m_FrameWatches) {
+        // The frame snapshot keeps the Watch alive. CloseWatch closes its
+        // admission before removing the handle, so a callback may close any
+        // later Watch without requiring another handle-table lookup here.
+        if (!watch->IsOpen())
             continue;
-        }
-        Status status = watch->Poll(frame);
+        Status status = watch->Poll(frame, m_WatchReadings);
         if (!status) {
             // Failure remains readable through the Watch handle, but its
             // callback belongs to the Mod and must retire at this safe point.
@@ -713,13 +714,30 @@ void Sessions::ProcessFrame() {
             }
         }
     }
+    m_FrameWatches.clear();
     CollectWatches();
-    m_Runtime.ClosePending();
+    {
+        // Watch callbacks and callback Release functions can close Runs. Their
+        // handles stop accepting calls immediately; submit the native close at
+        // this same game-thread safe point.
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        runsClosed = CloseQueuedRuns();
+    }
+    if (runsClosed)
+        m_Runtime.ClosePending();
 }
 
 void Sessions::ResetWorld() {
     if (std::this_thread::get_id() != m_Thread)
         return;
+    RetireWorldHandles();
+    // World-bound handles are no longer callable before RESET, DETACH, and
+    // DELETE enter author code. Runtime then upgrades every pending ordinary
+    // close to a world reset and drains all remaining Behavior instances.
+    m_Runtime.ResetWorld();
+}
+
+void Sessions::RetireWorldHandles() {
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         for (auto &[id, run] : m_Runs)
@@ -728,10 +746,9 @@ void Sessions::ResetWorld() {
         for (auto &[id, watch] : m_Watches)
             QueueWatch(std::move(watch.Value));
         m_Watches.clear();
-        CloseQueuedRuns();
+        (void) CloseQueuedRuns();
     }
     CollectWatches();
-    m_Runtime.ClosePending();
 }
 
 Status Sessions::Ready() const {
@@ -781,7 +798,7 @@ OpenRun Sessions::AddRun(const Session &session, RunKind kind,
                           DetachedCompatibility compatibility,
                           PrototypeRef prototype) {
     std::shared_ptr<FrameStore> frames = m_Runtime.Frames(block);
-    const bool nativeExecuted = frames && !frames->Read().empty();
+    const bool nativeExecuted = frames && !frames->Empty();
     if (!result && !nativeExecuted) {
         block.Reset();
         m_Runtime.ClosePending();
@@ -841,12 +858,14 @@ void Sessions::QueueClose(std::shared_ptr<Run> run) {
         m_CloseQueue.push_back(std::move(run));
 }
 
-void Sessions::CloseQueuedRuns() {
+bool Sessions::CloseQueuedRuns() {
+    const bool closed = !m_CloseQueue.empty();
     for (const std::shared_ptr<Run> &run : m_CloseQueue) {
         if (run)
             run->Block.Reset();
     }
     m_CloseQueue.clear();
+    return closed;
 }
 
 void Sessions::CloseOwner(const std::string &ownerId,
@@ -881,7 +900,7 @@ void Sessions::CloseOwner(const std::string &ownerId,
         watch = m_Watches.erase(watch);
     }
     owner->second.State = OwnerState::Draining;
-    CloseQueuedRuns();
+    (void) CloseQueuedRuns();
 }
 
 void Sessions::DrainOwner(const std::string &ownerId,

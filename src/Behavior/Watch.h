@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 
 #include "Behavior/Callback.h"
 #include "Behavior/Graph.h"
@@ -47,6 +48,61 @@ struct WatchInfo {
     Status Diagnostic;
 };
 
+// One polling frame observes a graph or Layout once, even when several
+// Watches ask the same question. Baselines remain independent because a Watch
+// may be opened between native graph changes.
+class WatchReadings final {
+public:
+    void Clear() noexcept;
+    Status GraphFingerprint(GraphSource &source, const NativeRef &root,
+                            GraphView view, std::uint64_t &out);
+    Status LayoutFingerprint(GraphSource &source, const NativeRef &node,
+                             std::uint64_t &out);
+
+private:
+    struct GraphKey {
+        GraphSource *Source = nullptr;
+        NativeRef Root;
+        GraphView View = GraphView::Logical;
+
+        friend bool operator==(const GraphKey &, const GraphKey &) = default;
+    };
+
+    struct LayoutKey {
+        GraphSource *Source = nullptr;
+        NativeRef Node;
+
+        friend bool operator==(const LayoutKey &, const LayoutKey &) = default;
+    };
+
+    struct GraphKeyHash {
+        std::size_t operator()(const GraphKey &key) const noexcept;
+    };
+
+    struct LayoutKeyHash {
+        std::size_t operator()(const LayoutKey &key) const noexcept;
+    };
+
+    struct GraphReading {
+        std::uint64_t Frame = 0;
+        std::uint64_t Fingerprint = 0;
+        Status Result;
+    };
+
+    struct LayoutReading {
+        std::uint64_t Frame = 0;
+        std::uint64_t Fingerprint = 0;
+        Status Result;
+    };
+
+    template <class Readings>
+    void ForgetUnused(Readings &readings);
+
+    std::unordered_map<GraphKey, GraphReading, GraphKeyHash> m_Graphs;
+    std::unordered_map<LayoutKey, LayoutReading, LayoutKeyHash> m_Layouts;
+    std::uint64_t m_Frame = 1;
+};
+
 class WatchBinding final : public CallbackResource {
 public:
     using Function = std::function<void(const WatchEvent &)>;
@@ -75,6 +131,7 @@ public:
                        std::shared_ptr<Watch> &out);
 
     Status Poll(std::uint64_t frame);
+    Status Poll(std::uint64_t frame, WatchReadings &readings);
     [[nodiscard]] WatchInfo Read() const;
     void Close() noexcept;
     [[nodiscard]] bool RetireAtSafePoint() noexcept;
@@ -89,6 +146,7 @@ private:
           m_Binding(std::move(binding)) {}
 
     Status ReadBaseline();
+    Status Poll(std::uint64_t frame, WatchReadings *readings);
     void Fail(Status status);
 
     GraphSource &m_Source;

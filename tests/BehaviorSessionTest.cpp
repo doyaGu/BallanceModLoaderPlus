@@ -1,14 +1,64 @@
 #include "Behavior/Sessions.h"
 #include "Behavior/FrameStore.h"
 
+#include <cstdlib>
+#include <new>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 #include <gtest/gtest.h>
+
+namespace {
+thread_local bool g_CountAllocations = false;
+thread_local std::size_t g_AllocationCount = 0;
+
+template <class Function>
+std::size_t CountAllocations(Function &&function) {
+    g_AllocationCount = 0;
+    g_CountAllocations = true;
+    function();
+    g_CountAllocations = false;
+    return g_AllocationCount;
+}
+}
+
+void *operator new(std::size_t size) {
+    if (g_CountAllocations)
+        ++g_AllocationCount;
+    if (void *memory = std::malloc(size ? size : 1))
+        return memory;
+    throw std::bad_alloc();
+}
+
+void *operator new[](std::size_t size) {
+    return ::operator new(size);
+}
+
+void operator delete(void *memory) noexcept {
+    std::free(memory);
+}
+
+void operator delete[](void *memory) noexcept {
+    std::free(memory);
+}
+
+void operator delete(void *memory, std::size_t) noexcept {
+    std::free(memory);
+}
+
+void operator delete[](void *memory, std::size_t) noexcept {
+    std::free(memory);
+}
 
 namespace BML::Behavior::Internal {
 void AdvanceBehaviorSessionRuntime();
 std::size_t LiveBehaviorSessionInstances();
+void ResetBehaviorSessionRuntimeStateReads();
+std::size_t BehaviorSessionRuntimeStateReads();
+std::size_t BehaviorSessionRuntimeWorldResets();
+void ResetBehaviorSessionRuntimeClosePendingCalls();
+std::size_t BehaviorSessionRuntimeClosePendingCalls();
 } // namespace BML::Behavior::Internal
 
 namespace {
@@ -40,9 +90,10 @@ public:
         return {};
     }
 
-    Status ReadLayout(const NativeRef &, Layout &) override {
-        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
-                CKBR_PARAMETERERROR, "Not used by this test."};
+    Status ReadLayout(const NativeRef &, Layout &out) override {
+        out = {};
+        out.Generation = LayoutFingerprintValue;
+        return {};
     }
 
     Status ReadValue(const NativeRef &, std::uint64_t, const Slot &, ReadMode,
@@ -58,14 +109,19 @@ public:
         return GraphFingerprintStatus;
     }
 
-    Status LayoutFingerprint(const NativeRef &, std::uint64_t &) override {
-        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
-                CKBR_PARAMETERERROR, "Not used by this test."};
+    Status LayoutFingerprint(const NativeRef &,
+                             std::uint64_t &out) override {
+        ++LayoutFingerprintCalls;
+        out = LayoutFingerprintValue;
+        return LayoutFingerprintStatus;
     }
 
     std::uint64_t GraphFingerprintValue = 7;
     int GraphFingerprintCalls = 0;
     Status GraphFingerprintStatus;
+    std::uint64_t LayoutFingerprintValue = 11;
+    int LayoutFingerprintCalls = 0;
+    Status LayoutFingerprintStatus;
 };
 
 struct WatchReferences {
@@ -137,10 +193,16 @@ Slot Input(const char *name) {
     return input;
 }
 
-WatchSpec GraphWatchSpec() {
+WatchSpec GraphWatchSpec(GraphView view = GraphView::Logical) {
     WatchSpec spec;
     spec.Kind = WatchKind::GraphChanged;
-    spec.View = GraphView::Logical;
+    spec.View = view;
+    return spec;
+}
+
+WatchSpec LayoutWatchSpec() {
+    WatchSpec spec;
+    spec.Kind = WatchKind::LayoutChanged;
     return spec;
 }
 
@@ -323,6 +385,314 @@ TEST(BehaviorSessions, ReadsTheGraphOwnedByTheRun) {
     sessions.CloseRun(run.Id);
     EXPECT_EQ(sessions.ReadGraph(run.Id, GraphView::Logical, graph).Code,
               Error::InvalidState);
+}
+
+TEST(BehaviorSessions, IdleFramesDoNotPollEveryRun) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    std::vector<std::uintptr_t> runs;
+    for (int index = 0; index < 32; ++index) {
+        OpenRun run = sessions.Spawn(
+            session, nullptr, BlockSpec(CKGUID(1, 2)));
+        ASSERT_TRUE(run);
+        runs.push_back(run.Id);
+    }
+
+    ResetBehaviorSessionRuntimeStateReads();
+    ResetBehaviorSessionRuntimeClosePendingCalls();
+    sessions.ProcessFrame();
+    EXPECT_EQ(BehaviorSessionRuntimeStateReads(), 0u);
+    EXPECT_EQ(BehaviorSessionRuntimeClosePendingCalls(), 0u);
+
+    RunInfo info;
+    ASSERT_TRUE(sessions.ReadRun(runs.front(), info));
+    EXPECT_EQ(BehaviorSessionRuntimeStateReads(), 1u);
+}
+
+TEST(BehaviorSessions, GraphWatchesShareOneReadingPerGraphAndView) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    for (int index = 0; index < 32; ++index) {
+        std::uintptr_t watch = 0;
+        ASSERT_TRUE(sessions.OpenWatch(
+            session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+    }
+    const int baselineReads = graph->GraphFingerprintCalls;
+
+    sessions.ProcessFrame();
+
+    EXPECT_EQ(graph->GraphFingerprintCalls, baselineReads + 1);
+    sessions.ProcessFrame();
+    EXPECT_EQ(graph->GraphFingerprintCalls, baselineReads + 2);
+}
+
+TEST(BehaviorSessions, GraphWatchReadingsKeepLogicalAndLiveSeparate) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    for (GraphView view : {GraphView::Logical, GraphView::Live}) {
+        std::uintptr_t watch = 0;
+        ASSERT_TRUE(sessions.OpenWatch(
+            session, reinterpret_cast<void *>(1), nullptr,
+            GraphWatchSpec(view), PlanCallbackState::Static(),
+            [](const WatchEvent &) {}, watch));
+    }
+    const int baselineReads = graph->GraphFingerprintCalls;
+
+    sessions.ProcessFrame();
+
+    EXPECT_EQ(graph->GraphFingerprintCalls, baselineReads + 2);
+}
+
+TEST(BehaviorSessions, DistinctWatchesReuseTheirFrameIndexes) {
+    constexpr int kWatchCount = 128;
+
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    for (int index = 0; index < kWatchCount; ++index) {
+        std::uintptr_t watch = 0;
+        void *root = reinterpret_cast<void *>(
+            static_cast<std::uintptr_t>(index + 1));
+        ASSERT_TRUE(sessions.OpenWatch(
+            session, root, nullptr, GraphWatchSpec(),
+            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+    }
+    for (int index = 0; index < kWatchCount; ++index) {
+        std::uintptr_t watch = 0;
+        void *node = reinterpret_cast<void *>(
+            static_cast<std::uintptr_t>(kWatchCount + index + 1));
+        ASSERT_TRUE(sessions.OpenWatch(
+            session, nullptr, node, LayoutWatchSpec(),
+            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+    }
+
+    sessions.ProcessFrame();
+    const int warmedGraphReads = graph->GraphFingerprintCalls;
+    const int warmedLayoutReads = graph->LayoutFingerprintCalls;
+    const std::size_t allocations =
+        CountAllocations([&] { sessions.ProcessFrame(); });
+
+    EXPECT_EQ(graph->GraphFingerprintCalls, warmedGraphReads + kWatchCount);
+    EXPECT_EQ(graph->LayoutFingerprintCalls, warmedLayoutReads + kWatchCount);
+#if !defined(_ITERATOR_DEBUG_LEVEL) || _ITERATOR_DEBUG_LEVEL == 0
+    EXPECT_EQ(allocations, 0u);
+#endif
+}
+
+TEST(BehaviorSessions, StableGraphWatchesDoNotAllocateWhilePolling) {
+    constexpr int kWatchCount = 32;
+
+    FakeGraphSource directSource;
+    std::shared_ptr<Watch> directWatch;
+    ASSERT_TRUE(Watch::Open(
+        directSource, [] {
+            WatchSpec spec = GraphWatchSpec();
+            spec.Root = {41, reinterpret_cast<void *>(1)};
+            return spec;
+        }(), PlanCallbackState::Static(), [](const WatchEvent &) {},
+        directWatch));
+    WatchReadings directReadings;
+    ASSERT_TRUE(directWatch->Poll(1, directReadings));
+
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    for (int index = 0; index < kWatchCount; ++index) {
+        std::uintptr_t watch = 0;
+        ASSERT_TRUE(sessions.OpenWatch(
+            session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+    }
+    sessions.ProcessFrame();
+
+    const std::size_t directAllocations = CountAllocations([&] {
+        directReadings.Clear();
+        for (int index = 0; index < kWatchCount; ++index)
+            (void) directWatch->Poll(2, directReadings);
+    });
+
+    Runtime emptyRuntime(nullptr);
+    auto emptySource = std::make_unique<FakeGraphSource>();
+    Sessions emptySessions(emptyRuntime, nullptr, std::move(emptySource));
+    emptySessions.ProcessFrame();
+    const std::size_t emptyFrameAllocations =
+        CountAllocations([&] { emptySessions.ProcessFrame(); });
+    const std::size_t sessionAllocations =
+        CountAllocations([&] { sessions.ProcessFrame(); });
+
+    EXPECT_EQ(sessionAllocations,
+              directAllocations + emptyFrameAllocations);
+#if !defined(_ITERATOR_DEBUG_LEVEL) || _ITERATOR_DEBUG_LEVEL == 0
+    EXPECT_EQ(sessionAllocations, 0u);
+#endif
+}
+
+TEST(BehaviorSessions, LayoutWatchesShareOneReadingPerNode) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    for (int index = 0; index < 32; ++index) {
+        std::uintptr_t watch = 0;
+        ASSERT_TRUE(sessions.OpenWatch(
+            session, nullptr, reinterpret_cast<void *>(2), LayoutWatchSpec(),
+            PlanCallbackState::Static(), [](const WatchEvent &) {}, watch));
+    }
+    const int baselineReads = graph->LayoutFingerprintCalls;
+
+    sessions.ProcessFrame();
+
+    EXPECT_EQ(graph->LayoutFingerprintCalls, baselineReads + 1);
+    sessions.ProcessFrame();
+    EXPECT_EQ(graph->LayoutFingerprintCalls, baselineReads + 2);
+}
+
+TEST(BehaviorSessions, WatchCallbackClosesRunAtTheCurrentSafePoint) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    const OpenRun run = sessions.Spawn(
+        session, nullptr, BlockSpec(CKGUID(1, 2)));
+    ASSERT_TRUE(run);
+    ASSERT_EQ(LiveBehaviorSessionInstances(), 1u);
+
+    std::uintptr_t watch = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Static(),
+        [&](const WatchEvent &) { sessions.CloseRun(run.Id); }, watch));
+
+    ResetBehaviorSessionRuntimeClosePendingCalls();
+    graph->GraphFingerprintValue = 8;
+    sessions.ProcessFrame();
+
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+    EXPECT_EQ(BehaviorSessionRuntimeClosePendingCalls(), 1u);
+    RunInfo stale;
+    EXPECT_EQ(sessions.ReadRun(run.Id, stale).Code, Error::InvalidState);
+}
+
+TEST(BehaviorSessions, QueuedRunCloseCompletesBeforeWatchCallbacks) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    const OpenRun run = sessions.Spawn(
+        session, nullptr, BlockSpec(CKGUID(1, 2)));
+    ASSERT_TRUE(run);
+
+    std::size_t instancesSeenByCallback = 1;
+    std::uintptr_t watch = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Static(),
+        [&](const WatchEvent &) {
+            instancesSeenByCallback = LiveBehaviorSessionInstances();
+        }, watch));
+
+    sessions.CloseRun(run.Id);
+    graph->GraphFingerprintValue = 8;
+    sessions.ProcessFrame();
+
+    EXPECT_EQ(instancesSeenByCallback, 0u);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+}
+
+TEST(BehaviorSessions, WatchCallbackCannotReenterFrameProcessing) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    int callbacks = 0;
+    std::uintptr_t watch = 0;
+    ASSERT_TRUE(sessions.OpenWatch(
+        session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+        PlanCallbackState::Static(),
+        [&](const WatchEvent &) {
+            ++callbacks;
+            sessions.ProcessFrame();
+        }, watch));
+    const int baselineReads = graph->GraphFingerprintCalls;
+
+    graph->GraphFingerprintValue = 8;
+    sessions.ProcessFrame();
+
+    EXPECT_EQ(callbacks, 1);
+    EXPECT_EQ(graph->GraphFingerprintCalls, baselineReads + 1);
+    sessions.ProcessFrame();
+    EXPECT_EQ(graph->GraphFingerprintCalls, baselineReads + 2);
+}
+
+TEST(BehaviorSessions, WatchCallbackCanCloseTheRemainingFrameWatches) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    std::vector<std::uintptr_t> watches(3);
+    int callbacks = 0;
+    for (std::uintptr_t &watch : watches) {
+        ASSERT_TRUE(sessions.OpenWatch(
+            session, reinterpret_cast<void *>(1), nullptr, GraphWatchSpec(),
+            PlanCallbackState::Static(),
+            [&](const WatchEvent &) {
+                ++callbacks;
+                for (std::uintptr_t current : watches)
+                    sessions.CloseWatch(current);
+            }, watch));
+    }
+
+    graph->GraphFingerprintValue = 8;
+    sessions.ProcessFrame();
+
+    EXPECT_EQ(callbacks, 1);
+    WatchInfo info;
+    for (std::uintptr_t watch : watches)
+        EXPECT_EQ(sessions.ReadWatch(watch, info).Code, Error::InvalidState);
 }
 
 TEST(BehaviorSessions, FailedWatchRemainsReadableAndIsNotPolledAgain) {
@@ -711,6 +1081,7 @@ TEST(BehaviorSessions, WorldResetClosesRunsButKeepsTheSession) {
     EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
 
     sessions.ResetWorld();
+    EXPECT_EQ(BehaviorSessionRuntimeWorldResets(), 1u);
     EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
     RunInfo stale;
     EXPECT_EQ(sessions.ReadRun(instance.Id, stale).Code, Error::InvalidState);

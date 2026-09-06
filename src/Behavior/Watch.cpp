@@ -1,5 +1,7 @@
 #include "Behavior/Watch.h"
 
+#include <cstdint>
+#include <functional>
 #include <utility>
 
 namespace BML::Behavior::Internal {
@@ -10,6 +12,85 @@ Status Failure(Error error, std::string message) {
 }
 
 } // namespace
+
+namespace {
+
+std::size_t Mix(std::size_t seed, std::size_t value) noexcept {
+    // boost::hash_combine's inexpensive avalanche is sufficient for native
+    // identities that are already well distributed pointers and object ids.
+    return seed ^ (value + static_cast<std::size_t>(0x9e3779b9u) +
+                   (seed << 6u) + (seed >> 2u));
+}
+
+std::size_t HashRef(GraphSource *source, const NativeRef &ref) noexcept {
+    std::size_t hash = std::hash<GraphSource *>{}(source);
+    hash = Mix(hash, std::hash<std::uint64_t>{}(ref.Id));
+    return Mix(hash, std::hash<const void *>{}(ref.Address));
+}
+
+} // namespace
+
+std::size_t WatchReadings::GraphKeyHash::operator()(
+    const GraphKey &key) const noexcept {
+    return Mix(HashRef(key.Source, key.Root),
+               std::hash<unsigned>{}(static_cast<unsigned>(key.View)));
+}
+
+std::size_t WatchReadings::LayoutKeyHash::operator()(
+    const LayoutKey &key) const noexcept {
+    return HashRef(key.Source, key.Node);
+}
+
+template <class Readings>
+void WatchReadings::ForgetUnused(Readings &readings) {
+    for (auto reading = readings.begin(); reading != readings.end();) {
+        // This maintenance runs infrequently. Keeping the previous frame
+        // preserves allocations for stable Watches while bounding identities
+        // left behind by closed Watches and destroyed CK objects.
+        if (reading->second.Frame + 1u < m_Frame)
+            reading = readings.erase(reading);
+        else
+            ++reading;
+    }
+}
+
+void WatchReadings::Clear() noexcept {
+    ++m_Frame;
+    if (m_Frame == 0) {
+        m_Graphs.clear();
+        m_Layouts.clear();
+        m_Frame = 1;
+        return;
+    }
+    if ((m_Frame & 0xffu) == 0) {
+        ForgetUnused(m_Graphs);
+        ForgetUnused(m_Layouts);
+    }
+}
+
+Status WatchReadings::GraphFingerprint(
+    GraphSource &source, const NativeRef &root, GraphView view,
+    std::uint64_t &out) {
+    GraphReading &reading = m_Graphs[{&source, root, view}];
+    if (reading.Frame != m_Frame) {
+        reading.Result = source.GraphFingerprint(
+            root, view, reading.Fingerprint);
+        reading.Frame = m_Frame;
+    }
+    out = reading.Fingerprint;
+    return reading.Result;
+}
+
+Status WatchReadings::LayoutFingerprint(
+    GraphSource &source, const NativeRef &node, std::uint64_t &out) {
+    LayoutReading &reading = m_Layouts[{&source, node}];
+    if (reading.Frame != m_Frame) {
+        reading.Result = source.LayoutFingerprint(node, reading.Fingerprint);
+        reading.Frame = m_Frame;
+    }
+    out = reading.Fingerprint;
+    return reading.Result;
+}
 
 WatchBinding::WatchBinding(PlanCallbackState state, Function function)
     : m_State(std::move(state)), m_Lease(m_State.OpenLease()),
@@ -99,12 +180,21 @@ Status Watch::ReadBaseline() {
 }
 
 Status Watch::Poll(std::uint64_t frame) {
-    WatchInfo info = Read();
-    if (info.State == WatchState::Failed)
-        return info.Diagnostic;
-    if (!m_Open.load(std::memory_order_acquire))
+    return Poll(frame, nullptr);
+}
+
+Status Watch::Poll(std::uint64_t frame, WatchReadings &readings) {
+    return Poll(frame, &readings);
+}
+
+Status Watch::Poll(std::uint64_t frame, WatchReadings *readings) {
+    if (!m_Open.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> lock(m_StateMutex);
+        if (m_Info.State == WatchState::Failed)
+            return m_Info.Diagnostic;
         return Failure(Error::InvalidState,
                        "The Behavior Watch is closed.");
+    }
 
     WatchEvent event;
     event.Kind = m_Spec.Kind;
@@ -115,9 +205,16 @@ Status Watch::Poll(std::uint64_t frame) {
     case WatchKind::GraphChanged:
     case WatchKind::LayoutChanged: {
         std::uint64_t current = 0;
-        status = m_Spec.Kind == WatchKind::GraphChanged
-            ? m_Source.GraphFingerprint(m_Spec.Root, m_Spec.View, current)
-            : m_Source.LayoutFingerprint(m_Spec.Node, current);
+        if (m_Spec.Kind == WatchKind::GraphChanged) {
+            status = readings
+                ? readings->GraphFingerprint(
+                      m_Source, m_Spec.Root, m_Spec.View, current)
+                : m_Source.GraphFingerprint(m_Spec.Root, m_Spec.View, current);
+        } else {
+            status = readings
+                ? readings->LayoutFingerprint(m_Source, m_Spec.Node, current)
+                : m_Source.LayoutFingerprint(m_Spec.Node, current);
+        }
         if (!status)
             break;
         changed = current != m_Fingerprint;

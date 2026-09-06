@@ -175,11 +175,12 @@ private:
                                  DetachedCompatibility compatibility,
                                  PrototypeRef prototype);
     void QueueClose(std::shared_ptr<Run> run);
-    void CloseQueuedRuns();
+    [[nodiscard]] bool CloseQueuedRuns();
     void CloseOwner(const std::string &ownerId, std::uint64_t generation);
     void DrainOwner(const std::string &ownerId, std::uint64_t generation);
     void QueueWatch(std::shared_ptr<Watch> watch);
     void CollectWatches();
+    void RetireWorldHandles();
 
     Runtime &m_Runtime;
     PrototypeCatalog *m_Catalog = nullptr;
@@ -194,6 +195,10 @@ private:
     std::vector<std::shared_ptr<Run>> m_CloseQueue;
     std::unordered_map<std::uintptr_t, OwnedWatch> m_Watches;
     std::vector<std::shared_ptr<Watch>> m_ClosingWatches;
+    std::vector<std::pair<std::uintptr_t, std::shared_ptr<Watch>>>
+        m_FrameWatches;
+    WatchReadings m_WatchReadings;
+    bool m_ProcessingFrame = false;
     std::uint64_t m_Frame = 0;
 };
 
