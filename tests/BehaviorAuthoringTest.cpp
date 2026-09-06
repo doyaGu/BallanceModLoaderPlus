@@ -669,6 +669,8 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
     node.Id = 101;
     node.Object = g_State.InvalidGraphObject
         ? BML_ObjectRef{root.Domain, 0, 0} : root;
+    node.Index = -1;
+    node.Kind = BML_BEHAVIOR_KIND_GRAPH;
     node.LayoutGeneration = g_State.LiveGeneration;
     node.Prototype = {21, 22};
     node.Priority = 7;
@@ -756,6 +758,9 @@ std::vector<std::uint8_t> GraphPayload(BML_ObjectRef root,
         duplicate.Id = g_State.DuplicateGraphNode ? node.Id : 102;
         duplicate.Object = {root.Domain, root.Slot + 1, root.Generation};
         duplicate.Parent = node.Id;
+        duplicate.Index = 0;
+        duplicate.Occurrence = 1;
+        duplicate.Kind = BML_BEHAVIOR_KIND_FUNCTION;
         duplicate.PortOffset = 0;
         duplicate.PortCount = 0;
         std::memcpy(payload.data() + sizeof(node), &duplicate,
@@ -2124,6 +2129,10 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     Graph graph = std::move(inspected).Value();
     EXPECT_EQ(graph.Mode(), View::Logical);
     EXPECT_EQ(graph.Root().Object().Domain, root.Domain);
+    EXPECT_EQ(graph.Root().Index(), -1);
+    EXPECT_EQ(graph.Root().Occurrence(), 0);
+    EXPECT_EQ(graph.Root().Kind(), BehaviorKind::Graph);
+    EXPECT_TRUE(graph.Root().IsGraph());
     EXPECT_EQ(graph.Generation(), 5u);
     EXPECT_EQ(graph.Fingerprint(), 0x713u);
     ASSERT_EQ(graph.Nodes().size(), 1u);
@@ -2146,6 +2155,14 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     EXPECT_EQ(graph.Links()[0].InitialDelay(), 2);
     EXPECT_EQ(graph.Links()[0].RemainingDelay(), 1);
     EXPECT_EQ(graph.Links()[0].Pending(), TruthValue::Unknown);
+    EXPECT_EQ(graph.Incoming(graph.Root()).size(), 1u);
+    EXPECT_EQ(graph.Outgoing(graph.Root().Out()).size(), 1u);
+    ASSERT_TRUE(graph.Entering(graph.Root()));
+    ASSERT_TRUE(graph.Leaving(graph.Root().Out()));
+    ASSERT_TRUE(graph.Previous(graph.Root()));
+    ASSERT_TRUE(graph.Next(graph.Root().Out()));
+    EXPECT_EQ(graph.Previous(graph.Root())->Id(), graph.Root().Id());
+    EXPECT_EQ(graph.Next(graph.Root().Out())->Id(), graph.Root().Id());
     ASSERT_EQ(graph.Operations().size(), 1u);
     EXPECT_EQ(graph.Operations()[0].Id(), 301u);
     EXPECT_EQ(graph.Operations()[0].Object().Domain, 61u);
@@ -2160,6 +2177,10 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     ASSERT_TRUE(live);
     EXPECT_EQ(live.Value().Mode(), View::Live);
     EXPECT_EQ(g_State.GraphView, BML_BEHAVIOR_GRAPH_LIVE);
+
+    auto nested = graph.Inspect(graph.Root());
+    ASSERT_TRUE(nested);
+    EXPECT_EQ(nested->Root().Object().Slot, graph.Root().Object().Slot);
 }
 
 TEST(BehaviorAuthoring, PreservesSelectorCardinalityOnSnapshotNodes) {
@@ -2233,6 +2254,23 @@ TEST(BehaviorAuthoring, RequiresExplicitChoiceForDuplicateNodeNames) {
     ASSERT_EQ(matches.size(), 2u);
     EXPECT_EQ(matches[0].Id(), 101u);
     EXPECT_EQ(matches[1].Id(), 102u);
+    EXPECT_EQ(matches[1].Index(), 0);
+    EXPECT_EQ(matches[1].Occurrence(), 1);
+    EXPECT_FALSE(matches[1].IsGraph());
+
+    auto at = graph.Find(At(0));
+    ASSERT_TRUE(at);
+    EXPECT_EQ(at->Id(), 102u);
+    auto occurrence = graph.Find(Named("Root", 1));
+    ASSERT_TRUE(occurrence);
+    EXPECT_EQ(occurrence->Id(), 102u);
+    auto prototype = graph.Find(At(0), CKGUID(21, 22));
+    ASSERT_TRUE(prototype);
+    auto wrongPrototype = graph.Find(At(0), CKGUID(1, 2));
+    EXPECT_FALSE(wrongPrototype);
+    auto notGraph = graph.Inspect(at.Value());
+    EXPECT_FALSE(notGraph);
+    EXPECT_EQ(notGraph.GetStatus().Error, Error::InterfaceUnsupported);
 
     auto ambiguous = graph.Find("Root");
     EXPECT_FALSE(ambiguous);

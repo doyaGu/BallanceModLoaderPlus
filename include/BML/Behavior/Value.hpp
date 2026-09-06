@@ -271,6 +271,7 @@ private:
     friend struct Detail::Wire;
     friend class Frame;
     friend class Node;
+    friend class Graph;
 };
 
 inline Selector At(std::int32_t index) { return Selector::At(index); }

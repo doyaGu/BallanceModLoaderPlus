@@ -66,7 +66,10 @@ struct GraphNodeData {
     std::uint64_t Id = 0;
     BML_ObjectRef Object{};
     std::uint64_t Parent = 0;
+    std::int32_t Index = -1;
+    std::int32_t Occurrence = 0;
     std::uint64_t LayoutGeneration = 0;
+    BehaviorKind Kind = BehaviorKind::Function;
     CKGUID Prototype{0, 0};
     std::int32_t Priority = 0;
     bool Active = false;
@@ -108,6 +111,7 @@ struct GraphData {
 
 template <class ViewType>
 class GraphRange;
+class LinkRange;
 
 class Port {
 public:
@@ -134,6 +138,7 @@ private:
     std::size_t m_Index = 0;
 
     template <class> friend class GraphRange;
+    friend class LinkRange;
     friend class Node;
     friend class Link;
     friend class Graph;
@@ -147,7 +152,11 @@ public:
     [[nodiscard]] std::uint64_t Id() const noexcept;
     [[nodiscard]] BML_ObjectRef Object() const noexcept;
     [[nodiscard]] std::uint64_t Parent() const noexcept;
+    [[nodiscard]] std::int32_t Index() const noexcept;
+    [[nodiscard]] std::int32_t Occurrence() const noexcept;
     [[nodiscard]] std::uint64_t LayoutGeneration() const noexcept;
+    [[nodiscard]] BehaviorKind Kind() const noexcept;
+    [[nodiscard]] bool IsGraph() const noexcept;
     [[nodiscard]] CKGUID Prototype() const noexcept;
     [[nodiscard]] std::int32_t Priority() const noexcept;
     [[nodiscard]] bool Active() const noexcept;
@@ -208,6 +217,7 @@ private:
     std::size_t m_Index = 0;
 
     template <class> friend class GraphRange;
+    friend class LinkRange;
     friend class Graph;
     friend class Edit;
 };
@@ -233,6 +243,7 @@ private:
     std::size_t m_Index = 0;
 
     template <class> friend class GraphRange;
+    friend class LinkRange;
     friend class Graph;
     friend class Edit;
 };
@@ -366,6 +377,85 @@ private:
     friend class Graph;
 };
 
+// A filtered view over the Link records already owned by a Graph snapshot.
+// Iteration scans those records in place and never allocates a collection.
+class LinkRange {
+public:
+    LinkRange() = default;
+
+    class Iterator {
+    public:
+        using difference_type = std::ptrdiff_t;
+        using value_type = Link;
+        using pointer = void;
+        using reference = Link;
+        using iterator_category = std::forward_iterator_tag;
+
+        [[nodiscard]] Link operator*() const { return Link(m_Graph, m_Index); }
+        Iterator &operator++() { ++m_Index; Advance(); return *this; }
+        Iterator operator++(int) { auto copy = *this; ++*this; return copy; }
+        friend bool operator==(const Iterator &left, const Iterator &right) {
+            return left.m_Graph == right.m_Graph &&
+                left.m_Index == right.m_Index && left.m_End == right.m_End;
+        }
+        friend bool operator!=(const Iterator &left, const Iterator &right) {
+            return !(left == right);
+        }
+
+    private:
+        Iterator(std::shared_ptr<const Detail::GraphData> graph,
+                 std::size_t index, std::size_t end,
+                 std::size_t value, bool incoming, bool byPort) noexcept
+            : m_Graph(std::move(graph)), m_Index(index), m_End(end),
+              m_Value(value), m_Incoming(incoming), m_ByPort(byPort) {
+            Advance();
+        }
+        [[nodiscard]] bool Matches(std::size_t index) const noexcept {
+            const auto &link = m_Graph->Links[index];
+            const std::size_t endpoint = m_Incoming ? link.Target : link.Source;
+            return m_ByPort ? endpoint == m_Value
+                : m_Graph->Ports[endpoint].Node == m_Value;
+        }
+        void Advance() noexcept {
+            while (m_Index < m_End && !Matches(m_Index))
+                ++m_Index;
+        }
+
+        std::shared_ptr<const Detail::GraphData> m_Graph;
+        std::size_t m_Index = 0;
+        std::size_t m_End = 0;
+        std::size_t m_Value = 0;
+        bool m_Incoming = false;
+        bool m_ByPort = false;
+        friend class LinkRange;
+    };
+
+    [[nodiscard]] bool empty() const noexcept { return begin() == end(); }
+    [[nodiscard]] std::size_t size() const noexcept {
+        return static_cast<std::size_t>(std::distance(begin(), end()));
+    }
+    [[nodiscard]] Iterator begin() const noexcept {
+        return Iterator(m_Graph, 0, m_Graph ? m_Graph->Links.size() : 0,
+                        m_Value, m_Incoming, m_ByPort);
+    }
+    [[nodiscard]] Iterator end() const noexcept {
+        const std::size_t size = m_Graph ? m_Graph->Links.size() : 0;
+        return Iterator(m_Graph, size, size, m_Value, m_Incoming, m_ByPort);
+    }
+
+private:
+    LinkRange(std::shared_ptr<const Detail::GraphData> graph,
+              std::size_t value, bool incoming, bool byPort) noexcept
+        : m_Graph(std::move(graph)), m_Value(value),
+          m_Incoming(incoming), m_ByPort(byPort) {}
+
+    std::shared_ptr<const Detail::GraphData> m_Graph;
+    std::size_t m_Value = 0;
+    bool m_Incoming = false;
+    bool m_ByPort = false;
+    friend class Graph;
+};
+
 inline Port Node::Select(SlotKind kind, Selector slot) const {
     if (!*this)
         return {};
@@ -396,7 +486,11 @@ inline Node::operator bool() const noexcept {
 inline std::uint64_t Node::Id() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Id : 0; }
 inline BML_ObjectRef Node::Object() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Object : BML_ObjectRef{}; }
 inline std::uint64_t Node::Parent() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Parent : 0; }
+inline std::int32_t Node::Index() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Index : -1; }
+inline std::int32_t Node::Occurrence() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Occurrence : -1; }
 inline std::uint64_t Node::LayoutGeneration() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].LayoutGeneration : 0; }
+inline BehaviorKind Node::Kind() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Kind : BehaviorKind::Function; }
+inline bool Node::IsGraph() const noexcept { return (*this) && Kind() == BehaviorKind::Graph; }
 inline CKGUID Node::Prototype() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Prototype : CKGUID(0, 0); }
 inline std::int32_t Node::Priority() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Priority : 0; }
 inline bool Node::Active() const noexcept { return (*this) && m_Graph->Nodes[m_Index].Active; }
@@ -687,24 +781,29 @@ public:
             : GraphRange<ParameterOperation>{};
     }
     [[nodiscard]] std::vector<Node> FindAll(
-        std::string_view name) const {
+        Selector selector, CKGUID prototype = CKGUID(0, 0)) const {
         std::vector<Node> matches;
         for (Node node : Nodes()) {
-            if (node.Name() == name)
+            if (selector.Matches(node.Index(), node.Occurrence(), node.Name()) &&
+                (!Detail::HasGuid(prototype) || node.Prototype() == prototype))
                 matches.push_back(node);
         }
         return matches;
     }
-    [[nodiscard]] Result<Node> Find(std::string_view name) const {
+    [[nodiscard]] std::vector<Node> FindAll(std::string_view name) const {
+        return FindAll(Selector::Unique(name));
+    }
+    [[nodiscard]] Result<Node> Find(
+        Selector selector, CKGUID prototype = CKGUID(0, 0)) const {
         Node match;
         for (Node node : Nodes()) {
-            if (node.Name() != name)
+            if (!selector.Matches(node.Index(), node.Occurrence(), node.Name()) ||
+                (Detail::HasGuid(prototype) && node.Prototype() != prototype))
                 continue;
             if (match) {
                 Status status;
                 status.Error = Error::QueryAmbiguous;
-                status.Message = "More than one Behavior node is named '" +
-                    std::string(name) + "'.";
+                status.Message = "The Behavior Node selector is ambiguous.";
                 return Result<Node>::Failure(BML_ERROR_FAIL,
                                               std::move(status));
             }
@@ -713,13 +812,42 @@ public:
         if (!match) {
             Status status;
             status.Error = Error::QueryNotFound;
-            status.Message = "No Behavior node is named '" +
-                std::string(name) + "'.";
+            status.Message = "The Behavior Node selector matched nothing.";
             return Result<Node>::Failure(BML_ERROR_NOT_FOUND,
                                           std::move(status));
         }
         return Result<Node>::Success(std::move(match));
     }
+    [[nodiscard]] Result<Node> Find(
+        std::string_view name, CKGUID prototype = CKGUID(0, 0)) const {
+        return Find(Selector::Unique(name), prototype);
+    }
+
+    [[nodiscard]] LinkRange Incoming(const Node &node) const noexcept {
+        return node.m_Graph == m_Data
+            ? LinkRange(m_Data, node.m_Index, true, false) : LinkRange{};
+    }
+    [[nodiscard]] LinkRange Incoming(const Port &port) const noexcept {
+        return port.m_Graph == m_Data
+            ? LinkRange(m_Data, port.m_Index, true, true) : LinkRange{};
+    }
+    [[nodiscard]] LinkRange Outgoing(const Node &node) const noexcept {
+        return node.m_Graph == m_Data
+            ? LinkRange(m_Data, node.m_Index, false, false) : LinkRange{};
+    }
+    [[nodiscard]] LinkRange Outgoing(const Port &port) const noexcept {
+        return port.m_Graph == m_Data
+            ? LinkRange(m_Data, port.m_Index, false, true) : LinkRange{};
+    }
+    [[nodiscard]] Result<Link> Entering(const Node &node) const;
+    [[nodiscard]] Result<Link> Entering(const Port &port) const;
+    [[nodiscard]] Result<Link> Leaving(const Node &node) const;
+    [[nodiscard]] Result<Link> Leaving(const Port &port) const;
+    [[nodiscard]] Result<Node> Previous(const Node &node) const;
+    [[nodiscard]] Result<Node> Previous(const Port &port) const;
+    [[nodiscard]] Result<Node> Next(const Node &node) const;
+    [[nodiscard]] Result<Node> Next(const Port &port) const;
+    [[nodiscard]] Result<Graph> Inspect(const Node &node) const;
 
     [[nodiscard]] Result<Graph> Logical() const;
     [[nodiscard]] Result<Graph> Live() const;

@@ -579,6 +579,12 @@ typedef struct BML_BehaviorGraphNode {
     uint64_t Id;
     BML_ObjectRef Object;
     uint64_t Parent;
+    // Zero-based position in the parent graph. The inspected root is -1.
+    int32_t Index;
+    // Zero-based occurrence among siblings with the same name.
+    int32_t Occurrence;
+    // A BML_BehaviorKind. Graph-backed Nodes are navigable with Inspect.
+    uint32_t Kind;
     uint64_t LayoutGeneration;
     BML_BehaviorGuid Prototype;
     int32_t Priority;

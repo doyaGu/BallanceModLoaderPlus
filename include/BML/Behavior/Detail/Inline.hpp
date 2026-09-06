@@ -793,12 +793,20 @@ inline Result<Graph> Graph::Decode(
         node.Id = record.Id;
         node.Object = record.Object;
         node.Parent = record.Parent;
+        node.Index = record.Index;
+        node.Occurrence = record.Occurrence;
         node.LayoutGeneration = record.LayoutGeneration;
+        if (record.Kind != BML_BEHAVIOR_KIND_FUNCTION &&
+            record.Kind != BML_BEHAVIOR_KIND_CALLBACK &&
+            record.Kind != BML_BEHAVIOR_KIND_GRAPH)
+            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        node.Kind = static_cast<BehaviorKind>(record.Kind);
         node.Prototype = Detail::NativeGuid(record.Prototype);
         node.Priority = record.Priority;
         node.Active = record.Active != 0;
         if (!node.Id || !Detail::ValidObjectRef(node.Object) ||
-            !node.Object.Domain || !node.LayoutGeneration ||
+            !node.Object.Domain || node.Index < -1 || node.Occurrence < 0 ||
+            !node.LayoutGeneration ||
             !identities.emplace(node.Id).second ||
             !objects.emplace(node.Object).second ||
             !Detail::KnownFlag(record.Active))
@@ -865,7 +873,9 @@ inline Result<Graph> Graph::Decode(
     if (rootCount != 1)
         return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     for (const Detail::GraphNodeData &node : data->Nodes) {
-        if (node.Id != rootId && node.Parent != rootId)
+        if ((node.Id == rootId && node.Index != -1) ||
+            (node.Id != rootId &&
+             (node.Parent != rootId || node.Index < 0)))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
     }
     const auto endpoint = [&](std::uint64_t nodeId, std::uint32_t kind,
@@ -934,6 +944,104 @@ inline Result<Graph> Graph::Decode(
     graph.m_Data = std::move(data);
     return Result<Graph>::Success(std::move(graph),
                                   Detail::ReadStatus(status));
+}
+
+namespace Detail {
+
+inline Result<Link> UniqueLink(LinkRange links, std::string_view direction) {
+    auto current = links.begin();
+    if (current == links.end()) {
+        Status status;
+        status.Error = Error::LinkNotFound;
+        status.Phase = Phase::Edit;
+        status.Message = "No Behavior Link is " + std::string(direction) +
+            " the selected graph object.";
+        return Result<Link>::Failure(BML_ERROR_NOT_FOUND, std::move(status));
+    }
+    Link match = *current;
+    if (++current != links.end()) {
+        Status status;
+        status.Error = Error::QueryAmbiguous;
+        status.Phase = Phase::Edit;
+        status.Message = "More than one Behavior Link is " +
+            std::string(direction) + " the selected graph object.";
+        return Result<Link>::Failure(BML_ERROR_FAIL, std::move(status));
+    }
+    return Result<Link>::Success(std::move(match));
+}
+
+} // namespace Detail
+
+inline Result<Link> Graph::Entering(const Node &node) const {
+    return Detail::UniqueLink(Incoming(node), "entering");
+}
+
+inline Result<Link> Graph::Entering(const Port &port) const {
+    return Detail::UniqueLink(Incoming(port), "entering");
+}
+
+inline Result<Link> Graph::Leaving(const Node &node) const {
+    return Detail::UniqueLink(Outgoing(node), "leaving");
+}
+
+inline Result<Link> Graph::Leaving(const Port &port) const {
+    return Detail::UniqueLink(Outgoing(port), "leaving");
+}
+
+inline Result<Node> Graph::Previous(const Node &node) const {
+    auto link = Entering(node);
+    if (!link)
+        return Result<Node>::Failure(link.Code(), link.GetStatus());
+    const Port source = link->Source();
+    return Result<Node>::Success(
+        Node(m_Data, m_Data->Ports[source.m_Index].Node));
+}
+
+inline Result<Node> Graph::Previous(const Port &port) const {
+    auto link = Entering(port);
+    if (!link)
+        return Result<Node>::Failure(link.Code(), link.GetStatus());
+    const Port source = link->Source();
+    return Result<Node>::Success(
+        Node(m_Data, m_Data->Ports[source.m_Index].Node));
+}
+
+inline Result<Node> Graph::Next(const Node &node) const {
+    auto link = Leaving(node);
+    if (!link)
+        return Result<Node>::Failure(link.Code(), link.GetStatus());
+    const Port target = link->Target();
+    return Result<Node>::Success(
+        Node(m_Data, m_Data->Ports[target.m_Index].Node));
+}
+
+inline Result<Node> Graph::Next(const Port &port) const {
+    auto link = Leaving(port);
+    if (!link)
+        return Result<Node>::Failure(link.Code(), link.GetStatus());
+    const Port target = link->Target();
+    return Result<Node>::Success(
+        Node(m_Data, m_Data->Ports[target.m_Index].Node));
+}
+
+inline Result<Graph> Graph::Inspect(const Node &node) const {
+    if (!m_Data || node.m_Graph != m_Data) {
+        Status status;
+        status.Error = Error::GraphLocalityInvalid;
+        status.Phase = Phase::Edit;
+        status.Message = "The Behavior Node belongs to another Graph snapshot.";
+        return Result<Graph>::Failure(BML_ERROR_INVALID_PARAMETER,
+                                      std::move(status));
+    }
+    if (!node.IsGraph()) {
+        Status status;
+        status.Error = Error::InterfaceUnsupported;
+        status.Phase = Phase::Edit;
+        status.Message = "The selected Behavior Node is not graph-backed.";
+        return Result<Graph>::Failure(BML_ERROR_INVALID_PARAMETER,
+                                      std::move(status));
+    }
+    return Read(m_Session, node.Object(), m_View);
 }
 
 inline Result<Behavior::Layout> Detail::Run::Layout() const {

@@ -326,7 +326,7 @@ private:
         return prototype ? prototype->GetGuid() : CKGUID();
     }
 
-    Status AddNode(CKBehavior *behavior, CKBehavior *parent,
+    Status AddNode(CKBehavior *behavior, CKBehavior *parent, int index,
                    bool references, bool ports, GraphModel &out) const {
         GraphNode node;
         node.Id = static_cast<std::uint64_t>(
@@ -338,14 +338,21 @@ private:
         }
         node.Parent = parent ? static_cast<std::uint64_t>(
             static_cast<std::uint32_t>(parent->GetID())) : 0;
+        node.Index = index;
         node.LayoutGeneration = TrackLayout(behavior);
         node.Prototype = Prototype(behavior);
         node.Name = behavior->GetName() ? behavior->GetName() : "";
+        node.Occurrence = static_cast<int>(std::count_if(
+            out.Nodes.begin(), out.Nodes.end(), [&](const GraphNode &existing) {
+                return existing.Parent == node.Parent &&
+                    existing.Name == node.Name;
+            }));
         node.Priority = behavior->GetPriority();
         node.Active = behavior->IsActive() != FALSE;
+        const Layout layout = m_Runtime.Describe(
+            behavior, node.LayoutGeneration);
+        node.Kind = layout.Kind;
         if (ports) {
-            const Layout layout = m_Runtime.Describe(
-                behavior, node.LayoutGeneration);
             node.Ports.reserve(layout.Slots.size());
             for (const SlotInfo &slot : layout.Slots) {
                 GraphPort port;
@@ -381,7 +388,7 @@ private:
         out.Operations.clear();
         out.Nodes.reserve(static_cast<std::size_t>(
             graph->GetSubBehaviorCount()) + 1u);
-        Status status = AddNode(graph, nullptr, references, ports, out);
+        Status status = AddNode(graph, nullptr, -1, references, ports, out);
         if (!status)
             return status;
         for (int index = 0; index < graph->GetSubBehaviorCount(); ++index) {
@@ -389,7 +396,7 @@ private:
             if (!Valid(child))
                 return Failure(Error::InvalidState,
                                "A graph node disappeared during inspection.");
-            status = AddNode(child, graph, references, ports, out);
+            status = AddNode(child, graph, index, references, ports, out);
             if (!status)
                 return status;
         }
@@ -591,7 +598,10 @@ private:
         for (const GraphNode &node : graph.Nodes) {
             Hash(out, node.Id);
             Hash(out, node.Parent);
+            Hash(out, node.Index);
+            Hash(out, node.Occurrence);
             Hash(out, node.LayoutGeneration);
+            Hash(out, node.Kind);
             Hash(out, node.Prototype.d1);
             Hash(out, node.Prototype.d2);
             HashText(out, node.Name.c_str());

@@ -1828,6 +1828,19 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
         record.Object = {node.Object.Domain, node.Object.Slot,
                          node.Object.Generation};
         record.Parent = node.Parent;
+        record.Index = node.Index;
+        record.Occurrence = node.Occurrence;
+        switch (node.Kind) {
+        case BML::Behavior::Internal::BehaviorKind::Function:
+            record.Kind = BML_BEHAVIOR_KIND_FUNCTION;
+            break;
+        case BML::Behavior::Internal::BehaviorKind::Callback:
+            record.Kind = BML_BEHAVIOR_KIND_CALLBACK;
+            break;
+        case BML::Behavior::Internal::BehaviorKind::Graph:
+            record.Kind = BML_BEHAVIOR_KIND_GRAPH;
+            break;
+        }
         record.LayoutGeneration = node.LayoutGeneration;
         record.Prototype = Guid(node.Prototype);
         record.Priority = node.Priority;

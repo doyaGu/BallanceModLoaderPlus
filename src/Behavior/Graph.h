@@ -54,7 +54,10 @@ struct GraphNode {
     std::uint64_t Id = 0;
     ObjectRef Object;
     std::uint64_t Parent = 0;
+    int Index = -1;
+    int Occurrence = 0;
     std::uint64_t LayoutGeneration = 0;
+    BehaviorKind Kind = BehaviorKind::Function;
     CKGUID Prototype = CKGUID();
     std::string Name;
     int Priority = 0;
