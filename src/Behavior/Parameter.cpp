@@ -175,6 +175,12 @@ Type Describe(CKParameterManager *manager, CKGUID type) {
 
     if (Derived(manager, type, CKPGUID_OBJECT))
         result.ValueForm = Form::Object;
+    // Message is a manager-named scalar, not a provider-owned object. Virtools
+    // registers CKPGUID_MESSAGE as one CKDWORD and copies it with the ordinary
+    // dword copier; its StringFunction only maps that value to a message name.
+    else if (type == CKPGUID_MESSAGE &&
+             description->DefaultSize == sizeof(CKMessageType))
+        result.ValueForm = Form::Int32;
     else if (PlainDerived(manager, type, CKPGUID_BOOL, sizeof(CKBOOL), *description))
         result.ValueForm = Form::Bool;
     else if (PlainDerived(manager, type, CKPGUID_INT, sizeof(std::int32_t), *description))

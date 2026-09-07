@@ -1,6 +1,8 @@
 #ifndef BML_BEHAVIOR_HOOKBLOCK_H
 #define BML_BEHAVIOR_HOOKBLOCK_H
 
+#include <cstdint>
+
 #include "Behavior/Runtime.h"
 
 namespace BML::Behavior::Internal::HookBlock {
@@ -44,22 +46,48 @@ private:
 // occurrence, while every live installation receives its own Binding lease.
 class Hook final {
 public:
+    struct Identity {
+        std::uintptr_t State = 0;
+        std::uintptr_t Retain = 0;
+        std::uintptr_t Release = 0;
+        std::uintptr_t Invoke = 0;
+
+        [[nodiscard]] explicit operator bool() const noexcept {
+            return State || Retain || Release || Invoke;
+        }
+        friend bool operator==(const Identity &, const Identity &) = default;
+    };
+
     Hook() = default;
     Hook(Callback callback, void *argument = nullptr)
-        : Hook(PlanCallbackState::Static(argument), callback, argument) {}
+        : Hook(PlanCallbackState::Static(argument), callback, argument,
+               NativeIdentity(callback, argument)) {}
     Hook(PlanCallbackState state, Callback callback,
-         void *argument = nullptr)
+         void *argument = nullptr, Identity identity = {})
         : m_Occurrence(callback
               ? std::make_shared<Occurrence>(
                     std::move(state), callback, argument)
-              : nullptr) {}
+              : nullptr),
+          m_Identity(identity ? identity
+                              : NativeIdentity(callback, argument)) {}
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return m_Occurrence != nullptr;
     }
     [[nodiscard]] std::shared_ptr<Binding> Bind() const;
 
+    friend bool operator==(const Hook &left, const Hook &right) noexcept {
+        return left.m_Identity == right.m_Identity;
+    }
+
 private:
+    static Identity NativeIdentity(Callback callback, void *argument) noexcept {
+        Identity identity;
+        identity.State = reinterpret_cast<std::uintptr_t>(argument);
+        identity.Invoke = reinterpret_cast<std::uintptr_t>(callback);
+        return identity;
+    }
+
     struct Occurrence {
         Occurrence(PlanCallbackState state, Callback callback,
                    void *argument)
@@ -76,6 +104,7 @@ private:
     };
 
     std::shared_ptr<Occurrence> m_Occurrence;
+    Identity m_Identity;
 };
 
 std::shared_ptr<Binding> Bind(Callback callback, void *argument = nullptr);

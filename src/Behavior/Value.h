@@ -40,6 +40,8 @@ public:
         return m_Kind == ValueKind::Null;
     }
 
+    friend bool operator==(const Value &, const Value &) = default;
+
 private:
     ValueKind m_Kind = ValueKind::Raw;
     CKGUID m_Type = CKGUID();

@@ -6,6 +6,7 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -411,6 +412,9 @@ struct Patch::Journal {
     Stamp Graph;
     PatchKey Key;
     std::vector<std::shared_ptr<CallbackResource>> Callbacks;
+    // Plain graph-backed Behaviors created by AddGraph. They do not belong to
+    // Runtime and therefore have no native BB lifecycle callbacks.
+    std::vector<Stamp> GraphNodes;
     std::vector<Stamp> Nodes;
     // Every Node this Edit named, borrowed or added, keyed by its Edit handle.
     // Filled once the Edit reaches the graph, which is what makes a Pending
@@ -644,6 +648,10 @@ bool CKEdit::InDispatch() const noexcept {
 
 bool CKEdit::Deferred() const noexcept {
     return InDispatch() || m_Processing || m_Publishing > 0;
+}
+
+bool CKEdit::CanPublish() const noexcept {
+    return std::this_thread::get_id() == m_Thread && !Deferred();
 }
 
 Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
@@ -916,6 +924,19 @@ Status CKEdit::Add(Edit &edit, BlockSpec block, Node &out, NodeRole role) {
     return {};
 }
 
+Status CKEdit::AddGraph(Edit &edit, std::string name, int priority,
+                        Node &out, NodeRole role) {
+    out = {};
+    Status status = Ready();
+    if (!status)
+        return status;
+    if (name.empty())
+        return Failure(Error::InvalidState,
+                       "A graph-backed Node requires a name.");
+    out = edit.AddGraph(std::move(name), priority, role);
+    return {};
+}
+
 Status CKEdit::ApplyNow(const Edit &edit,
                         const std::shared_ptr<Patch::Journal> &patch) {
     Status status = Ready();
@@ -1026,7 +1047,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             bind.Target.Slot.Kind != SlotKind::Target)
             continue;
         const Edit::EditNode *target = edit.Find(bind.Target.Owner);
-        if (!target || target->Block || bind.Target.Appended)
+        if (!target || target->Authored() || bind.Target.Appended)
             continue;
         const GraphEndpoint pin{
             target->Native.Id, bind.Target.Slot.Kind,
@@ -1052,7 +1073,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
     nodes.emplace(edit.Graph().Value, patch->Graph);
     for (std::size_t index = 1; index < edit.m_Nodes.size(); ++index) {
         const Edit::EditNode &node = edit.m_Nodes[index];
-        if (node.Block)
+        if (node.Authored())
             continue;
         CKBehavior *native = ResolveBehavior(m_Context, node.Native);
         if (!native || native->GetParent() != graph) {
@@ -1153,6 +1174,17 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 return Failure(
                     Error::GraphChanged,
                     "An Edit-owned Block changed identity during a callback.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
+        for (Stamp stamp : patch->GraphNodes) {
+            CKBehavior *current = Resolve<CKBehavior>(
+                m_Context, stamp, CKCID_BEHAVIOR);
+            if (!current || current->GetParent() != currentGraph ||
+                current->IsUsingFunction()) {
+                return Failure(
+                    Error::GraphChanged,
+                    "An Edit-owned graph Node changed identity.",
                     CKERR_INVALIDOBJECT);
             }
         }
@@ -1469,13 +1501,46 @@ Status CKEdit::ApplyNow(const Edit &edit,
         }
     }
 
-    // CREATE every authored Block first. Their Block-defined control
-    // interface is already present, but parameter relations and the single
-    // final EDITED callback wait until all Nodes exist.
+    // Materialize authored Nodes in declaration order. A Block follows the
+    // native BB lifecycle; a plain graph has no BB callback and is owned
+    // directly by this Patch journal.
     std::unordered_map<std::uint32_t, BlockSpec> addedSpecs;
     for (const Edit::EditNode &node : edit.m_Nodes) {
-        if (!node.Block)
+        if (!node.Authored())
             continue;
+        if (node.Subgraph) {
+            CKBehavior *added = CKBehavior::Cast(m_Context->CreateObject(
+                CKCID_BEHAVIOR,
+                node.Subgraph->Name.empty()
+                    ? nullptr
+                    : const_cast<CKSTRING>(node.Subgraph->Name.c_str()),
+                CK_OBJECTCREATION_DYNAMIC));
+            if (!added)
+                return fail(Failure(
+                    Error::CreateFailed,
+                    "Virtools could not create a graph-backed Node.",
+                    CKERR_OUTOFMEMORY));
+            added->UseGraph();
+            added->SetPriority(node.Subgraph->Priority);
+            const CKERROR attached = graph->AddSubBehavior(added);
+            if (attached != CK_OK) {
+                m_Context->DestroyObject(added);
+                return fail(Failure(
+                    Error::CreateFailed,
+                    "Virtools rejected the graph-backed Node relation.",
+                    attached));
+            }
+            const Stamp stamp = Capture(added);
+            nodes.emplace(node.Handle.Value, stamp);
+            patch->GraphNodes.push_back(stamp);
+            if (node.Role == NodeRole::Infrastructure)
+                patch->InfrastructureNodes.push_back(stamp);
+            status = validateNodes();
+            if (!status)
+                return fail(std::move(status));
+            graph = graphFor();
+            continue;
+        }
         auto [spec, inserted] = addedSpecs.emplace(
             node.Handle.Value, *node.Block);
         if (!inserted)
@@ -1516,7 +1581,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
 
     const auto isAdded = [&](Node handle) {
         const Edit::EditNode *node = edit.Find(handle);
-        return node && node->Block.has_value();
+        return node && node->Authored();
     };
     const auto rememberEdited = [&](CKBehavior *behavior) {
         if (!behavior || behavior == graph)
@@ -3963,6 +4028,36 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         remember(std::move(closed));
     }
 
+    // Plain graph Nodes have no Runtime lifecycle. At this point every Link,
+    // parameter relation, operation, and interface element introduced by the
+    // Patch is already gone. Remove parent membership before native
+    // destruction so no scheduler-visible relation retains the Node.
+    for (auto item = patch.GraphNodes.rbegin();
+         item != patch.GraphNodes.rend(); ++item) {
+        CKBehavior *node = Resolve<CKBehavior>(
+            m_Context, *item, CKCID_BEHAVIOR);
+        if (!node) {
+            *item = {};
+            continue;
+        }
+        CKBehavior *parent = node->GetParent();
+        if (parent && parent->RemoveSubBehavior(node) != node) {
+            remember(Failure(
+                Error::RevertConflict,
+                "An Edit-owned graph Node could not leave its parent.",
+                CKERR_INVALIDOBJECT));
+            continue;
+        }
+        if (m_Context->DestroyObject(node) != CK_OK) {
+            remember(Failure(
+                Error::RevertConflict,
+                "Virtools could not destroy an Edit-owned graph Node.",
+                CKERR_INVALIDOBJECT));
+            continue;
+        }
+        *item = {};
+    }
+
     if (ownsLogicalGraph) {
         const auto infrastructure = m_Links->Patches.find(graphId);
         if (infrastructure != m_Links->Patches.end())
@@ -4215,6 +4310,64 @@ Status CKEdit::Close(Patch &patch) {
     if (status.Code != Error::RevertConflict)
         patch.m_Journal.reset();
     return status;
+}
+
+void CKEdit::GraphDeleted(Patch &patch) {
+    const std::shared_ptr<Patch::Journal> journal = patch.m_Journal;
+    if (!journal)
+        return;
+    CloseAdmission(*journal);
+    {
+        std::lock_guard<std::mutex> lock(journal->Mutex);
+        journal->State = PatchState::Closed;
+        journal->Queued = false;
+        journal->Callbacks.clear();
+    }
+    patch.m_Journal.reset();
+}
+
+void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
+    if (!ids || count <= 0 || !Ready())
+        return;
+    const std::set<CK_ID> deleting(ids, ids + count);
+
+    {
+        std::lock_guard<std::mutex> lock(m_QueueMutex);
+        for (auto request = m_Queue.begin(); request != m_Queue.end();) {
+            const auto &journal = request->Patch;
+            if (!journal || !deleting.contains(journal->Graph.Id)) {
+                ++request;
+                continue;
+            }
+            CloseAdmission(*journal);
+            {
+                std::lock_guard<std::mutex> journalLock(journal->Mutex);
+                journal->State = PatchState::Closed;
+                journal->Queued = false;
+                journal->Callbacks.clear();
+            }
+            request = m_Queue.erase(request);
+        }
+    }
+
+    for (CK_ID id : deleting) {
+        const std::uint64_t graphId = static_cast<std::uint32_t>(id);
+        if (m_Links) {
+            const auto root = m_Links->Roots.find(graphId);
+            if (root != m_Links->Roots.end())
+                m_Graph.SetLogicalGraph(Native(root->second), {});
+        }
+        m_Topology.erase(graphId);
+        m_Relations.erase(graphId);
+        m_Active.erase(graphId);
+        m_NodeEdits.erase(graphId);
+        if (m_Links) {
+            m_Links->Chains.erase(graphId);
+            m_Links->Sites.erase(graphId);
+            m_Links->Patches.erase(graphId);
+            m_Links->Roots.erase(graphId);
+        }
+    }
 }
 
 void CKEdit::ProcessFrame() {

@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <bit>
+#include <climits>
 #include <cstring>
 #include <limits>
+#include <string_view>
 #include <unordered_map>
+
+#include <windows.h>
 
 #include "Behavior/Runtime.h"
 
@@ -32,6 +36,35 @@ void HashText(std::uint64_t &hash, const char *text) {
     Hash(hash, size);
     if (size)
         HashBytes(hash, text, size);
+}
+
+std::string Utf8Name(std::string_view name) {
+    if (name.empty())
+        return {};
+    if (name.size() > static_cast<std::size_t>(INT_MAX))
+        return {};
+    const int size = static_cast<int>(name.size());
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name.data(), size,
+                            nullptr, 0) > 0)
+        return std::string(name);
+
+    const int wideSize = MultiByteToWideChar(
+        CP_ACP, 0, name.data(), size, nullptr, 0);
+    if (wideSize <= 0)
+        return {};
+    std::wstring wide(static_cast<std::size_t>(wideSize), L'\0');
+    if (MultiByteToWideChar(CP_ACP, 0, name.data(), size, wide.data(),
+                            wideSize) != wideSize)
+        return {};
+    const int utf8Size = WideCharToMultiByte(
+        CP_UTF8, 0, wide.data(), wideSize, nullptr, 0, nullptr, nullptr);
+    if (utf8Size <= 0)
+        return {};
+    std::string utf8(static_cast<std::size_t>(utf8Size), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideSize, utf8.data(),
+                            utf8Size, nullptr, nullptr) != utf8Size)
+        return {};
+    return utf8;
 }
 
 Status Failure(Error error, std::string message,
@@ -191,7 +224,7 @@ public:
         if (!graph)
             return Failure(Error::InvalidState,
                            "The watched Behavior graph is stale.");
-        Status status = ReadGraph(graph, false, m_FingerprintModel, false);
+        Status status = ReadGraph(graph, false, m_FingerprintModel);
         if (status && view == GraphView::Logical)
             status = ApplyLogical(graph, m_FingerprintModel);
         if (status)
@@ -341,7 +374,7 @@ private:
         node.Index = index;
         node.LayoutGeneration = TrackLayout(behavior);
         node.Prototype = Prototype(behavior);
-        node.Name = behavior->GetName() ? behavior->GetName() : "";
+        node.Name = Utf8Name(behavior->GetName() ? behavior->GetName() : "");
         node.Occurrence = static_cast<int>(std::count_if(
             out.Nodes.begin(), out.Nodes.end(), [&](const GraphNode &existing) {
                 return existing.Parent == node.Parent &&
@@ -362,7 +395,7 @@ private:
                 port.Occurrence = slot.Occurrence;
                 port.Type = slot.Type;
                 port.Dynamic = slot.Dynamic;
-                port.Name = slot.Name;
+                port.Name = Utf8Name(slot.Name);
                 if (slot.Kind == SlotKind::Input) {
                     CKBehaviorIO *io = behavior->GetInput(slot.Index);
                     port.Active = io && io->IsActive();
@@ -428,7 +461,8 @@ private:
             CKParameterIn *input2 = operation->GetInParameter2();
             record.Input1 = Valid(input1) ? input1->GetGUID() : CKPGUID_NONE;
             record.Input2 = Valid(input2) ? input2->GetGUID() : CKPGUID_NONE;
-            record.Name = operation->GetName() ? operation->GetName() : "";
+            record.Name = Utf8Name(
+                operation->GetName() ? operation->GetName() : "");
             out.Operations.push_back(std::move(record));
         }
 
@@ -600,15 +634,26 @@ private:
             Hash(out, node.Parent);
             Hash(out, node.Index);
             Hash(out, node.Occurrence);
-            Hash(out, node.LayoutGeneration);
             Hash(out, node.Kind);
             Hash(out, node.Prototype.d1);
             Hash(out, node.Prototype.d2);
             HashText(out, node.Name.c_str());
             Hash(out, node.Priority);
-            // LayoutGeneration already represents the identity, name, type,
-            // order, and dynamic character of every public port. Hashing the
-            // materialized port list again would add no change sensitivity.
+            // A logical fingerprint describes the current graph, not the
+            // history of mutations that produced it. LayoutGeneration is a
+            // monotonic invalidation counter, so including it would make a
+            // graph differ from an identical graph after a Patch is restored.
+            // Hash the reflected public layout itself instead.
+            Hash(out, node.Ports.size());
+            for (const GraphPort &port : node.Ports) {
+                Hash(out, port.Kind);
+                Hash(out, port.Index);
+                Hash(out, port.Occurrence);
+                Hash(out, port.Type.d1);
+                Hash(out, port.Type.d2);
+                Hash(out, port.Dynamic);
+                HashText(out, port.Name.c_str());
+            }
         }
         for (const GraphLink &link : graph.Links) {
             Hash(out, link.Id);

@@ -68,6 +68,8 @@ struct Slot {
         return selector;
     }
     [[nodiscard]] bool UsesName() const noexcept { return !Name.empty(); }
+
+    friend bool operator==(const Slot &, const Slot &) = default;
 };
 
 struct SlotInfo {

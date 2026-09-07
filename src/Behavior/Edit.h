@@ -35,6 +35,9 @@ struct Port {
     [[nodiscard]] explicit operator bool() const noexcept {
         return Owner != 0;
     }
+
+
+    friend bool operator==(const Port &, const Port &) = default;
 };
 
 struct Node {
@@ -93,6 +96,8 @@ struct EditFlow {
     int Delay = 0;
     Cycle SameFrameCycle = Cycle::Reject;
     std::uint32_t Ordinal = 0;
+
+    friend bool operator==(const EditFlow &, const EditFlow &) = default;
 };
 
 struct EditBind {
@@ -101,12 +106,16 @@ struct EditBind {
     Value Literal;
     Port Source;
     std::uint32_t Ordinal = 0;
+
+    friend bool operator==(const EditBind &, const EditBind &) = default;
 };
 
 struct EditPush {
     Port Source;
     Port Destination;
     std::uint32_t Ordinal = 0;
+
+    friend bool operator==(const EditPush &, const EditPush &) = default;
 };
 
 struct EditTap {
@@ -122,6 +131,8 @@ struct EditSplice {
     Port Output;
     std::vector<Order> Ordering;
     std::uint32_t Ordinal = 0;
+
+    friend bool operator==(const EditSplice &, const EditSplice &) = default;
 };
 
 // Sends one Link to a different destination. The original destination is
@@ -131,6 +142,8 @@ struct EditRedirect {
     Port Sink;
     std::vector<Order> Ordering;
     std::uint32_t Ordinal = 0;
+
+    friend bool operator==(const EditRedirect &, const EditRedirect &) = default;
 };
 
 struct EditReplace {
@@ -236,6 +249,11 @@ struct CheckedEdit {
     std::vector<CheckedRemove> Removals;
 };
 
+struct GraphSpec {
+    std::string Name;
+    int Priority = 0;
+};
+
 // A side-effect-free additive graph plan. Node and Port values are logical
 // plan identities; native CK objects are only resolved by the CK adapter after
 // the complete candidate has passed validation.
@@ -258,6 +276,8 @@ public:
     Link Use(ObjectRef anchor);
     Node Add(BlockSpec block, Layout declared,
              NodeRole role = NodeRole::Logical);
+    Node AddGraph(std::string name, int priority = 0,
+                  NodeRole role = NodeRole::Logical);
     ParameterOperation AddOperation(CKGUID operation, CKGUID result,
                                     CKGUID input1, CKGUID input2);
 
@@ -291,7 +311,12 @@ private:
         NativeRef Native;
         Layout Shape;
         std::optional<BlockSpec> Block;
+        std::optional<GraphSpec> Subgraph;
         NodeRole Role = NodeRole::Logical;
+
+        [[nodiscard]] bool Authored() const noexcept {
+            return Block.has_value() || Subgraph.has_value();
+        }
     };
 
     struct EditLink {

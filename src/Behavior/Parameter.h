@@ -47,6 +47,8 @@ public:
         return m_SharedId;
     }
 
+    friend bool operator==(const Binding &, const Binding &) = default;
+
 private:
     BindingKind m_Kind = BindingKind::Value;
     CKGUID m_Type = CKGUID();

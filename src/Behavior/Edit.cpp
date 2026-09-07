@@ -300,7 +300,8 @@ Port ParameterOperation::Result() const {
 Edit::Edit(PatchKey key, NativeRef graph, Layout layout)
     : m_Key(std::move(key)) {
     m_Nodes.push_back(
-        {{1}, graph, std::move(layout), std::nullopt, NodeRole::Logical});
+        {{1}, graph, std::move(layout), std::nullopt, std::nullopt,
+         NodeRole::Logical});
 }
 
 Port Edit::Entry(int index) const { return Graph().In(index); }
@@ -318,7 +319,8 @@ Port Edit::Exit(std::string name) const {
 Node Edit::Use(NativeRef native, Layout layout) {
     const Node node{++m_NextNode};
     m_Nodes.push_back(
-        {node, native, std::move(layout), std::nullopt, NodeRole::Logical});
+        {node, native, std::move(layout), std::nullopt, std::nullopt,
+         NodeRole::Logical});
     return node;
 }
 
@@ -331,12 +333,23 @@ Link Edit::Use(ObjectRef anchor) {
 Node Edit::Add(BlockSpec block, Layout declared, NodeRole role) {
     const Node node{++m_NextNode};
     m_Nodes.push_back(
-        {node, {}, std::move(declared), std::move(block), role});
+        {node, {}, std::move(declared), std::move(block), std::nullopt, role});
     EditNode &added = m_Nodes.back();
     for (const std::string &name : added.Block->m_AddedInputs)
         (void) Append(node, SlotKind::Input, name, CKGUID(), true);
     for (const std::string &name : added.Block->m_AddedOutputs)
         (void) Append(node, SlotKind::Output, name, CKGUID(), true);
+    return node;
+}
+
+Node Edit::AddGraph(std::string name, int priority, NodeRole role) {
+    const Node node{++m_NextNode};
+    Layout layout;
+    layout.Origin = LayoutOrigin::Live;
+    layout.Kind = BehaviorKind::Graph;
+    m_Nodes.push_back(
+        {node, {}, std::move(layout), std::nullopt,
+         GraphSpec{std::move(name), priority}, role});
     return node;
 }
 
@@ -506,7 +519,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
     std::unordered_set<std::uint64_t> borrowed;
     for (std::size_t index = 1; index < m_Nodes.size(); ++index) {
         const EditNode &node = m_Nodes[index];
-        if (node.Block)
+        if (node.Authored())
             continue;
         if (!node.Native || !borrowed.insert(node.Native.Id).second)
             return Failure(Error::InvalidGraphLocality,
@@ -537,8 +550,8 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
     for (const EditReplace &item : m_Replacements) {
         const EditNode *target = Find(item.Target);
         const EditNode *replacement = Find(item.Replacement);
-        if (!target || target == &m_Nodes.front() || target->Block ||
-            !replacement || !replacement->Block) {
+        if (!target || target == &m_Nodes.front() || target->Authored() ||
+            !replacement || !replacement->Authored()) {
             return Failure(
                 Error::InvalidState,
                 "Replace requires a borrowed child Node and an authored replacement Block.");
@@ -588,7 +601,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
     }
     for (const EditRemove &item : m_Removals) {
         const EditNode *target = Find(item.Target);
-        if (!target || target == &m_Nodes.front() || target->Block) {
+        if (!target || target == &m_Nodes.front() || target->Authored()) {
             return Failure(Error::InvalidState,
                            "Remove requires a borrowed child Node.");
         }
@@ -669,7 +682,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         // state, so an Edit may append one only to its graph root or to a Block
         // the same Edit owns.
         const bool ownedLocal = item.Slot.Kind == SlotKind::Local &&
-            (item.Owner == Graph() || node->Block);
+            (item.Owner == Graph() || node->Authored());
         if (!InterfaceFlag(item.Slot.Kind) && !ownedLocal) {
             return Failure(
                 Error::InterfaceUnsupported,

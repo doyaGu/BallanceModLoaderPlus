@@ -30,6 +30,8 @@ public:
     struct Binding {
         Slot Target;
         Parameter::Binding Source;
+
+        friend bool operator==(const Binding &, const Binding &) = default;
     };
 
     explicit BlockSpec(CKGUID prototype = CKGUID()) : m_Prototype(prototype) {
@@ -110,6 +112,8 @@ public:
     [[nodiscard]] const std::vector<Binding> &Locals() const noexcept {
         return m_Locals;
     }
+
+    friend bool operator==(const BlockSpec &, const BlockSpec &) = default;
 
 private:
     template <class T>

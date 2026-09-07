@@ -18,6 +18,7 @@ namespace BML::Behavior::Internal {
 enum class PatchState {
     Pending,
     Active,
+    Disabled,
     Closing,
     Conflicted,
     Closed,
@@ -89,15 +90,26 @@ public:
     Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
     Status Add(Edit &edit, BlockSpec block, Node &out,
                NodeRole role = NodeRole::Logical);
+    Status AddGraph(Edit &edit, std::string name, int priority, Node &out,
+                    NodeRole role = NodeRole::Logical);
     Status Apply(const Edit &edit, Patch &out);
     // Reads back the live Node an applied Edit gave this handle. Busy while
     // the Patch is still waiting for its safe point.
     Status ResolveNode(const Patch &patch, Node handle,
                        CKBehavior *&out) const;
+    // Ends ownership for a journal whose graph is being deleted by CK. There
+    // is no graph left to restore; callback admission is still closed before
+    // the native identities are forgotten.
+    void GraphDeleted(Patch &patch);
+    void ObjectsToBeDeleted(const CK_ID *ids, int count);
     Status Close(Patch &patch);
     void ProcessFrame();
 
     [[nodiscard]] std::uint64_t TopologyFingerprint(CKBehavior *graph) const;
+    // Aggregate authoring must not publish the first graph of a composed Edit
+    // when CK is still dispatching a callback for another graph. The caller
+    // retains the whole definition and retries it at the next safe point.
+    [[nodiscard]] bool CanPublish() const noexcept;
 
 private:
     Status Ready() const;

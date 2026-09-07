@@ -137,6 +137,15 @@ public:
         return {};
     }
 
+    Status AddGraph(Edit &edit, std::string name, int priority,
+                    Node &out) override {
+        ++Adds;
+        AddedGraphName = std::move(name);
+        AddedGraphPriority = priority;
+        out = edit.AddGraph(AddedGraphName, priority);
+        return {};
+    }
+
     Status Tap(Edit &edit, Port source,
                const HookBlock::Hook &hook) override {
         if (!hook)
@@ -173,6 +182,8 @@ public:
     std::vector<ObjectRef> UsedLinks;
     std::vector<Link> InterposedLinks;
     std::vector<PrototypeRef> AddedPrototypes;
+    std::string AddedGraphName;
+    int AddedGraphPriority = 0;
 };
 
 GraphEdit SpliceEdit(std::optional<int> delay = std::nullopt) {
@@ -205,6 +216,20 @@ TEST(BehaviorGraphEdit, ResolvesSemanticNodesAndAnExactLinkBeforeAdding) {
     ASSERT_TRUE(edit.Validate(compiler.Base, checked));
     ASSERT_EQ(checked.Splices.size(), 1u);
     EXPECT_EQ(checked.Splices.front().Target.Anchor, Ref(201));
+}
+
+TEST(BehaviorGraphEdit, ReusesOneLiveNodeForRepeatedStructuralRequirements) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const NodeQuery wait{"Wait Message", CKGUID(0x1111, 1)};
+    (void) plan.RequireOne(wait);
+    (void) plan.RequireOne(wait);
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "repeated-require"}, compiler.Base.Root, compiler, edit);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.UsedNodes, (std::vector<ObjectRef>{Ref(101)}));
 }
 
 TEST(BehaviorGraphEdit, KeepsTheSelectedProviderForEveryInstallation) {
@@ -945,6 +970,111 @@ TEST(BehaviorGraphEdit, RefusesARedirectThatNamesNothing) {
     const Status status = plan.Validate();
     EXPECT_FALSE(status);
     EXPECT_EQ(status.Code, Error::InvalidState);
+}
+
+TEST(BehaviorGraphEdit, CompilesAPlainGraphNodeWithoutABlockPrototype) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node graph = plan.AddGraph("Nested", 23);
+    plan.AppendIn(graph, "Start");
+    plan.AppendOut(graph, "Done");
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "add-graph"}, compiler.Base.Root, compiler, edit);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.Adds, 1);
+    EXPECT_EQ(compiler.AddedGraphName, "Nested");
+    EXPECT_EQ(compiler.AddedGraphPriority, 23);
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+}
+
+TEST(BehaviorGraphEdit, KeepsNestedGraphBodiesInTheirOwnScope) {
+    GraphEdit plan;
+    const Node nestedNode = plan.AddGraph("Nested");
+    GraphEdit &nested = plan.Enter(nestedNode, 7);
+    const Node child = nested.Add(CKGUID(0x3333, 3));
+    nested.Flow(nested.Entry(), child.In());
+
+    ASSERT_TRUE(plan.Validate());
+    ASSERT_EQ(plan.NestedGraphs().size(), 1u);
+    EXPECT_EQ(plan.NestedGraphs()[0].Parent, nestedNode);
+    EXPECT_EQ(plan.NestedGraphs()[0].Scope, 7u);
+    ASSERT_NE(plan.NestedGraphs()[0].Body, nullptr);
+    EXPECT_TRUE(plan.NestedGraphs()[0].Body->Validate());
+}
+
+TEST(BehaviorGraphEdit, PublishesNestedPublicPortsWithTheParentNode) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node nestedNode = plan.AddGraph("Nested");
+    GraphEdit &nested = plan.Enter(nestedNode, 7);
+    const Port done = nested.AppendOut(nested.Graph(), "Done");
+    const Node child = nested.Add(CKGUID(0x3333, 3));
+    nested.Flow(child.Out(), done);
+
+    // The parent Graph may immediately address the public output declared by
+    // the nested scope. Its CK port must therefore be part of the parent
+    // transaction, before the nested Graph's internal flow is published.
+    plan.Flow(nestedNode.Out("Done"), plan.Exit("Done"));
+
+    Edit parent;
+    const Status parentStatus = plan.Compile(
+        {"mod", "nested-interface"}, compiler.Base.Root, compiler, parent);
+    ASSERT_TRUE(parentStatus) << parentStatus.Message;
+    CheckedEdit parentChecked;
+    const Status parentValidation = parent.Validate(
+        compiler.Base, parentChecked);
+    ASSERT_TRUE(parentValidation) << parentValidation.Message;
+    ASSERT_EQ(parentChecked.Flows.size(), 1u);
+
+    GraphModel nestedModel;
+    nestedModel.Root = Ref(301);
+    nestedModel.Fingerprint = 901;
+    nestedModel.Nodes = {
+        NodeOf(301, nestedModel.Root, 0, CKGUID(), "Nested",
+               {In(0, "Start"), Out(0, "Done")}),
+    };
+    FakeCompiler nestedCompiler(std::move(nestedModel));
+    Edit body;
+    const Status bodyStatus = nested.Compile(
+        {"mod", "nested-interface/7"}, nestedCompiler.Base.Root,
+        nestedCompiler, body, nullptr, true);
+    ASSERT_TRUE(bodyStatus) << bodyStatus.Message;
+    CheckedEdit bodyChecked;
+    const Status bodyValidation = body.Validate(
+        nestedCompiler.Base, bodyChecked);
+    ASSERT_TRUE(bodyValidation) << bodyValidation.Message;
+    ASSERT_EQ(bodyChecked.Flows.size(), 1u);
+}
+
+TEST(BehaviorGraphEdit, ComparesAuthoredDefinitionsAcrossOwnedCopies) {
+    int callbackState = 0;
+    const auto define = [&](int value) {
+        GraphEdit edit;
+        const Node existing = edit.RequireOne(
+            NodeQuery{"Counter", CKGUID(0x1111, 1)});
+        BlockSpec block(CKGUID(0x3333, 3));
+        block.PrototypeGeneration(7)
+            .Pin("Value", CKGUID(0x4444, 4), value);
+        const Node added = edit.Add(std::move(block));
+        edit.Flow(existing.Out(), added.In());
+        edit.Tap(added.Out(), HookBlock::Hook(Noop, &callbackState));
+        const Node nestedNode = edit.AddGraph("Nested", 5);
+        GraphEdit &nested = edit.Enter(nestedNode, 12);
+        const Node child = nested.Add(CKGUID(0x5555, 5));
+        nested.Flow(nested.Entry(), child.In());
+        return edit;
+    };
+
+    GraphEdit first = define(9);
+    GraphEdit same = define(9);
+    GraphEdit changed = define(10);
+    EXPECT_TRUE(first.SameAs(same));
+    EXPECT_TRUE(same.SameAs(first));
+    EXPECT_FALSE(first.SameAs(changed));
 }
 
 } // namespace

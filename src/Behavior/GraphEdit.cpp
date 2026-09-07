@@ -57,6 +57,29 @@ Status ResolvePort(const GraphNode &node, const Slot &selector,
     return {};
 }
 
+std::uint64_t PortShape(const GraphNode &node) {
+    constexpr std::uint64_t offset = 1469598103934665603ull;
+    constexpr std::uint64_t prime = 1099511628211ull;
+    std::uint64_t hash = offset;
+    const auto append = [&](const void *data, std::size_t size) {
+        const auto *bytes = static_cast<const unsigned char *>(data);
+        for (std::size_t index = 0; index < size; ++index) {
+            hash ^= bytes[index];
+            hash *= prime;
+        }
+    };
+    for (const GraphPort &port : node.Ports) {
+        const auto kind = static_cast<std::uint32_t>(port.Kind) + 1u;
+        append(&kind, sizeof(kind));
+        append(&port.Index, sizeof(port.Index));
+        append(&port.Occurrence, sizeof(port.Occurrence));
+        append(&port.Type.d1, sizeof(port.Type.d1));
+        append(&port.Type.d2, sizeof(port.Type.d2));
+        append(port.Name.data(), port.Name.size());
+    }
+    return hash;
+}
+
 } // namespace
 
 Port GraphEdit::Entry(int index) const { return Graph().In(index); }
@@ -73,7 +96,8 @@ Port GraphEdit::Exit(std::string name) const {
 
 Node GraphEdit::RequireOne(NodeQuery query) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, std::move(query), std::nullopt, {}});
+    m_Nodes.push_back(
+        {node, std::move(query), std::nullopt, std::nullopt, {}});
     return node;
 }
 
@@ -119,8 +143,31 @@ Node GraphEdit::Add(PrototypeRef prototype) {
 
 Node GraphEdit::Add(BlockSpec block) {
     const Node node{NextNode()};
-    m_Nodes.push_back({node, {}, std::move(block), {}});
+    m_Nodes.push_back(
+        {node, {}, std::move(block), std::nullopt, {}});
     return node;
+}
+
+Node GraphEdit::AddGraph(std::string name, int priority) {
+    const Node node{NextNode()};
+    m_Nodes.push_back(
+        {node, {}, std::nullopt,
+         GraphNodeSpec{std::move(name), priority}, {}});
+    return node;
+}
+
+GraphEdit &GraphEdit::Enter(Node node, std::uint32_t scope) {
+    const auto found = std::find_if(
+        m_Nested.begin(), m_Nested.end(),
+        [&](const Nested &candidate) { return candidate.Scope == scope; });
+    if (found != m_Nested.end())
+        return *found->Body;
+    Nested nested;
+    nested.Parent = node;
+    nested.Scope = scope;
+    nested.Body = std::make_unique<GraphEdit>();
+    m_Nested.push_back(std::move(nested));
+    return *m_Nested.back().Body;
 }
 
 Node GraphEdit::Replace(Node target, BlockSpec block) {
@@ -254,14 +301,14 @@ Status GraphEdit::Validate() const {
             m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &node) {
                 return node.Handle.Value == value;
             });
-        return found != m_Nodes.end() && !found->Block;
+        return found != m_Nodes.end() && !found->Authored();
     };
     const auto addedNode = [&](std::uint32_t value) {
         const auto found = std::find_if(
             m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &node) {
                 return node.Handle.Value == value;
             });
-        return found != m_Nodes.end() && found->Block.has_value();
+        return found != m_Nodes.end() && found->Authored();
     };
     const auto operation = [&](std::uint32_t value) -> const Operation * {
         const auto found = std::find_if(
@@ -275,10 +322,13 @@ Status GraphEdit::Validate() const {
         if (node.Block && !node.Block->Prototype().IsValid())
             return Failure(Error::PrototypeNotFound,
                            "An added Block requires a Prototype GUID.");
-        if (node.Block && !node.Anchor.IsNull())
+        if (node.Authored() && !node.Anchor.IsNull())
             return Failure(Error::InvalidState,
-                           "An added Block cannot also name an existing Node.");
-        if (!node.Block && !node.Query && node.Anchor.IsNull())
+                           "An added Node cannot also name an existing Node.");
+        if (node.Subgraph && node.Subgraph->Name.empty())
+            return Failure(Error::InvalidState,
+                           "An added graph Node requires a name.");
+        if (!node.Authored() && !node.Query && node.Anchor.IsNull())
             return Failure(Error::QueryNotFound,
                            "A Node query has no semantic identity.");
     }
@@ -475,7 +525,7 @@ Status GraphEdit::Validate() const {
                 if (item.Kind == SlotKind::Local &&
                     item.Owner != Graph() && !addedNode(item.Owner.Value))
                     return Failure(Error::InterfaceUnsupported,
-                                   "A Local can be appended only to the graph root or a Block added by this Edit.");
+                                   "A Local can be appended only to the graph root or a Node added by this Edit.");
                 if ((item.Kind == SlotKind::InputParameter ||
                      item.Kind == SlotKind::OutputParameter ||
                      item.Kind == SlotKind::Local) &&
@@ -520,6 +570,16 @@ Status GraphEdit::Validate() const {
         if (!status)
             return status;
     }
+    for (const Nested &nested : m_Nested) {
+        if (!nested.Scope || nested.Scope == Graph().Value ||
+            !knownNode(nested.Parent.Value) || !nested.Body) {
+            return Failure(Error::InvalidState,
+                           "A nested graph scope has no graph Node.");
+        }
+        const Status nestedStatus = nested.Body->Validate();
+        if (!nestedStatus)
+            return nestedStatus;
+    }
     return {};
 }
 
@@ -532,12 +592,39 @@ bool GraphEdit::UsesIdentity() const noexcept {
         std::any_of(m_Links.begin(), m_Links.end(),
                     [](const EditLink &link) {
                         return !link.Anchor.IsNull();
+                    }) ||
+        std::any_of(m_Nested.begin(), m_Nested.end(),
+                    [](const Nested &nested) {
+                        return nested.Body && nested.Body->UsesIdentity();
                     });
+}
+
+bool GraphEdit::SameAs(const GraphEdit &other) const noexcept {
+    if (m_Nodes != other.m_Nodes ||
+        m_Operations != other.m_Operations ||
+        m_Links != other.m_Links ||
+        m_Paths != other.m_Paths ||
+        m_Replacements != other.m_Replacements ||
+        m_Removals != other.m_Removals ||
+        m_Actions != other.m_Actions ||
+        m_Nested.size() != other.m_Nested.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < m_Nested.size(); ++index) {
+        const Nested &left = m_Nested[index];
+        const Nested &right = other.m_Nested[index];
+        if (left.Parent != right.Parent || left.Scope != right.Scope ||
+            !left.Body || !right.Body || !left.Body->SameAs(*right.Body)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                           Compiler &compiler, Edit &out,
-                          std::map<std::uint32_t, Node> *nodeHandles) const {
+                          std::map<std::uint32_t, Node> *nodeHandles,
+                          bool rootInterfaceExists) const {
     if (nodeHandles)
         nodeHandles->clear();
     out = {};
@@ -571,7 +658,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     liveNodes.emplace(Graph().Value, resolved.Graph());
 
     for (const EditNode &item : m_Nodes) {
-        if (item.Block)
+        if (item.Authored())
             continue;
         std::vector<const GraphNode *> matches;
         for (const GraphNode &candidate : base.Nodes) {
@@ -582,11 +669,23 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                     matches.push_back(&candidate);
                 continue;
             }
-            if (!item.Query.Name.empty() &&
+            if (item.Query.Selector == NodeQuery::Kind::Index &&
+                candidate.Index != item.Query.Index)
+                continue;
+            if (item.Query.Selector == NodeQuery::Kind::Name &&
                 candidate.Name != item.Query.Name)
+                continue;
+            if (item.Query.Selector != NodeQuery::Kind::Name &&
+                !item.Query.Name.empty() && candidate.Name != item.Query.Name)
                 continue;
             if (item.Query.Prototype.IsValid() &&
                 candidate.Prototype != item.Query.Prototype)
+                continue;
+            if (item.Query.ExpectedKind &&
+                candidate.Kind != *item.Query.ExpectedKind)
+                continue;
+            if (item.Query.PortShape &&
+                PortShape(candidate) != item.Query.PortShape)
                 continue;
             matches.push_back(&candidate);
         }
@@ -598,6 +697,16 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
             return Failure(Error::QueryNotFound,
                            "A Node query matched no Node.");
         }
+        if (item.Query.Selector == NodeQuery::Kind::Name &&
+            !item.Query.Unique) {
+            if (item.Query.Occurrence < 0 ||
+                item.Query.Occurrence >= static_cast<int>(matches.size()))
+                return Failure(Error::QueryNotFound,
+                               "A Node name occurrence does not exist.");
+            const GraphNode *selected = matches[
+                static_cast<std::size_t>(item.Query.Occurrence)];
+            matches.assign(1, selected);
+        }
         if (matches.size() != 1) {
             std::ostringstream message;
             message << "A Node query matched " << matches.size()
@@ -606,9 +715,17 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         }
 
         Node live;
-        status = compiler.UseNode(resolved, matches.front()->Object, live);
-        if (!status)
-            return status;
+        const auto alias = std::find_if(
+            nodes.begin(), nodes.end(), [&](const auto &entry) {
+                return entry.second->Id == matches.front()->Id;
+            });
+        if (alias != nodes.end()) {
+            live = liveNodes.at(alias->first);
+        } else {
+            status = compiler.UseNode(resolved, matches.front()->Object, live);
+            if (!status)
+                return status;
+        }
         nodes.emplace(item.Handle.Value, matches.front());
         liveNodes.emplace(item.Handle.Value, live);
     }
@@ -748,10 +865,14 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     }
 
     for (const EditNode &item : m_Nodes) {
-        if (!item.Block)
+        if (!item.Authored())
             continue;
         Node live;
-        status = compiler.Add(resolved, *item.Block, live);
+        if (item.Block)
+            status = compiler.Add(resolved, *item.Block, live);
+        else
+            status = compiler.AddGraph(
+                resolved, item.Subgraph->Name, item.Subgraph->Priority, live);
         if (!status)
             return status;
         liveNodes.emplace(item.Handle.Value, live);
@@ -778,6 +899,137 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
 
     using PortKey = std::tuple<std::uint32_t, SlotKind, int>;
     std::map<PortKey, Port> liveInterface;
+    struct PublishedPort {
+        std::uint32_t Owner = 0;
+        SlotKind Kind = SlotKind::Input;
+        std::string Name;
+        int Index = -1;
+        int Occurrence = 0;
+        Port Live;
+    };
+    std::vector<PublishedPort> publishedPorts;
+
+    // A graph-backed Behavior exposes the same public interface in two
+    // places: as the nested Graph's Entry/Exit/parameter interface, and as
+    // ports on the Node owned by its parent Graph. The parent scope creates
+    // those CK objects before the nested scope is compiled. Rebind this
+    // scope's symbolic appended-port handles to the newly visible ports
+    // instead of appending duplicates.
+    if (rootInterfaceExists) {
+        using InterfaceName = std::pair<SlotKind, std::string>;
+        std::map<InterfaceName, int> declared;
+        for (const Action &action : m_Actions) {
+            const auto *item = std::get_if<EditInterface>(&action);
+            if (item && item->Owner == Graph())
+                ++declared[{item->Kind, item->Name}];
+        }
+
+        std::map<InterfaceName, int> next;
+        const GraphNode *rootNode = &*root;
+        for (const auto &[name, count] : declared) {
+            int matches = 0;
+            for (const GraphPort &candidate : rootNode->Ports) {
+                if (candidate.Kind == name.first &&
+                    candidate.Name == name.second)
+                    ++matches;
+            }
+            if (matches < count) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A nested Graph public port was not created by its parent scope.");
+            }
+            next.emplace(name, matches - count);
+        }
+
+        for (const Action &action : m_Actions) {
+            const auto *item = std::get_if<EditInterface>(&action);
+            if (!item || item->Owner != Graph())
+                continue;
+            const InterfaceName name{item->Kind, item->Name};
+            const int occurrence = next.at(name)++;
+            liveInterface.emplace(
+                PortKey{item->Handle.Owner, item->Handle.Selector.Kind,
+                        item->Handle.Selector.Index},
+                Port{liveNodes.at(Graph().Value).Value,
+                     Slot::OccurrenceOf(item->Kind, item->Name, occurrence,
+                                        item->Type)});
+        }
+    }
+
+    // Public ports declared by an immediate nested scope are CK objects on
+    // the graph-backed Node in this scope. Create them in this parent Edit so
+    // later parent actions can address them and so rollback removes internal
+    // child links before removing the public interface.
+    for (const Nested &nested : m_Nested) {
+        if (!nested.Body)
+            return Failure(Error::InvalidState,
+                           "A nested Graph Edit has no body.");
+        const auto parent = liveNodes.find(nested.Parent.Value);
+        if (parent == liveNodes.end())
+            return Failure(Error::InvalidState,
+                           "A nested Graph Edit lost its parent Node.");
+        const auto model = nodes.find(nested.Parent.Value);
+        for (const Action &action : nested.Body->m_Actions) {
+            const auto *item = std::get_if<EditInterface>(&action);
+            if (!item || item->Owner != nested.Body->Graph())
+                continue;
+            Port live;
+            switch (item->Kind) {
+            case SlotKind::Input:
+                live = resolved.AppendIn(parent->second, item->Name);
+                break;
+            case SlotKind::Output:
+                live = resolved.AppendOut(parent->second, item->Name);
+                break;
+            case SlotKind::InputParameter:
+                live = resolved.AppendPin(parent->second, item->Name,
+                                          item->Type);
+                break;
+            case SlotKind::OutputParameter:
+                live = resolved.AppendPout(parent->second, item->Name,
+                                           item->Type);
+                break;
+            case SlotKind::Local:
+                live = resolved.AppendLocal(parent->second, item->Name,
+                                            item->Type);
+                break;
+            default:
+                return Failure(
+                    Error::InterfaceUnsupported,
+                    "This nested Graph public port kind is not supported.");
+            }
+            const int existingKind = model == nodes.end() ? 0
+                : static_cast<int>(std::count_if(
+                    model->second->Ports.begin(), model->second->Ports.end(),
+                    [&](const GraphPort &port) {
+                        return port.Kind == item->Kind;
+                    }));
+            const int index = existingKind + static_cast<int>(std::count_if(
+                    publishedPorts.begin(), publishedPorts.end(),
+                    [&](const PublishedPort &port) {
+                        return port.Owner == nested.Parent.Value &&
+                               port.Kind == item->Kind;
+                    }));
+            const int existingName = model == nodes.end() ? 0
+                : static_cast<int>(std::count_if(
+                    model->second->Ports.begin(), model->second->Ports.end(),
+                    [&](const GraphPort &port) {
+                        return port.Kind == item->Kind &&
+                               port.Name == item->Name;
+                    }));
+            const int occurrence = existingName + static_cast<int>(std::count_if(
+                    publishedPorts.begin(), publishedPorts.end(),
+                    [&](const PublishedPort &port) {
+                        return port.Owner == nested.Parent.Value &&
+                               port.Kind == item->Kind &&
+                               port.Name == item->Name;
+                    }));
+            publishedPorts.push_back({nested.Parent.Value, item->Kind,
+                                      item->Name, index, occurrence,
+                                      std::move(live)});
+        }
+    }
+
     const auto port = [&](const Port &symbolic, Port &live) -> Status {
         // Slot::Only is also nameless with a negative index; only an
         // intent-local dynamic Port handle is looked up here.
@@ -791,6 +1043,67 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                                "A dynamic Port was used before it was declared.");
             live = dynamic->second;
             return {};
+        }
+        std::vector<const PublishedPort *> published;
+        for (const PublishedPort &candidate : publishedPorts) {
+            if (candidate.Owner != symbolic.Owner ||
+                candidate.Kind != symbolic.Selector.Kind)
+                continue;
+            if (symbolic.Selector.UsesName() &&
+                candidate.Name != symbolic.Selector.Name)
+                continue;
+            if (!symbolic.Selector.UsesName() &&
+                !symbolic.Selector.RequireOnly &&
+                candidate.Index != symbolic.Selector.Index)
+                continue;
+            published.push_back(&candidate);
+        }
+        if (!published.empty()) {
+            const auto model = nodes.find(symbolic.Owner);
+            if (symbolic.Selector.UsesName()) {
+                const int existing = model == nodes.end() ? 0
+                    : static_cast<int>(std::count_if(
+                        model->second->Ports.begin(),
+                        model->second->Ports.end(),
+                        [&](const GraphPort &candidate) {
+                            return candidate.Kind == symbolic.Selector.Kind &&
+                                   candidate.Name == symbolic.Selector.Name;
+                        }));
+                const int total = existing + static_cast<int>(published.size());
+                if (symbolic.Selector.RequireUnique && total != 1) {
+                    return Failure(Error::AmbiguousSlot,
+                                   "A published graph port is ambiguous.");
+                }
+                const int occurrence = symbolic.Selector.RequireUnique
+                    ? 0 : symbolic.Selector.Occurrence;
+                if (occurrence < 0 || occurrence >= total)
+                    return Failure(Error::SlotNotFound,
+                                   "A published graph port occurrence does not exist.");
+                if (occurrence >= existing) {
+                    live = published[static_cast<std::size_t>(
+                        occurrence - existing)]->Live;
+                    return {};
+                }
+            } else if (symbolic.Selector.RequireOnly) {
+                const int existing = model == nodes.end() ? 0
+                    : static_cast<int>(std::count_if(
+                        model->second->Ports.begin(),
+                        model->second->Ports.end(),
+                        [&](const GraphPort &candidate) {
+                            return candidate.Kind == symbolic.Selector.Kind;
+                        }));
+                const int total = existing + static_cast<int>(published.size());
+                if (total != 1)
+                    return Failure(Error::AmbiguousSlot,
+                                   "A graph port selector is not unique.");
+                if (!published.empty()) {
+                    live = published.front()->Live;
+                    return {};
+                }
+            } else if (!published.empty()) {
+                live = published.front()->Live;
+                return {};
+            }
         }
         const auto owner = liveNodes.find(symbolic.Owner);
         if (owner != liveNodes.end()) {
@@ -869,6 +1182,8 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                     return current;
                 resolved.Redirect(link->second, std::move(sink), item.Ordering);
             } else if constexpr (std::is_same_v<T, EditInterface>) {
+                if (rootInterfaceExists && item.Owner == Graph())
+                    return {};
                 const auto owner = liveNodes.find(item.Owner.Value);
                 if (owner == liveNodes.end())
                     return Failure(Error::InvalidState,

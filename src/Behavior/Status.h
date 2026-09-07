@@ -28,6 +28,7 @@ enum class Error {
     TypeMismatch,
     ParameterTypeUnavailable,
     ParameterTypeUnsupported,
+    InvalidArgument,
     ValueWriteFailed,
     SourceInvalid,
     InvalidState,
