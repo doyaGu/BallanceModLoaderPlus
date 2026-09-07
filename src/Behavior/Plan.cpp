@@ -15,6 +15,21 @@ Status Failure(Error error, std::string message) {
     return status;
 }
 
+class WorldCall final {
+public:
+    explicit WorldCall(bool &active) : m_Active(active) {
+        m_Active = true;
+    }
+
+    ~WorldCall() { m_Active = false; }
+
+    WorldCall(const WorldCall &) = delete;
+    WorldCall &operator=(const WorldCall &) = delete;
+
+private:
+    bool &m_Active;
+};
+
 } // namespace
 
 Plan::Plan(PatchKey patch, ScriptSelection target)
@@ -190,6 +205,13 @@ PlanId Plans::NextId() noexcept {
     return m_NextId++;
 }
 
+Status Plans::Ready() const {
+    return std::this_thread::get_id() == m_Thread
+        ? Status{}
+        : Failure(Error::WrongThread,
+                  "Behavior Plans require the game thread.");
+}
+
 void Plans::Mark(std::string_view name) noexcept {
     for (auto &[id, record] : m_Plans) {
         if (record->Value.Target().Name == name)
@@ -200,8 +222,13 @@ void Plans::Mark(std::string_view name) noexcept {
 Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
                      ScriptSelection target,
                      std::shared_ptr<Plan::World> world, PlanId &out) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     out = 0;
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    if (m_InWorld)
+        return Failure(Error::Busy,
+                       "Behavior Plan reconciliation is already in progress.");
     if (patch.Owner.empty() || patch.Name.empty() || ownerGeneration == 0 ||
         !target || !world)
         return Failure(
@@ -230,8 +257,12 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
     const auto current = m_Keys.find(patch);
     if (current != m_Keys.end()) {
         const PlanId previous = current->second;
-        Status status = m_Plans.at(previous)->Value.Retire(
-            *m_Plans.at(previous)->World);
+        Status status;
+        {
+            WorldCall call(m_InWorld);
+            status = m_Plans.at(previous)->Value.Retire(
+                *m_Plans.at(previous)->World);
+        }
         m_Plans.at(previous)->Diagnostic = status;
         if (!status) {
             m_Plans.erase(id);
@@ -253,12 +284,16 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
 }
 
 Status Plans::Read(PlanId id, PlanInfo &out) const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return Failure(Error::InvalidState,
                        "The Behavior Plan handle is stale.");
-    out.State = found->second->Value.State();
+    out.State = found->second->CloseRequested &&
+            found->second->Value.State() != PlanState::Conflicted
+        ? PlanState::Retiring : found->second->Value.State();
     out.World = found->second->Value.WorldEpoch();
     out.Matches = found->second->Matches;
     out.Installations = found->second->Value.Size();
@@ -268,7 +303,9 @@ Status Plans::Read(PlanId id, PlanInfo &out) const {
 
 Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
                    PlanId id, PlanInfo &out) const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end() ||
         found->second->Value.Key().Owner != owner ||
@@ -276,15 +313,31 @@ Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan belongs to another Mod generation.");
     }
-    return Read(id, out);
+    out.State = found->second->CloseRequested &&
+            found->second->Value.State() != PlanState::Conflicted
+        ? PlanState::Retiring : found->second->Value.State();
+    out.World = found->second->Value.WorldEpoch();
+    out.Matches = found->second->Matches;
+    out.Installations = found->second->Value.Size();
+    out.Diagnostic = found->second->Diagnostic;
+    return {};
 }
 
 Status Plans::Close(PlanId id) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return {};
-    Status status = found->second->Value.Retire(*found->second->World);
+    found->second->CloseRequested = true;
+    if (m_InWorld)
+        return Failure(Error::Busy, "The Behavior Plan is Retiring.");
+    Status status;
+    {
+        WorldCall call(m_InWorld);
+        status = found->second->Value.Retire(*found->second->World);
+    }
     found->second->Diagnostic = status;
     if (!status)
         return status;
@@ -295,7 +348,9 @@ Status Plans::Close(PlanId id) {
 
 Status Plans::Close(std::string_view owner, std::uint64_t ownerGeneration,
                     PlanId id) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return {};
@@ -303,18 +358,45 @@ Status Plans::Close(std::string_view owner, std::uint64_t ownerGeneration,
         found->second->OwnerGeneration != ownerGeneration)
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan belongs to another Mod generation.");
-    return Close(id);
+    found->second->CloseRequested = true;
+    if (m_InWorld)
+        return Failure(Error::Busy, "The Behavior Plan is Retiring.");
+    Status status;
+    {
+        WorldCall call(m_InWorld);
+        status = found->second->Value.Retire(*found->second->World);
+    }
+    found->second->Diagnostic = status;
+    if (!status)
+        return status;
+    m_Keys.erase(found->second->Value.Key());
+    m_Plans.erase(found);
+    return {};
 }
 
 Status Plans::RetireOwner(std::string_view owner) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    if (m_InWorld) {
+        for (auto &[id, record] : m_Plans) {
+            if (record->Value.Key().Owner == owner)
+                record->CloseRequested = true;
+        }
+        return Failure(Error::Busy, "Behavior Plans are Retiring.");
+    }
     Status first;
     for (auto item = m_Plans.begin(); item != m_Plans.end();) {
         if (item->second->Value.Key().Owner != owner) {
             ++item;
             continue;
         }
-        Status status = item->second->Value.Retire(*item->second->World);
+        item->second->CloseRequested = true;
+        Status status;
+        {
+            WorldCall call(m_InWorld);
+            status = item->second->Value.Retire(*item->second->World);
+        }
         item->second->Diagnostic = status;
         if (!status) {
             if (first)
@@ -329,7 +411,9 @@ Status Plans::RetireOwner(std::string_view owner) {
 }
 
 Status Plans::LoadScript(std::string name, ObjectRef script) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     if (name.empty() || script.IsNull())
         return Failure(Error::TargetInvalid,
                        "A live script requires an exact name and object reference.");
@@ -356,7 +440,8 @@ Status Plans::LoadScript(std::string name, ObjectRef script) {
 }
 
 void Plans::Remove(ObjectRef script) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    if (!Ready())
+        return;
     const auto found = m_Scripts.find(script);
     if (found == m_Scripts.end())
         return;
@@ -366,13 +451,21 @@ void Plans::Remove(ObjectRef script) {
 }
 
 void Plans::Remove(const std::vector<ObjectRef> &scripts) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    for (const ObjectRef &script : scripts)
-        Remove(script);
+    if (!Ready())
+        return;
+    for (const ObjectRef &script : scripts) {
+        const auto found = m_Scripts.find(script);
+        if (found == m_Scripts.end())
+            continue;
+        const std::string name = found->second;
+        m_Scripts.erase(found);
+        Mark(name);
+    }
 }
 
 void Plans::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    if (!Ready())
+        return;
     for (auto script = m_Scripts.begin(); script != m_Scripts.end();) {
         if (script->first.Domain != domain || script->first.Slot != slot) {
             ++script;
@@ -385,8 +478,14 @@ void Plans::RemoveObject(std::uint32_t domain, std::uint32_t slot) {
 }
 
 Status Plans::ResetWorld() {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    if (m_InWorld)
+        return Failure(Error::Busy,
+                       "The Behavior world is already being reconciled.");
     Status first;
+    WorldCall call(m_InWorld);
     for (auto &[id, record] : m_Plans) {
         Status status = record->Value.LeaveWorld(*record->World);
         record->Diagnostic = status;
@@ -402,12 +501,21 @@ Status Plans::ResetWorld() {
 }
 
 Status Plans::ProcessFrame() {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    if (m_InWorld)
+        return Failure(Error::Busy,
+                       "Behavior Plan reconciliation is already in progress.");
     Status first;
     for (auto item = m_Plans.begin(); item != m_Plans.end();) {
         Record &record = *item->second;
-        if (record.Value.Retiring()) {
-            Status status = record.Value.Retire(*record.World);
+        if (record.CloseRequested || record.Value.Retiring()) {
+            Status status;
+            {
+                WorldCall call(m_InWorld);
+                status = record.Value.Retire(*record.World);
+            }
             record.Diagnostic = status;
             if (status) {
                 m_Keys.erase(record.Value.Key());
@@ -439,10 +547,17 @@ Status Plans::ProcessFrame() {
         }
 
         record.Matches = targets.size();
-        Status status = record.Value.Reconcile(
-            std::move(targets), m_Epoch, *record.World);
-        record.Diagnostic = status;
+        // Clear the consumed notification before entering the world. A Script
+        // load/remove nested in a provider callback marks it again for the next
+        // safe point instead of being overwritten when this pass returns.
         record.Dirty = false;
+        Status status;
+        {
+            WorldCall call(m_InWorld);
+            status = record.Value.Reconcile(
+                std::move(targets), m_Epoch, *record.World);
+        }
+        record.Diagnostic = status;
         if (!status && first)
             first = status;
         ++item;
@@ -451,12 +566,10 @@ Status Plans::ProcessFrame() {
 }
 
 Epoch Plans::WorldEpoch() const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     return m_Epoch;
 }
 
 std::size_t Plans::Size() const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     return m_Plans.size();
 }
 

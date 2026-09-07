@@ -253,13 +253,13 @@ private:
     ResolveObject m_ResolveObject;
     IssueObject m_IssueObject;
     std::thread::id m_Thread;
-    mutable std::recursive_mutex m_Mutex;
     struct AdmissionRecord {
         SessionOwner Owner;
         std::weak_ptr<CallbackAdmission> Admission;
     };
-    // No native or author callbacks run under this mutex. Close requests only
-    // touch these records, then try the graph registry without waiting.
+    // Only this admission registry crosses threads. A worker Close stops new
+    // callbacks here; Patch and Plan graph state remains game-thread owned and
+    // is reconciled at the next safe point.
     std::mutex m_AdmissionMutex;
     std::map<std::pair<bool, std::uint64_t>, AdmissionRecord> m_Admissions;
     PatchId m_NextId = 1;

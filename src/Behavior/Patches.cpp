@@ -138,7 +138,6 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Edit does not belong to this Mod generation.");
 
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const PatchId id = NextId();
     if (!id)
         return Failure(Error::InvalidState,
@@ -268,7 +267,6 @@ Status Patches::Apply(
                            "A Graph may appear only once in one Behavior Patch.");
     }
 
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const PatchId id = NextId();
     if (!id)
         return Failure(Error::InvalidState,
@@ -334,7 +332,6 @@ Status Patches::ResolveNode(const SessionOwner &owner, PatchId patch,
     Status status = Ready();
     if (!status)
         return status;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Patches.find(patch);
     if (found == m_Patches.end() || found->second.TargetDeleted ||
         found->second.Owner.Id != owner.Id ||
@@ -475,7 +472,6 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
         }
     }
 
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const PlanId id = NextPlanId();
     if (!id)
         return Failure(Error::InvalidState,
@@ -729,7 +725,9 @@ PlanState Patches::State(Plans &plans, const OwnedPlan &plan) const {
 
 Status Patches::ReadPlan(Plans &plans, const SessionOwner &owner,
                          PlanId id, PlanInfo &out) const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end() || found->second.Owner.Id != owner.Id ||
         found->second.Owner.Generation != owner.Generation)
@@ -760,7 +758,9 @@ Status Patches::ReadPlan(Plans &plans, const SessionOwner &owner,
 
 Status Patches::SetPlanActive(Plans &plans, const SessionOwner &owner,
                               PlanId id, bool active) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end() || found->second.Owner.Id != owner.Id ||
         found->second.Owner.Generation != owner.Generation)
@@ -790,6 +790,9 @@ Status Patches::SetPlanActive(Plans &plans, const SessionOwner &owner,
 
 Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
                             PlanId id, std::vector<Rule> rules) {
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     if (rules.empty())
         return Failure(Error::InvalidState,
                        "A Behavior Plan replacement requires a Script rule.");
@@ -814,7 +817,6 @@ Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
                 "A Script selection may appear only once in one Behavior Plan.");
         }
     }
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end() || found->second.Owner.Id != owner.Id ||
         found->second.Owner.Generation != owner.Generation)
@@ -853,8 +855,7 @@ Status Patches::ClosePlan(Plans &plans, const SessionOwner &owner,
     Status requested = RequestClose(true, id, owner);
     if (!requested)
         return requested;
-    std::unique_lock<std::recursive_mutex> lock(m_Mutex, std::try_to_lock);
-    if (!lock.owns_lock())
+    if (std::this_thread::get_id() != m_Thread)
         return Failure(Error::Busy, "The Behavior Plan is Retiring.", Phase::Teardown);
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
@@ -1180,7 +1181,9 @@ Status Patches::Interpose(Edit &edit, Link link,
 
 Status Patches::Read(const SessionOwner &owner, PatchId patch,
                      PatchInfo &out) const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Patches.find(patch);
     if (found == m_Patches.end() || found->second.TargetDeleted ||
         found->second.Owner.Id != owner.Id ||
@@ -1479,7 +1482,9 @@ Status Patches::Reconcile(OwnedPatch &patch) {
 
 Status Patches::SetActive(const SessionOwner &owner, PatchId patch,
                           bool active) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     const auto found = m_Patches.find(patch);
     if (found == m_Patches.end() || found->second.TargetDeleted ||
         found->second.Owner.Id != owner.Id ||
@@ -1509,6 +1514,9 @@ Status Patches::SetActive(const SessionOwner &owner, PatchId patch,
 
 Status Patches::Replace(const SessionOwner &owner, PatchId patch,
                         std::vector<Target> targets) {
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     if (targets.empty())
         return Failure(Error::InvalidState,
                        "A Behavior Patch replacement requires a target Graph.");
@@ -1526,7 +1534,6 @@ Status Patches::Replace(const SessionOwner &owner, PatchId patch,
             return Failure(Error::InvalidGraphLocality,
                            "A Graph may appear only once in one Behavior Patch.");
     }
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const auto found = m_Patches.find(patch);
     if (found == m_Patches.end() || found->second.TargetDeleted ||
         found->second.Owner.Id != owner.Id ||
@@ -1565,8 +1572,7 @@ Status Patches::Close(const SessionOwner &owner, PatchId patch) {
     Status requested = RequestClose(false, patch, owner);
     if (!requested)
         return requested;
-    std::unique_lock<std::recursive_mutex> lock(m_Mutex, std::try_to_lock);
-    if (!lock.owns_lock())
+    if (std::this_thread::get_id() != m_Thread)
         return Failure(Error::Busy, "The Behavior Patch is Closing.", Phase::Teardown);
     const auto found = m_Patches.find(patch);
     if (found == m_Patches.end())
@@ -1583,7 +1589,9 @@ Status Patches::Close(const SessionOwner &owner, PatchId patch) {
 }
 
 Status Patches::RetireOwner(const std::string &ownerId) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status ready = Ready();
+    if (!ready)
+        return ready;
     for (auto plan = m_Plans.begin(); plan != m_Plans.end();) {
         if (plan->second.Owner.Id == ownerId)
             plan = m_Plans.erase(plan);
@@ -1617,7 +1625,6 @@ Status Patches::RetireOwner(const std::string &ownerId) {
 void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
     if (!ids || count <= 0 || std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const std::set<CK_ID> deleting(ids, ids + count);
     for (auto &entry : m_Patches) {
         OwnedPatch &patch = entry.second;
@@ -1663,7 +1670,6 @@ void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
 void Patches::ResetWorld() {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     for (auto &[id, patch] : m_Patches)
         (void) Close(patch);
     m_Edit.ProcessFrame();
@@ -1678,7 +1684,6 @@ void Patches::ResetWorld() {
 void Patches::ProcessFrame(Plans &plans) {
     if (std::this_thread::get_id() != m_Thread)
         return;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     m_Edit.ProcessFrame();
     for (auto plan = m_Plans.begin(); plan != m_Plans.end();) {
         Status status = ReconcilePlan(plans, plan->second);

@@ -1,5 +1,6 @@
 #include "Behavior/Plan.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -28,6 +29,8 @@ public:
                     "install failed"};
         out = Next++;
         Live[out] = target;
+        if (OnInstall)
+            OnInstall();
         return {};
     }
 
@@ -40,6 +43,8 @@ public:
             return {Error::RevertConflict, CKERR_INVALIDPARAMETER,
                     CKBR_PARAMETERERROR, "close conflicted"};
         Live.erase(installation);
+        if (OnClose)
+            OnClose();
         return {};
     }
 
@@ -49,6 +54,8 @@ public:
     std::set<Installation> BusyClose;
     std::set<Installation> FailClose;
     std::vector<std::string> Calls;
+    std::function<void()> OnInstall;
+    std::function<void()> OnClose;
 };
 
 TEST(BehaviorPlan, ReconcilesTheDesiredTargetSetDeterministically) {
@@ -417,7 +424,7 @@ TEST(BehaviorPlans, FinishesAClosingPlanAtALaterSafePoint) {
     EXPECT_EQ(plans.Read(plan, info).Code, Error::InvalidState);
 }
 
-TEST(BehaviorPlans, AcceptsRetirementFromAnotherThread) {
+TEST(BehaviorPlans, KeepsItsWorldOnTheGameThread) {
     Plans plans;
     auto world = std::make_shared<FakeWorld>();
     PlanId plan = 0;
@@ -426,25 +433,70 @@ TEST(BehaviorPlans, AcceptsRetirementFromAnotherThread) {
     ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
     ASSERT_TRUE(plans.ProcessFrame());
     ASSERT_EQ(world->Live.size(), 1u);
-    const Installation installation = world->Live.begin()->first;
-    world->BusyClose.insert(installation);
-
     Status closing;
     std::thread closer([&] {
         closing = plans.Close("mod", 4, plan);
     });
     closer.join();
 
-    EXPECT_EQ(closing.Code, Error::Busy);
+    EXPECT_EQ(closing.Code, Error::WrongThread);
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read("mod", 4, plan, info));
+    EXPECT_EQ(info.State, PlanState::Active);
+    EXPECT_EQ(info.Installations, 1u);
+
+    ASSERT_TRUE(plans.Close("mod", 4, plan));
+    EXPECT_TRUE(world->Live.empty());
+    EXPECT_EQ(plans.Size(), 0u);
+}
+
+TEST(BehaviorPlans, DefersACloseRequestedWhileInstalling) {
+    Plans plans;
+    auto world = std::make_shared<FakeWorld>();
+    PlanId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+
+    Status nested;
+    world->OnInstall = [&] {
+        nested = plans.Close("mod", 4, plan);
+    };
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_EQ(nested.Code, Error::Busy);
+    ASSERT_EQ(world->Live.size(), 1u);
+
     PlanInfo info;
     ASSERT_TRUE(plans.Read("mod", 4, plan, info));
     EXPECT_EQ(info.State, PlanState::Retiring);
-    EXPECT_EQ(info.Installations, 1u);
 
-    world->BusyClose.clear();
+    world->OnInstall = {};
     ASSERT_TRUE(plans.ProcessFrame());
     EXPECT_TRUE(world->Live.empty());
     EXPECT_EQ(plans.Size(), 0u);
+}
+
+TEST(BehaviorPlans, PreservesAScriptChangeObservedWhileInstalling) {
+    Plans plans;
+    auto world = std::make_shared<FakeWorld>();
+    PlanId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+
+    world->OnInstall = [&] {
+        world->OnInstall = {};
+        EXPECT_TRUE(plans.LoadScript("Gameplay_Events", Target(2)));
+    };
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_EQ(world->Live.size(), 1u);
+
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_EQ(world->Live.size(), 2u);
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read(plan, info));
+    EXPECT_EQ(info.Matches, 2u);
+    EXPECT_EQ(info.Installations, 2u);
 }
 
 TEST(BehaviorPlans, RetriesAConflictedRetirementWithoutTheCallerHandle) {

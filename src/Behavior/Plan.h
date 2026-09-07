@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 #include "Behavior/Topology.h"
@@ -103,9 +103,11 @@ struct PlanInfo {
 };
 
 // A loader-owned Behavior Plan. Script load/unload events only change the known
-// target set; native reconciliation happens at ProcessFrame. World
-// implementations and their canonical Edit data are owned by the Loader, not
-// by a Mod callback or a live CK object.
+// target set; native reconciliation happens on the game thread at
+// ProcessFrame. World implementations and their canonical Edit data are owned
+// by the Loader, not by a Mod callback or a live CK object. A World callback
+// may request retirement or mark another Script change, but those facts are
+// consumed only after the current World call returns.
 class Plans final {
 public:
     Plans() = default;
@@ -140,6 +142,7 @@ private:
         std::size_t Matches = 0;
         Status Diagnostic;
         bool Dirty = true;
+        bool CloseRequested = false;
 
         Record(PlanId id, std::uint64_t ownerGeneration,
                std::shared_ptr<Plan::World> world,
@@ -155,11 +158,13 @@ private:
     };
 
     [[nodiscard]] PlanId NextId() noexcept;
+    [[nodiscard]] Status Ready() const;
     void Mark(std::string_view name) noexcept;
 
     Epoch m_Epoch = 1;
     PlanId m_NextId = 1;
-    mutable std::recursive_mutex m_Mutex;
+    std::thread::id m_Thread = std::this_thread::get_id();
+    bool m_InWorld = false;
     std::map<PlanId, std::unique_ptr<Record>> m_Plans;
     std::map<PatchKey, PlanId> m_Keys;
     std::map<ObjectRef, std::string, RefLess> m_Scripts;
