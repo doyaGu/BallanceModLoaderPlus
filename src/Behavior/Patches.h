@@ -106,6 +106,18 @@ public:
 private:
     class PlanWorld;
 
+    enum class PatchGoal {
+        Enabled,
+        Disabled,
+        Closed,
+    };
+
+    enum class PatchRecovery {
+        None,
+        PreviousDefinition,
+        Blocked,
+    };
+
     struct OwnedPlan {
         PlanId Id = 0;
         SessionOwner Owner;
@@ -139,22 +151,22 @@ private:
         std::shared_ptr<CallbackAdmission> Admission;
         std::string Name;
         CK_ID Graph = 0;
-        bool DesiredActive = true;
-        bool Retiring = false;
+        PatchGoal Goal = PatchGoal::Enabled;
         bool TargetDeleted = false;
-        bool Failed = false;
-        bool ReturningPrevious = false;
+        PatchRecovery Recovery = PatchRecovery::None;
         std::uint64_t Revision = 1;
         Status LastStatus;
-        Status ChangeFault;
-        // Definition is the last requested content. LiveDefinition describes
-        // the installed prefix while a replacement is being reconciled;
+        Status PrimaryFailure;
+        Status RecoveryFailure;
+        // RequestedDefinition is the last requested content.
+        // AppliedDefinition describes the installed prefix while a
+        // replacement is being reconciled;
         // PreviousDefinition is the last complete definition to restore when
         // new content cannot be installed.
-        std::vector<Target> Definition;
-        std::vector<Target> LiveDefinition;
+        std::vector<Target> RequestedDefinition;
+        std::vector<Target> AppliedDefinition;
         std::vector<Target> PreviousDefinition;
-        std::optional<std::size_t> ChangeFrom;
+        std::optional<std::size_t> RestoreFrom;
         std::vector<Scope> Scopes;
         // Public handle -> (scope index, resolved Edit Node).
         std::map<std::uint32_t, std::pair<std::size_t, Node>> Handles;

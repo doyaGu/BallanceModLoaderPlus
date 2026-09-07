@@ -185,7 +185,8 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
             if (handles)
                 scope.Handles = *handles;
             stored->second.Scopes.push_back(std::move(scope));
-            stored->second.Retiring = !status;
+            if (!status)
+                stored->second.Goal = PatchGoal::Closed;
             if (handles) {
                 for (const auto &[handle, node] : *handles)
                     stored->second.Handles.emplace(
@@ -267,14 +268,13 @@ Status Patches::Apply(const SessionOwner &owner, std::string name,
     patch.Owner = owner;
     patch.Admission = RegisterAdmission(false, id, owner);
     patch.Name = std::move(name);
-    patch.Definition = std::move(targets);
+    patch.RequestedDefinition = std::move(targets);
     if (m_Edit.CanPublish()) {
         status = Install(patch);
         patch.LastStatus = status;
-        patch.Failed = !status && patch.Scopes.empty();
         if (!status && !patch.Scopes.empty()) {
-            patch.ChangeFrom = 0;
-            patch.ChangeFault = status;
+            patch.RestoreFrom = 0;
+            patch.PrimaryFailure = status;
         }
     }
 
@@ -283,6 +283,11 @@ Status Patches::Apply(const SessionOwner &owner, std::string name,
         status = Failure(Error::InvalidState,
                          "The Behavior Session closed while the Patch was opening.");
     }
+
+    // A failed opening never produced an author-owned handle. Keep any
+    // remaining journal under the Mod owner only until its inverse completes.
+    if (!status)
+        CloseAdmission(patch);
 
     // A validation or admission failure that changed no Graph has nothing to
     // retire and must not manufacture a public Patch handle. A failed inverse
@@ -859,7 +864,7 @@ Status Patches::Install(const SessionOwner &owner, const PatchKey &patch,
         for (auto scope = installed.Scopes.rbegin();
              scope != installed.Scopes.rend(); ++scope)
             (void) m_Edit.Close(scope->Value);
-        installed.Retiring = true;
+        installed.Goal = PatchGoal::Closed;
     }
     if (installed.Scopes.empty())
         return status;
@@ -876,10 +881,10 @@ Status Patches::Install(OwnedPatch &patch) {
     if (!patch.Scopes.empty())
         return Failure(Error::InvalidState,
                        "A Behavior Patch is already installed.");
-    const std::vector<Target> definition = patch.Definition;
+    const std::vector<Target> definition = patch.RequestedDefinition;
     Status status = InstallFrom(patch, definition, 0);
     if (status)
-        patch.LiveDefinition = definition;
+        patch.AppliedDefinition = definition;
     return status;
 }
 
@@ -1172,14 +1177,16 @@ Status Patches::Read(const SessionOwner &owner, PatchId patch,
 }
 
 PatchState Patches::State(const OwnedPatch &patch) const {
-    if (!patch.Retiring && !patch.Admission->IsOpen())
+    const bool closingRequested = patch.Goal == PatchGoal::Closed ||
+        !patch.Admission->IsOpen();
+    if (patch.Goal != PatchGoal::Closed && !patch.Admission->IsOpen())
         return PatchState::Closing;
     if (patch.Scopes.empty()) {
-        if (patch.Retiring)
+        if (closingRequested)
             return PatchState::Closed;
-        if (patch.Failed)
+        if (patch.Recovery == PatchRecovery::Blocked)
             return PatchState::Failed;
-        return patch.DesiredActive
+        return patch.Goal == PatchGoal::Enabled
             ? PatchState::Pending : PatchState::Disabled;
     }
     bool pending = false;
@@ -1196,16 +1203,16 @@ PatchState Patches::State(const OwnedPatch &patch) const {
         case PatchState::Closed: break;
         }
     }
-    if (closing)
+    if (closingRequested)
         return PatchState::Closing;
-    if (!patch.DesiredActive)
+    if (patch.Goal == PatchGoal::Disabled)
         return PatchState::Closing;
     if (pending)
         return PatchState::Pending;
-    if (patch.ChangeFrom ||
-        CommonPrefix(patch.LiveDefinition, patch.Definition) !=
-            patch.Definition.size() ||
-        patch.LiveDefinition.size() != patch.Definition.size())
+    if (patch.RestoreFrom ||
+        CommonPrefix(patch.AppliedDefinition, patch.RequestedDefinition) !=
+            patch.RequestedDefinition.size() ||
+        patch.AppliedDefinition.size() != patch.RequestedDefinition.size())
         return PatchState::Pending;
     if (active)
         return PatchState::Active;
@@ -1213,13 +1220,16 @@ PatchState Patches::State(const OwnedPatch &patch) const {
 }
 
 Status Patches::Diagnostic(const OwnedPatch &patch) const {
-    Status first = patch.LastStatus;
+    if (!patch.RecoveryFailure)
+        return patch.RecoveryFailure;
     for (const OwnedPatch::Scope &scope : patch.Scopes) {
         Status current = scope.Value.Diagnostic();
-        if (!current && first)
-            first = std::move(current);
+        if (!current)
+            return current;
     }
-    return first;
+    if (!patch.LastStatus)
+        return patch.LastStatus;
+    return patch.PrimaryFailure;
 }
 
 void Patches::RebuildHandles(OwnedPatch &patch) {
@@ -1227,10 +1237,10 @@ void Patches::RebuildHandles(OwnedPatch &patch) {
     for (std::size_t scopeIndex = 0; scopeIndex < patch.Scopes.size();
          ++scopeIndex) {
         const OwnedPatch::Scope &scope = patch.Scopes[scopeIndex];
-        if (scope.Target >= patch.Definition.size())
+        if (scope.Target >= patch.RequestedDefinition.size())
             continue;
         for (const auto &[author, symbol] :
-             patch.Definition[scope.Target].Handles) {
+             patch.RequestedDefinition[scope.Target].Handles) {
             if (symbol.Scope != scope.Id)
                 continue;
             const auto found = scope.Handles.find(symbol.Node);
@@ -1305,9 +1315,10 @@ Status Patches::RestoreFrom(OwnedPatch &patch, std::size_t target) {
 
 void Patches::CloseAdmission(OwnedPatch &patch) {
     patch.Admission->Close();
-    patch.Retiring = true;
-    patch.DesiredActive = false;
-    ++patch.Revision;
+    if (patch.Goal != PatchGoal::Closed) {
+        patch.Goal = PatchGoal::Closed;
+        ++patch.Revision;
+    }
     // Stop every scope, even when restoring a later scope must wait or has a
     // conflict. No still-installed sibling Hook may admit another callback.
     for (auto &scope : patch.Scopes)
@@ -1320,104 +1331,115 @@ Status Patches::Close(OwnedPatch &patch) {
 }
 
 Status Patches::Reconcile(OwnedPatch &patch) {
-    if ((!patch.Owner || !patch.Admission->IsOpen()) && !patch.Retiring)
+    if ((!patch.Owner || !patch.Admission->IsOpen()) &&
+        patch.Goal != PatchGoal::Closed)
         CloseAdmission(patch);
-    if (patch.Retiring || !patch.DesiredActive) {
+    if (patch.Goal != PatchGoal::Enabled) {
         Status status = Restore(patch);
         if (status) {
-            patch.LiveDefinition.clear();
+            patch.AppliedDefinition.clear();
             patch.PreviousDefinition.clear();
-            patch.ChangeFrom.reset();
-            patch.ChangeFault = {};
-            patch.Failed = false;
-            patch.ReturningPrevious = false;
+            patch.RestoreFrom.reset();
+            patch.PrimaryFailure = {};
+            patch.RecoveryFailure = {};
+            patch.Recovery = PatchRecovery::None;
+        } else {
+            patch.RecoveryFailure = status;
         }
         patch.LastStatus = status;
         return status;
     }
-    if (patch.Failed)
+    if (patch.Recovery == PatchRecovery::Blocked)
         return patch.LastStatus;
 
-    if (patch.ChangeFrom) {
-        const std::size_t first = *patch.ChangeFrom;
+    if (patch.RestoreFrom) {
+        const std::size_t first = *patch.RestoreFrom;
         Status status = RestoreFrom(patch, first);
         if (!status) {
+            patch.RecoveryFailure = status;
             patch.LastStatus = status;
             return status;
         }
-        patch.LiveDefinition.resize(
-            (std::min)(patch.LiveDefinition.size(), first));
-        patch.ChangeFrom.reset();
-        if (!patch.ChangeFault && !patch.ReturningPrevious) {
-            patch.Failed = true;
-            patch.LastStatus = patch.ChangeFault;
-            return patch.ChangeFault;
+        patch.RecoveryFailure = {};
+        patch.AppliedDefinition.resize(
+            (std::min)(patch.AppliedDefinition.size(), first));
+        patch.RestoreFrom.reset();
+        if (!patch.PrimaryFailure &&
+            patch.Recovery != PatchRecovery::PreviousDefinition) {
+            patch.Recovery = PatchRecovery::Blocked;
+            patch.LastStatus = patch.PrimaryFailure;
+            return patch.PrimaryFailure;
         }
     }
 
     const std::size_t prefix = CommonPrefix(
-        patch.LiveDefinition, patch.Definition);
-    if (prefix < patch.LiveDefinition.size()) {
+        patch.AppliedDefinition, patch.RequestedDefinition);
+    if (prefix < patch.AppliedDefinition.size()) {
         if (patch.PreviousDefinition.empty())
-            patch.PreviousDefinition = patch.LiveDefinition;
-        patch.ChangeFrom = prefix;
+            patch.PreviousDefinition = patch.AppliedDefinition;
+        patch.RestoreFrom = prefix;
         return Reconcile(patch);
     }
-    if (prefix == patch.Definition.size() &&
-        prefix == patch.LiveDefinition.size()) {
-        patch.Failed = false;
+    if (prefix == patch.RequestedDefinition.size() &&
+        prefix == patch.AppliedDefinition.size()) {
         patch.PreviousDefinition.clear();
-        patch.ReturningPrevious = false;
+        patch.Recovery = PatchRecovery::None;
         RebuildHandles(patch);
         return {};
     }
 
-    const std::vector<Target> requested = patch.Definition;
+    const std::vector<Target> requested = patch.RequestedDefinition;
     const std::uint64_t revision = patch.Revision;
     Status status = InstallFrom(patch, requested, prefix);
-    if (!patch.Owner || !patch.Admission->IsOpen() || patch.Retiring) {
+    if (!patch.Owner || !patch.Admission->IsOpen() ||
+        patch.Goal == PatchGoal::Closed) {
         CloseAdmission(patch);
         (void) Restore(patch);
         return Failure(Error::InvalidState,
                        "Behavior Patch admission closed while installing.");
     }
     if (status) {
-        patch.LiveDefinition = requested;
-        patch.Failed = false;
+        patch.AppliedDefinition = requested;
         RebuildHandles(patch);
         if (revision == patch.Revision) {
             patch.PreviousDefinition.clear();
-            if (!patch.ChangeFault) {
-                patch.LastStatus = patch.ChangeFault;
-                Status reported = patch.ChangeFault;
-                patch.ChangeFault = {};
-                patch.ReturningPrevious = false;
+            patch.RecoveryFailure = {};
+            if (patch.Recovery == PatchRecovery::PreviousDefinition &&
+                !patch.PrimaryFailure) {
+                patch.LastStatus = patch.PrimaryFailure;
+                Status reported = patch.PrimaryFailure;
+                patch.Recovery = PatchRecovery::None;
                 return reported;
             }
+            patch.PrimaryFailure = {};
+            patch.Recovery = PatchRecovery::None;
             patch.LastStatus = {};
         }
         return {};
     }
 
     const Status requestedFailure = status;
-    patch.ChangeFrom = prefix;
+    patch.PrimaryFailure = requestedFailure;
+    patch.RestoreFrom = prefix;
+    if (!patch.PreviousDefinition.empty()) {
+        patch.RequestedDefinition = std::move(patch.PreviousDefinition);
+        patch.PreviousDefinition.clear();
+        patch.Recovery = PatchRecovery::PreviousDefinition;
+        ++patch.Revision;
+    }
     Status restored = RestoreFrom(patch, prefix);
     if (restored) {
-        patch.LiveDefinition.resize(
-            (std::min)(patch.LiveDefinition.size(), prefix));
-        patch.ChangeFrom.reset();
+        patch.RecoveryFailure = {};
+        patch.AppliedDefinition.resize(
+            (std::min)(patch.AppliedDefinition.size(), prefix));
+        patch.RestoreFrom.reset();
     } else if (restored.Code != Error::Busy) {
-        patch.Failed = true;
+        patch.RecoveryFailure = restored;
         patch.LastStatus = restored;
         return restored;
     }
 
-    if (!patch.PreviousDefinition.empty()) {
-        patch.Definition = std::move(patch.PreviousDefinition);
-        patch.PreviousDefinition.clear();
-        ++patch.Revision;
-        patch.ChangeFault = requestedFailure;
-        patch.ReturningPrevious = true;
+    if (patch.Recovery == PatchRecovery::PreviousDefinition) {
         patch.LastStatus = requestedFailure;
         if (restored && m_Edit.CanPublish()) {
             Status fallback = Reconcile(patch);
@@ -1427,9 +1449,8 @@ Status Patches::Reconcile(OwnedPatch &patch) {
         return requestedFailure;
     }
 
-    patch.ChangeFault = requestedFailure;
-    patch.ReturningPrevious = false;
-    patch.Failed = restored || restored.Code != Error::Busy;
+    if (restored)
+        patch.Recovery = PatchRecovery::Blocked;
     patch.LastStatus = requestedFailure;
     return requestedFailure;
 }
@@ -1444,17 +1465,21 @@ Status Patches::SetActive(const SessionOwner &owner, PatchId patch,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Patch handle is stale.");
     OwnedPatch &value = found->second;
-    if (value.Retiring || !value.Admission->IsOpen())
+    if (value.Goal == PatchGoal::Closed || !value.Admission->IsOpen())
         return Failure(Error::InvalidState,
-                       "A retiring Behavior Patch cannot be enabled.");
-    value.DesiredActive = active;
+                        "A retiring Behavior Patch cannot be enabled.");
+    const PatchGoal goal = active ? PatchGoal::Enabled : PatchGoal::Disabled;
+    if (value.Goal == goal && value.Recovery == PatchRecovery::None &&
+        !value.RestoreFrom && value.LastStatus)
+        return {};
+    value.Goal = goal;
     ++value.Revision;
-    value.Failed = false;
-    value.ReturningPrevious = false;
+    value.Recovery = PatchRecovery::None;
     value.LastStatus = {};
-    value.ChangeFault = {};
+    value.PrimaryFailure = {};
+    value.RecoveryFailure = {};
     if (!active)
-        value.ChangeFrom = 0;
+        value.RestoreFrom = 0;
     if (m_Edit.CanPublish())
         return Reconcile(value);
     return {};
@@ -1487,27 +1512,27 @@ Status Patches::Replace(const SessionOwner &owner, PatchId patch,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Patch handle is stale.");
     OwnedPatch &value = found->second;
-    if (value.Retiring || !value.Admission->IsOpen())
+    if (value.Goal == PatchGoal::Closed || !value.Admission->IsOpen())
         return Failure(Error::InvalidState,
-                       "A retiring Behavior Patch cannot be replaced.");
+                        "A retiring Behavior Patch cannot be replaced.");
 
     // Retain the new definition before touching CK. A callback can replace it
     // again, in which case the next safe point sees only the final request.
-    if (value.DesiredActive && value.PreviousDefinition.empty())
-        value.PreviousDefinition = value.LiveDefinition;
-    value.Definition = std::move(targets);
+    if (value.Goal == PatchGoal::Enabled && value.PreviousDefinition.empty())
+        value.PreviousDefinition = value.AppliedDefinition;
+    value.RequestedDefinition = std::move(targets);
     ++value.Revision;
-    value.Failed = false;
-    value.ReturningPrevious = false;
+    value.Recovery = PatchRecovery::None;
     value.LastStatus = {};
-    value.ChangeFault = {};
+    value.PrimaryFailure = {};
+    value.RecoveryFailure = {};
     const std::size_t prefix = CommonPrefix(
-        value.LiveDefinition, value.Definition);
-    if (prefix < value.LiveDefinition.size()) {
-        value.ChangeFrom = value.ChangeFrom
-            ? (std::min)(*value.ChangeFrom, prefix) : prefix;
+        value.AppliedDefinition, value.RequestedDefinition);
+    if (prefix < value.AppliedDefinition.size()) {
+        value.RestoreFrom = value.RestoreFrom
+            ? (std::min)(*value.RestoreFrom, prefix) : prefix;
     }
-    if (!value.DesiredActive) {
+    if (value.Goal == PatchGoal::Disabled) {
         value.PreviousDefinition.clear();
         return {};
     }
@@ -1586,7 +1611,8 @@ void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
                        state != PatchState::Failed &&
                        deleting.contains(scope.Graph);
             }) || std::any_of(
-                patch.Definition.begin(), patch.Definition.end(),
+                patch.RequestedDefinition.begin(),
+                patch.RequestedDefinition.end(),
                 [&](const Target &target) {
                     CKObject *object = m_ResolveObject
                         ? m_ResolveObject(target.Graph) : nullptr;
@@ -1605,8 +1631,7 @@ void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             if (deleting.contains(scope.Graph))
                 m_Edit.GraphDeleted(scope.Value);
         }
-        patch.DesiredActive = false;
-        patch.Retiring = true;
+        patch.Goal = PatchGoal::Closed;
         patch.TargetDeleted = true;
         ++patch.Revision;
     }
@@ -1653,7 +1678,7 @@ void Patches::ProcessFrame(Plans &plans) {
 void Patches::Collect() {
     for (auto patch = m_Patches.begin(); patch != m_Patches.end();) {
         const PatchState state = State(patch->second);
-        if (patch->second.Retiring &&
+        if (patch->second.Goal == PatchGoal::Closed &&
             (state == PatchState::Closed || state == PatchState::Failed))
             patch = m_Patches.erase(patch);
         else
