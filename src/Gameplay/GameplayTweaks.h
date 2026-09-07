@@ -1,13 +1,11 @@
 #ifndef BML_GAMEPLAYTWEAKS_H
 #define BML_GAMEPLAYTWEAKS_H
 
-#include <vector>
+#include <array>
 
 #include "BML/Behavior.hpp"
 
 class CKBehavior;
-class CKBehaviorIO;
-class CKBehaviorLink;
 class IBML;
 class IConfig;
 class ILogger;
@@ -25,13 +23,13 @@ public:
 
 private:
     void ApplyLanternAlphaTest(bool enabled);
-    void PatchLanternAlphaTest(CKBehavior *script);
-    void PatchExtraLife(CKBehavior *script);
+    bool ApplyLanternScript(bool enabled, bool warnIfUnavailable);
+    void PatchLanternAlphaTest(const BML::Behavior::Graph &script);
 
-    void DiscoverOverclockPatch(CKBehavior *script);
-    void CompleteOverclockPatch(CKBehavior *script);
+    void DiscoverOverclockPatch(const BML::Behavior::Graph &script);
+    void CompleteOverclockPatch(const BML::Behavior::Graph &script);
     bool ApplyOverclock(bool enabled, bool warnIfUnavailable);
-    void ClearOverclockPatch();
+    bool ReplaceOverclockPlan(bool warnIfUnavailable);
     void RejectOverclockPatch(const char *reason);
 
     IBML *m_BML = nullptr;
@@ -41,11 +39,15 @@ private:
     IProperty *m_FixLifeBall = nullptr;
     IProperty *m_Overclock = nullptr;
 
-    CKBehaviorLink *m_OverclockLinks[3] = {};
-    CKBehaviorIO *m_OverclockLinkIO[3][2] = {};
-
     BML::Behavior::Session m_Behavior;
-    std::vector<BML::Behavior::Patch> m_ExtraLifePatches;
+    BML::Behavior::Plan m_LanternPlan;
+    BML::Behavior::Plan m_OverclockPlan;
+    BML::Behavior::Plan m_ExtraLifePlan;
+    std::array<BML::Behavior::Edit, 2> m_LanternEdits;
+    std::array<BML::Behavior::Edit, 2> m_OverclockEdits;
+    bool m_LanternReady = false;
+    bool m_OverclockIngameReady = false;
+    bool m_OverclockEnergyReady = false;
 };
 
 #endif // BML_GAMEPLAYTWEAKS_H

@@ -1,120 +1,54 @@
 #include "Gameplay/GameEventHooks.h"
 
 #include <cstring>
-#include <string>
+#include <string_view>
 #include <utility>
-#include <vector>
 
 #include "BML/IBML.h"
 #include "BML/ILogger.h"
 #include "BML/IMessageReceiver.h"
-#include "BML/ScriptHelper.h"
-#include "Loader/ModContext.h"
-#include "Behavior/HookBlock.h"
-#include "Behavior/Patches.h"
-
-using namespace ScriptHelper;
+#include "Gameplay/BehaviorGraph.h"
 
 namespace {
+namespace Behavior = BML::Behavior;
 using Receiver = IMessageReceiver;
+using namespace Gameplay::Graph;
 
 template<void (Receiver::*Method)()>
-int Dispatch(const CKBehaviorContext *, void *argument) {
-    auto *receiver = static_cast<Receiver *>(argument);
-    (receiver->*Method)();
-    return CKBR_OK;
+Behavior::Hook Callback(Receiver *receiver) {
+    return Behavior::Hook([receiver] { (receiver->*Method)(); });
 }
 
-BML::Behavior::Internal::ObjectRef Reference(CKObject *object) {
-    ModContext *context = BML_GetModContext();
-    if (!context || !object)
-        return {};
-    const BML_ObjectRef issued = context->ObjectRefs().Issue(object);
-    return {issued.Domain, issued.Slot, issued.Generation};
-}
-
-CKBehavior *SinkOf(CKBehaviorLink *link) {
-    CKBehaviorIO *sink = link ? link->GetOutBehaviorIO() : nullptr;
-    return sink ? sink->GetOwner() : nullptr;
-}
-
-CKBehavior *Follow(CKBehavior *graph, CKBehavior *behavior, int count) {
-    for (int i = 0; behavior && i < count; ++i)
-        behavior = FindNextBB(graph, behavior);
-    return behavior;
-}
-
-CKBehavior *FindWaitMessage(CKBehavior *script, CKMessageType message) {
-    if (!script)
-        return nullptr;
-
-    CKBehavior *result = nullptr;
-    FindBB(script, [&](CKBehavior *behavior) {
-        if (!behavior || behavior->GetInputParameterCount() == 0)
-            return true;
-        CKParameterIn *input = behavior->GetInputParameter(0);
-        CKParameter *source = input ? input->GetDirectSource() : nullptr;
-        if (source && GetParamValue<CKMessageType>(source) == message)
-            result = behavior;
-        return true;
-    }, "Wait Message");
-    return result;
-}
-
-// The event callbacks one vanilla graph receives. Each declaration names where
-// a callback belongs and which event it delivers, and nothing is edited until
-// Install carries the whole set into a single Patch, so a graph either gains
-// every hook or keeps its vanilla shape. A callback Block is infrastructure, so
-// the Logical view of the graph still reports the vanilla shape, and closing
-// the Patch takes every hook back out.
-class Hooks {
-public:
-    Hooks(CKBehavior *graph, Receiver &receiver)
-        : m_Graph(graph), m_Receiver(&receiver) {}
-
-    // Runs inside the Link: after the Out that feeds it, before the Node it
-    // reaches.
-    template<void (Receiver::*Method)()>
-    void Before(CKBehaviorLink *link) {
-        m_Plan.Before(m_Plan.UseLink(Reference(link)), Callback<Method>());
+Behavior::Node FindWaitMessage(const Behavior::Graph &graph,
+                               CKMessageType message) {
+    Behavior::Node found;
+    for (Behavior::Node node : graph.Nodes()) {
+        if (node.Name() != "Wait Message")
+            continue;
+        const auto value = graph.Read(node.Pin(0));
+        if (!value || value->State != Behavior::ObservationState::Available)
+            continue;
+        const auto *current = std::get_if<std::int32_t>(&value->Data);
+        if (!current || *current != static_cast<std::int32_t>(message))
+            continue;
+        if (found)
+            return {};
+        found = node;
     }
+    return found;
+}
 
-    // Runs once the Node has fired, on a Link of the Out it fired from.
-    template<void (Receiver::*Method)()>
-    void After(CKBehavior *node, int output = 0) {
-        m_Plan.Tap(m_Plan.UseNode(Reference(node)).Out(output),
-                   Callback<Method>());
-    }
+template<void (Receiver::*Method)()>
+void Before(Behavior::Edit::Graph &edit, const Behavior::Link &link,
+            Receiver *receiver) {
+    edit.Before(edit.Require(link), Callback<Method>(receiver));
+}
 
-    BML::Behavior::Internal::Status Install(std::string name,
-                                  std::vector<std::uintptr_t> &installed);
-
-private:
-    template<void (Receiver::*Method)()>
-    [[nodiscard]] BML::Behavior::Internal::HookBlock::Hook Callback() const {
-        return {&Dispatch<Method>, m_Receiver};
-    }
-
-    CKBehavior *m_Graph = nullptr;
-    Receiver *m_Receiver = nullptr;
-    BML::Behavior::Internal::GraphEdit m_Plan;
-};
-
-BML::Behavior::Internal::Status Hooks::Install(std::string name,
-                                     std::vector<std::uintptr_t> &installed) {
-    ModContext *context = BML_GetModContext();
-    if (!context) {
-        return {BML::Behavior::Internal::Error::InvalidState, CK_OK, CKBR_OK,
-                "The Loader is not available."};
-    }
-
-    BML::Behavior::Internal::PatchId patch = 0;
-    const BML::Behavior::Internal::Status status = context->BehaviorPatches().Apply(
-        context->LoaderBehaviorOwner(), Reference(m_Graph), std::move(name),
-        std::move(m_Plan), patch);
-    if (status && patch)
-        installed.push_back(patch);
-    return status;
+template<void (Receiver::*Method)()>
+void After(Behavior::Edit::Graph &edit, const Behavior::Node &node,
+           Receiver *receiver, Behavior::Selector output = Behavior::At(0)) {
+    edit.Tap(edit.Require(node).Out(std::move(output)),
+             Callback<Method>(receiver));
 }
 } // namespace
 
@@ -122,301 +56,321 @@ void GameEventHooks::OnLoad(IBML &bml, ILogger &logger) {
     m_BML = &bml;
     m_Receiver = &bml;
     m_Logger = &logger;
+    auto opened = BML::Behavior::Session::Open("BML");
+    if (!opened) {
+        RejectPatch("Loader", opened.GetStatus().Message.empty()
+            ? "the Behavior interface is unavailable"
+            : opened.GetStatus().Message.c_str());
+        return;
+    }
+    m_Behavior = std::move(opened).Value();
+
+    auto plan = m_Behavior.Plan(
+        "Game event hooks",
+        BML::Behavior::On(BML::Behavior::Scripts::One("Event_handler"),
+                          m_Edits[0]),
+        BML::Behavior::On(BML::Behavior::Scripts::One("Gameplay_Ingame"),
+                          m_Edits[1]),
+        BML::Behavior::On(BML::Behavior::Scripts::One("Gameplay_Energy"),
+                          m_Edits[2]),
+        BML::Behavior::On(BML::Behavior::Scripts::One("Gameplay_Events"),
+                          m_Edits[3]));
+    if (!plan) {
+        RejectPatch("Loader", plan.GetStatus().Message.empty()
+            ? "the game-event Plan could not be created"
+            : plan.GetStatus().Message.c_str());
+        return;
+    }
+    m_Plan = std::move(plan).Value();
 }
 
 void GameEventHooks::OnUnload() {
-    // Closing each Patch takes the callbacks out of the graphs that still hold
-    // them, so no hook can reach a receiver this Mod no longer owns.
-    if (ModContext *context = BML_GetModContext()) {
-        const BML::Behavior::Internal::SessionOwner owner =
-            context->LoaderBehaviorOwner();
-        for (std::uintptr_t patch : m_Installed)
-            (void) context->BehaviorPatches().Close(owner, patch);
-    }
-    m_Installed.clear();
+    (void) m_Plan.Close();
+    m_Behavior.Close();
     m_Logger = nullptr;
     m_Receiver = nullptr;
     m_BML = nullptr;
 }
 
 void GameEventHooks::OnLoadScript(CKBehavior *script) {
-    if (!script || !script->GetName() || !m_BML || !m_Receiver)
+    if (!script || !script->GetName() || !m_Receiver || !m_Behavior ||
+        !m_Plan)
         return;
-
+    auto inspected = m_Behavior.Inspect(script);
+    if (!inspected) {
+        RejectPatch(script->GetName(), inspected.GetStatus().Message.empty()
+            ? "the script graph could not be inspected"
+            : inspected.GetStatus().Message.c_str());
+        return;
+    }
+    const BML::Behavior::Graph graph = std::move(inspected).Value();
     const char *name = script->GetName();
     if (std::strcmp(name, "Event_handler") == 0)
-        PatchBaseEventHandler(script);
+        PatchBaseEventHandler(graph);
     else if (std::strcmp(name, "Gameplay_Ingame") == 0)
-        PatchGameplayIngame(script);
+        PatchGameplayIngame(graph);
     else if (std::strcmp(name, "Gameplay_Energy") == 0)
-        PatchGameplayEnergy(script);
+        PatchGameplayEnergy(graph);
     else if (std::strcmp(name, "Gameplay_Events") == 0)
-        PatchGameplayEvents(script);
+        PatchGameplayEvents(graph);
 }
 
-void GameEventHooks::PatchBaseEventHandler(CKBehavior *script) {
-    CKBehavior *switchOnMessage = FindFirstBB(script, "Switch On Message", false, 2, 11, 11, 0);
-    if (!switchOnMessage) {
+void GameEventHooks::PatchBaseEventHandler(
+    const BML::Behavior::Graph &script) {
+    namespace Behavior = BML::Behavior;
+    const Behavior::Node dispatch = Find(
+        script, "Switch On Message", 2, 11, 11, 0);
+    if (!dispatch) {
         RejectPatch("Event_handler", "Switch On Message was not found");
         return;
     }
+    const auto branch = [&](int output) { return Next(script, dispatch, output); };
 
-    const auto branch = [&](int output) {
-        return FindNextBB(script, switchOnMessage, nullptr, output, 0);
-    };
+    const Behavior::Node startMenu = branch(0);
+    const Behavior::Link preStartMenu = Leaving(script, startMenu);
+    const Behavior::Node postStartMenu = EndOfChain(script, startMenu);
+    const Behavior::Node exitGame = branch(1);
+    const Behavior::Link onExitGame = Leaving(script, exitGame);
+    const Behavior::Node loadLevel = branch(2);
+    const Behavior::Link preLoadLevel = Leaving(script, Follow(script, loadLevel, 2));
+    const Behavior::Node postLoadLevel = EndOfChain(script, loadLevel);
+    const Behavior::Node onStartLevel = EndOfChain(script, branch(3));
 
-    CKBehavior *startMenu = branch(0);
-    CKBehaviorLink *preStartMenu = startMenu ? FindNextLink(script, startMenu) : nullptr;
-    CKBehavior *postStartMenu = startMenu ? FindEndOfChain(script, startMenu) : nullptr;
-
-    CKBehavior *exitGame = branch(1);
-    CKBehaviorLink *onExitGame = exitGame ? FindNextLink(script, exitGame) : nullptr;
-
-    CKBehavior *loadLevel = branch(2);
-    CKBehavior *preLoadSource = Follow(script, loadLevel, 2);
-    CKBehaviorLink *preLoadLevel = preLoadSource ? FindNextLink(script, preLoadSource) : nullptr;
-    CKBehavior *postLoadLevel = loadLevel ? FindEndOfChain(script, loadLevel) : nullptr;
-
-    CKBehavior *startLevel = branch(3);
-    CKBehavior *onStartLevel = startLevel ? FindEndOfChain(script, startLevel) : nullptr;
-
-    CKBehavior *resetLevel = FindFirstBB(script, "reset Level");
-    CKBehavior *resetFirst = resetLevel && resetLevel->GetInputCount() > 0
-                                 ? FindNextBB(resetLevel, resetLevel->GetInput(0))
-                                 : nullptr;
-    CKBehavior *resetSecond = resetFirst ? FindNextBB(resetLevel, resetFirst) : nullptr;
-    CKBehaviorLink *preResetLevel = resetSecond ? FindNextLink(resetLevel, resetSecond) : nullptr;
-    CKBehavior *resetBranch = branch(4);
-    CKBehavior *postResetLevel = resetBranch ? FindEndOfChain(script, resetBranch) : nullptr;
-
-    CKBehavior *pauseLevel = branch(5);
-    CKBehavior *onPauseLevel = pauseLevel ? FindEndOfChain(script, pauseLevel) : nullptr;
-    CKBehavior *unpauseLevel = branch(6);
-    CKBehavior *onUnpauseLevel = unpauseLevel ? FindEndOfChain(script, unpauseLevel) : nullptr;
-
-    CKBehavior *deleteCollisions = FindFirstBB(script, "DeleteCollisionSurfaces");
-    CKBehavior *exitBranches = deleteCollisions ? FindNextBB(script, deleteCollisions) : nullptr;
-
-    CKBehavior *exitLevel = Follow(script, branch(7), 4);
-    CKBehaviorLink *preExitLevel = exitLevel ? FindNextLink(script, exitLevel) : nullptr;
-    CKBehavior *postExitSource = exitBranches
-                                     ? FindNextBB(script, exitBranches, nullptr, 0, 0)
-                                     : nullptr;
-    CKBehaviorLink *postExitLevel = postExitSource ? FindNextLink(script, postExitSource) : nullptr;
-
-    CKBehavior *nextLevel = Follow(script, branch(8), 4);
-    CKBehaviorLink *preNextLevel = nextLevel ? FindNextLink(script, nextLevel) : nullptr;
-    CKBehavior *postNextSource = exitBranches
-                                     ? FindNextBB(script, exitBranches, nullptr, 1, 0)
-                                     : nullptr;
-    CKBehaviorLink *postNextLevel = postNextSource ? FindNextLink(script, postNextSource) : nullptr;
-
-    CKBehavior *dead = branch(9);
-    CKBehavior *onDead = dead ? FindEndOfChain(script, dead) : nullptr;
-
-    CKBehavior *highscore = FindFirstBB(script, "Highscore");
-    std::vector<CKBehavior *> highscoreActivators;
-    if (highscore) {
-        FindBB(highscore, [&](CKBehavior *behavior) {
-            highscoreActivators.push_back(behavior);
-            return true;
-        }, "Activate Script");
+    const Behavior::Node resetLevel = Find(script, "reset Level");
+    auto resetGraph = resetLevel ? script.Inspect(resetLevel)
+                                 : Behavior::Result<Behavior::Graph>::Failure(BML_ERROR_NOT_FOUND);
+    Behavior::Node resetFirst;
+    Behavior::Node resetSecond;
+    Behavior::Link preResetLevel;
+    if (resetGraph) {
+        const auto first = resetGraph->Next(resetGraph->Root().In(0));
+        resetFirst = first ? first.Value() : Behavior::Node{};
+        resetSecond = Next(*resetGraph, resetFirst);
+        preResetLevel = Leaving(*resetGraph, resetSecond);
     }
-    CKBehavior *endLevel = branch(10);
-    CKBehaviorLink *preEndLevel = endLevel ? FindNextLink(script, endLevel) : nullptr;
+    const Behavior::Node postResetLevel = EndOfChain(script, branch(4));
+    const Behavior::Node onPauseLevel = EndOfChain(script, branch(5));
+    const Behavior::Node onUnpauseLevel = EndOfChain(script, branch(6));
 
-    if (!preStartMenu || !postStartMenu || !onExitGame ||
-        !preLoadLevel || !postLoadLevel || !onStartLevel ||
-        !preResetLevel || !postResetLevel || !onPauseLevel || !onUnpauseLevel ||
+    const Behavior::Node deleteCollisions = Find(script, "DeleteCollisionSurfaces");
+    const Behavior::Node exitBranches = Next(script, deleteCollisions);
+    const Behavior::Link preExitLevel = Leaving(script, Follow(script, branch(7), 4));
+    const Behavior::Link postExitLevel = Leaving(script, Next(script, exitBranches, 0));
+    const Behavior::Link preNextLevel = Leaving(script, Follow(script, branch(8), 4));
+    const Behavior::Link postNextLevel = Leaving(script, Next(script, exitBranches, 1));
+    const Behavior::Node onDead = EndOfChain(script, branch(9));
+
+    const Behavior::Node highscore = Find(script, "Highscore");
+    auto highscoreGraph = highscore ? script.Inspect(highscore)
+                                    : Behavior::Result<Behavior::Graph>::Failure(BML_ERROR_NOT_FOUND);
+    const Behavior::Link preEndLevel = Leaving(script, branch(10));
+    bool hasActivator = false;
+    if (highscoreGraph) {
+        for (Behavior::Node node : highscoreGraph->Nodes())
+            hasActivator = hasActivator || node.Name() == "Activate Script";
+    }
+
+    if (!preStartMenu || !postStartMenu || !onExitGame || !preLoadLevel ||
+        !postLoadLevel || !onStartLevel || !resetGraph || !preResetLevel ||
+        !postResetLevel || !onPauseLevel || !onUnpauseLevel ||
         !preExitLevel || !postExitLevel || !preNextLevel || !postNextLevel ||
-        !onDead || !highscore || highscoreActivators.empty() || !preEndLevel) {
-        RejectPatch("Event_handler", "the script does not match the expected vanilla graph");
+        !onDead || !highscoreGraph || !hasActivator || !preEndLevel) {
+        RejectPatch("Event_handler",
+                    "the script does not match the expected vanilla graph");
         return;
     }
 
-    // Highscore says nothing when it is done, so the end of the level needs an
-    // Out on that graph. A Patch appends a port to a Node it names, never to
-    // the graph it edits, so this one stays a direct edit of the script.
-    CKBehaviorIO *highscoreOutput = highscore->CreateOutput("Out");
-    if (!highscoreOutput) {
-        RejectPatch("Event_handler", "the Highscore output could not be created");
-        return;
-    }
-    for (CKBehavior *activator : highscoreActivators)
-        CreateLink(highscore, activator, highscoreOutput);
+    Behavior::Edit replacement;
+    auto root = replacement.Root();
+    Before<&Receiver::OnPreStartMenu>(root, preStartMenu, m_Receiver);
+    After<&Receiver::OnPostStartMenu>(root, postStartMenu, m_Receiver);
+    Before<&Receiver::OnExitGame>(root, onExitGame, m_Receiver);
+    Before<&Receiver::OnPreLoadLevel>(root, preLoadLevel, m_Receiver);
+    After<&Receiver::OnPostLoadLevel>(root, postLoadLevel, m_Receiver);
+    After<&Receiver::OnStartLevel>(root, onStartLevel, m_Receiver);
+    After<&Receiver::OnPostResetLevel>(root, postResetLevel, m_Receiver);
+    After<&Receiver::OnPauseLevel>(root, onPauseLevel, m_Receiver);
+    After<&Receiver::OnUnpauseLevel>(root, onUnpauseLevel, m_Receiver);
+    Before<&Receiver::OnPreExitLevel>(root, preExitLevel, m_Receiver);
+    Before<&Receiver::OnPostExitLevel>(root, postExitLevel, m_Receiver);
+    Before<&Receiver::OnPreNextLevel>(root, preNextLevel, m_Receiver);
+    Before<&Receiver::OnPostNextLevel>(root, postNextLevel, m_Receiver);
+    After<&Receiver::OnDead>(root, onDead, m_Receiver);
+    Before<&Receiver::OnPreEndLevel>(root, preEndLevel, m_Receiver);
 
+    auto reset = root.Require(resetLevel).Graph();
+    Before<&Receiver::OnPreResetLevel>(reset, preResetLevel, m_Receiver);
+
+    const auto highscoreNode = root.Require(highscore);
+    auto highscoreBody = highscoreNode.Graph();
+    const auto highscoreOutput = highscoreBody.AppendOut("Out");
+    for (Behavior::Node activator : highscoreGraph->Nodes()) {
+        if (activator.Name() == "Activate Script")
+            highscoreBody.Flow(highscoreBody.Require(activator).Out(),
+                               highscoreOutput);
+    }
+    root.Tap(highscoreNode.Out("Out"),
+             Callback<&Receiver::OnPostEndLevel>(m_Receiver));
+
+    m_Edits[0] = std::move(replacement);
     if (m_Logger)
         m_Logger->Info("Insert game lifecycle hooks");
-
-    Hooks hooks(script, *m_Receiver);
-    hooks.Before<&Receiver::OnPreStartMenu>(preStartMenu);
-    hooks.After<&Receiver::OnPostStartMenu>(postStartMenu);
-    hooks.Before<&Receiver::OnExitGame>(onExitGame);
-
-    hooks.Before<&Receiver::OnPreLoadLevel>(preLoadLevel);
-    hooks.After<&Receiver::OnPostLoadLevel>(postLoadLevel);
-    hooks.After<&Receiver::OnStartLevel>(onStartLevel);
-
-    hooks.After<&Receiver::OnPostResetLevel>(postResetLevel);
-    hooks.After<&Receiver::OnPauseLevel>(onPauseLevel);
-    hooks.After<&Receiver::OnUnpauseLevel>(onUnpauseLevel);
-
-    hooks.Before<&Receiver::OnPreExitLevel>(preExitLevel);
-    hooks.Before<&Receiver::OnPostExitLevel>(postExitLevel);
-    hooks.Before<&Receiver::OnPreNextLevel>(preNextLevel);
-    hooks.Before<&Receiver::OnPostNextLevel>(postNextLevel);
-    hooks.After<&Receiver::OnDead>(onDead);
-
-    hooks.Before<&Receiver::OnPreEndLevel>(preEndLevel);
-    hooks.After<&Receiver::OnPostEndLevel>(
-        highscore, highscore->GetOutputPosition(highscoreOutput));
-
-    const BML::Behavior::Internal::Status status =
-        hooks.Install("Event_handler", m_Installed);
-    if (!status) {
-        RejectPatch("Event_handler", status.Message.c_str());
-        return;
-    }
-
-    // The reset chain runs inside its own graph, so the Link that carries it
-    // belongs to a Patch of that graph and not of the script above it.
-    Hooks reset(resetLevel, *m_Receiver);
-    reset.Before<&Receiver::OnPreResetLevel>(preResetLevel);
-    const BML::Behavior::Internal::Status resetStatus =
-        reset.Install("Event_handler reset Level", m_Installed);
-    if (!resetStatus)
-        RejectPatch("Event_handler", resetStatus.Message.c_str());
+    (void) ReplacePlan("Event_handler");
 }
 
-void GameEventHooks::PatchGameplayIngame(CKBehavior *script) {
+void GameEventHooks::PatchGameplayIngame(
+    const BML::Behavior::Graph &script) {
+    namespace Behavior = BML::Behavior;
     CKMessageManager *messages = m_BML ? m_BML->GetMessageManager() : nullptr;
-    CKBehavior *camera = FindFirstBB(script, "CamNav On/Off");
-    CKBehavior *ball = FindFirstBB(script, "BallNav On/Off");
-    if (!messages || !camera || !ball) {
+    const Behavior::Node camera = Find(script, "CamNav On/Off");
+    const Behavior::Node ball = Find(script, "BallNav On/Off");
+    auto cameraGraph = camera ? script.Inspect(camera)
+                              : Behavior::Result<Behavior::Graph>::Failure(BML_ERROR_NOT_FOUND);
+    auto ballGraph = ball ? script.Inspect(ball)
+                          : Behavior::Result<Behavior::Graph>::Failure(BML_ERROR_NOT_FOUND);
+    if (!messages || !cameraGraph || !ballGraph) {
         RejectPatch("Gameplay_Ingame", "navigation event graphs are unavailable");
         return;
     }
 
-    CKBehavior *cameraOn = FindWaitMessage(camera, messages->AddMessageType("CamNav activate"));
-    CKBehavior *cameraOff = FindWaitMessage(camera, messages->AddMessageType("CamNav deactivate"));
-    CKBehavior *ballOn = FindWaitMessage(ball, messages->AddMessageType("BallNav activate"));
-    CKBehavior *ballOff = FindWaitMessage(ball, messages->AddMessageType("BallNav deactivate"));
+    const Behavior::Node cameraOn = FindWaitMessage(
+        *cameraGraph, messages->AddMessageType("CamNav activate"));
+    const Behavior::Node cameraOff = FindWaitMessage(
+        *cameraGraph, messages->AddMessageType("CamNav deactivate"));
+    const Behavior::Node ballOn = FindWaitMessage(
+        *ballGraph, messages->AddMessageType("BallNav activate"));
+    const Behavior::Node ballOff = FindWaitMessage(
+        *ballGraph, messages->AddMessageType("BallNav deactivate"));
     if (!cameraOn || !cameraOff || !ballOn || !ballOff) {
-        RejectPatch("Gameplay_Ingame", "navigation messages do not match the expected vanilla graph");
+        RejectPatch("Gameplay_Ingame",
+                    "navigation messages do not match the expected vanilla graph");
         return;
     }
 
+    Behavior::Edit replacement;
+    auto root = replacement.Root();
+    auto cameraBody = root.Require(camera).Graph();
+    After<&Receiver::OnCamNavActive>(cameraBody, cameraOn, m_Receiver);
+    After<&Receiver::OnCamNavInactive>(cameraBody, cameraOff, m_Receiver);
+    auto ballBody = root.Require(ball).Graph();
+    After<&Receiver::OnBallNavActive>(ballBody, ballOn, m_Receiver);
+    After<&Receiver::OnBallNavInactive>(ballBody, ballOff, m_Receiver);
+    m_Edits[1] = std::move(replacement);
     if (m_Logger)
         m_Logger->Info("Insert ball and camera navigation hooks");
-
-    // Each navigation switch is a graph of its own, so each one takes a Patch
-    // of its own.
-    Hooks cameraHooks(camera, *m_Receiver);
-    cameraHooks.After<&Receiver::OnCamNavActive>(cameraOn);
-    cameraHooks.After<&Receiver::OnCamNavInactive>(cameraOff);
-    const BML::Behavior::Internal::Status cameraStatus =
-        cameraHooks.Install("Gameplay_Ingame CamNav", m_Installed);
-    if (!cameraStatus)
-        RejectPatch("Gameplay_Ingame", cameraStatus.Message.c_str());
-
-    Hooks ballHooks(ball, *m_Receiver);
-    ballHooks.After<&Receiver::OnBallNavActive>(ballOn);
-    ballHooks.After<&Receiver::OnBallNavInactive>(ballOff);
-    const BML::Behavior::Internal::Status ballStatus =
-        ballHooks.Install("Gameplay_Ingame BallNav", m_Installed);
-    if (!ballStatus)
-        RejectPatch("Gameplay_Ingame", ballStatus.Message.c_str());
+    (void) ReplacePlan("Gameplay_Ingame");
 }
 
-void GameEventHooks::PatchGameplayEnergy(CKBehavior *script) {
+void GameEventHooks::PatchGameplayEnergy(
+    const BML::Behavior::Graph &script) {
+    namespace Behavior = BML::Behavior;
     CKMessageManager *messages = m_BML ? m_BML->GetMessageManager() : nullptr;
-    CKBehavior *switchOnMessage = FindFirstBB(script, "Switch On Message");
-    if (!messages || !switchOnMessage) {
+    const Behavior::Node dispatch = Find(script, "Switch On Message");
+    if (!messages || !dispatch) {
         RejectPatch("Gameplay_Energy", "message graph is unavailable");
         return;
     }
 
-    CKBehaviorLink *counterActive = FindNextLink(script, switchOnMessage, nullptr, 3);
-    CKBehaviorLink *counterInactive = FindNextLink(script, switchOnMessage, nullptr, 1);
-    CKBehavior *lifeUp = FindWaitMessage(script, messages->AddMessageType("Life_Up"));
-    CKBehavior *ballOff = FindWaitMessage(script, messages->AddMessageType("Ball Off"));
-    CKBehavior *subLife = FindWaitMessage(script, messages->AddMessageType("Sub Life"));
-    CKBehavior *extraPoint = FindWaitMessage(script, messages->AddMessageType("Extrapoint"));
-
-    CKBehaviorLink *lifeUpLink = lifeUp ? FindNextLink(script, lifeUp, "add Life") : nullptr;
-    CKBehaviorLink *ballOffLink = ballOff ? FindNextLink(script, ballOff, "Delayer") : nullptr;
-    CKBehaviorLink *subLifeLink = subLife ? FindNextLink(script, subLife, "sub Life") : nullptr;
-    CKBehaviorLink *extraPointLink = extraPoint ? FindNextLink(script, extraPoint, "Show") : nullptr;
-
-    // The post event of a pair belongs at the end of the chain the pre event
-    // opens, which is the chain that starts at the Node its Link feeds.
-    CKBehavior *postLifeUp = FindEndOfChain(script, SinkOf(lifeUpLink));
-    CKBehavior *postSubLife = FindEndOfChain(script, SinkOf(subLifeLink));
-
+    const Behavior::Link counterActive = Leaving(script, dispatch, 3);
+    const Behavior::Link counterInactive = Leaving(script, dispatch, 1);
+    const Behavior::Node lifeUp = FindWaitMessage(
+        script, messages->AddMessageType("Life_Up"));
+    const Behavior::Node ballOff = FindWaitMessage(
+        script, messages->AddMessageType("Ball Off"));
+    const Behavior::Node subLife = FindWaitMessage(
+        script, messages->AddMessageType("Sub Life"));
+    const Behavior::Node extraPoint = FindWaitMessage(
+        script, messages->AddMessageType("Extrapoint"));
+    const Behavior::Link lifeUpLink = LeavingFor(script, lifeUp, "add Life");
+    const Behavior::Link ballOffLink = LeavingFor(script, ballOff, "Delayer");
+    const Behavior::Link subLifeLink = LeavingFor(script, subLife, "sub Life");
+    const Behavior::Link extraPointLink = LeavingFor(script, extraPoint, "Show");
+    const Behavior::Node postLifeUp = EndOfChain(script, Sink(script, lifeUpLink));
+    const Behavior::Node postSubLife = EndOfChain(script, Sink(script, subLifeLink));
     if (!counterActive || !counterInactive || !lifeUpLink || !ballOffLink ||
         !subLifeLink || !extraPointLink || !postLifeUp || !postSubLife) {
-        RejectPatch("Gameplay_Energy", "the script does not match the expected vanilla graph");
+        RejectPatch("Gameplay_Energy",
+                    "the script does not match the expected vanilla graph");
         return;
     }
 
+    Behavior::Edit replacement;
+    auto root = replacement.Root();
+    Before<&Receiver::OnCounterActive>(root, counterActive, m_Receiver);
+    Before<&Receiver::OnCounterInactive>(root, counterInactive, m_Receiver);
+    Before<&Receiver::OnPreLifeUp>(root, lifeUpLink, m_Receiver);
+    After<&Receiver::OnPostLifeUp>(root, postLifeUp, m_Receiver);
+    Before<&Receiver::OnBallOff>(root, ballOffLink, m_Receiver);
+    Before<&Receiver::OnPreSubLife>(root, subLifeLink, m_Receiver);
+    After<&Receiver::OnPostSubLife>(root, postSubLife, m_Receiver);
+    Before<&Receiver::OnExtraPoint>(root, extraPointLink, m_Receiver);
+    m_Edits[2] = std::move(replacement);
     if (m_Logger)
         m_Logger->Info("Insert counter, life, and point hooks");
-
-    Hooks hooks(script, *m_Receiver);
-    hooks.Before<&Receiver::OnCounterActive>(counterActive);
-    hooks.Before<&Receiver::OnCounterInactive>(counterInactive);
-    hooks.Before<&Receiver::OnPreLifeUp>(lifeUpLink);
-    hooks.After<&Receiver::OnPostLifeUp>(postLifeUp);
-    hooks.Before<&Receiver::OnBallOff>(ballOffLink);
-    hooks.Before<&Receiver::OnPreSubLife>(subLifeLink);
-    hooks.After<&Receiver::OnPostSubLife>(postSubLife);
-    hooks.Before<&Receiver::OnExtraPoint>(extraPointLink);
-
-    const BML::Behavior::Internal::Status status =
-        hooks.Install("Gameplay_Energy", m_Installed);
-    if (!status)
-        RejectPatch("Gameplay_Energy", status.Message.c_str());
+    (void) ReplacePlan("Gameplay_Energy");
 }
 
-void GameEventHooks::PatchGameplayEvents(CKBehavior *script) {
+void GameEventHooks::PatchGameplayEvents(
+    const BML::Behavior::Graph &script) {
+    namespace Behavior = BML::Behavior;
     CKMessageManager *messages = m_BML ? m_BML->GetMessageManager() : nullptr;
     if (!messages) {
         RejectPatch("Gameplay_Events", "message manager is unavailable");
         return;
     }
-
-    CKBehavior *checkpoint = FindWaitMessage(script, messages->AddMessageType("Checkpoint reached"));
-    CKBehavior *gameOver = FindWaitMessage(script, messages->AddMessageType("Game Over"));
-    CKBehavior *levelFinish = FindWaitMessage(script, messages->AddMessageType("Level_Finish"));
-    CKBehaviorLink *checkpointLink = checkpoint
-                                         ? FindNextLink(script, checkpoint, "set Resetpoint")
-                                         : nullptr;
-    CKBehaviorLink *gameOverLink = gameOver ? FindNextLink(script, gameOver, "Send Message") : nullptr;
-    CKBehaviorLink *levelFinishLink = levelFinish
-                                          ? FindNextLink(script, levelFinish, "Send Message")
-                                          : nullptr;
-    CKBehavior *postCheckpoint = FindEndOfChain(script, SinkOf(checkpointLink));
-    if (!checkpointLink || !gameOverLink || !levelFinishLink || !postCheckpoint) {
-        RejectPatch("Gameplay_Events", "the script does not match the expected vanilla graph");
+    const Behavior::Node checkpoint = FindWaitMessage(
+        script, messages->AddMessageType("Checkpoint reached"));
+    const Behavior::Node gameOver = FindWaitMessage(
+        script, messages->AddMessageType("Game Over"));
+    const Behavior::Node levelFinish = FindWaitMessage(
+        script, messages->AddMessageType("Level_Finish"));
+    const Behavior::Link checkpointLink = LeavingFor(
+        script, checkpoint, "set Resetpoint");
+    const Behavior::Link gameOverLink = LeavingFor(
+        script, gameOver, "Send Message");
+    const Behavior::Link levelFinishLink = LeavingFor(
+        script, levelFinish, "Send Message");
+    const Behavior::Node postCheckpoint = EndOfChain(
+        script, Sink(script, checkpointLink));
+    if (!checkpointLink || !gameOverLink || !levelFinishLink ||
+        !postCheckpoint) {
+        RejectPatch("Gameplay_Events",
+                    "the script does not match the expected vanilla graph");
         return;
     }
 
+    Behavior::Edit replacement;
+    auto root = replacement.Root();
+    Before<&Receiver::OnPreCheckpointReached>(root, checkpointLink, m_Receiver);
+    After<&Receiver::OnPostCheckpointReached>(root, postCheckpoint, m_Receiver);
+    Before<&Receiver::OnGameOver>(root, gameOverLink, m_Receiver);
+    Before<&Receiver::OnLevelFinish>(root, levelFinishLink, m_Receiver);
+    m_Edits[3] = std::move(replacement);
     if (m_Logger)
         m_Logger->Info("Insert checkpoint, game-over, and level-finish hooks");
-
-    Hooks hooks(script, *m_Receiver);
-    hooks.Before<&Receiver::OnPreCheckpointReached>(checkpointLink);
-    hooks.After<&Receiver::OnPostCheckpointReached>(postCheckpoint);
-    hooks.Before<&Receiver::OnGameOver>(gameOverLink);
-    hooks.Before<&Receiver::OnLevelFinish>(levelFinishLink);
-
-    const BML::Behavior::Internal::Status status =
-        hooks.Install("Gameplay_Events", m_Installed);
-    if (!status)
-        RejectPatch("Gameplay_Events", status.Message.c_str());
+    (void) ReplacePlan("Gameplay_Events");
 }
 
-void GameEventHooks::RejectPatch(const char *scriptName, const char *reason) const {
+bool GameEventHooks::ReplacePlan(const char *scriptName) {
+    auto replaced = m_Plan.Replace(
+        BML::Behavior::On(BML::Behavior::Scripts::One("Event_handler"),
+                          m_Edits[0]),
+        BML::Behavior::On(BML::Behavior::Scripts::One("Gameplay_Ingame"),
+                          m_Edits[1]),
+        BML::Behavior::On(BML::Behavior::Scripts::One("Gameplay_Energy"),
+                          m_Edits[2]),
+        BML::Behavior::On(BML::Behavior::Scripts::One("Gameplay_Events"),
+                          m_Edits[3]));
+    if (replaced)
+        return true;
+    RejectPatch(scriptName, replaced.GetStatus().Message.empty()
+        ? "the game-event Plan could not be replaced"
+        : replaced.GetStatus().Message.c_str());
+    return false;
+}
+
+void GameEventHooks::RejectPatch(const char *scriptName,
+                                 const char *reason) const {
     if (m_Logger) {
         m_Logger->Error("Game event hooks are unavailable for %s: %s",
                         scriptName ? scriptName : "unknown script",
