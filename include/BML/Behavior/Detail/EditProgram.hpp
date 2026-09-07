@@ -57,6 +57,31 @@ struct EditProgram {
     std::vector<EditStep> Steps;
 };
 
+// These records only connect the public On(...) syntax to wire compilation.
+// Their concrete shape is deliberately kept out of the domain headers.
+struct PatchSymbols {
+    std::weak_ptr<EditProgram> Edit;
+    std::uint32_t HandleBase = 0;
+};
+
+struct PatchTarget {
+    std::shared_ptr<SessionState> Session;
+    BML_ObjectRef Graph{};
+    std::uint64_t Fingerprint = 0;
+    std::shared_ptr<const BML::Behavior::Edit> Body;
+    std::weak_ptr<EditProgram> Symbols;
+    int Code = BML_OK;
+    Status Failure;
+};
+
+struct PlanRule {
+    std::uint32_t Targets = BML_BEHAVIOR_TARGETS_EACH;
+    std::string Script;
+    std::shared_ptr<const BML::Behavior::Edit> Body;
+    int Code = BML_OK;
+    Status Failure;
+};
+
 } // namespace Detail
 
 inline Edit::Edit() : m_Program(std::make_shared<Detail::EditProgram>()) {}
@@ -913,8 +938,7 @@ inline void Edit::Encode(Detail::EditWire &out) const {
 }
 
 inline Result<void> Edit::Validate(
-    const std::shared_ptr<Detail::SessionState> &session,
-    Detail::EditContext context) const {
+    const std::shared_ptr<Detail::SessionState> &session) const {
     if (!m_Program)
         return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER);
     if (m_Program->Code != BML_OK)
@@ -931,40 +955,46 @@ inline Result<void> Edit::Validate(
         return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER,
                                      std::move(status));
     }
-    if (context == Detail::EditContext::Plan) {
-        for (const Detail::EditStep &step : m_Program->Steps) {
-            bool liveReference =
-                step.Kind == BML_BEHAVIOR_EDIT_USE_NODE ||
-                step.Kind == BML_BEHAVIOR_EDIT_USE_LINK ||
-                (step.Value && step.Value->Kind() == ValueKind::Object &&
-                 !step.Value->IsNull());
-            if (step.Block) {
-                const Detail::BlockSpec &block = step.Block->Spec;
-                liveReference = liveReference ||
-                    (block.TargetKind == BML_BEHAVIOR_TARGET_OBJECT &&
-                     Detail::ValidObjectRef(block.TargetObject));
-                const auto containsObject = [](const auto &values) {
-                    return std::any_of(values.begin(), values.end(),
-                        [](const SlotValue &value) {
-                            return value.Data.Kind() == ValueKind::Object &&
-                                !value.Data.IsNull();
-                        });
-                };
-                liveReference = liveReference || containsObject(block.Pins) ||
-                    containsObject(block.Locals);
-                for (const auto &stage : block.Settings)
-                    liveReference = liveReference || containsObject(stage);
-            }
-            if (!liveReference)
-                continue;
-            Status status;
-            status.Error = Behavior::Error::WorldBoundValue;
-            status.Phase = Behavior::Phase::Edit;
-            status.Message =
-                "A Plan cannot retain an object reference from one live world.";
-            return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER,
-                                         std::move(status));
+    return Result<void>::Success();
+}
+
+inline Result<void> Edit::ValidatePlan(
+    const std::shared_ptr<Detail::SessionState> &session) const {
+    Result<void> valid = Validate(session);
+    if (!valid)
+        return valid;
+    for (const Detail::EditStep &step : m_Program->Steps) {
+        bool liveReference =
+            step.Kind == BML_BEHAVIOR_EDIT_USE_NODE ||
+            step.Kind == BML_BEHAVIOR_EDIT_USE_LINK ||
+            (step.Value && step.Value->Kind() == ValueKind::Object &&
+             !step.Value->IsNull());
+        if (step.Block) {
+            const Detail::BlockSpec &block = step.Block->Spec;
+            liveReference = liveReference ||
+                (block.TargetKind == BML_BEHAVIOR_TARGET_OBJECT &&
+                 Detail::ValidObjectRef(block.TargetObject));
+            const auto containsObject = [](const auto &values) {
+                return std::any_of(values.begin(), values.end(),
+                    [](const SlotValue &value) {
+                        return value.Data.Kind() == ValueKind::Object &&
+                            !value.Data.IsNull();
+                    });
+            };
+            liveReference = liveReference || containsObject(block.Pins) ||
+                containsObject(block.Locals);
+            for (const auto &stage : block.Settings)
+                liveReference = liveReference || containsObject(stage);
         }
+        if (!liveReference)
+            continue;
+        Status status;
+        status.Error = Behavior::Error::WorldBoundValue;
+        status.Phase = Behavior::Phase::Edit;
+        status.Message =
+            "A Plan cannot retain an object reference from one live world.";
+        return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER,
+                                     std::move(status));
     }
     return Result<void>::Success();
 }
@@ -1059,14 +1089,17 @@ inline Plan::operator bool() const noexcept {
     return m_Session && m_Session->Api && m_Session->Handle && m_Handle;
 }
 
-template <class... More>
-inline Result<PlanInfo> Plan::Replace(Detail::PlanRule first,
-                                     More... more) {
+template <class First, class... More>
+inline Result<PlanInfo> Plan::Replace(First &&first, More &&...more) {
+    static_assert(
+        std::is_same_v<std::decay_t<First>, Detail::PlanRule> &&
+            (std::is_same_v<std::decay_t<More>, Detail::PlanRule> && ...),
+        "Behavior Plan::Replace expects On(Scripts, Edit) entries.");
     std::vector<Detail::PlanRule> rules;
     try {
         rules.reserve(1 + sizeof...(more));
-        rules.push_back(std::move(first));
-        (rules.push_back(std::move(more)), ...);
+        rules.push_back(std::forward<First>(first));
+        (rules.push_back(std::forward<More>(more)), ...);
     } catch (const std::bad_alloc &) {
         return Result<PlanInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
     }
@@ -1138,14 +1171,17 @@ inline Patch::operator bool() const noexcept {
     return m_Session && m_Session->Api && m_Session->Handle && m_Handle;
 }
 
-template <class... More>
-inline Result<PatchInfo> Patch::Replace(Detail::PatchTarget first,
-                                       More... more) {
+template <class First, class... More>
+inline Result<PatchInfo> Patch::Replace(First &&first, More &&...more) {
+    static_assert(
+        std::is_same_v<std::decay_t<First>, Detail::PatchTarget> &&
+            (std::is_same_v<std::decay_t<More>, Detail::PatchTarget> && ...),
+        "Behavior Patch::Replace expects On(Graph, Edit) entries.");
     std::vector<Detail::PatchTarget> targets;
     try {
         targets.reserve(1 + sizeof...(more));
-        targets.push_back(std::move(first));
-        (targets.push_back(std::move(more)), ...);
+        targets.push_back(std::forward<First>(first));
+        (targets.push_back(std::forward<More>(more)), ...);
     } catch (const std::bad_alloc &) {
         return Result<PatchInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
     }
@@ -1220,7 +1256,7 @@ inline Patch::Patch(std::shared_ptr<Detail::SessionState> session,
     : m_Session(std::move(session)), m_Handle(handle),
       m_Edits(std::move(edits)) {}
 
-inline Detail::PatchTarget On(const Graph &graph, const Edit &edit) {
+inline auto On(const Graph &graph, const Edit &edit) {
     Detail::PatchTarget target;
     target.Session = graph.m_Session;
     target.Graph = graph.m_Root;
@@ -1251,7 +1287,7 @@ inline Detail::PatchTarget On(const Graph &graph, const Edit &edit) {
     return target;
 }
 
-inline Detail::PlanRule On(const Scripts &scripts, const Edit &edit) {
+inline auto On(const Scripts &scripts, const Edit &edit) {
     Detail::PlanRule target;
     target.Targets = scripts.m_Count;
     target.Script = scripts.m_Name;
@@ -1363,8 +1399,7 @@ struct PlanWire {
                 return Result<PlanWire>::Failure(
                     BML_ERROR_INVALID_PARAMETER);
 
-            Result<void> valid = rule.Body->Validate(
-                session, EditContext::Plan);
+            Result<void> valid = rule.Body->ValidatePlan(session);
             if (!valid)
                 return Result<PlanWire>::Failure(
                     valid.Code(), valid.GetStatus());
@@ -1411,6 +1446,44 @@ Result<BML_ObjectRef> Patch::Resolve(const Handle &node) const {
                                                std::move(status));
     }
     return ResolveHandle(node.m_Id + symbols->HandleBase);
+}
+
+template <class First, class... More>
+inline Result<Behavior::Patch> Session::Apply(
+    std::string_view name, First &&first, More &&...more) const {
+    static_assert(
+        std::is_same_v<std::decay_t<First>, Detail::PatchTarget> &&
+            (std::is_same_v<std::decay_t<More>, Detail::PatchTarget> && ...),
+        "Behavior Session::Apply expects On(Graph, Edit) entries.");
+    std::vector<Detail::PatchTarget> targets;
+    try {
+        targets.reserve(1 + sizeof...(more));
+        targets.push_back(std::forward<First>(first));
+        (targets.push_back(std::forward<More>(more)), ...);
+    } catch (const std::bad_alloc &) {
+        return Result<Behavior::Patch>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    }
+    return Apply(name, std::move(targets));
+}
+
+template <class First, class... More,
+          std::enable_if_t<
+              !std::is_same_v<std::decay_t<First>, Scripts>, int>>
+inline Result<Behavior::Plan> Session::Plan(
+    std::string_view name, First &&first, More &&...more) const {
+    static_assert(
+        std::is_same_v<std::decay_t<First>, Detail::PlanRule> &&
+            (std::is_same_v<std::decay_t<More>, Detail::PlanRule> && ...),
+        "Behavior Session::Plan expects On(Scripts, Edit) entries.");
+    std::vector<Detail::PlanRule> rules;
+    try {
+        rules.reserve(1 + sizeof...(more));
+        rules.push_back(std::forward<First>(first));
+        (rules.push_back(std::forward<More>(more)), ...);
+    } catch (const std::bad_alloc &) {
+        return Result<Behavior::Plan>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    }
+    return Plan(name, std::move(rules));
 }
 
 inline Result<Patch> Graph::Apply(std::string_view name,

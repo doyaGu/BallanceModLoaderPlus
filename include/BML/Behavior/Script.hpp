@@ -21,9 +21,9 @@ struct ScriptInfo {
     ScriptState State = ScriptState::Ready;
     bool Active = false;
     bool RequestedActive = false;
-    BML_ObjectRef Root{};
-    BML_ObjectRef Owner{};
-    BML_ObjectRef Scene{};
+    ObjectRef Root{};
+    ObjectRef Owner{};
+    ObjectRef Scene{};
     std::int32_t Priority = 0;
     Behavior::Status LastStatus;
 };
@@ -35,8 +35,7 @@ inline bool KnownScriptState(std::uint32_t state) noexcept {
            state <= BML_BEHAVIOR_SCRIPT_FAILED;
 }
 
-inline bool SameScriptObject(BML_ObjectRef left,
-                             BML_ObjectRef right) noexcept {
+inline bool SameScriptObject(ObjectRef left, ObjectRef right) noexcept {
     return left.Domain == right.Domain && left.Slot == right.Slot &&
            left.Generation == right.Generation;
 }
@@ -70,13 +69,13 @@ public:
     Script(Script &&other) noexcept
         : m_Session(std::move(other.m_Session)),
           m_Handle(std::exchange(other.m_Handle, nullptr)),
-          m_Root(std::exchange(other.m_Root, BML_ObjectRef{})) {}
+          m_Root(std::exchange(other.m_Root, ObjectRef{})) {}
     Script &operator=(Script &&other) noexcept {
         if (this != &other) {
             Script previous(std::move(*this));
             m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
-            m_Root = std::exchange(other.m_Root, BML_ObjectRef{});
+            m_Root = std::exchange(other.m_Root, ObjectRef{});
         }
         return *this;
     }
@@ -84,7 +83,7 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept {
         return m_Session && m_Session->Api && m_Session->Handle && m_Handle;
     }
-    [[nodiscard]] BML_ObjectRef Object() const noexcept { return m_Root; }
+    [[nodiscard]] ObjectRef Object() const noexcept { return m_Root; }
 
     [[nodiscard]] Result<ScriptInfo> Info() const {
         if (!*this)
@@ -154,7 +153,7 @@ public:
 
 private:
     Script(std::shared_ptr<Detail::SessionState> session,
-           BML_BehaviorScript handle, BML_ObjectRef root)
+           BML_BehaviorScript handle, ObjectRef root)
         : m_Session(std::move(session)), m_Handle(handle), m_Root(root) {}
 
     [[nodiscard]] Result<ScriptInfo> SetActive(bool active, bool reset) {
@@ -183,7 +182,7 @@ private:
 
     std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorScript m_Handle = nullptr;
-    BML_ObjectRef m_Root{};
+    ObjectRef m_Root{};
 
     friend class Session;
 };

@@ -920,15 +920,15 @@ public:
         return Result<RunInfo>::Success(ReadRunInfo(info), ReadStatus(status));
     }
 
-    [[nodiscard]] Result<Frames> Take() {
+    [[nodiscard]] Result<Frames> TakeFrames() {
         Frames frames;
-        Result<void> taken = Take(frames);
+        Result<void> taken = TakeFrames(frames);
         if (!taken)
             return Result<Frames>::Failure(taken.Code(), taken.GetStatus());
         return Result<Frames>::Success(std::move(frames), taken.GetStatus());
     }
 
-    [[nodiscard]] Result<void> Take(Frames &frames) {
+    [[nodiscard]] Result<void> TakeFrames(Frames &frames) {
         if (!*this)
             return Result<void>::Failure(BML_ERROR_INVALID_HANDLE);
         frames.Clear();

@@ -103,7 +103,7 @@ struct RunInfo {
 using PoutData = std::variant<std::monostate, bool, std::int32_t, float,
                               std::string, BML_Vec2, BML_Vec3,
                               BML_Quaternion, BML_Euler, BML_Rect, BML_Color,
-                              BML_Box, BML_Mat4, BML_ObjectRef>;
+                              BML_Box, BML_Mat4, ObjectRef>;
 
 class Frames;
 

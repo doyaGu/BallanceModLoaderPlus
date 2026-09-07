@@ -18,33 +18,12 @@ namespace BML::Behavior {
 class Edit;
 
 namespace Detail {
-enum class EditContext {
-    Patch,
-    Plan,
-};
 struct EditProgram;
 struct EditStep;
 struct EditWire;
-struct PatchSymbols {
-    std::weak_ptr<EditProgram> Edit;
-    std::uint32_t HandleBase = 0;
-};
-struct PatchTarget {
-    std::shared_ptr<SessionState> Session;
-    BML_ObjectRef Graph{};
-    std::uint64_t Fingerprint = 0;
-    std::shared_ptr<const BML::Behavior::Edit> Body;
-    std::weak_ptr<EditProgram> Symbols;
-    int Code = BML_OK;
-    Status Failure;
-};
-struct PlanRule {
-    std::uint32_t Targets = BML_BEHAVIOR_TARGETS_EACH;
-    std::string Script;
-    std::shared_ptr<const BML::Behavior::Edit> Body;
-    int Code = BML_OK;
-    Status Failure;
-};
+struct PatchSymbols;
+struct PatchTarget;
+struct PlanRule;
 struct PatchWire;
 struct PlanWire;
 }
@@ -81,14 +60,14 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] Result<PlanInfo> Enable();
     [[nodiscard]] Result<PlanInfo> Disable();
-    template <class... More>
+    template <class First, class... More>
     [[nodiscard]] Result<PlanInfo> Replace(
-        Detail::PlanRule first, More... more);
+        First &&first, More &&...more);
     // A Plan the Loader accepted is Reconciling until the next frame installs
     // it, so read the state rather than assuming the edit is already live.
     [[nodiscard]] Result<PlanInfo> Info() const;
     // Reverts what the Plan still owns. If a live graph prevents the inverse,
-    // the handle remains valid so Read can describe the conflict and Close can
+    // the handle remains valid so Info can describe the conflict and Close can
     // be retried after the graph is restored to the expected after-image.
     [[nodiscard]] Result<CloseState> Close() noexcept;
 
@@ -120,22 +99,22 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] Result<PatchInfo> Enable();
     [[nodiscard]] Result<PatchInfo> Disable();
-    template <class... More>
+    template <class First, class... More>
     [[nodiscard]] Result<PatchInfo> Replace(
-        Detail::PatchTarget first, More... more);
+        First &&first, More &&...more);
     [[nodiscard]] Result<PatchInfo> Info() const;
     // Names the live object a node of this edit compiled to, by the handle the
     // edit program used for it. Busy means the Patch has not reached its safe
     // point yet, so nothing is live to name.
 private:
-    [[nodiscard]] Result<BML_ObjectRef> ResolveHandle(
+    [[nodiscard]] Result<ObjectRef> ResolveHandle(
         std::uint32_t node) const;
 
 public:
     // Accepts the symbolic Node returned by Edit::Add or Edit::Require.
     template <class Handle>
-    [[nodiscard]] Result<BML_ObjectRef> Resolve(const Handle &node) const;
-    // A revert conflict keeps this handle live for Read and a later retry.
+    [[nodiscard]] Result<ObjectRef> Resolve(const Handle &node) const;
+    // A revert conflict keeps this handle live for Info and a later retry.
     [[nodiscard]] Result<CloseState> Close() noexcept;
 
 private:
@@ -611,8 +590,9 @@ private:
     std::shared_ptr<Detail::EditProgram> m_Program;
 
     [[nodiscard]] Result<void> Validate(
-        const std::shared_ptr<Detail::SessionState> &session,
-        Detail::EditContext context = Detail::EditContext::Patch) const;
+        const std::shared_ptr<Detail::SessionState> &session) const;
+    [[nodiscard]] Result<void> ValidatePlan(
+        const std::shared_ptr<Detail::SessionState> &session) const;
 
     friend class BML::Behavior::Graph;
     friend class Session;
@@ -620,8 +600,8 @@ private:
     friend class Plan;
     friend struct Detail::PatchWire;
     friend struct Detail::PlanWire;
-    friend Detail::PatchTarget On(const BML::Behavior::Graph &, const Edit &);
-    friend Detail::PlanRule On(const Scripts &, const Edit &);
+    friend auto On(const BML::Behavior::Graph &, const Edit &);
+    friend auto On(const Scripts &, const Edit &);
 };
 
 class Scripts {
@@ -641,7 +621,7 @@ private:
     std::string m_Name;
 
     friend class Session;
-    friend Detail::PlanRule On(const Scripts &, const Edit &);
+    friend auto On(const Scripts &, const Edit &);
 };
 
 } // namespace BML::Behavior

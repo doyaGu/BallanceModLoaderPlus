@@ -85,18 +85,18 @@ public:
     [[nodiscard]] Result<Behavior::Layout> Layout(CKGUID prototype) const {
         return Layout(Prototype(prototype));
     }
-    [[nodiscard]] Result<Graph> Inspect(BML_ObjectRef root) const {
+    [[nodiscard]] Result<Graph> Inspect(ObjectRef root) const {
         return Graph::Read(m_State, root, View::Logical);
     }
     // Turns a CK object this Mod already holds into an interface reference.
     // This is the entry point for a Mod that received a script from the game
     // instead of searching for one by name.
-    [[nodiscard]] Result<BML_ObjectRef> Reference(CK_ID object) const {
+    [[nodiscard]] Result<ObjectRef> Reference(CK_ID object) const {
         if (!*this)
-            return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
+            return Result<ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
         if (!BML_IFACE_HAS(m_State->Api, BML_BehaviorInterface, Reference))
-            return Result<BML_ObjectRef>::Failure(BML_ERROR_VERSION_MISMATCH);
-        BML_ObjectRef reference{};
+            return Result<ObjectRef>::Failure(BML_ERROR_VERSION_MISMATCH);
+        ObjectRef reference{};
         BML_BehaviorStatus status = Detail::EmptyStatus();
         const int code = Detail::WireCode(
             m_State->Api->Reference(
@@ -104,22 +104,22 @@ public:
                 &reference, &status),
             status);
         if (code != BML_OK)
-            return Result<BML_ObjectRef>::Failure(
+            return Result<ObjectRef>::Failure(
                 code, Detail::ReadStatus(status));
         if (!Detail::ValidObjectRef(reference) || !reference.Domain)
-            return Result<BML_ObjectRef>::Failure(
+            return Result<ObjectRef>::Failure(
                 BML_ERROR_MALFORMED_MESSAGE, Detail::ReadStatus(status));
-        return Result<BML_ObjectRef>::Success(reference,
-                                              Detail::ReadStatus(status));
+        return Result<ObjectRef>::Success(
+            reference, Detail::ReadStatus(status));
     }
-    [[nodiscard]] Result<BML_ObjectRef> Reference(CKObject *object) const {
+    [[nodiscard]] Result<ObjectRef> Reference(CKObject *object) const {
         if (!object)
-            return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_PARAMETER);
+            return Result<ObjectRef>::Failure(BML_ERROR_INVALID_PARAMETER);
         return Reference(object->GetID());
     }
     // Reads the logical graph of a script this Mod already holds.
     [[nodiscard]] Result<Graph> Inspect(CKBehavior *graph) const {
-        const Result<BML_ObjectRef> reference = Reference(graph);
+        const Result<ObjectRef> reference = Reference(graph);
         if (!reference)
             return Result<Graph>::Failure(reference.Code(), reference.GetStatus());
         return Inspect(reference.Value());
@@ -127,12 +127,12 @@ public:
     // Creates the root and installs body before returning one inactive Script.
     // A rejected body publishes no Script and returns no partial handle.
     [[nodiscard]] Result<Behavior::Script> CreateScript(
-        BML_ObjectRef owner, std::string_view name, const Edit &body,
+        ObjectRef owner, std::string_view name, const Edit &body,
         std::int32_t priority = 0) const;
     [[nodiscard]] Result<Behavior::Script> CreateScript(
         CKBeObject *owner, std::string_view name, const Edit &body,
         std::int32_t priority = 0) const {
-        const Result<BML_ObjectRef> reference = Reference(owner);
+        const Result<ObjectRef> reference = Reference(owner);
         return reference
             ? CreateScript(reference.Value(), name, body, priority)
             : Result<Behavior::Script>::Failure(
@@ -143,34 +143,14 @@ public:
     [[nodiscard]] Result<Behavior::Plan> Plan(
         std::string_view name, const Scripts &scripts,
         const Edit &edit) const;
-    template <class... More>
+    template <class First, class... More>
     [[nodiscard]] Result<Behavior::Patch> Apply(
-        std::string_view name, Detail::PatchTarget first,
-        More... more) const {
-        std::vector<Detail::PatchTarget> targets;
-        try {
-            targets.reserve(1 + sizeof...(more));
-            targets.push_back(std::move(first));
-            (targets.push_back(std::move(more)), ...);
-        } catch (const std::bad_alloc &) {
-            return Result<Behavior::Patch>::Failure(BML_ERROR_OUT_OF_MEMORY);
-        }
-        return Apply(name, std::move(targets));
-    }
-    template <class... More>
+        std::string_view name, First &&first, More &&...more) const;
+    template <class First, class... More,
+              std::enable_if_t<
+                  !std::is_same_v<std::decay_t<First>, Scripts>, int> = 0>
     [[nodiscard]] Result<Behavior::Plan> Plan(
-        std::string_view name, Detail::PlanRule first,
-        More... more) const {
-        std::vector<Detail::PlanRule> rules;
-        try {
-            rules.reserve(1 + sizeof...(more));
-            rules.push_back(std::move(first));
-            (rules.push_back(std::move(more)), ...);
-        } catch (const std::bad_alloc &) {
-            return Result<Behavior::Plan>::Failure(BML_ERROR_OUT_OF_MEMORY);
-        }
-        return Plan(name, std::move(rules));
-    }
+        std::string_view name, First &&first, More &&...more) const;
     void Close() noexcept {
         // Values created from this Session hold their own lease. Releasing the
         // Session value stops this object from admitting work without

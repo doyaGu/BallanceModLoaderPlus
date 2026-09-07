@@ -1358,7 +1358,7 @@ private:
                 BML::Behavior::DetachedSupport::Unverified)
             return false;
         m_DetachedDiagnosticPassed = true;
-        auto taken = call.Take();
+        auto taken = call.TakeFrames();
         if (!taken || taken->Size() != 1)
             return false;
         const BML::Behavior::Frame frame = (*taken)[0];
@@ -1406,7 +1406,7 @@ private:
                 boundPulse.GetStatus().Message.c_str());
             return false;
         }
-        auto boundFrames = boundInstance.Take();
+        auto boundFrames = boundInstance.TakeFrames();
         const auto boundNumber = boundFrames && boundFrames->Size() == 1
             ? (*boundFrames)[0].Pout<std::int32_t>(
                   BML::Behavior::Named("Number", 0))
@@ -1458,7 +1458,7 @@ private:
         const std::int32_t *sharedNumber = sharedValue
             ? std::get_if<std::int32_t>(&sharedValue->Data) : nullptr;
         auto sharedPulse = sharedTargetInstance.Pulse("Echo Number");
-        auto sharedFrames = sharedTargetInstance.Take();
+        auto sharedFrames = sharedTargetInstance.TakeFrames();
         const auto sharedPout = sharedFrames && sharedFrames->Size() == 1
             ? (*sharedFrames)[0].Pout<std::int32_t>(
                   BML::Behavior::Named("Number", 0))
@@ -1619,7 +1619,7 @@ private:
             return false;
         }
         auto dynamicAdmission = dynamicInstance.Pulse("Dynamic Run");
-        auto dynamicFrames = dynamicInstance.Take();
+        auto dynamicFrames = dynamicInstance.TakeFrames();
         const auto dynamicValue = dynamicFrames && dynamicFrames->Size() == 1
             ? (*dynamicFrames)[0].Pout<std::int32_t>("Dynamic Value")
             : BML::Behavior::Result<std::int32_t>::Failure(BML_ERROR_FAIL);
@@ -1666,7 +1666,7 @@ private:
         auto mutationBefore = mutatingInstance.Inspect();
         auto mutationLayoutBefore = mutatingInstance.Layout();
         auto mutationAdmission = mutatingInstance.Pulse("Change Layout");
-        auto mutationFrames = mutatingInstance.Take();
+        auto mutationFrames = mutatingInstance.TakeFrames();
         auto staleAfterMutation = mutationBefore
             ? mutationBefore->Read(
                   mutationBefore->Root().Local("Executions"))
@@ -1741,7 +1741,7 @@ private:
         if (!targeted)
             return false;
         BML::Behavior::Call targetCall = targeted.Take();
-        auto targetFrames = targetCall.Take();
+        auto targetFrames = targetCall.TakeFrames();
         const auto targetObject = targetFrames && targetFrames->Size() == 1
             ? (*targetFrames)[0].Pout<BML_ObjectRef>("Target")
             : BML::Behavior::Result<BML_ObjectRef>::Failure(BML_ERROR_FAIL);
@@ -1751,7 +1751,7 @@ private:
     bool ContinueCppFacade() {
         if (!m_CppCall)
             return false;
-        auto continued = std::move(*m_CppCall).Continue();
+        auto continued = m_CppCall->Continue();
         m_CppCall.reset();
         if (!continued)
             return false;
@@ -1767,9 +1767,9 @@ private:
         auto startInfo = m_CppStart->Info();
         auto continuedInfo = m_CppContinued->Info();
         auto instanceInfo = m_CppInstance->Info();
-        auto startFrames = m_CppStart->Take();
-        auto continuedFrames = m_CppContinued->Take();
-        auto instanceFrames = m_CppInstance->Take();
+        auto startFrames = m_CppStart->TakeFrames();
+        auto continuedFrames = m_CppContinued->TakeFrames();
+        auto instanceFrames = m_CppInstance->TakeFrames();
         const auto validTask = [](const BML::Behavior::Result<
                                       BML::Behavior::RunInfo> &info,
                                   const BML::Behavior::Result<

@@ -64,7 +64,7 @@ struct GraphPortData {
 
 struct GraphNodeData {
     std::uint64_t Id = 0;
-    BML_ObjectRef Object{};
+    ObjectRef Object{};
     std::uint64_t Parent = 0;
     std::int32_t Index = -1;
     std::int32_t Occurrence = 0;
@@ -80,7 +80,7 @@ struct GraphNodeData {
 
 struct GraphLinkData {
     std::uint64_t Id = 0;
-    BML_ObjectRef Object{};
+    ObjectRef Object{};
     std::size_t Source = 0;
     std::size_t Target = 0;
     std::int32_t InitialDelay = 0;
@@ -90,7 +90,7 @@ struct GraphLinkData {
 
 struct GraphOperationData {
     std::uint64_t Id = 0;
-    BML_ObjectRef Object{};
+    ObjectRef Object{};
     std::uint64_t Owner = 0;
     CKGUID Function{0, 0};
     CKGUID Result{0, 0};
@@ -117,7 +117,7 @@ class Port {
 public:
     Port() = default;
     [[nodiscard]] explicit operator bool() const noexcept;
-    [[nodiscard]] BML_ObjectRef Object() const noexcept;
+    [[nodiscard]] ObjectRef Object() const noexcept;
     [[nodiscard]] std::uint64_t Node() const noexcept;
     [[nodiscard]] std::uint64_t LayoutGeneration() const noexcept;
     [[nodiscard]] SlotKind Kind() const noexcept;
@@ -151,7 +151,7 @@ public:
     Node() = default;
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] std::uint64_t Id() const noexcept;
-    [[nodiscard]] BML_ObjectRef Object() const noexcept;
+    [[nodiscard]] ObjectRef Object() const noexcept;
     [[nodiscard]] std::uint64_t Parent() const noexcept;
     [[nodiscard]] std::int32_t Index() const noexcept;
     [[nodiscard]] std::int32_t Occurrence() const noexcept;
@@ -228,7 +228,7 @@ public:
     Link() = default;
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] std::uint64_t Id() const noexcept;
-    [[nodiscard]] BML_ObjectRef Object() const noexcept;
+    [[nodiscard]] ObjectRef Object() const noexcept;
     [[nodiscard]] Port Source() const noexcept;
     [[nodiscard]] Port Target() const noexcept;
     [[nodiscard]] std::int32_t InitialDelay() const noexcept;
@@ -254,7 +254,7 @@ public:
     ParameterOperation() = default;
     [[nodiscard]] explicit operator bool() const noexcept;
     [[nodiscard]] std::uint64_t Id() const noexcept;
-    [[nodiscard]] BML_ObjectRef Object() const noexcept;
+    [[nodiscard]] ObjectRef Object() const noexcept;
     [[nodiscard]] std::uint64_t Owner() const noexcept;
     [[nodiscard]] CKGUID Function() const noexcept;
     [[nodiscard]] CKGUID Result() const noexcept;
@@ -485,7 +485,7 @@ inline Node::operator bool() const noexcept {
     return m_Graph && m_Index < m_Graph->Nodes.size();
 }
 inline std::uint64_t Node::Id() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Id : 0; }
-inline BML_ObjectRef Node::Object() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Object : BML_ObjectRef{}; }
+inline ObjectRef Node::Object() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Object : ObjectRef{}; }
 inline std::uint64_t Node::Parent() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Parent : 0; }
 inline std::int32_t Node::Index() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Index : -1; }
 inline std::int32_t Node::Occurrence() const noexcept { return (*this) ? m_Graph->Nodes[m_Index].Occurrence : -1; }
@@ -506,8 +506,8 @@ inline GraphRange<Port> Node::Ports() const noexcept {
 inline Port::operator bool() const noexcept {
     return m_Graph && m_Index < m_Graph->Ports.size();
 }
-inline BML_ObjectRef Port::Object() const noexcept {
-    return (*this) ? m_Graph->Nodes[m_Graph->Ports[m_Index].Node].Object : BML_ObjectRef{};
+inline ObjectRef Port::Object() const noexcept {
+    return (*this) ? m_Graph->Nodes[m_Graph->Ports[m_Index].Node].Object : ObjectRef{};
 }
 inline std::uint64_t Port::Node() const noexcept {
     return (*this) ? m_Graph->Nodes[m_Graph->Ports[m_Index].Node].Id : 0;
@@ -526,7 +526,7 @@ inline Link::operator bool() const noexcept {
     return m_Graph && m_Index < m_Graph->Links.size();
 }
 inline std::uint64_t Link::Id() const noexcept { return (*this) ? m_Graph->Links[m_Index].Id : 0; }
-inline BML_ObjectRef Link::Object() const noexcept { return (*this) ? m_Graph->Links[m_Index].Object : BML_ObjectRef{}; }
+inline ObjectRef Link::Object() const noexcept { return (*this) ? m_Graph->Links[m_Index].Object : ObjectRef{}; }
 inline Port Link::Source() const noexcept { return (*this) ? Port(m_Graph, m_Graph->Links[m_Index].Source) : Port{}; }
 inline Port Link::Target() const noexcept { return (*this) ? Port(m_Graph, m_Graph->Links[m_Index].Target) : Port{}; }
 inline std::int32_t Link::InitialDelay() const noexcept { return (*this) ? m_Graph->Links[m_Index].InitialDelay : 0; }
@@ -539,8 +539,8 @@ inline ParameterOperation::operator bool() const noexcept {
 inline std::uint64_t ParameterOperation::Id() const noexcept {
     return (*this) ? m_Graph->Operations[m_Index].Id : 0;
 }
-inline BML_ObjectRef ParameterOperation::Object() const noexcept {
-    return (*this) ? m_Graph->Operations[m_Index].Object : BML_ObjectRef{};
+inline ObjectRef ParameterOperation::Object() const noexcept {
+    return (*this) ? m_Graph->Operations[m_Index].Object : ObjectRef{};
 }
 inline std::uint64_t ParameterOperation::Owner() const noexcept {
     return (*this) ? m_Graph->Operations[m_Index].Owner : 0;
@@ -589,7 +589,7 @@ struct GraphChanged {};
 struct LayoutChanged {
     explicit LayoutChanged(const Behavior::Node &node)
         : Node(node.Object()), LayoutGeneration(node.LayoutGeneration()) {}
-    BML_ObjectRef Node{};
+    ObjectRef Node{};
     std::uint64_t LayoutGeneration = 0;
 };
 
@@ -676,11 +676,11 @@ struct PatchInfo {
 struct HookEvent {
     float DeltaTime = 0.0f;
     // The Hook Block being executed.
-    BML_ObjectRef Block{};
+    ObjectRef Block{};
     // The root script that owns the Block, when the Loader can name it.
-    BML_ObjectRef Script{};
+    ObjectRef Script{};
     // The object the Block is attached to.
-    BML_ObjectRef Owner{};
+    ObjectRef Owner{};
 };
 
 enum class HookResult : int {
@@ -728,13 +728,11 @@ class Graph;
 class Scripts;
 
 namespace Detail {
-struct PatchTarget;
-struct PlanRule;
 struct PatchWire;
 }
 
-[[nodiscard]] Detail::PatchTarget On(const Graph &graph, const Edit &edit);
-[[nodiscard]] Detail::PlanRule On(const Scripts &scripts, const Edit &edit);
+[[nodiscard]] auto On(const Graph &graph, const Edit &edit);
+[[nodiscard]] auto On(const Scripts &scripts, const Edit &edit);
 
 class Watch {
 public:
@@ -884,13 +882,13 @@ public:
         Sampled change, Function &&callback) const;
 private:
     static Result<Graph> Read(std::shared_ptr<Detail::SessionState> session,
-                              BML_ObjectRef root, View view);
+                              ObjectRef root, View view);
     static Result<Graph> ReadRun(
         std::shared_ptr<Detail::SessionState> session,
         BML_BehaviorRun run, View view);
     static Result<Graph> Decode(
         std::shared_ptr<Detail::SessionState> session, View view,
-        BML_ObjectRef expectedRoot,
+        ObjectRef expectedRoot,
         const BML_BehaviorGraph &wire,
         const std::uint8_t *payload, std::size_t payloadSize,
         const BML_BehaviorStatus &status);
@@ -899,7 +897,7 @@ private:
                                      Function &&callback) const;
 
     std::shared_ptr<Detail::SessionState> m_Session;
-    BML_ObjectRef m_Root{};
+    ObjectRef m_Root{};
     View m_View = View::Logical;
     std::uint64_t m_Generation = 0;
     std::uint64_t m_Fingerprint = 0;
@@ -910,7 +908,7 @@ private:
     friend class Detail::Run;
     friend class Block;
     friend struct Detail::PatchWire;
-    friend Detail::PatchTarget On(const Graph &, const Edit &);
+    friend auto On(const Graph &, const Edit &);
 };
 
 class Session;

@@ -19,8 +19,12 @@ public:
         return static_cast<bool>(m_Run);
     }
     [[nodiscard]] Result<RunInfo> Info() const { return m_Run.Info(); }
-    [[nodiscard]] Result<Frames> Take() { return m_Run.Take(); }
-    [[nodiscard]] Result<void> Take(Frames &frames) { return m_Run.Take(frames); }
+    [[nodiscard]] Result<Behavior::Frames> TakeFrames() {
+        return m_Run.TakeFrames();
+    }
+    [[nodiscard]] Result<void> TakeFrames(Behavior::Frames &frames) {
+        return m_Run.TakeFrames(frames);
+    }
     [[nodiscard]] Result<Behavior::Layout> Layout() const {
         return m_Run.Layout();
     }
@@ -48,7 +52,7 @@ public:
         return m_Run.Settings(values);
     }
     [[nodiscard]] Result<CloseState> Close() noexcept { return m_Run.Close(); }
-    [[nodiscard]] Result<Task> Continue() &&;
+    [[nodiscard]] Result<Task> Continue();
 
 private:
     explicit Call(Detail::Run run) : m_Run(std::move(run)) {}
@@ -68,8 +72,12 @@ public:
         return static_cast<bool>(m_Run);
     }
     [[nodiscard]] Result<RunInfo> Info() const { return m_Run.Info(); }
-    [[nodiscard]] Result<Frames> Take() { return m_Run.Take(); }
-    [[nodiscard]] Result<void> Take(Frames &frames) { return m_Run.Take(frames); }
+    [[nodiscard]] Result<Behavior::Frames> TakeFrames() {
+        return m_Run.TakeFrames();
+    }
+    [[nodiscard]] Result<void> TakeFrames(Behavior::Frames &frames) {
+        return m_Run.TakeFrames(frames);
+    }
     [[nodiscard]] Result<Behavior::Layout> Layout() const {
         return m_Run.Layout();
     }
@@ -123,8 +131,12 @@ public:
         return static_cast<bool>(m_Run);
     }
     [[nodiscard]] Result<RunInfo> Info() const { return m_Run.Info(); }
-    [[nodiscard]] Result<Frames> Take() { return m_Run.Take(); }
-    [[nodiscard]] Result<void> Take(Frames &frames) { return m_Run.Take(frames); }
+    [[nodiscard]] Result<Behavior::Frames> TakeFrames() {
+        return m_Run.TakeFrames();
+    }
+    [[nodiscard]] Result<void> TakeFrames(Behavior::Frames &frames) {
+        return m_Run.TakeFrames(frames);
+    }
     [[nodiscard]] Result<Behavior::Layout> Layout() const {
         return m_Run.Layout();
     }

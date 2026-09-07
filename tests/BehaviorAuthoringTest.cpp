@@ -1495,12 +1495,18 @@ concept CanCall = requires(const T &value) {
 
 template <class T>
 concept CanContinue = requires(T &value) {
-    std::move(value).Continue();
+    value.Continue();
 };
 
 template <class T>
 concept CanPulse = requires(const T &value) {
     value.Pulse("Run");
+};
+
+template <class T>
+concept CanTakeFrames = requires(T &value, Frames &frames) {
+    value.TakeFrames();
+    value.TakeFrames(frames);
 };
 
 template <class T>
@@ -1516,6 +1522,9 @@ static_assert(!CanContinue<Instance>);
 static_assert(!CanPulse<Call>);
 static_assert(CanPulse<Task>);
 static_assert(CanPulse<Instance>);
+static_assert(CanTakeFrames<Call>);
+static_assert(CanTakeFrames<Task>);
+static_assert(CanTakeFrames<Instance>);
 static_assert(std::copy_constructible<Block>);
 static_assert(!std::copy_constructible<Call>);
 static_assert(!std::copy_constructible<Task>);
@@ -1642,7 +1651,7 @@ TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
     ASSERT_TRUE(called);
     Call call = called.Take();
 
-    auto taken = call.Take();
+    auto taken = call.TakeFrames();
     ASSERT_TRUE(taken);
     ASSERT_EQ(taken->Size(), 1u);
     const Frame frame = (*taken)[0];
@@ -1654,8 +1663,9 @@ TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
     ASSERT_TRUE(pout) << pout.GetStatus().Message;
     EXPECT_EQ(pout.Value(), 42);
 
-    auto continued = std::move(call).Continue();
+    auto continued = call.Continue();
     ASSERT_TRUE(continued);
+    EXPECT_FALSE(call);
     Task task = continued.Take();
     auto info = task.Info();
     ASSERT_TRUE(info);
@@ -1675,7 +1685,7 @@ TEST(BehaviorAuthoring, RequiresAnOccurrenceForDuplicateFrameNames) {
     auto spawned = session.Use(CKGUID(1, 2)).Spawn();
     ASSERT_TRUE(spawned);
 
-    auto taken = spawned->Take();
+    auto taken = spawned->TakeFrames();
     ASSERT_TRUE(taken);
     ASSERT_EQ(taken->Size(), 1u);
     const Frame frame = (*taken)[0];
@@ -1705,20 +1715,20 @@ TEST(BehaviorAuthoring, ReusesFramesStorageAndRejectsTheWholeMalformedBatch) {
     Instance instance = spawned.Take();
 
     Frames frames;
-    auto first = instance.Take(frames);
+    auto first = instance.TakeFrames(frames);
     ASSERT_TRUE(first);
     EXPECT_EQ(frames.Size(), 1u);
     EXPECT_EQ(g_State.FrameTakes, 2);
 
     g_State.FramesAvailable = true;
-    auto reused = instance.Take(frames);
+    auto reused = instance.TakeFrames(frames);
     ASSERT_TRUE(reused);
     EXPECT_EQ(frames.Size(), 1u);
     EXPECT_EQ(g_State.FrameTakes, 3);
 
     g_State.FramesAvailable = true;
     g_State.MalformedFrames = true;
-    auto malformed = instance.Take(frames);
+    auto malformed = instance.TakeFrames(frames);
     EXPECT_FALSE(malformed);
     EXPECT_EQ(malformed.Code(), BML_ERROR_MALFORMED_MESSAGE);
     EXPECT_TRUE(frames.Empty());
@@ -2225,9 +2235,10 @@ TEST(BehaviorAuthoring, RejectsMalformedContinueAndPulseResults) {
         ASSERT_TRUE(called);
         Call call = called.Take();
         g_State.WrongContinuationKind = true;
-        auto continued = std::move(call).Continue();
+        auto continued = call.Continue();
         EXPECT_FALSE(continued);
         EXPECT_EQ(continued.Code(), BML_ERROR_MALFORMED_MESSAGE);
+        EXPECT_TRUE(call);
         g_State.WrongContinuationKind = false;
     }
 
@@ -2236,9 +2247,10 @@ TEST(BehaviorAuthoring, RejectsMalformedContinueAndPulseResults) {
         ASSERT_TRUE(called);
         Call call = called.Take();
         g_State.WrongFollowupPrototype = true;
-        auto continued = std::move(call).Continue();
+        auto continued = call.Continue();
         EXPECT_FALSE(continued);
         EXPECT_EQ(continued.Code(), BML_ERROR_MALFORMED_MESSAGE);
+        EXPECT_TRUE(call);
         g_State.WrongFollowupPrototype = false;
     }
 

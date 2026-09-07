@@ -1733,7 +1733,7 @@ inline Result<Instance> Block::SpawnIn(
     return SpawnIn(graph.m_Root, frames);
 }
 
-inline Result<Task> Call::Continue() && {
+inline Result<Task> Call::Continue() {
     if (!m_Run)
         return Result<Task>::Failure(BML_ERROR_INVALID_HANDLE);
     BML_BehaviorRunInfo info = Detail::EmptyRunInfo();
