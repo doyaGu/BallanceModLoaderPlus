@@ -773,11 +773,18 @@ private:
 
     void ResetDurablePlan() {
         const int reset = m_Test->ResetPlans(m_Session);
-        const bool leftWorld = reset == BML_OK &&
-            ReadDurable(BML_BEHAVIOR_TEST_PLAN_UNSATISFIED, 0, 0) &&
-            DurableRestored() && ReadHooks(2, 0, 1, 1);
-        if (!leftWorld ||
-            m_Test->ObserveScript(m_Session, m_Graph) != BML_OK) {
+        const bool state = ReadDurable(
+            BML_BEHAVIOR_TEST_PLAN_UNSATISFIED, 0, 0);
+        const bool restored = DurableRestored();
+        const bool hooks = ReadHooks(2, 0, 1, 1);
+        const int observed = m_Test->ObserveScript(m_Session, m_Graph);
+        const bool leftWorld = reset == BML_OK && state && restored && hooks;
+        if (!leftWorld || observed != BML_OK) {
+            GetLogger()->Error(
+                "Behavior durable reset failed: reset=%d state=%s restored=%s hooks=%s observe=%d",
+                reset, state ? "true" : "false",
+                restored ? "true" : "false",
+                hooks ? "true" : "false", observed);
             Finish(false, "durable-reset");
             return;
         }
@@ -935,19 +942,23 @@ private:
         BML_BehaviorEditStep steps[3]{};
         steps[0].StructSize = sizeof(steps[0]);
         steps[0].Kind = BML_BEHAVIOR_EDIT_ADD_BLOCK;
+        steps[0].Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[0].Result = 2;
         steps[0].Block = &block;
 
         steps[1].StructSize = sizeof(steps[1]);
         steps[1].Kind = BML_BEHAVIOR_EDIT_REQUIRE_LINK;
+        steps[1].Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Result = 3;
         steps[1].Source.StructSize = sizeof(steps[1].Source);
+        steps[1].Source.Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Source.Handle = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Source.Kind = BML_BEHAVIOR_SLOT_IN;
         steps[1].Source.Slot.StructSize = sizeof(steps[1].Source.Slot);
         steps[1].Source.Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
         steps[1].Source.Slot.Index = 0;
         steps[1].Sink.StructSize = sizeof(steps[1].Sink);
+        steps[1].Sink.Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Sink.Handle = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Sink.Kind = BML_BEHAVIOR_SLOT_OUT;
         steps[1].Sink.Slot.StructSize = sizeof(steps[1].Sink.Slot);
@@ -956,15 +967,20 @@ private:
 
         steps[2].StructSize = sizeof(steps[2]);
         steps[2].Kind = BML_BEHAVIOR_EDIT_SPLICE;
+        steps[2].Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[2].Target = 3;
         steps[2].Node = 2;
 
         BML_BehaviorPatchSpec spec{};
         spec.StructSize = sizeof(spec);
         spec.Name = {name, static_cast<std::uint32_t>(std::strlen(name))};
-        spec.Graph = graph;
-        spec.Steps = steps;
-        spec.StepCount = 3;
+        BML_BehaviorGraphEdit target{};
+        target.StructSize = sizeof(target);
+        target.Graph = graph;
+        target.Steps = steps;
+        target.StepCount = 3;
+        spec.Edits = &target;
+        spec.EditCount = 1;
         return m_Behavior->ApplyPatch(m_Session, &spec, out, nullptr, status);
     }
 

@@ -25,6 +25,8 @@ param(
 
     [string]$ScriptMod,
 
+    [string]$BmlConfig,
+
     [switch]$DisableAngelScript,
 
     [string]$ArtifactsDirectory,
@@ -81,6 +83,9 @@ if (-not $TransportFixture) {
 if (-not $ScriptMod) {
     $ScriptMod = Join-Path $PSScriptRoot 'BehaviorLifecycleScript.mod.as'
 }
+if (-not $BmlConfig) {
+    $BmlConfig = Join-Path $PSScriptRoot 'BehaviorAcceptance.cfg'
+}
 if (-not $ArtifactsDirectory) {
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $ArtifactsDirectory = Join-Path $layout.RepoRoot `
@@ -104,7 +109,9 @@ $install = @(
     @{ Source = $FixtureDll
        Destination = 'BuildingBlocks\BehaviorLifecycleFixture.dll' },
     @{ Source = $TransportFixture
-       Destination = 'BuildingBlocks\BehaviorTransportFixture.dll' }
+       Destination = 'BuildingBlocks\BehaviorTransportFixture.dll' },
+    @{ Source = $BmlConfig
+       Destination = 'ModLoader\Configs\BML.cfg' }
 )
 $remove = @()
 if ($DisableAngelScript) {
@@ -186,6 +193,10 @@ $liveSettingsFailure = [regex]::Match($log,
 $facadePatch = [regex]::Match($log,
     'Behavior graph patch: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'apply=(?<apply>true|false) close=(?<close>true|false)')
+$composedPatch = [regex]::Match($log,
+    'Behavior composed patch: status=(?<status>pass|fail) ' +
+    'preflight=(?<preflight>true|false) toggle=(?<toggle>true|false) ' +
+    'replace=(?<replace>true|false) rollback=(?<rollback>true|false)')
 $facadeReplacement = [regex]::Match($log,
     'Behavior node replacement: status=(?<status>pass|fail)')
 $facadeRemoval = [regex]::Match($log,
@@ -252,11 +263,11 @@ $checks['BehaviorPatch'] = $patch.Success -and
     $log.Contains(
         'Behavior patch graph changed: status=pass rejected=-1 error=27 readmitted=0 state=2') -and
     $log -match
-        'Behavior patch callback close: status=pass first=-9 second=-9 state=3 nodes=2 links=3 routed=true calls=\d+' -and
+        'Behavior patch callback close: status=pass first=-9 second=-9 state=4 nodes=2 links=3 routed=true calls=\d+' -and
     $log.Contains(
         'Behavior patch callback restore: status=pass stale=true nodes=1 links=2') -and
     $log.Contains(
-        'Behavior patch teardown reentry: status=pass outer=0 stale=true queued=true self=-9 sibling=-9 state=3 sibling_state=3 calls=2 nodes=2 links=3 detach=2 delete=2 restored=true')
+        'Behavior patch teardown reentry: status=pass outer=0 stale=true queued=true self=-9 sibling=-9 state=4 sibling_state=4 calls=2 nodes=2 links=3 detach=2 delete=2 restored=true')
 $checks['BehaviorPlanFacade'] = $facade.Success -and
     $facade.Groups['status'].Value -eq 'pass' -and
     $facade.Groups['submit'].Value -eq 'true' -and
@@ -279,6 +290,12 @@ $checks['BehaviorGraphPatchFacade'] = $facadePatch.Success -and
     $facadePatch.Groups['status'].Value -eq 'pass' -and
     $facadePatch.Groups['apply'].Value -eq 'true' -and
     $facadePatch.Groups['close'].Value -eq 'true'
+$checks['BehaviorComposedPatch'] = $composedPatch.Success -and
+    $composedPatch.Groups['status'].Value -eq 'pass' -and
+    $composedPatch.Groups['preflight'].Value -eq 'true' -and
+    $composedPatch.Groups['toggle'].Value -eq 'true' -and
+    $composedPatch.Groups['replace'].Value -eq 'true' -and
+    $composedPatch.Groups['rollback'].Value -eq 'true'
 $checks['BehaviorNodeReplacementFacade'] = $facadeReplacement.Success -and
     $facadeReplacement.Groups['status'].Value -eq 'pass'
 $checks['BehaviorNodeRemovalFacade'] = $facadeRemoval.Success -and
@@ -307,6 +324,12 @@ $checks['BehaviorGameplayMigration'] = $gameplayPatch.Success -and
     [int]$gameplayPatch.Groups['scripts'].Value -eq 2 -and
     $gameplayPatch.Groups['realtime'].Value -eq 'true' -and
     $gameplayPatch.Groups['delta'].Value -eq 'true'
+$checks['BehaviorOverclockMigration'] =
+    $log.Contains('Enable Overclock through one Behavior Plan') -and
+    $log.Contains('Restore the Overclock Behavior Plan')
+$checks['BehaviorLanternMigration'] =
+    $log.Contains(
+        'Configure the lantern alpha-test through a Behavior Plan')
 $checks['BehaviorPatchVisual'] =
     $run.Captures.'BehaviorPatch-baseline'.Captured -and
     $run.Captures.'BehaviorPatch-active'.Captured -and
@@ -374,6 +397,7 @@ $result = [pscustomobject]@{
     FixtureHash = Get-BMLOptionalHash $FixtureDll
     TransportFixtureHash = Get-BMLOptionalHash $TransportFixture
     ScriptModHash = Get-BMLOptionalHash $ScriptMod
+    BmlConfigHash = Get-BMLOptionalHash $BmlConfig
     ArtifactsDirectory = $run.ArtifactsDirectory
     Screenshot = $run.Screenshot
     TutorialScreenshot = $run.TutorialScreenshot

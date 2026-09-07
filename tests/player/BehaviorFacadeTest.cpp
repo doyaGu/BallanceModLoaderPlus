@@ -305,7 +305,7 @@ private:
         m_AtomicScriptPassed = true;
 
         BML::Behavior::Edit shape;
-        const auto root = shape.Graph();
+        const auto root = shape.Root().Root();
         (void) shape.AppendIn(root, "Start");
         (void) shape.AppendOut(root, "Done");
         CKParameterManager *parameters = context->GetParameterManager();
@@ -954,7 +954,7 @@ private:
         fixture.ResetTrace();
         BML::Behavior::Edit flow;
         const auto flowed = flow.Use(*current);
-        flow.Flow(flow.Graph().In(0), flowed.In(0));
+        flow.Flow(flow.Root().Root().In(0), flowed.In(0));
         auto linked = graph->Apply("player-existing-flow", flow);
         if (!linked || !fixture.ReadTrace(&trace) || trace.EditedCount != 0)
             return false;
@@ -2025,6 +2025,7 @@ private:
         BML_BehaviorEditStep steps[2]{};
         steps[0].StructSize = sizeof(steps[0]);
         steps[0].Kind = BML_BEHAVIOR_EDIT_APPEND_SLOT;
+        steps[0].Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[0].Result = 2;
         steps[0].Target = BML_BEHAVIOR_EDIT_GRAPH;
         steps[0].SlotKind = BML_BEHAVIOR_SLOT_IN;
@@ -2033,12 +2034,15 @@ private:
 
         steps[1].StructSize = sizeof(steps[1]);
         steps[1].Kind = BML_BEHAVIOR_EDIT_FLOW;
+        steps[1].Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Source.Handle = 2;
+        steps[1].Source.Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Source.Kind = 0;
         // StructSize deliberately remains zero. Appended-slot references are
         // still complete public DTOs and must not bypass wire validation.
         steps[1].Sink.StructSize = sizeof(steps[1].Sink);
         steps[1].Sink.Handle = BML_BEHAVIOR_EDIT_GRAPH;
+        steps[1].Sink.Graph = BML_BEHAVIOR_EDIT_GRAPH;
         steps[1].Sink.Kind = BML_BEHAVIOR_SLOT_OUT;
         steps[1].Sink.Slot.StructSize = sizeof(steps[1].Sink.Slot);
         steps[1].Sink.Slot.Kind = BML_BEHAVIOR_SELECTOR_INDEX;
@@ -2048,9 +2052,13 @@ private:
         spec.StructSize = sizeof(spec);
         spec.Name = {patchName,
                      static_cast<std::uint32_t>(sizeof(patchName) - 1)};
-        spec.Graph = graph;
-        spec.Steps = steps;
-        spec.StepCount = 2;
+        BML_BehaviorGraphEdit target{};
+        target.StructSize = sizeof(target);
+        target.Graph = graph;
+        target.Steps = steps;
+        target.StepCount = 2;
+        spec.Edits = &target;
+        spec.EditCount = 1;
         BML_BehaviorPatch patch = nullptr;
         BML_BehaviorStatus status{};
         status.StructSize = sizeof(status);
@@ -2061,7 +2069,215 @@ private:
         return code == BML_ERROR_INVALID_PARAMETER && patch == nullptr;
     }
 
+    bool ProbeComposedPatch() {
+        if (!m_Graph || !m_Owner) {
+            GetLogger()->Error("Composed Patch fixture graph is unavailable");
+            return false;
+        }
+        BML::Behavior::Edit shape;
+        (void) shape.Root().AppendIn("Start");
+        (void) shape.Root().AppendOut("Done");
+        auto created = m_Session.CreateScript(
+            m_Owner, "__BML_Composed_Patch", shape);
+        if (!created) {
+            GetLogger()->Error(
+                "Composed Patch script creation failed: code=%d error=%u phase=%u detail=%s",
+                created.Code(),
+                static_cast<unsigned>(created.GetStatus().Error),
+                static_cast<unsigned>(created.GetStatus().Phase),
+                created.GetStatus().Message.c_str());
+            return false;
+        }
+        auto secondScript = std::move(created).Value();
+        auto first = m_Session.Inspect(m_Graph);
+        auto second = secondScript.Inspect();
+        if (!first || !second) {
+            const auto &failure = first ? second.GetStatus() : first.GetStatus();
+            GetLogger()->Error(
+                "Composed Patch graph inspection failed: first=%s second=%s detail=%s",
+                first ? "true" : "false", second ? "true" : "false",
+                failure.Message.c_str());
+            return false;
+        }
+
+        const auto local = [](const char *name, int value) {
+            BML::Behavior::Edit edit;
+            const auto slot = edit.Root().AppendLocal(name, CKPGUID_INT);
+            edit.Root().Bind(slot, value);
+            return edit;
+        };
+        BML::Behavior::Edit firstEdit = local("Composed First", 1);
+        BML::Behavior::Edit secondEdit = local("Composed Second", 2);
+        auto secondRoot = secondEdit.Root();
+        const auto nestedNode = secondRoot.AddGraph("Composed Nested", 7);
+        auto nested = nestedNode.Graph();
+        const auto nestedIn = nested.AppendIn("Run");
+        const auto nestedOut = nested.AppendOut("Done");
+        nested.Flow(nestedIn, nestedOut);
+        secondRoot.Flow(secondRoot.Root().In("Start"), nestedNode.In("Run"));
+        secondRoot.Flow(nestedNode.Out("Done"),
+                        secondRoot.Root().Out("Done"));
+        BML::Behavior::Edit missing;
+        (void) missing.Root().Require("__BML_Missing_Composed_Node");
+
+        // Every target is compiled before target zero is published.
+        auto rejected = m_Session.Apply(
+            "player-composed-rejected",
+            BML::Behavior::On(*first, firstEdit),
+            BML::Behavior::On(*second, missing));
+        auto afterRejected = m_Session.Inspect(m_Graph);
+        if (rejected || !afterRejected ||
+            afterRejected->Root().Local("Composed First")) {
+            GetLogger()->Error(
+                "Composed Patch preflight failed: accepted=%s inspect=%s changed=%s detail=%s",
+                rejected ? "true" : "false",
+                afterRejected ? "true" : "false",
+                afterRejected && afterRejected->Root().Local("Composed First")
+                    ? "true" : "false",
+                rejected ? "none" : rejected.GetStatus().Message.c_str());
+            return false;
+        }
+
+        auto applied = m_Session.Apply(
+            "player-composed",
+            BML::Behavior::On(*first, firstEdit),
+            BML::Behavior::On(*second, secondEdit));
+        if (!applied) {
+            GetLogger()->Error(
+                "Composed Patch apply failed: code=%d error=%u phase=%u detail=%s",
+                applied.Code(),
+                static_cast<unsigned>(applied.GetStatus().Error),
+                static_cast<unsigned>(applied.GetStatus().Phase),
+                applied.GetStatus().Message.c_str());
+            return false;
+        }
+        BML::Behavior::Patch patch = std::move(applied).Value();
+        auto firstLive = m_Session.Inspect(m_Graph);
+        auto secondLive = secondScript.Inspect();
+        auto nestedLive = secondLive
+            ? secondLive->Find("Composed Nested")
+            : BML::Behavior::Result<BML::Behavior::Node>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        auto nestedGraph = nestedLive
+            ? secondLive->Inspect(*nestedLive)
+            : BML::Behavior::Result<BML::Behavior::Graph>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        if (!firstLive || !secondLive ||
+            !firstLive->Root().Local("Composed First") ||
+            !secondLive->Root().Local("Composed Second") ||
+            !nestedGraph || !nestedGraph->Root().In("Run") ||
+            !nestedGraph->Root().Out("Done") ||
+            nestedGraph->Links().size() != 1) {
+            GetLogger()->Error(
+                "Composed Patch shape failed: first=%s second=%s nested=%s links=%u",
+                firstLive && firstLive->Root().Local("Composed First")
+                    ? "true" : "false",
+                secondLive && secondLive->Root().Local("Composed Second")
+                    ? "true" : "false",
+                nestedGraph ? "true" : "false",
+                nestedGraph ? static_cast<unsigned>(nestedGraph->Links().size())
+                            : 0u);
+            return false;
+        }
+
+        const auto disabled = patch.Disable();
+        if (!disabled) {
+            GetLogger()->Error(
+                "Composed Patch disable failed: code=%d error=%u phase=%u detail=%s",
+                disabled.Code(),
+                static_cast<unsigned>(disabled.GetStatus().Error),
+                static_cast<unsigned>(disabled.GetStatus().Phase),
+                disabled.GetStatus().Message.c_str());
+            return false;
+        }
+        firstLive = m_Session.Inspect(m_Graph);
+        secondLive = secondScript.Inspect();
+        if (!firstLive || !secondLive ||
+            firstLive->Root().Local("Composed First") ||
+            secondLive->Root().Local("Composed Second")) {
+            GetLogger()->Error("Composed Patch disable did not restore both Graphs");
+            return false;
+        }
+        const auto enabled = patch.Enable();
+        if (!enabled) {
+            GetLogger()->Error("Composed Patch enable failed: %s",
+                               enabled.GetStatus().Message.c_str());
+            return false;
+        }
+
+        CKParameterLocal *firstLocal = nullptr;
+        for (int index = 0; index < m_Graph->GetLocalParameterCount(); ++index) {
+            CKParameterLocal *candidate = m_Graph->GetLocalParameter(index);
+            if (candidate && candidate->GetName() &&
+                std::strcmp(candidate->GetName(), "Composed First") == 0) {
+                firstLocal = candidate;
+                break;
+            }
+        }
+        if (!firstLocal) {
+            GetLogger()->Error("Composed Patch enable did not reinstall the prefix");
+            return false;
+        }
+
+        BML::Behavior::Edit changed = local("Composed Replacement", 3);
+        const auto replaced = patch.Replace(
+                BML::Behavior::On(*first, firstEdit),
+                BML::Behavior::On(*second, changed));
+        if (!replaced) {
+            GetLogger()->Error("Composed Patch replacement failed: %s",
+                               replaced.GetStatus().Message.c_str());
+            return false;
+        }
+        secondLive = secondScript.Inspect();
+        if (!secondLive ||
+            secondLive->Root().Local("Composed Second") ||
+            !secondLive->Root().Local("Composed Replacement") ||
+            firstLocal->GetName() == nullptr ||
+            std::strcmp(firstLocal->GetName(), "Composed First") != 0) {
+            GetLogger()->Error("Composed Patch replacement changed its common prefix");
+            return false;
+        }
+
+        // A failed replacement restores the previous complete definition.
+        auto failed = patch.Replace(
+            BML::Behavior::On(*first, firstEdit),
+            BML::Behavior::On(*second, missing));
+        const auto info = patch.Info();
+        secondLive = secondScript.Inspect();
+        if (failed || !info || info->State != PatchState::Active ||
+            !secondLive ||
+            !secondLive->Root().Local("Composed Replacement") ||
+            firstLocal->GetName() == nullptr ||
+            std::strcmp(firstLocal->GetName(), "Composed First") != 0) {
+            GetLogger()->Error(
+                "Composed Patch fallback failed: accepted=%s state=%u detail=%s",
+                failed ? "true" : "false",
+                info ? static_cast<unsigned>(info->State) : 0u,
+                failed ? "none" : failed.GetStatus().Message.c_str());
+            return false;
+        }
+
+        const auto closed = patch.Close();
+        firstLive = m_Session.Inspect(m_Graph);
+        secondLive = secondScript.Inspect();
+        const auto scriptClosed = secondScript.Close();
+        const bool result = closed &&
+            closed.Value() == BML::Behavior::CloseState::Closed &&
+            firstLive && secondLive &&
+            !firstLive->Root().Local("Composed First") &&
+            !secondLive->Root().Local("Composed Replacement") &&
+            scriptClosed;
+        if (!result)
+            GetLogger()->Error("Composed Patch close did not restore both Graphs");
+        return result;
+    }
+
     void ApplyPatch() {
+        if (!ProbeComposedPatch()) {
+            Finish(false, "composed-patch");
+            return;
+        }
+        m_ComposedPassed = true;
         const auto reference = m_Session.Reference(m_Graph);
         if (!reference) {
             Finish(false, "patch-reference");
@@ -2239,6 +2455,13 @@ private:
             m_PatchPassed ? "true" : "false",
             m_PatchClosePassed ? "true" : "false");
         GetLogger()->Info(
+            "Behavior composed patch: status=%s preflight=%s toggle=%s replace=%s rollback=%s",
+            m_ComposedPassed ? "pass" : "fail",
+            m_ComposedPassed ? "true" : "false",
+            m_ComposedPassed ? "true" : "false",
+            m_ComposedPassed ? "true" : "false",
+            m_ComposedPassed ? "true" : "false");
+        GetLogger()->Info(
             "Behavior node replacement: status=%s",
             m_ReplacementPassed ? "pass" : "fail");
         GetLogger()->Info(
@@ -2353,6 +2576,7 @@ private:
     bool m_IdentityPassed = false;
     bool m_PatchPassed = false;
     bool m_PatchClosePassed = false;
+    bool m_ComposedPassed = false;
     bool m_ReplacementPassed = false;
     bool m_RemovalPassed = false;
     bool m_PendingRemovalRejected = false;
