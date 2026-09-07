@@ -1660,9 +1660,11 @@ void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
             if (deleting.contains(scope.Graph))
                 m_Edit.GraphDeleted(scope.Value);
         }
-        patch.Goal = PatchGoal::Closed;
+        // Losing one target retires the composed Patch as a whole. Stop Hook
+        // admission on every surviving Graph now; only the native inverse is
+        // deferred to ProcessFrame.
+        CloseAdmission(patch);
         patch.TargetDeleted = true;
-        ++patch.Revision;
     }
     m_Edit.ObjectsToBeDeleted(ids, count);
 }
