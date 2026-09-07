@@ -13,6 +13,9 @@
 #include "CKAll.h"
 
 #include <algorithm>
+#include <chrono>
+#include <future>
+#include "BML/Guids/Hooks.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -136,6 +139,9 @@ public:
         case State::SubmitSelfClose: SubmitSelfClose(); break;
         case State::WaitSelfActive: WaitSelfActive(); break;
         case State::WaitSelfRetired: WaitSelfRetired(); break;
+        case State::SubmitSessionClose: SubmitSessionClose(); break;
+        case State::WaitSessionActive: WaitSessionActive(); break;
+        case State::WaitSessionRetired: WaitSessionRetired(); break;
         case State::AttachBlock: AttachBlock(); break;
         case State::WaitAttachRemoved: WaitAttachRemoved(); break;
         case State::AttachContinuing: AttachContinuing(); break;
@@ -184,6 +190,9 @@ private:
         SubmitSelfClose,
         WaitSelfActive,
         WaitSelfRetired,
+        SubmitSessionClose,
+        WaitSessionActive,
+        WaitSessionRetired,
         AttachBlock,
         WaitAttachRemoved,
         AttachContinuing,
@@ -780,6 +789,8 @@ private:
         BML::Behavior::Edit edit;
         const auto source = edit.Root().Require(kSourceName);
         edit.Root().Tap(source.Out(0), hook);
+        const auto sink = edit.Root().Require(kSinkName);
+        edit.Root().Tap(sink.Out(0), Hook([this] { ++m_SelfCloseTailCalls; }));
         auto submitted = m_Session.Plan(
             "player-public-self-close",
             BML::Behavior::Scripts::One(kScriptName), edit);
@@ -816,18 +827,236 @@ private:
                 Finish(false, "self-close-contract");
                 return;
             }
+            GetLogger()->Info("Behavior plan downstream close: downstream_calls=%d", m_SelfCloseTailCalls);
+            if (m_SelfCloseTailCalls != 0) {
+                Finish(false, "self-close-downstream");
+                return;
+            }
             m_SelfClosePassed = true;
-            m_State = State::AttachBlock;
+            m_State = State::SubmitSessionClose;
             return;
         }
         if (m_Frame > m_WaitUntil)
             Finish(false, "self-close-retirement");
     }
 
+
+    bool WorkerCloseDuringInstall() {
+        auto opened = BML::Behavior::Session::Open();
+        if (!opened) { GetLogger()->Error("Behavior install worker close: setup=open"); return false; }
+        auto session = opened.Take();
+        auto graph = session.Inspect(m_Graph);
+        auto setter = reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
+            ::GetProcAddress(::GetModuleHandleA("BehaviorLifecycleFixture.dll"),
+                             "BMLLifecycleFixtureSetEditedHook"));
+        if (!graph || !setter) { GetLogger()->Error("Behavior install worker close: setup=graph"); return false; }
+        struct State {
+            const BML_BehaviorInterface *Api;
+            BML_BehaviorSession Session;
+            bool Entered = false;
+            bool FinishedInCallback = false;
+            int CloseCode = 999;
+            std::promise<void> Done;
+            std::thread Worker;
+        } state{session.Api(), session.Handle()};
+        setter([](CKBehavior *, void *argument) {
+            auto &state = *static_cast<State *>(argument);
+            if (state.Entered) return CK_OK;
+            state.Entered = true;
+            auto done = state.Done.get_future();
+            state.Worker = std::thread([&state] {
+                state.CloseCode = state.Api->CloseSession(state.Session);
+                state.Done.set_value();
+            });
+            state.FinishedInCallback = done.wait_for(std::chrono::seconds(2)) ==
+                std::future_status::ready;
+            return CK_OK;
+        }, &state);
+        BML::Behavior::Edit edit;
+        (void) edit.Root().Add(session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
+        auto applied = graph->Apply("correctness-review-worker", edit);
+        setter(nullptr, nullptr);
+        if (state.Worker.joinable()) state.Worker.join();
+        GetLogger()->Info("Behavior install worker close: entered=%s completed_in_callback=%s close=%d apply=%d",
+            state.Entered ? "true" : "false", state.FinishedInCallback ? "true" : "false",
+            state.CloseCode, applied.Code());
+        return state.Entered && state.FinishedInCallback &&
+            state.CloseCode == BML_OK && !applied;
+    }
+
+    bool CloseDuringReenable() {
+        auto opened = BML::Behavior::Session::Open();
+        if (!opened) { GetLogger()->Error("Behavior reenable close: setup=open"); return false; }
+        auto session = opened.Take();
+        auto graph = session.Inspect(m_Graph);
+        auto setter = reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
+            ::GetProcAddress(::GetModuleHandleA("BehaviorLifecycleFixture.dll"),
+                             "BMLLifecycleFixtureSetEditedHook"));
+        if (!graph || !setter) { GetLogger()->Error("Behavior reenable close: setup=graph"); return false; }
+        auto calls = std::make_shared<int>(0);
+        BML::Behavior::Edit edit;
+        (void) edit.Root().Add(session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
+        const auto source = edit.Root().Require(kSourceName);
+        edit.Root().Tap(source.Out(0), Hook([calls] { ++*calls; }));
+        auto applied = graph->Apply("correctness-review-reenable", edit);
+        if (!applied) { GetLogger()->Error("Behavior reenable close: setup=apply code=%d", applied.Code()); return false; }
+        auto patch = applied.Take();
+        auto disabled = patch.Disable();
+        if (!disabled || disabled->State != PatchState::Disabled) {
+            GetLogger()->Error("Behavior reenable close: setup=disable code=%d", disabled.Code()); return false;
+        }
+        struct State {
+            const BML_BehaviorInterface *Api;
+            BML_BehaviorSession Session;
+            int CloseCode = 999;
+        } state{session.Api(), session.Handle()};
+        setter([](CKBehavior *, void *argument) {
+            auto &state = *static_cast<State *>(argument);
+            state.CloseCode = state.Api->CloseSession(state.Session);
+            return CK_OK;
+        }, &state);
+        auto enabled = patch.Enable();
+        setter(nullptr, nullptr);
+        int nativeHooks = 0;
+        for (int index = 0; index < m_Graph->GetSubBehaviorCount(); ++index) {
+            CKBehavior *node = m_Graph->GetSubBehavior(index);
+            if (node && node->GetPrototypeGuid() == HOOKS_HOOKBLOCK_GUID) {
+                ++nativeHooks;
+                node->ActivateInput(0);
+                (void) node->Execute(1.0f);
+            }
+        }
+        GetLogger()->Info("Behavior reenable close: close=%d enable=%d native_hooks=%d callbacks_after_close=%d",
+            state.CloseCode, enabled.Code(), nativeHooks, *calls);
+        return state.CloseCode == BML_OK && !enabled && *calls == 0;
+    }
+
+    void SubmitSessionClose() {
+        auto opened = BML::Behavior::Session::Open();
+        if (!opened) {
+            Finish(false, "session-close-open");
+            return;
+        }
+        m_RetirementSession = opened.Take();
+        const auto *api = m_RetirementSession.Api();
+        const auto session = m_RetirementSession.Handle();
+        auto calls = m_RetirementCalls;
+        BML::Behavior::Edit edit;
+        const auto source = edit.Root().Require(kSourceName);
+        edit.Root().Tap(source.Out(0), Hook([this, calls, api, session] {
+            ++*calls;
+            m_SessionCloseCode = api->CloseSession(session);
+        }));
+        auto plan = m_RetirementSession.Plan(
+            "player-session-close", BML::Behavior::Scripts::One(kScriptName), edit);
+        auto waiting = m_RetirementSession.Plan(
+            "player-session-close-waiting",
+            BML::Behavior::Scripts::One("__BML_Session_Close_Missing"), edit);
+        BML::Behavior::Edit empty;
+        auto peer = m_Session.Plan(
+            "player-session-close-peer",
+            BML::Behavior::Scripts::One("__BML_Session_Close_Peer"), empty);
+        if (!plan || !waiting || !peer) {
+            Finish(false, "session-close-submit");
+            return;
+        }
+        m_RetirementPlan = plan.Take();
+        m_RetirementWaitingPlan = waiting.Take();
+        m_RetirementPeerPlan = peer.Take();
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitSessionActive;
+    }
+
+    void WaitSessionActive() {
+        const auto info = m_RetirementPlan.Info();
+        if (!info || !info->Installed()) {
+            if (m_Frame > m_WaitUntil)
+                Finish(false, "session-close-install");
+            return;
+        }
+        auto graph = m_RetirementSession.Inspect(m_Graph);
+        if (!graph) {
+            Finish(false, "session-close-graph");
+            return;
+        }
+        auto calls = m_RetirementCalls;
+        BML::Behavior::Edit edit;
+        const auto sink = edit.Root().Require(kSinkName);
+        edit.Root().Tap(sink.Out(0), Hook([calls] { ++*calls; }));
+        auto patch = graph->Apply("player-session-close-patch", edit);
+        if (!patch) {
+            Finish(false, "session-close-patch");
+            return;
+        }
+        m_RetirementPatch = patch.Take();
+        if (!RunGraph()) {
+            Finish(false, "session-close-run");
+            return;
+        }
+        m_WaitUntil = m_Frame + 30;
+        m_State = State::WaitSessionRetired;
+    }
+
+    void WaitSessionRetired() {
+        if (*m_RetirementCalls && Restored() &&
+            m_RetirementCalls.use_count() == 1) {
+            const auto peer = m_RetirementPeerPlan.Info();
+            const bool passed = *m_RetirementCalls == 1 &&
+                m_SessionCloseCode == BML_OK && peer &&
+                peer->State != PlanState::Retiring &&
+                m_Session.Reference(m_Graph) &&
+                !m_RetirementSession.Reference(m_Graph);
+            (void) m_RetirementPeerPlan.Close();
+            GetLogger()->Info("Behavior session close: status=%s calls=%u",
+                              passed ? "pass" : "fail", *m_RetirementCalls);
+            if (!passed) {
+                Finish(false, "session-close-contract");
+                return;
+            }
+            m_RetirementPlan = {};
+            m_RetirementWaitingPlan = {};
+            m_RetirementPatch = {};
+            m_RetirementSession.Close();
+            m_State = State::AttachBlock;
+            return;
+        }
+        if (m_Frame > m_WaitUntil)
+            Finish(false, "session-close-retirement");
+    }
+
     // A parked Block lives in the graph without being linked to it. The graph
     // never activates it, so the Instance the Mod holds is still what writes
     // its settings and pulses it.
     void AttachBlock() {
+        if (m_CloseRaceStage == 0) {
+            if (!WorkerCloseDuringInstall()) {
+                Finish(false, "install-worker-close");
+                return;
+            }
+            m_WaitUntil = m_Frame + 30;
+            m_CloseRaceStage = 1;
+            return;
+        }
+        if (m_CloseRaceStage == 1) {
+            if (!Restored()) {
+                if (m_Frame > m_WaitUntil) Finish(false, "close-race-restore");
+                return;
+            }
+            if (!CloseDuringReenable()) {
+                Finish(false, "reenable-session-close");
+                return;
+            }
+            m_WaitUntil = m_Frame + 30;
+            m_CloseRaceStage = 2;
+            return;
+        }
+        if (m_CloseRaceStage == 2) {
+            if (!Restored()) {
+                if (m_Frame > m_WaitUntil) Finish(false, "close-race-restore");
+                return;
+            }
+            m_CloseRaceStage = 3;
+        }
         if (!FailedLiveSettings()) {
             Finish(false, "live-settings-failure");
             return;
@@ -2606,7 +2835,17 @@ private:
             BML::PlayerTest::ProbeReport::Fail(reason);
     }
 
+    int m_SelfCloseTailCalls = 0;
+    int m_CloseRaceStage = 0;
     BML::Behavior::Session m_Session;
+    BML::Behavior::Session m_RetirementSession;
+    BML::Behavior::Plan m_RetirementPlan;
+    BML::Behavior::Plan m_RetirementWaitingPlan;
+    BML::Behavior::Plan m_RetirementPeerPlan;
+    BML::Behavior::Patch m_RetirementPatch;
+    std::shared_ptr<std::uint32_t> m_RetirementCalls =
+        std::make_shared<std::uint32_t>(0);
+    int m_SessionCloseCode = BML_ERROR_FAIL;
     BML::Behavior::Script m_AuthoredScript;
     BML::Behavior::Plan m_Plan;
     BML::Behavior::Plan m_SelfPlan;

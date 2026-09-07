@@ -109,6 +109,7 @@ private:
     struct OwnedPlan {
         PlanId Id = 0;
         SessionOwner Owner;
+        std::shared_ptr<CallbackAdmission> Admission;
         std::string Name;
         bool DesiredActive = true;
         bool Retiring = false;
@@ -135,6 +136,7 @@ private:
 
         PatchId Id = 0;
         SessionOwner Owner;
+        std::shared_ptr<CallbackAdmission> Admission;
         std::string Name;
         CK_ID Graph = 0;
         bool DesiredActive = true;
@@ -161,12 +163,18 @@ private:
     [[nodiscard]] Status Ready() const;
     [[nodiscard]] PatchId NextId();
     [[nodiscard]] PlanId NextPlanId();
+    std::shared_ptr<CallbackAdmission> RegisterAdmission(
+        bool plan, std::uint64_t id, const SessionOwner &owner,
+        std::shared_ptr<const CallbackAdmission> parent = {});
+    Status RequestClose(bool plan, std::uint64_t id, const SessionOwner &owner);
     Status Restore(OwnedPatch &patch);
     Status RestoreFrom(OwnedPatch &patch, std::size_t target);
     Status Close(OwnedPatch &patch);
+    void CloseAdmission(OwnedPatch &patch);
     Status Install(const SessionOwner &owner, const PatchKey &patch,
                    const ObjectRef &graph, const GraphEdit &edit,
-                   PatchId &out, const HandleMap *authorNodes = nullptr);
+                   PatchId &out, const HandleMap *authorNodes = nullptr,
+                   std::shared_ptr<const CallbackAdmission> admission = {});
     Status Install(OwnedPatch &patch);
     Status InstallFrom(OwnedPatch &patch,
                        const std::vector<Target> &definition,
@@ -216,6 +224,14 @@ private:
     IssueObject m_IssueObject;
     std::thread::id m_Thread;
     mutable std::recursive_mutex m_Mutex;
+    struct AdmissionRecord {
+        SessionOwner Owner;
+        std::weak_ptr<CallbackAdmission> Admission;
+    };
+    // No native or author callbacks run under this mutex. Close requests only
+    // touch these records, then try the graph registry without waiting.
+    std::mutex m_AdmissionMutex;
+    std::map<std::pair<bool, std::uint64_t>, AdmissionRecord> m_Admissions;
     PatchId m_NextId = 1;
     PlanId m_NextPlanId = 1;
     std::map<PatchId, OwnedPatch> m_Patches;

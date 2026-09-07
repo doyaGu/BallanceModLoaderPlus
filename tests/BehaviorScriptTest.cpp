@@ -49,6 +49,7 @@ public:
         if (!DefineResult)
             return DefineResult;
         out = NextBody++;
+        if (OnDefine) OnDefine();
         return {};
     }
 
@@ -102,6 +103,7 @@ public:
     Status CloseBodyResult;
     Status DestroyResult;
     std::function<void()> OnSetActive;
+    std::function<void()> OnDefine;
     std::vector<std::string> Events;
     std::vector<ScriptIdentity> Identities;
     std::vector<std::uint64_t> Defined;
@@ -370,3 +372,50 @@ TEST(BehaviorScript, KeepsFailedUnpublishedCleanupOutsideTheHandleTable) {
 }
 
 } // namespace
+
+
+TEST(BehaviorScript, CloseAtEndOfDefineCannotPublishAnOrphanRoot) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    auto *native = world.get();
+    int publications = 0;
+    ScriptSet scripts(std::move(world), [&](std::string_view, const ObjectRef &) {
+        ++publications;
+    });
+    auto admission = std::make_shared<SessionAdmission>(41);
+    SessionOwner owner{"mod", 1, admission};
+    native->OnDefine = [&] {
+        std::thread worker([&] {
+            // C CloseSession invalidates Sessions first, then closes Scripts.
+            admission->Open.store(false, std::memory_order_release);
+            scripts.CloseSession(41);
+        });
+        worker.join();
+    };
+    auto opened = scripts.Create(owner, 41, this, "Closing Session", 0, {});
+    EXPECT_FALSE(opened);
+    EXPECT_EQ(publications, 0);
+    scripts.ProcessFrame();
+    EXPECT_EQ(native->Destroyed.size(), 1u);
+    // Observe before Scripts' destructor retires every surviving root.
+}
+
+TEST(BehaviorScript, CloseDuringCreateRetriesUnpublishedBodyBeforeDestroyingRoot) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    auto *native = world.get();
+    ScriptSet scripts(std::move(world));
+    auto admission = std::make_shared<SessionAdmission>(41);
+    SessionOwner owner{"mod", 1, admission};
+    native->OnDefine = [&] {
+        admission->Close();
+        scripts.CloseSession(41);
+    };
+    native->CloseBodyResult = Failure(Error::Busy, "body still closing");
+    EXPECT_FALSE(scripts.Create(owner, 41, this, "Closing Session", 0, {}));
+    scripts.ProcessFrame();
+    EXPECT_TRUE(native->Destroyed.empty());
+    native->CloseBodyResult = {};
+    scripts.ProcessFrame();
+    ASSERT_EQ(native->Destroyed.size(), 1u);
+    scripts.ProcessFrame();
+    EXPECT_EQ(native->Destroyed.size(), 1u);
+}

@@ -2,6 +2,7 @@
 #define BML_BEHAVIOR_SESSIONS_H
 
 #include <cstdint>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -45,12 +46,21 @@ struct OpenRun {
     }
 };
 
+struct SessionAdmission : CallbackAdmission {
+    explicit SessionAdmission(std::uintptr_t id) : Id(id) {}
+    const std::uintptr_t Id;
+};
+
 struct SessionOwner {
     std::string Id;
     std::uint64_t Generation = 0;
+    // Null for Loader-owned work without a public Session. Copies let graph
+    // admission detect a Session closed while provider code was running.
+    std::shared_ptr<const SessionAdmission> Admission;
 
     [[nodiscard]] explicit operator bool() const noexcept {
-        return !Id.empty() && Generation != 0;
+        return !Id.empty() && Generation != 0 &&
+            (!Admission || Admission->Open.load(std::memory_order_acquire));
     }
 };
 
@@ -142,6 +152,7 @@ private:
         std::uintptr_t Id = 0;
         std::string OwnerId;
         std::uint64_t OwnerGeneration = 0;
+        std::shared_ptr<SessionAdmission> Admission;
     };
 
     struct Run {

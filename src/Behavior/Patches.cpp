@@ -83,6 +83,31 @@ PlanId Patches::NextPlanId() {
     return m_NextPlanId++;
 }
 
+std::shared_ptr<CallbackAdmission> Patches::RegisterAdmission(
+    bool plan, std::uint64_t id, const SessionOwner &owner,
+    std::shared_ptr<const CallbackAdmission> parent) {
+    auto admission = std::make_shared<CallbackAdmission>(
+        parent ? std::move(parent) : owner.Admission);
+    std::lock_guard<std::mutex> lock(m_AdmissionMutex);
+    m_Admissions.emplace(std::make_pair(plan, id), AdmissionRecord{owner, admission});
+    return admission;
+}
+
+Status Patches::RequestClose(bool plan, std::uint64_t id,
+                              const SessionOwner &owner) {
+    std::lock_guard<std::mutex> lock(m_AdmissionMutex);
+    const auto found = m_Admissions.find({plan, id});
+    if (found == m_Admissions.end())
+        return {};
+    if (found->second.Owner.Id != owner.Id ||
+        found->second.Owner.Generation != owner.Generation)
+        return Failure(Error::OwnerInvalid,
+                       "The Behavior handle belongs to another Mod generation.");
+    if (auto admission = found->second.Admission.lock())
+        admission->Close();
+    return {};
+}
+
 Status Patches::Begin(const SessionOwner &owner, CKBehavior *graph,
                       std::string name, Edit &out) {
     Status status = Ready();
@@ -135,8 +160,9 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
                        "The Behavior Edit graph has no live CK identity.");
     }
 
+    auto admission = RegisterAdmission(false, id, owner);
     Patch patch;
-    status = m_Edit.Apply(edit, patch);
+    status = m_Edit.Apply(edit, patch, admission);
     if (!patch)
         return status;
 
@@ -150,6 +176,7 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
         try {
             stored->second.Id = id;
             stored->second.Owner = owner;
+            stored->second.Admission = admission;
             stored->second.Graph = static_cast<CK_ID>(graph.Id);
             OwnedPatch::Scope scope;
             scope.Id = 1;
@@ -176,6 +203,11 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
     // A failed Apply normally rolls back completely and has no Patch value.
     // RevertConflict is different: retain its conflict journal under the owner,
     // but do not hand a successful installation id to the caller.
+    if (!owner) {
+        CloseAdmission(m_Patches.at(id));
+        return Failure(Error::InvalidState,
+                       "The Behavior Session closed while the Patch was opening.");
+    }
     if (status)
         out = id;
     return status;
@@ -233,6 +265,7 @@ Status Patches::Apply(const SessionOwner &owner, std::string name,
     OwnedPatch patch;
     patch.Id = id;
     patch.Owner = owner;
+    patch.Admission = RegisterAdmission(false, id, owner);
     patch.Name = std::move(name);
     patch.Definition = std::move(targets);
     if (m_Edit.CanPublish()) {
@@ -243,6 +276,12 @@ Status Patches::Apply(const SessionOwner &owner, std::string name,
             patch.ChangeFrom = 0;
             patch.ChangeFault = status;
         }
+    }
+
+    if (!owner) {
+        CloseAdmission(patch);
+        status = Failure(Error::InvalidState,
+                         "The Behavior Session closed while the Patch was opening.");
     }
 
     // A validation or admission failure that changed no Graph has nothing to
@@ -308,16 +347,20 @@ Status Patches::ResolveNode(const SessionOwner &owner, PatchId patch,
 class Patches::PlanWorld final : public Plan::World {
 public:
     PlanWorld(Patches &patches, SessionOwner owner, PatchKey patch,
-              std::shared_ptr<const GraphEdit> edit)
+              std::shared_ptr<const GraphEdit> edit,
+              std::shared_ptr<const CallbackAdmission> admission = {})
         : m_Patches(patches), m_Owner(std::move(owner)),
-          m_Patch(std::move(patch)), m_Edit(std::move(edit)) {}
+          m_Patch(std::move(patch)), m_Edit(std::move(edit)),
+          m_Admission(std::move(admission)) {}
 
     Status Install(const PatchKey &key, const ObjectRef &target, Epoch,
                    Installation &out) override {
         out = 0;
+        if (!m_Owner || (m_Admission && !m_Admission->IsOpen()))
+            return Failure(Error::InvalidState, "The Behavior Session is closed.");
         PatchId patch = 0;
         Status status = m_Patches.Install(
-            m_Owner, m_Patch, target, *m_Edit, patch);
+            m_Owner, m_Patch, target, *m_Edit, patch, nullptr, m_Admission);
         if (status)
             out = static_cast<Installation>(patch);
         return status;
@@ -333,6 +376,7 @@ private:
     SessionOwner m_Owner;
     PatchKey m_Patch;
     std::shared_ptr<const GraphEdit> m_Edit;
+    std::shared_ptr<const CallbackAdmission> m_Admission;
 };
 
 Status Patches::Submit(Plans &plans, const SessionOwner &owner,
@@ -407,6 +451,7 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
     OwnedPlan plan;
     plan.Id = id;
     plan.Owner = owner;
+    plan.Admission = RegisterAdmission(true, id, owner);
     plan.Name = std::move(name);
     plan.Definition = std::move(rules);
     status = Activate(plans, plan);
@@ -446,7 +491,7 @@ Status Patches::ActivateFrom(Plans &plans, OwnedPlan &plan,
             const Rule &rule = definition[index];
             auto world = std::make_shared<PlanWorld>(
                 *this, plan.Owner, PatchKey{plan.Owner.Id, plan.Name},
-                rule.Body);
+                rule.Body, plan.Admission);
             PlanId id = 0;
             status = plans.Submit(
                 {plan.Owner.Id, plan.Name + "/" + std::to_string(plan.Id) +
@@ -490,6 +535,10 @@ Status Patches::DeactivateFrom(Plans &plans, OwnedPlan &plan,
 }
 
 Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
+    if (!plan.Owner || !plan.Admission->IsOpen()) {
+        plan.Retiring = true;
+        plan.DesiredActive = false;
+    }
     if (plan.Retiring || !plan.DesiredActive) {
         Status status = Deactivate(plans, plan);
         if (status) {
@@ -578,7 +627,7 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
 }
 
 PlanState Patches::State(Plans &plans, const OwnedPlan &plan) const {
-    if (plan.Retiring)
+    if (plan.Retiring || !plan.Admission->IsOpen())
         return PlanState::Retiring;
     if (plan.Failed)
         return PlanState::Conflicted;
@@ -655,7 +704,7 @@ Status Patches::SetPlanActive(Plans &plans, const SessionOwner &owner,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan handle is stale.");
     OwnedPlan &plan = found->second;
-    if (plan.Retiring)
+    if (plan.Retiring || !plan.Admission->IsOpen())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Plan cannot be enabled.");
     plan.DesiredActive = active;
@@ -705,7 +754,7 @@ Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan handle is stale.");
     OwnedPlan &plan = found->second;
-    if (plan.Retiring)
+    if (plan.Retiring || !plan.Admission->IsOpen())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Plan cannot be replaced.");
     if (plan.DesiredActive && plan.PreviousDefinition.empty())
@@ -734,7 +783,12 @@ Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
 
 Status Patches::ClosePlan(Plans &plans, const SessionOwner &owner,
                           PlanId id) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status requested = RequestClose(true, id, owner);
+    if (!requested)
+        return requested;
+    std::unique_lock<std::recursive_mutex> lock(m_Mutex, std::try_to_lock);
+    if (!lock.owns_lock())
+        return Failure(Error::Busy, "The Behavior Plan is Retiring.", Phase::Teardown);
     const auto found = m_Plans.find(id);
     if (found == m_Plans.end())
         return {};
@@ -765,8 +819,14 @@ Status Patches::ClosePlan(Plans &plans, const SessionOwner &owner,
 
 Status Patches::Install(const SessionOwner &owner, const PatchKey &patch,
                         const ObjectRef &graph, const GraphEdit &edit,
-                        PatchId &out, const HandleMap *authorNodes) {
+                        PatchId &out, const HandleMap *authorNodes,
+                        std::shared_ptr<const CallbackAdmission> admission) {
     out = 0;
+    if (!owner)
+        return Failure(Error::InvalidState, "The Behavior Session is closed.");
+    // Plans may invoke this directly from its own frame pass, outside the
+    // aggregate Patches pass. Protect publication against worker close calls.
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     const PatchId id = NextId();
     if (!id)
         return Failure(Error::InvalidState,
@@ -774,6 +834,7 @@ Status Patches::Install(const SessionOwner &owner, const PatchKey &patch,
     OwnedPatch installed;
     installed.Id = id;
     installed.Owner = owner;
+    installed.Admission = RegisterAdmission(false, id, owner, std::move(admission));
     CKObject *rootObject = m_ResolveObject ? m_ResolveObject(graph) : nullptr;
     CKBehavior *rootBehavior = rootObject
         ? CKBehavior::Cast(rootObject) : nullptr;
@@ -788,6 +849,11 @@ Status Patches::Install(const SessionOwner &owner, const PatchKey &patch,
     } catch (...) {
         return Failure(Error::CreateFailed,
                        "The Loader could not retain the Behavior Patch.");
+    }
+    if (!owner || !installed.Admission->IsOpen()) {
+        CloseAdmission(installed);
+        status = Failure(Error::InvalidState,
+                         "The Behavior Session closed while the Patch was opening.");
     }
     if (!status) {
         for (auto scope = installed.Scopes.rbegin();
@@ -933,7 +999,7 @@ Status Patches::PublishScope(const SessionOwner &owner,
     Status status;
 
     Patch value;
-    status = m_Edit.Apply(resolved, value);
+    status = m_Edit.Apply(resolved, value, out.Admission);
     if (!value)
         return status;
     if (value.State() == PatchState::Pending && !edit.NestedGraphs().empty()) {
@@ -1106,6 +1172,8 @@ Status Patches::Read(const SessionOwner &owner, PatchId patch,
 }
 
 PatchState Patches::State(const OwnedPatch &patch) const {
+    if (!patch.Retiring && !patch.Admission->IsOpen())
+        return PatchState::Closing;
     if (patch.Scopes.empty()) {
         if (patch.Retiring)
             return PatchState::Closed;
@@ -1235,14 +1303,25 @@ Status Patches::RestoreFrom(OwnedPatch &patch, std::size_t target) {
     return result;
 }
 
-Status Patches::Close(OwnedPatch &patch) {
+void Patches::CloseAdmission(OwnedPatch &patch) {
+    patch.Admission->Close();
     patch.Retiring = true;
     patch.DesiredActive = false;
     ++patch.Revision;
+    // Stop every scope, even when restoring a later scope must wait or has a
+    // conflict. No still-installed sibling Hook may admit another callback.
+    for (auto &scope : patch.Scopes)
+        m_Edit.CloseAdmission(scope.Value);
+}
+
+Status Patches::Close(OwnedPatch &patch) {
+    CloseAdmission(patch);
     return Restore(patch);
 }
 
 Status Patches::Reconcile(OwnedPatch &patch) {
+    if ((!patch.Owner || !patch.Admission->IsOpen()) && !patch.Retiring)
+        CloseAdmission(patch);
     if (patch.Retiring || !patch.DesiredActive) {
         Status status = Restore(patch);
         if (status) {
@@ -1296,6 +1375,12 @@ Status Patches::Reconcile(OwnedPatch &patch) {
     const std::vector<Target> requested = patch.Definition;
     const std::uint64_t revision = patch.Revision;
     Status status = InstallFrom(patch, requested, prefix);
+    if (!patch.Owner || !patch.Admission->IsOpen() || patch.Retiring) {
+        CloseAdmission(patch);
+        (void) Restore(patch);
+        return Failure(Error::InvalidState,
+                       "Behavior Patch admission closed while installing.");
+    }
     if (status) {
         patch.LiveDefinition = requested;
         patch.Failed = false;
@@ -1359,7 +1444,7 @@ Status Patches::SetActive(const SessionOwner &owner, PatchId patch,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Patch handle is stale.");
     OwnedPatch &value = found->second;
-    if (value.Retiring)
+    if (value.Retiring || !value.Admission->IsOpen())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Patch cannot be enabled.");
     value.DesiredActive = active;
@@ -1402,7 +1487,7 @@ Status Patches::Replace(const SessionOwner &owner, PatchId patch,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Patch handle is stale.");
     OwnedPatch &value = found->second;
-    if (value.Retiring)
+    if (value.Retiring || !value.Admission->IsOpen())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Patch cannot be replaced.");
 
@@ -1430,7 +1515,12 @@ Status Patches::Replace(const SessionOwner &owner, PatchId patch,
 }
 
 Status Patches::Close(const SessionOwner &owner, PatchId patch) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+    Status requested = RequestClose(false, patch, owner);
+    if (!requested)
+        return requested;
+    std::unique_lock<std::recursive_mutex> lock(m_Mutex, std::try_to_lock);
+    if (!lock.owns_lock())
+        return Failure(Error::Busy, "The Behavior Patch is Closing.", Phase::Teardown);
     const auto found = m_Patches.find(patch);
     if (found == m_Patches.end())
         return {};
@@ -1568,6 +1658,13 @@ void Patches::Collect() {
             patch = m_Patches.erase(patch);
         else
             ++patch;
+    }
+    std::lock_guard<std::mutex> lock(m_AdmissionMutex);
+    for (auto record = m_Admissions.begin(); record != m_Admissions.end();) {
+        if (record->second.Admission.expired())
+            record = m_Admissions.erase(record);
+        else
+            ++record;
     }
 }
 

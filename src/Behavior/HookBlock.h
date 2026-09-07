@@ -22,6 +22,9 @@ public:
 
     [[nodiscard]] CallbackCall Invoke(const CKBehaviorContext *context) noexcept;
     void CloseAdmission() noexcept override;
+    void AdmitThrough(std::shared_ptr<const CallbackAdmission> admission) override {
+        m_Lease.AdmitThrough(std::move(admission));
+    }
     [[nodiscard]] bool RetireAtSafePoint() noexcept override;
     [[nodiscard]] CallbackLeaseState State() const noexcept;
     [[nodiscard]] CallbackFault Diagnostic() const;

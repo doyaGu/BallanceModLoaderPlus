@@ -277,6 +277,12 @@ $checks['BehaviorPlanFacade'] = $facade.Success -and
     $facade.Groups['release'].Value -eq 'true' -and
     [int]$facade.Groups['taps'].Value -ge 2 -and
     [int]$facade.Groups['afters'].Value -ge 1
+$checks['BehaviorSessionClose'] = $log.Contains(
+    'Behavior session close: status=pass calls=1')
+$checks['BehaviorCloseRaces'] = $log.Contains(
+    'Behavior plan downstream close: downstream_calls=0') -and
+    $log.Contains('Behavior install worker close: entered=true completed_in_callback=true close=0 apply=-11') -and
+    $log -match 'Behavior reenable close: close=0 enable=-11 native_hooks=\d+ callbacks_after_close=0'
 $checks['BehaviorHookSelfClose'] = $facadeSelfClose.Success -and
     $facadeSelfClose.Groups['status'].Value -eq 'pass' -and
     [int]$facadeSelfClose.Groups['calls'].Value -eq 1 -and

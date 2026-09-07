@@ -29,6 +29,7 @@ struct PlanCallbackState::Control {
 struct CallbackInvocation::LeaseControl {
     mutable std::mutex Mutex;
     std::shared_ptr<PlanCallbackState::Control> Plan;
+    std::vector<std::shared_ptr<const CallbackAdmission>> Admissions;
     CallbackLeaseState State = CallbackLeaseState::Open;
     std::size_t Invocations = 0;
     bool RetireRequested = false;
@@ -245,6 +246,15 @@ CallbackLease::~CallbackLease() {
     Close();
 }
 
+void CallbackLease::AdmitThrough(std::shared_ptr<const CallbackAdmission> admission) {
+    if (!m_Lease || !admission)
+        return;
+    std::lock_guard<std::mutex> lock(m_Lease->Mutex);
+    if (std::find(m_Lease->Admissions.begin(), m_Lease->Admissions.end(), admission)
+            == m_Lease->Admissions.end())
+        m_Lease->Admissions.push_back(std::move(admission));
+}
+
 CallbackInvocation CallbackLease::Enter() const {
     if (!m_Lease)
         return {};
@@ -252,6 +262,10 @@ CallbackInvocation CallbackLease::Enter() const {
         std::lock_guard<std::mutex> lock(m_Lease->Mutex);
         if (m_Lease->State != CallbackLeaseState::Open)
             return {};
+        for (const auto &admission : m_Lease->Admissions) {
+            if (!admission->IsOpen())
+                return {};
+        }
         ++m_Lease->Invocations;
     }
     {
@@ -303,6 +317,12 @@ CallbackLeaseState CallbackLease::State() const noexcept {
     if (!m_Lease)
         return CallbackLeaseState::Closed;
     std::lock_guard<std::mutex> lock(m_Lease->Mutex);
+    if (m_Lease->State == CallbackLeaseState::Open) {
+        for (const auto &admission : m_Lease->Admissions) {
+            if (!admission->IsOpen())
+                return CallbackLeaseState::Closing;
+        }
+    }
     return m_Lease->State;
 }
 

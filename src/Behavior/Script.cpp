@@ -353,6 +353,24 @@ ScriptResult Scripts::Create(const SessionOwner &owner,
 
     ScriptBodyId scriptBody = 0;
     status = m_World->Define(owner, identity, std::move(body), scriptBody);
+    entry->Body = scriptBody;
+    if (status) {
+        try {
+            // CloseSession uses this same registry lock. It must either see
+            // this Entry or revoke its Session before we admit it.
+            std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+            if (!owner)
+                status = Failure(Error::OwnerInvalid,
+                                 "The Behavior Session closed while creating the Script.",
+                                 Phase::Creation);
+            else
+                m_Scripts.emplace(id, entry);
+        } catch (...) {
+            status = Failure(Error::CreateFailed,
+                             "The Loader could not retain the new Script.",
+                             Phase::Creation);
+        }
+    }
     if (!status) {
         const Status rejected = status;
         entry->Info.State = ScriptState::Closing;
@@ -365,16 +383,6 @@ ScriptResult Scripts::Create(const SessionOwner &owner,
             m_Retiring.push_back(entry);
         }
         return {rejected, 0, {}};
-    }
-
-    entry->Body = scriptBody;
-    try {
-        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        m_Scripts.emplace(id, entry);
-    } catch (...) {
-        (void) m_World->CloseBody(owner, scriptBody);
-        (void) m_World->Destroy(identity);
-        throw;
     }
 
     try {
@@ -390,6 +398,7 @@ ScriptResult Scripts::Create(const SessionOwner &owner,
                         "The Loader could not publish the new Script.",
                         Phase::Creation), 0, {}};
     }
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     return {{}, id, entry->Info};
 }
 

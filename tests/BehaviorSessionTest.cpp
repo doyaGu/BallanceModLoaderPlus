@@ -2,6 +2,9 @@
 #include "Behavior/FrameStore.h"
 
 #include <cstdlib>
+#include <chrono>
+#include <functional>
+#include <future>
 #include <new>
 #include <stdexcept>
 #include <thread>
@@ -59,6 +62,7 @@ std::size_t BehaviorSessionRuntimeStateReads();
 std::size_t BehaviorSessionRuntimeWorldResets();
 void ResetBehaviorSessionRuntimeClosePendingCalls();
 std::size_t BehaviorSessionRuntimeClosePendingCalls();
+void SetBehaviorSessionConfigureCallback(std::function<void()> callback);
 } // namespace BML::Behavior::Internal
 
 namespace {
@@ -204,6 +208,33 @@ WatchSpec LayoutWatchSpec() {
     WatchSpec spec;
     spec.Kind = WatchKind::LayoutChanged;
     return spec;
+}
+
+TEST(BehaviorSessions, SessionAdmissionSurvivesResetButClosesWithItsSession) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t first = 0, second = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", first));
+    ASSERT_TRUE(sessions.OpenSession("mod", second));
+    SessionOwner firstOwner, secondOwner, nativeOwner;
+    ASSERT_TRUE(sessions.ReadOwner(first, firstOwner));
+    ASSERT_TRUE(sessions.ReadOwner(second, secondOwner));
+    ASSERT_TRUE(sessions.ReadOwner(std::string("mod"), nativeOwner));
+    ASSERT_TRUE(firstOwner.Admission);
+    EXPECT_EQ(firstOwner.Admission->Id, first);
+    EXPECT_FALSE(nativeOwner.Admission);
+
+    sessions.ResetWorld();
+    EXPECT_TRUE(firstOwner);
+    EXPECT_TRUE(secondOwner);
+    std::thread closer([&] { sessions.CloseSession(first); });
+    closer.join();
+    EXPECT_FALSE(firstOwner);
+    EXPECT_TRUE(secondOwner);
+    EXPECT_TRUE(nativeOwner);
+    sessions.RetireOwner("mod");
+    EXPECT_FALSE(secondOwner);
 }
 
 TEST(BehaviorSessions, OwnerGenerationMakesOldSessionsStale) {
@@ -914,6 +945,69 @@ TEST(BehaviorSessions, LiveEditsHonorLayoutGeneration) {
         Slot::Named(SlotKind::OutputParameter, "Value"),
         Parameter::BindingKind::Direct, generation));
     EXPECT_EQ(generation, 2u);
+}
+
+TEST(BehaviorSessions, RejectedSettingsPreservePendingRunState) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    OpenRun run = sessions.Start(
+        session, nullptr, BlockSpec(CKGUID(1, 2)), Input("Pending"));
+    ASSERT_TRUE(run);
+    ASSERT_EQ(run.Info.State, RunState::Pending);
+
+    std::uint64_t generation = 0;
+    EXPECT_EQ(sessions.Configure(run.Id, BlockSpec{}, generation).Code,
+              Error::InvalidState);
+    RunInfo info;
+    ASSERT_TRUE(sessions.ReadRun(run.Id, info));
+    EXPECT_EQ(info.State, RunState::Pending);
+    EXPECT_EQ(info.LastStatus.Code, Error::None);
+
+    AdvanceBehaviorSessionRuntime();
+    ASSERT_TRUE(sessions.ReadRun(run.Id, info));
+    EXPECT_EQ(info.State, RunState::Ready);
+    ASSERT_TRUE(sessions.Configure(run.Id, BlockSpec{}, generation));
+    ASSERT_TRUE(sessions.ReadRun(run.Id, info));
+    EXPECT_EQ(info.State, RunState::Ready);
+}
+
+TEST(BehaviorSessions, SettingsCallbackDoesNotBlockWorkerClose) {
+    for (bool closeSession : {false, true}) {
+        Runtime runtime(nullptr);
+        Sessions sessions(runtime);
+        ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+        std::uintptr_t session = 0;
+        ASSERT_TRUE(sessions.OpenSession("mod", session));
+        OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(1, 2)));
+        ASSERT_TRUE(run);
+
+        std::promise<void> closed;
+        auto finished = closed.get_future();
+        std::thread closer;
+        SetBehaviorSessionConfigureCallback([&] {
+            closer = std::thread([&] {
+                if (closeSession)
+                    sessions.CloseSession(session);
+                else
+                    sessions.CloseRun(run.Id);
+                closed.set_value();
+            });
+            // Bound the old deadlock so the failing test can still clean up.
+            EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
+                      std::future_status::ready);
+        });
+        std::uint64_t generation = 0;
+        (void) sessions.Configure(run.Id, BlockSpec{}, generation);
+        SetBehaviorSessionConfigureCallback({});
+        closer.join();
+        RunInfo info;
+        EXPECT_EQ(sessions.ReadRun(run.Id, info).Code, Error::InvalidState);
+        sessions.ProcessFrame();
+        EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+    }
 }
 
 TEST(BehaviorSessions, FailedLiveSettingsMakeTheRunTerminal) {

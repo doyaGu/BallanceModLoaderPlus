@@ -2,6 +2,7 @@
 #define BML_BEHAVIOR_CALLBACK_H
 
 #include <exception>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -42,10 +43,26 @@ struct CallbackCall {
     CallbackFault Fault;
 };
 
+// Shared cancellation for a Session, Plan, or Patch. Parents are immutable;
+// closing never visits native objects or waits for author code.
+struct CallbackAdmission {
+    explicit CallbackAdmission(std::shared_ptr<const CallbackAdmission> parent = {})
+        : Parent(std::move(parent)) {}
+    [[nodiscard]] bool IsOpen() const noexcept {
+        return Open.load(std::memory_order_acquire) &&
+            (!Parent || Parent->IsOpen());
+    }
+    void Close() noexcept { Open.store(false, std::memory_order_release); }
+
+    std::atomic<bool> Open{true};
+    const std::shared_ptr<const CallbackAdmission> Parent;
+};
+
 class CallbackResource {
 public:
     virtual ~CallbackResource() = default;
     virtual void CloseAdmission() noexcept = 0;
+    virtual void AdmitThrough(std::shared_ptr<const CallbackAdmission> admission) = 0;
     [[nodiscard]] virtual bool RetireAtSafePoint() noexcept = 0;
 };
 
@@ -127,6 +144,7 @@ public:
     ~CallbackLease();
 
     [[nodiscard]] CallbackInvocation Enter() const;
+    void AdmitThrough(std::shared_ptr<const CallbackAdmission> admission);
     CallbackCloseResult CloseAdmission() noexcept;
     CallbackCloseResult Close() noexcept;
     [[nodiscard]] CallbackLeaseState State() const noexcept;

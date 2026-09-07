@@ -396,4 +396,52 @@ TEST(BehaviorCallback, PlanHookReleasesAfterPlanAndEveryInstallation) {
     EXPECT_EQ(counts.Releases, 1);
 }
 
+TEST(BehaviorCallback, ParentCloseStopsExistingAndNotYetPublishedInstallations) {
+    auto session = std::make_shared<CallbackAdmission>();
+    auto plan = std::make_shared<CallbackAdmission>(session);
+    auto patch = std::make_shared<CallbackAdmission>(plan);
+    int calls = 0;
+    HookBlock::Hook hook([](const CKBehaviorContext *, void *state) -> int {
+        ++*static_cast<int *>(state);
+        return CKBR_OK;
+    }, &calls);
+    auto first = hook.Bind();
+    first->AdmitThrough(patch);
+    ASSERT_TRUE(first->Invoke(nullptr).Invoked);
+    std::thread closer([&] { plan->Close(); });
+    closer.join();
+    EXPECT_FALSE(first->Invoke(nullptr).Invoked);
+    // A binding prepared after closure must not reopen admission.
+    auto late = hook.Bind();
+    late->AdmitThrough(std::make_shared<CallbackAdmission>(plan));
+    EXPECT_FALSE(late->Invoke(nullptr).Invoked);
+    EXPECT_EQ(calls, 1);
+    // Closing one Plan does not close another Plan in the same Session.
+    auto sibling = hook.Bind();
+    sibling->AdmitThrough(std::make_shared<CallbackAdmission>(session));
+    EXPECT_TRUE(sibling->Invoke(nullptr).Invoked);
+    session->Close();
+    EXPECT_FALSE(sibling->Invoke(nullptr).Invoked);
+    EXPECT_EQ(calls, 2);
+}
+
+TEST(BehaviorCallback, ParentCloseDoesNotWaitForOrReleaseCurrentInvocation) {
+    auto admission = std::make_shared<CallbackAdmission>();
+    ReferenceCounts counts;
+    auto state = PlanCallbackState::Retained(&counts, Retain, Release);
+    auto binding = HookBlock::Bind(state,
+        [](const CKBehaviorContext *, void *argument) -> int {
+            auto &parent = *static_cast<std::shared_ptr<CallbackAdmission> *>(argument);
+            std::thread closer([&] { parent->Close(); });
+            closer.join();
+            return CKBR_OK;
+        }, &admission);
+    binding->AdmitThrough(admission);
+    EXPECT_TRUE(binding->Invoke(nullptr).Invoked);
+    EXPECT_EQ(counts.Releases, 0);
+    EXPECT_FALSE(binding->Invoke(nullptr).Invoked);
+    EXPECT_TRUE(binding->RetireAtSafePoint());
+    EXPECT_EQ(counts.Releases, 1);
+}
+
 } // namespace

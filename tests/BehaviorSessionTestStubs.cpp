@@ -1,6 +1,7 @@
 #include "Behavior/Runtime.h"
 
 #include <mutex>
+#include <functional>
 #include <unordered_map>
 #include <utility>
 
@@ -23,6 +24,7 @@ std::unordered_map<std::uint64_t, FakeInstance> g_FakeInstances;
 std::size_t g_StateReads = 0;
 std::size_t g_WorldResets = 0;
 std::size_t g_ClosePendingCalls = 0;
+std::function<void()> g_ConfigureCallback;
 
 RunFrame MakeFrame(FakeInstance &instance, bool endsActivation) {
     RunFrame frame;
@@ -41,6 +43,10 @@ FakeInstance *FindFake(std::uint64_t id) {
 }
 
 } // namespace
+
+void SetBehaviorSessionConfigureCallback(std::function<void()> callback) {
+    g_ConfigureCallback = std::move(callback);
+}
 
 void AdvanceBehaviorSessionRuntime() {
     std::lock_guard<std::mutex> lock(g_FakeMutex);
@@ -345,6 +351,8 @@ Status Runtime::Bind(Instance &instance, const SlotRef &slot,
 
 Status Runtime::Configure(Instance &instance, const BlockSpec &settings,
                           const CKBehaviorContext *) {
+    if (g_ConfigureCallback)
+        g_ConfigureCallback();
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     FakeInstance *found = FindFake(instance.m_Id);
     if (!found)
@@ -352,6 +360,9 @@ Status Runtime::Configure(Instance &instance, const BlockSpec &settings,
                 CKBR_PARAMETERERROR, "The fake Behavior is stale."};
     if (found->Failure.Code != Error::None)
         return found->Failure;
+    if (found->State != ExecutionState::Idle)
+        return {Error::InvalidState, CKERR_INVALIDOBJECT,
+                CKBR_PARAMETERERROR, "Configuration requires an idle behavior instance."};
     if (settings.Prototype() == CKGUID(91, 92)) {
         found->Failure = {Error::CallbackFailed, CKERR_INVALIDPARAMETER,
                           CKBR_BEHAVIORERROR,

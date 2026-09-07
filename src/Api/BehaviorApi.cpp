@@ -832,8 +832,8 @@ int BML_BEHAVIOR_CALL CloseSession(BML_BehaviorSession session) {
         if (!context)
             return BML_ERROR_FROZEN;
         const std::uintptr_t id = SessionId(session);
-        context->BehaviorScripts().CloseSession(id);
         context->BehaviorSessions().CloseSession(id);
+        context->BehaviorScripts().CloseSession(id);
         return BML_OK;
     });
 }

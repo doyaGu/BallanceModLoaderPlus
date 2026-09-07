@@ -92,7 +92,8 @@ public:
                NodeRole role = NodeRole::Logical);
     Status AddGraph(Edit &edit, std::string name, int priority, Node &out,
                     NodeRole role = NodeRole::Logical);
-    Status Apply(const Edit &edit, Patch &out);
+    Status Apply(const Edit &edit, Patch &out,
+                 std::shared_ptr<const CallbackAdmission> admission = {});
     // Reads back the live Node an applied Edit gave this handle. Busy while
     // the Patch is still waiting for its safe point.
     Status ResolveNode(const Patch &patch, Node handle,
@@ -103,6 +104,9 @@ public:
     void GraphDeleted(Patch &patch);
     void ObjectsToBeDeleted(const CK_ID *ids, int count);
     Status Close(Patch &patch);
+    // Stops Hooks without restoring native graph state or invoking Release.
+    // The aggregate owner schedules the inverse at its next safe point.
+    void CloseAdmission(Patch &patch) noexcept;
     void ProcessFrame();
 
     [[nodiscard]] std::uint64_t TopologyFingerprint(CKBehavior *graph) const;

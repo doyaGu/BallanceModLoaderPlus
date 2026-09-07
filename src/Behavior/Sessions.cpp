@@ -120,7 +120,8 @@ Status Sessions::OpenSession(const std::string &ownerId,
     const std::uintptr_t id = NextId();
     if (!id)
         return Fail(Error::InvalidState, "Behavior session ids are exhausted.");
-    m_Sessions.emplace(id, Session{id, ownerId, owner->second.Generation});
+    m_Sessions.emplace(id, Session{id, ownerId, owner->second.Generation,
+                                  std::make_shared<SessionAdmission>(id)});
     sessionId = id;
     return {};
 }
@@ -132,6 +133,7 @@ void Sessions::CloseSession(std::uintptr_t sessionId) {
     const auto session = m_Sessions.find(sessionId);
     if (session == m_Sessions.end())
         return;
+    session->second.Admission->Open.store(false, std::memory_order_release);
     for (auto run = m_Runs.begin(); run != m_Runs.end();) {
         if (run->second->SessionId != sessionId) {
             ++run;
@@ -158,7 +160,7 @@ Status Sessions::ReadOwner(std::uintptr_t sessionId, SessionOwner &out) const {
     if (!session || !SessionIsActive(*session))
         return Fail(Error::InvalidState,
                     "The Behavior Session is stale or retiring.");
-    out = {session->OwnerId, session->OwnerGeneration};
+    out = {session->OwnerId, session->OwnerGeneration, session->Admission};
     return {};
 }
 
@@ -477,21 +479,26 @@ Status Sessions::Bind(std::uintptr_t runId,
 Status Sessions::Configure(std::uintptr_t runId, const BlockSpec &settings,
                            std::uint64_t &layoutGeneration) {
     layoutGeneration = 0;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run = FindRun(runId);
-    if (!run || !run->Block)
-        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    std::shared_ptr<Run> run;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        run = FindRun(runId);
+        if (!run || !run->Block)
+            return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+    }
+    // Settings enter provider callbacks. Keep the Run alive, but let worker
+    // Close requests stop admission without waiting for those callbacks.
     Status status = m_Runtime.Configure(run->Block, settings);
+    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     if (status) {
         layoutGeneration = run->Block.LayoutGeneration();
-    } else {
-        run->Info.State = RunState::Failed;
-        if (run->Info.LastStatus.Code == Error::None)
-            run->Info.LastStatus = status;
     }
+    // A precondition rejection (for example a pending Task) does not fail the
+    // Instance. Runtime records failures only once configuration has begun.
+    RefreshRunInfo(m_Runtime, run->Block, run->Info);
     return status;
 }
 
@@ -892,9 +899,10 @@ void Sessions::CloseOwner(const std::string &ownerId,
     }
     for (auto session = m_Sessions.begin(); session != m_Sessions.end();) {
         if (session->second.OwnerId == ownerId &&
-            session->second.OwnerGeneration == generation)
+            session->second.OwnerGeneration == generation) {
+            session->second.Admission->Open.store(false, std::memory_order_release);
             session = m_Sessions.erase(session);
-        else
+        } else
             ++session;
     }
     for (auto watch = m_Watches.begin(); watch != m_Watches.end();) {

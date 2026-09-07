@@ -4154,6 +4154,11 @@ Status CKEdit::Undo(Patch::Journal &patch) {
     return first;
 }
 
+void CKEdit::CloseAdmission(Patch &patch) noexcept {
+    if (patch.m_Journal)
+        CloseAdmission(*patch.m_Journal);
+}
+
 void CKEdit::CloseAdmission(Patch::Journal &patch) noexcept {
     std::vector<std::shared_ptr<CallbackResource>> callbacks;
     {
@@ -4166,7 +4171,8 @@ void CKEdit::CloseAdmission(Patch::Journal &patch) noexcept {
     }
 }
 
-Status CKEdit::Apply(const Edit &edit, Patch &out) {
+Status CKEdit::Apply(const Edit &edit, Patch &out,
+                     std::shared_ptr<const CallbackAdmission> admission) {
     Status status = Ready();
     if (!status)
         return status;
@@ -4188,6 +4194,14 @@ Status CKEdit::Apply(const Edit &edit, Patch &out) {
         if (tap.Callback)
             patch->Callbacks.push_back(tap.Callback);
     }
+    // Attach before ApplyNow can run native lifecycle callbacks. This also
+    // guards journals not yet visible in their aggregate owner's registry.
+    for (const auto &callback : patch->Callbacks) {
+        if (callback)
+            callback->AdmitThrough(admission);
+    }
+    if (admission && !admission->IsOpen())
+        return Failure(Error::InvalidState, "Behavior Patch admission is closed.");
     if (Deferred()) {
         if (edit.m_Nodes.empty())
             return Failure(Error::InvalidState, "The Edit has no graph.");

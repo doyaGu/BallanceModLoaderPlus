@@ -111,6 +111,9 @@ public:
 
     Status Invoke(const WatchEvent &event) noexcept;
     void CloseAdmission() noexcept override;
+    void AdmitThrough(std::shared_ptr<const CallbackAdmission> admission) override {
+        m_Lease.AdmitThrough(std::move(admission));
+    }
     [[nodiscard]] bool RetireAtSafePoint() noexcept override;
     // False when the callback lease never opened, e.g. the state was already
     // retired or its Retain was still in progress.
