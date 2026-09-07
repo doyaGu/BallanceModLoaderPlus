@@ -1257,6 +1257,30 @@ Status Patches::Diagnostic(const OwnedPatch &patch) const {
     return patch.PrimaryFailure;
 }
 
+bool Patches::HasPendingChange(const OwnedPlan &plan) {
+    if (!plan.Owner || !plan.Admission->IsOpen())
+        return plan.Goal != PlanGoal::Closed || !plan.Rules.empty();
+    if (plan.Recovery == PlanRecovery::Blocked)
+        return false;
+    if (plan.RestoreFrom)
+        return true;
+    return plan.Goal == PlanGoal::Enabled
+        ? plan.Rules.size() != plan.RequestedRules.size()
+        : !plan.Rules.empty();
+}
+
+bool Patches::HasPendingChange(const OwnedPatch &patch) {
+    if (!patch.Owner || !patch.Admission->IsOpen())
+        return patch.Goal != PatchGoal::Closed || !patch.Scopes.empty();
+    if (patch.Recovery == PatchRecovery::Blocked)
+        return false;
+    if (patch.RestoreFrom)
+        return true;
+    return patch.Goal == PatchGoal::Enabled
+        ? patch.AppliedDefinition.size() != patch.RequestedDefinition.size()
+        : !patch.Scopes.empty();
+}
+
 void Patches::RebuildHandles(OwnedPatch &patch) {
     patch.Handles.clear();
     for (std::size_t scopeIndex = 0; scopeIndex < patch.Scopes.size();
@@ -1688,8 +1712,10 @@ void Patches::ProcessFrame(Plans &plans) {
         return;
     m_Edit.ProcessFrame();
     for (auto plan = m_Plans.begin(); plan != m_Plans.end();) {
-        Status status = ReconcilePlan(plans, plan->second);
-        plan->second.LastStatus = status;
+        if (HasPendingChange(plan->second)) {
+            Status status = ReconcilePlan(plans, plan->second);
+            plan->second.LastStatus = status;
+        }
         if (plan->second.Goal == PlanGoal::Closed &&
             plan->second.Rules.empty()) {
             plan = m_Plans.erase(plan);
@@ -1699,7 +1725,7 @@ void Patches::ProcessFrame(Plans &plans) {
     }
     for (auto &entry : m_Patches) {
         OwnedPatch &patch = entry.second;
-        if (m_Edit.CanPublish())
+        if (HasPendingChange(patch) && m_Edit.CanPublish())
             (void) Reconcile(patch);
     }
     Collect();

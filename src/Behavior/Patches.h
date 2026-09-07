@@ -234,6 +234,8 @@ private:
                                   const OwnedPlan &plan) const;
     [[nodiscard]] PatchState State(const OwnedPatch &patch) const;
     [[nodiscard]] Status Diagnostic(const OwnedPatch &patch) const;
+    [[nodiscard]] static bool HasPendingChange(const OwnedPlan &plan);
+    [[nodiscard]] static bool HasPendingChange(const OwnedPatch &patch);
     void RebuildHandles(OwnedPatch &patch);
     void Collect();
 
