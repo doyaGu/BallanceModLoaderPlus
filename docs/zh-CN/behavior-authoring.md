@@ -22,7 +22,7 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 | `Frames` | 从 native Execute 复制出的控制流结果和可选 Pout 值 |
 | `Script` | 一个 owner-scoped 的顶层 graph-backed `CKBehavior` |
 | `Graph` | 某个时刻的 immutable Behavior graph snapshot |
-| `NodePattern` | 在一个 graph scope 内重新解析的 durable 结构描述 |
+| `NodePattern` | 在一个 graph scope 内解析的结构条件 |
 | `Edit` | 尚未安装的 symbolic graph transformation |
 | `Patch` | 应用于一个确定 graph snapshot 的 Edit |
 | `Plan` | 跨 world 按 script selector 反复 reconcile 的 Edit |
@@ -89,7 +89,7 @@ Target 有三种形式：`TargetOwner()`、`Target(type, object)` 和 `NullTarge
 
 `Block::Validate()` 是可选的 declared-Layout 检查，不创建 `CKBehavior`。它只能验证 Prototype 初始声明中已有的 Target、selector 和 type；Setting callback 动态创建的 slot 仍由真正打开 run 时的 native lifecycle 验证。即使没有先调用 `Validate()`，run admission 也不会跳过这些检查。
 
-第一次能够可靠识别 provider 的验证或 admission 会固定 provider generation。之后若同一 GUID 被另一 provider 替换，旧 Block 会返回 stale，不会静默换用新实现。无法可靠跟踪 provider retirement 时，即时 run 仍可使用 generation-zero provider，但这种 Block 不能进入跨 world 的 durable Edit。
+第一次能够可靠识别 provider 的验证或 admission 会固定 provider generation。之后若同一 GUID 被另一 provider 替换，旧 Block 会返回 stale，不会静默换用新实现。无法可靠跟踪 provider retirement 时，即时 run 仍可使用 generation-zero provider，但这种 Block 不能存入 Plan。
 
 ## 4. 选择 Execute 的所有权
 
@@ -263,7 +263,7 @@ highscore.Flow(activators.Out(), done);
 root.After(highscoreNode.Out("Done"), hook);
 ```
 
-`NodePattern` 是 `Require` 使用的 durable 结构词汇。它可以组合 index/name
+`NodePattern` 是 `Require` 使用的结构词汇。它可以组合 index/name
 selector、Prototype、Behavior kind、各类 port 的精确数量，以及对 Target、Pin、
 Pout、Setting 或 Local 值的 non-forcing 观察。所有条件共同标识一个 Node；找
 不到或结果不唯一时，Plan 保持 unsatisfied，不会猜测。Pattern 不保存 native
@@ -308,7 +308,7 @@ identity，以及 Edit 或 Block 中的所有 non-null ObjectRef。
 - `Tap` / `Before` / `After`：安装 callback；
 - `Splice`：让现有 Link 经过新增 Block；
 - `Redirect`：暂时改变 Link destination；
-- `Next` / `Previous` 与 `Leaving` / `Entering` / `To`：描述 durable topology；
+- `Next` / `Previous` 与 `Leaving` / `Entering` / `To`：描述每个 world 中重新解析的 topology；
 - `Each`：对 Pattern 匹配的所有 Node 应用同一个 operation；
 - `AppendIn/Out/Pin/Pout`：扩展 dynamic interface；
 - `AppendLocal`：用于 graph root 或同一 Edit 新增的 Block。Local 属于其实现，

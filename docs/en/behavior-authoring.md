@@ -22,7 +22,7 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 | `Frames` | Copied control-flow results and optional Pout values from native Execute |
 | `Script` | One owner-scoped, top-level graph-backed `CKBehavior` |
 | `Graph` | An immutable snapshot of a Behavior graph |
-| `NodePattern` | A durable structural description resolved within one graph scope |
+| `NodePattern` | Structural conditions resolved within one graph scope |
 | `Edit` | A symbolic graph transformation that has not been installed |
 | `Patch` | An Edit installed on one exact graph snapshot |
 | `Plan` | An Edit reconciled against selected scripts across worlds |
@@ -89,7 +89,7 @@ Targets are explicit: `TargetOwner()`, `Target(type, object)`, or `NullTarget(ty
 
 `Block::Validate()` is an optional declared-Layout check and does not create a `CKBehavior`. It can check only the Target, selectors, and types present in the Prototype's initial declaration. Slots created by Setting callbacks are checked during real run admission. Admission performs the complete native checks even when `Validate()` was not called.
 
-The first validation or admission that can identify a provider pins its generation. If another provider later registers the same GUID, the old Block becomes stale instead of changing implementation. When provider retirement cannot be tracked, immediate runs may use generation zero, but such a Block cannot enter a durable cross-world Edit.
+The first validation or admission that can identify a provider pins its generation. If another provider later registers the same GUID, the old Block becomes stale instead of changing implementation. When provider retirement cannot be tracked, immediate runs may use generation zero, but such a Block cannot be stored in a Plan.
 
 ## 4. Choose who owns Execute
 
@@ -265,7 +265,7 @@ highscore.Flow(activators.Out(), done);
 root.After(highscoreNode.Out("Done"), hook);
 ```
 
-`NodePattern` is the durable structural vocabulary used by `Require`. It can
+`NodePattern` is the structural vocabulary used by `Require`. It can
 combine an index/name selector, Prototype, Behavior kind, exact counts for each
 port family, and non-forcing observations of Target, Pin, Pout, Setting, or
 Local values. All conditions identify one Node together; an absent or ambiguous
@@ -320,7 +320,7 @@ Common transformations are:
 - `Tap` / `Before` / `After` for callbacks;
 - `Splice` for routing an existing Link through a Block;
 - `Redirect` for temporarily changing a Link destination;
-- `Next` / `Previous` and `Leaving` / `Entering` / `To` for durable topology;
+- `Next` / `Previous` and `Leaving` / `Entering` / `To` for topology resolved in each world;
 - `Each` for applying one operation to every Node matching a Pattern;
 - `AppendIn/Out/Pin/Pout` for dynamic interfaces;
 - `AppendLocal` for the graph root or a Block added by the same Edit. A Local

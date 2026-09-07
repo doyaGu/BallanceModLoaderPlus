@@ -211,7 +211,7 @@ checks in:
 - `BML::UI` for the message board, mod/map menus, and HUD;
 - `BML::Speedrun` for the shared speedrun timer;
 - `BML::Behavior` for Virtools Building Block discovery, configured Runs,
-  copied Frames, graph inspection, Watches, Patches, and durable Plans.
+  copied Frames, graph inspection, Watches, Patches, and Plans.
 
 `Interface.h` documents the version rules: a struct grows only by appending a
 member and bumping its minor version, and `BML_IFACE_HAS` asks whether the
