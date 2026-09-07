@@ -179,14 +179,28 @@ auto snapshot = m_Behavior.Inspect(script);
 if (!snapshot)
     return;
 
-auto counter = snapshot->Find("Counter_Active");
+auto counter = snapshot->Find(Named("Counter_Active", 0));
 if (counter) {
     auto value = snapshot->Read(counter->Pout("Count"));
     // 在 snapshot 有效期间使用 value。
 }
 ```
 
-`Graph::Find` 要求名称恰好匹配一个 Node；`FindAll` 返回全部匹配。Node、Port、Link 和 ParameterOperation 都是指向共享 snapshot allocation 的轻量 view。`Graph::Operations()` 列出每个真实 `CKParameterOperation`，包括 operation GUID、精确的 result/input type tuple、graph owner 和 object identity。Port 保留所属 Node 的 layout generation；把旧 snapshot 的 Port 用于新的 live Layout 会失败。
+`Find` 和 `FindAll` 与 Block slot 使用同一组 selector：`At(index)`、
+`Named(name, occurrence)` 和 `Unique(name)`，还可附加 Prototype GUID 进一步
+限定。`Node::Index()` 是该 graph 中的直接子节点位置，`Node::IsGraph()` 用来
+区分 graph-backed Behavior 和 function-backed BB。`Graph::Inspect(node)` 进入
+graph-backed child，返回以该 Node 为 root 的新 snapshot。原生指针只通过
+`Session::Inspect(CKBehavior *)` 进入根 graph；child Node 和 Link 必须来自
+snapshot，因此一个 Edit 不会暗中混用不同 graph 的 identity。
+
+`Incoming` 和 `Outgoing` 返回零分配 Link view。`Entering`、`Leaving`、
+`Previous` 和 `Next` 只接受唯一的 topology 结果；遇到分支时报告歧义，不会
+随意挑一条。Node、Port、Link 和 ParameterOperation 都是指向同一个共享
+snapshot allocation 的轻量 view。`Graph::Operations()` 列出每个真实
+`CKParameterOperation`，包括 operation GUID、精确的 result/input type tuple、
+graph owner 和 object identity。Port 保留所属 Node 的 layout generation；把
+旧 snapshot 的 Port 用于新的 live Layout 会失败。
 
 `Logical()` 重新读取作者可见的 graph，`Live()` 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。若其他代码改坏了 Patch 所声明的 after-image，Runtime 返回 `GraphChanged`，不会根据名称或形状猜测。
 
@@ -200,13 +214,13 @@ Watch 每个 game frame 采样一次 graph、layout 或 value。callback 或观�
 
 ```cpp
 Edit body;
-auto root = body.Graph();
-body.AppendIn(root, "Start");
-body.AppendOut(root, "Done");
-auto left = body.AppendLocal(root, "Left", CKPGUID_FLOAT);
-auto sum = body.AddOperation(
+auto graph = body.Root();
+graph.AppendIn("Start");
+graph.AppendOut("Done");
+auto left = graph.AppendLocal("Left", CKPGUID_FLOAT);
+auto sum = graph.AddOperation(
     addition, CKPGUID_FLOAT, CKPGUID_FLOAT, CKPGUID_FLOAT);
-body.Bind(left, 2.0f)
+graph.Bind(left, 2.0f)
     .Bind(sum.Input(0), left)
     .Bind(sum.Input(1), 3.0f);
 
@@ -225,20 +239,33 @@ Script 关闭也在 safe point 完成：首次 `Close()` 可能返回 `CloseStat
 
 ## 9. 修改 graph
 
-`Edit` 是唯一的 symbolic graph transformation：
+`Edit` 是带显式 graph scope 的唯一 symbolic transformation：
 
 ```cpp
 Edit edit;
-auto source = edit.Require("Counter_Active");
-auto added = edit.Add(block);
-edit.Flow(source.Out(), added.In());
+auto root = edit.Root();
+auto highscoreNode = root.Require("Highscore");
+auto highscore = highscoreNode.Graph();
 
-auto patch = graph.Apply("extra-life", edit);
-auto plan = m_Behavior.Plan(
-    "extra-life", Scripts::One("Gameplay_Events"), edit);
+auto done = highscore.AppendOut("Done");
+auto activator = highscore.Require(Named("Activate Script", 0));
+highscore.Flow(activator.Out(), done);
+root.After(highscoreNode.Out("Done"), hook);
 ```
 
-`Edit::Node`、`Edit::Port`、`Edit::Link` 和 `Edit::Path` 是 authoring symbol，不是 graph snapshot view。symbol 只能在创建它的那个 Edit 中使用。`Use(snapshotNode)` 和 `Use(snapshotLink)` 可以导入精确的 world-bound identity，因此只适用于 Patch；Plan 必须能在未来 world 重新解析，会拒绝这些 identity 和非 null ObjectRef。
+`Edit::Graph` 承载所有 graph-local operation，`Edit::Node::Graph()` 进入一个
+graph-backed Node。父 graph 只能连接 child 的 public port；不同 scope 的
+internal port 不能直接相连。`AddGraph(name, priority)` 创建真实的 graph-backed
+child，其 nested scope 在同一个 transaction 中定义 public interface 与内部
+body。root 和所有 nested scope 一起验证，恢复顺序固定为 child 在前、parent 在后。
+
+`Edit::Node`、`Edit::Port`、`Edit::Link` 和 `Edit::Path` 是 authoring symbol，
+不是 graph snapshot view。symbol 同时属于创建它的 Edit 和 graph scope。
+`Require(snapshotNode)` 与 `Require(snapshotLink)` 复制结构身份：child 位置、
+名称、Prototype、graph/function kind、port layout 与 Link endpoint。因此它们
+可以在新 world 重新解析；结构一旦漂移就明确失败。`Use(snapshotNode)` 和
+`Use(snapshotLink)` 保留精确 ObjectRef，只适用于 exact Patch。Plan 会拒绝这些
+identity，以及 Edit 或 Block 中的所有 non-null ObjectRef。
 
 `Add(block)` 会复制 Block 配置和已经固定的 provider generation；之后修改原 Block 不影响 Edit。Block 的 Frame policy 不属于 graph authoring。
 
@@ -254,7 +281,8 @@ auto plan = m_Behavior.Plan(
 - `AppendIn/Out/Pin/Pout`：扩展 dynamic interface；
 - `AppendLocal`：用于 graph root 或同一 Edit 新增的 Block。Local 属于其实现，
   Edit 不能向借用的既有 Node 添加 Local；
-- `AddOperation`：增加由 graph 拥有、惰性求值的 Parameter Operation。
+- `AddGraph`：新增 graph-backed child，并直接编写它的 nested scope；
+- `AddOperation`：增加由 graph 拥有、惰性求值的 Parameter Operation；
 - `Replace`：用 public interface 完全相同的 configured Block 替换一个 idle child Node；
 - `Remove`：在 Patch 存续期间，将一个既有 child Node 及其所有入/出 Behavior Link
   移出 graph。
@@ -277,9 +305,47 @@ source 都必须 idle；
 list。graph 内无关的工作可以保持 active。Node edit 与已有 Link overlay 互斥，并在
 关闭前拒绝后续 Patch，避免 overlay 的物理 chain 穿过已经移出的 Node。
 
-`Graph::Apply` 将 Edit 应用到一个精确 fingerprint，返回一次性 `Patch`。`Session::Plan` 使用 `Scripts::Each(name)` 或 `Scripts::One(name)`，在匹配 script 出现、删除或 world reset 后重新 reconcile。
+使用 `On(graph, edit)` 将多个当前 world 的 graph 和 Edit 组合起来。Session 为整个
+功能返回一个 Patch：
 
-`Patch` 和 `Plan` 都用 `Info()` 查看状态，用 `Close()` 退役。Close 会比较它仍然拥有的 Link、source 和 graph after-image；外部修改导致 `RevertConflict` 时，handle 保持可读，作者修复冲突后可以再次 Close。
+```cpp
+auto patch = session.Apply(
+    "overclock",
+    On(deactivateGraph, deactivateEdit),
+    On(newBallGraph, newBallEdit),
+    On(energyGraph, energyEdit));
+```
+
+第一个 graph 改变前，所有 target 都会完成解析和静态检查。随后按参数顺序提交；
+后面的 target 失败时，前面的 target 按逆序恢复。同一个 graph 不能在顶层出现两次。
+任一 exact target 被删除时，整个 Patch 退役，其余仍存在的 graph 会在下一个
+Behavior safe point 恢复。`Graph::Apply` 和 `Script::Apply` 是这项操作的单 graph
+便利入口。
+
+一个 Plan 可以拥有多条相互独立的 Script rule：
+
+```cpp
+auto plan = session.Plan(
+    "game-events",
+    On(Scripts::One("Event_handler"), eventEdit),
+    On(Scripts::One("Gameplay_Ingame"), gameplayEdit),
+    On(Scripts::One("Gameplay_Energy"), energyEdit));
+```
+
+每条 rule 只在对应 Script 名称发生变化时 reconcile，不会逐帧扫描全部 graph。
+rule 可选择 `One` 或 `Each`；其 root 与 nested scope 作为一个原子 Patch 安装。
+`Partial` 表示至少一条 rule 已安装、但仍有 rule 没有匹配；`Unsatisfied` 表示当前
+没有任何安装。定义会跨 world reset 保留，并在下一 world 重新 reconcile。
+
+Patch 和 Plan 都提供 `Enable()`、`Disable()`、`Replace(...)`、`Info()` 与
+`Close()`。Disable 恢复 native graph，但保留 handle 和 owned definition；Enable
+重新验证后再安装。Replace 保留未变化的前缀，先逆序恢复变化后的旧后缀，再安装
+新后缀。新内容失败时恢复上一份完整定义；若连旧定义也因外部冲突无法恢复，
+`Info()` 报告 `Conflicted` 并保留 journal。safe point 前的多次请求以最后一份
+definition 和最后一个 active state 为准。
+
+Close 会比较 installation 仍然拥有的 Link、source 和 graph after-image；外部修改
+导致 `RevertConflict` 时，handle 保持可读，作者修复冲突后可以再次 Close。
 
 Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
 
@@ -306,12 +372,12 @@ if (made) {
 
 | 事件 | Session | Run | Script | Watch / Patch | Plan |
 | --- | --- | --- | --- | --- | --- |
-| 显式 Close | 最后一个 lease 关闭 native Session | 停止 admission，safe point 完成 teardown | 先关闭初始 graph，再在 safe point deactivate、离开 owner，然后销毁 | closure/conflict 期间仍可读 | installation 退役期间仍可读 |
+| 显式 Close | 最后一个 lease 关闭 native Session | 停止 admission，safe point 完成 teardown | 先关闭初始 graph，再在 safe point deactivate、离开 owner，然后销毁 | closure/conflict 期间仍可读 | rule 退役期间仍可读 |
 | world reset | 保持有效 | 关闭 | 随旧 world 关闭 | 随旧 graph 关闭 | 保持有效，在新 world reconcile |
 | Mod unload/reload | owner generation 退出 | DLL unload 前关闭 | 离开 owner，并在 DLL unload 前关闭 | callback 和 graph state 先退役 | callback code unload 前退役 |
 
 除 Close 外，Behavior 操作要求 game thread。所有 `Result<T>` 都同时包含稳定错误类别和 `Status`；控制流只应判断 error/phase，不应解析 message 文本。
 
-高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`Take(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation 和 Frame 都是 view，不复制 record 或 string。
+高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`Take(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。
 
 当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language；它尚不包含 AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。

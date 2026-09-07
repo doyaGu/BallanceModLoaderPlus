@@ -179,14 +179,30 @@ auto snapshot = m_Behavior.Inspect(script);
 if (!snapshot)
     return;
 
-auto counter = snapshot->Find("Counter_Active");
+auto counter = snapshot->Find(Named("Counter_Active", 0));
 if (counter) {
     auto value = snapshot->Read(counter->Pout("Count"));
     // Use value while snapshot is alive.
 }
 ```
 
-`Graph::Find` requires exactly one matching Node; `FindAll` returns all matches. Node, Port, Link, and ParameterOperation are lightweight views into one shared snapshot allocation. `Graph::Operations()` reports each native `CKParameterOperation`, including its operation GUID, exact result/input type tuple, graph owner, and object identity. A Port retains its Node's layout generation, so it cannot be used against a later incompatible Layout.
+`Find` and `FindAll` accept the same selectors as Block slots: `At(index)`,
+`Named(name, occurrence)`, and `Unique(name)`. An optional Prototype GUID narrows
+the match. `Node::Index()` is the direct-child position in that graph and
+`Node::IsGraph()` distinguishes a graph-backed Behavior from a function-backed
+BB. `Graph::Inspect(node)` enters a graph-backed child and returns a new snapshot
+whose root is that Node. Native pointers enter the model only at the root through
+`Session::Inspect(CKBehavior *)`; child Nodes and Links are obtained from the
+snapshot, so an edit cannot silently mix identities from different graphs.
+
+`Incoming` and `Outgoing` are zero-allocation Link views. `Entering`, `Leaving`,
+`Previous`, and `Next` require a unique topology result and report ambiguity
+instead of choosing an arbitrary branch. Node, Port, Link, and
+ParameterOperation are lightweight views into one shared snapshot allocation.
+`Graph::Operations()` reports each native `CKParameterOperation`, including its
+operation GUID, exact result/input type tuple, graph owner, and object identity.
+A Port retains its Node's layout generation, so it cannot be used against a
+later incompatible Layout.
 
 `Logical()` rereads the author-visible graph; `Live()` rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. If foreign code changes a claimed after-image, Runtime reports `GraphChanged` instead of guessing by name or shape.
 
@@ -200,13 +216,13 @@ Watches sample a graph, Layout, or value once per game frame. Observation or cal
 
 ```cpp
 Edit body;
-auto root = body.Graph();
-body.AppendIn(root, "Start");
-body.AppendOut(root, "Done");
-auto left = body.AppendLocal(root, "Left", CKPGUID_FLOAT);
-auto sum = body.AddOperation(
+auto graph = body.Root();
+graph.AppendIn("Start");
+graph.AppendOut("Done");
+auto left = graph.AppendLocal("Left", CKPGUID_FLOAT);
+auto sum = graph.AddOperation(
     addition, CKPGUID_FLOAT, CKPGUID_FLOAT, CKPGUID_FLOAT);
-body.Bind(left, 2.0f)
+graph.Bind(left, 2.0f)
     .Bind(sum.Input(0), left)
     .Bind(sum.Input(1), 3.0f);
 
@@ -225,20 +241,36 @@ Script closure is also completed at a safe point: `Close()` can first return `Cl
 
 ## 9. Edit a graph
 
-`Edit` is the single symbolic graph transformation:
+`Edit` is one symbolic transformation with explicit graph scopes:
 
 ```cpp
 Edit edit;
-auto source = edit.Require("Counter_Active");
-auto added = edit.Add(block);
-edit.Flow(source.Out(), added.In());
+auto root = edit.Root();
+auto highscoreNode = root.Require("Highscore");
+auto highscore = highscoreNode.Graph();
 
-auto patch = graph.Apply("extra-life", edit);
-auto plan = m_Behavior.Plan(
-    "extra-life", Scripts::One("Gameplay_Events"), edit);
+auto done = highscore.AppendOut("Done");
+auto activator = highscore.Require(Named("Activate Script", 0));
+highscore.Flow(activator.Out(), done);
+root.After(highscoreNode.Out("Done"), hook);
 ```
 
-`Edit::Node`, `Edit::Port`, `Edit::Link`, and `Edit::Path` are authoring symbols, not graph snapshot views. Symbols belong to the Edit that created them. `Use(snapshotNode)` and `Use(snapshotLink)` import exact world-bound identities and are valid only for a Patch. A Plan must resolve again in future worlds, so it rejects those identities and non-null ObjectRefs.
+`Edit::Graph` carries all graph-local operations. `Edit::Node::Graph()` enters a
+graph-backed Node. A parent graph may connect only the child's public ports;
+internal ports from different scopes cannot be connected. `AddGraph(name,
+priority)` creates a real graph-backed child, and the nested scope defines its
+public interface and body in the same transaction. The root and every nested
+scope are validated together and restored in child-before-parent order.
+
+`Edit::Node`, `Edit::Port`, `Edit::Link`, and `Edit::Path` are authoring symbols,
+not graph snapshot views. Symbols belong to the Edit and graph scope that
+created them. `Require(snapshotNode)` and `Require(snapshotLink)` copy structural
+identity: child position, name, Prototype, graph/function kind, port layout, and
+Link endpoints. They can therefore be resolved again in another world, but
+fail explicitly if that structure drifts. `Use(snapshotNode)` and
+`Use(snapshotLink)` retain exact ObjectRefs and are valid only for an exact
+Patch. A Plan rejects those identities and every non-null ObjectRef in its Edit
+or Blocks.
 
 `Add(block)` copies the Block configuration and pinned provider generation. Later changes to the source Block do not affect the Edit. Frame policy is not part of graph authoring.
 
@@ -254,7 +286,8 @@ Common transformations are:
 - `AppendIn/Out/Pin/Pout` for dynamic interfaces;
 - `AppendLocal` for the graph root or a Block added by the same Edit. A Local
   belongs to its implementation, so an Edit cannot add one to a borrowed Node;
-- `AddOperation` for a graph-owned, lazily evaluated Parameter Operation.
+- `AddGraph` for a graph-backed child whose nested scope is authored in place;
+- `AddOperation` for a graph-owned, lazily evaluated Parameter Operation;
 - `Replace` for exchanging one idle child Node for a configured Block with the
   same public interface;
 - `Remove` for taking one existing child Node and all of its incoming and
@@ -283,9 +316,52 @@ active. A Node edit is exclusive with active Link overlays and prevents later
 Patches until it closes, so no overlay can retain a physical chain through a
 parked Node.
 
-`Graph::Apply` verifies one exact fingerprint and returns a `Patch`. `Session::Plan` uses `Scripts::Each(name)` or `Scripts::One(name)` and reconciles after script creation, deletion, and world reset.
+Bind several current-world graphs to their Edits with `On(graph, edit)`. The
+Session returns one Patch for the whole feature:
 
-Patch and Plan expose `Info()` and `Close()`. Close compares the Links, sources, and graph after-images still owned by that installation. A foreign change produces `RevertConflict`; the handle remains readable and Close can be retried after the conflict is repaired.
+```cpp
+auto patch = session.Apply(
+    "overclock",
+    On(deactivateGraph, deactivateEdit),
+    On(newBallGraph, newBallEdit),
+    On(energyGraph, energyEdit));
+```
+
+All targets are resolved and statically checked before the first graph changes.
+They then commit in argument order; a later failure restores earlier targets in
+reverse order. The same graph cannot appear twice at the top level. Deleting any
+exact target retires the whole Patch and restores every surviving graph at the
+next Behavior safe point. `Graph::Apply` and `Script::Apply` are single-graph
+convenience forms of this operation.
+
+A Plan owns several independent Script rules:
+
+```cpp
+auto plan = session.Plan(
+    "game-events",
+    On(Scripts::One("Event_handler"), eventEdit),
+    On(Scripts::One("Gameplay_Ingame"), gameplayEdit),
+    On(Scripts::One("Gameplay_Energy"), energyEdit));
+```
+
+Each rule reconciles only when its Script name changes; there is no per-frame
+full graph scan. One rule may match `One` or `Each`, and its root plus nested
+scopes install as one atomic Patch. `Partial` means at least one rule is
+installed while another is unmatched; `Unsatisfied` means none is installed.
+Definitions survive world reset and reconcile against the next world.
+
+Patch and Plan both expose `Enable()`, `Disable()`, `Replace(...)`, `Info()`, and
+`Close()`. Disable restores native graphs but keeps the handle and owned
+definition. Enable validates again before installation. Replace preserves an
+unchanged prefix, restores the changed suffix in reverse order, then installs
+the new suffix. If new content fails, the old complete definition is restored;
+if that inverse also conflicts, `Info()` reports `Conflicted` and retains the
+journal. Several requests before the next safe point collapse to the last
+definition and active state.
+
+Close compares the Links, sources, and graph after-images still owned by an
+installation. A foreign change produces `RevertConflict`; the handle remains
+readable and Close can be retried after the conflict is repaired.
 
 Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
 
@@ -312,12 +388,12 @@ These adapters return ordinary Blocks and do not bypass lifecycle, execution, or
 
 | Event | Session | Run | Script | Watch / Patch | Plan |
 | --- | --- | --- | --- | --- | --- |
-| Explicit Close | Last lease closes native Session | Admission stops; teardown finishes at a safe point | Closes its initial graph, deactivates, leaves its owner, then destroys at a safe point | Readable during closure or conflict | Readable while installations retire |
+| Explicit Close | Last lease closes native Session | Admission stops; teardown finishes at a safe point | Closes its initial graph, deactivates, leaves its owner, then destroys at a safe point | Readable during closure or conflict | Readable while rules retire |
 | World reset | Survives | Closes | Closes with the old world | Closes with the old graph | Survives and reconciles in the next world |
 | Mod unload/reload | Owner generation retires | Closes before DLL unload | Leaves its owner and closes before DLL unload | Callback and graph state retire first | Retires before callback code unloads |
 
 Except for Close, Behavior operations require the game thread. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
 
-Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `Take(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, and Frame values are views rather than copied records.
+Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `Take(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.
 
 The current public interface exposes native Parameter Operations but does not add a second expression language over them. It does not include an AngelScript Behavior projection or third-party parameter-format registration. Unsupported Virtools parameter types fail explicitly; they are never guessed to be arbitrary bytes.
