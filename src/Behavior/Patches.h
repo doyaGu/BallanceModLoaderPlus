@@ -5,6 +5,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -34,7 +35,23 @@ public:
     // Maps the handle an author's own edit program used for a Node onto the
     // handle the symbolic intent gave it, so a Patch can be read back through
     // the names its author chose.
-    using HandleMap = std::map<std::uint32_t, std::uint32_t>;
+    struct Symbol {
+        std::uint32_t Scope = 1;
+        std::uint32_t Node = 0;
+    };
+    using HandleMap = std::map<std::uint32_t, Symbol>;
+
+    struct Target {
+        ObjectRef Graph;
+        std::uint64_t Fingerprint = 0;
+        std::shared_ptr<const GraphEdit> Body;
+        HandleMap Handles;
+    };
+
+    struct Rule {
+        ScriptSelection Scripts;
+        std::shared_ptr<const GraphEdit> Body;
+    };
 
     Patches(CKContext *context, Runtime &runtime, PrototypeCatalog *catalog,
             GraphSource &graph, ResolveObject resolveObject,
@@ -49,11 +66,15 @@ public:
     Status Use(Edit &edit, CKBehavior *behavior, Node &out);
     Status Use(Edit &edit, CKBehaviorLink *link, Link &out);
     Status Add(Edit &edit, BlockSpec block, Node &out) override;
+    Status AddGraph(Edit &edit, std::string name, int priority,
+                    Node &out) override;
     Status Apply(const SessionOwner &owner, const Edit &edit, PatchId &out,
                  const std::map<std::uint32_t, Node> *handles = nullptr);
     Status Apply(const SessionOwner &owner, const ObjectRef &graph,
                  std::string name, GraphEdit edit, PatchId &out,
                  const HandleMap *authorNodes = nullptr);
+    Status Apply(const SessionOwner &owner, std::string name,
+                 std::vector<Target> targets, PatchId &out);
     // Issues a reference for a Node this Patch named. Busy while the Patch is
     // still waiting for its safe point.
     Status ResolveNode(const SessionOwner &owner, PatchId patch,
@@ -61,34 +82,121 @@ public:
     Status Submit(Plans &plans, const SessionOwner &owner,
                   ScriptSelection target,
                   std::string name, GraphEdit edit, PlanId &out);
+    Status Submit(Plans &plans, const SessionOwner &owner,
+                  std::string name, std::vector<Rule> rules, PlanId &out);
+    Status ReadPlan(Plans &plans, const SessionOwner &owner,
+                    PlanId plan, PlanInfo &out) const;
+    Status SetPlanActive(Plans &plans, const SessionOwner &owner,
+                         PlanId plan, bool active);
+    Status ReplacePlan(Plans &plans, const SessionOwner &owner,
+                       PlanId plan, std::vector<Rule> rules);
+    Status ClosePlan(Plans &plans, const SessionOwner &owner, PlanId plan);
     Status Read(const SessionOwner &owner, PatchId patch,
                 PatchInfo &out) const;
+    Status SetActive(const SessionOwner &owner, PatchId patch, bool active);
+    Status Replace(const SessionOwner &owner, PatchId patch,
+                   std::vector<Target> targets);
     Status Close(const SessionOwner &owner, PatchId patch);
 
     Status RetireOwner(const std::string &ownerId);
     void ObjectsToBeDeleted(const CK_ID *ids, int count);
     void ResetWorld();
-    void ProcessFrame();
+    void ProcessFrame(Plans &plans);
 
 private:
     class PlanWorld;
 
+    struct OwnedPlan {
+        PlanId Id = 0;
+        SessionOwner Owner;
+        std::string Name;
+        bool DesiredActive = true;
+        bool Retiring = false;
+        bool Failed = false;
+        bool ReturningPrevious = false;
+        std::uint64_t Revision = 1;
+        Status LastStatus;
+        Status ChangeFault;
+        std::vector<Rule> Definition;
+        std::vector<Rule> LiveDefinition;
+        std::vector<Rule> PreviousDefinition;
+        std::optional<std::size_t> ChangeFrom;
+        std::vector<PlanId> Rules;
+    };
+
     struct OwnedPatch {
+        struct Scope {
+            std::uint32_t Id = 0;
+            std::size_t Target = 0;
+            CK_ID Graph = 0;
+            Patch Value;
+            std::map<std::uint32_t, Node> Handles;
+        };
+
         PatchId Id = 0;
         SessionOwner Owner;
+        std::string Name;
         CK_ID Graph = 0;
-        Patch Value;
+        bool DesiredActive = true;
         bool Retiring = false;
-        // The author's handle for each Node, in the live Edit's own handles.
-        std::map<std::uint32_t, Node> Handles;
+        bool TargetDeleted = false;
+        bool Failed = false;
+        bool ReturningPrevious = false;
+        std::uint64_t Revision = 1;
+        Status LastStatus;
+        Status ChangeFault;
+        // Definition is the last requested content. LiveDefinition describes
+        // the installed prefix while a replacement is being reconciled;
+        // PreviousDefinition is the last complete definition to restore when
+        // new content cannot be installed.
+        std::vector<Target> Definition;
+        std::vector<Target> LiveDefinition;
+        std::vector<Target> PreviousDefinition;
+        std::optional<std::size_t> ChangeFrom;
+        std::vector<Scope> Scopes;
+        // Public handle -> (scope index, resolved Edit Node).
+        std::map<std::uint32_t, std::pair<std::size_t, Node>> Handles;
     };
 
     [[nodiscard]] Status Ready() const;
     [[nodiscard]] PatchId NextId();
+    [[nodiscard]] PlanId NextPlanId();
+    Status Restore(OwnedPatch &patch);
+    Status RestoreFrom(OwnedPatch &patch, std::size_t target);
     Status Close(OwnedPatch &patch);
     Status Install(const SessionOwner &owner, const PatchKey &patch,
                    const ObjectRef &graph, const GraphEdit &edit,
                    PatchId &out, const HandleMap *authorNodes = nullptr);
+    Status Install(OwnedPatch &patch);
+    Status InstallFrom(OwnedPatch &patch,
+                       const std::vector<Target> &definition,
+                       std::size_t target);
+    Status InstallScope(const SessionOwner &owner, const PatchKey &patch,
+                        const ObjectRef &graph, const GraphEdit &edit,
+                        std::uint32_t scope, std::size_t target,
+                        OwnedPatch &out,
+                        const HandleMap *authorNodes);
+    Status PublishScope(const SessionOwner &owner, const PatchKey &patch,
+                        const ObjectRef &graph, const GraphEdit &edit,
+                        Edit resolved,
+                        std::map<std::uint32_t, Node> compiled,
+                        std::uint32_t scope, std::size_t target,
+                        OwnedPatch &out,
+                        const HandleMap *authorNodes);
+    Status Reconcile(OwnedPatch &patch);
+    Status Activate(Plans &plans, OwnedPlan &plan);
+    Status Deactivate(Plans &plans, OwnedPlan &plan);
+    Status ActivateFrom(Plans &plans, OwnedPlan &plan,
+                        const std::vector<Rule> &definition,
+                        std::size_t rule);
+    Status DeactivateFrom(Plans &plans, OwnedPlan &plan,
+                          std::size_t rule);
+    Status ReconcilePlan(Plans &plans, OwnedPlan &plan);
+    [[nodiscard]] PlanState State(Plans &plans,
+                                  const OwnedPlan &plan) const;
+    [[nodiscard]] PatchState State(const OwnedPatch &patch) const;
+    [[nodiscard]] Status Diagnostic(const OwnedPatch &patch) const;
+    void RebuildHandles(OwnedPatch &patch);
     void Collect();
 
     Status Begin(const PatchKey &patch, const ObjectRef &graph,
@@ -107,7 +215,9 @@ private:
     std::thread::id m_Thread;
     mutable std::recursive_mutex m_Mutex;
     PatchId m_NextId = 1;
+    PlanId m_NextPlanId = 1;
     std::map<PatchId, OwnedPatch> m_Patches;
+    std::map<PlanId, OwnedPlan> m_Plans;
 };
 
 } // namespace BML::Behavior::Internal

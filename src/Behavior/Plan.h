@@ -39,7 +39,9 @@ struct ScriptSelection {
 enum class PlanState {
     Reconciling,
     Active,
+    Partial,
     Unsatisfied,
+    Disabled,
     Conflicted,
     Retiring,
 };
