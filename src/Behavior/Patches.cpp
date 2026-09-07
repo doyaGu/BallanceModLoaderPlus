@@ -152,51 +152,64 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
     }
 
     auto admission = RegisterAdmission(false, id, owner);
-    Patch patch;
-    status = m_Edit.Apply(edit, patch, admission);
-    if (!patch)
-        return status;
-
+    OwnedPatch owned;
     try {
-        auto [stored, inserted] = m_Patches.try_emplace(id);
-        if (!inserted) {
-            (void) m_Edit.Close(patch);
+        owned.Id = id;
+        owned.Owner = owner;
+        owned.Admission = admission;
+        owned.Graph = static_cast<CK_ID>(graph.Id);
+        OwnedPatch::Scope scope;
+        scope.Id = 1;
+        scope.Graph = static_cast<CK_ID>(graph.Id);
+        if (handles)
+            scope.Handles = *handles;
+        owned.Scopes.push_back(std::move(scope));
+        if (handles) {
+            for (const auto &[handle, node] : *handles)
+                owned.Handles.emplace(
+                    handle, std::make_pair(std::size_t{0}, node));
+        }
+        const auto [stored, inserted] =
+            m_Patches.emplace(id, std::move(owned));
+        if (!inserted)
             return Failure(Error::InvalidState,
                            "Behavior Patch id collision.");
-        }
-        try {
-            stored->second.Id = id;
-            stored->second.Owner = owner;
-            stored->second.Admission = admission;
-            stored->second.Graph = static_cast<CK_ID>(graph.Id);
-            OwnedPatch::Scope scope;
-            scope.Id = 1;
-            scope.Graph = static_cast<CK_ID>(graph.Id);
-            scope.Value = std::move(patch);
-            if (handles)
-                scope.Handles = *handles;
-            stored->second.Scopes.push_back(std::move(scope));
-            if (!status)
-                stored->second.Goal = PatchGoal::Closed;
-            if (handles) {
-                for (const auto &[handle, node] : *handles)
-                    stored->second.Handles.emplace(
-                        handle, std::make_pair(std::size_t{0}, node));
-            }
-        } catch (...) {
-            m_Patches.erase(stored);
-            throw;
-        }
     } catch (...) {
-        (void) m_Edit.Close(patch);
         return Failure(Error::CreateFailed,
-                       "The Loader could not retain the Behavior Patch.");
+                       "The Loader could not retain the Behavior Patch journal.");
     }
+
+    Patch patch;
+    try {
+        status = m_Edit.Apply(edit, patch, admission);
+    } catch (...) {
+        if (patch)
+            (void) m_Edit.Close(patch);
+        m_Patches.erase(id);
+        return Failure(Error::CreateFailed,
+                       "The Loader could not apply the Behavior Patch.");
+    }
+    if (!patch) {
+        m_Patches.erase(id);
+        return status;
+    }
+    OwnedPatch &stored = m_Patches.at(id);
+    stored.Scopes.front().Value = std::move(patch);
+    if (!status)
+        CloseAdmission(stored);
     // A failed Apply normally rolls back completely and has no Patch value.
     // RevertConflict is different: retain its conflict journal under the owner,
     // but do not hand a successful installation id to the caller.
+    if (!owner || !stored.Admission->IsOpen()) {
+        CloseAdmission(stored);
+        status = Failure(Error::InvalidState,
+                         "Behavior Patch admission closed while installing.");
+    }
+    if (!status) {
+        stored.PrimaryFailure = status;
+        stored.LastStatus = status;
+    }
     if (!owner) {
-        CloseAdmission(m_Patches.at(id));
         return Failure(Error::InvalidState,
                        "The Behavior Session closed while the Patch was opening.");
     }
@@ -296,14 +309,17 @@ Status Patches::Apply(
         return status;
 
     try {
-        auto [stored, inserted] = m_Patches.emplace(id, std::move(patch));
-        if (!inserted)
+        auto [stored, inserted] = m_Patches.try_emplace(
+            id, std::move(patch));
+        if (!inserted) {
+            CloseAdmission(patch);
+            (void) Restore(patch);
             return Failure(Error::InvalidState,
                            "Behavior Patch id collision.");
+        }
     } catch (...) {
-        for (auto scope = patch.Scopes.rbegin();
-             scope != patch.Scopes.rend(); ++scope)
-            (void) m_Edit.Close(scope->Value);
+        CloseAdmission(patch);
+        (void) Restore(patch);
         return Failure(Error::CreateFailed,
                        "The Loader could not retain the Behavior Patch.");
     }
@@ -483,6 +499,8 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
     try {
         m_Plans.emplace(id, std::move(plan));
     } catch (...) {
+        plan.Admission->Close();
+        plan.Goal = PlanGoal::Closed;
         (void) Deactivate(plans, plan);
         return Failure(Error::CreateFailed,
                        "The Loader could not retain the Behavior Plan.");
@@ -1003,70 +1021,86 @@ Status Patches::PublishScope(const SessionOwner &owner,
     }
 
     OwnedPatch::Scope applied;
-    applied.Id = scopeId;
-    applied.Target = targetIndex;
-    CKObject *graphObject = m_ResolveObject ? m_ResolveObject(graph) : nullptr;
-    CKBehavior *graphBehavior = graphObject
-        ? CKBehavior::Cast(graphObject) : nullptr;
-    if (!graphBehavior) {
-        (void) m_Edit.Close(value);
-        return Failure(Error::GraphChanged,
-                       "A Graph Edit target disappeared after Apply.");
-    }
-    applied.Graph = graphBehavior->GetID();
-    applied.Value = std::move(value);
-    applied.Handles = compiled;
-    const std::size_t scopeIndex = out.Scopes.size();
-    out.Scopes.push_back(std::move(applied));
-
-    if (authorNodes) {
-        for (const auto &[author, symbol] : *authorNodes) {
-            if (symbol.Scope != scopeId)
-                continue;
-            const auto found = compiled.find(symbol.Node);
-            if (found != compiled.end())
-                out.Handles.emplace(
-                    author, std::make_pair(scopeIndex, found->second));
+    bool retained = false;
+    try {
+        applied.Id = scopeId;
+        applied.Target = targetIndex;
+        CKObject *graphObject = m_ResolveObject
+            ? m_ResolveObject(graph) : nullptr;
+        CKBehavior *graphBehavior = graphObject
+            ? CKBehavior::Cast(graphObject) : nullptr;
+        if (!graphBehavior) {
+            (void) m_Edit.Close(value);
+            return Failure(Error::GraphChanged,
+                           "A Graph Edit target disappeared after Apply.");
         }
-    } else if (scopeId == 1) {
-        for (const auto &[handle, node] : compiled)
-            out.Handles.emplace(
-                handle, std::make_pair(scopeIndex, node));
-    }
+        applied.Graph = graphBehavior->GetID();
+        applied.Value = std::move(value);
+        applied.Handles = compiled;
+        const std::size_t scopeIndex = out.Scopes.size();
+        out.Scopes.push_back(std::move(applied));
+        retained = true;
 
-    if (!status)
+        if (authorNodes) {
+            for (const auto &[author, symbol] : *authorNodes) {
+                if (symbol.Scope != scopeId)
+                    continue;
+                const auto found = compiled.find(symbol.Node);
+                if (found != compiled.end())
+                    out.Handles.emplace(
+                        author, std::make_pair(scopeIndex, found->second));
+            }
+        } else if (scopeId == 1) {
+            for (const auto &[handle, node] : compiled)
+                out.Handles.emplace(
+                    handle, std::make_pair(scopeIndex, node));
+        }
+
+        if (!status)
+            return status;
+
+        for (const GraphEdit::Nested &nested : edit.NestedGraphs()) {
+            if (!nested.Body)
+                return Failure(Error::InvalidState,
+                               "A nested Graph Edit has no body.");
+            const auto parent = compiled.find(nested.Parent.Value);
+            if (parent == compiled.end())
+                return Failure(Error::InvalidState,
+                               "A nested Graph Edit lost its parent Node.");
+            CKBehavior *native = nullptr;
+            status = m_Edit.ResolveNode(
+                out.Scopes[scopeIndex].Value, parent->second, native);
+            if (!status)
+                return status;
+            if (!native || native->IsUsingFunction())
+                return Failure(
+                    Error::InvalidGraphLocality,
+                    "A nested Graph Edit requires a graph-backed Behavior Node.");
+            if (!m_IssueObject)
+                return Failure(Error::Unavailable,
+                               "The Loader cannot name the nested graph.");
+            const ObjectRef nestedGraph = m_IssueObject(native);
+            if (nestedGraph.IsNull())
+                return Failure(
+                    Error::CreateFailed,
+                    "The Loader could not retain the nested graph identity.");
+            status = InstallScope(owner, patch, nestedGraph, *nested.Body,
+                                  nested.Scope, targetIndex, out, authorNodes);
+            if (!status)
+                return status;
+        }
         return status;
-
-    for (const GraphEdit::Nested &nested : edit.NestedGraphs()) {
-        if (!nested.Body)
-            return Failure(Error::InvalidState,
-                           "A nested Graph Edit has no body.");
-        const auto parent = compiled.find(nested.Parent.Value);
-        if (parent == compiled.end())
-            return Failure(Error::InvalidState,
-                           "A nested Graph Edit lost its parent Node.");
-        CKBehavior *native = nullptr;
-        status = m_Edit.ResolveNode(
-            out.Scopes[scopeIndex].Value, parent->second, native);
-        if (!status)
-            return status;
-        if (!native || native->IsUsingFunction())
-            return Failure(
-                Error::InvalidGraphLocality,
-                "A nested Graph Edit requires a graph-backed Behavior Node.");
-        if (!m_IssueObject)
-            return Failure(Error::Unavailable,
-                           "The Loader cannot name the nested graph.");
-        const ObjectRef nestedGraph = m_IssueObject(native);
-        if (nestedGraph.IsNull())
-            return Failure(Error::CreateFailed,
-                           "The Loader could not retain the nested graph identity.");
-        status = InstallScope(owner, patch, nestedGraph, *nested.Body,
-                              nested.Scope, targetIndex, out, authorNodes);
-        if (!status)
-            return status;
+    } catch (...) {
+        if (!retained) {
+            if (applied.Value)
+                (void) m_Edit.Close(applied.Value);
+            else if (value)
+                (void) m_Edit.Close(value);
+        }
+        return Failure(
+            Error::CreateFailed,
+            "The Loader could not retain the applied Behavior Graph scope.");
     }
-    return status;
 }
 
 Status Patches::Begin(const PatchKey &patch, const ObjectRef &graph,
