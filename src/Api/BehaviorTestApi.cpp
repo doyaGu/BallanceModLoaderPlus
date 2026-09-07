@@ -167,7 +167,29 @@ int BML_BEHAVIOR_CALL ReadPatch(BML_BehaviorSession session,
             context->BehaviorPatches().Read(owner, patch, info);
         if (!status)
             return Result(status);
-        *state = static_cast<std::uint32_t>(info.State) + 1;
+        switch (info.State) {
+        case Behavior::Internal::PatchState::Pending:
+            *state = BML_BEHAVIOR_TEST_PATCH_PENDING;
+            break;
+        case Behavior::Internal::PatchState::Active:
+            *state = BML_BEHAVIOR_TEST_PATCH_ACTIVE;
+            break;
+        case Behavior::Internal::PatchState::Disabled:
+            *state = BML_BEHAVIOR_TEST_PATCH_DISABLED;
+            break;
+        case Behavior::Internal::PatchState::Closing:
+            *state = BML_BEHAVIOR_TEST_PATCH_CLOSING;
+            break;
+        case Behavior::Internal::PatchState::Conflicted:
+            *state = BML_BEHAVIOR_TEST_PATCH_CONFLICTED;
+            break;
+        case Behavior::Internal::PatchState::Closed:
+            *state = BML_BEHAVIOR_TEST_PATCH_CLOSED;
+            break;
+        case Behavior::Internal::PatchState::Failed:
+            *state = BML_BEHAVIOR_TEST_PATCH_FAILED;
+            break;
+        }
         return BML_OK;
     } catch (...) {
         return BML_ERROR_FAIL;
@@ -335,7 +357,29 @@ int BML_BEHAVIOR_CALL ReadPlan(
             owner.Id, owner.Generation, plan, info);
         if (!status)
             return Result(status);
-        *state = static_cast<std::uint32_t>(info.State) + 1;
+        switch (info.State) {
+        case Behavior::Internal::PlanState::Reconciling:
+            *state = BML_BEHAVIOR_TEST_PLAN_RECONCILING;
+            break;
+        case Behavior::Internal::PlanState::Active:
+            *state = BML_BEHAVIOR_TEST_PLAN_ACTIVE;
+            break;
+        case Behavior::Internal::PlanState::Partial:
+            *state = BML_BEHAVIOR_TEST_PLAN_PARTIAL;
+            break;
+        case Behavior::Internal::PlanState::Unsatisfied:
+            *state = BML_BEHAVIOR_TEST_PLAN_UNSATISFIED;
+            break;
+        case Behavior::Internal::PlanState::Disabled:
+            *state = BML_BEHAVIOR_TEST_PLAN_DISABLED;
+            break;
+        case Behavior::Internal::PlanState::Conflicted:
+            *state = BML_BEHAVIOR_TEST_PLAN_CONFLICTED;
+            break;
+        case Behavior::Internal::PlanState::Retiring:
+            *state = BML_BEHAVIOR_TEST_PLAN_RETIRING;
+            break;
+        }
         *matches = static_cast<std::uint32_t>(info.Matches);
         *installations = static_cast<std::uint32_t>(info.Installations);
         *world = info.World;

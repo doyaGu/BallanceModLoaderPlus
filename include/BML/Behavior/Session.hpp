@@ -190,11 +190,39 @@ public:
             : Result<Behavior::Script>::Failure(
                   reference.Code(), reference.GetStatus());
     }
-    // Retains one symbolic Edit and reconciles it against the selected scripts.
-    // Submitting a name that is already live replaces the Plan carrying it.
+    // Convenience form for one Script rule. The On(...) overload below retains
+    // several rules under one Plan identity.
     [[nodiscard]] Result<Behavior::Plan> Plan(
         std::string_view name, const Scripts &scripts,
         const Edit &edit) const;
+    template <class... More>
+    [[nodiscard]] Result<Behavior::Patch> Apply(
+        std::string_view name, Detail::GraphEdit first,
+        More... more) const {
+        std::vector<Detail::GraphEdit> edits;
+        try {
+            edits.reserve(1 + sizeof...(more));
+            edits.push_back(std::move(first));
+            (edits.push_back(std::move(more)), ...);
+        } catch (const std::bad_alloc &) {
+            return Result<Behavior::Patch>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        }
+        return Apply(name, std::move(edits));
+    }
+    template <class... More>
+    [[nodiscard]] Result<Behavior::Plan> Plan(
+        std::string_view name, Detail::ScriptEdit first,
+        More... more) const {
+        std::vector<Detail::ScriptEdit> edits;
+        try {
+            edits.reserve(1 + sizeof...(more));
+            edits.push_back(std::move(first));
+            (edits.push_back(std::move(more)), ...);
+        } catch (const std::bad_alloc &) {
+            return Result<Behavior::Plan>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        }
+        return Plan(name, std::move(edits));
+    }
     void Close() noexcept {
         // Values created from this Session hold their own lease. Releasing the
         // Session value stops this object from admitting work without
@@ -213,6 +241,10 @@ public:
     }
 
 private:
+    [[nodiscard]] Result<Behavior::Patch> Apply(
+        std::string_view name, std::vector<Detail::GraphEdit> edits) const;
+    [[nodiscard]] Result<Behavior::Plan> Plan(
+        std::string_view name, std::vector<Detail::ScriptEdit> edits) const;
     std::shared_ptr<Detail::SessionState> m_State;
 };
 

@@ -142,6 +142,7 @@ private:
     friend class Node;
     friend class Link;
     friend class Graph;
+    friend class Edit;
     friend class Detail::Run;
 };
 
@@ -623,12 +624,14 @@ struct Change {
     ObservedValue CurrentValue;
 };
 
-// A Plan is durable authoring intent: one exact script name, one symbolic edit,
-// and the Loader reconciling the two as scripts load, reload, and are deleted.
+// A Plan is durable authoring intent: one or more Script selections and their
+// symbolic Edits, reconciled independently as scripts load, reload, and leave.
 enum class PlanState : std::uint32_t {
     Reconciling = BML_BEHAVIOR_PLAN_RECONCILING,
     Active = BML_BEHAVIOR_PLAN_ACTIVE,
+    Partial = BML_BEHAVIOR_PLAN_PARTIAL,
     Unsatisfied = BML_BEHAVIOR_PLAN_UNSATISFIED,
+    Disabled = BML_BEHAVIOR_PLAN_DISABLED,
     Conflicted = BML_BEHAVIOR_PLAN_CONFLICTED,
     Retiring = BML_BEHAVIOR_PLAN_RETIRING,
 };
@@ -643,13 +646,15 @@ struct PlanInfo {
     Behavior::Status LastStatus;
 
     [[nodiscard]] bool Installed() const noexcept {
-        return State == PlanState::Active && Installations != 0;
+        return (State == PlanState::Active || State == PlanState::Partial) &&
+               Installations != 0;
     }
 };
 
 enum class PatchState : std::uint32_t {
     Pending = BML_BEHAVIOR_PATCH_PENDING,
     Active = BML_BEHAVIOR_PATCH_ACTIVE,
+    Disabled = BML_BEHAVIOR_PATCH_DISABLED,
     Closing = BML_BEHAVIOR_PATCH_CLOSING,
     Conflicted = BML_BEHAVIOR_PATCH_CONFLICTED,
     Closed = BML_BEHAVIOR_PATCH_CLOSED,
@@ -719,6 +724,16 @@ class Run;
 
 class Edit;
 class Patch;
+class Graph;
+class Scripts;
+
+namespace Detail {
+struct GraphEdit;
+struct ScriptEdit;
+}
+
+[[nodiscard]] Detail::GraphEdit On(const Graph &graph, const Edit &edit);
+[[nodiscard]] Detail::ScriptEdit On(const Scripts &scripts, const Edit &edit);
 
 class Watch {
 public:
@@ -893,6 +908,7 @@ private:
     friend class Script;
     friend class Detail::Run;
     friend class Block;
+    friend Detail::GraphEdit On(const Graph &, const Edit &);
 };
 
 class Session;

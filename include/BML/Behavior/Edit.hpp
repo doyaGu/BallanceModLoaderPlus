@@ -3,9 +3,11 @@
 
 #include "BML/Behavior/Detail/Hook.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -14,8 +16,33 @@
 
 namespace BML::Behavior {
 
+class Edit;
+
 namespace Detail {
-struct EditIdentity {};
+struct EditIdentity {
+    mutable Edit *Owner = nullptr;
+    mutable std::uint32_t Scope = BML_BEHAVIOR_EDIT_GRAPH;
+};
+struct PatchSymbols {
+    std::shared_ptr<const EditIdentity> Edit;
+    std::uint32_t HandleBase = 0;
+};
+struct GraphEdit {
+    std::shared_ptr<SessionState> Session;
+    BML_ObjectRef Graph{};
+    std::uint64_t Fingerprint = 0;
+    std::shared_ptr<const BML::Behavior::Edit> Body;
+    std::shared_ptr<const EditIdentity> Symbols;
+    int Code = BML_OK;
+    Status Failure;
+};
+struct ScriptEdit {
+    std::uint32_t Targets = BML_BEHAVIOR_TARGETS_EACH;
+    std::string Script;
+    std::shared_ptr<const BML::Behavior::Edit> Body;
+    int Code = BML_OK;
+    Status Failure;
+};
 }
 
 class Hook {
@@ -72,6 +99,21 @@ public:
     [[nodiscard]] explicit operator bool() const noexcept {
         return m_Session && m_Session->Api && m_Session->Handle && m_Handle;
     }
+    [[nodiscard]] Result<PlanInfo> Enable();
+    [[nodiscard]] Result<PlanInfo> Disable();
+    template <class... More>
+    [[nodiscard]] Result<PlanInfo> Replace(
+        Detail::ScriptEdit first, More... more) {
+        std::vector<Detail::ScriptEdit> edits;
+        try {
+            edits.reserve(1 + sizeof...(more));
+            edits.push_back(std::move(first));
+            (edits.push_back(std::move(more)), ...);
+        } catch (const std::bad_alloc &) {
+            return Result<PlanInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        }
+        return Replace(std::move(edits));
+    }
     // A Plan the Loader accepted is Reconciling until the next frame installs
     // it, so read the state rather than assuming the edit is already live.
     [[nodiscard]] Result<PlanInfo> Info() const {
@@ -116,6 +158,9 @@ public:
     }
 
 private:
+    [[nodiscard]] Result<PlanInfo> SetActive(bool active);
+    [[nodiscard]] Result<PlanInfo> Replace(
+        std::vector<Detail::ScriptEdit> edits);
     Plan(std::shared_ptr<Detail::SessionState> session,
          BML_BehaviorPlan handle)
         : m_Session(std::move(session)), m_Handle(handle) {}
@@ -138,19 +183,34 @@ public:
     Patch(Patch &&other) noexcept
         : m_Session(std::move(other.m_Session)),
           m_Handle(std::exchange(other.m_Handle, nullptr)),
-          m_Edit(std::move(other.m_Edit)) {}
+          m_Edits(std::move(other.m_Edits)) {}
     Patch &operator=(Patch &&other) noexcept {
         if (this != &other) {
             Patch previous(std::move(*this));
             m_Session = std::move(other.m_Session);
             m_Handle = std::exchange(other.m_Handle, nullptr);
-            m_Edit = std::move(other.m_Edit);
+            m_Edits = std::move(other.m_Edits);
         }
         return *this;
     }
 
     [[nodiscard]] explicit operator bool() const noexcept {
         return m_Session && m_Session->Api && m_Session->Handle && m_Handle;
+    }
+    [[nodiscard]] Result<PatchInfo> Enable();
+    [[nodiscard]] Result<PatchInfo> Disable();
+    template <class... More>
+    [[nodiscard]] Result<PatchInfo> Replace(
+        Detail::GraphEdit first, More... more) {
+        std::vector<Detail::GraphEdit> edits;
+        try {
+            edits.reserve(1 + sizeof...(more));
+            edits.push_back(std::move(first));
+            (edits.push_back(std::move(more)), ...);
+        } catch (const std::bad_alloc &) {
+            return Result<PatchInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
+        }
+        return Replace(std::move(edits));
     }
     [[nodiscard]] Result<PatchInfo> Info() const {
         if (!*this)
@@ -208,7 +268,7 @@ public:
     [[nodiscard]] Result<CloseState> Close() noexcept {
         if (!m_Handle) {
             m_Session.reset();
-            m_Edit.reset();
+            m_Edits.clear();
             return Result<CloseState>::Success(CloseState::Closed);
         }
         if (!m_Session || !m_Session->Api || !m_Session->Handle)
@@ -218,7 +278,7 @@ public:
         if (code == BML_OK || code == BML_ERROR_INVALID_HANDLE) {
             m_Handle = nullptr;
             m_Session.reset();
-            m_Edit.reset();
+            m_Edits.clear();
             return Result<CloseState>::Success(CloseState::Closed);
         }
         if (code == BML_ERROR_BUSY)
@@ -227,24 +287,31 @@ public:
     }
 
 private:
+    [[nodiscard]] Result<PatchInfo> SetActive(bool active);
+    [[nodiscard]] Result<PatchInfo> Replace(
+        std::vector<Detail::GraphEdit> edits);
     Patch(std::shared_ptr<Detail::SessionState> session,
           BML_BehaviorPatch handle,
-          std::shared_ptr<const Detail::EditIdentity> edit)
+          std::vector<Detail::PatchSymbols> edits)
         : m_Session(std::move(session)), m_Handle(handle),
-          m_Edit(std::move(edit)) {}
+          m_Edits(std::move(edits)) {}
 
     std::shared_ptr<Detail::SessionState> m_Session;
     BML_BehaviorPatch m_Handle = nullptr;
-    std::shared_ptr<const Detail::EditIdentity> m_Edit;
+    std::vector<Detail::PatchSymbols> m_Edits;
 
-    friend class Graph;
+    friend class BML::Behavior::Graph;
+    friend class Session;
 };
 
 // A symbolic transformation that can be applied once to a Graph or retained as
 // a Plan. Its Node, Port, Link, and Path names exist only inside this Edit.
 class Edit {
 public:
-    Edit() : m_Identity(std::make_shared<Detail::EditIdentity>()) {}
+    Edit() : m_Identity(std::make_shared<Detail::EditIdentity>()) {
+        m_Identity->Owner = this;
+    }
+    class Graph;
     // Addresses one port of a node the program named.
     class Port {
     public:
@@ -252,13 +319,16 @@ public:
 
     private:
         Port(std::shared_ptr<const Detail::EditIdentity> edit,
-             std::uint32_t handle, std::uint32_t kind, CKGUID type,
+             std::uint32_t scope, std::uint32_t handle,
+             std::uint32_t kind, CKGUID type,
              Behavior::Selector slot)
             : m_Edit(std::move(edit)), m_Id(handle), m_Kind(kind),
+              m_Scope(scope),
               m_Type(type), m_Slot(std::move(slot)) {}
 
         std::shared_ptr<const Detail::EditIdentity> m_Edit;
         std::uint32_t m_Id = 0;
+        std::uint32_t m_Scope = 0;
         // A BML_BehaviorSlotKind, or zero when Handle is an appended slot.
         std::uint32_t m_Kind = 0;
         CKGUID m_Type{0, 0};
@@ -273,7 +343,7 @@ public:
         Node() = default;
 
         [[nodiscard]] Port In(Behavior::Selector slot = {}) const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_IN, CKGUID(0, 0),
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_IN, CKGUID(0, 0),
                     std::move(slot)};
         }
         [[nodiscard]] Port In(std::int32_t index) const {
@@ -283,7 +353,7 @@ public:
             return In(Behavior::Selector::Unique(name));
         }
         [[nodiscard]] Port Out(Behavior::Selector slot = {}) const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_OUT, CKGUID(0, 0),
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_OUT, CKGUID(0, 0),
                     std::move(slot)};
         }
         [[nodiscard]] Port Out(std::int32_t index) const {
@@ -294,7 +364,7 @@ public:
         }
         [[nodiscard]] Port Pin(Behavior::Selector slot,
                                CKGUID type = CKGUID(0, 0)) const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_PIN, type,
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_PIN, type,
                     std::move(slot)};
         }
         [[nodiscard]] Port Pin(std::int32_t index,
@@ -307,7 +377,7 @@ public:
         }
         [[nodiscard]] Port Pout(Behavior::Selector slot,
                                 CKGUID type = CKGUID(0, 0)) const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_POUT, type,
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_POUT, type,
                     std::move(slot)};
         }
         [[nodiscard]] Port Pout(std::int32_t index,
@@ -320,7 +390,7 @@ public:
         }
         [[nodiscard]] Port Local(Behavior::Selector slot,
                                  CKGUID type = CKGUID(0, 0)) const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_LOCAL, type,
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_LOCAL, type,
                     std::move(slot)};
         }
         [[nodiscard]] Port Local(std::int32_t index,
@@ -332,16 +402,22 @@ public:
             return Local(Behavior::Selector::Unique(name), type);
         }
         [[nodiscard]] Port Target() const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_TARGET, CKGUID(0, 0), {}};
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_TARGET, CKGUID(0, 0), {}};
         }
+        [[nodiscard]] Edit::Graph Graph() const;
 
     private:
         Node(std::shared_ptr<const Detail::EditIdentity> edit,
-             std::uint32_t id)
-            : m_Edit(std::move(edit)), m_Id(id) {}
+              std::uint32_t id)
+            : m_Edit(std::move(edit)), m_Id(id),
+              m_Scope(m_Edit ? m_Edit->Scope : 0) {}
+        Node(std::shared_ptr<const Detail::EditIdentity> edit,
+             std::uint32_t scope, std::uint32_t id)
+            : m_Edit(std::move(edit)), m_Id(id), m_Scope(scope) {}
 
         std::shared_ptr<const Detail::EditIdentity> m_Edit;
         std::uint32_t m_Id = 0;
+        std::uint32_t m_Scope = 0;
 
         friend class Edit;
         friend class Patch;
@@ -354,10 +430,12 @@ public:
 
     private:
         Link(std::shared_ptr<const Detail::EditIdentity> edit,
-             std::uint32_t id)
-            : m_Edit(std::move(edit)), m_Id(id) {}
+              std::uint32_t id)
+            : m_Edit(std::move(edit)), m_Id(id),
+              m_Scope(m_Edit ? m_Edit->Scope : 0) {}
         std::shared_ptr<const Detail::EditIdentity> m_Edit;
         std::uint32_t m_Id = 0;
+        std::uint32_t m_Scope = 0;
 
         friend class Edit;
     };
@@ -370,10 +448,12 @@ public:
 
     private:
         Path(std::shared_ptr<const Detail::EditIdentity> edit,
-             std::uint32_t id)
-            : m_Edit(std::move(edit)), m_Id(id) {}
+              std::uint32_t id)
+            : m_Edit(std::move(edit)), m_Id(id),
+              m_Scope(m_Edit ? m_Edit->Scope : 0) {}
         std::shared_ptr<const Detail::EditIdentity> m_Edit;
         std::uint32_t m_Id = 0;
+        std::uint32_t m_Scope = 0;
 
         friend class Edit;
     };
@@ -385,16 +465,18 @@ public:
         Slot() = default;
 
         [[nodiscard]] Port Ref() const {
-            return Port{m_Edit, m_Id, 0, CKGUID(0, 0), {}};
+            return Port{m_Edit, m_Scope, m_Id, 0, CKGUID(0, 0), {}};
         }
         operator Port() const { return Ref(); }
 
     private:
         Slot(std::shared_ptr<const Detail::EditIdentity> edit,
-             std::uint32_t id)
-            : m_Edit(std::move(edit)), m_Id(id) {}
+              std::uint32_t id)
+            : m_Edit(std::move(edit)), m_Id(id),
+              m_Scope(m_Edit ? m_Edit->Scope : 0) {}
         std::shared_ptr<const Detail::EditIdentity> m_Edit;
         std::uint32_t m_Id = 0;
+        std::uint32_t m_Scope = 0;
 
         friend class Edit;
     };
@@ -409,11 +491,11 @@ public:
         [[nodiscard]] Port Input(std::int32_t index) const {
             const CKGUID type = index == 0 ? m_Input1 :
                 index == 1 ? m_Input2 : CKGUID(0, 0);
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_PIN, type,
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_PIN, type,
                     Behavior::Selector::At(index)};
         }
         [[nodiscard]] Port Result() const {
-            return {m_Edit, m_Id, BML_BEHAVIOR_SLOT_POUT, m_Result,
+            return {m_Edit, m_Scope, m_Id, BML_BEHAVIOR_SLOT_POUT, m_Result,
                     Behavior::Selector::At(0)};
         }
 
@@ -422,10 +504,12 @@ public:
                   std::uint32_t id, CKGUID result, CKGUID input1,
                   CKGUID input2)
             : m_Edit(std::move(edit)), m_Id(id), m_Result(result),
+              m_Scope(m_Edit ? m_Edit->Scope : 0),
               m_Input1(input1), m_Input2(input2) {}
 
         std::shared_ptr<const Detail::EditIdentity> m_Edit;
         std::uint32_t m_Id = 0;
+        std::uint32_t m_Scope = 0;
         CKGUID m_Result{0, 0};
         CKGUID m_Input1{0, 0};
         CKGUID m_Input2{0, 0};
@@ -433,30 +517,281 @@ public:
         friend class Edit;
     };
 
+    // One graph scope inside this Edit. Every symbol produced by a scope is
+    // local to that graph; connecting it to a different scope is rejected
+    // before the program crosses the C seam.
+    class Graph {
+    public:
+        Graph() = default;
+
+        [[nodiscard]] Node Root() const {
+            return Node{m_Edit, m_Scope, BML_BEHAVIOR_EDIT_GRAPH};
+        }
+        [[nodiscard]] Node Require(
+            Behavior::Selector selector,
+            CKGUID prototype = CKGUID(0, 0)) const {
+            return With([&](Edit &edit) {
+                return edit.Require(std::move(selector), prototype);
+            });
+        }
+        [[nodiscard]] Node Require(
+            std::string_view name,
+            CKGUID prototype = CKGUID(0, 0)) const {
+            return Require(Behavior::Unique(name), prototype);
+        }
+        [[nodiscard]] Node Require(CKGUID prototype) const {
+            return Require(Behavior::Selector::Only(), prototype);
+        }
+        [[nodiscard]] Node Require(const Behavior::Node &node) const {
+            return With([&](Edit &edit) { return edit.Require(node); });
+        }
+        [[nodiscard]] Link Require(const Behavior::Link &link) const {
+            return With([&](Edit &edit) { return edit.Require(link); });
+        }
+        [[nodiscard]] Node Use(const Behavior::Node &node) const {
+            return With([&](Edit &edit) { return edit.Use(node); });
+        }
+        [[nodiscard]] Link Use(const Behavior::Link &link) const {
+            return With([&](Edit &edit) { return edit.Use(link); });
+        }
+        [[nodiscard]] Link Between(Port source, Port sink) const {
+            return With([&](Edit &edit) {
+                return edit.Between(std::move(source), std::move(sink));
+            });
+        }
+        [[nodiscard]] Link Between(Port source, Port sink,
+                                   std::int32_t delay) const {
+            return With([&](Edit &edit) {
+                return edit.Between(
+                    std::move(source), std::move(sink), delay);
+            });
+        }
+        [[nodiscard]] Path Follow(Port source) const {
+            return With([&](Edit &edit) {
+                return edit.Follow(std::move(source));
+            });
+        }
+        [[nodiscard]] Node Add(const Block &block) const {
+            return With([&](Edit &edit) { return edit.Add(block); });
+        }
+        [[nodiscard]] Node AddGraph(std::string_view name,
+                                    std::int32_t priority = 0) const {
+            return With([&](Edit &edit) {
+                return edit.AddGraph(name, priority);
+            });
+        }
+        [[nodiscard]] Node Replace(Node target, const Block &block) const {
+            return With([&](Edit &edit) {
+                return edit.Replace(std::move(target), block);
+            });
+        }
+        Graph &Remove(Node target) {
+            With([&](Edit &edit) { edit.Remove(std::move(target)); });
+            return *this;
+        }
+        [[nodiscard]] Operation AddOperation(
+            CKGUID operation, CKGUID result,
+            CKGUID input1 = CKGUID(0, 0),
+            CKGUID input2 = CKGUID(0, 0)) const {
+            return With([&](Edit &edit) {
+                return edit.AddOperation(operation, result, input1, input2);
+            });
+        }
+        [[nodiscard]] Slot AppendIn(std::string_view name) const {
+            return With([&](Edit &edit) { return edit.AppendIn(Root(), name); });
+        }
+        [[nodiscard]] Slot AppendOut(std::string_view name) const {
+            return With([&](Edit &edit) { return edit.AppendOut(Root(), name); });
+        }
+        [[nodiscard]] Slot AppendPin(std::string_view name, CKGUID type) const {
+            return With([&](Edit &edit) {
+                return edit.AppendPin(Root(), name, type);
+            });
+        }
+        [[nodiscard]] Slot AppendPout(std::string_view name, CKGUID type) const {
+            return With([&](Edit &edit) {
+                return edit.AppendPout(Root(), name, type);
+            });
+        }
+        [[nodiscard]] Slot AppendLocal(std::string_view name, CKGUID type) const {
+            return With([&](Edit &edit) {
+                return edit.AppendLocal(Root(), name, type);
+            });
+        }
+        Graph &Flow(Port source, Port sink, std::int32_t delay = 0) {
+            With([&](Edit &edit) {
+                edit.Flow(std::move(source), std::move(sink), delay);
+            });
+            return *this;
+        }
+        Graph &FlowCycle(Port source, Port sink, std::int32_t delay = 0) {
+            With([&](Edit &edit) {
+                edit.FlowCycle(std::move(source), std::move(sink), delay);
+            });
+            return *this;
+        }
+        Graph &Bind(Port sink, Behavior::Value value) {
+            With([&](Edit &edit) {
+                edit.Bind(std::move(sink), std::move(value));
+            });
+            return *this;
+        }
+        template <class T,
+                  class = std::enable_if_t<
+                      !std::is_same_v<std::decay_t<T>, Behavior::Value> &&
+                      !std::is_same_v<std::decay_t<T>, Port>>>
+        Graph &Bind(Port sink, T &&value) {
+            return Bind(std::move(sink),
+                        Behavior::Value(std::forward<T>(value)));
+        }
+        Graph &Bind(Port sink, Port source) {
+            With([&](Edit &edit) {
+                edit.Bind(std::move(sink), std::move(source));
+            });
+            return *this;
+        }
+        Graph &Share(Port sink, Port source) {
+            With([&](Edit &edit) {
+                edit.Share(std::move(sink), std::move(source));
+            });
+            return *this;
+        }
+        Graph &Push(Port source, Port sink) {
+            With([&](Edit &edit) {
+                edit.Push(std::move(source), std::move(sink));
+            });
+            return *this;
+        }
+        Graph &Tap(Port source, Hook hook) {
+            With([&](Edit &edit) {
+                edit.Tap(std::move(source), std::move(hook));
+            });
+            return *this;
+        }
+        Graph &Before(Link link, Hook hook) {
+            With([&](Edit &edit) {
+                edit.Before(std::move(link), std::move(hook));
+            });
+            return *this;
+        }
+        Graph &After(Path path, Hook hook) {
+            With([&](Edit &edit) {
+                edit.After(std::move(path), std::move(hook));
+            });
+            return *this;
+        }
+        Graph &After(Port source, Hook hook) {
+            With([&](Edit &edit) {
+                edit.After(std::move(source), std::move(hook));
+            });
+            return *this;
+        }
+        Graph &Splice(Link link, Node through,
+                      std::vector<PatchOrder> ordering = {}) {
+            With([&](Edit &edit) {
+                edit.Splice(std::move(link), std::move(through),
+                            std::move(ordering));
+            });
+            return *this;
+        }
+        Graph &Splice(Link link, Port sink, Port source,
+                      std::vector<PatchOrder> ordering = {}) {
+            With([&](Edit &edit) {
+                edit.Splice(std::move(link), std::move(sink),
+                            std::move(source), std::move(ordering));
+            });
+            return *this;
+        }
+        Graph &Redirect(Link link, Port sink,
+                        std::vector<PatchOrder> ordering = {}) {
+            With([&](Edit &edit) {
+                edit.Redirect(std::move(link), std::move(sink),
+                              std::move(ordering));
+            });
+            return *this;
+        }
+
+    private:
+        Graph(std::shared_ptr<const Detail::EditIdentity> edit,
+              std::uint32_t scope) : m_Edit(std::move(edit)), m_Scope(scope) {}
+
+        template <class Function>
+        decltype(auto) With(Function &&function) const {
+            Edit *edit = m_Edit ? m_Edit->Owner : nullptr;
+            if (!edit)
+                throw std::logic_error("The Behavior Edit no longer exists.");
+            return edit->InScope(m_Scope, std::forward<Function>(function));
+        }
+
+        std::shared_ptr<const Detail::EditIdentity> m_Edit;
+        std::uint32_t m_Scope = 0;
+        friend class Edit;
+        friend class Node;
+    };
+
     Edit(const Edit &) = delete;
     Edit &operator=(const Edit &) = delete;
-    Edit(Edit &&) noexcept = default;
-    Edit &operator=(Edit &&) noexcept = default;
+    Edit(Edit &&other) noexcept;
+    Edit &operator=(Edit &&other) noexcept;
+    ~Edit();
 
-    // The target graph itself. Its ports are the entry and exit of the graph.
-    [[nodiscard]] Node Graph() const noexcept {
-        return Node{m_Identity, BML_BEHAVIOR_EDIT_GRAPH};
+    [[nodiscard]] Graph Root() const noexcept {
+        return Graph{m_Identity, BML_BEHAVIOR_EDIT_GRAPH};
     }
 
     // Names the one node carrying this name, and this Prototype when one is
     // given. No match, or more than one, leaves the Plan Unsatisfied rather
     // than installing a guess.
     [[nodiscard]] Node Require(
-        std::string_view name, CKGUID prototype = CKGUID(0, 0)) {
+        Behavior::Selector selector,
+        CKGUID prototype = CKGUID(0, 0)) {
         Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_NODE);
-        step.Name.assign(name);
+        step.Selector = std::move(selector);
         step.PrototypeRef = Prototype(prototype);
         return Node{m_Identity, step.Result};
     }
+    [[nodiscard]] Node Require(
+        std::string_view name, CKGUID prototype = CKGUID(0, 0)) {
+        return Require(Behavior::Unique(name), prototype);
+    }
     [[nodiscard]] Node Require(CKGUID prototype) {
+        return Require(Behavior::Selector::Only(), prototype);
+    }
+    [[nodiscard]] Node Require(const Behavior::Node &node) {
+        if (!node) {
+            RejectLiveView("Node");
+            return {};
+        }
+        if (node.Index() < 0)
+            return Node{m_Identity, BML_BEHAVIOR_EDIT_GRAPH};
         Step &step = Define(BML_BEHAVIOR_EDIT_REQUIRE_NODE);
-        step.PrototypeRef = Prototype(prototype);
+        step.Selector = Behavior::At(node.Index());
+        step.Name.assign(node.Name());
+        step.PrototypeRef = Prototype(node.Prototype());
+        step.ExpectedKind = node.Kind();
+        step.PortShape = Shape(node);
         return Node{m_Identity, step.Result};
+    }
+    [[nodiscard]] Link Require(const Behavior::Link &link) {
+        if (!link) {
+            RejectLiveView("Link");
+            return {};
+        }
+        const Behavior::Port source = link.Source();
+        const Behavior::Port sink = link.Target();
+        const Behavior::Node sourceNode{
+            source.m_Graph, source.m_Graph->Ports[source.m_Index].Node};
+        const Behavior::Node sinkNode{
+            sink.m_Graph, sink.m_Graph->Ports[sink.m_Index].Node};
+        Node from = Require(sourceNode);
+        Node to = Require(sinkNode);
+        const auto slot = [](const Behavior::Port &port) {
+            return port.Name().empty()
+                ? Behavior::At(port.Index())
+                : Behavior::Named(port.Name(), port.Occurrence());
+        };
+        return Between(from.Out(slot(source)), to.In(slot(sink)),
+                       link.InitialDelay());
     }
     // Names a node this Mod already holds a reference to, instead of searching
     // the graph for it. Only a Patch can carry this; a Plan installs into
@@ -550,6 +885,22 @@ public:
         step.Block = compiledBlock;
         const Node node{m_Identity, step.Result};
         return node;
+    }
+    [[nodiscard]] Node AddGraph(std::string_view name,
+                                std::int32_t priority = 0) {
+        if (name.empty()) {
+            if (m_Code == BML_OK) {
+                m_Code = BML_ERROR_INVALID_PARAMETER;
+                m_Status.Error = Behavior::Error::ValueInvalid;
+                m_Status.Phase = Behavior::Phase::Edit;
+                m_Status.Message = "A graph-backed Node requires a name.";
+            }
+            return {};
+        }
+        Step &step = Define(BML_BEHAVIOR_EDIT_ADD_GRAPH);
+        step.Name.assign(name);
+        step.Priority = priority;
+        return Node{m_Identity, step.Result};
     }
     // Replaces an existing child Node while preserving its public graph
     // relations. The replacement Block owns its own Settings and Locals.
@@ -756,14 +1107,19 @@ public:
 private:
     struct Step {
         std::uint32_t Kind = 0;
+        std::uint32_t Graph = BML_BEHAVIOR_EDIT_GRAPH;
         std::uint32_t Result = 0;
         std::uint32_t Flags = 0;
         std::uint32_t Target = 0;
         std::uint32_t Node = 0;
         std::uint32_t SlotKind = 0;
         std::int32_t Delay = 0;
+        std::int32_t Priority = 0;
         std::string Name;
+        Behavior::Selector Selector;
         Behavior::Prototype PrototypeRef;
+        Behavior::BehaviorKind ExpectedKind = Behavior::BehaviorKind::Function;
+        std::uint64_t PortShape = 0;
         std::shared_ptr<const Detail::CompiledBlock> Block;
         CKGUID Type{0, 0};
         Port Source;
@@ -789,6 +1145,7 @@ private:
     Step &Define(std::uint32_t kind, std::uint32_t result) {
         Step step;
         step.Kind = kind;
+        step.Graph = m_Identity->Scope;
         step.Result = result;
         m_Steps.push_back(std::move(step));
         return m_Steps.back();
@@ -807,7 +1164,8 @@ private:
     template <class Symbol>
     [[nodiscard]] bool Require(const Symbol &symbol,
                                std::string_view role) {
-        if (symbol.m_Edit == m_Identity && symbol.m_Id != 0)
+        if (symbol.m_Edit == m_Identity && symbol.m_Id != 0 &&
+            symbol.m_Scope == m_Identity->Scope)
             return true;
         if (m_Code == BML_OK) {
             m_Code = BML_ERROR_INVALID_PARAMETER;
@@ -827,7 +1185,60 @@ private:
         m_Status.Message = "An empty Graph " + std::string(kind) +
             " cannot be used by a Behavior Edit.";
     }
+    [[nodiscard]] Graph EnterGraph(const Node &node) {
+        if (!Require(node, "Nested graph"))
+            return {};
+        Step &step = Define(BML_BEHAVIOR_EDIT_ENTER_GRAPH);
+        step.Target = node.m_Id;
+        const std::uint32_t scope = step.Result;
+        return Graph{m_Identity, scope};
+    }
+    template <class Function>
+    decltype(auto) InScope(std::uint32_t scope, Function &&function) {
+        struct Restore {
+            const Detail::EditIdentity &Identity;
+            std::uint32_t Previous;
+            ~Restore() { Identity.Scope = Previous; }
+        } restore{*m_Identity, m_Identity->Scope};
+        m_Identity->Scope = scope;
+        return std::forward<Function>(function)(*this);
+    }
+    [[nodiscard]] static std::uint64_t Shape(const Behavior::Node &node) {
+        constexpr std::uint64_t offset = 1469598103934665603ull;
+        constexpr std::uint64_t prime = 1099511628211ull;
+        std::uint64_t hash = offset;
+        const auto append = [&](const void *data, std::size_t size) {
+            const auto *bytes = static_cast<const unsigned char *>(data);
+            for (std::size_t index = 0; index < size; ++index) {
+                hash ^= bytes[index];
+                hash *= prime;
+            }
+        };
+        for (Behavior::Port port : node.Ports()) {
+            const auto kind = static_cast<std::uint32_t>(port.Kind());
+            const auto index = port.Index();
+            const auto occurrence = port.Occurrence();
+            const CKGUID type = port.Type();
+            append(&kind, sizeof(kind));
+            append(&index, sizeof(index));
+            append(&occurrence, sizeof(occurrence));
+            append(&type.d1, sizeof(type.d1));
+            append(&type.d2, sizeof(type.d2));
+            const std::string_view name = port.Name();
+            append(name.data(), name.size());
+        }
+        return hash;
+    }
     void Encode(WireProgram &out) const;
+    [[nodiscard]] std::shared_ptr<const Edit> Snapshot() const {
+        auto copy = std::make_shared<Edit>();
+        copy->m_Session = m_Session;
+        copy->m_Code = m_Code;
+        copy->m_Status = m_Status;
+        copy->m_NextHandle = m_NextHandle;
+        copy->m_Steps = m_Steps;
+        return copy;
+    }
 
     std::shared_ptr<Detail::SessionState> m_Session;
     std::shared_ptr<const Detail::EditIdentity> m_Identity;
@@ -840,9 +1251,56 @@ private:
         const std::shared_ptr<Detail::SessionState> &session,
         bool durable = false) const;
 
-    friend class Graph;
+    friend class BML::Behavior::Graph;
     friend class Session;
+    friend class Patch;
+    friend class Plan;
+    friend Detail::GraphEdit On(const BML::Behavior::Graph &, const Edit &);
+    friend Detail::ScriptEdit On(const Scripts &, const Edit &);
 };
+
+inline Edit::Edit(Edit &&other) noexcept
+    : m_Session(std::move(other.m_Session)),
+      m_Identity(std::move(other.m_Identity)), m_Code(other.m_Code),
+      m_Status(std::move(other.m_Status)), m_NextHandle(other.m_NextHandle),
+      m_Steps(std::move(other.m_Steps)) {
+    if (m_Identity) {
+        m_Identity->Owner = this;
+        m_Identity->Scope = BML_BEHAVIOR_EDIT_GRAPH;
+    }
+}
+
+inline Edit &Edit::operator=(Edit &&other) noexcept {
+    if (this == &other)
+        return *this;
+    if (m_Identity && m_Identity->Owner == this)
+        m_Identity->Owner = nullptr;
+    m_Session = std::move(other.m_Session);
+    m_Identity = std::move(other.m_Identity);
+    m_Code = other.m_Code;
+    m_Status = std::move(other.m_Status);
+    m_NextHandle = other.m_NextHandle;
+    m_Steps = std::move(other.m_Steps);
+    if (m_Identity) {
+        m_Identity->Owner = this;
+        m_Identity->Scope = BML_BEHAVIOR_EDIT_GRAPH;
+    }
+    return *this;
+}
+
+inline Edit::~Edit() {
+    if (m_Identity && m_Identity->Owner == this)
+        m_Identity->Owner = nullptr;
+}
+
+inline Edit::Graph Edit::Node::Graph() const {
+    Edit *edit = m_Edit ? m_Edit->Owner : nullptr;
+    if (!edit)
+        return {};
+    return edit->InScope(m_Scope, [&](Edit &owner) {
+        return owner.EnterGraph(*this);
+    });
+}
 
 class Scripts {
 public:
@@ -861,7 +1319,46 @@ private:
     std::string m_Name;
 
     friend class Session;
+    friend Detail::ScriptEdit On(const Scripts &, const Edit &);
 };
+
+inline Detail::GraphEdit On(const Graph &graph, const Edit &edit) {
+    Detail::GraphEdit target;
+    target.Session = graph.m_Session;
+    target.Graph = graph.m_Root;
+    target.Fingerprint = graph.m_Fingerprint;
+    target.Symbols = edit.m_Identity;
+    if (graph.m_View != View::Logical || !target.Graph.Domain) {
+        target.Code = BML_ERROR_INVALID_PARAMETER;
+        target.Failure.Error = Error::GraphLocalityInvalid;
+        target.Failure.Phase = Phase::Edit;
+        target.Failure.Message =
+            "A Patch target must be a logical Graph snapshot.";
+        return target;
+    }
+    try {
+        target.Body = edit.Snapshot();
+    } catch (const std::bad_alloc &) {
+        target.Code = BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        target.Code = BML_ERROR_FAIL;
+    }
+    return target;
+}
+
+inline Detail::ScriptEdit On(const Scripts &scripts, const Edit &edit) {
+    Detail::ScriptEdit target;
+    target.Targets = scripts.m_Count;
+    target.Script = scripts.m_Name;
+    try {
+        target.Body = edit.Snapshot();
+    } catch (const std::bad_alloc &) {
+        target.Code = BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        target.Code = BML_ERROR_FAIL;
+    }
+    return target;
+}
 
 template <class Handle>
 Result<BML_ObjectRef> Patch::Resolve(const Handle &node) const {
@@ -869,7 +1366,12 @@ Result<BML_ObjectRef> Patch::Resolve(const Handle &node) const {
                   "A Behavior Patch resolves only an Edit::Node.");
     if (!*this)
         return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_HANDLE);
-    if (!node.m_Edit || node.m_Edit != m_Edit || !node.m_Id) {
+    const auto symbols = std::find_if(
+        m_Edits.begin(), m_Edits.end(), [&](const Detail::PatchSymbols &item) {
+            return item.Edit == node.m_Edit;
+        });
+    if (!node.m_Edit || symbols == m_Edits.end() || !node.m_Id ||
+        node.m_Id > UINT32_MAX - symbols->HandleBase) {
         Status status;
         status.Error = Behavior::Error::GraphLocalityInvalid;
         status.Phase = Behavior::Phase::Edit;
@@ -878,7 +1380,7 @@ Result<BML_ObjectRef> Patch::Resolve(const Handle &node) const {
         return Result<BML_ObjectRef>::Failure(BML_ERROR_INVALID_PARAMETER,
                                                std::move(status));
     }
-    return ResolveHandle(node.m_Id);
+    return ResolveHandle(node.m_Id + symbols->HandleBase);
 }
 
 } // namespace BML::Behavior

@@ -9,6 +9,10 @@
 #include "BML/Interface.h"
 #include "BML/Types.h"
 
+#if defined(_WIN64)
+#error "bml.behavior is a Win32 Virtools 2.1 interface"
+#endif
+
 #if defined(_WIN32) && !defined(_WIN64)
 #define BML_BEHAVIOR_CALL __cdecl
 #else
@@ -768,10 +772,14 @@ typedef enum BML_BehaviorPlanState {
     // BML_BEHAVIOR_TARGETS_ONE. The Plan is retained and reconsidered against
     // later worlds.
     BML_BEHAVIOR_PLAN_UNSATISFIED = 3,
+    // At least one Script rule is installed while another rule is still
+    // reconciling or unsatisfied.
+    BML_BEHAVIOR_PLAN_PARTIAL = 4,
+    BML_BEHAVIOR_PLAN_DISABLED = 5,
     // An installation could not be reverted. The Plan keeps its Hook state
     // alive because the game graph still refers to it.
-    BML_BEHAVIOR_PLAN_CONFLICTED = 4,
-    BML_BEHAVIOR_PLAN_RETIRING = 5
+    BML_BEHAVIOR_PLAN_CONFLICTED = 6,
+    BML_BEHAVIOR_PLAN_RETIRING = 7
 } BML_BehaviorPlanState;
 
 typedef struct BML_BehaviorPlanInfo {
@@ -790,10 +798,11 @@ typedef struct BML_BehaviorPlanInfo {
 typedef enum BML_BehaviorPatchState {
     BML_BEHAVIOR_PATCH_PENDING = 1,
     BML_BEHAVIOR_PATCH_ACTIVE = 2,
-    BML_BEHAVIOR_PATCH_CLOSING = 3,
-    BML_BEHAVIOR_PATCH_CONFLICTED = 4,
-    BML_BEHAVIOR_PATCH_CLOSED = 5,
-    BML_BEHAVIOR_PATCH_FAILED = 6
+    BML_BEHAVIOR_PATCH_DISABLED = 3,
+    BML_BEHAVIOR_PATCH_CLOSING = 4,
+    BML_BEHAVIOR_PATCH_CONFLICTED = 5,
+    BML_BEHAVIOR_PATCH_CLOSED = 6,
+    BML_BEHAVIOR_PATCH_FAILED = 7
 } BML_BehaviorPatchState;
 
 typedef struct BML_BehaviorPatchInfo {
@@ -895,6 +904,8 @@ typedef struct BML_BehaviorOperationSpec {
 // is compiled against a live graph.
 typedef struct BML_BehaviorPortRef {
     uint32_t StructSize;
+    // Graph scope containing Handle.
+    uint32_t Graph;
     uint32_t Handle;
     uint32_t Kind;
     // The Virtools parameter type expected of a Pin, Pout, or Local port. A
@@ -961,7 +972,11 @@ typedef enum BML_BehaviorEditKind {
     // original endpoints when it closes; it does not destroy the Node.
     // The Node, its control ports, and every incident Link source must be idle.
     // A Link with an in-flight activation delay cannot be removed.
-    BML_BEHAVIOR_EDIT_REMOVE_NODE = 20
+    BML_BEHAVIOR_EDIT_REMOVE_NODE = 20,
+    // Result names a graph scope rooted at the graph-backed Node in Target.
+    BML_BEHAVIOR_EDIT_ENTER_GRAPH = 21,
+    // Result names a new graph-backed child Node in the current graph scope.
+    BML_BEHAVIOR_EDIT_ADD_GRAPH = 22
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {
@@ -977,6 +992,8 @@ typedef enum BML_BehaviorEditFlags {
 typedef struct BML_BehaviorEditStep {
     uint32_t StructSize;
     uint32_t Kind;
+    // Graph scope containing this step. BML_BEHAVIOR_EDIT_GRAPH is the root.
+    uint32_t Graph;
     // The handle this step defines, or zero for a step that defines none.
     uint32_t Result;
     uint32_t Flags;
@@ -987,10 +1004,19 @@ typedef struct BML_BehaviorEditStep {
     // BML_BehaviorSlotKind of an appended slot.
     uint32_t SlotKind;
     int32_t Delay;
+    // Priority of a graph-backed Node created by ADD_GRAPH.
+    int32_t Priority;
     // Node name to require, or the name of an appended slot.
     BML_BehaviorString Name;
+    // Node selector used by REQUIRE_NODE. Name above remains the interface or
+    // graph name used by other step kinds.
+    BML_BehaviorSelector Selector;
     // Prototype matched by REQUIRE_NODE.
     BML_BehaviorPrototypeRef Prototype;
+    // Optional structural facts copied by Require(snapshotNode).
+    uint32_t ExpectedKind;
+    uint32_t ReservedShape;
+    uint64_t PortShape;
     // Complete configured Block created by ADD_BLOCK. Its Prototype provider
     // generation must already be resolved. The Loader deep-copies the Block
     // with the edit program.
@@ -1011,17 +1037,40 @@ typedef struct BML_BehaviorEditStep {
     BML_BehaviorOperationSpec Operation;
 } BML_BehaviorEditStep;
 
-typedef struct BML_BehaviorPlanSpec {
+// One exact live Graph and its owned Edit program. Fingerprint is the logical
+// snapshot fingerprint observed by the author; Apply rejects a changed Graph
+// instead of compiling the Edit against a different topology.
+typedef struct BML_BehaviorGraphEdit {
+    uint32_t StructSize;
+    uint32_t Reserved;
+    BML_ObjectRef Graph;
+    uint64_t Fingerprint;
+    const BML_BehaviorEditStep *Steps;
+    uint32_t StepCount;
+    // Added to Result handles when ResolvePatchNode addresses this Edit.
+    // Handle ranges must not overlap within one Patch.
+    uint32_t HandleBase;
+} BML_BehaviorGraphEdit;
+
+// One durable Script rule and its owned Edit program.
+typedef struct BML_BehaviorScriptEdit {
     uint32_t StructSize;
     uint32_t Targets;
-    // Names this Plan within the owner of the Session. Submitting a name that
-    // is already live replaces the Plan carrying it.
-    BML_BehaviorString Name;
-    // The exact script name to match.
     BML_BehaviorString Script;
     const BML_BehaviorEditStep *Steps;
     uint32_t StepCount;
     uint32_t Reserved;
+} BML_BehaviorScriptEdit;
+
+typedef struct BML_BehaviorPlanSpec {
+    uint32_t StructSize;
+    uint32_t Reserved;
+    // Names this Plan within the owner of the Session. Submitting a name that
+    // is already live replaces the Plan carrying it.
+    BML_BehaviorString Name;
+    const BML_BehaviorScriptEdit *Edits;
+    uint32_t EditCount;
+    uint32_t Reserved2;
 } BML_BehaviorPlanSpec;
 
 // Applies one edit program to this exact live graph. The graph is resolved and
@@ -1031,9 +1080,8 @@ typedef struct BML_BehaviorPatchSpec {
     uint32_t StructSize;
     uint32_t Reserved;
     BML_BehaviorString Name;
-    BML_ObjectRef Graph;
-    const BML_BehaviorEditStep *Steps;
-    uint32_t StepCount;
+    const BML_BehaviorGraphEdit *Edits;
+    uint32_t EditCount;
     uint32_t Reserved2;
 } BML_BehaviorPatchSpec;
 
@@ -1315,19 +1363,47 @@ typedef struct BML_BehaviorInterface {
     // safe point. Repeating the call after retirement returns BML_OK.
     int (BML_BEHAVIOR_CALL *CloseScript)(BML_BehaviorSession session,
                                          BML_BehaviorScript script);
+    // Patch and Plan definitions retain their handle while disabled. The last
+    // active-state request made before a Behavior safe point wins.
+    int (BML_BEHAVIOR_CALL *SetPatchActive)(
+        BML_BehaviorSession session,
+        BML_BehaviorPatch patch,
+        uint32_t active,
+        BML_BehaviorPatchInfo *info,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReplacePatch)(
+        BML_BehaviorSession session,
+        BML_BehaviorPatch patch,
+        const BML_BehaviorGraphEdit *edits,
+        uint32_t editCount,
+        BML_BehaviorPatchInfo *info,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *SetPlanActive)(
+        BML_BehaviorSession session,
+        BML_BehaviorPlan plan,
+        uint32_t active,
+        BML_BehaviorPlanInfo *info,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReplacePlan)(
+        BML_BehaviorSession session,
+        BML_BehaviorPlan plan,
+        const BML_BehaviorScriptEdit *edits,
+        uint32_t editCount,
+        BML_BehaviorPlanInfo *info,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 // The complete pre-release function table for bml.behavior 1.0. Use
 // BML_IFACE_HAS on a function a later minor appends.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
-    (offsetof(BML_BehaviorInterface, CloseScript) +                           \
-     sizeof(((BML_BehaviorInterface *) 0)->CloseScript))
+    (offsetof(BML_BehaviorInterface, ReplacePlan) +                           \
+     sizeof(((BML_BehaviorInterface *) 0)->ReplacePlan))
 
 // The single capability checkpoint for the complete 1.0 surface. A Mod may
 // accept a later minor when this is true, then probe later additions with
 // BML_IFACE_HAS before calling them.
 #define BML_BEHAVIOR_HAS_1_0(iface)                                          \
-    BML_IFACE_HAS((iface), BML_BehaviorInterface, CloseScript)
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, ReplacePlan)
 
 #pragma pack(pop)
 

@@ -443,7 +443,7 @@ void ModContext::ProcessVirtoolsFrame() {
     if (!plans && m_Logger)
         m_Logger->Error("Failed to reconcile Behavior Plans: %s",
                         plans.Message.c_str());
-    m_BehaviorPatches.ProcessFrame();
+    m_BehaviorPatches.ProcessFrame(m_BehaviorPlans);
     m_BehaviorScripts.ProcessFrame();
     m_ExecuteBB.ProcessFrame();
 }

@@ -1736,6 +1736,7 @@ inline void Edit::Encode(WireProgram &out) const {
     const auto encodePort = [](const Port &source) {
         BML_BehaviorPortRef port{};
         port.StructSize = sizeof(port);
+        port.Graph = source.m_Scope;
         port.Handle = source.m_Id;
         port.Kind = source.m_Kind;
         port.Type = Detail::WireGuid(source.m_Type);
@@ -1766,16 +1767,22 @@ inline void Edit::Encode(WireProgram &out) const {
         BML_BehaviorEditStep wire{};
         wire.StructSize = sizeof(wire);
         wire.Kind = step.Kind;
+        wire.Graph = step.Graph;
         wire.Result = step.Result;
         wire.Flags = step.Flags;
         wire.Target = step.Target;
         wire.Node = step.Node;
         wire.SlotKind = step.SlotKind;
         wire.Delay = step.Delay;
+        wire.Priority = step.Priority;
         wire.Name = Detail::Text(step.Name);
+        wire.Selector = Detail::Wire::From(step.Selector);
         wire.Prototype.StructSize = sizeof(wire.Prototype);
         wire.Prototype.Prototype = Detail::WireGuid(step.PrototypeRef.Id);
         wire.Prototype.Generation = step.PrototypeRef.Generation;
+        wire.ExpectedKind = step.PortShape
+            ? static_cast<std::uint32_t>(step.ExpectedKind) : 0;
+        wire.PortShape = step.PortShape;
         wire.Block = step.Block ? &step.Block->Wire : nullptr;
         wire.Type = Detail::WireGuid(step.Type);
         wire.Source = encodePort(step.Source);
@@ -1881,9 +1888,14 @@ inline Result<Patch> Graph::Apply(std::string_view name,
         BML_BehaviorPatchSpec spec{};
         spec.StructSize = sizeof(spec);
         spec.Name = Detail::Text(name);
-        spec.Graph = m_Root;
-        spec.Steps = program.Steps.empty() ? nullptr : program.Steps.data();
-        spec.StepCount = static_cast<std::uint32_t>(program.Steps.size());
+        BML_BehaviorGraphEdit target{};
+        target.StructSize = sizeof(target);
+        target.Graph = m_Root;
+        target.Fingerprint = m_Fingerprint;
+        target.Steps = program.Steps.empty() ? nullptr : program.Steps.data();
+        target.StepCount = static_cast<std::uint32_t>(program.Steps.size());
+        spec.Edits = &target;
+        spec.EditCount = 1;
 
         BML_BehaviorPatch handle = nullptr;
         BML_BehaviorStatus status = Detail::EmptyStatus();
@@ -1891,7 +1903,8 @@ inline Result<Patch> Graph::Apply(std::string_view name,
             m_Session->Api->ApplyPatch(
                 m_Session->Handle, &spec, &handle, nullptr, &status),
             status);
-        Patch owned(m_Session, handle, edit.m_Identity);
+        Patch owned(m_Session, handle,
+                    {{edit.m_Identity, 0}});
         if (code != BML_OK || !handle) {
             return Result<Patch>::Failure(
                 code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
@@ -1907,27 +1920,124 @@ inline Result<Patch> Graph::Apply(std::string_view name,
     }
 }
 
+inline Result<Patch> Session::Apply(
+    std::string_view name, std::vector<Detail::GraphEdit> edits) const {
+    if (!m_State || !m_State->Api || !m_State->Handle)
+        return Result<Patch>::Failure(BML_ERROR_INVALID_HANDLE);
+    if (name.empty() || edits.empty() ||
+        !BML_IFACE_HAS(m_State->Api, BML_BehaviorInterface, ReplacePatch))
+        return Result<Patch>::Failure(
+            name.empty() || edits.empty() ? BML_ERROR_INVALID_PARAMETER
+                                          : BML_ERROR_VERSION_MISMATCH);
+    try {
+        std::vector<Edit::WireProgram> programs;
+        std::vector<BML_BehaviorGraphEdit> targets;
+        std::vector<Detail::PatchSymbols> symbols;
+        programs.reserve(edits.size());
+        targets.reserve(edits.size());
+        symbols.reserve(edits.size());
+        std::uint32_t handleBase = 0;
+        for (const Detail::GraphEdit &target : edits) {
+            if (target.Code != BML_OK)
+                return Result<Patch>::Failure(target.Code, target.Failure);
+            if (!target.Body || target.Session != m_State ||
+                !target.Graph.Domain)
+                return Result<Patch>::Failure(BML_ERROR_INVALID_PARAMETER);
+            Result<void> valid = target.Body->Validate(m_State);
+            if (!valid)
+                return Result<Patch>::Failure(valid.Code(), valid.GetStatus());
+            programs.emplace_back();
+            target.Body->Encode(programs.back());
+            BML_BehaviorGraphEdit wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Graph = target.Graph;
+            wire.Fingerprint = target.Fingerprint;
+            wire.Steps = programs.back().Steps.empty()
+                ? nullptr : programs.back().Steps.data();
+            wire.StepCount = static_cast<std::uint32_t>(
+                programs.back().Steps.size());
+            wire.HandleBase = handleBase;
+            targets.push_back(wire);
+            symbols.push_back({target.Symbols, handleBase});
+            const std::uint32_t span = target.Body->m_NextHandle;
+            if (span > UINT32_MAX - handleBase)
+                return Result<Patch>::Failure(BML_ERROR_INVALID_PARAMETER);
+            handleBase += span;
+        }
+
+        BML_BehaviorPatchSpec spec{};
+        spec.StructSize = sizeof(spec);
+        spec.Name = Detail::Text(name);
+        spec.Edits = targets.data();
+        spec.EditCount = static_cast<std::uint32_t>(targets.size());
+        BML_BehaviorPatch handle = nullptr;
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = Detail::WireCode(
+            m_State->Api->ApplyPatch(
+                m_State->Handle, &spec, &handle, nullptr, &status), status);
+        Patch owned(m_State, handle, std::move(symbols));
+        if (code != BML_OK || !handle)
+            return Result<Patch>::Failure(
+                code == BML_OK ? BML_ERROR_MALFORMED_MESSAGE : code,
+                Detail::ReadStatus(status));
+        return Result<Patch>::Success(std::move(owned),
+                                      Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<Patch>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<Patch>::Failure(BML_ERROR_FAIL);
+    }
+}
+
 inline Result<Plan> Session::Plan(std::string_view name,
                                   const Scripts &scripts,
                                   const Edit &edit) const {
+    return Plan(name, std::vector<Detail::ScriptEdit>{On(scripts, edit)});
+}
+
+inline Result<Plan> Session::Plan(
+    std::string_view name, std::vector<Detail::ScriptEdit> edits) const {
     if (!m_State || !m_State->Api || !m_State->Handle)
         return Result<Behavior::Plan>::Failure(BML_ERROR_INVALID_HANDLE);
-    if (name.empty() || scripts.m_Name.empty())
-        return Result<Behavior::Plan>::Failure(BML_ERROR_INVALID_PARAMETER);
-    Result<void> valid = edit.Validate(m_State, true);
-    if (!valid)
-        return Result<Behavior::Plan>::Failure(valid.Code(), valid.GetStatus());
+    if (name.empty() || edits.empty() ||
+        !BML_IFACE_HAS(m_State->Api, BML_BehaviorInterface, ReplacePlan))
+        return Result<Behavior::Plan>::Failure(
+            name.empty() || edits.empty() ? BML_ERROR_INVALID_PARAMETER
+                                          : BML_ERROR_VERSION_MISMATCH);
     try {
-        Edit::WireProgram program;
-        edit.Encode(program);
+        std::vector<Edit::WireProgram> programs;
+        std::vector<BML_BehaviorScriptEdit> targets;
+        programs.reserve(edits.size());
+        targets.reserve(edits.size());
+        for (const Detail::ScriptEdit &target : edits) {
+            if (target.Code != BML_OK)
+                return Result<Behavior::Plan>::Failure(
+                    target.Code, target.Failure);
+            if (!target.Body || target.Script.empty())
+                return Result<Behavior::Plan>::Failure(
+                    BML_ERROR_INVALID_PARAMETER);
+            Result<void> valid = target.Body->Validate(m_State, true);
+            if (!valid)
+                return Result<Behavior::Plan>::Failure(
+                    valid.Code(), valid.GetStatus());
+            programs.emplace_back();
+            target.Body->Encode(programs.back());
+            BML_BehaviorScriptEdit wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Targets = target.Targets;
+            wire.Script = Detail::Text(target.Script);
+            wire.Steps = programs.back().Steps.empty()
+                ? nullptr : programs.back().Steps.data();
+            wire.StepCount = static_cast<std::uint32_t>(
+                programs.back().Steps.size());
+            targets.push_back(wire);
+        }
 
         BML_BehaviorPlanSpec spec{};
         spec.StructSize = sizeof(spec);
-        spec.Targets = scripts.m_Count;
         spec.Name = Detail::Text(name);
-        spec.Script = Detail::Text(scripts.m_Name);
-        spec.Steps = program.Steps.empty() ? nullptr : program.Steps.data();
-        spec.StepCount = static_cast<std::uint32_t>(program.Steps.size());
+        spec.Edits = targets.data();
+        spec.EditCount = static_cast<std::uint32_t>(targets.size());
 
         BML_BehaviorPlan handle = nullptr;
         BML_BehaviorStatus status = Detail::EmptyStatus();
@@ -1947,6 +2057,179 @@ inline Result<Plan> Session::Plan(std::string_view name,
         return Result<Behavior::Plan>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
         return Result<Behavior::Plan>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<PatchInfo> Patch::SetActive(bool active) {
+    if (!*this || !BML_IFACE_HAS(
+            m_Session->Api, BML_BehaviorInterface, SetPatchActive))
+        return Result<PatchInfo>::Failure(
+            *this ? BML_ERROR_VERSION_MISMATCH : BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorPatchInfo wire{};
+    wire.StructSize = sizeof(wire);
+    BML_BehaviorStatus status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(
+        m_Session->Api->SetPatchActive(
+            m_Session->Handle, m_Handle, active ? 1u : 0u,
+            &wire, &status), status);
+    if (code != BML_OK)
+        return Result<PatchInfo>::Failure(code, Detail::ReadStatus(status));
+    if (wire.StructSize < sizeof(wire) || wire.Reserved != 0 ||
+        !Detail::KnownPatchState(wire.State) ||
+        !Detail::ValidStatus(wire.Diagnostic))
+        return Result<PatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    return Result<PatchInfo>::Success(Detail::ReadPatchInfo(wire),
+                                      Detail::ReadStatus(status));
+}
+
+inline Result<PatchInfo> Patch::Enable() { return SetActive(true); }
+inline Result<PatchInfo> Patch::Disable() { return SetActive(false); }
+
+inline Result<PatchInfo> Patch::Replace(
+    std::vector<Detail::GraphEdit> edits) {
+    if (!*this || edits.empty() || !BML_IFACE_HAS(
+            m_Session->Api, BML_BehaviorInterface, ReplacePatch))
+        return Result<PatchInfo>::Failure(
+            !*this ? BML_ERROR_INVALID_HANDLE :
+            edits.empty() ? BML_ERROR_INVALID_PARAMETER
+                          : BML_ERROR_VERSION_MISMATCH);
+    try {
+        std::vector<Edit::WireProgram> programs;
+        std::vector<BML_BehaviorGraphEdit> targets;
+        std::vector<Detail::PatchSymbols> symbols;
+        programs.reserve(edits.size());
+        targets.reserve(edits.size());
+        symbols.reserve(edits.size());
+        std::uint32_t handleBase = 0;
+        for (const Detail::GraphEdit &target : edits) {
+            if (target.Code != BML_OK)
+                return Result<PatchInfo>::Failure(target.Code, target.Failure);
+            if (!target.Body || target.Session != m_Session ||
+                !target.Graph.Domain)
+                return Result<PatchInfo>::Failure(BML_ERROR_INVALID_PARAMETER);
+            Result<void> valid = target.Body->Validate(m_Session);
+            if (!valid)
+                return Result<PatchInfo>::Failure(valid.Code(), valid.GetStatus());
+            programs.emplace_back();
+            target.Body->Encode(programs.back());
+            BML_BehaviorGraphEdit wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Graph = target.Graph;
+            wire.Fingerprint = target.Fingerprint;
+            wire.Steps = programs.back().Steps.empty()
+                ? nullptr : programs.back().Steps.data();
+            wire.StepCount = static_cast<std::uint32_t>(
+                programs.back().Steps.size());
+            wire.HandleBase = handleBase;
+            targets.push_back(wire);
+            symbols.push_back({target.Symbols, handleBase});
+            const std::uint32_t span = target.Body->m_NextHandle;
+            if (span > UINT32_MAX - handleBase)
+                return Result<PatchInfo>::Failure(BML_ERROR_INVALID_PARAMETER);
+            handleBase += span;
+        }
+        BML_BehaviorPatchInfo wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = Detail::WireCode(
+            m_Session->Api->ReplacePatch(
+                m_Session->Handle, m_Handle, targets.data(),
+                static_cast<std::uint32_t>(targets.size()), &wire, &status),
+            status);
+        if (code != BML_OK)
+            return Result<PatchInfo>::Failure(code, Detail::ReadStatus(status));
+        if (wire.StructSize < sizeof(wire) || wire.Reserved != 0 ||
+            !Detail::KnownPatchState(wire.State) ||
+            !Detail::ValidStatus(wire.Diagnostic))
+            return Result<PatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        m_Edits = std::move(symbols);
+        return Result<PatchInfo>::Success(Detail::ReadPatchInfo(wire),
+                                          Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<PatchInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<PatchInfo>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<PlanInfo> Plan::SetActive(bool active) {
+    if (!*this || !BML_IFACE_HAS(
+            m_Session->Api, BML_BehaviorInterface, SetPlanActive))
+        return Result<PlanInfo>::Failure(
+            *this ? BML_ERROR_VERSION_MISMATCH : BML_ERROR_INVALID_HANDLE);
+    BML_BehaviorPlanInfo wire{};
+    wire.StructSize = sizeof(wire);
+    BML_BehaviorStatus status = Detail::EmptyStatus();
+    const int code = Detail::WireCode(
+        m_Session->Api->SetPlanActive(
+            m_Session->Handle, m_Handle, active ? 1u : 0u,
+            &wire, &status), status);
+    if (code != BML_OK)
+        return Result<PlanInfo>::Failure(code, Detail::ReadStatus(status));
+    if (wire.StructSize < sizeof(wire) ||
+        !Detail::KnownPlanState(wire.State) ||
+        !Detail::ValidStatus(wire.Diagnostic))
+        return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    return Result<PlanInfo>::Success(Detail::ReadPlanInfo(wire),
+                                     Detail::ReadStatus(status));
+}
+
+inline Result<PlanInfo> Plan::Enable() { return SetActive(true); }
+inline Result<PlanInfo> Plan::Disable() { return SetActive(false); }
+
+inline Result<PlanInfo> Plan::Replace(
+    std::vector<Detail::ScriptEdit> edits) {
+    if (!*this || edits.empty() || !BML_IFACE_HAS(
+            m_Session->Api, BML_BehaviorInterface, ReplacePlan))
+        return Result<PlanInfo>::Failure(
+            !*this ? BML_ERROR_INVALID_HANDLE :
+            edits.empty() ? BML_ERROR_INVALID_PARAMETER
+                          : BML_ERROR_VERSION_MISMATCH);
+    try {
+        std::vector<Edit::WireProgram> programs;
+        std::vector<BML_BehaviorScriptEdit> targets;
+        programs.reserve(edits.size());
+        targets.reserve(edits.size());
+        for (const Detail::ScriptEdit &target : edits) {
+            if (target.Code != BML_OK)
+                return Result<PlanInfo>::Failure(target.Code, target.Failure);
+            if (!target.Body || target.Script.empty())
+                return Result<PlanInfo>::Failure(BML_ERROR_INVALID_PARAMETER);
+            Result<void> valid = target.Body->Validate(m_Session, true);
+            if (!valid)
+                return Result<PlanInfo>::Failure(valid.Code(), valid.GetStatus());
+            programs.emplace_back();
+            target.Body->Encode(programs.back());
+            BML_BehaviorScriptEdit wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Targets = target.Targets;
+            wire.Script = Detail::Text(target.Script);
+            wire.Steps = programs.back().Steps.empty()
+                ? nullptr : programs.back().Steps.data();
+            wire.StepCount = static_cast<std::uint32_t>(
+                programs.back().Steps.size());
+            targets.push_back(wire);
+        }
+        BML_BehaviorPlanInfo wire{};
+        wire.StructSize = sizeof(wire);
+        BML_BehaviorStatus status = Detail::EmptyStatus();
+        const int code = Detail::WireCode(
+            m_Session->Api->ReplacePlan(
+                m_Session->Handle, m_Handle, targets.data(),
+                static_cast<std::uint32_t>(targets.size()), &wire, &status),
+            status);
+        if (code != BML_OK)
+            return Result<PlanInfo>::Failure(code, Detail::ReadStatus(status));
+        if (wire.StructSize < sizeof(wire) ||
+            !Detail::KnownPlanState(wire.State) ||
+            !Detail::ValidStatus(wire.Diagnostic))
+            return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        return Result<PlanInfo>::Success(Detail::ReadPlanInfo(wire),
+                                         Detail::ReadStatus(status));
+    } catch (const std::bad_alloc &) {
+        return Result<PlanInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<PlanInfo>::Failure(BML_ERROR_FAIL);
     }
 }
 

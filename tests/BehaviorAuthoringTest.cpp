@@ -28,13 +28,21 @@ struct CapturedBinding {
 
 struct CapturedStep {
     std::uint32_t Kind = 0;
+    std::uint32_t Graph = BML_BEHAVIOR_EDIT_GRAPH;
     std::uint32_t Result = 0;
     std::uint32_t Flags = 0;
     std::uint32_t Target = 0;
     std::uint32_t Node = 0;
     std::uint32_t SlotKind = 0;
     std::int32_t Delay = 0;
+    std::int32_t Priority = 0;
     std::string Name;
+    std::uint32_t SelectorKind = 0;
+    std::int32_t SelectorIndex = 0;
+    std::int32_t SelectorOccurrence = 0;
+    std::string SelectorName;
+    std::uint32_t ExpectedKind = 0;
+    std::uint64_t PortShape = 0;
     BML_BehaviorPrototypeRef Prototype{};
     bool HasBlock = false;
     BML_BehaviorPrototypeRef BlockPrototype{};
@@ -135,6 +143,8 @@ struct FakeState {
     int PlanCloseCode = BML_OK;
     std::uint32_t PlanState = BML_BEHAVIOR_PLAN_ACTIVE;
     std::uint32_t PlanTargets = 0;
+    std::uint32_t PlanRuleCount = 0;
+    std::vector<std::string> PlanScripts;
     std::string PlanName;
     std::string PlanScript;
     std::vector<CapturedStep> PlanSteps;
@@ -148,6 +158,14 @@ struct FakeState {
     std::uint32_t PatchState = BML_BEHAVIOR_PATCH_ACTIVE;
     std::string PatchName;
     BML_ObjectRef PatchGraph{};
+    std::uint32_t PatchTargetCount = 0;
+    std::vector<BML_ObjectRef> PatchGraphs;
+    std::vector<std::uint64_t> PatchFingerprints;
+    std::vector<std::uint32_t> PatchHandleBases;
+    int PatchActivityChanges = 0;
+    int PlanActivityChanges = 0;
+    int PatchReplaces = 0;
+    int PlanReplaces = 0;
     std::vector<CapturedStep> PatchSteps;
     std::vector<BML_BehaviorHookFunction> PatchHooks;
     std::uint32_t SetKind = 0;
@@ -1040,13 +1058,21 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
         const BML_BehaviorEditStep &step = steps[index];
         CapturedStep captured;
         captured.Kind = step.Kind;
+        captured.Graph = step.Graph;
         captured.Result = step.Result;
         captured.Flags = step.Flags;
         captured.Target = step.Target;
         captured.Node = step.Node;
         captured.SlotKind = step.SlotKind;
         captured.Delay = step.Delay;
+        captured.Priority = step.Priority;
         captured.Name = Copy(step.Name);
+        captured.SelectorKind = step.Selector.Kind;
+        captured.SelectorIndex = step.Selector.Index;
+        captured.SelectorOccurrence = step.Selector.Occurrence;
+        captured.SelectorName = Copy(step.Selector.Name);
+        captured.ExpectedKind = step.ExpectedKind;
+        captured.PortShape = step.PortShape;
         captured.Prototype = step.Prototype;
         if (step.Block) {
             captured.HasBlock = true;
@@ -1096,10 +1122,15 @@ int BML_BEHAVIOR_CALL SubmitPlan(
     Success(status);
     ++g_State.PlanSubmits;
     g_State.PlanName = Copy(spec->Name);
-    g_State.PlanScript = Copy(spec->Script);
-    g_State.PlanTargets = spec->Targets;
-    CaptureSteps(spec->Steps, spec->StepCount, g_State.PlanSteps,
-                 g_State.PlanHooks);
+    g_State.PlanRuleCount = spec->EditCount;
+    for (std::uint32_t index = 0; index < spec->EditCount; ++index)
+        g_State.PlanScripts.push_back(Copy(spec->Edits[index].Script));
+    if (spec->EditCount != 0 && spec->Edits) {
+        g_State.PlanScript = Copy(spec->Edits[0].Script);
+        g_State.PlanTargets = spec->Edits[0].Targets;
+        CaptureSteps(spec->Edits[0].Steps, spec->Edits[0].StepCount,
+                     g_State.PlanSteps, g_State.PlanHooks);
+    }
     if (g_State.PlanSubmitCode != BML_OK &&
         !g_State.ReturnPlanHandleOnError) {
         g_State.PlanHooks.clear();
@@ -1155,9 +1186,17 @@ int BML_BEHAVIOR_CALL ApplyPatch(
     Success(status);
     ++g_State.PatchApplies;
     g_State.PatchName = Copy(spec->Name);
-    g_State.PatchGraph = spec->Graph;
-    CaptureSteps(spec->Steps, spec->StepCount, g_State.PatchSteps,
-                 g_State.PatchHooks);
+    g_State.PatchTargetCount = spec->EditCount;
+    for (std::uint32_t index = 0; index < spec->EditCount; ++index) {
+        g_State.PatchGraphs.push_back(spec->Edits[index].Graph);
+        g_State.PatchFingerprints.push_back(spec->Edits[index].Fingerprint);
+        g_State.PatchHandleBases.push_back(spec->Edits[index].HandleBase);
+    }
+    if (spec->EditCount != 0 && spec->Edits) {
+        g_State.PatchGraph = spec->Edits[0].Graph;
+        CaptureSteps(spec->Edits[0].Steps, spec->Edits[0].StepCount,
+                     g_State.PatchSteps, g_State.PatchHooks);
+    }
     if (g_State.PatchApplyCode != BML_OK &&
         !g_State.ReturnPatchHandleOnError) {
         g_State.PatchHooks.clear();
@@ -1317,6 +1356,58 @@ int BML_BEHAVIOR_CALL CloseScript(BML_BehaviorSession,
     return BML_OK;
 }
 
+int BML_BEHAVIOR_CALL SetPatchActive(
+    BML_BehaviorSession, BML_BehaviorPatch, std::uint32_t active,
+    BML_BehaviorPatchInfo *info, BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.PatchActivityChanges;
+    if (info) {
+        Init(info);
+        info->State = active ? BML_BEHAVIOR_PATCH_ACTIVE
+                             : BML_BEHAVIOR_PATCH_DISABLED;
+        Init(&info->Diagnostic);
+    }
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReplacePatch(
+    BML_BehaviorSession, BML_BehaviorPatch,
+    const BML_BehaviorGraphEdit *edits, std::uint32_t count,
+    BML_BehaviorPatchInfo *info, BML_BehaviorStatus *status) {
+    ++g_State.PatchReplaces;
+    g_State.PatchTargetCount = count;
+    g_State.PatchGraphs.clear();
+    for (std::uint32_t index = 0; index < count; ++index)
+        g_State.PatchGraphs.push_back(edits[index].Graph);
+    return SetPatchActive(nullptr, nullptr, 1, info, status);
+}
+
+int BML_BEHAVIOR_CALL SetPlanActive(
+    BML_BehaviorSession, BML_BehaviorPlan, std::uint32_t active,
+    BML_BehaviorPlanInfo *info, BML_BehaviorStatus *status) {
+    Success(status);
+    ++g_State.PlanActivityChanges;
+    if (info) {
+        Init(info);
+        info->State = active ? BML_BEHAVIOR_PLAN_ACTIVE
+                             : BML_BEHAVIOR_PLAN_DISABLED;
+        Init(&info->Diagnostic);
+    }
+    return BML_OK;
+}
+
+int BML_BEHAVIOR_CALL ReplacePlan(
+    BML_BehaviorSession, BML_BehaviorPlan,
+    const BML_BehaviorScriptEdit *edits, std::uint32_t count,
+    BML_BehaviorPlanInfo *info, BML_BehaviorStatus *status) {
+    ++g_State.PlanReplaces;
+    g_State.PlanRuleCount = count;
+    g_State.PlanScripts.clear();
+    for (std::uint32_t index = 0; index < count; ++index)
+        g_State.PlanScripts.push_back(Copy(edits[index].Script));
+    return SetPlanActive(nullptr, nullptr, 1, info, status);
+}
+
 BML_BehaviorInterface g_Interface = {
     BML_IFACE_HEADER(BML_BehaviorInterface, BML_BEHAVIOR_INTERFACE_ID,
                      BML_BEHAVIOR_INTERFACE_MAJOR,
@@ -1357,6 +1448,10 @@ BML_BehaviorInterface g_Interface = {
     &ReadScript,
     &SetScriptActive,
     &CloseScript,
+    &SetPatchActive,
+    &ReplacePatch,
+    &SetPlanActive,
+    &ReplacePlan,
 };
 
 } // namespace
@@ -2568,7 +2663,7 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
         const auto added = edit.Add(session.Use(CKGUID(3, 4)));
         const auto amount = edit.AppendPin(added, "Amount", CKPGUID_FLOAT);
         const auto link =
-            edit.Between(counter.Out(0), edit.Graph().In("Reset"), 2);
+            edit.Between(counter.Out(0), edit.Root().Root().In("Reset"), 2);
         edit.Splice(link, added,
                     {Before("Other", "hud"), After("Third", "sound")})
             .Bind(amount, 3.5f)
@@ -2600,7 +2695,7 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
         const CapturedStep &require = g_State.PlanSteps[0];
         EXPECT_EQ(require.Kind,
                   static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_NODE));
-        EXPECT_EQ(require.Name, "Counter_Active");
+        EXPECT_EQ(require.SelectorName, "Counter_Active");
         EXPECT_EQ(require.Prototype.Prototype.Data1, 1u);
         EXPECT_EQ(require.Result, BML_BEHAVIOR_EDIT_GRAPH + 1u);
 
@@ -2706,13 +2801,71 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
     EXPECT_EQ(alive.use_count(), 1);
 }
 
+TEST(BehaviorAuthoring, EncodesNestedGraphScopesAndGraphNodes) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    Edit edit;
+    auto root = edit.Root();
+    const auto childNode = root.AddGraph("Child", 17);
+    auto child = childNode.Graph();
+    const auto childOut = child.AppendOut("Done");
+    const auto block = child.Add(session.Use(CKGUID(3, 4)));
+    child.Flow(block.Out(), childOut);
+
+    auto submitted = session.Plan(
+        "nested", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 5u);
+
+    const CapturedStep &addGraph = g_State.PlanSteps[0];
+    EXPECT_EQ(addGraph.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_GRAPH));
+    EXPECT_EQ(addGraph.Graph, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(addGraph.Name, "Child");
+    EXPECT_EQ(addGraph.Priority, 17);
+
+    const CapturedStep &enter = g_State.PlanSteps[1];
+    EXPECT_EQ(enter.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ENTER_GRAPH));
+    EXPECT_EQ(enter.Graph, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(enter.Target, addGraph.Result);
+
+    for (std::size_t index = 2; index < g_State.PlanSteps.size(); ++index)
+        EXPECT_EQ(g_State.PlanSteps[index].Graph, enter.Result);
+    EXPECT_EQ(g_State.PlanSteps[4].Source.Graph, enter.Result);
+    EXPECT_EQ(g_State.PlanSteps[4].Sink.Graph, enter.Result);
+}
+
+TEST(BehaviorAuthoring, RejectsFlowAcrossGraphScopesBeforeSubmission) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+
+    Edit edit;
+    auto root = edit.Root();
+    const auto childNode = root.AddGraph("Child");
+    auto child = childNode.Graph();
+    child.Flow(child.Root().In(), childNode.In());
+
+    auto submitted = session.Plan(
+        "cross-scope", Scripts::One("Gameplay_Events"), edit);
+    EXPECT_FALSE(submitted);
+    EXPECT_EQ(submitted.GetStatus().Error,
+              Error::GraphLocalityInvalid);
+    EXPECT_EQ(g_State.PlanSubmits, 0);
+}
+
 TEST(BehaviorAuthoring, ContainsHookCallbackFailuresAtTheCSeam) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
     Session session = std::move(opened).Value();
     Edit edit;
-    edit.Tap(edit.Graph().Out(), [] { throw std::runtime_error("failure"); });
+    edit.Tap(edit.Root().Root().Out(), [] { throw std::runtime_error("failure"); });
     auto submitted = session.Plan(
         "throwing-hook", Scripts::Each("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted);
@@ -2749,7 +2902,7 @@ TEST(BehaviorAuthoring, AppliesTheSameEditLanguageToOneLiveGraph) {
         const auto existing = edit.Require("Counter_Active", CKGUID(1, 2));
         const auto added = edit.Add(session.Use(CKGUID(3, 4)));
         const auto amount = edit.AppendPin(added, "Amount", CKPGUID_FLOAT);
-        const auto link = edit.Between(existing.Out(), edit.Graph().In());
+        const auto link = edit.Between(existing.Out(), edit.Root().Root().In());
         edit.Bind(amount, 2.5f)
             .Splice(link, added)
             .Tap(added.Out(), [alive] {});
@@ -2844,7 +2997,7 @@ TEST(BehaviorAuthoring, CreatesABlockAndItsLiteralsInOneStatement) {
         .Locals({{"State", Mode::On}});
     Edit edit;
     const auto added = edit.Add(block);
-    edit.Flow(edit.Graph().Out(), added.In());
+    edit.Flow(edit.Root().Root().Out(), added.In());
 
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
@@ -2898,7 +3051,7 @@ TEST(BehaviorAuthoring, ReusesOneEditAndKeepsItsBlockSnapshotAndSettingStages) {
         .Settings({{"Retry", true}});
     Edit edit;
     const auto added = edit.Add(block);
-    edit.Flow(edit.Graph().Out(), added.In());
+    edit.Flow(edit.Root().Root().Out(), added.In());
 
     // Add copied the configured Block; later changes do not alter the Edit.
     block.Pins({{"Value", 9}});
@@ -3044,7 +3197,7 @@ TEST(BehaviorAuthoring, SendsALinkToANewDestination) {
     Edit edit;
     const auto existing = edit.Require("Counter_Active", CKGUID(1, 2));
     const auto added = edit.Add(session.Use(CKGUID(3, 4)));
-    const auto link = edit.Between(existing.Out(), edit.Graph().In("Reset"));
+    const auto link = edit.Between(existing.Out(), edit.Root().Root().In("Reset"));
     edit.Redirect(link, added.In(), {After("Other", "hud")});
 
     auto inspected = session.Inspect({41, 42, 43});
@@ -3279,7 +3432,7 @@ TEST(BehaviorAuthoring, OwnsAndAuthorsATopLevelScript) {
     Session session = std::move(opened).Value();
     const BML_ObjectRef owner{7, 45, 2};
     Edit body;
-    const auto root = body.Graph();
+    const auto root = body.Root().Root();
     (void) body.AppendIn(root, "Start");
     (void) body.AppendOut(root, "Done");
     const auto seed = body.AppendLocal(root, "Seed", CKGUID(31, 32));
@@ -3481,7 +3634,7 @@ TEST(BehaviorAuthoring, KeepsHookStateWhenTheLoaderRejectsThePlan) {
     auto alive = std::make_shared<int>(0);
     {
         Edit edit;
-        edit.Tap(edit.Graph().Out(0), [alive] {});
+        edit.Tap(edit.Root().Root().Out(0), [alive] {});
         auto submitted = session.Plan(
             "rejected", Scripts::Each("Gameplay_Events"), edit);
         EXPECT_FALSE(submitted);
@@ -3501,7 +3654,7 @@ TEST(BehaviorAuthoring, ClosesPlanAndPatchHandlesReturnedWithErrors) {
     Session session = std::move(opened).Value();
 
     Edit planEdit;
-    planEdit.Tap(planEdit.Graph().Out(), [] {});
+    planEdit.Tap(planEdit.Root().Root().Out(), [] {});
     g_State.PlanSubmitCode = BML_ERROR_INVALID_PARAMETER;
     g_State.ReturnPlanHandleOnError = true;
     auto submitted = session.Plan(
@@ -3517,7 +3670,7 @@ TEST(BehaviorAuthoring, ClosesPlanAndPatchHandlesReturnedWithErrors) {
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     Edit patchEdit;
-    patchEdit.Tap(patchEdit.Graph().Out(), [] {});
+    patchEdit.Tap(patchEdit.Root().Root().Out(), [] {});
     auto applied = inspected->Apply("rejected-after-admission", patchEdit);
     EXPECT_FALSE(applied);
     EXPECT_EQ(applied.Code(), BML_ERROR_INVALID_PARAMETER);
@@ -3800,4 +3953,80 @@ TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
     EXPECT_EQ(g_State.PatchCloses, 1);
     EXPECT_EQ(firstPatch.Close().Value(), CloseState::Closed);
     EXPECT_EQ(g_State.PatchCloses, 2);
+}
+
+TEST(BehaviorAuthoring, ComposesGraphTargetsUnderOnePatchHandle) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    auto firstGraph = session.Inspect({41, 42, 43});
+    auto secondGraph = session.Inspect({41, 52, 43});
+    ASSERT_TRUE(firstGraph);
+    ASSERT_TRUE(secondGraph);
+
+    Edit first;
+    auto firstNode = first.Root().Require("First");
+    (void) firstNode;
+    Edit second;
+    auto secondNode = second.Root().Require("Second");
+    auto applied = session.Apply(
+        "composed", On(*firstGraph, first), On(*secondGraph, second));
+    ASSERT_TRUE(applied) << applied.GetStatus().Message;
+    EXPECT_EQ(g_State.PatchTargetCount, 2u);
+    ASSERT_EQ(g_State.PatchGraphs.size(), 2u);
+    EXPECT_EQ(g_State.PatchGraphs[0].Slot, 42u);
+    EXPECT_EQ(g_State.PatchGraphs[1].Slot, 52u);
+    ASSERT_EQ(g_State.PatchFingerprints.size(), 2u);
+    EXPECT_EQ(g_State.PatchFingerprints[0], firstGraph->Fingerprint());
+    EXPECT_EQ(g_State.PatchFingerprints[1], secondGraph->Fingerprint());
+    ASSERT_EQ(g_State.PatchHandleBases.size(), 2u);
+    EXPECT_EQ(g_State.PatchHandleBases[0], 0u);
+    EXPECT_GT(g_State.PatchHandleBases[1], 0u);
+
+    auto resolved = applied->Resolve(secondNode);
+    ASSERT_TRUE(resolved);
+    EXPECT_EQ(g_State.ResolvedHandle,
+              2u + g_State.PatchHandleBases[1]);
+    EXPECT_FALSE(applied->Disable().Value().Installed());
+    EXPECT_TRUE(applied->Enable().Value().Installed());
+    EXPECT_EQ(g_State.PatchActivityChanges, 2);
+
+    Edit replacement;
+    (void) replacement.Root().Require("Replacement");
+    auto replaced = applied->Replace(On(*firstGraph, replacement));
+    ASSERT_TRUE(replaced);
+    EXPECT_EQ(g_State.PatchReplaces, 1);
+    EXPECT_EQ(g_State.PatchTargetCount, 1u);
+}
+
+TEST(BehaviorAuthoring, ReconcilesSeveralScriptRulesUnderOnePlanHandle) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = std::move(opened).Value();
+    Edit events;
+    (void) events.Root().Require("Event");
+    Edit gameplay;
+    (void) gameplay.Root().Require("Gameplay");
+
+    auto submitted = session.Plan(
+        "feature", On(Scripts::One("Event_handler"), events),
+        On(Scripts::Each("Gameplay_Ingame"), gameplay));
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    EXPECT_EQ(g_State.PlanRuleCount, 2u);
+    ASSERT_EQ(g_State.PlanScripts.size(), 2u);
+    EXPECT_EQ(g_State.PlanScripts[0], "Event_handler");
+    EXPECT_EQ(g_State.PlanScripts[1], "Gameplay_Ingame");
+    EXPECT_EQ(submitted->Disable()->State, PlanState::Disabled);
+    EXPECT_EQ(submitted->Enable()->State, PlanState::Active);
+
+    Edit energy;
+    (void) energy.Root().Require("Energy");
+    auto replaced = submitted->Replace(
+        On(Scripts::One("Gameplay_Energy"), energy));
+    ASSERT_TRUE(replaced);
+    EXPECT_EQ(g_State.PlanReplaces, 1);
+    ASSERT_EQ(g_State.PlanScripts.size(), 1u);
+    EXPECT_EQ(g_State.PlanScripts[0], "Gameplay_Energy");
 }
