@@ -25,6 +25,7 @@ std::size_t g_StateReads = 0;
 std::size_t g_WorldResets = 0;
 std::size_t g_ClosePendingCalls = 0;
 std::function<void()> g_ConfigureCallback;
+std::function<void()> g_PulseCallback;
 
 RunFrame MakeFrame(FakeInstance &instance, bool endsActivation) {
     RunFrame frame;
@@ -46,6 +47,10 @@ FakeInstance *FindFake(std::uint64_t id) {
 
 void SetBehaviorSessionConfigureCallback(std::function<void()> callback) {
     g_ConfigureCallback = std::move(callback);
+}
+
+void SetBehaviorSessionPulseCallback(std::function<void()> callback) {
+    g_PulseCallback = std::move(callback);
 }
 
 void AdvanceBehaviorSessionRuntime() {
@@ -220,6 +225,8 @@ Status Runtime::Continue(Instance &instance) {
 
 RunResult Runtime::Pulse(Instance &instance, const Slot &input,
                          const CKBehaviorContext *) {
+    if (g_PulseCallback)
+        g_PulseCallback();
     std::lock_guard<std::mutex> lock(g_FakeMutex);
     FakeInstance *found = FindFake(instance.m_Id);
     if (!found)

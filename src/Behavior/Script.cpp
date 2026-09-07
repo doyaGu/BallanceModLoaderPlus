@@ -408,30 +408,45 @@ Status Scripts::Read(const SessionOwner &owner, ScriptId script,
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    const auto found = m_Scripts.find(script);
-    if (found == m_Scripts.end())
-        return Failure(Error::InvalidState,
-                       "The Behavior Script handle is stale.",
-                       Phase::OwnerBinding);
-    if (!OwnedBy(*found->second, owner))
-        return Failure(Error::OwnerInvalid,
-                       "The Behavior Script belongs to another Mod generation.",
-                       Phase::OwnerBinding);
-    Entry &entry = *found->second;
-    if (entry.Info.State == ScriptState::Ready) {
-        bool active = false;
-        Status observed = m_World->Read(entry.Info.Identity, active);
-        if (!observed) {
-            entry.Info.State = ScriptState::Failed;
-            entry.Info.LastStatus = std::move(observed);
-            entry.Info.RequestedActive = entry.Info.Active;
-            entry.ResetOnActivation = false;
-        } else {
-            entry.Info.Active = active;
-        }
+    std::shared_ptr<Entry> entry;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        const auto found = m_Scripts.find(script);
+        if (found == m_Scripts.end())
+            return Failure(Error::InvalidState,
+                           "The Behavior Script handle is stale.",
+                           Phase::OwnerBinding);
+        if (!OwnedBy(*found->second, owner))
+            return Failure(
+                Error::OwnerInvalid,
+                "The Behavior Script belongs to another Mod generation.",
+                Phase::OwnerBinding);
+        entry = found->second;
+        out = entry->Info;
     }
-    out = entry.Info;
+    if (out.State == ScriptState::Ready) {
+        bool active = false;
+        Status observed = m_World->Read(out.Identity, active);
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        const auto current = m_Scripts.find(script);
+        if (current == m_Scripts.end() || current->second != entry)
+            return Failure(Error::GraphChanged,
+                           "The Behavior Script changed while it was being read.",
+                           Phase::OwnerBinding);
+        if (entry->Info.State != ScriptState::Ready) {
+            out = entry->Info;
+            return {};
+        }
+        if (!observed) {
+            entry->Info.State = ScriptState::Failed;
+            entry->Info.LastStatus = std::move(observed);
+            entry->Info.RequestedActive = entry->Info.Active;
+            entry->ResetOnActivation = false;
+        } else {
+            entry->Info.Active = active;
+        }
+        out = entry->Info;
+    }
     return {};
 }
 

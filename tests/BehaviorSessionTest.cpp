@@ -63,6 +63,7 @@ std::size_t BehaviorSessionRuntimeWorldResets();
 void ResetBehaviorSessionRuntimeClosePendingCalls();
 std::size_t BehaviorSessionRuntimeClosePendingCalls();
 void SetBehaviorSessionConfigureCallback(std::function<void()> callback);
+void SetBehaviorSessionPulseCallback(std::function<void()> callback);
 } // namespace BML::Behavior::Internal
 
 namespace {
@@ -102,8 +103,9 @@ public:
 
     Status ReadValue(const NativeRef &, std::uint64_t, const Slot &, ReadMode,
                      GraphValue &) override {
-        return {Error::Unavailable, CKERR_NOTIMPLEMENTED,
-                CKBR_PARAMETERERROR, "Not used by this test."};
+        if (OnReadValue)
+            OnReadValue();
+        return ReadValueStatus;
     }
 
     Status GraphFingerprint(const NativeRef &, GraphView,
@@ -126,6 +128,9 @@ public:
     std::uint64_t LayoutFingerprintValue = 11;
     int LayoutFingerprintCalls = 0;
     Status LayoutFingerprintStatus;
+    std::function<void()> OnReadValue;
+    Status ReadValueStatus{Error::Unavailable, CKERR_NOTIMPLEMENTED,
+                           CKBR_PARAMETERERROR, "Not used by this test."};
 };
 
 struct WatchReferences {
@@ -1008,6 +1013,70 @@ TEST(BehaviorSessions, SettingsCallbackDoesNotBlockWorkerClose) {
         sessions.ProcessFrame();
         EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
     }
+}
+
+TEST(BehaviorSessions, ExecutionCallbackDoesNotBlockWorkerClose) {
+    Runtime runtime(nullptr);
+    Sessions sessions(runtime);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    OpenRun run = sessions.Spawn(session, nullptr, BlockSpec(CKGUID(1, 2)));
+    ASSERT_TRUE(run);
+
+    std::promise<void> closed;
+    auto finished = closed.get_future();
+    std::thread closer;
+    SetBehaviorSessionPulseCallback([&] {
+        closer = std::thread([&] {
+            sessions.CloseRun(run.Id);
+            closed.set_value();
+        });
+        EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
+                  std::future_status::ready);
+    });
+    const RunResult pulsed = sessions.Pulse(run.Id, Input("Run"));
+    SetBehaviorSessionPulseCallback({});
+    closer.join();
+
+    EXPECT_TRUE(pulsed);
+    RunInfo stale;
+    EXPECT_EQ(sessions.ReadRun(run.Id, stale).Code, Error::InvalidState);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 1u);
+    sessions.ProcessFrame();
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
+}
+
+TEST(BehaviorSessions, ParameterReadDoesNotBlockWorkerSessionClose) {
+    Runtime runtime(nullptr);
+    auto source = std::make_unique<FakeGraphSource>();
+    FakeGraphSource *graph = source.get();
+    Sessions sessions(runtime, nullptr, std::move(source));
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+
+    std::promise<void> closed;
+    auto finished = closed.get_future();
+    std::thread closer;
+    graph->OnReadValue = [&] {
+        closer = std::thread([&] {
+            sessions.CloseSession(session);
+            closed.set_value();
+        });
+        EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
+                  std::future_status::ready);
+    };
+    GraphValue value;
+    const Status read = sessions.ReadGraphValue(
+        session, reinterpret_cast<void *>(1), 0,
+        Slot::Named(SlotKind::InputParameter, "Value"),
+        ReadMode::NonForcing, value);
+    closer.join();
+
+    EXPECT_EQ(read.Code, Error::Unavailable);
+    SessionOwner stale;
+    EXPECT_EQ(sessions.ReadOwner(session, stale).Code, Error::InvalidState);
 }
 
 TEST(BehaviorSessions, FailedLiveSettingsMakeTheRunTerminal) {

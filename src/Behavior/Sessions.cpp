@@ -298,14 +298,16 @@ RunResult Sessions::Continue(std::uintptr_t runId) {
             return FailedRun(Error::InvalidState, "The Run is not a pending Call.");
     }
     Status status = m_Runtime.Continue(run->Block);
+    RunInfo info = run->Info;
+    info.LastStatus = status;
+    RefreshRunInfo(m_Runtime, run->Block, info);
+    if (status)
+        info.Kind = RunKind::Task;
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run->Info.LastStatus = status;
-        RefreshRunInfo(m_Runtime, run->Block, run->Info);
-        if (status)
-            run->Info.Kind = RunKind::Task;
+        run->Info = info;
     }
-    return {std::move(status), run->Info.State, CKBR_OK, {}};
+    return {std::move(status), info.State, CKBR_OK, {}};
 }
 
 RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
@@ -326,10 +328,12 @@ RunResult Sessions::Pulse(std::uintptr_t runId, const Slot &input) {
         if (!continued && result.Detail)
             result.Detail = std::move(continued);
     }
+    RunInfo info = run->Info;
+    info.LastStatus = result.Detail;
+    RefreshRunInfo(m_Runtime, run->Block, info);
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-        run->Info.LastStatus = result.Detail;
-        RefreshRunInfo(m_Runtime, run->Block, run->Info);
+        run->Info = std::move(info);
     }
     return result;
 }
@@ -340,11 +344,14 @@ Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    const std::shared_ptr<const Run> run = FindRun(runId);
-    if (!run)
-        return Fail(Error::InvalidState, "The Behavior Run is stale.");
-    info = run->Info;
+    std::shared_ptr<const Run> run;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        run = FindRun(runId);
+        if (!run)
+            return Fail(Error::InvalidState, "The Behavior Run is stale.");
+        info = run->Info;
+    }
     if (run->Block)
         RefreshRunInfo(m_Runtime, run->Block, info);
     return {};
@@ -353,14 +360,13 @@ Status Sessions::ReadRun(std::uintptr_t runId, RunInfo &info) const {
 Status Sessions::FindPrototypes(std::uintptr_t sessionId,
                                 const PrototypeQuery &query,
                                 std::vector<PrototypeInfo> &out) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    Session *session = FindSession(sessionId);
-    if (!session || !SessionIsActive(*session))
-        return Fail(Error::InvalidState,
-                    "Behavior Session is stale or retiring.");
+    SessionOwner owner;
+    Status status = ReadOwner(sessionId, owner);
+    if (!status)
+        return status;
     if (!m_Catalog || !m_Catalog->TracksRetirement())
         return Fail(Error::Unavailable,
                     "Behavior Prototype discovery is unavailable.");
@@ -369,14 +375,13 @@ Status Sessions::FindPrototypes(std::uintptr_t sessionId,
 
 Status Sessions::ReadDeclaredLayout(std::uintptr_t sessionId,
                                     PrototypeRef prototype, Layout &out) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    Session *session = FindSession(sessionId);
-    if (!session || !SessionIsActive(*session))
-        return Fail(Error::InvalidState,
-                    "Behavior Session is stale or retiring.");
+    SessionOwner owner;
+    Status status = ReadOwner(sessionId, owner);
+    if (!status)
+        return status;
     if (!m_Catalog || !m_Catalog->TracksRetirement())
         return Fail(Error::Unavailable,
                     "Behavior Prototype discovery is unavailable.");
@@ -384,14 +389,17 @@ Status Sessions::ReadDeclaredLayout(std::uintptr_t sessionId,
 }
 
 Status Sessions::ReadLiveLayout(std::uintptr_t runId, Layout &out) const {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<const Run> run = FindRun(runId);
-    if (!run)
-        return Fail(Error::InvalidState,
-                    "Behavior Run handle is stale.");
+    std::shared_ptr<const Run> run;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        run = FindRun(runId);
+        if (!run)
+            return Fail(Error::InvalidState,
+                        "Behavior Run handle is stale.");
+    }
     return m_Runtime.Describe(run->Block, out);
 }
 
@@ -400,17 +408,20 @@ Status Sessions::Set(std::uintptr_t runId,
                      const Parameter::Binding &value,
                      std::uint64_t &currentGeneration) {
     currentGeneration = 0;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run = FindRun(runId);
-    if (!run || !run->Block)
-        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
-    if (layoutGeneration &&
-        run->Block.LayoutGeneration() != layoutGeneration) {
-        return Fail(Error::StaleLayout,
-                    "The live Behavior Layout has changed.");
+    std::shared_ptr<Run> run;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        run = FindRun(runId);
+        if (!run || !run->Block)
+            return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+        if (layoutGeneration &&
+            run->Block.LayoutGeneration() != layoutGeneration) {
+            return Fail(Error::StaleLayout,
+                        "The live Behavior Layout has changed.");
+        }
     }
     SlotRef resolved;
     Status status = m_Runtime.Resolve(run->Block, slot, resolved);
@@ -436,29 +447,34 @@ Status Sessions::Bind(std::uintptr_t runId,
                       Parameter::BindingKind relation,
                       std::uint64_t &currentGeneration) {
     currentGeneration = 0;
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run = FindRun(runId);
-    if (!run || !run->Block)
-        return Fail(Error::InvalidState, "Behavior Run handle is stale.");
-    if (layoutGeneration &&
-        run->Block.LayoutGeneration() != layoutGeneration) {
-        return Fail(Error::StaleLayout,
-                    "The live Behavior Layout has changed.");
+    std::shared_ptr<Run> run;
+    GraphSource *graph = nullptr;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        run = FindRun(runId);
+        if (!run || !run->Block)
+            return Fail(Error::InvalidState, "Behavior Run handle is stale.");
+        if (layoutGeneration &&
+            run->Block.LayoutGeneration() != layoutGeneration) {
+            return Fail(Error::StaleLayout,
+                        "The live Behavior Layout has changed.");
+        }
+        graph = m_Graph.get();
     }
     if (slot.Kind != SlotKind::InputParameter)
         return Fail(Error::InvalidState, "Bind accepts a live Pin.");
     if (sourceLayoutGeneration) {
-        if (!m_Graph)
+        if (!graph)
             return Fail(Error::Unavailable,
                         "Behavior graph inspection is unavailable.");
         NativeRef reference;
         Layout sourceLayout;
-        Status sourceStatus = m_Graph->Refer(source, reference);
+        Status sourceStatus = graph->Refer(source, reference);
         if (sourceStatus)
-            sourceStatus = m_Graph->ReadLayout(reference, sourceLayout);
+            sourceStatus = graph->ReadLayout(reference, sourceLayout);
         if (!sourceStatus)
             return sourceStatus;
         if (sourceLayout.Generation != sourceLayoutGeneration) {
@@ -492,92 +508,98 @@ Status Sessions::Configure(std::uintptr_t runId, const BlockSpec &settings,
     // Settings enter provider callbacks. Keep the Run alive, but let worker
     // Close requests stop admission without waiting for those callbacks.
     Status status = m_Runtime.Configure(run->Block, settings);
+    RunInfo info = run->Info;
+    RefreshRunInfo(m_Runtime, run->Block, info);
     std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    if (status) {
+    if (status)
         layoutGeneration = run->Block.LayoutGeneration();
-    }
     // A precondition rejection (for example a pending Task) does not fail the
     // Instance. Runtime records failures only once configuration has begun.
-    RefreshRunInfo(m_Runtime, run->Block, run->Info);
+    run->Info = std::move(info);
     return status;
 }
 
 Status Sessions::ReadGraph(std::uintptr_t runId, GraphView view,
                            GraphModel &out) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    std::shared_ptr<Run> run = FindRun(runId);
-    if (!run)
-        return Fail(Error::InvalidState,
-                    "Behavior Run handle is stale.");
+    std::shared_ptr<Run> run;
+    GraphSource *graph = nullptr;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_Mutex);
+        run = FindRun(runId);
+        if (!run)
+            return Fail(Error::InvalidState,
+                        "Behavior Run handle is stale.");
+        graph = m_Graph.get();
+    }
     CKBehavior *behavior = run->Block.Get();
     if (!behavior)
         return Fail(Error::InvalidState,
                     "The Behavior owned by this Run is stale.");
-    if (!m_Graph)
+    if (!graph)
         return Fail(Error::Unavailable,
                     "Behavior graph inspection is unavailable.");
     NativeRef reference;
-    Status status = m_Graph->Refer(behavior, reference);
-    return status ? m_Graph->Read(reference, view, out) : status;
+    Status status = graph->Refer(behavior, reference);
+    return status ? graph->Read(reference, view, out) : status;
 }
 
 Status Sessions::ReadGraph(std::uintptr_t sessionId, void *root,
                            GraphView view, GraphModel &out) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    Session *session = FindSession(sessionId);
-    if (!session || !SessionIsActive(*session))
-        return Fail(Error::InvalidState,
-                    "Behavior Session is stale or retiring.");
-    if (!m_Graph)
+    SessionOwner owner;
+    Status status = ReadOwner(sessionId, owner);
+    if (!status)
+        return status;
+    GraphSource *graph = m_Graph.get();
+    if (!graph)
         return Fail(Error::Unavailable,
                     "Behavior graph inspection is unavailable.");
     NativeRef reference;
-    Status status = m_Graph->Refer(root, reference);
-    return status ? m_Graph->Read(reference, view, out) : status;
+    status = graph->Refer(root, reference);
+    return status ? graph->Read(reference, view, out) : status;
 }
 
 Status Sessions::ReadNodeLayout(std::uintptr_t sessionId, void *node,
                                 Layout &out) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    Session *session = FindSession(sessionId);
-    if (!session || !SessionIsActive(*session))
-        return Fail(Error::InvalidState,
-                    "Behavior Session is stale or retiring.");
-    if (!m_Graph)
+    SessionOwner owner;
+    Status status = ReadOwner(sessionId, owner);
+    if (!status)
+        return status;
+    GraphSource *graph = m_Graph.get();
+    if (!graph)
         return Fail(Error::Unavailable,
                     "Behavior graph inspection is unavailable.");
     NativeRef reference;
-    Status status = m_Graph->Refer(node, reference);
-    return status ? m_Graph->ReadLayout(reference, out) : status;
+    status = graph->Refer(node, reference);
+    return status ? graph->ReadLayout(reference, out) : status;
 }
 
 Status Sessions::ReadGraphValue(std::uintptr_t sessionId, void *node,
                                 std::uint64_t layoutGeneration,
                                 const Slot &slot, ReadMode mode,
                                 GraphValue &out) {
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
     Status ready = Ready();
     if (!ready)
         return ready;
-    Session *session = FindSession(sessionId);
-    if (!session || !SessionIsActive(*session))
-        return Fail(Error::InvalidState,
-                    "Behavior Session is stale or retiring.");
-    if (!m_Graph)
+    SessionOwner owner;
+    Status status = ReadOwner(sessionId, owner);
+    if (!status)
+        return status;
+    GraphSource *graph = m_Graph.get();
+    if (!graph)
         return Fail(Error::Unavailable,
                     "Behavior graph inspection is unavailable.");
     NativeRef reference;
-    Status status = m_Graph->Refer(node, reference);
-    return status ? m_Graph->ReadValue(
+    status = graph->Refer(node, reference);
+    return status ? graph->ReadValue(
         reference, layoutGeneration, slot, mode, out) : status;
 }
 

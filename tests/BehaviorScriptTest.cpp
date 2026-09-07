@@ -55,6 +55,8 @@ public:
 
     Status Read(const ScriptIdentity &script, bool &active) override {
         Events.emplace_back("read");
+        if (OnRead)
+            OnRead();
         if (!ReadResult)
             return ReadResult;
         active = ActiveRoot == script.Root.Id;
@@ -103,6 +105,7 @@ public:
     Status CloseBodyResult;
     Status DestroyResult;
     std::function<void()> OnSetActive;
+    std::function<void()> OnRead;
     std::function<void()> OnDefine;
     std::vector<std::string> Events;
     std::vector<ScriptIdentity> Identities;
@@ -147,6 +150,31 @@ TEST(BehaviorScript, CreatesAnInactiveOwnedScriptAndPublishesIt) {
     ScriptInfo read;
     EXPECT_TRUE(scripts.Read(Owner(), opened.Id, read));
     EXPECT_EQ(read.Identity.Root.Reference, loadedRoot);
+}
+
+TEST(BehaviorScript, AReadCallbackMayRequestCloseWithoutRecursiveTeardown) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    ScriptSet scripts(std::move(world));
+    const ScriptResult opened = scripts.Create(
+        Owner(), 1, this, "Script", 0, {});
+    ASSERT_TRUE(opened);
+
+    Status nested;
+    native->OnRead = [&] {
+        native->OnRead = {};
+        nested = scripts.Close(Owner(), opened.Id);
+    };
+    ScriptInfo info;
+    ASSERT_TRUE(scripts.Read(Owner(), opened.Id, info));
+    EXPECT_EQ(nested.Code, Error::Busy);
+    EXPECT_EQ(info.State, ScriptState::Closing);
+    EXPECT_TRUE(native->Destroyed.empty());
+
+    scripts.ProcessFrame();
+    EXPECT_EQ(native->Destroyed,
+              std::vector<std::uint64_t>{opened.Info.Identity.Root.Id});
+    EXPECT_FALSE(scripts.Read(Owner(), opened.Id, info));
 }
 
 TEST(BehaviorScript, CoalescesActivityRequestsAtTheFrameBoundary) {
