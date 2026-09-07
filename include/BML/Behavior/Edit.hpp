@@ -18,6 +18,10 @@ namespace BML::Behavior {
 class Edit;
 
 namespace Detail {
+enum class EditContext {
+    Patch,
+    Plan,
+};
 struct EditProgram;
 struct EditStep;
 struct EditWire;
@@ -62,7 +66,7 @@ private:
     friend class Edit;
 };
 
-// A durable authoring intent the Loader owns. Closing the handle retires every
+// A cross-world authoring Plan the Loader owns. Closing the handle retires every
 // installation the Plan still holds. A conflict keeps the handle readable;
 // retirement continues at later Behavior safe points even if this value dies.
 class Plan {
@@ -608,7 +612,7 @@ private:
 
     [[nodiscard]] Result<void> Validate(
         const std::shared_ptr<Detail::SessionState> &session,
-        bool durable = false) const;
+        Detail::EditContext context = Detail::EditContext::Patch) const;
 
     friend class BML::Behavior::Graph;
     friend class Session;

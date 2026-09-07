@@ -341,7 +341,7 @@ TEST(BehaviorCallback, ReportsTheCurrentThreadInvocationExtent) {
     EXPECT_FALSE(CallbackInvocation::Active());
 }
 
-TEST(BehaviorCallback, DurableHookOpensOneLeasePerInstallation) {
+TEST(BehaviorCallback, PlanHookOpensOneLeasePerInstallation) {
     ReferenceCounts counts;
     PlanCallbackState state =
         PlanCallbackState::Retained(&counts, Retain, Release);
@@ -370,7 +370,7 @@ TEST(BehaviorCallback, DurableHookOpensOneLeasePerInstallation) {
     EXPECT_EQ(counts.Releases, 0);
 }
 
-TEST(BehaviorCallback, DurableHookReleasesAfterPlanAndEveryInstallation) {
+TEST(BehaviorCallback, PlanHookReleasesAfterPlanAndEveryInstallation) {
     ReferenceCounts counts;
     PlanCallbackState state =
         PlanCallbackState::Retained(&counts, Retain, Release);

@@ -979,7 +979,7 @@ TEST(BehaviorGraphEdit, RejectsIncompleteAndCyclicParameterOperations) {
               Error::OperationInvalid);
 }
 
-TEST(BehaviorGraphEdit, KeepsTypedNullAsADurableLiteral) {
+TEST(BehaviorGraphEdit, KeepsTypedNullInAPlan) {
     FakeCompiler compiler(Model());
     GraphEdit plan;
     const Node wait = plan.RequireOne(

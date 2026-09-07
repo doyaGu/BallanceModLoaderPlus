@@ -750,8 +750,8 @@ typedef struct BML_BehaviorWatchSpec {
     uint32_t Read;
 } BML_BehaviorWatchSpec;
 
-// A Plan is durable authoring intent. It names one script by its exact name
-// and a symbolic edit to apply to every live installation of that script. The
+// A Plan owns a symbolic edit selected by an exact script name and applies it
+// to every matching live installation. The
 // Loader owns the installed edits and reconciles them as scripts load, reload,
 // or are deleted, so a Plan outlives a level change while a Run does not.
 typedef enum BML_BehaviorTargetSet {
@@ -1062,7 +1062,7 @@ typedef struct BML_BehaviorEditStep {
     uint32_t OrderCount;
     uint32_t Reserved;
     // The node or link a USE step names. Identity is resolved once, against
-    // the graph this program is applied to, so a durable Plan cannot carry it.
+    // the graph this program is applied to, so a Plan cannot carry it across worlds.
     BML_ObjectRef Object;
     // Concrete native operation overload created by ADD_OPERATION.
     BML_BehaviorOperationSpec Operation;
@@ -1083,7 +1083,7 @@ typedef struct BML_BehaviorGraphEdit {
     uint32_t HandleBase;
 } BML_BehaviorGraphEdit;
 
-// One durable Script rule and its owned Edit program.
+// One Script rule and its owned Edit program.
 typedef struct BML_BehaviorScriptEdit {
     uint32_t StructSize;
     uint32_t Targets;
@@ -1311,7 +1311,7 @@ typedef struct BML_BehaviorInterface {
         uint64_t *outLayoutGeneration,
         BML_BehaviorStatus *status);
     // A Patch targets one live graph and is never reconciled against later
-    // worlds. It uses the same edit program as a durable Plan.
+    // worlds. It uses the same edit program as a Plan.
     int (BML_BEHAVIOR_CALL *ApplyPatch)(
         BML_BehaviorSession session,
         const BML_BehaviorPatchSpec *spec,

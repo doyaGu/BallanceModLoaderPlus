@@ -1079,8 +1079,8 @@ private:
         auto live = graph.Live();
         // Live contains Logical rather than equalling it. A Splice, a Tap, a
         // Before, or an After adds Loader-owned Blocks and continuation Links
-        // that the Logical view deliberately hides, so the only durable
-        // relation is that every Node and Link an author can see is also
+        // that the Logical view deliberately hides, so the only invariant is
+        // that every Node and Link an author can see is also
         // physically there.
         bool liveShape = live &&
             live->Mode() == BML::Behavior::View::Live &&

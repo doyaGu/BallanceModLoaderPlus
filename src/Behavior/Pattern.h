@@ -11,7 +11,7 @@
 
 namespace BML::Behavior::Internal {
 
-// A durable description of one child Behavior in a graph. It contains only
+// A structural description of one child Behavior in a graph. It contains only
 // facts that can be observed again after a world change; no CK object or
 // author callback is retained.
 struct NodePattern {

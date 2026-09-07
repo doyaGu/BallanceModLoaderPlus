@@ -204,8 +204,9 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
     out = 0;
     if (patch.Owner.empty() || patch.Name.empty() || ownerGeneration == 0 ||
         !target || !world)
-        return Failure(Error::InvalidState,
-                       "A durable Behavior Plan requires an owner, key, script, and world.");
+        return Failure(
+            Error::InvalidState,
+            "A Behavior Plan requires an owner, key, script, and world.");
 
     const PlanId id = NextId();
     if (!id)

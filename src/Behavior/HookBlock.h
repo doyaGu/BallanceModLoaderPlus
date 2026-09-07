@@ -42,7 +42,7 @@ private:
     friend class Hook;
 };
 
-// One author callback occurrence in a durable graph edit. Copies share the
+// One author callback occurrence in a graph edit. Copies share the
 // occurrence, while every live installation receives its own Binding lease.
 class Hook final {
 public:

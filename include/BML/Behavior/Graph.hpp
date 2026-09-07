@@ -624,8 +624,8 @@ struct Change {
     ObservedValue CurrentValue;
 };
 
-// A Plan is durable authoring intent: one or more Script selections and their
-// symbolic Edits, reconciled independently as scripts load, reload, and leave.
+// A Plan owns one or more Script selections and their symbolic Edits, then
+// reconciles them independently as scripts load, reload, and leave.
 enum class PlanState : std::uint32_t {
     Reconciling = BML_BEHAVIOR_PLAN_RECONCILING,
     Active = BML_BEHAVIOR_PLAN_ACTIVE,

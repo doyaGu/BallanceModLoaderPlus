@@ -2137,7 +2137,7 @@ TEST(BehaviorAuthoring, FallsBackWhenPrototypeDiscoveryIsUnavailable) {
     EXPECT_EQ(stale.GetStatus().Error, Error::PrototypeChanged);
 }
 
-TEST(BehaviorAuthoring, RequiresAResolvedProviderForDurableEdits) {
+TEST(BehaviorAuthoring, RequiresAResolvedProviderForPlanEdits) {
     g_State = {};
     g_State.LayoutUnavailable = true;
     auto opened = Session::Open();
@@ -2695,7 +2695,7 @@ TEST(BehaviorAuthoring, TreatsAcceptedWatchRetirementAsClosing) {
     EXPECT_FALSE(watch);
 }
 
-TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
+TEST(BehaviorAuthoring, SubmitsTheSameEditAsAPlan) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
@@ -2847,7 +2847,7 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
     EXPECT_EQ(alive.use_count(), 1);
 }
 
-TEST(BehaviorAuthoring, EncodesDurableNodePatternsWithoutLiveGraphDiscovery) {
+TEST(BehaviorAuthoring, EncodesStructuralNodePatternsWithoutLiveGraphDiscovery) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
@@ -2907,7 +2907,7 @@ TEST(BehaviorAuthoring, EncodesDurableNodePatternsWithoutLiveGraphDiscovery) {
     EXPECT_EQ(value.Value.Data.Int32, 713);
 }
 
-TEST(BehaviorAuthoring, EncodesDurableTopologyRelations) {
+TEST(BehaviorAuthoring, EncodesTopologyRelationsForPlans) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
@@ -3340,7 +3340,7 @@ TEST(BehaviorAuthoring, ReusesOneEditAndKeepsItsBlockSnapshotAndSettingStages) {
     EXPECT_EQ(plan.Close().Value(), CloseState::Closed);
 }
 
-TEST(BehaviorAuthoring, KeepsTypedNullValuesInDurablePlans) {
+TEST(BehaviorAuthoring, KeepsTypedNullValuesInPlans) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
@@ -3399,10 +3399,10 @@ TEST(BehaviorAuthoring, RejectsCrossSessionAndWorldBoundPlans) {
     ASSERT_TRUE(firstGraph);
     Edit worldBound;
     (void) worldBound.Root().Use(firstGraph->Root());
-    auto durable = first.Plan(
+    auto plan = first.Plan(
         "world-bound", Scripts::Each("Gameplay_Events"), worldBound);
-    EXPECT_FALSE(durable);
-    EXPECT_EQ(durable.GetStatus().Error, Error::WorldBoundValue);
+    EXPECT_FALSE(plan);
+    EXPECT_EQ(plan.GetStatus().Error, Error::WorldBoundValue);
     EXPECT_EQ(g_State.PlanSubmits, 0);
 
     Edit objectBlock;
@@ -4280,7 +4280,7 @@ TEST(BehaviorAuthoring, ResolvesSymbolAfterSourceEditDies) {
     {
         Edit edit;
         node = edit.Root().Require("Counter_Active");
-        auto applied = inspected->Apply("durable-symbol", edit);
+        auto applied = inspected->Apply("resolved-symbol", edit);
         ASSERT_TRUE(applied) << applied.GetStatus().Message;
         patch = applied.Take();
     }
@@ -4319,4 +4319,27 @@ TEST(BehaviorAuthoring, ReconcilesSeveralScriptRulesUnderOnePlanHandle) {
     EXPECT_EQ(g_State.PlanReplaces, 1);
     ASSERT_EQ(g_State.PlanScripts.size(), 1u);
     EXPECT_EQ(g_State.PlanScripts[0], "Gameplay_Energy");
+}
+
+TEST(BehaviorAuthoring, RejectsAWorldBoundPlanReplacementBeforeTheSeam) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit initial;
+    auto submitted = session.Plan(
+        "feature", Scripts::One("Gameplay_Events"), initial);
+    ASSERT_TRUE(submitted);
+
+    auto graph = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(graph);
+    Edit worldBound;
+    (void) worldBound.Root().Use(graph->Root());
+
+    auto replaced = submitted->Replace(
+        On(Scripts::One("Gameplay_Events"), worldBound));
+    EXPECT_FALSE(replaced);
+    EXPECT_EQ(replaced.GetStatus().Error, Error::WorldBoundValue);
+    EXPECT_EQ(g_State.PlanReplaces, 0);
 }

@@ -21,8 +21,8 @@ enum class TargetSet {
     One,
 };
 
-// A durable script selection is evaluated against every root script currently
-// known to the Loader. Name matching is exact and every matching instance has
+// A Script selection is evaluated against every root Script currently known to
+// the Loader. Name matching is exact and every matching instance has
 // its own world-scoped installation unless One is requested.
 struct ScriptSelection {
     std::string Name;
@@ -46,8 +46,8 @@ enum class PlanState {
     Retiring,
 };
 
-// A durable owner plan has no retained author callback. Its World resolves a
-// canonical Edit for each target and owns the native Installation it returns.
+// A Plan has no retained author callback. Its World resolves a canonical Edit
+// for each target and owns the native Installation it returns.
 class Plan final {
 public:
     class World {
@@ -102,8 +102,8 @@ struct PlanInfo {
     Status Diagnostic;
 };
 
-// Loader-owned durable Behavior intent. Script load/unload events only change
-// the known target set; native reconciliation happens at ProcessFrame. World
+// A loader-owned Behavior Plan. Script load/unload events only change the known
+// target set; native reconciliation happens at ProcessFrame. World
 // implementations and their canonical Edit data are owned by the Loader, not
 // by a Mod callback or a live CK object.
 class Plans final {

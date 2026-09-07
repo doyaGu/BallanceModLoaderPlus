@@ -2737,7 +2737,7 @@ struct EditHandle {
 };
 
 // Translates the shared wire edit program into symbolic graph intent. The same
-// value can be applied once to a known graph or retained by a durable Plan.
+// value can be applied once to a known graph or retained by a Plan.
 class EditProgram final {
 public:
     Status Build(const BML_BehaviorEditStep *steps, std::uint32_t count,
@@ -3125,7 +3125,7 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         if (binding.Kind() != Parameter::BindingKind::Value) {
             return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
                     CKBR_PARAMETERERROR,
-                    "A durable Node Pattern cannot retain a live object."};
+                    "A Node Pattern in a Plan cannot retain a live object."};
         }
         return edit.Observe(std::move(sink), binding.Literal());
     }

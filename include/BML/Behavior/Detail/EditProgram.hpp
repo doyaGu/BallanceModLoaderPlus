@@ -914,7 +914,7 @@ inline void Edit::Encode(Detail::EditWire &out) const {
 
 inline Result<void> Edit::Validate(
     const std::shared_ptr<Detail::SessionState> &session,
-    bool durable) const {
+    Detail::EditContext context) const {
     if (!m_Program)
         return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER);
     if (m_Program->Code != BML_OK)
@@ -931,7 +931,7 @@ inline Result<void> Edit::Validate(
         return Result<void>::Failure(BML_ERROR_INVALID_PARAMETER,
                                      std::move(status));
     }
-    if (durable) {
+    if (context == Detail::EditContext::Plan) {
         for (const Detail::EditStep &step : m_Program->Steps) {
             bool liveReference =
                 step.Kind == BML_BEHAVIOR_EDIT_USE_NODE ||
@@ -1363,7 +1363,8 @@ struct PlanWire {
                 return Result<PlanWire>::Failure(
                     BML_ERROR_INVALID_PARAMETER);
 
-            Result<void> valid = rule.Body->Validate(session, true);
+            Result<void> valid = rule.Body->Validate(
+                session, EditContext::Plan);
             if (!valid)
                 return Result<PlanWire>::Failure(
                     valid.Code(), valid.GetStatus());

@@ -22,7 +22,7 @@
 
 namespace {
 
-int RunDurableNode(const CKBehaviorContext &context) {
+int RunCrossWorldNode(const CKBehaviorContext &context) {
     CKBehavior *behavior = context.Behavior;
     if (!behavior)
         return CKBR_BEHAVIORERROR;
@@ -196,23 +196,23 @@ public:
         case State::ShowPatched: ShowPatched(); break;
         case State::CloseVisual: CloseVisualPatch(); break;
         case State::ShowRestored: ShowRestored(); break;
-        case State::CreateDurable: CreateDurableGraph(); break;
-        case State::WaitDurable: WaitDurableInstall(); break;
-        case State::WaitDurableExecuted: WaitDurableExecution(); break;
-        case State::ResetDurable: ResetDurablePlan(); break;
-        case State::ReloadDurable: WaitDurableReload(); break;
-        case State::WaitDurableReloadExecuted:
-            WaitDurableReloadExecution();
+        case State::CreateCrossWorld: CreateCrossWorldGraph(); break;
+        case State::WaitCrossWorld: WaitCrossWorldInstall(); break;
+        case State::WaitCrossWorldExecuted: WaitCrossWorldExecution(); break;
+        case State::ResetCrossWorld: ResetCrossWorldPlan(); break;
+        case State::ReloadCrossWorld: WaitCrossWorldReload(); break;
+        case State::WaitCrossWorldReloadExecuted:
+            WaitCrossWorldReloadExecution();
             break;
-        case State::DeleteDurable: DeleteDurableGraph(); break;
-        case State::WaitDurableDeleted: WaitDurableRemoval(); break;
-        case State::RecreateDurable: RecreateDurableGraph(); break;
-        case State::WaitDurableRecreated: WaitDurableRecreation(); break;
-        case State::WaitDurableRecreatedExecuted:
-            WaitDurableRecreatedExecution();
+        case State::DeleteCrossWorld: DeleteCrossWorldGraph(); break;
+        case State::WaitCrossWorldDeleted: WaitCrossWorldRemoval(); break;
+        case State::RecreateCrossWorld: RecreateCrossWorldGraph(); break;
+        case State::WaitCrossWorldRecreated: WaitCrossWorldRecreation(); break;
+        case State::WaitCrossWorldRecreatedExecuted:
+            WaitCrossWorldRecreatedExecution();
             break;
-        case State::CloseDurable: CloseDurablePlan(); break;
-        case State::WaitDurableClosed: WaitDurableClose(); break;
+        case State::CloseCrossWorld: CloseCrossWorldPlan(); break;
+        case State::WaitCrossWorldClosed: WaitCrossWorldClose(); break;
         case State::CreateReset:
             CreateGraph("player-patch-reset", State::GraphChanged);
             break;
@@ -301,19 +301,19 @@ private:
         ShowPatched,
         CloseVisual,
         ShowRestored,
-        CreateDurable,
-        WaitDurable,
-        WaitDurableExecuted,
-        ResetDurable,
-        ReloadDurable,
-        WaitDurableReloadExecuted,
-        DeleteDurable,
-        WaitDurableDeleted,
-        RecreateDurable,
-        WaitDurableRecreated,
-        WaitDurableRecreatedExecuted,
-        CloseDurable,
-        WaitDurableClosed,
+        CreateCrossWorld,
+        WaitCrossWorld,
+        WaitCrossWorldExecuted,
+        ResetCrossWorld,
+        ReloadCrossWorld,
+        WaitCrossWorldReloadExecuted,
+        DeleteCrossWorld,
+        WaitCrossWorldDeleted,
+        RecreateCrossWorld,
+        WaitCrossWorldRecreated,
+        WaitCrossWorldRecreatedExecuted,
+        CloseCrossWorld,
+        WaitCrossWorldClosed,
         CreateReset,
         GraphChanged,
         Reset,
@@ -590,7 +590,7 @@ private:
             return;
         m_VisualPassed = true;
         DestroyGraph();
-        m_State = State::CreateDurable;
+        m_State = State::CreateCrossWorld;
     }
 
     bool AddFunctionNode(const char *name, CKBEHAVIORFCT function,
@@ -608,20 +608,20 @@ private:
             m_Graph->AddSubBehavior(out) == CK_OK;
     }
 
-    bool AddDurableNode(const char *name, CKBehavior *&out) {
-        return AddFunctionNode(name, RunDurableNode, out);
+    bool AddCrossWorldNode(const char *name, CKBehavior *&out) {
+        return AddFunctionNode(name, RunCrossWorldNode, out);
     }
 
-    bool BuildDurableGraph() {
-        if (!CreateGraphObjects("__BML_Durable_Patch"))
+    bool BuildCrossWorldGraph() {
+        if (!CreateGraphObjects("__BML_CrossWorld_Plan"))
             return false;
-        if (!AddDurableNode("Durable Source", m_DurableSource) ||
-            !AddDurableNode("Durable Sink", m_DurableSink))
+        if (!AddCrossWorldNode("CrossWorld Source", m_CrossWorldSource) ||
+            !AddCrossWorldNode("CrossWorld Sink", m_CrossWorldSink))
             return false;
         m_Entry = AddLink(m_Graph->GetInput(0),
-                          m_DurableSource->GetInput(0));
-        m_Anchor = AddLink(m_DurableSource->GetOutput(0),
-                           m_DurableSink->GetInput(0));
+                          m_CrossWorldSource->GetInput(0));
+        m_Anchor = AddLink(m_CrossWorldSource->GetOutput(0),
+                           m_CrossWorldSink->GetInput(0));
         if (!m_Entry || !m_Anchor)
             return false;
         m_AnchorId = m_Anchor->GetID();
@@ -629,7 +629,7 @@ private:
             m_Graph->GetSubBehaviorLinkCount() == 2;
     }
 
-    bool ReadDurable(std::uint32_t expectedState,
+    bool ReadCrossWorld(std::uint32_t expectedState,
                      std::uint32_t expectedMatches,
                      std::uint32_t expectedInstallations,
                      std::uint64_t *world = nullptr) const {
@@ -647,16 +647,16 @@ private:
             installations == expectedInstallations;
     }
 
-    bool DurableRelationsInstalled() const {
-        if (!m_Graph || !m_DurableSource || !m_DurableSink ||
+    bool CrossWorldRelationsInstalled() const {
+        if (!m_Graph || !m_CrossWorldSource || !m_CrossWorldSink ||
             m_Graph->GetSubBehaviorCount() != 5) {
             return false;
         }
         CKBehavior *block = nullptr;
         for (int index = 0; index < m_Graph->GetSubBehaviorCount(); ++index) {
             CKBehavior *candidate = m_Graph->GetSubBehavior(index);
-            if (candidate != m_DurableSource &&
-                candidate != m_DurableSink &&
+            if (candidate != m_CrossWorldSource &&
+                candidate != m_CrossWorldSink &&
                 candidate->GetInputParameterCount() == 4) {
                 block = candidate;
                 break;
@@ -684,20 +684,20 @@ private:
             value->GetDestination(0) == destination;
     }
 
-    bool DurableInstalled() const {
-        return m_Graph && m_DurableSource && m_DurableSink && m_Anchor &&
+    bool CrossWorldInstalled() const {
+        return m_Graph && m_CrossWorldSource && m_CrossWorldSink && m_Anchor &&
             m_Anchor->GetID() == m_AnchorId &&
-            m_Anchor->GetOutBehaviorIO() != m_DurableSink->GetInput(0) &&
+            m_Anchor->GetOutBehaviorIO() != m_CrossWorldSink->GetInput(0) &&
             m_Graph->GetSubBehaviorCount() == 5 &&
             m_Graph->GetSubBehaviorLinkCount() == 5 &&
-            DurableRelationsInstalled();
+            CrossWorldRelationsInstalled();
     }
 
-    bool DurableRestored() const {
-        return m_Graph && m_DurableSource && m_DurableSink && m_Anchor &&
+    bool CrossWorldRestored() const {
+        return m_Graph && m_CrossWorldSource && m_CrossWorldSink && m_Anchor &&
             m_Anchor->GetID() == m_AnchorId &&
-            m_Anchor->GetInBehaviorIO() == m_DurableSource->GetOutput(0) &&
-            m_Anchor->GetOutBehaviorIO() == m_DurableSink->GetInput(0) &&
+            m_Anchor->GetInBehaviorIO() == m_CrossWorldSource->GetOutput(0) &&
+            m_Anchor->GetOutBehaviorIO() == m_CrossWorldSink->GetInput(0) &&
             m_Graph->GetSubBehaviorCount() == 2 &&
             m_Graph->GetSubBehaviorLinkCount() == 2;
     }
@@ -716,21 +716,21 @@ private:
             actualTaps == taps && actualAfters == afters;
     }
 
-    void RunDurableGraph() {
+    void RunCrossWorldGraph() {
         CKScene *scene = m_BML && m_BML->GetCKContext()
             ? m_BML->GetCKContext()->GetCurrentScene() : nullptr;
-        if (!scene || !m_Graph || !m_DurableSource)
+        if (!scene || !m_Graph || !m_CrossWorldSource)
             return;
         m_Graph->ActivateInput(0, FALSE);
         m_Graph->ActivateOutput(0, FALSE);
         scene->Activate(m_Graph, TRUE);
         m_Graph->ActivateInput(0, TRUE);
-        m_DurableWaitUntil = m_Frame + 20;
+        m_PlanWaitUntil = m_Frame + 20;
     }
 
-    void CreateDurableGraph() {
-        if (!BuildDurableGraph()) {
-            Finish(false, "durable-graph-create");
+    void CreateCrossWorldGraph() {
+        if (!BuildCrossWorldGraph()) {
+            Finish(false, "cross-world-graph-create");
             DestroyGraph();
             return;
         }
@@ -739,86 +739,86 @@ private:
             static_cast<std::uint32_t>(BML_LIFECYCLE_FIXTURE_GUID.d2)};
         const int observed = m_Test->ObserveScript(m_Session, m_Graph);
         const int submitted = m_Test->SubmitEdit(
-            m_Session, "__BML_Durable_Patch", "Durable Source",
-            "Durable Sink", prototype, "player-durable-edit", &m_Plan);
+            m_Session, "__BML_CrossWorld_Plan", "CrossWorld Source",
+            "CrossWorld Sink", prototype, "player-cross-world-edit", &m_Plan);
         if (observed != BML_OK || submitted != BML_OK || !m_Plan) {
-            Finish(false, "durable-submit");
+            Finish(false, "cross-world-submit");
             return;
         }
-        m_State = State::WaitDurable;
+        m_State = State::WaitCrossWorld;
     }
 
-    void WaitDurableInstall() {
+    void WaitCrossWorldInstall() {
         std::uint64_t world = 0;
-        m_DurableRelationsPassed = m_DurableRelationsPassed &&
-            DurableRelationsInstalled();
-        if (!ReadDurable(BML_BEHAVIOR_TEST_PLAN_ACTIVE, 1, 1, &world) ||
-            !DurableInstalled() || !ReadHooks(2, 0, 0, 0)) {
-            Finish(false, "durable-install");
+        m_CrossWorldRelationsPassed = m_CrossWorldRelationsPassed &&
+            CrossWorldRelationsInstalled();
+        if (!ReadCrossWorld(BML_BEHAVIOR_TEST_PLAN_ACTIVE, 1, 1, &world) ||
+            !CrossWorldInstalled() || !ReadHooks(2, 0, 0, 0)) {
+            Finish(false, "cross-world-install");
             return;
         }
-        m_DurableWorld = world;
-        RunDurableGraph();
-        m_State = State::WaitDurableExecuted;
+        m_PlanWorld = world;
+        RunCrossWorldGraph();
+        m_State = State::WaitCrossWorldExecuted;
     }
 
-    void WaitDurableExecution() {
+    void WaitCrossWorldExecution() {
         if (ReadHooks(2, 0, 1, 1)) {
-            m_State = State::ResetDurable;
+            m_State = State::ResetCrossWorld;
             return;
         }
-        if (m_Frame > m_DurableWaitUntil)
-            Finish(false, "durable-hooks-first");
+        if (m_Frame > m_PlanWaitUntil)
+            Finish(false, "cross-world-hooks-first");
     }
 
-    void ResetDurablePlan() {
+    void ResetCrossWorldPlan() {
         const int reset = m_Test->ResetPlans(m_Session);
-        const bool state = ReadDurable(
+        const bool state = ReadCrossWorld(
             BML_BEHAVIOR_TEST_PLAN_UNSATISFIED, 0, 0);
-        const bool restored = DurableRestored();
+        const bool restored = CrossWorldRestored();
         const bool hooks = ReadHooks(2, 0, 1, 1);
         const int observed = m_Test->ObserveScript(m_Session, m_Graph);
         const bool leftWorld = reset == BML_OK && state && restored && hooks;
         if (!leftWorld || observed != BML_OK) {
             GetLogger()->Error(
-                "Behavior durable reset failed: reset=%d state=%s restored=%s hooks=%s observe=%d",
+                "Behavior cross-world reset failed: reset=%d state=%s restored=%s hooks=%s observe=%d",
                 reset, state ? "true" : "false",
                 restored ? "true" : "false",
                 hooks ? "true" : "false", observed);
-            Finish(false, "durable-reset");
+            Finish(false, "cross-world-reset");
             return;
         }
-        m_State = State::ReloadDurable;
+        m_State = State::ReloadCrossWorld;
     }
 
-    void WaitDurableReload() {
+    void WaitCrossWorldReload() {
         std::uint64_t world = 0;
-        m_DurableRelationsPassed = m_DurableRelationsPassed &&
-            DurableRelationsInstalled();
-        if (!ReadDurable(BML_BEHAVIOR_TEST_PLAN_ACTIVE, 1, 1, &world) ||
-            world <= m_DurableWorld || !DurableInstalled() ||
+        m_CrossWorldRelationsPassed = m_CrossWorldRelationsPassed &&
+            CrossWorldRelationsInstalled();
+        if (!ReadCrossWorld(BML_BEHAVIOR_TEST_PLAN_ACTIVE, 1, 1, &world) ||
+            world <= m_PlanWorld || !CrossWorldInstalled() ||
             !ReadHooks(2, 0, 1, 1)) {
-            Finish(false, "durable-reload");
+            Finish(false, "cross-world-reload");
             return;
         }
-        m_DurableWorld = world;
-        RunDurableGraph();
-        m_State = State::WaitDurableReloadExecuted;
+        m_PlanWorld = world;
+        RunCrossWorldGraph();
+        m_State = State::WaitCrossWorldReloadExecuted;
     }
 
-    void WaitDurableReloadExecution() {
+    void WaitCrossWorldReloadExecution() {
         if (ReadHooks(2, 0, 2, 2)) {
-            m_State = State::DeleteDurable;
+            m_State = State::DeleteCrossWorld;
             return;
         }
-        if (m_Frame > m_DurableWaitUntil)
-            Finish(false, "durable-hooks-reload");
+        if (m_Frame > m_PlanWaitUntil)
+            Finish(false, "cross-world-hooks-reload");
     }
 
-    void DeleteDurableGraph() {
+    void DeleteCrossWorldGraph() {
         CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
         if (!context || !m_Graph || !m_Owner) {
-            Finish(false, "durable-delete-setup");
+            Finish(false, "cross-world-delete-setup");
             return;
         }
         CKBehavior *graph = m_Graph;
@@ -826,8 +826,8 @@ private:
         const CK_ID graphId = graph->GetID();
         (void) owner->RemoveScript(graphId);
         m_Graph = nullptr;
-        m_DurableSource = nullptr;
-        m_DurableSink = nullptr;
+        m_CrossWorldSource = nullptr;
+        m_CrossWorldSink = nullptr;
         m_Anchor = nullptr;
         m_AnchorId = 0;
         m_Owner = nullptr;
@@ -836,23 +836,23 @@ private:
         CKObject *remaining = context->GetObject(graphId);
         if (destroyed != CK_OK ||
             (remaining && !remaining->IsToBeDeleted())) {
-            Finish(false, "durable-delete");
+            Finish(false, "cross-world-delete");
             return;
         }
-        m_DurableWaitUntil = m_Frame + 30;
-        m_State = State::WaitDurableDeleted;
+        m_PlanWaitUntil = m_Frame + 30;
+        m_State = State::WaitCrossWorldDeleted;
     }
 
-    void WaitDurableRemoval() {
-        if (ReadDurable(BML_BEHAVIOR_TEST_PLAN_UNSATISFIED, 0, 0)) {
+    void WaitCrossWorldRemoval() {
+        if (ReadCrossWorld(BML_BEHAVIOR_TEST_PLAN_UNSATISFIED, 0, 0)) {
             if (!ReadHooks(2, 0, 2, 2)) {
-                Finish(false, "durable-hooks-delete");
+                Finish(false, "cross-world-hooks-delete");
                 return;
             }
-            m_State = State::RecreateDurable;
+            m_State = State::RecreateCrossWorld;
             return;
         }
-        if (m_Frame < m_DurableWaitUntil)
+        if (m_Frame < m_PlanWaitUntil)
             return;
         std::uint32_t state = 0;
         std::uint32_t matches = 0;
@@ -861,54 +861,54 @@ private:
         const int read = m_Test->ReadPlan(
             m_Session, m_Plan, &state, &matches, &installations, &world);
         GetLogger()->Info(
-            "Behavior durable removal: read=%d state=%u matches=%u installations=%u world=%llu",
+            "Behavior cross-world removal: read=%d state=%u matches=%u installations=%u world=%llu",
             read, state, matches, installations,
             static_cast<unsigned long long>(world));
-        Finish(false, "durable-remove");
+        Finish(false, "cross-world-remove");
     }
 
-    void RecreateDurableGraph() {
-        if (!BuildDurableGraph() ||
+    void RecreateCrossWorldGraph() {
+        if (!BuildCrossWorldGraph() ||
             m_Test->ObserveScript(m_Session, m_Graph) != BML_OK) {
-            Finish(false, "durable-recreate-graph");
+            Finish(false, "cross-world-recreate-graph");
             DestroyGraph();
             return;
         }
-        m_State = State::WaitDurableRecreated;
+        m_State = State::WaitCrossWorldRecreated;
     }
 
-    void WaitDurableRecreation() {
+    void WaitCrossWorldRecreation() {
         std::uint64_t world = 0;
-        m_DurableRelationsPassed = m_DurableRelationsPassed &&
-            DurableRelationsInstalled();
-        if (!ReadDurable(BML_BEHAVIOR_TEST_PLAN_ACTIVE, 1, 1, &world) ||
-            world != m_DurableWorld || !DurableInstalled()) {
-            Finish(false, "durable-recreate");
+        m_CrossWorldRelationsPassed = m_CrossWorldRelationsPassed &&
+            CrossWorldRelationsInstalled();
+        if (!ReadCrossWorld(BML_BEHAVIOR_TEST_PLAN_ACTIVE, 1, 1, &world) ||
+            world != m_PlanWorld || !CrossWorldInstalled()) {
+            Finish(false, "cross-world-recreate");
             return;
         }
-        RunDurableGraph();
-        m_State = State::WaitDurableRecreatedExecuted;
+        RunCrossWorldGraph();
+        m_State = State::WaitCrossWorldRecreatedExecuted;
     }
 
-    void WaitDurableRecreatedExecution() {
+    void WaitCrossWorldRecreatedExecution() {
         if (ReadHooks(2, 0, 3, 3)) {
-            m_DurableHooksPassed = true;
-            m_State = State::CloseDurable;
+            m_CrossWorldHooksPassed = true;
+            m_State = State::CloseCrossWorld;
             return;
         }
-        if (m_Frame > m_DurableWaitUntil)
-            Finish(false, "durable-hooks-recreate");
+        if (m_Frame > m_PlanWaitUntil)
+            Finish(false, "cross-world-hooks-recreate");
     }
 
-    void CloseDurablePlan() {
+    void CloseCrossWorldPlan() {
         if (m_Test->ClosePlan(m_Session, m_Plan) != BML_OK) {
-            Finish(false, "durable-close-request");
+            Finish(false, "cross-world-close-request");
             return;
         }
-        m_State = State::WaitDurableClosed;
+        m_State = State::WaitCrossWorldClosed;
     }
 
-    void WaitDurableClose() {
+    void WaitCrossWorldClose() {
         std::uint32_t state = 0;
         std::uint32_t matches = 0;
         std::uint32_t installations = 0;
@@ -916,11 +916,11 @@ private:
         const bool stale = m_Test->ReadPlan(
             m_Session, m_Plan, &state, &matches, &installations, &world) !=
             BML_OK;
-        m_DurablePassed = stale && DurableRestored() &&
+        m_CrossWorldPassed = stale && CrossWorldRestored() &&
             ReadHooks(2, 2, 3, 3);
         m_Plan = 0;
-        if (!m_DurablePassed) {
-            Finish(false, "durable-close");
+        if (!m_CrossWorldPassed) {
+            Finish(false, "cross-world-close");
             return;
         }
         DestroyGraph();
@@ -1434,9 +1434,9 @@ private:
         m_Patch = 0;
         if (m_RetirementPassed)
             DestroyGraph();
-        Finish(m_ModulePassed && m_VisualPassed && m_DurablePassed &&
-                   m_DurableRelationsPassed &&
-                   m_DurableHooksPassed &&
+        Finish(m_ModulePassed && m_VisualPassed && m_CrossWorldPassed &&
+                   m_CrossWorldRelationsPassed &&
+                   m_CrossWorldHooksPassed &&
                    m_ApplyPassed &&
                    m_ExecutePassed &&
                    m_ClosePassed && m_RestorePassed && m_ResetPassed &&
@@ -1472,16 +1472,16 @@ private:
         if (m_Baseline)
             context->DestroyObject(m_Baseline);
         m_Baseline = nullptr;
-        if (m_Graph && m_DurableSource)
-            m_Graph->RemoveSubBehavior(m_DurableSource);
-        if (m_DurableSource)
-            context->DestroyObject(m_DurableSource);
-        m_DurableSource = nullptr;
-        if (m_Graph && m_DurableSink)
-            m_Graph->RemoveSubBehavior(m_DurableSink);
-        if (m_DurableSink)
-            context->DestroyObject(m_DurableSink);
-        m_DurableSink = nullptr;
+        if (m_Graph && m_CrossWorldSource)
+            m_Graph->RemoveSubBehavior(m_CrossWorldSource);
+        if (m_CrossWorldSource)
+            context->DestroyObject(m_CrossWorldSource);
+        m_CrossWorldSource = nullptr;
+        if (m_Graph && m_CrossWorldSink)
+            m_Graph->RemoveSubBehavior(m_CrossWorldSink);
+        if (m_CrossWorldSink)
+            context->DestroyObject(m_CrossWorldSink);
+        m_CrossWorldSink = nullptr;
         if (m_Graph && m_CallbackNode)
             m_Graph->RemoveSubBehavior(m_CallbackNode);
         if (m_CallbackNode)
@@ -1510,12 +1510,12 @@ private:
             return;
         m_Done = true;
         GetLogger()->Info(
-            "Behavior patch: status=%s reason=%s module=%s visual=%s durable=%s relations=%s apply=%s execute=%s close=%s restore=%s reset=%s deletion=%s retirement=%s hooks=%s graph_changed=%s callback_close=%s teardown_reentry=%s",
+            "Behavior patch: status=%s reason=%s module=%s visual=%s cross_world=%s relations=%s apply=%s execute=%s close=%s restore=%s reset=%s deletion=%s retirement=%s hooks=%s graph_changed=%s callback_close=%s teardown_reentry=%s",
             passed ? "pass" : "fail", reason,
             m_ModulePassed ? "true" : "false",
             m_VisualPassed ? "true" : "false",
-            m_DurablePassed ? "true" : "false",
-            m_DurableRelationsPassed ? "true" : "false",
+            m_CrossWorldPassed ? "true" : "false",
+            m_CrossWorldRelationsPassed ? "true" : "false",
             m_ApplyPassed ? "true" : "false",
             m_ExecutePassed ? "true" : "false",
             m_ClosePassed ? "true" : "false",
@@ -1523,7 +1523,7 @@ private:
             m_ResetPassed ? "true" : "false",
             m_DeletionPassed ? "true" : "false",
             m_RetirementPassed ? "true" : "false",
-            m_DurableHooksPassed ? "true" : "false",
+            m_CrossWorldHooksPassed ? "true" : "false",
             m_GraphChangedPassed ? "true" : "false",
             m_CallbackClosePassed ? "true" : "false",
             m_TeardownReentryPassed ? "true" : "false");
@@ -1543,8 +1543,8 @@ private:
     CK3dObject *m_Owner = nullptr;
     CKBehavior *m_Graph = nullptr;
     CKBehavior *m_Baseline = nullptr;
-    CKBehavior *m_DurableSource = nullptr;
-    CKBehavior *m_DurableSink = nullptr;
+    CKBehavior *m_CrossWorldSource = nullptr;
+    CKBehavior *m_CrossWorldSink = nullptr;
     CKBehavior *m_CallbackNode = nullptr;
     CK2dEntity *m_Display = nullptr;
     CK2dEntity *m_PatchDisplay = nullptr;
@@ -1553,8 +1553,8 @@ private:
     CK_ID m_AnchorId = 0;
     CKBehaviorLink *m_SiblingAnchor = nullptr;
     CK_ID m_SiblingAnchorId = 0;
-    std::uint64_t m_DurableWorld = 0;
-    int m_DurableWaitUntil = 0;
+    std::uint64_t m_PlanWorld = 0;
+    int m_PlanWaitUntil = 0;
     int m_CallbackWaitUntil = 0;
     int m_TeardownWaitUntil = 0;
     int m_TeardownOuterClose = BML_ERROR_FAIL;
@@ -1569,9 +1569,9 @@ private:
     bool m_LevelStarted = false;
     bool m_ModulePassed = false;
     bool m_VisualPassed = false;
-    bool m_DurablePassed = false;
-    bool m_DurableRelationsPassed = true;
-    bool m_DurableHooksPassed = false;
+    bool m_CrossWorldPassed = false;
+    bool m_CrossWorldRelationsPassed = true;
+    bool m_CrossWorldHooksPassed = false;
     bool m_ApplyPassed = true;
     bool m_ExecutePassed = false;
     bool m_ClosePassed = false;

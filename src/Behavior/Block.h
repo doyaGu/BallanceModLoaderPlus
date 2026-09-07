@@ -101,8 +101,7 @@ public:
     [[nodiscard]] std::uint64_t PrototypeGeneration() const noexcept {
         return m_PrototypeGeneration;
     }
-    // A durable Plan may retain owned literals, but not pointers into one CK
-    // world.
+    // A Plan may retain owned literals, but not pointers into one CK world.
     [[nodiscard]] bool WorldBound() const noexcept;
     [[nodiscard]] const std::vector<std::vector<Binding>> &Settings() const
         noexcept { return m_SettingStages; }

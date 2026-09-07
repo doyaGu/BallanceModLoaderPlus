@@ -11,7 +11,7 @@
 
 namespace BML::Behavior {
 
-// A durable description of a Node in one graph scope. A Pattern contains only
+// A structural description of a Node in one graph scope. A Pattern contains only
 // facts Virtools can observe again in another world; it never retains a live
 // Node or an author predicate.
 class NodePattern {

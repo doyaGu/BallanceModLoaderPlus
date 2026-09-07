@@ -1244,7 +1244,7 @@ private:
             return;
         }
 
-        // A durable Plan installs into scripts that do not exist yet, so it
+        // A Plan installs into scripts that do not exist yet, so it
         // refuses a reference issued against this one live world.
         const auto sourceNode = std::find_if(
             opened->Nodes().begin(), opened->Nodes().end(),
@@ -1268,12 +1268,12 @@ private:
             return;
         }
 
-        BML::Behavior::Edit durable;
-        const auto anchored = durable.Root().Use(*sourceNode);
-        durable.Root().Tap(anchored.Out(0), Hook([] { return HookResult::Ok; }));
+        BML::Behavior::Edit worldBound;
+        const auto anchored = worldBound.Root().Use(*sourceNode);
+        worldBound.Root().Tap(anchored.Out(0), Hook([] { return HookResult::Ok; }));
         const auto refused = m_Session.Plan(
             "player-public-identity-plan",
-            BML::Behavior::Scripts::One(kScriptName), durable);
+            BML::Behavior::Scripts::One(kScriptName), worldBound);
         if (refused ||
             refused.GetStatus().Error !=
                 BML::Behavior::Error::WorldBoundValue) {

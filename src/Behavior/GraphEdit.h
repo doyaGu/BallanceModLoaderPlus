@@ -40,7 +40,7 @@ struct PathRef {
 // Compile resolves the complete query before the live Edit mutates a graph.
 // UseNode and UseLink are the one exception: they anchor on an ObjectRef the
 // author already holds, which makes the intent single-world. UsesIdentity
-// reports that, and a durable Plan refuses such an edit.
+// reports that, and a Plan refuses such an edit.
 class GraphEdit final {
 public:
     class Compiler : public PatternValues {

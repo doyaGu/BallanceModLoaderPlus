@@ -345,13 +345,13 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
         return status;
     if (!owner || !target || name.empty())
         return Failure(Error::OwnerInvalid,
-                       "A durable Behavior Edit requires an owner, script, and patch name.");
-    // A durable Plan installs into scripts that do not exist yet, so it cannot
+                       "A Behavior Plan requires an owner, script, and patch name.");
+    // A Plan installs into scripts that do not exist yet, so it cannot
     // carry a reference issued against one live world.
     if (edit.UsesIdentity())
         return Failure(
             Error::WorldBoundValue,
-            "A durable Behavior Edit cannot retain a live Object, Node, or "
+            "A Behavior Plan cannot retain a live Object, Node, or "
             "Link; query graph objects by name or Prototype instead.");
     status = edit.Validate();
     if (!status)
@@ -365,7 +365,7 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
             std::move(world), out);
     } catch (...) {
         return Failure(Error::CreateFailed,
-                       "The Loader could not retain the durable Behavior Edit.");
+                       "The Loader could not retain the Behavior Plan definition.");
     }
 }
 
@@ -679,9 +679,15 @@ Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
                        "A Behavior Plan replacement requires a Script rule.");
     std::set<std::pair<std::string, TargetSet>> selections;
     for (const Rule &rule : rules) {
-        if (!rule.Scripts || !rule.Body || rule.Body->UsesIdentity())
+        if (!rule.Scripts || !rule.Body) {
+            return Failure(
+                Error::InvalidState,
+                "A Behavior Plan replacement requires complete Script rules.");
+        }
+        if (rule.Body->UsesIdentity()) {
             return Failure(Error::WorldBoundValue,
-                           "A Behavior Plan replacement must be durable.");
+                           "A Behavior Plan cannot retain live graph identity across worlds.");
+        }
         Status valid = rule.Body->Validate();
         if (!valid)
             return valid;

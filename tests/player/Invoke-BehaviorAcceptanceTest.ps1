@@ -169,7 +169,7 @@ $transport = [regex]::Match($log,
 $patch = [regex]::Match($log,
     'Behavior patch: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'module=(?<module>true|false) visual=(?<visual>true|false) ' +
-    'durable=(?<durable>true|false) relations=(?<relations>true|false) ' +
+    'cross_world=(?<cross_world>true|false) relations=(?<relations>true|false) ' +
     'apply=(?<apply>true|false) execute=(?<execute>true|false) ' +
     'close=(?<close>true|false) restore=(?<restore>true|false) ' +
     'reset=(?<reset>true|false) deletion=(?<deletion>true|false) ' +
@@ -247,7 +247,7 @@ $checks['BehaviorPatch'] = $patch.Success -and
     $patch.Groups['status'].Value -eq 'pass' -and
     $patch.Groups['module'].Value -eq 'true' -and
     $patch.Groups['visual'].Value -eq 'true' -and
-    $patch.Groups['durable'].Value -eq 'true' -and
+    $patch.Groups['cross_world'].Value -eq 'true' -and
     $patch.Groups['relations'].Value -eq 'true' -and
     $patch.Groups['apply'].Value -eq 'true' -and
     $patch.Groups['execute'].Value -eq 'true' -and
