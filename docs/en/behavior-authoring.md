@@ -97,7 +97,7 @@ The three run types own the same native kind of object:
 
 | Operation | First Execute | Later Execute |
 | --- | --- | --- |
-| `Call(input)` | Immediately, once | Only after moving the Call into `Continue()` |
+| `Call(input)` | Immediately, once | Only after `Continue()` succeeds |
 | `Start(input)` | Immediately, once | Loader advances native continuation per game frame |
 | `Spawn()` | None | The Mod drives it with `Pulse(input)` |
 | `SpawnIn(graph)` | None | Like Spawn, but parked as an unconnected graph node |
@@ -112,11 +112,11 @@ if (instance)
     instance->Pulse("Reset");
 ```
 
-A Frame policy belongs to that run only; the reusable Block has no observation policy. `Call::Continue()` keeps the same native Instance; it does not create or reactivate another one.
+A Frame policy belongs to that run only; the reusable Block has no observation policy. `Call::Continue()` keeps the same native Instance; it does not create or reactivate another one. Success consumes the Call and returns its Task; failure leaves the Call usable.
 
 An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. `Ready` means no native continuation and no queued In. It does not mean the BB released Local or manager state.
 
-All run types provide `Info()`, `Take()`, `Layout()`, `Inspect()`, `Set()`, `Bind()`, `Settings()`, and `Close()`. Only `Call` provides `Continue()`; `Task` and `Instance` provide `Pulse()`.
+All run types provide `Info()`, `TakeFrames()`, `Layout()`, `Inspect()`, `Set()`, `Bind()`, `Settings()`, and `Close()`. Only `Call` provides `Continue()`; `Task` and `Instance` provide `Pulse()`.
 
 ## 5. Read Frames
 
@@ -138,7 +138,7 @@ auto task = block.Start("Run", Signals(64).Pouts());
 
 Frames frames;
 frames.Reserve(16, 4096);
-if (auto taken = task->Take(frames)) {
+if (auto taken = task->TakeFrames(frames)) {
     for (Frame frame : frames) {
         if (frame.HasOut("Done")) {
             auto speed = frame.Pout<float>("Speed");
@@ -149,7 +149,7 @@ if (auto taken = task->Take(frames)) {
 }
 ```
 
-`Take()` allocates as needed. `Take(Frames&)` reuses existing header and payload buffers; with sufficient capacity it makes one C call and allocates no record or string objects. `Frame`, `Out`, and `Pout` are read-only views into their owning `Frames` and become invalid after that `Frames` is modified.
+`TakeFrames()` allocates as needed. `TakeFrames(Frames&)` reuses existing header and payload buffers; with sufficient capacity it makes one C call and allocates no record or string objects. The name makes its consuming behavior distinct from `Result<T>::Take()`. `Frame`, `Out`, and `Pout` are read-only views into their owning `Frames` and become invalid after that `Frames` is modified.
 
 An object Pout receives an `ObjectRef` while the object is live. Later Frame reads never touch the original CK parameter or object. If any Pout cannot be read or encoded, Runtime discards that incomplete Pout batch but preserves the same Frame's active Outs and diagnostic.
 
@@ -366,6 +366,9 @@ auto patch = session.Apply(
     On(energyGraph, energyEdit));
 ```
 
+`On(...)` is only the connective syntax for these calls; it does not introduce
+another public graph or patch type.
+
 All targets are resolved and statically checked before the first graph changes.
 They then commit in argument order; a later failure restores earlier targets in
 reverse order. The same graph cannot appear twice at the top level. Deleting any
@@ -433,6 +436,6 @@ These adapters return ordinary Blocks and do not bypass lifecycle, execution, or
 
 Except for Close, Behavior operations require the game thread. Every `Result<T>` carries both a stable error category and `Status`; branch on the error and phase, not on message text.
 
-Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `Take(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.
+Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, `TakeFrames(Frames&)` avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.
 
 The current public interface exposes native Parameter Operations but does not add a second expression language over them. It does not include an AngelScript Behavior projection or third-party parameter-format registration. Unsupported Virtools parameter types fail explicitly; they are never guessed to be arbitrary bytes.

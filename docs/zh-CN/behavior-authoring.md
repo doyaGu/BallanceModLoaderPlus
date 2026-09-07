@@ -97,7 +97,7 @@ Target 有三种形式：`TargetOwner()`、`Target(type, object)` 和 `NullTarge
 
 | 创建方式 | 首次 Execute | 后续 Execute |
 | --- | --- | --- |
-| `Call(input)` | 立即一次 | 只有把 `Call` 移入 `Continue()` 后才由 Loader 托管 |
+| `Call(input)` | 立即一次 | 只有 `Continue()` 成功后才由 Loader 托管 |
 | `Start(input)` | 立即一次 | Loader 按 game frame 推进 native continuation |
 | `Spawn()` | 不执行 | Mod 用 `Pulse(input)` 驱动 |
 | `SpawnIn(graph)` | 不执行 | 与 `Spawn` 相同，但 Behavior 作为未连接节点留在 graph 中 |
@@ -112,11 +112,11 @@ if (instance)
     instance->Pulse("Reset");
 ```
 
-Frame policy 只属于本次 run；可复用的 Block 不保存观察策略。`Call::Continue()` 保留同一个 native Instance；它不是重新激活或重新创建。
+Frame policy 只属于本次 run；可复用的 Block 不保存观察策略。`Call::Continue()` 保留同一个 native Instance；它不是重新激活或重新创建。成功时 Call 被消费并返回对应 Task；失败时 Call 仍可继续使用。
 
 同一 Instance 每个 game frame 最多 Execute 一次。同 frame 或 callback 重入的 Pulse 会排队；相同 logical In 合并，不同 In 保持首次 admission 顺序。`Ready` 只表示没有 native continuation 和 queued In，不表示 BB 已经释放 Local、manager 注册或其他持久状态。
 
-三种 run 都提供 `Info()`、`Take()`、`Layout()`、`Inspect()`、`Set()`、`Bind()`、`Settings()` 和 `Close()`。只有 `Call` 提供 `Continue()`；`Task` 和 `Instance` 提供 `Pulse()`。
+三种 run 都提供 `Info()`、`TakeFrames()`、`Layout()`、`Inspect()`、`Set()`、`Bind()`、`Settings()` 和 `Close()`。只有 `Call` 提供 `Continue()`；`Task` 和 `Instance` 提供 `Pulse()`。
 
 ## 5. 读取 Frames
 
@@ -138,7 +138,7 @@ auto task = block.Start("Run", Signals(64).Pouts());
 
 Frames frames;
 frames.Reserve(16, 4096);
-if (auto taken = task->Take(frames)) {
+if (auto taken = task->TakeFrames(frames)) {
     for (Frame frame : frames) {
         if (frame.HasOut("Done")) {
             auto speed = frame.Pout<float>("Speed");
@@ -149,7 +149,7 @@ if (auto taken = task->Take(frames)) {
 }
 ```
 
-`Take()` 是自动分配版本；`Take(Frames&)` 会复用已有 header 和 payload buffer。容量足够时，它只调用一次 C seam，且不为 record 或 string 另行分配。`Frame`、`Out` 和 `Pout` 都是所属 `Frames` 的只读 view；下一次修改该 `Frames` 后，旧 view 全部失效。
+`TakeFrames()` 是自动分配版本；`TakeFrames(Frames&)` 会复用已有 header 和 payload buffer。容量足够时，它只调用一次 C seam，且不为 record 或 string 另行分配。这个名字也明确区分了它的消费语义与 `Result<T>::Take()`。`Frame`、`Out` 和 `Pout` 都是所属 `Frames` 的只读 view；下一次修改该 `Frames` 后，旧 view 全部失效。
 
 object Pout 会在对象仍 live 时签发 `ObjectRef`，之后读取 Frame 不再访问原 CK parameter 或 CK object。任何 Pout 读取或 encoding 失败都会丢弃该次不完整的 Pout batch，但保留同一 Frame 的 active Outs 和 diagnostic。
 
@@ -348,6 +348,8 @@ auto patch = session.Apply(
     On(energyGraph, energyEdit));
 ```
 
+`On(...)` 只负责在这些调用中连接目标和 Edit，不引入新的公开 graph 或 patch 类型。
+
 第一个 graph 改变前，所有 target 都会完成解析和静态检查。随后按参数顺序提交；
 后面的 target 失败时，前面的 target 按逆序恢复。同一个 graph 不能在顶层出现两次。
 任一 exact target 被删除时，整个 Patch 退役，其余仍存在的 graph 会在下一个
@@ -410,6 +412,6 @@ if (made) {
 
 除 Close 外，Behavior 操作要求 game thread。所有 `Result<T>` 都同时包含稳定错误类别和 `Status`；控制流只应判断 error/phase，不应解析 message 文本。
 
-高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`Take(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。
+高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`TakeFrames(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。
 
 当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language；它尚不包含 AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。
