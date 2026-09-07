@@ -22,6 +22,7 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 | `Frames` | 从 native Execute 复制出的控制流结果和可选 Pout 值 |
 | `Script` | 一个 owner-scoped 的顶层 graph-backed `CKBehavior` |
 | `Graph` | 某个时刻的 immutable Behavior graph snapshot |
+| `NodePattern` | 在一个 graph scope 内重新解析的 durable 结构描述 |
 | `Edit` | 尚未安装的 symbolic graph transformation |
 | `Patch` | 应用于一个确定 graph snapshot 的 Edit |
 | `Plan` | 跨 world 按 script selector 反复 reconcile 的 Edit |
@@ -40,10 +41,12 @@ if (!opened) {
                        opened.GetStatus().Message.c_str());
     return;
 }
-m_Behavior = std::move(opened).Value();
+m_Behavior = opened.Take();
 ```
 
 Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。
+
+对具名 Result 调用 `Result<T>::Value()` 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 `Take()`。`Take()` 会清空结果中的值，但 `Code()` 和 `GetStatus()` 仍可用于读取诊断。
 
 由 Session 创建的对象持有自己所需的 Session lease。移动或关闭最初的 `Session` 值，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 立即失效。
 
@@ -227,13 +230,13 @@ graph.Bind(left, 2.0f)
 auto created = m_Behavior.CreateScript(owner, "My Script", body);
 if (!created)
     return;
-Script script = std::move(created).Value();
+Script script = created.Take();
 script.Activate(true);
 ```
 
 `CreateScript` 只执行一次 native `AddScript`，同时建立 owner 与 Scene membership，然后编译并应用完整 Edit。validation、lifecycle、callback 或 graph 任一阶段失败都不会返回 Script handle；未发布的 root 会被移除，也不会进入 Plan。安装后的初始 graph 由 Script 自身拥有，不要求作者额外保存第二个 Patch handle。
 
-`Edit::Graph()` 表示正在编写的 symbolic graph root；这里不能用 `Use()` 导入 snapshot root。root 可以拥有 In、Out、Pin、Pout 和 Local。`AddOperation` 创建一个由 graph 拥有的真实 `CKParameterOperation`；Virtools 根据 operation GUID 和精确的 result/input type tuple 选择函数，并在 consumer 读取 result 时惰性求值。每个已声明的 operation input 都必须绑定。后续增量修改仍使用 `Script::Apply()`。激活请求在下一个 Behavior safe point 应用，并排在待处理 Patch reconcile 之后。即使 Script 已经 active，传入 `true` 仍会明确请求 Virtools reset 语义。
+`Edit::Root()` 返回正在编写的 symbolic graph root scope；这里不能用 `Use()` 导入 snapshot root。root 可以拥有 In、Out、Pin、Pout 和 Local。`AddOperation` 创建一个由 graph 拥有的真实 `CKParameterOperation`；Virtools 根据 operation GUID 和精确的 result/input type tuple 选择函数，并在 consumer 读取 result 时惰性求值。每个已声明的 operation input 都必须绑定。后续增量修改仍使用 `Script::Apply()`。激活请求在下一个 Behavior safe point 应用，并排在待处理 Patch reconcile 之后。即使 Script 已经 active，传入 `true` 仍会明确请求 Virtools reset 语义。
 
 Script 关闭也在 safe point 完成：首次 `Close()` 可能返回 `CloseState::Closing`；完成 deactivate、从 owner 移除和 native destruction 后，再次调用返回 `Closed`。应先关闭 Script，再销毁 owner；Mod unload 和 world reset 会自动执行相同的退役流程。
 
@@ -244,17 +247,44 @@ Script 关闭也在 safe point 完成：首次 `Close()` 可能返回 `CloseStat
 ```cpp
 Edit edit;
 auto root = edit.Root();
+auto dispatch = root.Require(
+    NodePattern("Switch On Message")
+        .Kind(BehaviorKind::Function)
+        .Ins(2).Outs(11).Pins(11).Pouts(0));
+auto checkpoint = root.Require(
+    NodePattern("Wait Message").Pin(
+        0, Value::As(CKPGUID_MESSAGE, checkpointMessage)));
 auto highscoreNode = root.Require("Highscore");
 auto highscore = highscoreNode.Graph();
 
 auto done = highscore.AppendOut("Done");
-auto activator = highscore.Require(Named("Activate Script", 0));
-highscore.Flow(activator.Out(), done);
+auto activators = highscore.Each("Activate Script");
+highscore.Flow(activators.Out(), done);
 root.After(highscoreNode.Out("Done"), hook);
 ```
 
-`Edit::Graph` 承载所有 graph-local operation，`Edit::Node::Graph()` 进入一个
-graph-backed Node。父 graph 只能连接 child 的 public port；不同 scope 的
+`NodePattern` 是 `Require` 使用的 durable 结构词汇。它可以组合 index/name
+selector、Prototype、Behavior kind、各类 port 的精确数量，以及对 Target、Pin、
+Pout、Setting 或 Local 值的 non-forcing 观察。所有条件共同标识一个 Node；找
+不到或结果不唯一时，Plan 保持 unsatisfied，不会猜测。Pattern 不保存 native
+identity，也不接受作者 predicate，因此 Script 在另一个 world 出现时，Plan
+可以用同一份 Edit 重新解析。只有已经通过廉价结构条件的候选 Node 才会读取值。
+
+`Require(pattern)` 必须唯一选中一个 Node。`Each(pattern)` 选择非空 Node 集合，
+按原生 child index 顺序对其 `Ports` 重复 operation；它不是作者 callback，也不
+保留可执行 predicate。`Next`、`Previous` 取得一条 control Link 另一端的 Node；
+可选的 `NodePattern` 会先过滤相连 Node，再要求 relation 唯一，因而可以准确表达
+合法的 fan-out。`Leaving`、`Entering` 和 `To` 按 topology 标识 Link。Plan 每次
+安装时都会从 logical graph 重新解析这些 relation，调用者无需缓存 snapshot 或
+slot index。`Redirect(incoming, leaving)` 会把第一条 Link 送到第二条 Link 当前的
+destination，可直接表达绕过一个 Block。Redirect 本身是作者期望的 topology，
+所以仍出现在 Logical view 中；隐藏的只是实现它的物理 Link chain infrastructure。
+
+`Edit` 拥有 transformation program，`Edit::Graph` 是唯一公开的 authoring
+interface。`Edit::Root()` 返回 root scope，`Edit::Node::Graph()` 进入一个
+graph-backed Node；`Edit` 本身不再镜像 graph-local operation。graph scope
+是可低成本复制的值，修改操作也返回值，因此从 `Root()` 临时值开始的链式调用可以
+安全保存。所有 scope 和 symbol 的生命周期都受所属 Edit 限制。父 graph 只能连接 child 的 public port；不同 scope 的
 internal port 不能直接相连。`AddGraph(name, priority)` 创建真实的 graph-backed
 child，其 nested scope 在同一个 transaction 中定义 public interface 与内部
 body。root 和所有 nested scope 一起验证，恢复顺序固定为 child 在前、parent 在后。
@@ -278,6 +308,8 @@ identity，以及 Edit 或 Block 中的所有 non-null ObjectRef。
 - `Tap` / `Before` / `After`：安装 callback；
 - `Splice`：让现有 Link 经过新增 Block；
 - `Redirect`：暂时改变 Link destination；
+- `Next` / `Previous` 与 `Leaving` / `Entering` / `To`：描述 durable topology；
+- `Each`：对 Pattern 匹配的所有 Node 应用同一个 operation；
 - `AppendIn/Out/Pin/Pout`：扩展 dynamic interface；
 - `AppendLocal`：用于 graph root 或同一 Edit 新增的 Block。Local 属于其实现，
   Edit 不能向借用的既有 Node 添加 Local；
@@ -362,7 +394,7 @@ options.FontIndex = 2;
 
 auto made = Blocks::Text2D::Make(m_Behavior, options);
 if (made) {
-    auto text = std::move(made).Value().SpawnIn(graph);
+    auto text = made.Take().SpawnIn(graph);
 }
 ```
 

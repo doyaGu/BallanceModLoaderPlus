@@ -22,6 +22,7 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 | `Frames` | Copied control-flow results and optional Pout values from native Execute |
 | `Script` | One owner-scoped, top-level graph-backed `CKBehavior` |
 | `Graph` | An immutable snapshot of a Behavior graph |
+| `NodePattern` | A durable structural description resolved within one graph scope |
 | `Edit` | A symbolic graph transformation that has not been installed |
 | `Patch` | An Edit installed on one exact graph snapshot |
 | `Plan` | An Edit reconciled against selected scripts across worlds |
@@ -40,10 +41,12 @@ if (!opened) {
                        opened.GetStatus().Message.c_str());
     return;
 }
-m_Behavior = std::move(opened).Value();
+m_Behavior = opened.Take();
 ```
 
 The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Scripts, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.
+
+`Result<T>::Value()` borrows from a named Result; a temporary Result may return a copyable value directly. Use `Take()` when ownership of a move-only domain object leaves a successful Result. `Take()` clears the stored value, while keeping `Code()` and `GetStatus()` available for diagnostics.
 
 Objects created through a Session retain their own Session lease. Moving or closing the original `Session` value does not immediately invalidate a live Block, run, Script, Watch, Patch, or Plan.
 
@@ -229,13 +232,13 @@ graph.Bind(left, 2.0f)
 auto created = m_Behavior.CreateScript(owner, "My Script", body);
 if (!created)
     return;
-Script script = std::move(created).Value();
+Script script = created.Take();
 script.Activate(true);
 ```
 
 `CreateScript` performs the one native `AddScript` operation that establishes both owner and Scene membership. It then compiles and applies the complete Edit. A validation, lifecycle, callback, or graph failure returns no Script handle, removes the unpublished root, and publishes nothing to Plans. The installed body belongs to the Script rather than to a second public Patch handle.
 
-`Edit::Graph()` denotes the symbolic root of the graph being authored; the snapshot root must not be imported with `Use()` for this purpose. The root may own In, Out, Pin, Pout, and Local parameters. `AddOperation` adds a real graph-owned `CKParameterOperation`; Virtools selects its function from the operation GUID and the exact result/input type tuple, and evaluates its result lazily when a consumer reads it. Every declared operation input must be bound. `Script::Apply()` remains available for later incremental edits. An accepted activation request is applied at the next Behavior safe point, after pending Patches have reconciled. Passing `true` requests Virtools reset semantics even if the Script is already active.
+`Edit::Root()` returns the symbolic root scope of the graph being authored; the snapshot root must not be imported with `Use()` for this purpose. The root may own In, Out, Pin, Pout, and Local parameters. `AddOperation` adds a real graph-owned `CKParameterOperation`; Virtools selects its function from the operation GUID and the exact result/input type tuple, and evaluates its result lazily when a consumer reads it. Every declared operation input must be bound. `Script::Apply()` remains available for later incremental edits. An accepted activation request is applied at the next Behavior safe point, after pending Patches have reconciled. Passing `true` requests Virtools reset semantics even if the Script is already active.
 
 Script closure is also completed at a safe point: `Close()` can first return `CloseState::Closing`, and a later call returns `Closed` after deactivation, owner removal, and native destruction. Close the Script before destroying its owner; Mod unload and world reset perform the same retirement automatically.
 
@@ -246,17 +249,51 @@ Script closure is also completed at a safe point: `Close()` can first return `Cl
 ```cpp
 Edit edit;
 auto root = edit.Root();
+auto dispatch = root.Require(
+    NodePattern("Switch On Message")
+        .Kind(BehaviorKind::Function)
+        .Ins(2).Outs(11).Pins(11).Pouts(0));
+auto checkpoint = root.Require(
+    NodePattern("Wait Message").Pin(
+        0, Value::As(CKPGUID_MESSAGE, checkpointMessage)));
 auto highscoreNode = root.Require("Highscore");
 auto highscore = highscoreNode.Graph();
 
 auto done = highscore.AppendOut("Done");
-auto activator = highscore.Require(Named("Activate Script", 0));
-highscore.Flow(activator.Out(), done);
+auto activators = highscore.Each("Activate Script");
+highscore.Flow(activators.Out(), done);
 root.After(highscoreNode.Out("Done"), hook);
 ```
 
-`Edit::Graph` carries all graph-local operations. `Edit::Node::Graph()` enters a
-graph-backed Node. A parent graph may connect only the child's public ports;
+`NodePattern` is the durable structural vocabulary used by `Require`. It can
+combine an index/name selector, Prototype, Behavior kind, exact counts for each
+port family, and non-forcing observations of Target, Pin, Pout, Setting, or
+Local values. All conditions identify one Node together; an absent or ambiguous
+match leaves a Plan unsatisfied. Patterns contain no native identity and no
+author predicate, so the Plan can resolve the same Edit again when its Script
+appears in another world. Value reads are performed only for candidates that
+already satisfy the cheaper structural conditions.
+
+`Require(pattern)` selects exactly one Node. `Each(pattern)` selects a non-empty
+set and repeats operations on its `Ports` in native child-index order; it is not
+an author callback and retains no executable predicate. `Next` and `Previous`
+name the Node at the other end of one control Link. Their optional
+`NodePattern` filters the connected Nodes before requiring a unique relation,
+which is useful for outputs that legitimately fan out. `Leaving`, `Entering`,
+and `To` name Links by topology. These relations are resolved again from the
+logical graph whenever a Plan installs, so callers do not cache a snapshot or a
+slot index. `Redirect(incoming, leaving)` sends the first Link to the current
+destination of the second and is the direct way to bypass a Block. A Redirect
+is the author's intended topology and therefore remains visible in the Logical
+view; only its physical Link-chain infrastructure is hidden.
+
+`Edit` owns the transformation program, while `Edit::Graph` is its sole public
+authoring interface. `Edit::Root()` returns the root scope and
+`Edit::Node::Graph()` enters a graph-backed Node; `Edit` itself does not mirror
+the graph-local operations. A graph scope is a cheap value. Mutating operations
+return another value, so a chain beginning with the temporary returned by
+`Root()` can be retained safely. Every scope and symbol remains valid only while
+its Edit exists. A parent graph may connect only the child's public ports;
 internal ports from different scopes cannot be connected. `AddGraph(name,
 priority)` creates a real graph-backed child, and the nested scope defines its
 public interface and body in the same transaction. The root and every nested
@@ -283,6 +320,8 @@ Common transformations are:
 - `Tap` / `Before` / `After` for callbacks;
 - `Splice` for routing an existing Link through a Block;
 - `Redirect` for temporarily changing a Link destination;
+- `Next` / `Previous` and `Leaving` / `Entering` / `To` for durable topology;
+- `Each` for applying one operation to every Node matching a Pattern;
 - `AppendIn/Out/Pin/Pout` for dynamic interfaces;
 - `AppendLocal` for the graph root or a Block added by the same Edit. A Local
   belongs to its implementation, so an Edit cannot add one to a borrowed Node;
@@ -378,7 +417,7 @@ options.FontIndex = 2;
 
 auto made = Blocks::Text2D::Make(m_Behavior, options);
 if (made) {
-    auto text = std::move(made).Value().SpawnIn(graph);
+    auto text = made.Take().SpawnIn(graph);
 }
 ```
 
