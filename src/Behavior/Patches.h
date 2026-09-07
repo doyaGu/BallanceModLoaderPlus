@@ -118,23 +118,38 @@ private:
         Blocked,
     };
 
+    enum class PlanGoal {
+        Enabled,
+        Disabled,
+        Closed,
+    };
+
+    enum class PlanRecovery {
+        None,
+        PreviousRules,
+        Blocked,
+    };
+
     struct OwnedPlan {
+        struct MaintainedRule {
+            Rule Definition;
+            PlanId Id = 0;
+        };
+
         PlanId Id = 0;
         SessionOwner Owner;
         std::shared_ptr<CallbackAdmission> Admission;
         std::string Name;
-        bool DesiredActive = true;
-        bool Retiring = false;
-        bool Failed = false;
-        bool ReturningPrevious = false;
+        PlanGoal Goal = PlanGoal::Enabled;
+        PlanRecovery Recovery = PlanRecovery::None;
         std::uint64_t Revision = 1;
         Status LastStatus;
-        Status ChangeFault;
-        std::vector<Rule> Definition;
-        std::vector<Rule> LiveDefinition;
-        std::vector<Rule> PreviousDefinition;
-        std::optional<std::size_t> ChangeFrom;
-        std::vector<PlanId> Rules;
+        Status PrimaryFailure;
+        Status RecoveryFailure;
+        std::vector<Rule> RequestedRules;
+        std::vector<Rule> PreviousRules;
+        std::optional<std::size_t> RestoreFrom;
+        std::vector<MaintainedRule> Rules;
     };
 
     struct OwnedPatch {
@@ -211,6 +226,10 @@ private:
     Status DeactivateFrom(Plans &plans, OwnedPlan &plan,
                           std::size_t rule);
     Status ReconcilePlan(Plans &plans, OwnedPlan &plan);
+    [[nodiscard]] static std::size_t CommonRulePrefix(
+        const OwnedPlan &plan, const std::vector<Rule> &rules);
+    [[nodiscard]] static std::vector<Rule> CurrentRules(
+        const OwnedPlan &plan);
     [[nodiscard]] PlanState State(Plans &plans,
                                   const OwnedPlan &plan) const;
     [[nodiscard]] PatchState State(const OwnedPatch &patch) const;

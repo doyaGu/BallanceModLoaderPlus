@@ -39,15 +39,6 @@ bool SameRule(const Patches::Rule &left,
         left.Body && right.Body && left.Body->SameAs(*right.Body);
 }
 
-std::size_t CommonPrefix(const std::vector<Patches::Rule> &left,
-                         const std::vector<Patches::Rule> &right) noexcept {
-    const std::size_t count = (std::min)(left.size(), right.size());
-    std::size_t prefix = 0;
-    while (prefix < count && SameRule(left[prefix], right[prefix]))
-        ++prefix;
-    return prefix;
-}
-
 } // namespace
 
 Patches::Patches(CKContext *context, Runtime &runtime,
@@ -478,11 +469,17 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
     plan.Owner = owner;
     plan.Admission = RegisterAdmission(true, id, owner);
     plan.Name = std::move(name);
-    plan.Definition = std::move(rules);
+    plan.RequestedRules = std::move(rules);
     status = Activate(plans, plan);
     plan.LastStatus = status;
-    if (!status && plan.Rules.empty())
-        return status;
+    if (!status) {
+        plan.Admission->Close();
+        plan.Goal = PlanGoal::Closed;
+        plan.PrimaryFailure = status;
+        plan.RestoreFrom = 0;
+        if (plan.Rules.empty())
+            return status;
+    }
     try {
         m_Plans.emplace(id, std::move(plan));
     } catch (...) {
@@ -490,16 +487,14 @@ Status Patches::Submit(Plans &plans, const SessionOwner &owner,
         return Failure(Error::CreateFailed,
                        "The Loader could not retain the Behavior Plan.");
     }
-    out = id;
+    if (status)
+        out = id;
     return status;
 }
 
 Status Patches::Activate(Plans &plans, OwnedPlan &plan) {
-    Status status = ActivateFrom(
-        plans, plan, plan.Definition, plan.Rules.size());
-    if (status)
-        plan.LiveDefinition = plan.Definition;
-    return status;
+    return ActivateFrom(
+        plans, plan, plan.RequestedRules, plan.Rules.size());
 }
 
 Status Patches::ActivateFrom(Plans &plans, OwnedPlan &plan,
@@ -508,34 +503,35 @@ Status Patches::ActivateFrom(Plans &plans, OwnedPlan &plan,
     if (firstRule > definition.size() || plan.Rules.size() != firstRule)
         return Failure(Error::InvalidState,
                        "A Behavior Plan replacement prefix is invalid.");
-    std::vector<PlanId> installed;
     Status status;
+    const std::size_t originalSize = plan.Rules.size();
     try {
-        installed.reserve(definition.size() - firstRule);
+        plan.Rules.reserve(definition.size());
         for (std::size_t index = firstRule; index < definition.size(); ++index) {
             const Rule &rule = definition[index];
+            OwnedPlan::MaintainedRule maintained{rule, 0};
             auto world = std::make_shared<PlanWorld>(
                 *this, plan.Owner, PatchKey{plan.Owner.Id, plan.Name},
                 rule.Body, plan.Admission);
-            PlanId id = 0;
             status = plans.Submit(
                 {plan.Owner.Id, plan.Name + "/" + std::to_string(plan.Id) +
                                       "/" + std::to_string(index)},
-                plan.Owner.Generation, rule.Scripts, std::move(world), id);
+                plan.Owner.Generation, rule.Scripts, std::move(world),
+                maintained.Id);
             if (!status)
                 break;
-            installed.push_back(id);
+            plan.Rules.push_back(std::move(maintained));
         }
     } catch (...) {
         status = Failure(Error::CreateFailed,
                          "The Loader could not retain the Behavior Plan rules.");
     }
     if (!status) {
-        for (auto id = installed.rbegin(); id != installed.rend(); ++id)
-            (void) plans.Close(*id);
+        Status cleanup = DeactivateFrom(plans, plan, originalSize);
+        if (!cleanup)
+            plan.RecoveryFailure = cleanup;
         return status;
     }
-    plan.Rules.insert(plan.Rules.end(), installed.begin(), installed.end());
     return {};
 }
 
@@ -549,94 +545,114 @@ Status Patches::DeactivateFrom(Plans &plans, OwnedPlan &plan,
         return Failure(Error::InvalidState,
                        "A Behavior Plan replacement prefix is invalid.");
     while (plan.Rules.size() > firstRule) {
-        Status status = plans.Close(plan.Rules.back());
+        Status status = plans.Close(plan.Rules.back().Id);
         if (!status)
             return status;
         plan.Rules.pop_back();
-        if (plan.LiveDefinition.size() > plan.Rules.size())
-            plan.LiveDefinition.pop_back();
     }
     return {};
 }
 
+std::size_t Patches::CommonRulePrefix(
+    const OwnedPlan &plan, const std::vector<Rule> &rules) {
+    const std::size_t count = (std::min)(plan.Rules.size(), rules.size());
+    std::size_t prefix = 0;
+    while (prefix < count &&
+           SameRule(plan.Rules[prefix].Definition, rules[prefix]))
+        ++prefix;
+    return prefix;
+}
+
+std::vector<Patches::Rule> Patches::CurrentRules(const OwnedPlan &plan) {
+    std::vector<Rule> rules;
+    rules.reserve(plan.Rules.size());
+    for (const OwnedPlan::MaintainedRule &rule : plan.Rules)
+        rules.push_back(rule.Definition);
+    return rules;
+}
+
 Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
     if (!plan.Owner || !plan.Admission->IsOpen()) {
-        plan.Retiring = true;
-        plan.DesiredActive = false;
+        plan.Goal = PlanGoal::Closed;
     }
-    if (plan.Retiring || !plan.DesiredActive) {
+    if (plan.Goal != PlanGoal::Enabled) {
         Status status = Deactivate(plans, plan);
         if (status) {
-            plan.LiveDefinition.clear();
-            plan.PreviousDefinition.clear();
-            plan.ChangeFrom.reset();
-            plan.ChangeFault = {};
-            plan.Failed = false;
-            plan.ReturningPrevious = false;
+            plan.PreviousRules.clear();
+            plan.RestoreFrom.reset();
+            plan.PrimaryFailure = {};
+            plan.RecoveryFailure = {};
+            plan.Recovery = PlanRecovery::None;
+        } else {
+            plan.RecoveryFailure = status;
         }
         plan.LastStatus = status;
         return status;
     }
-    if (plan.Failed)
+    if (plan.Recovery == PlanRecovery::Blocked)
         return plan.LastStatus;
 
-    if (plan.ChangeFrom) {
-        Status status = DeactivateFrom(plans, plan, *plan.ChangeFrom);
+    if (plan.RestoreFrom) {
+        Status status = DeactivateFrom(plans, plan, *plan.RestoreFrom);
         if (!status) {
+            plan.RecoveryFailure = status;
             plan.LastStatus = status;
             return status;
         }
-        plan.ChangeFrom.reset();
-        if (!plan.ChangeFault && !plan.ReturningPrevious) {
-            plan.Failed = true;
-            plan.LastStatus = plan.ChangeFault;
-            return plan.ChangeFault;
+        plan.RecoveryFailure = {};
+        plan.RestoreFrom.reset();
+        if (!plan.PrimaryFailure &&
+            plan.Recovery != PlanRecovery::PreviousRules) {
+            plan.Recovery = PlanRecovery::Blocked;
+            plan.LastStatus = plan.PrimaryFailure;
+            return plan.PrimaryFailure;
         }
     }
 
-    const std::size_t prefix = CommonPrefix(
-        plan.LiveDefinition, plan.Definition);
-    if (prefix < plan.LiveDefinition.size()) {
-        if (plan.PreviousDefinition.empty())
-            plan.PreviousDefinition = plan.LiveDefinition;
-        plan.ChangeFrom = prefix;
+    const std::size_t prefix = CommonRulePrefix(
+        plan, plan.RequestedRules);
+    if (prefix < plan.Rules.size()) {
+        if (plan.PreviousRules.empty())
+            plan.PreviousRules = CurrentRules(plan);
+        plan.RestoreFrom = prefix;
         return ReconcilePlan(plans, plan);
     }
-    if (prefix == plan.Definition.size() &&
-        prefix == plan.LiveDefinition.size()) {
-        plan.Failed = false;
-        plan.PreviousDefinition.clear();
-        plan.ReturningPrevious = false;
+    if (prefix == plan.RequestedRules.size() &&
+        prefix == plan.Rules.size()) {
+        plan.PreviousRules.clear();
+        plan.Recovery = PlanRecovery::None;
         return {};
     }
 
-    const std::vector<Rule> requested = plan.Definition;
+    const std::vector<Rule> requested = plan.RequestedRules;
     const std::uint64_t revision = plan.Revision;
     Status status = ActivateFrom(plans, plan, requested, prefix);
     if (status) {
-        plan.LiveDefinition = requested;
-        plan.Failed = false;
         if (revision == plan.Revision) {
-            plan.PreviousDefinition.clear();
-            if (!plan.ChangeFault) {
-                plan.LastStatus = plan.ChangeFault;
-                Status reported = plan.ChangeFault;
-                plan.ChangeFault = {};
-                plan.ReturningPrevious = false;
+            plan.PreviousRules.clear();
+            plan.RecoveryFailure = {};
+            if (plan.Recovery == PlanRecovery::PreviousRules &&
+                !plan.PrimaryFailure) {
+                plan.LastStatus = plan.PrimaryFailure;
+                Status reported = plan.PrimaryFailure;
+                plan.Recovery = PlanRecovery::None;
                 return reported;
             }
+            plan.PrimaryFailure = {};
+            plan.Recovery = PlanRecovery::None;
             plan.LastStatus = {};
         }
         return {};
     }
 
     const Status requestedFailure = status;
-    if (!plan.PreviousDefinition.empty()) {
-        plan.Definition = std::move(plan.PreviousDefinition);
-        plan.PreviousDefinition.clear();
+    plan.PrimaryFailure = requestedFailure;
+    plan.RestoreFrom = prefix;
+    if (!plan.PreviousRules.empty()) {
+        plan.RequestedRules = std::move(plan.PreviousRules);
+        plan.PreviousRules.clear();
         ++plan.Revision;
-        plan.ChangeFault = requestedFailure;
-        plan.ReturningPrevious = true;
+        plan.Recovery = PlanRecovery::PreviousRules;
         plan.LastStatus = requestedFailure;
         Status fallback = ReconcilePlan(plans, plan);
         if (!fallback && fallback.Code != requestedFailure.Code)
@@ -644,30 +660,31 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
         return requestedFailure;
     }
 
-    plan.ChangeFault = requestedFailure;
-    plan.ReturningPrevious = false;
-    plan.Failed = true;
+    if (plan.Rules.size() == prefix) {
+        plan.RestoreFrom.reset();
+        plan.Recovery = PlanRecovery::Blocked;
+    }
     plan.LastStatus = requestedFailure;
     return requestedFailure;
 }
 
 PlanState Patches::State(Plans &plans, const OwnedPlan &plan) const {
-    if (plan.Retiring || !plan.Admission->IsOpen())
+    if (plan.Goal == PlanGoal::Closed || !plan.Admission->IsOpen())
         return PlanState::Retiring;
-    if (plan.Failed)
+    if (plan.Recovery == PlanRecovery::Blocked)
         return PlanState::Conflicted;
-    if (!plan.DesiredActive && plan.Rules.empty())
+    if (plan.Goal == PlanGoal::Disabled && plan.Rules.empty())
         return PlanState::Disabled;
-    if (!plan.DesiredActive)
+    if (plan.Goal == PlanGoal::Disabled)
         return PlanState::Reconciling;
     if (plan.Rules.empty())
         return PlanState::Reconciling;
     bool active = false;
     bool unsatisfied = false;
     bool reconciling = false;
-    for (PlanId id : plan.Rules) {
+    for (const OwnedPlan::MaintainedRule &rule : plan.Rules) {
         PlanInfo info;
-        if (!plans.Read(id, info))
+        if (!plans.Read(rule.Id, info))
             return PlanState::Conflicted;
         switch (info.State) {
         case PlanState::Conflicted: return PlanState::Conflicted;
@@ -679,10 +696,10 @@ PlanState Patches::State(Plans &plans, const OwnedPlan &plan) const {
         case PlanState::Disabled: unsatisfied = true; break;
         }
     }
-    const bool definitionPending = plan.ChangeFrom ||
-        plan.Rules.size() != plan.Definition.size() ||
-        CommonPrefix(plan.LiveDefinition, plan.Definition) !=
-            plan.Definition.size();
+    const bool definitionPending = plan.RestoreFrom ||
+        plan.Rules.size() != plan.RequestedRules.size() ||
+        CommonRulePrefix(plan, plan.RequestedRules) !=
+            plan.RequestedRules.size();
     if (active && (unsatisfied || reconciling || definitionPending))
         return PlanState::Partial;
     if (active)
@@ -703,10 +720,13 @@ Status Patches::ReadPlan(Plans &plans, const SessionOwner &owner,
     out = {};
     out.State = State(plans, found->second);
     out.World = plans.WorldEpoch();
-    out.Diagnostic = found->second.LastStatus;
-    for (PlanId rule : found->second.Rules) {
+    const OwnedPlan &plan = found->second;
+    out.Diagnostic = !plan.RecoveryFailure
+        ? plan.RecoveryFailure
+        : (!plan.LastStatus ? plan.LastStatus : plan.PrimaryFailure);
+    for (const OwnedPlan::MaintainedRule &rule : plan.Rules) {
         PlanInfo info;
-        Status status = plans.Read(rule, info);
+        Status status = plans.Read(rule.Id, info);
         if (!status) {
             if (out.Diagnostic)
                 out.Diagnostic = status;
@@ -729,17 +749,21 @@ Status Patches::SetPlanActive(Plans &plans, const SessionOwner &owner,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan handle is stale.");
     OwnedPlan &plan = found->second;
-    if (plan.Retiring || !plan.Admission->IsOpen())
+    if (plan.Goal == PlanGoal::Closed || !plan.Admission->IsOpen())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Plan cannot be enabled.");
-    plan.DesiredActive = active;
+    const PlanGoal goal = active ? PlanGoal::Enabled : PlanGoal::Disabled;
+    if (plan.Goal == goal && plan.Recovery == PlanRecovery::None &&
+        !plan.RestoreFrom && plan.LastStatus)
+        return {};
+    plan.Goal = goal;
     ++plan.Revision;
-    plan.Failed = false;
-    plan.ReturningPrevious = false;
-    plan.ChangeFault = {};
+    plan.Recovery = PlanRecovery::None;
+    plan.PrimaryFailure = {};
+    plan.RecoveryFailure = {};
     plan.LastStatus = {};
     if (!active)
-        plan.ChangeFrom = 0;
+        plan.RestoreFrom = 0;
     Status status = m_Edit.CanPublish()
         ? ReconcilePlan(plans, plan) : Status{};
     plan.LastStatus = status;
@@ -779,25 +803,25 @@ Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan handle is stale.");
     OwnedPlan &plan = found->second;
-    if (plan.Retiring || !plan.Admission->IsOpen())
+    if (plan.Goal == PlanGoal::Closed || !plan.Admission->IsOpen())
         return Failure(Error::InvalidState,
                        "A retiring Behavior Plan cannot be replaced.");
-    if (plan.DesiredActive && plan.PreviousDefinition.empty())
-        plan.PreviousDefinition = plan.LiveDefinition;
-    plan.Definition = std::move(rules);
+    if (plan.Goal == PlanGoal::Enabled && plan.PreviousRules.empty())
+        plan.PreviousRules = CurrentRules(plan);
+    plan.RequestedRules = std::move(rules);
     ++plan.Revision;
-    plan.Failed = false;
-    plan.ReturningPrevious = false;
-    plan.ChangeFault = {};
+    plan.Recovery = PlanRecovery::None;
+    plan.PrimaryFailure = {};
+    plan.RecoveryFailure = {};
     plan.LastStatus = {};
-    const std::size_t prefix = CommonPrefix(
-        plan.LiveDefinition, plan.Definition);
-    if (prefix < plan.LiveDefinition.size()) {
-        plan.ChangeFrom = plan.ChangeFrom
-            ? (std::min)(*plan.ChangeFrom, prefix) : prefix;
+    const std::size_t prefix = CommonRulePrefix(
+        plan, plan.RequestedRules);
+    if (prefix < plan.Rules.size()) {
+        plan.RestoreFrom = plan.RestoreFrom
+            ? (std::min)(*plan.RestoreFrom, prefix) : prefix;
     }
-    if (!plan.DesiredActive) {
-        plan.PreviousDefinition.clear();
+    if (plan.Goal == PlanGoal::Disabled) {
+        plan.PreviousRules.clear();
         return {};
     }
     Status status = m_Edit.CanPublish()
@@ -821,10 +845,9 @@ Status Patches::ClosePlan(Plans &plans, const SessionOwner &owner,
         found->second.Owner.Generation != owner.Generation)
         return Failure(Error::OwnerInvalid,
                        "The Behavior Plan belongs to another Mod generation.");
-    found->second.Retiring = true;
-    found->second.DesiredActive = false;
+    found->second.Goal = PlanGoal::Closed;
     ++found->second.Revision;
-    found->second.ChangeFrom = 0;
+    found->second.RestoreFrom = 0;
     // Closing admission is thread-safe, but Plans owns the rule records that
     // must be retired. Touch those records only at a CK edit safe point; this
     // also keeps the lock order between Plans and Patches consistent.
@@ -1626,7 +1649,8 @@ void Patches::ProcessFrame(Plans &plans) {
     for (auto plan = m_Plans.begin(); plan != m_Plans.end();) {
         Status status = ReconcilePlan(plans, plan->second);
         plan->second.LastStatus = status;
-        if (plan->second.Retiring && plan->second.Rules.empty()) {
+        if (plan->second.Goal == PlanGoal::Closed &&
+            plan->second.Rules.empty()) {
             plan = m_Plans.erase(plan);
             continue;
         }
