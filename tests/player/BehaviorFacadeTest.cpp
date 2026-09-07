@@ -167,8 +167,14 @@ public:
     }
 
     void OnUnload() override {
+        if (auto setter = reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
+                ::GetProcAddress(
+                    ::GetModuleHandleA("BehaviorLifecycleFixture.dll"),
+                    "BMLLifecycleFixtureSetEditedHook")))
+            setter(nullptr, nullptr);
         (void) m_Plan.Close();
         (void) m_SelfPlan.Close();
+        (void) m_InstallClosePlan.Close();
         (void) m_Patch.Close();
         (void) m_ReplacementPatch.Close();
         (void) m_RemovalPatch.Close();
@@ -931,6 +937,69 @@ private:
         return state.CloseCode == BML_OK && !enabled && *calls == 0;
     }
 
+    bool BeginPlanCloseDuringInstall() {
+        auto setter = reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
+            ::GetProcAddress(::GetModuleHandleA("BehaviorLifecycleFixture.dll"),
+                             "BMLLifecycleFixtureSetEditedHook"));
+        if (!setter || !m_Graph)
+            return false;
+
+        m_PlanInstallBlocks = m_Graph->GetSubBehaviorCount();
+        m_PlanInstallLinks = m_Graph->GetSubBehaviorLinkCount();
+        setter([](CKBehavior *, void *argument) {
+            auto &self = *static_cast<BehaviorFacadeTest *>(argument);
+            if (self.m_PlanInstallEntered)
+                return CK_OK;
+            self.m_PlanInstallEntered = true;
+            const auto closed = self.m_InstallClosePlan.Close();
+            self.m_PlanInstallClosing = closed &&
+                closed.Value() == BML::Behavior::CloseState::Closing;
+            return CK_OK;
+        }, this);
+
+        BML::Behavior::Edit edit;
+        (void) edit.Root().Add(
+            m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
+        const auto source = edit.Root().Require(kSourceName);
+        edit.Root().Tap(source.Out(0), Hook([this] {
+            ++m_PlanInstallHookCalls;
+        }));
+        auto submitted = m_Session.Plan(
+            "player-close-during-install",
+            BML::Behavior::Scripts::One(kScriptName), edit);
+        if (!submitted) {
+            setter(nullptr, nullptr);
+            return false;
+        }
+        m_InstallClosePlan = submitted.Take();
+        m_WaitUntil = m_Frame + 30;
+        return true;
+    }
+
+    bool PlanCloseDuringInstallFinished() {
+        if (!m_PlanInstallEntered)
+            return false;
+        auto setter = reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
+            ::GetProcAddress(::GetModuleHandleA("BehaviorLifecycleFixture.dll"),
+                             "BMLLifecycleFixtureSetEditedHook"));
+        if (setter)
+            setter(nullptr, nullptr);
+        if (!m_PlanInstallClosing || m_PlanInstallHookCalls != 0 ||
+            !m_Graph ||
+            m_Graph->GetSubBehaviorCount() != m_PlanInstallBlocks ||
+            m_Graph->GetSubBehaviorLinkCount() != m_PlanInstallLinks)
+            return false;
+        const auto closed = m_InstallClosePlan.Close();
+        const bool retired = closed &&
+            closed.Value() == BML::Behavior::CloseState::Closed &&
+            !m_InstallClosePlan;
+        if (retired) {
+            GetLogger()->Info(
+                "Behavior plan install close: closing=true hooks=0 restored=true retired=true");
+        }
+        return retired;
+    }
+
     void SubmitSessionClose() {
         auto opened = BML::Behavior::Session::Open();
         if (!opened) {
@@ -1055,7 +1124,25 @@ private:
                 if (m_Frame > m_WaitUntil) Finish(false, "close-race-restore");
                 return;
             }
+            if (!BeginPlanCloseDuringInstall()) {
+                Finish(false, "plan-install-close-setup");
+                return;
+            }
             m_CloseRaceStage = 3;
+            return;
+        }
+        if (m_CloseRaceStage == 3) {
+            if (!m_PlanInstallEntered) {
+                if (m_Frame > m_WaitUntil)
+                    Finish(false, "plan-install-close-callback");
+                return;
+            }
+            if (!PlanCloseDuringInstallFinished()) {
+                if (m_Frame > m_WaitUntil)
+                    Finish(false, "plan-install-close-restore");
+                return;
+            }
+            m_CloseRaceStage = 4;
         }
         if (!FailedLiveSettings()) {
             Finish(false, "live-settings-failure");
@@ -2748,6 +2835,11 @@ private:
             return;
         m_Done = true;
         if (!passed) {
+            if (auto setter = reinterpret_cast<
+                    BMLLifecycleFixtureSetEditedHookFn>(::GetProcAddress(
+                        ::GetModuleHandleA("BehaviorLifecycleFixture.dll"),
+                        "BMLLifecycleFixtureSetEditedHook")))
+                setter(nullptr, nullptr);
             (void) m_Patch.Close();
             (void) m_IdentityPatch.Close();
             (void) m_ReplacementPatch.Close();
@@ -2758,6 +2850,7 @@ private:
                 (void) m_Parked->Close();
             (void) m_Plan.Close();
             (void) m_SelfPlan.Close();
+            (void) m_InstallClosePlan.Close();
             DestroyGraph();
         }
         GetLogger()->Info(
@@ -2842,10 +2935,16 @@ private:
     BML::Behavior::Plan m_RetirementPlan;
     BML::Behavior::Plan m_RetirementWaitingPlan;
     BML::Behavior::Plan m_RetirementPeerPlan;
+    BML::Behavior::Plan m_InstallClosePlan;
     BML::Behavior::Patch m_RetirementPatch;
     std::shared_ptr<std::uint32_t> m_RetirementCalls =
         std::make_shared<std::uint32_t>(0);
     int m_SessionCloseCode = BML_ERROR_FAIL;
+    bool m_PlanInstallEntered = false;
+    bool m_PlanInstallClosing = false;
+    int m_PlanInstallHookCalls = 0;
+    int m_PlanInstallBlocks = 0;
+    int m_PlanInstallLinks = 0;
     BML::Behavior::Script m_AuthoredScript;
     BML::Behavior::Plan m_Plan;
     BML::Behavior::Plan m_SelfPlan;

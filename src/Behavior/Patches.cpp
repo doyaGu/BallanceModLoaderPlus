@@ -286,10 +286,10 @@ Status Patches::Apply(
         }
     }
 
-    if (!owner) {
+    if (!owner || !patch.Admission->IsOpen()) {
         CloseAdmission(patch);
         status = Failure(Error::InvalidState,
-                         "The Behavior Session closed while the Patch was opening.");
+                         "Behavior Patch admission closed while installing.");
     }
 
     // A failed opening never produced an author-owned handle. Keep any
