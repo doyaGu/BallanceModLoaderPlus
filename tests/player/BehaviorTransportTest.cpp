@@ -1058,7 +1058,7 @@ private:
         auto inspected = m_CppSession.Inspect(root);
         if (!inspected)
             return false;
-        BML::Behavior::Graph graph = std::move(inspected).Value();
+        BML::Behavior::Graph graph = inspected.Take();
         // Gameplay.nmo contributes 53 nodes and 60 links. The live graph is
         // intentionally extensible: BML and other loaded mods may append nodes
         // after the file has been loaded, so the disk image is a baseline rather
@@ -1130,7 +1130,7 @@ private:
                 inspected.GetStatus().Message.c_str());
             return false;
         }
-        BML::Behavior::Graph graph = std::move(inspected).Value();
+        BML::Behavior::Graph graph = inspected.Take();
         const auto rootMatch = graph.Find("__BML_BehaviorTransport_Graph");
         const BML::Behavior::Node rootNode = rootMatch
             ? rootMatch.Value() : BML::Behavior::Node{};
@@ -1260,9 +1260,9 @@ private:
                 static_cast<unsigned>(layoutWatch.GetStatus().Error));
             return false;
         }
-        m_CppWatch.emplace(std::move(watched).Value());
-        m_CppFailedWatch.emplace(std::move(failedWatch).Value());
-        m_CppLayoutWatch.emplace(std::move(layoutWatch).Value());
+        m_CppWatch.emplace(watched.Take());
+        m_CppFailedWatch.emplace(failedWatch.Take());
+        m_CppLayoutWatch.emplace(layoutWatch.Take());
         m_GraphShapePassed = true;
         return true;
     }
@@ -1338,7 +1338,7 @@ private:
         auto opened = BML::Behavior::Session::Open();
         if (!opened)
             return false;
-        m_CppSession = std::move(opened).Value();
+        m_CppSession = opened.Take();
         if (!InspectGameplayGraph())
             return false;
         const BML::Behavior::Prototype prototype(
@@ -1352,7 +1352,7 @@ private:
         auto called = plain.Call("Run", BML::Behavior::Signals(4).Pouts());
         if (!called)
             return false;
-        BML::Behavior::Call call = std::move(called).Value();
+        BML::Behavior::Call call = called.Take();
         auto callInfo = call.Info();
         if (!callInfo || callInfo->Detached !=
                 BML::Behavior::DetachedSupport::Unverified)
@@ -1377,7 +1377,7 @@ private:
                 source.Code(), bound.Code());
             return false;
         }
-        BML::Behavior::Instance boundInstance = std::move(bound).Value();
+        BML::Behavior::Instance boundInstance = bound.Take();
         auto boundLayout = boundInstance.Layout();
         const BML::Behavior::Slot *boundPin = boundLayout
             ? boundLayout->Find(
@@ -1430,9 +1430,9 @@ private:
         if (!sharedSource || !sharedTarget)
             return false;
         BML::Behavior::Instance sharedSourceInstance =
-            std::move(sharedSource).Value();
+            sharedSource.Take();
         BML::Behavior::Instance sharedTargetInstance =
-            std::move(sharedTarget).Value();
+            sharedTarget.Take();
         auto sharedSourceGraph = sharedSourceInstance.Inspect();
         auto sharedTargetLayout = sharedTargetInstance.Layout();
         const BML::Behavior::Slot *sharedTargetPin = sharedTargetLayout
@@ -1478,17 +1478,17 @@ private:
         auto started = retryBlock.Start(BML::Behavior::Unique("Run"));
         if (!started)
             return false;
-        m_CppStart.emplace(std::move(started).Value());
+        m_CppStart.emplace(started.Take());
 
         auto pending = retryBlock.Call(BML::Behavior::Unique("Run"));
         if (!pending)
             return false;
-        m_CppCall.emplace(std::move(pending).Value());
+        m_CppCall.emplace(pending.Take());
 
         auto spawned = plain.Spawn(BML::Behavior::Signals(4).Pouts());
         if (!spawned)
             return false;
-        m_CppInstance.emplace(std::move(spawned).Value());
+        m_CppInstance.emplace(spawned.Take());
         auto admission = m_CppInstance->Pulse("Run");
         if (!admission ||
             admission.Value() != BML::Behavior::PulseResult::Ran)
@@ -1507,7 +1507,7 @@ private:
                 dynamic.GetStatus().Message.c_str());
             return false;
         }
-        BML::Behavior::Instance dynamicInstance = std::move(dynamic).Value();
+        BML::Behavior::Instance dynamicInstance = dynamic.Take();
         auto before = dynamicInstance.Layout();
         const BML::Behavior::Slot *oldNumber = before
             ? before->Find(
@@ -1662,7 +1662,7 @@ private:
         if (!mutating)
             return false;
         BML::Behavior::Instance mutatingInstance =
-            std::move(mutating).Value();
+            mutating.Take();
         auto mutationBefore = mutatingInstance.Inspect();
         auto mutationLayoutBefore = mutatingInstance.Layout();
         auto mutationAdmission = mutatingInstance.Pulse("Change Layout");
@@ -1724,7 +1724,7 @@ private:
         auto graphSpawned = graphBlock.Spawn();
         if (!graphSpawned)
             return false;
-        BML::Behavior::Instance graphRun = std::move(graphSpawned).Value();
+        BML::Behavior::Instance graphRun = graphSpawned.Take();
         auto graphLayout = graphRun.Layout();
         auto graph = graphRun.Inspect();
         if (!graphLayout || !graph ||
@@ -1740,7 +1740,7 @@ private:
                   BML::Behavior::Signals(4).Pouts());
         if (!targeted)
             return false;
-        BML::Behavior::Call targetCall = std::move(targeted).Value();
+        BML::Behavior::Call targetCall = targeted.Take();
         auto targetFrames = targetCall.Take();
         const auto targetObject = targetFrames && targetFrames->Size() == 1
             ? (*targetFrames)[0].Pout<BML_ObjectRef>("Target")
@@ -1755,7 +1755,7 @@ private:
         m_CppCall.reset();
         if (!continued)
             return false;
-        m_CppContinued.emplace(std::move(continued).Value());
+        m_CppContinued.emplace(continued.Take());
         auto info = m_CppContinued->Info();
         return info && info.Value().Kind == BML::Behavior::RunKind::Task &&
             info.Value().State == BML::Behavior::RunState::Pending;

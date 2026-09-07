@@ -310,6 +310,7 @@ set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Execution.h
         Behavior/Edit.h
         Behavior/GraphEdit.h
+        Behavior/Pattern.h
         Behavior/Lifecycle.h
         Behavior/Layout.h
         Behavior/FrameStore.h
@@ -338,6 +339,7 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Execution.cpp
         Behavior/Edit.cpp
         Behavior/GraphEdit.cpp
+        Behavior/Pattern.cpp
         Behavior/Lifecycle.cpp
         Behavior/Layout.cpp
         Behavior/FrameStore.cpp

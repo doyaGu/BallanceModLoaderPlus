@@ -20,6 +20,21 @@ namespace {
 
 using namespace BML::Behavior;
 
+template <class T, class = void>
+struct HasDirectRequire : std::false_type {};
+
+template <class T>
+struct HasDirectRequire<T, std::void_t<decltype(
+    std::declval<T &>().Require(std::string_view{}))>> : std::true_type {};
+
+static_assert(!HasDirectRequire<Edit>::value,
+              "Graph-local authoring belongs to Edit::Graph, not Edit.");
+static_assert(std::is_same_v<
+                  decltype(std::declval<const Edit::Graph &>().Remove(
+                      std::declval<Edit::Node>())),
+                  Edit::Graph>,
+              "Graph authoring chains must return an owned scope value.");
+
 struct CapturedBinding {
     std::string Slot;
     BML_BehaviorValue Value{};
@@ -1488,6 +1503,11 @@ concept CanPulse = requires(const T &value) {
     value.Pulse("Run");
 };
 
+template <class T>
+concept CanReadMovedResult = requires(T &value) {
+    std::move(value).Value();
+};
+
 static_assert(ConfigurableBlock<Block>);
 static_assert(CanCall<Block>);
 static_assert(CanContinue<Call>);
@@ -1505,12 +1525,38 @@ static_assert(std::is_constructible_v<Value, float>);
 static_assert(!std::is_constructible_v<Value, std::uint32_t>);
 static_assert(!std::is_constructible_v<Value, std::uint64_t>);
 static_assert(!std::is_constructible_v<Value, double>);
+static_assert(CanReadMovedResult<Result<std::string>>);
+static_assert(!CanReadMovedResult<Result<std::unique_ptr<int>>>);
 
 TEST(BehaviorAuthoring, ResultRejectsValueAccessAfterFailure) {
     auto failed = Result<std::string>::Failure(BML_ERROR_FAIL);
     EXPECT_FALSE(failed.HasValue());
     EXPECT_THROW((void) failed.Value(), std::bad_optional_access);
+    EXPECT_THROW((void) failed.Take(), std::bad_optional_access);
     EXPECT_THROW((void) failed->size(), std::bad_optional_access);
+}
+
+TEST(BehaviorAuthoring, ResultSeparatesBorrowingFromConsumption) {
+    EXPECT_EQ(Result<int>::Success(7).Value(), 7);
+
+    Status status;
+    status.Message = "retained after consumption";
+    auto result = Result<std::unique_ptr<int>>::Success(
+        std::make_unique<int>(42), status);
+
+    ASSERT_TRUE(result);
+    ASSERT_NE(result.Value(), nullptr);
+    EXPECT_EQ(*result.Value(), 42);
+
+    auto value = result.Take();
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(*value, 42);
+    EXPECT_FALSE(result);
+    EXPECT_FALSE(result.HasValue());
+    EXPECT_EQ(result.Code(), BML_OK);
+    EXPECT_EQ(result.GetStatus().Message, "retained after consumption");
+    EXPECT_THROW((void) result.Value(), std::bad_optional_access);
+    EXPECT_THROW((void) result.Take(), std::bad_optional_access);
 }
 
 TEST(BehaviorAuthoring, OpensAgainstTheCompleteVersionOneContract) {
@@ -1521,7 +1567,7 @@ TEST(BehaviorAuthoring, OpensAgainstTheCompleteVersionOneContract) {
     g_Interface.Header.MinorVersion = 99;
     auto future = Session::Open();
     ASSERT_TRUE(future);
-    std::move(future).Value().Close();
+    future.Take().Close();
 
     g_Interface.Header.StructSize = BML_BEHAVIOR_INTERFACE_1_0_SIZE - 1;
     auto incomplete = Session::Open();
@@ -1563,7 +1609,7 @@ TEST(BehaviorAuthoring, OwnsBlockTextAndUsesDomainSelectors) {
     g_State = {};
     auto opened = Session::Open("test.mod");
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     std::string settingName = "Caption";
     std::string text = "owned text";
@@ -1591,10 +1637,10 @@ TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto called = session.Use(CKGUID(1, 2)).Call("Run");
     ASSERT_TRUE(called);
-    Call call = std::move(called).Value();
+    Call call = called.Take();
 
     auto taken = call.Take();
     ASSERT_TRUE(taken);
@@ -1610,7 +1656,7 @@ TEST(BehaviorAuthoring, TakesOwnedFramesAndContinuesTheSameRun) {
 
     auto continued = std::move(call).Continue();
     ASSERT_TRUE(continued);
-    Task task = std::move(continued).Value();
+    Task task = continued.Take();
     auto info = task.Info();
     ASSERT_TRUE(info);
     EXPECT_EQ(info.Value().Kind, RunKind::Task);
@@ -1625,7 +1671,7 @@ TEST(BehaviorAuthoring, RequiresAnOccurrenceForDuplicateFrameNames) {
     g_State.DuplicateFrameNames = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto spawned = session.Use(CKGUID(1, 2)).Spawn();
     ASSERT_TRUE(spawned);
 
@@ -1653,10 +1699,10 @@ TEST(BehaviorAuthoring, ReusesFramesStorageAndRejectsTheWholeMalformedBatch) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto spawned = session.Use(CKGUID(1, 2)).Spawn();
     ASSERT_TRUE(spawned);
-    Instance instance = std::move(spawned).Value();
+    Instance instance = spawned.Take();
 
     Frames frames;
     auto first = instance.Take(frames);
@@ -1682,7 +1728,7 @@ TEST(BehaviorAuthoring, CopiesBlocksOnWriteAndKeepsValidatedCopiesCached) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block original = session.Use(CKGUID(5, 6));
     original.Settings({{"Caption", "original"}});
@@ -1709,7 +1755,7 @@ TEST(BehaviorAuthoring, SuppliesFramePolicyForEachRun) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block block = session.Use(CKGUID(5, 6));
     auto called = block.Call("Run", Latest());
@@ -1727,7 +1773,7 @@ TEST(BehaviorAuthoring, RequestsPoutsIndependentlyOfFrameRetention) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto started = session.Use(CKGUID(1, 2))
         .Start("Run", Signals(8).Pouts());
@@ -1747,7 +1793,7 @@ TEST(BehaviorAuthoring, KeepsTheValidatedPrototypeGeneration) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block block = session.Use(CKGUID(5, 6));
     ASSERT_TRUE(block.Validate());
@@ -1768,10 +1814,10 @@ TEST(BehaviorAuthoring, PulseAndRaiiCloseUseTheRunHandle) {
     {
         auto opened = Session::Open();
         ASSERT_TRUE(opened);
-        Session session = std::move(opened).Value();
+        Session session = opened.Take();
         auto spawned = session.Use(CKGUID(3, 4)).Spawn();
         ASSERT_TRUE(spawned);
-        Instance instance = std::move(spawned).Value();
+        Instance instance = spawned.Take();
         session.Close();
         EXPECT_EQ(g_State.SessionCloses, 0);
         auto admission = instance.Pulse("Create");
@@ -1787,10 +1833,10 @@ TEST(BehaviorAuthoring, TreatsAcceptedRunRetirementAsClosing) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto spawned = session.Use(CKGUID(3, 4)).Spawn();
     ASSERT_TRUE(spawned);
-    Instance instance = std::move(spawned).Value();
+    Instance instance = spawned.Take();
 
     g_State.RunCloseCode = BML_ERROR_BUSY;
     auto closing = instance.Close();
@@ -1806,10 +1852,10 @@ TEST(BehaviorAuthoring, ReadsLayoutAndGraphFromTheOwnedBehavior) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto spawned = session.Use(CKGUID(1, 2)).Spawn();
     ASSERT_TRUE(spawned);
-    Instance instance = std::move(spawned).Value();
+    Instance instance = spawned.Take();
 
     auto layout = instance.Layout();
     ASSERT_TRUE(layout) << layout.GetStatus().Message;
@@ -1839,7 +1885,7 @@ TEST(BehaviorAuthoring, DiscoversPrototypesAndReadsTheirDeclaredLayout) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     PrototypeQuery query;
     query.Name = "Fixture";
     query.RequiredManagers.push_back(CKGUID(91, 92));
@@ -1870,10 +1916,10 @@ TEST(BehaviorAuthoring, EditsTheLiveRunThroughLayoutSlots) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto spawned = session.Use(CKGUID(1, 2)).Spawn();
     ASSERT_TRUE(spawned);
-    Instance instance = std::move(spawned).Value();
+    Instance instance = spawned.Take();
 
     auto layout = instance.Layout();
     ASSERT_TRUE(layout);
@@ -1918,7 +1964,7 @@ TEST(BehaviorAuthoring, ResolvesLiveSelectorsForEveryRunKind) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Block block = session.Use(CKGUID(1, 2));
 
     auto called = block.Call("Run");
@@ -1941,7 +1987,7 @@ TEST(BehaviorAuthoring, ValidatedBlocksKeepTheNativeSessionAlive) {
     {
         auto opened = Session::Open();
         ASSERT_TRUE(opened);
-        Session session = std::move(opened).Value();
+        Session session = opened.Take();
         Block block = session.Use(CKGUID(5, 6));
         ASSERT_TRUE(block.Validate());
         session.Close();
@@ -1958,7 +2004,7 @@ TEST(BehaviorAuthoring, PinsProviderAndReusesOneBlockAcrossOwners) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Block block = session.Use(CKGUID(7, 8));
     ASSERT_TRUE(block.Validate());
 
@@ -1988,7 +2034,7 @@ TEST(BehaviorAuthoring, ValidateChecksTheDeclaredLayout) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block missingBlock = session.Use(CKGUID(9, 10));
     missingBlock.Settings({{"Missing", std::int32_t{1}}});
@@ -2030,7 +2076,7 @@ TEST(BehaviorAuthoring, ValidateRejectsAnExplicitTargetOnATargetlessPrototype) {
     g_State.DeclaredTargetable = false;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block block = session.Use(CKGUID(9, 10));
     block.NullTarget(CKPGUID_OBJECT);
@@ -2045,7 +2091,7 @@ TEST(BehaviorAuthoring, ValidateLeavesDynamicLayoutToTheNativeLifecycle) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block dynamic = session.Use(CKGUID(13, 14));
     dynamic.Settings({{"Extended Layout", true}})
@@ -2065,7 +2111,7 @@ TEST(BehaviorAuthoring, FallsBackWhenPrototypeDiscoveryIsUnavailable) {
     g_State.LayoutUnavailable = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block block = session.Use(CKGUID(15, 16));
     block.Settings({{"Runtime Setting", std::int32_t{9}}});
@@ -2096,11 +2142,11 @@ TEST(BehaviorAuthoring, RequiresAResolvedProviderForDurableEdits) {
     g_State.LayoutUnavailable = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Block block = session.Use(CKGUID(15, 16));
 
     Edit unresolved;
-    (void) unresolved.Add(block);
+    (void) unresolved.Root().Add(block);
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto rejected = inspected->Apply("unresolved", unresolved);
@@ -2109,7 +2155,7 @@ TEST(BehaviorAuthoring, RequiresAResolvedProviderForDurableEdits) {
 
     ASSERT_TRUE(block.Spawn());
     Edit resolved;
-    (void) resolved.Add(block);
+    (void) resolved.Root().Add(block);
     auto applied = inspected->Apply("resolved", resolved);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
     ASSERT_FALSE(g_State.PatchSteps.empty());
@@ -2122,7 +2168,7 @@ TEST(BehaviorAuthoring, RejectsMalformedDeclaredLayoutBeforeAllocation) {
     g_State.MalformedLayout = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto validated = session.Use(CKGUID(17, 18)).Validate();
     EXPECT_FALSE(validated);
@@ -2134,7 +2180,7 @@ TEST(BehaviorAuthoring, ContainsMalformedRunResults) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Block block = session.Use(CKGUID(19, 20));
     ASSERT_TRUE(block.Validate());
 
@@ -2161,7 +2207,7 @@ TEST(BehaviorAuthoring, ContainsMalformedRunResults) {
     g_State.WrongRunKind = false;
     auto spawned = block.Spawn();
     ASSERT_TRUE(spawned);
-    Instance instance = std::move(spawned).Value();
+    Instance instance = spawned.Take();
     g_State.MalformedCallStatus = true;
     auto info = instance.Info();
     EXPECT_FALSE(info);
@@ -2172,12 +2218,12 @@ TEST(BehaviorAuthoring, RejectsMalformedContinueAndPulseResults) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     {
         auto called = session.Use(CKGUID(19, 20)).Call("Run");
         ASSERT_TRUE(called);
-        Call call = std::move(called).Value();
+        Call call = called.Take();
         g_State.WrongContinuationKind = true;
         auto continued = std::move(call).Continue();
         EXPECT_FALSE(continued);
@@ -2188,7 +2234,7 @@ TEST(BehaviorAuthoring, RejectsMalformedContinueAndPulseResults) {
     {
         auto called = session.Use(CKGUID(19, 20)).Call("Run");
         ASSERT_TRUE(called);
-        Call call = std::move(called).Value();
+        Call call = called.Take();
         g_State.WrongFollowupPrototype = true;
         auto continued = std::move(call).Continue();
         EXPECT_FALSE(continued);
@@ -2198,7 +2244,7 @@ TEST(BehaviorAuthoring, RejectsMalformedContinueAndPulseResults) {
 
     auto spawned = session.Use(CKGUID(19, 20)).Spawn();
     ASSERT_TRUE(spawned);
-    Instance instance = std::move(spawned).Value();
+    Instance instance = spawned.Take();
 
     g_State.WrongPulseKind = true;
     auto wrongKind = instance.Pulse("Run");
@@ -2216,12 +2262,12 @@ TEST(BehaviorAuthoring, ReadsLogicalAndLiveGraphsWithoutNativePointers) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     const BML_ObjectRef root{41, 42, 43};
 
     auto inspected = session.Inspect(root);
     ASSERT_TRUE(inspected) << inspected.GetStatus().Message;
-    Graph graph = std::move(inspected).Value();
+    Graph graph = inspected.Take();
     EXPECT_EQ(graph.Mode(), View::Logical);
     EXPECT_EQ(graph.Root().Object().Domain, root.Domain);
     EXPECT_EQ(graph.Root().Index(), -1);
@@ -2283,7 +2329,7 @@ TEST(BehaviorAuthoring, PreservesSelectorCardinalityOnSnapshotNodes) {
     g_State.DuplicateGraphPortNames = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     const Node node = inspected->Root();
@@ -2315,7 +2361,7 @@ TEST(BehaviorAuthoring, RejectsIncoherentGraphSnapshots) {
         g_State.*faults[index] = true;
         auto opened = Session::Open();
         ASSERT_TRUE(opened);
-        Session session = std::move(opened).Value();
+        Session session = opened.Take();
 
         auto inspected = session.Inspect({41, 42, 43});
         EXPECT_FALSE(inspected);
@@ -2328,7 +2374,7 @@ TEST(BehaviorAuthoring, RejectsAWellFormedSnapshotOfAnotherGraph) {
     g_State.ReturnsAnotherGraph = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto inspected = session.Inspect({41, 42, 43});
     EXPECT_FALSE(inspected);
@@ -2340,10 +2386,10 @@ TEST(BehaviorAuthoring, RequiresExplicitChoiceForDuplicateNodeNames) {
     g_State.DuplicateGraphNames = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected) << inspected.GetStatus().Message;
-    Graph graph = std::move(inspected).Value();
+    Graph graph = inspected.Take();
 
     auto matches = graph.FindAll("Root");
     ASSERT_EQ(matches.size(), 2u);
@@ -2379,10 +2425,10 @@ TEST(BehaviorAuthoring, ReadsStoredAndOperationBackedValuesNonForcing) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
-    Graph graph = std::move(inspected).Value();
+    Graph graph = inspected.Take();
     const Node node = graph.Nodes().front();
 
     auto layout = graph.Layout(node);
@@ -2419,10 +2465,10 @@ TEST(BehaviorAuthoring, BindsSnapshotPortsToTheirLayoutGeneration) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
-    Graph graph = std::move(inspected).Value();
+    Graph graph = inspected.Take();
     const Node node = graph.Root();
     const Port value = node.Pin("Value");
     ASSERT_TRUE(value);
@@ -2441,7 +2487,7 @@ TEST(BehaviorAuthoring, RejectsViewsFromAnotherGraphSnapshot) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto first = session.Inspect({41, 42, 43});
     auto second = session.Inspect({41, 42, 43});
     ASSERT_TRUE(first);
@@ -2461,7 +2507,7 @@ TEST(BehaviorAuthoring, ReusesGraphPayloadCapacityBetweenInspections) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     ASSERT_TRUE(session.Inspect({41, 42, 43}));
     EXPECT_EQ(g_State.GraphInspects, 2);
@@ -2483,7 +2529,7 @@ TEST(BehaviorAuthoring, RejectsGraphPayloadSizesBeyondTheProvidedBuffer) {
     g_State.InvalidGraphPayloadSize = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto inspected = session.Inspect({41, 42, 43});
     EXPECT_FALSE(inspected);
@@ -2494,10 +2540,10 @@ TEST(BehaviorAuthoring, OwnsWatchCallbackAndReportsDomainChanges) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
-    Graph graph = std::move(inspected).Value();
+    Graph graph = inspected.Take();
     std::vector<Change> changes;
 
     {
@@ -2556,7 +2602,7 @@ TEST(BehaviorAuthoring, ContainsWatchCallbackFailuresAtTheCSeam) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto watched = inspected->Watch(GraphChanged{}, [](const Change &) {
@@ -2593,7 +2639,7 @@ TEST(BehaviorAuthoring, ClosesAWatchHandleReturnedWithAnError) {
     g_State.WatchOpenCode = BML_ERROR_INVALID_PARAMETER;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
 
@@ -2610,13 +2656,13 @@ TEST(BehaviorAuthoring, AWatchKeepsTheNativeSessionAlive) {
     {
         auto opened = Session::Open();
         ASSERT_TRUE(opened);
-        Session session = std::move(opened).Value();
+        Session session = opened.Take();
         auto inspected = session.Inspect({41, 42, 43});
         ASSERT_TRUE(inspected);
-        Graph graph = std::move(inspected).Value();
+        Graph graph = inspected.Take();
         auto watched = graph.Watch(GraphChanged{}, [](const Change &) {});
         ASSERT_TRUE(watched);
-        retained.emplace(std::move(watched).Value());
+        retained.emplace(watched.Take());
 
         session.Close();
         EXPECT_EQ(g_State.SessionCloses, 0);
@@ -2632,12 +2678,12 @@ TEST(BehaviorAuthoring, TreatsAcceptedWatchRetirementAsClosing) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto watched = inspected->Watch(GraphChanged{}, [](const Change &) {});
     ASSERT_TRUE(watched);
-    Watch watch = std::move(watched).Value();
+    Watch watch = watched.Take();
 
     g_State.WatchCloseCode = BML_ERROR_BUSY;
     auto closing = watch.Close();
@@ -2653,18 +2699,18 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto alive = std::make_shared<int>(0);
     std::vector<float> deltas;
     {
         Edit edit;
-        const auto counter = edit.Require("Counter_Active", CKGUID(1, 2));
-        const auto added = edit.Add(session.Use(CKGUID(3, 4)));
-        const auto amount = edit.AppendPin(added, "Amount", CKPGUID_FLOAT);
+        const auto counter = edit.Root().Require("Counter_Active", CKGUID(1, 2));
+        const auto added = edit.Root().Add(session.Use(CKGUID(3, 4)));
+        const auto amount = edit.Root().AppendPin(added, "Amount", CKPGUID_FLOAT);
         const auto link =
-            edit.Between(counter.Out(0), edit.Root().Root().In("Reset"), 2);
-        edit.Splice(link, added,
+            edit.Root().Between(counter.Out(0), edit.Root().Root().In("Reset"), 2);
+        edit.Root().Splice(link, added,
                     {Before("Other", "hud"), After("Third", "sound")})
             .Bind(amount, 3.5f)
             .Bind(added.Pin("Other"), counter.Pout("Value"))
@@ -2681,7 +2727,7 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
         auto submitted = session.Plan(
             "extra-life", Scripts::One("Gameplay_Events"), edit);
         ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
-        Plan plan = std::move(submitted).Value();
+        Plan plan = submitted.Take();
         EXPECT_EQ(g_State.PlanSubmits, 1);
         EXPECT_EQ(g_State.PlanName, "extra-life");
         EXPECT_EQ(g_State.PlanScript, "Gameplay_Events");
@@ -2801,11 +2847,152 @@ TEST(BehaviorAuthoring, SubmitsAPatchProgramAsADurablePlan) {
     EXPECT_EQ(alive.use_count(), 1);
 }
 
+TEST(BehaviorAuthoring, EncodesDurableNodePatternsWithoutLiveGraphDiscovery) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    NodePattern wait("Wait Message");
+    wait.Prototype(CKGUID(0x1111, 1))
+        .Kind(BehaviorKind::Function)
+        .Ins(1)
+        .Outs(1)
+        .Pins(1)
+        .Pouts(0)
+        .Pin("Message", std::int32_t{713});
+    (void) edit.Root().Require(std::move(wait));
+
+    auto submitted = session.Plan(
+        "message-pattern", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    Plan plan = submitted.Take();
+    ASSERT_EQ(g_State.PlanSteps.size(), 6u);
+
+    const CapturedStep &required = g_State.PlanSteps[0];
+    EXPECT_EQ(required.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_REQUIRE_NODE));
+    EXPECT_EQ(required.SelectorKind,
+              static_cast<std::uint32_t>(
+                  BML_BEHAVIOR_SELECTOR_UNIQUE_NAME));
+    EXPECT_EQ(required.SelectorName, "Wait Message");
+    EXPECT_EQ(required.Prototype.Prototype.Data1, 0x1111u);
+    EXPECT_EQ(required.ExpectedKind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_KIND_FUNCTION));
+
+    const SlotKind countKinds[] = {
+        SlotKind::In, SlotKind::Out, SlotKind::Pin, SlotKind::Pout};
+    const int counts[] = {1, 1, 1, 0};
+    for (std::size_t index = 0; index < 4; ++index) {
+        const CapturedStep &count = g_State.PlanSteps[index + 1];
+        EXPECT_EQ(count.Kind, static_cast<std::uint32_t>(
+                      BML_BEHAVIOR_EDIT_PATTERN_PORT_COUNT));
+        EXPECT_EQ(count.Target, required.Result);
+        EXPECT_EQ(count.SlotKind,
+                  static_cast<std::uint32_t>(countKinds[index]));
+        EXPECT_EQ(count.Delay, counts[index]);
+    }
+
+    const CapturedStep &value = g_State.PlanSteps[5];
+    EXPECT_EQ(value.Kind, static_cast<std::uint32_t>(
+                  BML_BEHAVIOR_EDIT_PATTERN_PORT_VALUE));
+    EXPECT_EQ(value.Target, required.Result);
+    EXPECT_EQ(value.Sink.Handle, required.Result);
+    EXPECT_EQ(value.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_PIN));
+    EXPECT_EQ(value.SinkSlot, "Message");
+    EXPECT_EQ(value.Value.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_VALUE_INT32));
+    EXPECT_EQ(value.Value.Data.Int32, 713);
+}
+
+TEST(BehaviorAuthoring, EncodesDurableTopologyRelations) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    auto root = edit.Root();
+    const auto wait = root.Require("Wait Message");
+    const auto next = root.Next(
+        wait.Out(), NodePattern("set Resetpoint"));
+    const auto previous = root.Previous(next);
+    const auto leaving = root.Leaving(wait);
+    const auto entering = root.Entering(next);
+    (void) root.To(wait.Out(), next);
+    root.Redirect(entering, leaving);
+
+    auto submitted = session.Plan(
+        "topology", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 7u);
+
+    const CapturedStep &required = g_State.PlanSteps[0];
+    const CapturedStep &after = g_State.PlanSteps[1];
+    EXPECT_EQ(after.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_NEXT_NODE));
+    EXPECT_EQ(after.Source.Handle, required.Result);
+    EXPECT_EQ(after.Source.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_OUT));
+    EXPECT_EQ(after.SelectorName, "set Resetpoint");
+
+    const CapturedStep &before = g_State.PlanSteps[2];
+    EXPECT_EQ(before.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_PREVIOUS_NODE));
+    EXPECT_EQ(before.Sink.Handle, after.Result);
+    EXPECT_EQ(before.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_IN));
+
+    EXPECT_EQ(g_State.PlanSteps[3].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_LEAVING_LINK));
+    EXPECT_EQ(g_State.PlanSteps[3].Source.Handle, required.Result);
+    EXPECT_EQ(g_State.PlanSteps[4].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ENTERING_LINK));
+    EXPECT_EQ(g_State.PlanSteps[4].Sink.Handle, after.Result);
+    EXPECT_EQ(g_State.PlanSteps[5].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_LINK_TO_NODE));
+    EXPECT_EQ(g_State.PlanSteps[5].Source.Handle, required.Result);
+    EXPECT_EQ(g_State.PlanSteps[5].Target, after.Result);
+    EXPECT_EQ(g_State.PlanSteps[6].Kind,
+              static_cast<std::uint32_t>(
+                  BML_BEHAVIOR_EDIT_REDIRECT_TO_LINK));
+    EXPECT_EQ(g_State.PlanSteps[6].Target, g_State.PlanSteps[4].Result);
+    EXPECT_EQ(g_State.PlanSteps[6].Node, g_State.PlanSteps[3].Result);
+}
+
+TEST(BehaviorAuthoring, EncodesActionsOverEveryMatchingNode) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    auto graph = edit.Root();
+    const auto activators = graph.Each("Activate Script");
+    graph.Flow(activators.Out(), graph.Root().Out("Done"));
+
+    auto submitted = session.Plan(
+        "each", Scripts::One("Gameplay_Events"), edit);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 2u);
+    EXPECT_EQ(g_State.PlanSteps[0].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_EACH_NODE));
+    EXPECT_EQ(g_State.PlanSteps[0].SelectorName, "Activate Script");
+    EXPECT_EQ(g_State.PlanSteps[1].Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_FLOW));
+    EXPECT_EQ(g_State.PlanSteps[1].Source.Handle,
+              g_State.PlanSteps[0].Result);
+    EXPECT_EQ(g_State.PlanSteps[1].Sink.Handle, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.PlanSteps[1].SinkSlot, "Done");
+}
+
 TEST(BehaviorAuthoring, EncodesNestedGraphScopesAndGraphNodes) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit edit;
     auto root = edit.Root();
@@ -2814,11 +3001,13 @@ TEST(BehaviorAuthoring, EncodesNestedGraphScopesAndGraphNodes) {
     const auto childOut = child.AppendOut("Done");
     const auto block = child.Add(session.Use(CKGUID(3, 4)));
     child.Flow(block.Out(), childOut);
+    const auto rootOut = root.AppendOut("Child Done");
+    root.Flow(childNode.Out("Done"), rootOut);
 
     auto submitted = session.Plan(
         "nested", Scripts::One("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
-    ASSERT_EQ(g_State.PlanSteps.size(), 5u);
+    ASSERT_EQ(g_State.PlanSteps.size(), 7u);
 
     const CapturedStep &addGraph = g_State.PlanSteps[0];
     EXPECT_EQ(addGraph.Kind,
@@ -2833,17 +3022,73 @@ TEST(BehaviorAuthoring, EncodesNestedGraphScopesAndGraphNodes) {
     EXPECT_EQ(enter.Graph, BML_BEHAVIOR_EDIT_GRAPH);
     EXPECT_EQ(enter.Target, addGraph.Result);
 
-    for (std::size_t index = 2; index < g_State.PlanSteps.size(); ++index)
+    for (std::size_t index = 2; index < 5; ++index)
         EXPECT_EQ(g_State.PlanSteps[index].Graph, enter.Result);
     EXPECT_EQ(g_State.PlanSteps[4].Source.Graph, enter.Result);
     EXPECT_EQ(g_State.PlanSteps[4].Sink.Graph, enter.Result);
+    EXPECT_EQ(g_State.PlanSteps[5].Graph, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.PlanSteps[6].Graph, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.PlanSteps[6].Source.Graph, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(g_State.PlanSteps[6].Sink.Graph, BML_BEHAVIOR_EDIT_GRAPH);
+}
+
+TEST(BehaviorAuthoring, RejectsGraphScopeUseAfterItsEditDies) {
+    Edit::Graph root;
+    Edit::Node child;
+    {
+        Edit edit;
+        root = edit.Root();
+        child = root.AddGraph("Child");
+    }
+
+    EXPECT_THROW((void) root.Require("Missing"), std::logic_error);
+    EXPECT_THROW((void) child.Graph(), std::logic_error);
+}
+
+TEST(BehaviorAuthoring, KeepsGraphScopeUsableAcrossEditMove) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    auto root = edit.Root();
+    const auto first = root.Require("First");
+    Edit moved(std::move(edit));
+    const auto second = root.Require("Second");
+    root.Flow(first.Out(), second.In());
+
+    auto submitted = session.Plan(
+        "moved-edit", Scripts::One("Gameplay_Events"), moved);
+    ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
+    ASSERT_EQ(g_State.PlanSteps.size(), 3u);
+    EXPECT_EQ(g_State.PlanSteps[0].SelectorName, "First");
+    EXPECT_EQ(g_State.PlanSteps[1].SelectorName, "Second");
+}
+
+TEST(BehaviorAuthoring, RejectsMovedFromEditBeforeSubmission) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+
+    Edit edit;
+    Edit moved(std::move(edit));
+    auto applied = session.Apply("moved-from", On(*inspected, edit));
+
+    EXPECT_FALSE(applied);
+    EXPECT_EQ(applied.Code(), BML_ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(applied.GetStatus().Phase, Phase::Edit);
+    EXPECT_EQ(g_State.PatchApplies, 0);
 }
 
 TEST(BehaviorAuthoring, RejectsFlowAcrossGraphScopesBeforeSubmission) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit edit;
     auto root = edit.Root();
@@ -2863,9 +3108,9 @@ TEST(BehaviorAuthoring, ContainsHookCallbackFailuresAtTheCSeam) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Edit edit;
-    edit.Tap(edit.Root().Root().Out(), [] { throw std::runtime_error("failure"); });
+    edit.Root().Tap(edit.Root().Root().Out(), [] { throw std::runtime_error("failure"); });
     auto submitted = session.Plan(
         "throwing-hook", Scripts::Each("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted);
@@ -2891,25 +3136,25 @@ TEST(BehaviorAuthoring, AppliesTheSameEditLanguageToOneLiveGraph) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
-    Graph graph = std::move(inspected).Value();
+    Graph graph = inspected.Take();
 
     auto alive = std::make_shared<int>(0);
     {
         Edit edit;
-        const auto existing = edit.Require("Counter_Active", CKGUID(1, 2));
-        const auto added = edit.Add(session.Use(CKGUID(3, 4)));
-        const auto amount = edit.AppendPin(added, "Amount", CKPGUID_FLOAT);
-        const auto link = edit.Between(existing.Out(), edit.Root().Root().In());
-        edit.Bind(amount, 2.5f)
+        const auto existing = edit.Root().Require("Counter_Active", CKGUID(1, 2));
+        const auto added = edit.Root().Add(session.Use(CKGUID(3, 4)));
+        const auto amount = edit.Root().AppendPin(added, "Amount", CKPGUID_FLOAT);
+        const auto link = edit.Root().Between(existing.Out(), edit.Root().Root().In());
+        edit.Root().Bind(amount, 2.5f)
             .Splice(link, added)
             .Tap(added.Out(), [alive] {});
 
         auto applied = graph.Apply("one-graph", edit);
         ASSERT_TRUE(applied) << applied.GetStatus().Message;
-        Patch patch = std::move(applied).Value();
+        Patch patch = applied.Take();
         EXPECT_EQ(g_State.PatchApplies, 1);
         EXPECT_EQ(g_State.PatchName, "one-graph");
         EXPECT_EQ(g_State.PatchGraph.Domain, 41u);
@@ -2948,7 +3193,7 @@ TEST(BehaviorAuthoring, NamesLiveNodesAndLinksByReference) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto reference = session.Reference(static_cast<CK_ID>(77));
     ASSERT_TRUE(reference) << reference.GetStatus().Message;
@@ -2963,13 +3208,13 @@ TEST(BehaviorAuthoring, NamesLiveNodesAndLinksByReference) {
     Edit edit;
     Node liveNode = inspected->Nodes().front();
     Link liveLink = inspected->Links().front();
-    const auto node = edit.Use(liveNode);
-    const auto link = edit.Use(liveLink);
-    edit.Splice(link, node);
+    const auto node = edit.Root().Use(liveNode);
+    const auto link = edit.Root().Use(liveLink);
+    edit.Root().Splice(link, node);
 
     auto applied = inspected->Apply("by-reference", edit);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     ASSERT_EQ(g_State.PatchSteps.size(), 3u);
     EXPECT_EQ(g_State.PatchSteps[0].Kind,
@@ -2988,7 +3233,7 @@ TEST(BehaviorAuthoring, CreatesABlockAndItsLiteralsInOneStatement) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     enum class Mode : std::uint8_t { Off = 0, On = 3 };
     Block block = session.Use(CKGUID(3, 4));
@@ -2996,14 +3241,14 @@ TEST(BehaviorAuthoring, CreatesABlockAndItsLiteralsInOneStatement) {
         .Settings({{"Caption", "rows"}})
         .Locals({{"State", Mode::On}});
     Edit edit;
-    const auto added = edit.Add(block);
-    edit.Flow(edit.Root().Root().Out(), added.In());
+    const auto added = edit.Root().Add(block);
+    edit.Root().Flow(edit.Root().Root().Out(), added.In());
 
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto applied = inspected->Apply("configured", edit);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     ASSERT_EQ(g_State.PatchSteps.size(), 2u);
     EXPECT_EQ(g_State.PatchSteps[0].Kind,
@@ -3044,14 +3289,14 @@ TEST(BehaviorAuthoring, ReusesOneEditAndKeepsItsBlockSnapshotAndSettingStages) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block block = session.Use(CKGUID(3, 4));
     block.Settings({{"Caption", "first"}})
         .Settings({{"Retry", true}});
     Edit edit;
-    const auto added = edit.Add(block);
-    edit.Flow(edit.Root().Root().Out(), added.In());
+    const auto added = edit.Root().Add(block);
+    edit.Root().Flow(edit.Root().Root().Out(), added.In());
 
     // Add copied the configured Block; later changes do not alter the Edit.
     block.Pins({{"Value", 9}});
@@ -3060,12 +3305,12 @@ TEST(BehaviorAuthoring, ReusesOneEditAndKeepsItsBlockSnapshotAndSettingStages) {
     ASSERT_TRUE(inspected);
     auto applied = inspected->Apply("same-edit", edit);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     auto submitted = session.Plan(
         "same-edit", Scripts::One("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
-    Plan plan = std::move(submitted).Value();
+    Plan plan = submitted.Take();
 
     ASSERT_EQ(g_State.PatchSteps.size(), 2u);
     ASSERT_EQ(g_State.PlanSteps.size(), g_State.PatchSteps.size());
@@ -3099,19 +3344,19 @@ TEST(BehaviorAuthoring, KeepsTypedNullValuesInDurablePlans) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Block block = session.Use(CKGUID(3, 4));
     block.NullTarget(CKPGUID_OBJECT);
     Edit edit;
-    const auto added = edit.Add(block);
-    edit.Bind(added.Pin("Optional", CKPGUID_OBJECT),
+    const auto added = edit.Root().Add(block);
+    edit.Root().Bind(added.Pin("Optional", CKPGUID_OBJECT),
               Value::Null(CKPGUID_OBJECT));
 
     auto submitted = session.Plan(
         "typed-null", Scripts::One("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted) << submitted.GetStatus().Message;
-    Plan plan = std::move(submitted).Value();
+    Plan plan = submitted.Take();
 
     ASSERT_EQ(g_State.PlanSteps.size(), 2u);
     EXPECT_EQ(g_State.PlanSteps[0].Kind,
@@ -3138,11 +3383,11 @@ TEST(BehaviorAuthoring, RejectsCrossSessionAndWorldBoundPlans) {
     auto secondOpened = Session::Open();
     ASSERT_TRUE(firstOpened);
     ASSERT_TRUE(secondOpened);
-    Session first = std::move(firstOpened).Value();
-    Session second = std::move(secondOpened).Value();
+    Session first = firstOpened.Take();
+    Session second = secondOpened.Take();
 
     Edit foreign;
-    (void) foreign.Add(first.Use(CKGUID(3, 4)));
+    (void) foreign.Root().Add(first.Use(CKGUID(3, 4)));
     auto secondGraph = second.Inspect({41, 42, 43});
     ASSERT_TRUE(secondGraph);
     auto mismatched = secondGraph->Apply("foreign", foreign);
@@ -3153,7 +3398,7 @@ TEST(BehaviorAuthoring, RejectsCrossSessionAndWorldBoundPlans) {
     auto firstGraph = first.Inspect({41, 42, 43});
     ASSERT_TRUE(firstGraph);
     Edit worldBound;
-    (void) worldBound.Use(firstGraph->Root());
+    (void) worldBound.Root().Use(firstGraph->Root());
     auto durable = first.Plan(
         "world-bound", Scripts::Each("Gameplay_Events"), worldBound);
     EXPECT_FALSE(durable);
@@ -3163,7 +3408,7 @@ TEST(BehaviorAuthoring, RejectsCrossSessionAndWorldBoundPlans) {
     Edit objectBlock;
     Block bound = first.Use(CKGUID(3, 4));
     bound.Target(CKPGUID_OBJECT, {7, 8, 9});
-    (void) objectBlock.Add(bound);
+    (void) objectBlock.Root().Add(bound);
     auto retained = first.Plan(
         "object-block", Scripts::Each("Gameplay_Events"), objectBlock);
     EXPECT_FALSE(retained);
@@ -3175,7 +3420,7 @@ TEST(BehaviorAuthoring, RefusesToApplyAStaleGraphSnapshot) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto graph = session.Inspect({41, 42, 43});
     ASSERT_TRUE(graph);
     ++g_State.GraphFingerprint;
@@ -3188,23 +3433,45 @@ TEST(BehaviorAuthoring, RefusesToApplyAStaleGraphSnapshot) {
     EXPECT_EQ(g_State.PatchApplies, 0);
 }
 
+TEST(BehaviorAuthoring, RefusesAComposedPatchWhenAnySnapshotIsStale) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto first = session.Inspect({41, 42, 43});
+    auto second = session.Inspect({41, 52, 43});
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+
+    Edit firstEdit;
+    Edit secondEdit;
+    ++g_State.GraphFingerprint;
+
+    auto applied = session.Apply(
+        "stale-composition", On(*first, firstEdit), On(*second, secondEdit));
+    EXPECT_FALSE(applied);
+    EXPECT_EQ(applied.Code(), BML_ERROR_BUSY);
+    EXPECT_EQ(applied.GetStatus().Error, Error::GraphChanged);
+    EXPECT_EQ(g_State.PatchApplies, 0);
+}
+
 TEST(BehaviorAuthoring, SendsALinkToANewDestination) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit edit;
-    const auto existing = edit.Require("Counter_Active", CKGUID(1, 2));
-    const auto added = edit.Add(session.Use(CKGUID(3, 4)));
-    const auto link = edit.Between(existing.Out(), edit.Root().Root().In("Reset"));
-    edit.Redirect(link, added.In(), {After("Other", "hud")});
+    const auto existing = edit.Root().Require("Counter_Active", CKGUID(1, 2));
+    const auto added = edit.Root().Add(session.Use(CKGUID(3, 4)));
+    const auto link = edit.Root().Between(existing.Out(), edit.Root().Root().In("Reset"));
+    edit.Root().Redirect(link, added.In(), {After("Other", "hud")});
 
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto applied = inspected->Apply("detour", edit);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     ASSERT_EQ(g_State.PatchSteps.size(), 4u);
     const CapturedStep &redirect = g_State.PatchSteps[3];
@@ -3226,19 +3493,19 @@ TEST(BehaviorAuthoring, EncodesANodeReplacementAsOneDomainStep) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit edit;
-    const auto original = edit.Require("Counter_Active", CKGUID(1, 2));
+    const auto original = edit.Root().Require("Counter_Active", CKGUID(1, 2));
     Block block = session.Use(CKGUID(3, 4));
     block.Pins({{"Value", 7}});
-    const auto replacement = edit.Replace(original, block);
+    const auto replacement = edit.Root().Replace(original, block);
 
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto applied = inspected->Apply("replacement", edit);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     ASSERT_EQ(g_State.PatchSteps.size(), 2u);
     const CapturedStep &step = g_State.PatchSteps[1];
@@ -3257,17 +3524,17 @@ TEST(BehaviorAuthoring, EncodesNodeRemovalWithoutDefiningAHandle) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit edit;
-    const auto removed = edit.Require("Counter_Active", CKGUID(1, 2));
-    edit.Remove(removed);
+    const auto removed = edit.Root().Require("Counter_Active", CKGUID(1, 2));
+    edit.Root().Remove(removed);
 
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto applied = inspected->Apply("removal", edit);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     ASSERT_EQ(g_State.PatchSteps.size(), 2u);
     const CapturedStep &step = g_State.PatchSteps[1];
@@ -3283,7 +3550,7 @@ TEST(BehaviorAuthoring, RejectsAReferenceForANullObject) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto missing = session.Reference(static_cast<CKObject *>(nullptr));
     EXPECT_FALSE(missing);
@@ -3308,15 +3575,15 @@ TEST(BehaviorAuthoring, ReadsBackTheLiveNodeAnAppliedEditNamed) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit edit;
-    const auto added = edit.Add(session.Use(CKGUID(3, 4)));
+    const auto added = edit.Root().Add(session.Use(CKGUID(3, 4)));
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto applied = inspected->Apply("resolved", edit);
     ASSERT_TRUE(applied) << applied.GetStatus().Message;
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     auto resolved = patch.Resolve(added);
     ASSERT_TRUE(resolved) << resolved.GetStatus().Message;
@@ -3350,13 +3617,13 @@ TEST(BehaviorAuthoring, RejectsSymbolsFromAnotherEditBeforeSubmission) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit first;
-    const auto foreign = first.Require("First");
+    const auto foreign = first.Root().Require("First");
     Edit second;
-    const auto local = second.Require("Second");
-    second.Flow(foreign.Out(), local.In());
+    const auto local = second.Root().Require("Second");
+    second.Root().Flow(foreign.Out(), local.In());
 
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
@@ -3373,18 +3640,18 @@ TEST(BehaviorAuthoring, PatchRejectsANodeFromAnotherEdit) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit installed;
-    const auto local = installed.Add(session.Use(CKGUID(3, 4)));
+    const auto local = installed.Root().Add(session.Use(CKGUID(3, 4)));
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     auto applied = inspected->Apply("local-symbol", installed);
     ASSERT_TRUE(applied);
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     Edit other;
-    const auto foreign = other.Require("Other");
+    const auto foreign = other.Root().Require("Other");
     auto rejected = patch.Resolve(foreign);
     EXPECT_FALSE(rejected);
     EXPECT_EQ(rejected.Code(), BML_ERROR_INVALID_PARAMETER);
@@ -3398,14 +3665,14 @@ TEST(BehaviorAuthoring, ParksABlockInsideAGraphAndDrivesIt) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     const BML_ObjectRef graph{9, 10, 11};
     Block block = session.Use(CKGUID(3, 4));
     block.Settings({{"Caption", "hello"}});
     auto attached = block.SpawnIn(graph);
     ASSERT_TRUE(attached) << attached.GetStatus().Message;
-    Instance instance = std::move(attached).Value();
+    Instance instance = attached.Take();
 
     EXPECT_EQ(g_State.Attaches, 1);
     EXPECT_EQ(g_State.AttachGraph.Domain, graph.Domain);
@@ -3429,24 +3696,24 @@ TEST(BehaviorAuthoring, OwnsAndAuthorsATopLevelScript) {
     g_State = {};
     auto opened = Session::Open("test.mod");
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     const BML_ObjectRef owner{7, 45, 2};
     Edit body;
-    const auto root = body.Root().Root();
-    (void) body.AppendIn(root, "Start");
-    (void) body.AppendOut(root, "Done");
-    const auto seed = body.AppendLocal(root, "Seed", CKGUID(31, 32));
-    const auto sum = body.AddOperation(
+    auto authorGraph = body.Root();
+    (void) authorGraph.AppendIn("Start");
+    (void) authorGraph.AppendOut("Done");
+    const auto seed = authorGraph.AppendLocal("Seed", CKGUID(31, 32));
+    const auto sum = authorGraph.AddOperation(
         CKGUID(41, 42), CKGUID(31, 32),
         CKGUID(31, 32), CKGUID(31, 32));
-    body.Bind(seed, 40)
+    authorGraph.Bind(seed, 40)
         .Bind(sum.Input(0), seed)
         .Bind(sum.Input(1), 2);
 
     auto created = session.CreateScript(
         owner, "Authored Script", body, -3);
     ASSERT_TRUE(created);
-    Script script = std::move(created).Value();
+    Script script = created.Take();
     EXPECT_EQ(g_State.ScriptCreates, 1);
     EXPECT_EQ(g_State.ScriptName, "Authored Script");
     EXPECT_EQ(g_State.ScriptPriority, -3);
@@ -3504,7 +3771,7 @@ TEST(BehaviorAuthoring, RejectsAMalformedScriptWithoutLeakingItsHandle) {
     g_State = {};
     auto opened = Session::Open("test.mod");
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     g_State.MalformedScriptInfo = true;
     Edit body;
 
@@ -3520,9 +3787,9 @@ TEST(BehaviorAuthoring, DoesNotReceiveARejectedScriptHandle) {
     g_State = {};
     auto opened = Session::Open("test.mod");
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Edit body;
-    (void) body.Require("Missing");
+    (void) body.Root().Require("Missing");
     g_State.ScriptCreateCode = BML_ERROR_NOT_FOUND;
 
     auto created = session.CreateScript(
@@ -3539,7 +3806,7 @@ TEST(BehaviorAuthoring, ReportsAFailureWhenAGraphRefusesTheBlock) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     g_State.RunCode = BML_ERROR_NOT_FOUND;
     auto attached = session.Use(CKGUID(3, 4)).SpawnIn(
@@ -3554,7 +3821,7 @@ TEST(BehaviorAuthoring, BuildsARetailBlockThroughTheBlocksHeader) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     // Every option is a literal and every object slot is empty, so the whole
     // definition travels without one Reference round trip.
@@ -3566,9 +3833,9 @@ TEST(BehaviorAuthoring, BuildsARetailBlockThroughTheBlocksHeader) {
     EXPECT_EQ(g_State.References, 0);
 
     const BML_ObjectRef graph{9, 10, 11};
-    auto attached = std::move(built).Value().SpawnIn(graph);
+    auto attached = built.Take().SpawnIn(graph);
     ASSERT_TRUE(attached) << attached.GetStatus().Message;
-    (void) std::move(attached).Value();
+    (void) attached.Take();
 
     EXPECT_EQ(g_State.Attaches, 1);
     ASSERT_FALSE(g_State.Blocks.empty());
@@ -3585,7 +3852,7 @@ TEST(BehaviorAuthoring, PutsACallbackOnALinkItNamed) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto alive = std::make_shared<int>(0);
     {
@@ -3593,11 +3860,11 @@ TEST(BehaviorAuthoring, PutsACallbackOnALinkItNamed) {
         ASSERT_TRUE(inspected);
         Edit edit;
         Link liveLink = inspected->Links().front();
-        const auto link = edit.Use(liveLink);
-        edit.Before(link, [alive] {});
+        const auto link = edit.Root().Use(liveLink);
+        edit.Root().Before(link, [alive] {});
         auto applied = inspected->Apply("before", edit);
         ASSERT_TRUE(applied) << applied.GetStatus().Message;
-        Patch patch = std::move(applied).Value();
+        Patch patch = applied.Take();
 
         ASSERT_EQ(g_State.PatchSteps.size(), 2u);
         EXPECT_EQ(g_State.PatchSteps[1].Kind,
@@ -3614,7 +3881,7 @@ TEST(BehaviorAuthoring, RejectsPlanWithoutAScriptBeforeCallingTheLoader) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit edit;
     auto submitted = session.Plan("nameless", Scripts::Each(""), edit);
@@ -3629,12 +3896,12 @@ TEST(BehaviorAuthoring, KeepsHookStateWhenTheLoaderRejectsThePlan) {
     g_State.PlanSubmitCode = BML_ERROR_INVALID_PARAMETER;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto alive = std::make_shared<int>(0);
     {
         Edit edit;
-        edit.Tap(edit.Root().Root().Out(0), [alive] {});
+        edit.Root().Tap(edit.Root().Root().Out(0), [alive] {});
         auto submitted = session.Plan(
             "rejected", Scripts::Each("Gameplay_Events"), edit);
         EXPECT_FALSE(submitted);
@@ -3651,10 +3918,10 @@ TEST(BehaviorAuthoring, ClosesPlanAndPatchHandlesReturnedWithErrors) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     Edit planEdit;
-    planEdit.Tap(planEdit.Root().Root().Out(), [] {});
+    planEdit.Root().Tap(planEdit.Root().Root().Out(), [] {});
     g_State.PlanSubmitCode = BML_ERROR_INVALID_PARAMETER;
     g_State.ReturnPlanHandleOnError = true;
     auto submitted = session.Plan(
@@ -3670,7 +3937,7 @@ TEST(BehaviorAuthoring, ClosesPlanAndPatchHandlesReturnedWithErrors) {
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     Edit patchEdit;
-    patchEdit.Tap(patchEdit.Root().Root().Out(), [] {});
+    patchEdit.Root().Tap(patchEdit.Root().Root().Out(), [] {});
     auto applied = inspected->Apply("rejected-after-admission", patchEdit);
     EXPECT_FALSE(applied);
     EXPECT_EQ(applied.Code(), BML_ERROR_INVALID_PARAMETER);
@@ -3682,24 +3949,24 @@ TEST(BehaviorAuthoring, RejectsMalformedWatchPlanAndPatchInfo) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
 
     auto watched = inspected->Watch(GraphChanged{}, [](const Change &) {});
     ASSERT_TRUE(watched);
-    Watch watch = std::move(watched).Value();
+    Watch watch = watched.Take();
 
     Edit planEdit;
     auto submitted = session.Plan(
         "info", Scripts::Each("Gameplay_Events"), planEdit);
     ASSERT_TRUE(submitted);
-    Plan plan = std::move(submitted).Value();
+    Plan plan = submitted.Take();
 
     Edit patchEdit;
     auto applied = inspected->Apply("info", patchEdit);
     ASSERT_TRUE(applied);
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     g_State.WatchState = 99;
     EXPECT_EQ(watch.Info().Code(), BML_ERROR_MALFORMED_MESSAGE);
@@ -3733,12 +4000,12 @@ TEST(BehaviorAuthoring, PlansKeepTheNativeSessionAlive) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Edit edit;
     auto submitted = session.Plan(
         "inert", Scripts::Each("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted);
-    Plan plan = std::move(submitted).Value();
+    Plan plan = submitted.Take();
     ASSERT_TRUE(plan);
 
     session.Close();
@@ -3756,12 +4023,12 @@ TEST(BehaviorAuthoring, AFailedPlanCloseKeepsTheHandleForRetry) {
     g_State.PlanState = BML_BEHAVIOR_PLAN_CONFLICTED;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Edit edit;
     auto submitted = session.Plan(
         "conflicted", Scripts::Each("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted);
-    Plan plan = std::move(submitted).Value();
+    Plan plan = submitted.Take();
 
     auto failedClose = plan.Close();
     EXPECT_FALSE(failedClose);
@@ -3784,12 +4051,12 @@ TEST(BehaviorAuthoring, AClosingPlanKeepsTheHandleUntilItIsClosed) {
     g_State.PlanState = BML_BEHAVIOR_PLAN_RETIRING;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Edit edit;
     auto submitted = session.Plan(
         "closing", Scripts::Each("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted);
-    Plan plan = std::move(submitted).Value();
+    Plan plan = submitted.Take();
 
     auto closing = plan.Close();
     ASSERT_TRUE(closing);
@@ -3810,13 +4077,13 @@ TEST(BehaviorAuthoring, AFailedGraphPatchCloseKeepsTheHandleForRetry) {
     g_State.PatchState = BML_BEHAVIOR_PATCH_CONFLICTED;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     Edit edit;
     auto applied = inspected->Apply("conflicted", edit);
     ASSERT_TRUE(applied);
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
     inspected = Result<Graph>{};
     session.Close();
     EXPECT_EQ(g_State.SessionCloses, 0);
@@ -3843,13 +4110,13 @@ TEST(BehaviorAuthoring, AClosingGraphPatchKeepsTheHandleUntilItIsClosed) {
     g_State.PatchState = BML_BEHAVIOR_PATCH_CLOSING;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto inspected = session.Inspect({41, 42, 43});
     ASSERT_TRUE(inspected);
     Edit edit;
     auto applied = inspected->Apply("closing", edit);
     ASSERT_TRUE(applied);
-    Patch patch = std::move(applied).Value();
+    Patch patch = applied.Take();
 
     auto closing = patch.Close();
     ASSERT_TRUE(closing);
@@ -3870,12 +4137,12 @@ TEST(BehaviorAuthoring, DestructionRequestsRetirementBeforeReleasingTheSession) 
     {
         auto opened = Session::Open();
         ASSERT_TRUE(opened);
-        Session session = std::move(opened).Value();
+        Session session = opened.Take();
         Edit edit;
         auto submitted = session.Plan(
             "retiring", Scripts::Each("Gameplay_Events"), edit);
         ASSERT_TRUE(submitted);
-        Plan plan = std::move(submitted).Value();
+        Plan plan = submitted.Take();
         session.Close();
         EXPECT_EQ(g_State.SessionCloses, 0);
     }
@@ -3888,12 +4155,12 @@ TEST(BehaviorAuthoring, DestructionMayRequestRetirementFromAnotherThread) {
     g_State.PlanCloseCode = BML_ERROR_BUSY;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Edit edit;
     auto submitted = session.Plan(
         "retiring", Scripts::Each("Gameplay_Events"), edit);
     ASSERT_TRUE(submitted);
-    Plan plan = std::move(submitted).Value();
+    Plan plan = submitted.Take();
     session.Close();
 
     std::thread retire([plan = std::move(plan)]() mutable {});
@@ -3907,14 +4174,14 @@ TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
 
     auto firstSpawned = session.Use(CKGUID(1, 2)).Spawn();
     auto secondSpawned = session.Use(CKGUID(3, 4)).Spawn();
     ASSERT_TRUE(firstSpawned);
     ASSERT_TRUE(secondSpawned);
-    Instance firstInstance = std::move(firstSpawned).Value();
-    Instance secondInstance = std::move(secondSpawned).Value();
+    Instance firstInstance = firstSpawned.Take();
+    Instance secondInstance = secondSpawned.Take();
     firstInstance = std::move(secondInstance);
     EXPECT_TRUE(firstInstance);
     EXPECT_FALSE(secondInstance);
@@ -3929,8 +4196,8 @@ TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
         "second", Scripts::Each("Gameplay_Events"), planEdit);
     ASSERT_TRUE(firstSubmitted);
     ASSERT_TRUE(secondSubmitted);
-    Plan firstPlan = std::move(firstSubmitted).Value();
-    Plan secondPlan = std::move(secondSubmitted).Value();
+    Plan firstPlan = firstSubmitted.Take();
+    Plan secondPlan = secondSubmitted.Take();
     firstPlan = std::move(secondPlan);
     EXPECT_TRUE(firstPlan);
     EXPECT_FALSE(secondPlan);
@@ -3945,8 +4212,8 @@ TEST(BehaviorAuthoring, MoveAssignmentRetiresPreviousFacadeOwnership) {
     auto secondApplied = inspected->Apply("second", patchEdit);
     ASSERT_TRUE(firstApplied);
     ASSERT_TRUE(secondApplied);
-    Patch firstPatch = std::move(firstApplied).Value();
-    Patch secondPatch = std::move(secondApplied).Value();
+    Patch firstPatch = firstApplied.Take();
+    Patch secondPatch = secondApplied.Take();
     firstPatch = std::move(secondPatch);
     EXPECT_TRUE(firstPatch);
     EXPECT_FALSE(secondPatch);
@@ -3959,7 +4226,7 @@ TEST(BehaviorAuthoring, ComposesGraphTargetsUnderOnePatchHandle) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     auto firstGraph = session.Inspect({41, 42, 43});
     auto secondGraph = session.Inspect({41, 52, 43});
     ASSERT_TRUE(firstGraph);
@@ -4000,11 +4267,34 @@ TEST(BehaviorAuthoring, ComposesGraphTargetsUnderOnePatchHandle) {
     EXPECT_EQ(g_State.PatchTargetCount, 1u);
 }
 
+TEST(BehaviorAuthoring, ResolvesSymbolAfterSourceEditDies) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+
+    Edit::Node node;
+    Patch patch;
+    {
+        Edit edit;
+        node = edit.Root().Require("Counter_Active");
+        auto applied = inspected->Apply("durable-symbol", edit);
+        ASSERT_TRUE(applied) << applied.GetStatus().Message;
+        patch = applied.Take();
+    }
+
+    auto resolved = patch.Resolve(node);
+    ASSERT_TRUE(resolved) << resolved.GetStatus().Message;
+    EXPECT_EQ(g_State.ResolvedHandle, 2u);
+}
+
 TEST(BehaviorAuthoring, ReconcilesSeveralScriptRulesUnderOnePlanHandle) {
     g_State = {};
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
-    Session session = std::move(opened).Value();
+    Session session = opened.Take();
     Edit events;
     (void) events.Root().Require("Event");
     Edit gameplay;

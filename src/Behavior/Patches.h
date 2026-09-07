@@ -203,6 +203,8 @@ private:
                  Edit &out, GraphModel &base) override;
     Status UseNode(Edit &edit, const ObjectRef &node, Node &out) override;
     Status UseLink(Edit &edit, const ObjectRef &link, Link &out) override;
+    Status ReadPatternValue(const GraphNode &node, const Slot &slot,
+                            GraphValue &out) override;
     Status Tap(Edit &edit, Port source,
                const HookBlock::Hook &hook) override;
     Status Interpose(Edit &edit, Link link,

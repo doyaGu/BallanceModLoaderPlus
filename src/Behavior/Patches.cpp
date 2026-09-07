@@ -1039,6 +1039,19 @@ Status Patches::UseLink(Edit &edit, const ObjectRef &link, Link &out) {
                   "A Behavior Link disappeared during compilation.");
 }
 
+Status Patches::ReadPatternValue(const GraphNode &node, const Slot &slot,
+                                 GraphValue &out) {
+    out = {};
+    CKObject *object = m_ResolveObject ? m_ResolveObject(node.Object) : nullptr;
+    NativeRef reference;
+    Status status = object ? m_Graph.Refer(object, reference)
+                           : Failure(Error::GraphChanged,
+                                     "A Behavior Node disappeared while its Pattern was resolved.");
+    return status ? m_Graph.ReadValue(reference, node.LayoutGeneration, slot,
+                                      ReadMode::NonForcing, out)
+                  : status;
+}
+
 Status Patches::Tap(Edit &edit, Port source,
                     const HookBlock::Hook &hook) {
     std::shared_ptr<HookBlock::Binding> binding = hook.Bind();

@@ -101,7 +101,7 @@ public:
             Finish(false, "session");
             return;
         }
-        m_Session = std::move(session).Value();
+        m_Session = session.Take();
     }
 
     void OnStartLevel() override { m_LevelStarted = true; }
@@ -232,13 +232,121 @@ private:
             deltaValue && *deltaValue == 20.0f;
     }
 
+    static std::size_t LinkCount(const BML::Behavior::LinkRange &links) {
+        return static_cast<std::size_t>(
+            std::distance(links.begin(), links.end()));
+    }
+
+    bool HasOverclockPatch() {
+        CKBehavior *ingame = m_BML
+            ? m_BML->GetScriptByName("Gameplay_Ingame") : nullptr;
+        CKBehavior *energy = m_BML
+            ? m_BML->GetScriptByName("Gameplay_Energy") : nullptr;
+        if (!ingame || !energy)
+            return false;
+
+        auto ingameGraph = m_Session.Inspect(ingame);
+        auto energyGraph = m_Session.Inspect(energy);
+        if (!ingameGraph || !energyGraph)
+            return false;
+
+        const auto managerNode = ingameGraph->Find("BallManager");
+        auto manager = managerNode
+            ? ingameGraph->Inspect(managerNode.Value())
+            : BML::Behavior::Result<BML::Behavior::Graph>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        if (!manager)
+            return false;
+
+        const auto deactivateNode = manager->Find("Deactivate Ball");
+        const auto newBallNode = manager->Find("New Ball");
+        auto deactivate = deactivateNode
+            ? manager->Inspect(deactivateNode.Value())
+            : BML::Behavior::Result<BML::Behavior::Graph>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        auto newBall = newBallNode
+            ? manager->Inspect(newBallNode.Value())
+            : BML::Behavior::Result<BML::Behavior::Graph>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        if (!deactivate || !newBall)
+            return false;
+
+        const auto pieces = deactivate->Find("reset Ballpieces");
+        const auto deactivateLink = pieces
+            ? deactivate->Leaving(pieces.Value()) : BML::Behavior::Result<
+                  BML::Behavior::Link>::Failure(BML_ERROR_NOT_FOUND);
+        const BML::Behavior::Port deactivateTarget = deactivateLink
+            ? deactivateLink->Target() : BML::Behavior::Port{};
+        const bool deactivateRoute = deactivateTarget &&
+            deactivateTarget.Kind() == BML::Behavior::SlotKind::In &&
+            deactivateTarget.Index() == 1;
+
+        const auto physicalize = newBall->Find("physicalize new Ball");
+        const BML::Behavior::Port physicalizeInput = physicalize
+            ? physicalize->In(0) : BML::Behavior::Port{};
+        const bool newBallRoute = physicalizeInput &&
+            LinkCount(newBall->Incoming(physicalizeInput)) >= 2;
+
+        const auto delay = energyGraph->Find("Delayer");
+        const auto afterDelay = delay
+            ? energyGraph->Leaving(delay.Value())
+            : BML::Behavior::Result<BML::Behavior::Link>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        const auto intoDelay = delay
+            ? energyGraph->Incoming(delay.Value())
+            : BML::Behavior::LinkRange{};
+        const bool energyRoute = delay && afterDelay &&
+            intoDelay.begin() == intoDelay.end() &&
+            LinkCount(energyGraph->Incoming(afterDelay->Target())) >= 2;
+        return deactivateRoute && newBallRoute && energyRoute;
+    }
+
+    bool HasLanternPatch() const {
+        CKBehavior *script = m_BML
+            ? m_BML->GetScriptByName("Levelinit_build") : nullptr;
+        if (!script)
+            return false;
+        auto root = m_Session.Inspect(script);
+        if (!root)
+            return false;
+        const auto mappingNode = root->Find("set Mapping and Textures");
+        auto mapping = mappingNode
+            ? root->Inspect(mappingNode.Value())
+            : BML::Behavior::Result<BML::Behavior::Graph>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        if (!mapping)
+            return false;
+        const auto lanternNode = mapping->Find("Set Mat Laterne");
+        auto lantern = lanternNode
+            ? mapping->Inspect(lanternNode.Value())
+            : BML::Behavior::Result<BML::Behavior::Graph>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        if (!lantern)
+            return false;
+        auto live = lantern->Live();
+        if (!live)
+            return false;
+        const auto alpha = live->Find("Set Alpha Test");
+        const auto value = alpha
+            ? live->Read(alpha->Pin(0))
+            : BML::Behavior::Result<BML::Behavior::ObservedValue>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        const bool *enabled = value
+            ? std::get_if<bool>(&value->Data) : nullptr;
+        return value &&
+            value->State == BML::Behavior::ObservationState::Available &&
+            value->Type == CKPGUID_BOOL && enabled && *enabled;
+    }
+
     void CheckGameplay() {
-        const bool applied = m_GameplayScripts.size() == 2 &&
+        const bool extraLife = m_GameplayScripts.size() == 2 &&
             std::all_of(m_GameplayScripts.begin(), m_GameplayScripts.end(),
                         [this](CKBehavior *script) {
                             return HasExtraLifePatch(script);
                         });
-        if (applied) {
+        m_OverclockPassed = HasOverclockPatch();
+        m_LanternPassed = HasLanternPatch();
+        if (extraLife && m_OverclockPassed && m_LanternPassed) {
             m_GameplayPatchPassed = true;
             m_State = State::Submit;
             return;
@@ -297,7 +405,7 @@ private:
 
         const int scriptsBefore = m_Owner->GetScriptCount();
         BML::Behavior::Edit rejectedBody;
-        (void) rejectedBody.Require("__BML_Missing_Initial_Node");
+        (void) rejectedBody.Root().Require("__BML_Missing_Initial_Node");
         auto rejected = m_Session.CreateScript(
             m_Owner, "__BML_Rejected_Script", rejectedBody);
         if (rejected || m_Owner->GetScriptCount() != scriptsBefore)
@@ -306,8 +414,8 @@ private:
 
         BML::Behavior::Edit shape;
         const auto root = shape.Root().Root();
-        (void) shape.AppendIn(root, "Start");
-        (void) shape.AppendOut(root, "Done");
+        (void) shape.Root().AppendIn(root, "Start");
+        (void) shape.Root().AppendOut(root, "Done");
         CKParameterManager *parameters = context->GetParameterManager();
         const CKGUID addition = parameters
             ? parameters->OperationNameToGuid(
@@ -315,13 +423,13 @@ private:
             : CKGUID();
         if (!addition.IsValid())
             return false;
-        const auto left = shape.AppendLocal(
+        const auto left = shape.Root().AppendLocal(
             root, "Left", CKPGUID_FLOAT);
-        const auto replacementSource = shape.AppendLocal(
+        const auto replacementSource = shape.Root().AppendLocal(
             root, "Replacement Source", CKPGUID_INT);
-        const auto sum = shape.AddOperation(
+        const auto sum = shape.Root().AddOperation(
             addition, CKPGUID_FLOAT, CKPGUID_FLOAT, CKPGUID_FLOAT);
-        shape.Bind(left, 2.0f)
+        shape.Root().Bind(left, 2.0f)
             .Bind(replacementSource, 23)
             .Bind(sum.Input(0), left)
             .Bind(sum.Input(1), 3.0f);
@@ -329,7 +437,7 @@ private:
             m_Owner, kScriptName, shape);
         if (!created)
             return false;
-        m_AuthoredScript = std::move(created).Value();
+        m_AuthoredScript = created.Take();
         const auto createdInfo = m_AuthoredScript.Info();
         auto authored = m_AuthoredScript.Inspect();
         if (!createdInfo || createdInfo->State !=
@@ -518,17 +626,17 @@ private:
 
         const CKGUID fixture(BML_LIFECYCLE_FIXTURE_GUID);
         BML::Behavior::Edit edit;
-        const auto source = edit.Require(kSourceName);
-        const auto sink = edit.Require(kSinkName);
-        const auto link = edit.Between(source.Out(0), sink.In(0));
-        edit.Tap(source.Out(0), tap);
-        edit.After(source.Out(0), afterHook);
-        const auto block = edit.Add(m_Session.Use(fixture));
-        (void) edit.AppendIn(block, "Again");
-        (void) edit.AppendOut(block, "Finished");
-        const auto literal = edit.AppendPin(block, "Literal", CKPGUID_INT);
-        edit.Bind(literal, 41);
-        edit.Splice(link, block);
+        const auto source = edit.Root().Require(kSourceName);
+        const auto sink = edit.Root().Require(kSinkName);
+        const auto link = edit.Root().Between(source.Out(0), sink.In(0));
+        edit.Root().Tap(source.Out(0), tap);
+        edit.Root().After(source.Out(0), afterHook);
+        const auto block = edit.Root().Add(m_Session.Use(fixture));
+        (void) edit.Root().AppendIn(block, "Again");
+        (void) edit.Root().AppendOut(block, "Finished");
+        const auto literal = edit.Root().AppendPin(block, "Literal", CKPGUID_INT);
+        edit.Root().Bind(literal, 41);
+        edit.Root().Splice(link, block);
 
         auto submitted = m_Session.Plan(
             "player-public-plan", BML::Behavior::Scripts::One(kScriptName),
@@ -543,7 +651,7 @@ private:
             Finish(false, "submit");
             return;
         }
-        m_Plan = std::move(submitted).Value();
+        m_Plan = submitted.Take();
 
         // A Plan the Loader accepted reconciles on the next frame, so it is
         // not installed yet and reads Reconciling with no matches.
@@ -670,8 +778,8 @@ private:
                 closed.Value() == BML::Behavior::CloseState::Closing;
         });
         BML::Behavior::Edit edit;
-        const auto source = edit.Require(kSourceName);
-        edit.Tap(source.Out(0), hook);
+        const auto source = edit.Root().Require(kSourceName);
+        edit.Root().Tap(source.Out(0), hook);
         auto submitted = m_Session.Plan(
             "player-public-self-close",
             BML::Behavior::Scripts::One(kScriptName), edit);
@@ -679,7 +787,7 @@ private:
             Finish(false, "self-close-submit");
             return;
         }
-        m_SelfPlan = std::move(submitted).Value();
+        m_SelfPlan = submitted.Take();
         m_WaitUntil = m_Frame + 30;
         m_State = State::WaitSelfActive;
     }
@@ -745,7 +853,7 @@ private:
             Finish(false, "attach");
             return;
         }
-        m_Parked = std::move(parked).Value();
+        m_Parked = parked.Take();
         if (!ExistingBlockEdits() || !FailedExistingBlockEdit()) {
             (void) m_Parked->Close();
             m_Parked.reset();
@@ -860,7 +968,7 @@ private:
             .Spawn();
         if (!spawned)
             return false;
-        BML::Behavior::Instance instance = std::move(spawned).Value();
+        BML::Behavior::Instance instance = spawned.Take();
 
         fixture.ResetTrace();
         fixture.SetMode(BMLLifecycleFixtureMode::FailFirstEdited);
@@ -906,10 +1014,10 @@ private:
         fixture.ResetTrace();
         fixture.SetMode(BMLLifecycleFixtureMode::NormalizeOnEdited);
         BML::Behavior::Edit data;
-        const auto existing = data.Use(*found);
-        const auto value = data.AppendPin(existing, "Patch Value", CKPGUID_INT);
-        data.Bind(value, 83);
-        data.Bind(existing.Local("State"), 83);
+        const auto existing = data.Root().Use(*found);
+        const auto value = data.Root().AppendPin(existing, "Patch Value", CKPGUID_INT);
+        data.Root().Bind(value, 83);
+        data.Root().Bind(existing.Local("State"), 83);
         auto applied = graph->Apply("player-existing-data", data);
         if (!applied)
             return false;
@@ -953,8 +1061,8 @@ private:
 
         fixture.ResetTrace();
         BML::Behavior::Edit flow;
-        const auto flowed = flow.Use(*current);
-        flow.Flow(flow.Root().Root().In(0), flowed.In(0));
+        const auto flowed = flow.Root().Use(*current);
+        flow.Root().Flow(flow.Root().Root().In(0), flowed.In(0));
         auto linked = graph->Apply("player-existing-flow", flow);
         if (!linked || !fixture.ReadTrace(&trace) || trace.EditedCount != 0)
             return false;
@@ -987,8 +1095,8 @@ private:
         fixture.ResetTrace();
         fixture.SetMode(BMLLifecycleFixtureMode::FailFirstEdited);
         BML::Behavior::Edit data;
-        const auto existing = data.Use(*found);
-        data.Bind(existing.Local("State"), 83);
+        const auto existing = data.Root().Use(*found);
+        data.Root().Bind(existing.Local("State"), 83);
         const auto applied = graph->Apply("player-failed-existing-data", data);
         if (applied)
             return false;
@@ -1048,7 +1156,7 @@ private:
             Finish(false, "continuation-attach");
             return;
         }
-        m_Parked = std::move(parked).Value();
+        m_Parked = parked.Take();
         const auto pulsed = m_Parked->Pulse("In");
         if (!pulsed || pulsed.Value() != BML::Behavior::PulseResult::Ran) {
             Finish(false, "continuation-pulse");
@@ -1161,8 +1269,8 @@ private:
         }
 
         BML::Behavior::Edit durable;
-        const auto anchored = durable.Use(*sourceNode);
-        durable.Tap(anchored.Out(0), Hook([] { return HookResult::Ok; }));
+        const auto anchored = durable.Root().Use(*sourceNode);
+        durable.Root().Tap(anchored.Out(0), Hook([] { return HookResult::Ok; }));
         const auto refused = m_Session.Plan(
             "player-public-identity-plan",
             BML::Behavior::Scripts::One(kScriptName), durable);
@@ -1188,19 +1296,19 @@ private:
         auto configured = m_Session.Use(fixture);
         configured.Settings({{"Value", std::int32_t{41}}});
         BML::Behavior::Edit edit;
-        const auto sink = edit.Use(*sinkNode);
-        const auto anchor = edit.Use(*anchorLink);
-        const auto block = edit.Add(configured);
-        const auto amount = edit.AppendPin(block, "Amount", CKPGUID_FLOAT);
-        const auto mode = edit.AppendPin(block, "Mode", CKPGUID_INT);
-        (void) edit.AppendPout(block, "Report", CKPGUID_INT);
-        const auto scratch = edit.AppendLocal(block, "Scratch", CKPGUID_INT);
-        edit.Bind(amount, 2.5f);
-        edit.Bind(mode, FacadeMode::On);
-        edit.Bind(scratch, 17);
-        edit.Before(anchor, interposed);
-        edit.Redirect(anchor, block.In());
-        edit.Flow(block.Out(), sink.In());
+        const auto sink = edit.Root().Use(*sinkNode);
+        const auto anchor = edit.Root().Use(*anchorLink);
+        const auto block = edit.Root().Add(configured);
+        const auto amount = edit.Root().AppendPin(block, "Amount", CKPGUID_FLOAT);
+        const auto mode = edit.Root().AppendPin(block, "Mode", CKPGUID_INT);
+        (void) edit.Root().AppendPout(block, "Report", CKPGUID_INT);
+        const auto scratch = edit.Root().AppendLocal(block, "Scratch", CKPGUID_INT);
+        edit.Root().Bind(amount, 2.5f);
+        edit.Root().Bind(mode, FacadeMode::On);
+        edit.Root().Bind(scratch, 17);
+        edit.Root().Before(anchor, interposed);
+        edit.Root().Redirect(anchor, block.In());
+        edit.Root().Flow(block.Out(), sink.In());
 
         const LifecycleFixtureExports fixtureApi = ResolveLifecycleFixture();
         if (!fixtureApi) {
@@ -1219,7 +1327,7 @@ private:
             Finish(false, "identity-apply");
             return;
         }
-        m_IdentityPatch = std::move(applied).Value();
+        m_IdentityPatch = applied.Take();
 
         const auto blockRef = m_IdentityPatch.Resolve(block);
         if (!blockRef || !blockRef->Domain) {
@@ -1414,7 +1522,7 @@ private:
             Finish(false, "replacement-original");
             return;
         }
-        m_ReplacementOriginal = std::move(original).Value();
+        m_ReplacementOriginal = original.Take();
         const auto originalView = m_ReplacementOriginal->Inspect(
             BML::Behavior::View::Live);
         m_ReplacementOriginalNode = originalView
@@ -1467,11 +1575,11 @@ private:
         }
 
         BML::Behavior::Edit edit;
-        const auto existing = edit.Use(*target);
+        const auto existing = edit.Root().Use(*target);
         auto block = m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID))
             .Settings({{"Value", 31}});
-        const auto replacement = edit.Replace(existing, block);
-        (void) edit.AppendPout(replacement, "Result", CKPGUID_INT);
+        const auto replacement = edit.Root().Replace(existing, block);
+        (void) edit.Root().AppendPout(replacement, "Result", CKPGUID_INT);
         auto applied = graph->Apply("player-node-replacement", edit);
         if (!applied) {
             GetLogger()->Error(
@@ -1483,7 +1591,7 @@ private:
             Finish(false, "replacement-apply");
             return;
         }
-        m_ReplacementPatch = std::move(applied).Value();
+        m_ReplacementPatch = applied.Take();
         const auto parked = m_ReplacementPatch.Resolve(existing);
         const auto installed = m_ReplacementPatch.Resolve(replacement);
         const auto live = m_Session.Inspect(m_Graph);
@@ -1707,8 +1815,8 @@ private:
             return;
         }
         BML::Behavior::Edit edit;
-        const auto removed = edit.Use(*target);
-        edit.Remove(removed);
+        const auto removed = edit.Root().Use(*target);
+        edit.Root().Remove(removed);
         const auto applied = graph->Apply("player-pending-node-removal", edit);
         if (applied || applied.Code() != BML_ERROR_BUSY ||
             applied.GetStatus().Error != BML::Behavior::Error::Busy) {
@@ -1811,13 +1919,13 @@ private:
         m_RemovalLinksBefore = graph->Links().size();
 
         BML::Behavior::Edit edit;
-        const auto removed = edit.Use(*target);
-        const auto originalSink = edit.Use(*replaced);
-        const auto replacement = edit.Replace(
+        const auto removed = edit.Root().Use(*target);
+        const auto originalSink = edit.Root().Use(*replaced);
+        const auto replacement = edit.Root().Replace(
             originalSink,
             m_Session.Use(CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
         (void) replacement;
-        edit.Remove(removed);
+        edit.Root().Remove(removed);
         auto applied = graph->Apply("player-node-removal", edit);
         if (!applied) {
             GetLogger()->Error(
@@ -1835,7 +1943,7 @@ private:
             Finish(false, "removal-apply");
             return;
         }
-        m_RemovalPatch = std::move(applied).Value();
+        m_RemovalPatch = applied.Take();
         const auto parked = m_RemovalPatch.Resolve(removed);
         const auto visible = m_Session.Inspect(m_Graph);
         const bool removedCorrectly = !parked && visible &&
@@ -2088,7 +2196,7 @@ private:
                 created.GetStatus().Message.c_str());
             return false;
         }
-        auto secondScript = std::move(created).Value();
+        auto secondScript = created.Take();
         auto first = m_Session.Inspect(m_Graph);
         auto second = secondScript.Inspect();
         if (!first || !second) {
@@ -2151,7 +2259,7 @@ private:
                 applied.GetStatus().Message.c_str());
             return false;
         }
-        BML::Behavior::Patch patch = std::move(applied).Value();
+        BML::Behavior::Patch patch = applied.Take();
         auto firstLive = m_Session.Inspect(m_Graph);
         auto secondLive = secondScript.Inspect();
         auto nestedLive = secondLive
@@ -2293,12 +2401,12 @@ private:
             return;
         }
         BML::Behavior::Edit edit;
-        const auto source = edit.Require(kSourceName);
-        const auto sink = edit.Require(kSinkName);
-        const auto link = edit.Between(source.Out(), sink.In());
-        const auto block = edit.Add(m_Session.Use(
+        const auto source = edit.Root().Require(kSourceName);
+        const auto sink = edit.Root().Require(kSinkName);
+        const auto link = edit.Root().Between(source.Out(), sink.In());
+        const auto block = edit.Root().Add(m_Session.Use(
             CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
-        edit.Splice(link, block);
+        edit.Root().Splice(link, block);
 
         auto applied = inspected->Apply("player-public-patch", edit);
         if (!applied) {
@@ -2311,7 +2419,7 @@ private:
             Finish(false, "patch-apply");
             return;
         }
-        m_Patch = std::move(applied).Value();
+        m_Patch = applied.Take();
         const auto info = m_Patch.Info();
         m_PatchPassed = info && info->State == PatchState::Active &&
             info->Installed() && info->Conflicts == 0 && PatchInstalled();
@@ -2487,6 +2595,11 @@ private:
             static_cast<unsigned>(m_GameplayScripts.size()),
             m_GameplayPatchPassed ? "true" : "false",
             m_GameplayPatchPassed ? "true" : "false");
+        GetLogger()->Info(
+            "Behavior gameplay tweaks: status=%s overclock=%s lantern=%s",
+            (m_OverclockPassed && m_LanternPassed) ? "pass" : "fail",
+            m_OverclockPassed ? "true" : "false",
+            m_LanternPassed ? "true" : "false");
         if (passed)
             BML::PlayerTest::ProbeReport::Pass(reason);
         else
@@ -2587,6 +2700,8 @@ private:
     bool m_OperationPassed = false;
     bool m_ScriptPassed = false;
     bool m_GameplayPatchPassed = false;
+    bool m_OverclockPassed = false;
+    bool m_LanternPassed = false;
     bool m_Done = false;
 };
 

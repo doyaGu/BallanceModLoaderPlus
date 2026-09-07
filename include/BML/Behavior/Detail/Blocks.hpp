@@ -47,7 +47,7 @@ public:
             m_Status = targeted.GetStatus();
             return;
         }
-        m_Block = std::move(targeted.Value());
+        m_Block = targeted.Take();
     }
 
     template <class T>
@@ -117,7 +117,7 @@ private:
             m_Status = value.GetStatus();
             return;
         }
-        m_Pins.emplace_back(std::move(slot), std::move(value.Value()));
+        m_Pins.emplace_back(std::move(slot), value.Take());
     }
 
     const Session &m_Session;

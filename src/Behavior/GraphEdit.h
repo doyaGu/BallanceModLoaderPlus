@@ -12,40 +12,10 @@
 
 #include "Behavior/Block.h"
 #include "Behavior/Edit.h"
+#include "Behavior/Pattern.h"
 #include "Behavior/PrototypeCatalog.h"
 
 namespace BML::Behavior::Internal {
-
-// A Node query contains semantic identity only and is resolved against the
-// target graph each time this edit is compiled. An empty field is not a
-// wildcard authoring shortcut unless the other field identifies the Node.
-struct NodeQuery {
-    enum class Kind {
-        Index,
-        Name,
-        Only,
-    } Selector = Kind::Only;
-    int Index = -1;
-    std::string Name;
-    int Occurrence = 0;
-    bool Unique = false;
-    CKGUID Prototype = CKGUID();
-    std::optional<BehaviorKind> ExpectedKind;
-    std::uint64_t PortShape = 0;
-
-    NodeQuery() = default;
-    NodeQuery(std::string name, CKGUID prototype = CKGUID())
-        : Selector(name.empty() ? Kind::Only : Kind::Name),
-          Name(std::move(name)), Unique(true), Prototype(prototype) {}
-
-    [[nodiscard]] explicit operator bool() const noexcept {
-        return (Selector == Kind::Index && Index >= 0) ||
-            (Selector == Kind::Name && !Name.empty()) ||
-            (Selector == Kind::Only && Prototype.IsValid());
-    }
-
-    friend bool operator==(const NodeQuery &, const NodeQuery &) = default;
-};
 
 struct GraphNodeSpec {
     std::string Name;
@@ -73,7 +43,7 @@ struct PathRef {
 // reports that, and a durable Plan refuses such an edit.
 class GraphEdit final {
 public:
-    class Compiler {
+    class Compiler : public PatternValues {
     public:
         virtual ~Compiler() = default;
 
@@ -102,9 +72,19 @@ public:
     [[nodiscard]] Port Exit(int index = 0) const;
     [[nodiscard]] Port Exit(std::string name) const;
 
-    Node RequireOne(NodeQuery query);
+    Node RequireOne(NodePattern pattern);
+    Node Each(NodePattern pattern);
+    Status Count(Node node, SlotKind kind, int count);
+    Status Observe(Port port, Value expected);
+    Node Next(Port source);
+    Node Next(Port source, NodePattern expected);
+    Node Previous(Port sink);
+    Node Previous(Port sink, NodePattern expected);
     Link RequireOne(Port source, Port sink,
                     std::optional<int> delay = std::nullopt);
+    Link Leaving(Port source);
+    Link Entering(Port sink);
+    Link To(Port source, Node target);
     // Names a Node or Link the author already holds a reference to, instead of
     // searching the graph for it.
     Node UseNode(const ObjectRef &node);
@@ -138,6 +118,10 @@ public:
     // destination is dropped while the Patch is open, so the Logical view of
     // the graph reports the new one.
     void Redirect(Link target, Port sink, std::vector<Order> ordering = {});
+    // Sends one Link to the destination of another Link without freezing the
+    // destination's current In/Exit index into the retained intent.
+    void Redirect(Link target, Link destination,
+                  std::vector<Order> ordering = {});
     Port AppendIn(Node node, std::string name);
     Port AppendOut(Node node, std::string name);
     Port AppendPin(Node node, std::string name, CKGUID type);
@@ -180,9 +164,24 @@ public:
                    bool rootInterfaceExists = false) const;
 
 private:
+    enum class NodeRelation {
+        Next,
+        Previous,
+    };
+
+    struct RelatedNode {
+        NodeRelation Relation = NodeRelation::Next;
+        Port Endpoint;
+
+        friend bool operator==(const RelatedNode &,
+                               const RelatedNode &) = default;
+    };
+
     struct EditNode {
         Node Handle;
-        NodeQuery Query;
+        NodePattern Pattern;
+        bool Many = false;
+        std::optional<RelatedNode> Related;
         std::optional<BlockSpec> Block;
         std::optional<GraphNodeSpec> Subgraph;
         // Set instead of Query when the author named the Node by identity.
@@ -196,10 +195,19 @@ private:
         friend bool operator==(const EditNode &, const EditNode &) = default;
     };
 
+    enum class LinkRelation {
+        Between,
+        Leaving,
+        Entering,
+        To,
+    };
+
     struct EditLink {
         Link Handle;
+        LinkRelation Relation = LinkRelation::Between;
         Port Source;
         Port Sink;
+        Node Target;
         std::optional<int> Delay;
         // Set instead of the endpoint query when the author named the Link by
         // identity.
@@ -276,9 +284,19 @@ private:
         friend bool operator==(const EditRemove &, const EditRemove &) = default;
     };
 
+    struct EditRedirectLink {
+        Link Target;
+        Link Destination;
+        std::vector<Order> Ordering;
+        std::uint32_t Ordinal = 0;
+
+        friend bool operator==(const EditRedirectLink &,
+                               const EditRedirectLink &) = default;
+    };
+
     using Action = std::variant<EditFlow, EditBind, EditPush, EditSplice,
                                 EditRedirect, EditInterface, EditTap,
-                                EditAfter, EditBefore>;
+                                EditAfter, EditBefore, EditRedirectLink>;
 
     [[nodiscard]] std::uint32_t NextNode() noexcept { return ++m_NextNode; }
     [[nodiscard]] std::uint32_t NextLink() noexcept { return ++m_NextLink; }

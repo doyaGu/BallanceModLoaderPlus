@@ -403,6 +403,7 @@ add_bml_test(BehaviorGraphEditTest
         ${BML_SOURCE_DIR}/Behavior/Block.cpp
         ${BML_SOURCE_DIR}/Behavior/Callback.cpp
         ${BML_SOURCE_DIR}/Behavior/GraphEdit.cpp
+        ${BML_SOURCE_DIR}/Behavior/Pattern.cpp
         ${BML_SOURCE_DIR}/Behavior/Edit.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp

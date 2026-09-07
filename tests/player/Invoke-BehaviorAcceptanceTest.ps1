@@ -324,12 +324,11 @@ $checks['BehaviorGameplayMigration'] = $gameplayPatch.Success -and
     [int]$gameplayPatch.Groups['scripts'].Value -eq 2 -and
     $gameplayPatch.Groups['realtime'].Value -eq 'true' -and
     $gameplayPatch.Groups['delta'].Value -eq 'true'
-$checks['BehaviorOverclockMigration'] =
-    $log.Contains('Enable Overclock through one Behavior Plan') -and
+$checks['BehaviorOverclockMigration'] = $log.Contains(
+    'Behavior gameplay tweaks: status=pass overclock=true lantern=true') -and
     $log.Contains('Restore the Overclock Behavior Plan')
-$checks['BehaviorLanternMigration'] =
-    $log.Contains(
-        'Configure the lantern alpha-test through a Behavior Plan')
+$checks['BehaviorLanternMigration'] = $log.Contains(
+    'Behavior gameplay tweaks: status=pass overclock=true lantern=true')
 $checks['BehaviorPatchVisual'] =
     $run.Captures.'BehaviorPatch-baseline'.Captured -and
     $run.Captures.'BehaviorPatch-active'.Captured -and

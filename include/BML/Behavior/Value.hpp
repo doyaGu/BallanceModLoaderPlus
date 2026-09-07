@@ -163,7 +163,25 @@ public:
     [[nodiscard]] bool HasValue() const noexcept { return m_Value.has_value(); }
     [[nodiscard]] T &Value() & { return m_Value.value(); }
     [[nodiscard]] const T &Value() const & { return m_Value.value(); }
-    [[nodiscard]] T &&Value() && { return std::move(m_Value).value(); }
+    template <class U = T,
+              std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
+    [[nodiscard]] T Value() && {
+        if constexpr (std::is_move_constructible_v<T>)
+            return std::move(m_Value).value();
+        else
+            return m_Value.value();
+    }
+    template <class U = T,
+              std::enable_if_t<!std::is_copy_constructible_v<U>, int> = 0>
+    [[nodiscard]] T Value() && = delete;
+    [[nodiscard]] const T &&Value() const && = delete;
+    // Consumes the contained value. The Result keeps its code and Status so
+    // diagnostics remain readable, but no longer reports a value afterwards.
+    [[nodiscard]] T Take() {
+        T value(std::move(m_Value).value());
+        m_Value.reset();
+        return value;
+    }
     [[nodiscard]] T *operator->() { return &Value(); }
     [[nodiscard]] const T *operator->() const { return &Value(); }
     [[nodiscard]] T &operator*() & { return Value(); }

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <tuple>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -27,6 +28,12 @@ GraphPort In(int index = 0, std::string name = "In") {
 
 GraphPort Out(int index = 0, std::string name = "Out") {
     return {SlotKind::Output, 0, index, 0, CKGUID(), false,
+            std::move(name), false};
+}
+
+GraphPort Pin(int index = 0, std::string name = "Value",
+              CKGUID type = CKPGUID_INT) {
+    return {SlotKind::InputParameter, 0, index, 0, type, false,
             std::move(name), false};
 }
 
@@ -126,6 +133,19 @@ public:
         return {};
     }
 
+    Status ReadPatternValue(const GraphNode &node, const Slot &slot,
+                            GraphValue &out) override {
+        ++ValueReads;
+        const auto found = Values.find({node.Id, slot.Kind, slot.Index});
+        if (found == Values.end()) {
+            out = {};
+            out.State = ValueState::Indeterminate;
+            return {};
+        }
+        out = found->second;
+        return {};
+    }
+
     Status Add(Edit &edit, BlockSpec block, Node &out) override {
         ++Adds;
         AddedPrototypes.push_back(
@@ -175,6 +195,8 @@ public:
     int Adds = 0;
     int Taps = 0;
     int Afters = 0;
+    int ValueReads = 0;
+    std::map<std::tuple<std::uint64_t, SlotKind, int>, GraphValue> Values;
     CKDWORD NodeFlags = 0;
     CKDWORD AddedFlags = 0;
     Layout AddedShape = Shape();
@@ -221,7 +243,7 @@ TEST(BehaviorGraphEdit, ResolvesSemanticNodesAndAnExactLinkBeforeAdding) {
 TEST(BehaviorGraphEdit, ReusesOneLiveNodeForRepeatedStructuralRequirements) {
     FakeCompiler compiler(Model());
     GraphEdit plan;
-    const NodeQuery wait{"Wait Message", CKGUID(0x1111, 1)};
+    const NodePattern wait{"Wait Message", CKGUID(0x1111, 1)};
     (void) plan.RequireOne(wait);
     (void) plan.RequireOne(wait);
 
@@ -230,6 +252,138 @@ TEST(BehaviorGraphEdit, ReusesOneLiveNodeForRepeatedStructuralRequirements) {
         {"mod", "repeated-require"}, compiler.Base.Root, compiler, edit);
     ASSERT_TRUE(status) << status.Message;
     EXPECT_EQ(compiler.UsedNodes, (std::vector<ObjectRef>{Ref(101)}));
+}
+
+TEST(BehaviorGraphEdit, ResolvesNodePatternsByKindAndPortCounts) {
+    GraphModel graph = Model();
+    graph.Nodes[1].Ports = {In(), Out(), Pin()};
+    graph.Nodes.push_back(NodeOf(
+        103, Ref(103), 100, CKGUID(0x1111, 1), "Wait Message",
+        {In(), Out(), Out(1, "Timeout"), Pin()}));
+    graph.Nodes.back().Kind = BehaviorKind::Graph;
+    FakeCompiler compiler(std::move(graph));
+
+    NodePattern pattern{"Wait Message", CKGUID(0x1111, 1)};
+    pattern.ExpectedKind = BehaviorKind::Function;
+    pattern.PortCounts = {
+        {SlotKind::Input, 1},
+        {SlotKind::Output, 1},
+        {SlotKind::InputParameter, 1},
+        {SlotKind::OutputParameter, 0},
+    };
+    GraphEdit edit;
+    (void) edit.RequireOne(std::move(pattern));
+
+    Edit resolved;
+    const Status status = edit.Compile(
+        {"mod", "pattern-shape"}, compiler.Base.Root, compiler, resolved);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.UsedNodes, (std::vector<ObjectRef>{Ref(101)}));
+    EXPECT_EQ(compiler.ValueReads, 0);
+}
+
+TEST(BehaviorGraphEdit, ResolvesNodePatternsByObservedPortValue) {
+    GraphModel graph = Model();
+    graph.Nodes[1].Ports.push_back(Pin(0, "Message"));
+    graph.Nodes.push_back(NodeOf(
+        103, Ref(103), 100, CKGUID(0x1111, 1), "Wait Message",
+        {In(), Out(), Pin(0, "Message")}));
+    FakeCompiler compiler(std::move(graph));
+    compiler.Values[{101, SlotKind::InputParameter, 0}] = {
+        ValueState::Available, ValueRelation::Stored, CKPGUID_INT,
+        Parameter::Form::Int32, std::int32_t{7}};
+    compiler.Values[{103, SlotKind::InputParameter, 0}] = {
+        ValueState::Available, ValueRelation::Stored, CKPGUID_INT,
+        Parameter::Form::Int32, std::int32_t{11}};
+
+    NodePattern pattern{"Wait Message", CKGUID(0x1111, 1)};
+    pattern.PortValues.push_back({
+        Slot::Named(SlotKind::InputParameter, "Message", CKPGUID_INT),
+        Value::From(CKPGUID_INT, std::int32_t{11})});
+    GraphEdit edit;
+    (void) edit.RequireOne(std::move(pattern));
+
+    Edit resolved;
+    const Status status = edit.Compile(
+        {"mod", "pattern-value"}, compiler.Base.Root, compiler, resolved);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.UsedNodes, (std::vector<ObjectRef>{Ref(103)}));
+    EXPECT_EQ(compiler.ValueReads, 2);
+}
+
+TEST(BehaviorGraphEdit, RepeatsActionsForEveryPatternMatchInChildOrder) {
+    GraphModel graph = Model();
+    graph.Nodes.push_back(NodeOf(
+        103, Ref(103), 100, CKGUID(0x3333, 3), "Activate Script",
+        {In(), Out()}));
+    graph.Nodes.back().Index = 4;
+    graph.Nodes.push_back(NodeOf(
+        104, Ref(104), 100, CKGUID(0x3333, 3), "Activate Script",
+        {In(), Out()}));
+    graph.Nodes.back().Index = 2;
+    FakeCompiler compiler(std::move(graph));
+
+    GraphEdit plan;
+    const Node activators = plan.Each({"Activate Script"});
+    plan.Flow(activators.Out(), plan.Exit("Done"));
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "each"}, compiler.Base.Root, compiler, edit);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.UsedNodes,
+              (std::vector<ObjectRef>{Ref(104), Ref(103)}));
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    ASSERT_EQ(checked.Flows.size(), 2u);
+    EXPECT_NE(checked.Flows[0].Source.Owner,
+              checked.Flows[1].Source.Owner);
+    EXPECT_EQ(checked.Flows[0].Sink.Owner, edit.Graph());
+    EXPECT_EQ(checked.Flows[1].Sink.Owner, edit.Graph());
+}
+
+TEST(BehaviorGraphEdit, RequiresAtLeastOneNodeForEach) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    (void) plan.Each({"Activate Script"});
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "each-missing"}, compiler.Base.Root, compiler, edit);
+    EXPECT_EQ(status.Code, Error::QueryNotFound);
+    EXPECT_TRUE(compiler.UsedNodes.empty());
+}
+
+TEST(BehaviorGraphEdit, RejectsInvalidOrUnresolvedNodePatterns) {
+    FakeCompiler compiler(Model());
+    GraphEdit duplicateCounts;
+    NodePattern duplicate{"Wait Message"};
+    duplicate.PortCounts = {
+        {SlotKind::Input, 1}, {SlotKind::Input, 1}};
+    (void) duplicateCounts.RequireOne(std::move(duplicate));
+    EXPECT_EQ(duplicateCounts.Validate().Code, Error::InvalidArgument);
+
+    GraphEdit controlValue;
+    NodePattern control{"Wait Message"};
+    control.PortValues.push_back({
+        Slot::At(SlotKind::Output, 0),
+        Value::From(CKPGUID_INT, std::int32_t{1})});
+    (void) controlValue.RequireOne(std::move(control));
+    EXPECT_EQ(controlValue.Validate().Code, Error::TypeMismatch);
+
+    compiler.Base.Nodes[1].Ports.push_back(Pin());
+    NodePattern unavailable{"Wait Message"};
+    unavailable.PortValues.push_back({
+        Slot::At(SlotKind::InputParameter, 0, CKPGUID_INT),
+        Value::From(CKPGUID_INT, std::int32_t{1})});
+    GraphEdit unresolved;
+    (void) unresolved.RequireOne(std::move(unavailable));
+    Edit resolved;
+    const Status status = unresolved.Compile(
+        {"mod", "pattern-unresolved"}, compiler.Base.Root, compiler,
+        resolved);
+    EXPECT_EQ(status.Code, Error::QueryNotFound);
+    EXPECT_EQ(compiler.UsedNodes.size(), 0u);
 }
 
 TEST(BehaviorGraphEdit, KeepsTheSelectedProviderForEveryInstallation) {
@@ -324,6 +478,164 @@ TEST(BehaviorGraphEdit, RequiresAUniqueParallelLink) {
         {"mod", "checkpoint"}, exact.Base.Root, exact, edit));
     EXPECT_EQ(exact.UsedLinks,
               (std::vector<ObjectRef>{Ref(202)}));
+}
+
+TEST(BehaviorGraphEdit, ResolvesNodesAndLinksByTopology) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    const Node sink = plan.Next(wait.Out());
+    const Node back = plan.Previous(sink.In());
+    (void) plan.Leaving(wait.Out());
+    (void) plan.Entering(sink.In());
+    (void) plan.To(wait.Out(), sink);
+
+    Edit edit;
+    std::map<std::uint32_t, Node> nodes;
+    const Status status = plan.Compile(
+        {"mod", "topology"}, compiler.Base.Root, compiler, edit, &nodes);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_TRUE(nodes.contains(wait.Value));
+    ASSERT_TRUE(nodes.contains(sink.Value));
+    ASSERT_TRUE(nodes.contains(back.Value));
+    EXPECT_EQ(nodes.at(wait.Value), nodes.at(back.Value));
+    EXPECT_NE(nodes.at(wait.Value), nodes.at(sink.Value));
+    EXPECT_EQ(compiler.UsedNodes,
+              (std::vector<ObjectRef>{Ref(101), Ref(102)}));
+    EXPECT_EQ(compiler.UsedLinks,
+              (std::vector<ObjectRef>{Ref(201), Ref(201), Ref(201)}));
+}
+
+TEST(BehaviorGraphEdit, ConstrainsRelatedNodesWithoutGlobalNameUniqueness) {
+    GraphModel graph = Model();
+    graph.Nodes.push_back(NodeOf(
+        103, Ref(103), 100, CKGUID(0x3333, 3), "set Resetpoint",
+        {In(), Out()}));
+    graph.Nodes.back().Index = 3;
+    graph.Nodes.push_back(NodeOf(
+        104, Ref(104), 100, CKGUID(0x4444, 4), "Show",
+        {In(), Out()}));
+    graph.Nodes.back().Index = 4;
+    graph.Links.push_back(
+        {2, Ref(202), {101, SlotKind::Output, 0},
+         {104, SlotKind::Input, 0}, 0});
+    FakeCompiler compiler(std::move(graph));
+
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    const Node sink = plan.Next(wait.Out(), {"set Resetpoint"});
+    (void) plan.To(wait.Out(), sink);
+
+    Edit edit;
+    std::map<std::uint32_t, Node> nodes;
+    const Status status = plan.Compile(
+        {"mod", "related-pattern"}, compiler.Base.Root, compiler, edit,
+        &nodes);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_TRUE(nodes.contains(sink.Value));
+    EXPECT_EQ(compiler.UsedNodes,
+              (std::vector<ObjectRef>{Ref(101), Ref(102)}));
+}
+
+TEST(BehaviorGraphEdit, RejectsARelatedNodeThatDoesNotMatchItsPattern) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    (void) plan.Next(wait.Out(), {"Send Message"});
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "wrong-related-pattern"}, compiler.Base.Root, compiler,
+        edit);
+    EXPECT_EQ(status.Code, Error::QueryNotFound);
+    EXPECT_EQ(compiler.UsedNodes, (std::vector<ObjectRef>{Ref(101)}));
+}
+
+TEST(BehaviorGraphEdit, ResolvesTopologyAtTheGraphEntryAndExit) {
+    GraphModel graph = Model();
+    graph.Links.insert(
+        graph.Links.begin(),
+        {2, Ref(202), {100, SlotKind::Input, 0},
+         {101, SlotKind::Input, 0}, 0});
+    graph.Links.push_back(
+        {3, Ref(203), {102, SlotKind::Output, 0},
+         {100, SlotKind::Output, 0}, 0});
+    FakeCompiler compiler(std::move(graph));
+    GraphEdit plan;
+    const Node first = plan.Next(plan.Entry("Start"));
+    const Node last = plan.Previous(plan.Exit("Done"));
+    (void) plan.Leaving(plan.Entry("Start"));
+    (void) plan.Entering(plan.Exit("Done"));
+
+    Edit edit;
+    std::map<std::uint32_t, Node> nodes;
+    const Status status = plan.Compile(
+        {"mod", "graph-ends"}, compiler.Base.Root, compiler, edit, &nodes);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_NE(nodes.at(first.Value), nodes.at(last.Value));
+    EXPECT_EQ(compiler.UsedNodes,
+              (std::vector<ObjectRef>{Ref(101), Ref(102)}));
+    EXPECT_EQ(compiler.UsedLinks,
+              (std::vector<ObjectRef>{Ref(202), Ref(203)}));
+}
+
+TEST(BehaviorGraphEdit, RedirectsToTheDestinationOfAnotherLink) {
+    GraphModel graph = Model();
+    graph.Links.insert(
+        graph.Links.begin(),
+        {2, Ref(202), {100, SlotKind::Input, 0},
+         {101, SlotKind::Input, 0}, 0});
+    FakeCompiler compiler(std::move(graph));
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message"});
+    const Link entering = plan.Entering(wait.In());
+    const Link leaving = plan.Leaving(wait.Out());
+    plan.Redirect(entering, leaving);
+
+    Edit edit;
+    const Status status = plan.Compile(
+        {"mod", "bypass"}, compiler.Base.Root, compiler, edit);
+    ASSERT_TRUE(status) << status.Message;
+    EXPECT_EQ(compiler.UsedLinks,
+              (std::vector<ObjectRef>{Ref(202), Ref(201)}));
+    EXPECT_EQ(compiler.UsedNodes,
+              (std::vector<ObjectRef>{Ref(101), Ref(102)}));
+
+    CheckedEdit checked;
+    ASSERT_TRUE(edit.Validate(compiler.Base, checked));
+    ASSERT_EQ(checked.Redirects.size(), 1u);
+    EXPECT_EQ(checked.Redirects.front().Target.Anchor, Ref(202));
+    EXPECT_EQ(checked.Redirects.front().Sink.Slot.Kind, SlotKind::Input);
+    EXPECT_EQ(checked.Redirects.front().Sink.Slot.Index, 0);
+}
+
+TEST(BehaviorGraphEdit, RejectsMissingAmbiguousAndBackwardTopology) {
+    GraphEdit wrongDirection;
+    const Node wait = wrongDirection.RequireOne({"Wait Message"});
+    (void) wrongDirection.Next(wait.In());
+    EXPECT_EQ(wrongDirection.Validate().Code, Error::InvalidState);
+
+    GraphModel parallel = Model();
+    GraphLink duplicate = parallel.Links.front();
+    duplicate.Id = 2;
+    duplicate.Object = Ref(202);
+    parallel.Links.push_back(duplicate);
+    FakeCompiler ambiguous(std::move(parallel));
+    GraphEdit branching;
+    const Node source = branching.RequireOne({"Wait Message"});
+    (void) branching.Next(source.Out());
+    Edit edit;
+    Status status = branching.Compile(
+        {"mod", "branching"}, ambiguous.Base.Root, ambiguous, edit);
+    EXPECT_EQ(status.Code, Error::QueryAmbiguous);
+
+    FakeCompiler missing(Model());
+    GraphEdit disconnected;
+    const Node target = disconnected.RequireOne({"set Resetpoint"});
+    (void) disconnected.Next(target.Out());
+    status = disconnected.Compile(
+        {"mod", "disconnected"}, missing.Base.Root, missing, edit);
+    EXPECT_EQ(status.Code, Error::LinkNotFound);
 }
 
 TEST(BehaviorGraphEdit, RejectsNonGraphLinksAndInvalidDelayBeforeCK) {
@@ -1055,7 +1367,7 @@ TEST(BehaviorGraphEdit, ComparesAuthoredDefinitionsAcrossOwnedCopies) {
     const auto define = [&](int value) {
         GraphEdit edit;
         const Node existing = edit.RequireOne(
-            NodeQuery{"Counter", CKGUID(0x1111, 1)});
+            NodePattern{"Counter", CKGUID(0x1111, 1)});
         BlockSpec block(CKGUID(0x3333, 3));
         block.PrototypeGeneration(7)
             .Pin("Value", CKGUID(0x4444, 4), value);

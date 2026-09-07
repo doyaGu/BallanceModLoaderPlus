@@ -728,12 +728,13 @@ class Graph;
 class Scripts;
 
 namespace Detail {
-struct GraphEdit;
-struct ScriptEdit;
+struct PatchTarget;
+struct PlanRule;
+struct PatchWire;
 }
 
-[[nodiscard]] Detail::GraphEdit On(const Graph &graph, const Edit &edit);
-[[nodiscard]] Detail::ScriptEdit On(const Scripts &scripts, const Edit &edit);
+[[nodiscard]] Detail::PatchTarget On(const Graph &graph, const Edit &edit);
+[[nodiscard]] Detail::PlanRule On(const Scripts &scripts, const Edit &edit);
 
 class Watch {
 public:
@@ -908,7 +909,8 @@ private:
     friend class Script;
     friend class Detail::Run;
     friend class Block;
-    friend Detail::GraphEdit On(const Graph &, const Edit &);
+    friend struct Detail::PatchWire;
+    friend Detail::PatchTarget On(const Graph &, const Edit &);
 };
 
 class Session;

@@ -218,10 +218,6 @@ void BMLMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *master
 
 void BMLMod::OnLoadScript(const char *filename, CKBehavior *script) {
     m_CustomMaps.OnLoadScript(script);
-    // Gameplay_Energy ordering is intentional: the BallOff splice is installed
-    // first, then Overclock redirects the same logical Link past the Delayer.
-    m_GameEventHooks.OnLoadScript(script);
-    m_GameplayTweaks.OnLoadScript(script);
 
     if (!strcmp(script->GetName(), "Menu_Init"))
         OnEditScript_Menu_MenuInit(script);

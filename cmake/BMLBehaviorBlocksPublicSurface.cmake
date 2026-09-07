@@ -8,6 +8,7 @@ set(BML_BEHAVIOR_CPP_PUBLIC_RELATIVE_HEADERS
         BML/Behavior/Value.hpp
         BML/Behavior/Frames.hpp
         BML/Behavior/Prototype.hpp
+        BML/Behavior/Pattern.hpp
         BML/Behavior/Graph.hpp
         BML/Behavior/Run.hpp
         BML/Behavior/Block.hpp
@@ -27,6 +28,7 @@ set(BML_PUBLIC_BEHAVIOR_CPP_DETAIL_HEADERS
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/BlockAccess.hpp
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/Wire.hpp
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/Hook.hpp
+        ${BML_INCLUDE_DIR}/BML/Behavior/Detail/EditProgram.hpp
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/Inline.hpp
         ${BML_INCLUDE_DIR}/BML/Behavior/Detail/Blocks.hpp
 )

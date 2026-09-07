@@ -66,7 +66,7 @@ using BML::Behavior::Internal::DetachedCompatibility;
 using BML::Behavior::Internal::GraphEdit;
 using BML::Behavior::Internal::Link;
 using BML::Behavior::Internal::Node;
-using BML::Behavior::Internal::NodeQuery;
+using BML::Behavior::Internal::NodePattern;
 using BML::Behavior::Internal::Order;
 using BML::Behavior::Internal::OrderKind;
 using BML::Behavior::Internal::PatchId;
@@ -2777,6 +2777,12 @@ bool EditProgram::Defines(std::uint32_t kind) noexcept {
     case BML_BEHAVIOR_EDIT_REPLACE_BLOCK:
     case BML_BEHAVIOR_EDIT_ADD_GRAPH:
     case BML_BEHAVIOR_EDIT_ENTER_GRAPH:
+    case BML_BEHAVIOR_EDIT_NEXT_NODE:
+    case BML_BEHAVIOR_EDIT_PREVIOUS_NODE:
+    case BML_BEHAVIOR_EDIT_LEAVING_LINK:
+    case BML_BEHAVIOR_EDIT_ENTERING_LINK:
+    case BML_BEHAVIOR_EDIT_LINK_TO_NODE:
+    case BML_BEHAVIOR_EDIT_EACH_NODE:
         return true;
     default:
         return false;
@@ -2816,6 +2822,71 @@ BML::Behavior::Internal::Patches::HandleMap EditProgram::Nodes() const {
     return nodes;
 }
 
+Status ReadNodePattern(const BML_BehaviorEditStep &step,
+                       NodePattern &out, bool required) {
+    out = {};
+    const CKGUID prototype = Guid(step.Prototype.Prototype);
+    if ((prototype.IsValid() || step.Prototype.Generation != 0) &&
+        step.Prototype.StructSize < sizeof(step.Prototype)) {
+        return InvalidValue(
+            "A Node Pattern has an unsupported Prototype reference.");
+    }
+    if (step.Prototype.Generation != 0) {
+        return InvalidValue(
+            "A Node Pattern matches a Prototype GUID, not a provider generation.");
+    }
+
+    switch (step.Selector.Kind) {
+    case BML_BEHAVIOR_SELECTOR_INDEX:
+        if (step.Selector.StructSize < sizeof(step.Selector) ||
+            step.Selector.Index < 0)
+            return InvalidValue("A Node Pattern index is invalid.");
+        out.Selector = NodePattern::SelectorKind::Index;
+        out.Index = step.Selector.Index;
+        break;
+    case BML_BEHAVIOR_SELECTOR_NAME:
+    case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
+        if (step.Selector.StructSize < sizeof(step.Selector) ||
+            !ReadString(step.Selector.Name, out.Name) || out.Name.empty() ||
+            step.Selector.Occurrence < 0)
+            return InvalidValue("A Node Pattern name is invalid.");
+        out.Selector = NodePattern::SelectorKind::Name;
+        out.Occurrence = step.Selector.Occurrence;
+        out.Unique = step.Selector.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME;
+        break;
+    case BML_BEHAVIOR_SELECTOR_ONLY:
+        if (step.Selector.StructSize < sizeof(step.Selector))
+            return InvalidValue("A Node Pattern selector is invalid.");
+        out.Selector = NodePattern::SelectorKind::Only;
+        break;
+    default:
+        return InvalidValue("A Node Pattern selector is unknown.");
+    }
+
+    out.Prototype = prototype;
+    if (step.ExpectedKind) {
+        switch (step.ExpectedKind) {
+        case BML_BEHAVIOR_KIND_FUNCTION:
+            out.ExpectedKind = BehaviorKind::Function;
+            break;
+        case BML_BEHAVIOR_KIND_CALLBACK:
+            out.ExpectedKind = BehaviorKind::Callback;
+            break;
+        case BML_BEHAVIOR_KIND_GRAPH:
+            out.ExpectedKind = BehaviorKind::Graph;
+            break;
+        default:
+            return InvalidValue("A Node Pattern Behavior kind is unknown.");
+        }
+    }
+    if (step.ReservedShape != 0)
+        return InvalidValue("A Node Pattern has reserved shape data.");
+    out.PortShape = step.PortShape;
+    if (required && !out)
+        return InvalidValue("A Node Pattern has no observable condition.");
+    return {};
+}
+
 Status EditProgram::Step(const BML_BehaviorEditStep &step,
                          ModContext &context, GraphEdit &root) {
     if (step.StructSize < sizeof(step))
@@ -2848,74 +2919,15 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
     Port source;
     Port sink;
     switch (step.Kind) {
-    case BML_BEHAVIOR_EDIT_REQUIRE_NODE: {
-        std::string name;
-        if (!ReadString(step.Name, name))
-            return InvalidValue("A Behavior node name is not valid UTF-8 text.");
-        const CKGUID prototype = Guid(step.Prototype.Prototype);
-        if ((prototype.IsValid() || step.Prototype.Generation != 0) &&
-            step.Prototype.StructSize < sizeof(step.Prototype)) {
-            return InvalidValue(
-                "A required Behavior node has an unsupported Prototype reference.");
-        }
-        if (step.Prototype.Generation != 0) {
-            return InvalidValue(
-                "A required Behavior node matches a Prototype GUID, not a provider generation.");
-        }
-        NodeQuery query;
-        switch (step.Selector.Kind) {
-        case BML_BEHAVIOR_SELECTOR_INDEX:
-            if (step.Selector.StructSize < sizeof(step.Selector) ||
-                step.Selector.Index < 0)
-                return InvalidValue("A required Behavior node index is invalid.");
-            query.Selector = NodeQuery::Kind::Index;
-            query.Index = step.Selector.Index;
-            break;
-        case BML_BEHAVIOR_SELECTOR_NAME:
-        case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
-            if (step.Selector.StructSize < sizeof(step.Selector) ||
-                !ReadString(step.Selector.Name, name) || name.empty() ||
-                step.Selector.Occurrence < 0)
-                return InvalidValue("A required Behavior node name is invalid.");
-            query.Selector = NodeQuery::Kind::Name;
-            query.Name = std::move(name);
-            query.Occurrence = step.Selector.Occurrence;
-            query.Unique = step.Selector.Kind ==
-                BML_BEHAVIOR_SELECTOR_UNIQUE_NAME;
-            break;
-        case BML_BEHAVIOR_SELECTOR_ONLY:
-            if (step.Selector.StructSize < sizeof(step.Selector))
-                return InvalidValue("A required Behavior node selector is invalid.");
-            query.Selector = NodeQuery::Kind::Only;
-            break;
-        default:
-            return InvalidValue("A required Behavior node selector is unknown.");
-        }
-        query.Prototype = prototype;
-        if (step.ExpectedKind) {
-            switch (step.ExpectedKind) {
-            case BML_BEHAVIOR_KIND_FUNCTION:
-                query.ExpectedKind = BehaviorKind::Function;
-                break;
-            case BML_BEHAVIOR_KIND_CALLBACK:
-                query.ExpectedKind = BehaviorKind::Callback;
-                break;
-            case BML_BEHAVIOR_KIND_GRAPH:
-                query.ExpectedKind = BehaviorKind::Graph;
-                break;
-            default:
-                return InvalidValue("A required Behavior node kind is unknown.");
-            }
-        }
-        if (step.ReservedShape != 0)
-            return InvalidValue("A required Behavior node has reserved shape data.");
-        query.PortShape = step.PortShape;
-        if (!query) {
-            return InvalidValue(
-                "A required Behavior node needs a name or a Prototype.");
-        }
+    case BML_BEHAVIOR_EDIT_REQUIRE_NODE:
+    case BML_BEHAVIOR_EDIT_EACH_NODE: {
+        NodePattern query;
+        if (status = ReadNodePattern(step, query, true); !status)
+            return status;
         defined.Kind = EditHandleKind::Node;
-        defined.NodeValue = edit.RequireOne(std::move(query));
+        defined.NodeValue = step.Kind == BML_BEHAVIOR_EDIT_EACH_NODE
+            ? edit.Each(std::move(query))
+            : edit.RequireOne(std::move(query));
         break;
     }
     case BML_BEHAVIOR_EDIT_REQUIRE_LINK: {
@@ -2928,6 +2940,51 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
             delay = step.Delay;
         defined.Kind = EditHandleKind::Link;
         defined.LinkValue = edit.RequireOne(source, sink, delay);
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_NEXT_NODE: {
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        NodePattern expected;
+        if (status = ReadNodePattern(step, expected, false); !status)
+            return status;
+        defined.Kind = EditHandleKind::Node;
+        defined.NodeValue = expected
+            ? edit.Next(source, std::move(expected)) : edit.Next(source);
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_PREVIOUS_NODE: {
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        NodePattern expected;
+        if (status = ReadNodePattern(step, expected, false); !status)
+            return status;
+        defined.Kind = EditHandleKind::Node;
+        defined.NodeValue = expected
+            ? edit.Previous(sink, std::move(expected)) : edit.Previous(sink);
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_LEAVING_LINK:
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        defined.Kind = EditHandleKind::Link;
+        defined.LinkValue = edit.Leaving(source);
+        break;
+    case BML_BEHAVIOR_EDIT_ENTERING_LINK:
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        defined.Kind = EditHandleKind::Link;
+        defined.LinkValue = edit.Entering(sink);
+        break;
+    case BML_BEHAVIOR_EDIT_LINK_TO_NODE: {
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        const EditHandle *target = nullptr;
+        if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
+                         target); !status)
+            return status;
+        defined.Kind = EditHandleKind::Link;
+        defined.LinkValue = edit.To(source, target->NodeValue);
         break;
     }
     case BML_BEHAVIOR_EDIT_FOLLOW:
@@ -3024,6 +3081,53 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
             return status;
         edit.Remove(target->NodeValue);
         break;
+    }
+    case BML_BEHAVIOR_EDIT_PATTERN_PORT_COUNT: {
+        const EditHandle *target = nullptr;
+        if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
+                         target); !status)
+            return status;
+        SlotKind kind;
+        switch (step.SlotKind) {
+        case BML_BEHAVIOR_SLOT_IN: kind = SlotKind::Input; break;
+        case BML_BEHAVIOR_SLOT_OUT: kind = SlotKind::Output; break;
+        case BML_BEHAVIOR_SLOT_PIN: kind = SlotKind::InputParameter; break;
+        case BML_BEHAVIOR_SLOT_POUT: kind = SlotKind::OutputParameter; break;
+        case BML_BEHAVIOR_SLOT_SETTING: kind = SlotKind::Setting; break;
+        case BML_BEHAVIOR_SLOT_LOCAL: kind = SlotKind::Local; break;
+        case BML_BEHAVIOR_SLOT_TARGET: kind = SlotKind::Target; break;
+        default:
+            return InvalidValue(
+                "A Node Pattern port count names an unknown port kind.");
+        }
+        if (step.Delay < 0)
+            return InvalidValue("A Node Pattern port count cannot be negative.");
+        return edit.Count(target->NodeValue, kind, step.Delay);
+    }
+    case BML_BEHAVIOR_EDIT_PATTERN_PORT_VALUE: {
+        const EditHandle *target = nullptr;
+        if (status = Use(step.Graph, step.Target, EditHandleKind::Node,
+                         target); !status)
+            return status;
+        if (step.Sink.Graph != step.Graph ||
+            step.Sink.Handle != step.Target || step.Sink.Kind == 0) {
+            return InvalidValue(
+                "A Node Pattern value must name a port of its target Node.");
+        }
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        if (sink.Owner != target->NodeValue.Value)
+            return InvalidValue(
+                "A Node Pattern value resolved to a different Node.");
+        Parameter::Binding binding;
+        if (!ReadValue(step.Value, context, binding, status))
+            return status;
+        if (binding.Kind() != Parameter::BindingKind::Value) {
+            return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
+                    CKBR_PARAMETERERROR,
+                    "A durable Node Pattern cannot retain a live object."};
+        }
+        return edit.Observe(std::move(sink), binding.Literal());
     }
     case BML_BEHAVIOR_EDIT_ADD_OPERATION: {
         if (step.Operation.StructSize < sizeof(step.Operation)) {
@@ -3187,6 +3291,22 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         if (status = ReadPort(step.Sink, sink); !status)
             return status;
         edit.Redirect(link->LinkValue, sink, std::move(ordering));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_REDIRECT_TO_LINK: {
+        const EditHandle *link = nullptr;
+        const EditHandle *destination = nullptr;
+        if (status = Use(step.Graph, step.Target, EditHandleKind::Link,
+                         link); !status)
+            return status;
+        if (status = Use(step.Graph, step.Node, EditHandleKind::Link,
+                         destination); !status)
+            return status;
+        std::vector<Order> ordering;
+        if (status = ReadOrdering(step, ordering); !status)
+            return status;
+        edit.Redirect(link->LinkValue, destination->LinkValue,
+                      std::move(ordering));
         break;
     }
     default:

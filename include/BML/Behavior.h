@@ -976,7 +976,37 @@ typedef enum BML_BehaviorEditKind {
     // Result names a graph scope rooted at the graph-backed Node in Target.
     BML_BEHAVIOR_EDIT_ENTER_GRAPH = 21,
     // Result names a new graph-backed child Node in the current graph scope.
-    BML_BEHAVIOR_EDIT_ADD_GRAPH = 22
+    BML_BEHAVIOR_EDIT_ADD_GRAPH = 22,
+    // Adds an exact port-count condition to the Node Pattern named by Target.
+    // SlotKind selects the port family and Delay carries the non-negative
+    // count. The step defines no handle.
+    BML_BEHAVIOR_EDIT_PATTERN_PORT_COUNT = 23,
+    // Adds an observed-value condition to the Node Pattern owning Sink.
+    // Value is compared through the port's registered Virtools value form.
+    // The step defines no handle.
+    BML_BEHAVIOR_EDIT_PATTERN_PORT_VALUE = 24,
+    // Result names the Node reached by the unique Link leaving Source. When
+    // this step carries a Node Pattern, only Links whose destination Node
+    // matches that Pattern participate in the uniqueness check.
+    BML_BEHAVIOR_EDIT_NEXT_NODE = 25,
+    // Result names the Node feeding the unique Link entering Sink. When this
+    // step carries a Node Pattern, only Links whose source Node matches that
+    // Pattern participate in the uniqueness check.
+    BML_BEHAVIOR_EDIT_PREVIOUS_NODE = 26,
+    // Result names the unique Link leaving Source.
+    BML_BEHAVIOR_EDIT_LEAVING_LINK = 27,
+    // Result names the unique Link entering Sink.
+    BML_BEHAVIOR_EDIT_ENTERING_LINK = 28,
+    // Result names the unique Link leaving Source and entering any In of the
+    // Node named by Target.
+    BML_BEHAVIOR_EDIT_LINK_TO_NODE = 29,
+    // Sends the Link named by Target to the same destination as the Link
+    // named by Node. The destination Link itself is not changed.
+    BML_BEHAVIOR_EDIT_REDIRECT_TO_LINK = 30,
+    // Result names every child Node matching the Pattern, in native child
+    // index order. At least one Node must match. Actions using one of its
+    // ports are repeated for every matched Node.
+    BML_BEHAVIOR_EDIT_EACH_NODE = 31
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {
@@ -999,7 +1029,8 @@ typedef struct BML_BehaviorEditStep {
     uint32_t Flags;
     // The node, link, or path this step reads.
     uint32_t Target;
-    // The Block a splice routes through.
+    // The Block a splice routes through, or the destination Link used by
+    // REDIRECT_TO_LINK.
     uint32_t Node;
     // BML_BehaviorSlotKind of an appended slot.
     uint32_t SlotKind;

@@ -57,29 +57,6 @@ Status ResolvePort(const GraphNode &node, const Slot &selector,
     return {};
 }
 
-std::uint64_t PortShape(const GraphNode &node) {
-    constexpr std::uint64_t offset = 1469598103934665603ull;
-    constexpr std::uint64_t prime = 1099511628211ull;
-    std::uint64_t hash = offset;
-    const auto append = [&](const void *data, std::size_t size) {
-        const auto *bytes = static_cast<const unsigned char *>(data);
-        for (std::size_t index = 0; index < size; ++index) {
-            hash ^= bytes[index];
-            hash *= prime;
-        }
-    };
-    for (const GraphPort &port : node.Ports) {
-        const auto kind = static_cast<std::uint32_t>(port.Kind) + 1u;
-        append(&kind, sizeof(kind));
-        append(&port.Index, sizeof(port.Index));
-        append(&port.Occurrence, sizeof(port.Occurrence));
-        append(&port.Type.d1, sizeof(port.Type.d1));
-        append(&port.Type.d2, sizeof(port.Type.d2));
-        append(port.Name.data(), port.Name.size());
-    }
-    return hash;
-}
-
 } // namespace
 
 Port GraphEdit::Entry(int index) const { return Graph().In(index); }
@@ -94,11 +71,80 @@ Port GraphEdit::Exit(std::string name) const {
     return Graph().Out(std::move(name));
 }
 
-Node GraphEdit::RequireOne(NodeQuery query) {
+Node GraphEdit::RequireOne(NodePattern pattern) {
     const Node node{NextNode()};
-    m_Nodes.push_back(
-        {node, std::move(query), std::nullopt, std::nullopt, {}});
+    EditNode entry;
+    entry.Handle = node;
+    entry.Pattern = std::move(pattern);
+    m_Nodes.push_back(std::move(entry));
     return node;
+}
+
+Node GraphEdit::Each(NodePattern pattern) {
+    const Node node{NextNode()};
+    EditNode entry;
+    entry.Handle = node;
+    entry.Pattern = std::move(pattern);
+    entry.Many = true;
+    m_Nodes.push_back(std::move(entry));
+    return node;
+}
+
+Node GraphEdit::Next(Port source) {
+    return Next(std::move(source), {});
+}
+
+Node GraphEdit::Next(Port source, NodePattern expected) {
+    const Node node{NextNode()};
+    EditNode entry;
+    entry.Handle = node;
+    entry.Pattern = std::move(expected);
+    entry.Related = RelatedNode{NodeRelation::Next, std::move(source)};
+    m_Nodes.push_back(std::move(entry));
+    return node;
+}
+
+Node GraphEdit::Previous(Port sink) {
+    return Previous(std::move(sink), {});
+}
+
+Node GraphEdit::Previous(Port sink, NodePattern expected) {
+    const Node node{NextNode()};
+    EditNode entry;
+    entry.Handle = node;
+    entry.Pattern = std::move(expected);
+    entry.Related = RelatedNode{NodeRelation::Previous, std::move(sink)};
+    m_Nodes.push_back(std::move(entry));
+    return node;
+}
+
+Status GraphEdit::Count(Node node, SlotKind kind, int count) {
+    const auto found = std::find_if(
+        m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &candidate) {
+            return candidate.Handle == node;
+        });
+    if (found == m_Nodes.end() || found->Authored() ||
+        !found->Anchor.IsNull()) {
+        return Failure(Error::InvalidState,
+                       "A port-count condition requires a Node Pattern.");
+    }
+    found->Pattern.PortCounts.push_back({kind, count});
+    return {};
+}
+
+Status GraphEdit::Observe(Port port, Value expected) {
+    const auto found = std::find_if(
+        m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &candidate) {
+            return candidate.Handle.Value == port.Owner;
+        });
+    if (found == m_Nodes.end() || found->Authored() ||
+        !found->Anchor.IsNull()) {
+        return Failure(Error::InvalidState,
+                       "A value condition requires a port of a Node Pattern.");
+    }
+    found->Pattern.PortValues.push_back(
+        {std::move(port.Selector), std::move(expected)});
+    return {};
 }
 
 Node GraphEdit::UseNode(const ObjectRef &node) {
@@ -120,8 +166,43 @@ Link GraphEdit::UseLink(const ObjectRef &link) {
 Link GraphEdit::RequireOne(Port source, Port sink,
                            std::optional<int> delay) {
     const Link link{NextLink()};
-    m_Links.push_back(
-        {link, std::move(source), std::move(sink), delay});
+    EditLink entry;
+    entry.Handle = link;
+    entry.Source = std::move(source);
+    entry.Sink = std::move(sink);
+    entry.Delay = delay;
+    m_Links.push_back(std::move(entry));
+    return link;
+}
+
+Link GraphEdit::Leaving(Port source) {
+    const Link link{NextLink()};
+    EditLink entry;
+    entry.Handle = link;
+    entry.Relation = LinkRelation::Leaving;
+    entry.Source = std::move(source);
+    m_Links.push_back(std::move(entry));
+    return link;
+}
+
+Link GraphEdit::Entering(Port sink) {
+    const Link link{NextLink()};
+    EditLink entry;
+    entry.Handle = link;
+    entry.Relation = LinkRelation::Entering;
+    entry.Sink = std::move(sink);
+    m_Links.push_back(std::move(entry));
+    return link;
+}
+
+Link GraphEdit::To(Port source, Node target) {
+    const Link link{NextLink()};
+    EditLink entry;
+    entry.Handle = link;
+    entry.Relation = LinkRelation::To;
+    entry.Source = std::move(source);
+    entry.Target = target;
+    m_Links.push_back(std::move(entry));
     return link;
 }
 
@@ -143,16 +224,19 @@ Node GraphEdit::Add(PrototypeRef prototype) {
 
 Node GraphEdit::Add(BlockSpec block) {
     const Node node{NextNode()};
-    m_Nodes.push_back(
-        {node, {}, std::move(block), std::nullopt, {}});
+    EditNode entry;
+    entry.Handle = node;
+    entry.Block = std::move(block);
+    m_Nodes.push_back(std::move(entry));
     return node;
 }
 
 Node GraphEdit::AddGraph(std::string name, int priority) {
     const Node node{NextNode()};
-    m_Nodes.push_back(
-        {node, {}, std::nullopt,
-         GraphNodeSpec{std::move(name), priority}, {}});
+    EditNode entry;
+    entry.Handle = node;
+    entry.Subgraph = GraphNodeSpec{std::move(name), priority};
+    m_Nodes.push_back(std::move(entry));
     return node;
 }
 
@@ -257,6 +341,12 @@ void GraphEdit::Redirect(Link target, Port sink,
         target, std::move(sink), std::move(ordering), m_NextAction++});
 }
 
+void GraphEdit::Redirect(Link target, Link destination,
+                         std::vector<Order> ordering) {
+    m_Actions.emplace_back(EditRedirectLink{
+        target, destination, std::move(ordering), m_NextAction++});
+}
+
 Port GraphEdit::AppendIn(Node node, std::string name) {
     return Append(node, SlotKind::Input, std::move(name), CKGUID());
 }
@@ -303,6 +393,16 @@ Status GraphEdit::Validate() const {
             });
         return found != m_Nodes.end() && !found->Authored();
     };
+    const auto manyNode = [&](std::uint32_t value) {
+        const auto found = std::find_if(
+            m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &node) {
+                return node.Handle.Value == value;
+            });
+        return found != m_Nodes.end() && found->Many;
+    };
+    const auto singleNode = [&](std::uint32_t value) {
+        return existingNode(value) && !manyNode(value);
+    };
     const auto addedNode = [&](std::uint32_t value) {
         const auto found = std::find_if(
             m_Nodes.begin(), m_Nodes.end(), [&](const EditNode &node) {
@@ -322,19 +422,52 @@ Status GraphEdit::Validate() const {
         if (node.Block && !node.Block->Prototype().IsValid())
             return Failure(Error::PrototypeNotFound,
                            "An added Block requires a Prototype GUID.");
-        if (node.Authored() && !node.Anchor.IsNull())
+        const bool selected = node.Related.has_value() ||
+            static_cast<bool>(node.Pattern);
+        const int definitions = static_cast<int>(node.Authored()) +
+            static_cast<int>(!node.Anchor.IsNull()) +
+            static_cast<int>(selected);
+        if (definitions != 1)
             return Failure(Error::InvalidState,
-                           "An added Node cannot also name an existing Node.");
+                           "A symbolic Node must have exactly one definition.");
         if (node.Subgraph && node.Subgraph->Name.empty())
             return Failure(Error::InvalidState,
                            "An added graph Node requires a name.");
-        if (!node.Authored() && !node.Query && node.Anchor.IsNull())
-            return Failure(Error::QueryNotFound,
-                           "A Node query has no semantic identity.");
+        if (node.Related) {
+            const Port &endpoint = node.Related->Endpoint;
+            const bool knownOwner = singleNode(endpoint.Owner);
+            const bool usableSlot = endpoint.Selector.UsesName() ||
+                endpoint.Selector.RequireOnly || endpoint.Selector.Index >= 0;
+            const bool validDirection =
+                (node.Related->Relation == NodeRelation::Next &&
+                 ((endpoint.Owner == Graph().Value &&
+                   endpoint.Selector.Kind == SlotKind::Input) ||
+                  (endpoint.Owner != Graph().Value &&
+                   endpoint.Selector.Kind == SlotKind::Output))) ||
+                (node.Related->Relation == NodeRelation::Previous &&
+                 ((endpoint.Owner == Graph().Value &&
+                   endpoint.Selector.Kind == SlotKind::Output) ||
+                  (endpoint.Owner != Graph().Value &&
+                   endpoint.Selector.Kind == SlotKind::Input)));
+            if (!endpoint || !knownOwner || !usableSlot || !validDirection) {
+                return Failure(
+                    Error::InvalidState,
+                    "A related Node requires an existing Out or In port.");
+            }
+            if (node.Pattern) {
+                const Status pattern = node.Pattern.Validate();
+                if (!pattern)
+                    return pattern;
+            }
+        } else if (!node.Authored() && node.Anchor.IsNull()) {
+            const Status pattern = node.Pattern.Validate();
+            if (!pattern)
+                return pattern;
+        }
     }
     std::set<std::uint32_t> parked;
     for (const EditReplace &item : m_Replacements) {
-        if (!existingNode(item.Target.Value) || item.Target == Graph() ||
+        if (!singleNode(item.Target.Value) || item.Target == Graph() ||
             !addedNode(item.Replacement.Value)) {
             return Failure(
                 Error::InvalidState,
@@ -346,7 +479,7 @@ Status GraphEdit::Validate() const {
         }
     }
     for (const EditRemove &item : m_Removals) {
-        if (!existingNode(item.Target.Value) || item.Target == Graph()) {
+        if (!singleNode(item.Target.Value) || item.Target == Graph()) {
             return Failure(Error::InvalidState,
                            "Remove requires an existing child Node.");
         }
@@ -391,6 +524,7 @@ Status GraphEdit::Validate() const {
                     } else if constexpr (
                         std::is_same_v<T, EditSplice> ||
                         std::is_same_v<T, EditRedirect> ||
+                        std::is_same_v<T, EditRedirectLink> ||
                         std::is_same_v<T, EditAfter> ||
                         std::is_same_v<T, EditBefore>) {
                         return Failure(
@@ -419,24 +553,49 @@ Status GraphEdit::Validate() const {
     }
     for (const EditLink &link : m_Links) {
         if (!link.Anchor.IsNull()) {
-            if (link.Source || link.Sink || link.Delay)
+            if (link.Relation != LinkRelation::Between || link.Source ||
+                link.Sink || link.Target || link.Delay)
                 return Failure(Error::InvalidState,
                                "A Link named by identity carries no query.");
             continue;
         }
-        if (!link.Source || !link.Sink ||
-            !existingNode(link.Source.Owner) ||
-            !existingNode(link.Sink.Owner) ||
-            (!link.Source.Selector.UsesName() &&
-             !link.Source.Selector.RequireOnly &&
-             link.Source.Selector.Index < 0) ||
-            (!link.Sink.Selector.UsesName() &&
-             !link.Sink.Selector.RequireOnly &&
-             link.Sink.Selector.Index < 0)) {
-            return Failure(Error::InvalidState,
-                           "A Link query requires existing graph ports.");
+        const auto existingPort = [&](const Port &port, bool source) {
+            const SlotKind expected = source
+                ? (port.Owner == Graph().Value
+                       ? SlotKind::Input : SlotKind::Output)
+                : (port.Owner == Graph().Value
+                       ? SlotKind::Output : SlotKind::Input);
+            return port && singleNode(port.Owner) &&
+                port.Selector.Kind == expected &&
+                (port.Selector.UsesName() || port.Selector.RequireOnly ||
+                 port.Selector.Index >= 0);
+        };
+        bool valid = false;
+        switch (link.Relation) {
+        case LinkRelation::Between:
+            valid = existingPort(link.Source, true) &&
+                existingPort(link.Sink, false) && !link.Target;
+            break;
+        case LinkRelation::Leaving:
+            valid = existingPort(link.Source, true) &&
+                !link.Sink && !link.Target && !link.Delay;
+            break;
+        case LinkRelation::Entering:
+            valid = existingPort(link.Sink, false) &&
+                !link.Source && !link.Target && !link.Delay;
+            break;
+        case LinkRelation::To:
+            valid = existingPort(link.Source, true) &&
+                singleNode(link.Target.Value) && !link.Sink && !link.Delay;
+            break;
         }
-        if (link.Delay && (*link.Delay < 0 || *link.Delay >= 32765)) {
+        if (!valid) {
+            return Failure(
+                Error::InvalidState,
+                "A Link relation requires existing graph ports and Nodes.");
+        }
+        if (link.Relation == LinkRelation::Between && link.Delay &&
+            (*link.Delay < 0 || *link.Delay >= 32765)) {
             return Failure(Error::InvalidDelay,
                            "A Link delay must be between 0 and 32764 frames.");
         }
@@ -447,7 +606,7 @@ Status GraphEdit::Validate() const {
         const bool nodeOut = path.Start.Owner != Graph().Value &&
             path.Start.Selector.Kind == SlotKind::Output;
         if (!path.Handle || !path.Start ||
-            !existingNode(path.Start.Owner) ||
+            !singleNode(path.Start.Owner) ||
             (!path.Start.Selector.UsesName() &&
              !path.Start.Selector.RequireOnly &&
              path.Start.Selector.Index < 0) ||
@@ -518,8 +677,14 @@ Status GraphEdit::Validate() const {
                 if (!item.Target || !port(item.Sink))
                     return Failure(Error::InvalidState,
                                    "A Redirect names an unknown Link or Node.");
+            } else if constexpr (std::is_same_v<T, EditRedirectLink>) {
+                if (!item.Target || !item.Destination)
+                    return Failure(
+                        Error::InvalidState,
+                        "A Redirect requires source and destination Links.");
             } else if constexpr (std::is_same_v<T, EditInterface>) {
-                if (!knownNode(item.Owner.Value) || item.Name.empty())
+                if (!knownNode(item.Owner.Value) || manyNode(item.Owner.Value) ||
+                    item.Name.empty())
                     return Failure(Error::InvalidState,
                                    "A dynamic interface requires a Node and name.");
                 if (item.Kind == SlotKind::Local &&
@@ -572,7 +737,8 @@ Status GraphEdit::Validate() const {
     }
     for (const Nested &nested : m_Nested) {
         if (!nested.Scope || nested.Scope == Graph().Value ||
-            !knownNode(nested.Parent.Value) || !nested.Body) {
+            !knownNode(nested.Parent.Value) || manyNode(nested.Parent.Value) ||
+            !nested.Body) {
             return Failure(Error::InvalidState,
                            "A nested graph scope has no graph Node.");
         }
@@ -654,40 +820,112 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
 
     std::map<std::uint32_t, const GraphNode *> nodes;
     std::map<std::uint32_t, Node> liveNodes;
+    std::map<std::uint32_t, std::vector<Node>> manyLiveNodes;
+    std::map<std::uint64_t, Node> nodeCache;
     nodes.emplace(Graph().Value, &*root);
     liveNodes.emplace(Graph().Value, resolved.Graph());
+    nodeCache.emplace(root->Id, resolved.Graph());
+
+    const auto useNode = [&](const GraphNode &model, Node &live) -> Status {
+        const auto cached = nodeCache.find(model.Id);
+        if (cached != nodeCache.end()) {
+            live = cached->second;
+            return {};
+        }
+        Status current = compiler.UseNode(resolved, model.Object, live);
+        if (current)
+            nodeCache.emplace(model.Id, live);
+        return current;
+    };
 
     for (const EditNode &item : m_Nodes) {
         if (item.Authored())
             continue;
         std::vector<const GraphNode *> matches;
-        for (const GraphNode &candidate : base.Nodes) {
-            if (candidate.Parent != root->Id)
-                continue;
-            if (!item.Anchor.IsNull()) {
-                if (candidate.Object == item.Anchor)
+        if (!item.Anchor.IsNull()) {
+            for (const GraphNode &candidate : base.Nodes) {
+                if (candidate.Parent == root->Id &&
+                    candidate.Object == item.Anchor)
                     matches.push_back(&candidate);
-                continue;
             }
-            if (item.Query.Selector == NodeQuery::Kind::Index &&
-                candidate.Index != item.Query.Index)
-                continue;
-            if (item.Query.Selector == NodeQuery::Kind::Name &&
-                candidate.Name != item.Query.Name)
-                continue;
-            if (item.Query.Selector != NodeQuery::Kind::Name &&
-                !item.Query.Name.empty() && candidate.Name != item.Query.Name)
-                continue;
-            if (item.Query.Prototype.IsValid() &&
-                candidate.Prototype != item.Query.Prototype)
-                continue;
-            if (item.Query.ExpectedKind &&
-                candidate.Kind != *item.Query.ExpectedKind)
-                continue;
-            if (item.Query.PortShape &&
-                PortShape(candidate) != item.Query.PortShape)
-                continue;
-            matches.push_back(&candidate);
+        } else if (item.Related) {
+            const auto owner = nodes.find(item.Related->Endpoint.Owner);
+            if (owner == nodes.end()) {
+                return Failure(
+                    Error::InvalidState,
+                    "A related Node names a Node that has not been resolved.");
+            }
+            GraphEndpoint endpoint;
+            status = ResolvePort(
+                *owner->second, item.Related->Endpoint.Selector, endpoint);
+            if (!status)
+                return status;
+
+            std::vector<const GraphNode *> expected;
+            if (item.Pattern) {
+                status = ResolveAll(
+                    base, root->Id, item.Pattern, compiler, expected);
+                if (!status)
+                    return status;
+            }
+
+            struct Relation {
+                const GraphLink *Link = nullptr;
+                const GraphNode *Node = nullptr;
+            };
+            std::vector<Relation> relations;
+            for (const GraphLink &candidate : base.Links) {
+                const bool related = item.Related->Relation ==
+                    NodeRelation::Next
+                    ? candidate.Source == endpoint
+                    : candidate.Target == endpoint;
+                if (!related)
+                    continue;
+                const std::uint64_t relatedNode = item.Related->Relation ==
+                    NodeRelation::Next
+                    ? candidate.Target.Node : candidate.Source.Node;
+                const auto node = std::find_if(
+                    base.Nodes.begin(), base.Nodes.end(),
+                    [&](const GraphNode &value) {
+                        return value.Id == relatedNode &&
+                            (value.Id == root->Id ||
+                             value.Parent == root->Id);
+                    });
+                if (node == base.Nodes.end()) {
+                    return Failure(
+                        Error::GraphChanged,
+                        "A connecting Link ends outside the current graph.");
+                }
+                if (item.Pattern && std::none_of(
+                        expected.begin(), expected.end(),
+                        [&](const GraphNode *value) {
+                            return value->Id == node->Id;
+                        })) {
+                    continue;
+                }
+                relations.push_back({&candidate, &*node});
+            }
+            if (relations.empty()) {
+                return Failure(
+                    item.Pattern ? Error::QueryNotFound : Error::LinkNotFound,
+                    item.Pattern
+                        ? "No connecting Link reaches a Node matching the Pattern."
+                        : "A related Node has no connecting Link.");
+            }
+            if (relations.size() != 1) {
+                return Failure(
+                    Error::QueryAmbiguous,
+                    item.Pattern
+                        ? "More than one connecting Link reaches a Node matching the Pattern."
+                        : "A related Node has more than one connecting Link.");
+            }
+            matches.push_back(relations.front().Node);
+        } else {
+            status = item.Many
+                ? ResolveAll(base, root->Id, item.Pattern, compiler, matches)
+                : Resolve(base, root->Id, item.Pattern, compiler, matches);
+            if (!status)
+                return status;
         }
         if (matches.empty()) {
             if (!item.Anchor.IsNull())
@@ -695,37 +933,27 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                     Error::InvalidGraphLocality,
                     "A Node named by identity is not in the target graph.");
             return Failure(Error::QueryNotFound,
-                           "A Node query matched no Node.");
+                           "A Node Pattern matched no Node.");
         }
-        if (item.Query.Selector == NodeQuery::Kind::Name &&
-            !item.Query.Unique) {
-            if (item.Query.Occurrence < 0 ||
-                item.Query.Occurrence >= static_cast<int>(matches.size()))
-                return Failure(Error::QueryNotFound,
-                               "A Node name occurrence does not exist.");
-            const GraphNode *selected = matches[
-                static_cast<std::size_t>(item.Query.Occurrence)];
-            matches.assign(1, selected);
-        }
-        if (matches.size() != 1) {
-            std::ostringstream message;
-            message << "A Node query matched " << matches.size()
-                    << " Nodes; RequireOne cannot choose between them.";
-            return Failure(Error::QueryAmbiguous, message.str());
+
+        if (item.Many) {
+            std::vector<Node> live;
+            live.reserve(matches.size());
+            for (const GraphNode *match : matches) {
+                Node node;
+                status = useNode(*match, node);
+                if (!status)
+                    return status;
+                live.push_back(node);
+            }
+            manyLiveNodes.emplace(item.Handle.Value, std::move(live));
+            continue;
         }
 
         Node live;
-        const auto alias = std::find_if(
-            nodes.begin(), nodes.end(), [&](const auto &entry) {
-                return entry.second->Id == matches.front()->Id;
-            });
-        if (alias != nodes.end()) {
-            live = liveNodes.at(alias->first);
-        } else {
-            status = compiler.UseNode(resolved, matches.front()->Object, live);
-            if (!status)
-                return status;
-        }
+        status = useNode(*matches.front(), live);
+        if (!status)
+            return status;
         nodes.emplace(item.Handle.Value, matches.front());
         liveNodes.emplace(item.Handle.Value, live);
     }
@@ -738,6 +966,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     }
 
     std::map<std::uint32_t, Link> liveLinks;
+    std::map<std::uint32_t, const GraphLink *> modelLinks;
     for (const EditLink &item : m_Links) {
         if (!item.Anchor.IsNull()) {
             const auto match = std::find_if(
@@ -754,36 +983,79 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
             if (!status)
                 return status;
             liveLinks.emplace(item.Handle.Value, live);
+            modelLinks.emplace(item.Handle.Value, &*match);
             continue;
         }
-        const auto sourceNode = nodes.find(item.Source.Owner);
-        const auto sinkNode = nodes.find(item.Sink.Owner);
-        if (sourceNode == nodes.end() || sinkNode == nodes.end())
-            return Failure(Error::InvalidState,
-                           "A Link query names an added or unknown Node.");
         GraphEndpoint source;
         GraphEndpoint sink;
-        status = ResolvePort(*sourceNode->second, item.Source.Selector, source);
-        if (status)
-            status = ResolvePort(*sinkNode->second, item.Sink.Selector, sink);
-        if (!status)
-            return status;
+        if (item.Relation != LinkRelation::Entering) {
+            const auto sourceNode = nodes.find(item.Source.Owner);
+            if (sourceNode == nodes.end()) {
+                return Failure(
+                    Error::InvalidState,
+                    "A Link relation names an unresolved source Node.");
+            }
+            status = ResolvePort(
+                *sourceNode->second, item.Source.Selector, source);
+            if (!status)
+                return status;
+        }
+        if (item.Relation == LinkRelation::Between ||
+            item.Relation == LinkRelation::Entering) {
+            const auto sinkNode = nodes.find(item.Sink.Owner);
+            if (sinkNode == nodes.end()) {
+                return Failure(
+                    Error::InvalidState,
+                    "A Link relation names an unresolved target Node.");
+            }
+            status = ResolvePort(
+                *sinkNode->second, item.Sink.Selector, sink);
+            if (!status)
+                return status;
+        }
+        const GraphNode *target = nullptr;
+        if (item.Relation == LinkRelation::To) {
+            const auto found = nodes.find(item.Target.Value);
+            if (found == nodes.end()) {
+                return Failure(
+                    Error::InvalidState,
+                    "A Link relation names an unresolved target Node.");
+            }
+            target = found->second;
+        }
 
         std::vector<const GraphLink *> matches;
         for (const GraphLink &candidate : base.Links) {
-            if (candidate.Source != source || candidate.Target != sink)
-                continue;
-            if (item.Delay && candidate.InitialDelay != *item.Delay)
+            bool matched = false;
+            switch (item.Relation) {
+            case LinkRelation::Between:
+                matched = candidate.Source == source &&
+                    candidate.Target == sink &&
+                    (!item.Delay || candidate.InitialDelay == *item.Delay);
+                break;
+            case LinkRelation::Leaving:
+                matched = candidate.Source == source;
+                break;
+            case LinkRelation::Entering:
+                matched = candidate.Target == sink;
+                break;
+            case LinkRelation::To:
+                matched = candidate.Source == source && target &&
+                    candidate.Target.Node == target->Id;
+                break;
+            }
+            if (!matched)
                 continue;
             matches.push_back(&candidate);
         }
-        if (matches.empty())
+        if (matches.empty()) {
             return Failure(Error::LinkNotFound,
-                           "An exact Link query matched no Link.");
+                           "A Link relation matched no Link.");
+        }
         if (matches.size() != 1) {
             std::ostringstream message;
-            message << "An exact Link query matched " << matches.size()
-                    << " parallel Links; add a delay or stronger endpoint selector.";
+            message << "A Link relation matched " << matches.size()
+                    << " Links; use a stronger relation or endpoint selector.";
             return Failure(Error::QueryAmbiguous, message.str());
         }
         Link live;
@@ -791,6 +1063,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         if (!status)
             return status;
         liveLinks.emplace(item.Handle.Value, live);
+        modelLinks.emplace(item.Handle.Value, matches.front());
     }
 
     struct LivePath {
@@ -1118,45 +1391,96 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         return {};
     };
 
+    const auto ports = [&](const Port &symbolic,
+                           std::vector<Port> &live) -> Status {
+        live.clear();
+        const auto many = manyLiveNodes.find(symbolic.Owner);
+        if (many != manyLiveNodes.end()) {
+            live.reserve(many->second.size());
+            for (Node owner : many->second)
+                live.push_back({owner.Value, symbolic.Selector});
+            return {};
+        }
+        Port one;
+        Status current = port(symbolic, one);
+        if (current)
+            live.push_back(std::move(one));
+        return current;
+    };
+
+    const auto paired = [&](const std::vector<Port> &left,
+                            const std::vector<Port> &right,
+                            const auto &apply) -> Status {
+        if (left.empty() || right.empty())
+            return Failure(Error::InvalidState,
+                           "A repeated graph action has no ports.");
+        if (left.size() != 1 && right.size() != 1 &&
+            left.size() != right.size()) {
+            return Failure(
+                Error::QueryAmbiguous,
+                "A repeated graph action has different source and target counts.");
+        }
+        const std::size_t count = (std::max)(left.size(), right.size());
+        for (std::size_t index = 0; index < count; ++index) {
+            apply(left[left.size() == 1 ? 0 : index],
+                  right[right.size() == 1 ? 0 : index]);
+        }
+        return {};
+    };
+
     for (const Action &action : m_Actions) {
         status = std::visit([&](const auto &item) -> Status {
             using T = std::decay_t<decltype(item)>;
             if constexpr (std::is_same_v<T, EditFlow>) {
-                Port source;
-                Port sink;
-                Status current = port(item.Source, source);
+                std::vector<Port> sources;
+                std::vector<Port> sinks;
+                Status current = ports(item.Source, sources);
                 if (current)
-                    current = port(item.Sink, sink);
+                    current = ports(item.Sink, sinks);
                 if (!current)
                     return current;
-                resolved.Flow(std::move(source), std::move(sink), item.Delay,
-                              item.SameFrameCycle);
+                return paired(sources, sinks,
+                    [&](Port source, Port sink) {
+                        resolved.Flow(std::move(source), std::move(sink),
+                                      item.Delay, item.SameFrameCycle);
+                    });
             } else if constexpr (std::is_same_v<T, EditBind>) {
-                Port target;
-                Status current = port(item.Target, target);
+                std::vector<Port> targets;
+                Status current = ports(item.Target, targets);
                 if (!current)
                     return current;
                 if (item.Kind == BindKind::Literal) {
-                    resolved.Bind(std::move(target), item.Literal);
+                    for (Port target : targets)
+                        resolved.Bind(std::move(target), item.Literal);
                 } else {
-                    Port source;
-                    current = port(item.Source, source);
+                    std::vector<Port> sources;
+                    current = ports(item.Source, sources);
                     if (!current)
                         return current;
-                    if (item.Kind == BindKind::Direct)
-                        resolved.Bind(std::move(target), std::move(source));
-                    else
-                        resolved.Share(std::move(target), std::move(source));
+                    return paired(targets, sources,
+                        [&](Port target, Port source) {
+                            if (item.Kind == BindKind::Direct) {
+                                resolved.Bind(std::move(target),
+                                              std::move(source));
+                            } else {
+                                resolved.Share(std::move(target),
+                                               std::move(source));
+                            }
+                        });
                 }
             } else if constexpr (std::is_same_v<T, EditPush>) {
-                Port source;
-                Port destination;
-                Status current = port(item.Source, source);
+                std::vector<Port> sources;
+                std::vector<Port> destinations;
+                Status current = ports(item.Source, sources);
                 if (current)
-                    current = port(item.Destination, destination);
+                    current = ports(item.Destination, destinations);
                 if (!current)
                     return current;
-                resolved.Push(std::move(source), std::move(destination));
+                return paired(sources, destinations,
+                    [&](Port source, Port destination) {
+                        resolved.Push(std::move(source),
+                                      std::move(destination));
+                    });
             } else if constexpr (std::is_same_v<T, EditSplice>) {
                 const auto link = liveLinks.find(item.Target.Value);
                 if (link == liveLinks.end())
@@ -1181,6 +1505,43 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                 if (!current)
                     return current;
                 resolved.Redirect(link->second, std::move(sink), item.Ordering);
+            } else if constexpr (std::is_same_v<T, EditRedirectLink>) {
+                const auto link = liveLinks.find(item.Target.Value);
+                const auto destination = modelLinks.find(
+                    item.Destination.Value);
+                if (link == liveLinks.end() || destination == modelLinks.end()) {
+                    return Failure(
+                        Error::InvalidState,
+                        "A Graph Edit Redirect names an unknown Link.");
+                }
+                const GraphEndpoint endpoint = destination->second->Target;
+                const auto modelNode = std::find_if(
+                    base.Nodes.begin(), base.Nodes.end(),
+                    [&](const GraphNode &candidate) {
+                        return candidate.Id == endpoint.Node;
+                    });
+                if (modelNode == base.Nodes.end()) {
+                    return Failure(
+                        Error::GraphChanged,
+                        "A Redirect destination disappeared from the graph.");
+                }
+                Node destinationNode;
+                const auto existing = std::find_if(
+                    nodes.begin(), nodes.end(), [&](const auto &entry) {
+                        return entry.second->Id == endpoint.Node;
+                    });
+                if (existing != nodes.end()) {
+                    destinationNode = liveNodes.at(existing->first);
+                } else {
+                    Status current = useNode(*modelNode, destinationNode);
+                    if (!current)
+                        return current;
+                }
+                resolved.Redirect(
+                    link->second,
+                    {destinationNode.Value,
+                     Slot::At(endpoint.Kind, endpoint.Index)},
+                    item.Ordering);
             } else if constexpr (std::is_same_v<T, EditInterface>) {
                 if (rootInterfaceExists && item.Owner == Graph())
                     return {};
@@ -1217,12 +1578,17 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                             item.Handle.Selector.Index},
                     std::move(live));
             } else if constexpr (std::is_same_v<T, EditTap>) {
-                Port source;
-                Status current = port(item.Source, source);
+                std::vector<Port> sources;
+                Status current = ports(item.Source, sources);
                 if (!current)
                     return current;
-                return compiler.Tap(
-                    resolved, std::move(source), item.Hook);
+                for (Port source : sources) {
+                    current = compiler.Tap(
+                        resolved, std::move(source), item.Hook);
+                    if (!current)
+                        return current;
+                }
+                return {};
             } else if constexpr (std::is_same_v<T, EditAfter>) {
                 const auto path = livePaths.find(item.Target.Value);
                 if (path == livePaths.end()) {
