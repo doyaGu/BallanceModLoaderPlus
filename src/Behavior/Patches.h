@@ -183,10 +183,9 @@ private:
     Status RestoreFrom(OwnedPatch &patch, std::size_t target);
     Status Close(OwnedPatch &patch);
     void CloseAdmission(OwnedPatch &patch);
-    Status Install(const SessionOwner &owner, const PatchKey &patch,
-                   const ObjectRef &graph, const GraphEdit &edit,
-                   PatchId &out, const HandleMap *authorNodes = nullptr,
-                   std::shared_ptr<const CallbackAdmission> admission = {});
+    Status Apply(const SessionOwner &owner, std::string name,
+                 std::vector<Target> targets, PatchId &out,
+                 std::shared_ptr<const CallbackAdmission> parentAdmission);
     Status Install(OwnedPatch &patch);
     Status InstallFrom(OwnedPatch &patch,
                        const std::vector<Target> &definition,

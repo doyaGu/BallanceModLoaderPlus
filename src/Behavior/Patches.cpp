@@ -234,6 +234,13 @@ Status Patches::Apply(const SessionOwner &owner, const ObjectRef &graph,
 
 Status Patches::Apply(const SessionOwner &owner, std::string name,
                       std::vector<Target> targets, PatchId &out) {
+    return Apply(owner, std::move(name), std::move(targets), out, {});
+}
+
+Status Patches::Apply(
+    const SessionOwner &owner, std::string name,
+    std::vector<Target> targets, PatchId &out,
+    std::shared_ptr<const CallbackAdmission> parentAdmission) {
     out = 0;
     Status status = Ready();
     if (!status)
@@ -266,7 +273,8 @@ Status Patches::Apply(const SessionOwner &owner, std::string name,
     OwnedPatch patch;
     patch.Id = id;
     patch.Owner = owner;
-    patch.Admission = RegisterAdmission(false, id, owner);
+    patch.Admission = RegisterAdmission(
+        false, id, owner, std::move(parentAdmission));
     patch.Name = std::move(name);
     patch.RequestedDefinition = std::move(targets);
     if (m_Edit.CanPublish()) {
@@ -358,17 +366,29 @@ public:
           m_Patch(std::move(patch)), m_Edit(std::move(edit)),
           m_Admission(std::move(admission)) {}
 
-    Status Install(const PatchKey &key, const ObjectRef &target, Epoch,
+    Status Install(const PatchKey &, const ObjectRef &target, Epoch,
                    Installation &out) override {
         out = 0;
         if (!m_Owner || (m_Admission && !m_Admission->IsOpen()))
             return Failure(Error::InvalidState, "The Behavior Session is closed.");
-        PatchId patch = 0;
-        Status status = m_Patches.Install(
-            m_Owner, m_Patch, target, *m_Edit, patch, nullptr, m_Admission);
-        if (status)
-            out = static_cast<Installation>(patch);
-        return status;
+        try {
+            Target graph;
+            graph.Graph = target;
+            graph.Body = m_Edit;
+            std::vector<Target> targets;
+            targets.push_back(std::move(graph));
+
+            PatchId patch = 0;
+            Status status = m_Patches.Apply(
+                m_Owner, m_Patch.Name, std::move(targets), patch, m_Admission);
+            if (status)
+                out = static_cast<Installation>(patch);
+            return status;
+        } catch (...) {
+            return Failure(
+                Error::CreateFailed,
+                "The Loader could not retain the Behavior Plan target.");
+        }
     }
 
     Status Close(Installation installation) override {
@@ -819,61 +839,6 @@ Status Patches::ClosePlan(Plans &plans, const SessionOwner &owner,
     found->second.LastStatus = status;
     if (status)
         m_Plans.erase(found);
-    return status;
-}
-
-Status Patches::Install(const SessionOwner &owner, const PatchKey &patch,
-                        const ObjectRef &graph, const GraphEdit &edit,
-                        PatchId &out, const HandleMap *authorNodes,
-                        std::shared_ptr<const CallbackAdmission> admission) {
-    out = 0;
-    if (!owner)
-        return Failure(Error::InvalidState, "The Behavior Session is closed.");
-    // Plans may invoke this directly from its own frame pass, outside the
-    // aggregate Patches pass. Protect publication against worker close calls.
-    std::lock_guard<std::recursive_mutex> lock(m_Mutex);
-    const PatchId id = NextId();
-    if (!id)
-        return Failure(Error::InvalidState,
-                       "Behavior Patch ids are exhausted.");
-    OwnedPatch installed;
-    installed.Id = id;
-    installed.Owner = owner;
-    installed.Admission = RegisterAdmission(false, id, owner, std::move(admission));
-    CKObject *rootObject = m_ResolveObject ? m_ResolveObject(graph) : nullptr;
-    CKBehavior *rootBehavior = rootObject
-        ? CKBehavior::Cast(rootObject) : nullptr;
-    if (!rootBehavior)
-        return Failure(Error::TargetInvalid,
-                       "The Behavior Patch target graph is stale.");
-    installed.Graph = rootBehavior->GetID();
-    Status status;
-    try {
-        status = InstallScope(owner, patch, graph, edit, 1, 0, installed,
-                              authorNodes);
-    } catch (...) {
-        return Failure(Error::CreateFailed,
-                       "The Loader could not retain the Behavior Patch.");
-    }
-    if (!owner || !installed.Admission->IsOpen()) {
-        CloseAdmission(installed);
-        status = Failure(Error::InvalidState,
-                         "The Behavior Session closed while the Patch was opening.");
-    }
-    if (!status) {
-        for (auto scope = installed.Scopes.rbegin();
-             scope != installed.Scopes.rend(); ++scope)
-            (void) m_Edit.Close(scope->Value);
-        installed.Goal = PatchGoal::Closed;
-    }
-    if (installed.Scopes.empty())
-        return status;
-    auto [stored, inserted] = m_Patches.emplace(id, std::move(installed));
-    if (!inserted)
-        return Failure(Error::InvalidState,
-                       "Behavior Patch id collision.");
-    if (status)
-        out = id;
     return status;
 }
 
