@@ -109,6 +109,7 @@ bml_add_player_test(BehaviorRuntimeSemanticsTest
         ${PROJECT_SOURCE_DIR}/src/Behavior/Text2DView.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Topology.cpp
         ${PROJECT_SOURCE_DIR}/src/Behavior/Watch.cpp
+        ${PROJECT_SOURCE_DIR}/src/Virtools/CKGraphOrder.cpp
 )
 target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE
         ${PROJECT_SOURCE_DIR}/src

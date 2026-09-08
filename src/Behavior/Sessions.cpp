@@ -771,6 +771,13 @@ void Sessions::ResetWorld() {
     // DELETE enter author code. Runtime then upgrades every pending ordinary
     // close to a world reset and drains all remaining Behavior instances.
     m_Runtime.ResetWorld();
+    if (m_Graph)
+        m_Graph->ResetWorld();
+}
+
+void Sessions::ObjectsToBeDeleted(const CK_ID *ids, int count) {
+    if (std::this_thread::get_id() == m_Thread && m_Graph)
+        m_Graph->ObjectsToBeDeleted(ids, count);
 }
 
 void Sessions::RetireWorldHandles() {

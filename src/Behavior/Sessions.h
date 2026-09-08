@@ -137,6 +137,7 @@ public:
     void CloseRun(std::uintptr_t runId);
 
     void ProcessFrame();
+    void ObjectsToBeDeleted(const CK_ID *ids, int count);
     void ResetWorld();
 
     [[nodiscard]] GraphSource *Graph() noexcept { return m_Graph.get(); }

@@ -608,6 +608,9 @@ typedef struct BML_BehaviorGraphLink {
     uint64_t TargetNode;
     uint32_t TargetKind;
     int32_t TargetIndex;
+    // Position in the source IO's traversal list. This order is independent
+    // from the graph's Link collection order.
+    int32_t SourceOrder;
     int32_t InitialDelay;
     int32_t RemainingDelay;
     uint32_t Pending;

@@ -1892,6 +1892,7 @@ bool AddGraph(const GraphModel &source, BehaviorPayload &payload,
         record.TargetNode = link.Target.Node;
         record.TargetKind = PublicSlotKind(link.Target.Kind);
         record.TargetIndex = link.Target.Index;
+        record.SourceOrder = link.SourceOrder;
         record.InitialDelay = link.InitialDelay;
         record.RemainingDelay = link.RemainingDelay;
         record.Pending = PublicTruth(link.Pending);

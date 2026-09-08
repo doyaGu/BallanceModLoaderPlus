@@ -417,6 +417,7 @@ void ModContext::VirtoolsObjectsToBeDeleted(const CK_ID *ids, int count) {
                 static_cast<std::uint32_t>(ids[index]));
         }
     }
+    m_BehaviorSessions.ObjectsToBeDeleted(ids, count);
     m_Behaviors.ObjectsToBeDeleted(ids, count);
     m_ObjectRefs.Invalidate(ids, count);
 }

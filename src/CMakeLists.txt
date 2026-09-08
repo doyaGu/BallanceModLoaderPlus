@@ -303,6 +303,7 @@ set(BML_HOOK_SOURCES
 set(BML_BEHAVIOR_PRIVATE_HEADERS
         Behavior/Block.h
         Behavior/Callback.h
+        Behavior/CKBehaviorContext.h
         Behavior/CKEdit.h
         Behavior/Graph.h
         Behavior/ObjectRef.h
@@ -360,7 +361,12 @@ set(BML_BEHAVIOR_SOURCES
         Behavior/Watch.cpp
 )
 
+set(BML_VIRTOOLS_PRIVATE_HEADERS
+        Virtools/CKGraphOrder.h
+)
+
 set(BML_VIRTOOLS_SOURCES
+        Virtools/CKGraphOrder.cpp
         Virtools/ScriptHelper.cpp
 )
 
@@ -379,6 +385,7 @@ set(BML_PRIVATE_HEADERS
         ${BML_UI_PRIVATE_HEADERS}
         ${BML_HOOK_PRIVATE_HEADERS}
         ${BML_BEHAVIOR_PRIVATE_HEADERS}
+        ${BML_VIRTOOLS_PRIVATE_HEADERS}
 )
 
 set(BML_SOURCES

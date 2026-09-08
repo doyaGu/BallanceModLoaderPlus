@@ -4,6 +4,7 @@
 #include "BML/Behavior/Frames.hpp"
 #include "BML/Behavior/Prototype.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -83,6 +84,7 @@ struct GraphLinkData {
     ObjectRef Object{};
     std::size_t Source = 0;
     std::size_t Target = 0;
+    std::int32_t SourceOrder = -1;
     std::int32_t InitialDelay = 0;
     std::int32_t RemainingDelay = 0;
     TruthValue Pending = TruthValue::Unknown;
@@ -104,6 +106,11 @@ struct GraphData {
     std::vector<GraphNodeData> Nodes;
     std::vector<GraphPortData> Ports;
     std::vector<GraphLinkData> Links;
+    // Indices into Links, ordered by source Port and then by the order in
+    // which Virtools traverses that source IO.
+    std::vector<std::size_t> OutgoingLinks;
+    // Indices into Links, ordered by target Port and then by graph-Link order.
+    std::vector<std::size_t> IncomingLinks;
     std::vector<GraphOperationData> Operations;
 };
 
@@ -379,7 +386,9 @@ private:
 };
 
 // A filtered view over the Link records already owned by a Graph snapshot.
-// Iteration scans those records in place and never allocates a collection.
+// Incoming uses graph-Link order and Outgoing uses Virtools source-IO order.
+// Both directions use indices owned by the snapshot, so construction and
+// iteration never allocate a collection or scan unrelated Links.
 class LinkRange {
 public:
     LinkRange() = default;
@@ -392,12 +401,17 @@ public:
         using reference = Link;
         using iterator_category = std::forward_iterator_tag;
 
-        [[nodiscard]] Link operator*() const { return Link(m_Graph, m_Index); }
+        [[nodiscard]] Link operator*() const {
+            return Link(m_Graph, LinkIndex(m_Index));
+        }
         Iterator &operator++() { ++m_Index; Advance(); return *this; }
         Iterator operator++(int) { auto copy = *this; ++*this; return copy; }
         friend bool operator==(const Iterator &left, const Iterator &right) {
             return left.m_Graph == right.m_Graph &&
-                left.m_Index == right.m_Index && left.m_End == right.m_End;
+                left.m_Index == right.m_Index && left.m_End == right.m_End &&
+                left.m_Value == right.m_Value &&
+                left.m_Incoming == right.m_Incoming &&
+                left.m_ByPort == right.m_ByPort;
         }
         friend bool operator!=(const Iterator &left, const Iterator &right) {
             return !(left == right);
@@ -412,10 +426,14 @@ public:
             Advance();
         }
         [[nodiscard]] bool Matches(std::size_t index) const noexcept {
-            const auto &link = m_Graph->Links[index];
+            const auto &link = m_Graph->Links[LinkIndex(index)];
             const std::size_t endpoint = m_Incoming ? link.Target : link.Source;
             return m_ByPort ? endpoint == m_Value
                 : m_Graph->Ports[endpoint].Node == m_Value;
+        }
+        [[nodiscard]] std::size_t LinkIndex(std::size_t index) const noexcept {
+            return m_Incoming ? m_Graph->IncomingLinks[index]
+                              : m_Graph->OutgoingLinks[index];
         }
         void Advance() noexcept {
             while (m_Index < m_End && !Matches(m_Index))
@@ -433,24 +451,64 @@ public:
 
     [[nodiscard]] bool empty() const noexcept { return begin() == end(); }
     [[nodiscard]] std::size_t size() const noexcept {
-        return static_cast<std::size_t>(std::distance(begin(), end()));
+        return m_End - m_Begin;
     }
     [[nodiscard]] Iterator begin() const noexcept {
-        return Iterator(m_Graph, 0, m_Graph ? m_Graph->Links.size() : 0,
+        return Iterator(m_Graph, m_Begin, m_End,
                         m_Value, m_Incoming, m_ByPort);
     }
     [[nodiscard]] Iterator end() const noexcept {
-        const std::size_t size = m_Graph ? m_Graph->Links.size() : 0;
-        return Iterator(m_Graph, size, size, m_Value, m_Incoming, m_ByPort);
+        return Iterator(m_Graph, m_End, m_End,
+                        m_Value, m_Incoming, m_ByPort);
     }
 
 private:
     LinkRange(std::shared_ptr<const Detail::GraphData> graph,
               std::size_t value, bool incoming, bool byPort) noexcept
         : m_Graph(std::move(graph)), m_Value(value),
-          m_Incoming(incoming), m_ByPort(byPort) {}
+          m_Incoming(incoming), m_ByPort(byPort) {
+        m_End = m_Graph ? m_Graph->Links.size() : 0;
+        if (!m_Graph)
+            return;
+
+        std::size_t firstPort = 0;
+        std::size_t pastPort = 0;
+        if (m_ByPort) {
+            if (m_Value >= m_Graph->Ports.size()) {
+                m_Begin = m_End;
+                return;
+            }
+            firstPort = m_Value;
+            pastPort = m_Value + 1;
+        } else {
+            if (m_Value >= m_Graph->Nodes.size()) {
+                m_Begin = m_End;
+                return;
+            }
+            const auto &node = m_Graph->Nodes[m_Value];
+            firstPort = node.PortOffset;
+            pastPort = node.PortOffset + node.PortCount;
+        }
+        const auto &ordered = m_Incoming
+            ? m_Graph->IncomingLinks : m_Graph->OutgoingLinks;
+        const auto atLeast = [&](std::size_t port) {
+            return std::lower_bound(
+                ordered.begin(), ordered.end(), port,
+                [&](std::size_t link, std::size_t endpoint) {
+                    const auto &record = m_Graph->Links[link];
+                    return (m_Incoming ? record.Target : record.Source) <
+                        endpoint;
+                });
+        };
+        m_Begin = static_cast<std::size_t>(
+            atLeast(firstPort) - ordered.begin());
+        m_End = static_cast<std::size_t>(
+            atLeast(pastPort) - ordered.begin());
+    }
 
     std::shared_ptr<const Detail::GraphData> m_Graph;
+    std::size_t m_Begin = 0;
+    std::size_t m_End = 0;
     std::size_t m_Value = 0;
     bool m_Incoming = false;
     bool m_ByPort = false;

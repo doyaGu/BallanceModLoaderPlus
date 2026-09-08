@@ -1,5 +1,7 @@
 #include "Behavior/Graph.h"
 
+#include "Virtools/CKGraphOrder.h"
+
 #include <algorithm>
 #include <bit>
 #include <climits>
@@ -267,6 +269,45 @@ public:
         state.Graph = std::move(graph);
         std::erase_if(state.RetiredNodes, currentNode);
         std::erase_if(state.RetiredLinks, currentLink);
+        if (state.Graph.InfrastructureNodes.empty() &&
+            state.Graph.Links.empty() && state.RetiredNodes.empty() &&
+            state.RetiredLinks.empty()) {
+            m_Logical.erase(root.Id);
+        }
+    }
+
+    void ObjectsToBeDeleted(const CK_ID *ids, int count) override {
+        if (!ids || count <= 0)
+            return;
+        for (int index = 0; index < count; ++index) {
+            const CK_ID id = ids[index];
+            m_Generations.erase(id);
+            m_LayoutGenerations.erase(id);
+            m_Logical.erase(static_cast<std::uint32_t>(id));
+            for (auto &[root, state] : m_Logical) {
+                std::erase_if(state.RetiredNodes,
+                              [&](const NativeRef &item) {
+                                  return item.Id ==
+                                      static_cast<std::uint32_t>(id);
+                              });
+                std::erase_if(state.RetiredLinks,
+                              [&](const NativeRef &item) {
+                                  return item.Id ==
+                                      static_cast<std::uint32_t>(id);
+                              });
+            }
+        }
+    }
+
+    void ResetWorld() override {
+        m_Generations = {};
+        m_LayoutGenerations = {};
+        m_Logical = {};
+        m_FingerprintModel = {};
+        m_LinksBySource = {};
+        m_OperationsById = {};
+        m_HiddenNodes = {};
+        m_SourceOrder = {};
     }
 
     Status LayoutFingerprint(const NativeRef &node,
@@ -468,6 +509,18 @@ private:
 
         out.Links.reserve(static_cast<std::size_t>(
             graph->GetSubBehaviorLinkCount()));
+        std::unordered_set<CKBehaviorLink *> graphLinks;
+        graphLinks.reserve(static_cast<std::size_t>(
+            graph->GetSubBehaviorLinkCount()));
+        for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
+            CKBehaviorLink *link = graph->GetSubBehaviorLink(index);
+            if (!Valid(link) || !graphLinks.insert(link).second)
+                return Failure(Error::InvalidGraphLocality,
+                               "A graph contains an invalid or repeated Link.");
+        }
+        m_SourceOrder.clear();
+        m_SourceOrder.reserve(static_cast<std::size_t>(
+            graph->GetSubBehaviorLinkCount()));
         for (int index = 0; index < graph->GetSubBehaviorLinkCount(); ++index) {
             CKBehaviorLink *link = graph->GetSubBehaviorLink(index);
             if (!Valid(link))
@@ -507,6 +560,30 @@ private:
             if (record.Source.Index < 0 || record.Target.Index < 0)
                 return Failure(Error::InvalidState,
                                "A graph Link endpoint is not owned by its Behavior.");
+            auto sourceOrder = m_SourceOrder.find(link);
+            if (sourceOrder == m_SourceOrder.end()) {
+                if (XSObjectPointerArray *outgoing =
+                        CKGraphOrder::Outgoing(sourceIo)) {
+                    for (int linkIndex = 0; linkIndex < outgoing->Size();
+                         ++linkIndex) {
+                        auto *outgoingLink = CKBehaviorLink::Cast(
+                            (*outgoing)[linkIndex]);
+                        if (!Valid(outgoingLink) ||
+                            !graphLinks.contains(outgoingLink)) {
+                            return Failure(
+                                Error::InvalidGraphLocality,
+                                "A source Behavior IO reaches a Link owned by another graph.");
+                        }
+                        m_SourceOrder.emplace(outgoingLink, linkIndex);
+                    }
+                }
+                sourceOrder = m_SourceOrder.find(link);
+            }
+            if (sourceOrder == m_SourceOrder.end())
+                return Failure(
+                    Error::InvalidState,
+                    "A graph Link is absent from its source Behavior IO order.");
+            record.SourceOrder = sourceOrder->second;
             record.InitialDelay = link->GetInitialActivationDelay();
             record.RemainingDelay = link->GetActivationDelay();
             // CK2.1 exposes the residual counter but not delayed-list
@@ -562,6 +639,12 @@ private:
         std::erase_if(state.RetiredLinks, [&](const NativeRef &link) {
             return !InGraph(graph, link, CKCID_BEHAVIORLINK);
         });
+        if (state.Graph.InfrastructureNodes.empty() &&
+            state.Graph.Links.empty() && state.RetiredNodes.empty() &&
+            state.RetiredLinks.empty()) {
+            m_Logical.erase(found);
+            return {};
+        }
         for (const NativeRef &node : state.Graph.InfrastructureNodes) {
             if (!InGraph(graph, node, CKCID_BEHAVIOR))
                 return Failure(Error::GraphChanged,
@@ -614,10 +697,22 @@ private:
         std::erase_if(model.Nodes, [&](const GraphNode &node) {
             return std::find(hidden.begin(), hidden.end(), node.Id) != hidden.end();
         });
+
+        // Index and same-name occurrence belong to the view, not to hidden
+        // Patch infrastructure. Keep Logical At(index) dense and make its
+        // name selectors describe exactly the Nodes an author can see.
+        int index = 0;
+        std::unordered_map<std::string, int> occurrences;
+        for (GraphNode &node : model.Nodes) {
+            if (node.Parent == 0)
+                continue;
+            node.Index = index++;
+            node.Occurrence = occurrences[node.Name]++;
+        }
         return {};
     }
 
-    static std::uint64_t Fingerprint(const GraphModel &graph) {
+    std::uint64_t Fingerprint(const GraphModel &graph) {
         std::uint64_t out = kHashOffset;
         const auto root = std::find_if(
             graph.Nodes.begin(), graph.Nodes.end(),
@@ -629,11 +724,13 @@ private:
         Hash(out, childCount);
         Hash(out, graph.Links.size());
         Hash(out, graph.Operations.size());
+
+        // CK2 schedules equal-priority children in this order. The sequence
+        // itself is sufficient: Index and Occurrence are derived view data
+        // and, in Logical view, exclude hidden Patch infrastructure.
         for (const GraphNode &node : graph.Nodes) {
             Hash(out, node.Id);
             Hash(out, node.Parent);
-            Hash(out, node.Index);
-            Hash(out, node.Occurrence);
             Hash(out, node.Kind);
             Hash(out, node.Prototype.d1);
             Hash(out, node.Prototype.d2);
@@ -655,6 +752,8 @@ private:
                 HashText(out, port.Name.c_str());
             }
         }
+        // m_SubBehaviorLinks order drives graph-input propagation. Hash it in
+        // place, then hash the independent per-source traversal order below.
         for (const GraphLink &link : graph.Links) {
             Hash(out, link.Id);
             Hash(out, link.Source.Node);
@@ -665,7 +764,44 @@ private:
             Hash(out, link.Target.Index);
             Hash(out, link.InitialDelay);
         }
-        for (const GraphOperation &operation : graph.Operations) {
+
+        m_LinksBySource.clear();
+        m_LinksBySource.reserve(graph.Links.size());
+        for (const GraphLink &link : graph.Links)
+            m_LinksBySource.push_back(&link);
+        std::sort(
+            m_LinksBySource.begin(), m_LinksBySource.end(),
+            [](const GraphLink *left, const GraphLink *right) {
+                if (left->Source.Node != right->Source.Node)
+                    return left->Source.Node < right->Source.Node;
+                if (left->Source.Kind != right->Source.Kind)
+                    return left->Source.Kind < right->Source.Kind;
+                if (left->Source.Index != right->Source.Index)
+                    return left->Source.Index < right->Source.Index;
+                if (left->SourceOrder != right->SourceOrder)
+                    return left->SourceOrder < right->SourceOrder;
+                return left->Id < right->Id;
+            });
+        Hash(out, m_LinksBySource.size());
+        for (const GraphLink *link : m_LinksBySource) {
+            Hash(out, link->Source.Node);
+            Hash(out, link->Source.Kind);
+            Hash(out, link->Source.Index);
+            Hash(out, link->Id);
+        }
+        m_LinksBySource.clear();
+
+        m_OperationsById.clear();
+        m_OperationsById.reserve(graph.Operations.size());
+        for (const GraphOperation &operation : graph.Operations)
+            m_OperationsById.push_back(&operation);
+        std::sort(m_OperationsById.begin(), m_OperationsById.end(),
+                  [](const GraphOperation *left,
+                     const GraphOperation *right) {
+                      return left->Id < right->Id;
+                  });
+        for (const GraphOperation *item : m_OperationsById) {
+            const GraphOperation &operation = *item;
             Hash(out, operation.Id);
             Hash(out, operation.Owner);
             Hash(out, operation.Function.d1);
@@ -678,6 +814,7 @@ private:
             Hash(out, operation.Input2.d2);
             HashText(out, operation.Name.c_str());
         }
+        m_OperationsById.clear();
         return out;
     }
 
@@ -778,7 +915,10 @@ private:
     mutable std::unordered_map<CK_ID, Generation> m_LayoutGenerations;
     std::unordered_map<std::uint64_t, LogicalState> m_Logical;
     GraphModel m_FingerprintModel;
+    std::vector<const GraphLink *> m_LinksBySource;
+    std::vector<const GraphOperation *> m_OperationsById;
     std::vector<std::uint64_t> m_HiddenNodes;
+    mutable std::unordered_map<CKBehaviorLink *, int> m_SourceOrder;
 };
 
 } // namespace

@@ -4,8 +4,10 @@
 #include "BML/Behavior/Session.hpp"
 #include "BML/Behavior/Detail/EditProgram.hpp"
 
+#include <algorithm>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
 #include <new>
 #include <unordered_map>
@@ -735,6 +737,12 @@ inline Result<Graph> Graph::Decode(
     const std::uint8_t *payloadData, std::size_t payloadSize,
     const BML_BehaviorStatus &status) {
     const Detail::PayloadView payload{payloadData, payloadSize};
+    const auto malformed = [](std::string message) {
+        Behavior::Status detail;
+        detail.Message = std::move(message);
+        return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE,
+                                      std::move(detail));
+    };
     if (wire.StructSize < sizeof(wire) ||
         wire.View != static_cast<std::uint32_t>(view) ||
         !Detail::ValidObjectRef(wire.Root) || !wire.Root.Domain ||
@@ -818,6 +826,9 @@ inline Result<Graph> Graph::Decode(
         node.PortOffset = data->Ports.size();
         node.PortCount = record.PortCount;
         const std::size_t nodeIndex = data->Nodes.size();
+        std::unordered_map<std::uint32_t, std::int32_t> portIndices;
+        std::map<std::pair<std::uint32_t, std::string>, std::int32_t>
+            portOccurrences;
         for (std::uint32_t portIndex = 0;
              portIndex < record.PortCount; ++portIndex) {
             BML_BehaviorGraphPort portRecord{};
@@ -847,6 +858,15 @@ inline Result<Graph> Graph::Decode(
             if (!Detail::TextAt(payload, portRecord.Name.Offset,
                                  portRecord.Name.Length, port.Name))
                 return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            const std::int32_t expectedIndex =
+                portIndices[portRecord.Kind]++;
+            const std::int32_t expectedOccurrence =
+                portOccurrences[{portRecord.Kind, port.Name}]++;
+            if ((port.Kind != SlotKind::Local &&
+                 port.Index != expectedIndex) ||
+                port.Occurrence != expectedOccurrence)
+                return malformed(
+                    "A Behavior Graph port has a non-canonical index or name occurrence.");
             if (!ports.emplace(
                     Detail::PortKey{
                         node.Id, portRecord.Kind, portRecord.Index},
@@ -866,18 +886,29 @@ inline Result<Graph> Graph::Decode(
         if (!root)
             continue;
         if (node.Parent != 0)
-            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            return malformed(
+                "The Behavior Graph root unexpectedly has a parent.");
         ++rootCount;
         rootId = node.Id;
         data->Root = index;
     }
     if (rootCount != 1)
-        return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        return malformed(
+            "The Behavior Graph does not contain exactly one root record.");
+    std::int32_t childIndex = 0;
+    std::unordered_map<std::string, std::int32_t> nodeOccurrences;
     for (const Detail::GraphNodeData &node : data->Nodes) {
-        if ((node.Id == rootId && node.Index != -1) ||
-            (node.Id != rootId &&
-             (node.Parent != rootId || node.Index < 0)))
-            return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        if (node.Id == rootId) {
+            if (node.Index != -1 || node.Occurrence != 0)
+                return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+            continue;
+        }
+        const std::int32_t expectedOccurrence =
+            nodeOccurrences[node.Name]++;
+        if (node.Parent != rootId || node.Index != childIndex++ ||
+            node.Occurrence != expectedOccurrence)
+            return malformed(
+                "A Behavior Graph child has a non-canonical parent, index, or name occurrence.");
     }
     const auto endpoint = [&](std::uint64_t nodeId, std::uint32_t kind,
                               std::int32_t index, std::size_t &out) {
@@ -904,6 +935,9 @@ inline Result<Graph> Graph::Decode(
              record.TargetKind != BML_BEHAVIOR_SLOT_OUT) ||
             !Detail::KnownTruth(record.Pending))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        if (record.SourceOrder < 0)
+            return malformed(
+                "A Behavior Graph Link has an invalid source order.");
         Detail::GraphLinkData link;
         link.Id = record.Id;
         link.Object = record.Object;
@@ -912,11 +946,42 @@ inline Result<Graph> Graph::Decode(
             !endpoint(record.TargetNode, record.TargetKind,
                       record.TargetIndex, link.Target))
             return Result<Graph>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        link.SourceOrder = record.SourceOrder;
         link.InitialDelay = record.InitialDelay;
         link.RemainingDelay = record.RemainingDelay;
         link.Pending = static_cast<TruthValue>(record.Pending);
         data->Links.push_back(std::move(link));
     }
+    data->OutgoingLinks.resize(data->Links.size());
+    for (std::size_t index = 0; index < data->OutgoingLinks.size(); ++index)
+        data->OutgoingLinks[index] = index;
+    std::sort(
+        data->OutgoingLinks.begin(), data->OutgoingLinks.end(),
+        [&](std::size_t left, std::size_t right) {
+            const auto &a = data->Links[left];
+            const auto &b = data->Links[right];
+            if (a.Source != b.Source)
+                return a.Source < b.Source;
+            if (a.SourceOrder != b.SourceOrder)
+                return a.SourceOrder < b.SourceOrder;
+            return a.Id < b.Id;
+        });
+    for (std::size_t index = 1; index < data->OutgoingLinks.size(); ++index) {
+        const auto &before = data->Links[data->OutgoingLinks[index - 1]];
+        const auto &after = data->Links[data->OutgoingLinks[index]];
+        if (before.Source == after.Source &&
+            before.SourceOrder == after.SourceOrder)
+            return malformed(
+                "Two Behavior Graph Links occupy the same source order.");
+    }
+    data->IncomingLinks.resize(data->Links.size());
+    for (std::size_t index = 0; index < data->IncomingLinks.size(); ++index)
+        data->IncomingLinks[index] = index;
+    std::stable_sort(
+        data->IncomingLinks.begin(), data->IncomingLinks.end(),
+        [&](std::size_t left, std::size_t right) {
+            return data->Links[left].Target < data->Links[right].Target;
+        });
     data->Operations.reserve(wire.OperationCount);
     for (std::uint32_t index = 0; index < wire.OperationCount; ++index) {
         BML_BehaviorGraphOperation record{};

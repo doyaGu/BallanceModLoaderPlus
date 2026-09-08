@@ -1,5 +1,8 @@
 #include "Behavior/Runtime.h"
 
+#include "Behavior/CKBehaviorContext.h"
+#include "Virtools/CKGraphOrder.h"
+
 #include <algorithm>
 #include <sstream>
 
@@ -117,34 +120,6 @@ std::string GuidText(CKGUID guid) {
     return stream.str();
 }
 
-class BehaviorContextScope final {
-public:
-    BehaviorContextScope(CKContext *context, CKBehavior *behavior,
-                         const CKBehaviorContext *frame)
-        : m_Context(context), m_SavedContext(context->m_BehaviorContext),
-          m_Manager(context->GetBehaviorManager()),
-          m_SavedCurrent(m_Manager ? m_Manager->m_CurrentBehavior : nullptr) {
-        if (frame)
-            m_Context->m_BehaviorContext = *frame;
-        m_Context->m_BehaviorContext.Context = m_Context;
-        m_Context->m_BehaviorContext.Behavior = behavior;
-        if (m_Manager)
-            m_Manager->m_CurrentBehavior = behavior;
-    }
-
-    ~BehaviorContextScope() {
-        m_Context->m_BehaviorContext = m_SavedContext;
-        if (m_Manager)
-            m_Manager->m_CurrentBehavior = m_SavedCurrent;
-    }
-
-private:
-    CKContext *m_Context;
-    CKBehaviorContext m_SavedContext;
-    CKBehaviorManager *m_Manager;
-    CKBehavior *m_SavedCurrent;
-};
-
 class BehaviorExecutionScope final {
 public:
     BehaviorExecutionScope(CKContext *context, CKBehavior *behavior,
@@ -159,7 +134,7 @@ public:
     }
 
 private:
-    BehaviorContextScope m_BehaviorContext;
+    CKBehaviorContextScope m_BehaviorContext;
     CKContext *m_Context;
     CKDWORD m_SavedDeferDestroy;
 };
@@ -751,7 +726,7 @@ public:
         if (m_Parent.Id != 0 && !parent)
             return false;
         if (parent) {
-            const CKERROR addError = parent->AddSubBehavior(behavior);
+            const CKERROR addError = CKGraphOrder::Add(parent, behavior);
             if (addError != CK_OK) {
                 return Fail(Failure(Error::OwnerInvalid,
                                     "Failed to add Building Block to parent graph.",
@@ -2215,13 +2190,13 @@ Status Runtime::CallCallback(Record &record, CKDWORD message,
         BehaviorBlockData *block = CKBehaviorAccess::BlockData(behavior);
         if (block && block->m_Callback &&
             (block->m_CallbackMask & CKCB_BEHAVIORCREATE) != 0) {
-            BehaviorContextScope scope(m_Context, behavior, frame);
+            CKBehaviorContextScope scope(m_Context, behavior, frame);
             m_Context->m_BehaviorContext.CallbackMessage = message;
             m_Context->m_BehaviorContext.CallbackArg = block->m_CallbackArg;
             result = block->m_Callback(m_Context->m_BehaviorContext);
         }
     } else {
-        BehaviorContextScope scope(m_Context, behavior, frame);
+        CKBehaviorContextScope scope(m_Context, behavior, frame);
         result = behavior->CallCallbackFunction(message);
     }
     CKObject *current = m_Context->GetObject(behaviorId);

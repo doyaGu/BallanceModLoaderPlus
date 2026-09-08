@@ -1,5 +1,7 @@
 #include "BML/ScriptHelper.h"
 
+#include "Virtools/CKGraphOrder.h"
+
 namespace ScriptHelper {
     bool FindBB(CKBehavior *script, std::function<bool(CKBehavior *)> callback, const char *name, bool hierarchically,
                 int inputCnt, int outputCnt, int inputParamCnt, int outputParamCnt) {
@@ -63,7 +65,10 @@ namespace ScriptHelper {
         beh->InitFromGuid(guid);
         if (target)
             beh->UseTarget();
-        script->AddSubBehavior(beh);
+        if (BML::CKGraphOrder::Add(script, beh) != CK_OK) {
+            script->GetCKContext()->DestroyObject(beh);
+            return nullptr;
+        }
         return beh;
     }
 

@@ -82,6 +82,11 @@ struct GraphLink {
     int InitialDelay = 0;
     int RemainingDelay = 0;
     Truth Pending = Truth::Unknown;
+    // Position in the source CKBehaviorIO adjacency list. CK2 traverses this
+    // list directly when that IO activates; it is independent from the graph's
+    // m_SubBehaviorLinks order. Kept after the established aggregate fields so
+    // existing internal fixtures cannot silently reinterpret a Link delay.
+    int SourceOrder = -1;
 };
 
 struct GraphOperation {
@@ -179,6 +184,12 @@ public:
                                     std::uint64_t &out) = 0;
     virtual Status LayoutFingerprint(const NativeRef &node,
                                      std::uint64_t &out) = 0;
+
+    // Native identity generations and logical projections are world state.
+    // The CK adapter receives deletion before IDs can be reused, then drops
+    // all remaining state after the world has retired.
+    virtual void ObjectsToBeDeleted(const CK_ID *, int) {}
+    virtual void ResetWorld() {}
 
     // Graph sources that can expose CKEdit's logical view retain this state by
     // exact native identity. Other sources may keep their own logical model.
