@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "BML/Behavior.hpp"
 #include "BML/IMod.h"
 #include "BML/Version.h"
 
@@ -34,12 +35,6 @@ struct BallTypeInfo {
     float m_Force;
     float m_Radius;
 
-private:
-    CKParameter *m_BallParam = nullptr;
-    CKParameter *m_UsedParam = nullptr;
-    CKParameter *m_ResetParam = nullptr;
-    CKBehavior *m_Timer = nullptr;
-    CKBehavior *m_BinarySwitch[2];
 };
 
 struct FloorTypeInfo {
@@ -79,10 +74,14 @@ public:
     const char *GetDescription() override { return "Implementation of registering new ball types."; }
     DECLARE_BML_VERSION;
 
+    void OnLoad() override;
+    void OnUnload() override;
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName,
                               CK_CLASSID filterClass, CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials,
                               CKBOOL dynamic, XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
+    void OnProcess() override;
+    void OnExitGame() override;
 
     void RegisterBallType(const char *ballFile, const char *ballId, const char *ballName, const char *objName,
                           float friction, float elasticity,
@@ -107,10 +106,13 @@ private:
     void OnLoadBalls(XObjectArray *objArray);
     void OnLoadLevelinit(XObjectArray *objArray);
     void OnLoadSounds(XObjectArray *objArray);
-    void OnEditScript_Gameplay_Ingame(CKBehavior *script);
-    void OnEditScript_Base_EventHandler(CKBehavior *script);
-    void OnEditScript_PhysicalizeNewBall(CKBehavior *graph);
-    void OnEditScript_ResetBallPieces(CKBehavior *graph);
+    void InstallBallBehaviorPatch();
+
+    BML::Behavior::Session m_Behavior;
+    BML::Behavior::Patch m_BallPatch;
+    BML::Behavior::ObjectRef m_GameplayScript{};
+    BML::Behavior::ObjectRef m_EventHandler{};
+    bool m_BallPatchPending = false;
 
     std::vector<BallTypeInfo> m_BallTypes;
     std::vector<FloorTypeInfo> m_FloorTypes;

@@ -1,16 +1,293 @@
 #include "Mods/NewBallTypeMod.h"
 
 #include "BML/IBML.h"
-#include "BML/ScriptHelper.h"
 #include "BML/Guids/Logics.h"
 #include "BML/Guids/Narratives.h"
+#include "BML/Scene.h"
 
-#include "Loader/ModContext.h"
-#include "Behavior/Block.h"
 #include "BML/Behavior/Blocks/ObjectLoad.hpp"
 #include "BML/Behavior/Blocks/Physicalize.hpp"
 
-using namespace ScriptHelper;
+#include <cstdint>
+
+namespace Behavior = BML::Behavior;
+
+namespace {
+
+struct BallBehavior {
+    const BallTypeInfo *Info = nullptr;
+    Behavior::ObjectRef Ball{};
+    Behavior::ObjectRef Reset{};
+    std::string Used;
+};
+
+Behavior::Edit::Node First(Behavior::Edit::Graph graph,
+                           std::string_view name) {
+    return graph.Require(Behavior::Named(name, 0));
+}
+
+bool AddPhysicalize(const Behavior::Session &session,
+                    Behavior::Edit::Graph graph,
+                    const std::vector<BallBehavior> &balls) {
+    const auto physicalize = First(graph, "Physicalize");
+    const auto switchOnBall = First(graph, "Switch On Parameter");
+    const auto show = First(graph, "Show");
+    const auto source = graph.Next(
+        graph.Root().In(0), Behavior::NodePattern("Op"));
+
+    for (const BallBehavior &ball : balls) {
+        const auto ballName = graph.AppendPin(
+            switchOnBall, "Pin", CKPGUID_STRING);
+        graph.Bind(ballName, ball.Info->m_ObjName);
+        const auto route = graph.AppendOut(switchOnBall, "Out");
+
+        Behavior::Blocks::Physicalize::Options options;
+        if (ball.Info->m_Radius > 0.0f) {
+            options.Geometry = Behavior::Blocks::Physicalize::Shape::Ball;
+            options.Radius = ball.Info->m_Radius;
+        }
+        auto made = Behavior::Blocks::Physicalize::Make(session, options);
+        if (!made)
+            return false;
+        const auto added = graph.Add(made.Value());
+        graph.Share(added.Target(), physicalize.Target());
+        for (int pin = 0; pin != 11; ++pin)
+            graph.Share(added.Pin(pin), physicalize.Pin(pin));
+        if (ball.Info->m_Radius <= 0.0f)
+            graph.Bind(added.Pin(11, CKPGUID_MESH), source.Pout(0));
+
+        graph.Flow(route, added.In(0));
+        graph.Flow(added.Out(0), show.In(0));
+    }
+    return true;
+}
+
+void ExtendResetBallPieces(Behavior::Edit::Graph graph,
+                           const std::vector<BallBehavior> &balls) {
+    if (balls.empty())
+        return;
+
+    const auto sequencer = First(graph, "Sequencer");
+    const auto scripts = First(graph, "Parameter Selector");
+    const auto originalExit = graph.Between(
+        sequencer.Out(4), graph.Root().Out(0), 0);
+
+    std::vector<Behavior::Edit::Port> inputs;
+    std::vector<Behavior::Edit::Port> outputs;
+    inputs.reserve(balls.size());
+    outputs.reserve(balls.size());
+    for (const BallBehavior &ball : balls) {
+        const auto script = graph.AppendPin(
+            scripts, "Pin", CKPGUID_STRING);
+        graph.Bind(script, "Ball_ResetPieces_" + ball.Info->m_Name);
+        inputs.push_back(graph.AppendIn(scripts, "In"));
+        outputs.push_back(graph.AppendOut(sequencer, "Out"));
+    }
+
+    for (std::size_t index = 0; index < inputs.size(); ++index) {
+        graph.Flow(index == 0 ? sequencer.Out(4) : outputs[index - 1],
+                   inputs[index]);
+    }
+    graph.Reconnect(originalExit, outputs.back(), graph.Root().Out(0));
+}
+
+void RemoveBallAttributes(const Behavior::Session &session,
+                          Behavior::Edit::Graph graph,
+                          const std::vector<BallBehavior> &balls) {
+    const auto original = First(graph, "Remove Attribute");
+    const auto entry = graph.Leaving(graph.Root().In(0));
+    for (const BallBehavior &ball : balls) {
+        auto remove = session.Use(VT_LOGICS_REMOVEATTRIBUTE);
+        remove.Target(CKPGUID_BEOBJECT, ball.Ball);
+        const auto added = graph.Add(remove);
+        graph.Share(added.Pin(0), original.Pin(0));
+        graph.Splice(entry, added);
+    }
+}
+
+bool BuildEventHandlerEdit(const Behavior::Session &session,
+                           const std::vector<BallBehavior> &balls,
+                           Behavior::Edit &edit) {
+    auto root = edit.Root();
+
+    auto resetLevel = First(root, "reset Level").Graph();
+    ExtendResetBallPieces(
+        First(resetLevel, "reset Ballpieces").Graph(), balls);
+    auto nestedReset = First(resetLevel, "reset  Level").Graph();
+    RemoveBallAttributes(
+        session, First(nestedReset, "reset Level").Graph(), balls);
+
+    auto exitLevel = First(root, "Exit Level").Graph();
+    ExtendResetBallPieces(
+        First(exitLevel, "reset Ballpieces").Graph(), balls);
+    RemoveBallAttributes(
+        session, First(exitLevel, "reset Level").Graph(), balls);
+    return true;
+}
+
+bool BuildGameplayEdit(const Behavior::Session &session,
+                       CKAttributeType trafoType,
+                       const std::vector<BallBehavior> &balls,
+                       Behavior::Edit &edit) {
+    auto root = edit.Root();
+    auto ballManager = First(root, "BallManager").Graph();
+    auto newBall = First(ballManager, "New Ball").Graph();
+    if (!AddPhysicalize(
+            session, First(newBall, "physicalize new Ball").Graph(), balls))
+        return false;
+    auto deactivate = First(ballManager, "Deactivate Ball").Graph();
+    ExtendResetBallPieces(
+        First(deactivate, "reset Ballpieces").Graph(), balls);
+
+    auto init = First(root, "Init Ingame").Graph();
+    auto setTrafo = First(init, "set Trafo-Attribute").Graph();
+    const auto setTrafoExit = setTrafo.Entering(setTrafo.Root().Out(0));
+    for (const BallBehavior &ball : balls) {
+        auto set = session.Use(VT_LOGICS_SETATTRIBUTE);
+        set.Target(CKPGUID_BEOBJECT, ball.Ball)
+            .Pins({{Behavior::At(0), Behavior::Value::As(
+                CKPGUID_ATTRIBUTE, static_cast<std::int32_t>(trafoType))}});
+        const auto added = setTrafo.Add(set);
+        const auto value = setTrafo.AppendPin(
+            added, "Attribute Value", CKPGUID_STRING);
+        setTrafo.Bind(value, ball.Info->m_ID);
+        setTrafo.Splice(setTrafoExit, added);
+    }
+
+    auto trafo = First(root, "Trafo Manager").Graph();
+    const auto piecesNode = First(trafo, "set Piecesflag");
+    auto pieces = piecesNode.Graph();
+    const auto pieceSwitch = First(pieces, "Switch On Parameter");
+    const auto fadeoutNode = First(trafo, "Fadeout Manager");
+    auto fadeout = fadeoutNode.Graph();
+    Behavior::NodePattern usedIdentity;
+    usedIdentity.Prototype(VT_LOGICS_IDENTITY).Pins(3);
+    const auto currentUsed = fadeout.Require(std::move(usedIdentity));
+    auto boolIdentity = session.Use(VT_LOGICS_IDENTITY);
+    boolIdentity.PinType(Behavior::At(0), CKPGUID_BOOL)
+        .PoutType(Behavior::At(0), CKPGUID_BOOL);
+
+    for (const BallBehavior &ball : balls) {
+        const auto used = trafo.AppendLocal(ball.Used, CKPGUID_BOOL);
+
+        const auto pieceResult = trafo.AppendPout(
+            piecesNode, ball.Used, CKPGUID_BOOL);
+        trafo.Push(pieceResult, used);
+        const auto pieceInput = pieces.AppendPin(
+            pieceSwitch, "Pin", CKPGUID_STRING);
+        pieces.Bind(pieceInput, ball.Info->m_ID);
+        const auto pieceRoute = pieces.AppendOut(pieceSwitch, "Out");
+        const auto setUsed = pieces.Add(boolIdentity);
+        pieces.Bind(setUsed.Pin(0), true);
+        pieces.Push(setUsed.Pout(0),
+                    pieces.Root().Pout(ball.Used, CKPGUID_BOOL));
+        pieces.Flow(pieceRoute, setUsed.In());
+        pieces.Flow(setUsed.Out(), pieces.Root().Out(0));
+
+        const auto usedInput = trafo.AppendPin(
+            fadeoutNode, ball.Used, CKPGUID_BOOL);
+        const auto usedResult = trafo.AppendPout(
+            fadeoutNode, ball.Used, CKPGUID_BOOL);
+        trafo.Bind(usedInput, used);
+        trafo.Push(usedResult, used);
+
+        const auto firstSwitch = fadeout.Add(
+            session.Use(VT_LOGICS_BINARYSWITCH));
+        const auto secondSwitch = fadeout.Add(
+            session.Use(VT_LOGICS_BINARYSWITCH));
+        const auto clearUsed = fadeout.Add(boolIdentity);
+        fadeout.Bind(clearUsed.Pin(0), false);
+
+        auto timerBlock = session.Use(VT_LOGICS_TIMER);
+        timerBlock.Pins({{Behavior::At(0), Behavior::Value::As(
+            CKPGUID_TIME, 20000.0f)}});
+        const auto timer = fadeout.Add(timerBlock);
+
+        auto activateBlock = session.Use(VT_NARRATIVES_ACTIVATESCRIPT);
+        activateBlock.Pins({
+            {Behavior::At(0), true},
+            {Behavior::At(1),
+             Behavior::Value::Object(CKPGUID_SCRIPT, ball.Reset)}});
+        const auto activate = fadeout.Add(activateBlock);
+
+        const auto state = fadeout.Root().Pin(ball.Used, CKPGUID_BOOL);
+        const auto changed = fadeout.Root().Pout(ball.Used, CKPGUID_BOOL);
+        fadeout.Push(currentUsed.Pout(0), changed);
+        fadeout.Share(firstSwitch.Pin(0), state);
+        fadeout.Share(secondSwitch.Pin(0), state);
+        fadeout.Push(clearUsed.Pout(0), changed);
+
+        fadeout.Flow(currentUsed.Out(), firstSwitch.In());
+        fadeout.FlowCycle(firstSwitch.Out(1), firstSwitch.In(), 1);
+        fadeout.Flow(firstSwitch.Out(0), clearUsed.In());
+        fadeout.Flow(clearUsed.Out(), timer.In(0));
+        fadeout.Flow(timer.Out(1), secondSwitch.In());
+        fadeout.FlowCycle(secondSwitch.Out(1), timer.In(1), 1);
+        fadeout.Flow(timer.Out(0), activate.In());
+        fadeout.Flow(secondSwitch.Out(0), activate.In());
+        fadeout.FlowCycle(activate.Out(), firstSwitch.In(), 1);
+    }
+
+    if (!AddPhysicalize(
+            session, First(trafo, "physicalize new Ball").Graph(), balls))
+        return false;
+
+    auto explosion = First(trafo, "start Explosion").Graph();
+    const auto explosionSwitch = First(explosion, "Switch On Parameter");
+    const auto explosionScripts = First(explosion, "Parameter Selector");
+    auto setBall = First(trafo, "set new Ball").Graph();
+    const auto ballSwitch = First(setBall, "Switch On Parameter");
+    const auto ballObjects = First(setBall, "Parameter Selector");
+    for (const BallBehavior &ball : balls) {
+        const auto explosionId = explosion.AppendPin(
+            explosionSwitch, "Pin", CKPGUID_STRING);
+        explosion.Bind(explosionId, ball.Info->m_ID);
+        const auto explosionRoute = explosion.AppendOut(
+            explosionSwitch, "Out");
+        const auto explosionName = explosion.AppendPin(
+            explosionScripts, "Pin", CKPGUID_STRING);
+        explosion.Bind(
+            explosionName, "Ball_Explosion_" + ball.Info->m_Name);
+        const auto explosionIn = explosion.AppendIn(explosionScripts, "In");
+        explosion.Flow(explosionRoute, explosionIn);
+
+        const auto ballId = setBall.AppendPin(
+            ballSwitch, "Pin", CKPGUID_STRING);
+        setBall.Bind(ballId, ball.Info->m_ID);
+        const auto ballRoute = setBall.AppendOut(ballSwitch, "Out");
+        const auto ballObject = setBall.AppendPin(
+            ballObjects, "Pin", CKPGUID_3DENTITY);
+        setBall.Bind(
+            ballObject,
+            Behavior::Value::Object(CKPGUID_3DENTITY, ball.Ball));
+        const auto ballIn = setBall.AppendIn(ballObjects, "In");
+        setBall.Flow(ballRoute, ballIn);
+    }
+
+    return true;
+}
+
+} // namespace
+
+void NewBallTypeMod::OnLoad() {
+    auto opened = Behavior::Session::Open(GetID());
+    if (!opened) {
+        GetLogger()->Error("Behavior authoring is unavailable for new ball types: %s",
+                           opened.GetStatus().Message.empty()
+                               ? "could not open the owner session"
+                               : opened.GetStatus().Message.c_str());
+        return;
+    }
+    m_Behavior = opened.Take();
+}
+
+void NewBallTypeMod::OnUnload() {
+    (void) m_BallPatch.Close();
+    m_Behavior.Reset();
+    m_GameplayScript = {};
+    m_EventHandler = {};
+    m_BallPatchPending = false;
+}
 
 void NewBallTypeMod::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
                                   CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
@@ -26,11 +303,38 @@ void NewBallTypeMod::OnLoadObject(const char *filename, CKBOOL isMap, const char
 }
 
 void NewBallTypeMod::OnLoadScript(const char *filename, CKBehavior *script) {
+    if (!m_Behavior || !script || !script->GetName())
+        return;
+    Behavior::ObjectRef *target = nullptr;
     if (!strcmp(script->GetName(), "Gameplay_Ingame"))
-        OnEditScript_Gameplay_Ingame(script);
+        target = &m_GameplayScript;
+    else if (!strcmp(script->GetName(), "Event_handler"))
+        target = &m_EventHandler;
+    if (!target)
+        return;
 
-    if (!strcmp(script->GetName(), "Event_handler"))
-        OnEditScript_Base_EventHandler(script);
+    auto reference = m_Behavior.Reference(script);
+    if (!reference) {
+        GetLogger()->Error("Cannot identify %s for Behavior authoring: %s",
+                           script->GetName(),
+                           reference.GetStatus().Message.empty()
+                               ? "object reference creation failed"
+                               : reference.GetStatus().Message.c_str());
+        return;
+    }
+    *target = reference.Value();
+    m_BallPatchPending = true;
+}
+
+void NewBallTypeMod::OnProcess() {
+    InstallBallBehaviorPatch();
+}
+
+void NewBallTypeMod::OnExitGame() {
+    (void) m_BallPatch.Close();
+    m_GameplayScript = {};
+    m_EventHandler = {};
+    m_BallPatchPending = false;
 }
 
 void NewBallTypeMod::RegisterBallType(const char *ballFile, const char *ballId, const char *ballName,
@@ -144,21 +448,66 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
     m_AllBalls = m_BML->GetGroupByName("All_Balls");
     std::string path = "3D Entities\\";
     CK3dEntity *ballMF = m_BML->Get3dEntityByName("Balls_MF");
-    ModContext *context = dynamic_cast<ModContext *>(m_BML);
-    if (!context) {
-        GetLogger()->Error("Cannot load registered ball types without the loader runtime context");
+    CKContext *context = m_BML->GetCKContext();
+    if (!m_Behavior || !context || !m_PhysicsBall || !m_AllBalls || !ballMF) {
+        GetLogger()->Error(
+            "Cannot load registered ball types: the Behavior session or base ball objects are unavailable");
         return;
     }
 
     for (BallTypeInfo &info: m_BallTypes) {
-        BML::Behavior::Blocks::ObjectLoad::Options definition;
-        definition.File = path + info.m_File;
-        XObjectArray *objects = context->ExecuteBB().LoadObjects(definition, false).first;
-        if (!objects) {
-            GetLogger()->Error("Cannot load ball type %s: Object Load returned no object array",
-                               info.m_Name.c_str());
+        Behavior::Blocks::ObjectLoad::Options options;
+        options.File = path + info.m_File;
+        auto block = Behavior::Blocks::ObjectLoad::Make(m_Behavior, options);
+        if (!block) {
+            GetLogger()->Error(
+                "Cannot configure Object Load for ball type %s: %s",
+                info.m_Name.c_str(), block.GetStatus().Message.empty()
+                    ? "the Block was rejected"
+                    : block.GetStatus().Message.c_str());
             return;
         }
+        auto called = block->Call("Load", Behavior::Signals(1).Pouts());
+        if (!called) {
+            GetLogger()->Error(
+                "Cannot load ball type %s: %s", info.m_Name.c_str(),
+                called.GetStatus().Message.empty()
+                    ? "Object Load could not execute"
+                    : called.GetStatus().Message.c_str());
+            return;
+        }
+        Behavior::Call call = called.Take();
+        auto captured = call.TakeFrames();
+        if (!captured || captured->Empty()) {
+            GetLogger()->Error(
+                "Cannot load ball type %s: Object Load produced no Frame",
+                info.m_Name.c_str());
+            return;
+        }
+        Behavior::Frames frames = captured.Take();
+        const Behavior::Frame frame = frames[frames.Size() - 1];
+        if (!frame.HasOut("Loaded") || frame.HasOut("Failed")) {
+            GetLogger()->Error(
+                "Cannot load ball type %s: Object Load did not activate Loaded",
+                info.m_Name.c_str());
+            return;
+        }
+        auto loaded = frame.Pout<Behavior::ObjectList>("Loaded Objects");
+        if (!loaded) {
+            GetLogger()->Error(
+                "Cannot read the objects loaded for ball type %s: %s",
+                info.m_Name.c_str(), loaded.GetStatus().Message.empty()
+                    ? "Loaded Objects is unavailable"
+                    : loaded.GetStatus().Message.c_str());
+            return;
+        }
+
+        info.m_AllGroup = nullptr;
+        info.m_BallObj = nullptr;
+        info.m_PiecesGroup = nullptr;
+        info.m_PiecesFrame = nullptr;
+        info.m_Explosion = nullptr;
+        info.m_Reset = nullptr;
 
         std::string allGroup = "All_" + info.m_ObjName;
         std::string piecesGroup = info.m_ObjName + "_Pieces";
@@ -166,23 +515,28 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
         std::string explosion = "Ball_Explosion_" + info.m_Name;
         std::string reset = "Ball_ResetPieces_" + info.m_Name;
 
-        for (CK_ID *id = objects->Begin(); id != objects->End(); ++id) {
-            CKObject *obj = m_BML->GetCKContext()->GetObject(*id);
+        for (Behavior::ObjectRef reference : loaded.Value()) {
+            BML::Scene::ObjectInfo observed;
+            if (BML::Scene::ReadObject(reference, observed) != BML_OK)
+                continue;
+            CKObject *obj = context->GetObject(observed.Id);
+            if (!obj || !obj->GetName())
+                continue;
             const char *name = obj->GetName();
-            if (name) {
-                if (allGroup == name)
-                    info.m_AllGroup = (CKGroup *) obj;
-                if (info.m_ObjName == name)
-                    info.m_BallObj = (CK3dObject *) obj;
-                if (piecesGroup == name)
-                    info.m_PiecesGroup = (CKGroup *) obj;
-                if (piecesFrame == name)
-                    info.m_PiecesFrame = (CK3dEntity *) obj;
-                if (explosion == name)
-                    info.m_Explosion = (CKBehavior *) obj;
-                if (reset == name)
-                    info.m_Reset = (CKBehavior *) obj;
-            }
+            if (allGroup == name && CKIsChildClassOf(obj, CKCID_GROUP))
+                info.m_AllGroup = static_cast<CKGroup *>(obj);
+            if (info.m_ObjName == name &&
+                CKIsChildClassOf(obj, CKCID_3DOBJECT))
+                info.m_BallObj = static_cast<CK3dObject *>(obj);
+            if (piecesGroup == name && CKIsChildClassOf(obj, CKCID_GROUP))
+                info.m_PiecesGroup = static_cast<CKGroup *>(obj);
+            if (piecesFrame == name &&
+                CKIsChildClassOf(obj, CKCID_3DENTITY))
+                info.m_PiecesFrame = static_cast<CK3dEntity *>(obj);
+            if (explosion == name && CKIsChildClassOf(obj, CKCID_BEHAVIOR))
+                info.m_Explosion = static_cast<CKBehavior *>(obj);
+            if (reset == name && CKIsChildClassOf(obj, CKCID_BEHAVIOR))
+                info.m_Reset = static_cast<CKBehavior *>(obj);
         }
 
         if (!info.m_AllGroup ||
@@ -191,12 +545,12 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
             !info.m_PiecesFrame ||
             !info.m_Explosion ||
             !info.m_Reset) {
-            GetLogger()->Info("Register New Ball Types Failed");
+            GetLogger()->Error(
+                "Cannot register ball type %s: its loaded object set is incomplete",
+                info.m_Name.c_str());
             return;
         }
 
-        SetParamObject(info.m_BallParam, info.m_BallObj);
-        SetParamObject(info.m_ResetParam, info.m_Reset);
         info.m_BallObj->SetParent(ballMF);
         info.m_PiecesFrame->SetParent(ballMF);
 
@@ -216,6 +570,7 @@ void NewBallTypeMod::OnLoadBalls(XObjectArray *objArray) {
             m_AllBalls->AddObject(info.m_AllGroup->GetObject(i));
     }
 
+    m_BallPatchPending = true;
     GetLogger()->Info("New Ball Types Registered");
 }
 
@@ -319,229 +674,107 @@ void NewBallTypeMod::OnLoadSounds(XObjectArray *objArray) {
     GetLogger()->Info("New Ball Sounds Registered");
 }
 
-void NewBallTypeMod::OnEditScript_Gameplay_Ingame(CKBehavior *script) {
-    GetLogger()->Info("Modify Ingame script to accommodate new ball types");
+void NewBallTypeMod::InstallBallBehaviorPatch() {
+    if (!m_BallPatchPending || !m_Behavior ||
+        !m_GameplayScript.Domain || !m_EventHandler.Domain)
+        return;
 
-    {
-        CKBehavior *ballMgr = FindFirstBB(script, "BallManager");
-        CKBehavior *newBall = FindFirstBB(ballMgr, "New Ball");
-        CKBehavior *phyNewBall = FindFirstBB(newBall, "physicalize new Ball");
-        OnEditScript_PhysicalizeNewBall(phyNewBall);
-
-        CKBehavior *deactBall = FindFirstBB(ballMgr, "Deactivate Ball");
-        CKBehavior *resetPieces = FindFirstBB(deactBall, "reset Ballpieces");
-        OnEditScript_ResetBallPieces(resetPieces);
-    }
-
-    {
-        CKBehavior *init = FindFirstBB(script, "Init Ingame");
-        CKBehavior *trafoAttr = FindFirstBB(init, "set Trafo-Attribute");
-        CKAttributeManager *am = m_BML->GetAttributeManager();
-        CKAttributeType trafoType = am->GetAttributeTypeByName("TrafoType");
-        for (BallTypeInfo &info: m_BallTypes) {
-            CKBehavior *setAttr = CreateBB(trafoAttr, VT_LOGICS_SETATTRIBUTE, true);
-            CKParameter *attr = CreateParamValue(trafoAttr, "Attr", CKPGUID_ATTRIBUTE, trafoType);
-            CKParameter *attrParam = CreateParamString(trafoAttr, "Param", info.m_ID.c_str());
-            setAttr->GetTargetParameter()->SetDirectSource(info.m_BallParam);
-            setAttr->GetInputParameter(0)->SetDirectSource(attr);
-            setAttr->CreateInputParameter("Param", CKPGUID_STRING)->SetDirectSource(attrParam);
-            InsertBB(trafoAttr, FindPreviousLink(trafoAttr, trafoAttr->GetOutput(0)), setAttr);
-        }
-    }
-
-    {
-        CKBehavior *trafoMgr = FindFirstBB(script, "Trafo Manager");
-        {
-            CKBehavior *pieceFlag = FindFirstBB(trafoMgr, "set Piecesflag");
-            CKBehavior *sop = FindFirstBB(pieceFlag, "Switch On Parameter");
-            CKParameterType booltype = m_BML->GetParameterManager()->ParameterGuidToType(CKPGUID_BOOL);
-            for (BallTypeInfo &info: m_BallTypes) {
-                CKParameter *id = CreateParamString(pieceFlag, "Pin", info.m_ID.c_str());
-                CKParameter *boolTrue = CreateParamValue(pieceFlag, "True", CKPGUID_BOOL, TRUE);
-                CKBehavior *identity = CreateBB(pieceFlag, VT_LOGICS_IDENTITY);
-                identity->GetInputParameter(0)->SetType(booltype);
-                identity->GetOutputParameter(0)->SetType(booltype);
-
-                identity->GetInputParameter(0)->SetDirectSource(boolTrue);
-                identity->GetOutputParameter(0)->AddDestination(info.m_UsedParam, false);
-                sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(id);
-                CreateLink(pieceFlag, sop->CreateOutput("Out"), identity);
-                CreateLink(pieceFlag, identity, pieceFlag->GetOutput(0));
-            }
-        }
-
-        {
-            CKBehavior *phyNewBall = FindFirstBB(trafoMgr, "physicalize new Ball");
-            OnEditScript_PhysicalizeNewBall(phyNewBall);
-        }
-
-        {
-            CKBehavior *explode = FindFirstBB(trafoMgr, "start Explosion");
-            CKBehavior *sop = FindFirstBB(explode, "Switch On Parameter");
-            CKBehavior *ps = FindFirstBB(explode, "Parameter Selector");
-            for (BallTypeInfo &info: m_BallTypes) {
-                std::string explosion = "Ball_Explosion_" + info.m_Name;
-                CKParameter *id = CreateParamString(explode, "Pin", info.m_ID.c_str());
-                CKParameter *scr = CreateParamString(explode, "Pin", explosion.c_str());
-                sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(id);
-                ps->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(scr);
-                CreateLink(explode, sop->CreateOutput("Out"), ps->CreateInput("In"));
-            }
-        }
-
-        {
-            CKBehavior *setNewBall = FindFirstBB(trafoMgr, "set new Ball");
-            CKBehavior *sop = FindFirstBB(setNewBall, "Switch On Parameter");
-            CKBehavior *ps = FindFirstBB(setNewBall, "Parameter Selector");
-            for (BallTypeInfo &info: m_BallTypes) {
-                CKParameter *id = CreateParamString(setNewBall, "Pin", info.m_ID.c_str());
-                sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(id);
-                ps->CreateInputParameter("Pin", CKPGUID_3DENTITY)->SetDirectSource(info.m_BallParam);
-                CreateLink(setNewBall, sop->CreateOutput("Out"), ps->CreateInput("In"));
-            }
-        }
-
-        {
-            CKBehavior *fadeout = FindFirstBB(trafoMgr, "Fadeout Manager");
-            CKBehavior *identity = nullptr;
-            FindBB(
-                fadeout, [&identity](CKBehavior *beh) {
-                    if (beh->GetInputParameterCount() == 3) {
-                        identity = beh;
-                        return false;
-                    } else return true;
-                },
-                "Identity");
-            CKParameterType booltype = m_BML->GetParameterManager()->ParameterGuidToType(CKPGUID_BOOL);
-            CKParameter *time = CreateParamValue(fadeout, "Time", CKPGUID_TIME, 20000.0f);
-            CKParameter *reset = CreateParamValue(fadeout, "Reset", CKPGUID_BOOL, TRUE);
-            CKParameter *setfalse = CreateParamValue(fadeout, "False", CKPGUID_BOOL, FALSE);
-            for (BallTypeInfo &info: m_BallTypes) {
-                CKBehavior *binswitch[2] = {CreateBB(fadeout, VT_LOGICS_BINARYSWITCH), CreateBB(fadeout, VT_LOGICS_BINARYSWITCH)};
-                CKBehavior *seton = CreateBB(fadeout, VT_LOGICS_IDENTITY);
-                seton->GetInputParameter(0)->SetType(booltype);
-                seton->GetOutputParameter(0)->SetType(booltype);
-                CKBehavior *timer = CreateBB(fadeout, VT_LOGICS_TIMER);
-                CKBehavior *activate = CreateBB(fadeout, VT_NARRATIVES_ACTIVATESCRIPT);
-                info.m_Timer = timer;
-                info.m_BinarySwitch[0] = binswitch[0];
-                info.m_BinarySwitch[1] = binswitch[1];
-
-                identity->GetOutputParameter(0)->AddDestination(info.m_UsedParam, false);
-                binswitch[0]->GetInputParameter(0)->SetDirectSource(info.m_UsedParam);
-                binswitch[1]->GetInputParameter(0)->SetDirectSource(info.m_UsedParam);
-                seton->GetInputParameter(0)->SetDirectSource(setfalse);
-                seton->GetOutputParameter(0)->AddDestination(info.m_UsedParam, false);
-                timer->GetInputParameter(0)->SetDirectSource(time);
-                activate->GetInputParameter(0)->SetDirectSource(reset);
-                activate->GetInputParameter(1)->SetDirectSource(info.m_ResetParam);
-
-                CreateLink(fadeout, identity, binswitch[0]);
-                CreateLink(fadeout, binswitch[0], binswitch[0], 1, 0, 1);
-                CreateLink(fadeout, binswitch[0], seton);
-                CreateLink(fadeout, seton, timer);
-                CreateLink(fadeout, timer, binswitch[1], 1);
-                CreateLink(fadeout, binswitch[1], timer, 1, 1, 1);
-                CreateLink(fadeout, timer, activate);
-                CreateLink(fadeout, binswitch[1], activate);
-                CreateLink(fadeout, activate, binswitch[0], 0, 0, 1);
-            }
-        }
-    }
-}
-
-void NewBallTypeMod::OnEditScript_Base_EventHandler(CKBehavior *script) {
-    GetLogger()->Info("Reset ball pieces for new ball types");
-
-    for (BallTypeInfo &info: m_BallTypes) {
-        info.m_BallParam = CreateLocalParameter(script, "Target", CKPGUID_BEOBJECT);
-        info.m_UsedParam = CreateLocalParameter(script, "Used", CKPGUID_BOOL);
-        info.m_ResetParam = CreateLocalParameter(script, "Script", CKPGUID_SCRIPT);
-    }
-
-    auto addResetAttr = [this](CKBehavior *graph) {
-        CKBehavior *remAttr = FindFirstBB(graph, "Remove Attribute");
-        for (BallTypeInfo &info: m_BallTypes) {
-            CKBehavior *attr = CreateBB(graph, VT_LOGICS_REMOVEATTRIBUTE, true);
-            attr->GetTargetParameter()->SetDirectSource(info.m_BallParam);
-            attr->GetInputParameter(0)->ShareSourceWith(remAttr->GetInputParameter(0));
-            InsertBB(graph, FindNextLink(graph, graph->GetInput(0)), attr);
-        }
-    };
-
-    CKBehavior *resetLevel = FindFirstBB(script, "reset Level");
-    CKBehavior *resetPieces = FindFirstBB(resetLevel, "reset Ballpieces");
-    OnEditScript_ResetBallPieces(resetPieces);
-    resetLevel = FindFirstBB(resetLevel, "reset  Level");
-    resetLevel = FindFirstBB(resetLevel, "reset Level");
-    addResetAttr(resetLevel);
-
-    CKBehavior *exitLevel = FindFirstBB(script, "Exit Level");
-    resetPieces = FindFirstBB(exitLevel, "reset Ballpieces");
-    OnEditScript_ResetBallPieces(resetPieces);
-    resetLevel = FindFirstBB(exitLevel, "reset Level");
-    addResetAttr(resetLevel);
-}
-
-void NewBallTypeMod::OnEditScript_PhysicalizeNewBall(CKBehavior *graph) {
-    CKBehavior *physicalize = FindFirstBB(graph, "Physicalize");
-    CKBehavior *sop = FindFirstBB(graph, "Switch On Parameter");
-    CKBehavior *show = FindFirstBB(graph, "Show");
-    CKBehavior *op = FindNextBB(graph, graph->GetInput(0));
-
-    for (BallTypeInfo &info: m_BallTypes) {
-        CKParameter *ballName = CreateParamString(graph, "Pin", info.m_ObjName.c_str());
-        sop->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(ballName);
-        CKBehavior *newPhy;
-        BML::Behavior::Blocks::Physicalize::Options definition;
-        if (info.m_Radius > 0) {
-            definition.Geometry =
-                BML::Behavior::Blocks::Physicalize::Shape::Ball;
-            definition.Radius = info.m_Radius;
-        }
-        BML::Behavior::Internal::BlockSpec spec =
-            BML::Behavior::Internal::BlockSpec::From(definition);
-        spec.TargetShared(CKPGUID_3DENTITY, physicalize->GetTargetParameter());
-        for (int i = 0; i < 11; ++i) {
-            spec.Input(BML::Behavior::Internal::Slot::At(
-                           BML::Behavior::Internal::SlotKind::InputParameter, i),
-                       BML::Behavior::Internal::Parameter::Binding::Shared(
-                           physicalize->GetInputParameter(i)));
-        }
-        if (info.m_Radius > 0) {
-            // The radius remains literal; the position follows the graph input.
-        } else {
-            spec.Input(BML::Behavior::Internal::Slot::At(
-                           BML::Behavior::Internal::SlotKind::InputParameter, 11, CKPGUID_MESH),
-                       BML::Behavior::Internal::Parameter::Binding::Direct(
-                           op->GetOutputParameter(0)));
-        }
-        auto *context = dynamic_cast<ModContext *>(m_BML);
-        BML::Behavior::Internal::AttachResult created = context
-            ? context->Behaviors().AddToGraph(graph, spec)
-            : BML::Behavior::Internal::AttachResult{};
-        newPhy = created ? created.Block : nullptr;
-
-        if (!newPhy) {
-            GetLogger()->Error("Cannot add the Physicalize block for ball type %s", info.m_Name.c_str());
+    if (m_BallPatch) {
+        auto closed = m_BallPatch.Close();
+        if (!closed) {
+            GetLogger()->Error(
+                "Cannot replace the new-ball Behavior Patch: %s",
+                closed.GetStatus().Message.empty()
+                    ? "the previous Patch could not be restored"
+                    : closed.GetStatus().Message.c_str());
+            m_BallPatchPending = false;
             return;
         }
-        CreateLink(graph, sop->CreateOutput("Out"), newPhy);
-        CreateLink(graph, newPhy, show);
+        if (closed.Value() == Behavior::CloseState::Closing)
+            return;
     }
-}
 
-void NewBallTypeMod::OnEditScript_ResetBallPieces(CKBehavior *graph) {
-    CKBehavior *seq = FindFirstBB(graph, "Sequencer");
-    CKBehavior *ps = FindFirstBB(graph, "Parameter Selector");
-
-    for (BallTypeInfo &info: m_BallTypes) {
-        std::string reset = "Ball_ResetPieces_" + info.m_Name;
-        CKParameter *script = CreateParamString(graph, "Pin", reset.c_str());
-        ps->CreateInputParameter("Pin", CKPGUID_STRING)->SetDirectSource(script);
-
-        int cnt = seq->GetOutputCount() - 1;
-        FindNextLink(graph, seq->GetOutput(cnt))->SetInBehaviorIO(seq->CreateOutput("Out"));
-        CreateLink(graph, seq->GetOutput(seq->GetOutputCount() - 2), ps->CreateInput("In"));
+    if (m_BallTypes.empty()) {
+        m_BallPatchPending = false;
+        return;
     }
+
+    std::vector<BallBehavior> balls;
+    balls.reserve(m_BallTypes.size());
+    for (const BallTypeInfo &info : m_BallTypes) {
+        if (!info.m_BallObj || !info.m_Reset) {
+            GetLogger()->Error(
+                "Cannot author the new-ball graphs before ball type %s is loaded",
+                info.m_Name.c_str());
+            m_BallPatchPending = false;
+            return;
+        }
+        auto ball = m_Behavior.Reference(info.m_BallObj);
+        auto reset = m_Behavior.Reference(info.m_Reset);
+        if (!ball || !reset) {
+            const Behavior::Status &status = !ball
+                ? ball.GetStatus() : reset.GetStatus();
+            GetLogger()->Error(
+                "Cannot identify the objects for ball type %s: %s",
+                info.m_Name.c_str(), status.Message.empty()
+                    ? "object reference creation failed"
+                    : status.Message.c_str());
+            m_BallPatchPending = false;
+            return;
+        }
+        balls.push_back(
+            {&info, ball.Value(), reset.Value(),
+             "__BML_NewBall_Used_" + info.m_ID});
+    }
+
+    auto eventGraph = m_Behavior.Inspect(m_EventHandler);
+    auto gameplayGraph = m_Behavior.Inspect(m_GameplayScript);
+    if (!eventGraph || !gameplayGraph) {
+        const Behavior::Status &status = !eventGraph
+            ? eventGraph.GetStatus() : gameplayGraph.GetStatus();
+        GetLogger()->Error(
+            "Cannot inspect the ball gameplay graphs: %s",
+            status.Message.empty() ? "graph inspection failed"
+                                   : status.Message.c_str());
+        m_BallPatchPending = false;
+        return;
+    }
+
+    CKAttributeManager *attributes = m_BML->GetAttributeManager();
+    const CKAttributeType trafoType = attributes
+        ? attributes->GetAttributeTypeByName("TrafoType") : -1;
+    if (trafoType < 0) {
+        GetLogger()->Error(
+            "Cannot author the new-ball graphs: TrafoType is unavailable");
+        m_BallPatchPending = false;
+        return;
+    }
+
+    Behavior::Edit eventEdit;
+    Behavior::Edit gameplayEdit;
+    if (!BuildEventHandlerEdit(m_Behavior, balls, eventEdit) ||
+        !BuildGameplayEdit(m_Behavior, trafoType, balls, gameplayEdit)) {
+        GetLogger()->Error(
+            "Cannot describe the new-ball graph changes with Behavior authoring");
+        m_BallPatchPending = false;
+        return;
+    }
+
+    auto applied = m_Behavior.Apply(
+        "New ball types",
+        Behavior::On(eventGraph.Value(), eventEdit),
+        Behavior::On(gameplayGraph.Value(), gameplayEdit));
+    if (!applied) {
+        GetLogger()->Error(
+            "Cannot apply the new-ball graph changes: %s",
+            applied.GetStatus().Message.empty()
+                ? "the Patch was rejected"
+                : applied.GetStatus().Message.c_str());
+        m_BallPatchPending = false;
+        return;
+    }
+
+    m_BallPatch = applied.Take();
+    m_BallPatchPending = false;
+    GetLogger()->Info("Installed the new-ball Behavior Patch");
 }
