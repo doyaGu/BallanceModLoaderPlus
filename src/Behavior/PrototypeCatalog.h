@@ -86,6 +86,9 @@ public:
     Status DeclaredLayout(PrototypeRef prototype, Layout &out);
     Status Resolve(PrototypeRef prototype, PrototypeRef &out);
     Status Validate(PrototypeRef prototype);
+    // Checks the last catalog snapshot without probing CK2 or refreshing it.
+    // Runtime uses this after the composition root has processed retirements.
+    Status Current(PrototypeRef prototype) const;
     Status Detached(PrototypeRef prototype,
                     DetachedCompatibility &out);
     Status RecordDetached(PrototypeRef prototype,

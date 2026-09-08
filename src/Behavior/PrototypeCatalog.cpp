@@ -235,6 +235,10 @@ Status PrototypeCatalog::Validate(PrototypeRef prototype) {
     Status status = Refresh();
     if (!status)
         return status;
+    return Current(prototype);
+}
+
+Status PrototypeCatalog::Current(PrototypeRef prototype) const {
     const Entry *entry = FindEntry(prototype.Guid);
     if (!entry)
         return Failure(Error::PrototypeNotFound,

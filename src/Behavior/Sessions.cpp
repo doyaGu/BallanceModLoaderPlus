@@ -717,7 +717,24 @@ void Sessions::ProcessFrame() {
     {
         std::lock_guard<std::recursive_mutex> lock(m_Mutex);
         frame = ++m_Frame;
-        runsClosed = CloseQueuedRuns();
+        if (m_Catalog && m_Catalog->TracksRetirement()) {
+            for (auto &[id, run] : m_Runs) {
+                (void) id;
+                if (!run || !run->Block ||
+                    (run->Info.State == RunState::Failed &&
+                     run->Info.LastStatus.Code != Error::None)) {
+                    continue;
+                }
+                Status provider = m_Catalog->Current(run->Info.Prototype);
+                if (provider)
+                    continue;
+                run->Info.State = RunState::Failed;
+                run->Info.LastStatus = std::move(provider);
+                run->Block.Reset();
+                runsClosed = true;
+            }
+        }
+        runsClosed = CloseQueuedRuns() || runsClosed;
         m_FrameWatches.clear();
         m_FrameWatches.reserve(m_Watches.size());
         for (const auto &[id, watch] : m_Watches)

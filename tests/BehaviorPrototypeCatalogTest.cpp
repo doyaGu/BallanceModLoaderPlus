@@ -190,6 +190,20 @@ TEST_F(CatalogFixture, RetirementInvalidatesOldProviderGeneration) {
     EXPECT_EQ(Catalog->Validate(before).Code, Error::PrototypeChanged);
 }
 
+TEST_F(CatalogFixture, CurrentChecksTheProcessedCatalogWithoutRefreshing) {
+    std::vector<PrototypeInfo> found;
+    ASSERT_TRUE(Catalog->Find({}, found));
+    const PrototypeRef before = found.front().Ref;
+    const int reads = Source->DeclarationReads;
+
+    Source->Retirements.push_back(before.Guid);
+    EXPECT_TRUE(Catalog->Current(before));
+    EXPECT_EQ(Source->DeclarationReads, reads);
+
+    ASSERT_TRUE(Catalog->ProcessFrame());
+    EXPECT_EQ(Catalog->Current(before).Code, Error::PrototypeChanged);
+}
+
 TEST_F(CatalogFixture, DetachedCompatibilityBelongsToProviderGeneration) {
     std::vector<PrototypeInfo> found;
     ASSERT_TRUE(Catalog->Find({}, found));

@@ -64,6 +64,8 @@ void ResetBehaviorSessionRuntimeClosePendingCalls();
 std::size_t BehaviorSessionRuntimeClosePendingCalls();
 void SetBehaviorSessionConfigureCallback(std::function<void()> callback);
 void SetBehaviorSessionPulseCallback(std::function<void()> callback);
+void SetBehaviorSessionPrototypeStatus(Status status);
+void ResetBehaviorSessionPrototypeStatus();
 } // namespace BML::Behavior::Internal
 
 namespace {
@@ -977,6 +979,38 @@ TEST(BehaviorSessions, RejectedSettingsPreservePendingRunState) {
     ASSERT_TRUE(sessions.Configure(run.Id, BlockSpec{}, generation));
     ASSERT_TRUE(sessions.ReadRun(run.Id, info));
     EXPECT_EQ(info.State, RunState::Ready);
+}
+
+TEST(BehaviorSessions, ProviderRetirementRemainsVisibleOnTheRun) {
+    ResetBehaviorSessionPrototypeStatus();
+    struct ResetPrototypeStatus final {
+        ~ResetPrototypeStatus() { ResetBehaviorSessionPrototypeStatus(); }
+    } resetPrototypeStatus;
+    PrototypeCatalog catalog(nullptr);
+    Runtime runtime(nullptr, {}, &catalog);
+    Sessions sessions(runtime, &catalog);
+    ASSERT_NE(sessions.RegisterOwner("mod"), 0u);
+    std::uintptr_t session = 0;
+    ASSERT_TRUE(sessions.OpenSession("mod", session));
+    BlockSpec spec(CKGUID(1, 2));
+    spec.PrototypeGeneration(7);
+    OpenRun run = sessions.Spawn(session, nullptr, spec);
+    ASSERT_TRUE(run);
+
+    Status retired{Error::PrototypeChanged, CKERR_INVALIDOBJECT,
+                   CKBR_BEHAVIORERROR,
+                   "The fake Building Block provider changed."};
+    retired.Details.Stage = Phase::PrototypeResolution;
+    retired.Details.Prototype = CKGUID(1, 2);
+    SetBehaviorSessionPrototypeStatus(retired);
+    sessions.ProcessFrame();
+
+    RunInfo info;
+    ASSERT_TRUE(sessions.ReadRun(run.Id, info));
+    EXPECT_EQ(info.State, RunState::Failed);
+    EXPECT_EQ(info.LastStatus.Code, Error::PrototypeChanged);
+    EXPECT_EQ(info.LastStatus.Details.Stage, Phase::PrototypeResolution);
+    EXPECT_EQ(LiveBehaviorSessionInstances(), 0u);
 }
 
 TEST(BehaviorSessions, SettingsCallbackDoesNotBlockWorkerClose) {

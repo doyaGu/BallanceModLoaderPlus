@@ -26,6 +26,8 @@ std::size_t g_WorldResets = 0;
 std::size_t g_ClosePendingCalls = 0;
 std::function<void()> g_ConfigureCallback;
 std::function<void()> g_PulseCallback;
+bool g_TracksPrototypeRetirement = false;
+Status g_PrototypeStatus;
 
 RunFrame MakeFrame(FakeInstance &instance, bool endsActivation) {
     RunFrame frame;
@@ -51,6 +53,18 @@ void SetBehaviorSessionConfigureCallback(std::function<void()> callback) {
 
 void SetBehaviorSessionPulseCallback(std::function<void()> callback) {
     g_PulseCallback = std::move(callback);
+}
+
+void SetBehaviorSessionPrototypeStatus(Status status) {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    g_TracksPrototypeRetirement = true;
+    g_PrototypeStatus = std::move(status);
+}
+
+void ResetBehaviorSessionPrototypeStatus() {
+    std::lock_guard<std::mutex> lock(g_FakeMutex);
+    g_TracksPrototypeRetirement = false;
+    g_PrototypeStatus = {};
 }
 
 void AdvanceBehaviorSessionRuntime() {
@@ -382,8 +396,15 @@ Status Runtime::Configure(Instance &instance, const BlockSpec &settings,
     return {};
 }
 
+PrototypeCatalog::PrototypeCatalog(std::unique_ptr<PrototypeSource> source)
+    : m_Source(std::move(source)) {}
+
 bool PrototypeCatalog::TracksRetirement() const noexcept {
-    return false;
+    return g_TracksPrototypeRetirement;
+}
+
+Status PrototypeCatalog::Current(PrototypeRef) const {
+    return g_PrototypeStatus;
 }
 
 Status PrototypeCatalog::Find(const PrototypeQuery &,
