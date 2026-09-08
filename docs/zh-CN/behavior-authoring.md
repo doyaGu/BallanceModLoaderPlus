@@ -48,7 +48,7 @@ Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Ses
 
 对具名 Result 调用 `Result<T>::Value()` 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 `Take()`。`Take()` 会清空结果中的值，但 `Code()` 和 `GetStatus()` 仍可用于读取诊断。
 
-由 Session 创建的对象持有自己所需的 Session lease。移动或关闭最初的 `Session` 值，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 立即失效。
+由 Session 创建的对象持有自己所需的 Session lease。移动或对最初的 `Session` 值调用 `Reset()`，只会释放这个值持有的 lease，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 失效。最后一个 lease 释放时，native Session 才关闭。
 
 ### 查找 Prototype
 
@@ -114,6 +114,8 @@ if (instance)
 
 Frame policy 只属于本次 run；可复用的 Block 不保存观察策略。`Call::Continue()` 保留同一个 native Instance；它不是重新激活或重新创建。成功时 Call 被消费并返回对应 Task；失败时 Call 仍可继续使用。
 
+BB 只有一个 In 时，可直接使用 `Call(policy)` 和 `Start(policy)`，无需传入占位 Selector；需要选择特定 In 时再使用 Selector 或字符串重载。
+
 同一 Instance 每个 game frame 最多 Execute 一次。同 frame 或 callback 重入的 Pulse 会排队；相同 logical In 合并，不同 In 保持首次 admission 顺序。`Ready` 只表示没有 native continuation 和 queued In，不表示 BB 已经释放 Local、manager 注册或其他持久状态。
 
 三种 run 都提供 `Info()`、`TakeFrames()`、`Layout()`、`Inspect()`、`Set()`、`Bind()`、`Settings()` 和 `Close()`。只有 `Call` 提供 `Continue()`；`Task` 和 `Instance` 提供 `Pulse()`。
@@ -150,6 +152,8 @@ if (auto taken = task->TakeFrames(frames)) {
 ```
 
 `TakeFrames()` 是自动分配版本；`TakeFrames(Frames&)` 会复用已有 header 和 payload buffer。容量足够时，它只调用一次 C seam，且不为 record 或 string 另行分配。这个名字也明确区分了它的消费语义与 `Result<T>::Take()`。`Frame`、`Out` 和 `Pout` 都是所属 `Frames` 的只读 view；下一次修改该 `Frames` 后，旧 view 全部失效。
+
+只有左值 `Frames` 能产生 view，因此临时对象不会泄出悬空 `Frame`。`Clear()` 保留可复用容量；遇到异常大的批次后，可用 `ShrinkToFit()` 释放不再需要的 header 与 payload 空间。
 
 object Pout 会在对象仍 live 时签发 `ObjectRef`，之后读取 Frame 不再访问原 CK parameter 或 CK object。任何 Pout 读取或 encoding 失败都会丢弃该次不完整的 Pout batch，但保留同一 Frame 的 active Outs 和 diagnostic。
 
@@ -189,15 +193,30 @@ if (counter) {
 }
 ```
 
+需要 physical graph 时，直接向 `Session::Inspect` 传入 `View::Live`，无需先读取一次 Logical snapshot。已有 snapshot 需要切换视图时，仍使用 `Graph::Logical()` 和 `Live()`。
+
 `Find` 和 `FindAll` 与 Block slot 使用同一组 selector：`At(index)`、
 `Named(name, occurrence)` 和 `Unique(name)`，还可附加 Prototype GUID 进一步
-限定。`Node::Index()` 是该 graph 中的直接子节点位置，`Node::IsGraph()` 用来
+限定。它们只查找直接 child Node；snapshot root 只能通过 `Root()` 取得。
+`Node::Index()` 是该 graph 中的直接子节点位置，`Node::IsGraph()` 用来
 区分 graph-backed Behavior 和 function-backed BB。`Graph::Inspect(node)` 进入
 graph-backed child，返回以该 Node 为 root 的新 snapshot。原生指针只通过
 `Session::Inspect(CKBehavior *)` 进入根 graph；child Node 和 Link 必须来自
 snapshot，因此一个 Edit 不会暗中混用不同 graph 的 identity。
+`At(index)` 明确表示位置选择，按当前 Graph view 的 child 顺序解析。Logical
+view 隐藏 Patch 基础设施后重新生成连续 index，Live view 使用 native child
+位置。Virtools 在新增 child 时会按 priority 重新排序；同 priority 的相对顺序
+会被调度器观察到，但不是跨 world 的结构身份。exact Graph snapshot 会保护这个位置；
+`Require(snapshotNode)` 则复制唯一名称、Prototype、kind 和 port shape，供以后
+进行结构解析。
+`Port::Index()` 同样保留 CK 原生 slot index。Setting 与 Local 共用 CK 的
+local-parameter 数组、但在 API 中属于不同 slot kind，因此 Local index 可能不连续；
+除非 BB contract 明确规定原生 index，否则应优先使用名称 selector。
 
-`Incoming` 和 `Outgoing` 返回零分配 Link view。`Entering`、`Leaving`、
+`Incoming` 和 `Outgoing` 返回零分配的索引 Link view，不扫描无关 Link。
+`Links()` 和 `Incoming` 使用 graph 的 Link collection 顺序，`Outgoing` 使用每个
+source IO 的 Virtools 遍历顺序。
+`Entering`、`Leaving`、
 `Previous` 和 `Next` 只接受唯一的 topology 结果；遇到分支时报告歧义，不会
 随意挑一条。Node、Port、Link 和 ParameterOperation 都是指向同一个共享
 snapshot allocation 的轻量 view。`Graph::Operations()` 列出每个真实
@@ -205,7 +224,7 @@ snapshot allocation 的轻量 view。`Graph::Operations()` 列出每个真实
 graph owner 和 object identity。Port 保留所属 Node 的 layout generation；把
 旧 snapshot 的 Port 用于新的 live Layout 会失败。
 
-`Logical()` 重新读取作者可见的 graph，`Live()` 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。若其他代码改坏了 Patch 所声明的 after-image，Runtime 返回 `GraphChanged`，不会根据名称或形状猜测。
+`Logical()` 重新读取作者可见的 graph，`Live()` 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。graph fingerprint 包含 native identity、priority、layout、parameter operation、Link topology、child 调度顺序、graph Link 顺序以及每个 source IO 的 Link 遍历顺序。Patch journal 会精确恢复这些 CK2 顺序。source IO 若能到达属于另一 graph 的 Link，该 native graph 不完整，Runtime 会拒绝发布 snapshot。其他代码若改坏 Patch 声明的 after-image，Apply 返回 `GraphChanged`；Close 会在修改 graph 前返回 `RevertConflict`。
 
 `Graph::Read` 跟随 stored、direct 和 shared source，但不会为了读取而执行 Parameter Operation；operation value 会报告 indeterminate。
 
@@ -231,12 +250,14 @@ auto created = m_Behavior.CreateScript(owner, "My Script", body);
 if (!created)
     return;
 Script script = created.Take();
-script.Activate(true);
+script.Activate();
 ```
 
 `CreateScript` 只执行一次 native `AddScript`，同时建立 owner 与 Scene membership，然后编译并应用完整 Edit。validation、lifecycle、callback 或 graph 任一阶段失败都不会返回 Script handle；未发布的 root 会被移除，也不会进入 Plan。安装后的初始 graph 由 Script 自身拥有，不要求作者额外保存第二个 Patch handle。
 
-`Edit::Root()` 返回正在编写的 symbolic graph root scope；这里不能用 `Use()` 导入 snapshot root。root 可以拥有 In、Out、Pin、Pout 和 Local。`AddOperation` 创建一个由 graph 拥有的真实 `CKParameterOperation`；Virtools 根据 operation GUID 和精确的 result/input type tuple 选择函数，并在 consumer 读取 result 时惰性求值。每个已声明的 operation input 都必须绑定。后续增量修改仍使用 `Script::Apply()`。激活请求在下一个 Behavior safe point 应用，并排在待处理 Patch reconcile 之后。即使 Script 已经 active，传入 `true` 仍会明确请求 Virtools reset 语义。
+`Activate()` 在不请求 reset 的情况下调度 inactive Script；`Restart()` 明确请求 Virtools activation reset，即使 Script 已经 active 也一样；`Deactivate()` 停止调度。
+
+`Edit::Root()` 返回正在编写的 symbolic graph root scope；这里不能用 `Use()` 导入 snapshot root。root 可以拥有 In、Out、Pin、Pout 和 Local。`AddOperation` 创建一个由 graph 拥有的真实 `CKParameterOperation`；Virtools 根据 operation GUID 和精确的 result/input type tuple 选择函数，并在 consumer 读取 result 时惰性求值。每个已声明的 operation input 都必须绑定。后续增量修改仍使用 `Script::Apply()`。激活请求在下一个 Behavior safe point 应用，并排在待处理 Patch reconcile 之后。`Restart()` 即使在 Script 已经 active 时也会请求 Virtools reset 语义。
 
 Script 关闭也在 safe point 完成：首次 `Close()` 可能返回 `CloseState::Closing`；完成 deactivate、从 owner 移除和 native destruction 后，再次调用返回 `Closed`。应先关闭 Script，再销毁 owner；Mod unload 和 world reset 会自动执行相同的退役流程。
 
@@ -280,6 +301,8 @@ slot index。`Redirect(incoming, leaving)` 会把第一条 Link 送到第二条 
 destination，可直接表达绕过一个 Block。Redirect 本身是作者期望的 topology，
 所以仍出现在 Logical view 中；隐藏的只是实现它的物理 Link chain infrastructure。
 
+`Next`、`Previous`、`Leaving` 和 `Entering` 的 Node 重载要求相应的 In 或 Out 唯一，绝不会暗中选择第 0 个端口。Node 有多个控制端口时，应显式传入 `At(index)`、`Named(name, occurrence)` 或 `Unique(name)`。
+
 `Edit` 拥有 transformation program，`Edit::Graph` 是唯一公开的 authoring
 interface。`Edit::Root()` 返回 root scope，`Edit::Node::Graph()` 进入一个
 graph-backed Node；`Edit` 本身不再镜像 graph-local operation。graph scope
@@ -291,10 +314,12 @@ body。root 和所有 nested scope 一起验证，恢复顺序固定为 child �
 
 `Edit::Node`、`Edit::Port`、`Edit::Link` 和 `Edit::Path` 是 authoring symbol，
 不是 graph snapshot view。symbol 同时属于创建它的 Edit 和 graph scope。
-`Require(snapshotNode)` 与 `Require(snapshotLink)` 复制结构身份：child 位置、
-名称、Prototype、graph/function kind、port layout 与 Link endpoint。因此它们
-可以在新 world 重新解析；结构一旦漂移就明确失败。`Use(snapshotNode)` 和
-`Use(snapshotLink)` 保留精确 ObjectRef，只适用于 exact Patch。Plan 会拒绝这些
+`Require(snapshotNode)` 复制一项必须唯一匹配的结构要求：存在时使用名称，并
+同时约束 Prototype、graph/function kind 和完整 port layout；它不会复制 native
+child index。若这些事实仍无法区分两个 Node，解析会报告歧义，不按数组位置猜测。
+`Require(snapshotLink)` 对两端 Node 使用相同规则，并保留 endpoint port 与 delay。
+这些要求可以在新 world 重新解析，结构一旦漂移就明确失败。`Use(snapshotNode)`
+和 `Use(snapshotLink)` 保留精确 ObjectRef，只适用于 exact Patch。Plan 会拒绝这些
 identity，以及 Edit 或 Block 中的所有 non-null ObjectRef。
 
 `Add(block)` 会复制 Block 配置和已经固定的 provider generation；之后修改原 Block 不影响 Edit。Block 的 Frame policy 不属于 graph authoring。
@@ -378,6 +403,13 @@ Patch 和 Plan 都提供 `Enable()`、`Disable()`、`Replace(...)`、`Info()` �
 `Info()` 报告 `Conflicted` 并保留 journal。safe point 前的多次请求以最后一份
 definition 和最后一个 active state 为准。
 
+`Info().LastStatus` 表示最近一次调和的结果。`ApplyFailure` 保留应用当前请求
+definition 时的第一个失败，`RestoreFailure` 表示当前阻止恢复或回滚的错误；两者
+相互独立。一次被拒绝的 Replace 可以成功恢复旧 definition，此时 Patch 仍为
+`Active`，只有 `ApplyFailure`；若恢复也受阻，则两个错误同时保留。控制流判断
+`Error` 和 `Phase`；message 只用于日志，并附加 Patch/Plan 名、Mod generation，
+以及可确定的 world、rule/target index 和 Script 名。
+
 Close 会比较 installation 仍然拥有的 Link、source 和 graph after-image；外部修改
 导致 `RevertConflict` 时，handle 保持可读，作者修复冲突后可以再次 Close。
 
@@ -406,12 +438,16 @@ if (made) {
 
 | 事件 | Session | Run | Script | Watch / Patch | Plan |
 | --- | --- | --- | --- | --- | --- |
-| 显式 Close | 最后一个 lease 关闭 native Session | 停止 admission，safe point 完成 teardown | 先关闭初始 graph，再在 safe point deactivate、离开 owner，然后销毁 | closure/conflict 期间仍可读 | rule 退役期间仍可读 |
+| 显式释放 | `Reset()` 释放当前值的 lease；最后一个 lease 关闭 native Session | `Close()` 停止 admission，safe point 完成 teardown | `Close()` 先关闭初始 graph，再在 safe point deactivate、离开 owner，然后销毁 | `Close()` 期间仍可读取 closure/conflict | `Close()` 期间仍可读取 rule 退役状态 |
 | world reset | 保持有效 | 关闭 | 随旧 world 关闭 | 随旧 graph 关闭 | 保持有效，在新 world reconcile |
 | Mod unload/reload | owner generation 退出 | DLL unload 前关闭 | 离开 owner，并在 DLL unload 前关闭 | callback 和 graph state 先退役 | callback code unload 前退役 |
 
 除 Close 外，Behavior 操作要求 game thread。所有 `Result<T>` 都同时包含稳定错误类别和 `Status`；控制流只应判断 error/phase，不应解析 message 文本。
 
-高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`TakeFrames(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。
+高频路径应复用 `Block`、`Frames` 和已有 graph snapshot。Block 会共享已编译的 C descriptor；`TakeFrames(Frames&)` 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string，两个方向的 LinkRange 都使用 snapshot 自带的索引。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。
+
+健康状态下，Patch/Plan 的 `Info()` 不复制保留的 apply/restore 错误对；仅当
+`LastStatus` 表示调和失败时才读取详细错误。Plan 已稳定且 Script 集合没有变化时，
+每帧不扫描 Script、不解析 Edit、不触发 native 安装，也不分配内存。
 
 当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language；它尚不包含 AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。
