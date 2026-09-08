@@ -544,8 +544,11 @@ private:
         result = m_Behavior->ReadDeclaredLayout(
             m_Session, &m_Prototype, &layout, payload.data(), payloadSize,
             &payloadSize, &status);
-        return result == BML_OK &&
+        const bool valid = result == BML_OK &&
             ValidateLayout(layout, payload, BML_BEHAVIOR_LAYOUT_DECLARED);
+        if (!valid)
+            LogLayout("declared", layout, payload, result, status);
+        return valid;
     }
 
     bool ReadLiveLayout(BML_BehaviorRun run) {
@@ -581,9 +584,11 @@ private:
                    const std::vector<std::uint8_t> &payload, int result,
                    const BML_BehaviorStatus &status) {
         GetLogger()->Error(
-            "Behavior %s layout invalid: result=%d error=%u phase=%u origin=%u kind=%u generation=%llu slots=%u name=%.*s",
+            "Behavior %s layout invalid: result=%d error=%u phase=%u origin=%u kind=%u layout_generation=%llu provider_generation=%llu expected_generation=%llu slots=%u name=%.*s",
             label, result, status.Error, status.Phase, layout.Origin,
             layout.Kind, static_cast<unsigned long long>(layout.LayoutGeneration),
+            static_cast<unsigned long long>(layout.Prototype.Generation),
+            static_cast<unsigned long long>(m_Prototype.Generation),
             layout.SlotCount, static_cast<int>(Bytes(payload, layout.Name).size()),
             Bytes(payload, layout.Name).data());
         for (std::uint32_t index = 0; index < layout.SlotCount; ++index) {
@@ -786,8 +791,15 @@ private:
             sizeof(BML_BehaviorPrototypeInfo), nullptr, 0, &count,
             &payloadSize, &status);
         if (result != BML_ERROR_BUFFER_TOO_SMALL || count != 1 ||
-            !payloadSize)
+            !payloadSize) {
+            GetLogger()->Error(
+                "Behavior prototype discovery size failed: result=%d count=%u payload=%u error=%u phase=%u detail=%s",
+                result, static_cast<unsigned>(count),
+                static_cast<unsigned>(payloadSize),
+                static_cast<unsigned>(status.Error),
+                static_cast<unsigned>(status.Phase), status.Message);
             return false;
+        }
         BML_BehaviorPrototypeInfo prototype{};
         std::vector<std::uint8_t> payload(payloadSize);
         prototype.StructSize = 0x7fffffffu;
@@ -799,8 +811,16 @@ private:
             sizeof(BML_BehaviorPrototypeInfo), payload.data(),
             payloadSize - 1, &shortCount, &shortSize, &status);
         if (result != BML_ERROR_BUFFER_TOO_SMALL || shortCount != 1 ||
-            shortSize != payloadSize || prototype.StructSize != 0x7fffffffu)
+            shortSize != payloadSize || prototype.StructSize != 0x7fffffffu) {
+            GetLogger()->Error(
+                "Behavior prototype discovery short buffer failed: result=%d count=%u payload=%u struct=%u error=%u phase=%u detail=%s",
+                result, static_cast<unsigned>(shortCount),
+                static_cast<unsigned>(shortSize),
+                static_cast<unsigned>(prototype.StructSize),
+                static_cast<unsigned>(status.Error),
+                static_cast<unsigned>(status.Phase), status.Message);
             return false;
+        }
         prototype = {};
         status = Dto<BML_BehaviorStatus>();
         result = m_Behavior->FindPrototypes(
@@ -812,12 +832,35 @@ private:
             prototype.Ref.Generation == 0 ||
             Bytes(payload, prototype.Name) !=
                 "BML Behavior Transport Fixture" ||
-            Bytes(payload, prototype.Category) != "BML/Test")
+            Bytes(payload, prototype.Category) != "BML/Test") {
+            const auto name = Bytes(payload, prototype.Name);
+            const auto category = Bytes(payload, prototype.Category);
+            GetLogger()->Error(
+                "Behavior prototype discovery read failed: result=%d count=%u struct=%u generation=%llu name=%.*s category=%.*s error=%u phase=%u detail=%s",
+                result, static_cast<unsigned>(count),
+                static_cast<unsigned>(prototype.StructSize),
+                static_cast<unsigned long long>(prototype.Ref.Generation),
+                static_cast<int>(name.size()), name.data(),
+                static_cast<int>(category.size()), category.data(),
+                static_cast<unsigned>(status.Error),
+                static_cast<unsigned>(status.Phase), status.Message);
             return false;
+        }
         m_Prototype = prototype.Ref;
-        m_CatalogPassed = ValidateCatalogQueries() &&
-            ReadDeclaredLayout() && RejectProviderOwnedValue() &&
-            RejectStaleProviderRun() && RejectMismatchedValueKind();
+        const bool queries = ValidateCatalogQueries();
+        const bool layout = queries && ReadDeclaredLayout();
+        const bool providerValue = layout && RejectProviderOwnedValue();
+        const bool stale = providerValue && RejectStaleProviderRun();
+        const bool mismatched = stale && RejectMismatchedValueKind();
+        m_CatalogPassed = queries && layout && providerValue && stale &&
+            mismatched;
+        if (!m_CatalogPassed) {
+            GetLogger()->Error(
+                "Behavior prototype discovery checks failed: queries=%s layout=%s provider_value=%s stale=%s mismatched=%s",
+                queries ? "true" : "false", layout ? "true" : "false",
+                providerValue ? "true" : "false", stale ? "true" : "false",
+                mismatched ? "true" : "false");
+        }
         return m_CatalogPassed;
     }
 

@@ -1315,6 +1315,21 @@ private:
         return nullptr;
     }
 
+    static std::uint32_t CountFixtureEvents(
+        const BMLLifecycleFixtureTrace &trace, std::uint32_t behavior,
+        CKDWORD message) {
+        std::uint32_t result = 0;
+        const std::uint32_t count = (std::min)(
+            trace.EventCount,
+            static_cast<std::uint32_t>(std::size(trace.Events)));
+        for (std::uint32_t index = 0; index < count; ++index) {
+            const BMLLifecycleFixtureEvent &event = trace.Events[index];
+            if (event.BehaviorId == behavior && event.Message == message)
+                ++result;
+        }
+        return result;
+    }
+
     bool FailedLiveSettings() {
         const LifecycleFixtureExports fixture = ResolveLifecycleFixture();
         if (!fixture)
@@ -1383,32 +1398,56 @@ private:
         data.Root().Bind(value, 83);
         data.Root().Bind(existing.Local("State"), 83);
         auto applied = graph->Apply("player-existing-data", data);
-        if (!applied)
+        if (!applied) {
+            GetLogger()->Error(
+                "Existing block edit apply failed: error=%u phase=%u detail=%s",
+                static_cast<unsigned>(applied.GetStatus().Error),
+                static_cast<unsigned>(applied.GetStatus().Phase),
+                applied.GetStatus().Message.c_str());
             return false;
+        }
         BMLLifecycleFixtureTrace trace;
         if (!fixture.ReadTrace(&trace))
             return false;
         const BMLLifecycleFixtureEvent *installed = FindFixtureEvent(
             trace, behavior, CKM_BEHAVIOREDITED, 0);
-        const bool installVisible = trace.EditedCount == 1 && installed &&
+        const bool installVisible = CountFixtureEvents(
+                trace, behavior, CKM_BEHAVIOREDITED) == 1 && installed &&
             installed->OwnerVisible && installed->ParentVisible &&
             !installed->LinkVisible && installed->InputCount == 1 &&
             installed->OutputCount == 1 && installed->PinCount == 2 &&
             installed->PoutCount == 0 && installed->LocalCount == 2 &&
             installed->LocalValue == 83 && installed->BoundSourceCount == 2;
         const auto closed = applied->Close();
-        if (!installVisible || !closed || !fixture.ReadTrace(&trace))
+        if (!installVisible || !closed || !fixture.ReadTrace(&trace)) {
+            GetLogger()->Error(
+                "Existing block edit install mismatch: visible=%s close=%s edited=%u local=%d sources=%u pins=%u",
+                installVisible ? "true" : "false", closed ? "true" : "false",
+                static_cast<unsigned>(trace.EditedCount),
+                installed ? installed->LocalValue : -1,
+                installed ? static_cast<unsigned>(installed->BoundSourceCount) : 0,
+                installed ? static_cast<unsigned>(installed->PinCount) : 0);
             return false;
+        }
         const BMLLifecycleFixtureEvent *restored = FindFixtureEvent(
             trace, behavior, CKM_BEHAVIOREDITED, 1);
-        const bool restoreVisible = trace.EditedCount == 2 && restored &&
+        const bool restoreVisible = CountFixtureEvents(
+                trace, behavior, CKM_BEHAVIOREDITED) == 2 && restored &&
             restored->OwnerVisible && restored->ParentVisible &&
             !restored->LinkVisible && restored->InputCount == 1 &&
             restored->OutputCount == 1 && restored->PinCount == 1 &&
             restored->PoutCount == 0 && restored->LocalCount == 2 &&
             restored->LocalValue == 5 && restored->BoundSourceCount == 1;
-        if (!restoreVisible)
+        if (!restoreVisible) {
+            GetLogger()->Error(
+                "Existing block edit restore mismatch: edited=%u event=%s local=%d sources=%u pins=%u",
+                static_cast<unsigned>(trace.EditedCount),
+                restored ? "true" : "false",
+                restored ? restored->LocalValue : -1,
+                restored ? static_cast<unsigned>(restored->BoundSourceCount) : 0,
+                restored ? static_cast<unsigned>(restored->PinCount) : 0);
             return false;
+        }
 
         fixture.SetMode(BMLLifecycleFixtureMode::Normal);
 
@@ -1428,10 +1467,13 @@ private:
         const auto flowed = flow.Root().Use(*current);
         flow.Root().Flow(flow.Root().Root().In(0), flowed.In(0));
         auto linked = graph->Apply("player-existing-flow", flow);
-        if (!linked || !fixture.ReadTrace(&trace) || trace.EditedCount != 0)
+        if (!linked || !fixture.ReadTrace(&trace) ||
+            CountFixtureEvents(trace, behavior, CKM_BEHAVIOREDITED) != 0) {
             return false;
+        }
         const auto unlinked = linked->Close();
-        return unlinked && fixture.ReadTrace(&trace) && trace.EditedCount == 0;
+        return unlinked && fixture.ReadTrace(&trace) &&
+            CountFixtureEvents(trace, behavior, CKM_BEHAVIOREDITED) == 0;
     }
 
     bool FailedExistingBlockEdit() {
@@ -1466,8 +1508,10 @@ private:
             return false;
 
         BMLLifecycleFixtureTrace trace;
-        if (!fixture.ReadTrace(&trace) || trace.EditedCount != 2)
+        if (!fixture.ReadTrace(&trace) ||
+            CountFixtureEvents(trace, behavior, CKM_BEHAVIOREDITED) != 2) {
             return false;
+        }
         const BMLLifecycleFixtureEvent *candidate = FindFixtureEvent(
             trace, behavior, CKM_BEHAVIOREDITED, 0);
         const BMLLifecycleFixtureEvent *restored = FindFixtureEvent(
