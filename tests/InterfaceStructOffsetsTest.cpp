@@ -6,7 +6,6 @@
 #include "BML/Gameplay.h"
 #include "BML/Behavior.h"
 #include "BML/Interface.h"
-#include "BML/IVP.h"
 #include "BML/Runtime.h"
 #include "BML/Scene.h"
 #include "BML/Speedrun.h"
@@ -50,25 +49,6 @@ TEST(InterfaceStructOffsets, RuntimeInterface) {
     EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadClock, 16);
     EXPECT_GOLDEN_OFFSET(BML_RuntimeInterface, ReadScore, 20);
     ExpectGrowthRules<BML_RuntimeInterface>("bml.runtime", 24, 0, BML_RUNTIME_INTERFACE_MINOR);
-}
-
-TEST(InterfaceStructOffsets, IvpInterface) {
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, ReadApiInfo, 12);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetManager, 16);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetEnvironment, 20);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetPhysicsObject, 24);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetRealObject, 28);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetCore, 32);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetMaterial, 36);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, ResolveSymbol, 40);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, ResolveRva, 44);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetSymbolCount, 48);
-    EXPECT_GOLDEN_OFFSET(BML_IvpInterface, GetSymbol, 52);
-    ExpectGrowthRules<BML_IvpInterface>("bml.ivp", 56, 0,
-                                        BML_IVP_INTERFACE_MINOR);
-
-    EXPECT_EQ(sizeof(BML_IvpApiInfo), static_cast<std::size_t>(92));
-    EXPECT_EQ(sizeof(BML_IvpSymbol), static_cast<std::size_t>(12));
 }
 
 TEST(InterfaceStructOffsets, BehaviorInterface) {
