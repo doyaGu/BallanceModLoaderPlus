@@ -25,6 +25,7 @@ dist/
 dist-install/
 site/
 .codex-cache/
+logs/
 
 ## Local documentation drafts and private notes
 docs/internal/
@@ -49,6 +50,7 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 build*/
+install-*/
 
 ## JetBrains IDE artifacts
 .idea
