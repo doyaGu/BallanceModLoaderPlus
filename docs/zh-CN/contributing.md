@@ -189,8 +189,9 @@ powershell -ExecutionPolicy Bypass `
 
 `BML_*` C API 和 IMC 使用显式 handle、状态码及分配函数。修改时必须保持文档
 规定的所有权和兼容性。新增 Loader 能力应放进经由 `BML_GetInterface` 取得的
-带版本 interface struct；某个 Mod 向其他 Mod 提供的服务应使用生成式 IMC，而
-不是增加新的临时 C++ ABI。
+带版本 interface struct；某个 Mod 向其他 Mod 提供的普通服务应使用生成式 IMC。
+只有需要进程内指针并能强制必需 Mod 依赖的原生基础 Mod 才注册 provider interface；
+不得增加临时 C++ ABI。
 
 脚本 API 是公开的源码接口。修改绑定时，必须在同一次变更中更新脚本 API
 参考、作者文档和运行时冒烟测试覆盖。

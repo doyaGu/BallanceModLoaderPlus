@@ -209,8 +209,10 @@ layout, ownership rules, or types passed across that boundary.
 The `BML_*` C APIs and IMC use explicit handles, status codes, and allocation
 functions. Preserve their documented ownership and compatibility rules. A new
 loader capability belongs in a versioned interface struct reached through
-`BML_GetInterface`; a service one Mod publishes for other Mods belongs in a
-generated IMC interface rather than a new ad hoc C++ ABI.
+`BML_GetInterface`; a service one Mod publishes for other Mods normally belongs
+in a generated IMC interface. A provider interface registered through BML is
+reserved for native base Mods that need process-local pointers and can enforce
+a required Mod dependency; never introduce an ad hoc C++ ABI.
 
 Script APIs are public source interfaces. A binding change must update the
 script API reference, author documentation, and runtime smoke coverage in the
