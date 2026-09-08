@@ -87,6 +87,22 @@ auto task = block.Start("Run", Signals(64).Pouts());
 
 Target 有三种形式：`TargetOwner()`、`Target(type, object)` 和 `NullTarget(type)`。slot selector 也必须明确：`At(index)`、`Named(name, occurrence)` 或 `Unique(name)`。字符串重载等价于 `Unique(name)`，重名时不会擅自选择第一项。
 
+`Identity` 一类 variable-parameter Block 在 Block 自身选择 native parameter
+type：
+
+```cpp
+auto identity = session.Use(VT_LOGICS_IDENTITY)
+    .PinType(At(0), CKPGUID_BOOL)
+    .PoutType("pOut 0", CKPGUID_BOOL)
+    .Pins({{At(0), true}});
+```
+
+`PinType` 和 `PoutType` 接受与其他 Block 配置相同的 index/name selector。
+Runtime 在 Setting callback 确定 live Layout 后、Pin binding 与最终 `EDITED`
+callback 前应用类型。因此同一个配置可用于 `Call`、`Start`、`Spawn`、
+`SpawnIn` 和 `Edit::Graph::Add`；它不是 graph transformation，也不能修改借用的
+game Node。
+
 `Block::Validate()` 是可选的 declared-Layout 检查，不创建 `CKBehavior`。它只能验证 Prototype 初始声明中已有的 Target、selector 和 type；Setting callback 动态创建的 slot 仍由真正打开 run 时的 native lifecycle 验证。即使没有先调用 `Validate()`，run admission 也不会跳过这些检查。
 
 第一次能够可靠识别 provider 的验证或 admission 会固定 provider generation。之后若同一 GUID 被另一 provider 替换，旧 Block 会返回 stale，不会静默换用新实现。无法可靠跟踪 provider retirement 时，即时 run 仍可使用 generation-zero provider，但这种 Block 不能存入 Plan。
@@ -155,7 +171,26 @@ if (auto taken = task->TakeFrames(frames)) {
 
 只有左值 `Frames` 能产生 view，因此临时对象不会泄出悬空 `Frame`。`Clear()` 保留可复用容量；遇到异常大的批次后，可用 `ShrinkToFit()` 释放不再需要的 header 与 payload 空间。
 
-object Pout 会在对象仍 live 时签发 `ObjectRef`，之后读取 Frame 不再访问原 CK parameter 或 CK object。任何 Pout 读取或 encoding 失败都会丢弃该次不完整的 Pout batch，但保留同一 Frame 的 active Outs 和 diagnostic。
+object Pout 会在对象仍 live 时签发 `ObjectRef`。Object List Pout
+（`CKPGUID_OBJECTARRAY`）对应 `ObjectList`，它是 capture-time reference 的
+零分配 view：
+
+```cpp
+auto loaded = frame.Pout<ObjectList>("Loaded Objects");
+if (loaded) {
+    for (ObjectRef object : loaded.Value()) {
+        BML::Scene::ObjectInfo info;
+        if (BML::Scene::ReadObject(object, info) == BML_OK)
+            Use(static_cast<CK_ID>(info.Id));
+    }
+}
+```
+
+与 `Frame`、`Out` 和 `Pout` 一样，这个 view 属于 `Frames`，遍历本身不分配。
+之后读取 Frame 不再访问原 CK parameter、Object List 或 CK object；对象已经删除时，
+得到的是 stale `ObjectRef`，而不是悬空 CK pointer。任何 Pout 读取或 encoding 失败
+都会丢弃该次不完整的 Pout batch，但保留同一 Frame 的 active Outs 和 diagnostic。
+Object List 只是一种输出形式，不能作为 Block literal。
 
 没有 continuation 的 Frame 不等于 run handle 已经关闭：处于 `Ready` 的 Instance 仍可接受下一次 Pulse。只有失败、显式关闭或队列溢出才会停止 admission。
 
@@ -333,6 +368,7 @@ identity，以及 Edit 或 Block 中的所有 non-null ObjectRef。
 - `Tap` / `Before` / `After`：安装 callback；
 - `Splice`：让现有 Link 经过新增 Block；
 - `Redirect`：暂时改变 Link destination；
+- `Reconnect` / `ReconnectCycle`：移动同一个既有 Link 的两端，不重新创建 Link；
 - `Next` / `Previous` 与 `Leaving` / `Entering` / `To`：描述每个 world 中重新解析的 topology；
 - `Each`：对 Pattern 匹配的所有 Node 应用同一个 operation；
 - `AppendIn/Out/Pin/Pout`：扩展 dynamic interface；
@@ -359,8 +395,18 @@ source 都必须 idle；
 成员关系；在一次执行边界上，不在该 list 中的 Link，其 remaining delay
 只会是 0 或 initial delay，因此其他正数状态一律按 in-flight 处理并拒绝。即使 graph
 通过不带 reset 的方式被 deactivate，这条规则仍成立，因为该操作不会清空 delayed
-list。graph 内无关的工作可以保持 active。Node edit 与已有 Link overlay 互斥，并在
-关闭前拒绝后续 Patch，避免 overlay 的物理 chain 穿过已经移出的 Node。
+list。graph 内无关的工作可以保持 active。
+
+`Reconnect` 修改所选 native `CKBehaviorLink` 的 source 与 destination relation。
+它保留 Link identity、initial delay 和 current delay；关闭 Patch 时恢复原 endpoint
+以及 source port 上的原遍历顺序。`Redirect` 仍然只是 destination-only 的 Link
+overlay；需要移动 Link 本身时使用 `Reconnect`。若新结构引入 same-frame cycle，
+必须显式使用 `ReconnectCycle`。
+
+`Replace`、`Remove` 和 `Reconnect` 都是 structural edit。它们要求 graph 中没有
+其他 Patch 持有的 Link overlay，并在关闭前拒绝后续 Patch。同一个 Patch 仍可原子
+修改不相关的 Link，但不能同时 reconnect 和 overlay 同一条 Link。`Replace` 和
+`Remove` 还会排除本 Patch 自己的 Link overlay，避免物理 chain 穿过 parked Node。
 
 使用 `On(graph, edit)` 将多个当前 world 的 graph 和 Edit 组合起来。Session 为整个
 功能返回一个 Patch：

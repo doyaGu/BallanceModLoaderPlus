@@ -87,6 +87,23 @@ Each `Settings({...})` call is one Setting stage. Runtime sends `SETTINGSEDITED`
 
 Targets are explicit: `TargetOwner()`, `Target(type, object)`, or `NullTarget(type)`. Slot selectors are explicit too: `At(index)`, `Named(name, occurrence)`, or `Unique(name)`. A string overload means `Unique(name)` and never silently selects the first duplicate.
 
+Variable-parameter Blocks such as `Identity` select their native parameter
+types on the Block itself:
+
+```cpp
+auto identity = session.Use(VT_LOGICS_IDENTITY)
+    .PinType(At(0), CKPGUID_BOOL)
+    .PoutType("pOut 0", CKPGUID_BOOL)
+    .Pins({{At(0), true}});
+```
+
+`PinType` and `PoutType` accept the same index and name selectors as other
+Block configuration. Runtime applies them after Setting callbacks establish
+the live Layout, but before Pin binding and the final `EDITED` callback. They
+therefore work identically for `Call`, `Start`, `Spawn`, `SpawnIn`, and
+`Edit::Graph::Add`; they are not graph transformations and cannot change a
+borrowed game Node.
+
 `Block::Validate()` is an optional declared-Layout check and does not create a `CKBehavior`. It can check only the Target, selectors, and types present in the Prototype's initial declaration. Slots created by Setting callbacks are checked during real run admission. Admission performs the complete native checks even when `Validate()` was not called.
 
 The first validation or admission that can identify a provider pins its generation. If another provider later registers the same GUID, the old Block becomes stale instead of changing implementation. When provider retirement cannot be tracked, immediate runs may use generation zero, but such a Block cannot be stored in a Plan.
@@ -155,7 +172,27 @@ if (auto taken = task->TakeFrames(frames)) {
 
 Only an lvalue `Frames` can produce views, so a temporary cannot leave a dangling `Frame`. `Clear()` keeps reusable capacity. After an exceptional large batch, `ShrinkToFit()` releases unused header and payload storage.
 
-An object Pout receives an `ObjectRef` while the object is live. Later Frame reads never touch the original CK parameter or object. If any Pout cannot be read or encoded, Runtime discards that incomplete Pout batch but preserves the same Frame's active Outs and diagnostic.
+An object Pout receives an `ObjectRef` while the object is live. An Object List
+Pout (`CKPGUID_OBJECTARRAY`) is exposed as `ObjectList`, a zero-allocation view
+of the capture-time references:
+
+```cpp
+auto loaded = frame.Pout<ObjectList>("Loaded Objects");
+if (loaded) {
+    for (ObjectRef object : loaded.Value()) {
+        BML::Scene::ObjectInfo info;
+        if (BML::Scene::ReadObject(object, info) == BML_OK)
+            Use(static_cast<CK_ID>(info.Id));
+    }
+}
+```
+
+The view belongs to `Frames`, like `Frame`, `Out`, and `Pout`; iterating it does
+not allocate. Later Frame reads never touch the original CK parameter, Object
+List, or objects. A deleted object therefore leaves a stale `ObjectRef` rather
+than a dangling CK pointer. If any Pout cannot be read or encoded, Runtime
+discards that incomplete Pout batch but preserves the same Frame's active Outs
+and diagnostic. Object List is an output form, not a Block literal.
 
 A Frame without continuation does not mean its run handle has closed: a `Ready` Instance can still accept another Pulse. Admission stops only on failure, explicit close, or queue overflow.
 
@@ -348,6 +385,8 @@ Common transformations are:
 - `Tap` / `Before` / `After` for callbacks;
 - `Splice` for routing an existing Link through a Block;
 - `Redirect` for temporarily changing a Link destination;
+- `Reconnect` / `ReconnectCycle` for moving both endpoints of one existing
+  Link without recreating it;
 - `Next` / `Previous` and `Leaving` / `Entering` / `To` for topology resolved in each world;
 - `Each` for applying one operation to every Node matching a Pattern;
 - `AppendIn/Out/Pin/Pout` for dynamic interfaces;
@@ -379,9 +418,21 @@ boundary, a Link outside that list has a remaining delay of zero or its initial
 delay; any other positive remaining delay is therefore treated as in-flight and
 rejected. This remains true when a graph was deactivated without a reset, since
 that operation leaves its delayed list intact. Unrelated graph work may remain
-active. A Node edit is exclusive with active Link overlays and prevents later
-Patches until it closes, so no overlay can retain a physical chain through a
-parked Node.
+active.
+
+`Reconnect` changes the source and destination relations of the selected native
+`CKBehaviorLink`. It preserves that Link's identity, initial delay, and current
+delay, and Patch close restores the exact original endpoints and source-port
+traversal order. `Redirect` remains the destination-only Link overlay; use
+`Reconnect` when the Link itself must move. A newly introduced same-frame cycle
+requires the explicit `ReconnectCycle` form.
+
+`Replace`, `Remove`, and `Reconnect` are structural edits. They require the
+graph to have no Link overlays owned by another Patch and prevent later
+Patches until they close. A Patch may still edit unrelated Links atomically,
+but it cannot both reconnect and overlay the same Link. `Replace` and `Remove`
+also exclude Link overlays from their own Patch, so no overlay can retain a
+physical chain through a parked Node.
 
 Bind several current-world graphs to their Edits with `On(graph, edit)`. The
 Session returns one Patch for the whole feature:
