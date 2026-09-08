@@ -185,6 +185,14 @@ typedef struct BML_BehaviorFramePolicy {
     uint32_t Flags;
 } BML_BehaviorFramePolicy;
 
+// Selects the native parameter type of one existing variable Pin or Pout.
+// The containing Block determines which parameter family Slot addresses.
+typedef struct BML_BehaviorParameterType {
+    uint32_t StructSize;
+    BML_BehaviorSelector Slot;
+    BML_BehaviorGuid Type;
+} BML_BehaviorParameterType;
+
 typedef struct BML_BehaviorBlock {
     uint32_t StructSize;
     BML_BehaviorGuid Prototype;
@@ -195,6 +203,10 @@ typedef struct BML_BehaviorBlock {
     uint32_t PinCount;
     const BML_BehaviorBinding *Locals;
     uint32_t LocalCount;
+    const BML_BehaviorParameterType *PinTypes;
+    uint32_t PinTypeCount;
+    const BML_BehaviorParameterType *PoutTypes;
+    uint32_t PoutTypeCount;
     // Zero selects the current provider. A nonzero generation pins the
     // Prototype provider selected by FindPrototypes.
     uint64_t PrototypeGeneration;

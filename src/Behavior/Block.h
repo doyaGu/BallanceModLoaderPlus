@@ -34,6 +34,14 @@ public:
         friend bool operator==(const Binding &, const Binding &) = default;
     };
 
+    struct ParameterType {
+        Slot Target;
+        CKGUID Type = CKGUID();
+
+        friend bool operator==(const ParameterType &,
+                               const ParameterType &) = default;
+    };
+
     explicit BlockSpec(CKGUID prototype = CKGUID()) : m_Prototype(prototype) {
         m_SettingStages.emplace_back();
     }
@@ -54,6 +62,28 @@ public:
     BlockSpec &NextSettingStage();
     BlockSpec &Input(Slot slot, Parameter::Binding value);
     BlockSpec &Local(Slot slot, Parameter::Binding value);
+    BlockSpec &PinType(Slot slot, CKGUID type) {
+        slot.Kind = SlotKind::InputParameter;
+        for (ParameterType &parameter : m_PinTypes) {
+            if (SameSelector(parameter.Target, slot)) {
+                parameter = {std::move(slot), type};
+                return *this;
+            }
+        }
+        m_PinTypes.push_back({std::move(slot), type});
+        return *this;
+    }
+    BlockSpec &PoutType(Slot slot, CKGUID type) {
+        slot.Kind = SlotKind::OutputParameter;
+        for (ParameterType &parameter : m_PoutTypes) {
+            if (SameSelector(parameter.Target, slot)) {
+                parameter = {std::move(slot), type};
+                return *this;
+            }
+        }
+        m_PoutTypes.push_back({std::move(slot), type});
+        return *this;
+    }
     BlockSpec &AddInput(std::string name);
     BlockSpec &AddOutput(std::string name);
     BlockSpec &KeepAlive(std::shared_ptr<CallbackResource> resource);
@@ -111,10 +141,24 @@ public:
     [[nodiscard]] const std::vector<Binding> &Locals() const noexcept {
         return m_Locals;
     }
+    [[nodiscard]] const std::vector<ParameterType> &PinTypes() const noexcept {
+        return m_PinTypes;
+    }
+    [[nodiscard]] const std::vector<ParameterType> &PoutTypes() const noexcept {
+        return m_PoutTypes;
+    }
 
     friend bool operator==(const BlockSpec &, const BlockSpec &) = default;
 
 private:
+    static bool SameSelector(const Slot &left, const Slot &right) {
+        if (left.Kind != right.Kind || left.UsesName() != right.UsesName())
+            return false;
+        return left.UsesName()
+            ? left.Name == right.Name && left.Occurrence == right.Occurrence
+            : left.Index == right.Index;
+    }
+
     template <class T>
     static Parameter::Binding Literal(CKGUID type, T &&value) {
         using Source = std::remove_cv_t<std::remove_reference_t<T>>;
@@ -140,6 +184,8 @@ private:
     std::vector<std::vector<Binding>> m_SettingStages;
     std::vector<Binding> m_Inputs;
     std::vector<Binding> m_Locals;
+    std::vector<ParameterType> m_PinTypes;
+    std::vector<ParameterType> m_PoutTypes;
     std::vector<std::string> m_AddedInputs;
     std::vector<std::string> m_AddedOutputs;
     std::vector<std::shared_ptr<CallbackResource>> m_KeepAlive;

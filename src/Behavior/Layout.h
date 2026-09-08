@@ -133,8 +133,9 @@ struct Layout {
 [[nodiscard]] std::uint64_t LayoutIdentity(CKBehavior *behavior) noexcept;
 
 // Virtools requires a Behavior whose Execute function may create, remove, or
-// retype interface elements to declare the corresponding internally-created
-// flags. Static Blocks therefore do not need an interface scan around Execute.
+// change the types of interface elements to declare the corresponding
+// internally-created flags. Static Blocks therefore do not need an interface
+// scan around Execute.
 [[nodiscard]] bool IsLayoutDynamic(CKBehavior *behavior) noexcept;
 
 // A resolved slot is valid only for one configured live Layout.

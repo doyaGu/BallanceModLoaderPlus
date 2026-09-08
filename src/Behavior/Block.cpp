@@ -5,18 +5,6 @@
 #include "Behavior/Value.h"
 
 namespace BML::Behavior::Internal {
-namespace {
-
-bool SameSelector(const Slot &left, const Slot &right) {
-    if (left.Kind != right.Kind || left.UsesName() != right.UsesName())
-        return false;
-    return left.UsesName()
-        ? left.Name == right.Name && left.Occurrence == right.Occurrence
-        : left.Index == right.Index;
-}
-
-} // namespace
-
 BlockSpec &BlockSpec::TargetOwner() {
     m_TargetMode = TargetMode::Owner;
     m_TargetType = CKGUID();

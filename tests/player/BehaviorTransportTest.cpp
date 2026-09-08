@@ -1341,12 +1341,77 @@ private:
                admission == expectedAdmission;
     }
 
+    bool CheckParameterTypes() {
+        auto identity = m_CppSession.Use(VT_LOGICS_IDENTITY);
+        identity.PinType(BML::Behavior::At(0), CKPGUID_BOOL)
+            .PoutType(BML::Behavior::At(0), CKPGUID_BOOL)
+            .Pins({{BML::Behavior::At(0), true}});
+
+        const auto validated = identity.Validate();
+        if (!validated) {
+            GetLogger()->Error(
+                "Behavior parameter types: stage=validate code=%d error=%u message=%s",
+                validated.Code(),
+                static_cast<unsigned>(validated.GetStatus().Error),
+                validated.GetStatus().Message.c_str());
+            return false;
+        }
+
+        auto opened = identity.Call(BML::Behavior::At(0),
+                                    BML::Behavior::Signals(1).Pouts());
+        if (!opened) {
+            GetLogger()->Error(
+                "Behavior parameter types: stage=call code=%d error=%u message=%s",
+                opened.Code(),
+                static_cast<unsigned>(opened.GetStatus().Error),
+                opened.GetStatus().Message.c_str());
+            return false;
+        }
+
+        BML::Behavior::Call call = opened.Take();
+        const auto layout = call.Layout();
+        const auto frames = call.TakeFrames();
+        const auto findType = [](const BML::Behavior::Layout &value,
+                                 BML::Behavior::SlotKind kind) {
+            const auto found = std::find_if(
+                value.Slots.begin(), value.Slots.end(),
+                [kind](const BML::Behavior::Slot &slot) {
+                    return slot.Kind == kind && slot.Index == 0;
+                });
+            return found == value.Slots.end() ? CKGUID(0, 0) : found->Type;
+        };
+        const CKGUID pinType = layout
+            ? findType(layout.Value(), BML::Behavior::SlotKind::Pin)
+            : CKGUID(0, 0);
+        const CKGUID poutType = layout
+            ? findType(layout.Value(), BML::Behavior::SlotKind::Pout)
+            : CKGUID(0, 0);
+        const auto value = frames && frames->Size() == 1
+            ? (*frames)[0].Pout<bool>(BML::Behavior::At(0))
+            : BML::Behavior::Result<bool>::Failure(BML_ERROR_FAIL);
+        const bool passed = layout && pinType == CKPGUID_BOOL &&
+            poutType == CKPGUID_BOOL && frames && frames->Size() == 1 &&
+            (*frames)[0].Error() == BML::Behavior::Error::None &&
+            (*frames)[0].HasOut(BML::Behavior::At(0)) && value &&
+            value.Value();
+        GetLogger()->Info(
+            "Behavior parameter types: status=%s live_pin=%s live_pout=%s value=%s",
+            passed ? "pass" : "fail",
+            pinType == CKPGUID_BOOL ? "bool" : "unexpected",
+            poutType == CKPGUID_BOOL ? "bool" : "unexpected",
+            value && value.Value() ? "true" : "unexpected");
+        return passed;
+    }
+
     bool RunCppFacade() {
         auto opened = BML::Behavior::Session::Open();
         if (!opened)
             return false;
         m_CppSession = opened.Take();
         if (!InspectGameplayGraph())
+            return false;
+        m_ParameterTypesPassed = CheckParameterTypes();
+        if (!m_ParameterTypesPassed)
             return false;
         const BML::Behavior::Prototype prototype(
             CKGUID(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID),
@@ -2280,9 +2345,10 @@ private:
             queueFull.Headers.size() < 2 ? 0u : queueFull.Headers[1].Error);
 
         GetLogger()->Info(
-            "Behavior functional detail: catalog=%s cpp_facade=%s detached=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_ownership=%s",
+            "Behavior functional detail: catalog=%s cpp_facade=%s parameter_types=%s detached=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_ownership=%s",
             m_CatalogPassed ? "true" : "false",
             m_CppFacadePassed ? "true" : "false",
+            m_ParameterTypesPassed ? "true" : "false",
             m_DetachedDiagnosticPassed ? "true" : "false",
             echoOk ? "true" : "false",
             continuedOk ? "true" : "false",
@@ -2293,7 +2359,7 @@ private:
             graphOk ? "true" : "false",
             statesOk ? "true" : "false");
 
-        m_FunctionalPassed = m_CppFacadePassed &&
+        m_FunctionalPassed = m_CppFacadePassed && m_ParameterTypesPassed &&
             m_DetachedDiagnosticPassed && m_InspectPassed &&
             WatchPassed() && continuedOk && echoOk &&
             dynamicOk && targetsOk && selectorsOk && waitForAllOk &&
@@ -2432,6 +2498,7 @@ private:
     bool m_ObjectCloseRequested = false;
     bool m_CatalogPassed = false;
     bool m_CppFacadePassed = false;
+    bool m_ParameterTypesPassed = false;
     bool m_DetachedDiagnosticPassed = false;
     bool m_InspectPassed = false;
     bool m_GraphShapePassed = false;

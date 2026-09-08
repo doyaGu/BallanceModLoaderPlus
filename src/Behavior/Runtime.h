@@ -293,6 +293,11 @@ private:
                                                          Record &record);
     [[nodiscard]] Status ApplyBindings(CKBehavior *behavior, const BlockSpec &spec,
                                                Record &record);
+    [[nodiscard]] Status ApplyParameterTypes(
+        CKBehavior *behavior, const BlockSpec &spec, Record &record);
+    [[nodiscard]] Status ValidateParameterTypes(
+        CKBehavior *behavior, const BlockSpec &spec,
+        const Record &record) const;
     [[nodiscard]] Status BindTarget(CKBehavior *behavior, CKBeObject *owner,
                                             const BlockSpec &spec, Record &record);
     // The shared body of AddToGraph and AttachToGraph. It hands back a

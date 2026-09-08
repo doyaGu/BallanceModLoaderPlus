@@ -144,6 +144,19 @@ bool Lifecycle::Create(const LifecyclePlan &plan,
         }
     }
 
+    if (plan.HasParameterTypes) {
+        if (!adapter.ApplyParameterTypes(fault)) {
+            SupplyFault(fault, LifecycleError::BindingFailed,
+                        "Behavior parameter types could not be selected.");
+            return FailConfiguration(std::move(fault), adapter);
+        }
+        if (!adapter.Reflect(layout, fault)) {
+            SupplyFault(fault, LifecycleError::LayoutFailed,
+                        "Behavior layout could not be reflected after parameter types were selected.");
+            return FailConfiguration(std::move(fault), adapter);
+        }
+    }
+
     if (CloseRequested()) {
         RecordFailure(Fault(LifecycleError::Cancelled,
                             "Behavior lifecycle was closed during creation."));

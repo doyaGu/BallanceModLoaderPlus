@@ -120,6 +120,13 @@ public:
         return true;
     }
 
+    bool ApplyParameterTypes(LifecycleFault &fault) override {
+        Events.emplace_back("TYPES");
+        if (FailAt == "TYPES")
+            return Fail(fault, "parameter type selection failed");
+        return true;
+    }
+
     bool ApplyBindings(LifecycleFault &fault) override {
         Events.emplace_back("BIND");
         if (FailAt == "BIND")
@@ -255,6 +262,41 @@ TEST(BehaviorLifecycle, CreatesBlockInterfaceBeforeFinalRelations) {
     ASSERT_NE(binding, adapter.Events.end());
     EXPECT_LT(interfaceIndex, static_cast<std::size_t>(
         std::distance(adapter.Events.begin(), binding)));
+}
+
+TEST(BehaviorLifecycle, SelectsParameterTypesBeforeFinalBindings) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+
+    ASSERT_TRUE(lifecycle.Configure({true, {false}, false, true}, adapter));
+    const auto types = std::find(
+        adapter.Events.begin(), adapter.Events.end(), "TYPES");
+    const auto bind = std::find(
+        adapter.Events.begin(), adapter.Events.end(), "BIND");
+    const auto edited = std::find(
+        adapter.Events.begin(), adapter.Events.end(), "EDITED");
+    ASSERT_NE(types, adapter.Events.end());
+    ASSERT_NE(bind, adapter.Events.end());
+    ASSERT_NE(edited, adapter.Events.end());
+    EXPECT_LT(types, bind);
+    EXPECT_LT(bind, edited);
+    EXPECT_NE(std::find(types, bind, "REFLECT"), bind);
+}
+
+TEST(BehaviorLifecycle, TypeSelectionFailureUsesTheNativeLedger) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+    adapter.FailAt = "TYPES";
+
+    EXPECT_FALSE(lifecycle.Configure({true, {false}, false, true}, adapter));
+    EXPECT_EQ(lifecycle.State(), LifecycleState::Closed);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Create], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Attach], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Detach], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Edited], 0);
+    EXPECT_EQ(std::count(adapter.Events.begin(), adapter.Events.end(), "BIND"),
+              0);
 }
 
 TEST(BehaviorLifecycle, OwnerlessEmptySettingsSkipAttachAndSettingsCallback) {

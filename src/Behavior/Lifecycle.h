@@ -82,6 +82,7 @@ struct LifecyclePlan {
     // zero is always present conceptually, even when this vector is empty.
     std::vector<bool> SettingStages;
     bool HasInterface = false;
+    bool HasParameterTypes = false;
 };
 
 struct LifecycleLedger {
@@ -107,6 +108,7 @@ public:
                             LifecycleFault &fault) = 0;
     virtual bool Reflect(LifecycleLayout &layout, LifecycleFault &fault) = 0;
     virtual bool ApplyInterface(LifecycleFault &fault) = 0;
+    virtual bool ApplyParameterTypes(LifecycleFault &fault) = 0;
     virtual bool ApplyBindings(LifecycleFault &fault) = 0;
     virtual bool ReconcileBindings(const LifecycleLayout &layout,
                                    LifecycleFault &fault) = 0;

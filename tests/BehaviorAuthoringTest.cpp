@@ -55,6 +55,14 @@ struct CapturedBinding {
     std::string Text;
 };
 
+struct CapturedParameterType {
+    std::uint32_t SelectorKind = 0;
+    std::int32_t Index = 0;
+    std::int32_t Occurrence = 0;
+    std::string Name;
+    BML_BehaviorGuid Type{};
+};
+
 struct CapturedStep {
     std::uint32_t Kind = 0;
     std::uint32_t Graph = BML_BEHAVIOR_EDIT_GRAPH;
@@ -79,6 +87,8 @@ struct CapturedStep {
     std::vector<std::vector<CapturedBinding>> Settings;
     std::vector<CapturedBinding> Pins;
     std::vector<CapturedBinding> Locals;
+    std::vector<CapturedParameterType> PinTypes;
+    std::vector<CapturedParameterType> PoutTypes;
     BML_BehaviorGuid Type{};
     BML_BehaviorPortRef Source{};
     BML_BehaviorPortRef Sink{};
@@ -121,6 +131,7 @@ struct FakeState {
     bool MalformedLayout = false;
     bool WrongNodeLayoutPrototype = false;
     bool DeclaredTargetable = true;
+    bool DeclaredVariableParameters = false;
     bool NullRun = false;
     bool NullSession = false;
     bool WrongRunKind = false;
@@ -658,6 +669,11 @@ std::vector<std::uint8_t> DeclaredLayout(
         slot.ValueKind = source.ValueKind;
         if (source.Supported)
             slot.Flags |= BML_BEHAVIOR_SLOT_VALUE_SUPPORTED;
+        if (g_State.DeclaredVariableParameters &&
+            (source.Kind == BML_BEHAVIOR_SLOT_PIN ||
+             source.Kind == BML_BEHAVIOR_SLOT_POUT)) {
+            slot.Flags |= BML_BEHAVIOR_SLOT_DYNAMIC;
+        }
         slot.Name.Offset = static_cast<std::uint32_t>(payload.size());
         slot.Name.Length = static_cast<std::uint32_t>(source.Name.size());
         payload.insert(payload.end(), source.Name.begin(), source.Name.end());
@@ -675,6 +691,10 @@ std::vector<std::uint8_t> DeclaredLayout(
     layout.Kind = BML_BEHAVIOR_KIND_FUNCTION;
     if (g_State.DeclaredTargetable)
         layout.BehaviorFlags |= CKBEHAVIOR_TARGETABLE;
+    if (g_State.DeclaredVariableParameters) {
+        layout.BehaviorFlags |= CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
+                                CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS;
+    }
     layout.SlotOffset = 0;
     layout.SlotCount = g_State.MalformedLayout
         ? (std::numeric_limits<std::uint32_t>::max)()
@@ -1136,6 +1156,20 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
         }
         return captured;
     };
+    const auto captureTypes = [](const BML_BehaviorParameterType *types,
+                                 std::uint32_t count) {
+        std::vector<CapturedParameterType> captured;
+        for (std::uint32_t index = 0; index < count; ++index) {
+            CapturedParameterType parameter;
+            parameter.SelectorKind = types[index].Slot.Kind;
+            parameter.Index = types[index].Slot.Index;
+            parameter.Occurrence = types[index].Slot.Occurrence;
+            parameter.Name = Copy(types[index].Slot.Name);
+            parameter.Type = types[index].Type;
+            captured.push_back(std::move(parameter));
+        }
+        return captured;
+    };
     capturedSteps.clear();
     hooks.clear();
     for (std::uint32_t index = 0; index < count; ++index) {
@@ -1177,6 +1211,10 @@ void CaptureSteps(const BML_BehaviorEditStep *steps, std::uint32_t count,
                 step.Block->Pins, step.Block->PinCount);
             captured.Locals = captureBindings(
                 step.Block->Locals, step.Block->LocalCount);
+            captured.PinTypes = captureTypes(
+                step.Block->PinTypes, step.Block->PinTypeCount);
+            captured.PoutTypes = captureTypes(
+                step.Block->PoutTypes, step.Block->PoutTypeCount);
         }
         captured.Type = step.Type;
         captured.Source = step.Source;
@@ -1851,12 +1889,14 @@ TEST(BehaviorAuthoring, ReusesFramesStorageAndRejectsTheWholeMalformedBatch) {
 
 TEST(BehaviorAuthoring, CopiesBlocksOnWriteAndKeepsValidatedCopiesCached) {
     g_State = {};
+    g_State.DeclaredVariableParameters = true;
     auto opened = Session::Open();
     ASSERT_TRUE(opened);
     Session session = opened.Take();
 
     Block original = session.Use(CKGUID(5, 6));
-    original.Settings({{"Caption", "original"}});
+    original.Settings({{"Caption", "original"}})
+        .PinType("Value", CKPGUID_BOOL);
     ASSERT_TRUE(original.Validate());
     const int initialReads = g_State.LayoutCalls;
 
@@ -1864,7 +1904,8 @@ TEST(BehaviorAuthoring, CopiesBlocksOnWriteAndKeepsValidatedCopiesCached) {
     ASSERT_TRUE(copy.Validate());
     EXPECT_EQ(g_State.LayoutCalls, initialReads);
 
-    copy.Settings({{"Retry", true}});
+    copy.Settings({{"Retry", true}})
+        .PinType("Value", CKPGUID_FLOAT);
     ASSERT_TRUE(copy.Validate());
     EXPECT_GT(g_State.LayoutCalls, initialReads);
     const int afterCopyValidation = g_State.LayoutCalls;
@@ -1874,6 +1915,23 @@ TEST(BehaviorAuthoring, CopiesBlocksOnWriteAndKeepsValidatedCopiesCached) {
     EXPECT_EQ(g_State.LayoutCalls, afterCopyValidation);
     EXPECT_EQ(g_State.SettingName, "Caption");
     EXPECT_EQ(g_State.Text, "original");
+    ASSERT_FALSE(g_State.Blocks.empty());
+    ASSERT_EQ(g_State.Blocks.back().PinTypeCount, 1u);
+    EXPECT_EQ(g_State.Blocks.back().PinTypes[0].Type.Data1,
+              static_cast<std::uint32_t>(CKPGUID_BOOL.d1));
+}
+
+TEST(BehaviorAuthoring, RejectsTypeSelectionOnAFixedParameterFamily) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Block block = session.Use(CKGUID(5, 6));
+    block.PinType("Value", CKPGUID_BOOL);
+    const auto checked = block.Validate();
+    EXPECT_FALSE(checked);
+    EXPECT_EQ(checked.GetStatus().Error, Error::InterfaceUnsupported);
 }
 
 TEST(BehaviorAuthoring, SuppliesFramePolicyForEachRun) {

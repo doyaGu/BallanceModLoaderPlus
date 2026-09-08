@@ -78,9 +78,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBindingSize,
                         sizeof(BML_BehaviorBinding) == 108u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGenerationOffset,
                         offsetof(BML_BehaviorBlock,
-                                 PrototypeGeneration) == 64u);
+                                 PrototypeGeneration) == 80u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
-                        sizeof(BML_BehaviorBlock) == 72u);
+                        sizeof(BML_BehaviorBlock) == 88u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
@@ -132,9 +132,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBindingSize,
                         sizeof(BML_BehaviorBinding) == 120u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGenerationOffset,
                         offsetof(BML_BehaviorBlock,
-                                 PrototypeGeneration) == 96u);
+                                 PrototypeGeneration) == 120u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
-                        sizeof(BML_BehaviorBlock) == 104u);
+                        sizeof(BML_BehaviorBlock) == 128u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,

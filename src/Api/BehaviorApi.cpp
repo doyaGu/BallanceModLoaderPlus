@@ -520,6 +520,43 @@ bool ReadBindings(const BML_BehaviorBinding *bindings, std::uint32_t count,
     return true;
 }
 
+bool ReadParameterTypes(const BML_BehaviorParameterType *types,
+                        std::uint32_t count, SlotKind kind,
+                        ModContext &context, BlockSpec &block,
+                        Status &status) {
+    if (count && !types) {
+        status = InvalidValue("A Behavior parameter type array is missing.");
+        return false;
+    }
+    CKParameterManager *parameters = context.GetParameterManager();
+    for (std::uint32_t index = 0; index < count; ++index) {
+        const BML_BehaviorParameterType &parameter = types[index];
+        if (parameter.StructSize < sizeof(parameter)) {
+            status = InvalidValue(
+                "A Behavior parameter type has an unsupported StructSize.");
+            return false;
+        }
+        const CKGUID type = Guid(parameter.Type);
+        if (!type.IsValid() || !parameters ||
+            parameters->ParameterGuidToType(type) < 0) {
+            status = {Error::ParameterTypeUnavailable,
+                      CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                      "The selected Virtools parameter type is not registered."};
+            status.Details.Stage = Phase::ParameterBinding;
+            status.Details.ActualType = type;
+            return false;
+        }
+        Slot slot;
+        if (!ReadSelector(parameter.Slot, kind, CKGUID(), slot, status))
+            return false;
+        if (kind == SlotKind::InputParameter)
+            block.PinType(std::move(slot), type);
+        else
+            block.PoutType(std::move(slot), type);
+    }
+    return true;
+}
+
 bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
                BlockSpec &to, Status &status) {
     if (from.StructSize < sizeof(from) ||
@@ -529,7 +566,9 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
     }
     if ((from.SettingStageCount && !from.SettingStages) ||
         (from.PinCount && !from.Pins) ||
-        (from.LocalCount && !from.Locals)) {
+        (from.LocalCount && !from.Locals) ||
+        (from.PinTypeCount && !from.PinTypes) ||
+        (from.PoutTypeCount && !from.PoutTypes)) {
         status = InvalidValue("A Behavior Block array is missing.");
         return false;
     }
@@ -574,7 +613,11 @@ bool ReadBlock(const BML_BehaviorBlock &from, ModContext &context,
     if (!ReadBindings(from.Pins, from.PinCount, SlotKind::InputParameter,
                       context, to, status) ||
         !ReadBindings(from.Locals, from.LocalCount, SlotKind::Local,
-                      context, to, status))
+                      context, to, status) ||
+        !ReadParameterTypes(from.PinTypes, from.PinTypeCount,
+                            SlotKind::InputParameter, context, to, status) ||
+        !ReadParameterTypes(from.PoutTypes, from.PoutTypeCount,
+                            SlotKind::OutputParameter, context, to, status))
         return false;
 
     return true;

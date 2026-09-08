@@ -84,6 +84,20 @@ public:
                            std::make_move_iterator(values.end()));
         return *this;
     }
+    Block &PinType(const Selector &pin, CKGUID type) {
+        SetType(Change().PinTypes, pin, type);
+        return *this;
+    }
+    Block &PinType(std::string_view pin, CKGUID type) {
+        return PinType(Selector::Unique(pin), type);
+    }
+    Block &PoutType(const Selector &pout, CKGUID type) {
+        SetType(Change().PoutTypes, pout, type);
+        return *this;
+    }
+    Block &PoutType(std::string_view pout, CKGUID type) {
+        return PoutType(Selector::Unique(pout), type);
+    }
     [[nodiscard]] Result<void> Validate() const;
     [[nodiscard]] Result<Behavior::Call> Call(
         const Selector &input = Selector::Only(),
@@ -157,6 +171,9 @@ private:
     Compile(bool requireDeclared = false) const;
     [[nodiscard]] Status Accept(const BML_BehaviorRunInfo &info,
                                 RunKind kind) const;
+    static void SetType(
+        std::vector<Detail::BlockSpec::ParameterType> &types,
+        const Selector &slot, CKGUID type);
     Detail::BlockSpec &Change();
 
     std::shared_ptr<Detail::SessionState> m_Session;

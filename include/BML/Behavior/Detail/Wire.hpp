@@ -216,6 +216,11 @@ int ReadPayload(SessionState &session, Reader &&read,
 }
 
 struct BlockSpec {
+    struct ParameterType {
+        Selector Slot;
+        CKGUID Type{0, 0};
+    };
+
     explicit BlockSpec(Behavior::Prototype prototype)
         : PrototypeRef(prototype) {}
 
@@ -226,6 +231,8 @@ struct BlockSpec {
     std::vector<std::vector<SlotValue>> Settings;
     std::vector<SlotValue> Pins;
     std::vector<SlotValue> Locals;
+    std::vector<ParameterType> PinTypes;
+    std::vector<ParameterType> PoutTypes;
 };
 
 template <class T, class Payload>
@@ -1104,6 +1111,8 @@ struct CompiledBlock {
     std::vector<BML_BehaviorSettingStage> SettingStages;
     std::vector<BML_BehaviorBinding> Pins;
     std::vector<BML_BehaviorBinding> Locals;
+    std::vector<BML_BehaviorParameterType> PinTypes;
+    std::vector<BML_BehaviorParameterType> PoutTypes;
 };
 
 struct BlockState {

@@ -859,6 +859,18 @@ public:
         return true;
     }
 
+    bool ApplyParameterTypes(LifecycleFault &fault) override {
+        CKBehavior *behavior = Behavior(fault);
+        if (!behavior || !m_Spec)
+            return false;
+        Status status = m_Runtime.ApplyParameterTypes(
+            behavior, *m_Spec, m_Record);
+        if (!status)
+            return Fail(std::move(status), LifecycleError::BindingFailed,
+                        fault);
+        return true;
+    }
+
     bool ReconcileBindings(const LifecycleLayout &,
                            LifecycleFault &fault) override {
         CKBehavior *behavior = Behavior(fault);
@@ -882,6 +894,12 @@ public:
         for (const BlockSpec::Binding &binding : m_Spec->m_Locals) {
             if (!validate(binding.Target))
                 return false;
+        }
+        Status types = m_Runtime.ValidateParameterTypes(
+            behavior, *m_Spec, m_Record);
+        if (!types) {
+            Fail(std::move(types), LifecycleError::BindingFailed, fault);
+            return false;
         }
         if (m_Spec->m_TargetMode != TargetMode::Owner &&
             !validate(Slot::At(SlotKind::Target, 0, m_Spec->m_TargetType)))
@@ -1807,9 +1825,11 @@ Status Runtime::EnsurePrototypeLayout(CKBehavior *behavior,
     const bool repairOutputs = !afterSettings ||
         (flags & CKBEHAVIOR_INTERNALLYCREATEDOUTPUTS) == 0;
     const bool repairInputParameters = !afterSettings ||
-        (flags & CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS) == 0;
+        (flags & (CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
+                  CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS)) == 0;
     const bool repairOutputParameters = !afterSettings ||
-        (flags & CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS) == 0;
+        (flags & (CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
+                  CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS)) == 0;
 
     if (repairInputs) {
         CKBEHAVIORIO_DESC **descriptions = prototype->GetInIOList();
@@ -2043,6 +2063,134 @@ Status Runtime::ApplyBindings(CKBehavior *behavior, const BlockSpec &spec,
     return {};
 }
 
+Status Runtime::ApplyParameterTypes(CKBehavior *behavior,
+                                    const BlockSpec &spec,
+                                    Record &record) {
+    if (!behavior)
+        return Failure(Error::InvalidState,
+                       "Behavior parameter type target is invalid.");
+    CKParameterManager *parameters = m_Context
+        ? m_Context->GetParameterManager() : nullptr;
+    if (!parameters)
+        return Failure(Error::RequiredManagerMissing,
+                       "The Virtools Parameter Manager is unavailable.");
+    const CKDWORD flags = behavior->GetFlags();
+    if (!spec.m_PinTypes.empty() &&
+        (flags & (CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
+                  CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS)) == 0) {
+        return Failure(
+            Error::InterfaceUnsupported,
+            "This Building Block does not expose variable Pins.",
+            CK_OK, CKBR_PARAMETERERROR, Phase::ParameterBinding,
+            record.PrototypeGuid);
+    }
+    if (!spec.m_PoutTypes.empty() &&
+        (flags & (CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
+                  CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS)) == 0) {
+        return Failure(
+            Error::InterfaceUnsupported,
+            "This Building Block does not expose variable Pouts.",
+            CK_OK, CKBR_PARAMETERERROR, Phase::ParameterBinding,
+            record.PrototypeGuid);
+    }
+
+    const auto apply = [&](const BlockSpec::ParameterType &parameter,
+                           SlotKind kind) -> Status {
+        Slot selector = parameter.Target;
+        selector.Kind = kind;
+        selector.ExpectedType = CKGUID();
+        SlotInfo slot;
+        Status status = Resolve(behavior, selector, slot);
+        if (!status)
+            return Annotate(std::move(status), Phase::ParameterBinding,
+                            record.PrototypeGuid, &selector);
+        const CKParameterType type =
+            parameters->ParameterGuidToType(parameter.Type);
+        if (type < 0) {
+            Status unavailable = Failure(
+                Error::ParameterTypeUnavailable,
+                "The selected Virtools parameter type is not registered.",
+                CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                Phase::ParameterBinding, record.PrototypeGuid);
+            unavailable.Details.ActualType = parameter.Type;
+            return unavailable;
+        }
+        CKObject *object = ResolveSlotObject(behavior, slot);
+        if (kind == SlotKind::InputParameter) {
+            CKParameterIn *input = CKParameterIn::Cast(object);
+            if (!input)
+                return Failure(Error::TypeMismatch,
+                               "The selected Pin is no longer a CKParameterIn.");
+            input->SetType(type, TRUE);
+            if (input->GetGUID() != parameter.Type) {
+                Status mismatch = Failure(
+                    Error::TypeMismatch,
+                    "Virtools did not apply the selected Pin type.",
+                    CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                    Phase::ParameterBinding, record.PrototypeGuid);
+                mismatch.Details.ActualType = input->GetGUID();
+                return mismatch;
+            }
+        } else {
+            CKParameterOut *output = CKParameterOut::Cast(object);
+            if (!output)
+                return Failure(Error::TypeMismatch,
+                               "The selected Pout is no longer a CKParameterOut.");
+            output->SetType(type);
+            if (output->GetGUID() != parameter.Type) {
+                Status mismatch = Failure(
+                    Error::TypeMismatch,
+                    "Virtools did not apply the selected Pout type.",
+                    CKERR_INVALIDPARAMETERTYPE, CKBR_PARAMETERERROR,
+                    Phase::ParameterBinding, record.PrototypeGuid);
+                mismatch.Details.ActualType = output->GetGUID();
+                return mismatch;
+            }
+        }
+        return {};
+    };
+
+    for (const BlockSpec::ParameterType &parameter : spec.m_PinTypes) {
+        Status status = apply(parameter, SlotKind::InputParameter);
+        if (!status)
+            return status;
+    }
+    for (const BlockSpec::ParameterType &parameter : spec.m_PoutTypes) {
+        Status status = apply(parameter, SlotKind::OutputParameter);
+        if (!status)
+            return status;
+    }
+    return {};
+}
+
+Status Runtime::ValidateParameterTypes(CKBehavior *behavior,
+                                       const BlockSpec &spec,
+                                       const Record &record) const {
+    const auto validate = [&](const BlockSpec::ParameterType &parameter,
+                              SlotKind kind) -> Status {
+        Slot selector = parameter.Target;
+        selector.Kind = kind;
+        selector.ExpectedType = parameter.Type;
+        SlotInfo slot;
+        Status status = Resolve(behavior, selector, slot);
+        return status
+            ? Status{}
+            : Annotate(std::move(status), Phase::ParameterBinding,
+                       record.PrototypeGuid, &selector);
+    };
+    for (const BlockSpec::ParameterType &parameter : spec.m_PinTypes) {
+        Status status = validate(parameter, SlotKind::InputParameter);
+        if (!status)
+            return status;
+    }
+    for (const BlockSpec::ParameterType &parameter : spec.m_PoutTypes) {
+        Status status = validate(parameter, SlotKind::OutputParameter);
+        if (!status)
+            return status;
+    }
+    return {};
+}
+
 void Runtime::PruneOwnedSources(Record &record) {
     for (auto it = record.OwnedSources.begin(); it != record.OwnedSources.end();) {
         CKObject *object = ResolveObject(*it);
@@ -2103,6 +2251,8 @@ Status Runtime::CreateBlock(CKBehavior *behavior,
     plan.HasOwner = owner != nullptr;
     plan.HasInterface = !spec.m_AddedInputs.empty() ||
                         !spec.m_AddedOutputs.empty();
+    plan.HasParameterTypes = !spec.m_PinTypes.empty() ||
+                             !spec.m_PoutTypes.empty();
     plan.SettingStages.reserve(spec.m_SettingStages.size());
     for (const std::vector<BlockSpec::Binding> &stage : spec.m_SettingStages)
         plan.SettingStages.push_back(!stage.empty());
@@ -2370,9 +2520,10 @@ Status Runtime::Reconfigure(Instance &instance, const BlockSpec &spec,
     if (spec.Prototype() != record->PrototypeGuid)
         return Failure(Error::InvalidState,
                        "Reconfiguration spec names a different Building Block Prototype.");
-    if (!spec.m_AddedInputs.empty() || !spec.m_AddedOutputs.empty())
+    if (!spec.m_AddedInputs.empty() || !spec.m_AddedOutputs.empty() ||
+        !spec.m_PinTypes.empty() || !spec.m_PoutTypes.empty())
         return Failure(Error::InvalidState,
-                       "Reconfiguration cannot append duplicate behavior IOs.");
+                       "Reconfiguration cannot change a Block's native interface.");
 
     Status status = ApplySettings(instance, spec.m_SettingStages, spec, frame);
     if (status) {
@@ -2462,6 +2613,10 @@ Status Runtime::ApplySettings(
         if (!status)
             return fail(std::move(status));
     }
+    status = ApplyParameterTypes(behavior, desired, *record);
+    if (!status)
+        return fail(std::move(status));
+    ++record->LayoutGeneration;
     status = ApplyBindings(behavior, desired, *record);
     if (!status)
         return fail(std::move(status));
@@ -2481,6 +2636,9 @@ Status Runtime::ApplySettings(
     if (!status)
         return fail(std::move(status));
     status = EnsurePrototypeDefaults(behavior, prototype, *record);
+    if (!status)
+        return fail(std::move(status));
+    status = ValidateParameterTypes(behavior, desired, *record);
     if (!status)
         return fail(std::move(status));
     status = ApplyBindings(behavior, desired, *record);

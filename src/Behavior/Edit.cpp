@@ -335,6 +335,26 @@ Node Edit::Add(BlockSpec block, Layout declared, NodeRole role) {
     m_Nodes.push_back(
         {node, {}, std::move(declared), std::move(block), std::nullopt, role});
     EditNode &added = m_Nodes.back();
+    const auto selectTypes = [&](const auto &types, SlotKind kind) {
+        for (const BlockSpec::ParameterType &parameter : types) {
+            Slot selector = parameter.Target;
+            selector.Kind = kind;
+            selector.ExpectedType = CKGUID();
+            SlotInfo selected;
+            if (!Resolve(added.Shape, selector, selected))
+                continue;
+            const auto slot = std::find_if(
+                added.Shape.Slots.begin(), added.Shape.Slots.end(),
+                [&](const SlotInfo &candidate) {
+                    return candidate.Kind == selected.Kind &&
+                        candidate.NativeIndex == selected.NativeIndex;
+                });
+            if (slot != added.Shape.Slots.end())
+                slot->Type = parameter.Type;
+        }
+    };
+    selectTypes(added.Block->m_PinTypes, SlotKind::InputParameter);
+    selectTypes(added.Block->m_PoutTypes, SlotKind::OutputParameter);
     for (const std::string &name : added.Block->m_AddedInputs)
         (void) Append(node, SlotKind::Input, name, CKGUID(), true);
     for (const std::string &name : added.Block->m_AddedOutputs)

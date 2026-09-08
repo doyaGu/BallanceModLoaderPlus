@@ -57,9 +57,11 @@ BML_C_ABI_ASSERT(BmlBehaviorScriptInfoSize,
 #if UINTPTR_MAX == UINT32_MAX
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 24u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 108u);
+BML_C_ABI_ASSERT(BmlBehaviorParameterTypeSize,
+                 sizeof(BML_BehaviorParameterType) == 36u);
 BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
-                 offsetof(BML_BehaviorBlock, PrototypeGeneration) == 64u);
-BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 72u);
+                 offsetof(BML_BehaviorBlock, PrototypeGeneration) == 80u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 88u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 180u);
@@ -98,9 +100,11 @@ BML_C_ABI_ASSERT(BmlIvpSymbolSize, sizeof(BML_IvpSymbol) == 12u);
 #else
 BML_C_ABI_ASSERT(BmlBehaviorSelectorSize, sizeof(BML_BehaviorSelector) == 32u);
 BML_C_ABI_ASSERT(BmlBehaviorBindingSize, sizeof(BML_BehaviorBinding) == 120u);
+BML_C_ABI_ASSERT(BmlBehaviorParameterTypeSize,
+                 sizeof(BML_BehaviorParameterType) == 48u);
 BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
-                 offsetof(BML_BehaviorBlock, PrototypeGeneration) == 96u);
-BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 104u);
+                 offsetof(BML_BehaviorBlock, PrototypeGeneration) == 120u);
+BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 128u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 360u);

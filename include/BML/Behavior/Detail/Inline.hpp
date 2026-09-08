@@ -281,7 +281,9 @@ inline Status CheckBlock(const BlockSpec &spec) {
     }
     if (spec.Settings.size() > maximum ||
         spec.Pins.size() > maximum ||
-        spec.Locals.size() > maximum) {
+        spec.Locals.size() > maximum ||
+        spec.PinTypes.size() > maximum ||
+        spec.PoutTypes.size() > maximum) {
         return BlockError(BML_BEHAVIOR_ERROR_VALUE_INVALID,
                           BML_BEHAVIOR_PHASE_NONE,
                           spec.PrototypeRef, CKGUID(0, 0),
@@ -295,6 +297,35 @@ inline Status CheckBlock(const BlockSpec &spec) {
                               "A Block contains too many Settings in one stage.");
         }
     }
+    const auto checkTypes = [&](const auto &types) -> Status {
+        for (const BlockSpec::ParameterType &parameter : types) {
+            const BML_BehaviorSelector slot = Wire::From(parameter.Slot);
+            if (!parameter.Type.IsValid()) {
+                return BlockError(
+                    BML_BEHAVIOR_ERROR_PARAMETER_TYPE_UNAVAILABLE,
+                    BML_BEHAVIOR_PHASE_LAYOUT, spec.PrototypeRef,
+                    parameter.Type,
+                    "A variable parameter requires a registered type GUID.");
+            }
+            if ((slot.Kind == BML_BEHAVIOR_SELECTOR_INDEX && slot.Index < 0) ||
+                ((slot.Kind == BML_BEHAVIOR_SELECTOR_NAME ||
+                  slot.Kind == BML_BEHAVIOR_SELECTOR_UNIQUE_NAME) &&
+                 slot.Name.Length == 0)) {
+                return BlockError(
+                    BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+                    BML_BEHAVIOR_PHASE_LAYOUT, spec.PrototypeRef,
+                    parameter.Type,
+                    "A variable parameter selector is empty or invalid.");
+            }
+        }
+        return {};
+    };
+    Status types = checkTypes(spec.PinTypes);
+    if (!types)
+        return types;
+    types = checkTypes(spec.PoutTypes);
+    if (!types)
+        return types;
     return {};
 }
 
@@ -413,6 +444,75 @@ inline Status CheckTarget(const Behavior::Layout &layout,
                       "The Prototype does not declare an explicit Target.");
 }
 
+inline Status CheckParameterType(
+    const Behavior::Layout &layout,
+    const BlockSpec::ParameterType &parameter,
+    SlotKind kind) {
+    const BML_BehaviorSelector selector = Wire::From(parameter.Slot);
+    std::vector<const Behavior::Slot *> matches;
+    for (const Behavior::Slot &slot : layout.Slots) {
+        if (slot.Kind != kind)
+            continue;
+        bool match = false;
+        switch (selector.Kind) {
+        case BML_BEHAVIOR_SELECTOR_INDEX:
+            match = slot.Index == selector.Index;
+            break;
+        case BML_BEHAVIOR_SELECTOR_NAME:
+            match = slot.Name == std::string_view(
+                        selector.Name.Data, selector.Name.Length) &&
+                    slot.Occurrence == selector.Occurrence;
+            break;
+        case BML_BEHAVIOR_SELECTOR_UNIQUE_NAME:
+            match = slot.Name == std::string_view(
+                        selector.Name.Data, selector.Name.Length);
+            break;
+        case BML_BEHAVIOR_SELECTOR_ONLY:
+            match = true;
+            break;
+        default:
+            break;
+        }
+        if (match)
+            matches.push_back(&slot);
+    }
+    if (matches.empty()) {
+        const std::uint32_t flag = kind == SlotKind::Pin
+            ? (CKBEHAVIOR_VARIABLEPARAMETERINPUTS |
+               CKBEHAVIOR_INTERNALLYCREATEDINPUTPARAMS)
+            : (CKBEHAVIOR_VARIABLEPARAMETEROUTPUTS |
+               CKBEHAVIOR_INTERNALLYCREATEDOUTPUTPARAMS);
+        if ((layout.BehaviorFlags & flag) != 0)
+            return {};
+        return BlockError(
+            BML_BEHAVIOR_ERROR_SLOT_NOT_FOUND,
+            BML_BEHAVIOR_PHASE_LAYOUT, layout.PrototypeRef,
+            parameter.Type,
+            std::string(kind == SlotKind::Pin ? "Pin " : "Pout ") +
+                SelectorLabel(selector) +
+                " is absent from the declared Layout.");
+    }
+    if (matches.size() != 1) {
+        return BlockError(
+            BML_BEHAVIOR_ERROR_SLOT_AMBIGUOUS,
+            BML_BEHAVIOR_PHASE_LAYOUT, layout.PrototypeRef,
+            parameter.Type,
+            std::string(kind == SlotKind::Pin ? "Pin " : "Pout ") +
+                SelectorLabel(selector) +
+                " is ambiguous in the declared Layout.");
+    }
+    if (!matches.front()->Dynamic) {
+        return BlockError(
+            BML_BEHAVIOR_ERROR_INTERFACE_UNSUPPORTED,
+            BML_BEHAVIOR_PHASE_LAYOUT, layout.PrototypeRef,
+            parameter.Type,
+            std::string(kind == SlotKind::Pin ? "Pin " : "Pout ") +
+                SelectorLabel(selector) +
+                " belongs to a fixed native interface.");
+    }
+    return {};
+}
+
 inline CompiledBlock::CompiledBlock(BlockSpec spec,
                                     bool declared)
     : Spec(std::move(spec)), Declared(declared) {
@@ -456,6 +556,20 @@ inline CompiledBlock::CompiledBlock(BlockSpec spec,
     };
     add(Spec.Pins, Pins);
     add(Spec.Locals, Locals);
+    const auto addTypes = [](
+        const std::vector<BlockSpec::ParameterType> &from,
+        std::vector<BML_BehaviorParameterType> &to) {
+        to.reserve(from.size());
+        for (const BlockSpec::ParameterType &parameter : from) {
+            BML_BehaviorParameterType wire{};
+            wire.StructSize = sizeof(wire);
+            wire.Slot = Wire::From(parameter.Slot);
+            wire.Type = WireGuid(parameter.Type);
+            to.push_back(wire);
+        }
+    };
+    addTypes(Spec.PinTypes, PinTypes);
+    addTypes(Spec.PoutTypes, PoutTypes);
 
     Wire.StructSize = sizeof(Wire);
     Wire.Prototype = WireGuid(Spec.PrototypeRef.Id);
@@ -469,6 +583,10 @@ inline CompiledBlock::CompiledBlock(BlockSpec spec,
     Wire.PinCount = static_cast<std::uint32_t>(Pins.size());
     Wire.Locals = Locals.empty() ? nullptr : Locals.data();
     Wire.LocalCount = static_cast<std::uint32_t>(Locals.size());
+    Wire.PinTypes = PinTypes.empty() ? nullptr : PinTypes.data();
+    Wire.PinTypeCount = static_cast<std::uint32_t>(PinTypes.size());
+    Wire.PoutTypes = PoutTypes.empty() ? nullptr : PoutTypes.data();
+    Wire.PoutTypeCount = static_cast<std::uint32_t>(PoutTypes.size());
     Wire.PrototypeGeneration = Spec.PrototypeRef.Generation;
 }
 
@@ -511,6 +629,20 @@ inline Result<std::shared_ptr<const CompiledBlock>> Compiler::operator()(
     if (!checked) {
         return Result<std::shared_ptr<const CompiledBlock>>::Failure(
             BML_ERROR_FAIL, std::move(checked));
+    }
+    for (const BlockSpec::ParameterType &parameter : spec.PinTypes) {
+        checked = CheckParameterType(
+            declared.Value(), parameter, SlotKind::Pin);
+        if (!checked)
+            return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+                BML_ERROR_FAIL, std::move(checked));
+    }
+    for (const BlockSpec::ParameterType &parameter : spec.PoutTypes) {
+        checked = CheckParameterType(
+            declared.Value(), parameter, SlotKind::Pout);
+        if (!checked)
+            return Result<std::shared_ptr<const CompiledBlock>>::Failure(
+                BML_ERROR_FAIL, std::move(checked));
     }
     spec.PrototypeRef = declared.Value().PrototypeRef;
     std::shared_ptr<const CompiledBlock> block =
@@ -1532,6 +1664,30 @@ inline Detail::BlockSpec &Block::Change() {
     else
         m_State->Compiled.reset();
     return m_State->Spec;
+}
+
+inline void Block::SetType(
+    std::vector<Detail::BlockSpec::ParameterType> &types,
+    const Selector &slot, CKGUID type) {
+    const BML_BehaviorSelector requested = Detail::Wire::From(slot);
+    const auto same = [&](const Detail::BlockSpec::ParameterType &current) {
+        const BML_BehaviorSelector existing =
+            Detail::Wire::From(current.Slot);
+        if (existing.Kind != requested.Kind ||
+            existing.Index != requested.Index ||
+            existing.Occurrence != requested.Occurrence ||
+            existing.Name.Length != requested.Name.Length)
+            return false;
+        if (!existing.Name.Length)
+            return true;
+        return std::string_view(existing.Name.Data, existing.Name.Length) ==
+            std::string_view(requested.Name.Data, requested.Name.Length);
+    };
+    const auto found = std::find_if(types.begin(), types.end(), same);
+    if (found == types.end())
+        types.push_back({slot, type});
+    else
+        found->Type = type;
 }
 
 inline Result<std::shared_ptr<const Detail::CompiledBlock>> Block::Compile(
