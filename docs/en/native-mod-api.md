@@ -235,8 +235,7 @@ discarding the result of best-effort cleanup.
 
 ## Inter-mod communication
 
-An API a mod publishes for other mods is not an interface struct: only the loader
-answers `BML_GetInterface`. Prefer IMC there:
+Prefer IMC for an ordinary API a Mod publishes to other Mods:
 
 - a `.imc` file contains interface declarations only; field IDs are permanent
   wire identifiers rather than array positions;
@@ -249,6 +248,14 @@ answers `BML_GetInterface`. Prefer IMC there:
   consumer can ship separately.
 
 C++ IMC operations that return a BML status are marked `[[nodiscard]]` as well.
+
+A native base Mod that must expose direct function pointers or borrowed engine
+objects may instead publish a plain-C function table with
+`BML_RegisterInterface`. The table and its `InterfaceId` must be static data in
+the provider DLL. Consumers declare that Mod as a required dependency, fetch the
+table through `BML_GetInterface`, and never link an import library or resolve an
+API export from the provider. BML rejects duplicate id/major pairs and removes a
+provider's registrations before unloading its DLL.
 
 `DataShare` is suitable for small named byte values when both sides obey its
 reference-count and borrowed-pointer lifetime rules. Use IMC when an API has to

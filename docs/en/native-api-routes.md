@@ -3,14 +3,18 @@
 A native mod reaches the loader in three ways, and for some capabilities more
 than one of them works. This page says which spelling exists for each
 capability, which one to prefer, and why there is more than one to choose from.
-IMC is not one of the three: it carries no loader capability, and is what one mod
-publishes for other mods. See [Inter-mod communication](imc.md) for that.
+IMC is not one of the three: it carries no loader capability and is the normal
+transport for services one Mod publishes to other Mods. A native base Mod may
+instead publish a process-local ABI interface through BML when consumers need
+direct function pointers or borrowed engine objects. See
+[Inter-mod communication](imc.md) for the general transport.
 
 If you are writing a new mod and want a single rule: use the legacy `IBML` and
 `IMod` interfaces for everything that hands you an engine object or that only
 they offer, use the interface structs for reading game state, for loader events,
 for driving the loader's own UI, and for Behavior authoring, and use IMC for
-anything you publish to other mods.
+ordinary services published to other Mods. Reserve a provider interface for
+native-only base infrastructure whose ABI and lifetime follow its provider DLL.
 
 ## Why there is more than one spelling
 
@@ -25,7 +29,7 @@ and compares its exported symbol set against
 are therefore frozen for the current release line: nothing new can be added to
 them.
 
-The interface structs have no such problem. The loader hands out a struct of
+The interface structs have no such problem. The BML registry hands out a struct of
 function pointers, a mod asks for one by id and major version through the single
 export `BML_GetInterface`, and the struct only ever grows by appending a member
 and bumping its minor version. An older mod keeps calling the members it was
@@ -44,12 +48,13 @@ operation whose first half is frozen in C++, which is how
 one pair of operations across two mechanisms reads worse than either choice
 alone, so the reverse operation follows the forward one.
 
-One question decides which of the three a new capability belongs to: who serves
-it. The loader serving something a mod reads or drives is an interface struct. A
-mod serving something for other mods is an IMC interface, because the loader is
-not in that conversation and the two sides ship on their own schedules. A utility
-that touches neither the game nor loader state, or the reverse of an operation
-frozen in C++, is a C export.
+One question decides which of the three a new loader capability belongs to: who
+serves it. The loader serving something a Mod reads or drives is a built-in
+interface struct. A utility that touches neither the game nor loader state, or
+the reverse of an operation frozen in C++, is a C export. A Mod service normally
+uses IMC; a native-only base Mod may call `BML_RegisterInterface` when it must
+return process-local pointers without encoding and can impose a required Mod
+dependency on every consumer.
 
 Frozen does not mean deprecated. The legacy interfaces are supported, are still
 the only way to reach most of what the loader does, and are the only way to get
@@ -91,16 +96,18 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
 | Which mods are loaded, and dependencies | `GetModCount`, `GetMod`, `FindMod`, `RegisterDependency`, `CheckDependencies` | none | Frozen C++ only. |
 | Discover, configure, and execute Virtools Building Blocks; inspect or edit Behavior graphs | raw CK SDK and `ExecuteBB` compatibility helpers | `BML::Behavior` from `Behavior.hpp` | Use `BML::Behavior` for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, and reversible Patch/Plan lifetimes. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself. |
-| Publishing an API of your own to other mods | none | IMC, ideally generated from a `.imc` file | IMC only. A C++ class of your own would put your vtable layout and your standard library in every consumer's build, and `BML_GetInterface` is no alternative: it hands out the loader's own interfaces and a mod cannot add to it. IMC reaches native consumers: a script mod can currently neither call another mod's route nor publish one of its own. |
+| Publishing an API of your own to other mods | none | IMC, or a BML provider interface for a native base Mod | Prefer generated IMC for ordinary RPC/Topic services. Use `BML_RegisterInterface` only for a plain-C, process-local function table that must expose direct or borrowed native objects. The provider table and id must be static data in its DLL; every consumer must declare the provider Mod as a required dependency and use `BML_GetInterface`, never import a provider symbol. Script Mods cannot publish or consume provider interfaces. |
 | Drawing your own UI | `Bui` for ImGui widgets, `BGui` for in-game 2D entities | none | Neither of these is `BML::UI`, which controls the loader's own UI and draws nothing of yours. |
 | Strings, paths, files, allocation | none | the `BML_*` functions of `BML.h` | The C exports. Release what they return with the matching `BML_Free*`, never with the CRT `free`. |
 | The loader's directories, and where your mod is installed | none | `BML_GetLoaderPathW`, `BML_GetLoaderPathUtf8`, `BML_GetModRootW`, `BML_GetModRootUtf8`, also C exports of `BML.h` | The C exports. `IBML` never offered these. The loader path is borrowed and the mod root is allocated, so only the second needs freeing. |
 
 ## Mixing them
 
-Mixing is expected, and a mod can use all three in the same function. The
+Mixing is expected, and a Mod can use all three in the same function. Built-in
 interface structs are served by the loader itself, reading the same state `IBML`
-reads, so there is no second copy of anything and nothing to keep in sync. `Runtime::ReadState` and `IsIngame` cannot disagree.
+reads, so there is no second copy of anything and nothing to keep in sync. A
+provider interface is served by its owning native Mod and is valid only while
+that dependency remains loaded.
 
 Three differences do show through:
 

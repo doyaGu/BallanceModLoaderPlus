@@ -211,8 +211,7 @@ Mod 通常应使用 `Behavior.hpp`，由它持有字符串、数组、callback�
 
 ## 跨 Mod 通信
 
-一个 Mod 发布给别的 Mod 的接口不是 interface struct：只有 Loader 才回答
-`BML_GetInterface`。这种场景优先使用 IMC：
+Mod 向其他 Mod 发布普通接口时优先使用 IMC：
 
 - `.imc` 文件只描述接口；字段编号是稳定的线格式标识，不是数组下标。
 - `bml_target_imc_api` 在构建时生成 C++ 绑定并加入目标。
@@ -222,6 +221,12 @@ Mod 通常应使用 `Behavior.hpp`，由它持有字符串、数组、callback�
 - 使用方在运行期就能发现某条路由在不在，因此提供方与使用方可以各自独立发布。
 
 返回 BML 状态码的 C++ IMC 操作同样标记为 `[[nodiscard]]`。
+
+需要暴露直接函数指针或借用引擎对象的原生基础 Mod，可以改用
+`BML_RegisterInterface` 发布纯 C 函数表。接口表及其 `InterfaceId` 必须是提供者 DLL
+中的静态数据。使用方必须把该 Mod 声明为必需依赖，经 `BML_GetInterface` 取用，不能
+链接提供者 import library，也不能解析提供者自己的 API 导出。BML 会拒绝重复 id/major，
+并在卸载提供者 DLL 前清除其全部注册。
 
 `DataShare` 适合共享少量命名字节数据，调用方必须遵守引用计数和借用指针
 有效期。接口需要按自己的节奏演进，或需要 RPC/Topic 语义时，使用 IMC。

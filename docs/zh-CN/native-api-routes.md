@@ -2,12 +2,14 @@
 
 原生 Mod 有三种方式访问 Loader，部分能力可以由其中不止一种提供。本页给出每项
 能力有哪些写法、该优先选哪个，以及为什么会同时存在多种写法。IMC 不在这三种之内：
-它不承载任何 Loader 能力，是一个 Mod 发布给别的 Mod 的东西，见
+它不承载任何 Loader 能力，也是 Mod 间普通服务的首选传输。只有需要直接函数指针或
+借用引擎对象的原生基础 Mod，才通过 BML 发布进程内 provider interface。普通场景见
 [跨 Mod 通信](imc.md)。
 
 如果只想要一条规则：凡是要拿到引擎对象、或只有它们提供的能力，走旧式 `IBML` 与
 `IMod`；读取游戏状态、接收 Loader 事件、控制 Loader 自己的界面以及编写 Behavior，
-走 interface struct；要把接口发布给别的 Mod，走 IMC。
+走 interface struct；向别的 Mod 发布普通服务时走 IMC。只有 ABI 和生命周期必须跟随
+提供者 DLL 的原生基础设施才使用 provider interface。
 
 ## 为什么会有多种写法
 
@@ -19,7 +21,7 @@
 `tests/abi/legacy-native-exports-x86-msvc.txt` 比对。所以这些接口在当前发布线上是
 冻结的：不能再往里加东西。
 
-interface struct 没有这个问题。Loader 交出的是一个函数指针结构体，Mod 通过唯一的
+interface struct 没有这个问题。BML 注册表交出的是一个函数指针结构体，Mod 通过唯一的
 导出 `BML_GetInterface` 按 id 和主版本号取用它，而这个结构体只会在末尾追加成员并
 提升次版本号。旧 Mod 继续调用自己编译时就有的那些成员；新 Mod 用 `BML_IFACE_HAS`
 询问正在运行的 Loader 有没有它之后才加进来的成员。这就是冻结之后新增的能力都以
@@ -33,10 +35,11 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 旁边的。把一对操作的正反两半拆到两种机制上，比任选一种都更难读，所以反向操作跟着
 正向走。
 
-新能力该落在这三种里的哪一种，由一个问题决定：谁来提供它。Loader 提供、Mod 读取或
-驱动的，是 interface struct。某个 Mod 提供给别的 Mod 的，是 IMC 接口，因为 Loader
-不参与这段对话，而且双方各自按自己的节奏发布。与游戏和 Loader 状态都无关的纯工具，
-或者某个已冻结在 C++ 里的操作的反向操作，走 C 导出。
+新 Loader 能力该落在哪一种，由一个问题决定：谁来提供它。Loader 提供、Mod 读取或
+驱动的，是内建 interface struct。与游戏和 Loader 状态无关的纯工具，或者某个已冻结
+在 C++ 里的操作的反向操作，走 C 导出。Mod 间普通服务走 IMC；只有必须无编码传递
+进程内指针、且能要求所有使用方声明必需 Mod 依赖的原生基础 Mod，才调用
+`BML_RegisterInterface`。
 
 冻结不等于弃用。旧式接口仍在支持，Loader 的大部分能力仍然只有它们提供，而且它们
 是唯一能拿到引擎对象的途径。
@@ -74,16 +77,16 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |
 | 已加载了哪些 Mod，以及依赖 | `GetModCount`、`GetMod`、`FindMod`、`RegisterDependency`、`CheckDependencies` | 无 | 只有旧式 C++。 |
 | 发现、配置、执行 Virtools Building Block，以及检查或编辑 Behavior Graph | 原始 CK SDK 与 `ExecuteBB` 兼容 helper | `Behavior.hpp` 的 `BML::Behavior` | 新代码使用 `BML::Behavior`。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用以及可恢复的 Patch/Plan 生命周期。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。 |
-| 把自己的接口发布给别的 Mod | 无 | IMC，最好从 `.imc` 文件生成 | 只有 IMC。自己定义 C++ 类，等于把自己的 vtable 布局和标准库塞进每个使用方的构建里；`BML_GetInterface` 也不是替代品，它交出的是 Loader 自己的接口，Mod 无法往里添加。IMC 到达的是原生使用方：脚本 Mod 目前既不能调用别的 Mod 的路由，也不能发布自己的。 |
+| 把自己的接口发布给别的 Mod | 无 | IMC；原生基础 Mod 也可发布 BML provider interface | 普通 RPC/Topic 服务优先使用生成式 IMC。只有必须暴露直接或借用原生对象时才用 `BML_RegisterInterface` 发布纯 C 函数表。接口表和 id 必须是提供者 DLL 中的静态数据；所有使用方必须声明该 Mod 为必需依赖，通过 `BML_GetInterface` 取用，不能导入提供者符号。脚本 Mod 不能发布或消费 provider interface。 |
 | 绘制自己的界面 | `Bui` 画 ImGui 控件，`BGui` 用游戏内 2D 实体 | 无 | 这两者都不是 `BML::UI`，后者控制的是 Loader 自己的界面，不画你的东西。 |
 | 字符串、路径、文件、内存分配 | 无 | `BML.h` 的 `BML_*` 函数 | 走 C 导出。它们返回的东西要用对应的 `BML_Free*` 释放，不能用 CRT 的 `free`。 |
 | Loader 的各个目录，以及自己 Mod 的安装目录 | 无 | `BML_GetLoaderPathW`、`BML_GetLoaderPathUtf8`、`BML_GetModRootW`、`BML_GetModRootUtf8`，同样是 `BML.h` 的 C 导出 | 走 C 导出。`IBML` 从来没有提供过这些。Loader 目录是借用指针，Mod 根目录是新分配的，只有后者需要释放。 |
 
 ## 能不能混用
 
-混用是预期用法，同一个函数里同时用三种也可以。interface struct 由 Loader 自己实现，
-读的是 `IBML` 读的同一份状态，因此不存在第二份副本，也没有需要同步的东西。
-`Runtime::ReadState` 与 `IsIngame` 不会互相矛盾。
+混用是预期用法，同一个函数里同时用三种也可以。内建 interface struct 由 Loader
+实现，读的是 `IBML` 读的同一份状态；provider interface 则由所属原生 Mod 实现，
+只在该必需依赖保持加载期间有效。
 
 会显现出来的差异有三处：
 
