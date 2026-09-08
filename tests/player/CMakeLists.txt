@@ -137,3 +137,13 @@ bml_add_player_test(BehaviorFacadeTest
         BehaviorLifecycleFixtureApi.h
         ${BML_PLAYER_PROBE_SOURCES}
 )
+
+# Registers the BallSticky assets through the public Mod API, lets the shipped
+# level flow select that ball, and verifies the NewBallType Behavior Patch in
+# the live Gameplay graph.
+bml_add_player_test(NewBallTypeTest
+        NewBallTypeTest.cpp
+        PlayerBallLocator.cpp
+        PlayerBallLocator.h
+        ${BML_PLAYER_PROBE_SOURCES}
+)
