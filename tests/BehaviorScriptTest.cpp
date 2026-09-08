@@ -356,6 +356,54 @@ TEST(BehaviorScript, DoesNotPublishARejectedInitialGraph) {
     EXPECT_FALSE(scripts.Read(Owner(), 1, info));
 }
 
+TEST(BehaviorScript, RevalidatesOwnerSceneAndActivityBeforePublishing) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    std::size_t publications = 0;
+    ScriptSet scripts(
+        std::move(world),
+        [&](std::string_view, const ObjectRef &) { ++publications; });
+    native->ReadResult = Failure(
+        Error::GraphChanged, "script left its owner or scene");
+
+    const ScriptResult opened = scripts.Create(
+        Owner(), 1, this, "Rejected after define", 0, {});
+
+    EXPECT_FALSE(opened);
+    EXPECT_EQ(opened.Result.Code, Error::GraphChanged);
+    EXPECT_EQ(publications, 0u);
+    EXPECT_EQ(native->ClosedBodies, std::vector<ScriptBodyId>{100});
+    EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{10});
+    EXPECT_EQ(native->Events,
+              (std::vector<std::string>{"create", "define", "read",
+                                        "close-body", "destroy"}));
+}
+
+TEST(BehaviorScript, RejectsAScriptActivatedWhileItsGraphIsDefined) {
+    auto world = std::make_unique<FakeScriptWorld>();
+    FakeScriptWorld *native = world.get();
+    std::size_t publications = 0;
+    ScriptSet scripts(
+        std::move(world),
+        [&](std::string_view, const ObjectRef &) { ++publications; });
+    native->OnDefine = [native] {
+        native->ActiveRoot = native->Identities.back().Root.Id;
+    };
+
+    const ScriptResult opened = scripts.Create(
+        Owner(), 1, this, "Activated during define", 0, {});
+
+    EXPECT_FALSE(opened);
+    EXPECT_EQ(opened.Result.Code, Error::GraphChanged);
+    EXPECT_EQ(opened.Result.Details.Stage, Phase::Creation);
+    EXPECT_EQ(publications, 0u);
+    EXPECT_EQ(native->ClosedBodies, std::vector<ScriptBodyId>{100});
+    EXPECT_EQ(native->Destroyed, std::vector<std::uint64_t>{10});
+    EXPECT_EQ(native->Events,
+              (std::vector<std::string>{"create", "define", "read",
+                                        "close-body", "destroy"}));
+}
+
 TEST(BehaviorScript, ClosesItsInitialGraphBeforeDestroyingTheRoot) {
     auto world = std::make_unique<FakeScriptWorld>();
     FakeScriptWorld *native = world.get();

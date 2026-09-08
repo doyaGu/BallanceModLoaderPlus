@@ -355,6 +355,16 @@ ScriptResult Scripts::Create(const SessionOwner &owner,
     status = m_World->Define(owner, identity, std::move(body), scriptBody);
     entry->Body = scriptBody;
     if (status) {
+        bool active = false;
+        status = m_World->Read(identity, active);
+        if (status && active) {
+            status = Failure(
+                Error::GraphChanged,
+                "The new Script became active while its graph was being defined.",
+                Phase::Creation, CKERR_INVALIDOPERATION);
+        }
+    }
+    if (status) {
         try {
             // CloseSession uses this same registry lock. It must either see
             // this Entry or revoke its Session before we admit it.
