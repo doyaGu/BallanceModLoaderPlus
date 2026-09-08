@@ -169,9 +169,9 @@ error, not as a recoverable route failure.
 ## What does not belong in an interface
 
 Do not define an `.imc` interface for something the loader already serves. Its
-runtime state, scene lookups, gameplay data, UI, and speedrun timer are interface
-structs, spelled `BML::Runtime`, `BML::Scene`, `BML::Gameplay`, `BML::UI`, and
-`BML::Speedrun`. Loader events arrive through the mod callbacks. Define an
+runtime state, scene lookups, gameplay data, UI, and speedrun
+timer are interface structs, spelled `BML::Runtime`, `BML::Scene`,
+`BML::Gameplay`, `BML::UI`, and `BML::Speedrun`. Loader events arrive through the mod callbacks. Define an
 interface only for a capability your own mod owns.
 
 ## Performance characteristics
