@@ -182,38 +182,104 @@ bool Lifecycle::Edit(LifecycleAdapter &adapter) {
         return FailConfiguration(std::move(fault), adapter);
     }
 
+    return FinishEdit(adapter, layout, true);
+}
+
+bool Lifecycle::Reconfigure(const LifecyclePlan &plan,
+                            LifecycleAdapter &adapter) {
+    if (m_State != LifecycleState::Ready) {
+        RecordFailure(Fault(
+            LifecycleError::InvalidState,
+            "Behavior lifecycle was reconfigured outside its ready state."));
+        return false;
+    }
+
+    m_State = LifecycleState::Configuring;
+    LifecycleLayout layout;
+    LifecycleFault fault;
+    if (!m_HasIdentity || !adapter.Revalidate(m_Identity, fault)) {
+        SupplyFault(fault, LifecycleError::IdentityChanged,
+                    "Behavior lifecycle identity changed before reconfiguration.");
+        return FailEdit(std::move(fault), adapter, false);
+    }
+    if (!adapter.Reflect(layout, fault)) {
+        SupplyFault(fault, LifecycleError::LayoutFailed,
+                    "Behavior layout could not be reflected before reconfiguration.");
+        return FailEdit(std::move(fault), adapter, false);
+    }
+
+    for (std::size_t stage = 0; stage < plan.SettingStages.size(); ++stage) {
+        if (!plan.SettingStages[stage])
+            continue;
+        if (!adapter.WriteSettingStage(stage, layout, fault)) {
+            SupplyFault(fault, LifecycleError::SettingFailed,
+                        "A Setting stage could not be written.");
+            return FailEdit(std::move(fault), adapter, false);
+        }
+        if (!InvokeConfigured(adapter, LifecycleCallback::SettingsEdited,
+                              m_Identity, layout, fault)) {
+            return FailEdit(std::move(fault), adapter, false);
+        }
+    }
+
+    if (plan.HasParameterTypes) {
+        if (!adapter.ApplyParameterTypes(fault)) {
+            SupplyFault(fault, LifecycleError::BindingFailed,
+                        "Behavior parameter types could not be selected.");
+            return FailEdit(std::move(fault), adapter, false);
+        }
+        if (!adapter.Reflect(layout, fault)) {
+            SupplyFault(fault, LifecycleError::LayoutFailed,
+                        "Behavior layout could not be reflected after parameter types were selected.");
+            return FailEdit(std::move(fault), adapter, false);
+        }
+    }
+
+    return FinishEdit(adapter, layout, false);
+}
+
+bool Lifecycle::FinishEdit(LifecycleAdapter &adapter,
+                           LifecycleLayout &layout,
+                           bool closeOnFailure) {
+    LifecycleFault fault;
     if (!adapter.ApplyBindings(fault)) {
         SupplyFault(fault, LifecycleError::BindingFailed,
                     "Behavior bindings could not be applied.");
-        return FailConfiguration(std::move(fault), adapter);
+        return FailEdit(std::move(fault), adapter, closeOnFailure);
     }
-
-    LifecycleIdentity bindingIdentity;
-    if (!adapter.CaptureIdentity(bindingIdentity, fault)) {
+    if (!adapter.Revalidate(m_Identity, fault)) {
         SupplyFault(fault, LifecycleError::IdentityChanged,
-                    "Configured binding identity could not be captured.");
-        return FailConfiguration(std::move(fault), adapter);
+                    "Behavior identity changed while bindings were applied.");
+        return FailEdit(std::move(fault), adapter, closeOnFailure);
     }
-    m_Identity = std::move(bindingIdentity);
     if (!InvokeConfigured(adapter, LifecycleCallback::Edited, m_Identity,
                           layout, fault)) {
-        return FailConfiguration(std::move(fault), adapter);
+        return FailEdit(std::move(fault), adapter, closeOnFailure);
     }
     if (!adapter.ReconcileBindings(layout, fault)) {
         SupplyFault(fault, LifecycleError::BindingFailed,
                     "Behavior bindings no longer resolve after EDITED.");
-        return FailConfiguration(std::move(fault), adapter);
+        return FailEdit(std::move(fault), adapter, closeOnFailure);
     }
 
     if (CloseRequested()) {
-        RecordFailure(Fault(LifecycleError::Cancelled,
-                             "Behavior lifecycle was closed during configuration."));
-        Drain(adapter);
-        return false;
+        return FailEdit(
+            Fault(LifecycleError::Cancelled,
+                  "Behavior lifecycle was closed during configuration."),
+            adapter, closeOnFailure);
     }
 
     m_State = LifecycleState::Ready;
     return true;
+}
+
+bool Lifecycle::FailEdit(LifecycleFault fault, LifecycleAdapter &adapter,
+                         bool closeOnFailure) {
+    if (closeOnFailure)
+        return FailConfiguration(std::move(fault), adapter);
+    RecordFailure(std::move(fault));
+    m_State = LifecycleState::Ready;
+    return false;
 }
 
 bool Lifecycle::RefreshAfterCallback(LifecycleAdapter &adapter,
@@ -278,6 +344,8 @@ void Lifecycle::RequestClose(bool reset) noexcept {
 bool Lifecycle::Drain(LifecycleAdapter &adapter) {
     if (m_State == LifecycleState::Closed)
         return true;
+    if (m_State == LifecycleState::Closing)
+        return false;
     if (!CloseRequested())
         return false;
 

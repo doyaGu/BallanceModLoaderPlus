@@ -77,12 +77,21 @@ public:
         } else if (callback == LifecycleCallback::SettingsEdited) {
             SettingsSeen.push_back(Setting);
             Setting = NormalizedSetting;
+        } else if (callback == LifecycleCallback::Edited &&
+                   NormalizeBindingOnEdited) {
+            Binding = NormalizedBinding;
         }
         if (ChangeRelationsDuring == callback)
             ++RelationGeneration;
+        if (ChangeMembershipDuring == callback)
+            Identity.ParentContainsBehavior = false;
 
         if (CloseDuring == callback && Coordinator)
             Coordinator->RequestClose(ResetDuringClose);
+        if (DrainDuring == callback && Coordinator) {
+            ++NestedDrainCalls;
+            NestedDrainResult = Coordinator->Drain(*this);
+        }
         if (DestroyDuring == callback)
             Alive = false;
         if (FailCallback == callback &&
@@ -131,6 +140,7 @@ public:
         Events.emplace_back("BIND");
         if (FailAt == "BIND")
             return Fail(fault, "binding failed");
+        Binding = AuthorBinding;
         return true;
     }
 
@@ -165,13 +175,17 @@ public:
 
     Lifecycle *Coordinator = nullptr;
     LifecycleIdentity Identity{{1, 0x1000}, {2, 0x2000}, {3, 0x3000},
-                               {4, 0x4000}};
+                               {4, 0x4000}, true};
     std::uint64_t Generation = 1;
     int AuthorStageZero = 42;
     int LaterSetting = 84;
     int NativeDefault = 15;
     int NormalizedSetting = 77;
     int Setting = 0;
+    int AuthorBinding = 12;
+    int NormalizedBinding = 91;
+    int Binding = 0;
+    bool NormalizeBindingOnEdited = false;
     bool RelationsVisible = false;
     bool Alive = true;
     bool DriftAfterCallback = false;
@@ -186,6 +200,11 @@ public:
     LifecycleCallback DestroyDuring = static_cast<LifecycleCallback>(-1);
     LifecycleCallback ChangeRelationsDuring =
         static_cast<LifecycleCallback>(-1);
+    LifecycleCallback ChangeMembershipDuring =
+        static_cast<LifecycleCallback>(-1);
+    LifecycleCallback DrainDuring = static_cast<LifecycleCallback>(-1);
+    int NestedDrainCalls = 0;
+    bool NestedDrainResult = true;
     std::map<std::size_t, int> Writes;
     std::map<LifecycleCallback, int> Callbacks;
     std::vector<int> SettingsSeen;
@@ -340,6 +359,34 @@ TEST(BehaviorLifecycle, CallbackMayChangeTargetAndParameterSources) {
               adapter.Events.end());
 }
 
+TEST(BehaviorLifecycle, ParentChildMembershipIsProtectedIdentity) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+    adapter.ChangeMembershipDuring = LifecycleCallback::Edited;
+
+    EXPECT_FALSE(lifecycle.Configure({true, {true}}, adapter));
+    EXPECT_EQ(lifecycle.State(), LifecycleState::Closed);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Edited], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Detach], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
+}
+
+TEST(BehaviorLifecycle, ReconfigurationKeepsEditedCallbackNormalization) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+    ASSERT_TRUE(lifecycle.Configure({true, {false}}, adapter));
+
+    adapter.NormalizeBindingOnEdited = true;
+    adapter.Events.clear();
+    ASSERT_TRUE(lifecycle.Reconfigure({true, {true}}, adapter));
+    EXPECT_EQ(lifecycle.State(), LifecycleState::Ready);
+    EXPECT_EQ(adapter.SettingsSeen.back(), adapter.AuthorStageZero);
+    EXPECT_EQ(adapter.Binding, adapter.NormalizedBinding);
+    EXPECT_EQ(std::count(adapter.Events.begin(), adapter.Events.end(), "BIND"),
+              1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Edited], 2);
+}
+
 TEST(BehaviorLifecycle, CallbackFailuresUseExactCompensationLedger) {
     struct Case {
         LifecycleCallback Failure;
@@ -448,6 +495,22 @@ TEST(BehaviorLifecycle, FirstTeardownDiagnosticWinsWhileCleanupContinues) {
     EXPECT_EQ(lifecycle.Failure().Message, "deactivation failed");
     EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
     EXPECT_EQ(adapter.Events.back(), "DESTROY");
+}
+
+TEST(BehaviorLifecycle, TeardownCallbackCannotReenterDrain) {
+    Lifecycle lifecycle;
+    FakeLifecycleAdapter adapter;
+    adapter.Coordinator = &lifecycle;
+    ASSERT_TRUE(lifecycle.Configure({true, {false}}, adapter));
+    adapter.DrainDuring = LifecycleCallback::Detach;
+
+    lifecycle.RequestClose();
+    ASSERT_TRUE(lifecycle.Drain(adapter));
+    EXPECT_EQ(lifecycle.State(), LifecycleState::Closed);
+    EXPECT_EQ(adapter.NestedDrainCalls, 1);
+    EXPECT_FALSE(adapter.NestedDrainResult);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Detach], 1);
+    EXPECT_EQ(adapter.Callbacks[LifecycleCallback::Delete], 1);
 }
 
 } // namespace

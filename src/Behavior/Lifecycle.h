@@ -69,10 +69,12 @@ struct LifecycleIdentity {
     LifecycleObject Prototype;
     LifecycleObject Owner;
     LifecycleObject Parent;
+    bool ParentContainsBehavior = false;
 
     [[nodiscard]] bool operator==(const LifecycleIdentity &other) const noexcept {
         return Behavior == other.Behavior && Prototype == other.Prototype &&
-               Owner == other.Owner && Parent == other.Parent;
+               Owner == other.Owner && Parent == other.Parent &&
+               ParentContainsBehavior == other.ParentContainsBehavior;
     }
 };
 
@@ -132,6 +134,10 @@ public:
     // boundary to establish relations between newly created Blocks first.
     bool Create(const LifecyclePlan &plan, LifecycleAdapter &adapter);
     bool Edit(LifecycleAdapter &adapter);
+    // Applies Setting stages and the resulting parameter edit to an existing
+    // native Block. Failure leaves the Block owned and closeable, but it does
+    // not replay author bindings after EDITED has normalized them.
+    bool Reconfigure(const LifecyclePlan &plan, LifecycleAdapter &adapter);
 
     // RequestClose only closes admission. Native callbacks and graph mutation
     // are performed by Drain at a game-thread safe point.
@@ -160,6 +166,10 @@ private:
                           LifecycleLayout &layout,
                           LifecycleFault &fault,
                           bool *completed = nullptr);
+    bool FinishEdit(LifecycleAdapter &adapter, LifecycleLayout &layout,
+                    bool closeOnFailure);
+    bool FailEdit(LifecycleFault fault, LifecycleAdapter &adapter,
+                  bool closeOnFailure);
     bool FailConfiguration(LifecycleFault fault, LifecycleAdapter &adapter);
     void RecordFailure(LifecycleFault fault) noexcept;
     bool TeardownCallback(LifecycleAdapter &adapter,
