@@ -191,12 +191,16 @@ Type Describe(CKParameterManager *manager, CKGUID type) {
         result.ValueForm = Form::Utf8;
     else if (PlainDerived(manager, type, CKPGUID_2DVECTOR, sizeof(Vx2DVector), *description))
         result.ValueForm = Form::Vec2;
+    // Euler Angles is a distinct Virtools value domain whose registered type
+    // derives from Vector. Match the more specific domain first, including
+    // compatible provider types derived from it.
+    else if (PlainDerived(manager, type, CKPGUID_EULERANGLES,
+                          sizeof(VxVector), *description))
+        result.ValueForm = Form::Euler;
     else if (PlainDerived(manager, type, CKPGUID_VECTOR, sizeof(VxVector), *description))
         result.ValueForm = Form::Vec3;
     else if (PlainDerived(manager, type, CKPGUID_QUATERNION, sizeof(VxQuaternion), *description))
         result.ValueForm = Form::Quaternion;
-    else if (PlainDerived(manager, type, CKPGUID_EULERANGLES, sizeof(float) * 3, *description))
-        result.ValueForm = Form::Euler;
     else if (PlainDerived(manager, type, CKPGUID_RECT, sizeof(VxRect), *description))
         result.ValueForm = Form::Rect;
     else if (PlainDerived(manager, type, CKPGUID_COLOR, sizeof(VxColor), *description))
