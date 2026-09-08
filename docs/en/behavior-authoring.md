@@ -27,6 +27,18 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 | `Patch` | An Edit installed on one exact graph snapshot |
 | `Plan` | An Edit reconciled against selected scripts across worlds |
 
+Choose the entry point by the lifetime of the work:
+
+| Need | Start with | Result |
+| --- | --- | --- |
+| Execute one BB outside a graph | `Session::Use` | `Block`, then `Call`, `Task`, or `Instance` |
+| Inspect or change a graph that exists now | `Session::Inspect` | `Graph`, then an exact `Patch` |
+| Keep a game Script changed across world loads | `Session::Plan` | `Plan` |
+| Create a new top-level Script | `Session::CreateScript` | `Script` |
+| Use a known retail BB with typed options | `Behavior/Blocks/*.hpp` | An ordinary `Block` |
+
+The rest of this guide follows that order: BB execution first, graph reading and creation next, then graph edits and their lifetime.
+
 ## 2. Open a Session
 
 Open a `Session` during Mod initialization:

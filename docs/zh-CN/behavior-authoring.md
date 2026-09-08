@@ -27,6 +27,18 @@ CKBeObject -> Script -> Graph snapshot -> Edit -> Patch
 | `Patch` | 应用于一个确定 graph snapshot 的 Edit |
 | `Plan` | 跨 world 按 script selector 反复 reconcile 的 Edit |
 
+根据工作的生命期选入口：
+
+| 需求 | 入口 | 结果 |
+| --- | --- | --- |
+| 在 graph 外执行一个 BB | `Session::Use` | `Block`，再得到 `Call`、`Task` 或 `Instance` |
+| 读取或修改当前已存在的 graph | `Session::Inspect` | `Graph`，再得到 exact `Patch` |
+| 让游戏 Script 的修改跨 world 保持 | `Session::Plan` | `Plan` |
+| 从零创建顶层 Script | `Session::CreateScript` | `Script` |
+| 用强类型 Options 配置已知 retail BB | `Behavior/Blocks/*.hpp` | 普通 `Block` |
+
+下文按这个顺序展开：先讲 BB 执行，再讲 graph 读取与创建，最后讲 graph edit 及其生命期。
+
 ## 2. 打开 Session
 
 在 Mod 初始化时打开一个 `Session`：
