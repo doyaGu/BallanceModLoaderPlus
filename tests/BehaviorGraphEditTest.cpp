@@ -993,8 +993,9 @@ TEST(BehaviorGraphEdit, KeepsTypedNullInAPlan) {
     CheckedEdit checked;
     ASSERT_TRUE(edit.Validate(compiler.Base, checked));
     ASSERT_EQ(checked.Binds.size(), 1u);
-    EXPECT_EQ(checked.Binds[0].Literal.Kind(), ValueKind::Null);
-    EXPECT_TRUE(checked.Binds[0].Literal.IsNull());
+    EXPECT_EQ(checked.Binds[0].Value.Kind(), Parameter::BindingKind::Value);
+    EXPECT_EQ(checked.Binds[0].Value.Literal().Kind(), ValueKind::Null);
+    EXPECT_TRUE(checked.Binds[0].Value.Literal().IsNull());
 }
 
 TEST(BehaviorGraphEdit, CarriesASettingWithTheBlockThatDeclaresIt) {
@@ -1360,6 +1361,42 @@ TEST(BehaviorGraphEdit, PublishesNestedPublicPortsWithTheParentNode) {
         nestedCompiler.Base, bodyChecked);
     ASSERT_TRUE(bodyValidation) << bodyValidation.Message;
     ASSERT_EQ(bodyChecked.Flows.size(), 1u);
+}
+
+TEST(BehaviorGraphEdit, KeepsNestedGraphLocalsOutOfTheParentInterface) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node nestedNode = plan.RequireOne(
+        NodePattern{"Wait Message", CKGUID(0x1111, 1)});
+    GraphEdit &nested = plan.Enter(nestedNode, 7);
+    nested.AppendLocal(nested.Graph(), "Scratch", CKPGUID_INT);
+
+    Edit parent;
+    const Status parentStatus = plan.Compile(
+        {"mod", "nested-local"}, compiler.Base.Root, compiler, parent);
+    ASSERT_TRUE(parentStatus) << parentStatus.Message;
+    CheckedEdit parentChecked;
+    const Status parentValidation = parent.Validate(
+        compiler.Base, parentChecked);
+    ASSERT_TRUE(parentValidation) << parentValidation.Message;
+
+    GraphModel nestedModel;
+    nestedModel.Root = Ref(301);
+    nestedModel.Fingerprint = 902;
+    nestedModel.Nodes = {
+        NodeOf(301, nestedModel.Root, 0, CKGUID(), "Nested",
+               {In(0, "Start"), Out(0, "Done")}),
+    };
+    FakeCompiler nestedCompiler(std::move(nestedModel));
+    Edit body;
+    const Status bodyStatus = nested.Compile(
+        {"mod", "nested-local/7"}, nestedCompiler.Base.Root,
+        nestedCompiler, body, nullptr, true);
+    ASSERT_TRUE(bodyStatus) << bodyStatus.Message;
+    CheckedEdit bodyChecked;
+    const Status bodyValidation = body.Validate(
+        nestedCompiler.Base, bodyChecked);
+    ASSERT_TRUE(bodyValidation) << bodyValidation.Message;
 }
 
 TEST(BehaviorGraphEdit, ComparesAuthoredDefinitionsAcrossOwnedCopies) {

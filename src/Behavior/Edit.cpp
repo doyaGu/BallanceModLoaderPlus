@@ -111,8 +111,16 @@ Status Resolve(const Layout &layout, const Slot &selector, SlotInfo &out) {
     if ((selector.RequireOnly ||
          (selector.UsesName() && selector.RequireUnique)) &&
         matches.size() != 1) {
+        std::string message = "The Edit port";
+        if (selector.UsesName())
+            message += " '" + selector.Name + "'";
+        message += " matched " + std::to_string(matches.size()) +
+            " ports in the candidate Layout";
+        if (!layout.PrototypeName.empty())
+            message += " for '" + layout.PrototypeName + "'";
+        message += ".";
         return Failure(Error::AmbiguousSlot,
-                       "The Edit port selector is ambiguous in the candidate Layout.",
+                       std::move(message),
                        &selector);
     }
     const int occurrence = selector.UsesName() ? selector.Occurrence : 0;
@@ -386,11 +394,11 @@ void Edit::Flow(Port source, Port sink, int delay, Cycle cycle) {
         {std::move(source), std::move(sink), delay, cycle, NextOrdinal()});
 }
 
-void Edit::Bind(Port target, Value value) {
+void Edit::Bind(Port target, Parameter::Binding value) {
     EditBind bind;
     bind.Target = std::move(target);
     bind.Kind = BindKind::Literal;
-    bind.Literal = std::move(value);
+    bind.Value = std::move(value);
     bind.Ordinal = NextOrdinal();
     m_Binds.push_back(std::move(bind));
 }
@@ -833,7 +841,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
                     : "Bind requires a Pin or Target destination.");
         }
         checked.Kind = bind.Kind;
-        checked.Literal = bind.Literal;
+        checked.Value = bind.Value;
         checked.Ordinal = bind.Ordinal;
         if (bind.Kind != BindKind::Literal) {
             status = resolve(bind.Source, checked.Source);

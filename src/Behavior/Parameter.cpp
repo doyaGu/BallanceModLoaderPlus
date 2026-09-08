@@ -147,10 +147,8 @@ bool Derived(CKParameterManager *manager, CKGUID type, CKGUID base) noexcept {
 
 bool PlainDerived(CKParameterManager *manager, CKGUID type, CKGUID base,
                   int size, const CKParameterTypeDesc &description) noexcept {
-    if (type == base)
-        return true;
     return Derived(manager, type, base) && description.DefaultSize == size &&
-           !HasProviderRepresentation(description);
+           !OwnsStoredValue(description);
 }
 
 } // namespace
@@ -175,11 +173,13 @@ Type Describe(CKParameterManager *manager, CKGUID type) {
 
     if (Derived(manager, type, CKPGUID_OBJECT))
         result.ValueForm = Form::Object;
-    // Message is a manager-named scalar, not a provider-owned object. Virtools
-    // registers CKPGUID_MESSAGE as one CKDWORD and copies it with the ordinary
-    // dword copier; its StringFunction only maps that value to a message name.
-    else if (type == CKPGUID_MESSAGE &&
-             description->DefaultSize == sizeof(CKMessageType))
+    // These manager-defined domains store one integer. Their callbacks name
+    // or initialise that integer; only a registered destructor would make
+    // caller-supplied bytes unsafe.
+    else if ((type == CKPGUID_MESSAGE || type == CKPGUID_ATTRIBUTE ||
+              type == CKPGUID_CLASSID || type == CKPGUID_PARAMETERTYPE) &&
+             description->DefaultSize == sizeof(std::int32_t) &&
+             !OwnsStoredValue(*description))
         result.ValueForm = Form::Int32;
     else if (PlainDerived(manager, type, CKPGUID_BOOL, sizeof(CKBOOL), *description))
         result.ValueForm = Form::Bool;

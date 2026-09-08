@@ -101,7 +101,7 @@ public:
 
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
-    void Bind(Port target, Value value);
+    void Bind(Port target, Parameter::Binding value);
     void Bind(Port target, Port source);
     void Share(Port target, Port source);
     void Push(Port source, Port destination);

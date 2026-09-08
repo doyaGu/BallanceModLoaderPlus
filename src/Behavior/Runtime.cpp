@@ -1210,7 +1210,8 @@ Status Runtime::ValidateTarget(CKBeObject *owner, const BlockSpec &spec) const {
     if (!status)
         return status;
 
-    if (owner && !CKIsChildClassOf(owner, declared.CompatibleClass)) {
+    if (spec.m_TargetMode == TargetMode::Owner && owner &&
+        !CKIsChildClassOf(owner, declared.CompatibleClass)) {
         return Failure(Error::OwnerInvalid,
                        "Behavior owner is incompatible with the Prototype.",
                        CKERR_INVALIDOBJECT, CKBR_OWNERERROR,

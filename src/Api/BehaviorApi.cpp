@@ -3281,12 +3281,7 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
         Parameter::Binding binding;
         if (!ReadValue(step.Value, context, binding, status))
             return status;
-        if (binding.Kind() != Parameter::BindingKind::Value) {
-            return {Error::WorldBoundValue, CKERR_INVALIDPARAMETER,
-                    CKBR_PARAMETERERROR,
-                    "A symbolic Behavior edit cannot bind a live object."};
-        }
-        edit.Bind(sink, binding.Literal());
+        edit.Bind(sink, std::move(binding));
         break;
     }
     case BML_BEHAVIOR_EDIT_BIND_PORT:

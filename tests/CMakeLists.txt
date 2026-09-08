@@ -406,6 +406,7 @@ add_bml_test(BehaviorPlanAllocationTest
 add_bml_test(BehaviorEditTest
         SOURCES
         BehaviorEditTest.cpp
+        BehaviorBlockTestStubs.cpp
         ${BML_SOURCE_DIR}/Behavior/Edit.cpp
         ${BML_SOURCE_DIR}/Behavior/Execution.cpp
         ${BML_SOURCE_DIR}/Behavior/FrameStore.cpp

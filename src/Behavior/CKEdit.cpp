@@ -1723,7 +1723,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
             status = selectorType(bind.Source);
         if (status) {
             const CKGUID source = bind.Kind == BindKind::Literal
-                ? bind.Literal.Type() : bind.Source.Slot.Type;
+                ? bind.Value.Type() : bind.Source.Slot.Type;
             status = compatible(bind.Target.Slot.Type, source, "Bind");
         }
         if (!status)
@@ -1889,10 +1889,75 @@ Status CKEdit::ApplyNow(const Edit &edit,
         }
     }
 
+    std::unordered_map<std::uint32_t, BlockSpec> addedSpecs;
+    for (const Edit::EditNode &node : edit.m_Nodes) {
+        if (!node.Block)
+            continue;
+        if (!addedSpecs.emplace(node.Handle.Value, *node.Block).second) {
+            return fail(Failure(
+                Error::InvalidState,
+                "An added Node is declared more than once."));
+        }
+    }
+
+    // A targetable BB must own its Target parameter before CK2 admits it to a
+    // graph whose owner has another class. Other graph data relations belong
+    // to the final EDITED stage, but the Target is part of native placement.
+    for (const CheckedBind &bind : checked.Binds) {
+        if (bind.Target.Slot.Kind != SlotKind::Target)
+            continue;
+        const Edit::EditNode *targetNode = edit.Find(bind.Target.Owner);
+        if (!targetNode || !targetNode->Block)
+            continue;
+        const auto found = addedSpecs.find(bind.Target.Owner.Value);
+        if (found == addedSpecs.end()) {
+            return fail(Failure(
+                Error::InvalidState,
+                "An added Block lost its Target configuration."));
+        }
+        BlockSpec &spec = found->second;
+        const CKGUID type = bind.Target.Slot.Type;
+        if (bind.Kind == BindKind::Literal) {
+            spec.m_TargetMode =
+                bind.Value.Kind() == Parameter::BindingKind::Value &&
+                bind.Value.Literal().IsNull()
+                ? TargetMode::ExplicitNull : TargetMode::Explicit;
+            spec.m_TargetType = type;
+            spec.m_TargetValue = bind.Value;
+            continue;
+        }
+
+        CKObject *sourceObject = nullptr;
+        status = parameterBeforeApply(bind.Source, sourceObject);
+        if (!status)
+            return fail(std::move(status));
+        if (!sourceObject) {
+            return fail(Failure(
+                Error::InvalidState,
+                "An added Block Target must use a parameter that exists before the Block is placed."));
+        }
+        if (bind.Kind == BindKind::Direct) {
+            CKParameter *source = CKParameter::Cast(sourceObject);
+            if (!source) {
+                return fail(Failure(
+                    Error::TypeMismatch,
+                    "A direct Target source is not a stored parameter."));
+            }
+            spec.TargetSource(type, source);
+        } else {
+            CKParameterIn *source = CKParameterIn::Cast(sourceObject);
+            if (!source) {
+                return fail(Failure(
+                    Error::TypeMismatch,
+                    "A shared Target source is not a Pin."));
+            }
+            spec.TargetShared(type, source);
+        }
+    }
+
     // Materialize authored Nodes in declaration order. A Block follows the
     // native BB lifecycle; a plain graph has no BB callback and is owned
     // directly by this Patch journal.
-    std::unordered_map<std::uint32_t, BlockSpec> addedSpecs;
     for (const Edit::EditNode &node : edit.m_Nodes) {
         if (!node.Authored())
             continue;
@@ -1929,11 +1994,12 @@ Status CKEdit::ApplyNow(const Edit &edit,
             graph = graphFor();
             continue;
         }
-        auto [spec, inserted] = addedSpecs.emplace(
-            node.Handle.Value, *node.Block);
-        if (!inserted)
-            return fail(Failure(Error::InvalidState,
-                                "An added Node is declared more than once."));
+        const auto spec = addedSpecs.find(node.Handle.Value);
+        if (spec == addedSpecs.end()) {
+            return fail(Failure(
+                Error::InvalidState,
+                "An added Block lost its configuration."));
+        }
         AttachResult added = m_Runtime.CreateInGraph(graph, spec->second);
         if (!added || !added.Block)
             return fail(added.Detail);
@@ -2651,14 +2717,16 @@ Status CKEdit::ApplyNow(const Edit &edit,
 
             if (bind.Kind == BindKind::Literal) {
                 if (target.Kind == SlotKind::InputParameter) {
-                    spec.Input(std::move(target), bind.Literal);
+                    spec.Input(std::move(target), bind.Value);
                 } else if (target.Kind == SlotKind::Local) {
-                    spec.Local(std::move(target), bind.Literal);
+                    spec.Local(std::move(target), bind.Value);
                 } else if (target.Kind == SlotKind::Target) {
-                    spec.m_TargetMode = bind.Literal.IsNull()
+                    spec.m_TargetMode =
+                        bind.Value.Kind() == Parameter::BindingKind::Value &&
+                        bind.Value.Literal().IsNull()
                         ? TargetMode::ExplicitNull : TargetMode::Explicit;
                     spec.m_TargetType = bind.Target.Slot.Type;
-                    spec.m_TargetValue = Parameter::Binding(bind.Literal);
+                    spec.m_TargetValue = bind.Value;
                 } else {
                     return fail(Failure(
                         Error::TypeMismatch,
@@ -2716,7 +2784,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 return fail(std::move(status));
             change.Before = Capture(before);
             patch->Values.push_back(std::move(change));
-            status = Parameter::Write(m_Context, stored, bind.Literal);
+            status = Parameter::Write(m_Context, stored, bind.Value);
             if (!status)
                 return fail(std::move(status));
             CKParameterLocal *expected = nullptr;
@@ -2779,7 +2847,7 @@ Status CKEdit::ApplyNow(const Edit &edit,
                                  "Virtools failed to create a Bind value.",
                                  CKERR_OUTOFMEMORY);
             if (status)
-                status = Parameter::Write(m_Context, literal, bind.Literal);
+                status = Parameter::Write(m_Context, literal, bind.Value);
             if (status)
                 error = target->SetDirectSource(literal);
             if (!status || error != CK_OK) {

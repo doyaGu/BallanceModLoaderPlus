@@ -95,6 +95,34 @@ TEST(BehaviorEdit, ResolvesAdditiveControlAndDataRelationsTogether) {
     EXPECT_EQ(checked.Taps.size(), 1u);
 }
 
+TEST(BehaviorEdit, UsesConfiguredParameterTypesOnAnAuthoredBlock) {
+    Edit edit = MakeEdit();
+    BlockSpec block(CKGUID(1, 2));
+    block.PinType(Slot::At(SlotKind::InputParameter, 0), CKPGUID_BOOL)
+        .PoutType(Slot::At(SlotKind::OutputParameter, 0), CKPGUID_BOOL);
+    const Node identity = edit.Add(std::move(block), Shape());
+    edit.Bind(identity.Pin(0), Value::From(CKPGUID_BOOL, true));
+
+    CheckedEdit checked;
+    const Status status = edit.Validate(Base(), checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Binds.size(), 1u);
+    EXPECT_EQ(checked.Binds[0].Target.Slot.Type, CKPGUID_BOOL);
+}
+
+TEST(BehaviorEdit, KeepsOneTypePerVariableParameterSelector) {
+    BlockSpec block(CKGUID(1, 2));
+    block.PinType(Slot::At(SlotKind::InputParameter, 0), CKPGUID_BOOL)
+        .PinType(Slot::At(SlotKind::InputParameter, 0), CKPGUID_FLOAT)
+        .PoutType(Slot::Named(SlotKind::OutputParameter, "Result"),
+                  CKPGUID_BOOL);
+
+    ASSERT_EQ(block.PinTypes().size(), 1u);
+    EXPECT_EQ(block.PinTypes().front().Type, CKPGUID_FLOAT);
+    ASSERT_EQ(block.PoutTypes().size(), 1u);
+    EXPECT_EQ(block.PoutTypes().front().Target.Name, "Result");
+}
+
 TEST(BehaviorEdit, RequiresEveryDeltaLinkInANewSameFrameCycle) {
     Edit rejected = MakeEdit();
     const Node a = rejected.Use(Native(101), Shape());

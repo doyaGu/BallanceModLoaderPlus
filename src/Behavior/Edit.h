@@ -103,7 +103,7 @@ struct EditFlow {
 struct EditBind {
     Port Target;
     BindKind Kind = BindKind::Literal;
-    Value Literal;
+    Parameter::Binding Value;
     Port Source;
     std::uint32_t Ordinal = 0;
 
@@ -206,7 +206,7 @@ struct CheckedFlow {
 struct CheckedBind {
     ResolvedPort Target;
     BindKind Kind = BindKind::Literal;
-    Value Literal;
+    Parameter::Binding Value;
     ResolvedPort Source;
     std::uint32_t Ordinal = 0;
 };
@@ -283,7 +283,7 @@ public:
 
     void Flow(Port source, Port sink, int delay = 0,
               Cycle cycle = Cycle::Reject);
-    void Bind(Port target, Value value);
+    void Bind(Port target, Parameter::Binding value);
     void Bind(Port target, Port source);
     void Share(Port target, Port source);
     void Push(Port source, Port destination);

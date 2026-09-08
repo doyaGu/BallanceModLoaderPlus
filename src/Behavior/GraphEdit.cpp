@@ -276,11 +276,11 @@ void GraphEdit::Flow(Port source, Port sink, int delay, Cycle cycle) {
         std::move(source), std::move(sink), delay, cycle, m_NextAction++});
 }
 
-void GraphEdit::Bind(Port target, Value value) {
+void GraphEdit::Bind(Port target, Parameter::Binding value) {
     EditBind bind;
     bind.Target = std::move(target);
     bind.Kind = BindKind::Literal;
-    bind.Literal = std::move(value);
+    bind.Value = std::move(value);
     bind.Ordinal = m_NextAction++;
     m_Actions.emplace_back(std::move(bind));
 }
@@ -659,8 +659,9 @@ Status GraphEdit::Validate() const {
                                    "A Bind names an unknown Node.");
                 }
                 if (item.Kind == BindKind::Literal &&
-                    item.Literal.IsNull() &&
-                    !item.Literal.Type().IsValid()) {
+                    item.Value.Kind() == Parameter::BindingKind::Value &&
+                    item.Value.Literal().IsNull() &&
+                    !item.Value.Type().IsValid()) {
                     return Failure(
                         Error::TypeMismatch,
                         "A null Value requires a Virtools type GUID.");
@@ -758,6 +759,12 @@ bool GraphEdit::UsesIdentity() const noexcept {
         std::any_of(m_Links.begin(), m_Links.end(),
                     [](const EditLink &link) {
                         return !link.Anchor.IsNull();
+                    }) ||
+        std::any_of(m_Actions.begin(), m_Actions.end(),
+                    [](const Action &action) {
+                        const auto *bind = std::get_if<EditBind>(&action);
+                        return bind && bind->Kind == BindKind::Literal &&
+                            bind->Value.Kind() != Parameter::BindingKind::Value;
                     }) ||
         std::any_of(m_Nested.begin(), m_Nested.end(),
                     [](const Nested &nested) {
@@ -1182,18 +1189,18 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     };
     std::vector<PublishedPort> publishedPorts;
 
-    // A graph-backed Behavior exposes the same public interface in two
-    // places: as the nested Graph's Entry/Exit/parameter interface, and as
-    // ports on the Node owned by its parent Graph. The parent scope creates
-    // those CK objects before the nested scope is compiled. Rebind this
-    // scope's symbolic appended-port handles to the newly visible ports
-    // instead of appending duplicates.
+    // A graph-backed Behavior exposes its public Ins, Outs, Pins, and Pouts
+    // both inside the graph and on the Node owned by its parent Graph. The
+    // parent scope creates those CK objects before the nested scope is
+    // compiled. Locals remain private to the nested Graph and are created by
+    // this scope.
     if (rootInterfaceExists) {
         using InterfaceName = std::pair<SlotKind, std::string>;
         std::map<InterfaceName, int> declared;
         for (const Action &action : m_Actions) {
             const auto *item = std::get_if<EditInterface>(&action);
-            if (item && item->Owner == Graph())
+            if (item && item->Owner == Graph() &&
+                item->Kind != SlotKind::Local)
                 ++declared[{item->Kind, item->Name}];
         }
 
@@ -1216,7 +1223,8 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
 
         for (const Action &action : m_Actions) {
             const auto *item = std::get_if<EditInterface>(&action);
-            if (!item || item->Owner != Graph())
+            if (!item || item->Owner != Graph() ||
+                item->Kind == SlotKind::Local)
                 continue;
             const InterfaceName name{item->Kind, item->Name};
             const int occurrence = next.at(name)++;
@@ -1232,7 +1240,8 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
     // Public ports declared by an immediate nested scope are CK objects on
     // the graph-backed Node in this scope. Create them in this parent Edit so
     // later parent actions can address them and so rollback removes internal
-    // child links before removing the public interface.
+    // child links before removing the public interface. A Local belongs only
+    // to the nested Graph and must not be projected into its parent scope.
     for (const Nested &nested : m_Nested) {
         if (!nested.Body)
             return Failure(Error::InvalidState,
@@ -1244,7 +1253,8 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
         const auto model = nodes.find(nested.Parent.Value);
         for (const Action &action : nested.Body->m_Actions) {
             const auto *item = std::get_if<EditInterface>(&action);
-            if (!item || item->Owner != nested.Body->Graph())
+            if (!item || item->Owner != nested.Body->Graph() ||
+                item->Kind == SlotKind::Local)
                 continue;
             Port live;
             switch (item->Kind) {
@@ -1451,7 +1461,7 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                     return current;
                 if (item.Kind == BindKind::Literal) {
                     for (Port target : targets)
-                        resolved.Bind(std::move(target), item.Literal);
+                        resolved.Bind(std::move(target), item.Value);
                 } else {
                     std::vector<Port> sources;
                     current = ports(item.Source, sources);
@@ -1543,7 +1553,8 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                      Slot::At(endpoint.Kind, endpoint.Index)},
                     item.Ordering);
             } else if constexpr (std::is_same_v<T, EditInterface>) {
-                if (rootInterfaceExists && item.Owner == Graph())
+                if (rootInterfaceExists && item.Owner == Graph() &&
+                    item.Kind != SlotKind::Local)
                     return {};
                 const auto owner = liveNodes.find(item.Owner.Value);
                 if (owner == liveNodes.end())
