@@ -27,6 +27,7 @@
 
 namespace {
 
+using BML::Behavior::Error;
 using BML::Behavior::Hook;
 using BML::Behavior::HookEvent;
 using BML::Behavior::HookResult;
@@ -69,6 +70,42 @@ int RunActivePeer(const CKBehaviorContext &context) {
     behavior->ActivateOutput(0);
     return CKBR_ACTIVATENEXTFRAME;
 }
+
+bool SameBehaviorContext(const CKBehaviorContext &left,
+                         const CKBehaviorContext &right) {
+    return left.Behavior == right.Behavior &&
+        left.DeltaTime == right.DeltaTime &&
+        left.Context == right.Context &&
+        left.CurrentLevel == right.CurrentLevel &&
+        left.CurrentScene == right.CurrentScene &&
+        left.PreviousScene == right.PreviousScene &&
+        left.CurrentRenderContext == right.CurrentRenderContext &&
+        left.ParameterManager == right.ParameterManager &&
+        left.MessageManager == right.MessageManager &&
+        left.AttributeManager == right.AttributeManager &&
+        left.TimeManager == right.TimeManager &&
+        left.CallbackMessage == right.CallbackMessage &&
+        left.CallbackArg == right.CallbackArg;
+}
+
+class GraphChildOrderAccess : public CKBehavior {
+public:
+    static bool Swap(CKBehavior *graph, CKBehavior *left,
+                     CKBehavior *right) {
+        BehaviorGraphData *data = graph
+            ? graph->*(&GraphChildOrderAccess::m_GraphData) : nullptr;
+        if (!data || !left || !right || left == right)
+            return false;
+        const int leftIndex = data->m_SubBehaviors.GetPosition(left);
+        const int rightIndex = data->m_SubBehaviors.GetPosition(right);
+        if (leftIndex < 0 || rightIndex < 0)
+            return false;
+        CKObject *value = data->m_SubBehaviors[leftIndex];
+        data->m_SubBehaviors[leftIndex] = data->m_SubBehaviors[rightIndex];
+        data->m_SubBehaviors[rightIndex] = value;
+        return true;
+    }
+};
 
 // What the two author callbacks record. The probe holds one reference and each
 // callback holds another, so the count returning to one proves the Loader
@@ -181,7 +218,7 @@ public:
         if (m_ReplacementOriginal)
             (void) m_ReplacementOriginal->Close();
         DestroyGraph();
-        m_Session.Close();
+        m_Session.Reset();
     }
 
 private:
@@ -545,7 +582,7 @@ private:
             return false;
         m_Graph->ActivateInput(0, FALSE);
         m_Graph->ActivateOutput(0, FALSE);
-        const auto activation = m_AuthoredScript.Activate(false);
+        const auto activation = m_AuthoredScript.Activate();
         if (!activation || !activation->RequestedActive)
             return false;
         m_Graph->ActivateInput(0, TRUE);
@@ -595,11 +632,22 @@ private:
             [&](const BML::Behavior::Link &link) {
                 return link.Id() == static_cast<std::uint32_t>(m_AnchorId);
             });
+        bool denseLogicalIndices = true;
+        int logicalIndex = 0;
+        for (const BML::Behavior::Node &node : logical->Nodes()) {
+            if (node.Id() == logical->Root().Id())
+                continue;
+            if (node.Index() != logicalIndex++) {
+                denseLogicalIndices = false;
+                break;
+            }
+        }
         return logical->Mode() == BML::Behavior::View::Logical &&
             live->Mode() == BML::Behavior::View::Live &&
             // The explicit fixture remains author-visible. Tap and the
             // exit-path After HookBlock do not add Logical nodes or Links.
             logical->Nodes().size() == 4 && logical->Links().size() == 3 &&
+            denseLogicalIndices &&
             live->Nodes().size() == 6 && live->Links().size() == 6 &&
             logicalAnchor != logical->Links().end() &&
             liveAnchor != live->Links().end() &&
@@ -673,7 +721,7 @@ private:
         const auto pending = m_Plan.Info();
         m_SubmitPassed = pending && pending->State == PlanState::Reconciling &&
             pending->Matches == 0 && pending->Installations == 0 &&
-            !pending->Installed();
+            !pending->Active();
         if (!m_SubmitPassed) {
             Finish(false, "submit-state");
             return;
@@ -684,7 +732,7 @@ private:
 
     void WaitActive() {
         const auto info = m_Plan.Info();
-        if (info && info->Installed() && info->Matches == 1 &&
+        if (info && info->Active() && info->Matches == 1 &&
             info->Installations == 1 && info->World != 0) {
             if (!Installed()) {
                 Finish(false, "install-shape");
@@ -811,7 +859,7 @@ private:
 
     void WaitSelfActive() {
         const auto info = m_SelfPlan.Info();
-        if (info && info->Installed() && info->Matches == 1 &&
+        if (info && info->Active() && info->Matches == 1 &&
             info->Installations == 1) {
             if (!RunGraph()) {
                 Finish(false, "script-reset");
@@ -1038,7 +1086,7 @@ private:
 
     void WaitSessionActive() {
         const auto info = m_RetirementPlan.Info();
-        if (!info || !info->Installed()) {
+        if (!info || !info->Active()) {
             if (m_Frame > m_WaitUntil)
                 Finish(false, "session-close-install");
             return;
@@ -1085,7 +1133,7 @@ private:
             m_RetirementPlan = {};
             m_RetirementWaitingPlan = {};
             m_RetirementPatch = {};
-            m_RetirementSession.Close();
+            m_RetirementSession.Reset();
             m_State = State::AttachBlock;
             return;
         }
@@ -1685,11 +1733,69 @@ private:
             Finish(false, "identity-views");
             return;
         }
+        if (!EditedContext(*installed, *installedBlock)) {
+            Finish(false, "edited-context");
+            return;
+        }
         if (!RunGraph()) {
             Finish(false, "script-restart");
             return;
         }
         m_State = State::WaitIdentityHook;
+    }
+
+    bool EditedContext(const BML::Behavior::Graph &graph,
+                       const BML::Behavior::Node &block) {
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        CKBehaviorManager *manager = context
+            ? context->GetBehaviorManager() : nullptr;
+        if (!context || !manager)
+            return false;
+
+        BML::Behavior::Edit edit;
+        const auto existing = edit.Root().Use(block);
+        edit.Root().Bind(existing.Local("Scratch"), 23);
+
+        const CKBehaviorContext beforeApply = context->m_BehaviorContext;
+        CKBehavior *const currentBeforeApply = manager->m_CurrentBehavior;
+        auto applied = graph.Apply("player-edited-context", edit);
+        const bool applyContextRestored =
+            SameBehaviorContext(beforeApply, context->m_BehaviorContext) &&
+            manager->m_CurrentBehavior == currentBeforeApply;
+        if (!applied || !applyContextRestored) {
+            GetLogger()->Error(
+                "Behavior EDITED context apply failed: code=%d restored=%s",
+                applied.Code(), applyContextRestored ? "true" : "false");
+            return false;
+        }
+
+        BML::Behavior::Patch patch = applied.Take();
+        const auto changed = graph.Read(block.Local("Scratch"));
+        const bool valueChanged = changed &&
+            std::holds_alternative<std::int32_t>(changed->Data) &&
+            std::get<std::int32_t>(changed->Data) == 23;
+
+        const CKBehaviorContext beforeClose = context->m_BehaviorContext;
+        CKBehavior *const currentBeforeClose = manager->m_CurrentBehavior;
+        const auto closed = patch.Close();
+        const bool closeContextRestored =
+            SameBehaviorContext(beforeClose, context->m_BehaviorContext) &&
+            manager->m_CurrentBehavior == currentBeforeClose;
+        const auto restored = graph.Read(block.Local("Scratch"));
+        const bool valueRestored = restored &&
+            std::holds_alternative<std::int32_t>(restored->Data) &&
+            std::get<std::int32_t>(restored->Data) == 17;
+
+        GetLogger()->Info(
+            "Behavior EDITED context: status=%s apply=%s close=%s value=%s",
+            applyContextRestored && closeContextRestored && valueChanged &&
+                    valueRestored && closed && !patch
+                ? "pass" : "fail",
+            applyContextRestored ? "restored" : "changed",
+            closeContextRestored ? "restored" : "changed",
+            valueChanged && valueRestored ? "restored" : "wrong");
+        return applyContextRestored && closeContextRestored && valueChanged &&
+            valueRestored && closed && !patch;
     }
 
     bool IdentityViews(BML_ObjectRef block) {
@@ -1936,6 +2042,7 @@ private:
             ? m_ReplacementInstalledNode->GetOutputParameter(0) : nullptr;
         const bool installedCorrectly = m_ReplacementInstalledNode &&
             !HasNode(m_Graph, m_ReplacementOriginalNode) &&
+            m_ReplacementOriginalNode->GetParent() == m_Graph &&
             m_ReplacementOriginalNode->GetOwner() == m_Graph->GetOwner() &&
             m_ReplacementInstalledNode->GetParent() == m_Graph &&
             m_ReplacementInstalledNode->GetOwner() == m_Graph->GetOwner() &&
@@ -1998,6 +2105,29 @@ private:
     void CloseReplacement() {
         const auto closed = m_ReplacementPatch.Close();
         if (!closed) {
+            CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+            CKBehavior *original = context && m_ReplacementOriginalId
+                ? CKBehavior::Cast(context->GetObject(
+                      m_ReplacementOriginalId))
+                : nullptr;
+            CKBehavior *installed = context && m_ReplacementInstalledId
+                ? CKBehavior::Cast(context->GetObject(
+                      m_ReplacementInstalledId))
+                : nullptr;
+            GetLogger()->Error(
+                "Behavior replacement close failed: code=%d error=%u detail=%s original=%s original_in_graph=%s original_parent=%s installed=%s installed_in_graph=%s installed_parent=%s",
+                closed.Code(),
+                static_cast<unsigned>(closed.GetStatus().Error),
+                closed.GetStatus().Message.c_str(),
+                original ? "live" : "missing",
+                HasNode(m_Graph, original) ? "true" : "false",
+                original && original->GetParent() == m_Graph
+                    ? "graph"
+                    : original && original->GetParent() ? "other" : "none",
+                installed ? "live" : "missing",
+                HasNode(m_Graph, installed) ? "true" : "false",
+                installed && installed->GetParent() == m_Graph
+                    ? "true" : "false");
             Finish(false, "replacement-close-request");
             return;
         }
@@ -2269,6 +2399,7 @@ private:
             context->GetObject(m_RemovalAnchorId) == m_Anchor &&
             context->GetObject(m_RemovalPeerLinkId) == m_RemovalPeerLink &&
             !HasNode(m_Graph, m_Source) &&
+            m_Source->GetParent() == m_Graph &&
             m_Source->GetOwner() == m_Graph->GetOwner() &&
             !HasLink(m_Graph, m_Entry) && !HasLink(m_Graph, m_Anchor) &&
             !HasLink(m_Graph, m_RemovalPeerLink) &&
@@ -2324,7 +2455,7 @@ private:
         m_Graph->Activate(TRUE, FALSE);
         m_RemovalSourceRunsBefore = g_RemovalSourceRuns;
         m_RemovalPeerRunsBefore = g_RemovalPeerRuns;
-        const auto activation = m_AuthoredScript.Activate(false);
+        const auto activation = m_AuthoredScript.Activate();
         if (!activation || !activation->RequestedActive) {
             Finish(false, "removal-isolation-activation");
             return;
@@ -2501,6 +2632,8 @@ private:
         BML::Behavior::Edit shape;
         (void) shape.Root().AppendIn("Start");
         (void) shape.Root().AppendOut("Done");
+        (void) shape.Root().Add(m_Session.Use(
+            CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
         auto created = m_Session.CreateScript(
             m_Owner, "__BML_Composed_Patch", shape);
         if (!created) {
@@ -2521,6 +2654,211 @@ private:
                 "Composed Patch graph inspection failed: first=%s second=%s detail=%s",
                 first ? "true" : "false", second ? "true" : "false",
                 failure.Message.c_str());
+            return false;
+        }
+        const auto secondFixture = std::find_if(
+            second->Nodes().begin(), second->Nodes().end(),
+            [](const BML::Behavior::Node &node) {
+                return node.Prototype() ==
+                    CKGUID(BML_LIFECYCLE_FIXTURE_GUID);
+            });
+        if (secondFixture == second->Nodes().end()) {
+            GetLogger()->Error(
+                "Composed Patch lifecycle fixture is unavailable");
+            return false;
+        }
+
+        // A CK Link can be stored in one graph while its source IO belongs to
+        // another. CK2 will still traverse it from that source, so publishing
+        // a snapshot that omits it would misrepresent executable control
+        // flow. Reject the malformed graph and recover after the Link leaves.
+        CKContext *context = m_BML ? m_BML->GetCKContext() : nullptr;
+        CKBehavior *secondNative = context
+            ? CKBehavior::Cast(context->GetObject(
+                  static_cast<CK_ID>(second->Root().Id())))
+            : nullptr;
+        CKBehaviorLink *foreign = context
+            ? CKBehaviorLink::Cast(context->CreateObject(
+                  CKCID_BEHAVIORLINK, nullptr,
+                  CK_OBJECTCREATION_DYNAMIC))
+            : nullptr;
+        const bool foreignCreated = secondNative && foreign &&
+            foreign->SetInBehaviorIO(m_Source->GetOutput(0)) == CK_OK &&
+            foreign->SetOutBehaviorIO(m_Sink->GetInput(0)) == CK_OK &&
+            secondNative->AddSubBehaviorLink(foreign) == CK_OK;
+        const auto malformed = foreignCreated
+            ? m_Session.Inspect(m_Graph)
+            : BML::Behavior::Result<BML::Behavior::Graph>::Failure(
+                  BML_ERROR_FAIL);
+        const bool foreignRejected = !malformed &&
+            malformed.GetStatus().Error == Error::GraphLocalityInvalid;
+        if (foreignCreated)
+            (void) secondNative->RemoveSubBehaviorLink(foreign);
+        if (context && foreign)
+            context->DestroyObject(foreign);
+        auto afterForeign = m_Session.Inspect(m_Graph);
+        GetLogger()->Info(
+            "Behavior foreign source Link: status=%s rejected=%s recovered=%s",
+            foreignCreated && foreignRejected && afterForeign
+                ? "pass" : "fail",
+            foreignRejected ? "true" : "false",
+            afterForeign ? "true" : "false");
+        if (!foreignCreated || !foreignRejected || !afterForeign)
+            return false;
+
+        const int originalPriority = m_Source->GetPriority();
+        const int originalSourceIndex = afterForeign->Find(kSourceName)
+            ? afterForeign->Find(kSourceName)->Index() : -1;
+        BML::Behavior::Edit priorityEdit;
+        (void) priorityEdit.Root().Add(m_Session.Use(
+            CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
+        auto priorityApplied = afterForeign->Apply(
+            "player-priority-order", priorityEdit);
+        if (!priorityApplied) {
+            GetLogger()->Error(
+                "Behavior priority-order setup failed: %s",
+                priorityApplied.GetStatus().Message.c_str());
+            return false;
+        }
+        BML::Behavior::Patch priorityPatch = priorityApplied.Take();
+        m_Source->SetPriority(originalPriority + 1);
+        const auto priorityClosed = priorityPatch.Close();
+        m_Source->SetPriority(originalPriority);
+        auto afterPriority = m_Session.Inspect(m_Graph);
+        auto sourceAfterPriority = afterPriority
+            ? afterPriority->Find(kSourceName)
+            : BML::Behavior::Result<BML::Behavior::Node>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        if (sourceAfterPriority &&
+            sourceAfterPriority->Index() != originalSourceIndex)
+            (void) GraphChildOrderAccess::Swap(m_Graph, m_Source, m_Sink);
+        afterPriority = m_Session.Inspect(m_Graph);
+        const bool priorityAccepted = priorityClosed && afterPriority &&
+            afterPriority->Fingerprint() == first->Fingerprint();
+        GetLogger()->Info(
+            "Behavior external Node priority: status=%s close=%s restored=%s code=%d error=%u detail=%s",
+            priorityAccepted ? "pass" : "fail",
+            priorityClosed ? "accepted" : "conflicted",
+            afterPriority && afterPriority->Fingerprint() ==
+                    first->Fingerprint()
+                ? "true" : "false",
+            priorityClosed.Code(),
+            static_cast<unsigned>(priorityClosed.GetStatus().Error),
+            priorityClosed.GetStatus().Message.c_str());
+        if (!priorityAccepted)
+            return false;
+
+        // CK2 executes equal-priority children in native array order. Adding
+        // and closing a Patch must preserve that order exactly; the snapshot
+        // Node is then resolved by structure rather than by retaining a live
+        // native pointer.
+        auto sourceSnapshot = first->Find(kSourceName);
+        if (!sourceSnapshot) {
+            GetLogger()->Error("Behavior snapshot Source is unavailable");
+            return false;
+        }
+        const int sourceIndexBefore = sourceSnapshot->Index();
+        BML::Behavior::Edit reorder;
+        (void) reorder.Root().Add(m_Session.Use(
+            CKGUID(BML_LIFECYCLE_FIXTURE_GUID)));
+        auto reordered = first->Apply("player-child-order", reorder);
+        if (!reordered) {
+            GetLogger()->Error("Behavior child-order setup failed: %s",
+                               reordered.GetStatus().Message.c_str());
+            return false;
+        }
+        BML::Behavior::Patch orderPatch = reordered.Take();
+        const bool orderChanged = GraphChildOrderAccess::Swap(
+            m_Graph, m_Source, m_Sink);
+        const auto rejectedClose = orderChanged
+            ? orderPatch.Close()
+            : BML::Behavior::Result<BML::Behavior::CloseState>::Failure(
+                  BML_ERROR_FAIL);
+        const auto conflict = orderPatch.Info();
+        const bool orderConflict = !rejectedClose && conflict &&
+            conflict->State == PatchState::Conflicted &&
+            conflict->RestoreFailure.Error == Error::RevertConflict;
+        const bool orderRestored = orderChanged &&
+            GraphChildOrderAccess::Swap(m_Graph, m_Source, m_Sink);
+        const auto orderClosed = orderRestored
+            ? orderPatch.Close()
+            : BML::Behavior::Result<BML::Behavior::CloseState>::Failure(
+                  BML_ERROR_FAIL);
+        auto afterOrder = m_Session.Inspect(m_Graph);
+        auto sourceAfterOrder = afterOrder
+            ? afterOrder->Find(kSourceName)
+            : BML::Behavior::Result<BML::Behavior::Node>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        const bool orderPreserved = orderConflict && orderClosed &&
+            sourceAfterOrder &&
+            sourceAfterOrder->Index() == sourceIndexBefore;
+        const bool stableFingerprint = orderPreserved && afterOrder &&
+            afterOrder->Fingerprint() == first->Fingerprint();
+
+        BML::Behavior::Edit routeSource;
+        const auto requiredSource =
+            routeSource.Root().Require(*sourceSnapshot);
+        routeSource.Root().Flow(
+            requiredSource.Out(), routeSource.Root().Root().Out("Done"));
+        auto routedSource = afterOrder
+            ? afterOrder->Apply("player-snapshot-node", routeSource)
+            : BML::Behavior::Result<BML::Behavior::Patch>::Failure(
+                  BML_ERROR_NOT_FOUND);
+        const bool routeApplied = static_cast<bool>(routedSource);
+        bool routedTheSource = false;
+        bool leftSinkAlone = false;
+        bool restoredFingerprint = false;
+        if (routedSource) {
+            BML::Behavior::Patch routePatch = routedSource.Take();
+            auto routedGraph = m_Session.Inspect(m_Graph);
+            auto currentSource = routedGraph
+                ? routedGraph->Find(kSourceName)
+                : BML::Behavior::Result<BML::Behavior::Node>::Failure(
+                      BML_ERROR_NOT_FOUND);
+            auto currentSink = routedGraph
+                ? routedGraph->Find(kSinkName)
+                : BML::Behavior::Result<BML::Behavior::Node>::Failure(
+                      BML_ERROR_NOT_FOUND);
+            std::size_t sourceExits = 0;
+            std::size_t sinkExits = 0;
+            if (routedGraph && currentSource && currentSink) {
+                for (const BML::Behavior::Link &link : routedGraph->Links()) {
+                    if (link.Target().Node() != routedGraph->Root().Id())
+                        continue;
+                    if (link.Source().Node() == currentSource->Id())
+                        ++sourceExits;
+                    if (link.Source().Node() == currentSink->Id())
+                        ++sinkExits;
+                }
+            }
+            routedTheSource = sourceExits == 1;
+            leftSinkAlone = sinkExits == 1;
+            const auto routeClosed = routePatch.Close();
+            auto restored = m_Session.Inspect(m_Graph);
+            restoredFingerprint = routeClosed && restored &&
+                restored->Fingerprint() == first->Fingerprint();
+        }
+        const bool snapshotNodePassed = stableFingerprint && routeApplied &&
+            routedTheSource && leftSinkAlone && restoredFingerprint;
+        GetLogger()->Info(
+            "Behavior snapshot Node resolution: status=%s index_before=%d index_after=%d order_conflict=%s order_preserved=%s fingerprint=%s source=%s sink=%s restored=%s",
+            snapshotNodePassed ? "pass" : "fail", sourceIndexBefore,
+            sourceAfterOrder ? sourceAfterOrder->Index() : -1,
+            orderConflict ? "true" : "false",
+            orderPreserved
+                ? "true" : "false",
+            stableFingerprint ? "true" : "false",
+            routedTheSource ? "true" : "false",
+            leftSinkAlone ? "true" : "false",
+            restoredFingerprint ? "true" : "false");
+        if (!snapshotNodePassed) {
+            if (!routeApplied)
+                GetLogger()->Error(
+                    "Behavior snapshot Node Flow failed: code=%d error=%u detail=%s",
+                    routedSource.Code(),
+                    static_cast<unsigned>(
+                        routedSource.GetStatus().Error),
+                    routedSource.GetStatus().Message.c_str());
             return false;
         }
 
@@ -2669,6 +3007,12 @@ private:
         const auto info = patch.Info();
         secondLive = secondScript.Inspect();
         if (failed || !info || info->State != PatchState::Active ||
+            info->ApplyFailure.Error == Error::None ||
+            info->RestoreFailure.Error != Error::None ||
+            info->ApplyFailure.Message.find(
+                "Behavior Patch 'player-composed'") == std::string::npos ||
+            info->ApplyFailure.Message.find("target index 1") ==
+                std::string::npos ||
             !secondLive ||
             !secondLive->Root().Local("Composed Replacement") ||
             firstLocal->GetName() == nullptr ||
@@ -2681,6 +3025,83 @@ private:
             return false;
         }
 
+        // If both the requested definition and the previous definition fail,
+        // Replace must stop in Conflicted. It must not recursively retry the
+        // previous definition. Restoring the target Graph then lets Enable
+        // install that previous definition again.
+        BML::Behavior::Edit guarded = local("Fallback Guard", 4);
+        (void) guarded.Root().Require(kSourceName);
+        BML::Behavior::Edit guardedFixture;
+        const auto existingFixture =
+            guardedFixture.Root().Require(*secondFixture);
+        guardedFixture.Root().Bind(existingFixture.Local("State"), 83);
+        const auto guardedResult = patch.Replace(
+            BML::Behavior::On(*first, guarded),
+            BML::Behavior::On(*second, guardedFixture));
+        auto setter = reinterpret_cast<BMLLifecycleFixtureSetEditedHookFn>(
+            ::GetProcAddress(::GetModuleHandleA(
+                                 "BehaviorLifecycleFixture.dll"),
+                             "BMLLifecycleFixtureSetEditedHook"));
+        if (!guardedResult || !setter) {
+            GetLogger()->Error(
+                "Behavior failed Patch recovery setup failed: replace=%s fixture=%s",
+                guardedResult ? "true" : "false",
+                setter ? "true" : "false");
+            return false;
+        }
+        struct FailedRecovery {
+            CKBehavior *Target = nullptr;
+            bool Called = false;
+        } recovery{m_Source};
+        setter([](CKBehavior *, void *argument) {
+            auto &value = *static_cast<FailedRecovery *>(argument);
+            if (value.Called)
+                return CK_OK;
+            value.Called = true;
+            value.Target->SetName("__BML_Fallback_Moved");
+            return CK_OK;
+        }, &recovery);
+        failed = patch.Replace(
+            BML::Behavior::On(*first, missing));
+        setter(nullptr, nullptr);
+        m_Source->SetName(const_cast<CKSTRING>(kSourceName));
+
+        const auto conflicted = patch.Info();
+        const bool preserved = !failed && recovery.Called && conflicted &&
+            conflicted->State == PatchState::Conflicted &&
+            conflicted->ApplyFailure.Error != Error::None &&
+            conflicted->RestoreFailure.Error != Error::None &&
+            conflicted->ApplyFailure.Message.find("target index 0") !=
+                std::string::npos &&
+            conflicted->RestoreFailure.Message.find("target index 0") !=
+                std::string::npos;
+        const auto recovered = patch.Enable();
+        firstLive = m_Session.Inspect(m_Graph);
+        const auto afterRecovery = patch.Info();
+        const bool retried = recovered &&
+            recovered->State == PatchState::Active &&
+            recovered->ApplyFailure.Error == Error::None &&
+            recovered->RestoreFailure.Error == Error::None &&
+            firstLive && firstLive->Root().Local("Fallback Guard");
+        GetLogger()->Info(
+            "Behavior failed Patch recovery: status=%s called=%s conflict=%u apply=%u restore=%u recovered=%s code=%d state=%u local=%s apply_detail=%s restore_detail=%s detail=%s",
+            preserved && retried ? "pass" : "fail",
+            recovery.Called ? "true" : "false",
+            conflicted ? static_cast<unsigned>(conflicted->State) : 0u,
+            conflicted
+                ? static_cast<unsigned>(conflicted->ApplyFailure.Error) : 0u,
+            conflicted
+                ? static_cast<unsigned>(conflicted->RestoreFailure.Error) : 0u,
+            retried ? "true" : "false", recovered.Code(),
+            afterRecovery ? static_cast<unsigned>(afterRecovery->State) : 0u,
+            firstLive && firstLive->Root().Local("Fallback Guard")
+                ? "true" : "false",
+            conflicted ? conflicted->ApplyFailure.Message.c_str() : "none",
+            conflicted ? conflicted->RestoreFailure.Message.c_str() : "none",
+            recovered ? "none" : recovered.GetStatus().Message.c_str());
+        if (!preserved || !retried)
+            return false;
+
         const auto closed = patch.Close();
         firstLive = m_Session.Inspect(m_Graph);
         secondLive = secondScript.Inspect();
@@ -2689,6 +3110,7 @@ private:
             closed.Value() == BML::Behavior::CloseState::Closed &&
             firstLive && secondLive &&
             !firstLive->Root().Local("Composed First") &&
+            !firstLive->Root().Local("Fallback Guard") &&
             !secondLive->Root().Local("Composed Replacement") &&
             scriptClosed;
         if (!result)
@@ -2738,7 +3160,9 @@ private:
         m_Patch = applied.Take();
         const auto info = m_Patch.Info();
         m_PatchPassed = info && info->State == PatchState::Active &&
-            info->Installed() && info->Conflicts == 0 && PatchInstalled();
+            info->Active() && info->Conflicts == 0 &&
+            info->ApplyFailure.Error == Error::None &&
+            info->RestoreFailure.Error == Error::None && PatchInstalled();
         if (!m_PatchPassed) {
             Finish(false, "patch-state");
             return;
@@ -2749,7 +3173,7 @@ private:
     void ClosePatch() {
         // The Patch owns the native Session it still needs. Releasing the
         // original facade value must not make the Patch stale before restore.
-        m_Session.Close();
+        m_Session.Reset();
         m_PatchSink = m_Anchor ? m_Anchor->GetOutBehaviorIO() : nullptr;
         if (!m_Anchor || !m_Graph || !m_PatchSink ||
             m_Anchor->SetOutBehaviorIO(m_Graph->GetOutput(0)) != CK_OK) {
@@ -2772,7 +3196,11 @@ private:
 
     void WaitPatchConflict() {
         const auto conflicted = m_Patch.Info();
-        if (!conflicted || conflicted->State != PatchState::Conflicted) {
+        if (!conflicted || conflicted->State != PatchState::Conflicted ||
+            conflicted->RestoreFailure.Error != Error::RevertConflict ||
+            conflicted->RestoreFailure.Message.find(
+                "Behavior Patch 'player-public-patch'") ==
+                std::string::npos) {
             if (m_Frame > m_WaitUntil)
                 Finish(false, "patch-conflict");
             return;

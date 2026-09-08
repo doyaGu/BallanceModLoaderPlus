@@ -1056,15 +1056,22 @@ private:
             !root.Domain)
             return false;
         auto inspected = m_CppSession.Inspect(root);
-        if (!inspected)
+        if (!inspected) {
+            GetLogger()->Error(
+                "Behavior inspect failed: result=%d error=%u message=%s",
+                inspected.Code(),
+                static_cast<unsigned>(inspected.GetStatus().Error),
+                inspected.GetStatus().Message.c_str());
             return false;
+        }
         BML::Behavior::Graph graph = inspected.Take();
         // Gameplay.nmo contributes 53 nodes and 60 links. The live graph is
         // intentionally extensible: BML and other loaded mods may append nodes
         // after the file has been loaded, so the disk image is a baseline rather
         // than the final cardinality of the Player graph.
-        const auto gameplayEvents = graph.Find("Gameplay_Events");
+        const BML::Behavior::Node gameplayEvents = graph.Root();
         const bool nmoShape = gameplayEvents &&
+            gameplayEvents.Name() == "Gameplay_Events" &&
             graph.Nodes().size() >= 53 && graph.Links().size() >= 60;
         bool delayOne = false;
         bool delayTwo = false;
@@ -1131,9 +1138,7 @@ private:
             return false;
         }
         BML::Behavior::Graph graph = inspected.Take();
-        const auto rootMatch = graph.Find("__BML_BehaviorTransport_Graph");
-        const BML::Behavior::Node rootNode = rootMatch
-            ? rootMatch.Value() : BML::Behavior::Node{};
+        const BML::Behavior::Node rootNode = graph.Root();
         BML::Behavior::Node child;
         if (rootNode) {
             const CKGUID fixture(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID);
@@ -1145,7 +1150,9 @@ private:
                 }
             }
         }
-        if (!rootNode || !child || graph.Nodes().size() != 2 ||
+        if (!rootNode ||
+            rootNode.Name() != "__BML_BehaviorTransport_Graph" ||
+            !child || graph.Nodes().size() != 2 ||
             graph.Links().size() != 2) {
             GetLogger()->Error(
                 "Behavior watch graph failed: shape root=%s child=%s nodes=%u links=%u",
@@ -1731,7 +1738,7 @@ private:
             graphLayout->Origin != BML::Behavior::LayoutOrigin::Live ||
             graphLayout->Kind != BML::Behavior::BehaviorKind::Graph ||
             !graphLayout->Find(BML::Behavior::SlotKind::In, "Enter") ||
-            !graph->Find("__BML_BehaviorTransport_RunGraph"))
+            graph->Root().Name() != "__BML_BehaviorTransport_RunGraph")
             return false;
 
         auto targeted = m_CppSession.Use(prototype)

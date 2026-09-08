@@ -534,8 +534,7 @@ public:
         case State::ReentrantReleaseCleanup1:
         case State::ReentrantReleaseCleanup2: CleanupReentrantRelease(); break;
         case State::SelfDeleteStart: StartSelfDelete(); break;
-        case State::SelfDeleteWait1:
-        case State::SelfDeleteWait2: WaitForSelfDelete(); break;
+        case State::SelfDeleteWait: WaitForSelfDelete(); break;
         case State::GraphSchedulerStart: StartGraphScheduler(); break;
         case State::GraphSchedulerWaitFirst:
         case State::GraphSchedulerWaitSecond:
@@ -630,8 +629,7 @@ private:
         ReentrantReleaseCleanup1,
         ReentrantReleaseCleanup2,
         SelfDeleteStart,
-        SelfDeleteWait1,
-        SelfDeleteWait2,
+        SelfDeleteWait,
         GraphSchedulerStart,
         GraphSchedulerWaitFirst,
         GraphSchedulerWaitSecond,
@@ -1442,19 +1440,20 @@ private:
             !m_SelfDelete.Requested || !m_SelfDelete.BehaviorId) {
             m_SelfDeleteInstance.Reset();
         }
-        m_State = State::SelfDeleteWait1;
+        m_SelfDeleteStartFrame = m_LastPlayerFrame;
+        m_State = State::SelfDeleteWait;
     }
 
     void WaitForSelfDelete() {
         ProcessRuntimeFrame("self-delete-frame-context-restore");
-        if (m_State == State::SelfDeleteWait1) {
-            m_State = State::SelfDeleteWait2;
+        const bool retained =
+            m_Context->GetObject(m_SelfDelete.BehaviorId) != nullptr ||
+            m_SelfDeleteInstance.Get() != nullptr;
+        if (retained &&
+            m_LastPlayerFrame - m_SelfDeleteStartFrame <= 8)
             return;
-        }
-        if (m_Context->GetObject(m_SelfDelete.BehaviorId) != nullptr ||
-            m_SelfDeleteInstance.Get() != nullptr) {
+        if (retained)
             Fail("self-delete-retained");
-        }
         m_SelfDeleteInstance.Reset();
         m_State = State::GraphSchedulerStart;
     }
@@ -3917,6 +3916,7 @@ private:
     std::unique_ptr<CKEdit> m_Editor;
     State m_State = State::StaticChecks;
     int m_LastPlayerFrame = -1;
+    int m_SelfDeleteStartFrame = -1;
     std::ostringstream m_Failures;
     ExecutionProbe m_Retry;
     ExecutionProbe m_Fault;
