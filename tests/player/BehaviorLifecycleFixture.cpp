@@ -22,6 +22,8 @@ BMLLifecycleFixtureCloseHook g_CloseHook = nullptr;
 void *g_CloseArgument = nullptr;
 BMLLifecycleFixtureEditedHook g_EditedHook = nullptr;
 void *g_EditedArgument = nullptr;
+BMLLifecycleFixtureRunHook g_RunHook = nullptr;
+void *g_RunArgument = nullptr;
 // Executions remaining before Run returns CKBR_OK instead of
 // CKBR_ACTIVATENEXTFRAME; a parked multi-frame Block is driven by one party
 // per frame, so the recorded RunTimes expose a second driver.
@@ -121,17 +123,20 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
             if (result != CK_OK)
                 return result;
         }
-        if (g_Mode == BMLLifecycleFixtureMode::NormalizeOnEdited &&
+        if ((g_Mode == BMLLifecycleFixtureMode::NormalizeOnEdited ||
+             g_Mode == BMLLifecycleFixtureMode::NormalizeBindingsOnEdited) &&
             g_Trace.EditedCount == 1) {
             const int normalized = 91;
             behavior->SetLocalParameterValue(1, &normalized);
-            for (int index = 0; index < behavior->GetInputParameterCount();
-                 ++index) {
-                CKParameterIn *pin = behavior->GetInputParameter(index);
-                if (pin && pin->GetName() &&
-                    std::strcmp(pin->GetName(), "Patch Value") == 0) {
-                    (void) pin->SetDirectSource(nullptr);
-                    break;
+            if (g_Mode ==
+                    BMLLifecycleFixtureMode::NormalizeBindingsOnEdited) {
+                for (int index = 0;
+                     index < behavior->GetInputParameterCount(); ++index) {
+                    CKParameterIn *pin = behavior->GetInputParameter(index);
+                    if (pin && pin->GetName() &&
+                        std::strcmp(pin->GetName(), "Source") == 0) {
+                        (void) pin->SetDirectSource(nullptr);
+                    }
                 }
             }
         } else if (g_Mode == BMLLifecycleFixtureMode::FailFirstEdited &&
@@ -142,6 +147,10 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
             ++g_Trace.CloseHookCalls;
             if (g_CloseHook(behavior, g_CloseArgument) != 0)
                 ++g_Trace.CloseHookAccepted;
+        } else if (g_Mode ==
+                       BMLLifecycleFixtureMode::RemoveFromParentOnEdited) {
+            if (CKBehavior *parent = behavior->GetParent())
+                parent->RemoveSubBehavior(behavior);
         }
     } else if ((context.CallbackMessage == CKM_BEHAVIORRESET ||
                 context.CallbackMessage == CKM_BEHAVIORDETACH ||
@@ -156,6 +165,11 @@ CKERROR LifecycleCallback(const CKBehaviorContext &context) {
 }
 
 int Run(const CKBehaviorContext &context) {
+    if (g_RunHook && context.Behavior) {
+        const int result = g_RunHook(context.Behavior, g_RunArgument);
+        if (result != CK_OK)
+            return CKBR_BEHAVIORERROR;
+    }
     CKTimeManager *time = context.Context
         ? context.Context->GetTimeManager() : nullptr;
     if (g_Trace.RunCount < std::size(g_Trace.RunTimes))
@@ -266,6 +280,12 @@ extern "C" __declspec(dllexport) void BMLLifecycleFixtureSetEditedHook(
     BMLLifecycleFixtureEditedHook hook, void *argument) {
     g_EditedHook = hook;
     g_EditedArgument = argument;
+}
+
+extern "C" __declspec(dllexport) void BMLLifecycleFixtureSetRunHook(
+    BMLLifecycleFixtureRunHook hook, void *argument) {
+    g_RunHook = hook;
+    g_RunArgument = argument;
 }
 
 extern "C" __declspec(dllexport) int BMLLifecycleFixtureReadTrace(

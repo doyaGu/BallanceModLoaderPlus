@@ -200,8 +200,26 @@ private:
         }
     };
 
+    struct OutputLayout {
+        ObjectStamp Object;
+        int Index = -1;
+        std::string Name;
+        int Occurrence = 0;
+    };
+
+    struct PoutLayout {
+        ObjectStamp Object;
+        int Index = -1;
+        std::string Name;
+        int Occurrence = 0;
+        CKGUID Type = CKGUID();
+        PoutKind Kind = PoutKind::Int32;
+        std::size_t Size = 0;
+    };
+
     struct Record {
         ObjectStamp Behavior;
+        ObjectStamp Owner;
         ObjectStamp Parent;
         CKGUID PrototypeGuid;
         CKBehaviorPrototype *Prototype = nullptr;
@@ -231,6 +249,25 @@ private:
         BlockSpec Desired;
         std::vector<ObjectStamp> OwnedSources;
         std::vector<std::shared_ptr<CallbackResource>> KeepAlive;
+        // Logical port identity and parameter representation are stable for a
+        // Layout generation. Frame capture copies values, not reflection.
+        std::uint64_t OutputLayoutGeneration = 0;
+        std::uint64_t PoutLayoutGeneration = 0;
+        std::vector<OutputLayout> Outputs;
+        std::vector<PoutLayout> Pouts;
+    };
+
+    class ConfigurationScope final {
+    public:
+        ConfigurationScope(std::vector<Record *> &stack, Record &record)
+            : m_Stack(stack) { m_Stack.push_back(&record); }
+        ~ConfigurationScope() { m_Stack.pop_back(); }
+
+        ConfigurationScope(const ConfigurationScope &) = delete;
+        ConfigurationScope &operator=(const ConfigurationScope &) = delete;
+
+    private:
+        std::vector<Record *> &m_Stack;
     };
 
     struct PendingDestroy {
@@ -268,6 +305,7 @@ private:
     [[nodiscard]] CKBehavior *ResolveBehavior(const Record &record) const;
     [[nodiscard]] Status ResolvePrototype(PrototypeRef requested,
                                           PrototypeRef &selected) const;
+    [[nodiscard]] Status ValidateProvider(const Record &record) const;
     [[nodiscard]] Status CheckDetached(
         const BlockSpec &spec, DetachedCompatibility &compatibility,
         bool graphResident = false) const;
@@ -354,6 +392,7 @@ private:
     void DestroyConnectedLinks(CKBehavior *parent, CKBehavior *behavior);
     void DrainDeferredReleases();
     void QueueFrame(Record &record);
+    [[nodiscard]] Status DrainRecord(Record &record, bool &closed);
     bool DrainCloseQueue(bool force = false);
     static void CloseCallbacks(Record &record) noexcept;
     void AdoptSharedBindings();

@@ -19,6 +19,8 @@ enum class BMLLifecycleFixtureMode : std::uint32_t {
     NormalizeOnEdited = 3,
     FailFirstEdited = 4,
     InsertPinOnSettingsEdited = 5,
+    RemoveFromParentOnEdited = 6,
+    NormalizeBindingsOnEdited = 7,
 };
 
 struct BMLLifecycleFixtureEvent {
@@ -63,6 +65,7 @@ struct BMLLifecycleFixtureTrace {
 
 using BMLLifecycleFixtureCloseHook = int (*)(CKBehavior *, void *);
 using BMLLifecycleFixtureEditedHook = int (*)(CKBehavior *, void *);
+using BMLLifecycleFixtureRunHook = int (*)(CKBehavior *, void *);
 using BMLLifecycleFixtureResetTraceFn = void (*)();
 using BMLLifecycleFixtureSetModeFn = void (*)(BMLLifecycleFixtureMode);
 using BMLLifecycleFixtureSetContinuationFn = void (*)(std::int32_t frames);
@@ -70,6 +73,8 @@ using BMLLifecycleFixtureSetCloseHookFn = void (*)(
     BMLLifecycleFixtureCloseHook, void *);
 using BMLLifecycleFixtureSetEditedHookFn = void (*)(
     BMLLifecycleFixtureEditedHook, void *);
+using BMLLifecycleFixtureSetRunHookFn = void (*)(
+    BMLLifecycleFixtureRunHook, void *);
 using BMLLifecycleFixtureReadTraceFn = int (*)(
     BMLLifecycleFixtureTrace *);
 

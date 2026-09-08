@@ -3341,9 +3341,14 @@ private:
             ? reinterpret_cast<BMLLifecycleFixtureSetCloseHookFn>(
                   ::GetProcAddress(module, "BMLLifecycleFixtureSetCloseHook"))
             : nullptr;
+        auto setRunHook = module
+            ? reinterpret_cast<BMLLifecycleFixtureSetRunHookFn>(
+                  ::GetProcAddress(module, "BMLLifecycleFixtureSetRunHook"))
+            : nullptr;
         auto readTrace = module ? reinterpret_cast<BMLLifecycleFixtureReadTraceFn>(
             ::GetProcAddress(module, "BMLLifecycleFixtureReadTrace")) : nullptr;
-        if (!resetTrace || !setMode || !setCloseHook || !readTrace) {
+        if (!resetTrace || !setMode || !setCloseHook || !setRunHook ||
+            !readTrace) {
             Fail("lifecycle-fixture-exports");
             Finish();
             return;
@@ -3440,11 +3445,32 @@ private:
         int normalized = 0;
         if (normal && normal.Block)
             normal.Block->GetLocalParameterValue(0, &normalized);
+        CKParameterOut *normalPout = normal && normal.Block
+            ? normal.Block->CreateOutputParameter(
+                  const_cast<CKSTRING>("Owned Pout"), CKPGUID_INT)
+            : nullptr;
+        const std::array<CK_ID, 6> normalInterface{
+            normal && normal.Block && normal.Block->GetInput(0)
+                ? normal.Block->GetInput(0)->GetID() : 0,
+            normal && normal.Block && normal.Block->GetOutput(0)
+                ? normal.Block->GetOutput(0)->GetID() : 0,
+            normal && normal.Block && normal.Block->GetInputParameter(0)
+                ? normal.Block->GetInputParameter(0)->GetID() : 0,
+            normal && normal.Block && normal.Block->GetLocalParameter(0)
+                ? normal.Block->GetLocalParameter(0)->GetID() : 0,
+            normal && normal.Block && normal.Block->GetLocalParameter(1)
+                ? normal.Block->GetLocalParameter(1)->GetID() : 0,
+            normalPout ? normalPout->GetID() : 0,
+        };
         const bool normalLinks = normal && addLinks(normalGraph, normal.Block);
         const Status normalClose = normal
             ? m_Runtime.Close(normal.Block) : Status{};
         const BMLLifecycleFixtureTrace normalTrace = read();
+        const bool normalInterfaceRemoved = std::all_of(
+            normalInterface.begin(), normalInterface.end(),
+            [&](CK_ID id) { return id && !m_Context->GetObject(id); });
         normalPassed = normal && normalLinks && normalClose && normalized == 77 &&
+            normalInterfaceRemoved &&
             normalTrace.SettingsEditedObserved == 42 &&
             normalTrace.FinalNormalizedValue == 77 &&
             messagesAre(normalTrace,
@@ -3457,6 +3483,36 @@ private:
             normalGraph->GetSubBehaviorLinkCount() == 0;
         if (normalGraph)
             m_Context->DestroyObject(normalGraph);
+
+        resetTrace();
+        setMode(BMLLifecycleFixtureMode::Normal);
+        CreateResult ownedGraph = m_Runtime.Instantiate(m_Owner, makeSpec());
+        CKBehavior *ownedRoot = ownedGraph.Handle.Get();
+        CKBehavior *ownedChild = ownedRoot
+            ? static_cast<CKBehavior *>(m_Context->CreateObject(
+                  CKCID_BEHAVIOR, nullptr, CK_OBJECTCREATION_DYNAMIC))
+            : nullptr;
+        CKParameterIn *ownedChildPin = nullptr;
+        bool ownedTreeBuilt = false;
+        if (ownedRoot && ownedChild) {
+            ownedRoot->UseGraph();
+            ownedChild->UseFunction();
+            ownedChildPin = ownedChild->CreateInputParameter(
+                const_cast<CKSTRING>("Owned Pin"), CKPGUID_INT);
+            ownedTreeBuilt = ownedChildPin &&
+                ownedChild->SetOwner(m_Owner, FALSE) == CK_OK &&
+                ownedRoot->AddSubBehavior(ownedChild) == CK_OK;
+        }
+        const CK_ID ownedRootId = ownedRoot ? ownedRoot->GetID() : 0;
+        const CK_ID ownedChildId = ownedChild ? ownedChild->GetID() : 0;
+        const CK_ID ownedChildPinId = ownedChildPin
+            ? ownedChildPin->GetID() : 0;
+        ownedGraph.Handle.Reset();
+        m_Runtime.ProcessFrame();
+        const bool ownedBehaviorTreePassed = ownedTreeBuilt &&
+            !m_Context->GetObject(ownedRootId) &&
+            !m_Context->GetObject(ownedChildId) &&
+            !m_Context->GetObject(ownedChildPinId);
 
         bool resetPassed = false;
         resetTrace();
@@ -3525,8 +3581,157 @@ private:
         if (selfCloseGraph)
             m_Context->DestroyObject(selfCloseGraph);
 
+        resetTrace();
+        setMode(BMLLifecycleFixtureMode::CloseOnTeardown);
+        setCloseHook(CloseLifecycleFixture, &m_Runtime);
+        CKBehavior *teardownGraph = makeGraph();
+        AttachResult teardownBlock = teardownGraph
+            ? m_Runtime.AddToGraph(teardownGraph, makeSpec()) : AttachResult{};
+        const Status teardownClose = teardownBlock
+            ? m_Runtime.Close(teardownBlock.Block) : Status{};
+        const BMLLifecycleFixtureTrace teardownTrace = read();
+        const bool teardownReentryPassed = teardownBlock && teardownClose &&
+            teardownTrace.CloseHookCalls == 2 &&
+            teardownTrace.CloseHookAccepted == 2 &&
+            teardownTrace.DetachCount == 1 &&
+            teardownTrace.DeleteCount == 1 && teardownGraph &&
+            teardownGraph->GetSubBehaviorCount() == 0;
+        setCloseHook(nullptr, nullptr);
+        if (teardownGraph)
+            m_Context->DestroyObject(teardownGraph);
+
+        resetTrace();
+        setMode(BMLLifecycleFixtureMode::Normal);
+        CKBehavior *normalizedGraph = makeGraph();
+        CreateResult configured = normalizedGraph
+            ? m_Runtime.AttachToGraph(normalizedGraph, makeSpec())
+            : CreateResult{};
+        resetTrace();
+        setMode(BMLLifecycleFixtureMode::NormalizeBindingsOnEdited);
+        BlockSpec changed;
+        const int changedValue = 55;
+        changed.Setting(
+            Slot::Named(SlotKind::Setting, "Value", CKPGUID_INT),
+            Value::From(CKPGUID_INT, changedValue));
+        const Status changedStatus = configured
+            ? m_Runtime.Configure(configured.Handle, changed) : Status{};
+        CKBehavior *normalizedBlock = configured.Handle.Get();
+        int normalizedLocal = 0;
+        if (normalizedBlock && normalizedBlock->GetLocalParameterCount() > 1)
+            normalizedBlock->GetLocalParameterValue(1, &normalizedLocal);
+        CKParameterIn *normalizedPin = normalizedBlock &&
+            normalizedBlock->GetInputParameterCount() > 0
+            ? normalizedBlock->GetInputParameter(0) : nullptr;
+        const bool liveNormalizationPassed = static_cast<bool>(configured) &&
+            static_cast<bool>(changedStatus) &&
+            normalizedLocal == 91 && normalizedPin &&
+            normalizedPin->GetRealSource() == nullptr;
+        if (normalizedBlock)
+            (void) m_Runtime.Close(normalizedBlock);
+        configured.Handle.Reset();
+        if (normalizedGraph)
+            m_Context->DestroyObject(normalizedGraph);
+
+        resetTrace();
+        setMode(BMLLifecycleFixtureMode::RemoveFromParentOnEdited);
+        CKBehavior *membershipGraph = makeGraph();
+        AttachResult removed = membershipGraph
+            ? m_Runtime.AddToGraph(membershipGraph, makeSpec()) : AttachResult{};
+        m_Runtime.ProcessFrame();
+        const bool membershipPassed = !removed && membershipGraph &&
+            membershipGraph->GetSubBehaviorCount() == 0;
+        setMode(BMLLifecycleFixtureMode::Normal);
+        if (membershipGraph)
+            m_Context->DestroyObject(membershipGraph);
+
+        bool outputLayoutDriftPassed = false;
+        CreateResult outputLayout = m_Runtime.Instantiate(
+            m_Owner, makeSpec());
+        RunResult firstOutput = outputLayout
+            ? m_Runtime.Pulse(
+                  outputLayout.Handle, Slot::At(SlotKind::Input, 0))
+            : RunResult{};
+        m_Runtime.ProcessFrame();
+        CKBehavior *outputBlock = outputLayout.Handle.Get();
+        CKBehaviorIO *renamedOutput = outputBlock &&
+            outputBlock->GetOutputCount() > 0
+            ? outputBlock->GetOutput(0) : nullptr;
+        if (renamedOutput)
+            renamedOutput->SetName("Changed without callback");
+        RunResult changedOutput = renamedOutput
+            ? m_Runtime.Pulse(
+                  outputLayout.Handle, Slot::At(SlotKind::Input, 0))
+            : RunResult{};
+        outputLayoutDriftPassed = firstOutput && !changedOutput &&
+            changedOutput.Detail.Code == Error::ExecutionFailed;
+        outputLayout.Handle.Reset();
+        m_Runtime.ProcessFrame();
+
+        FrameRetention retainPouts = FrameRetention::Latest();
+        retainPouts.IncludePouts = true;
+        CreateResult poutLayout = m_Runtime.Instantiate(
+            m_Owner, makeSpec(), nullptr, retainPouts);
+        RunResult firstPout = poutLayout
+            ? m_Runtime.Pulse(
+                  poutLayout.Handle, Slot::At(SlotKind::Input, 0))
+            : RunResult{};
+        m_Runtime.ProcessFrame();
+        CKBehavior *poutBlock = poutLayout.Handle.Get();
+        CKParameterOut *addedPout = poutBlock
+            ? poutBlock->CreateOutputParameter(
+                  const_cast<CKSTRING>("Changed without callback"),
+                  CKPGUID_INT)
+            : nullptr;
+        RunResult changedPout = addedPout
+            ? m_Runtime.Pulse(
+                  poutLayout.Handle, Slot::At(SlotKind::Input, 0))
+            : RunResult{};
+        const bool poutLayoutDriftPassed = firstPout && !changedPout &&
+            changedPout.Detail.Code == Error::PoutUnavailable;
+        poutLayout.Handle.Reset();
+        m_Runtime.ProcessFrame();
+
+        auto *retiringOwner = static_cast<CKBeObject *>(
+            m_Context->CreateObject(
+                CKCID_GROUP, const_cast<CKSTRING>("BML Runtime Owner"),
+                CK_OBJECTCREATION_DYNAMIC));
+        CreateResult owned = retiringOwner
+            ? m_Runtime.Instantiate(retiringOwner, makeSpec())
+            : CreateResult{};
+        struct ReentrantDeletion {
+            Runtime *BehaviorRuntime = nullptr;
+            CK_ID Owner = 0;
+            bool Called = false;
+        } deletion{&m_Runtime,
+                   retiringOwner ? retiringOwner->GetID() : 0};
+        setRunHook([](CKBehavior *, void *argument) {
+            auto &state = *static_cast<ReentrantDeletion *>(argument);
+            state.Called = true;
+            state.BehaviorRuntime->ObjectsToBeDeleted(&state.Owner, 1);
+            return CK_OK;
+        }, &deletion);
+        RunResult deletedDuringRun = owned
+            ? m_Runtime.Pulse(
+                  owned.Handle, Slot::At(SlotKind::Input, 0))
+            : RunResult{};
+        setRunHook(nullptr, nullptr);
+        const bool ownerAdmissionClosed = deletion.Called &&
+            !deletedDuringRun &&
+            deletedDuringRun.Detail.Code == Error::ExecutionCancelled &&
+            m_Runtime.State(owned.Handle) == ExecutionState::Closing &&
+            owned.Handle.Get() != nullptr;
+        m_Runtime.ProcessFrame();
+        const bool ownerRetirementPassed = ownerAdmissionClosed &&
+            owned.Handle.Get() == nullptr;
+        owned.Handle.Reset();
+        if (retiringOwner)
+            m_Context->DestroyObject(retiringOwner);
+
         m_LifecyclePassed = normalPassed && resetPassed &&
-            sessionResetPassed && selfClosePassed;
+            sessionResetPassed && selfClosePassed && teardownReentryPassed &&
+            liveNormalizationPassed && membershipPassed &&
+            outputLayoutDriftPassed && poutLayoutDriftPassed &&
+            ownerRetirementPassed && ownedBehaviorTreePassed;
         if (!m_LifecyclePassed) {
             if (!normalPassed)
                 Fail("lifecycle-normal");
@@ -3536,6 +3741,20 @@ private:
                 Fail("lifecycle-session-reset");
             if (!selfClosePassed)
                 Fail("lifecycle-self-close");
+            if (!teardownReentryPassed)
+                Fail("lifecycle-teardown-reentry");
+            if (!liveNormalizationPassed)
+                Fail("lifecycle-live-normalization");
+            if (!membershipPassed)
+                Fail("lifecycle-parent-membership");
+            if (!outputLayoutDriftPassed)
+                Fail("lifecycle-output-layout-drift");
+            if (!poutLayoutDriftPassed)
+                Fail("lifecycle-pout-layout-drift");
+            if (!ownerRetirementPassed)
+                Fail("lifecycle-owner-retirement");
+            if (!ownedBehaviorTreePassed)
+                Fail("lifecycle-owned-behavior-tree");
         }
         if (!m_LifecyclePassed || !m_Failures.str().empty()) {
             Finish();
