@@ -377,6 +377,55 @@ public:
                     value.ObjectSlot = reference.Slot;
                     value.ObjectGeneration = reference.Generation;
                 }
+            } else if (info.Kind == PoutKind::ObjectList) {
+                const void *storage = parameter->GetReadDataPtr(FALSE);
+                XObjectArray *objects = storage
+                    ? *static_cast<XObjectArray *const *>(storage) : nullptr;
+                if (!objects) {
+                    return Fail(
+                        ExecutionError::PoutReadFailed,
+                        CKBR_PARAMETERERROR,
+                        std::string("Pout '") + SafeName(parameter) +
+                            "' has no Object List value.",
+                        fault);
+                }
+                if (!m_Runtime.m_IssueObjectRef) {
+                    return Fail(
+                        ExecutionError::PoutReadFailed,
+                        CKBR_PARAMETERERROR,
+                        "An Object List Pout cannot be retained without ObjectRefs.",
+                        fault);
+                }
+                const int count = objects->Size();
+                if (count < 0) {
+                    return Fail(
+                        ExecutionError::PoutReadFailed,
+                        CKBR_PARAMETERERROR,
+                        std::string("Pout '") + SafeName(parameter) +
+                            "' has an invalid Object List size.",
+                        fault);
+                }
+                value.Objects.reserve(static_cast<std::size_t>(count));
+                for (int item = 0; item < count; ++item) {
+                    const CK_ID id = (*objects)[item];
+                    if (id == 0) {
+                        value.Objects.push_back({});
+                        continue;
+                    }
+                    CKObject *object = m_Runtime.m_Context
+                        ? m_Runtime.m_Context->GetObject(id) : nullptr;
+                    const ObjectRef reference = object
+                        ? m_Runtime.m_IssueObjectRef(object) : ObjectRef{};
+                    if (reference.IsNull()) {
+                        return Fail(
+                            ExecutionError::PoutReadFailed,
+                            CKBR_PARAMETERERROR,
+                            std::string("Pout '") + SafeName(parameter) +
+                                "' contains an object that cannot be retained.",
+                            fault);
+                    }
+                    value.Objects.push_back(reference);
+                }
             } else {
                 const int size = parameter->GetDataSize();
                 if (size < 0 || static_cast<std::size_t>(size) !=
@@ -525,6 +574,10 @@ private:
     bool GetPoutInfo(CKParameter *parameter, PoutInfo &info) const {
         if (!parameter)
             return false;
+        if (parameter->GetGUID() == CKPGUID_OBJECTARRAY) {
+            info = {PoutKind::ObjectList, 0};
+            return true;
+        }
         CKParameterManager *manager = m_Runtime.m_Context
             ? m_Runtime.m_Context->GetParameterManager() : nullptr;
         const Parameter::Type type =

@@ -352,6 +352,7 @@ inline bool KnownValueKind(std::uint32_t kind) noexcept {
     case BML_BEHAVIOR_VALUE_BOX:
     case BML_BEHAVIOR_VALUE_MAT4:
     case BML_BEHAVIOR_VALUE_OBJECT:
+    case BML_BEHAVIOR_VALUE_OBJECT_LIST:
         return true;
     default:
         return false;
@@ -666,11 +667,14 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
                 case BML_BEHAVIOR_VALUE_COLOR: return 16u;
                 case BML_BEHAVIOR_VALUE_BOX: return 24u;
                 case BML_BEHAVIOR_VALUE_MAT4: return 64u;
-                case BML_BEHAVIOR_VALUE_UTF8: return record.ValueSize;
+                case BML_BEHAVIOR_VALUE_UTF8:
+                case BML_BEHAVIOR_VALUE_OBJECT_LIST: return record.ValueSize;
                 default: return UINT32_MAX;
                 }
             }();
             if (record.ValueSize != expected ||
+                (record.Kind == BML_BEHAVIOR_VALUE_OBJECT_LIST &&
+                 record.ValueSize % 12u != 0) ||
                 (record.Kind == BML_BEHAVIOR_VALUE_BOOL &&
                  Detail::Load32(value) > 1u) ||
                 (record.Kind == BML_BEHAVIOR_VALUE_OBJECT &&
@@ -678,6 +682,15 @@ inline bool Frames::Accept(std::size_t count, std::size_t payloadSize) noexcept 
                      {Detail::Load32(value), Detail::Load32(value + 4),
                       Detail::Load32(value + 8)})))
                 return false;
+            if (record.Kind == BML_BEHAVIOR_VALUE_OBJECT_LIST) {
+                for (std::uint32_t at = 0; at < record.ValueSize; at += 12u) {
+                    if (!Detail::ValidObjectRef(
+                            {Detail::Load32(value + at),
+                             Detail::Load32(value + at + 4),
+                             Detail::Load32(value + at + 8)}))
+                        return false;
+                }
+            }
         }
 
         for (std::uint32_t index = 0; index < header.DiagnosticCount; ++index) {
@@ -703,6 +716,31 @@ inline std::string_view Pout::Name() const noexcept {
     return m_Frames
         ? m_Frames->Text(m_Record.NameOffset, m_Record.NameLength)
         : std::string_view{};
+}
+
+inline ObjectRef ObjectList::operator[](std::size_t index) const {
+    if (index >= m_Count)
+        throw std::out_of_range("Behavior Object List index is out of range.");
+    const std::uint8_t *data = nullptr;
+    if (!m_Frames || !m_Frames->Bytes(
+            m_Offset + static_cast<std::uint32_t>(index * 12u), 12u, data))
+        throw std::logic_error(
+            "Behavior Frames changed while an Object List view was live.");
+    return {Detail::Load32(data), Detail::Load32(data + 4),
+            Detail::Load32(data + 8)};
+}
+
+inline ObjectRef ObjectList::At(std::size_t index) const {
+    return (*this)[index];
+}
+
+inline ObjectRef ObjectList::Iterator::operator*() const {
+    return (*m_List)[static_cast<std::size_t>(m_Index)];
+}
+
+inline ObjectRef ObjectList::Iterator::operator[](
+    difference_type offset) const {
+    return (*m_List)[static_cast<std::size_t>(m_Index + offset)];
 }
 
 template <class T>
@@ -738,6 +776,13 @@ inline Result<T> Pout::Get() const {
         return Result<T>::Success(
             {Detail::Load32(data), Detail::Load32(data + 4),
              Detail::Load32(data + 8)});
+    } else if constexpr (std::is_same_v<T, ObjectList>) {
+        if (m_Record.Kind != BML_BEHAVIOR_VALUE_OBJECT_LIST)
+            return Result<T>::Failure(BML_ERROR_TYPE_MISMATCH);
+        if (m_Record.ValueSize % 12u != 0)
+            return Result<T>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+        return Result<T>::Success(ObjectList(
+            m_Frames, m_Record.ValueOffset, m_Record.ValueSize / 12u));
     } else if constexpr (std::is_same_v<T, BML_Vec2> ||
                          std::is_same_v<T, BML_Vec3> ||
                          std::is_same_v<T, BML_Quaternion> ||

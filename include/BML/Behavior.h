@@ -81,7 +81,10 @@ typedef enum BML_BehaviorValueKind {
     BML_BEHAVIOR_VALUE_COLOR = 10,
     BML_BEHAVIOR_VALUE_BOX = 11,
     BML_BEHAVIOR_VALUE_MAT4 = 12,
-    BML_BEHAVIOR_VALUE_OBJECT = 13
+    BML_BEHAVIOR_VALUE_OBJECT = 13,
+    // An owned sequence of capture-time ObjectRefs. This kind is currently
+    // produced by Frame Pouts; it is not accepted as a Block literal.
+    BML_BEHAVIOR_VALUE_OBJECT_LIST = 14
 } BML_BehaviorValueKind;
 
 typedef union BML_BehaviorValueData {
@@ -411,6 +414,7 @@ typedef enum BML_BehaviorContinuation {
 //   BOX                                       Min.x,y,z, Max.x,y,z (24 bytes)
 //   MAT4                                      row-major m00..m33 (64 bytes)
 //   OBJECT                                    Domain,Slot,Generation (12 bytes)
+//   OBJECT_LIST                               zero or more consecutive OBJECTs
 typedef struct BML_BehaviorRunFrame {
     uint32_t StructSize;
     uint64_t Sequence;

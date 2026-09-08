@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "Behavior/ObjectRef.h"
+
 namespace BML::Behavior::Internal {
 
 enum class ExecutionState {
@@ -90,6 +92,7 @@ enum class PoutKind : std::uint32_t {
     Box,
     Mat4,
     Object,
+    ObjectList,
 };
 
 struct Pout {
@@ -107,6 +110,7 @@ struct Pout {
     std::uint32_t ObjectDomain = 0;
     std::uint32_t ObjectSlot = 0;
     std::uint32_t ObjectGeneration = 0;
+    std::vector<ObjectRef> Objects;
 };
 
 struct NativeExecution {

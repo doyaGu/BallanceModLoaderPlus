@@ -671,6 +671,32 @@ TEST(BehaviorExecution, PoutValuesAreOwnedAndKeepNameOccurrences) {
     EXPECT_EQ(frames[0].Pouts[1].Text, "second");
 }
 
+TEST(BehaviorExecution, ObjectListPoutsOwnTheirCapturedReferences) {
+    Execution execution(FrameRetention::Signals().Pouts());
+    FakeExecutionAdapter adapter;
+    Pout objects;
+    objects.Index = 0;
+    objects.Name = "Objects";
+    objects.Kind = PoutKind::ObjectList;
+    objects.Objects = {{1, 11, 21}, {}, {1, 12, 22}};
+    adapter.Pouts.push_back(objects);
+    adapter.Outputs[0].Active = true;
+
+    ASSERT_TRUE(execution.Pulse(ExecutionInput::Named("In"), 1, adapter));
+    adapter.Pouts[0].Objects[0] = {9, 9, 9};
+    adapter.Pouts[0].Objects.clear();
+
+    const auto frames = execution.Take();
+    ASSERT_EQ(frames.size(), 1u);
+    ASSERT_EQ(frames[0].Pouts.size(), 1u);
+    ASSERT_EQ(frames[0].Pouts[0].Objects.size(), 3u);
+    EXPECT_EQ(frames[0].Pouts[0].Objects[0],
+              (ObjectRef{1, 11, 21}));
+    EXPECT_TRUE(frames[0].Pouts[0].Objects[1].IsNull());
+    EXPECT_EQ(frames[0].Pouts[0].Objects[2],
+              (ObjectRef{1, 12, 22}));
+}
+
 TEST(BehaviorExecution, PoutFailureStopsTheExecutionAfterNativeCapture) {
     const std::array<ExecutionFault, 3> faults{{
         {ExecutionError::UnsupportedPout, 1, "unsupported Pout format"},

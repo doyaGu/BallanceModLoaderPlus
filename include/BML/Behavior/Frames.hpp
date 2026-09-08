@@ -100,12 +100,78 @@ struct RunInfo {
     Status LastStatus;
 };
 
+class Frames;
+
+// A zero-allocation view of the capture-time object references carried by an
+// Object List Pout. The view remains valid until its owning Frames is modified.
+class ObjectList {
+public:
+    ObjectList() = default;
+
+    class Iterator {
+    public:
+        using difference_type = std::ptrdiff_t;
+        using value_type = ObjectRef;
+        using pointer = void;
+        using reference = ObjectRef;
+        using iterator_category = std::random_access_iterator_tag;
+
+        [[nodiscard]] ObjectRef operator*() const;
+        [[nodiscard]] ObjectRef operator[](difference_type offset) const;
+        Iterator &operator++() { ++m_Index; return *this; }
+        Iterator operator++(int) { Iterator copy = *this; ++*this; return copy; }
+        Iterator &operator--() { --m_Index; return *this; }
+        Iterator operator--(int) { Iterator copy = *this; --*this; return copy; }
+        Iterator &operator+=(difference_type offset) { m_Index += offset; return *this; }
+        Iterator &operator-=(difference_type offset) { return *this += -offset; }
+        friend Iterator operator+(Iterator it, difference_type offset) { return it += offset; }
+        friend Iterator operator+(difference_type offset, Iterator it) { return it += offset; }
+        friend Iterator operator-(Iterator it, difference_type offset) { return it -= offset; }
+        friend difference_type operator-(Iterator left, Iterator right) {
+            return left.m_Index - right.m_Index;
+        }
+        friend bool operator==(Iterator left, Iterator right) {
+            return left.m_List == right.m_List && left.m_Index == right.m_Index;
+        }
+        friend bool operator!=(Iterator left, Iterator right) { return !(left == right); }
+        friend bool operator<(Iterator left, Iterator right) { return left.m_Index < right.m_Index; }
+        friend bool operator>(Iterator left, Iterator right) { return right < left; }
+        friend bool operator<=(Iterator left, Iterator right) { return !(right < left); }
+        friend bool operator>=(Iterator left, Iterator right) { return !(left < right); }
+
+    private:
+        Iterator(const ObjectList *list, difference_type index) noexcept
+            : m_List(list), m_Index(index) {}
+        const ObjectList *m_List = nullptr;
+        difference_type m_Index = 0;
+        friend class ObjectList;
+    };
+
+    [[nodiscard]] bool Empty() const noexcept { return m_Count == 0; }
+    [[nodiscard]] std::size_t Size() const noexcept { return m_Count; }
+    [[nodiscard]] ObjectRef operator[](std::size_t index) const;
+    [[nodiscard]] ObjectRef At(std::size_t index) const;
+    [[nodiscard]] Iterator begin() const noexcept { return Iterator(this, 0); }
+    [[nodiscard]] Iterator end() const noexcept {
+        return Iterator(this, static_cast<std::ptrdiff_t>(m_Count));
+    }
+
+private:
+    ObjectList(const Frames *frames, std::uint32_t offset,
+               std::size_t count) noexcept
+        : m_Frames(frames), m_Offset(offset), m_Count(count) {}
+
+    const Frames *m_Frames = nullptr;
+    std::uint32_t m_Offset = 0;
+    std::size_t m_Count = 0;
+
+    friend class Pout;
+};
+
 using PoutData = std::variant<std::monostate, bool, std::int32_t, float,
                               std::string, BML_Vec2, BML_Vec3,
                               BML_Quaternion, BML_Euler, BML_Rect, BML_Color,
                               BML_Box, BML_Mat4, ObjectRef>;
-
-class Frames;
 
 class Out {
 public:
@@ -304,7 +370,8 @@ private:
                              const std::uint8_t *&data) const noexcept {
         if (static_cast<std::uint64_t>(offset) + size > m_PayloadSize)
             return false;
-        data = m_Payload.data() + offset;
+        static constexpr std::uint8_t Empty = 0;
+        data = size == 0 ? &Empty : m_Payload.data() + offset;
         return true;
     }
     [[nodiscard]] std::string_view Text(std::uint32_t offset,
@@ -324,6 +391,7 @@ private:
 
     friend class Out;
     friend class Pout;
+    friend class ObjectList;
     friend class Frame;
     friend class Detail::Run;
 };

@@ -312,6 +312,7 @@ enum class ValueKind : std::uint32_t {
     Box = BML_BEHAVIOR_VALUE_BOX,
     Mat4 = BML_BEHAVIOR_VALUE_MAT4,
     Object = BML_BEHAVIOR_VALUE_OBJECT,
+    ObjectList = BML_BEHAVIOR_VALUE_OBJECT_LIST,
 };
 
 class Value {

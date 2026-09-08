@@ -1300,6 +1300,24 @@ private:
             BML::Imc::Wire::Detail::Store32(bytes + 8, pout.ObjectGeneration);
             size = 12;
             break;
+        case PoutKind::ObjectList: {
+            if (pout.Objects.size() > UINT32_MAX / 12u)
+                return false;
+            record.ValueSize = static_cast<std::uint32_t>(
+                pout.Objects.size() * 12u);
+            record.ValueOffset = static_cast<std::uint32_t>(m_PayloadSize);
+            for (const auto &object : pout.Objects) {
+                std::uint8_t encoded[12]{};
+                BML::Imc::Wire::Detail::Store32(encoded, object.Domain);
+                BML::Imc::Wire::Detail::Store32(encoded + 4, object.Slot);
+                BML::Imc::Wire::Detail::Store32(encoded + 8,
+                                                object.Generation);
+                std::uint32_t ignored = 0;
+                if (!Append(encoded, sizeof(encoded), ignored))
+                    return false;
+            }
+            return true;
+        }
         default:
             if (pout.ComponentCount > pout.Components.size())
                 return false;

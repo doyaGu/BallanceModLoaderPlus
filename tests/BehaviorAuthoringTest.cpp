@@ -126,6 +126,9 @@ struct FakeState {
     bool FramesAvailable = true;
     bool MalformedFrames = false;
     bool DuplicateFrameNames = false;
+    bool ObjectListFrame = false;
+    bool EmptyObjectListFrame = false;
+    bool InvalidObjectListFrame = false;
     bool RejectStaleGeneration = false;
     bool LayoutUnavailable = false;
     bool MalformedLayout = false;
@@ -442,6 +445,32 @@ int BML_BEHAVIOR_CALL ReadRun(BML_BehaviorRun,
 }
 
 std::vector<std::uint8_t> FramePayload() {
+    if (g_State.ObjectListFrame) {
+        constexpr std::uint32_t nameOffset =
+            static_cast<std::uint32_t>(sizeof(BML_BehaviorPoutRecord));
+        constexpr std::uint32_t nameLength = 7;
+        constexpr std::uint32_t valueOffset =
+            (nameOffset + nameLength + 3u) & ~3u;
+        const std::uint32_t valueSize = g_State.EmptyObjectListFrame ? 0u : 24u;
+        std::vector<std::uint8_t> payload(valueOffset + valueSize, 0);
+        BML_BehaviorPoutRecord pout{};
+        pout.StructSize = sizeof(pout);
+        pout.Type = {CKPGUID_OBJECTARRAY.d1, CKPGUID_OBJECTARRAY.d2};
+        pout.Kind = BML_BEHAVIOR_VALUE_OBJECT_LIST;
+        pout.NameOffset = nameOffset;
+        pout.NameLength = nameLength;
+        pout.ValueOffset = valueOffset;
+        pout.ValueSize = valueSize;
+        std::memcpy(payload.data(), &pout, sizeof(pout));
+        std::memcpy(payload.data() + nameOffset, "Objects", nameLength);
+        if (valueSize != 0) {
+            std::uint32_t words[] = {1, 11, 21, 0, 0, 0};
+            if (g_State.InvalidObjectListFrame)
+                words[4] = 1;
+            std::memcpy(payload.data() + valueOffset, words, sizeof(words));
+        }
+        return payload;
+    }
     if (g_State.DuplicateFrameNames) {
         std::vector<std::uint8_t> payload(148, 0);
         for (std::uint32_t index = 0; index < 2; ++index) {
@@ -520,9 +549,11 @@ int BML_BEHAVIOR_CALL TakeFrames(BML_BehaviorRun,
     frames->Sequence = 7;
     frames->Frame = 91;
     frames->OutOffset = 0;
-    frames->OutCount = g_State.DuplicateFrameNames ? 2 : 1;
-    frames->PoutOffset = g_State.DuplicateFrameNames ? 48 : 24;
-    frames->PoutCount = g_State.DuplicateFrameNames ? 2 : 1;
+    frames->OutCount = g_State.ObjectListFrame
+        ? 0u : (g_State.DuplicateFrameNames ? 2u : 1u);
+    frames->PoutOffset = g_State.ObjectListFrame
+        ? 0u : (g_State.DuplicateFrameNames ? 48u : 24u);
+    frames->PoutCount = g_State.DuplicateFrameNames ? 2u : 1u;
     if (g_State.MalformedFrames)
         frames->PoutOffset = std::numeric_limits<std::uint32_t>::max();
     std::memcpy(payload, bytes.data(), bytes.size());
@@ -1848,6 +1879,66 @@ TEST(BehaviorAuthoring, RequiresAnOccurrenceForDuplicateFrameNames) {
     auto second = frame.Pout<std::int32_t>(Named("Value", 1));
     ASSERT_TRUE(second);
     EXPECT_EQ(second.Value(), 84);
+}
+
+TEST(BehaviorAuthoring, ReadsObjectListPoutsWithoutAllocatingRecords) {
+    g_State = {};
+    g_State.ObjectListFrame = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto spawned = session.Use(CKGUID(1, 2)).Spawn();
+    ASSERT_TRUE(spawned);
+
+    auto taken = spawned->TakeFrames();
+    ASSERT_TRUE(taken);
+    ASSERT_EQ(taken->Size(), 1u);
+    auto objects = (*taken)[0].Pout<ObjectList>("Objects");
+    ASSERT_TRUE(objects) << objects.GetStatus().Message;
+    ASSERT_EQ(objects->Size(), 2u);
+    EXPECT_EQ((*objects)[0].Domain, 1u);
+    EXPECT_EQ((*objects)[0].Slot, 11u);
+    EXPECT_EQ((*objects)[0].Generation, 21u);
+    EXPECT_EQ((*objects)[1].Domain, 0u);
+
+    std::vector<ObjectRef> copied;
+    for (ObjectRef object : *objects)
+        copied.push_back(object);
+    ASSERT_EQ(copied.size(), 2u);
+    EXPECT_EQ(copied[0].Slot, 11u);
+}
+
+TEST(BehaviorAuthoring, RejectsAnInvalidReferenceInAnObjectListFrame) {
+    g_State = {};
+    g_State.ObjectListFrame = true;
+    g_State.InvalidObjectListFrame = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto spawned = session.Use(CKGUID(1, 2)).Spawn();
+    ASSERT_TRUE(spawned);
+
+    auto taken = spawned->TakeFrames();
+    EXPECT_FALSE(taken);
+    EXPECT_EQ(taken.Code(), BML_ERROR_MALFORMED_MESSAGE);
+}
+
+TEST(BehaviorAuthoring, ReadsAnEmptyObjectListPout) {
+    g_State = {};
+    g_State.ObjectListFrame = true;
+    g_State.EmptyObjectListFrame = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+    auto spawned = session.Use(CKGUID(1, 2)).Spawn();
+    ASSERT_TRUE(spawned);
+
+    auto taken = spawned->TakeFrames();
+    ASSERT_TRUE(taken);
+    auto objects = (*taken)[0].Pout<ObjectList>("Objects");
+    ASSERT_TRUE(objects) << objects.GetStatus().Message;
+    EXPECT_TRUE(objects->Empty());
+    EXPECT_EQ(objects->begin(), objects->end());
 }
 
 TEST(BehaviorAuthoring, ReusesFramesStorageAndRejectsTheWholeMalformedBatch) {
