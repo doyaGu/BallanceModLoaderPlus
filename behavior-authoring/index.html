@@ -1,0 +1,1849 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BML+ native mod, script mod, and inter-mod communication documentation.">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/behavior-authoring/">
+      
+      
+        <link rel="prev" href="../native-mod-api/">
+      
+      
+        <link rel="next" href="../native-api-routes/">
+      
+      
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en">
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Behavior authoring - Ballance Mod Loader Plus</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#behavior-authoring" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Ballance Mod Loader Plus" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Behavior authoring
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh" class="md-select__link">
+              简体中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Ballance Mod Loader Plus" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../using-bml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use BML+
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create mods
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Create mods
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose a route
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-mod-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native mods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior authoring
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior authoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-object-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Object model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-open-a-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Open a Session
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Open a Session">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#find-a-prototype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find a Prototype
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-configure-any-building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Configure any Building Block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-choose-who-owns-execute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Choose who owns Execute
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-read-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Read Frames
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-use-the-live-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Use the live Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-inspect-a-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Inspect a graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-create-a-script-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Create a Script graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-edit-a-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Edit a graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-named-retail-bbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Named retail BBs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-lifetime-errors-and-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Lifetime, errors, and performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-api-routes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Which native API to use
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Script mods
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Script mods
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Start here
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lifecycle and reload
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BML services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/engine-ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engine and UI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/communication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Communication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cross-mod communication
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Cross-mod communication
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imc-author-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contribute to BML+
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-object-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Object model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-open-a-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Open a Session
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Open a Session">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#find-a-prototype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find a Prototype
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-configure-any-building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Configure any Building Block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-choose-who-owns-execute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Choose who owns Execute
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-read-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Read Frames
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-use-the-live-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Use the live Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-inspect-a-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Inspect a graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-create-a-script-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Create a Script graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-edit-a-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Edit a graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-named-retail-bbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Named retail BBs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-lifetime-errors-and-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Lifetime, errors, and performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="behavior-authoring">Behavior authoring<a class="headerlink" href="#behavior-authoring" title="Permanent link">&para;</a></h1>
+<p><code>BML/Behavior.hpp</code> is the C++ interface for Native Mods that use Virtools Behaviors. It can create and execute any registered Building Block, create a top-level Script graph, and inspect or edit Behavior graphs. <code>BML/Behavior.h</code> exposes the same module as a C seam; C++ authors normally do not need its wire DTOs. This interface is still under pre-release development, currently supports Win32 Native C++ Mods only, and has not frozen source compatibility.</p>
+<h2 id="1-object-model">1. Object model<a class="headerlink" href="#1-object-model" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Prototype -&gt; Block -&gt; Call / Task / Instance -&gt; Frames
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                         |
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                         +--------------------&gt; live CKBehavior
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>existing CKBehavior graph -&gt; Graph snapshot -&gt; Edit -&gt; Patch / Plan
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>CKBeObject -&gt; Script -&gt; Graph snapshot -&gt; Edit -&gt; Patch
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Object</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Prototype</code></td>
+<td>One registered BB provider, identified by GUID and provider generation</td>
+</tr>
+<tr>
+<td><code>Block</code></td>
+<td>A copyable BB configuration; it does not own a <code>CKBehavior</code> yet</td>
+</tr>
+<tr>
+<td><code>Call</code> / <code>Task</code> / <code>Instance</code></td>
+<td>Each owns one real <code>CKBehavior</code>; only execution ownership differs</td>
+</tr>
+<tr>
+<td><code>Frames</code></td>
+<td>Copied control-flow results and optional Pout values from native Execute</td>
+</tr>
+<tr>
+<td><code>Script</code></td>
+<td>One owner-scoped, top-level graph-backed <code>CKBehavior</code></td>
+</tr>
+<tr>
+<td><code>Graph</code></td>
+<td>An immutable snapshot of a Behavior graph</td>
+</tr>
+<tr>
+<td><code>NodePattern</code></td>
+<td>Structural conditions resolved within one graph scope</td>
+</tr>
+<tr>
+<td><code>Edit</code></td>
+<td>A symbolic graph transformation that has not been installed</td>
+</tr>
+<tr>
+<td><code>Patch</code></td>
+<td>An Edit installed on one exact graph snapshot</td>
+</tr>
+<tr>
+<td><code>Plan</code></td>
+<td>An Edit reconciled against selected scripts across worlds</td>
+</tr>
+</tbody>
+</table>
+<p>Choose the entry point by the lifetime of the work:</p>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Start with</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Execute one BB outside a graph</td>
+<td><code>Session::Use</code></td>
+<td><code>Block</code>, then <code>Call</code>, <code>Task</code>, or <code>Instance</code></td>
+</tr>
+<tr>
+<td>Inspect or change a graph that exists now</td>
+<td><code>Session::Inspect</code></td>
+<td><code>Graph</code>, then an exact <code>Patch</code></td>
+</tr>
+<tr>
+<td>Keep a game Script changed across world loads</td>
+<td><code>Session::Plan</code></td>
+<td><code>Plan</code></td>
+</tr>
+<tr>
+<td>Create a new top-level Script</td>
+<td><code>Session::CreateScript</code></td>
+<td><code>Script</code></td>
+</tr>
+<tr>
+<td>Use a known retail BB with typed options</td>
+<td><code>Behavior/Blocks/*.hpp</code></td>
+<td>An ordinary <code>Block</code></td>
+</tr>
+</tbody>
+</table>
+<p>The rest of this guide follows that order: BB execution first, graph reading and creation next, then graph edits and their lifetime.</p>
+<h2 id="2-open-a-session">2. Open a Session<a class="headerlink" href="#2-open-a-session" title="Permanent link">&para;</a></h2>
+<p>Open a <code>Session</code> during Mod initialization:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior.hpp&gt;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">using</span><span class="w"> </span><span class="k">namespace</span><span class="w"> </span><span class="nn">BML</span><span class="o">::</span><span class="nn">Behavior</span><span class="p">;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">opened</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Session</span><span class="o">::</span><span class="n">Open</span><span class="p">();</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">opened</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="n">GetLogger</span><span class="p">()</span><span class="o">-&gt;</span><span class="n">Error</span><span class="p">(</span><span class="s">"Behavior unavailable: %s"</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">                       </span><span class="n">opened</span><span class="p">.</span><span class="n">GetStatus</span><span class="p">().</span><span class="n">Message</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">}</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">m_Behavior</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">opened</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+</code></pre></div>
+<p>The Loader verifies the calling DLL and binds the Session to the current Mod generation. A Session survives world reset; runs, Scripts, Watches, and Patches tied to that world do not. On Mod unload, the Loader stops new admission and retires callbacks and native Behaviors before unloading the DLL.</p>
+<p><code>Result&lt;T&gt;::Value()</code> borrows from a named Result; a temporary Result may return a copyable value directly. Use <code>Take()</code> when ownership of a move-only domain object leaves a successful Result. <code>Take()</code> clears the stored value, while keeping <code>Code()</code> and <code>GetStatus()</code> available for diagnostics.</p>
+<p>Objects created through a Session retain their own Session lease. Moving or <code>Reset()</code>-ing the original <code>Session</code> value releases that value's lease but does not invalidate a live Block, run, Script, Watch, Patch, or Plan. The native Session closes when its last lease is released.</p>
+<h3 id="find-a-prototype">Find a Prototype<a class="headerlink" href="#find-a-prototype" title="Permanent link">&para;</a></h3>
+<p>Use a known <code>CKGUID</code> directly, or query the catalog when the GUID is unknown or the current provider identity must be pinned:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">PrototypeQuery</span><span class="w"> </span><span class="n">query</span><span class="p">;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">query</span><span class="p">.</span><span class="n">Name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Physicalize"</span><span class="p">;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">found</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Prototypes</span><span class="p">(</span><span class="n">query</span><span class="p">);</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">found</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">Prototype</span><span class="w"> </span><span class="n">prototype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">front</span><span class="p">().</span><span class="n">Ref</span><span class="p">;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">auto</span><span class="w"> </span><span class="n">declared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Layout</span><span class="p">(</span><span class="n">prototype</span><span class="p">);</span>
+</code></pre></div>
+<p>An empty <code>PrototypeQuery</code> returns every discoverable registration. <code>Session::Layout(prototype)</code> reads the declared Layout without creating a native Instance or sending lifecycle callbacks.</p>
+<h2 id="3-configure-any-building-block">3. Configure any Building Block<a class="headerlink" href="#3-configure-any-building-block" title="Permanent link">&para;</a></h2>
+<p><code>Session::Use</code> creates a <code>Block</code> from a Prototype:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">prototype</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="p">.</span><span class="n">TargetOwner</span><span class="p">()</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="s">"Detail"</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}})</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Created Later"</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">}})</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="mf">12.0f</span><span class="p">}})</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="p">.</span><span class="n">Locals</span><span class="p">({{</span><span class="s">"Accumulator"</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">}});</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+</code></pre></div>
+<p>Each <code>Settings({...})</code> call is one Setting stage. Runtime sends <code>SETTINGSEDITED</code> after a stage; the BB may rebuild its interface in that callback, so the next stage is resolved against the new live Layout. Pins and Locals are applied after all Setting stages. Frame retention belongs to each Call, Task, or Instance rather than to the reusable Block.</p>
+<p>Targets are explicit: <code>TargetOwner()</code>, <code>Target(type, object)</code>, or <code>NullTarget(type)</code>. Slot selectors are explicit too: <code>At(index)</code>, <code>Named(name, occurrence)</code>, or <code>Unique(name)</code>. A string overload means <code>Unique(name)</code> and never silently selects the first duplicate.</p>
+<p>Variable-parameter Blocks such as <code>Identity</code> select their native parameter
+types on the Block itself:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">identity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">VT_LOGICS_IDENTITY</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="p">.</span><span class="n">PinType</span><span class="p">(</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="p">.</span><span class="n">PoutType</span><span class="p">(</span><span class="s">"pOut 0"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="nb">true</span><span class="p">}});</span>
+</code></pre></div>
+<p><code>PinType</code> and <code>PoutType</code> accept the same index and name selectors as other
+Block configuration. Runtime applies them after Setting callbacks establish
+the live Layout, but before Pin binding and the final <code>EDITED</code> callback. They
+therefore work identically for <code>Call</code>, <code>Start</code>, <code>Spawn</code>, <code>SpawnIn</code>, and
+<code>Edit::Graph::Add</code>; they are not graph transformations and cannot change a
+borrowed game Node.</p>
+<p><code>Block::Validate()</code> is an optional declared-Layout check and does not create a <code>CKBehavior</code>. It can check only the Target, selectors, and types present in the Prototype's initial declaration. Slots created by Setting callbacks are checked during real run admission. Admission performs the complete native checks even when <code>Validate()</code> was not called.</p>
+<p>The first validation or admission that can identify a provider pins its generation. If another provider later registers the same GUID, the old Block becomes stale instead of changing implementation. When provider retirement cannot be tracked, immediate runs may use generation zero, but such a Block cannot be stored in a Plan.</p>
+<h2 id="4-choose-who-owns-execute">4. Choose who owns Execute<a class="headerlink" href="#4-choose-who-owns-execute" title="Permanent link">&para;</a></h2>
+<p>The three run types own the same native kind of object:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>First Execute</th>
+<th>Later Execute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Call(input)</code></td>
+<td>Immediately, once</td>
+<td>Only after <code>Continue()</code> succeeds</td>
+</tr>
+<tr>
+<td><code>Start(input)</code></td>
+<td>Immediately, once</td>
+<td>Loader advances native continuation per game frame</td>
+</tr>
+<tr>
+<td><code>Spawn()</code></td>
+<td>None</td>
+<td>The Mod drives it with <code>Pulse(input)</code></td>
+</tr>
+<tr>
+<td><code>SpawnIn(graph)</code></td>
+<td>None</td>
+<td>Like Spawn, but parked as an unconnected graph node</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">once</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Run"</span><span class="p">);</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Latest</span><span class="p">());</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">();</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">parked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Pulse</span><span class="p">(</span><span class="s">"Reset"</span><span class="p">);</span>
+</code></pre></div>
+<p>A Frame policy belongs to that run only; the reusable Block has no observation policy. <code>Call::Continue()</code> keeps the same native Instance; it does not create or reactivate another one. Success consumes the Call and returns its Task; failure leaves the Call usable.</p>
+<p>When a BB has only one In, <code>Call(policy)</code> and <code>Start(policy)</code> select it without a placeholder Selector. Use a Selector or string overload when choosing a particular In.</p>
+<p>An Instance executes at most once per game frame. Same-frame and reentrant Pulses queue; repeated admissions of the same logical In coalesce, while distinct Ins retain first-admission order. <code>Ready</code> means no native continuation and no queued In. It does not mean the BB released Local or manager state.</p>
+<p>All run types provide <code>Info()</code>, <code>TakeFrames()</code>, <code>Layout()</code>, <code>Inspect()</code>, <code>Set()</code>, <code>Bind()</code>, <code>Settings()</code>, and <code>Close()</code>. Only <code>Call</code> provides <code>Continue()</code>; <code>Task</code> and <code>Instance</code> provide <code>Pulse()</code>.</p>
+<h2 id="5-read-frames">5. Read Frames<a class="headerlink" href="#5-read-frames" title="Permanent link">&para;</a></h2>
+<p>Every native Execute creates one immutable Frame before Runtime clears that execution's active Outs. It records sequence, game frame, native result, continuation, active Outs, and diagnostics.</p>
+<p>Frame retention and Pout capture are independent:</p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>Retained Frames</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Signals(n)</code></td>
+<td>First, signalled, failure, and non-continuing Frames</td>
+</tr>
+<tr>
+<td><code>EachFrame(n)</code></td>
+<td>Every Execute</td>
+</tr>
+<tr>
+<td><code>Latest()</code></td>
+<td>Latest continuing, failure, and non-continuing Frames</td>
+</tr>
+<tr>
+<td><code>Ignore()</code></td>
+<td>No ordinary Frames; failure and non-continuing Frames remain visible</td>
+</tr>
+</tbody>
+</table>
+<p>Runtime reads Pouts only when the policy includes <code>.Pouts()</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">Frames</span><span class="w"> </span><span class="n">frames</span><span class="p">;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">frames</span><span class="p">.</span><span class="n">Reserve</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">4096</span><span class="p">);</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">taken</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">task</span><span class="o">-&gt;</span><span class="n">TakeFrames</span><span class="p">(</span><span class="n">frames</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Frame</span><span class="w"> </span><span class="n">frame</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">frames</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frame</span><span class="p">.</span><span class="n">HasOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">            </span><span class="k">auto</span><span class="w"> </span><span class="n">speed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Speed"</span><span class="p">);</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">speed</span><span class="p">)</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">                </span><span class="n">Use</span><span class="p">(</span><span class="n">speed</span><span class="p">.</span><span class="n">Value</span><span class="p">());</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>TakeFrames()</code> allocates as needed. <code>TakeFrames(Frames&amp;)</code> reuses existing header and payload buffers; with sufficient capacity it makes one C call and allocates no record or string objects. The name makes its consuming behavior distinct from <code>Result&lt;T&gt;::Take()</code>. <code>Frame</code>, <code>Out</code>, and <code>Pout</code> are read-only views into their owning <code>Frames</code> and become invalid after that <code>Frames</code> is modified.</p>
+<p>Only an lvalue <code>Frames</code> can produce views, so a temporary cannot leave a dangling <code>Frame</code>. <code>Clear()</code> keeps reusable capacity. After an exceptional large batch, <code>ShrinkToFit()</code> releases unused header and payload storage.</p>
+<p>An object Pout receives an <code>ObjectRef</code> while the object is live. An Object List
+Pout (<code>CKPGUID_OBJECTARRAY</code>) is exposed as <code>ObjectList</code>, a zero-allocation view
+of the capture-time references:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="n">ObjectList</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Loaded Objects"</span><span class="p">);</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">loaded</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">ObjectRef</span><span class="w"> </span><span class="n">object</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">loaded</span><span class="p">.</span><span class="n">Value</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ObjectInfo</span><span class="w"> </span><span class="n">info</span><span class="p">;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ReadObject</span><span class="p">(</span><span class="n">object</span><span class="p">,</span><span class="w"> </span><span class="n">info</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">            </span><span class="n">Use</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">CK_ID</span><span class="o">&gt;</span><span class="p">(</span><span class="n">info</span><span class="p">.</span><span class="n">Id</span><span class="p">));</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="p">}</span>
+</code></pre></div>
+<p>The view belongs to <code>Frames</code>, like <code>Frame</code>, <code>Out</code>, and <code>Pout</code>; iterating it does
+not allocate. Later Frame reads never touch the original CK parameter, Object
+List, or objects. A deleted object therefore leaves a stale <code>ObjectRef</code> rather
+than a dangling CK pointer. If any Pout cannot be read or encoded, Runtime
+discards that incomplete Pout batch but preserves the same Frame's active Outs
+and diagnostic. Object List is an output form, not a Block literal.</p>
+<p>A Frame without continuation does not mean its run handle has closed: a <code>Ready</code> Instance can still accept another Pulse. Admission stops only on failure, explicit close, or queue overflow.</p>
+<p>A bounded store does not discard an old Frame to admit a new one. It stops the run and reports <code>FrameQueueFull</code> in a separate failure slot. Taking Frames releases ordinary queue capacity.</p>
+<h2 id="6-use-the-live-layout">6. Use the live Layout<a class="headerlink" href="#6-use-the-live-layout" title="Permanent link">&para;</a></h2>
+<p>A run's <code>Layout()</code> describes its configured native interface. A <code>Slot</code> carries the Instance identity and layout generation and can be passed directly to <code>Set()</code> or <code>Bind()</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Layout</span><span class="p">();</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">layout</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="s">"Strength"</span><span class="p">))</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">        </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Set</span><span class="p">(</span><span class="o">*</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="mf">20.0f</span><span class="p">);</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>A lifecycle callback boundary invalidates old Slots because the provider may rebuild a same-shaped interface. Ordinary Execute advances the layout generation only when Target, In/Out, Pin/Pout, Setting, or Local identity actually changes. A stale Slot or Port returns <code>LayoutChanged</code> instead of retargeting an old ordinal.</p>
+<p><code>Settings({...})</code> applies another live Setting stage. Runtime then reads the new Layout and restores Target, Pin, Local, and source relations that remain unique and type-compatible. Once native mutation begins, any write, callback, Layout, or relation failure makes the run <code>Failed</code>: <code>Info()</code> preserves the first <code>Status</code>, later mutation and execution are rejected with that same diagnostic, and the native Instance remains owned until <code>Close()</code>.</p>
+<h2 id="7-inspect-a-graph">7. Inspect a graph<a class="headerlink" href="#7-inspect-a-graph" title="Permanent link">&para;</a></h2>
+<p><code>Session::Inspect</code> and a run's <code>Inspect</code> return immutable <code>Graph</code> snapshots:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">snapshot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Inspect</span><span class="p">(</span><span class="n">script</span><span class="p">);</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">snapshot</span><span class="p">)</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">Named</span><span class="p">(</span><span class="s">"Counter_Active"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">counter</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Read</span><span class="p">(</span><span class="n">counter</span><span class="o">-&gt;</span><span class="n">Pout</span><span class="p">(</span><span class="s">"Count"</span><span class="p">));</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="c1">// Use value while snapshot is alive.</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">}</span>
+</code></pre></div>
+<p>Pass <code>View::Live</code> directly to <code>Session::Inspect</code> when the physical graph is required; this avoids reading a Logical snapshot first. <code>Graph::Logical()</code> and <code>Live()</code> remain useful when switching views from an existing snapshot.</p>
+<p><code>Find</code> and <code>FindAll</code> accept the same selectors as Block slots: <code>At(index)</code>,
+<code>Named(name, occurrence)</code>, and <code>Unique(name)</code>. An optional Prototype GUID narrows
+the match. They search direct child Nodes; the snapshot root is obtained only
+through <code>Root()</code>. <code>Node::Index()</code> is the direct-child position in that graph and
+<code>Node::IsGraph()</code> distinguishes a graph-backed Behavior from a function-backed
+BB. <code>Graph::Inspect(node)</code> enters a graph-backed child and returns a new snapshot
+whose root is that Node. Native pointers enter the model only at the root through
+<code>Session::Inspect(CKBehavior *)</code>; child Nodes and Links are obtained from the
+snapshot, so an edit cannot silently mix identities from different graphs.
+<code>At(index)</code> is deliberately positional: it uses the current Graph view's child
+order. Logical indices are dense after Patch infrastructure is hidden; Live
+indices are the native child positions. Virtools sorts children by priority
+when one is added, and equal-priority order is scheduler-visible but is not a
+cross-world structural identity. Exact Graph
+snapshots protect that position; <code>Require(snapshotNode)</code> instead copies a unique
+name, Prototype, kind, and port shape for later structural resolution.
+<code>Port::Index()</code> likewise preserves the native CK slot index. Local indexes may
+be sparse because Settings share CK's local-parameter array but are exposed as
+a separate slot kind; prefer a name selector unless the native index is part of
+the BB contract.</p>
+<p><code>Incoming</code> and <code>Outgoing</code> are zero-allocation indexed Link views and do not scan
+unrelated Links. <code>Links()</code> and <code>Incoming</code> follow the graph's Link collection
+order, while <code>Outgoing</code> follows each source IO's Virtools traversal order.
+<code>Entering</code>, <code>Leaving</code>,
+<code>Previous</code>, and <code>Next</code> require a unique topology result and report ambiguity
+instead of choosing an arbitrary branch. Node, Port, Link, and
+ParameterOperation are lightweight views into one shared snapshot allocation.
+<code>Graph::Operations()</code> reports each native <code>CKParameterOperation</code>, including its
+operation GUID, exact result/input type tuple, graph owner, and object identity.
+A Port retains its Node's layout generation, so it cannot be used against a
+later incompatible Layout.</p>
+<p><code>Logical()</code> rereads the author-visible graph; <code>Live()</code> rereads the physical CK graph. Logical view keeps explicit Add and Flow edits, hides the exact infrastructure installed by Tap, Before, After, and Splice, and restores a splice anchor's logical endpoints. A graph fingerprint covers native identities, priorities, layouts, parameter operations, Link topology, child scheduling order, graph-Link order, and each source IO's Link traversal order. Patch journals restore those CK2 orders exactly. A native graph whose source IO reaches a Link owned by another graph is rejected rather than published. If foreign code changes a claimed after-image, Apply reports <code>GraphChanged</code>; Close reports <code>RevertConflict</code> before changing the graph.</p>
+<p><code>Graph::Read</code> follows stored, direct, and shared sources without evaluating a Parameter Operation. Operation values are reported as indeterminate.</p>
+<p>Watches sample a graph, Layout, or value once per game frame. Observation or callback failure retains the first <code>Status</code>, moves the Watch to <code>Failed</code>, and stops later callbacks.</p>
+<h2 id="8-create-a-script-graph">8. Create a Script graph<a class="headerlink" href="#8-create-a-script-graph" title="Permanent link">&para;</a></h2>
+<p><code>Session::CreateScript</code> creates a top-level Script owned by a live <code>CKBeObject</code> in the current Scene and installs its initial <code>Edit</code> before returning. The Script starts inactive, so Virtools cannot schedule a partially defined graph:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">graph</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">body</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendIn</span><span class="p">(</span><span class="s">"Start"</span><span class="p">);</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">left</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AppendLocal</span><span class="p">(</span><span class="s">"Left"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="k">auto</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AddOperation</span><span class="p">(</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="n">addition</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">graph</span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">left</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0f</span><span class="p">)</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">left</span><span class="p">)</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="mf">3.0f</span><span class="p">);</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="k">auto</span><span class="w"> </span><span class="n">created</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">CreateScript</span><span class="p">(</span><span class="n">owner</span><span class="p">,</span><span class="w"> </span><span class="s">"My Script"</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="p">);</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">created</span><span class="p">)</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="n">Script</span><span class="w"> </span><span class="n">script</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">created</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="n">script</span><span class="p">.</span><span class="n">Activate</span><span class="p">();</span>
+</code></pre></div>
+<p><code>CreateScript</code> performs the one native <code>AddScript</code> operation that establishes both owner and Scene membership. It then compiles and applies the complete Edit. A validation, lifecycle, callback, or graph failure returns no Script handle, removes the unpublished root, and publishes nothing to Plans. The installed body belongs to the Script rather than to a second public Patch handle.</p>
+<p><code>Activate()</code> schedules an inactive Script without reset semantics. <code>Restart()</code> explicitly requests Virtools activation reset, including when the Script is already active. <code>Deactivate()</code> stops scheduling it.</p>
+<p><code>Edit::Root()</code> returns the symbolic root scope of the graph being authored; the snapshot root must not be imported with <code>Use()</code> for this purpose. The root may own In, Out, Pin, Pout, and Local parameters. <code>AddOperation</code> adds a real graph-owned <code>CKParameterOperation</code>; Virtools selects its function from the operation GUID and the exact result/input type tuple, and evaluates its result lazily when a consumer reads it. Every declared operation input must be bound. <code>Script::Apply()</code> remains available for later incremental edits. An accepted activation request is applied at the next Behavior safe point, after pending Patches have reconciled. <code>Restart()</code> requests Virtools reset semantics even if the Script is already active.</p>
+<p>Script closure is also completed at a safe point: <code>Close()</code> can first return <code>CloseState::Closing</code>, and a later call returns <code>Closed</code> after deactivation, owner removal, and native destruction. Close the Script before destroying its owner; Mod unload and world reset perform the same retirement automatically.</p>
+<h2 id="9-edit-a-graph">9. Edit a graph<a class="headerlink" href="#9-edit-a-graph" title="Permanent link">&para;</a></h2>
+<p><code>Edit</code> is one symbolic transformation with explicit graph scopes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">dispatch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Switch On Message"</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">        </span><span class="p">.</span><span class="n">Kind</span><span class="p">(</span><span class="n">BehaviorKind</span><span class="o">::</span><span class="n">Function</span><span class="p">)</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">        </span><span class="p">.</span><span class="n">Ins</span><span class="p">(</span><span class="mi">2</span><span class="p">).</span><span class="n">Outs</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pins</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pouts</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">checkpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Wait Message"</span><span class="p">).</span><span class="n">Pin</span><span class="p">(</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">        </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">Value</span><span class="o">::</span><span class="n">As</span><span class="p">(</span><span class="n">CKPGUID_MESSAGE</span><span class="p">,</span><span class="w"> </span><span class="n">checkpointMessage</span><span class="p">)));</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscoreNode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span><span class="s">"Highscore"</span><span class="p">);</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Graph</span><span class="p">();</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="k">auto</span><span class="w"> </span><span class="n">done</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="k">auto</span><span class="w"> </span><span class="n">activators</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">Each</span><span class="p">(</span><span class="s">"Activate Script"</span><span class="p">);</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">highscore</span><span class="p">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">activators</span><span class="p">.</span><span class="n">Out</span><span class="p">(),</span><span class="w"> </span><span class="n">done</span><span class="p">);</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="n">root</span><span class="p">.</span><span class="n">After</span><span class="p">(</span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Out</span><span class="p">(</span><span class="s">"Done"</span><span class="p">),</span><span class="w"> </span><span class="n">hook</span><span class="p">);</span>
+</code></pre></div>
+<p><code>NodePattern</code> is the structural vocabulary used by <code>Require</code>. It can
+combine an index/name selector, Prototype, Behavior kind, exact counts for each
+port family, and non-forcing observations of Target, Pin, Pout, Setting, or
+Local values. All conditions identify one Node together; an absent or ambiguous
+match leaves a Plan unsatisfied. Patterns contain no native identity and no
+author predicate, so the Plan can resolve the same Edit again when its Script
+appears in another world. Value reads are performed only for candidates that
+already satisfy the cheaper structural conditions.</p>
+<p><code>Require(pattern)</code> selects exactly one Node. <code>Each(pattern)</code> selects a non-empty
+set and repeats operations on its <code>Ports</code> in native child-index order; it is not
+an author callback and retains no executable predicate. <code>Next</code> and <code>Previous</code>
+name the Node at the other end of one control Link. Their optional
+<code>NodePattern</code> filters the connected Nodes before requiring a unique relation,
+which is useful for outputs that legitimately fan out. <code>Leaving</code>, <code>Entering</code>,
+and <code>To</code> name Links by topology. These relations are resolved again from the
+logical graph whenever a Plan installs, so callers do not cache a snapshot or a
+slot index. <code>Redirect(incoming, leaving)</code> sends the first Link to the current
+destination of the second and is the direct way to bypass a Block. A Redirect
+is the author's intended topology and therefore remains visible in the Logical
+view; only its physical Link-chain infrastructure is hidden.</p>
+<p>The Node overloads of <code>Next</code>, <code>Previous</code>, <code>Leaving</code>, and <code>Entering</code> require the relevant In or Out to be unique; they never assume port zero. Pass <code>At(index)</code>, <code>Named(name, occurrence)</code>, or <code>Unique(name)</code> when a Node has several control ports.</p>
+<p><code>Edit</code> owns the transformation program, while <code>Edit::Graph</code> is its sole public
+authoring interface. <code>Edit::Root()</code> returns the root scope and
+<code>Edit::Node::Graph()</code> enters a graph-backed Node; <code>Edit</code> itself does not mirror
+the graph-local operations. A graph scope is a cheap value. Mutating operations
+return another value, so a chain beginning with the temporary returned by
+<code>Root()</code> can be retained safely. Every scope and symbol remains valid only while
+its Edit exists. A parent graph may connect only the child's public ports;
+internal ports from different scopes cannot be connected. <code>AddGraph(name,
+priority)</code> creates a real graph-backed child, and the nested scope defines its
+public interface and body in the same transaction. The root and every nested
+scope are validated together and restored in child-before-parent order.</p>
+<p><code>Edit::Node</code>, <code>Edit::Port</code>, <code>Edit::Link</code>, and <code>Edit::Path</code> are authoring symbols,
+not graph snapshot views. Symbols belong to the Edit and graph scope that
+created them. <code>Require(snapshotNode)</code> copies a unique structural requirement:
+name when present, Prototype, graph/function kind, and exact port layout. It
+does not copy the native child index. If two Nodes remain indistinguishable by
+those facts, resolution reports ambiguity instead of choosing one by array
+position. <code>Require(snapshotLink)</code> applies the same rule to both endpoint Nodes
+and also retains the endpoint ports and delay. These requirements can resolve
+again in another world and fail explicitly if their structure drifts.
+<code>Use(snapshotNode)</code> and <code>Use(snapshotLink)</code> retain exact ObjectRefs and are valid
+only for an exact Patch. A Plan rejects those identities and every non-null
+ObjectRef in its Edit or Blocks.</p>
+<p><code>Add(block)</code> copies the Block configuration and pinned provider generation. Later changes to the source Block do not affect the Edit. Frame policy is not part of graph authoring.</p>
+<p>During installation, every added Block completes <code>CREATE</code>, <code>ATTACH</code>, and its Setting stages before graph parameter relations are installed. Its one final <code>EDITED</code> callback sees those relations; only then does the Patch add control Flow. Existing Blocks whose values or parameter relations change likewise receive one <code>EDITED</code> after installation and one after successful restoration. A Patch containing only control Flow does not send block-level <code>EDITED</code> callbacks.</p>
+<p>Common transformations are:</p>
+<ul>
+<li><code>Flow</code> / <code>FlowCycle</code> for Behavior Links;</li>
+<li><code>Bind</code> / <code>Share</code> / <code>Push</code> for parameter relations;</li>
+<li><code>Tap</code> / <code>Before</code> / <code>After</code> for callbacks;</li>
+<li><code>Splice</code> for routing an existing Link through a Block;</li>
+<li><code>Redirect</code> for temporarily changing a Link destination;</li>
+<li><code>Reconnect</code> / <code>ReconnectCycle</code> for moving both endpoints of one existing
+  Link without recreating it;</li>
+<li><code>Next</code> / <code>Previous</code> and <code>Leaving</code> / <code>Entering</code> / <code>To</code> for topology resolved in each world;</li>
+<li><code>Each</code> for applying one operation to every Node matching a Pattern;</li>
+<li><code>AppendIn/Out/Pin/Pout</code> for dynamic interfaces;</li>
+<li><code>AppendLocal</code> for the graph root or a Block added by the same Edit. A Local
+  belongs to its implementation, so an Edit cannot add one to a borrowed Node;</li>
+<li><code>AddGraph</code> for a graph-backed child whose nested scope is authored in place;</li>
+<li><code>AddOperation</code> for a graph-owned, lazily evaluated Parameter Operation;</li>
+<li><code>Replace</code> for exchanging one idle child Node for a configured Block with the
+  same public interface;</li>
+<li><code>Remove</code> for taking one existing child Node and all of its incoming and
+  outgoing Behavior Links out of the graph for the lifetime of the Patch.</li>
+</ul>
+<p><code>Replace</code> preserves the original Link objects, delays, Pin and Target sources,
+Pout destinations, name, priority, and owner. Settings and Locals are private
+state, so the replacement uses its own Block configuration rather than copying
+them. Closing the Patch restores the exact original Node and all of those
+relations before the replacement Block is destroyed. Replacement refuses an
+active Node or a public-interface mismatch instead of adapting by position.</p>
+<p><code>Remove</code> is reversible graph membership, not object destruction. The Patch
+keeps the exact Node and incident Link objects, disconnects the Links while
+they are parked, and restores their original endpoints and delays when it
+closes. This prevents an active sibling's output port from traversing a Link
+that no longer belongs to the graph. Applying a removal requires the selected
+Node, its control ports, and every incident Link source to be idle;
+an already-active non-target sink no longer depends on that Link. CK2 does not
+expose delayed-list membership through the retail SDK. At an execution
+boundary, a Link outside that list has a remaining delay of zero or its initial
+delay; any other positive remaining delay is therefore treated as in-flight and
+rejected. This remains true when a graph was deactivated without a reset, since
+that operation leaves its delayed list intact. Unrelated graph work may remain
+active.</p>
+<p><code>Reconnect</code> changes the source and destination relations of the selected native
+<code>CKBehaviorLink</code>. It preserves that Link's identity, initial delay, and current
+delay, and Patch close restores the exact original endpoints and source-port
+traversal order. <code>Redirect</code> remains the destination-only Link overlay; use
+<code>Reconnect</code> when the Link itself must move. A newly introduced same-frame cycle
+requires the explicit <code>ReconnectCycle</code> form.</p>
+<p><code>Replace</code>, <code>Remove</code>, and <code>Reconnect</code> are structural edits. They require the
+graph to have no Link overlays owned by another Patch and prevent later
+Patches until they close. A Patch may still edit unrelated Links atomically,
+but it cannot both reconnect and overlay the same Link. <code>Replace</code> and <code>Remove</code>
+also exclude Link overlays from their own Patch, so no overlay can retain a
+physical chain through a parked Node.</p>
+<p>Bind several current-world graphs to their Edits with <code>On(graph, edit)</code>. The
+Session returns one Patch for the whole feature:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">patch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Apply</span><span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="s">"overclock"</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">deactivateGraph</span><span class="p">,</span><span class="w"> </span><span class="n">deactivateEdit</span><span class="p">),</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">newBallGraph</span><span class="p">,</span><span class="w"> </span><span class="n">newBallEdit</span><span class="p">),</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">energyGraph</span><span class="p">,</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
+</code></pre></div>
+<p><code>On(...)</code> is only the connective syntax for these calls; it does not introduce
+another public graph or patch type.</p>
+<p>All targets are resolved and statically checked before the first graph changes.
+They then commit in argument order; a later failure restores earlier targets in
+reverse order. The same graph cannot appear twice at the top level. Deleting any
+exact target retires the whole Patch and restores every surviving graph at the
+next Behavior safe point. <code>Graph::Apply</code> and <code>Script::Apply</code> are single-graph
+convenience forms of this operation.</p>
+<p>A Plan owns several independent Script rules:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Plan</span><span class="p">(</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="s">"game-events"</span><span class="p">,</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Event_handler"</span><span class="p">),</span><span class="w"> </span><span class="n">eventEdit</span><span class="p">),</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Ingame"</span><span class="p">),</span><span class="w"> </span><span class="n">gameplayEdit</span><span class="p">),</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Energy"</span><span class="p">),</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
+</code></pre></div>
+<p>Each rule reconciles only when its Script name changes; there is no per-frame
+full graph scan. One rule may match <code>One</code> or <code>Each</code>, and its root plus nested
+scopes install as one atomic Patch. <code>Partial</code> means at least one rule is
+installed while another is unmatched; <code>Unsatisfied</code> means none is installed.
+Definitions survive world reset and reconcile against the next world.</p>
+<p>Patch and Plan both expose <code>Enable()</code>, <code>Disable()</code>, <code>Replace(...)</code>, <code>Info()</code>, and
+<code>Close()</code>. Disable restores native graphs but keeps the handle and owned
+definition. Enable validates again before installation. Replace preserves an
+unchanged prefix, restores the changed suffix in reverse order, then installs
+the new suffix. If new content fails, the old complete definition is restored;
+if that inverse also conflicts, <code>Info()</code> reports <code>Conflicted</code> and retains the
+journal. Several requests before the next safe point collapse to the last
+definition and active state.</p>
+<p><code>Info().LastStatus</code> is the result of the latest reconciliation pass.
+<code>ApplyFailure</code> retains the first failure while applying the requested
+definition, while <code>RestoreFailure</code> describes the obstruction currently
+preventing restoration or rollback. These facts are independent: a rejected
+replacement may restore the previous definition and remain <code>Active</code> with only
+<code>ApplyFailure</code>; if that recovery is also blocked, both failures remain visible.
+Branch on <code>Error</code> and <code>Phase</code>. The diagnostic message adds the Patch or Plan
+name, Mod generation, and, when available, world, rule or target index, and
+Script name for logging.</p>
+<p>Close compares the Links, sources, and graph after-images still owned by an
+installation. A foreign change produces <code>RevertConflict</code>; the handle remains
+readable and Close can be retried after the conflict is repaired.</p>
+<p>Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.</p>
+<h2 id="10-named-retail-bbs">10. Named retail BBs<a class="headerlink" href="#10-named-retail-bbs" title="Permanent link">&para;</a></h2>
+<p><code>BML/Behavior/Blocks.hpp</code> collects header-only adapters for known retail BBs, including Object Load, Physicalize, Physics Force, Physics Impulse, Physics Wake Up, Send Message, and 2D Text. Each header contains only that BB's Prototype, Options, and slot knowledge:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>These adapters return ordinary Blocks and do not bypass lifecycle, execution, or teardown. New Native Mod code should not use the legacy ExecuteBB interface.</p>
+<h2 id="11-lifetime-errors-and-performance">11. Lifetime, errors, and performance<a class="headerlink" href="#11-lifetime-errors-and-performance" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Session</th>
+<th>Run</th>
+<th>Script</th>
+<th>Watch / Patch</th>
+<th>Plan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Explicit release</td>
+<td><code>Reset()</code> releases this value's lease; the last lease closes the native Session</td>
+<td><code>Close()</code> stops admission; teardown finishes at a safe point</td>
+<td><code>Close()</code> closes its initial graph, deactivates, leaves its owner, then destroys at a safe point</td>
+<td><code>Close()</code> remains readable during closure or conflict</td>
+<td><code>Close()</code> remains readable while rules retire</td>
+</tr>
+<tr>
+<td>World reset</td>
+<td>Survives</td>
+<td>Closes</td>
+<td>Closes with the old world</td>
+<td>Closes with the old graph</td>
+<td>Survives and reconciles in the next world</td>
+</tr>
+<tr>
+<td>Mod unload/reload</td>
+<td>Owner generation retires</td>
+<td>Closes before DLL unload</td>
+<td>Leaves its owner and closes before DLL unload</td>
+<td>Callback and graph state retire first</td>
+<td>Retires before callback code unloads</td>
+</tr>
+</tbody>
+</table>
+<p>Except for Close, Behavior operations require the game thread. Every <code>Result&lt;T&gt;</code> carries both a stable error category and <code>Status</code>; branch on the error and phase, not on message text.</p>
+<p>Reuse Blocks, Frames, and graph snapshots on hot paths. Blocks share compiled C descriptors, <code>TakeFrames(Frames&amp;)</code> avoids allocation when capacity is sufficient, and Node, Port, Link, ParameterOperation, LinkRange, and Frame values are views rather than copied records. Both LinkRange directions use snapshot-owned indices. Plans reconcile only Script names reported as changed; disabled definitions and unchanged Replace prefixes do not rebuild native graphs.</p>
+<p>A healthy Patch or Plan <code>Info()</code> reads its state without copying the retained
+apply/restore failure pair. Detailed failures are read only after
+<code>LastStatus</code> reports a failed reconciliation. A settled Plan performs no
+Script scan, Edit resolution, native installation, or allocation on unchanged
+frames.</p>
+<p>The current public interface exposes native Parameter Operations but does not add a second expression language over them. It does not include an AngelScript Behavior projection or third-party parameter-format registration. Unsupported Virtools parameter types fail explicitly; they are never guessed to be arbitrary bytes.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

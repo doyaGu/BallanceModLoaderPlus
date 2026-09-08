@@ -416,6 +416,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../behavior-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior 编写
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../native-api-routes/" class="md-nav__link">
         
   
@@ -454,10 +482,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -475,8 +503,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -531,10 +559,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_2" >
         
           
-          <label class="md-nav__link" for="__nav_3_4_2" id="__nav_3_4_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5_2" id="__nav_3_5_2_label" tabindex="0">
             
   
   
@@ -552,8 +580,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4_2">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1204,10 +1232,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_3" >
         
           
-          <label class="md-nav__link" for="__nav_3_4_3" id="__nav_3_4_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5_3" id="__nav_3_5_3_label" tabindex="0">
             
   
   
@@ -1225,8 +1253,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4_3">
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1577,10 +1605,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
         
           
-          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
             
   
   
@@ -1598,8 +1626,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_5">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2067,8 +2095,14 @@ Virtools SDK 的库。</p>
 API 文件。</p>
 <h2 id="_4">运行时验证<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>单元测试和集成测试不会运行 Virtools 或真实 Player。修改 Hook、生命周期顺序、
-渲染、输入、CK 对象访问、原生 Mod 装载或脚本宿主后，还必须执行 Player
-冒烟测试。</p>
+渲染、输入、CK 对象访问、原生 Mod 装载或脚本宿主后，还必须在真实 Player 中验证。
+验证层级必须能观察到被修改的行为：</p>
+<ul>
+<li><code>tests/smoke/Validate-BMLBallance.ps1</code> 检查部署、Mod 加载、导出的运行时 interface、
+  关闭和安装恢复。它是进程集成冒烟测试，不能证明 Building Block 语义正确。</li>
+<li>定向 Player 场景沿真实游戏路径运行，并检查可观察的世界结果。行为执行、physics
+  epoch、行为图修改、生命周期顺序、渲染或输入语义必须使用这一层。</li>
+</ul>
 <p>设置 <code>BML_BALLANCE_ROOT</code>，或向脚本传入 <code>-BallanceRoot</code>：</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">smoke</span><span class="p">/</span><span class="n">Validate-BMLBallance</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
@@ -2078,6 +2112,42 @@ API 文件。</p>
 <p>替换已加载的 DLL 前先关闭 Player。测试脚本会备份现有 Loader、安装冒烟测试
 资源、启动 Player、检查日志，并在结束后恢复原安装；只有显式传入
 <code>-KeepInstalled</code> 才会保留测试文件。</p>
+<p>Player 验收拆成一个驱动 Mod 加每个被测对象各一个 probe Mod。<code>PlayerFlowDriver</code>
+只负责自带流程：菜单图进入 Level 01、教程退出握手、抓帧和退出，它不认识任何被测
+对象。所有结论都来自导出 <code>BMLPlayerProbeRead</code> 的 probe Mod：驱动枚举已加载的
+probe，等每个 probe 报告结论，任一 probe 失败即整轮失败。读取 gameplay 状态的
+probe 还导出 <code>BMLPlayerProbeStart</code>，由驱动决定它何时可以碰球、相机或输入。因此
+一轮验收覆盖哪些对象，由 runner 安装了哪些 probe 决定，而不是由驱动决定。</p>
+<p>ExecuteBB probe 自己 Physicalize 一个自有物体，因此可以在不依赖原版球的前提下
+证明 ExecuteBB 的物理操作：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">RelWithDebInfo</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span> <span class="p">`</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  <span class="n">PlayerFlowDriver</span> <span class="n">ExecuteBBTest</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">player</span><span class="p">/</span><span class="nb">Invoke-ExecuteBBTest</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance 根目录&gt;"</span> <span class="p">`</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/RelWithDebInfo/BMLPlus.dll"</span>
+</code></pre></div>
+<p>每个 runner 默认显示 Player 窗口，结束后恢复已安装的 Loader、测试 Mod 和日志。</p>
+<p>Behavior Runtime 的各 probe 覆盖运行时语义 fixture、transport 接缝、Patch、公开的
+Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两个 Virtools fixture
+插件一起安装：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">RelWithDebInfo</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span> <span class="p">`</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  <span class="n">PlayerFlowDriver</span> <span class="n">BehaviorRuntimeSemanticsTest</span> <span class="n">BehaviorTransportTest</span> <span class="p">`</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  <span class="n">BehaviorPatchTest</span> <span class="n">BehaviorFacadeTest</span> <span class="n">BehaviorScriptHookTest</span> <span class="p">`</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  <span class="n">BehaviorLifecycleFixture</span> <span class="n">BehaviorTransportFixture</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">player</span><span class="p">/</span><span class="nb">Invoke-BehaviorAcceptanceTest</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance 根目录&gt;"</span> <span class="p">`</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/RelWithDebInfo/BMLPlus.dll"</span>
+</code></pre></div>
+<p>各 probe 路径默认取 Loader DLL 所在目录，只传 <code>-BuildDll</code> 即可。安装目录没有
+<code>AngelScript.dll</code> 时补 <code>-DisableAngelScript</code>，脚本 Hook probe 会报告 SKIPPED 而
+不是判定失败。</p>
+<p>所有 runner 共用 <code>tests/player/BMLPlayerHarness.psm1</code>。<code>Invoke-BMLPlayerRun</code> 负责
+备份并安装被改动的文件、启动 Player、应答 FullScreen Setup 对话框、抓取窗口截图、
+驱动教程退出键并恢复安装；<code>Get-BMLPlayerFlowChecks</code> 把驱动日志行和各 probe 结论
+转成所有 runner 共用的检查项。启动流程、验收流程或 probe 协议变化时改这个模块，
+不要各自改 runner。</p>
 <h2 id="_5">找到修改的负责区域<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2159,8 +2229,9 @@ API 文件。</p>
 传递的类型。</p>
 <p><code>BML_*</code> C API 和 IMC 使用显式 handle、状态码及分配函数。修改时必须保持文档
 规定的所有权和兼容性。新增 Loader 能力应放进经由 <code>BML_GetInterface</code> 取得的
-带版本 interface struct；某个 Mod 向其他 Mod 提供的服务应使用生成式 IMC，而
-不是增加新的临时 C++ ABI。</p>
+带版本 interface struct；某个 Mod 向其他 Mod 提供的普通服务应使用生成式 IMC。
+只有需要进程内指针并能强制必需 Mod 依赖的原生基础 Mod 才注册 provider interface；
+不得增加临时 C++ ABI。</p>
 <p>脚本 API 是公开的源码接口。修改绑定时，必须在同一次变更中更新脚本 API
 参考、作者文档和运行时冒烟测试覆盖。</p>
 <h2 id="_7">生成式接口<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
@@ -2171,10 +2242,10 @@ lock 格式和已提交的输出都保持在测试覆盖之下。<code>tests/smo
 导出在运行期持续被覆盖；<code>bml_target_imc_api</code> 把它的生成头写进构建树，因此仓库
 里只提交 <code>.imc</code> 和它的 lock。</p>
 <p>不要手工修改生成头。应修改对应的 <code>.imc</code> 文件并运行生成器。对示例接口即：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
 </code></pre></div>
 <p><code>.imc</code>、<code>.imc.lock</code> 和生成头应一起审查和提交。lock 保存稳定的字段与端点标识，
 不要手工调整其中的数字。BML+ 的正常构建会对该示例以检查模式运行生成器，并在
@@ -2195,16 +2266,17 @@ lock 格式和已提交的输出都保持在测试覆盖之下。<code>tests/smo
 <li>同一项公开行为同时有中英文文档时，两种语言应在同一次变更中更新。</li>
 </ul>
 <p>Commit 标题使用简短的英文祈使句，例如：</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Fix native mod instance cleanup
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>Document native mod build requirements
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>Reject malformed event payloads
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Fix native mod instance cleanup
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>Document native mod build requirements
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>Reject malformed event payloads
 </code></pre></div>
 <p>能够独立审查的行为、文档、生成物和清理工作应分别提交，不要混入无关修改。</p>
 <h2 id="_9">提交前检查<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
 <ul>
 <li>使用 Win32 构建并测试 Debug 和 Release。</li>
 <li>运行相关的定向测试和完整测试套件。</li>
-<li>运行时相关修改通过 Player 冒烟测试。</li>
+<li>运行时相关修改完成与其语义匹配的真实 Player 验证。只有被测对象就是进程集成时，
+  冒烟测试才足够；游戏语义必须使用定向 Player 场景。</li>
 <li>修改接口后检查生成式 IMC 头和 <code>.imc.lock</code>。</li>
 <li>以严格模式构建中英文文档站点。</li>
 <li>确认没有意外修改旧式原生头文件和 DLL 导出。</li>

@@ -420,6 +420,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../behavior-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior authoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../native-api-routes/" class="md-nav__link">
         
   
@@ -458,10 +486,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -479,8 +507,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -685,10 +713,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
             
   
   
@@ -706,8 +734,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_5">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1312,9 +1340,9 @@ other caller-thread handler is using it.</p>
 error, not as a recoverable route failure.</p>
 <h2 id="what-does-not-belong-in-an-interface">What does not belong in an interface<a class="headerlink" href="#what-does-not-belong-in-an-interface" title="Permanent link">&para;</a></h2>
 <p>Do not define an <code>.imc</code> interface for something the loader already serves. Its
-runtime state, scene lookups, gameplay data, UI, and speedrun timer are interface
-structs, spelled <code>BML::Runtime</code>, <code>BML::Scene</code>, <code>BML::Gameplay</code>, <code>BML::UI</code>, and
-<code>BML::Speedrun</code>. Loader events arrive through the mod callbacks. Define an
+runtime state, scene lookups, gameplay data, UI, and speedrun
+timer are interface structs, spelled <code>BML::Runtime</code>, <code>BML::Scene</code>,
+<code>BML::Gameplay</code>, <code>BML::UI</code>, and <code>BML::Speedrun</code>. Loader events arrive through the mod callbacks. Define an
 interface only for a capability your own mod owns.</p>
 <h2 id="performance-characteristics">Performance characteristics<a class="headerlink" href="#performance-characteristics" title="Permanent link">&para;</a></h2>
 <p>Generated clients resolve names once and reuse numeric route IDs. Small

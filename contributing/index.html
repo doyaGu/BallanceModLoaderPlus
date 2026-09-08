@@ -416,6 +416,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../behavior-authoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior authoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../native-api-routes/" class="md-nav__link">
         
   
@@ -454,10 +482,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
-          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
             
   
   
@@ -475,8 +503,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_4">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -679,10 +707,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
         
           
-          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
             
   
   
@@ -700,8 +728,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_5">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1176,7 +1204,16 @@ adds the native/script templates and editor API files to that installed tree.</p
 <h2 id="runtime-validation">Runtime validation<a class="headerlink" href="#runtime-validation" title="Permanent link">&para;</a></h2>
 <p>Unit and integration tests do not exercise Virtools or the real Player. Changes
 to hooks, lifecycle order, rendering, input, CK object access, native mod
-loading, or script hosting also require a Player smoke run.</p>
+loading, or script hosting also require validation in the real Player. Choose
+the validation level that observes the behavior being changed:</p>
+<ul>
+<li><code>tests/smoke/Validate-BMLBallance.ps1</code> checks deployment, Mod loading,
+  exported runtime surfaces, shutdown, and installation restoration. It is a
+  process-integration smoke test, not proof of Building Block semantics.</li>
+<li>A focused Player scenario drives the actual game path and checks an observable
+  world result. Use this level for behavior execution, physics epochs, graph
+  changes, lifecycle ordering, rendering, or input behavior.</li>
+</ul>
 <p>Set <code>BML_BALLANCE_ROOT</code> or pass <code>-BallanceRoot</code> to the smoke script:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">smoke</span><span class="p">/</span><span class="n">Validate-BMLBallance</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
@@ -1187,6 +1224,49 @@ loading, or script hosting also require a Player smoke run.</p>
 backs up the installed loader, installs smoke assets, starts Player, validates
 the logs, and restores the previous installation unless <code>-KeepInstalled</code> is
 specified.</p>
+<p>Player acceptance is split into one driver Mod and one probe Mod per subject.
+<code>PlayerFlowDriver</code> owns only the shipped flow: the menu graph into Level 01, the
+tutorial exit handshake, the frame captures, and the exit. It knows no subject
+under test. Every verdict comes from a probe Mod whose DLL exports
+<code>BMLPlayerProbeRead</code>; the driver discovers the loaded probes, waits for each one
+to report, and fails the run when a probe fails. A probe that reads gameplay
+state also exports <code>BMLPlayerProbeStart</code>, so the driver decides when it may
+touch the ball, the camera, or input. Which subjects a run covers is therefore
+decided by which probes the runner installs, not by the driver.</p>
+<p>The ExecuteBB probe physicalizes a body it owns itself, so it proves the
+ExecuteBB physics operations without depending on the retail ball:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">RelWithDebInfo</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span> <span class="p">`</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  <span class="n">PlayerFlowDriver</span> <span class="n">ExecuteBBTest</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">player</span><span class="p">/</span><span class="nb">Invoke-ExecuteBBTest</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance-root&gt;"</span> <span class="p">`</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/RelWithDebInfo/BMLPlus.dll"</span>
+</code></pre></div>
+<p>Every runner shows the Player window by default and restores the installed
+loader, the test Mods, and the logs when it finishes.</p>
+<p>The Behavior Runtime probes cover the runtime semantics fixture, the transport
+seam, Patches, the published Plan and Hook facade, and the script hook a script
+Mod retires. They install together with their two Virtools fixture plugins:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">cmake</span> <span class="p">-</span><span class="n">-build</span> <span class="n">build-dev</span> <span class="p">-</span><span class="n">-config</span> <span class="n">RelWithDebInfo</span> <span class="p">-</span><span class="n">-target</span> <span class="n">BML</span> <span class="p">`</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  <span class="n">PlayerFlowDriver</span> <span class="n">BehaviorRuntimeSemanticsTest</span> <span class="n">BehaviorTransportTest</span> <span class="p">`</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  <span class="n">BehaviorPatchTest</span> <span class="n">BehaviorFacadeTest</span> <span class="n">BehaviorScriptHookTest</span> <span class="p">`</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  <span class="n">BehaviorLifecycleFixture</span> <span class="n">BehaviorTransportFixture</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">Bypass</span> <span class="p">`</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  <span class="o">-File</span> <span class="n">tests</span><span class="p">/</span><span class="n">player</span><span class="p">/</span><span class="nb">Invoke-BehaviorAcceptanceTest</span><span class="p">.</span><span class="n">ps1</span> <span class="p">`</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>  <span class="n">-BallanceRoot</span> <span class="s2">"&lt;Ballance-root&gt;"</span> <span class="p">`</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>  <span class="n">-BuildDll</span> <span class="s2">"build-dev/bin/RelWithDebInfo/BMLPlus.dll"</span>
+</code></pre></div>
+<p>Every probe path defaults to the directory holding the loader DLL, so one
+<code>-BuildDll</code> is enough. Add <code>-DisableAngelScript</code> when the install has no
+<code>AngelScript.dll</code>; the script hook probe then reports SKIPPED instead of
+failing.</p>
+<p>All runners share <code>tests/player/BMLPlayerHarness.psm1</code>. <code>Invoke-BMLPlayerRun</code>
+owns backing up and installing the touched files, starting Player, answering the
+FullScreen Setup dialog, capturing window screenshots, driving the tutorial exit
+key, and restoring the installation. <code>Get-BMLPlayerFlowChecks</code> turns the driver
+line and the probe verdicts into the checks every runner shares. Change that
+module when startup, the flow, or the probe protocol changes, not the individual
+runners.</p>
 <h2 id="find-the-owner-of-a-change">Find the owner of a change<a class="headerlink" href="#find-the-owner-of-a-change" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1271,8 +1351,10 @@ layout, ownership rules, or types passed across that boundary.</p>
 <p>The <code>BML_*</code> C APIs and IMC use explicit handles, status codes, and allocation
 functions. Preserve their documented ownership and compatibility rules. A new
 loader capability belongs in a versioned interface struct reached through
-<code>BML_GetInterface</code>; a service one Mod publishes for other Mods belongs in a
-generated IMC interface rather than a new ad hoc C++ ABI.</p>
+<code>BML_GetInterface</code>; a service one Mod publishes for other Mods normally belongs
+in a generated IMC interface. A provider interface registered through BML is
+reserved for native base Mods that need process-local pointers and can enforce
+a required Mod dependency; never introduce an ad hoc C++ ABI.</p>
 <p>Script APIs are public source interfaces. A binding change must update the
 script API reference, author documentation, and runtime smoke coverage in the
 same change.</p>
@@ -1287,10 +1369,10 @@ exercised at runtime; <code>bml_target_imc_api</code> generates its header into 
 tree, so only the <code>.imc</code> and its lock are committed.</p>
 <p>Do not edit a generated header by hand. Change the matching <code>.imc</code> file and run
 the generator. For the sample interface that is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">python</span> <span class="n">tools</span><span class="p">/</span><span class="n">imc_codegen</span><span class="p">.</span><span class="n">py</span> <span class="p">`</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  <span class="p">-</span><span class="n">-update-lock</span> <span class="p">`</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  <span class="p">-</span><span class="n">-out-dir</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">generated</span> <span class="p">`</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  <span class="p">-</span><span class="n">-input</span> <span class="n">tests</span><span class="p">/</span><span class="n">imc</span><span class="p">/</span><span class="n">test</span><span class="p">.</span><span class="n">sample</span><span class="p">.</span><span class="n">imc</span>
 </code></pre></div>
 <p>Review and commit the <code>.imc</code>, <code>.imc.lock</code>, and generated header together. The
 lock owns stable field and endpoint identities; do not edit its numbers by
@@ -1317,9 +1399,9 @@ reader documentation.</p>
   same public behavior is documented in both languages.</li>
 </ul>
 <p>Commit titles use short imperative English, for example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Fix native mod instance cleanup
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>Document native mod build requirements
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>Reject malformed event payloads
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>Fix native mod instance cleanup
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>Document native mod build requirements
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>Reject malformed event payloads
 </code></pre></div>
 <p>Keep unrelated behavior, documentation, generated output, and cleanup changes
 in separate commits when they can be reviewed independently.</p>
@@ -1327,7 +1409,9 @@ in separate commits when they can be reviewed independently.</p>
 <ul>
 <li>Build Debug and Release as Win32.</li>
 <li>Run the relevant focused tests and the full test suite.</li>
-<li>Run a Player smoke test for runtime-facing changes.</li>
+<li>Run the appropriate real Player validation for runtime-facing changes. A
+  smoke run is sufficient only when process integration is the behavior under
+  test; game semantics require a focused Player scenario.</li>
 <li>Verify generated IMC headers and locks when an interface changed.</li>
 <li>Build both documentation sites with strict warnings.</li>
 <li>Confirm that legacy native headers and exports were not changed accidentally.</li>

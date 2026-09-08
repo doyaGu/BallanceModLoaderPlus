@@ -1,0 +1,2710 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="BML+ 原生 Mod、跨 Mod 通信和脚本 Mod 开发文档。">
+      
+      
+      
+        <link rel="canonical" href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/behavior-authoring/">
+      
+      
+        <link rel="prev" href="../native-mod-api/">
+      
+      
+        <link rel="next" href="../native-api-routes/">
+      
+      
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en">
+        
+          <link rel="alternate" href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Behavior 编写 - Ballance Mod Loader Plus 文档</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#behavior" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href=".." title="Ballance Mod Loader Plus 文档" class="md-header__button md-logo" aria-label="Ballance Mod Loader Plus 文档" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Ballance Mod Loader Plus 文档
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Behavior 编写
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="选择当前语言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/" hreflang="zh" class="md-select__link">
+              简体中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Ballance Mod Loader Plus 文档" class="md-nav__button md-logo" aria-label="Ballance Mod Loader Plus 文档" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Ballance Mod Loader Plus 文档
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doyaGu/BallanceModLoaderPlus" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    doyaGu/BallanceModLoaderPlus
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首页
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../using-bml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用 BML+
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    开发 Mod
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    开发 Mod
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    选择路线
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-mod-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    原生 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior 编写
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Behavior 编写
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 对象模型
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 打开 Session
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 打开 Session">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prototype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        查找 Prototype
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 配置任意 Building Block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-execute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 选择 Execute 的所有权
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 读取 Frames
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-live-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 使用 live Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 读取 graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-script-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 创建 Script graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 修改 graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-retail-bb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 已命名的 retail BB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 生命周期、错误与性能
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../native-api-routes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    原生 API 该走哪条路
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    脚本 Mod
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    脚本 Mod
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    导读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5_2" id="__nav_3_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    教程
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    教程
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-01-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    01 环境搭建
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-02-hello-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    02 第一个 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-03-output-input/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    03 输出与输入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-04-imgui-window/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    04 ImGui 窗口
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-05-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    05 命令系统
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-06-callbacks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    06 回调模型
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-07-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    07 配置与 Timer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-08-find-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    08 查找对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-09-coordinate-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    09 坐标显示器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-10-ballance-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10 Ballance 运行结构
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-11-dataarray-read/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    11 读 DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-12-status-panel-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    12 状态面板
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-13-levelinit-placeholders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    13 Levelinit 占位对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-14-gameplay-state-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    14 Gameplay 状态机
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-15-behavior-graph-reading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    15 行为图阅读
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-16-physics-observe/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    16 物理观察
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-17-physics-create/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    17 生成物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-18-physics-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    18 控制物理对象
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-19-safety-checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    19 安全检查清单
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-20-complete-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    20 完整 Mod
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-21-publish/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    21 发布
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/tutorial-22-troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    22 排错
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5_3" id="__nav_3_5_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    生命周期与事件
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-modcontext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ModContext 方法
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-commands-config-timer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令、配置、定时器
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-input-imgui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输入与 ImGui
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-objects-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    对象与组
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-dataarray/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DataArray
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-physics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    物理
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-inter-mod/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    跨 Mod 通信
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-hud-resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HUD、消息与资源
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../script-mod-tutorial/ref-ballance-names/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ballance 名称速查
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 参考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    跨 Mod 通信
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    跨 Mod 通信
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概览
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imc-author-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    接口编写指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参与 BML+ 开发
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 对象模型
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 打开 Session
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 打开 Session">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prototype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        查找 Prototype
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-building-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 配置任意 Building Block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-execute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 选择 Execute 的所有权
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 读取 Frames
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-live-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 使用 live Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 读取 graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-script-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 创建 Script graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 修改 graph
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-retail-bb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 已命名的 retail BB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 生命周期、错误与性能
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="behavior">Behavior 编写<a class="headerlink" href="#behavior" title="Permanent link">&para;</a></h1>
+<p><code>BML/Behavior.hpp</code> 是 Native Mod 使用 Virtools Behavior 的 C++ interface。它能创建和执行任意已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。<code>BML/Behavior.h</code> 是同一能力的 C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 仍在发布前开发阶段，目前只支持 Win32 Native C++ Mod，源码兼容性尚未冻结。</p>
+<h2 id="1">1. 对象模型<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Prototype -&gt; Block -&gt; Call / Task / Instance -&gt; Frames
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                         |
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                         +--------------------&gt; live CKBehavior
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>existing CKBehavior graph -&gt; Graph snapshot -&gt; Edit -&gt; Patch / Plan
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>CKBeObject -&gt; Script -&gt; Graph snapshot -&gt; Edit -&gt; Patch
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>对象</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Prototype</code></td>
+<td>一次具体的 BB provider 注册，由 GUID 和 provider generation 标识</td>
+</tr>
+<tr>
+<td><code>Block</code></td>
+<td>尚未实例化的 BB 配置；可复制，修改采用 copy-on-write</td>
+</tr>
+<tr>
+<td><code>Call</code> / <code>Task</code> / <code>Instance</code></td>
+<td>各自拥有一个真实 <code>CKBehavior</code>，区别只是由谁继续 Execute</td>
+</tr>
+<tr>
+<td><code>Frames</code></td>
+<td>从 native Execute 复制出的控制流结果和可选 Pout 值</td>
+</tr>
+<tr>
+<td><code>Script</code></td>
+<td>一个 owner-scoped 的顶层 graph-backed <code>CKBehavior</code></td>
+</tr>
+<tr>
+<td><code>Graph</code></td>
+<td>某个时刻的 immutable Behavior graph snapshot</td>
+</tr>
+<tr>
+<td><code>NodePattern</code></td>
+<td>在一个 graph scope 内解析的结构条件</td>
+</tr>
+<tr>
+<td><code>Edit</code></td>
+<td>尚未安装的 symbolic graph transformation</td>
+</tr>
+<tr>
+<td><code>Patch</code></td>
+<td>应用于一个确定 graph snapshot 的 Edit</td>
+</tr>
+<tr>
+<td><code>Plan</code></td>
+<td>跨 world 按 script selector 反复 reconcile 的 Edit</td>
+</tr>
+</tbody>
+</table>
+<p>根据工作的生命期选入口：</p>
+<table>
+<thead>
+<tr>
+<th>需求</th>
+<th>入口</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>在 graph 外执行一个 BB</td>
+<td><code>Session::Use</code></td>
+<td><code>Block</code>，再得到 <code>Call</code>、<code>Task</code> 或 <code>Instance</code></td>
+</tr>
+<tr>
+<td>读取或修改当前已存在的 graph</td>
+<td><code>Session::Inspect</code></td>
+<td><code>Graph</code>，再得到 exact <code>Patch</code></td>
+</tr>
+<tr>
+<td>让游戏 Script 的修改跨 world 保持</td>
+<td><code>Session::Plan</code></td>
+<td><code>Plan</code></td>
+</tr>
+<tr>
+<td>从零创建顶层 Script</td>
+<td><code>Session::CreateScript</code></td>
+<td><code>Script</code></td>
+</tr>
+<tr>
+<td>用强类型 Options 配置已知 retail BB</td>
+<td><code>Behavior/Blocks/*.hpp</code></td>
+<td>普通 <code>Block</code></td>
+</tr>
+</tbody>
+</table>
+<p>下文按这个顺序展开：先讲 BB 执行，再讲 graph 读取与创建，最后讲 graph edit 及其生命期。</p>
+<h2 id="2-session">2. 打开 Session<a class="headerlink" href="#2-session" title="Permanent link">&para;</a></h2>
+<p>在 Mod 初始化时打开一个 <code>Session</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior.hpp&gt;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">using</span><span class="w"> </span><span class="k">namespace</span><span class="w"> </span><span class="nn">BML</span><span class="o">::</span><span class="nn">Behavior</span><span class="p">;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">opened</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Session</span><span class="o">::</span><span class="n">Open</span><span class="p">();</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">opened</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="n">GetLogger</span><span class="p">()</span><span class="o">-&gt;</span><span class="n">Error</span><span class="p">(</span><span class="s">"Behavior unavailable: %s"</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">                       </span><span class="n">opened</span><span class="p">.</span><span class="n">GetStatus</span><span class="p">().</span><span class="n">Message</span><span class="p">.</span><span class="n">c_str</span><span class="p">());</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">}</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">m_Behavior</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">opened</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+</code></pre></div>
+<p>Loader 会核对调用 DLL，并把 Session 绑定到当前 Mod generation。Session 跨 world reset 保持有效；run、Script、Watch 和 Patch 等 world-bound 对象不会。Mod 卸载时，Loader 会先停止新 admission，并在 DLL 释放前完成 callback 和 native Behavior 的退役。</p>
+<p>对具名 Result 调用 <code>Result&lt;T&gt;::Value()</code> 只借用其中的值；临时 Result 可以直接按值返回可复制对象。move-only 领域对象需要转移所有权时使用 <code>Take()</code>。<code>Take()</code> 会清空结果中的值，但 <code>Code()</code> 和 <code>GetStatus()</code> 仍可用于读取诊断。</p>
+<p>由 Session 创建的对象持有自己所需的 Session lease。移动或对最初的 <code>Session</code> 值调用 <code>Reset()</code>，只会释放这个值持有的 lease，不会使仍存活的 Block、run、Script、Watch、Patch 或 Plan 失效。最后一个 lease 释放时，native Session 才关闭。</p>
+<h3 id="prototype">查找 Prototype<a class="headerlink" href="#prototype" title="Permanent link">&para;</a></h3>
+<p>已知 GUID 时可以直接 <code>Use(CKGUID)</code>。不知道 GUID，或需要固定当前 provider 时，先查询 catalog：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">PrototypeQuery</span><span class="w"> </span><span class="n">query</span><span class="p">;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">query</span><span class="p">.</span><span class="n">Name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Physicalize"</span><span class="p">;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">found</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Prototypes</span><span class="p">(</span><span class="n">query</span><span class="p">);</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">found</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">size</span><span class="p">()</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">Prototype</span><span class="w"> </span><span class="n">prototype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">found</span><span class="o">-&gt;</span><span class="n">front</span><span class="p">().</span><span class="n">Ref</span><span class="p">;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">auto</span><span class="w"> </span><span class="n">declared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Layout</span><span class="p">(</span><span class="n">prototype</span><span class="p">);</span>
+</code></pre></div>
+<p>空 <code>PrototypeQuery</code> 返回当前可发现的全部注册。<code>Session::Layout(prototype)</code> 读取 declared Layout，不创建 native Instance，也不发送 lifecycle callback。</p>
+<h2 id="3-building-block">3. 配置任意 Building Block<a class="headerlink" href="#3-building-block" title="Permanent link">&para;</a></h2>
+<p><code>Session::Use</code> 从 Prototype 创建 <code>Block</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">block</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">prototype</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="p">.</span><span class="n">TargetOwner</span><span class="p">()</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Mode"</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="s">"Detail"</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">}})</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Settings</span><span class="p">({{</span><span class="s">"Created Later"</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">}})</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="s">"Strength"</span><span class="p">,</span><span class="w"> </span><span class="mf">12.0f</span><span class="p">}})</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="p">.</span><span class="n">Locals</span><span class="p">({{</span><span class="s">"Accumulator"</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0f</span><span class="p">}});</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+</code></pre></div>
+<p>每次 <code>Settings({...})</code> 是一个 Setting stage。一个 stage 写完后，Runtime 会发送 <code>SETTINGSEDITED</code>；BB 可以在 callback 中重建 interface，所以下一个 stage 必须在新的 live Layout 上重新解析。全部 Setting stage 完成后，Runtime 才应用 Pin 和 Local。Frame retention 属于每次 Call、Task 或 Instance，而不是可复用的 Block。</p>
+<p>Target 有三种形式：<code>TargetOwner()</code>、<code>Target(type, object)</code> 和 <code>NullTarget(type)</code>。slot selector 也必须明确：<code>At(index)</code>、<code>Named(name, occurrence)</code> 或 <code>Unique(name)</code>。字符串重载等价于 <code>Unique(name)</code>，重名时不会擅自选择第一项。</p>
+<p><code>Identity</code> 一类 variable-parameter Block 在 Block 自身选择 native parameter
+type：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">identity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Use</span><span class="p">(</span><span class="n">VT_LOGICS_IDENTITY</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="p">.</span><span class="n">PinType</span><span class="p">(</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="p">.</span><span class="n">PoutType</span><span class="p">(</span><span class="s">"pOut 0"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_BOOL</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="p">.</span><span class="n">Pins</span><span class="p">({{</span><span class="n">At</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="nb">true</span><span class="p">}});</span>
+</code></pre></div>
+<p><code>PinType</code> 和 <code>PoutType</code> 接受与其他 Block 配置相同的 index/name selector。
+Runtime 在 Setting callback 确定 live Layout 后、Pin binding 与最终 <code>EDITED</code>
+callback 前应用类型。因此同一个配置可用于 <code>Call</code>、<code>Start</code>、<code>Spawn</code>、
+<code>SpawnIn</code> 和 <code>Edit::Graph::Add</code>；它不是 graph transformation，也不能修改借用的
+game Node。</p>
+<p><code>Block::Validate()</code> 是可选的 declared-Layout 检查，不创建 <code>CKBehavior</code>。它只能验证 Prototype 初始声明中已有的 Target、selector 和 type；Setting callback 动态创建的 slot 仍由真正打开 run 时的 native lifecycle 验证。即使没有先调用 <code>Validate()</code>，run admission 也不会跳过这些检查。</p>
+<p>第一次能够可靠识别 provider 的验证或 admission 会固定 provider generation。之后若同一 GUID 被另一 provider 替换，旧 Block 会返回 stale，不会静默换用新实现。无法可靠跟踪 provider retirement 时，即时 run 仍可使用 generation-zero provider，但这种 Block 不能存入 Plan。</p>
+<h2 id="4-execute">4. 选择 Execute 的所有权<a class="headerlink" href="#4-execute" title="Permanent link">&para;</a></h2>
+<p>三种 run 都拥有一个 native Behavior；它们不是三种 Behavior 类型。</p>
+<table>
+<thead>
+<tr>
+<th>创建方式</th>
+<th>首次 Execute</th>
+<th>后续 Execute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Call(input)</code></td>
+<td>立即一次</td>
+<td>只有 <code>Continue()</code> 成功后才由 Loader 托管</td>
+</tr>
+<tr>
+<td><code>Start(input)</code></td>
+<td>立即一次</td>
+<td>Loader 按 game frame 推进 native continuation</td>
+</tr>
+<tr>
+<td><code>Spawn()</code></td>
+<td>不执行</td>
+<td>Mod 用 <code>Pulse(input)</code> 驱动</td>
+</tr>
+<tr>
+<td><code>SpawnIn(graph)</code></td>
+<td>不执行</td>
+<td>与 <code>Spawn</code> 相同，但 Behavior 作为未连接节点留在 graph 中</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">once</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Run"</span><span class="p">);</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Latest</span><span class="p">());</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">instance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Spawn</span><span class="p">();</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">auto</span><span class="w"> </span><span class="n">parked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">instance</span><span class="p">)</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Pulse</span><span class="p">(</span><span class="s">"Reset"</span><span class="p">);</span>
+</code></pre></div>
+<p>Frame policy 只属于本次 run；可复用的 Block 不保存观察策略。<code>Call::Continue()</code> 保留同一个 native Instance；它不是重新激活或重新创建。成功时 Call 被消费并返回对应 Task；失败时 Call 仍可继续使用。</p>
+<p>BB 只有一个 In 时，可直接使用 <code>Call(policy)</code> 和 <code>Start(policy)</code>，无需传入占位 Selector；需要选择特定 In 时再使用 Selector 或字符串重载。</p>
+<p>同一 Instance 每个 game frame 最多 Execute 一次。同 frame 或 callback 重入的 Pulse 会排队；相同 logical In 合并，不同 In 保持首次 admission 顺序。<code>Ready</code> 只表示没有 native continuation 和 queued In，不表示 BB 已经释放 Local、manager 注册或其他持久状态。</p>
+<p>三种 run 都提供 <code>Info()</code>、<code>TakeFrames()</code>、<code>Layout()</code>、<code>Inspect()</code>、<code>Set()</code>、<code>Bind()</code>、<code>Settings()</code> 和 <code>Close()</code>。只有 <code>Call</code> 提供 <code>Continue()</code>；<code>Task</code> 和 <code>Instance</code> 提供 <code>Pulse()</code>。</p>
+<h2 id="5-frames">5. 读取 Frames<a class="headerlink" href="#5-frames" title="Permanent link">&para;</a></h2>
+<p>每次 native Execute 都会在清除本次 active Out 前形成一个 immutable Frame。Frame 记录 sequence、game frame、native result、continuation、active Outs 和 diagnostic。</p>
+<p>Frame retention 与 Pout capture 是两个独立选择：</p>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>保留内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Signals(n)</code></td>
+<td>首次、出现 active Out、失败和 non-continuing Frame</td>
+</tr>
+<tr>
+<td><code>EachFrame(n)</code></td>
+<td>每次 Execute</td>
+</tr>
+<tr>
+<td><code>Latest()</code></td>
+<td>最新 continuing、failure 和 non-continuing Frame</td>
+</tr>
+<tr>
+<td><code>Ignore()</code></td>
+<td>不保留普通 Frame，但保留 failure 与 non-continuing Frame</td>
+</tr>
+</tbody>
+</table>
+<p>只有在 policy 上调用 <code>.Pouts()</code>，Runtime 才读取并复制 Pout：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">task</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">block</span><span class="p">.</span><span class="n">Start</span><span class="p">(</span><span class="s">"Run"</span><span class="p">,</span><span class="w"> </span><span class="n">Signals</span><span class="p">(</span><span class="mi">64</span><span class="p">).</span><span class="n">Pouts</span><span class="p">());</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">Frames</span><span class="w"> </span><span class="n">frames</span><span class="p">;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">frames</span><span class="p">.</span><span class="n">Reserve</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">4096</span><span class="p">);</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">taken</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">task</span><span class="o">-&gt;</span><span class="n">TakeFrames</span><span class="p">(</span><span class="n">frames</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">Frame</span><span class="w"> </span><span class="n">frame</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">frames</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">frame</span><span class="p">.</span><span class="n">HasOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">            </span><span class="k">auto</span><span class="w"> </span><span class="n">speed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Speed"</span><span class="p">);</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">speed</span><span class="p">)</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">                </span><span class="n">Use</span><span class="p">(</span><span class="n">speed</span><span class="p">.</span><span class="n">Value</span><span class="p">());</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>TakeFrames()</code> 是自动分配版本；<code>TakeFrames(Frames&amp;)</code> 会复用已有 header 和 payload buffer。容量足够时，它只调用一次 C seam，且不为 record 或 string 另行分配。这个名字也明确区分了它的消费语义与 <code>Result&lt;T&gt;::Take()</code>。<code>Frame</code>、<code>Out</code> 和 <code>Pout</code> 都是所属 <code>Frames</code> 的只读 view；下一次修改该 <code>Frames</code> 后，旧 view 全部失效。</p>
+<p>只有左值 <code>Frames</code> 能产生 view，因此临时对象不会泄出悬空 <code>Frame</code>。<code>Clear()</code> 保留可复用容量；遇到异常大的批次后，可用 <code>ShrinkToFit()</code> 释放不再需要的 header 与 payload 空间。</p>
+<p>object Pout 会在对象仍 live 时签发 <code>ObjectRef</code>。Object List Pout
+（<code>CKPGUID_OBJECTARRAY</code>）对应 <code>ObjectList</code>，它是 capture-time reference 的
+零分配 view：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">loaded</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">frame</span><span class="p">.</span><span class="n">Pout</span><span class="o">&lt;</span><span class="n">ObjectList</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Loaded Objects"</span><span class="p">);</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">loaded</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">ObjectRef</span><span class="w"> </span><span class="n">object</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">loaded</span><span class="p">.</span><span class="n">Value</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">        </span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ObjectInfo</span><span class="w"> </span><span class="n">info</span><span class="p">;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BML</span><span class="o">::</span><span class="n">Scene</span><span class="o">::</span><span class="n">ReadObject</span><span class="p">(</span><span class="n">object</span><span class="p">,</span><span class="w"> </span><span class="n">info</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">BML_OK</span><span class="p">)</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">            </span><span class="n">Use</span><span class="p">(</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">CK_ID</span><span class="o">&gt;</span><span class="p">(</span><span class="n">info</span><span class="p">.</span><span class="n">Id</span><span class="p">));</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="p">}</span>
+</code></pre></div>
+<p>与 <code>Frame</code>、<code>Out</code> 和 <code>Pout</code> 一样，这个 view 属于 <code>Frames</code>，遍历本身不分配。
+之后读取 Frame 不再访问原 CK parameter、Object List 或 CK object；对象已经删除时，
+得到的是 stale <code>ObjectRef</code>，而不是悬空 CK pointer。任何 Pout 读取或 encoding 失败
+都会丢弃该次不完整的 Pout batch，但保留同一 Frame 的 active Outs 和 diagnostic。
+Object List 只是一种输出形式，不能作为 Block literal。</p>
+<p>没有 continuation 的 Frame 不等于 run handle 已经关闭：处于 <code>Ready</code> 的 Instance 仍可接受下一次 Pulse。只有失败、显式关闭或队列溢出才会停止 admission。</p>
+<p>有界队列满时不会丢弃旧 Frame；run 会停止，并在独立 failure slot 中报告 <code>FrameQueueFull</code>。成功 Take 后会释放普通队列容量。</p>
+<h2 id="6-live-layout">6. 使用 live Layout<a class="headerlink" href="#6-live-layout" title="Permanent link">&para;</a></h2>
+<p>run 的 <code>Layout()</code> 返回当前配置后的 native interface。<code>Slot</code> 带有 Instance identity 和 layout generation，可直接交给 <code>Set()</code> 或 <code>Bind()</code>：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Layout</span><span class="p">();</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">layout</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">strength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">layout</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">SlotKind</span><span class="o">::</span><span class="n">Pin</span><span class="p">,</span><span class="w"> </span><span class="s">"Strength"</span><span class="p">))</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">        </span><span class="n">instance</span><span class="o">-&gt;</span><span class="n">Set</span><span class="p">(</span><span class="o">*</span><span class="n">strength</span><span class="p">,</span><span class="w"> </span><span class="mf">20.0f</span><span class="p">);</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>lifecycle callback 边界会使旧 Slot 失效，因为 provider 可能重建了相同形状的 interface。普通 Execute 只有在 Target、In/Out、Pin/Pout、Setting 或 Local identity 实际变化时才推进 layout generation。旧 Slot 或 Port 会返回 <code>LayoutChanged</code>，不会按旧 ordinal 写错参数。</p>
+<p><code>Settings({...})</code> 可对 live run 应用新的 Setting stage。Runtime 会重新取得 Layout，并恢复仍然唯一且类型匹配的 Target、Pin、Local 和 source relation。native mutation 一旦开始，任何写入、callback、Layout 或 relation 失败都会让 run 进入 <code>Failed</code>：<code>Info()</code> 保留首个 <code>Status</code>，后续 mutation 和 execution 返回同一 diagnostic，而 native Instance 仍由该 run 持有，直到 <code>Close()</code>。</p>
+<h2 id="7-graph">7. 读取 graph<a class="headerlink" href="#7-graph" title="Permanent link">&para;</a></h2>
+<p><code>Session::Inspect</code> 和 run 的 <code>Inspect</code> 返回 immutable <code>Graph</code> snapshot：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">snapshot</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">Inspect</span><span class="p">(</span><span class="n">script</span><span class="p">);</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">snapshot</span><span class="p">)</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Find</span><span class="p">(</span><span class="n">Named</span><span class="p">(</span><span class="s">"Counter_Active"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">counter</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">snapshot</span><span class="o">-&gt;</span><span class="n">Read</span><span class="p">(</span><span class="n">counter</span><span class="o">-&gt;</span><span class="n">Pout</span><span class="p">(</span><span class="s">"Count"</span><span class="p">));</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="c1">// 在 snapshot 有效期间使用 value。</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p">}</span>
+</code></pre></div>
+<p>需要 physical graph 时，直接向 <code>Session::Inspect</code> 传入 <code>View::Live</code>，无需先读取一次 Logical snapshot。已有 snapshot 需要切换视图时，仍使用 <code>Graph::Logical()</code> 和 <code>Live()</code>。</p>
+<p><code>Find</code> 和 <code>FindAll</code> 与 Block slot 使用同一组 selector：<code>At(index)</code>、
+<code>Named(name, occurrence)</code> 和 <code>Unique(name)</code>，还可附加 Prototype GUID 进一步
+限定。它们只查找直接 child Node；snapshot root 只能通过 <code>Root()</code> 取得。
+<code>Node::Index()</code> 是该 graph 中的直接子节点位置，<code>Node::IsGraph()</code> 用来
+区分 graph-backed Behavior 和 function-backed BB。<code>Graph::Inspect(node)</code> 进入
+graph-backed child，返回以该 Node 为 root 的新 snapshot。原生指针只通过
+<code>Session::Inspect(CKBehavior *)</code> 进入根 graph；child Node 和 Link 必须来自
+snapshot，因此一个 Edit 不会暗中混用不同 graph 的 identity。
+<code>At(index)</code> 明确表示位置选择，按当前 Graph view 的 child 顺序解析。Logical
+view 隐藏 Patch 基础设施后重新生成连续 index，Live view 使用 native child
+位置。Virtools 在新增 child 时会按 priority 重新排序；同 priority 的相对顺序
+会被调度器观察到，但不是跨 world 的结构身份。exact Graph snapshot 会保护这个位置；
+<code>Require(snapshotNode)</code> 则复制唯一名称、Prototype、kind 和 port shape，供以后
+进行结构解析。
+<code>Port::Index()</code> 同样保留 CK 原生 slot index。Setting 与 Local 共用 CK 的
+local-parameter 数组、但在 API 中属于不同 slot kind，因此 Local index 可能不连续；
+除非 BB contract 明确规定原生 index，否则应优先使用名称 selector。</p>
+<p><code>Incoming</code> 和 <code>Outgoing</code> 返回零分配的索引 Link view，不扫描无关 Link。
+<code>Links()</code> 和 <code>Incoming</code> 使用 graph 的 Link collection 顺序，<code>Outgoing</code> 使用每个
+source IO 的 Virtools 遍历顺序。
+<code>Entering</code>、<code>Leaving</code>、
+<code>Previous</code> 和 <code>Next</code> 只接受唯一的 topology 结果；遇到分支时报告歧义，不会
+随意挑一条。Node、Port、Link 和 ParameterOperation 都是指向同一个共享
+snapshot allocation 的轻量 view。<code>Graph::Operations()</code> 列出每个真实
+<code>CKParameterOperation</code>，包括 operation GUID、精确的 result/input type tuple、
+graph owner 和 object identity。Port 保留所属 Node 的 layout generation；把
+旧 snapshot 的 Port 用于新的 live Layout 会失败。</p>
+<p><code>Logical()</code> 重新读取作者可见的 graph，<code>Live()</code> 重新读取实际 CK graph。Logical view 保留显式 Add 和 Flow，隐藏由 Tap、Before、After 与 Splice 安装的精确基础设施，并恢复 splice anchor 的 logical endpoints。graph fingerprint 包含 native identity、priority、layout、parameter operation、Link topology、child 调度顺序、graph Link 顺序以及每个 source IO 的 Link 遍历顺序。Patch journal 会精确恢复这些 CK2 顺序。source IO 若能到达属于另一 graph 的 Link，该 native graph 不完整，Runtime 会拒绝发布 snapshot。其他代码若改坏 Patch 声明的 after-image，Apply 返回 <code>GraphChanged</code>；Close 会在修改 graph 前返回 <code>RevertConflict</code>。</p>
+<p><code>Graph::Read</code> 跟随 stored、direct 和 shared source，但不会为了读取而执行 Parameter Operation；operation value 会报告 indeterminate。</p>
+<p>Watch 每个 game frame 采样一次 graph、layout 或 value。callback 或观察失败后，Watch 保留第一条 <code>Status</code>，进入 <code>Failed</code> 并停止后续 callback。</p>
+<h2 id="8-script-graph">8. 创建 Script graph<a class="headerlink" href="#8-script-graph" title="Permanent link">&para;</a></h2>
+<p><code>Session::CreateScript</code> 在当前 Scene 中创建一个由 live <code>CKBeObject</code> 拥有的顶层 Script，并在返回前安装初始 <code>Edit</code>。Script 初始不激活，因此 Virtools 不会调度一个只完成了一半的 graph：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">body</span><span class="p">;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">graph</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">body</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendIn</span><span class="p">(</span><span class="s">"Start"</span><span class="p">);</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">graph</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="k">auto</span><span class="w"> </span><span class="n">left</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AppendLocal</span><span class="p">(</span><span class="s">"Left"</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="k">auto</span><span class="w"> </span><span class="n">sum</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">graph</span><span class="p">.</span><span class="n">AddOperation</span><span class="p">(</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="n">addition</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="n">CKPGUID_FLOAT</span><span class="p">);</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">graph</span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">left</span><span class="p">,</span><span class="w"> </span><span class="mf">2.0f</span><span class="p">)</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span><span class="w"> </span><span class="n">left</span><span class="p">)</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="p">.</span><span class="n">Bind</span><span class="p">(</span><span class="n">sum</span><span class="p">.</span><span class="n">Input</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="mf">3.0f</span><span class="p">);</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="k">auto</span><span class="w"> </span><span class="n">created</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">m_Behavior</span><span class="p">.</span><span class="n">CreateScript</span><span class="p">(</span><span class="n">owner</span><span class="p">,</span><span class="w"> </span><span class="s">"My Script"</span><span class="p">,</span><span class="w"> </span><span class="n">body</span><span class="p">);</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">created</span><span class="p">)</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="n">Script</span><span class="w"> </span><span class="n">script</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">created</span><span class="p">.</span><span class="n">Take</span><span class="p">();</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="n">script</span><span class="p">.</span><span class="n">Activate</span><span class="p">();</span>
+</code></pre></div>
+<p><code>CreateScript</code> 只执行一次 native <code>AddScript</code>，同时建立 owner 与 Scene membership，然后编译并应用完整 Edit。validation、lifecycle、callback 或 graph 任一阶段失败都不会返回 Script handle；未发布的 root 会被移除，也不会进入 Plan。安装后的初始 graph 由 Script 自身拥有，不要求作者额外保存第二个 Patch handle。</p>
+<p><code>Activate()</code> 在不请求 reset 的情况下调度 inactive Script；<code>Restart()</code> 明确请求 Virtools activation reset，即使 Script 已经 active 也一样；<code>Deactivate()</code> 停止调度。</p>
+<p><code>Edit::Root()</code> 返回正在编写的 symbolic graph root scope；这里不能用 <code>Use()</code> 导入 snapshot root。root 可以拥有 In、Out、Pin、Pout 和 Local。<code>AddOperation</code> 创建一个由 graph 拥有的真实 <code>CKParameterOperation</code>；Virtools 根据 operation GUID 和精确的 result/input type tuple 选择函数，并在 consumer 读取 result 时惰性求值。每个已声明的 operation input 都必须绑定。后续增量修改仍使用 <code>Script::Apply()</code>。激活请求在下一个 Behavior safe point 应用，并排在待处理 Patch reconcile 之后。<code>Restart()</code> 即使在 Script 已经 active 时也会请求 Virtools reset 语义。</p>
+<p>Script 关闭也在 safe point 完成：首次 <code>Close()</code> 可能返回 <code>CloseState::Closing</code>；完成 deactivate、从 owner 移除和 native destruction 后，再次调用返回 <code>Closed</code>。应先关闭 Script，再销毁 owner；Mod unload 和 world reset 会自动执行相同的退役流程。</p>
+<h2 id="9-graph">9. 修改 graph<a class="headerlink" href="#9-graph" title="Permanent link">&para;</a></h2>
+<p><code>Edit</code> 是带显式 graph scope 的唯一 symbolic transformation：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">Edit</span><span class="w"> </span><span class="n">edit</span><span class="p">;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">edit</span><span class="p">.</span><span class="n">Root</span><span class="p">();</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">dispatch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Switch On Message"</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">        </span><span class="p">.</span><span class="n">Kind</span><span class="p">(</span><span class="n">BehaviorKind</span><span class="o">::</span><span class="n">Function</span><span class="p">)</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">        </span><span class="p">.</span><span class="n">Ins</span><span class="p">(</span><span class="mi">2</span><span class="p">).</span><span class="n">Outs</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pins</span><span class="p">(</span><span class="mi">11</span><span class="p">).</span><span class="n">Pouts</span><span class="p">(</span><span class="mi">0</span><span class="p">));</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">checkpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="n">NodePattern</span><span class="p">(</span><span class="s">"Wait Message"</span><span class="p">).</span><span class="n">Pin</span><span class="p">(</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">        </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">Value</span><span class="o">::</span><span class="n">As</span><span class="p">(</span><span class="n">CKPGUID_MESSAGE</span><span class="p">,</span><span class="w"> </span><span class="n">checkpointMessage</span><span class="p">)));</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscoreNode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">root</span><span class="p">.</span><span class="n">Require</span><span class="p">(</span><span class="s">"Highscore"</span><span class="p">);</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="k">auto</span><span class="w"> </span><span class="n">highscore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Graph</span><span class="p">();</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="k">auto</span><span class="w"> </span><span class="n">done</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">AppendOut</span><span class="p">(</span><span class="s">"Done"</span><span class="p">);</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="k">auto</span><span class="w"> </span><span class="n">activators</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">highscore</span><span class="p">.</span><span class="n">Each</span><span class="p">(</span><span class="s">"Activate Script"</span><span class="p">);</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">highscore</span><span class="p">.</span><span class="n">Flow</span><span class="p">(</span><span class="n">activators</span><span class="p">.</span><span class="n">Out</span><span class="p">(),</span><span class="w"> </span><span class="n">done</span><span class="p">);</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="n">root</span><span class="p">.</span><span class="n">After</span><span class="p">(</span><span class="n">highscoreNode</span><span class="p">.</span><span class="n">Out</span><span class="p">(</span><span class="s">"Done"</span><span class="p">),</span><span class="w"> </span><span class="n">hook</span><span class="p">);</span>
+</code></pre></div>
+<p><code>NodePattern</code> 是 <code>Require</code> 使用的结构词汇。它可以组合 index/name
+selector、Prototype、Behavior kind、各类 port 的精确数量，以及对 Target、Pin、
+Pout、Setting 或 Local 值的 non-forcing 观察。所有条件共同标识一个 Node；找
+不到或结果不唯一时，Plan 保持 unsatisfied，不会猜测。Pattern 不保存 native
+identity，也不接受作者 predicate，因此 Script 在另一个 world 出现时，Plan
+可以用同一份 Edit 重新解析。只有已经通过廉价结构条件的候选 Node 才会读取值。</p>
+<p><code>Require(pattern)</code> 必须唯一选中一个 Node。<code>Each(pattern)</code> 选择非空 Node 集合，
+按原生 child index 顺序对其 <code>Ports</code> 重复 operation；它不是作者 callback，也不
+保留可执行 predicate。<code>Next</code>、<code>Previous</code> 取得一条 control Link 另一端的 Node；
+可选的 <code>NodePattern</code> 会先过滤相连 Node，再要求 relation 唯一，因而可以准确表达
+合法的 fan-out。<code>Leaving</code>、<code>Entering</code> 和 <code>To</code> 按 topology 标识 Link。Plan 每次
+安装时都会从 logical graph 重新解析这些 relation，调用者无需缓存 snapshot 或
+slot index。<code>Redirect(incoming, leaving)</code> 会把第一条 Link 送到第二条 Link 当前的
+destination，可直接表达绕过一个 Block。Redirect 本身是作者期望的 topology，
+所以仍出现在 Logical view 中；隐藏的只是实现它的物理 Link chain infrastructure。</p>
+<p><code>Next</code>、<code>Previous</code>、<code>Leaving</code> 和 <code>Entering</code> 的 Node 重载要求相应的 In 或 Out 唯一，绝不会暗中选择第 0 个端口。Node 有多个控制端口时，应显式传入 <code>At(index)</code>、<code>Named(name, occurrence)</code> 或 <code>Unique(name)</code>。</p>
+<p><code>Edit</code> 拥有 transformation program，<code>Edit::Graph</code> 是唯一公开的 authoring
+interface。<code>Edit::Root()</code> 返回 root scope，<code>Edit::Node::Graph()</code> 进入一个
+graph-backed Node；<code>Edit</code> 本身不再镜像 graph-local operation。graph scope
+是可低成本复制的值，修改操作也返回值，因此从 <code>Root()</code> 临时值开始的链式调用可以
+安全保存。所有 scope 和 symbol 的生命周期都受所属 Edit 限制。父 graph 只能连接 child 的 public port；不同 scope 的
+internal port 不能直接相连。<code>AddGraph(name, priority)</code> 创建真实的 graph-backed
+child，其 nested scope 在同一个 transaction 中定义 public interface 与内部
+body。root 和所有 nested scope 一起验证，恢复顺序固定为 child 在前、parent 在后。</p>
+<p><code>Edit::Node</code>、<code>Edit::Port</code>、<code>Edit::Link</code> 和 <code>Edit::Path</code> 是 authoring symbol，
+不是 graph snapshot view。symbol 同时属于创建它的 Edit 和 graph scope。
+<code>Require(snapshotNode)</code> 复制一项必须唯一匹配的结构要求：存在时使用名称，并
+同时约束 Prototype、graph/function kind 和完整 port layout；它不会复制 native
+child index。若这些事实仍无法区分两个 Node，解析会报告歧义，不按数组位置猜测。
+<code>Require(snapshotLink)</code> 对两端 Node 使用相同规则，并保留 endpoint port 与 delay。
+这些要求可以在新 world 重新解析，结构一旦漂移就明确失败。<code>Use(snapshotNode)</code>
+和 <code>Use(snapshotLink)</code> 保留精确 ObjectRef，只适用于 exact Patch。Plan 会拒绝这些
+identity，以及 Edit 或 Block 中的所有 non-null ObjectRef。</p>
+<p><code>Add(block)</code> 会复制 Block 配置和已经固定的 provider generation；之后修改原 Block 不影响 Edit。Block 的 Frame policy 不属于 graph authoring。</p>
+<p>安装时，所有新增 Block 都会先完成 <code>CREATE</code>、<code>ATTACH</code> 和 Setting stages，再建立 graph parameter relation。每个新增 Block 唯一一次最终 <code>EDITED</code> callback 能看到这些 relation；只有 callback 完成并重新验证 Layout 后，Patch 才建立 control Flow。被修改 value 或 parameter relation 的已有 Block 同样在安装后收到一次 <code>EDITED</code>，并在成功恢复后再收到一次；只有 control Flow 的 Patch 不发送 block-level <code>EDITED</code>。</p>
+<p>常用 transformation：</p>
+<ul>
+<li><code>Flow</code> / <code>FlowCycle</code>：增加 Behavior Link；</li>
+<li><code>Bind</code> / <code>Share</code> / <code>Push</code>：声明 parameter relation；</li>
+<li><code>Tap</code> / <code>Before</code> / <code>After</code>：安装 callback；</li>
+<li><code>Splice</code>：让现有 Link 经过新增 Block；</li>
+<li><code>Redirect</code>：暂时改变 Link destination；</li>
+<li><code>Reconnect</code> / <code>ReconnectCycle</code>：移动同一个既有 Link 的两端，不重新创建 Link；</li>
+<li><code>Next</code> / <code>Previous</code> 与 <code>Leaving</code> / <code>Entering</code> / <code>To</code>：描述每个 world 中重新解析的 topology；</li>
+<li><code>Each</code>：对 Pattern 匹配的所有 Node 应用同一个 operation；</li>
+<li><code>AppendIn/Out/Pin/Pout</code>：扩展 dynamic interface；</li>
+<li><code>AppendLocal</code>：用于 graph root 或同一 Edit 新增的 Block。Local 属于其实现，
+  Edit 不能向借用的既有 Node 添加 Local；</li>
+<li><code>AddGraph</code>：新增 graph-backed child，并直接编写它的 nested scope；</li>
+<li><code>AddOperation</code>：增加由 graph 拥有、惰性求值的 Parameter Operation；</li>
+<li><code>Replace</code>：用 public interface 完全相同的 configured Block 替换一个 idle child Node；</li>
+<li><code>Remove</code>：在 Patch 存续期间，将一个既有 child Node 及其所有入/出 Behavior Link
+  移出 graph。</li>
+</ul>
+<p><code>Replace</code> 保留原有 Link 对象及其 delay、Pin 与 Target source、Pout destination、
+名称、priority 和 owner。Settings 与 Locals 是实现私有状态，因此 replacement
+使用自身 Block 配置，不复制原 Node 的私有状态。关闭 Patch 时，会先恢复同一个
+原 Node 及上述全部 relation，再销毁 replacement Block。若 Node 仍 active 或
+public interface 不一致，替换会直接失败，不会按位置猜测适配。</p>
+<p><code>Remove</code> 改变的是可恢复的 graph membership，不是销毁对象。Patch 保留同一个 Node
+和所有关联 Link；Link 在停放期间与原 endpoint 断开，关闭 Patch 时再恢复原 endpoint
+与 delay。这样，仍在运行的兄弟 Block 就无法从自己的 output port 遍历一条已经不属于
+graph 的 Link。应用 Remove 时，目标 Node、它的 control port 以及每条关联 Link 的
+source 都必须 idle；
+非目标 sink 已经 active 时不再依赖这条 Link。零售 SDK 不公开 CK2 delayed list 的
+成员关系；在一次执行边界上，不在该 list 中的 Link，其 remaining delay
+只会是 0 或 initial delay，因此其他正数状态一律按 in-flight 处理并拒绝。即使 graph
+通过不带 reset 的方式被 deactivate，这条规则仍成立，因为该操作不会清空 delayed
+list。graph 内无关的工作可以保持 active。</p>
+<p><code>Reconnect</code> 修改所选 native <code>CKBehaviorLink</code> 的 source 与 destination relation。
+它保留 Link identity、initial delay 和 current delay；关闭 Patch 时恢复原 endpoint
+以及 source port 上的原遍历顺序。<code>Redirect</code> 仍然只是 destination-only 的 Link
+overlay；需要移动 Link 本身时使用 <code>Reconnect</code>。若新结构引入 same-frame cycle，
+必须显式使用 <code>ReconnectCycle</code>。</p>
+<p><code>Replace</code>、<code>Remove</code> 和 <code>Reconnect</code> 都是 structural edit。它们要求 graph 中没有
+其他 Patch 持有的 Link overlay，并在关闭前拒绝后续 Patch。同一个 Patch 仍可原子
+修改不相关的 Link，但不能同时 reconnect 和 overlay 同一条 Link。<code>Replace</code> 和
+<code>Remove</code> 还会排除本 Patch 自己的 Link overlay，避免物理 chain 穿过 parked Node。</p>
+<p>使用 <code>On(graph, edit)</code> 将多个当前 world 的 graph 和 Edit 组合起来。Session 为整个
+功能返回一个 Patch：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">patch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Apply</span><span class="p">(</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="s">"overclock"</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">deactivateGraph</span><span class="p">,</span><span class="w"> </span><span class="n">deactivateEdit</span><span class="p">),</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">newBallGraph</span><span class="p">,</span><span class="w"> </span><span class="n">newBallEdit</span><span class="p">),</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">energyGraph</span><span class="p">,</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
+</code></pre></div>
+<p><code>On(...)</code> 只负责在这些调用中连接目标和 Edit，不引入新的公开 graph 或 patch 类型。</p>
+<p>第一个 graph 改变前，所有 target 都会完成解析和静态检查。随后按参数顺序提交；
+后面的 target 失败时，前面的 target 按逆序恢复。同一个 graph 不能在顶层出现两次。
+任一 exact target 被删除时，整个 Patch 退役，其余仍存在的 graph 会在下一个
+Behavior safe point 恢复。<code>Graph::Apply</code> 和 <code>Script::Apply</code> 是这项操作的单 graph
+便利入口。</p>
+<p>一个 Plan 可以拥有多条相互独立的 Script rule：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">plan</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">session</span><span class="p">.</span><span class="n">Plan</span><span class="p">(</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="s">"game-events"</span><span class="p">,</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Event_handler"</span><span class="p">),</span><span class="w"> </span><span class="n">eventEdit</span><span class="p">),</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Ingame"</span><span class="p">),</span><span class="w"> </span><span class="n">gameplayEdit</span><span class="p">),</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="n">On</span><span class="p">(</span><span class="n">Scripts</span><span class="o">::</span><span class="n">One</span><span class="p">(</span><span class="s">"Gameplay_Energy"</span><span class="p">),</span><span class="w"> </span><span class="n">energyEdit</span><span class="p">));</span>
+</code></pre></div>
+<p>每条 rule 只在对应 Script 名称发生变化时 reconcile，不会逐帧扫描全部 graph。
+rule 可选择 <code>One</code> 或 <code>Each</code>；其 root 与 nested scope 作为一个原子 Patch 安装。
+<code>Partial</code> 表示至少一条 rule 已安装、但仍有 rule 没有匹配；<code>Unsatisfied</code> 表示当前
+没有任何安装。定义会跨 world reset 保留，并在下一 world 重新 reconcile。</p>
+<p>Patch 和 Plan 都提供 <code>Enable()</code>、<code>Disable()</code>、<code>Replace(...)</code>、<code>Info()</code> 与
+<code>Close()</code>。Disable 恢复 native graph，但保留 handle 和 owned definition；Enable
+重新验证后再安装。Replace 保留未变化的前缀，先逆序恢复变化后的旧后缀，再安装
+新后缀。新内容失败时恢复上一份完整定义；若连旧定义也因外部冲突无法恢复，
+<code>Info()</code> 报告 <code>Conflicted</code> 并保留 journal。safe point 前的多次请求以最后一份
+definition 和最后一个 active state 为准。</p>
+<p><code>Info().LastStatus</code> 表示最近一次调和的结果。<code>ApplyFailure</code> 保留应用当前请求
+definition 时的第一个失败，<code>RestoreFailure</code> 表示当前阻止恢复或回滚的错误；两者
+相互独立。一次被拒绝的 Replace 可以成功恢复旧 definition，此时 Patch 仍为
+<code>Active</code>，只有 <code>ApplyFailure</code>；若恢复也受阻，则两个错误同时保留。控制流判断
+<code>Error</code> 和 <code>Phase</code>；message 只用于日志，并附加 Patch/Plan 名、Mod generation，
+以及可确定的 world、rule/target index 和 Script 名。</p>
+<p>Close 会比较 installation 仍然拥有的 Link、source 和 graph after-image；外部修改
+导致 <code>RevertConflict</code> 时，handle 保持可读，作者修复冲突后可以再次 Close。</p>
+<p>Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。</p>
+<h2 id="10-retail-bb">10. 已命名的 retail BB<a class="headerlink" href="#10-retail-bb" title="Permanent link">&para;</a></h2>
+<p><code>BML/Behavior/Blocks.hpp</code> 汇总 BML+ 已知的 header-only adapter，例如 Object Load、Physicalize、Physics Force、Physics Impulse、Physics Wake Up、Send Message 和 2D Text。每个 header 只封装该 BB 的 Prototype、Options 和 slot knowledge：</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;BML/Behavior/Blocks/Text2D.hpp&gt;</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Options</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">options</span><span class="p">.</span><span class="n">Text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"score"</span><span class="p">;</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">options</span><span class="p">.</span><span class="n">FontIndex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="k">auto</span><span class="w"> </span><span class="n">made</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Blocks</span><span class="o">::</span><span class="n">Text2D</span><span class="o">::</span><span class="n">Make</span><span class="p">(</span><span class="n">m_Behavior</span><span class="p">,</span><span class="w"> </span><span class="n">options</span><span class="p">);</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">made</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">made</span><span class="p">.</span><span class="n">Take</span><span class="p">().</span><span class="n">SpawnIn</span><span class="p">(</span><span class="n">graph</span><span class="p">);</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>这些 adapter 仍返回普通 <code>Block</code>，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 legacy ExecuteBB interface。</p>
+<h2 id="11">11. 生命周期、错误与性能<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>事件</th>
+<th>Session</th>
+<th>Run</th>
+<th>Script</th>
+<th>Watch / Patch</th>
+<th>Plan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>显式释放</td>
+<td><code>Reset()</code> 释放当前值的 lease；最后一个 lease 关闭 native Session</td>
+<td><code>Close()</code> 停止 admission，safe point 完成 teardown</td>
+<td><code>Close()</code> 先关闭初始 graph，再在 safe point deactivate、离开 owner，然后销毁</td>
+<td><code>Close()</code> 期间仍可读取 closure/conflict</td>
+<td><code>Close()</code> 期间仍可读取 rule 退役状态</td>
+</tr>
+<tr>
+<td>world reset</td>
+<td>保持有效</td>
+<td>关闭</td>
+<td>随旧 world 关闭</td>
+<td>随旧 graph 关闭</td>
+<td>保持有效，在新 world reconcile</td>
+</tr>
+<tr>
+<td>Mod unload/reload</td>
+<td>owner generation 退出</td>
+<td>DLL unload 前关闭</td>
+<td>离开 owner，并在 DLL unload 前关闭</td>
+<td>callback 和 graph state 先退役</td>
+<td>callback code unload 前退役</td>
+</tr>
+</tbody>
+</table>
+<p>除 Close 外，Behavior 操作要求 game thread。所有 <code>Result&lt;T&gt;</code> 都同时包含稳定错误类别和 <code>Status</code>；控制流只应判断 error/phase，不应解析 message 文本。</p>
+<p>高频路径应复用 <code>Block</code>、<code>Frames</code> 和已有 graph snapshot。Block 会共享已编译的 C descriptor；<code>TakeFrames(Frames&amp;)</code> 在容量足够时避免额外分配；Node、Port、Link、ParameterOperation、LinkRange 和 Frame 都是 view，不复制 record 或 string，两个方向的 LinkRange 都使用 snapshot 自带的索引。Plan 只处理 Loader 报告为已变化的 Script 名称；disabled definition 和 Replace 中未变化的前缀不会重建 native graph。</p>
+<p>健康状态下，Patch/Plan 的 <code>Info()</code> 不复制保留的 apply/restore 错误对；仅当
+<code>LastStatus</code> 表示调和失败时才读取详细错误。Plan 已稳定且 Script 集合没有变化时，
+每帧不扫描 Script、不解析 Edit、不触发 native 安装，也不分配内存。</p>
+<p>当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language；它尚不包含 AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
