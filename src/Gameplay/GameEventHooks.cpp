@@ -16,24 +16,6 @@ Behavior::Hook Callback(Receiver *receiver) {
     return Behavior::Hook([receiver] { (receiver->*Method)(); });
 }
 
-template<void (Receiver::*Method)()>
-void Before(Behavior::Edit::Graph &graph, Behavior::Edit::Link link,
-            Receiver *receiver) {
-    graph.Before(std::move(link), Callback<Method>(receiver));
-}
-
-template<void (Receiver::*Method)()>
-void Tap(Behavior::Edit::Graph &graph, Behavior::Edit::Node node,
-         Receiver *receiver, Behavior::Selector output = Behavior::At(0)) {
-    graph.Tap(node.Out(std::move(output)), Callback<Method>(receiver));
-}
-
-template<void (Receiver::*Method)()>
-void After(Behavior::Edit::Graph &graph, Behavior::Edit::Node node,
-           Receiver *receiver, Behavior::Selector output = Behavior::At(0)) {
-    graph.After(node.Out(std::move(output)), Callback<Method>(receiver));
-}
-
 Behavior::Edit::Node WaitMessage(Behavior::Edit::Graph &graph,
                                  CKMessageType message) {
     Behavior::NodePattern pattern("Wait Message");
@@ -60,43 +42,49 @@ Behavior::Edit BaseEventHandler(Receiver *receiver) {
     };
 
     const auto startMenu = branch(0);
-    Before<&Receiver::OnPreStartMenu>(
-        root, root.Leaving(startMenu), receiver);
-    After<&Receiver::OnPostStartMenu>(root, startMenu, receiver);
+    root.Before(root.Leaving(startMenu),
+                Callback<&Receiver::OnPreStartMenu>(receiver));
+    root.After(startMenu.Out(),
+               Callback<&Receiver::OnPostStartMenu>(receiver));
 
     const auto exitGame = branch(1);
-    Before<&Receiver::OnExitGame>(root, root.Leaving(exitGame), receiver);
+    root.Before(root.Leaving(exitGame),
+                Callback<&Receiver::OnExitGame>(receiver));
 
     const auto loadLevel = branch(2);
-    Before<&Receiver::OnPreLoadLevel>(
-        root, root.Leaving(Advance(root, loadLevel, 2)), receiver);
-    After<&Receiver::OnPostLoadLevel>(root, loadLevel, receiver);
-    After<&Receiver::OnStartLevel>(root, branch(3), receiver);
+    root.Before(root.Leaving(Advance(root, loadLevel, 2)),
+                Callback<&Receiver::OnPreLoadLevel>(receiver));
+    root.After(loadLevel.Out(),
+               Callback<&Receiver::OnPostLoadLevel>(receiver));
+    root.After(branch(3).Out(), Callback<&Receiver::OnStartLevel>(receiver));
 
     auto reset = root.Require("reset Level").Graph();
     const auto resetFirst = reset.Next(reset.Root().In(0));
     const auto resetSecond = reset.Next(resetFirst);
-    Before<&Receiver::OnPreResetLevel>(
-        reset, reset.Leaving(resetSecond), receiver);
-    After<&Receiver::OnPostResetLevel>(root, branch(4), receiver);
-    After<&Receiver::OnPauseLevel>(root, branch(5), receiver);
-    After<&Receiver::OnUnpauseLevel>(root, branch(6), receiver);
+    reset.Before(reset.Leaving(resetSecond),
+                 Callback<&Receiver::OnPreResetLevel>(receiver));
+    root.After(branch(4).Out(),
+               Callback<&Receiver::OnPostResetLevel>(receiver));
+    root.After(branch(5).Out(),
+               Callback<&Receiver::OnPauseLevel>(receiver));
+    root.After(branch(6).Out(),
+               Callback<&Receiver::OnUnpauseLevel>(receiver));
 
     const auto exitBranches = root.Next(
         root.Require("DeleteCollisionSurfaces"));
-    Before<&Receiver::OnPreExitLevel>(
-        root, root.Leaving(Advance(root, branch(7), 4)), receiver);
-    Before<&Receiver::OnPostExitLevel>(
-        root, root.Leaving(root.Next(exitBranches, 0)), receiver);
-    Before<&Receiver::OnPreNextLevel>(
-        root, root.Leaving(Advance(root, branch(8), 4)), receiver);
-    Before<&Receiver::OnPostNextLevel>(
-        root, root.Leaving(root.Next(exitBranches, 1)), receiver);
-    After<&Receiver::OnDead>(root, branch(9), receiver);
+    root.Before(root.Leaving(Advance(root, branch(7), 4)),
+                Callback<&Receiver::OnPreExitLevel>(receiver));
+    root.Before(root.Leaving(root.Next(exitBranches, 0)),
+                Callback<&Receiver::OnPostExitLevel>(receiver));
+    root.Before(root.Leaving(Advance(root, branch(8), 4)),
+                Callback<&Receiver::OnPreNextLevel>(receiver));
+    root.Before(root.Leaving(root.Next(exitBranches, 1)),
+                Callback<&Receiver::OnPostNextLevel>(receiver));
+    root.After(branch(9).Out(), Callback<&Receiver::OnDead>(receiver));
 
     const auto highscoreNode = root.Require("Highscore");
-    Before<&Receiver::OnPreEndLevel>(
-        root, root.Leaving(branch(10)), receiver);
+    root.Before(root.Leaving(branch(10)),
+                Callback<&Receiver::OnPreEndLevel>(receiver));
     auto highscore = highscoreNode.Graph();
     const auto completed = highscore.AppendOut("Out");
     highscore.Flow(highscore.Each("Activate Script").Out(), completed);
@@ -113,15 +101,15 @@ Behavior::Edit GameplayIngame(Receiver *receiver,
     Behavior::Edit edit;
     auto root = edit.Root();
     auto camera = root.Require("CamNav On/Off").Graph();
-    Tap<&Receiver::OnCamNavActive>(
-        camera, WaitMessage(camera, cameraOn), receiver);
-    Tap<&Receiver::OnCamNavInactive>(
-        camera, WaitMessage(camera, cameraOff), receiver);
+    camera.Tap(WaitMessage(camera, cameraOn).Out(),
+               Callback<&Receiver::OnCamNavActive>(receiver));
+    camera.Tap(WaitMessage(camera, cameraOff).Out(),
+               Callback<&Receiver::OnCamNavInactive>(receiver));
     auto ball = root.Require("BallNav On/Off").Graph();
-    Tap<&Receiver::OnBallNavActive>(
-        ball, WaitMessage(ball, ballOn), receiver);
-    Tap<&Receiver::OnBallNavInactive>(
-        ball, WaitMessage(ball, ballOff), receiver);
+    ball.Tap(WaitMessage(ball, ballOn).Out(),
+             Callback<&Receiver::OnBallNavActive>(receiver));
+    ball.Tap(WaitMessage(ball, ballOff).Out(),
+             Callback<&Receiver::OnBallNavInactive>(receiver));
     return edit;
 }
 
@@ -133,36 +121,36 @@ Behavior::Edit GameplayEnergy(Receiver *receiver,
     Behavior::Edit edit;
     auto root = edit.Root();
     const auto dispatch = root.Require("Switch On Message");
-    Before<&Receiver::OnCounterActive>(
-        root, root.Leaving(dispatch, 3), receiver);
-    Before<&Receiver::OnCounterInactive>(
-        root, root.Leaving(dispatch, 1), receiver);
+    root.Before(root.Leaving(dispatch, 3),
+                Callback<&Receiver::OnCounterActive>(receiver));
+    root.Before(root.Leaving(dispatch, 1),
+                Callback<&Receiver::OnCounterInactive>(receiver));
 
     const auto lifeUpWait = WaitMessage(root, lifeUpMessage);
     const auto addLife = root.Next(
         lifeUpWait.Out(), Behavior::NodePattern("add Life"));
     const auto lifeUp = root.To(lifeUpWait.Out(), addLife);
-    Before<&Receiver::OnPreLifeUp>(root, lifeUp, receiver);
-    After<&Receiver::OnPostLifeUp>(root, addLife, receiver);
+    root.Before(lifeUp, Callback<&Receiver::OnPreLifeUp>(receiver));
+    root.After(addLife.Out(), Callback<&Receiver::OnPostLifeUp>(receiver));
 
     const auto ballOffWait = WaitMessage(root, ballOffMessage);
     const auto delay = root.Next(
         ballOffWait.Out(), Behavior::NodePattern("Delayer"));
-    Before<&Receiver::OnBallOff>(
-        root, root.To(ballOffWait.Out(), delay), receiver);
+    root.Before(root.To(ballOffWait.Out(), delay),
+                Callback<&Receiver::OnBallOff>(receiver));
 
     const auto subLifeWait = WaitMessage(root, subLifeMessage);
     const auto subLife = root.Next(
         subLifeWait.Out(), Behavior::NodePattern("sub Life"));
     const auto subtract = root.To(subLifeWait.Out(), subLife);
-    Before<&Receiver::OnPreSubLife>(root, subtract, receiver);
-    After<&Receiver::OnPostSubLife>(root, subLife, receiver);
+    root.Before(subtract, Callback<&Receiver::OnPreSubLife>(receiver));
+    root.After(subLife.Out(), Callback<&Receiver::OnPostSubLife>(receiver));
 
     const auto extraPointWait = WaitMessage(root, extraPointMessage);
     const auto show = root.Next(
         extraPointWait.Out(), Behavior::NodePattern("Show"));
-    Before<&Receiver::OnExtraPoint>(
-        root, root.To(extraPointWait.Out(), show), receiver);
+    root.Before(root.To(extraPointWait.Out(), show),
+                Callback<&Receiver::OnExtraPoint>(receiver));
     return edit;
 }
 
@@ -177,19 +165,21 @@ Behavior::Edit GameplayEvents(Receiver *receiver,
     const auto resetpoint = root.Next(
         checkpointWait.Out(), Behavior::NodePattern("set Resetpoint"));
     const auto checkpoint = root.To(checkpointWait.Out(), resetpoint);
-    Before<&Receiver::OnPreCheckpointReached>(root, checkpoint, receiver);
-    After<&Receiver::OnPostCheckpointReached>(root, resetpoint, receiver);
+    root.Before(checkpoint,
+                Callback<&Receiver::OnPreCheckpointReached>(receiver));
+    root.After(resetpoint.Out(),
+               Callback<&Receiver::OnPostCheckpointReached>(receiver));
 
     const auto gameOverWait = WaitMessage(root, gameOverMessage);
     const auto gameOverSend = root.Next(
         gameOverWait.Out(), Behavior::NodePattern("Send Message"));
-    Before<&Receiver::OnGameOver>(
-        root, root.To(gameOverWait.Out(), gameOverSend), receiver);
+    root.Before(root.To(gameOverWait.Out(), gameOverSend),
+                Callback<&Receiver::OnGameOver>(receiver));
     const auto levelFinishWait = WaitMessage(root, levelFinishMessage);
     const auto levelFinishSend = root.Next(
         levelFinishWait.Out(), Behavior::NodePattern("Send Message"));
-    Before<&Receiver::OnLevelFinish>(
-        root, root.To(levelFinishWait.Out(), levelFinishSend), receiver);
+    root.Before(root.To(levelFinishWait.Out(), levelFinishSend),
+                Callback<&Receiver::OnLevelFinish>(receiver));
     return edit;
 }
 } // namespace
@@ -251,7 +241,7 @@ void GameEventHooks::OnLoad(IBML &bml, ILogger &logger) {
 
 void GameEventHooks::OnUnload() {
     (void) m_Plan.Close();
-    m_Behavior.Close();
+    m_Behavior.Reset();
     m_Logger = nullptr;
     m_Receiver = nullptr;
 }

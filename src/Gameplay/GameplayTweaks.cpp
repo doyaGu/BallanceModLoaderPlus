@@ -179,7 +179,7 @@ void GameplayTweaks::OnUnload() {
     if (overclockOwned && m_Logger)
         m_Logger->Info("Restore the Overclock Behavior Plan");
     (void) m_LanternPlan.Close();
-    m_Behavior.Close();
+    m_Behavior.Reset();
     m_Logger = nullptr;
     m_BML = nullptr;
 }
