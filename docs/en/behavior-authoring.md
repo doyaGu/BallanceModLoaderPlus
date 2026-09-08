@@ -1,6 +1,8 @@
 # Behavior authoring
 
-`BML/Behavior.hpp` is the C++ interface for Native Mods that use Virtools Behaviors. It can create and execute any registered Building Block, create a top-level Script graph, and inspect or edit Behavior graphs. `BML/Behavior.h` exposes the same module as a C seam; C++ authors normally do not need its wire DTOs. This interface is still under pre-release development, currently supports Win32 Native C++ Mods only, and has not frozen source compatibility.
+`BML/Behavior.hpp` is the stable C++ interface for Native Mods that use Virtools Behaviors. It can create and execute registered Building Blocks whose parameters use supported value domains, create a top-level Script graph, and inspect or edit Behavior graphs. `BML/Behavior.h` exposes the stable `bml.behavior 1.0` C seam; C++ authors normally do not need its wire DTOs. This interface supports Win32 Native C++ Mods only and does not support Win64.
+
+The domain types in `BML::Behavior` and the 1.0 C function table in `BML/Behavior.h` are public contracts. `BML::Behavior::Detail` contains the header-only implementation; Mods must not name it directly, and it carries no source-compatibility guarantee.
 
 ## 1. Object model
 
@@ -545,4 +547,4 @@ apply/restore failure pair. Detailed failures are read only after
 Script scan, Edit resolution, native installation, or allocation on unchanged
 frames.
 
-The current public interface exposes native Parameter Operations but does not add a second expression language over them. It does not include an AngelScript Behavior projection or third-party parameter-format registration. Unsupported Virtools parameter types fail explicitly; they are never guessed to be arbitrary bytes.
+The public interface exposes native Parameter Operations but does not add a second expression language over them. `bml.behavior 1.0` does not include an AngelScript Behavior projection, third-party parameter-format registration, active Node replacement, or an exact DataChanged observer. Unsupported capabilities and Virtools parameter types fail explicitly; unknown values are never guessed to be arbitrary bytes. These are 1.0 scope boundaries, not implied support through an adjacent operation.

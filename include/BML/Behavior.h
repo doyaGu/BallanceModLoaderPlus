@@ -1474,7 +1474,7 @@ typedef struct BML_BehaviorInterface {
         BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
-// The complete pre-release function table for bml.behavior 1.0. Use
+// The complete function table for bml.behavior 1.0. Use
 // BML_IFACE_HAS on a function a later minor appends.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
     (offsetof(BML_BehaviorInterface, ReadPlanFailures) +                      \

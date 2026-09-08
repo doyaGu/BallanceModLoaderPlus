@@ -1,6 +1,8 @@
 # Behavior 编写
 
-`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的 C++ interface。它能创建和执行任意已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。`BML/Behavior.h` 是同一能力的 C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 仍在发布前开发阶段，目前只支持 Win32 Native C++ Mod，源码兼容性尚未冻结。
+`BML/Behavior.hpp` 是 Native Mod 使用 Virtools Behavior 的稳定 C++ interface。它能创建和执行使用受支持参数类型的已注册 Building Block、从零创建顶层 Script graph，也能读取和修改 Behavior graph。`BML/Behavior.h` 是稳定的 `bml.behavior 1.0` C seam；一般 C++ 作者不需要直接操作其中的 wire DTO。该 interface 只支持 Win32 Native C++ Mod，不支持 Win64。
+
+`BML::Behavior` 中的领域类型和 `BML/Behavior.h` 中的 1.0 C function table 属于公开契约。`BML::Behavior::Detail` 只承载 header-only 实现；Mod 不应直接引用其中的名称，其源码兼容性不作保证。
 
 ## 1. 对象模型
 
@@ -508,4 +510,4 @@ if (made) {
 `LastStatus` 表示调和失败时才读取详细错误。Plan 已稳定且 Script 集合没有变化时，
 每帧不扫描 Script、不解析 Edit、不触发 native 安装，也不分配内存。
 
-当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language；它尚不包含 AngelScript Behavior projection 或第三方 parameter format registration。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。
+当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language。`bml.behavior 1.0` 不包含 AngelScript Behavior projection、第三方 parameter format registration、active Node replacement 或精确的 DataChanged observer。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。这些是 1.0 的范围边界，不是对相邻能力已经实现的暗示。

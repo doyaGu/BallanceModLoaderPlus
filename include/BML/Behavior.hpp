@@ -1,5 +1,6 @@
 // Native C++ authoring for Virtools Building Blocks. Behavior.h is the
-// corresponding pre-release C seam.
+// corresponding stable Win32 C seam. BML::Behavior::Detail contains the
+// header-only implementation and is not part of the supported source API.
 #ifndef BML_BEHAVIOR_HPP
 #define BML_BEHAVIOR_HPP
 
