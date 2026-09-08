@@ -631,4 +631,82 @@ TEST(BehaviorEdit, MakesASpliceAndARedirectOnOneLinkShareTheOrdering) {
     EXPECT_EQ(status.Code, Error::InvalidState);
 }
 
+TEST(BehaviorEdit, ReconnectsOneExactLinkWithoutChangingItsDelay) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {31, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 3, 2},
+    };
+    Edit edit = MakeEdit();
+    const Node source = edit.Use(Native(103), Shape());
+    const Link link = edit.Use(ObjectRef{7, 31, 9});
+    edit.Reconnect(link, source.Out(), edit.Exit("Done"));
+
+    CheckedEdit checked;
+    const Status status = edit.Validate(graph, checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Reconnections.size(), 1u);
+    EXPECT_EQ(checked.Reconnections[0].Target.Anchor,
+              (ObjectRef{7, 31, 9}));
+    EXPECT_EQ(checked.Reconnections[0].Target.Delay, 3);
+    EXPECT_EQ(checked.Reconnections[0].Source.Owner, source);
+    EXPECT_EQ(checked.Reconnections[0].Sink.Owner, edit.Graph());
+}
+
+TEST(BehaviorEdit, RejectsAmbiguousOrIllTypedReconnects) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {31, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 0},
+    };
+    CheckedEdit checked;
+
+    Edit twice = MakeEdit();
+    const Node source = twice.Use(Native(103), Shape());
+    const Link link = twice.Use(ObjectRef{7, 31, 9});
+    twice.Reconnect(link, source.Out(), twice.Exit());
+    twice.Reconnect(link, source.Out(), twice.Exit());
+    EXPECT_EQ(twice.Validate(graph, checked).Code, Error::RedirectConflict);
+
+    Edit wrongWay = MakeEdit();
+    const Node node = wrongWay.Use(Native(103), Shape());
+    wrongWay.Reconnect(wrongWay.Use(ObjectRef{7, 31, 9}),
+                       node.In(), node.Out());
+    EXPECT_EQ(wrongWay.Validate(graph, checked).Code, Error::TypeMismatch);
+
+    Edit mixed = MakeEdit();
+    const Node destination = mixed.Use(Native(103), Shape());
+    const Link mixedLink = mixed.Use(ObjectRef{7, 31, 9});
+    mixed.Redirect(mixedLink, destination.In());
+    mixed.Reconnect(mixedLink, destination.Out(), mixed.Exit());
+    EXPECT_EQ(mixed.Validate(graph, checked).Code, Error::RedirectConflict);
+}
+
+TEST(BehaviorEdit, RequiresConfirmationForACycleCreatedByReconnect) {
+    GraphModel graph = Base();
+    graph.Links = {
+        {31, {7, 31, 9}, {101, SlotKind::Output, 0},
+         {102, SlotKind::Input, 0}, 0},
+        {32, {7, 32, 9}, {103, SlotKind::Output, 0},
+         {101, SlotKind::Input, 0}, 0},
+    };
+
+    Edit rejected = MakeEdit();
+    const Node b = rejected.Use(Native(102), Shape());
+    rejected.Reconnect(rejected.Use(ObjectRef{7, 32, 9}),
+                       b.Out(), rejected.Use(Native(101), Shape()).In());
+    CheckedEdit checked;
+    EXPECT_EQ(rejected.Validate(graph, checked).Code,
+              Error::UnconfirmedSameFrameCycle);
+
+    Edit confirmed = MakeEdit();
+    const Node confirmedB = confirmed.Use(Native(102), Shape());
+    const Node confirmedA = confirmed.Use(Native(101), Shape());
+    confirmed.Reconnect(confirmed.Use(ObjectRef{7, 32, 9}),
+                        confirmedB.Out(), confirmedA.In(),
+                        Cycle::Confirmed);
+    const Status status = confirmed.Validate(graph, checked);
+    EXPECT_TRUE(status) << status.Message;
+}
+
 } // namespace

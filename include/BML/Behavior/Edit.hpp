@@ -488,6 +488,9 @@ public:
         [[nodiscard]] Port AppendLocal(std::string_view name, CKGUID type) const;
         [[nodiscard]] Port AppendLocal(Node owner, std::string_view name,
                                        CKGUID type) const;
+        // Specializes a variable-parameter Block owned by this Edit. Existing
+        // game Nodes are deliberately immutable here because changing their
+        // parameter representation would also require preserving native data.
         Graph Flow(Port source, Port sink, std::int32_t delay = 0) const;
         Graph Flow(Ports sources, Port sink, std::int32_t delay = 0) const;
         Graph Flow(Port source, Ports sinks, std::int32_t delay = 0) const;
@@ -528,6 +531,8 @@ public:
                        std::vector<PatchOrder> ordering = {}) const;
         Graph Redirect(Link link, Link destination,
                        std::vector<PatchOrder> ordering = {}) const;
+        Graph Reconnect(Link link, Port source, Port sink) const;
+        Graph ReconnectCycle(Link link, Port source, Port sink) const;
 
     private:
         Graph(std::weak_ptr<Detail::EditProgram> edit,

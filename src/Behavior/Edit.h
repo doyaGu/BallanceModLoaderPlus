@@ -146,6 +146,19 @@ struct EditRedirect {
     friend bool operator==(const EditRedirect &, const EditRedirect &) = default;
 };
 
+// Moves one existing Link to a new source and destination while preserving
+// the Link object and its activation delay.
+struct EditReconnect {
+    Link Target;
+    Port Source;
+    Port Sink;
+    Cycle SameFrameCycle = Cycle::Reject;
+    std::uint32_t Ordinal = 0;
+
+    friend bool operator==(const EditReconnect &,
+                           const EditReconnect &) = default;
+};
+
 struct EditReplace {
     Node Target;
     Node Replacement;
@@ -238,6 +251,14 @@ struct CheckedRedirect {
     std::uint32_t Ordinal = 0;
 };
 
+struct CheckedReconnect {
+    LinkBase Target;
+    ResolvedPort Source;
+    ResolvedPort Sink;
+    Cycle SameFrameCycle = Cycle::Reject;
+    std::uint32_t Ordinal = 0;
+};
+
 struct CheckedEdit {
     std::vector<CheckedFlow> Flows;
     std::vector<CheckedBind> Binds;
@@ -245,6 +266,7 @@ struct CheckedEdit {
     std::vector<CheckedTap> Taps;
     std::vector<CheckedSplice> Splices;
     std::vector<CheckedRedirect> Redirects;
+    std::vector<CheckedReconnect> Reconnections;
     std::vector<CheckedReplace> Replacements;
     std::vector<CheckedRemove> Removals;
 };
@@ -295,6 +317,8 @@ public:
     // its delay; only its destination changes, and closing the Patch restores
     // the original destination.
     void Redirect(Link target, Port sink, std::vector<Order> ordering = {});
+    void Reconnect(Link target, Port source, Port sink,
+                   Cycle cycle = Cycle::Reject);
     void Replace(Node target, Node replacement);
     void Remove(Node target);
     Port AppendIn(Node node, std::string name);
@@ -343,6 +367,7 @@ private:
     std::vector<EditLink> m_Links;
     std::vector<EditSplice> m_Splices;
     std::vector<EditRedirect> m_Redirects;
+    std::vector<EditReconnect> m_Reconnections;
     std::vector<EditReplace> m_Replacements;
     std::vector<EditRemove> m_Removals;
     std::uint32_t m_NextNode = 1;

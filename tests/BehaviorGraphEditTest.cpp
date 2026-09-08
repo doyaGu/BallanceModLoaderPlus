@@ -1274,6 +1274,53 @@ TEST(BehaviorGraphEdit, CompilesARedirectOntoTheExactLiveLink) {
     EXPECT_EQ(checked.Redirects.front().Target.Anchor, Ref(201));
 }
 
+TEST(BehaviorGraphEdit, CompilesReconnectOntoTheExactLiveLink) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    const Node wait = plan.RequireOne({"Wait Message", CKGUID(0x1111, 1)});
+    const Node sink = plan.RequireOne(
+        {"set Resetpoint", CKGUID(0x2222, 2)});
+    const Link edge = plan.RequireOne(wait.Out(), sink.In());
+    const Node source = plan.Add(CKGUID(0x3333, 3));
+    plan.Reconnect(edge, source.Out(), plan.Exit("Done"), Cycle::Confirmed);
+    ASSERT_TRUE(plan.Validate());
+
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "reconnect"}, compiler.Base.Root, compiler, edit));
+    EXPECT_EQ(compiler.UsedLinks, (std::vector<ObjectRef>{Ref(201)}));
+
+    CheckedEdit checked;
+    const Status status = edit.Validate(compiler.Base, checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Reconnections.size(), 1u);
+    EXPECT_EQ(checked.Reconnections.front().Target.Anchor, Ref(201));
+    EXPECT_EQ(checked.Reconnections.front().Source.Owner.Value, 4u);
+    EXPECT_EQ(checked.Reconnections.front().Sink.Owner, edit.Graph());
+    EXPECT_EQ(checked.Reconnections.front().SameFrameCycle,
+              Cycle::Confirmed);
+}
+
+TEST(BehaviorGraphEdit, CompilesAConfiguredVariableParameterBlock) {
+    FakeCompiler compiler(Model());
+    GraphEdit plan;
+    BlockSpec block(CKGUID(0x3333, 3));
+    block.PinType(Slot::At(SlotKind::InputParameter, 0), CKPGUID_BOOL)
+        .PoutType(Slot::At(SlotKind::OutputParameter, 0), CKPGUID_BOOL);
+    const Node identity = plan.Add(std::move(block));
+    plan.Bind(identity.Pin(0), Value::From(CKPGUID_BOOL, true));
+    ASSERT_TRUE(plan.Validate());
+
+    Edit edit;
+    ASSERT_TRUE(plan.Compile(
+        {"mod", "parameter-types"}, compiler.Base.Root, compiler, edit));
+    CheckedEdit checked;
+    const Status status = edit.Validate(compiler.Base, checked);
+    ASSERT_TRUE(status) << status.Message;
+    ASSERT_EQ(checked.Binds.size(), 1u);
+    EXPECT_EQ(checked.Binds[0].Target.Slot.Type, CKPGUID_BOOL);
+}
+
 TEST(BehaviorGraphEdit, RefusesARedirectThatNamesNothing) {
     GraphEdit plan;
     const Node wait = plan.RequireOne({"Wait Message"});

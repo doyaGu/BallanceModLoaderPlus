@@ -140,9 +140,12 @@ private:
     std::map<std::uint64_t, Topology> m_Topology;
     std::map<std::uint64_t, Relations> m_Relations;
     std::map<std::uint64_t, std::set<PatchKey>> m_Active;
-    // Replace and Remove park native graph members. Other Patches wait until
-    // their exact inverse has restored those Nodes and Links.
-    std::set<std::uint64_t> m_NodeEdits;
+    std::map<std::uint64_t,
+             std::set<std::pair<PatchKey, std::uint32_t>>> m_LostOverlays;
+    // Replace, Remove, and Reconnect change the native graph rather than
+    // projecting a composable Link overlay. Other Patches wait until their
+    // exact inverse has restored those Nodes and Links.
+    std::set<std::uint64_t> m_StructuralEdits;
     std::unique_ptr<Links> m_Links;
     std::mutex m_QueueMutex;
     std::vector<Request> m_Queue;

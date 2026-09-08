@@ -3857,6 +3857,79 @@ TEST(BehaviorAuthoring, SendsALinkToANewDestination) {
     EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
 }
 
+TEST(BehaviorAuthoring, MovesAnExistingLinkWithoutRecreatingIt) {
+    g_State = {};
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    Edit edit;
+    const auto existing = edit.Root().Require(
+        "Counter_Active", CKGUID(1, 2));
+    const auto added = edit.Root().Add(session.Use(CKGUID(3, 4)));
+    const auto sink = edit.Root().Root().In("Reset");
+    const auto link = edit.Root().Between(existing.Out(), sink);
+    edit.Root().ReconnectCycle(link, added.Out(), sink);
+
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    auto applied = inspected->Apply("reconnect", edit);
+    ASSERT_TRUE(applied) << applied.GetStatus().Message;
+    Patch patch = applied.Take();
+
+    ASSERT_EQ(g_State.PatchSteps.size(), 4u);
+    const CapturedStep &reconnect = g_State.PatchSteps[3];
+    EXPECT_EQ(reconnect.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_RECONNECT));
+    EXPECT_EQ(reconnect.Target, g_State.PatchSteps[2].Result);
+    EXPECT_EQ(reconnect.Source.Handle, g_State.PatchSteps[1].Result);
+    EXPECT_EQ(reconnect.Source.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_OUT));
+    EXPECT_EQ(reconnect.Sink.Handle, BML_BEHAVIOR_EDIT_GRAPH);
+    EXPECT_EQ(reconnect.Sink.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SLOT_IN));
+    EXPECT_NE(reconnect.Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE, 0u);
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+}
+
+TEST(BehaviorAuthoring, EncodesParameterSpecializationForAnAddedBlock) {
+    g_State = {};
+    g_State.DeclaredVariableParameters = true;
+    auto opened = Session::Open();
+    ASSERT_TRUE(opened);
+    Session session = opened.Take();
+
+    auto identity = session.Use(CKGUID(3, 4));
+    identity.PinType(At(0), CKPGUID_BOOL)
+        .PoutType("Result", CKPGUID_BOOL);
+    Edit edit;
+    (void) edit.Root().Add(identity);
+
+    auto inspected = session.Inspect({41, 42, 43});
+    ASSERT_TRUE(inspected);
+    auto applied = inspected->Apply("parameter-types", edit);
+    ASSERT_TRUE(applied) << applied.GetStatus().Message;
+    Patch patch = applied.Take();
+
+    ASSERT_EQ(g_State.PatchSteps.size(), 1u);
+    const CapturedStep &step = g_State.PatchSteps.front();
+    EXPECT_EQ(step.Kind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_EDIT_ADD_BLOCK));
+    ASSERT_EQ(step.PinTypes.size(), 1u);
+    EXPECT_EQ(step.PinTypes.front().SelectorKind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SELECTOR_INDEX));
+    EXPECT_EQ(step.PinTypes.front().Index, 0);
+    EXPECT_EQ(step.PinTypes.front().Type.Data1,
+              static_cast<std::uint32_t>(CKPGUID_BOOL.d1));
+    ASSERT_EQ(step.PoutTypes.size(), 1u);
+    EXPECT_EQ(step.PoutTypes.front().SelectorKind,
+              static_cast<std::uint32_t>(BML_BEHAVIOR_SELECTOR_UNIQUE_NAME));
+    EXPECT_EQ(step.PoutTypes.front().Name, "Result");
+    EXPECT_EQ(step.PoutTypes.front().Type.Data2,
+              static_cast<std::uint32_t>(CKPGUID_BOOL.d2));
+    EXPECT_EQ(patch.Close().Value(), CloseState::Closed);
+}
+
 TEST(BehaviorAuthoring, EncodesANodeReplacementAsOneDomainStep) {
     g_State = {};
     auto opened = Session::Open();

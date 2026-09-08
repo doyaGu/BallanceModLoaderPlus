@@ -430,6 +430,19 @@ struct Patch::Journal {
         bool Restored = false;
     };
 
+    struct Reconnection {
+        ObjectRef Anchor;
+        Stamp Link;
+        Stamp OriginalSource;
+        Stamp OriginalSink;
+        Stamp InstalledSource;
+        Stamp InstalledSink;
+        int InitialDelay = 0;
+        int Delay = 0;
+        bool Applied = false;
+        bool Reverted = false;
+    };
+
     CKEdit *Editor = nullptr;
     mutable std::mutex Mutex;
     PatchState State = PatchState::Pending;
@@ -439,7 +452,7 @@ struct Patch::Journal {
     bool GraphObserved = false;
     bool RestoredEdited = false;
     bool RestoredGraph = false;
-    bool NodeEditClaim = false;
+    bool StructuralEditClaim = false;
     Stamp Graph;
     Stamp GraphOwner;
     Stamp GraphParent;
@@ -475,6 +488,7 @@ struct Patch::Journal {
     std::vector<Replacement> Replacements;
     std::vector<Removal> Removals;
     std::vector<RemovedLink> RemovedLinks;
+    std::vector<Reconnection> Reconnections;
     Stamp DetachedSource;
     Stamp DetachedSink;
     PatchLayer Layer;
@@ -910,7 +924,8 @@ void CKEdit::AdoptGraph(CKBehavior *graph) {
         m_Topology.erase(graphId);
         m_Relations.erase(graphId);
         m_Active.erase(graphId);
-        m_NodeEdits.erase(graphId);
+        m_LostOverlays.erase(graphId);
+        m_StructuralEdits.erase(graphId);
         m_Links->Chains.erase(graphId);
         m_Links->Sites.erase(graphId);
         m_Links->Patches.erase(graphId);
@@ -1329,17 +1344,18 @@ Status CKEdit::ApplyNow(const Edit &edit,
         status = edit.Validate(base, checked);
     if (!status)
         return status;
-    if (m_NodeEdits.contains(graphId)) {
+    if (m_StructuralEdits.contains(graphId)) {
         return Failure(
             Error::SourceConflict,
-            "This graph already has an active Node edit.");
+            "This graph already has an active structural edit.");
     }
-    if (!checked.Replacements.empty() || !checked.Removals.empty()) {
+    if (!checked.Replacements.empty() || !checked.Removals.empty() ||
+        !checked.Reconnections.empty()) {
         const auto layered = m_Links->Patches.find(graphId);
         if (layered != m_Links->Patches.end() && !layered->second.empty()) {
             return Failure(
                 Error::SourceConflict,
-                "A Node edit requires a graph without active Link overlays.");
+                "A structural edit requires a graph without active Link overlays.");
         }
     }
 
@@ -1433,8 +1449,11 @@ Status CKEdit::ApplyNow(const Edit &edit,
     if (!status)
         return status;
     AdoptGraph(graph);
-    if (!checked.Replacements.empty() || !checked.Removals.empty())
-        patch->NodeEditClaim = m_NodeEdits.insert(graphId).second;
+    if (!checked.Replacements.empty() || !checked.Removals.empty() ||
+        !checked.Reconnections.empty()) {
+        patch->StructuralEditClaim =
+            m_StructuralEdits.insert(graphId).second;
+    }
 
     std::unordered_map<std::uint32_t, Stamp> nodes;
     nodes.emplace(edit.Graph().Value, patch->Graph);
@@ -1625,6 +1644,13 @@ Status CKEdit::ApplyNow(const Edit &edit,
         }
         for (CheckedRedirect &redirect : checked.Redirects) {
             Status current = visitor(redirect.Sink);
+            if (!current)
+                return current;
+        }
+        for (CheckedReconnect &reconnect : checked.Reconnections) {
+            Status current = visitor(reconnect.Source);
+            if (current)
+                current = visitor(reconnect.Sink);
             if (!current)
                 return current;
         }
@@ -2968,6 +2994,23 @@ Status CKEdit::ApplyNow(const Edit &edit,
                 }
             }
         }
+        for (const Patch::Journal::Reconnection &change :
+             patch->Reconnections) {
+            if (!change.Applied || change.Reverted)
+                continue;
+            CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                m_Context, change.Link, CKCID_BEHAVIORLINK);
+            if (!link || !ContainsLink(graphFor(), link) ||
+                Capture(link->GetInBehaviorIO()) != change.InstalledSource ||
+                Capture(link->GetOutBehaviorIO()) != change.InstalledSink ||
+                link->GetInitialActivationDelay() != change.InitialDelay ||
+                link->GetActivationDelay() != change.Delay) {
+                return Failure(
+                    Error::GraphChanged,
+                    "A reconnected Link changed identity, endpoints, or delay during Apply.",
+                    CKERR_INVALIDOBJECT);
+            }
+        }
         return {};
     };
 
@@ -3432,6 +3475,86 @@ Status CKEdit::ApplyNow(const Edit &edit,
         graph = graphFor();
     }
 
+    // Reconnect moves the exact native Link. CK2 therefore keeps both the
+    // Link identity and any admitted activation delay; only its endpoint
+    // relations change. The before-image is recorded before the first setter
+    // so Apply failure can use the same inverse as an ordinary Patch close.
+    for (const CheckedReconnect &reconnect : checked.Reconnections) {
+        const auto nativeRecord = std::find_if(
+            base.Links.begin(), base.Links.end(), [&](const GraphLink &item) {
+                return item.Object == reconnect.Target.Anchor;
+            });
+        graph = graphFor();
+        CKBehaviorLink *link = nativeRecord == base.Links.end()
+            ? nullptr
+            : Resolve<CKBehaviorLink>(
+                  m_Context,
+                  {static_cast<CK_ID>(nativeRecord->Id),
+                   m_Context->GetObject(static_cast<CK_ID>(nativeRecord->Id))},
+                  CKCID_BEHAVIORLINK);
+        if (!graph || !link || !ContainsLink(graph, link) ||
+            link->GetInitialActivationDelay() !=
+                reconnect.Target.Delay ||
+            link->GetActivationDelay() != nativeRecord->RemainingDelay) {
+            return fail(Failure(
+                Error::GraphChanged,
+                "The Link selected by Reconnect changed identity or delay before Apply.",
+                CKERR_INVALIDOBJECT));
+        }
+        GraphLinkShape current;
+        if (!Describe(link, current) ||
+            current.Source != reconnect.Target.Source ||
+            current.Target != reconnect.Target.Sink) {
+            return fail(Failure(
+                Error::GraphChanged,
+                "The Link selected by Reconnect changed endpoints before Apply.",
+                CKERR_INVALIDOBJECT));
+        }
+
+        CKBehaviorIO *source = nullptr;
+        CKBehaviorIO *sink = nullptr;
+        status = control(reconnect.Source, source);
+        if (status)
+            status = control(reconnect.Sink, sink);
+        if (!status)
+            return fail(std::move(status));
+
+        Patch::Journal::Reconnection change;
+        change.Anchor = reconnect.Target.Anchor;
+        change.Link = Capture(link);
+        change.OriginalSource = Capture(link->GetInBehaviorIO());
+        change.OriginalSink = Capture(link->GetOutBehaviorIO());
+        change.InstalledSource = Capture(source);
+        change.InstalledSink = Capture(sink);
+        change.InitialDelay = link->GetInitialActivationDelay();
+        change.Delay = link->GetActivationDelay();
+        patch->Reconnections.push_back(change);
+        auto &stored = patch->Reconnections.back();
+
+        CKERROR error = CK_OK;
+        if (link->GetInBehaviorIO() != source)
+            error = link->SetInBehaviorIO(source);
+        if (error == CK_OK && link->GetOutBehaviorIO() != sink)
+            error = link->SetOutBehaviorIO(sink);
+        if (error != CK_OK) {
+            (void) link->SetInBehaviorIO(
+                ResolveIo(m_Context, stored.OriginalSource));
+            (void) link->SetOutBehaviorIO(
+                ResolveIo(m_Context, stored.OriginalSink));
+            return fail(Failure(
+                Error::GraphChanged,
+                "Virtools rejected a reconnected Link endpoint.", error));
+        }
+        stored.Applied = true;
+        if (link->GetInitialActivationDelay() != stored.InitialDelay ||
+            link->GetActivationDelay() != stored.Delay) {
+            return fail(Failure(
+                Error::GraphChanged,
+                "Reconnect changed the native Link activation delay.",
+                CKERR_INVALIDOBJECT));
+        }
+    }
+
     // Control Flow is installed last, after every Block has observed and
     // validated its final parameter relations.
     for (const CheckedFlow &flow : checked.Flows) {
@@ -3765,6 +3888,11 @@ Status CKEdit::Undo(Patch::Journal &patch) {
             }
             replacement.Restored = true;
         }
+        for (Patch::Journal::Reconnection &reconnection :
+             patch.Reconnections) {
+            reconnection.Applied = false;
+            reconnection.Reverted = true;
+        }
     }
     if (graph) {
         CKBehavior *parent = graph->GetParent();
@@ -3778,11 +3906,11 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 "The edited Behavior graph changed owner or parent before the Patch closed.");
         }
     }
-    if (graph && m_NodeEdits.contains(graphId) &&
-        !patch.NodeEditClaim) {
+    if (graph && m_StructuralEdits.contains(graphId) &&
+        !patch.StructuralEditClaim) {
         return replacementConflict(
             RevertSubject::Node,
-            "This Patch cannot close while the graph contains an active Node edit.");
+            "This Patch cannot close while the graph contains an active structural edit.");
     }
     if (graph && patch.Published) {
         RevertSubject subject = RevertSubject::Node;
@@ -3928,6 +4056,25 @@ Status CKEdit::Undo(Patch::Journal &patch) {
                 return replacementConflict(
                     RevertSubject::Link,
                     "A removed Behavior Link changed after the Patch was published.");
+            }
+        }
+        for (const Patch::Journal::Reconnection &reconnection :
+             patch.Reconnections) {
+            if (!reconnection.Applied || reconnection.Reverted)
+                continue;
+            CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+                m_Context, reconnection.Link, CKCID_BEHAVIORLINK);
+            if (!link || !ContainsLink(graph, link) ||
+                Capture(link->GetInBehaviorIO()) !=
+                    reconnection.InstalledSource ||
+                Capture(link->GetOutBehaviorIO()) !=
+                    reconnection.InstalledSink ||
+                link->GetInitialActivationDelay() !=
+                    reconnection.InitialDelay ||
+                link->GetActivationDelay() != reconnection.Delay) {
+                return replacementConflict(
+                    RevertSubject::Link,
+                    "A reconnected Behavior Link changed after the Patch was published.");
             }
         }
     }
@@ -4163,6 +4310,57 @@ Status CKEdit::Undo(Patch::Journal &patch) {
         } else {
             item->Reverted = true;
         }
+    }
+
+    // Put moved Links back before any Edit-owned endpoint can be removed.
+    // Failed restoration is rolled back to the installed endpoints so a
+    // conflicted Patch remains retryable at a later safe point.
+    for (auto item = patch.Reconnections.rbegin();
+         item != patch.Reconnections.rend(); ++item) {
+        if (!item->Applied || item->Reverted)
+            continue;
+        graph = Resolve<CKBehavior>(m_Context, patch.Graph, CKCID_BEHAVIOR);
+        if (!graph) {
+            item->Applied = false;
+            item->Reverted = true;
+            continue;
+        }
+        CKBehaviorLink *link = Resolve<CKBehaviorLink>(
+            m_Context, item->Link, CKCID_BEHAVIORLINK);
+        CKBehaviorIO *source = ResolveIo(m_Context, item->OriginalSource);
+        CKBehaviorIO *sink = ResolveIo(m_Context, item->OriginalSink);
+        CKBehaviorIO *installedSource = ResolveIo(
+            m_Context, item->InstalledSource);
+        CKBehaviorIO *installedSink = ResolveIo(
+            m_Context, item->InstalledSink);
+        CKERROR error = link && source && sink && installedSource &&
+                installedSink && ContainsLink(graph, link)
+            ? link->SetInBehaviorIO(source) : CKERR_INVALIDOBJECT;
+        if (error == CK_OK)
+            error = link->SetOutBehaviorIO(sink);
+        const bool restored = error == CK_OK &&
+            link->GetInBehaviorIO() == source &&
+            link->GetOutBehaviorIO() == sink &&
+            link->GetInitialActivationDelay() == item->InitialDelay &&
+            link->GetActivationDelay() == item->Delay;
+        if (!restored) {
+            if (link && installedSource && installedSink) {
+                (void) link->SetInBehaviorIO(installedSource);
+                (void) link->SetOutBehaviorIO(installedSink);
+            }
+            Status conflict = replacementConflict(
+                RevertSubject::Link,
+                "Virtools could not restore a reconnected Behavior Link.");
+            RevertConflict detail;
+            detail.Subject = RevertSubject::Link;
+            detail.Link = item->Anchor;
+            detail.Diagnostic = conflict;
+            noteConflict(std::move(detail));
+            remember(std::move(conflict));
+            continue;
+        }
+        item->Applied = false;
+        item->Reverted = true;
     }
 
     // Restore replacement relations while the installed Block still has its
@@ -4409,8 +4607,15 @@ Status CKEdit::Undo(Patch::Journal &patch) {
             [](const Patch::Journal::RemovedLink &item) {
                 return item.Restored;
             });
-    if (!replacementsRestored || !removalsRestored)
+    const bool reconnectionsRestored = std::all_of(
+        patch.Reconnections.begin(), patch.Reconnections.end(),
+        [](const Patch::Journal::Reconnection &item) {
+            return item.Reverted || !item.Applied;
+        });
+    if (!replacementsRestored || !removalsRestored ||
+        !reconnectionsRestored) {
         return first;
+    }
     Status ordered;
     if (graph) {
         ordered = ArrangeOrder(
@@ -4430,9 +4635,9 @@ Status CKEdit::Undo(Patch::Journal &patch) {
             m_Context->DestroyObject(sink);
         patch.DetachedSink = {};
     }
-    if (patch.NodeEditClaim) {
-        m_NodeEdits.erase(graphId);
-        patch.NodeEditClaim = false;
+    if (patch.StructuralEditClaim) {
+        m_StructuralEdits.erase(graphId);
+        patch.StructuralEditClaim = false;
     }
 
     for (auto item = patch.Operations.rbegin();
@@ -4695,8 +4900,8 @@ Status CKEdit::Undo(Patch::Journal &patch) {
             if (active != m_Active.end())
                 m_Active.erase(active);
             // No Patch owns a logical projection now. Retaining the last
-            // published Link inventory would make a later native Node edit
-            // look like an out-of-band graph change.
+            // published Link inventory would make a later native structural
+            // edit look like an out-of-band graph change.
             m_Graph.SetLogicalGraph(Native(patch.Graph), {});
             m_Topology.erase(graphId);
             m_Relations.erase(graphId);

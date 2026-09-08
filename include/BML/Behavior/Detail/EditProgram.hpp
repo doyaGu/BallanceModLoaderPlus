@@ -851,6 +851,37 @@ inline Edit::Graph Edit::Graph::Redirect(
     return *this;
 }
 
+inline Edit::Graph Edit::Graph::Reconnect(
+    Link link, Port source, Port sink) const {
+    const auto edit = Program();
+    if (!Edit::Require(*edit, m_Scope, link, "Reconnect Link") ||
+        !Edit::Require(*edit, m_Scope, source, "Reconnect source") ||
+        !Edit::Require(*edit, m_Scope, sink, "Reconnect sink"))
+        return *this;
+    Detail::EditStep &step = Edit::Define(
+        *edit, m_Scope, BML_BEHAVIOR_EDIT_RECONNECT, 0);
+    step.Target = link.m_Id;
+    step.Source = std::move(source);
+    step.Sink = std::move(sink);
+    return *this;
+}
+
+inline Edit::Graph Edit::Graph::ReconnectCycle(
+    Link link, Port source, Port sink) const {
+    const auto edit = Program();
+    if (!Edit::Require(*edit, m_Scope, link, "Reconnect Link") ||
+        !Edit::Require(*edit, m_Scope, source, "Reconnect source") ||
+        !Edit::Require(*edit, m_Scope, sink, "Reconnect sink"))
+        return *this;
+    Detail::EditStep &step = Edit::Define(
+        *edit, m_Scope, BML_BEHAVIOR_EDIT_RECONNECT, 0);
+    step.Target = link.m_Id;
+    step.Source = std::move(source);
+    step.Sink = std::move(sink);
+    step.Flags |= BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
+    return *this;
+}
+
 inline Edit::Graph Edit::Graph::Redirect(
     Link link, Link destination, std::vector<PatchOrder> ordering) const {
     const auto edit = Program();

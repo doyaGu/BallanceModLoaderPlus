@@ -347,6 +347,11 @@ void GraphEdit::Redirect(Link target, Link destination,
         target, destination, std::move(ordering), m_NextAction++});
 }
 
+void GraphEdit::Reconnect(Link target, Port source, Port sink, Cycle cycle) {
+    m_Actions.emplace_back(EditReconnect{
+        target, std::move(source), std::move(sink), cycle, m_NextAction++});
+}
+
 Port GraphEdit::AppendIn(Node node, std::string name) {
     return Append(node, SlotKind::Input, std::move(name), CKGUID());
 }
@@ -525,11 +530,12 @@ Status GraphEdit::Validate() const {
                         std::is_same_v<T, EditSplice> ||
                         std::is_same_v<T, EditRedirect> ||
                         std::is_same_v<T, EditRedirectLink> ||
+                        std::is_same_v<T, EditReconnect> ||
                         std::is_same_v<T, EditAfter> ||
                         std::is_same_v<T, EditBefore>) {
                         return Failure(
                             Error::InvalidState,
-                            "A Node edit cannot share one Patch with Link overlays.");
+                            "A structural edit cannot share one Patch with Link overlays.");
                     }
                     return {};
                 }, action);
@@ -683,6 +689,11 @@ Status GraphEdit::Validate() const {
                     return Failure(
                         Error::InvalidState,
                         "A Redirect requires source and destination Links.");
+            } else if constexpr (std::is_same_v<T, EditReconnect>) {
+                if (!item.Target || !port(item.Source) || !port(item.Sink))
+                    return Failure(
+                        Error::InvalidState,
+                        "A Reconnect requires a Link, source, and destination from this Graph Edit.");
             } else if constexpr (std::is_same_v<T, EditInterface>) {
                 if (!knownNode(item.Owner.Value) || manyNode(item.Owner.Value) ||
                     item.Name.empty())
@@ -1552,6 +1563,21 @@ Status GraphEdit::Compile(const PatchKey &patch, const ObjectRef &graph,
                     {destinationNode.Value,
                      Slot::At(endpoint.Kind, endpoint.Index)},
                     item.Ordering);
+            } else if constexpr (std::is_same_v<T, EditReconnect>) {
+                const auto link = liveLinks.find(item.Target.Value);
+                if (link == liveLinks.end())
+                    return Failure(
+                        Error::InvalidState,
+                        "A Graph Edit Reconnect names an unknown Link.");
+                Port source;
+                Port sink;
+                Status current = port(item.Source, source);
+                if (current)
+                    current = port(item.Sink, sink);
+                if (!current)
+                    return current;
+                resolved.Reconnect(link->second, std::move(source),
+                                   std::move(sink), item.SameFrameCycle);
             } else if constexpr (std::is_same_v<T, EditInterface>) {
                 if (rootInterfaceExists && item.Owner == Graph() &&
                     item.Kind != SlotKind::Local)

@@ -122,6 +122,8 @@ public:
     // destination's current In/Exit index into the retained intent.
     void Redirect(Link target, Link destination,
                   std::vector<Order> ordering = {});
+    void Reconnect(Link target, Port source, Port sink,
+                   Cycle cycle = Cycle::Reject);
     Port AppendIn(Node node, std::string name);
     Port AppendOut(Node node, std::string name);
     Port AppendPin(Node node, std::string name, CKGUID type);
@@ -294,9 +296,21 @@ private:
                                const EditRedirectLink &) = default;
     };
 
+    struct EditReconnect {
+        Link Target;
+        Port Source;
+        Port Sink;
+        Cycle SameFrameCycle = Cycle::Reject;
+        std::uint32_t Ordinal = 0;
+
+        friend bool operator==(const EditReconnect &,
+                               const EditReconnect &) = default;
+    };
+
     using Action = std::variant<EditFlow, EditBind, EditPush, EditSplice,
                                 EditRedirect, EditInterface, EditTap,
-                                EditAfter, EditBefore, EditRedirectLink>;
+                                EditAfter, EditBefore, EditRedirectLink,
+                                EditReconnect>;
 
     [[nodiscard]] std::uint32_t NextNode() noexcept { return ++m_NextNode; }
     [[nodiscard]] std::uint32_t NextLink() noexcept { return ++m_NextLink; }

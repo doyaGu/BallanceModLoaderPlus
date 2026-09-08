@@ -1039,14 +1039,18 @@ typedef enum BML_BehaviorEditKind {
     // Result names every child Node matching the Pattern, in native child
     // index order. At least one Node must match. Actions using one of its
     // ports are repeated for every matched Node.
-    BML_BEHAVIOR_EDIT_EACH_NODE = 31
+    BML_BEHAVIOR_EDIT_EACH_NODE = 31,
+    // Moves the existing Link named by Target to Source and Sink. The Link
+    // object and its current activation delay are preserved. Like FLOW, a
+    // newly introduced same-frame cycle requires CONFIRM_CYCLE.
+    BML_BEHAVIOR_EDIT_RECONNECT = 32
 } BML_BehaviorEditKind;
 
 typedef enum BML_BehaviorEditFlags {
     // BML_BEHAVIOR_EDIT_REQUIRE_LINK matches Delay as well as its endpoints.
     BML_BEHAVIOR_EDIT_HAS_DELAY = 1u << 0,
-    // BML_BEHAVIOR_EDIT_FLOW may close a same-frame cycle. Without this the
-    // edit is rejected instead.
+    // BML_BEHAVIOR_EDIT_FLOW and BML_BEHAVIOR_EDIT_RECONNECT may close a
+    // same-frame cycle. Without this the edit is rejected instead.
     BML_BEHAVIOR_EDIT_CONFIRM_CYCLE = 1u << 1,
 } BML_BehaviorEditFlags;
 

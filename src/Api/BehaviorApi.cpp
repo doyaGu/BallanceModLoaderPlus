@@ -2970,7 +2970,8 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
     std::uint32_t allowedFlags = 0;
     if (step.Kind == BML_BEHAVIOR_EDIT_REQUIRE_LINK)
         allowedFlags = BML_BEHAVIOR_EDIT_HAS_DELAY;
-    else if (step.Kind == BML_BEHAVIOR_EDIT_FLOW)
+    else if (step.Kind == BML_BEHAVIOR_EDIT_FLOW ||
+             step.Kind == BML_BEHAVIOR_EDIT_RECONNECT)
         allowedFlags = BML_BEHAVIOR_EDIT_CONFIRM_CYCLE;
     if (step.Flags & ~allowedFlags)
         return InvalidValue("A Behavior edit step contains an unsupported flag.");
@@ -3374,6 +3375,20 @@ Status EditProgram::Step(const BML_BehaviorEditStep &step,
             return status;
         edit.Redirect(link->LinkValue, destination->LinkValue,
                       std::move(ordering));
+        break;
+    }
+    case BML_BEHAVIOR_EDIT_RECONNECT: {
+        const EditHandle *link = nullptr;
+        if (status = Use(step.Graph, step.Target, EditHandleKind::Link,
+                         link); !status)
+            return status;
+        if (status = ReadPort(step.Source, source); !status)
+            return status;
+        if (status = ReadPort(step.Sink, sink); !status)
+            return status;
+        edit.Reconnect(link->LinkValue, source, sink,
+                       (step.Flags & BML_BEHAVIOR_EDIT_CONFIRM_CYCLE)
+                           ? Cycle::Confirmed : Cycle::Reject);
         break;
     }
     default:

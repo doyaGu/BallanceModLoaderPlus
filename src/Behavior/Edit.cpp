@@ -447,6 +447,11 @@ void Edit::Redirect(Link target, Port sink, std::vector<Order> ordering) {
         {target, std::move(sink), std::move(ordering), NextOrdinal()});
 }
 
+void Edit::Reconnect(Link target, Port source, Port sink, Cycle cycle) {
+    m_Reconnections.push_back(
+        {target, std::move(source), std::move(sink), cycle, NextOrdinal()});
+}
+
 void Edit::Replace(Node target, Node replacement) {
     m_Replacements.push_back({target, replacement, NextOrdinal()});
 }
@@ -693,7 +698,7 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         if (!m_Splices.empty() || !m_Redirects.empty()) {
             return Failure(
                 Error::InvalidState,
-                "A Node edit cannot share one Patch with Link overlays.");
+                "A structural edit cannot share one Patch with Link overlays.");
         }
     }
 
@@ -1037,7 +1042,49 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
         out.Redirects.push_back(std::move(checked));
     }
 
+
+    std::set<std::uint32_t> reconnected;
+    for (const EditReconnect &reconnect : m_Reconnections) {
+        LinkBase anchored;
+        if (Status found = anchoredLink(
+                reconnect.Target, "Reconnect", anchored); !found) {
+            return found;
+        }
+        if (!reconnected.insert(reconnect.Target.Value).second)
+            return Failure(Error::RedirectConflict,
+                           "One Patch cannot reconnect a Link twice.");
+        if (redirected.contains(reconnect.Target.Value) ||
+            std::any_of(m_Splices.begin(), m_Splices.end(),
+                        [&](const EditSplice &splice) {
+                            return splice.Target == reconnect.Target;
+                        })) {
+            return Failure(
+                Error::RedirectConflict,
+                "One Patch cannot both reconnect and overlay the same Link.");
+        }
+
+        CheckedReconnect checked;
+        Status status = resolve(reconnect.Source, checked.Source);
+        if (status)
+            status = resolve(reconnect.Sink, checked.Sink);
+        if (!status)
+            return status;
+        const bool sourceRoot = checked.Source.Owner == Graph();
+        const bool sinkRoot = checked.Sink.Owner == Graph();
+        if (!IsControlSource(sourceRoot, checked.Source.Slot.Kind) ||
+            !IsControlSink(sinkRoot, checked.Sink.Slot.Kind)) {
+            return Failure(
+                Error::TypeMismatch,
+                "Reconnect requires an Entry or node Out as source and a node In or Exit as destination.");
+        }
+        checked.Target = anchored;
+        checked.SameFrameCycle = reconnect.SameFrameCycle;
+        checked.Ordinal = reconnect.Ordinal;
+        out.Reconnections.push_back(std::move(checked));
+    }
+
     std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> baseline;
+    std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> candidate;
     for (const GraphLink &link : base.Links) {
         if (link.InitialDelay != 0)
             continue;
@@ -1047,6 +1094,13 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
             return Failure(Error::GraphChanged,
                            "The inspected graph contains an invalid control Link.");
         baseline[source].push_back(sink);
+        const bool replaced = std::any_of(
+            out.Reconnections.begin(), out.Reconnections.end(),
+            [&](const CheckedReconnect &item) {
+                return item.Target.Anchor == link.Object;
+            });
+        if (!replaced)
+            candidate[source].push_back(sink);
     }
     Components baseComponents(baseline);
 
@@ -1063,73 +1117,51 @@ Status Edit::Validate(const GraphModel &base, CheckedEdit &out) const {
                             : kPlanNode | port.Owner.Value;
     };
 
-    // Include isolated plan vertices before collapsing the baseline.
-    std::unordered_map<std::uint64_t, int> components;
-    int nextComponent = baseComponents.Count();
-    auto component = [&](std::uint64_t value) {
-        int result = baseComponents.Of(value);
-        if (result >= 0)
-            return result;
-        const auto [found, inserted] =
-            components.emplace(value, nextComponent);
-        if (inserted)
-            ++nextComponent;
-        return found->second;
-    };
-
     struct Delta {
-        int Source = -1;
-        int Sink = -1;
-        const CheckedFlow *Flow = nullptr;
-        bool BaselineCyclic = false;
+        std::uint64_t Source = 0;
+        std::uint64_t Sink = 0;
+        Cycle SameFrameCycle = Cycle::Reject;
+        std::uint32_t Ordinal = 0;
+        const char *Kind = "Flow";
     };
     std::vector<Delta> delta;
-    std::unordered_map<std::uint64_t, std::vector<std::uint64_t>> candidate;
     for (const CheckedFlow &flow : out.Flows) {
         if (flow.Delay != 0)
             continue;
         const std::uint64_t sourceVertex = vertex(flow.Source);
         const std::uint64_t sinkVertex = vertex(flow.Sink);
-        const int source = component(sourceVertex);
-        const int sink = component(sinkVertex);
-        const bool baselineCyclic = source == sink &&
-            (baseComponents.Size(source) > 1 ||
-             HasSelfLoop(baseline, sourceVertex));
-        delta.push_back({source, sink, &flow, baselineCyclic});
-        if (source != sink || !baselineCyclic)
-            candidate[static_cast<std::uint64_t>(source)].push_back(
-                static_cast<std::uint64_t>(sink));
+        candidate[sourceVertex].push_back(sinkVertex);
+        delta.push_back({sourceVertex, sinkVertex, flow.SameFrameCycle,
+                         flow.Ordinal, "Flow"});
     }
-    // The baseline condensation is a DAG. Its inter-component edges must take
-    // part in the final search, or a new Flow that closes a cycle through
-    // existing same-frame Links would pass as acyclic.
-    for (const auto &[from, targets] : baseline) {
-        const int source = baseComponents.Of(from);
-        for (std::uint64_t target : targets) {
-            const int sink = baseComponents.Of(target);
-            if (source >= 0 && sink >= 0 && source != sink)
-                candidate[static_cast<std::uint64_t>(source)].push_back(
-                    static_cast<std::uint64_t>(sink));
-        }
+    for (const CheckedReconnect &reconnect : out.Reconnections) {
+        if (reconnect.Target.Delay != 0)
+            continue;
+        const std::uint64_t sourceVertex = vertex(reconnect.Source);
+        const std::uint64_t sinkVertex = vertex(reconnect.Sink);
+        candidate[sourceVertex].push_back(sinkVertex);
+        delta.push_back({sourceVertex, sinkVertex,
+                         reconnect.SameFrameCycle, reconnect.Ordinal,
+                         "Reconnect"});
     }
     Components finalComponents(candidate);
     for (const Delta &edge : delta) {
-        bool createsCycle = false;
-        if (edge.Source == edge.Sink)
-            createsCycle = !edge.BaselineCyclic;
-        else {
-            const int group = finalComponents.Of(
-                static_cast<std::uint64_t>(edge.Source));
-            createsCycle = group >= 0 &&
-                group == finalComponents.Of(
-                    static_cast<std::uint64_t>(edge.Sink)) &&
-                finalComponents.Size(group) > 1;
-        }
-        if (createsCycle &&
-            edge.Flow->SameFrameCycle != Cycle::Confirmed) {
+        const int baselineGroup = baseComponents.Of(edge.Source);
+        const bool baselineCyclic = baselineGroup >= 0 &&
+            baselineGroup == baseComponents.Of(edge.Sink) &&
+            (baseComponents.Size(baselineGroup) > 1 ||
+             HasSelfLoop(baseline, edge.Source));
+        const int candidateGroup = finalComponents.Of(edge.Source);
+        const bool candidateCyclic = candidateGroup >= 0 &&
+            candidateGroup == finalComponents.Of(edge.Sink) &&
+            (finalComponents.Size(candidateGroup) > 1 ||
+             HasSelfLoop(candidate, edge.Source));
+        if (candidateCyclic && !baselineCyclic &&
+            edge.SameFrameCycle != Cycle::Confirmed) {
             return Failure(
                 Error::UnconfirmedSameFrameCycle,
-                "Flow #" + std::to_string(edge.Flow->Ordinal) +
+                std::string(edge.Kind) + " #" +
+                    std::to_string(edge.Ordinal) +
                     " participates in a new same-frame cycle and was not confirmed.");
         }
     }
