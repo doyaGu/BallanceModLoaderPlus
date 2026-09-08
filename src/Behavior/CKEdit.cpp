@@ -1057,6 +1057,24 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
         return found == sites.end()
             ? nullptr : ResolveIo(m_Context, found->second.Input);
     };
+    const auto lostOverlay = [&](const Links::Key &key) {
+        const auto found = m_LostOverlays.find(graphId);
+        return found != m_LostOverlays.end() &&
+            found->second.contains({key.Patch, key.Ordinal});
+    };
+    const auto lostEndpoint = [&](Stamp endpoint) {
+        const auto lost = m_LostOverlays.find(graphId);
+        if (lost == m_LostOverlays.end())
+            return false;
+        return std::any_of(
+            lost->second.begin(), lost->second.end(),
+            [&](const auto &key) {
+                const auto site = sites.find({key.first, key.second});
+                return site != sites.end() &&
+                    (site->second.Input == endpoint ||
+                     site->second.Output == endpoint);
+            });
+    };
 
     const auto discard = [&] {
         for (Prepared &change : prepared) {
@@ -1104,14 +1122,62 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
             continue;
         CKBehaviorIO *oldHead = chain.Order.empty()
             ? sink : siteInput(chain.Order.front());
-        if (!anchor || !source || !sink || !oldHead || !desired ||
-            anchor->GetInBehaviorIO() != source ||
-            anchor->GetOutBehaviorIO() != oldHead ||
-            anchor->GetInitialActivationDelay() != chain.Base.Delay ||
-            chain.Continuations.size() != chain.Order.size()) {
+        const bool lostHead = chain.Order.empty()
+            ? lostEndpoint(chain.Terminal)
+            : lostOverlay(chain.Order.front());
+        if (!oldHead && !lostHead && !chain.Order.empty()) {
+            const Links::Key &head = chain.Order.front();
+            const auto site = sites.find(head);
+            discard();
+            std::string message = "The first Splice input for '" +
+                head.Patch.Owner + "/" + head.Patch.Name + "' (action " +
+                std::to_string(head.Ordinal) + ") ";
+            if (site == sites.end()) {
+                message += "is missing from the graph registry.";
+            } else {
+                message +=
+                    "was destroyed while its overlay remained active (object " +
+                    std::to_string(site->second.Input.Id) + ").";
+            }
+            return Failure(Error::RevertConflict, std::move(message));
+        }
+        if (!anchor || !source || (!sink && !lostHead) ||
+            (!oldHead && !lostHead) || !desired) {
             discard();
             return Failure(Error::RevertConflict,
-                           "A spliced Link changed outside its published Patch.");
+                           !anchor ? "A Splice anchor disappeared."
+                           : !source ? "A Splice source disappeared."
+                           : !sink ? "A Splice destination disappeared."
+                           : !oldHead ? "A Splice input disappeared."
+                           : "A redirected Link destination disappeared.");
+        }
+        if (anchor->GetInBehaviorIO() != source) {
+            discard();
+            return Failure(Error::RevertConflict,
+                           "A Splice anchor changed its source.");
+        }
+        CKBehaviorIO *nativeHead = anchor->GetOutBehaviorIO();
+        const auto headSite = chain.Order.empty()
+            ? sites.end() : sites.find(chain.Order.front());
+        CKObject *recordedHead = chain.Order.empty()
+            ? chain.Terminal.Address
+            : headSite == sites.end() ? nullptr
+                                      : headSite->second.Input.Address;
+        if ((!lostHead && nativeHead != oldHead) ||
+            (lostHead && nativeHead && nativeHead != recordedHead)) {
+            discard();
+            return Failure(Error::RevertConflict,
+                           "A Splice anchor changed its destination.");
+        }
+        if (anchor->GetInitialActivationDelay() != chain.Base.Delay) {
+            discard();
+            return Failure(Error::RevertConflict,
+                           "A Splice anchor changed its initial delay.");
+        }
+        if (chain.Continuations.size() != chain.Order.size()) {
+            discard();
+            return Failure(Error::RevertConflict,
+                           "A Splice chain lost a continuation Link.");
         }
         for (std::size_t index = 0; index < chain.Order.size(); ++index) {
             const auto site = sites.find(chain.Order[index]);
@@ -1122,6 +1188,13 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
             CKBehaviorIO *expectedSink = index + 1 < chain.Order.size()
                 ? siteInput(chain.Order[index + 1])
                 : sink;
+            const bool lostSegment = lostOverlay(chain.Order[index]) ||
+                (index + 1 < chain.Order.size() &&
+                 lostOverlay(chain.Order[index + 1])) ||
+                (index + 1 == chain.Order.size() &&
+                 lostEndpoint(chain.Terminal));
+            if (lostSegment)
+                continue;
             if (!link || !expectedSource || !expectedSink ||
                 link->GetInBehaviorIO() != expectedSource ||
                 link->GetOutBehaviorIO() != expectedSink ||
@@ -1135,7 +1208,7 @@ Status CKEdit::Materialize(std::uint64_t graphId, CKBehavior *graph) {
         Prepared change;
         change.Chain = &chain;
         change.Anchor = anchor;
-        change.OldHead = oldHead;
+        change.OldHead = nativeHead;
         change.Order = order;
         change.Terminal = desired;
         change.Redirected = redirected;
@@ -5102,6 +5175,84 @@ void CKEdit::GraphDeleted(Patch &patch) {
     patch.m_Journal.reset();
 }
 
+bool CKEdit::OwnsAny(const Patch &patch,
+                     const std::set<CK_ID> &objects) const {
+    const std::shared_ptr<Patch::Journal> journal = patch.m_Journal;
+    if (!journal || objects.empty())
+        return false;
+    const auto contains = [&](Stamp object) {
+        return object.Id != 0 && objects.contains(object.Id);
+    };
+    if (std::any_of(journal->Nodes.begin(), journal->Nodes.end(), contains) ||
+        std::any_of(journal->GraphNodes.begin(), journal->GraphNodes.end(),
+                    contains) ||
+        std::any_of(journal->InfrastructureNodes.begin(),
+                    journal->InfrastructureNodes.end(), contains) ||
+        std::any_of(journal->InfrastructureLinks.begin(),
+                    journal->InfrastructureLinks.end(), contains) ||
+        std::any_of(journal->Links.begin(), journal->Links.end(),
+                    [&](const Patch::Journal::Link &link) {
+                        return contains(link.Value);
+                    }) ||
+        std::any_of(journal->Ports.begin(), journal->Ports.end(),
+                    [&](const Patch::Journal::Interface &port) {
+                        return contains(port.Port);
+                    }) ||
+        std::any_of(journal->Operations.begin(), journal->Operations.end(),
+                    [&](const Patch::Journal::Operation &operation) {
+                        return contains(operation.Value);
+                    }) ||
+        contains(journal->DetachedSource) || contains(journal->DetachedSink)) {
+        return true;
+    }
+    return std::any_of(
+        journal->Binds.begin(), journal->Binds.end(),
+        [&](const Patch::Journal::Binding &binding) {
+            return contains(binding.Literal);
+        });
+}
+
+void CKEdit::InstallationDeleted(Patch &patch) {
+    const std::shared_ptr<Patch::Journal> journal = patch.m_Journal;
+    if (!journal)
+        return;
+    CloseAdmission(*journal);
+    const std::uint64_t graphId =
+        static_cast<std::uint32_t>(journal->Graph.Id);
+    const auto topology = m_Topology.find(graphId);
+    if (topology != m_Topology.end())
+        (void) topology->second.Remove(journal->Key);
+    if (m_Links) {
+        auto &lost = m_LostOverlays[graphId];
+        for (const auto &[link, ordinal] : journal->Splices) {
+            (void) link;
+            lost.emplace(journal->Key, ordinal);
+        }
+        for (const auto &[link, ordinal] : journal->Redirects) {
+            (void) link;
+            lost.emplace(journal->Key, ordinal);
+        }
+        const auto infrastructure = m_Links->Patches.find(graphId);
+        if (infrastructure != m_Links->Patches.end())
+            infrastructure->second.erase(journal->Key);
+    }
+    const auto relations = m_Relations.find(graphId);
+    if (relations != m_Relations.end())
+        (void) relations->second.Remove(journal->Key);
+    const auto active = m_Active.find(graphId);
+    if (active != m_Active.end())
+        active->second.erase(journal->Key);
+    if (journal->StructuralEditClaim)
+        m_StructuralEdits.erase(graphId);
+    {
+        std::lock_guard<std::mutex> lock(journal->Mutex);
+        journal->State = PatchState::Closed;
+        journal->Queued = false;
+        journal->Callbacks.clear();
+    }
+    patch.m_Journal.reset();
+}
+
 void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
     if (!ids || count <= 0 || !Ready())
         return;
@@ -5136,7 +5287,8 @@ void CKEdit::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         m_Topology.erase(graphId);
         m_Relations.erase(graphId);
         m_Active.erase(graphId);
-        m_NodeEdits.erase(graphId);
+        m_LostOverlays.erase(graphId);
+        m_StructuralEdits.erase(graphId);
         if (m_Links) {
             m_Links->Chains.erase(graphId);
             m_Links->Sites.erase(graphId);
@@ -5154,6 +5306,33 @@ void CKEdit::ProcessFrame() {
         explicit ProcessingScope(bool &flag) : Flag(flag) { Flag = true; }
         ~ProcessingScope() { Flag = false; }
     } processing(m_Processing);
+
+    if (!m_Links)
+        return;
+    for (auto graph = m_LostOverlays.begin();
+         graph != m_LostOverlays.end();) {
+        const std::uint64_t graphId = graph->first;
+        const auto root = m_Links->Roots.find(graphId);
+        CKBehavior *native = root != m_Links->Roots.end()
+            ? Resolve<CKBehavior>(m_Context, root->second, CKCID_BEHAVIOR)
+            : nullptr;
+        if (!native) {
+            graph = m_LostOverlays.erase(graph);
+            continue;
+        }
+        Status repaired = Materialize(graphId, native);
+        if (!repaired) {
+            ++graph;
+            continue;
+        }
+        auto sites = m_Links->Sites.find(graphId);
+        if (sites != m_Links->Sites.end()) {
+            for (const auto &key : graph->second)
+                sites->second.erase({key.first, key.second});
+        }
+        (void) PublishLogicalGraph(graphId);
+        graph = m_LostOverlays.erase(graph);
+    }
 
     std::vector<Request> requests;
     {

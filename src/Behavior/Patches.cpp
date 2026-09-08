@@ -1876,9 +1876,16 @@ void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
                 // by that Patch. Their nested scope has already been restored
                 // in reverse order, so this deletion is part of the journal's
                 // own inverse rather than loss of an external target.
-                return state != PatchState::Closed &&
-                       state != PatchState::Failed &&
-                       deleting.contains(scope.Graph);
+                if (state == PatchState::Closed ||
+                    state == PatchState::Failed)
+                    return false;
+                if (deleting.contains(scope.Graph))
+                    return true;
+                // Native world teardown can delete dynamic Nodes before the
+                // graph that owns them. A close already in progress owns those
+                // deletions; otherwise the installation has been lost.
+                return state != PatchState::Closing &&
+                    m_Edit.OwnsAny(scope.Value, deleting);
             }) || std::any_of(
                 patch.RequestedDefinition.begin(),
                 patch.RequestedDefinition.end(),
@@ -1897,8 +1904,15 @@ void Patches::ObjectsToBeDeleted(const CK_ID *ids, int count) {
         // graph-mutation safe point, so only forget journals whose graph is
         // disappearing here. ProcessFrame restores every surviving scope.
         for (auto &scope : patch.Scopes) {
-            if (deleting.contains(scope.Graph))
+            const PatchState state = scope.Value.State();
+            if (deleting.contains(scope.Graph)) {
                 m_Edit.GraphDeleted(scope.Value);
+            } else if (state != PatchState::Closing &&
+                       state != PatchState::Closed &&
+                       state != PatchState::Failed &&
+                       m_Edit.OwnsAny(scope.Value, deleting)) {
+                m_Edit.InstallationDeleted(scope.Value);
+            }
         }
         // Losing one target retires the composed Patch as a whole. Stop Hook
         // admission on every surviving Graph now; only the native inverse is

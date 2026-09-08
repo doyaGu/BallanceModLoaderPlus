@@ -102,6 +102,12 @@ public:
     // is no graph left to restore; callback admission is still closed before
     // the native identities are forgotten.
     void GraphDeleted(Patch &patch);
+    [[nodiscard]] bool OwnsAny(const Patch &patch,
+                               const std::set<CK_ID> &objects) const;
+    // CK can delete a dynamically created Node before its parent graph during
+    // world teardown. Retire that installation and retain enough Link state
+    // to reconnect the surviving graph at the next safe point.
+    void InstallationDeleted(Patch &patch);
     void ObjectsToBeDeleted(const CK_ID *ids, int count);
     Status Close(Patch &patch);
     // Stops Hooks without restoring native graph state or invoking Release.

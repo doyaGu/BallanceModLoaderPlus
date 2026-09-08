@@ -767,7 +767,10 @@ function Get-BMLPlayerFlowChecks {
     $shared = [ordered]@{
         CleanPostProcess = -not $Run.PlayerLog.Contains('Error : PostProcess')
         CleanModLoad = -not $log.Contains('Failed to load ')
-        CleanShutdown = $log.Contains('Goodbye!')
+        CleanShutdown = $log.Contains('Goodbye!') -and
+            -not $log.Contains('Failed to retire Behavior') -and
+            -not $log.Contains('Failed to unload mod') -and
+            -not $log.Contains('Failed to leave the current Behavior Plan world')
         NaturalLevelFlow = $postStartIndex -ge 0 -and
             $preLoadIndex -gt $postStartIndex -and
             $postLoadIndex -gt $preLoadIndex -and
