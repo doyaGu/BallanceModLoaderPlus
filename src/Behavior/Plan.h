@@ -73,14 +73,28 @@ public:
     [[nodiscard]] std::size_t Size() const noexcept { return m_Installed.size(); }
     [[nodiscard]] bool Contains(const ObjectRef &target) const noexcept;
     [[nodiscard]] bool Retiring() const noexcept { return m_Retiring; }
+    [[nodiscard]] const Status &LastStatus() const noexcept {
+        return m_LastStatus;
+    }
+    [[nodiscard]] const Status &ApplyFailure() const noexcept {
+        return m_ApplyFailure;
+    }
+    [[nodiscard]] const Status &RestoreFailure() const noexcept {
+        return m_RestoreFailure;
+    }
 
 private:
+    friend class Plans;
+
     struct RefLess {
         bool operator()(const ObjectRef &left,
                         const ObjectRef &right) const noexcept;
     };
 
     Status CloseAll(World &world);
+    Status Applied(Status status);
+    Status Restored(Status status);
+    Status Settled();
 
     PatchKey m_Patch;
     ScriptSelection m_Target;
@@ -90,6 +104,9 @@ private:
     Epoch m_Epoch = 0;
     bool m_Retiring = false;
     std::map<ObjectRef, Installation, RefLess> m_Installed;
+    Status m_LastStatus;
+    Status m_ApplyFailure;
+    Status m_RestoreFailure;
 };
 
 using PlanId = std::uint64_t;
@@ -99,7 +116,9 @@ struct PlanInfo {
     Epoch World = 0;
     std::size_t Matches = 0;
     std::size_t Installations = 0;
-    Status Diagnostic;
+    Status LastStatus;
+    Status ApplyFailure;
+    Status RestoreFailure;
 };
 
 // A loader-owned Behavior Plan. Script load/unload events only change the known
@@ -121,6 +140,7 @@ public:
     Status Close(PlanId id);
     Status Close(std::string_view owner, std::uint64_t ownerGeneration,
                  PlanId id);
+    Status Retry(PlanId id);
     Status RetireOwner(std::string_view owner);
 
     Status LoadScript(std::string name, ObjectRef script);
@@ -140,7 +160,6 @@ private:
         std::shared_ptr<Plan::World> World;
         Plan Value;
         std::size_t Matches = 0;
-        Status Diagnostic;
         bool Dirty = true;
         bool CloseRequested = false;
 

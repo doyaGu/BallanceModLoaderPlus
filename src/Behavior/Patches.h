@@ -22,7 +22,9 @@ using PatchId = std::uintptr_t;
 
 struct PatchInfo {
     PatchState State = PatchState::Closed;
-    Status Diagnostic;
+    Status LastStatus;
+    Status ApplyFailure;
+    Status RestoreFailure;
     std::vector<RevertConflict> Conflicts;
 };
 
@@ -146,6 +148,10 @@ private:
         Status LastStatus;
         Status PrimaryFailure;
         Status RecoveryFailure;
+        std::optional<std::size_t> ApplyAt;
+        std::optional<std::size_t> RestoreAt;
+        std::string ApplyScript;
+        std::string RestoreScript;
         std::vector<Rule> RequestedRules;
         std::vector<Rule> PreviousRules;
         std::optional<std::size_t> RestoreFrom;
@@ -173,6 +179,8 @@ private:
         Status LastStatus;
         Status PrimaryFailure;
         Status RecoveryFailure;
+        std::optional<std::size_t> ApplyAt;
+        std::optional<std::size_t> RestoreAt;
         // RequestedDefinition is the last requested content.
         // AppliedDefinition describes the installed prefix while a
         // replacement is being reconciled;
@@ -233,7 +241,9 @@ private:
     [[nodiscard]] PlanState State(Plans &plans,
                                   const OwnedPlan &plan) const;
     [[nodiscard]] PatchState State(const OwnedPatch &patch) const;
-    [[nodiscard]] Status Diagnostic(const OwnedPatch &patch) const;
+    [[nodiscard]] Status LastStatus(const OwnedPatch &patch) const;
+    [[nodiscard]] Status ApplyFailure(const OwnedPatch &patch) const;
+    [[nodiscard]] Status RestoreFailure(const OwnedPatch &patch) const;
     [[nodiscard]] static bool HasPendingChange(const OwnedPlan &plan);
     [[nodiscard]] static bool HasPendingChange(const OwnedPatch &patch);
     void RebuildHandles(OwnedPatch &patch);

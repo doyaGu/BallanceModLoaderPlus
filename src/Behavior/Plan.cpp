@@ -45,6 +45,26 @@ bool Plan::Contains(const ObjectRef &target) const noexcept {
     return m_Installed.contains(target);
 }
 
+Status Plan::Applied(Status status) {
+    m_LastStatus = status;
+    if (!status && m_ApplyFailure)
+        m_ApplyFailure = status;
+    return status;
+}
+
+Status Plan::Restored(Status status) {
+    m_LastStatus = status;
+    m_RestoreFailure = status;
+    return status;
+}
+
+Status Plan::Settled() {
+    m_LastStatus = {};
+    m_ApplyFailure = {};
+    m_RestoreFailure = {};
+    return {};
+}
+
 Status Plan::CloseAll(World &world) {
     Status first;
     for (auto item = m_Installed.begin(); item != m_Installed.end();) {
@@ -68,28 +88,35 @@ Status Plan::CloseAll(World &world) {
 
 Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
                        World &world) {
+    // A changed Script set begins a new reconciliation attempt. Keep an apply
+    // failure separate from a rollback or removal that cannot be restored.
+    m_LastStatus = {};
+    m_ApplyFailure = {};
+    m_RestoreFailure = {};
     if (m_Retiring)
-        return Failure(Error::InvalidState,
-                       "A retiring Behavior Plan cannot accept a target set.");
+        return Applied(Failure(
+            Error::InvalidState,
+            "A retiring Behavior Plan cannot accept a target set."));
     if (m_Patch.Owner.empty() || m_Patch.Name.empty() || !m_Target ||
         epoch == 0)
-        return Failure(Error::InvalidState,
-                       "A Behavior Plan requires an owner, key, script, and world epoch.");
+        return Applied(Failure(
+            Error::InvalidState,
+            "A Behavior Plan requires an owner, key, script, and world epoch."));
     m_State = PlanState::Reconciling;
 
     std::sort(targets.begin(), targets.end(), RefLess{});
     if (std::any_of(targets.begin(), targets.end(),
                     [](const ObjectRef &target) { return target.IsNull(); })) {
         m_State = PlanState::Unsatisfied;
-        return Failure(Error::TargetInvalid,
-                       "A Behavior Plan target is null.");
+        return Applied(Failure(Error::TargetInvalid,
+                               "A Behavior Plan target is null."));
     }
     targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
 
     if (m_Epoch != 0 && m_Epoch != epoch) {
         Status status = CloseAll(world);
         if (!status)
-            return status;
+            return Restored(std::move(status));
     }
     m_Epoch = epoch;
 
@@ -99,10 +126,11 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
     if (m_Target.Instances == TargetSet::One && targets.size() > 1) {
         Status status = CloseAll(world);
         if (!status)
-            return status;
+            return Restored(std::move(status));
         m_State = PlanState::Unsatisfied;
-        return Failure(Error::TargetCardinality,
-                       "This Behavior Plan matched more than one live target.");
+        return Applied(Failure(
+            Error::TargetCardinality,
+            "This Behavior Plan matched more than one live target."));
     }
 
     Status closeFailure;
@@ -123,12 +151,12 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
     }
     if (!closeFailure) {
         m_State = PlanState::Conflicted;
-        return closeFailure;
+        return Restored(std::move(closeFailure));
     }
 
     if (targets.empty()) {
         m_State = PlanState::Unsatisfied;
-        return {};
+        return Settled();
     }
 
     std::vector<ObjectRef> added;
@@ -140,7 +168,8 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
         if (!status || installation == 0) {
             if (status && installation == 0)
                 status = Failure(Error::InvalidState,
-                                 "A Behavior installation has no identity.");
+                                  "A Behavior installation has no identity.");
+            (void) Applied(status);
             Status rollbackFailure;
             for (auto item = added.rbegin(); item != added.rend(); ++item) {
                 const auto installed = m_Installed.find(*item);
@@ -155,13 +184,11 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
                 m_Installed.erase(installed);
             }
             if (!rollbackFailure) {
-                if (!status.Message.empty())
-                    rollbackFailure.Message = status.Message + " " +
-                                              rollbackFailure.Message;
                 m_State = PlanState::Conflicted;
-                return rollbackFailure;
+                return Restored(std::move(rollbackFailure));
             }
-            m_State = PlanState::Unsatisfied;
+            m_State = m_Installed.empty()
+                ? PlanState::Unsatisfied : PlanState::Partial;
             return status;
         }
         m_Installed.emplace(target, installation);
@@ -169,7 +196,7 @@ Status Plan::Reconcile(std::vector<ObjectRef> targets, Epoch epoch,
     }
 
     m_State = PlanState::Active;
-    return {};
+    return Settled();
 }
 
 Status Plan::LeaveWorld(World &world) {
@@ -179,7 +206,8 @@ Status Plan::LeaveWorld(World &world) {
     m_Installed.clear();
     m_Epoch = 0;
     m_State = m_Retiring ? PlanState::Retiring : PlanState::Unsatisfied;
-    return status;
+    m_ApplyFailure = {};
+    return status ? Settled() : Restored(std::move(status));
 }
 
 Status Plan::Retire(World &world) {
@@ -187,9 +215,9 @@ Status Plan::Retire(World &world) {
     m_State = PlanState::Retiring;
     Status status = CloseAll(world);
     if (!status)
-        return status;
+        return Restored(std::move(status));
     m_State = PlanState::Retiring;
-    return {};
+    return Settled();
 }
 
 bool Plans::RefLess::operator()(const ObjectRef &left,
@@ -263,7 +291,6 @@ Status Plans::Submit(PatchKey patch, std::uint64_t ownerGeneration,
             status = m_Plans.at(previous)->Value.Retire(
                 *m_Plans.at(previous)->World);
         }
-        m_Plans.at(previous)->Diagnostic = status;
         if (!status) {
             m_Plans.erase(id);
             return status;
@@ -297,7 +324,9 @@ Status Plans::Read(PlanId id, PlanInfo &out) const {
     out.World = found->second->Value.WorldEpoch();
     out.Matches = found->second->Matches;
     out.Installations = found->second->Value.Size();
-    out.Diagnostic = found->second->Diagnostic;
+    out.LastStatus = found->second->Value.LastStatus();
+    out.ApplyFailure = found->second->Value.ApplyFailure();
+    out.RestoreFailure = found->second->Value.RestoreFailure();
     return {};
 }
 
@@ -319,7 +348,9 @@ Status Plans::Read(std::string_view owner, std::uint64_t ownerGeneration,
     out.World = found->second->Value.WorldEpoch();
     out.Matches = found->second->Matches;
     out.Installations = found->second->Value.Size();
-    out.Diagnostic = found->second->Diagnostic;
+    out.LastStatus = found->second->Value.LastStatus();
+    out.ApplyFailure = found->second->Value.ApplyFailure();
+    out.RestoreFailure = found->second->Value.RestoreFailure();
     return {};
 }
 
@@ -338,7 +369,6 @@ Status Plans::Close(PlanId id) {
         WorldCall call(m_InWorld);
         status = found->second->Value.Retire(*found->second->World);
     }
-    found->second->Diagnostic = status;
     if (!status)
         return status;
     m_Keys.erase(found->second->Value.Key());
@@ -366,11 +396,29 @@ Status Plans::Close(std::string_view owner, std::uint64_t ownerGeneration,
         WorldCall call(m_InWorld);
         status = found->second->Value.Retire(*found->second->World);
     }
-    found->second->Diagnostic = status;
     if (!status)
         return status;
     m_Keys.erase(found->second->Value.Key());
     m_Plans.erase(found);
+    return {};
+}
+
+Status Plans::Retry(PlanId id) {
+    Status ready = Ready();
+    if (!ready)
+        return ready;
+    const auto found = m_Plans.find(id);
+    if (found == m_Plans.end())
+        return Failure(Error::InvalidState,
+                       "The Behavior Plan handle is stale.");
+    if (found->second->CloseRequested || found->second->Value.Retiring())
+        return Failure(Error::InvalidState,
+                       "A retiring Behavior Plan cannot be reconciled.");
+    found->second->Value.m_State = PlanState::Reconciling;
+    found->second->Value.m_LastStatus = {};
+    found->second->Value.m_ApplyFailure = {};
+    found->second->Value.m_RestoreFailure = {};
+    found->second->Dirty = true;
     return {};
 }
 
@@ -397,7 +445,6 @@ Status Plans::RetireOwner(std::string_view owner) {
             WorldCall call(m_InWorld);
             status = item->second->Value.Retire(*item->second->World);
         }
-        item->second->Diagnostic = status;
         if (!status) {
             if (first)
                 first = status;
@@ -488,7 +535,6 @@ Status Plans::ResetWorld() {
     WorldCall call(m_InWorld);
     for (auto &[id, record] : m_Plans) {
         Status status = record->Value.LeaveWorld(*record->World);
-        record->Diagnostic = status;
         record->Matches = 0;
         record->Dirty = false;
         if (!status && first)
@@ -516,7 +562,6 @@ Status Plans::ProcessFrame() {
                 WorldCall call(m_InWorld);
                 status = record.Value.Retire(*record.World);
             }
-            record.Diagnostic = status;
             if (status) {
                 m_Keys.erase(record.Value.Key());
                 item = m_Plans.erase(item);
@@ -539,7 +584,7 @@ Status Plans::ProcessFrame() {
             Status status = Failure(
                 Error::CreateFailed,
                 "The Loader could not form the Behavior Plan target set.");
-            record.Diagnostic = status;
+            (void) record.Value.Applied(status);
             if (first)
                 first = status;
             ++item;
@@ -557,7 +602,9 @@ Status Plans::ProcessFrame() {
             status = record.Value.Reconcile(
                 std::move(targets), m_Epoch, *record.World);
         }
-        record.Diagnostic = status;
+        if (!status &&
+            record.Value.RestoreFailure().Code == Error::Busy)
+            record.Dirty = true;
         if (!status && first)
             first = status;
         ++item;

@@ -2490,8 +2490,18 @@ void WritePlanInfo(BML_BehaviorPlanInfo *out, const PlanInfo &info) noexcept {
     out->World = info.World;
     out->Matches = Count(info.Matches);
     out->Installations = Count(info.Installations);
-    out->Diagnostic.StructSize = sizeof(out->Diagnostic);
-    WriteStatus(&out->Diagnostic, info.Diagnostic);
+    out->LastStatus.StructSize = sizeof(out->LastStatus);
+    WriteStatus(&out->LastStatus, info.LastStatus);
+}
+
+void WriteFailures(BML_BehaviorFailures *out, const Status &apply,
+                   const Status &restore) noexcept {
+    *out = {};
+    out->StructSize = sizeof(*out);
+    out->Apply.StructSize = sizeof(out->Apply);
+    out->Restore.StructSize = sizeof(out->Restore);
+    WriteStatus(&out->Apply, apply);
+    WriteStatus(&out->Restore, restore);
 }
 
 std::uint32_t PublicPatchState(PatchState state) noexcept {
@@ -2515,8 +2525,8 @@ void WritePatchInfo(BML_BehaviorPatchInfo *out,
     out->StructSize = sizeof(*out);
     out->State = PublicPatchState(info.State);
     out->Conflicts = Count(info.Conflicts.size());
-    out->Diagnostic.StructSize = sizeof(out->Diagnostic);
-    WriteStatus(&out->Diagnostic, info.Diagnostic);
+    out->LastStatus.StructSize = sizeof(out->LastStatus);
+    WriteStatus(&out->LastStatus, info.LastStatus);
 }
 
 bool ReadSlotKind(std::uint32_t kind, SlotKind &out) noexcept {
@@ -3465,6 +3475,11 @@ bool ReadSessionOwner(BML_BehaviorSession session, ModContext &context,
     return static_cast<bool>(status);
 }
 
+Status ReadScriptEdits(
+    const BML_BehaviorScriptEdit *edits, std::uint32_t count,
+    ModContext &context,
+    std::vector<BML::Behavior::Internal::Patches::Rule> &out);
+
 int BML_BEHAVIOR_CALL SubmitPlan(
     BML_BehaviorSession session, const BML_BehaviorPlanSpec *spec,
     BML_BehaviorPlan *outPlan, BML_BehaviorPlanInfo *info,
@@ -3492,39 +3507,11 @@ int BML_BEHAVIOR_CALL SubmitPlan(
         }
 
         std::vector<BML::Behavior::Internal::Patches::Rule> rules;
-        try {
-            rules.reserve(spec->EditCount);
-            for (std::uint32_t index = 0; index < spec->EditCount; ++index) {
-                const BML_BehaviorScriptEdit &target = spec->Edits[index];
-                if (!HasStructSize(&target) || target.Reserved != 0 ||
-                    (target.StepCount && !target.Steps))
-                    return BML_ERROR_INVALID_PARAMETER;
-                TargetSet targets;
-                switch (target.Targets) {
-                case BML_BEHAVIOR_TARGETS_EACH:
-                    targets = TargetSet::Each;
-                    break;
-                case BML_BEHAVIOR_TARGETS_ONE:
-                    targets = TargetSet::One;
-                    break;
-                default: return BML_ERROR_INVALID_PARAMETER;
-                }
-                std::string script;
-                if (!ReadString(target.Script, script) || script.empty())
-                    return BML_ERROR_INVALID_PARAMETER;
-                GraphEdit edit;
-                EditProgram program;
-                result = program.Build(target.Steps, target.StepCount,
-                                       *context, edit);
-                if (!result) {
-                    WriteStatus(status, result);
-                    return BML_ERROR_INVALID_PARAMETER;
-                }
-                rules.push_back({ScriptSelection{std::move(script), targets},
-                                 std::make_shared<GraphEdit>(std::move(edit))});
-            }
-        } catch (const std::bad_alloc &) {
-            return BML_ERROR_OUT_OF_MEMORY;
+        result = ReadScriptEdits(
+            spec->Edits, spec->EditCount, *context, rules);
+        if (!result) {
+            WriteStatus(status, result);
+            return ResultCode(result);
         }
 
         PlanId id = 0;
@@ -3567,6 +3554,35 @@ int BML_BEHAVIOR_CALL ReadPlan(
         if (!result)
             return ResultCode(result);
         WritePlanInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadPlanFailures(
+    BML_BehaviorSession session, BML_BehaviorPlan plan,
+    BML_BehaviorFailures *failures, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !plan ||
+            !HasStructSize(failures))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        PlanInfo read;
+        result = context->BehaviorPatches().ReadPlan(
+            context->BehaviorPlans(), owner, PlanIdOf(plan), read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        WriteFailures(failures, read.ApplyFailure, read.RestoreFailure);
         return BML_OK;
     });
 }
@@ -3622,7 +3638,11 @@ Status ReadScriptEdits(
                            std::make_shared<GraphEdit>(std::move(edit))});
         }
     } catch (const std::bad_alloc &) {
-        return InvalidValue("The Loader could not retain the Behavior Plan rules.");
+        throw;
+    } catch (...) {
+        return {Error::CreateFailed, CKERR_INVALIDPARAMETER,
+                CKBR_PARAMETERERROR,
+                "The Loader could not retain the Behavior Plan rules."};
     }
     return {};
 }
@@ -3812,6 +3832,35 @@ int BML_BEHAVIOR_CALL ReadPatch(
         if (!result)
             return ResultCode(result);
         WritePatchInfo(info, read);
+        return BML_OK;
+    });
+}
+
+int BML_BEHAVIOR_CALL ReadPatchFailures(
+    BML_BehaviorSession session, BML_BehaviorPatch patch,
+    BML_BehaviorFailures *failures, BML_BehaviorStatus *status) {
+    return Guard([&] {
+        if (!PrepareStatus(status) || !session || !patch ||
+            !HasStructSize(failures))
+            return BML_ERROR_INVALID_PARAMETER;
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+        SessionOwner owner;
+        Status result;
+        if (!ReadSessionOwner(session, *context, owner, result)) {
+            WriteStatus(status, result);
+            return ResultCode(result);
+        }
+        PatchInfo read;
+        result = context->BehaviorPatches().Read(
+            owner, PatchIdOf(patch), read);
+        WriteStatus(status, result);
+        if (!result)
+            return ResultCode(result);
+        WriteFailures(failures, read.ApplyFailure, read.RestoreFailure);
         return BML_OK;
     });
 }
@@ -4130,6 +4179,8 @@ const BML_BehaviorInterface kBehaviorInterface = {
     &ReplacePatch,
     &SetPlanActive,
     &ReplacePlan,
+    &ReadPatchFailures,
+    &ReadPlanFailures,
 };
 
 } // namespace

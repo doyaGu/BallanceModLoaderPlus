@@ -18,6 +18,8 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorLastError,
                         BML_BEHAVIOR_ERROR_WRONG_THREAD == 50u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorStatusSize,
                         sizeof(BML_BehaviorStatus) == 296u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorFailuresSize,
+                        sizeof(BML_BehaviorFailures) == 596u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorFramePolicySize,
                         sizeof(BML_BehaviorFramePolicy) == 16u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorFrameSize,
@@ -50,6 +52,8 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphNodeSize,
                         sizeof(BML_BehaviorGraphNode) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphLinkSize,
                         sizeof(BML_BehaviorGraphLink) == 80u);
+BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphLinkSourceOrderOffset,
+                        offsetof(BML_BehaviorGraphLink, SourceOrder) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphOperationSize,
                         sizeof(BML_BehaviorGraphOperation) == 80u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorGraphSize,
@@ -80,9 +84,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 64u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 172u);
+                        sizeof(BML_BehaviorInterface) == 180u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 172u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 180u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
                         sizeof(BML_BehaviorScriptSpec) == 36u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,
@@ -134,9 +138,9 @@ BML_BEHAVIOR_ABI_ASSERT(BehaviorBlockSize,
 BML_BEHAVIOR_ABI_ASSERT(BehaviorPrototypeQuerySize,
                         sizeof(BML_BehaviorPrototypeQuery) == 96u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterfaceSize,
-                        sizeof(BML_BehaviorInterface) == 344u);
+                        sizeof(BML_BehaviorInterface) == 360u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorInterface10Size,
-                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 344u);
+                        BML_BEHAVIOR_INTERFACE_1_0_SIZE == 360u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorScriptSpecSize,
                         sizeof(BML_BehaviorScriptSpec) == 48u);
 BML_BEHAVIOR_ABI_ASSERT(BehaviorSlotRefSize,

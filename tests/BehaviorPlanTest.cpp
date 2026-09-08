@@ -138,10 +138,33 @@ TEST(BehaviorPlan, RollsBackNewInstallationsAndKeepsTheCanonicalPlan) {
     EXPECT_EQ(plan.State(), PlanState::Unsatisfied);
     EXPECT_EQ(plan.Size(), 0u);
     EXPECT_TRUE(world.Live.empty());
+    EXPECT_EQ(plan.LastStatus().Code, Error::CreateFailed);
+    EXPECT_EQ(plan.ApplyFailure().Code, Error::CreateFailed);
+    EXPECT_TRUE(plan.RestoreFailure());
 
     world.FailInstall.clear();
     ASSERT_TRUE(plan.Reconcile({Target(1), Target(2)}, 1, world));
     EXPECT_EQ(plan.State(), PlanState::Active);
+    EXPECT_TRUE(plan.LastStatus());
+    EXPECT_TRUE(plan.ApplyFailure());
+    EXPECT_TRUE(plan.RestoreFailure());
+}
+
+TEST(BehaviorPlan, IsPartialWhenAnExistingTargetSurvivesAnInstallFailure) {
+    Plan plan({"mod", "patch"}, {"Gameplay_Events"});
+    FakeWorld world;
+    ASSERT_TRUE(plan.Reconcile({Target(1)}, 1, world));
+    world.FailInstall.insert(2);
+
+    const Status status = plan.Reconcile(
+        {Target(1), Target(2)}, 1, world);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(status.Code, Error::CreateFailed);
+    EXPECT_EQ(plan.State(), PlanState::Partial);
+    EXPECT_EQ(plan.Size(), 1u);
+    EXPECT_TRUE(plan.Contains(Target(1)));
+    EXPECT_EQ(plan.ApplyFailure().Code, Error::CreateFailed);
+    EXPECT_TRUE(plan.RestoreFailure());
 }
 
 TEST(BehaviorPlan, PreservesAConflictedInstallationForRepair) {
@@ -155,6 +178,9 @@ TEST(BehaviorPlan, PreservesAConflictedInstallationForRepair) {
     EXPECT_EQ(plan.State(), PlanState::Conflicted);
     EXPECT_EQ(plan.Size(), 1u);
     EXPECT_EQ(world.Live.size(), 1u);
+    EXPECT_EQ(plan.LastStatus().Code, Error::RevertConflict);
+    EXPECT_TRUE(plan.ApplyFailure());
+    EXPECT_EQ(plan.RestoreFailure().Code, Error::RevertConflict);
 }
 
 TEST(BehaviorPlan, ClosesEveryIndependentInstallationWhenOneNeedsRepair) {
@@ -187,6 +213,9 @@ TEST(BehaviorPlan, KeepsOnlyRollbackConflictsAfterAnInstallFailure) {
     EXPECT_EQ(plan.Size(), 1u);
     EXPECT_EQ(world.Live.size(), 1u);
     EXPECT_TRUE(plan.Contains(Target(1)));
+    EXPECT_EQ(plan.LastStatus().Code, Error::RevertConflict);
+    EXPECT_EQ(plan.ApplyFailure().Code, Error::CreateFailed);
+    EXPECT_EQ(plan.RestoreFailure().Code, Error::RevertConflict);
 }
 
 TEST(BehaviorPlan, RetirementIsIdempotentAndRejectsNewTargets) {
@@ -269,6 +298,9 @@ TEST(BehaviorPlans, ReconcilesContinuousSingleInstanceCardinality) {
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
     EXPECT_EQ(info.Matches, 2u);
     EXPECT_EQ(info.Installations, 0u);
+    EXPECT_EQ(info.LastStatus.Code, Error::TargetCardinality);
+    EXPECT_EQ(info.ApplyFailure.Code, Error::TargetCardinality);
+    EXPECT_TRUE(info.RestoreFailure);
 
     plans.Remove(Target(1));
     ASSERT_TRUE(plans.ProcessFrame());
@@ -422,6 +454,57 @@ TEST(BehaviorPlans, FinishesAClosingPlanAtALaterSafePoint) {
     EXPECT_TRUE(world->Live.empty());
     EXPECT_EQ(plans.Size(), 0u);
     EXPECT_EQ(plans.Read(plan, info).Code, Error::InvalidState);
+}
+
+TEST(BehaviorPlans, RetriesABusyTargetRemovalAtTheNextSafePoint) {
+    Plans plans;
+    auto world = std::make_shared<FakeWorld>();
+    PlanId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+    ASSERT_TRUE(plans.ProcessFrame());
+    const Installation installation = world->Live.begin()->first;
+    world->BusyClose.insert(installation);
+
+    plans.Remove(Target(1));
+    EXPECT_EQ(plans.ProcessFrame().Code, Error::Busy);
+    world->BusyClose.clear();
+    ASSERT_TRUE(plans.ProcessFrame());
+
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read(plan, info));
+    EXPECT_EQ(info.State, PlanState::Unsatisfied);
+    EXPECT_EQ(info.Installations, 0u);
+    EXPECT_TRUE(world->Live.empty());
+}
+
+TEST(BehaviorPlans, RetriesAConflictedTargetSetOnlyWhenRequested) {
+    Plans plans;
+    auto world = std::make_shared<FakeWorld>();
+    PlanId plan = 0;
+    ASSERT_TRUE(plans.Submit(
+        {"mod", "events"}, 4, {"Gameplay_Events"}, world, plan));
+    ASSERT_TRUE(plans.LoadScript("Gameplay_Events", Target(1)));
+    ASSERT_TRUE(plans.ProcessFrame());
+    const Installation installation = world->Live.begin()->first;
+    world->FailClose.insert(installation);
+
+    plans.Remove(Target(1));
+    EXPECT_EQ(plans.ProcessFrame().Code, Error::RevertConflict);
+    world->FailClose.clear();
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_EQ(world->Live.size(), 1u);
+
+    ASSERT_TRUE(plans.Retry(plan));
+    PlanInfo info;
+    ASSERT_TRUE(plans.Read(plan, info));
+    EXPECT_EQ(info.State, PlanState::Reconciling);
+    EXPECT_TRUE(info.LastStatus);
+    ASSERT_TRUE(plans.ProcessFrame());
+    EXPECT_TRUE(world->Live.empty());
+    ASSERT_TRUE(plans.Read(plan, info));
+    EXPECT_EQ(info.State, PlanState::Unsatisfied);
 }
 
 TEST(BehaviorPlans, KeepsItsWorldOnTheGameThread) {
@@ -585,7 +668,9 @@ TEST(BehaviorPlans, WorldResetDropsOldInstallationIdentityAfterAConflict) {
     EXPECT_EQ(info.State, PlanState::Unsatisfied);
     EXPECT_EQ(info.World, 0u);
     EXPECT_EQ(info.Installations, 0u);
-    EXPECT_EQ(info.Diagnostic.Code, Error::RevertConflict);
+    EXPECT_EQ(info.LastStatus.Code, Error::RevertConflict);
+    EXPECT_TRUE(info.ApplyFailure);
+    EXPECT_EQ(info.RestoreFailure.Code, Error::RevertConflict);
 }
 
 } // namespace

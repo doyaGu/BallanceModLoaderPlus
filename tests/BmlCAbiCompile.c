@@ -7,12 +7,15 @@
 #include "BML/Speedrun.h"
 #include "BML/UI.h"
 
+#include <stddef.h>
 #include <string.h>
 
 #define BML_C_ABI_ASSERT(name, expression) typedef char name[(expression) ? 1 : -1]
 
 BML_C_ABI_ASSERT(BmlBehaviorGuidSize, sizeof(BML_BehaviorGuid) == 8u);
 BML_C_ABI_ASSERT(BmlBehaviorStatusSize, sizeof(BML_BehaviorStatus) == 296u);
+BML_C_ABI_ASSERT(BmlBehaviorFailuresSize,
+                 sizeof(BML_BehaviorFailures) == 596u);
 BML_C_ABI_ASSERT(BmlBehaviorFrameSize, sizeof(BML_BehaviorRunFrame) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorOutSize, sizeof(BML_BehaviorOutRecord) == 20u);
 BML_C_ABI_ASSERT(BmlBehaviorPoutSize, sizeof(BML_BehaviorPoutRecord) == 40u);
@@ -34,6 +37,8 @@ BML_C_ABI_ASSERT(BmlBehaviorGraphNodeSize,
                  sizeof(BML_BehaviorGraphNode) == 96u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphLinkSize,
                  sizeof(BML_BehaviorGraphLink) == 80u);
+BML_C_ABI_ASSERT(BmlBehaviorGraphLinkSourceOrderOffset,
+                 offsetof(BML_BehaviorGraphLink, SourceOrder) == 64u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphOperationSize,
                  sizeof(BML_BehaviorGraphOperation) == 80u);
 BML_C_ABI_ASSERT(BmlBehaviorGraphSize,
@@ -57,7 +62,7 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 72u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 64u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 172u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 180u);
 BML_C_ABI_ASSERT(BmlBehaviorScriptSpecSize,
                  sizeof(BML_BehaviorScriptSpec) == 36u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 48u);
@@ -98,7 +103,7 @@ BML_C_ABI_ASSERT(BmlBehaviorGenerationOffset,
 BML_C_ABI_ASSERT(BmlBehaviorBlockSize, sizeof(BML_BehaviorBlock) == 104u);
 BML_C_ABI_ASSERT(BmlBehaviorPrototypeQuerySize,
                  sizeof(BML_BehaviorPrototypeQuery) == 96u);
-BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 344u);
+BML_C_ABI_ASSERT(BmlBehaviorInterfaceSize, sizeof(BML_BehaviorInterface) == 360u);
 BML_C_ABI_ASSERT(BmlBehaviorScriptSpecSize,
                  sizeof(BML_BehaviorScriptSpec) == 48u);
 BML_C_ABI_ASSERT(BmlBehaviorSlotRefSize, sizeof(BML_BehaviorSlotRef) == 56u);

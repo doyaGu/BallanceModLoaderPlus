@@ -700,12 +700,15 @@ struct PlanInfo {
     std::uint64_t World = 0;
     std::uint32_t Matches = 0;
     std::uint32_t Installations = 0;
-    // Why the Plan is Unsatisfied or Conflicted.
+    // Result of the most recent reconciliation pass.
     Behavior::Status LastStatus;
+    // The first failure applying the current requested rules, and the failure
+    // currently preventing restoration. They remain independently visible.
+    Behavior::Status ApplyFailure;
+    Behavior::Status RestoreFailure;
 
-    [[nodiscard]] bool Installed() const noexcept {
-        return (State == PlanState::Active || State == PlanState::Partial) &&
-               Installations != 0;
+    [[nodiscard]] bool Active() const noexcept {
+        return State == PlanState::Active;
     }
 };
 
@@ -723,8 +726,10 @@ struct PatchInfo {
     PatchState State = PatchState::Pending;
     std::uint32_t Conflicts = 0;
     Behavior::Status LastStatus;
+    Behavior::Status ApplyFailure;
+    Behavior::Status RestoreFailure;
 
-    [[nodiscard]] bool Installed() const noexcept {
+    [[nodiscard]] bool Active() const noexcept {
         return State == PatchState::Active;
     }
 };

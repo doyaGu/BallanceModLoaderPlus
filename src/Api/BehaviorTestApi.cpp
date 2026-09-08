@@ -418,6 +418,10 @@ int BML_BEHAVIOR_CALL ResetPlans(BML_BehaviorSession session) {
         if (!Owner(*context, session, owner))
             return BML_ERROR_ACCESS_DENIED;
         Behavior::Internal::Status status = context->BehaviorPlans().ResetWorld();
+        if (!status && context->GetLogger())
+            context->GetLogger()->Error(
+                "Behavior test world reset failed: %s",
+                status.Message.c_str());
         context->BehaviorPatches().ResetWorld();
         return Result(status);
     } catch (...) {

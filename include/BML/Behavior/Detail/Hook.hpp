@@ -20,7 +20,7 @@ inline PlanInfo ReadPlanInfo(const BML_BehaviorPlanInfo &source) {
     info.World = source.World;
     info.Matches = source.Matches;
     info.Installations = source.Installations;
-    info.LastStatus = ReadStatus(source.Diagnostic);
+    info.LastStatus = ReadStatus(source.LastStatus);
     return info;
 }
 
@@ -28,8 +28,92 @@ inline PatchInfo ReadPatchInfo(const BML_BehaviorPatchInfo &source) {
     PatchInfo info;
     info.State = static_cast<PatchState>(source.State);
     info.Conflicts = source.Conflicts;
-    info.LastStatus = ReadStatus(source.Diagnostic);
+    info.LastStatus = ReadStatus(source.LastStatus);
     return info;
+}
+
+inline int ReadPlanFailures(const std::shared_ptr<SessionState> &session,
+                            BML_BehaviorPlan handle, PlanInfo &info,
+                            Status &status) {
+    if (!session || !session->Api || !session->Handle || !handle ||
+        !BML_IFACE_HAS(session->Api, BML_BehaviorInterface,
+                       ReadPlanFailures))
+        return BML_ERROR_VERSION_MISMATCH;
+    BML_BehaviorFailures failures{};
+    failures.StructSize = sizeof(failures);
+    BML_BehaviorStatus wireStatus = EmptyStatus();
+    const int code = WireCode(session->Api->ReadPlanFailures(
+        session->Handle, handle, &failures, &wireStatus), wireStatus);
+    status = ReadStatus(wireStatus);
+    if (code != BML_OK)
+        return code;
+    if (failures.StructSize < sizeof(failures) ||
+        !ValidStatus(failures.Apply) || !ValidStatus(failures.Restore))
+        return BML_ERROR_MALFORMED_MESSAGE;
+    info.ApplyFailure = ReadStatus(failures.Apply);
+    info.RestoreFailure = ReadStatus(failures.Restore);
+    return BML_OK;
+}
+
+inline int ReadPatchFailures(const std::shared_ptr<SessionState> &session,
+                             BML_BehaviorPatch handle, PatchInfo &info,
+                             Status &status) {
+    if (!session || !session->Api || !session->Handle || !handle ||
+        !BML_IFACE_HAS(session->Api, BML_BehaviorInterface,
+                       ReadPatchFailures))
+        return BML_ERROR_VERSION_MISMATCH;
+    BML_BehaviorFailures failures{};
+    failures.StructSize = sizeof(failures);
+    BML_BehaviorStatus wireStatus = EmptyStatus();
+    const int code = WireCode(session->Api->ReadPatchFailures(
+        session->Handle, handle, &failures, &wireStatus), wireStatus);
+    status = ReadStatus(wireStatus);
+    if (code != BML_OK)
+        return code;
+    if (failures.StructSize < sizeof(failures) ||
+        !ValidStatus(failures.Apply) || !ValidStatus(failures.Restore))
+        return BML_ERROR_MALFORMED_MESSAGE;
+    info.ApplyFailure = ReadStatus(failures.Apply);
+    info.RestoreFailure = ReadStatus(failures.Restore);
+    return BML_OK;
+}
+
+inline Result<PlanInfo> CompletePlanInfo(
+    const std::shared_ptr<SessionState> &session, BML_BehaviorPlan handle,
+    const BML_BehaviorPlanInfo &wire,
+    const BML_BehaviorStatus &callStatus) {
+    if (wire.StructSize < sizeof(wire) || !KnownPlanState(wire.State) ||
+        !ValidStatus(wire.LastStatus))
+        return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    PlanInfo info = ReadPlanInfo(wire);
+    if (info.LastStatus.Error == Error::None)
+        return Result<PlanInfo>::Success(
+            std::move(info), ReadStatus(callStatus));
+    Status failureStatus;
+    const int code = ReadPlanFailures(session, handle, info, failureStatus);
+    if (code != BML_OK)
+        return Result<PlanInfo>::Failure(code, std::move(failureStatus));
+    return Result<PlanInfo>::Success(
+        std::move(info), ReadStatus(callStatus));
+}
+
+inline Result<PatchInfo> CompletePatchInfo(
+    const std::shared_ptr<SessionState> &session, BML_BehaviorPatch handle,
+    const BML_BehaviorPatchInfo &wire,
+    const BML_BehaviorStatus &callStatus) {
+    if (wire.StructSize < sizeof(wire) || wire.Reserved != 0 ||
+        !KnownPatchState(wire.State) || !ValidStatus(wire.LastStatus))
+        return Result<PatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
+    PatchInfo info = ReadPatchInfo(wire);
+    if (info.LastStatus.Error == Error::None)
+        return Result<PatchInfo>::Success(
+            std::move(info), ReadStatus(callStatus));
+    Status failureStatus;
+    const int code = ReadPatchFailures(session, handle, info, failureStatus);
+    if (code != BML_OK)
+        return Result<PatchInfo>::Failure(code, std::move(failureStatus));
+    return Result<PatchInfo>::Success(
+        std::move(info), ReadStatus(callStatus));
 }
 
 // Holds the caller reference to one author callback. The Loader takes a

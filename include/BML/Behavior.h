@@ -785,6 +785,16 @@ typedef enum BML_BehaviorPlanState {
     BML_BEHAVIOR_PLAN_RETIRING = 7
 } BML_BehaviorPlanState;
 
+// Failures retained by a Patch or Plan independently of its latest state.
+// Apply is the first failure for the current requested definition. Restore is
+// the failure currently preventing an installed definition from being
+// restored. Either Status has Error == NONE when that fact is absent.
+typedef struct BML_BehaviorFailures {
+    uint32_t StructSize;
+    BML_BehaviorStatus Apply;
+    BML_BehaviorStatus Restore;
+} BML_BehaviorFailures;
+
 typedef struct BML_BehaviorPlanInfo {
     uint32_t StructSize;
     uint32_t State;
@@ -792,8 +802,10 @@ typedef struct BML_BehaviorPlanInfo {
     uint64_t World;
     uint32_t Matches;
     uint32_t Installations;
-    // Why the Plan is Unsatisfied or Conflicted, not why the call failed.
-    BML_BehaviorStatus Diagnostic;
+    // Result of the most recent reconciliation pass, not why ReadPlan failed.
+    // ReadPlanFailures preserves the rejected definition separately from a
+    // later restoration conflict.
+    BML_BehaviorStatus LastStatus;
 } BML_BehaviorPlanInfo;
 
 // State of one Patch applied to a specific live graph. Unlike a Plan, a Patch
@@ -811,11 +823,13 @@ typedef enum BML_BehaviorPatchState {
 typedef struct BML_BehaviorPatchInfo {
     uint32_t StructSize;
     uint32_t State;
-    // Number of graph relations that could not be restored exactly. Details
-    // remain in Diagnostic in v1; a later minor may add a caller-buffer view.
+    // Number of graph relations that could not be restored exactly.
     uint32_t Conflicts;
     uint32_t Reserved;
-    BML_BehaviorStatus Diagnostic;
+    // Result of the most recent reconciliation pass, not why ReadPatch failed.
+    // ReadPatchFailures preserves the rejected definition separately from a
+    // later restoration conflict.
+    BML_BehaviorStatus LastStatus;
 } BML_BehaviorPatchInfo;
 
 typedef struct BML_BehaviorHookContext {
@@ -1425,19 +1439,32 @@ typedef struct BML_BehaviorInterface {
         uint32_t editCount,
         BML_BehaviorPlanInfo *info,
         BML_BehaviorStatus *status);
+    // These queries are separate from Info so the common healthy-state read
+    // does not copy two large Status values. They return BML_OK even when one
+    // or both retained failures are absent; inspect each Status.Error.
+    int (BML_BEHAVIOR_CALL *ReadPatchFailures)(
+        BML_BehaviorSession session,
+        BML_BehaviorPatch patch,
+        BML_BehaviorFailures *failures,
+        BML_BehaviorStatus *status);
+    int (BML_BEHAVIOR_CALL *ReadPlanFailures)(
+        BML_BehaviorSession session,
+        BML_BehaviorPlan plan,
+        BML_BehaviorFailures *failures,
+        BML_BehaviorStatus *status);
 } BML_BehaviorInterface;
 
 // The complete pre-release function table for bml.behavior 1.0. Use
 // BML_IFACE_HAS on a function a later minor appends.
 #define BML_BEHAVIOR_INTERFACE_1_0_SIZE                                      \
-    (offsetof(BML_BehaviorInterface, ReplacePlan) +                           \
-     sizeof(((BML_BehaviorInterface *) 0)->ReplacePlan))
+    (offsetof(BML_BehaviorInterface, ReadPlanFailures) +                      \
+     sizeof(((BML_BehaviorInterface *) 0)->ReadPlanFailures))
 
 // The single capability checkpoint for the complete 1.0 surface. A Mod may
 // accept a later minor when this is true, then probe later additions with
 // BML_IFACE_HAS before calling them.
 #define BML_BEHAVIOR_HAS_1_0(iface)                                          \
-    BML_IFACE_HAS((iface), BML_BehaviorInterface, ReplacePlan)
+    BML_IFACE_HAS((iface), BML_BehaviorInterface, ReadPlanFailures)
 
 #pragma pack(pop)
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <set>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -37,6 +38,36 @@ bool SameRule(const Patches::Rule &left,
               const Patches::Rule &right) noexcept {
     return left.Scripts == right.Scripts &&
         left.Body && right.Body && left.Body->SameAs(*right.Body);
+}
+
+Status PatchStatus(Status status, const std::string &name,
+                   const SessionOwner &owner,
+                   std::optional<std::size_t> target = {}) {
+    if (status)
+        return status;
+    std::string where = "Behavior Patch '" + name + "', Mod '" + owner.Id +
+        "', generation " + std::to_string(owner.Generation);
+    if (target)
+        where += ", target index " + std::to_string(*target);
+    status.Message += " [" + where + "]";
+    return status;
+}
+
+Status PlanStatus(Status status, const std::string &name,
+                  const SessionOwner &owner, Epoch world,
+                  std::optional<std::size_t> rule = {},
+                  std::string_view script = {}) {
+    if (status)
+        return status;
+    std::string where = "Behavior Plan '" + name + "', Mod '" + owner.Id +
+        "', generation " + std::to_string(owner.Generation) +
+        ", world " + std::to_string(world);
+    if (rule)
+        where += ", rule index " + std::to_string(*rule);
+    if (!script.empty())
+        where += ", Script '" + std::string(script) + "'";
+    status.Message += " [" + where + "]";
+    return status;
 }
 
 } // namespace
@@ -194,18 +225,21 @@ Status Patches::Apply(const SessionOwner &owner, const Edit &edit,
     }
     OwnedPatch &stored = m_Patches.at(id);
     stored.Scopes.front().Value = std::move(patch);
+    const bool admissionInterrupted =
+        !owner || !stored.Admission->IsOpen();
     if (!status)
         CloseAdmission(stored);
     // A failed Apply normally rolls back completely and has no Patch value.
     // RevertConflict is different: retain its conflict journal under the owner,
     // but do not hand a successful installation id to the caller.
-    if (!owner || !stored.Admission->IsOpen()) {
+    if (admissionInterrupted) {
         CloseAdmission(stored);
         status = Failure(Error::InvalidState,
                          "Behavior Patch admission closed while installing.");
     }
     if (!status) {
-        stored.PrimaryFailure = status;
+        if (stored.PrimaryFailure)
+            stored.PrimaryFailure = status;
         stored.LastStatus = status;
     }
     if (!owner) {
@@ -284,7 +318,8 @@ Status Patches::Apply(
         patch.LastStatus = status;
         if (!status && !patch.Scopes.empty()) {
             patch.RestoreFrom = 0;
-            patch.PrimaryFailure = status;
+            if (patch.PrimaryFailure)
+                patch.PrimaryFailure = status;
         }
     }
 
@@ -519,6 +554,18 @@ Status Patches::ActivateFrom(Plans &plans, OwnedPlan &plan,
                        "A Behavior Plan replacement prefix is invalid.");
     Status status;
     const std::size_t originalSize = plan.Rules.size();
+    const auto rememberFailure = [&](std::size_t index,
+                                     std::string_view script) {
+        if (plan.Recovery == PlanRecovery::PreviousRules) {
+            if (!plan.RestoreAt) {
+                plan.RestoreAt = index;
+                plan.RestoreScript = script;
+            }
+        } else if (!plan.ApplyAt) {
+            plan.ApplyAt = index;
+            plan.ApplyScript = script;
+        }
+    };
     try {
         plan.Rules.reserve(definition.size());
         for (std::size_t index = firstRule; index < definition.size(); ++index) {
@@ -532,13 +579,20 @@ Status Patches::ActivateFrom(Plans &plans, OwnedPlan &plan,
                                       "/" + std::to_string(index)},
                 plan.Owner.Generation, rule.Scripts, std::move(world),
                 maintained.Id);
-            if (!status)
+            if (!status) {
+                rememberFailure(index, rule.Scripts.Name);
                 break;
+            }
             plan.Rules.push_back(std::move(maintained));
         }
     } catch (...) {
         status = Failure(Error::CreateFailed,
                          "The Loader could not retain the Behavior Plan rules.");
+        const std::size_t index = plan.Rules.size();
+        rememberFailure(
+            index, index < definition.size()
+                ? std::string_view(definition[index].Scripts.Name)
+                : std::string_view{});
     }
     if (!status) {
         Status cleanup = DeactivateFrom(plans, plan, originalSize);
@@ -559,9 +613,13 @@ Status Patches::DeactivateFrom(Plans &plans, OwnedPlan &plan,
         return Failure(Error::InvalidState,
                        "A Behavior Plan replacement prefix is invalid.");
     while (plan.Rules.size() > firstRule) {
+        const std::size_t index = plan.Rules.size() - 1;
         Status status = plans.Close(plan.Rules.back().Id);
-        if (!status)
+        if (!status) {
+            plan.RestoreAt = index;
+            plan.RestoreScript = plan.Rules.back().Definition.Scripts.Name;
             return status;
+        }
         plan.Rules.pop_back();
     }
     return {};
@@ -596,6 +654,10 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
             plan.RestoreFrom.reset();
             plan.PrimaryFailure = {};
             plan.RecoveryFailure = {};
+            plan.ApplyAt.reset();
+            plan.RestoreAt.reset();
+            plan.ApplyScript.clear();
+            plan.RestoreScript.clear();
             plan.Recovery = PlanRecovery::None;
         } else {
             plan.RecoveryFailure = status;
@@ -614,6 +676,8 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
             return status;
         }
         plan.RecoveryFailure = {};
+        plan.RestoreAt.reset();
+        plan.RestoreScript.clear();
         plan.RestoreFrom.reset();
         if (!plan.PrimaryFailure &&
             plan.Recovery != PlanRecovery::PreviousRules) {
@@ -625,6 +689,11 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
 
     const std::size_t prefix = CommonRulePrefix(
         plan, plan.RequestedRules);
+    for (std::size_t index = 0; index < prefix; ++index) {
+        Status retry = plans.Retry(plan.Rules[index].Id);
+        if (!retry)
+            return retry;
+    }
     if (prefix < plan.Rules.size()) {
         if (plan.PreviousRules.empty())
             plan.PreviousRules = CurrentRules(plan);
@@ -640,6 +709,8 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
 
     const std::vector<Rule> requested = plan.RequestedRules;
     const std::uint64_t revision = plan.Revision;
+    const bool restoringPrevious =
+        plan.Recovery == PlanRecovery::PreviousRules;
     Status status = ActivateFrom(plans, plan, requested, prefix);
     if (status) {
         if (revision == plan.Revision) {
@@ -653,6 +724,8 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
                 return reported;
             }
             plan.PrimaryFailure = {};
+            plan.ApplyAt.reset();
+            plan.ApplyScript.clear();
             plan.Recovery = PlanRecovery::None;
             plan.LastStatus = {};
         }
@@ -660,7 +733,16 @@ Status Patches::ReconcilePlan(Plans &plans, OwnedPlan &plan) {
     }
 
     const Status requestedFailure = status;
-    plan.PrimaryFailure = requestedFailure;
+    if (restoringPrevious) {
+        if (plan.RecoveryFailure)
+            plan.RecoveryFailure = requestedFailure;
+        plan.RestoreFrom = prefix;
+        plan.Recovery = PlanRecovery::Blocked;
+        plan.LastStatus = plan.RecoveryFailure;
+        return plan.LastStatus;
+    }
+    if (plan.PrimaryFailure)
+        plan.PrimaryFailure = requestedFailure;
     plan.RestoreFrom = prefix;
     if (!plan.PreviousRules.empty()) {
         plan.RequestedRules = std::move(plan.PreviousRules);
@@ -737,22 +819,70 @@ Status Patches::ReadPlan(Plans &plans, const SessionOwner &owner,
     out.State = State(plans, found->second);
     out.World = plans.WorldEpoch();
     const OwnedPlan &plan = found->second;
-    out.Diagnostic = !plan.RecoveryFailure
-        ? plan.RecoveryFailure
-        : (!plan.LastStatus ? plan.LastStatus : plan.PrimaryFailure);
-    for (const OwnedPlan::MaintainedRule &rule : plan.Rules) {
+    out.LastStatus = plan.LastStatus;
+    out.ApplyFailure = plan.PrimaryFailure;
+    out.RestoreFailure = plan.RecoveryFailure;
+    std::optional<std::size_t> lastRule;
+    std::optional<std::size_t> applyRule = plan.ApplyAt;
+    std::optional<std::size_t> restoreRule = plan.RestoreAt;
+    std::string applyScript = plan.ApplyScript;
+    std::string restoreScript = plan.RestoreScript;
+    for (std::size_t index = 0; index < plan.Rules.size(); ++index) {
+        const OwnedPlan::MaintainedRule &rule = plan.Rules[index];
         PlanInfo info;
         Status status = plans.Read(rule.Id, info);
         if (!status) {
-            if (out.Diagnostic)
-                out.Diagnostic = status;
+            if (out.LastStatus) {
+                out.LastStatus = status;
+                lastRule = index;
+            }
             continue;
         }
         out.Matches += info.Matches;
         out.Installations += info.Installations;
-        if (!info.Diagnostic && out.Diagnostic)
-            out.Diagnostic = info.Diagnostic;
+        if (!info.LastStatus && out.LastStatus) {
+            out.LastStatus = info.LastStatus;
+            lastRule = index;
+        }
+        if (!info.ApplyFailure && out.ApplyFailure) {
+            out.ApplyFailure = info.ApplyFailure;
+            applyRule = index;
+            applyScript = rule.Definition.Scripts.Name;
+        }
+        if (!info.RestoreFailure && out.RestoreFailure) {
+            out.RestoreFailure = info.RestoreFailure;
+            restoreRule = index;
+            restoreScript = rule.Definition.Scripts.Name;
+        }
+        const bool unclassified = !info.LastStatus &&
+            info.ApplyFailure && info.RestoreFailure;
+        if (unclassified && info.State == PlanState::Conflicted &&
+            out.RestoreFailure) {
+            out.RestoreFailure = info.LastStatus;
+            restoreRule = index;
+            restoreScript = rule.Definition.Scripts.Name;
+        } else if (unclassified && out.ApplyFailure) {
+            out.ApplyFailure = info.LastStatus;
+            applyRule = index;
+            applyScript = rule.Definition.Scripts.Name;
+        }
     }
+    const auto scriptAt = [&](std::optional<std::size_t> index)
+        -> std::string_view {
+        if (!index || *index >= plan.Rules.size())
+            return {};
+        return plan.Rules[*index].Definition.Scripts.Name;
+    };
+    out.LastStatus = PlanStatus(
+        std::move(out.LastStatus), plan.Name, plan.Owner, out.World,
+        lastRule, scriptAt(lastRule));
+    out.ApplyFailure = PlanStatus(
+        std::move(out.ApplyFailure), plan.Name, plan.Owner, out.World,
+        applyRule, applyScript.empty() ? scriptAt(applyRule) : applyScript);
+    out.RestoreFailure = PlanStatus(
+        std::move(out.RestoreFailure), plan.Name, plan.Owner, out.World,
+        restoreRule,
+        restoreScript.empty() ? scriptAt(restoreRule) : restoreScript);
     return {};
 }
 
@@ -772,14 +902,29 @@ Status Patches::SetPlanActive(Plans &plans, const SessionOwner &owner,
                        "A retiring Behavior Plan cannot be enabled.");
     const PlanGoal goal = active ? PlanGoal::Enabled : PlanGoal::Disabled;
     if (plan.Goal == goal && plan.Recovery == PlanRecovery::None &&
-        !plan.RestoreFrom && plan.LastStatus)
-        return {};
+        !plan.RestoreFrom && plan.LastStatus) {
+        const PlanState current = State(plans, plan);
+        if ((active && current == PlanState::Active) ||
+            (!active && current == PlanState::Disabled))
+            return {};
+    }
     plan.Goal = goal;
     ++plan.Revision;
     plan.Recovery = PlanRecovery::None;
     plan.PrimaryFailure = {};
     plan.RecoveryFailure = {};
+    plan.ApplyAt.reset();
+    plan.RestoreAt.reset();
+    plan.ApplyScript.clear();
+    plan.RestoreScript.clear();
     plan.LastStatus = {};
+    if (active) {
+        for (const OwnedPlan::MaintainedRule &rule : plan.Rules) {
+            Status retry = plans.Retry(rule.Id);
+            if (!retry)
+                return retry;
+        }
+    }
     if (!active)
         plan.RestoreFrom = 0;
     Status status = m_Edit.CanPublish()
@@ -833,6 +978,10 @@ Status Patches::ReplacePlan(Plans &plans, const SessionOwner &owner,
     plan.Recovery = PlanRecovery::None;
     plan.PrimaryFailure = {};
     plan.RecoveryFailure = {};
+    plan.ApplyAt.reset();
+    plan.RestoreAt.reset();
+    plan.ApplyScript.clear();
+    plan.RestoreScript.clear();
     plan.LastStatus = {};
     const std::size_t prefix = CommonRulePrefix(
         plan, plan.RequestedRules);
@@ -911,9 +1060,17 @@ Status Patches::InstallFrom(OwnedPatch &patch,
     const PatchKey key{patch.Owner.Id, patch.Name};
     Status status;
     std::vector<Prepared> prepared;
+    const auto rememberFailure = [&](std::size_t index) {
+        std::optional<std::size_t> &location =
+            patch.Recovery == PatchRecovery::PreviousDefinition
+                ? patch.RestoreAt : patch.ApplyAt;
+        if (!location)
+            location = index;
+    };
     try {
         prepared.reserve(definition.size() - firstTarget);
     } catch (...) {
+        rememberFailure(firstTarget);
         return Failure(Error::CreateFailed,
                        "The Loader could not prepare the Behavior Patch targets.");
     }
@@ -934,12 +1091,15 @@ Status Patches::InstallFrom(OwnedPatch &patch,
                                      "A Behavior Patch target Graph is stale.");
             if (status)
                 status = m_Graph.Read(native, GraphView::Logical, current);
-            if (!status)
+            if (!status) {
+                rememberFailure(index);
                 break;
+            }
             if (current.Fingerprint != target.Fingerprint) {
                 status = Failure(
                     Error::GraphChanged,
                     "A target Graph changed after its logical snapshot was read.");
+                rememberFailure(index);
                 break;
             }
         }
@@ -947,8 +1107,10 @@ Status Patches::InstallFrom(OwnedPatch &patch,
         item.TargetValue = &target;
         status = target.Body->Compile(
             key, target.Graph, *this, item.Value, &item.Nodes);
-        if (!status)
+        if (!status) {
+            rememberFailure(index);
             break;
+        }
         prepared.push_back(std::move(item));
     }
     if (!status)
@@ -962,16 +1124,23 @@ Status Patches::InstallFrom(OwnedPatch &patch,
             *item.TargetValue->Body, std::move(item.Value),
             std::move(item.Nodes), 1, index, patch,
             &item.TargetValue->Handles);
-        if (!status)
+        if (!status) {
+            rememberFailure(index);
             break;
+        }
     }
     if (status)
         return {};
 
     const Status failure = status;
+    if (patch.PrimaryFailure)
+        patch.PrimaryFailure = failure;
     Status restored = RestoreFrom(patch, firstTarget);
-    if (!restored && restored.Code != Error::Busy)
-        return restored;
+    if (!restored) {
+        patch.RecoveryFailure = restored;
+        if (restored.Code != Error::Busy)
+            return restored;
+    }
     return failure;
 }
 
@@ -1191,7 +1360,13 @@ Status Patches::Read(const SessionOwner &owner, PatchId patch,
         return Failure(Error::InvalidState,
                        "The Behavior Patch handle is stale.");
     out.State = State(found->second);
-    out.Diagnostic = Diagnostic(found->second);
+    const OwnedPatch &value = found->second;
+    out.LastStatus = PatchStatus(
+        LastStatus(value), value.Name, value.Owner);
+    out.ApplyFailure = PatchStatus(
+        ApplyFailure(value), value.Name, value.Owner, value.ApplyAt);
+    out.RestoreFailure = PatchStatus(
+        RestoreFailure(value), value.Name, value.Owner, value.RestoreAt);
     out.Conflicts.clear();
     for (const OwnedPatch::Scope &scope : found->second.Scopes) {
         const std::vector<RevertConflict> conflicts = scope.Value.Conflicts();
@@ -1210,19 +1385,20 @@ PatchState Patches::State(const OwnedPatch &patch) const {
         if (closingRequested)
             return PatchState::Closed;
         if (patch.Recovery == PatchRecovery::Blocked)
-            return PatchState::Failed;
+            return PatchState::Conflicted;
         return patch.Goal == PatchGoal::Enabled
             ? PatchState::Pending : PatchState::Disabled;
     }
+    if (patch.Recovery == PatchRecovery::Blocked)
+        return PatchState::Conflicted;
     bool pending = false;
-    bool closing = false;
     bool active = false;
     for (const OwnedPatch::Scope &scope : patch.Scopes) {
         switch (scope.Value.State()) {
         case PatchState::Conflicted: return PatchState::Conflicted;
         case PatchState::Failed: return PatchState::Failed;
         case PatchState::Pending: pending = true; break;
-        case PatchState::Closing: closing = true; break;
+        case PatchState::Closing: break;
         case PatchState::Active: active = true; break;
         case PatchState::Disabled: break;
         case PatchState::Closed: break;
@@ -1244,17 +1420,30 @@ PatchState Patches::State(const OwnedPatch &patch) const {
     return PatchState::Closed;
 }
 
-Status Patches::Diagnostic(const OwnedPatch &patch) const {
-    if (!patch.RecoveryFailure)
-        return patch.RecoveryFailure;
+Status Patches::LastStatus(const OwnedPatch &patch) const {
     for (const OwnedPatch::Scope &scope : patch.Scopes) {
         Status current = scope.Value.Diagnostic();
         if (!current)
             return current;
     }
-    if (!patch.LastStatus)
-        return patch.LastStatus;
+    return patch.LastStatus;
+}
+
+Status Patches::ApplyFailure(const OwnedPatch &patch) const {
     return patch.PrimaryFailure;
+}
+
+Status Patches::RestoreFailure(const OwnedPatch &patch) const {
+    if (!patch.RecoveryFailure)
+        return patch.RecoveryFailure;
+    for (const OwnedPatch::Scope &scope : patch.Scopes) {
+        if (scope.Value.State() != PatchState::Conflicted)
+            continue;
+        Status current = scope.Value.Diagnostic();
+        if (!current)
+            return current;
+    }
+    return {};
 }
 
 bool Patches::HasPendingChange(const OwnedPlan &plan) {
@@ -1323,15 +1512,19 @@ Status Patches::RestoreFrom(OwnedPatch &patch, std::size_t target) {
         if (state == PatchState::Closed || state == PatchState::Failed)
             continue;
         if (state == PatchState::Closing) {
+            patch.RestoreAt = scope->Target;
             busy = true;
             break;
         }
         Status status = m_Edit.Close(scope->Value);
-        if (!status && first)
+        if (!status && first) {
+            patch.RestoreAt = scope->Target;
             first = std::move(status);
+        }
         if (!status || scope->Value.State() == PatchState::Conflicted)
             break;
         if (scope->Value.State() == PatchState::Closing) {
+            patch.RestoreAt = scope->Target;
             busy = true;
             break;
         }
@@ -1391,6 +1584,8 @@ Status Patches::Reconcile(OwnedPatch &patch) {
             patch.RestoreFrom.reset();
             patch.PrimaryFailure = {};
             patch.RecoveryFailure = {};
+            patch.ApplyAt.reset();
+            patch.RestoreAt.reset();
             patch.Recovery = PatchRecovery::None;
         } else {
             patch.RecoveryFailure = status;
@@ -1410,6 +1605,7 @@ Status Patches::Reconcile(OwnedPatch &patch) {
             return status;
         }
         patch.RecoveryFailure = {};
+        patch.RestoreAt.reset();
         patch.AppliedDefinition.resize(
             (std::min)(patch.AppliedDefinition.size(), first));
         patch.RestoreFrom.reset();
@@ -1439,6 +1635,8 @@ Status Patches::Reconcile(OwnedPatch &patch) {
 
     const std::vector<Target> requested = patch.RequestedDefinition;
     const std::uint64_t revision = patch.Revision;
+    const bool restoringPrevious =
+        patch.Recovery == PatchRecovery::PreviousDefinition;
     Status status = InstallFrom(patch, requested, prefix);
     if (!patch.Owner || !patch.Admission->IsOpen() ||
         patch.Goal == PatchGoal::Closed) {
@@ -1461,6 +1659,7 @@ Status Patches::Reconcile(OwnedPatch &patch) {
                 return reported;
             }
             patch.PrimaryFailure = {};
+            patch.ApplyAt.reset();
             patch.Recovery = PatchRecovery::None;
             patch.LastStatus = {};
         }
@@ -1468,7 +1667,16 @@ Status Patches::Reconcile(OwnedPatch &patch) {
     }
 
     const Status requestedFailure = status;
-    patch.PrimaryFailure = requestedFailure;
+    if (restoringPrevious) {
+        if (patch.RecoveryFailure)
+            patch.RecoveryFailure = requestedFailure;
+        patch.RestoreFrom = prefix;
+        patch.Recovery = PatchRecovery::Blocked;
+        patch.LastStatus = patch.RecoveryFailure;
+        return patch.LastStatus;
+    }
+    if (patch.PrimaryFailure)
+        patch.PrimaryFailure = requestedFailure;
     patch.RestoreFrom = prefix;
     if (!patch.PreviousDefinition.empty()) {
         patch.RequestedDefinition = std::move(patch.PreviousDefinition);
@@ -1521,14 +1729,20 @@ Status Patches::SetActive(const SessionOwner &owner, PatchId patch,
                         "A retiring Behavior Patch cannot be enabled.");
     const PatchGoal goal = active ? PatchGoal::Enabled : PatchGoal::Disabled;
     if (value.Goal == goal && value.Recovery == PatchRecovery::None &&
-        !value.RestoreFrom && value.LastStatus)
-        return {};
+        !value.RestoreFrom && value.LastStatus) {
+        const PatchState current = State(value);
+        if ((active && current == PatchState::Active) ||
+            (!active && current == PatchState::Disabled))
+            return {};
+    }
     value.Goal = goal;
     ++value.Revision;
     value.Recovery = PatchRecovery::None;
     value.LastStatus = {};
     value.PrimaryFailure = {};
     value.RecoveryFailure = {};
+    value.ApplyAt.reset();
+    value.RestoreAt.reset();
     if (!active)
         value.RestoreFrom = 0;
     if (m_Edit.CanPublish())
@@ -1579,6 +1793,8 @@ Status Patches::Replace(const SessionOwner &owner, PatchId patch,
     value.LastStatus = {};
     value.PrimaryFailure = {};
     value.RecoveryFailure = {};
+    value.ApplyAt.reset();
+    value.RestoreAt.reset();
     const std::size_t prefix = CommonPrefix(
         value.AppliedDefinition, value.RequestedDefinition);
     if (prefix < value.AppliedDefinition.size()) {
@@ -1633,7 +1849,7 @@ Status Patches::RetireOwner(const std::string &ownerId) {
     for (const auto &[id, patch] : m_Patches) {
         if (patch.Owner.Id != ownerId)
             continue;
-        Status status = Diagnostic(patch);
+        Status status = LastStatus(patch);
         if (status) {
             status = Failure(Error::Busy,
                              "A Behavior Patch is still Closing.",

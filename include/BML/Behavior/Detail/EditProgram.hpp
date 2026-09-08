@@ -1118,12 +1118,7 @@ inline Result<PlanInfo> Plan::Info() const {
         status);
     if (code != BML_OK)
         return Result<PlanInfo>::Failure(code, Detail::ReadStatus(status));
-    if (wire.StructSize < sizeof(wire) ||
-        !Detail::KnownPlanState(wire.State) ||
-        !Detail::ValidStatus(wire.Diagnostic))
-        return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-    return Result<PlanInfo>::Success(Detail::ReadPlanInfo(wire),
-                                    Detail::ReadStatus(status));
+    return Detail::CompletePlanInfo(m_Session, m_Handle, wire, status);
 }
 
 inline Result<CloseState> Plan::Close() noexcept {
@@ -1141,6 +1136,19 @@ inline Result<CloseState> Plan::Close() noexcept {
     }
     if (code == BML_ERROR_BUSY)
         return Result<CloseState>::Success(CloseState::Closing);
+    try {
+        const auto info = Info();
+        if (info) {
+            if (info->RestoreFailure.Error != Error::None)
+                return Result<CloseState>::Failure(
+                    code, info->RestoreFailure);
+            if (info->LastStatus.Error != Error::None)
+                return Result<CloseState>::Failure(code, info->LastStatus);
+        }
+    } catch (...) {
+        // Close remains noexcept; the original ABI error is still useful when
+        // the optional diagnostic read cannot allocate.
+    }
     return Result<CloseState>::Failure(code);
 }
 
@@ -1200,12 +1208,7 @@ inline Result<PatchInfo> Patch::Info() const {
         status);
     if (code != BML_OK)
         return Result<PatchInfo>::Failure(code, Detail::ReadStatus(status));
-    if (wire.StructSize < sizeof(wire) || wire.Reserved != 0 ||
-        !Detail::KnownPatchState(wire.State) ||
-        !Detail::ValidStatus(wire.Diagnostic))
-        return Result<PatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-    return Result<PatchInfo>::Success(
-        Detail::ReadPatchInfo(wire), Detail::ReadStatus(status));
+    return Detail::CompletePatchInfo(m_Session, m_Handle, wire, status);
 }
 
 inline Result<BML_ObjectRef> Patch::ResolveHandle(std::uint32_t node) const {
@@ -1247,6 +1250,19 @@ inline Result<CloseState> Patch::Close() noexcept {
     }
     if (code == BML_ERROR_BUSY)
         return Result<CloseState>::Success(CloseState::Closing);
+    try {
+        const auto info = Info();
+        if (info) {
+            if (info->RestoreFailure.Error != Error::None)
+                return Result<CloseState>::Failure(
+                    code, info->RestoreFailure);
+            if (info->LastStatus.Error != Error::None)
+                return Result<CloseState>::Failure(code, info->LastStatus);
+        }
+    } catch (...) {
+        // Close remains noexcept; the original ABI error is still useful when
+        // the optional diagnostic read cannot allocate.
+    }
     return Result<CloseState>::Failure(code);
 }
 
@@ -1610,12 +1626,7 @@ inline Result<PatchInfo> Patch::SetActive(bool active) {
             &wire, &status), status);
     if (code != BML_OK)
         return Result<PatchInfo>::Failure(code, Detail::ReadStatus(status));
-    if (wire.StructSize < sizeof(wire) || wire.Reserved != 0 ||
-        !Detail::KnownPatchState(wire.State) ||
-        !Detail::ValidStatus(wire.Diagnostic))
-        return Result<PatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-    return Result<PatchInfo>::Success(Detail::ReadPatchInfo(wire),
-                                      Detail::ReadStatus(status));
+    return Detail::CompletePatchInfo(m_Session, m_Handle, wire, status);
 }
 
 inline Result<PatchInfo> Patch::Enable() { return SetActive(true); }
@@ -1648,13 +1659,8 @@ inline Result<PatchInfo> Patch::Replace(
             status);
         if (code != BML_OK)
             return Result<PatchInfo>::Failure(code, Detail::ReadStatus(status));
-        if (info.StructSize < sizeof(info) || info.Reserved != 0 ||
-            !Detail::KnownPatchState(info.State) ||
-            !Detail::ValidStatus(info.Diagnostic))
-            return Result<PatchInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
         m_Edits = std::move(program.Symbols);
-        return Result<PatchInfo>::Success(Detail::ReadPatchInfo(info),
-                                          Detail::ReadStatus(status));
+        return Detail::CompletePatchInfo(m_Session, m_Handle, info, status);
     } catch (const std::bad_alloc &) {
         return Result<PatchInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
@@ -1676,12 +1682,7 @@ inline Result<PlanInfo> Plan::SetActive(bool active) {
             &wire, &status), status);
     if (code != BML_OK)
         return Result<PlanInfo>::Failure(code, Detail::ReadStatus(status));
-    if (wire.StructSize < sizeof(wire) ||
-        !Detail::KnownPlanState(wire.State) ||
-        !Detail::ValidStatus(wire.Diagnostic))
-        return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-    return Result<PlanInfo>::Success(Detail::ReadPlanInfo(wire),
-                                     Detail::ReadStatus(status));
+    return Detail::CompletePlanInfo(m_Session, m_Handle, wire, status);
 }
 
 inline Result<PlanInfo> Plan::Enable() { return SetActive(true); }
@@ -1714,12 +1715,7 @@ inline Result<PlanInfo> Plan::Replace(
             status);
         if (code != BML_OK)
             return Result<PlanInfo>::Failure(code, Detail::ReadStatus(status));
-        if (info.StructSize < sizeof(info) ||
-            !Detail::KnownPlanState(info.State) ||
-            !Detail::ValidStatus(info.Diagnostic))
-            return Result<PlanInfo>::Failure(BML_ERROR_MALFORMED_MESSAGE);
-        return Result<PlanInfo>::Success(Detail::ReadPlanInfo(info),
-                                         Detail::ReadStatus(status));
+        return Detail::CompletePlanInfo(m_Session, m_Handle, info, status);
     } catch (const std::bad_alloc &) {
         return Result<PlanInfo>::Failure(BML_ERROR_OUT_OF_MEMORY);
     } catch (...) {
