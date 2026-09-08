@@ -14,13 +14,13 @@ namespace BML::Behavior {
 class Session {
 public:
     Session() = default;
-    ~Session() { Close(); }
+    ~Session() { Reset(); }
     Session(const Session &) = delete;
     Session &operator=(const Session &) = delete;
     Session(Session &&) noexcept = default;
     Session &operator=(Session &&other) noexcept {
         if (this != &other) {
-            Close();
+            Reset();
             m_State = std::move(other.m_State);
         }
         return *this;
@@ -85,8 +85,9 @@ public:
     [[nodiscard]] Result<Behavior::Layout> Layout(CKGUID prototype) const {
         return Layout(Prototype(prototype));
     }
-    [[nodiscard]] Result<Graph> Inspect(ObjectRef root) const {
-        return Graph::Read(m_State, root, View::Logical);
+    [[nodiscard]] Result<Graph> Inspect(
+        ObjectRef root, View view = View::Logical) const {
+        return Graph::Read(m_State, root, view);
     }
     // Turns a CK object this Mod already holds into an interface reference.
     // This is the entry point for a Mod that received a script from the game
@@ -118,11 +119,12 @@ public:
         return Reference(object->GetID());
     }
     // Reads the logical graph of a script this Mod already holds.
-    [[nodiscard]] Result<Graph> Inspect(CKBehavior *graph) const {
+    [[nodiscard]] Result<Graph> Inspect(
+        CKBehavior *graph, View view = View::Logical) const {
         const Result<ObjectRef> reference = Reference(graph);
         if (!reference)
             return Result<Graph>::Failure(reference.Code(), reference.GetStatus());
-        return Inspect(reference.Value());
+        return Inspect(reference.Value(), view);
     }
     // Creates the root and installs body before returning one inactive Script.
     // A rejected body publishes no Script and returns no partial handle.
@@ -151,7 +153,7 @@ public:
                   !std::is_same_v<std::decay_t<First>, Scripts>, int> = 0>
     [[nodiscard]] Result<Behavior::Plan> Plan(
         std::string_view name, First &&first, More &&...more) const;
-    void Close() noexcept {
+    void Reset() noexcept {
         // Values created from this Session hold their own lease. Releasing the
         // Session value stops this object from admitting work without
         // invalidating Blocks, Runs, Watches, Plans, or Patches that still own
@@ -160,7 +162,7 @@ public:
     }
 
     // The escape hatch to the C ABI, for whatever this facade does not cover
-    // yet. Both stay valid until Close, and neither transfers ownership.
+    // yet. Both stay valid until Reset, and neither transfers ownership.
     [[nodiscard]] BML_BehaviorSession Handle() const noexcept {
         return m_State ? m_State->Handle : nullptr;
     }

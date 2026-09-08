@@ -857,6 +857,17 @@ inline bool Frame::HasOut(const Selector &selector) const {
     }
     return found;
 }
+inline bool Frame::HasOut(std::string_view name) const {
+    bool found = false;
+    for (std::size_t index = 0; index < OutCount(); ++index) {
+        if (GetOut(index).Name() != name)
+            continue;
+        if (found)
+            return false;
+        found = true;
+    }
+    return found;
+}
 template <class T>
 inline Result<T> Frame::Pout(const Selector &selector) const {
     std::optional<std::size_t> found;
@@ -878,6 +889,24 @@ inline Result<T> Frame::Pout(const Selector &selector) const {
     if (found)
         return GetPout(*found).Get<T>();
     return Result<T>::Failure(BML_ERROR_NOT_FOUND);
+}
+template <class T>
+inline Result<T> Frame::Pout(std::string_view name) const {
+    std::optional<std::size_t> found;
+    for (std::size_t index = 0; index < PoutCount(); ++index) {
+        const auto value = GetPout(index);
+        if (value.Name() != name)
+            continue;
+        if (found) {
+            Status status;
+            status.Error = Error::QueryAmbiguous;
+            status.Message = "More than one Behavior Pout has this name.";
+            return Result<T>::Failure(BML_ERROR_FAIL, std::move(status));
+        }
+        found = index;
+    }
+    return found ? GetPout(*found).Get<T>()
+                 : Result<T>::Failure(BML_ERROR_NOT_FOUND);
 }
 
 namespace Detail {

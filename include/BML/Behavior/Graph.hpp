@@ -176,47 +176,48 @@ public:
         return In(Selector::At(index));
     }
     [[nodiscard]] Port In(std::string_view name) const {
-        return In(Selector::Unique(name));
+        return Select(SlotKind::In, name);
     }
     [[nodiscard]] Port Out(Selector slot = Selector::Only()) const;
     [[nodiscard]] Port Out(std::int32_t index) const {
         return Out(Selector::At(index));
     }
     [[nodiscard]] Port Out(std::string_view name) const {
-        return Out(Selector::Unique(name));
+        return Select(SlotKind::Out, name);
     }
     [[nodiscard]] Port Pin(Selector slot = Selector::Only()) const;
     [[nodiscard]] Port Pin(std::int32_t index) const {
         return Pin(Selector::At(index));
     }
     [[nodiscard]] Port Pin(std::string_view name) const {
-        return Pin(Selector::Unique(name));
+        return Select(SlotKind::Pin, name);
     }
     [[nodiscard]] Port Pout(Selector slot = Selector::Only()) const;
     [[nodiscard]] Port Pout(std::int32_t index) const {
         return Pout(Selector::At(index));
     }
     [[nodiscard]] Port Pout(std::string_view name) const {
-        return Pout(Selector::Unique(name));
+        return Select(SlotKind::Pout, name);
     }
     [[nodiscard]] Port Setting(Selector slot = Selector::Only()) const;
     [[nodiscard]] Port Setting(std::int32_t index) const {
         return Setting(Selector::At(index));
     }
     [[nodiscard]] Port Setting(std::string_view name) const {
-        return Setting(Selector::Unique(name));
+        return Select(SlotKind::Setting, name);
     }
     [[nodiscard]] Port Local(Selector slot = Selector::Only()) const;
     [[nodiscard]] Port Local(std::int32_t index) const {
         return Local(Selector::At(index));
     }
     [[nodiscard]] Port Local(std::string_view name) const {
-        return Local(Selector::Unique(name));
+        return Select(SlotKind::Local, name);
     }
     [[nodiscard]] Port Target() const;
 
 private:
     [[nodiscard]] Port Select(SlotKind kind, Selector slot) const;
+    [[nodiscard]] Port Select(SlotKind kind, std::string_view name) const;
     Node(std::shared_ptr<const Detail::GraphData> graph,
          std::size_t index) noexcept
         : m_Graph(std::move(graph)), m_Index(index) {}
@@ -537,6 +538,25 @@ inline Port Node::Select(SlotKind kind, Selector slot) const {
             break;
     }
     return match ? Port(m_Graph, matchIndex) : Port{};
+}
+
+inline Port Node::Select(SlotKind kind, std::string_view name) const {
+    if (!*this)
+        return {};
+    const Detail::GraphNodeData &node = m_Graph->Nodes[m_Index];
+    std::size_t match = 0;
+    bool found = false;
+    for (std::size_t index = node.PortOffset;
+         index < node.PortOffset + node.PortCount; ++index) {
+        const Detail::GraphPortData &port = m_Graph->Ports[index];
+        if (port.Kind != kind || port.Name != name)
+            continue;
+        if (found)
+            return {};
+        found = true;
+        match = index;
+    }
+    return found ? Port(m_Graph, match) : Port{};
 }
 
 inline Node::operator bool() const noexcept {
@@ -861,6 +881,8 @@ public:
         Selector selector, CKGUID prototype = CKGUID(0, 0)) const {
         std::vector<Node> matches;
         for (Node node : Nodes()) {
+            if (node.Index() < 0)
+                continue;
             if (selector.Matches(node.Index(), node.Occurrence(), node.Name()) &&
                 (!Detail::HasGuid(prototype) || node.Prototype() == prototype))
                 matches.push_back(node);
@@ -868,12 +890,19 @@ public:
         return matches;
     }
     [[nodiscard]] std::vector<Node> FindAll(std::string_view name) const {
-        return FindAll(Selector::Unique(name));
+        std::vector<Node> matches;
+        for (Node node : Nodes()) {
+            if (node.Index() >= 0 && node.Name() == name)
+                matches.push_back(node);
+        }
+        return matches;
     }
     [[nodiscard]] Result<Node> Find(
         Selector selector, CKGUID prototype = CKGUID(0, 0)) const {
         Node match;
         for (Node node : Nodes()) {
+            if (node.Index() < 0)
+                continue;
             if (!selector.Matches(node.Index(), node.Occurrence(), node.Name()) ||
                 (Detail::HasGuid(prototype) && node.Prototype() != prototype))
                 continue;
@@ -897,7 +926,28 @@ public:
     }
     [[nodiscard]] Result<Node> Find(
         std::string_view name, CKGUID prototype = CKGUID(0, 0)) const {
-        return Find(Selector::Unique(name), prototype);
+        Node match;
+        for (Node node : Nodes()) {
+            if (node.Index() < 0 || node.Name() != name ||
+                (Detail::HasGuid(prototype) && node.Prototype() != prototype))
+                continue;
+            if (match) {
+                Status status;
+                status.Error = Error::QueryAmbiguous;
+                status.Message = "The Behavior Node name is ambiguous.";
+                return Result<Node>::Failure(BML_ERROR_FAIL,
+                                              std::move(status));
+            }
+            match = node;
+        }
+        if (!match) {
+            Status status;
+            status.Error = Error::QueryNotFound;
+            status.Message = "The Behavior Node name matched nothing.";
+            return Result<Node>::Failure(BML_ERROR_NOT_FOUND,
+                                          std::move(status));
+        }
+        return Result<Node>::Success(std::move(match));
     }
 
     [[nodiscard]] LinkRange Incoming(const Node &node) const noexcept {

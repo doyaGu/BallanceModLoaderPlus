@@ -168,16 +168,12 @@ public:
     [[nodiscard]] PoutView GetPout(std::size_t index) const;
     [[nodiscard]] Behavior::Status GetStatus(std::size_t index) const;
     [[nodiscard]] bool HasOut(const Selector &selector) const;
-    [[nodiscard]] bool HasOut(std::string_view name) const {
-        return HasOut(Selector::Unique(name));
-    }
+    [[nodiscard]] bool HasOut(std::string_view name) const;
 
     template <class T>
     [[nodiscard]] Result<T> Pout(const Selector &selector) const;
     template <class T>
-    [[nodiscard]] Result<T> Pout(std::string_view name) const {
-        return Pout<T>(Selector::Unique(name));
-    }
+    [[nodiscard]] Result<T> Pout(std::string_view name) const;
 
 private:
     Frame(const Frames *frames, std::size_t index) noexcept
@@ -260,13 +256,16 @@ public:
 
     [[nodiscard]] bool Empty() const noexcept { return m_Count == 0; }
     [[nodiscard]] std::size_t Size() const noexcept { return m_Count; }
-    [[nodiscard]] Frame operator[](std::size_t index) const {
+    [[nodiscard]] Frame operator[](std::size_t index) const & {
         if (index >= m_Count)
             throw std::out_of_range("Behavior Frame index is out of range.");
         return Frame(this, index);
     }
-    [[nodiscard]] Iterator begin() const noexcept { return Iterator(this, 0); }
-    [[nodiscard]] Iterator end() const noexcept { return Iterator(this, m_Count); }
+    [[nodiscard]] Frame operator[](std::size_t) const && = delete;
+    [[nodiscard]] Iterator begin() const & noexcept { return Iterator(this, 0); }
+    [[nodiscard]] Iterator end() const & noexcept { return Iterator(this, m_Count); }
+    [[nodiscard]] Iterator begin() const && = delete;
+    [[nodiscard]] Iterator end() const && = delete;
     void Clear() noexcept { m_Count = 0; m_PayloadSize = 0; }
     void Reserve(std::size_t frames, std::size_t payload) {
         if (frames > (std::numeric_limits<std::uint32_t>::max)() ||
@@ -276,6 +275,12 @@ public:
             m_Headers.resize(frames);
         if (payload > m_Payload.size())
             m_Payload.resize(payload);
+    }
+    void ShrinkToFit() {
+        m_Headers.resize(m_Count);
+        m_Payload.resize(m_PayloadSize);
+        m_Headers.shrink_to_fit();
+        m_Payload.shrink_to_fit();
     }
 
 private:

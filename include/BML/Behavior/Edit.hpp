@@ -381,28 +381,6 @@ public:
         friend class Edit;
     };
 
-    // A slot the program appended. An appended slot has no author-visible index
-    // until the edit compiles, so it is addressed by handle instead.
-    class Slot {
-    public:
-        Slot() = default;
-
-        [[nodiscard]] Port Ref() const {
-            return Port{m_Edit, m_Scope, m_Id, 0, CKGUID(0, 0), {}};
-        }
-        operator Port() const { return Ref(); }
-
-    private:
-        Slot(std::weak_ptr<Detail::EditProgram> edit,
-             std::uint32_t scope, std::uint32_t id)
-            : m_Edit(std::move(edit)), m_Id(id), m_Scope(scope) {}
-        std::weak_ptr<Detail::EditProgram> m_Edit;
-        std::uint32_t m_Id = 0;
-        std::uint32_t m_Scope = 0;
-
-        friend class Edit;
-    };
-
     // A CKParameterOperation declared by this Edit. It has no control-flow
     // ports: Input addresses one of its parameter inputs and Result is the
     // lazily evaluated output parameter.
@@ -468,16 +446,24 @@ public:
                                    std::int32_t delay) const;
         [[nodiscard]] Node Next(Port source) const;
         [[nodiscard]] Node Next(Port source, NodePattern expected) const;
-        [[nodiscard]] Node Next(Node source, std::int32_t output = 0) const;
+        [[nodiscard]] Node Next(Node source) const;
+        [[nodiscard]] Node Next(Node source, Behavior::Selector output) const;
+        [[nodiscard]] Node Next(Node source, std::int32_t output) const;
         [[nodiscard]] Node Previous(Port sink) const;
         [[nodiscard]] Node Previous(Port sink, NodePattern expected) const;
-        [[nodiscard]] Node Previous(Node sink, std::int32_t input = 0) const;
+        [[nodiscard]] Node Previous(Node sink) const;
+        [[nodiscard]] Node Previous(Node sink, Behavior::Selector input) const;
+        [[nodiscard]] Node Previous(Node sink, std::int32_t input) const;
         [[nodiscard]] Link Leaving(Port source) const;
+        [[nodiscard]] Link Leaving(Node source) const;
         [[nodiscard]] Link Leaving(Node source,
-                                   std::int32_t output = 0) const;
+                                   Behavior::Selector output) const;
+        [[nodiscard]] Link Leaving(Node source, std::int32_t output) const;
         [[nodiscard]] Link Entering(Port sink) const;
+        [[nodiscard]] Link Entering(Node sink) const;
         [[nodiscard]] Link Entering(Node sink,
-                                    std::int32_t input = 0) const;
+                                    Behavior::Selector input) const;
+        [[nodiscard]] Link Entering(Node sink, std::int32_t input) const;
         [[nodiscard]] Link To(Port source, Node target) const;
         [[nodiscard]] Path Follow(Port source) const;
         [[nodiscard]] Node Add(const Block &block) const;
@@ -489,18 +475,18 @@ public:
             CKGUID operation, CKGUID result,
             CKGUID input1 = CKGUID(0, 0),
             CKGUID input2 = CKGUID(0, 0)) const;
-        [[nodiscard]] Slot AppendIn(std::string_view name) const;
-        [[nodiscard]] Slot AppendIn(Node owner, std::string_view name) const;
-        [[nodiscard]] Slot AppendOut(std::string_view name) const;
-        [[nodiscard]] Slot AppendOut(Node owner, std::string_view name) const;
-        [[nodiscard]] Slot AppendPin(std::string_view name, CKGUID type) const;
-        [[nodiscard]] Slot AppendPin(Node owner, std::string_view name,
+        [[nodiscard]] Port AppendIn(std::string_view name) const;
+        [[nodiscard]] Port AppendIn(Node owner, std::string_view name) const;
+        [[nodiscard]] Port AppendOut(std::string_view name) const;
+        [[nodiscard]] Port AppendOut(Node owner, std::string_view name) const;
+        [[nodiscard]] Port AppendPin(std::string_view name, CKGUID type) const;
+        [[nodiscard]] Port AppendPin(Node owner, std::string_view name,
                                      CKGUID type) const;
-        [[nodiscard]] Slot AppendPout(std::string_view name, CKGUID type) const;
-        [[nodiscard]] Slot AppendPout(Node owner, std::string_view name,
+        [[nodiscard]] Port AppendPout(std::string_view name, CKGUID type) const;
+        [[nodiscard]] Port AppendPout(Node owner, std::string_view name,
                                       CKGUID type) const;
-        [[nodiscard]] Slot AppendLocal(std::string_view name, CKGUID type) const;
-        [[nodiscard]] Slot AppendLocal(Node owner, std::string_view name,
+        [[nodiscard]] Port AppendLocal(std::string_view name, CKGUID type) const;
+        [[nodiscard]] Port AppendLocal(Node owner, std::string_view name,
                                        CKGUID type) const;
         Graph Flow(Port source, Port sink, std::int32_t delay = 0) const;
         Graph Flow(Ports sources, Port sink, std::int32_t delay = 0) const;
@@ -570,7 +556,7 @@ private:
     static Detail::EditStep &Define(
         Detail::EditProgram &program, std::uint32_t scope,
         std::uint32_t kind, std::uint32_t result);
-    static Slot Append(
+    static Port Append(
         const std::shared_ptr<Detail::EditProgram> &program,
         std::uint32_t scope, Node owner, std::uint32_t slotKind,
         std::string_view name, CKGUID type);

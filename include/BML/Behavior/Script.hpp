@@ -108,8 +108,11 @@ public:
             Detail::ReadScriptInfo(wire), Detail::ReadStatus(status));
     }
 
-    [[nodiscard]] Result<ScriptInfo> Activate(bool reset = false) {
-        return SetActive(true, reset);
+    [[nodiscard]] Result<ScriptInfo> Activate() {
+        return SetActive(true, false);
+    }
+    [[nodiscard]] Result<ScriptInfo> Restart() {
+        return SetActive(true, true);
     }
     [[nodiscard]] Result<ScriptInfo> Deactivate() {
         return SetActive(false, false);

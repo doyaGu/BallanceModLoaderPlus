@@ -106,7 +106,7 @@ inline Detail::EditStep &Edit::Define(
     return program.Steps.back();
 }
 
-inline Edit::Slot Edit::Append(
+inline Edit::Port Edit::Append(
     const std::shared_ptr<Detail::EditProgram> &program,
     std::uint32_t scope, Node owner, std::uint32_t slotKind,
     std::string_view name, CKGUID type) {
@@ -118,7 +118,7 @@ inline Edit::Slot Edit::Append(
     step.SlotKind = slotKind;
     step.Name.assign(name);
     step.Type = type;
-    return Slot{program, scope, step.Result};
+    return Port{program, scope, step.Result, 0, CKGUID(0, 0), {}};
 }
 
 template <class Symbol>
@@ -263,7 +263,9 @@ inline Edit::Node Edit::Graph::Require(const Behavior::Node &node) const {
         return Root();
     Detail::EditStep &step = Edit::Define(
         *edit, m_Scope, BML_BEHAVIOR_EDIT_REQUIRE_NODE);
-    NodePattern pattern(Behavior::At(node.Index()));
+    NodePattern pattern(node.Name().empty()
+                            ? Behavior::Selector::Only()
+                            : Behavior::Unique(node.Name()));
     pattern.m_Prototype = node.Prototype();
     pattern.m_Kind = node.Kind();
     pattern.m_PortShape = Edit::Shape(node);
@@ -366,8 +368,17 @@ inline Edit::Node Edit::Graph::Next(Port source, NodePattern expected) const {
     return Node{m_Edit, m_Scope, step.Result};
 }
 
+inline Edit::Node Edit::Graph::Next(Node source) const {
+    return Next(source.Out());
+}
+
+inline Edit::Node Edit::Graph::Next(
+    Node source, Behavior::Selector output) const {
+    return Next(source.Out(std::move(output)));
+}
+
 inline Edit::Node Edit::Graph::Next(Node source, std::int32_t output) const {
-    return Next(source.Out(output));
+    return Next(std::move(source), Behavior::At(output));
 }
 
 inline Edit::Node Edit::Graph::Previous(Port sink) const {
@@ -391,8 +402,17 @@ inline Edit::Node Edit::Graph::Previous(Port sink, NodePattern expected) const {
     return Node{m_Edit, m_Scope, step.Result};
 }
 
+inline Edit::Node Edit::Graph::Previous(Node sink) const {
+    return Previous(sink.In());
+}
+
+inline Edit::Node Edit::Graph::Previous(
+    Node sink, Behavior::Selector input) const {
+    return Previous(sink.In(std::move(input)));
+}
+
 inline Edit::Node Edit::Graph::Previous(Node sink, std::int32_t input) const {
-    return Previous(sink.In(input));
+    return Previous(std::move(sink), Behavior::At(input));
 }
 
 inline Edit::Link Edit::Graph::Leaving(Port source) const {
@@ -405,8 +425,18 @@ inline Edit::Link Edit::Graph::Leaving(Port source) const {
     return Link{m_Edit, m_Scope, step.Result};
 }
 
-inline Edit::Link Edit::Graph::Leaving(Node source, std::int32_t output) const {
-    return Leaving(source.Out(output));
+inline Edit::Link Edit::Graph::Leaving(Node source) const {
+    return Leaving(source.Out());
+}
+
+inline Edit::Link Edit::Graph::Leaving(
+    Node source, Behavior::Selector output) const {
+    return Leaving(source.Out(std::move(output)));
+}
+
+inline Edit::Link Edit::Graph::Leaving(Node source,
+                                       std::int32_t output) const {
+    return Leaving(std::move(source), Behavior::At(output));
 }
 
 inline Edit::Link Edit::Graph::Entering(Port sink) const {
@@ -419,8 +449,18 @@ inline Edit::Link Edit::Graph::Entering(Port sink) const {
     return Link{m_Edit, m_Scope, step.Result};
 }
 
-inline Edit::Link Edit::Graph::Entering(Node sink, std::int32_t input) const {
-    return Entering(sink.In(input));
+inline Edit::Link Edit::Graph::Entering(Node sink) const {
+    return Entering(sink.In());
+}
+
+inline Edit::Link Edit::Graph::Entering(
+    Node sink, Behavior::Selector input) const {
+    return Entering(sink.In(std::move(input)));
+}
+
+inline Edit::Link Edit::Graph::Entering(Node sink,
+                                        std::int32_t input) const {
+    return Entering(std::move(sink), Behavior::At(input));
 }
 
 inline Edit::Link Edit::Graph::To(Port source, Node target) const {
@@ -540,58 +580,58 @@ inline Edit::Operation Edit::Graph::AddOperation(
     return Operation{m_Edit, m_Scope, step.Result, result, input1, input2};
 }
 
-inline Edit::Slot Edit::Graph::AppendIn(std::string_view name) const {
+inline Edit::Port Edit::Graph::AppendIn(std::string_view name) const {
     return AppendIn(Root(), name);
 }
 
-inline Edit::Slot Edit::Graph::AppendIn(Node owner,
+inline Edit::Port Edit::Graph::AppendIn(Node owner,
                                        std::string_view name) const {
     return Edit::Append(
         Program(), m_Scope, std::move(owner), BML_BEHAVIOR_SLOT_IN,
         name, CKGUID(0, 0));
 }
 
-inline Edit::Slot Edit::Graph::AppendOut(std::string_view name) const {
+inline Edit::Port Edit::Graph::AppendOut(std::string_view name) const {
     return AppendOut(Root(), name);
 }
 
-inline Edit::Slot Edit::Graph::AppendOut(Node owner,
+inline Edit::Port Edit::Graph::AppendOut(Node owner,
                                         std::string_view name) const {
     return Edit::Append(
         Program(), m_Scope, std::move(owner), BML_BEHAVIOR_SLOT_OUT,
         name, CKGUID(0, 0));
 }
 
-inline Edit::Slot Edit::Graph::AppendPin(std::string_view name,
+inline Edit::Port Edit::Graph::AppendPin(std::string_view name,
                                         CKGUID type) const {
     return AppendPin(Root(), name, type);
 }
 
-inline Edit::Slot Edit::Graph::AppendPin(Node owner, std::string_view name,
+inline Edit::Port Edit::Graph::AppendPin(Node owner, std::string_view name,
                                         CKGUID type) const {
     return Edit::Append(
         Program(), m_Scope, std::move(owner), BML_BEHAVIOR_SLOT_PIN,
         name, type);
 }
 
-inline Edit::Slot Edit::Graph::AppendPout(std::string_view name,
+inline Edit::Port Edit::Graph::AppendPout(std::string_view name,
                                          CKGUID type) const {
     return AppendPout(Root(), name, type);
 }
 
-inline Edit::Slot Edit::Graph::AppendPout(Node owner, std::string_view name,
+inline Edit::Port Edit::Graph::AppendPout(Node owner, std::string_view name,
                                          CKGUID type) const {
     return Edit::Append(
         Program(), m_Scope, std::move(owner), BML_BEHAVIOR_SLOT_POUT,
         name, type);
 }
 
-inline Edit::Slot Edit::Graph::AppendLocal(std::string_view name,
+inline Edit::Port Edit::Graph::AppendLocal(std::string_view name,
                                           CKGUID type) const {
     return AppendLocal(Root(), name, type);
 }
 
-inline Edit::Slot Edit::Graph::AppendLocal(Node owner,
+inline Edit::Port Edit::Graph::AppendLocal(Node owner,
                                           std::string_view name,
                                           CKGUID type) const {
     return Edit::Append(

@@ -88,6 +88,9 @@ public:
     [[nodiscard]] Result<Behavior::Call> Call(
         const Selector &input = Selector::Only(),
         FramePolicy frames = Signals()) const;
+    [[nodiscard]] Result<Behavior::Call> Call(FramePolicy frames) const {
+        return Call(Selector::Only(), frames);
+    }
     [[nodiscard]] Result<Behavior::Call> Call(
         std::string_view input,
         FramePolicy frames = Signals()) const {
@@ -97,6 +100,10 @@ public:
         ObjectRef owner, const Selector &input = Selector::Only(),
         FramePolicy frames = Signals()) const;
     [[nodiscard]] Result<Behavior::Call> Call(
+        ObjectRef owner, FramePolicy frames) const {
+        return Call(owner, Selector::Only(), frames);
+    }
+    [[nodiscard]] Result<Behavior::Call> Call(
         ObjectRef owner, std::string_view input,
         FramePolicy frames = Signals()) const {
         return Call(owner, Selector::Unique(input), frames);
@@ -104,6 +111,9 @@ public:
     [[nodiscard]] Result<Task> Start(
         const Selector &input = Selector::Only(),
         FramePolicy frames = Signals()) const;
+    [[nodiscard]] Result<Task> Start(FramePolicy frames) const {
+        return Start(Selector::Only(), frames);
+    }
     [[nodiscard]] Result<Task> Start(
         std::string_view input,
         FramePolicy frames = Signals()) const {
@@ -112,6 +122,10 @@ public:
     [[nodiscard]] Result<Task> Start(
         ObjectRef owner, const Selector &input = Selector::Only(),
         FramePolicy frames = Signals()) const;
+    [[nodiscard]] Result<Task> Start(
+        ObjectRef owner, FramePolicy frames) const {
+        return Start(owner, Selector::Only(), frames);
+    }
     [[nodiscard]] Result<Task> Start(
         ObjectRef owner, std::string_view input,
         FramePolicy frames = Signals()) const {
