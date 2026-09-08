@@ -1,15 +1,16 @@
-// The versioned struct of function pointers the loader hands out, and the one
-// exported function that hands it over. This is how a capability added after the
-// legacy C++ interfaces were frozen reaches a native Mod: no vtable slot moves,
-// and nothing is encoded on the way.
+// Versioned structs of function pointers handed out through BML. This is how a
+// capability added after the legacy C++ interfaces were frozen reaches a native
+// Mod: no vtable slot moves, and nothing is encoded on the way. Interfaces may
+// be built into the loader or registered by a native base Mod.
 //
 // An interface is a plain C struct whose first member is named Header and is a
 // BML_InterfaceHeader, and whose remaining members are function pointers. The
-// loader owns the struct. It is one static instance, const for the life of the
-// process, and the same pointer for every Mod, so there is nothing to release and
-// no lifetime to track. BML_GetInterface only looks the struct up in a table, so
-// it answers before the loader has finished initializing; the functions behind
-// the pointers need loader state and answer BML_ERROR_FAIL until it is there.
+// provider owns the struct. It must be one static const instance which stays at
+// the same address while registered, so there is nothing for a consumer to
+// release. Built-in interfaces exist for the loader process lifetime. A Mod
+// interface exists from its successful BML_RegisterInterface call until it is
+// unregistered or the provider Mod unloads. Consumers declare that provider as
+// a required Mod dependency and do their first lookup from OnLoad.
 //
 // Growing an interface is the only part that needs care:
 //
@@ -23,7 +24,7 @@
 // - Moving a member, or changing what one of them takes or returns, is a new
 //   major version and therefore a new struct and a new id, not an edit.
 //
-// A Mod asks for one major version and the loader refuses any other, so a
+// A consumer asks for one major version and the registry refuses any other, so a
 // successful BML_GetInterface means every member the Mod's own header declares
 // either exists or is covered by a BML_IFACE_HAS check.
 //
@@ -45,7 +46,7 @@
 BML_BEGIN_CDECLS
 
 // The first member of every interface struct. InterfaceId points at a string
-// literal the loader owns, and matches the id BML_GetInterface was asked for.
+// literal the provider owns, and matches the id BML_GetInterface was asked for.
 typedef struct BML_InterfaceHeader {
     size_t StructSize;
     uint16_t MajorVersion;
@@ -53,7 +54,8 @@ typedef struct BML_InterfaceHeader {
     const char *InterfaceId;
 } BML_InterfaceHeader;
 
-// Fills in a header. The loader uses this; a Mod only reads what it gets back.
+// Fills in a header. Both the loader and a provider Mod use this; consumers only
+// read what they get back.
 #define BML_IFACE_HEADER(type, id, major, minor) {sizeof(type), (major), (minor), (id)}
 
 // Whether the running loader has this member and filled it in. Answers false for
@@ -65,11 +67,28 @@ typedef struct BML_InterfaceHeader {
      (iface)->member != NULL)
 
 // Looks up one interface by id and major version. Answers BML_OK and writes the
-// loader's pointer, BML_ERROR_NOT_FOUND when no interface carries that id,
+// provider's pointer, BML_ERROR_NOT_FOUND when no interface carries that id,
 // BML_ERROR_VERSION_MISMATCH when one does but not in that major version, or
 // BML_ERROR_INVALID_PARAMETER for a null id or a null out. The pointer written
-// belongs to the loader: never free it, and never write through it.
-BML_EXPORT int BML_GetInterface(const char *interfaceId, uint16_t majorVersion, const void **out);
+// belongs to its provider: never free it, and never write through it.
+BML_EXPORT int BML_CDECL BML_GetInterface(
+    const char *interfaceId, uint16_t majorVersion, const void **out);
+
+// Publishes a provider-owned interface through BML_GetInterface. interfacePtr
+// points at a static const struct whose first member is BML_InterfaceHeader;
+// both that struct and Header.InterfaceId must reside in the provider DLL.
+// Registration is game-thread-only and is accepted only from the native DLL
+// that owns ownerId; pass NULL to infer the unique Mod owned by the caller DLL.
+// Built-in ids and an existing id/major pair cannot be replaced. The provider
+// should unregister in OnUnload; BML also removes every remaining registration
+// before releasing the provider DLL.
+BML_EXPORT int BML_CDECL BML_RegisterInterface(
+    const char *ownerId, const void *interfacePtr);
+
+// Removes one interface owned by the calling native Mod. A different provider's
+// registration answers BML_ERROR_ACCESS_DENIED. This is game-thread-only.
+BML_EXPORT int BML_CDECL BML_UnregisterInterface(
+    const char *ownerId, const char *interfaceId, uint16_t majorVersion);
 
 BML_END_CDECLS
 

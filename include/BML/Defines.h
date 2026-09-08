@@ -48,6 +48,14 @@
 #endif
 #endif
 
+#ifndef BML_CDECL
+#if defined(_MSC_VER)
+#define BML_CDECL __cdecl
+#else
+#define BML_CDECL
+#endif
+#endif // !BML_CDECL
+
 #define MOD_EXPORT extern "C" __declspec(dllexport)
 
 #ifndef MAX_PATH

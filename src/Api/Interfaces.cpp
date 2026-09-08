@@ -1,10 +1,9 @@
 // The loader's side of Interface.h: the thunks the interface structs point at,
 // the structs themselves, and the table BML_GetInterface looks in.
 //
-// Each struct is one static const instance shared by every Mod, so publishing an
-// interface costs nothing at runtime and there is no registration order to get
-// right. Adding an interface means a struct here plus one row in kInterfaces; the
-// rules for changing one that already shipped are in Interface.h.
+// Each built-in struct is one static const instance shared by every Mod. Native
+// base Mods may add provider-owned instances to the registry below. The rules
+// for changing either kind after it ships are in Interface.h.
 #include "BML/Gameplay.h"
 #include "BML/Behavior.h"
 #include "BML/Interface.h"
@@ -19,10 +18,15 @@
 
 #include "Api/BuiltinCapabilities.h"
 #include "Api/BehaviorApi.h"
+#include "Api/InterfaceRegistry.h"
 #if BML_ENABLE_PLAYER_TESTS
 #include "Api/BehaviorTestApi.h"
 #endif
 #include "Loader/ModContext.h"
+
+#include <intrin.h>
+#include <new>
+#include <string>
 
 namespace {
 
@@ -379,9 +383,21 @@ const InterfaceEntry kInterfaces[] = {
     {BML_UI_INTERFACE_ID, BML_UI_INTERFACE_MAJOR, &kUIInterface},
 };
 
+BML::Api::InterfaceRegistry kModInterfaces;
+
+bool IsBuiltinInterfaceId(const char *interfaceId) {
+    if (!interfaceId)
+        return false;
+    for (const InterfaceEntry &entry : kInterfaces) {
+        if (std::strcmp(entry.Id, interfaceId) == 0)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
-int BML_GetInterface(const char *interfaceId, uint16_t majorVersion, const void **out) {
+int BML_CDECL BML_GetInterface(const char *interfaceId, uint16_t majorVersion, const void **out) {
     if (!out)
         return BML_ERROR_INVALID_PARAMETER;
     *out = nullptr;
@@ -398,5 +414,90 @@ int BML_GetInterface(const char *interfaceId, uint16_t majorVersion, const void 
         *out = entry.Interface;
         return BML_OK;
     }
-    return idExists ? BML_ERROR_VERSION_MISMATCH : BML_ERROR_NOT_FOUND;
+    if (idExists)
+        return BML_ERROR_VERSION_MISMATCH;
+
+    return kModInterfaces.Find(interfaceId, majorVersion, out);
 }
+
+int BML_CDECL BML_RegisterInterface(
+    const char *ownerId, const void *interfacePtr) {
+    const void *const callerAddress = _ReturnAddress();
+    try {
+        if (!interfacePtr)
+            return BML_ERROR_INVALID_PARAMETER;
+
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+
+        const std::string resolved =
+            context->GetNativeModOwnerId(callerAddress, ownerId);
+        if (resolved.empty() || (ownerId && resolved != ownerId))
+            return BML_ERROR_ACCESS_DENIED;
+
+        // The registry returns this address directly and cannot copy an
+        // unknown interface struct. Requiring both the struct and its id to
+        // live in the provider DLL rules out stack/heap registrations and
+        // makes automatic cleanup before FreeLibrary a sound lifetime rule.
+        if (!context->NativeModOwnsAddress(resolved, interfacePtr))
+            return BML_ERROR_INVALID_PARAMETER;
+        const auto *header =
+            static_cast<const BML_InterfaceHeader *>(interfacePtr);
+        if (header->StructSize < sizeof(BML_InterfaceHeader) ||
+            header->MajorVersion == 0 || !header->InterfaceId)
+            return BML_ERROR_INVALID_PARAMETER;
+        if (!context->NativeModOwnsAddress(resolved, header->InterfaceId) ||
+            header->InterfaceId[0] == '\0') {
+            return BML_ERROR_INVALID_PARAMETER;
+        }
+        if (IsBuiltinInterfaceId(header->InterfaceId))
+            return BML_ERROR_ALREADY_EXISTS;
+        return kModInterfaces.Register(resolved, interfacePtr);
+    } catch (const std::bad_alloc &) {
+        return BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
+int BML_CDECL BML_UnregisterInterface(
+    const char *ownerId, const char *interfaceId, uint16_t majorVersion) {
+    const void *const callerAddress = _ReturnAddress();
+    try {
+        if (!interfaceId || interfaceId[0] == '\0' || majorVersion == 0)
+            return BML_ERROR_INVALID_PARAMETER;
+        if (IsBuiltinInterfaceId(interfaceId))
+            return BML_ERROR_ACCESS_DENIED;
+
+        ModContext *context = BML_GetModContext();
+        if (!context)
+            return BML_ERROR_FROZEN;
+        if (!context->IsMainThread())
+            return BML_ERROR_WRONG_THREAD;
+
+        const std::string resolved =
+            context->GetNativeModOwnerId(callerAddress, ownerId);
+        if (resolved.empty() || (ownerId && resolved != ownerId))
+            return BML_ERROR_ACCESS_DENIED;
+        return kModInterfaces.Unregister(
+            resolved, interfaceId, majorVersion);
+    } catch (const std::bad_alloc &) {
+        return BML_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return BML_ERROR_FAIL;
+    }
+}
+
+namespace BML::Api {
+
+void UnregisterInterfacesForOwner(const std::string &ownerId) noexcept {
+    try {
+        (void) kModInterfaces.CleanupOwner(ownerId);
+    } catch (...) {
+    }
+}
+
+} // namespace BML::Api

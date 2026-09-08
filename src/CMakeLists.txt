@@ -144,6 +144,7 @@ set(BML_API_PRIVATE_HEADERS
         Api/BehaviorApi.h
         Api/BuiltinCapabilities.h
         Api/ExecuteBBAdapter.h
+        Api/InterfaceRegistry.h
         Api/ObjectRefs.h
 )
 
@@ -156,6 +157,7 @@ set(BML_API_SOURCES
         Api/ExecuteBBAdapter.cpp
         Api/IMod.cpp
         Api/Interfaces.cpp
+        Api/InterfaceRegistry.cpp
         Api/ObjectRefs.cpp
 )
 

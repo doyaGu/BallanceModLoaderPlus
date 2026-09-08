@@ -157,6 +157,14 @@ void BML_TestCAbiModRoot(void) {
     BML_FreeString(root);
 }
 
+int BML_TestCAbiProviderInterface(const BML_InterfaceHeader *interfacePtr) {
+    int result = BML_RegisterInterface(NULL, interfacePtr);
+    if (result != BML_OK)
+        return result;
+    return BML_UnregisterInterface(
+        NULL, interfacePtr->InterfaceId, interfacePtr->MajorVersion);
+}
+
 // BML_UnregisterCommand is the one function here that answers with a status code
 // instead of 1 or 0, so this also checks that the codes it documents are reachable
 // from C.

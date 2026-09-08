@@ -19,6 +19,7 @@
 #include "BML/BML.h"
 #include "BML/Timer.h"
 #include "Api/BuiltinCapabilities.h"
+#include "Api/InterfaceRegistry.h"
 
 #include "Hooks/RenderHook.h"
 #include "UI/Overlay.h"
@@ -641,7 +642,10 @@ bool ModContext::InitMods() {
             // Preserve the legacy behavior that lets a mod receive callbacks
             // which it triggers from its own OnLoad implementation.
             FillCallbackMap(mod);
-            mod->OnLoad();
+            {
+                ModInvocation invocation(this, mod);
+                mod->OnLoad();
+            }
             // Capacity was reserved before activation, so recording success
             // cannot fail after a mod has completed OnLoad.
             m_ActiveMods.push_back(mod);
@@ -749,6 +753,7 @@ void ModContext::DeactivateActiveMods(bool dispatchPendingNotifications) {
     for (auto rit = m_ActiveMods.rbegin(); rit != m_ActiveMods.rend(); ++rit) {
         IMod *mod = *rit;
         try {
+            ModInvocation invocation(this, mod);
             mod->OnUnload();
         } catch (const std::exception &e) {
             if (m_Logger)
@@ -1407,6 +1412,7 @@ void ModContext::FlushConfigChanges(bool saveAll, bool dispatchNotifications) {
         if (dispatchNotifications && mod) {
             for (const auto &notification : notifications) {
                 try {
+                    ModInvocation invocation(this, mod);
                     mod->OnModifyConfig(
                         notification.Category.c_str(),
                         notification.Key.c_str(),
@@ -2810,13 +2816,17 @@ std::string ModContext::GetNativeModOwnerId(
 
     HMODULE const bmlModule = ModuleFromAddress(&BML_GetModContext);
     if (bmlModule && callerModule == bmlModule) {
-        if (!requestedOwnerId || !*requestedOwnerId || !m_BMLMod)
+        if (!requestedOwnerId || !*requestedOwnerId)
             return {};
         const auto requested = m_ModIndex.find(requestedOwnerId);
-        return requested != m_ModIndex.end() && requested->second < m_Mods.size() &&
-                       m_Mods[requested->second] == m_BMLMod
-                   ? requested->first
-                   : std::string();
+        if (requested == m_ModIndex.end() ||
+            requested->second >= m_Mods.size())
+            return {};
+        IMod *owner = m_Mods[requested->second];
+        IMod *invoked = ModInvocation::Current(this);
+        if (owner == invoked || (owner == m_BMLMod && !invoked))
+            return requested->first;
+        return {};
     }
 
     if (requestedOwnerId && *requestedOwnerId) {
@@ -2835,6 +2845,19 @@ std::string ModContext::GetNativeModOwnerId(
     return id == m_ModIndex.end() || id->second >= m_Mods.size()
         ? std::string()
         : id->first;
+}
+
+bool ModContext::NativeModOwnsAddress(
+    const std::string &ownerId, const void *address) const {
+    if (ownerId.empty() || !address)
+        return false;
+
+    HMODULE module = ModuleFromAddress(address);
+    if (!module)
+        return false;
+
+    std::shared_lock<std::shared_mutex> registryLock(m_ModRegistryMutex);
+    return m_NativeModRegistry.Owns(module, ownerId);
 }
 
 bool ModContext::UnregisterMod(IMod *mod) {
@@ -2882,6 +2905,7 @@ bool ModContext::UnregisterMod(IMod *mod) {
         }
         m_BehaviorSessions.RetireOwner(modIdCopy);
         m_ImcRuntime.CleanupOwner(modIdCopy);
+        BML::Api::UnregisterInterfacesForOwner(modIdCopy);
 #if BML_ENABLE_ANGELSCRIPT
         if (m_ScriptHotReload) {
             if (auto *scriptMod = dynamic_cast<BML::ScriptMod *>(mod))

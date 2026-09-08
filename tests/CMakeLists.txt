@@ -255,6 +255,16 @@ if(MSVC)
         set_tests_properties(ImcDllExportAbiTest PROPERTIES LABELS "imc;abi")
 
         add_test(
+                NAME InterfaceDllExportAbiTest
+                COMMAND "${CMAKE_COMMAND}"
+                "-DDUMPBIN=${BML_DUMPBIN}"
+                "-DBINARY=$<TARGET_FILE:BML>"
+                "-P" "${CMAKE_CURRENT_SOURCE_DIR}/InterfaceDllExportAbiTest.cmake"
+        )
+        set_tests_properties(InterfaceDllExportAbiTest PROPERTIES
+                LABELS "interface;abi")
+
+        add_test(
                 NAME LegacyNativeDllExportAbiTest
                 COMMAND "${CMAKE_COMMAND}"
                 "-DDUMPBIN=${BML_DUMPBIN}"
@@ -464,6 +474,13 @@ add_bml_test(NativeModRegistryTest
 
 add_bml_test(InterfaceHeaderTest
         SOURCES InterfaceHeaderTest.cpp
+)
+
+add_bml_test(InterfaceRegistryTest
+        SOURCES
+        InterfaceRegistryTest.cpp
+        ${BML_SOURCE_DIR}/Api/InterfaceRegistry.cpp
+        ${BML_SOURCE_DIR}/Api/InterfaceRegistry.h
 )
 
 add_bml_test(BuiMenuTest

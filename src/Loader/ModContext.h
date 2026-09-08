@@ -57,6 +57,36 @@ CKContext *BML_GetCKContext();
 CKRenderContext *BML_GetRenderContext();
 
 class ModContext final : public IBML {
+    // Native DLL identity normally identifies a Mod owner. Built-in Mods share
+    // BMLPlus.dll, so their active invocation supplies the missing identity.
+    // The linked stack keeps nested broadcasts exact without allocating.
+    class ModInvocation final {
+    public:
+        ModInvocation(const ModContext *context, IMod *mod) noexcept
+            : m_Previous(s_Current), m_Context(context), m_Mod(mod) {
+            s_Current = this;
+        }
+        ~ModInvocation() { s_Current = m_Previous; }
+
+        ModInvocation(const ModInvocation &) = delete;
+        ModInvocation &operator=(const ModInvocation &) = delete;
+
+        static IMod *Current(const ModContext *context) noexcept {
+            for (const ModInvocation *scope = s_Current; scope;
+                 scope = scope->m_Previous) {
+                if (scope->m_Context == context)
+                    return scope->m_Mod;
+            }
+            return nullptr;
+        }
+
+    private:
+        inline static thread_local const ModInvocation *s_Current = nullptr;
+        const ModInvocation *m_Previous = nullptr;
+        const ModContext *m_Context = nullptr;
+        IMod *m_Mod = nullptr;
+    };
+
 public:
     enum Flag {
         BML_INITED = 0x00000001,
@@ -119,6 +149,8 @@ public:
     std::string GetNativeModOwnerId(
         const void *callerAddress,
         const char *requestedOwnerId = nullptr) const;
+    bool NativeModOwnsAddress(
+        const std::string &ownerId, const void *address) const;
     BML::ModInvocationGate::CallLock LockModInvocation() const { return m_ModInvocationGate.LockCall(); }
     bool IsModInvocationActiveOnCurrentThread() const {
         return m_ModInvocationGate.IsCallActiveOnCurrentThread();
@@ -333,6 +365,7 @@ public:
         }
         for (IMod *mod : mods) {
             try {
+                ModInvocation invocation(this, mod);
                 (mod->*callback)(std::forward<Args>(args)...);
             } catch (const std::exception &e) {
                 if (m_Logger)
