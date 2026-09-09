@@ -1,8 +1,8 @@
 # Create a typed IMC API
 
-This guide shows how a native mod can expose a typed, in-process API to another
-mod. Read [Inter-mod communication](imc.md) first for the transport, threading,
-compatibility, and lifetime model.
+This guide shows how native and script mods expose one typed, in-process API to
+each other. Read [Inter-mod communication](imc.md) first for the transport,
+threading, compatibility, and lifetime model.
 
 The examples require an installed BML+ SDK, CMake 3.15 or newer, a C++20
 compiler, and Python 3.10 or newer. New interfaces define RPCs and Topics.
@@ -84,14 +84,14 @@ comments or outside the `.imc` file.
 
 The IMC field vocabulary is:
 
-| Interface type | Generated C++ type |
-| --- | --- |
-| `bool`, `int`, `float` | `bool`, 32-bit `int`, `float` |
-| `int64`, `uint64`, `double` | `std::int64_t`, `std::uint64_t`, `double` |
-| `string`, `bytes` | `std::string`, `std::vector<std::uint8_t>` |
-| `object`, `vec2`, `vec3`, `mat4` | BML opaque object/math value |
-| `array<T>` | `std::vector<T>` for bool, numeric, string, object, and math types |
-| `enum<name>` | generated `enum class Name` with a fixed integer underlying type |
+| Interface type | Generated C++ type | Generated AngelScript type |
+| --- | --- | --- |
+| `bool`, `int`, `float` | `bool`, 32-bit `int`, `float` | `bool`, `int`, `float` |
+| `int64`, `uint64`, `double` | `std::int64_t`, `std::uint64_t`, `double` | `int64`, `uint64`, `double` |
+| `string`, `bytes` | `std::string`, `std::vector<std::uint8_t>` | `string`, `array<uint8>` |
+| `object`, `vec2`, `vec3`, `mat4` | BML opaque object/math value | `CKObject@`, `BML::Vec2`, `BML::Vec3`, `BML::Mat4` |
+| `array<T>` | `std::vector<T>` for supported element types | `array<T>` for the corresponding script type |
+| `enum<name>` | generated `enum class Name` | generated AngelScript `enum Name` |
 
 Wide numeric arrays support `array<int64>`, `array<uint64>`, and
 `array<double>`. A byte blob uses `bytes`; there is no redundant
@@ -141,8 +141,9 @@ the new major version starts a separate field-ID space.
 
 The installed BML package includes the generator and
 `bml_target_imc_api()`. The helper adds the generated
-header to the target, adds its build directory to the include path, and applies
-the required C++20 compile feature. It requires Python 3.10 or newer during
+header to the target, optionally emits an AngelScript facade, adds the C++
+build directory to the include path, and applies the required C++20 compile
+feature. It requires Python 3.10 or newer during
 configuration, matching the installed generator. An ordinary target build
 requires an adjacent, committed `.imc.lock`; CMake configuration remains
 available when that lock is missing so the explicit update target can create it.
@@ -154,6 +155,7 @@ bml_add_mod(EchoMod EchoMod.cpp)
 
 bml_target_imc_api(EchoMod
     INPUT "${CMAKE_CURRENT_SOURCE_DIR}/api/example.echo.imc"
+    SCRIPT_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/script-api"
 )
 ```
 
@@ -162,7 +164,10 @@ The default output is
 `.imc` filename must equal the interface's `api`; when it does not, pass
 `API_ID example.echo`. The helper passes that expected identity to codegen, so
 a typo now reports both IDs and the input path instead of surfacing later as a
-missing generated header. `OUTPUT_DIR` can override the generated directory.
+missing generated header. `OUTPUT_DIR` can override the generated C++ directory.
+`SCRIPT_OUTPUT_DIR` emits
+`${CMAKE_CURRENT_BINARY_DIR}/script-api/example_echo_imc.as`; omit it when this
+target does not package an ASMod facade.
 
 The helper also registers one project-level update target for every declared
 IMC interface:
@@ -183,7 +188,8 @@ For a non-CMake or committed-output workflow, the package exposes the
 python imc_codegen.py \
   --input api/example.echo.imc \
   --expected-api-id example.echo \
-  --out-dir generated
+  --out-dir generated \
+  --script-out-dir script-api
 ```
 
 `--expected-api-id` is optional outside the CMake helper but useful in scripts
@@ -192,6 +198,65 @@ generated header or interface lock is stale. Non-CMake workflows may use
 `--update-lock` in their author-controlled update step. Parse and validation
 errors include the responsible input path, including when several interfaces
 are generated together.
+
+## Use the same interface from an ASMod
+
+Package the generated `example_echo_imc.as` with the script Mod and include it
+before `[bml.mod]`. The generated namespace follows the API ID, just like the
+C++ namespace. The normal surface contains typed records and callbacks,
+`Is*Available`, asynchronous `BeginCall*`, Topic helpers, `Handlers`, and
+`Provider`; no message codec or numeric field ID is handwritten.
+
+```angelscript
+#include "example_echo_imc.as"
+
+[bml.mod id="example.echo-script" name="Echo Script" version="1.0.0"
+         author="Example" description="Provides the example.echo service"]
+class EchoScript {
+    Example::Echo::Provider provider;
+    BML::ImcSubscriptionRef@ changed;
+
+    int HandleEcho(const Example::Echo::EchoRequestValue &in request,
+                   Example::Echo::EchoReplyValue &out response) {
+        response.Text = request.Text;
+        return BML::ERROR_OK;
+    }
+
+    void OnChanged(int status,
+                   const Example::Echo::ChangedEventValue &in event) {
+        if (status == BML::ERROR_OK) {
+            // Consume the typed event.
+        }
+    }
+
+    void OnLoad(const BML::ModContext &in ctx) {
+        Example::Echo::Handlers handlers;
+        @handlers.Echo = Example::Echo::EchoHandler(this.HandleEcho);
+        int status = provider.Start(ctx, handlers);
+
+        Example::Echo::ChangedCallback@ callback =
+            Example::Echo::ChangedCallback(this.OnChanged);
+        @changed = Example::Echo::SubscribeChanged(ctx, callback, 64);
+    }
+
+    void OnUnload(const BML::ModContext &in ctx) {
+        if (changed !is null) changed.Cancel();
+        @changed = null;
+        provider.Close();
+    }
+}
+```
+
+`Is*Available`, `Cancel`, `GetDroppedCount`, publish/count helpers, and Provider
+operations return BML status codes; result values use `&out`. RPC calls are
+asynchronous and complete through typed callbacks. Script Provider handlers and
+Topic callbacks always execute on the game thread. BML closes their owned IMC
+resources before unloading or replacing the script module.
+
+Names under `BML::Detail` and underscore-prefixed methods on `ModContext` are
+generated-code plumbing. Do not call them from handwritten scripts. A native
+and a script implementation are interchangeable at the wire boundary because
+both are generated from the same `.imc` and `.imc.lock`.
 
 ## 3. Implement the provider
 

@@ -115,8 +115,22 @@ enum GameEvent {
 
 const int ERROR_OK;
 const int ERROR_FAIL;
+const int ERROR_FROZEN;
 const int ERROR_NOT_FOUND;
+const int ERROR_NOT_IMPLEMENTED;
+const int ERROR_OUT_OF_MEMORY;
 const int ERROR_INVALID_PARAMETER;
+const int ERROR_ACCESS_DENIED;
+const int ERROR_TIMEOUT;
+const int ERROR_BUSY;
+const int ERROR_ALREADY_EXISTS;
+const int ERROR_INVALID_HANDLE;
+const int ERROR_WOULD_BLOCK;
+const int ERROR_CANCELLED;
+const int ERROR_WRONG_THREAD;
+const int ERROR_MALFORMED_MESSAGE;
+const int ERROR_TYPE_MISMATCH;
+const int ERROR_VERSION_MISMATCH;
 const int ERROR_IMC_ENDPOINT_NOT_FOUND;
 const int ERROR_IMC_HANDLE_STALE;
 const int ERROR_IMC_UNSUPPORTED;
@@ -124,6 +138,7 @@ const int ERROR_IMC_API_MISMATCH;
 const int ERROR_IMC_PROVIDER_UNLOADED;
 const int ERROR_UNAVAILABLE;
 const int ERROR_OBJECT_INVALID;
+const int ERROR_BUFFER_TOO_SMALL;
 const int ERROR_IMC_SCHEMA_MISMATCH;
 const int ERROR_IMC_TARGET_EXECUTION_FAILED;
 
@@ -600,6 +615,94 @@ class DataShareRequestRef {
   bool Cancel();
 }
 
+class ImcRequestRef {
+  bool get_IsValid() const;
+  bool get_IsComplete() const;
+  int get_Status() const;
+  int Cancel();
+}
+
+class ImcSubscriptionRef {
+  bool get_IsValid() const;
+  int get_Status() const;
+  int GetDroppedCount(uint64 &out count) const;
+  int Cancel();
+}
+
+// Generated IMC facades use this bridge. Handwritten scripts should use the
+// typed records, functions, Handlers, and Provider emitted from their .imc.
+namespace Detail {
+class ImcRecord {
+  ImcRecord();
+  int get_Status() const;
+  bool Has(uint id) const;
+  void WriteBool(uint id, bool value);
+  void WriteInt(uint id, int value);
+  void WriteFloat(uint id, float value);
+  void WriteInt64(uint id, int64 value);
+  void WriteUInt64(uint id, uint64 value);
+  void WriteDouble(uint id, double value);
+  void WriteString(uint id, const string &in value);
+  void WriteBytes(uint id, const array<uint8> &in value);
+  void WriteObject(uint id, CKObject@ value);
+  void WriteVec2(uint id, const BML::Vec2 &in value);
+  void WriteVec3(uint id, const BML::Vec3 &in value);
+  void WriteMat4(uint id, const BML::Mat4 &in value);
+  void WriteBoolArray(uint id, const array<bool> &in value);
+  void WriteIntArray(uint id, const array<int> &in value);
+  void WriteFloatArray(uint id, const array<float> &in value);
+  void WriteInt64Array(uint id, const array<int64> &in value);
+  void WriteUInt64Array(uint id, const array<uint64> &in value);
+  void WriteDoubleArray(uint id, const array<double> &in value);
+  void WriteStringArray(uint id, const array<string> &in value);
+  void WriteObjectArray(uint id, const array<CKObject@> &in value);
+  void WriteVec2Array(uint id, const array<BML::Vec2> &in value);
+  void WriteVec3Array(uint id, const array<BML::Vec3> &in value);
+  void WriteMat4Array(uint id, const array<BML::Mat4> &in value);
+  int ReadBool(uint id, bool &out value) const;
+  int ReadInt(uint id, int &out value) const;
+  int ReadFloat(uint id, float &out value) const;
+  int ReadInt64(uint id, int64 &out value) const;
+  int ReadUInt64(uint id, uint64 &out value) const;
+  int ReadDouble(uint id, double &out value) const;
+  int ReadString(uint id, string &out value) const;
+  int ReadBytes(uint id, array<uint8> &out value) const;
+  int ReadObject(uint id, CKObject@ &out value) const;
+  int ReadVec2(uint id, BML::Vec2 &out value) const;
+  int ReadVec3(uint id, BML::Vec3 &out value) const;
+  int ReadMat4(uint id, BML::Mat4 &out value) const;
+  int ReadBoolArray(uint id, array<bool> &out value) const;
+  int ReadIntArray(uint id, array<int> &out value) const;
+  int ReadFloatArray(uint id, array<float> &out value) const;
+  int ReadInt64Array(uint id, array<int64> &out value) const;
+  int ReadUInt64Array(uint id, array<uint64> &out value) const;
+  int ReadDoubleArray(uint id, array<double> &out value) const;
+  int ReadStringArray(uint id, array<string> &out value) const;
+  int ReadObjectArray(uint id, array<CKObject@> &out value) const;
+  int ReadVec2Array(uint id, array<BML::Vec2> &out value) const;
+  int ReadVec3Array(uint id, array<BML::Vec3> &out value) const;
+  int ReadMat4Array(uint id, array<BML::Mat4> &out value) const;
+}
+class ImcReply {
+  ImcReply();
+  void Complete(int status);
+  void Complete(int status, const ImcRecord &in record);
+}
+funcdef void ImcCompletion(int status, const ImcRecord &in record);
+funcdef void ImcTopicCallback(int status, const ImcRecord &in record);
+funcdef void ImcRpcHandler(const ImcRecord &in request, ImcReply &inout reply);
+class ImcProviderRef {
+  bool get_IsOpen() const;
+  int get_Status() const;
+  int _RegisterRpc(const string &in route, const string &in requestPayload,
+                   const string &in responsePayload, ImcRpcHandler@+ handler);
+  int _Publish(const string &in topic, const string &in payload,
+               const ImcRecord &in message, uint64 &out delivered);
+  int _GetSubscriberCount(const string &in topic, uint64 &out count) const;
+  int Close();
+}
+} // namespace Detail
+
 class HookBlockEvent {
   bool get_IsValid() const;
   int get_BlockId() const;
@@ -840,6 +943,12 @@ class ModContext {
   bool UnregisterCommand(const string &in name) const;
   DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const;
   DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = "") const;
+  int _IsImcRpcAvailable(const string &in route, bool &out available) const;
+  ImcRequestRef@ _CallImc(const string &in route, const string &in requestPayload, const string &in responsePayload, const BML::Detail::ImcRecord &in request, BML::Detail::ImcCompletion@+ callback, uint timeoutMs = 5000) const;
+  ImcSubscriptionRef@ _SubscribeImc(const string &in topic, const string &in payload, BML::Detail::ImcTopicCallback@+ callback, uint capacity = 256) const;
+  int _PublishImc(const string &in topic, const string &in payload, const BML::Detail::ImcRecord &in message, uint64 &out delivered) const;
+  int _GetImcSubscriberCount(const string &in topic, uint64 &out count) const;
+  BML::Detail::ImcProviderRef@ _OpenImcProvider() const;
   HookBlockRef@ CreateHookBlock(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = "", int inputCount = 1, int outputCount = 1) const;
   HookBlockRef@ InsertHookBlockAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = 0, int targetInput = -1) const;
   HookBlockRef@ InsertHookBlockBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = "", int sourceOutput = -1, int targetInput = 0) const;

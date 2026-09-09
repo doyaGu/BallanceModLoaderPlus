@@ -1,7 +1,8 @@
 # 跨 Mod 通信
 
-IMC 用于一个 Mod 发布给其他 Mod 的接口，不承载任何 Loader 能力。脚本 Mod
-直接使用 Loader 提供的类型化能力接口；IMC Provider 只能由原生 Mod 实现。
+IMC 用于一个 Mod 发布给其他 Mod 的接口，不承载任何 Loader 能力。同一份
+`.imc` 可以生成 C++ 和 AngelScript 门面；原生 Mod 与脚本 Mod 都可以成为
+Client 或 Provider，并共享相同的 Record、路由、状态码和版本规则。
 
 ## 脚本 Mod 如何选择
 
@@ -43,20 +44,27 @@ Mod 后续真正需要的状态；脚本侧没有需要打开或轮询的事件�
 两个脚本 Mod 只需交换少量状态时，使用 DataShare。DataShare 适合有明确
 类型和所有权的一次性或延迟读取，不应被包装成通用函数调用机制。
 
-## 何时需要原生 IMC Provider
+## 生成式 IMC
 
-IMC 只用于一个 Mod 发布给其他 Mod 的接口。这类服务满足下面任一条件时，应把它
-实现为原生 Mod：
+服务需要下面任一能力时使用 IMC：
 
 - 需要请求/响应 RPC；
 - 需要高频或有背压策略的事件流；
-- 需要显式选择 caller thread 或 game thread；
-- 需要稳定的跨 DLL ABI，供多个独立 Mod 使用。
+- 需要稳定字段与端点标识，供独立发布的 Mod 使用。
 
-原生实现流程是：编写版本化 `.imc` 接口定义，用 `imc_codegen.py` 或
-`bml_target_imc_api()` 生成 C++ 绑定，实现生成的 provider，并让消费者
-使用生成的 client。不要手写字段编码，也不要跨 DLL 传递 C++ 对象、STL
-容器、allocator 所有权或 `CKObject*`。
+编写版本化 `.imc` 接口定义后，用 `bml_target_imc_api()` 的
+`SCRIPT_OUTPUT_DIR` 生成 `*_imc.as`。脚本入口在 `[bml.mod]` 之前包含该文件，
+然后使用生成的 `Is*Available`、`BeginCall*`、`Subscribe*`、`Publish*`、
+`Handlers` 和 `Provider`。不要直接使用 `BML::Detail` 或下划线开头的
+`ModContext` 方法，它们只服务于生成代码。
+
+脚本 RPC 一律异步发起，回调和脚本 Provider Handler 一律在游戏线程执行。
+需要 caller-thread Handler、高频循环或原生内存所有权时，把实现放在原生 Mod；
+脚本仍可通过同一生成式 IMC 契约调用它，不需要再写 CKAngelScript 包装层。
+
+只有必须直接借用插件专有原生对象或调用无法表示为 IMC Record 的引擎原语时，
+才增加 CKAngelScript 扩展。不要手写字段编码，也不要跨 DLL 传递 C++ 对象、
+STL 容器、allocator 所有权或裸 `CKObject*`。
 
 完整示例与兼容演进规则见：
 

@@ -6,10 +6,11 @@ mods. It provides two operations:
 - RPC for request/response calls;
 - Topic for publish/subscribe notifications.
 
-Use IMC when two independently built native modules need a stable API without
-sharing C++ objects, STL containers, allocators, or Virtools pointers. Both sides
-ship on their own schedule: a consumer asks at runtime whether a route is there,
-so a missing provider is a status code rather than a load failure.
+Use IMC when independently shipped native or script mods need a stable API
+without sharing C++ objects, STL containers, allocators, or Virtools pointers.
+Any native/script pairing may provide and consume the same generated contract.
+A consumer asks at runtime whether a route is there, so a missing provider is a
+status code rather than a load failure.
 
 IMC carries no loader capability. The loader serves its own state, its events,
 and its UI through versioned interface structs reached by `BML_GetInterface`, and
@@ -42,8 +43,9 @@ lifetime, and failure handling consistent across APIs.
 2. Add the interface to a CMake target with `bml_target_imc_api()`.
 3. Generate or refresh its adjacent `.imc.lock` with the
    `bml_update_imc_locks` CMake target, then review and commit the diff.
-4. Implement the generated `Provider` callbacks.
-5. Call the API through the generated `Client`.
+4. Generate the C++ header, AngelScript facade, or both.
+5. Implement the generated `Provider` callbacks and call through the generated
+   Client surface.
 6. Keep providers, clients, subscriptions, futures, and callback data alive
    until their corresponding close or release operation succeeds.
 
@@ -53,11 +55,12 @@ Most mods should not construct `BML_ImcMessage` values directly.
 
 ## Public API layers
 
-IMC has three public layers:
+IMC has three public layers; the generated layer has one surface per language:
 
 | Layer | Purpose |
 | --- | --- |
 | Generated `*_imc.hpp` | Typed payloads, codecs, clients, providers, futures, and subscriptions |
+| Generated `*_imc.as` | The same typed payloads and routes for ASMod Clients and Providers; transport details stay under `BML::Detail` |
 | `BML/ImcCpp.hpp` | Generic C++ RAII wrappers, plus the client, subscription, and RPC machinery the generated bindings reuse |
 | `BML/Imc.h` | Fixed-layout C ABI used across DLL boundaries |
 
@@ -112,6 +115,12 @@ Every RPC provider selects an execution mode:
 - `BML_IMC_EXECUTION_GAME_THREAD` queues the request for the BML game-thread
   pump. Use it for Virtools objects, BML UI, and other game-thread-only state.
 
+Generated ASMod providers always use game-thread execution because AngelScript,
+Virtools objects, and script-owned callback state are game-thread services.
+Generated ASMod calls are asynchronous and complete through typed callbacks.
+Use a native provider only when caller-thread execution or a native hot path is
+actually required; the script caller still uses the same `.imc` contract.
+
 Synchronous generated calls wait for their typed result up to the supplied
 timeout. Generated `Begin*` methods return a move-only typed future for polling,
 cancellation, or bounded waiting.
@@ -150,6 +159,11 @@ IMC state during unload, but explicit shutdown is still required:
 3. close subscriptions before destroying callback data;
 4. unregister provider callbacks;
 5. close providers and clients.
+
+ASMod request, subscription, and provider handles are owned by the script Mod.
+BML cancels and closes them before the AngelScript module is released, including
+during successful hot-reload replacement. Scripts should still call
+`Cancel()`/`Close()` when ending a service earlier.
 
 Closing a client or subscription from one of its active callbacks immediately
 prevents new dispatch and defers final removal until the outermost callback

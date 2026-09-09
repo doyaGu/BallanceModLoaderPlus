@@ -4,16 +4,16 @@
 才需要构建 BML+ 仓库。
 
 不确定选择哪条路线时，先从脚本 Mod 开始。它不需要 C++ 构建，并具有最短的编辑、
-热重载和诊断循环。只有明确需要原生 Hook、原生内存、生成式 IMC Provider 或
+热重载和诊断循环。只有明确需要原生 Hook、原生内存、调用线程 RPC Handler 或
 性能敏感循环时，再进入原生路线。
 
 ## 选择开发路线
 
 | 路线 | 适用场景 | 主要代价 |
 | --- | --- | --- |
-| 脚本 Mod | 希望快速修改和测试，需要命令、配置、UI、玩法脚本或 CKAngelScript 引擎访问，但不想配置 C++ 构建。 | 不能提供自定义 IMC Provider，也不应承担不安全 Hook 或性能敏感的原生循环。 |
-| 原生 Mod | 需要 C++20、直接 Virtools 集成、原生 Hook、生成式 IMC Provider，或必须严格控制热路径。 | 需要兼容 MSVC ABI 的 Win32 构建，并明确处理 DLL ABI 和所有权。 |
-| 原生插件加 CKAngelScript 扩展 | 不安全或性能敏感的服务由原生代码负责，但脚本需要小型、类型化的控制接口。 | 原生插件必须通过 CKAngelScript 注册并维护该脚本接口。 |
+| 脚本 Mod | 希望快速修改和测试，需要命令、配置、UI、玩法脚本、CKAngelScript 引擎访问，或不经 C++ 使用生成式 IMC Client/Provider。 | IMC 回调固定在游戏线程；不应承担不安全 Hook 或性能敏感的原生循环。 |
+| 原生 Mod | 需要 C++20、直接 Virtools 集成、原生 Hook、调用线程 IMC 执行，或必须严格控制热路径。 | 需要兼容 MSVC ABI 的 Win32 构建，并明确处理 DLL ABI 和所有权。 |
+| 原生插件加 CKAngelScript 扩展 | 脚本必须直接借用插件专有的原生对象，或调用无法表示为 IMC Record 的引擎原语。 | 原生插件必须通过 CKAngelScript 注册并维护该脚本接口。 |
 
 不要在 BML 中重新封装一套 CKAngelScript 已有的 Scene、Behavior、Component、
 Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命周期、配置、
@@ -102,17 +102,17 @@ bml_install_mod(MyMod)
 | 需求 | 使用 |
 | --- | --- |
 | 同一进程内少量具名标量或字节值 | DataShare |
-| Mod 之间的类型化请求与响应、异步结果、Topic、版本化数据或高吞吐 | 由原生 Mod 实现的生成式 IMC 接口 |
+| 原生和/或脚本 Mod 之间的类型化请求与响应、异步结果、Topic 或版本化数据 | 生成式 IMC 接口；两种语言都可以消费或提供 |
 | BML+ 内建的运行时、玩法、事件、UI 或速通服务 | 对应语言已有的 BML+ 类型化 API |
 | CKAngelScript runtime script 或 Component 之间通信 | 在执行模型合适时使用 CKAngelScript `Message` 或 `Async` |
 
 不要自定义 JSON 消息格式，也不要手写字段编号。编写 `.imc` 接口，由
-`bml_target_imc_api` 生成 C++ 绑定，并让 schema lock 与接口一起维护。参见
+`bml_target_imc_api` 生成 C++ 和/或 AngelScript 绑定，并让 schema lock 与接口一起维护。参见
 [跨 Mod 通信](imc.md)和[创建类型化 IMC API](imc-author-guide.md)。
 
-脚本 Mod 可以使用 BML+ 类型化脚本 API 和 DataShare。自定义 IMC Provider 仍由
-原生 Mod 提供。如果脚本必须调用原生服务，应由该原生插件提供小型、类型化的
-CKAngelScript 扩展。
+只有脚本必须直接借用插件专有原生对象，或调用无法表示为类型化 IMC 数据的引擎原语时，
+才增加 CKAngelScript 扩展。常规 native/script 服务边界应共用一份生成式 IMC 契约，
+不要再维护第二套手写 API。
 
 ## 性能与所有权
 

@@ -1,6 +1,6 @@
 # 创建类型化 IMC API
 
-本文演示一个原生 Mod 如何向另一个 Mod 提供类型化进程内 API。开始前先阅读
+本文演示原生 Mod 和脚本 Mod 如何通过同一份契约互相提供类型化进程内 API。开始前先阅读
 [跨 Mod 通信](imc.md)，了解传输、线程、兼容性和生命周期模型。
 
 示例需要已安装的 BML+ SDK、CMake 3.15 或更新版本、C++20 编译器，以及
@@ -69,14 +69,14 @@ C++ 标识符的名称。
 语法是封闭的：未知声明和错误字段会报告输入路径、行号和列号。说明文字或项目元数据
 应放在注释或 `.imc` 文件之外。
 
-| 接口类型 | 生成的 C++ 类型 |
-| --- | --- |
-| `bool`, `int`, `float` | `bool`、32 位 `int`、`float` |
-| `int64`, `uint64`, `double` | `std::int64_t`、`std::uint64_t`、`double` |
-| `string`, `bytes` | `std::string`、`std::vector<std::uint8_t>` |
-| `object`, `vec2`, `vec3`, `mat4` | BML 不透明对象/数学值 |
-| `array<T>` | Bool、数值、字符串、对象和数学类型对应的 `std::vector<T>` |
-| `enum<name>` | 使用固定整数底层类型的 `enum class Name` |
+| 接口类型 | 生成的 C++ 类型 | 生成的 AngelScript 类型 |
+| --- | --- | --- |
+| `bool`, `int`, `float` | `bool`、32 位 `int`、`float` | `bool`、`int`、`float` |
+| `int64`, `uint64`, `double` | `std::int64_t`、`std::uint64_t`、`double` | `int64`、`uint64`、`double` |
+| `string`, `bytes` | `std::string`、`std::vector<std::uint8_t>` | `string`、`array<uint8>` |
+| `object`, `vec2`, `vec3`, `mat4` | BML 不透明对象/数学值 | `CKObject@`、`BML::Vec2`、`BML::Vec3`、`BML::Mat4` |
+| `array<T>` | 支持元素类型对应的 `std::vector<T>` | 对应脚本类型的 `array<T>` |
+| `enum<name>` | 生成的 `enum class Name` | 生成的 AngelScript `enum Name` |
 
 宽数值数组支持 `array<int64>`、`array<uint64>` 和 `array<double>`。二进制 Blob 使用
 `bytes`，没有冗余的 `array<bytes>`。CMake Helper 会自动选择类型化 IMC 生成流程，
@@ -112,7 +112,8 @@ cmake --build build --target bml_update_imc_locks
 ## 2. 从 CMake 生成
 
 安装后的 BML 软件包包含生成器和 `bml_target_imc_api()`。该辅助函数将生成头加入
-目标、将构建目录加入包含路径，并启用 C++20。配置时需要 Python 3.10 或更新版本。
+目标、按需输出 AngelScript 门面、将 C++ 构建目录加入包含路径，并启用 C++20。
+配置时需要 Python 3.10 或更新版本。
 普通目标构建要求接口旁存在已提交的 `.imc.lock`；缺少锁文件时仍可完成 CMake 配置，
 以便显式更新目标创建它。
 
@@ -123,12 +124,15 @@ bml_add_mod(EchoMod EchoMod.cpp)
 
 bml_target_imc_api(EchoMod
     INPUT "${CMAKE_CURRENT_SOURCE_DIR}/api/example.echo.imc"
+    SCRIPT_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/script-api"
 )
 ```
 
 默认输出为 `${CMAKE_CURRENT_BINARY_DIR}/bml-imc/example_echo_imc.hpp`。默认情况下，
 `.imc` 文件名必须与 `api` 相同；不同时传入 `API_ID example.echo`。辅助函数会将期望
-ID 交给生成器，使拼写错误直接报告两个 ID 和输入路径。`OUTPUT_DIR` 可以覆盖输出目录。
+ID 交给生成器，使拼写错误直接报告两个 ID 和输入路径。`OUTPUT_DIR` 可以覆盖 C++
+输出目录；`SCRIPT_OUTPUT_DIR` 会生成
+`${CMAKE_CURRENT_BINARY_DIR}/script-api/example_echo_imc.as`，不需要 ASMod 门面时省略。
 
 该辅助函数会为项目中声明的所有 IMC 接口注册一个项目级更新目标：
 
@@ -146,12 +150,68 @@ cmake --build build --target bml_update_imc_locks
 python imc_codegen.py \
   --input api/example.echo.imc \
   --expected-api-id example.echo \
-  --out-dir generated
+  --out-dir generated \
+  --script-out-dir script-api
 ```
 
 在 CI 中加入 `--check`，检查已提交的生成头和接口锁文件是否过期。非 CMake 工作流可在
 作者控制的更新步骤使用 `--update-lock`。`--expected-api-id` 在 CMake 外可省略，但对
 预测输出文件名的脚本很有用。解析和校验错误始终包含对应输入路径。
+
+## 在 ASMod 中使用同一接口
+
+把生成的 `example_echo_imc.as` 随脚本 Mod 打包，并在 `[bml.mod]` 之前包含。
+生成命名空间与 C++ 一样来自 API ID。常规接口只有类型化 Record 和回调、
+`Is*Available`、异步 `BeginCall*`、Topic Helper、`Handlers` 和 `Provider`；
+不需要手写消息编解码或数字字段 ID。
+
+```angelscript
+#include "example_echo_imc.as"
+
+[bml.mod id="example.echo-script" name="Echo Script" version="1.0.0"
+         author="Example" description="Provides the example.echo service"]
+class EchoScript {
+    Example::Echo::Provider provider;
+    BML::ImcSubscriptionRef@ changed;
+
+    int HandleEcho(const Example::Echo::EchoRequestValue &in request,
+                   Example::Echo::EchoReplyValue &out response) {
+        response.Text = request.Text;
+        return BML::ERROR_OK;
+    }
+
+    void OnChanged(int status,
+                   const Example::Echo::ChangedEventValue &in event) {
+        if (status == BML::ERROR_OK) {
+            // 使用类型化事件。
+        }
+    }
+
+    void OnLoad(const BML::ModContext &in ctx) {
+        Example::Echo::Handlers handlers;
+        @handlers.Echo = Example::Echo::EchoHandler(this.HandleEcho);
+        int status = provider.Start(ctx, handlers);
+
+        Example::Echo::ChangedCallback@ callback =
+            Example::Echo::ChangedCallback(this.OnChanged);
+        @changed = Example::Echo::SubscribeChanged(ctx, callback, 64);
+    }
+
+    void OnUnload(const BML::ModContext &in ctx) {
+        if (changed !is null) changed.Cancel();
+        @changed = null;
+        provider.Close();
+    }
+}
+```
+
+`Is*Available`、`Cancel`、`GetDroppedCount`、发布/计数 Helper 和 Provider 操作都
+返回 BML 状态码，结果值使用 `&out`。RPC 固定异步发起并通过类型化回调完成；脚本
+Provider Handler 和 Topic 回调固定在游戏线程执行。卸载或替换脚本 Module 前，
+BML 会关闭该 Mod 拥有的 IMC 资源。
+
+`BML::Detail` 和 `ModContext` 上下划线开头的方法只属于生成代码，不应由手写脚本调用。
+原生实现与脚本实现可以在传输边界互换，因为两者来自同一份 `.imc` 和 `.imc.lock`。
 
 ## 3. 实现 Provider
 

@@ -6,9 +6,10 @@ IMC 是 BML+ 的类型化进程内通信机制，用于一个 Mod 发布给其�
 - RPC：请求/响应调用；
 - Topic：发布/订阅通知。
 
-当两个独立构建的原生模块需要稳定接口，又不能共享 C++ 对象、STL 容器、
-分配器或 Virtools 指针时，应使用 IMC。双方可以各自独立发布：使用方在运行期
-才查询某条路由是否存在，因此提供方缺失只是一个状态码，而不是装载失败。
+当独立发布的原生或脚本 Mod 需要稳定接口，又不能共享 C++ 对象、STL 容器、
+分配器或 Virtools 指针时，应使用 IMC。任意 native/script 组合都可以提供和消费
+同一份生成式契约。使用方在运行期查询路由，因此提供方缺失只是一个状态码，
+而不是装载失败。
 完整示例参见[创建类型化 IMC API](imc-author-guide.md)。
 
 IMC 不承载任何 Loader 能力。Loader 自己的状态、事件和 UI 都通过
@@ -36,8 +37,8 @@ IMC 将传输机制与业务术语分开：
 1. 在带版本的 `.imc` 文件中定义 Record、RPC 和 Topic。
 2. 使用 `bml_target_imc_api()` 将接口加入 CMake 目标。
 3. 通过 CMake 目标 `bml_update_imc_locks` 生成或更新相邻的 `.imc.lock`，审查差异后提交。
-4. 实现生成的 `Provider` 回调。
-5. 通过生成的 `Client` 调用接口。
+4. 生成 C++ 头、AngelScript 门面，或同时生成两者。
+5. 实现生成的 `Provider` 回调，并通过生成的 Client 接口调用。
 6. 在关闭或释放成功前，保持 Provider、Client、Subscription、Future 和回调数据存活。
 
 生成的绑定是常规使用入口。它们负责编解码和校验载荷、缓存路由 ID、管理不透明
@@ -45,11 +46,12 @@ IMC 将传输机制与业务术语分开：
 
 ## 公开 API 层次
 
-IMC 有三层公开接口：
+IMC 有三层公开接口；生成层按语言提供两种门面：
 
 | 层次 | 用途 |
 | --- | --- |
 | 生成的 `*_imc.hpp` | 类型化载荷、编解码器、Client、Provider、Future 和 Subscription |
+| 生成的 `*_imc.as` | 面向 ASMod Client/Provider 的同一套类型与路由；传输细节留在 `BML::Detail` |
 | `BML/ImcCpp.hpp` | 面向自定义集成的通用 C++ RAII 包装，以及生成的绑定复用的 Client、Subscription 和 RPC 机制 |
 | `BML/Imc.h` | 跨 DLL 使用的固定布局 C ABI |
 
@@ -92,6 +94,10 @@ API ID 使用小写字母和数字组成的点分段形式，例如 `example.ech
 - `BML_IMC_EXECUTION_GAME_THREAD`：排入 BML 游戏线程 Pump，适用于 Virtools 对象、
   BML UI 和其他仅限游戏线程的状态。
 
+生成的 ASMod Provider 固定使用游戏线程，因为 AngelScript、Virtools 对象和脚本持有
+的回调状态都属于游戏线程服务。ASMod 调用固定为异步，并通过类型化回调完成。只有确实
+需要调用线程执行或原生热路径时才使用原生 Provider；脚本调用方仍复用同一 `.imc` 契约。
+
 同步生成调用会在指定超时时间内等待类型化结果。生成的 `Begin*` 方法返回只可移动的
 类型化 Future，可用于轮询、取消或有界等待。
 
@@ -125,6 +131,10 @@ Client 和 Provider 都关联一个 Mod Owner。BML 会在 Mod 卸载时撤销�
 3. 在销毁回调数据前关闭 Subscription；
 4. 注销 Provider 回调；
 5. 关闭 Provider 和 Client。
+
+ASMod 的 Request、Subscription 和 Provider 句柄归脚本 Mod 所有。卸载或成功热重载
+替换时，BML 会在释放 AngelScript Module 前取消并关闭它们。服务需要提前结束时，
+脚本仍应显式调用 `Cancel()` / `Close()`。
 
 在 Client 或 Subscription 自己的活动回调中关闭它时，Runtime 会立即阻止新的分派，
 并在最外层回调返回后完成删除。因此，生成的 Provider 和 Subscription 可以在自己的

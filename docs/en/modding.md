@@ -5,16 +5,16 @@ necessary when changing the loader, SDK, script host, or bundled services.
 
 If you are unsure which route to choose, start with a script mod. It has the
 shortest build-free edit, reload, and diagnosis loop. Move to native code only
-when a concrete requirement needs native hooks, native memory, a generated IMC
-Provider, or a performance-critical loop.
+when a concrete requirement needs native hooks, native memory, caller-thread
+RPC handlers, or a performance-critical loop.
 
 ## Choose a development route
 
 | Route | Use it when | Main trade-off |
 | --- | --- | --- |
-| Script mod | You want quick edit/test cycles, commands, config, UI, gameplay scripting, or CKAngelScript engine access without a C++ build. | Cannot provide a custom IMC Provider and should not own unsafe hooks or performance-critical native loops. |
-| Native mod | You need C++20, direct Virtools integration, native hooks, generated IMC providers, or tight control over hot-path work. | Requires an MSVC-compatible Win32 build and explicit DLL ABI and lifetime discipline. |
-| Native plugin with a CKAngelScript extension | A native service owns the unsafe or performance-sensitive work, but scripts need a small typed control surface. | The native plugin must register and maintain that script API through CKAngelScript. |
+| Script mod | You want quick edit/test cycles, commands, config, UI, gameplay scripting, CKAngelScript engine access, or a generated IMC Client/Provider without C++. | IMC callbacks run on the game thread; scripts should not own unsafe hooks or performance-critical loops. |
+| Native mod | You need C++20, direct Virtools integration, native hooks, caller-thread IMC execution, or tight control over hot-path work. | Requires an MSVC-compatible Win32 build and explicit DLL ABI and lifetime discipline. |
+| Native plugin with a CKAngelScript extension | Scripts must directly use plugin-specific native objects or engine primitives that cannot be represented as IMC records. | The native plugin must register and maintain that script API through CKAngelScript. |
 
 Do not reproduce CKAngelScript's scene, behavior, component, message, or async
 APIs in a new BML wrapper. Use CKAngelScript for CK/Vx work and BML+ for mod
@@ -121,18 +121,19 @@ one spelling.
 | Need | Use |
 | --- | --- |
 | A small named scalar or byte value in the same process | DataShare |
-| Typed request/response calls, asynchronous results, Topics, versioned data, or high throughput between mods | A generated IMC interface implemented by a native mod |
+| Typed request/response calls, asynchronous results, Topics, or versioned data between native and/or script mods | A generated IMC interface; either language may consume or provide it |
 | A built-in BML+ runtime, gameplay, event, UI, or speedrun service | The existing typed BML+ API for the selected language |
 | Communication among CKAngelScript runtime scripts or components | CKAngelScript `Message` or `Async` where their execution model fits |
 
 Do not invent a JSON message format or hand-write field identifiers. Define a
-`.imc` interface, let `bml_target_imc_api` generate its C++ binding, and keep
-the schema lock with the interface. See [Inter-mod communication](imc.md) and
+`.imc` interface, let `bml_target_imc_api` generate its C++ and/or AngelScript
+binding, and keep the schema lock with the interface. See [Inter-mod communication](imc.md) and
 [Create a typed IMC API](imc-author-guide.md).
 
-Script mods can consume BML+'s typed script APIs and DataShare. A custom IMC
-Provider remains native. If scripts must use a native service, expose a small
-typed CKAngelScript extension owned by that native plugin.
+Use a CKAngelScript extension only when a script must directly borrow a
+plugin-specific native object or invoke an engine primitive that cannot be
+expressed as typed IMC data. Routine native/script service boundaries should
+use one generated IMC contract instead of maintaining a second hand-written API.
 
 ## Performance and ownership
 

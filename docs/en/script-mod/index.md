@@ -7,7 +7,9 @@ built-in services. CKAngelScript continues to own scene, behavior graph,
 component, message, async, and raw CK/Vx APIs.
 
 Use a native mod instead when the feature needs unsafe engine hooks,
-performance-critical native loops, or a custom generated IMC Provider.
+performance-critical native loops, caller-thread RPC handlers, or direct native
+memory ownership. Generated IMC Clients and Providers are available to both
+native and script mods.
 
 ## Read by task
 
