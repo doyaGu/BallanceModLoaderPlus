@@ -76,7 +76,9 @@ if (WIN32)
             UiPlayerRunner.cpp
             UiPlayerHarness.cpp
             UiAutomationProtocol.cpp
+            ${BML_SOURCE_DIR}/UI/Automation/UiAutomationSession.cpp
     )
+    target_include_directories(UiPlayerRunner PRIVATE ${BML_SOURCE_DIR})
     target_compile_features(UiPlayerRunner PRIVATE cxx_std_20)
     target_compile_definitions(UiPlayerRunner PRIVATE
             UNICODE

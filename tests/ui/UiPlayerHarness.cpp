@@ -459,26 +459,21 @@ void SendKey(BYTE key) {
 }
 
 struct InputSequence {
-    std::string Marker;
+    std::string CheckpointName;
     std::vector<BYTE> Keys;
     bool Injected = false;
 };
 
 std::vector<InputSequence> MakeInputSequences(InputProfile profile) {
     std::vector<InputSequence> sequences = {
-        {"native_transition=main-to-options requested=true input=keyboard",
-         {VK_DOWN, VK_DOWN, VK_RETURN}},
-        {"native_transition=options-to-imgui requested=true input=keyboard",
-         {VK_DOWN, VK_DOWN, VK_DOWN, VK_RETURN}},
+        {"input-main-to-options", {VK_DOWN, VK_DOWN, VK_RETURN}},
+        {"input-options-to-imgui", {VK_DOWN, VK_DOWN, VK_DOWN, VK_RETURN}},
     };
     if (profile == InputProfile::LevelOne) {
-        sequences.push_back({"native_transition=options-to-main requested=true input=keyboard",
-                             {VK_DOWN, VK_RETURN}});
-        sequences.push_back({"native_transition=main-to-start requested=true input=keyboard",
-                             {VK_UP, VK_UP, VK_RETURN}});
-        sequences.push_back(
-            {"native_transition=start-to-level-1 requested=true input=keyboard", {VK_RETURN}});
-        sequences.push_back({"gameplay_tutorial=dismiss requested=true input=keyboard", {'Q'}});
+        sequences.push_back({"input-options-to-main", {VK_DOWN, VK_RETURN}});
+        sequences.push_back({"input-main-to-start", {VK_UP, VK_UP, VK_RETURN}});
+        sequences.push_back({"input-start-to-level-1", {VK_RETURN}});
+        sequences.push_back({"input-dismiss-tutorial", {'Q'}});
     }
     return sequences;
 }
@@ -564,10 +559,6 @@ class EnvironmentVariable {
     bool m_HadPrevious = false;
 };
 
-bool Contains(const std::string &text, const std::string &marker) {
-    return text.find(marker) != std::string::npos;
-}
-
 } // namespace
 
 PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
@@ -581,6 +572,10 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
     result.ResultPath = artifacts / (request.SelectedScenario.Name + ".result");
     result.TracePath = artifacts / "ModLoader-trace.log";
     result.PlayerTracePath = artifacts / "Player-trace.log";
+    const auto sessionStamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    result.SessionDirectory = artifacts / ("session-" + std::to_string(GetCurrentProcessId()) +
+                                           '-' + std::to_string(sessionStamp));
+    fs::create_directories(result.SessionDirectory);
     fs::remove(result.ResultPath);
 
     if (!FindTargetPlayerProcesses(player).empty())
@@ -596,6 +591,9 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
         EnvironmentVariable scenarioEnvironment(L"BML_UI_AUTOMATION_SCENARIO",
                                                 std::wstring(request.SelectedScenario.Name.begin(),
                                                              request.SelectedScenario.Name.end()));
+        EnvironmentVariable sessionEnvironment(L"BML_UI_AUTOMATION_SESSION",
+                                               result.SessionDirectory.wstring());
+        UiAutomationSession::RunnerEndpoint session(result.SessionDirectory);
 
         std::wstring command = L"\"" + player.wstring() + L"\" --width " +
                                std::to_wstring(request.Width) + L" --height " +
@@ -630,17 +628,17 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
         auto inputs = MakeInputSequences(request.SelectedScenario.Input);
         result.ExpectedInputSequences = static_cast<int>(inputs.size());
         struct CapturePlan {
-            std::string Name;
-            std::string Marker;
+            std::string CheckpointName;
+            std::string ArtifactName;
         };
         const std::vector<CapturePlan> capturePlans = {
-            {"GameMenu", "On Message PostStartMenu"},
-            {"NativeOptions", "native_transition=imgui-to-options observed=true"},
-            {request.SelectedScenario.CaptureName,
-             "UI automation: surface=" + request.SelectedScenario.Surface},
+            {"capture-game-menu", "GameMenu"},
+            {"capture-native-options", "NativeOptions"},
+            {"capture-" + request.SelectedScenario.Surface, request.SelectedScenario.CaptureName},
         };
-        for (const auto &capture : capturePlans) {
-            result.Captures[capture.Name].Path = artifacts / (capture.Name + ".bmp");
+        for (const auto &capturePlan : capturePlans) {
+            result.Captures[capturePlan.ArtifactName].Path =
+                artifacts / (capturePlan.ArtifactName + ".bmp");
         }
 
         const auto deadline =
@@ -648,7 +646,6 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
         auto nextForeground = std::chrono::steady_clock::now();
         while (WaitForSingleObject(processInfo.hProcess, 0) == WAIT_TIMEOUT &&
                std::chrono::steady_clock::now() < deadline) {
-            result.ModLoaderLog = ReadSharedTextFile(modLog);
             if (std::chrono::steady_clock::now() >= nextForeground) {
                 ballanceWindow = FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
                 if (ballanceWindow)
@@ -656,37 +653,83 @@ PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request) {
                                              result.WindowActivated;
                 nextForeground = std::chrono::steady_clock::now() + 1s;
             }
-            for (auto &input : inputs) {
-                if (input.Injected || !Contains(result.ModLoaderLog, input.Marker))
-                    continue;
-                ballanceWindow = FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
-                if (!ballanceWindow)
-                    continue;
-                bool complete = true;
-                for (BYTE key : input.Keys) {
-                    if (!EnsureForegroundClientVisible(ballanceWindow)) {
-                        complete = false;
-                        break;
+            const std::optional<UiAutomationSession::Checkpoint> checkpoint = session.ReceiveNext();
+            if (!session.LastError().empty())
+                throw std::runtime_error("UI automation session: " + session.LastError());
+            if (checkpoint) {
+                bool recognized = false;
+                bool completed = false;
+                bool succeeded = false;
+                std::string failureReason = "unsupported-checkpoint";
+
+                if (checkpoint->Kind == UiAutomationSession::CheckpointKind::Input) {
+                    const auto input = std::find_if(
+                        inputs.begin(), inputs.end(), [&](const InputSequence &candidate) {
+                            return candidate.CheckpointName == checkpoint->Name;
+                        });
+                    if (input != inputs.end()) {
+                        recognized = true;
+                        if (input->Injected) {
+                            completed = true;
+                            failureReason = "duplicate-checkpoint";
+                        } else {
+                            ballanceWindow =
+                                FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
+                            if (ballanceWindow && EnsureForegroundClientVisible(ballanceWindow)) {
+                                succeeded = true;
+                                for (BYTE key : input->Keys) {
+                                    if (!EnsureForegroundClientVisible(ballanceWindow)) {
+                                        succeeded = false;
+                                        break;
+                                    }
+                                    SendKey(key);
+                                }
+                                if (succeeded) {
+                                    input->Injected = true;
+                                    ++result.InjectedInputSequences;
+                                    completed = true;
+                                }
+                            }
+                        }
                     }
-                    SendKey(key);
+                } else {
+                    const auto capturePlan =
+                        std::find_if(capturePlans.begin(), capturePlans.end(),
+                                     [&](const CapturePlan &candidate) {
+                                         return candidate.CheckpointName == checkpoint->Name;
+                                     });
+                    if (capturePlan != capturePlans.end()) {
+                        recognized = true;
+                        auto &capture = result.Captures[capturePlan->ArtifactName];
+                        if (capture.Captured) {
+                            completed = true;
+                            failureReason = "duplicate-checkpoint";
+                        } else {
+                            ballanceWindow =
+                                FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
+                            if (ballanceWindow && EnsureForegroundClientVisible(ballanceWindow)) {
+                                succeeded = SaveClientBitmap(ballanceWindow, capture.Path,
+                                                             capture.Width, capture.Height);
+                                capture.Captured = succeeded;
+                                completed = succeeded;
+                            }
+                        }
+                    }
                 }
-                if (!complete)
-                    continue;
-                input.Injected = true;
-                ++result.InjectedInputSequences;
-            }
-            for (const auto &capturePlan : capturePlans) {
-                auto &capture = result.Captures[capturePlan.Name];
-                if (capture.Captured || !Contains(result.ModLoaderLog, capturePlan.Marker))
-                    continue;
-                ballanceWindow = FindVisibleWindow(processInfo.dwProcessId, L"Ballance");
-                if (!ballanceWindow)
-                    continue;
-                std::this_thread::sleep_for(200ms);
-                if (!EnsureForegroundClientVisible(ballanceWindow))
-                    continue;
-                capture.Captured =
-                    SaveClientBitmap(ballanceWindow, capture.Path, capture.Width, capture.Height);
+
+                if (!recognized)
+                    completed = true;
+                if (completed) {
+                    if (!session.Acknowledge(*checkpoint, succeeded,
+                                             succeeded ? std::string_view{}
+                                                       : std::string_view{failureReason})) {
+                        throw std::runtime_error("UI automation session acknowledgement: " +
+                                                 session.LastError());
+                    }
+                    result.HandledCheckpoints.push_back(*checkpoint);
+                    if (!succeeded)
+                        result.SessionFailures.push_back(checkpoint->Name + ':' + failureReason);
+                }
             }
             std::this_thread::sleep_for(100ms);
         }

@@ -1,11 +1,13 @@
 #ifndef BML_TESTS_UI_PLAYER_HARNESS_H
 #define BML_TESTS_UI_PLAYER_HARNESS_H
 
+#include "UI/Automation/UiAutomationSession.h"
 #include "UiAutomationProtocol.h"
 
 #include <filesystem>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace UiTest {
 
@@ -38,7 +40,10 @@ struct PlayerRunResult {
     std::filesystem::path ResultPath;
     std::filesystem::path TracePath;
     std::filesystem::path PlayerTracePath;
+    std::filesystem::path SessionDirectory;
     std::map<std::string, CaptureResult> Captures;
+    std::vector<UiAutomationSession::Checkpoint> HandledCheckpoints;
+    std::vector<std::string> SessionFailures;
 };
 
 PlayerRunResult RunPlayerScenario(const PlayerRunRequest &request);

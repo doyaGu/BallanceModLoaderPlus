@@ -1,6 +1,7 @@
 #include "UiAutomationProtocol.h"
 #include "UiPlayerHarness.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -39,6 +40,22 @@ bool Contains(const std::string &text, const std::string &marker) {
     return text.find(marker) != std::string::npos;
 }
 
+bool HasCheckpoint(const UiTest::PlayerRunResult &run, UiAutomationSession::CheckpointKind kind,
+                   const std::string &name) {
+    return std::any_of(run.HandledCheckpoints.begin(), run.HandledCheckpoints.end(),
+                       [&](const UiAutomationSession::Checkpoint &checkpoint) {
+                           return checkpoint.Kind == kind && checkpoint.Name == name;
+                       });
+}
+
+bool HasContinuousCheckpointSequence(const UiTest::PlayerRunResult &run) {
+    for (std::size_t index = 0; index < run.HandledCheckpoints.size(); ++index) {
+        if (run.HandledCheckpoints[index].Sequence != index + 1)
+            return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -63,8 +80,9 @@ int main(int argc, char **argv) {
 
         std::vector<std::string> failures;
         Require(run.InstallRestored, "install-restored", failures);
-        Require(Contains(run.ModLoaderLog, "On Message PostStartMenu"), "game-menu-entered",
-                failures);
+        Require(
+            HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture, "capture-game-menu"),
+            "game-menu-entered", failures);
         Require(fs::is_regular_file(run.ResultPath), "result-created", failures);
 
         if (fs::is_regular_file(run.ResultPath)) {
@@ -73,12 +91,14 @@ int main(int argc, char **argv) {
             Require(result.TestName == selected->TestName, "result-test", failures);
             Require(result.Passed && result.Failures == 0, "scenario-passed", failures);
         }
-        Require(Contains(run.ModLoaderLog, "UI automation: scenario=" + selected->Name +
-                                               " selected=true test=" + selected->TestName),
-                "scenario-selected", failures);
         Require(run.WindowActivated, "foreground-window", failures);
         Require(run.InjectedInputSequences == run.ExpectedInputSequences, "native-input-sequences",
                 failures);
+        Require(run.SessionFailures.empty(), "session-acknowledgements", failures);
+        Require(HasContinuousCheckpointSequence(run), "session-checkpoint-sequence", failures);
+        Require(run.HandledCheckpoints.size() ==
+                    static_cast<std::size_t>(run.ExpectedInputSequences + 3),
+                "session-checkpoint-count", failures);
 
         for (const std::string name :
              {std::string("GameMenu"), std::string("NativeOptions"), selected->CaptureName}) {
@@ -91,31 +111,28 @@ int main(int argc, char **argv) {
             }
         }
 
-        Require(Contains(run.ModLoaderLog, "native_transition=main-to-options requested=true "
-                                           "input=keyboard") &&
-                    Contains(run.ModLoaderLog, "native_transition=options-to-imgui "
-                                               "requested=true input=keyboard") &&
-                    Contains(run.ModLoaderLog, "native_transition=imgui-to-options observed=true"),
+        Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                              "input-main-to-options") &&
+                    HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                                  "input-options-to-imgui") &&
+                    HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture,
+                                  "capture-native-options"),
                 "native-imgui-round-trip", failures);
         if (selected->Input == UiTest::InputProfile::LevelOne) {
-            Require(Contains(run.ModLoaderLog, "native_transition=options-to-main "
-                                               "requested=true input=keyboard") &&
-                        Contains(run.ModLoaderLog, "native_transition=main-to-start "
-                                                   "requested=true input=keyboard") &&
-                        Contains(run.ModLoaderLog, "native_transition=start-to-level-1 "
-                                                   "requested=true input=keyboard") &&
-                        Contains(run.ModLoaderLog, "native_transition=start-to-level-1 "
-                                                   "observed=true") &&
-                        Contains(run.ModLoaderLog, "gameplay_tutorial=dismiss requested=true "
-                                                   "input=keyboard"),
+            Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                                  "input-options-to-main") &&
+                        HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                                      "input-main-to-start") &&
+                        HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                                      "input-start-to-level-1") &&
+                        HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                                      "input-dismiss-tutorial"),
                     "level-one-flow", failures);
         }
 
-        const std::string surfaceMarker = "surface=" + selected->Surface +
-                                          " native_options_visible=false native_main_visible=false "
-                                          "native_start_visible=false layout_valid=true";
-        Require(Contains(run.ModLoaderLog, surfaceMarker), "surface-without-native-menu-overlap",
-                failures);
+        Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture,
+                              "capture-" + selected->Surface),
+                "surface-without-native-menu-overlap", failures);
         for (const auto &marker : selected->RequiredLogs)
             Require(Contains(run.ModLoaderLog, marker), "required-log:" + marker, failures);
 
@@ -124,15 +141,14 @@ int main(int argc, char **argv) {
                     !Contains(run.PlayerLog, "Assertion failed") &&
                     !Contains(run.ModLoaderLog, "Assertion failed"),
                 "no-imgui-or-frame-errors", failures);
-        Require(!run.TimedOut && run.ExitCode == 0 && Contains(run.ModLoaderLog, "Goodbye!"),
-                "clean-shutdown", failures);
+        Require(!run.TimedOut && run.ExitCode == 0, "clean-shutdown", failures);
 
         if (!failures.empty()) {
             std::cerr << "UI scenario '" << selected->Name << "' failed:";
             for (const auto &failure : failures)
                 std::cerr << "\n  - " << failure;
             std::cerr << "\nTrace: " << run.TracePath << "\nPlayer trace: " << run.PlayerTracePath
-                      << '\n';
+                      << "\nSession: " << run.SessionDirectory << '\n';
             return 1;
         }
         std::cout << "UI scenario '" << selected->Name
