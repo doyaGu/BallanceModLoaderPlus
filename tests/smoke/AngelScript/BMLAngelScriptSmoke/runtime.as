@@ -3,6 +3,7 @@
 
 class BMLBindingsSmokeMod {
   bool loggedGameplay = false;
+  array<BML::Gameplay::CatalogEntry> catalogCache;
 
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Runtime::State runtime = BML::Runtime::GetState();
@@ -51,6 +52,10 @@ class BMLBindingsSmokeMod {
             (resetpointCount == 0 ||
              BML::Gameplay::ReadResetpoint(0, resetpoint) == BML::ERROR_OK) &&
             BML::Gameplay::ReadResetpoint(resetpointCount, resetpoint) == BML::ERROR_NOT_FOUND;
+        if (valuesOk) {
+          catalogCache.insertLast(first);
+          valuesOk = catalogCache.length() == 1 && catalogCache[0].File == first.File;
+        }
         ctx.LogInfo("BML gameplay snapshot: status=" + status +
                     " count=" + count +
                     " values=" + (valuesOk ? "true" : "false"));
