@@ -55,7 +55,16 @@ add_compile_options(
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:char8_t->
 )
 
+include(CMakeDependentOption)
+
 option(BML_BUILD_TESTS "Build the BML test suite" OFF)
+cmake_dependent_option(
+        BML_BUILD_UI_AUTOMATION
+        "Build the ImGui UI automation suite"
+        ON
+        "BML_BUILD_TESTS"
+        OFF
+)
 option(BML_BUILD_UPDATER "Build the standalone BML updater" ON)
 option(BML_ENABLE_ANGELSCRIPT "Build optional AngelScript script support when CKAngelScript headers are available" OFF)
 set(CKANGELSCRIPT_ROOT "${PROJECT_SOURCE_DIR}/../CKAngelScript" CACHE PATH "Optional CKAngelScript source or install root")
@@ -124,7 +133,7 @@ else ()
 endif ()
 
 add_subdirectory(deps)
-if (BML_BUILD_TESTS)
+if (BML_BUILD_UI_AUTOMATION)
     include("${PROJECT_SOURCE_DIR}/cmake/ImGuiTestEngine.cmake")
 endif ()
 add_subdirectory(src)
