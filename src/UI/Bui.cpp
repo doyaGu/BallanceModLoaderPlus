@@ -5,22 +5,26 @@
 #include <cstring>
 #include <unordered_set>
 
+#ifndef BML_UI_AUTOMATION_TEST
 #include "CKMessageManager.h"
 #include "CKPathManager.h"
 #include "CKTexture.h"
 #include "CKMaterial.h"
 #include "CKGroup.h"
+#endif
 
 #include "imgui_internal.h"
 #include "misc/cpp/imgui_stdlib.h"
 
-#include "BML/InputHook.h"
-
 #include "UI/BuiInternal.h"
+#ifndef BML_UI_AUTOMATION_TEST
+#include "BML/InputHook.h"
 #include "Loader/ModContext.h"
 #include "UI/Overlay.h"
+#endif
 
 namespace Bui {
+#ifndef BML_UI_AUTOMATION_TEST
     static uint64_t g_KeyboardInputBlockToken = 0;
     static unsigned int g_AnonymousKeyboardInputBlockUsers = 0;
     static std::unordered_set<const void *> g_KeyboardInputBlockOwners;
@@ -87,6 +91,7 @@ namespace Bui {
         g_KeyboardInputBlockOwners.clear();
         g_PendingKeyboardInputBlockReleases.clear();
     }
+#endif
 
     enum TextureType {
         TEXTURE_BUTTON_DESELECT,
@@ -152,9 +157,14 @@ namespace Bui {
     CKMessageType g_MenuClickMessageType = -1;
 
     ImGuiContext *GetImGuiContext() {
+#ifdef BML_UI_AUTOMATION_TEST
+        return ImGui::GetCurrentContext();
+#else
         return Overlay::GetImGuiContext();
+#endif
     }
 
+#ifndef BML_UI_AUTOMATION_TEST
     CKTexture *LoadTexture(CKContext *context, const char *id, const char *filename, int slot) {
         if (!context || !filename)
             return nullptr;
@@ -357,6 +367,7 @@ namespace Bui {
         g_MessageManager = nullptr;
         g_MenuClickMessageType = -1;
     }
+#endif
 
     ImGuiKey CKKeyToImGuiKey(CKKEYBOARD key) {
         switch (key) {
@@ -636,8 +647,10 @@ namespace Bui {
     }
 
     void PlayMenuClickSound() {
+#ifndef BML_UI_AUTOMATION_TEST
         if (g_Sounds)
             g_MessageManager->SendMessageSingle(g_MenuClickMessageType, g_Sounds);
+#endif
     }
 
     ImVec2 GetMenuPos() {
@@ -870,6 +883,7 @@ namespace Bui {
         RenderButtonText(window->DrawList, bb, type, text, ImGui::GetStyle().ButtonTextAlign,
                          active, activeTimer);
 
+        IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
         return pressed;
     }
 
@@ -909,6 +923,10 @@ namespace Bui {
         RenderButtonText(window->DrawList, bb, type, text, ImGui::GetStyle().ButtonTextAlign,
                          active, activeTimer);
 
+        IMGUI_TEST_ENGINE_ITEM_INFO(
+            id, label,
+            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Checkable |
+                ((v && *v) ? ImGuiItemStatusFlags_Checked : 0));
         return pressed;
     }
 
@@ -932,6 +950,8 @@ namespace Bui {
 
         AddButtonImage(window->DrawList, bb, type, pressed || hovered || held);
 
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
         return pressed;
     }
 
@@ -1006,6 +1026,12 @@ namespace Bui {
         bool hovered, held;
         bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held);
 
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(
+            id, label,
+            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable |
+                (*toggled ? ImGuiItemStatusFlags_Checked : 0));
+
         bool changed = false;
         if (*toggled) {
             if ((!ImGui::IsItemHovered() && ImGui::GetIO().MouseClicked[0]) || SetKeyChordFromIO(key_chord)) {
@@ -1079,6 +1105,12 @@ namespace Bui {
         if (pressed)
             *v = !*v;
 
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(
+            id, label,
+            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Checkable |
+                (*v ? ImGuiItemStatusFlags_Checked : 0));
+
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
         float indent = GetButtonIndent(BUTTON_OPTION);
@@ -1141,6 +1173,7 @@ namespace Bui {
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
         ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
         const float selectedTimer = held ? g.ActiveIdTimer : (hovered ? g.HoveredIdTimer : 0.0f);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
@@ -1212,6 +1245,11 @@ namespace Bui {
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
 
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(
+            id, label,
+            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable);
+
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
         float indent = GetButtonIndent(BUTTON_OPTION);
@@ -1274,6 +1312,11 @@ namespace Bui {
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
 
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(
+            id, label,
+            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable);
+
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
         float indent = GetButtonIndent(BUTTON_OPTION);
@@ -1323,6 +1366,11 @@ namespace Bui {
 
         bool hovered, held;
         ImGui::ButtonBehavior(bb, id, &hovered, &held, ImGuiButtonFlags_AllowOverlap | ImGuiButtonFlags_FlattenChildren);
+
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(
+            id, label,
+            g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable);
 
         AddButtonImage(window->DrawList, bb, BUTTON_OPTION, hovered);
 
@@ -1402,6 +1450,7 @@ namespace Bui {
         });
     }
 
+#ifndef BML_UI_AUTOMATION_TEST
     void BlockKeyboardInput() {
         if (AcquireKeyboardInputBlock())
             ++g_AnonymousKeyboardInputBlockUsers;
@@ -1454,6 +1503,7 @@ namespace Bui {
         ActivateScript(scriptName);
         UnblockKeyboardAfterRelease(owner);
     }
+#endif
 
     void Title(const char *text, float y, float scale, ImU32 color) {
         if (!text || !*text) return;

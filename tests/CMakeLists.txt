@@ -578,6 +578,11 @@ add_bml_test(ImGuiStateRecoveryTest
 target_include_directories(ImGuiStateRecoveryTest BEFORE PRIVATE ${IMGUI_SOURCE_DIR})
 target_compile_definitions(ImGuiStateRecoveryTest PRIVATE IMGUI_EXPORT)
 
+# Exercise the public Bui widgets through Dear ImGui's input path. This is a
+# separate executable because the test-engine hooks are compile-time ImGui
+# instrumentation and must not become part of the shipping BMLPlus.dll.
+add_subdirectory(ui)
+
 add_bml_test(FpsCounterTest
         SOURCES
         FpsCounterTest.cpp
