@@ -176,8 +176,13 @@ class InstallTransaction {
                       request.SelectedScenario.Fixtures.end(),
                       "custom-map") != request.SelectedScenario.Fixtures.end()) {
             const fs::path map = m_Root / "ModLoader" / "Maps" / "BMLUiAutomation.nmo";
+            const fs::path source = m_Root / "3D Entities" / "Level" / "Level_01.NMO";
+            if (!fs::is_regular_file(source))
+                throw std::runtime_error("Custom-map fixture source does not exist: " +
+                                         source.string());
             Snapshot(map);
-            WriteTextFile(map, "BML UI automation catalog fixture\n");
+            fs::create_directories(map.parent_path());
+            fs::copy_file(source, map, fs::copy_options::overwrite_existing);
         }
     }
 
@@ -470,10 +475,11 @@ std::vector<InputSequence> MakeInputSequences(InputProfile profile) {
         {"input-main-to-options", {VK_DOWN, VK_DOWN, VK_RETURN}},
         {"input-options-to-imgui", {VK_DOWN, VK_DOWN, VK_DOWN, VK_RETURN}},
     };
-    if (profile == InputProfile::LevelOne) {
+    if (profile != InputProfile::ModList) {
         sequences.push_back({"input-options-to-main", {VK_DOWN, VK_RETURN}});
         sequences.push_back({"input-main-to-start", {VK_UP, VK_UP, VK_RETURN}});
-        sequences.push_back({"input-start-to-level-1", {VK_RETURN}});
+        if (profile == InputProfile::LevelOne)
+            sequences.push_back({"input-start-to-level-1", {VK_RETURN}});
         sequences.push_back({"input-dismiss-tutorial", {'Q'}});
     }
     return sequences;

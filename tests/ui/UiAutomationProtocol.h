@@ -10,6 +10,7 @@ namespace UiTest {
 enum class InputProfile {
     ModList,
     LevelOne,
+    CustomMap,
 };
 
 struct Scenario {

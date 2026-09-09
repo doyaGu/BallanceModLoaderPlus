@@ -2,6 +2,6 @@ name=custom-maps
 test=custom_maps_roundtrip
 surface=custom-maps
 capture=CustomMaps
-input=level-one
+input=custom-map
 source=CustomMapsScenario.cpp
 fixture=custom-map

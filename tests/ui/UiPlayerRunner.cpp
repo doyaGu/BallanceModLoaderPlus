@@ -118,16 +118,19 @@ int main(int argc, char **argv) {
                     HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture,
                                   "capture-native-options"),
                 "native-imgui-round-trip", failures);
-        if (selected->Input == UiTest::InputProfile::LevelOne) {
+        if (selected->Input != UiTest::InputProfile::ModList) {
             Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
                                   "input-options-to-main") &&
                         HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
                                       "input-main-to-start") &&
                         HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
-                                      "input-start-to-level-1") &&
-                        HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
                                       "input-dismiss-tutorial"),
-                    "level-one-flow", failures);
+                    "level-entry-flow", failures);
+        }
+        if (selected->Input == UiTest::InputProfile::LevelOne) {
+            Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Input,
+                                  "input-start-to-level-1"),
+                    "native-level-selection", failures);
         }
 
         Require(HasCheckpoint(run, UiAutomationSession::CheckpointKind::Capture,

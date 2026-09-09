@@ -146,6 +146,8 @@ Scenario LoadScenario(const fs::path &definitionPath, const fs::path &sourceRoot
         scenario.Input = InputProfile::ModList;
     else if (input == "level-one")
         scenario.Input = InputProfile::LevelOne;
+    else if (input == "custom-map")
+        scenario.Input = InputProfile::CustomMap;
     else
         throw std::runtime_error(absoluteDefinition.string() + ": unsupported input profile '" +
                                  input + "'");

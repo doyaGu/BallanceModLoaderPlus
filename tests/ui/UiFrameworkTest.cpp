@@ -80,8 +80,9 @@ int main(int argc, char **argv) {
             std::find_if(scenarios.begin(), scenarios.end(),
                          [](const auto &scenario) { return scenario.Name == "custom-maps"; });
         Require(customMaps != scenarios.end() &&
-                    customMaps->Fixtures == std::vector<std::string>{"custom-map"},
-                "Custom maps must declare its test fixture");
+                    customMaps->Fixtures == std::vector<std::string>{"custom-map"} &&
+                    customMaps->Input == UiTest::InputProfile::CustomMap,
+                "Custom maps must declare its fixture and UI-driven level entry");
 
         for (const auto &entry : fs::recursive_directory_iterator(uiTestDirectory)) {
             if (!entry.is_regular_file())
