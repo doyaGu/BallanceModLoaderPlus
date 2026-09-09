@@ -6,11 +6,16 @@ void TraceStateHookPhase(BML::ReloadPhase expected, const string &in label) {
   }
 }
 
-[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for rejecting host mutation during state migration."]
+[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload migration failure."]
 class BMLStateReloadSmokeMod {
   void MigrateState(const string &in version, BML::StateBag@ state) {
     TraceStateHookPhase(BML::RELOAD_MIGRATE_STATE, "migrate-fail migrate");
-    GetCKContext(0).CreateObject(CKCID_OBJECT, "__BML_StateMigrationMutationProbe");
+    BML::ModContext current;
+    if (!BML::BorrowCurrentContext(current)) {
+      throw("migrate-fail could not borrow current context");
+    }
+    current.SkipRenderForNextTick();
+    throw("intentional state reload migrate failure smoke");
   }
 
   void RestoreState(BML::StateBag@ state) {

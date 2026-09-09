@@ -64,9 +64,6 @@ class BMLStateReloadSmokeMod {
 
     BML::Logger@ logger = ctx.BorrowLogger();
     if (logger !is null) {
-      if (GetCKContext(0).GetObjectByName("__BML_StateMigrationMutationProbe") !is null) {
-        logger.Error("BML state reload mutation leaked into the live world");
-      }
       logger.Info("BML state reload smoke v1 heartbeat " + frames);
     }
     if (frames >= 180 && !requestedExit) {

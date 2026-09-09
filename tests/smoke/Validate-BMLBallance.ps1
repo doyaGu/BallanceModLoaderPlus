@@ -624,8 +624,7 @@ if (-not $SkipPlayer) {
                     Add-SmokeCheck $checks 'state-reload-compile-skipped-state-hooks' (-not (Test-SmokeTextContains $modLogText 'BML state hook phase:')) 'compile rejection does not run state hooks'
                     Add-SmokeCheck $checks 'state-reload-compile-skipped-cleanup' (-not (Test-SmokeTextContains $modLogText 'BML failed candidate cleanup phase:')) 'compile rejection has no candidate runtime to clean'
                 } elseif ($HotReloadStateScenario -eq 'MigrateFailure') {
-                    Add-SmokeCheck $checks 'state-reload-mutation-blocked' (Test-SmokeTextContains $modLogText 'CKContext::CreateObject is not available during hot reload migrate-state') 'CKContext::CreateObject is not available during hot reload migrate-state'
-                    Add-SmokeCheck $checks 'state-reload-mutation-not-leaked' (-not (Test-SmokeTextContains $modLogText 'BML state reload mutation leaked into the live world')) 'no state-reload mutation leak'
+                    Add-SmokeCheck $checks 'state-reload-migrate-failed' (Test-SmokeTextContains $modLogText 'intentional state reload migrate failure smoke') 'intentional state reload migrate failure smoke'
                     Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
                     Add-SmokeCheck $checks 'state-reload-failed-candidate-unload-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=reload') 'BML state reload phase: v1 unload=reload'
                     Add-SmokeCheck $checks 'state-reload-rollback-load-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=rollback') 'BML state reload phase: v1 load=rollback'
@@ -650,7 +649,7 @@ if (-not $SkipPlayer) {
         }
         Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
         Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
-        Add-SmokeCheck $checks 'script-async-rejected' (Test-SmokeTextContains $modLogText 'Async work is not available in the current script host phase.') 'Async work is not available in the current script host phase.'
+        Add-SmokeCheck $checks 'script-runtime-error' (Test-SmokeTextContains $modLogText 'intentional script runtime error smoke') 'intentional script runtime error smoke'
         Add-SmokeCheck $checks 'script-imgui-stack-recovery' (Test-SmokeTextContains $modLogText 'Recovered mismatched ImGui stack after script callback') 'Recovered mismatched ImGui stack after script callback'
         Add-SmokeCheck $checks 'script-imgui-stack-recovery-silent' (-not (Test-SmokeTextContains $modLogText '[imgui-error] In window')) 'no raw ImGui recovery errors in ModLoader log'
         if (-not $HotReloadStateSmoke -and -not $NativeImcSmokeMod) {

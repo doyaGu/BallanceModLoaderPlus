@@ -1699,7 +1699,7 @@ void ScriptDevToolsService::DrawReloadTab(const ScriptModSnapshot *selected) {
     }
     ImGui::Text("policy %s", selected->ReloadPolicy.c_str());
     ImGui::Text("source %s", DisplayScriptPath(m_Context, selected->SourcePath).c_str());
-    ImGui::TextWrapped("dry-run compiles and validates without calling candidate OnLoad or replacing runtime. Check State is explicit: it executes the live runtime's SaveState plus candidate migration hooks, so SaveState must not mutate script members or host state.");
+    ImGui::TextWrapped("dry-run compiles and validates without calling candidate OnLoad or replacing runtime. Check State is explicit: it executes the live runtime's SaveState plus candidate migration hooks, and any side effects from those hooks are real and are not rolled back.");
 }
 
 void ScriptDevToolsService::DrawResourcesTab(const ScriptModSnapshot *selected) {

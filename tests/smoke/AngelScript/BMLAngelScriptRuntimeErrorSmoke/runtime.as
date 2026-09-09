@@ -1,4 +1,4 @@
-void BMLDetachedWorkShouldNotRun() {}
+void BMLDetachedWorkShouldRun() {}
 
 [bml.mod id="bml.runtime.error.smoke" name="BML AngelScript Runtime Error Smoke" version="0.0.0" author="BML" bml="0.3.0" description="Negative smoke test for script mod runtime diagnostics."]
 class BMLRuntimeErrorSmokeMod {
@@ -18,6 +18,7 @@ class BMLRuntimeErrorSmokeMod {
     firstProcess = false;
 
     ImGui::Begin("BML runtime error smoke leaked window", ImGuiWindowFlags_AlwaysAutoResize);
-    Async::Spawn(AsyncVoidFunc(BMLDetachedWorkShouldNotRun));
+    Async::Spawn(AsyncVoidFunc(BMLDetachedWorkShouldRun));
+    throw("intentional script runtime error smoke");
   }
 }
