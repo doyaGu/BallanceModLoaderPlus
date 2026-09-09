@@ -9,7 +9,10 @@ void TraceStateHookPhase(BML::ReloadPhase expected, const string &in label) {
 [bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="1.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload state migration."]
 class BMLStateReloadSmokeMod {
   int frames = 0;
+  bool requestedCommand = false;
   bool requestedExit = false;
+  BML::TimerRef@ reloadTimer;
+  BML::CommandRef@ reloadCommand;
 
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
@@ -23,6 +26,7 @@ class BMLStateReloadSmokeMod {
       logger.Info("BML state reload phase: v1 load=" + phase);
       logger.Info("BML state reload smoke v1 ready");
     }
+    InstallServices(ctx);
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
@@ -41,6 +45,10 @@ class BMLStateReloadSmokeMod {
   void OnProcess(const BML::ModContext &in ctx) {
     DrawWindow("v1");
     ++frames;
+    if (!requestedCommand) {
+      requestedCommand = true;
+      ctx.ExecuteCommand("bml_state_reload_probe");
+    }
     if ((frames % 30) != 0) {
       return;
     }
@@ -73,6 +81,34 @@ class BMLStateReloadSmokeMod {
     if (state is null) {
       return;
     }
+  }
+
+  private void InstallServices(const BML::ModContext &in ctx) {
+    BML::TimerLoopCallback@ timerCallback = BML::TimerLoopCallback(this.OnReloadTimer);
+    @reloadTimer = ctx.SetIntervalTicks(1, timerCallback, "state-reload-v1");
+
+    BML::CommandDefinition commandDefinition;
+    commandDefinition.Name = "bml_state_reload_probe";
+    commandDefinition.Description = "Exercise script service ownership during hot reload";
+    commandDefinition.Enabled = true;
+    BML::CommandCallback@ commandCallback = BML::CommandCallback(this.OnReloadCommand);
+    @reloadCommand = ctx.RegisterCommand(commandDefinition, commandCallback);
+
+    const bool timerValid = reloadTimer !is null && reloadTimer.IsValid;
+    const bool commandValid = reloadCommand !is null && reloadCommand.IsValid;
+    ctx.LogInfo("BML state reload services: v1 timer=" + (timerValid ? "valid" : "invalid") +
+                " command=" + (commandValid ? "valid" : "invalid"));
+  }
+
+  private bool OnReloadTimer(const BML::ModContext &in ctx,
+                             const BML::TimerEvent &in event) {
+    ctx.LogInfo("BML state reload timer callback: v1");
+    return true;
+  }
+
+  private void OnReloadCommand(const BML::ModContext &in ctx,
+                               const BML::CommandEvent &in event) {
+    ctx.LogInfo("BML state reload command callback: v1");
   }
 
   private void DrawWindow(const string &in label) {
