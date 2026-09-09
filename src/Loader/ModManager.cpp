@@ -5,6 +5,15 @@
 #include "BML/InputHook.h"
 #include "UI/Overlay.h"
 
+namespace {
+class ImGuiFrameCompletion {
+public:
+    ~ImGuiFrameCompletion() {
+        Overlay::ImGuiEndFrame();
+    }
+};
+} // namespace
+
 ModManager::ModManager(CKContext *context) : CKBaseManager(context, MOD_MANAGER_GUID, (CKSTRING) "Mod Manager") {
     m_ModContext = new ModContext(m_Context);
     context->RegisterNewManager(this);
@@ -90,6 +99,7 @@ CKERROR ModManager::PostProcess() {
     // context, but the physics, mod, and input work below is not drawing and still has to
     // run on a frame that has no context to draw into.
     Overlay::ImGuiContextScope scope;
+    ImGuiFrameCompletion frameCompletion;
 
     PhysicsPostProcess();
 
@@ -98,8 +108,13 @@ CKERROR ModManager::PostProcess() {
     m_ModContext->OnProcess();
 
     auto *inputHook = m_ModContext->GetInputManager();
-    if (!inputHook)
+    if (!inputHook) {
+        // PreProcess may already have opened an ImGui frame. Input can vanish
+        // during reset/unload; never leave that frame open for the next
+        // NewFrame(), which is a hard ImGui lifecycle assertion.
+        Overlay::ImGuiEndFrame();
         return CK_OK;
+    }
 
     if (scope.IsActive()) {
         ImGuiIO &io = ImGui::GetIO();

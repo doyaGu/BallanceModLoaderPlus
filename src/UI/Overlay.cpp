@@ -233,6 +233,16 @@ namespace Overlay {
         if (g_RendererInitialized && !g_NewFrame) {
             g_DrawDataReady = false;
 
+            // ImGui's counters are the source of truth. If a Virtools manager
+            // callback escaped before Render(), finish that old frame before
+            // starting the next one instead of hitting imgui.cpp's hard
+            // "Forgot to call Render() or EndFrame()" assertion.
+            ImGuiContext *context = ImGui::GetCurrentContext();
+            if (context && context->FrameCount != 0 &&
+                context->FrameCountEnded != context->FrameCount) {
+                ImGui::EndFrame();
+            }
+
             ImGui_ImplWin32_NewFrame();
             ImGui_ImplCK2_NewFrame();
             ImGui::NewFrame();
@@ -251,6 +261,10 @@ namespace Overlay {
     void ImGuiRender() {
         if (g_NewFrame) {
             ImGui::Render();
+            // Render() completes the ImGui frame. Publish that state before a
+            // test callback can trigger a re-entrant Virtools reset/shutdown;
+            // otherwise OnCKReset sees a phantom open frame and the next
+            // NewFrame() asserts that the previous frame was never ended.
             g_NewFrame = false;
             g_DrawDataReady = true;
         }
