@@ -311,6 +311,8 @@ $retiredNativeInteropSmokeMod = Join-Path $modsDir 'BMLNativeInteropSmoke.bmodp'
 $modLoaderLog = Join-Path $ballanceRootFull 'ModLoader\ModLoader.log'
 $playerLog = Join-Path $ballanceRootFull 'Bin\Player.log'
 $angelScriptLog = Join-Path $ballanceRootFull 'Bin\AngelScript.log'
+$compileErrorSmokeRuntime = Join-Path $modsDir 'BMLAngelScriptCompileErrorSmoke\runtime.as'
+$compileErrorSmokeRecovery = Join-Path $modsDir 'BMLAngelScriptCompileErrorSmoke\runtime.recovery.txt'
 $stateReloadSmokeRuntime = Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.as'
 $stateReloadSmokeRuntimeV2 = Join-Path $modsDir 'BMLAngelScriptStateReloadSmoke\runtime.v2.txt'
 $stateReloadSmokeRuntimeReplacement = switch ($HotReloadStateScenario) {
@@ -359,6 +361,7 @@ $playerExitCode = $null
 $playerTimedOut = $false
 $playerKilled = $false
 $playerStarted = $false
+$compileErrorRecoverySourcePatched = $false
 $hotReloadStateSourcePatched = $false
 $sourceHash = Get-BMLOptionalHash $BuildDll
 $installedHashBefore = Get-BMLOptionalHash $installedDll
@@ -519,6 +522,8 @@ if (-not $SkipPlayer) {
                 (Test-SmokeTextContains $liveLogText 'BML script mod summary:')) {
                 Copy-Item -LiteralPath $stateReloadSmokeRuntimeReplacement -Destination $stateReloadSmokeRuntime -Force
                 $hotReloadStateSourcePatched = $true
+                Copy-Item -LiteralPath $compileErrorSmokeRecovery -Destination $compileErrorSmokeRuntime -Force
+                $compileErrorRecoverySourcePatched = $true
             }
         }
     }
@@ -553,6 +558,13 @@ if (-not $SkipPlayer) {
             Add-SmokeCheck $checks 'zip-script-package' (Test-SmokeTextContains $modLogText 'BML zip script smoke loaded resource=true') 'BML zip script smoke loaded resource=true'
         }
         if ($HotReloadStateSmoke) {
+            Add-SmokeCheck $checks 'failed-placeholder-recovery-source-patched' $compileErrorRecoverySourcePatched 'BML compile error smoke source patched for recovery'
+            Add-SmokeCheck $checks 'failed-placeholder-initial-compile-failed' (Test-SmokeTextContains $modLogText 'Script mod script:BMLAngelScriptCompileErrorSmoke failed: phase=compile') 'initial failed placeholder compile diagnostic'
+            Add-SmokeCheck $checks 'failed-placeholder-recovery-phase' (Test-SmokeTextContains $modLogText 'BML failed placeholder recovery phase=valid id=bml.compile.error.smoke') 'BML failed placeholder recovery phase=valid id=bml.compile.error.smoke'
+            Add-SmokeCheck $checks 'failed-placeholder-recovery-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.compile.error.smoke hot reload succeeded.') 'Script mod bml.compile.error.smoke hot reload succeeded.'
+            Add-SmokeCheck $checks 'failed-placeholder-recovery-shutdown' (Test-SmokeTextContains $modLogText 'BML failed placeholder recovery shutdown=valid') 'BML failed placeholder recovery shutdown=valid'
+            Add-SmokeCheck $checks 'failed-placeholder-recovery-phase-valid' (-not (Test-SmokeTextContains $modLogText 'BML failed placeholder recovery phase=unexpected') -and
+                -not (Test-SmokeTextContains $modLogText 'BML failed placeholder recovery shutdown=unexpected')) 'no unexpected failed placeholder recovery phase'
             Add-SmokeCheck $checks 'state-reload-source-patched' $hotReloadStateSourcePatched 'BML state reload smoke source patched'
             Add-SmokeCheck $checks 'state-reload-ready' (Test-SmokeTextContains $modLogText 'BML state reload smoke v1 ready') 'BML state reload smoke v1 ready'
             Add-SmokeCheck $checks 'state-reload-initial-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=initial') 'BML state reload phase: v1 load=initial'
@@ -693,6 +705,7 @@ $result = [pscustomobject]@{
     ZipSmoke = [bool]$ZipSmoke
     HotReloadStateSmoke = [bool]$HotReloadStateSmoke
     HotReloadStateScenario = $HotReloadStateScenario
+    CompileErrorRecoverySourcePatched = $compileErrorRecoverySourcePatched
     PlayerStarted = $playerStarted
     PlayerExitCode = $playerExitCode
     PlayerTimedOut = $playerTimedOut
