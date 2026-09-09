@@ -18,9 +18,7 @@ class BMLBindingsSmokeMod {
         : host.CreateObject(CKCID_OBJECT, "__BML_RawHandleValidityProbe");
     bool rawLive = BML::CK::IsValid(raw);
     if (host !is null && raw !is null) {
-      CKDependencies dependencies =
-          CKGetDefaultClassDependencies(CK_DEPENDENCIES_DELETE);
-      host.DestroyObject(raw, 0, dependencies);
+      host.DestroyObject(raw);
     }
     bool rawDeleted = !BML::CK::IsValid(raw);
     ctx.LogInfo("BML raw handle validity smoke: live=" + (rawLive ? "true" : "false") +
