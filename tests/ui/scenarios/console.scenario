@@ -1,0 +1,8 @@
+name=console
+test=console_command_and_message_board
+surface=console
+capture=Console
+input=level-one
+source=ConsoleScenario.cpp
+required_log=Execute Command: echo -n ui-automation-console
+required_log=[BML/INFO]: ui-automation-console

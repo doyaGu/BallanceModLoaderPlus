@@ -1,0 +1,6 @@
+name=mod-menu
+test=mod_menu_all_pages
+surface=mod-menu
+capture=ModMenu
+input=mod-list
+source=ModMenuScenario.cpp

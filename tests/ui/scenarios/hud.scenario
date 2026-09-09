@@ -1,0 +1,6 @@
+name=hud
+test=hud_overlay
+surface=hud
+capture=HUD
+input=level-one
+source=HudScenario.cpp

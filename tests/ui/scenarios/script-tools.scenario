@@ -1,0 +1,7 @@
+name=script-tools
+test=script_developer_tools
+surface=script-tools
+capture=ScriptTools
+input=level-one
+source=ScriptToolsScenario.cpp
+requires=angelscript
