@@ -19,13 +19,23 @@
 #include "imgui_test_engine/imgui_te_context.h"
 #include "imgui_test_engine/imgui_te_engine.h"
 #include "imgui_test_engine/imgui_te_internal.h"
-#if BML_ENABLE_ANGELSCRIPT
-#include "AngelScript/ScriptDevToolsService.h"
-#endif
 
 namespace {
 
-using UiAutomation::Test::GameAction;
+using UiAutomation::Test::NativeMenuTransition;
+using UiAutomation::Test::SurfaceCapture;
+
+enum class PlayerAction : int {
+    None,
+    OptionsToMain,
+    MainToStart,
+    StartToLevelOne,
+    CaptureModMenu,
+    CaptureHud,
+    CaptureCustomMaps,
+    CaptureConsole,
+    CaptureScriptTools,
+};
 
 ImGuiTestEngine *g_Engine = nullptr;
 BMLMod *g_Mod = nullptr;
@@ -50,15 +60,15 @@ std::atomic_bool g_ImGuiEntryObserved = false;
 std::atomic_bool g_ImGuiCloseRequested = false;
 std::atomic_bool g_NativeReturnObserved = false;
 std::atomic_bool g_NativeReturnSucceeded = false;
-std::atomic_bool g_LevelOneStarted = false;
-std::atomic_bool g_LevelOneObserved = false;
-std::atomic_bool g_LevelOneSucceeded = false;
+std::atomic_bool g_LevelStarted = false;
+std::atomic_bool g_LevelObserved = false;
+std::atomic_bool g_LevelSucceeded = false;
 int g_InitialHudMode = 0;
 
-std::atomic_int g_GameAction = static_cast<int>(GameAction::None);
-std::atomic_uint g_GameActionCompleted = 0;
-std::atomic_bool g_GameActionSucceeded = false;
-GameAction g_ActiveGameAction = GameAction::None;
+std::atomic_int g_PlayerAction = static_cast<int>(PlayerAction::None);
+std::atomic_uint g_PlayerActionCompleted = 0;
+std::atomic_bool g_PlayerActionSucceeded = false;
+PlayerAction g_ActivePlayerAction = PlayerAction::None;
 
 enum class NativeEntryPhase {
     SettleMainMenu,
@@ -131,91 +141,91 @@ bool IsEntityVisible(const char *name) {
     return entity && entity->IsVisible();
 }
 
-bool HasExpectedNativeVisibility(GameAction action) {
+bool HasExpectedNativeVisibility(PlayerAction action) {
     const bool mainVisible = IsEntityVisible("M_Main_But_1");
     const bool optionsVisible = IsEntityVisible("M_Options_But_4");
     const bool startVisible = IsEntityVisible("M_Start_But_01");
 
     switch (action) {
-    case GameAction::MarkModMenuSurface:
-    case GameAction::MarkCustomMapsSurface:
+    case PlayerAction::CaptureModMenu:
+    case PlayerAction::CaptureCustomMaps:
         return !mainVisible && !optionsVisible && !startVisible;
-    case GameAction::MarkHudSurface:
-    case GameAction::MarkConsoleSurface:
-    case GameAction::MarkScriptToolsSurface:
-        return g_LevelOneObserved.load(std::memory_order_acquire) && !mainVisible &&
-               !optionsVisible && !startVisible;
+    case PlayerAction::CaptureHud:
+    case PlayerAction::CaptureConsole:
+    case PlayerAction::CaptureScriptTools:
+        return g_LevelObserved.load(std::memory_order_acquire) && !mainVisible && !optionsVisible &&
+               !startVisible;
     default:
         return true;
     }
 }
 
-void CompleteGameAction(GameAction action, bool succeeded) {
-    g_ActiveGameAction = GameAction::None;
-    g_GameActionSucceeded.store(succeeded, std::memory_order_release);
-    g_GameActionCompleted.fetch_add(1, std::memory_order_acq_rel);
+void CompletePlayerAction(PlayerAction action, bool succeeded) {
+    g_ActivePlayerAction = PlayerAction::None;
+    g_PlayerActionSucceeded.store(succeeded, std::memory_order_release);
+    g_PlayerActionCompleted.fetch_add(1, std::memory_order_acq_rel);
     if (g_Logger) {
-        g_Logger->Info("UI automation: game_action=%d succeeded=%s", static_cast<int>(action),
+        g_Logger->Info("UI automation: player_action=%d succeeded=%s", static_cast<int>(action),
                        succeeded ? "true" : "false");
     }
 }
 
-const char *GameActionCheckpoint(GameAction action) {
+const char *PlayerActionCheckpoint(PlayerAction action) {
     switch (action) {
-    case GameAction::OptionsMenuToMain:
+    case PlayerAction::OptionsToMain:
         return "input-options-to-main";
-    case GameAction::MainMenuToStart:
+    case PlayerAction::MainToStart:
         return "input-main-to-start";
-    case GameAction::StartMenuToLevelOne:
+    case PlayerAction::StartToLevelOne:
         return "input-start-to-level-1";
-    case GameAction::MarkModMenuSurface:
+    case PlayerAction::CaptureModMenu:
         return "capture-mod-menu";
-    case GameAction::MarkHudSurface:
+    case PlayerAction::CaptureHud:
         return "capture-hud";
-    case GameAction::MarkCustomMapsSurface:
+    case PlayerAction::CaptureCustomMaps:
         return "capture-custom-maps";
-    case GameAction::MarkConsoleSurface:
+    case PlayerAction::CaptureConsole:
         return "capture-console";
-    case GameAction::MarkScriptToolsSurface:
+    case PlayerAction::CaptureScriptTools:
         return "capture-script-tools";
     default:
         return nullptr;
     }
 }
 
-bool IsCaptureAction(GameAction action) {
-    return action == GameAction::MarkModMenuSurface || action == GameAction::MarkHudSurface ||
-           action == GameAction::MarkCustomMapsSurface ||
-           action == GameAction::MarkConsoleSurface || action == GameAction::MarkScriptToolsSurface;
+bool IsCaptureAction(PlayerAction action) {
+    return action == PlayerAction::CaptureModMenu || action == PlayerAction::CaptureHud ||
+           action == PlayerAction::CaptureCustomMaps || action == PlayerAction::CaptureConsole ||
+           action == PlayerAction::CaptureScriptTools;
 }
 
-const char *SurfaceName(GameAction action) {
+const char *SurfaceName(PlayerAction action) {
     switch (action) {
-    case GameAction::MarkModMenuSurface:
+    case PlayerAction::CaptureModMenu:
         return "mod-menu";
-    case GameAction::MarkHudSurface:
+    case PlayerAction::CaptureHud:
         return "hud";
-    case GameAction::MarkCustomMapsSurface:
+    case PlayerAction::CaptureCustomMaps:
         return "custom-maps";
-    case GameAction::MarkConsoleSurface:
+    case PlayerAction::CaptureConsole:
         return "console";
-    case GameAction::MarkScriptToolsSurface:
+    case PlayerAction::CaptureScriptTools:
         return "script-tools";
     default:
         return nullptr;
     }
 }
 
-void ProcessGameAction() {
-    if (g_ActiveGameAction == GameAction::None) {
-        const GameAction action = static_cast<GameAction>(
-            g_GameAction.exchange(static_cast<int>(GameAction::None), std::memory_order_acq_rel));
-        if (action == GameAction::None)
+void ProcessPlayerAction() {
+    if (g_ActivePlayerAction == PlayerAction::None) {
+        const PlayerAction action = static_cast<PlayerAction>(g_PlayerAction.exchange(
+            static_cast<int>(PlayerAction::None), std::memory_order_acq_rel));
+        if (action == PlayerAction::None)
             return;
 
         bool succeeded = false;
         switch (action) {
-        case GameAction::OptionsMenuToMain:
+        case PlayerAction::OptionsToMain:
             if (IsEntityVisible("M_Options_But_Back")) {
                 if (g_Logger) {
                     g_Logger->Info("UI automation: native_transition=options-to-main "
@@ -224,7 +234,7 @@ void ProcessGameAction() {
                 succeeded = true;
             }
             break;
-        case GameAction::MainMenuToStart:
+        case PlayerAction::MainToStart:
             if (IsEntityVisible("M_Main_But_1") && !IsEntityVisible("M_Options_But_4") &&
                 !IsEntityVisible("M_Start_But_01")) {
                 if (g_Logger) {
@@ -234,7 +244,7 @@ void ProcessGameAction() {
                 succeeded = true;
             }
             break;
-        case GameAction::StartMenuToLevelOne:
+        case PlayerAction::StartToLevelOne:
             if (IsEntityVisible("M_Start_But_01")) {
                 if (g_Logger) {
                     g_Logger->Info("UI automation: native_transition=start-to-level-1 "
@@ -243,46 +253,22 @@ void ProcessGameAction() {
                 succeeded = true;
             }
             break;
-        case GameAction::ShowAllHud:
-            if (g_Mod) {
-                g_Mod->ShowTitle(true);
-                g_Mod->ShowFPS(true);
-                g_Mod->ShowSRTimer(true);
-                succeeded = true;
-            }
-            break;
-        case GameAction::RestoreHud:
-            if (g_Mod) {
-                g_Mod->ShowTitle((g_InitialHudMode & HUD_TITLE) != 0);
-                g_Mod->ShowFPS((g_InitialHudMode & HUD_FPS) != 0);
-                g_Mod->ShowSRTimer(false);
-                succeeded = true;
-            }
-            break;
-        case GameAction::ShowScriptDeveloperTools:
-#if BML_ENABLE_ANGELSCRIPT
-            if (g_Runtime && g_Runtime->GetScriptDevTools()) {
-                g_Runtime->GetScriptDevTools()->Show();
-                succeeded = true;
-            }
-#endif
-            break;
-        case GameAction::MarkModMenuSurface:
+        case PlayerAction::CaptureModMenu:
             succeeded = HasExpectedNativeVisibility(action);
             break;
-        case GameAction::MarkHudSurface:
+        case PlayerAction::CaptureHud:
             succeeded = HasExpectedNativeVisibility(action);
             break;
-        case GameAction::MarkCustomMapsSurface:
+        case PlayerAction::CaptureCustomMaps:
             succeeded = HasExpectedNativeVisibility(action);
             break;
-        case GameAction::MarkConsoleSurface:
+        case PlayerAction::CaptureConsole:
             succeeded = HasExpectedNativeVisibility(action);
             break;
-        case GameAction::MarkScriptToolsSurface:
+        case PlayerAction::CaptureScriptTools:
             succeeded = HasExpectedNativeVisibility(action);
             break;
-        case GameAction::None:
+        case PlayerAction::None:
             break;
         }
 
@@ -296,21 +282,21 @@ void ProcessGameAction() {
                            IsEntityVisible("M_Start_But_01") ? "true" : "false",
                            succeeded ? "true" : "false");
         }
-        const char *checkpoint = GameActionCheckpoint(action);
+        const char *checkpoint = PlayerActionCheckpoint(action);
         if (!checkpoint || !succeeded) {
-            CompleteGameAction(action, succeeded);
+            CompletePlayerAction(action, succeeded);
             return;
         }
-        g_ActiveGameAction = action;
+        g_ActivePlayerAction = action;
     }
 
-    const char *checkpoint = GameActionCheckpoint(g_ActiveGameAction);
+    const char *checkpoint = PlayerActionCheckpoint(g_ActivePlayerAction);
     const UiAutomationSession::CheckpointKind kind =
-        IsCaptureAction(g_ActiveGameAction) ? UiAutomationSession::CheckpointKind::Capture
-                                            : UiAutomationSession::CheckpointKind::Input;
+        IsCaptureAction(g_ActivePlayerAction) ? UiAutomationSession::CheckpointKind::Capture
+                                              : UiAutomationSession::CheckpointKind::Input;
     const CheckpointProgress progress = AdvanceCheckpoint(kind, checkpoint);
     if (progress != CheckpointProgress::Waiting)
-        CompleteGameAction(g_ActiveGameAction, progress == CheckpointProgress::Succeeded);
+        CompletePlayerAction(g_ActivePlayerAction, progress == CheckpointProgress::Succeeded);
 }
 
 bool AdvanceNativeEntry() {
@@ -397,9 +383,9 @@ void ObserveNativeReturn() {
 }
 
 void AdvanceLevelEntry() {
-    if (!g_LevelOneStarted.load(std::memory_order_acquire) ||
-        g_LevelOneObserved.load(std::memory_order_relaxed) || !g_Session ||
-        g_ActiveGameAction != GameAction::None ||
+    if (!g_LevelStarted.load(std::memory_order_acquire) ||
+        g_LevelObserved.load(std::memory_order_relaxed) || !g_Session ||
+        g_ActivePlayerAction != PlayerAction::None ||
         (g_Session->HasPendingCheckpoint() && g_ActiveCheckpointName != "input-dismiss-tutorial")) {
         return;
     }
@@ -411,8 +397,8 @@ void AdvanceLevelEntry() {
         AdvanceCheckpoint(UiAutomationSession::CheckpointKind::Input, "input-dismiss-tutorial");
     if (progress == CheckpointProgress::Waiting)
         return;
-    g_LevelOneSucceeded.store(progress == CheckpointProgress::Succeeded, std::memory_order_release);
-    g_LevelOneObserved.store(true, std::memory_order_release);
+    g_LevelSucceeded.store(progress == CheckpointProgress::Succeeded, std::memory_order_release);
+    g_LevelObserved.store(true, std::memory_order_release);
 }
 
 } // namespace
@@ -424,6 +410,22 @@ namespace {
 std::vector<ScenarioDefinition> &ScenarioRegistry() {
     static std::vector<ScenarioDefinition> scenarios;
     return scenarios;
+}
+
+ImGuiID FindVisibleMenuItem(ImGuiTestContext *ctx, const char *label) {
+    if (!WaitForItem(ctx, "**/Back"))
+        return 0;
+    const ImGuiTestItemInfo back = ctx->ItemInfo("**/Back");
+    if (!back.Window)
+        return 0;
+
+    ImGuiTestItemList items;
+    ctx->GatherItems(&items, back.Window->ID, -1);
+    for (const ImGuiTestItemInfo &item : items) {
+        if (std::strcmp(item.DebugLabel, label) == 0)
+            return item.ID;
+    }
+    return 0;
 }
 
 } // namespace
@@ -459,18 +461,55 @@ bool WaitForItemToDisappear(ImGuiTestContext *ctx, const char *path, int maximum
     return false;
 }
 
-bool RunGameAction(ImGuiTestContext *ctx, GameAction action, std::chrono::milliseconds timeout) {
-    if (g_GameAction.load(std::memory_order_acquire) != static_cast<int>(GameAction::None)) {
+void WaitForDuration(ImGuiTestContext *ctx, std::chrono::milliseconds duration) {
+    const auto deadline = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < deadline)
+        ctx->Yield();
+}
+
+static bool RunPlayerAction(ImGuiTestContext *ctx, PlayerAction action,
+                            std::chrono::milliseconds timeout) {
+    if (g_PlayerAction.load(std::memory_order_acquire) != static_cast<int>(PlayerAction::None)) {
         return false;
     }
 
-    const unsigned int completed = g_GameActionCompleted.load(std::memory_order_acquire);
-    g_GameAction.store(static_cast<int>(action), std::memory_order_release);
+    const unsigned int completed = g_PlayerActionCompleted.load(std::memory_order_acquire);
+    g_PlayerAction.store(static_cast<int>(action), std::memory_order_release);
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
-        if (g_GameActionCompleted.load(std::memory_order_acquire) != completed)
-            return g_GameActionSucceeded.load(std::memory_order_acquire);
+        if (g_PlayerActionCompleted.load(std::memory_order_acquire) != completed)
+            return g_PlayerActionSucceeded.load(std::memory_order_acquire);
         ctx->Yield();
+    }
+    return false;
+}
+
+bool RunNativeMenuTransition(ImGuiTestContext *ctx, NativeMenuTransition transition,
+                             std::chrono::milliseconds timeout) {
+    switch (transition) {
+    case NativeMenuTransition::OptionsToMain:
+        return RunPlayerAction(ctx, PlayerAction::OptionsToMain, timeout);
+    case NativeMenuTransition::MainToStart:
+        return RunPlayerAction(ctx, PlayerAction::MainToStart, timeout);
+    case NativeMenuTransition::StartToLevelOne:
+        return RunPlayerAction(ctx, PlayerAction::StartToLevelOne, timeout);
+    }
+    return false;
+}
+
+bool CaptureSurface(ImGuiTestContext *ctx, SurfaceCapture surface,
+                    std::chrono::milliseconds timeout) {
+    switch (surface) {
+    case SurfaceCapture::ModMenu:
+        return RunPlayerAction(ctx, PlayerAction::CaptureModMenu, timeout);
+    case SurfaceCapture::Hud:
+        return RunPlayerAction(ctx, PlayerAction::CaptureHud, timeout);
+    case SurfaceCapture::CustomMaps:
+        return RunPlayerAction(ctx, PlayerAction::CaptureCustomMaps, timeout);
+    case SurfaceCapture::Console:
+        return RunPlayerAction(ctx, PlayerAction::CaptureConsole, timeout);
+    case SurfaceCapture::ScriptTools:
+        return RunPlayerAction(ctx, PlayerAction::CaptureScriptTools, timeout);
     }
     return false;
 }
@@ -480,6 +519,55 @@ bool ObserveModList(ImGuiTestContext *ctx) {
         return false;
     g_ImGuiEntryObserved.store(true, std::memory_order_release);
     return true;
+}
+
+bool OpenConfigCategory(ImGuiTestContext *ctx, const char *category, const char *firstProperty) {
+    for (int page = 0; page < 16 && ctx->ItemExists("**/PrevPage"); ++page)
+        ctx->ItemClick("**/PrevPage");
+    for (int page = 0; page < 16; ++page) {
+        const ImGuiID categoryId = FindVisibleMenuItem(ctx, category);
+        if (categoryId != 0) {
+            ctx->ItemClick(categoryId);
+            return WaitForItem(ctx, firstProperty);
+        }
+        if (!ctx->ItemExists("**/NextPage"))
+            return false;
+        ctx->ItemClick("**/NextPage");
+    }
+    return false;
+}
+
+bool OpenModConfigCategory(ImGuiTestContext *ctx, const char *modName, const char *category,
+                           const char *firstProperty) {
+    if (!ObserveModList(ctx))
+        return false;
+    const std::string modPath = std::string("**/") + modName;
+    if (!WaitForItem(ctx, modPath.c_str()))
+        return false;
+    ctx->ItemClick(modPath.c_str());
+    ctx->Yield();
+    return OpenConfigCategory(ctx, category, firstProperty);
+}
+
+bool ToggleConfigBoolean(ImGuiTestContext *ctx, const char *path) {
+    if (!WaitForItem(ctx, path))
+        return false;
+    const bool previous = ctx->ItemIsChecked(path);
+    const ImGuiTestItemInfo item = ctx->ItemInfo(path);
+    ctx->MouseMoveToPos(ImVec2(item.RectFull.Max.x - 4.0f, item.RectFull.GetCenter().y));
+    ctx->MouseClick();
+    ctx->Yield();
+    return ctx->ItemIsChecked(path) != previous;
+}
+
+bool SubmitConsoleCommand(ImGuiTestContext *ctx, const char *command) {
+    ctx->KeyPress(ImGuiKey_Slash);
+    if (!WaitForItem(ctx, "**/##CmdBar"))
+        return false;
+    ctx->ItemClick("**/##CmdBar");
+    ctx->KeyChars(command);
+    ctx->KeyPress(ImGuiKey_Enter);
+    return WaitForItemToDisappear(ctx, "**/##CmdBar");
 }
 
 bool LeaveModListForOptions(ImGuiTestContext *ctx) {
@@ -498,29 +586,32 @@ bool LeaveModListForOptions(ImGuiTestContext *ctx) {
 }
 
 bool EnterStartMenuFromModList(ImGuiTestContext *ctx) {
-    if (!LeaveModListForOptions(ctx) || !RunGameAction(ctx, GameAction::OptionsMenuToMain)) {
+    if (!LeaveModListForOptions(ctx) ||
+        !RunNativeMenuTransition(ctx, NativeMenuTransition::OptionsToMain)) {
         return false;
     }
-    ctx->Yield(360);
-    if (!RunGameAction(ctx, GameAction::MainMenuToStart))
+    WaitForDuration(ctx, std::chrono::milliseconds(1200));
+    if (!RunNativeMenuTransition(ctx, NativeMenuTransition::MainToStart))
         return false;
     return WaitForItem(ctx, "**/Enter_Custom_Maps");
 }
 
-bool EnterLevelOneFromStartMenu(ImGuiTestContext *ctx) {
-    if (!RunGameAction(ctx, GameAction::StartMenuToLevelOne))
-        return false;
+bool WaitForLevelStart(ImGuiTestContext *ctx) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (std::chrono::steady_clock::now() < deadline &&
-           !g_LevelOneObserved.load(std::memory_order_acquire)) {
+           !g_LevelObserved.load(std::memory_order_acquire)) {
         ctx->Yield();
     }
-    if (!g_LevelOneObserved.load(std::memory_order_acquire) ||
-        !g_LevelOneSucceeded.load(std::memory_order_acquire))
+    if (!g_LevelObserved.load(std::memory_order_acquire) ||
+        !g_LevelSucceeded.load(std::memory_order_acquire))
         return false;
-    ctx->Yield(720);
-    ctx->SleepStandard();
+    WaitForDuration(ctx, std::chrono::milliseconds(1600));
     return true;
+}
+
+bool EnterLevelOneFromStartMenu(ImGuiTestContext *ctx) {
+    return RunNativeMenuTransition(ctx, NativeMenuTransition::StartToLevelOne) &&
+           WaitForLevelStart(ctx);
 }
 
 bool EnterLevelOneFromModList(ImGuiTestContext *ctx) {
@@ -670,13 +761,13 @@ void Start(BMLMod &mod) {
     g_ImGuiCloseRequested.store(false, std::memory_order_relaxed);
     g_NativeReturnObserved.store(false, std::memory_order_relaxed);
     g_NativeReturnSucceeded.store(false, std::memory_order_relaxed);
-    g_LevelOneStarted.store(false, std::memory_order_relaxed);
-    g_LevelOneObserved.store(false, std::memory_order_relaxed);
-    g_LevelOneSucceeded.store(false, std::memory_order_relaxed);
-    g_GameAction.store(static_cast<int>(GameAction::None), std::memory_order_relaxed);
-    g_GameActionCompleted.store(0, std::memory_order_relaxed);
-    g_GameActionSucceeded.store(false, std::memory_order_relaxed);
-    g_ActiveGameAction = GameAction::None;
+    g_LevelStarted.store(false, std::memory_order_relaxed);
+    g_LevelObserved.store(false, std::memory_order_relaxed);
+    g_LevelSucceeded.store(false, std::memory_order_relaxed);
+    g_PlayerAction.store(static_cast<int>(PlayerAction::None), std::memory_order_relaxed);
+    g_PlayerActionCompleted.store(0, std::memory_order_relaxed);
+    g_PlayerActionSucceeded.store(false, std::memory_order_relaxed);
+    g_ActivePlayerAction = PlayerAction::None;
     if (g_Logger)
         g_Logger->Info("UI automation: gate=game-menu state=armed");
 }
@@ -684,9 +775,9 @@ void Start(BMLMod &mod) {
 void OnStartLevel() {
     if (!g_Engine && !g_Armed)
         return;
-    g_LevelOneStarted.store(true, std::memory_order_release);
+    g_LevelStarted.store(true, std::memory_order_release);
     if (g_Logger)
-        g_Logger->Info("UI automation: native_transition=start-to-level-1 observed=true");
+        g_Logger->Info("UI automation: native_transition=level-entry observed=true");
 }
 
 void AdvanceFrame() {
@@ -714,7 +805,7 @@ void AdvanceFrame() {
     if (!g_Engine || g_QueueFinished)
         return;
 
-    ProcessGameAction();
+    ProcessPlayerAction();
     ObserveNativeReturn();
     AdvanceLevelEntry();
 
@@ -750,6 +841,9 @@ void AdvanceFrame() {
 }
 
 void Shutdown() {
+    if (g_Mod)
+        g_Mod->SetHUD(g_InitialHudMode);
+
     if (g_Engine) {
         if (!g_QueueFinished)
             ImGuiTestEngine_Stop(g_Engine);
@@ -776,13 +870,13 @@ void Shutdown() {
     g_ImGuiCloseRequested.store(false, std::memory_order_relaxed);
     g_NativeReturnObserved.store(false, std::memory_order_relaxed);
     g_NativeReturnSucceeded.store(false, std::memory_order_relaxed);
-    g_LevelOneStarted.store(false, std::memory_order_relaxed);
-    g_LevelOneObserved.store(false, std::memory_order_relaxed);
-    g_LevelOneSucceeded.store(false, std::memory_order_relaxed);
-    g_GameAction.store(static_cast<int>(GameAction::None), std::memory_order_relaxed);
-    g_GameActionCompleted.store(0, std::memory_order_relaxed);
-    g_GameActionSucceeded.store(false, std::memory_order_relaxed);
-    g_ActiveGameAction = GameAction::None;
+    g_LevelStarted.store(false, std::memory_order_relaxed);
+    g_LevelObserved.store(false, std::memory_order_relaxed);
+    g_LevelSucceeded.store(false, std::memory_order_relaxed);
+    g_PlayerAction.store(static_cast<int>(PlayerAction::None), std::memory_order_relaxed);
+    g_PlayerActionCompleted.store(0, std::memory_order_relaxed);
+    g_PlayerActionSucceeded.store(false, std::memory_order_relaxed);
+    g_ActivePlayerAction = PlayerAction::None;
 }
 
 } // namespace UiAutomation

@@ -13,16 +13,9 @@ void RegisterConsoleScenario(ImGuiTestEngine *engine) {
         IM_REGISTER_TEST(engine, ScenarioCategory, "console_command_and_message_board");
     test->TestFunc = [](ImGuiTestContext *ctx) {
         IM_CHECK(EnterLevelOneFromModList(ctx));
-        ctx->KeyPress(ImGuiKey_Slash);
-        IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));
-        IM_CHECK(RunGameAction(ctx, GameAction::MarkConsoleSurface));
-        ctx->SleepStandard();
-        ctx->ItemClick("**/##CmdBar");
-        ctx->KeyChars("echo -n ui-automation-console");
-        ctx->KeyPress(ImGuiKey_Enter);
-
-        IM_CHECK(WaitForItemToDisappear(ctx, "**/##CmdBar"));
+        IM_CHECK(SubmitConsoleCommand(ctx, "echo -n ui-automation-console"));
         IM_CHECK(WaitForItem(ctx, "**/ui-automation-console"));
+        IM_CHECK(CaptureSurface(ctx, SurfaceCapture::Console));
 
         ctx->KeyPress(ImGuiKey_Slash);
         IM_CHECK(WaitForItem(ctx, "**/##CmdBar"));

@@ -16,8 +16,6 @@ void RegisterCustomMapsScenario(ImGuiTestEngine *engine) {
         ctx->ItemClick("**/Enter_Custom_Maps");
         IM_CHECK(WaitForItem(ctx, "**/##SearchBar"));
         IM_CHECK(WaitForItem(ctx, "**/BMLUiAutomation"));
-        IM_CHECK(RunGameAction(ctx, GameAction::MarkCustomMapsSurface));
-        ctx->SleepStandard();
 
         ctx->ItemInputValue("**/##SearchBar", "BMLUi");
         IM_CHECK(WaitForItem(ctx, "**/BMLUiAutomation"));
@@ -25,10 +23,10 @@ void RegisterCustomMapsScenario(ImGuiTestEngine *engine) {
         IM_CHECK(WaitForItemToDisappear(ctx, "**/BMLUiAutomation"));
         ctx->ItemInputValue("**/##SearchBar", "");
         IM_CHECK(WaitForItem(ctx, "**/BMLUiAutomation"));
-        ctx->ItemClick("**/Back");
-
-        IM_CHECK(WaitForItem(ctx, "**/Enter_Custom_Maps"));
-        IM_CHECK(EnterLevelOneFromStartMenu(ctx));
+        IM_CHECK(CaptureSurface(ctx, SurfaceCapture::CustomMaps));
+        ctx->ItemClick("**/BMLUiAutomation");
+        IM_CHECK(WaitForItemToDisappear(ctx, "**/##SearchBar"));
+        IM_CHECK(WaitForLevelStart(ctx));
     };
 }
 

@@ -12,15 +12,12 @@ void RegisterScriptToolsScenario(ImGuiTestEngine *engine) {
     ImGuiTest *test = IM_REGISTER_TEST(engine, ScenarioCategory, "script_developer_tools");
     test->TestFunc = [](ImGuiTestContext *ctx) {
         IM_CHECK(EnterLevelOneFromModList(ctx));
-        IM_CHECK(RunGameAction(ctx, GameAction::ShowScriptDeveloperTools));
+        IM_CHECK(SubmitConsoleCommand(ctx, "script panel"));
         IM_CHECK(WaitForItem(ctx, "**/Diag"));
         IM_CHECK(WaitForItem(ctx, "**/Reload"));
         IM_CHECK(WaitForItem(ctx, "**/Res"));
         IM_CHECK(WaitForItem(ctx, "**/Deps"));
         IM_CHECK(WaitForItem(ctx, "**/Logs"));
-        IM_CHECK(RunGameAction(ctx, GameAction::MarkScriptToolsSurface));
-        ctx->SleepStandard();
-
         ctx->ItemClick("**/script-dev-tabs/Logs");
         IM_CHECK(WaitForItem(ctx, "**/Advanced"));
         IM_CHECK(WaitForItem(ctx, "**/This Mod"));
@@ -34,6 +31,7 @@ void RegisterScriptToolsScenario(ImGuiTestEngine *engine) {
         ctx->ItemCheck("**/This Mod");
         ctx->ItemCheck("**/Reload Only");
         ctx->ItemCheck("**/Pause");
+        IM_CHECK(CaptureSurface(ctx, SurfaceCapture::ScriptTools));
         ctx->ItemUncheck("**/Pause");
         ctx->ItemUncheck("**/Reload Only");
         ctx->ItemUncheck("**/This Mod");
