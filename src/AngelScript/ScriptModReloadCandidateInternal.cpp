@@ -7,7 +7,7 @@
 namespace BML {
 
 static constexpr const char *kReloadRollbackBoundary =
-    "Rollback restores only BML-managed script resources such as callbacks, exports, timers, commands, DataShare requests, and script runtime handles; it cannot undo game-world changes made by script code.";
+    "Rollback restores only BML-managed script resources such as callbacks, timers, commands, DataShare requests, Hook Blocks, and script runtime handles; it cannot undo game-world changes made by script code.";
 
 ScriptModReloadSourceSnapshot::~ScriptModReloadSourceSnapshot() {
     Cleanup();
