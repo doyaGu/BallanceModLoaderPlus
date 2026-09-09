@@ -415,6 +415,7 @@ if (BML_BUILD_UI_AUTOMATION)
             "${CMAKE_CURRENT_SOURCE_DIR}/UI/Automation/Scenarios/*.cpp")
     set(BML_UI_AUTOMATION_SOURCES
             UI/UiAutomation.cpp
+            UI/Automation/UiAutomationSession.cpp
             ${BML_UI_AUTOMATION_SCENARIO_SOURCES}
     )
     list(APPEND BML_PRIVATE_HEADERS

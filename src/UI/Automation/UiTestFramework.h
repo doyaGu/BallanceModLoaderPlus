@@ -1,6 +1,8 @@
 #ifndef BML_UI_TEST_FRAMEWORK_H
 #define BML_UI_TEST_FRAMEWORK_H
 
+#include <chrono>
+
 struct ImGuiTestContext;
 struct ImGuiTestEngine;
 
@@ -25,7 +27,8 @@ enum class GameAction : int {
 
 bool WaitForItem(ImGuiTestContext *ctx, const char *path, int maximumFrames = 600);
 bool WaitForItemToDisappear(ImGuiTestContext *ctx, const char *path, int maximumFrames = 600);
-bool RunGameAction(ImGuiTestContext *ctx, GameAction action, int maximumFrames = 300);
+bool RunGameAction(ImGuiTestContext *ctx, GameAction action,
+                   std::chrono::milliseconds timeout = std::chrono::seconds(15));
 
 bool ObserveModList(ImGuiTestContext *ctx);
 bool LeaveModListForOptions(ImGuiTestContext *ctx);
