@@ -528,6 +528,7 @@ if (-not $SkipPlayer) {
             $liveLogText = Get-BMLTextIfExists $modLoaderLog
             if ((Test-SmokeTextContains $liveLogText 'BML state reload smoke v1 ready') -and
                 (Test-SmokeTextContains $liveLogText 'BML state reload services: v1 timer=valid command=valid datashare=valid') -and
+                (Test-SmokeTextContains $liveLogText 'BML state reload hook: v1=valid') -and
                 (Test-SmokeTextContains $liveLogText 'BML state reload timer callback: v1') -and
                 (Test-SmokeTextContains $liveLogText 'BML state reload command callback: v1') -and
                 (Test-SmokeTextContains $liveLogText 'BML script mod summary:')) {
@@ -607,6 +608,9 @@ if (-not $SkipPlayer) {
                 Add-SmokeCheck $checks 'state-reload-v2-datashare-published' (Test-SmokeTextContainsAfter $modLogText 'BML state reload datashare publish: v2=valid' $v2Services) 'BML state reload datashare publish: v2=valid after v2 service registration'
                 Add-SmokeCheck $checks 'state-reload-v2-datashare-received' (Test-SmokeTextContainsAfter $modLogText 'BML state reload datashare callback: v2=valid' $v2Services) 'BML state reload datashare callback: v2=valid after v2 service registration'
                 Add-SmokeCheck $checks 'state-reload-old-datashare-stopped' (-not (Test-SmokeTextContains $modLogText 'BML state reload datashare callback: v1')) 'no v1 datashare callback after replacement'
+                Add-SmokeCheck $checks 'state-reload-v1-hook-ready' (Test-SmokeTextContains $modLogText 'BML state reload hook: v1=valid') 'BML state reload hook: v1=valid'
+                Add-SmokeCheck $checks 'state-reload-v2-hook-replaced' (Test-SmokeTextContainsAfter $modLogText 'BML state reload hook: v2=valid' 'BML state reload phase: v1 unload=reload') 'BML state reload hook: v2=valid after v1 unload'
+                Add-SmokeCheck $checks 'state-reload-hooks-detached' (-not (Test-SmokeTextContains $modLogText 'BML state reload hook callback:')) 'detached reload hooks do not execute'
             } else {
                 $reloadFailedNeedle = 'Script mod bml.state.reload.smoke hot reload failed:'
                 Add-SmokeCheck $checks 'state-reload-rejected' (Test-SmokeTextContains $modLogText $reloadFailedNeedle) $reloadFailedNeedle
@@ -629,6 +633,7 @@ if (-not $SkipPlayer) {
                     Add-SmokeCheck $checks 'state-hook-migrate-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: migrate-fail migrate=valid') 'BML state hook phase: migrate-fail migrate=valid'
                     Add-SmokeCheck $checks 'state-hook-rollback-restore-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: v1 restore=valid') 'BML state hook phase: v1 restore=valid'
                     Add-SmokeCheck $checks 'state-reload-migrate-cleanup-phase' (Test-SmokeTextContains $modLogText 'BML failed candidate cleanup phase: migrate=valid') 'BML failed candidate cleanup phase: migrate=valid'
+                    Add-SmokeCheck $checks 'state-reload-rollback-hook-reinstalled' (Test-SmokeTextContainsAfter $modLogText 'BML state reload hook: v1=valid' 'BML state reload phase: v1 unload=reload') 'BML state reload hook: v1=valid after v1 reload unload'
                 } elseif ($HotReloadStateScenario -eq 'RestoreFailure') {
                     Add-SmokeCheck $checks 'state-reload-restore-failed' (Test-SmokeTextContains $modLogText 'intentional state reload restore failure smoke') 'intentional state reload restore failure smoke'
                     Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
@@ -639,6 +644,7 @@ if (-not $SkipPlayer) {
                     Add-SmokeCheck $checks 'state-hook-restore-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: restore-fail restore=valid') 'BML state hook phase: restore-fail restore=valid'
                     Add-SmokeCheck $checks 'state-hook-rollback-restore-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: v1 restore=valid') 'BML state hook phase: v1 restore=valid'
                     Add-SmokeCheck $checks 'state-reload-restore-cleanup-phase' (Test-SmokeTextContains $modLogText 'BML failed candidate cleanup phase: restore=valid') 'BML failed candidate cleanup phase: restore=valid'
+                    Add-SmokeCheck $checks 'state-reload-rollback-hook-reinstalled' (Test-SmokeTextContainsAfter $modLogText 'BML state reload hook: v1=valid' 'BML state reload phase: v1 unload=reload') 'BML state reload hook: v1=valid after v1 reload unload'
                 }
             }
         }

@@ -19,6 +19,7 @@ class BMLStateReloadSmokeMod {
   BML::TimerRef@ reloadTimer;
   BML::CommandRef@ reloadCommand;
   BML::DataShareRequestRef@ reloadDataShare;
+  BML::HookBlockRef@ reloadHook;
 
   void MigrateState(const string &in version, BML::StateBag@ state) {
     TraceStateHookPhase(BML::RELOAD_MIGRATE_STATE, "v2 migrate");
@@ -55,10 +56,14 @@ class BMLStateReloadSmokeMod {
                   " text=" + text);
     }
     InstallServices(ctx);
+    InstallHook(ctx);
   }
 
   void OnProcess(const BML::ModContext &in ctx) {
     ++frames;
+    if (reloadHook is null) {
+      InstallHook(ctx);
+    }
     if (!requestedCommand) {
       requestedCommand = true;
       ctx.ExecuteCommand("bml_state_reload_probe");
@@ -131,5 +136,42 @@ class BMLStateReloadSmokeMod {
     const bool valid = event.Exists && event.StringValue == "from-v2";
     ctx.LogInfo("BML state reload datashare callback: v2=" +
                 (valid ? "valid" : "invalid"));
+  }
+
+  private bool InstallHook(const BML::ModContext &in ctx) {
+    CKBehavior@ owner = ctx.BorrowScriptByName("Menu_Init");
+    if (owner is null) {
+      return false;
+    }
+    const bool oldHookAbsent = !HasChildNamed(owner, "__BML_StateReload_Hook_v1");
+    if (oldHookAbsent) {
+      BML::HookBlockCallback@ callback = BML::HookBlockCallback(this.OnReloadHook);
+      @reloadHook = ctx.CreateHookBlock(
+          owner, callback, "__BML_StateReload_Hook_v2", 1, 1);
+    }
+
+    const bool valid = oldHookAbsent && reloadHook !is null && reloadHook.IsValid &&
+                       !reloadHook.IsInstalled;
+    ctx.LogInfo("BML state reload hook: v2=" + (valid ? "valid" : "invalid"));
+    return valid;
+  }
+
+  private int OnReloadHook(const BML::ModContext &in ctx,
+                           const BML::HookBlockEvent &in event) {
+    ctx.LogInfo("BML state reload hook callback: v2");
+    return CKBR_OK;
+  }
+
+  private bool HasChildNamed(CKBehavior@ owner, const string &in name) {
+    if (owner is null) {
+      return false;
+    }
+    for (int index = 0; index < owner.GetSubBehaviorCount(); ++index) {
+      CKBehavior@ child = owner.GetSubBehavior(index);
+      if (child !is null && child.GetName() == name) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -14,6 +14,7 @@ class BMLStateReloadSmokeMod {
   BML::TimerRef@ reloadTimer;
   BML::CommandRef@ reloadCommand;
   BML::DataShareRequestRef@ reloadDataShare;
+  BML::HookBlockRef@ reloadHook;
 
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
@@ -31,6 +32,7 @@ class BMLStateReloadSmokeMod {
       BML::DataShareRemove("bml.state.reload.pending", "BML");
     }
     InstallServices(ctx);
+    InstallHook(ctx);
   }
 
   void OnUnload(const BML::ModContext &in ctx) {
@@ -47,6 +49,9 @@ class BMLStateReloadSmokeMod {
   }
 
   void OnProcess(const BML::ModContext &in ctx) {
+    if (reloadHook is null) {
+      InstallHook(ctx);
+    }
     DrawWindow("v1");
     ++frames;
     if (!requestedCommand) {
@@ -124,6 +129,43 @@ class BMLStateReloadSmokeMod {
   private void OnReloadDataShare(const BML::ModContext &in ctx,
                                  const BML::DataShareEvent &in event) {
     ctx.LogInfo("BML state reload datashare callback: v1");
+  }
+
+  private bool InstallHook(const BML::ModContext &in ctx) {
+    CKBehavior@ owner = ctx.BorrowScriptByName("Menu_Init");
+    if (owner is null) {
+      return false;
+    }
+    const bool oldHookAbsent = !HasChildNamed(owner, "__BML_StateReload_Hook_v1");
+    if (oldHookAbsent) {
+      BML::HookBlockCallback@ callback = BML::HookBlockCallback(this.OnReloadHook);
+      @reloadHook = ctx.CreateHookBlock(
+          owner, callback, "__BML_StateReload_Hook_v1", 1, 1);
+    }
+
+    const bool valid = oldHookAbsent && reloadHook !is null && reloadHook.IsValid &&
+                       !reloadHook.IsInstalled;
+    ctx.LogInfo("BML state reload hook: v1=" + (valid ? "valid" : "invalid"));
+    return valid;
+  }
+
+  private int OnReloadHook(const BML::ModContext &in ctx,
+                           const BML::HookBlockEvent &in event) {
+    ctx.LogInfo("BML state reload hook callback: v1");
+    return CKBR_OK;
+  }
+
+  private bool HasChildNamed(CKBehavior@ owner, const string &in name) {
+    if (owner is null) {
+      return false;
+    }
+    for (int index = 0; index < owner.GetSubBehaviorCount(); ++index) {
+      CKBehavior@ child = owner.GetSubBehavior(index);
+      if (child !is null && child.GetName() == name) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private void DrawWindow(const string &in label) {
