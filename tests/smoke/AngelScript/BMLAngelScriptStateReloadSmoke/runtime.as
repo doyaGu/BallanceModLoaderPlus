@@ -13,6 +13,7 @@ class BMLStateReloadSmokeMod {
   bool requestedExit = false;
   BML::TimerRef@ reloadTimer;
   BML::CommandRef@ reloadCommand;
+  BML::DataShareRequestRef@ reloadDataShare;
 
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
@@ -25,6 +26,9 @@ class BMLStateReloadSmokeMod {
       }
       logger.Info("BML state reload phase: v1 load=" + phase);
       logger.Info("BML state reload smoke v1 ready");
+    }
+    if (!ctx.IsReloading) {
+      BML::DataShareRemove("bml.state.reload.pending", "BML");
     }
     InstallServices(ctx);
   }
@@ -94,10 +98,16 @@ class BMLStateReloadSmokeMod {
     BML::CommandCallback@ commandCallback = BML::CommandCallback(this.OnReloadCommand);
     @reloadCommand = ctx.RegisterCommand(commandDefinition, commandCallback);
 
+    BML::DataShareCallback@ dataShareCallback = BML::DataShareCallback(this.OnReloadDataShare);
+    @reloadDataShare = ctx.RequestDataShare(
+        "bml.state.reload.pending", BML::DATASHARE_STRING, dataShareCallback, "BML");
+
     const bool timerValid = reloadTimer !is null && reloadTimer.IsValid;
     const bool commandValid = reloadCommand !is null && reloadCommand.IsValid;
+    const bool dataShareValid = reloadDataShare !is null && reloadDataShare.IsValid;
     ctx.LogInfo("BML state reload services: v1 timer=" + (timerValid ? "valid" : "invalid") +
-                " command=" + (commandValid ? "valid" : "invalid"));
+                " command=" + (commandValid ? "valid" : "invalid") +
+                " datashare=" + (dataShareValid ? "valid" : "invalid"));
   }
 
   private bool OnReloadTimer(const BML::ModContext &in ctx,
@@ -109,6 +119,11 @@ class BMLStateReloadSmokeMod {
   private void OnReloadCommand(const BML::ModContext &in ctx,
                                const BML::CommandEvent &in event) {
     ctx.LogInfo("BML state reload command callback: v1");
+  }
+
+  private void OnReloadDataShare(const BML::ModContext &in ctx,
+                                 const BML::DataShareEvent &in event) {
+    ctx.LogInfo("BML state reload datashare callback: v1");
   }
 
   private void DrawWindow(const string &in label) {

@@ -527,6 +527,7 @@ if (-not $SkipPlayer) {
         if ($HotReloadStateSmoke -and -not $hotReloadStateSourcePatched) {
             $liveLogText = Get-BMLTextIfExists $modLoaderLog
             if ((Test-SmokeTextContains $liveLogText 'BML state reload smoke v1 ready') -and
+                (Test-SmokeTextContains $liveLogText 'BML state reload services: v1 timer=valid command=valid datashare=valid') -and
                 (Test-SmokeTextContains $liveLogText 'BML state reload timer callback: v1') -and
                 (Test-SmokeTextContains $liveLogText 'BML state reload command callback: v1') -and
                 (Test-SmokeTextContains $liveLogText 'BML script mod summary:')) {
@@ -585,7 +586,7 @@ if (-not $SkipPlayer) {
             Add-SmokeCheck $checks 'state-hook-phase-valid' (-not (Test-SmokeTextMatches $modLogText 'BML state hook phase:[^\r\n]*=unexpected')) 'no unexpected BML state hook phase'
             Add-SmokeCheck $checks 'state-cleanup-phase-valid' (-not (Test-SmokeTextMatches $modLogText 'BML failed candidate cleanup phase:[^\r\n]*=unexpected')) 'no unexpected BML failed candidate cleanup phase'
             if ($HotReloadStateScenario -eq 'Success') {
-                $v2Services = 'BML state reload services: v2 timer=valid command=valid'
+                $v2Services = 'BML state reload services: v2 timer=valid command=valid datashare=valid'
                 Add-SmokeCheck $checks 'state-reload-migrated' (Test-SmokeTextContains $modLogText 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated') 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated'
                 Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
                 Add-SmokeCheck $checks 'state-reload-old-unload-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=reload') 'BML state reload phase: v1 unload=reload'
@@ -595,7 +596,7 @@ if (-not $SkipPlayer) {
                 Add-SmokeCheck $checks 'state-hook-migrate-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: v2 migrate=valid') 'BML state hook phase: v2 migrate=valid'
                 Add-SmokeCheck $checks 'state-hook-restore-phase' (Test-SmokeTextContains $modLogText 'BML state hook phase: v2 restore=valid') 'BML state hook phase: v2 restore=valid'
                 Add-SmokeCheck $checks 'state-reload-no-failed-cleanup' (-not (Test-SmokeTextContains $modLogText 'BML failed candidate cleanup phase:')) 'successful reload does not clean a failed candidate'
-                Add-SmokeCheck $checks 'state-reload-v1-services-ready' (Test-SmokeTextContains $modLogText 'BML state reload services: v1 timer=valid command=valid') 'BML state reload services: v1 timer=valid command=valid'
+                Add-SmokeCheck $checks 'state-reload-v1-services-ready' (Test-SmokeTextContains $modLogText 'BML state reload services: v1 timer=valid command=valid datashare=valid') 'BML state reload services: v1 timer=valid command=valid datashare=valid'
                 Add-SmokeCheck $checks 'state-reload-v1-timer-ran' (Test-SmokeTextContains $modLogText 'BML state reload timer callback: v1') 'BML state reload timer callback: v1'
                 Add-SmokeCheck $checks 'state-reload-v1-command-ran' (Test-SmokeTextContains $modLogText 'BML state reload command callback: v1') 'BML state reload command callback: v1'
                 Add-SmokeCheck $checks 'state-reload-v2-services-ready' (Test-SmokeTextContains $modLogText $v2Services) $v2Services
@@ -603,6 +604,9 @@ if (-not $SkipPlayer) {
                 Add-SmokeCheck $checks 'state-reload-v2-command-ran' (Test-SmokeTextContainsAfter $modLogText 'BML state reload command callback: v2' $v2Services) 'BML state reload command callback: v2 after v2 service registration'
                 Add-SmokeCheck $checks 'state-reload-old-timer-stopped' (-not (Test-SmokeTextContainsAfter $modLogText 'BML state reload timer callback: v1' $v2Services)) 'no v1 timer callback after v2 service registration'
                 Add-SmokeCheck $checks 'state-reload-old-command-stopped' (-not (Test-SmokeTextContainsAfter $modLogText 'BML state reload command callback: v1' $v2Services)) 'no v1 command callback after v2 service registration'
+                Add-SmokeCheck $checks 'state-reload-v2-datashare-published' (Test-SmokeTextContainsAfter $modLogText 'BML state reload datashare publish: v2=valid' $v2Services) 'BML state reload datashare publish: v2=valid after v2 service registration'
+                Add-SmokeCheck $checks 'state-reload-v2-datashare-received' (Test-SmokeTextContainsAfter $modLogText 'BML state reload datashare callback: v2=valid' $v2Services) 'BML state reload datashare callback: v2=valid after v2 service registration'
+                Add-SmokeCheck $checks 'state-reload-old-datashare-stopped' (-not (Test-SmokeTextContains $modLogText 'BML state reload datashare callback: v1')) 'no v1 datashare callback after replacement'
             } else {
                 $reloadFailedNeedle = 'Script mod bml.state.reload.smoke hot reload failed:'
                 Add-SmokeCheck $checks 'state-reload-rejected' (Test-SmokeTextContains $modLogText $reloadFailedNeedle) $reloadFailedNeedle

@@ -14,9 +14,11 @@ class BMLStateReloadSmokeMod {
   string text = "";
   string fromVersion = "";
   bool requestedCommand = false;
+  bool publishedDataShare = false;
   bool requestedExit = false;
   BML::TimerRef@ reloadTimer;
   BML::CommandRef@ reloadCommand;
+  BML::DataShareRequestRef@ reloadDataShare;
 
   void MigrateState(const string &in version, BML::StateBag@ state) {
     TraceStateHookPhase(BML::RELOAD_MIGRATE_STATE, "v2 migrate");
@@ -61,6 +63,13 @@ class BMLStateReloadSmokeMod {
       requestedCommand = true;
       ctx.ExecuteCommand("bml_state_reload_probe");
     }
+    if (!publishedDataShare) {
+      publishedDataShare = true;
+      const bool published = BML::DataShareSetString(
+          "bml.state.reload.pending", "from-v2", "BML");
+      ctx.LogInfo("BML state reload datashare publish: v2=" +
+                  (published ? "valid" : "invalid"));
+    }
     ImGui::SetNextWindowPos(ImVec2(64.0f, 64.0f), ImGuiCond_Once);
     ImGui::SetNextWindowSize(ImVec2(320.0f, 0.0f), ImGuiCond_Once);
     if (ImGui::Begin("State Reload Smoke")) {
@@ -94,10 +103,16 @@ class BMLStateReloadSmokeMod {
     BML::CommandCallback@ commandCallback = BML::CommandCallback(this.OnReloadCommand);
     @reloadCommand = ctx.RegisterCommand(commandDefinition, commandCallback);
 
+    BML::DataShareCallback@ dataShareCallback = BML::DataShareCallback(this.OnReloadDataShare);
+    @reloadDataShare = ctx.RequestDataShare(
+        "bml.state.reload.pending", BML::DATASHARE_STRING, dataShareCallback, "BML");
+
     const bool timerValid = reloadTimer !is null && reloadTimer.IsValid;
     const bool commandValid = reloadCommand !is null && reloadCommand.IsValid;
+    const bool dataShareValid = reloadDataShare !is null && reloadDataShare.IsValid;
     ctx.LogInfo("BML state reload services: v2 timer=" + (timerValid ? "valid" : "invalid") +
-                " command=" + (commandValid ? "valid" : "invalid"));
+                " command=" + (commandValid ? "valid" : "invalid") +
+                " datashare=" + (dataShareValid ? "valid" : "invalid"));
   }
 
   private bool OnReloadTimer(const BML::ModContext &in ctx,
@@ -109,5 +124,12 @@ class BMLStateReloadSmokeMod {
   private void OnReloadCommand(const BML::ModContext &in ctx,
                                const BML::CommandEvent &in event) {
     ctx.LogInfo("BML state reload command callback: v2");
+  }
+
+  private void OnReloadDataShare(const BML::ModContext &in ctx,
+                                 const BML::DataShareEvent &in event) {
+    const bool valid = event.Exists && event.StringValue == "from-v2";
+    ctx.LogInfo("BML state reload datashare callback: v2=" +
+                (valid ? "valid" : "invalid"));
   }
 }
