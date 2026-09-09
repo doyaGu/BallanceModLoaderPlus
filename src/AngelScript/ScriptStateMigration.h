@@ -4,7 +4,6 @@
 #include <string>
 
 #include "ScriptDiagnostic.h"
-#include "ScriptModLifecycle.h"
 #include "ScriptStateBag.h"
 
 class CKContext;

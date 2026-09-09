@@ -62,10 +62,10 @@ static CKAS_STATUS WriteMigrateStateArgs(CKAngelScriptArgWriter *writer, void *u
 static bool CallOptionalStateMethod(CKContext *context,
                                     ScriptModRuntime &runtime,
                                     const char *decl,
+                                    ScriptStateBag &state,
                                     CKAngelScriptWriteArgsCallback writeArgs,
                                     void *userData,
                                     const char *failurePrefix,
-                                    ScriptModReloadPhase phase,
                                     bool &called,
                                     ScriptDiagnostic &diagnostic) {
     called = false;
@@ -79,15 +79,7 @@ static bool CallOptionalStateMethod(CKContext *context,
     call.UserData = userData;
     call.Phase = ScriptDiagnosticPhase::Runtime;
     call.FailurePrefix = failurePrefix;
-    ScriptStateBag *state = nullptr;
-    if (userData) {
-        if (phase == ScriptModReloadPhase::MigrateState) {
-            state = static_cast<MigrateStateArgs *>(userData)->State;
-        } else {
-            state = static_cast<StateOnlyArgs *>(userData)->State;
-        }
-    }
-    ScriptStateBagAccessScope stateAccess(state);
+    ScriptStateBagAccessScope stateAccess(&state);
     const bool ok = runtime.CallMethod(context, call, diagnostic);
     called = ok;
 
@@ -132,10 +124,10 @@ bool ScriptStateMigration::Save(CKContext *context,
     return CallOptionalStateMethod(context,
                                    runtime,
                                    SaveStateDecl,
+                                   state,
                                    WriteStateOnlyArgs,
                                    &args,
                                    "SaveState failed",
-                                   ScriptModReloadPhase::SaveState,
                                    called,
                                    diagnostic);
 }
@@ -150,10 +142,10 @@ bool ScriptStateMigration::Migrate(CKContext *context,
     return CallOptionalStateMethod(context,
                                    runtime,
                                    MigrateStateDecl,
+                                   state,
                                    WriteMigrateStateArgs,
                                    &args,
                                    "MigrateState failed",
-                                   ScriptModReloadPhase::MigrateState,
                                    called,
                                    diagnostic);
 }
@@ -167,10 +159,10 @@ bool ScriptStateMigration::Restore(CKContext *context,
     return CallOptionalStateMethod(context,
                                    runtime,
                                    RestoreStateDecl,
+                                   state,
                                    WriteStateOnlyArgs,
                                    &args,
                                    "RestoreState failed",
-                                   ScriptModReloadPhase::RestoreState,
                                    called,
                                    diagnostic);
 }

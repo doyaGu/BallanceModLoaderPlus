@@ -191,19 +191,19 @@ bool RegisterValue(asIScriptEngine *engine, const ValueTypeRegistration &registr
                     errorMessage);
 }
 
-int GetActiveFacadeContext(ModContext *&outContext) {
-    outContext = nullptr;
+ModContext *GetCurrentModContext() {
     BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
-    if (!mod || !mod->GetModContext())
-        return BML_ERROR_UNAVAILABLE;
-    outContext = mod->GetModContext();
-    return BML_OK;
+    return mod ? mod->GetModContext() : nullptr;
+}
+
+int ReadCurrentModContext(ModContext *&outContext) {
+    outContext = GetCurrentModContext();
+    return outContext ? BML_OK : BML_ERROR_UNAVAILABLE;
 }
 
 ModContext *RequireRuntimeContext() {
-    ModContext *context = nullptr;
-    const int status = GetActiveFacadeContext(context);
-    if (status == BML_OK)
+    ModContext *context = GetCurrentModContext();
+    if (context)
         return context;
     BML::ScriptStringInterop::RaiseActiveException(
         "BML::Runtime requires an active script mod callback.");
@@ -244,7 +244,7 @@ ScoreState GetRuntimeScore() {
 
 int ReadLevel(LevelState &out) {
     ModContext *context = nullptr;
-    int status = GetActiveFacadeContext(context);
+    int status = ReadCurrentModContext(context);
     BML_GameplayLevelState value = {};
     if (status == BML_OK) status = ReadBuiltinGameplayLevel(*context, value);
     if (status == BML_OK)
@@ -254,7 +254,7 @@ int ReadLevel(LevelState &out) {
 
 int ReadEnergy(EnergyState &out) {
     ModContext *context = nullptr;
-    int status = GetActiveFacadeContext(context);
+    int status = ReadCurrentModContext(context);
     BML_GameplayEnergyState value = {};
     if (status == BML_OK) status = ReadBuiltinGameplayEnergy(*context, value);
     if (status == BML_OK) {
@@ -264,13 +264,8 @@ int ReadEnergy(EnergyState &out) {
     return status;
 }
 
-ModContext *GetActiveScriptContext() {
-    BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
-    return mod ? mod->GetModContext() : nullptr;
-}
-
 CKObject *ResolveScriptObject(const BML_ObjectRef &reference) {
-    ModContext *context = GetActiveScriptContext();
+    ModContext *context = GetCurrentModContext();
     return context && reference.Domain != 0
                ? context->ObjectRefs().Resolve(reference)
                : nullptr;
@@ -292,7 +287,7 @@ using GameplayCountReader = int (*)(ModContext &, std::size_t &);
 
 int ReadGameplayCount(GameplayCountReader read, int &out) {
     ModContext *context = nullptr;
-    int status = GetActiveFacadeContext(context);
+    int status = ReadCurrentModContext(context);
     std::size_t count = 0;
     if (status == BML_OK)
         status = read(*context, count);
@@ -319,7 +314,7 @@ int ReadResetpointCount(int &out) {
 int GetGameplayEntryContext(int index, ModContext *&outContext) {
     if (index < 0)
         return BML_ERROR_INVALID_PARAMETER;
-    return GetActiveFacadeContext(outContext);
+    return ReadCurrentModContext(outContext);
 }
 
 int ReadCatalogEntry(int index, CatalogEntry &out) {
