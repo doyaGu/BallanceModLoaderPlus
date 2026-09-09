@@ -68,7 +68,7 @@ private:
 
     static const Setting *GetSettings(size_t &count);
     void ApplySettings(ApplyWhen when);
-    void ApplySetting(const Setting &setting, IProperty *property);
+    void ApplySetting(const Setting &setting, IProperty *property, bool levelStarting = false);
 
     void UpdateTimerDisplay();
     void UpdateCheatState(bool cheatEnabled);

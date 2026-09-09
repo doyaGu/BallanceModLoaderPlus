@@ -86,16 +86,16 @@ void HUDRuntime::ApplySettings(ApplyWhen when) {
     const Setting *settings = GetSettings(count);
     for (size_t i = 0; i < count; ++i) {
         if ((settings[i].when & static_cast<unsigned>(when)) != 0) {
-            ApplySetting(settings[i], this->*settings[i].property);
+            ApplySetting(settings[i], this->*settings[i].property, when == OnLevelInit);
         }
     }
 }
 
-void HUDRuntime::ApplySetting(const Setting &setting, IProperty *property) {
+void HUDRuntime::ApplySetting(const Setting &setting, IProperty *property, bool levelStarting) {
     if (!setting.apply || !property) {
         return;
     }
-    if (setting.requiresIngame && (!m_BML || !m_BML->IsIngame())) {
+    if (setting.requiresIngame && !levelStarting && (!m_BML || !m_BML->IsIngame())) {
         return;
     }
 
