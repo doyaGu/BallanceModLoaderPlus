@@ -36,7 +36,7 @@ requires:
 - CMake 3.14 or newer;
 - Python 3.10 or newer;
 - Virtools SDK 2.1;
-- CKAngelScript API 6 or newer when script support is enabled; and
+- CKAngelScript API 7 or newer when script support is enabled; and
 - all Git submodules from this repository.
 
 Clone the repository with its submodules:

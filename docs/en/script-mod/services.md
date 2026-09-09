@@ -145,6 +145,9 @@ mod needs to retain; there is no script-side event queue to open or poll.
 ## Timers
 
 BML+ owns registered timers for the script mod and cancels them at unload.
+CKAngelScript `Async::*` task creation is intentionally unavailable inside
+script-mod callbacks; those tasks have no script-mod lifetime owner. Use a BML+
+timer whenever work must continue in a later frame.
 Prefer callback timers for simple delays and intervals:
 
 ```angelscript

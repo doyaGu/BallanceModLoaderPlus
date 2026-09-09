@@ -33,7 +33,7 @@ BML+ 是 Virtools CK2 使用的 32 位 Windows 插件。构建 Loader 需要：
 - CMake 3.14 或更新版本；
 - Python 3.10 或更新版本；
 - Virtools SDK 2.1；
-- 启用脚本支持时使用 CKAngelScript API 6 或更新版本；
+- 启用脚本支持时使用 CKAngelScript API 7 或更新版本；
 - 本仓库的全部 Git 子模块。
 
 克隆仓库及其子模块：

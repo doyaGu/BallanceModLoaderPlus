@@ -570,6 +570,7 @@ if (-not $SkipPlayer) {
         }
         Add-SmokeCheck $checks 'compile-diagnostic' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
         Add-SmokeCheck $checks 'runtime-diagnostic' (Test-SmokeTextContains $modLogText 'phase=callback') 'phase=callback'
+        Add-SmokeCheck $checks 'script-async-rejected' (Test-SmokeTextContains $modLogText 'Async work is not available in the current script host phase.') 'Async work is not available in the current script host phase.'
         Add-SmokeCheck $checks 'script-imgui-stack-recovery' (Test-SmokeTextContains $modLogText 'Recovered mismatched ImGui stack after script callback') 'Recovered mismatched ImGui stack after script callback'
         Add-SmokeCheck $checks 'script-imgui-stack-recovery-silent' (-not (Test-SmokeTextContains $modLogText '[imgui-error] In window')) 'no raw ImGui recovery errors in ModLoader log'
         if (-not $HotReloadStateSmoke -and -not $NativeImcSmokeMod) {
