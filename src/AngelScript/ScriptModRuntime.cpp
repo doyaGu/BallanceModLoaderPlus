@@ -115,13 +115,19 @@ CKAS_STATUS __cdecl CaptureIncludeEdge(const CKAngelScriptIncludeEdge *edge, voi
 }
 
 CKAS_STATUS __cdecl BMLScriptHostCallFilter(const char *apiName, CKDWORD flags, void *) {
-    if ((flags & CKAS_HOSTCALL_MUTATES_HOST_STATE) == 0)
+    const bool mutatesHostState = (flags & CKAS_HOSTCALL_MUTATES_HOST_STATE) != 0;
+    const bool schedulesAsyncWork = (flags & CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK) != 0;
+    if (!mutatesHostState && !schedulesAsyncWork)
         return CKAS_OK;
 
-    return ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
-           ScriptModRuntime::RecordStateHookHostCallViolation(apiName)
-               ? CKAS_INVALIDSTATE
-               : CKAS_OK;
+    if (ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
+        ScriptModRuntime::RecordStateHookHostCallViolation(apiName))
+        return CKAS_INVALIDSTATE;
+
+    if (schedulesAsyncWork && ScriptModRuntime::GetCurrentScriptMod())
+        return CKAS_INVALIDSTATE;
+
+    return CKAS_OK;
 }
 
 } // namespace
@@ -335,6 +341,12 @@ bool ScriptModRuntime::RecordStateHookHostCallViolation(const char *apiName) {
     }
     return true;
 }
+
+#ifdef BML_SCRIPT_RUNTIME_TEST_ACCESS
+CKAS_STATUS ScriptModRuntime::TestFilterHostCall(const char *apiName, CKDWORD flags) {
+    return BMLScriptHostCallFilter(apiName, flags, nullptr);
+}
+#endif
 
 bool ScriptModRuntime::Refresh(CKContext *context, ScriptDiagnostic &diagnostic) {
     if (m_Adapter.Refresh(context)) {

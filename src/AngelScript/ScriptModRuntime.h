@@ -198,6 +198,7 @@ public:
     const ::CKAngelScriptAdapter::Api *TestCachedApi() const { return m_Api; }
     const ::CKAngelScriptAdapter::Api *TestAdapterApi() const { return &m_Adapter.GetApi(); }
     CKAngelScript *TestAngelScript() const { return m_AngelScript; }
+    static CKAS_STATUS TestFilterHostCall(const char *apiName, CKDWORD flags);
 #endif
 
 private:

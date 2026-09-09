@@ -86,5 +86,50 @@ TEST(ScriptModRuntimeTest, ReleaseMethodKeepsHandleWhenAdapterRefreshFails) {
     EXPECT_FALSE(diagnostic.Message.empty());
 }
 
+TEST(ScriptModRuntimeTest, RejectsCkasAsyncWorkOnlyWhileRunningScriptMods) {
+    ScriptMod *owner = reinterpret_cast<ScriptMod *>(static_cast<std::uintptr_t>(1));
+
+    EXPECT_EQ(CKAS_OK,
+              ScriptModRuntime::TestFilterHostCall(
+                  "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
+
+    ScriptCurrentModScope scope(owner);
+    EXPECT_EQ(CKAS_INVALIDSTATE,
+              ScriptModRuntime::TestFilterHostCall(
+                  "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
+    EXPECT_EQ(CKAS_OK,
+              ScriptModRuntime::TestFilterHostCall(
+                  "Scene::Create", CKAS_HOSTCALL_MUTATES_HOST_STATE));
+}
+
+TEST(ScriptModRuntimeTest, RejectsMutationsAndAsyncWorkInRestrictedPhases) {
+    ScriptMod *owner = reinterpret_cast<ScriptMod *>(static_cast<std::uintptr_t>(1));
+
+    {
+        ScriptObjectConstructionScope scope(owner);
+        EXPECT_EQ(CKAS_INVALIDSTATE,
+                  ScriptModRuntime::TestFilterHostCall(
+                      "Scene::Create", CKAS_HOSTCALL_MUTATES_HOST_STATE));
+    }
+    {
+        ScriptObjectConstructionScope scope(owner);
+        EXPECT_EQ(CKAS_INVALIDSTATE,
+                  ScriptModRuntime::TestFilterHostCall(
+                      "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
+    }
+
+    ScriptModRuntime runtime("state-hook");
+    ScriptStateHookScope scope(owner, &runtime, ScriptModReloadPhase::SaveState);
+    EXPECT_EQ(CKAS_INVALIDSTATE,
+              ScriptModRuntime::TestFilterHostCall(
+                  "Scene::Create", CKAS_HOSTCALL_MUTATES_HOST_STATE));
+    EXPECT_EQ(CKAS_INVALIDSTATE,
+              ScriptModRuntime::TestFilterHostCall(
+                  "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
+    EXPECT_EQ(CKAS_OK,
+              ScriptModRuntime::TestFilterHostCall(
+                  "Scene::Current", CKAS_HOSTCALL_DEFAULT));
+}
+
 } // namespace
 } // namespace BML
