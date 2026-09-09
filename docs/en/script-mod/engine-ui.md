@@ -56,7 +56,9 @@ void OnProcess(const BML::ModContext &in ctx) {
 ```
 
 Resolve raw CK handles close to the operation. Revalidate after deletion, level
-changes, and CK reset.
+changes, and CK reset. `BML::CK::IsValid()` checks the handle address against
+the current CK object table without first dereferencing the candidate; call it
+before passing a stored raw handle to the other `BML::CK` helpers.
 
 `BML::CK` contains small stateless helpers, not a second complete Virtools API:
 

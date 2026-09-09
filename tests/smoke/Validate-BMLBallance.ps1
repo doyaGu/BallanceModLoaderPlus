@@ -539,6 +539,7 @@ if (-not $SkipPlayer) {
         Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
         Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: capabilities') 'BML script mod summary: capabilities'
         Add-SmokeCheck $checks 'script-capabilities' (Test-SmokeTextContains $modLogText 'BML capability smoke: runtime=true') 'BML capability smoke: runtime=true'
+        Add-SmokeCheck $checks 'script-raw-handle-validity' (Test-SmokeTextContains $modLogText 'BML raw handle validity smoke: live=true deleted=true') 'BML raw handle validity smoke: live=true deleted=true'
         Add-SmokeCheck $checks 'script-event-callback' (Test-SmokeTextContains $modLogText 'BML script event callback: exit_game') 'BML script event callback: exit_game'
         if ($SingleFileSmoke) {
             Add-SmokeCheck $checks 'single-file-script-package' (Test-SmokeTextContains $modLogText 'BML single-file script smoke loaded resource=true') 'BML single-file script smoke loaded resource=true'

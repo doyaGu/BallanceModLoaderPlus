@@ -476,7 +476,9 @@ static void BMLAS_InputHookReleaseBlock(InputHook *input, uint64_t token) {
 }
 
 bool BMLAS_IsObjectValid(CKObject *object) {
-    return BML::ScriptFacadeAccess::IsObjectValid(object);
+    ModContext *context = GetActiveContext();
+    return context &&
+           BML::ScriptFacadeAccess::IsObjectValid(context->GetCKContext(), object);
 }
 
 int BMLAS_GetObjectId(CKObject *object) {

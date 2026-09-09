@@ -291,8 +291,17 @@ inline void ReleaseBlock(InputHook *input, uint64_t token) {
         input->ReleaseBlock(token);
 }
 
-inline bool IsObjectValid(CKObject *object) {
-    return object != nullptr;
+inline bool IsObjectValid(CKContext *context, CKObject *object) {
+    if (!context || !object)
+        return false;
+
+    const XObjectPointerArray &objects =
+        context->GetObjectListByType(CKCID_OBJECT, TRUE);
+    for (XObjectPointerArray::ConstIterator it = objects.Begin(); it != objects.End(); ++it) {
+        if (*it == object)
+            return !object->IsToBeDeleted();
+    }
+    return false;
 }
 
 inline int GetObjectId(CKObject *object) {

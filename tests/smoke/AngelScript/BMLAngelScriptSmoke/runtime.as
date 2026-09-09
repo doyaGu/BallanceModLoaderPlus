@@ -11,6 +11,20 @@ class BMLBindingsSmokeMod {
     bool runtimeOk = runtime.Playing == (runtime.InGame && !runtime.Paused) &&
                      clock.Frame >= 0 && score.HS >= 0;
     ctx.LogInfo("BML capability smoke: runtime=" + (runtimeOk ? "true" : "false"));
+
+    CKContext@ host = ctx.BorrowCKContext();
+    CKObject@ raw = host is null
+        ? null
+        : host.CreateObject(CKCID_OBJECT, "__BML_RawHandleValidityProbe");
+    bool rawLive = BML::CK::IsValid(raw);
+    if (host !is null && raw !is null) {
+      CKDependencies dependencies =
+          CKGetDefaultClassDependencies(CK_DEPENDENCIES_DELETE);
+      host.DestroyObject(raw, 0, dependencies);
+    }
+    bool rawDeleted = !BML::CK::IsValid(raw);
+    ctx.LogInfo("BML raw handle validity smoke: live=" + (rawLive ? "true" : "false") +
+                " deleted=" + (rawDeleted ? "true" : "false"));
     ctx.LogInfo("BML script mod summary: capabilities");
   }
 

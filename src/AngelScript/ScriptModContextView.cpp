@@ -184,7 +184,7 @@ unsigned int ScriptModContextView::GetFrameCount() const {
 }
 
 bool ScriptModContextView::IsObjectValid(CKObject *object) const {
-    return ScriptFacadeAccess::IsObjectValid(object);
+    return ScriptFacadeAccess::IsObjectValid(GetCKContext(), object);
 }
 
 int ScriptModContextView::GetObjectId(CKObject *object) const {

@@ -20,6 +20,10 @@ bool BML::CK::IsVisible(CKObject@ object);
 bool BML::CK::IsDynamic(CKObject@ object);
 ```
 
+借用的 CK 句柄不拥有对象。对象删除、切换关卡或 CK reset 后，先用
+`BML::CK::IsValid()` 检查；它会在当前 CK 对象表中按地址确认对象仍然存活，
+不会为了验证而先解引用可能已经悬空的句柄。其他 `BML::CK` 查询应在检查通过后调用。
+
 ## 位置和可见性
 
 ```angelscript
