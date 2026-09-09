@@ -11,10 +11,12 @@ class ScriptImcInterop {
     BML::ImcSubscriptionRef@ nativeNotice;
     BML::ImcRequestRef@ initialCall;
     BML::ImcRequestRef@ noticeAck;
+    BML::ImcRequestRef@ scriptLoopback;
     bool providerReady = false;
     bool initialReply = false;
     bool nativeNoticeReceived = false;
     bool noticeAcknowledged = false;
+    bool scriptLoopbackReply = false;
     bool scriptNoticePublished = false;
     bool reported = false;
 
@@ -59,6 +61,11 @@ class ScriptImcInterop {
         // started from OnProcess after this flag is observed.
     }
 
+    void OnScriptLoopback(int status,
+                          const Test::Scriptinterop::Number &in response) {
+        scriptLoopbackReply = status == BML::ERROR_OK && response.Value == 61;
+    }
+
     void OnProcess(const BML::ModContext &in ctx) {
         bool nativeEchoAvailable = false;
         if (initialCall is null &&
@@ -82,6 +89,19 @@ class ScriptImcInterop {
                 ctx, request, completion);
         }
 
+        bool scriptEchoAvailable = false;
+        if (scriptLoopback is null &&
+            Test::Scriptinterop::IsScriptEchoAvailable(
+                ctx, scriptEchoAvailable) == BML::ERROR_OK &&
+            scriptEchoAvailable) {
+            Test::Scriptinterop::Number request;
+            request.Value = 60;
+            Test::Scriptinterop::ScriptEchoCallback@ completion =
+                Test::Scriptinterop::ScriptEchoCallback(this.OnScriptLoopback);
+            @scriptLoopback = Test::Scriptinterop::BeginCallScriptEcho(
+                ctx, request, completion);
+        }
+
         if (!scriptNoticePublished) {
             uint64 subscribers = 0;
             if (Test::Scriptinterop::GetScriptNoticeSubscriberCount(
@@ -97,18 +117,20 @@ class ScriptImcInterop {
 
         if (!reported && providerReady && nativeNotice !is null &&
             initialReply && nativeNoticeReceived && noticeAcknowledged &&
-            scriptNoticePublished) {
+            scriptLoopbackReply && scriptNoticePublished) {
             uint64 dropped = 0;
             bool handlesOk = initialCall !is null && initialCall.IsComplete &&
                 initialCall.Status == BML::ERROR_OK && noticeAck !is null &&
                 noticeAck.IsComplete && noticeAck.Status == BML::ERROR_OK &&
+                scriptLoopback !is null && scriptLoopback.IsComplete &&
+                scriptLoopback.Status == BML::ERROR_OK &&
                 nativeNotice.GetDroppedCount(dropped) == BML::ERROR_OK &&
                 dropped == 0;
             if (!handlesOk)
                 return;
             ctx.LogInfo("Script IMC interop: status=pass rpc_client=true " +
                         "rpc_provider=true topic_subscriber=true topic_publisher=true " +
-                        "handles=true");
+                        "script_loopback=true handles=true");
             reported = true;
         }
     }
