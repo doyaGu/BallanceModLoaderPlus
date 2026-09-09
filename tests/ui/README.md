@@ -23,8 +23,12 @@ framework.
   navigation from the native Main and Options menus, registers the selected
   scenario, writes the small `bml-ui-result-v1` result, then exits cleanly.
 - `src/UI/Automation/UiTestFramework.h` is the stable scenario interface. It
-  provides bounded waits, game-thread actions, native/ImGui transition helpers
-  and `BML_REGISTER_UI_SCENARIO`.
+  provides bounded waits, wall-clock-bounded cross-process actions,
+  native/ImGui transition helpers and `BML_REGISTER_UI_SCENARIO`.
+- `src/UI/Automation/UiAutomationSession.*` is the shared cross-process Module.
+  Player publishes one immutable, sequenced checkpoint and yields while keeping
+  that UI state visible. The native runner performs the requested foreground
+  input or capture and atomically publishes the matching acknowledgement.
 - `src/UI/Automation/Scenarios/*.cpp` contains one business journey per file.
   A scenario owns its setup, actions, assertions and restoration.
 - `tests/ui/scenarios/*.scenario` is runner metadata in plain `key=value`
@@ -36,13 +40,19 @@ framework.
   interface. It installs the built DLL transactionally, isolates external Mods,
   starts Player visibly, accepts the render setup dialog, keeps Ballance in the
   foreground, sends physical keyboard events, captures the client area only
-  while it is unobstructed, and verifies restored files by content fingerprint.
+  while it is unobstructed, acknowledges each Session checkpoint, and verifies
+  restored files by content fingerprint.
 - `UiPlayerRunner.cpp` evaluates shared acceptance checks plus the selected
   scenario's evidence.
 - `UiFrameworkTest.cpp` checks catalog completeness, uniqueness, source
   registration, descriptor validity and result parsing without starting Player.
+- `UiAutomationSessionTest.cpp` verifies checkpoint sequencing, atomic
+  publication, waiting semantics and successful/failed acknowledgements without
+  starting Player.
 
-The Player adapter is separate from scenario code. New UI surfaces reuse
+The Player adapter is separate from scenario code. Logs remain human-readable
+diagnostics and optional business evidence; they are never the control channel
+for input or capture timing. New UI surfaces reuse
 foreground control, resolution checks, capture, cleanup and result validation
 instead of cloning process-driving logic.
 
@@ -70,8 +80,10 @@ The native runner can also be invoked directly for debugging:
     build-dev/tests/ui/RelWithDebInfo/UiPlayerRunner.exe --scenario-dir tests/ui/scenarios --source-root src/UI/Automation/Scenarios --ballance-root C:/Users/kakut/Games/Ballance --build-dll build-dev/bin/RelWithDebInfo/BMLPlus.dll --scenario console --artifacts build-dev/tests/ui/RelWithDebInfo/UiAutomation/console
 
 Each scenario gets its own artifact directory containing a `.result` file,
-ModLoader trace, Player trace and 800x600 BMP captures. The result is deliberately
-small and framework-owned:
+ModLoader trace, Player trace, 800x600 BMP captures and one isolated `session-*`
+directory. That directory preserves every `checkpoint-*.msg` and matching
+`ack-*.msg`, so the exact cross-process interaction remains inspectable after a
+run. The result is deliberately small and framework-owned:
 
     format=bml-ui-result-v1
     scenario=console
@@ -116,4 +128,4 @@ installation restoration.
 
 Run the framework-only checks with:
 
-    ctest --test-dir build-dev -C RelWithDebInfo -R "^UiFrameworkTest$" --output-on-failure
+    ctest --test-dir build-dev -C RelWithDebInfo -R "UiFrameworkTest|UiAutomationSessionTest" --output-on-failure
