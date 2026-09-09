@@ -1,0 +1,44 @@
+api test.scriptinterop 1.1
+
+enum mode {
+    first = 0
+    second = 1
+}
+
+record number {
+    int value
+}
+
+# Compiled by the Player test to cover every generated AngelScript codec even
+# though the bidirectional runtime handshake only needs the small number type.
+record wire_surface {
+    bool enabled
+    float ratio
+    int64 signed_value
+    uint64 count
+    double precise
+    string text
+    bytes data
+    object target
+    vec2 uv
+    vec3 position
+    mat4 transform
+    array<bool> flags
+    array<int> integers
+    array<float> ratios
+    array<int64> signed_values
+    array<uint64> counts
+    array<double> precise_values
+    array<string> labels
+    array<object> targets
+    array<vec2> uvs
+    array<vec3> positions
+    array<mat4> transforms
+    enum<mode> selected_mode
+    optional string note
+}
+
+rpc native_echo(number) -> number
+rpc script_echo(number) -> number
+topic native_notice(number)
+topic script_notice(number)

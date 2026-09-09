@@ -1,4 +1,6 @@
 include("${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake")
+set(BML_IMC_CODEGEN "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py")
+include("${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake")
 
 add_library(BehaviorLifecycleFixture SHARED
         BehaviorLifecycleFixture.cpp
@@ -72,6 +74,17 @@ bml_add_player_test(PlayerFlowDriver
 bml_add_player_test(ExecuteBBTest
         ExecuteBBTest.cpp
         ${BML_PLAYER_PROBE_SOURCES}
+)
+
+# A single .imc contract drives both the native and ASMod facades. The probe
+# exercises RPC and topic traffic in both directions inside the shipped Player.
+bml_add_player_test(ScriptImcInteropTest
+        ScriptImcInteropTest.cpp
+        ${BML_PLAYER_PROBE_SOURCES}
+)
+bml_target_imc_api(ScriptImcInteropTest
+        INPUT test.scriptinterop.imc
+        SCRIPT_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/script-imc"
 )
 
 # Offers a real script graph for a script Mod to hook and retire.

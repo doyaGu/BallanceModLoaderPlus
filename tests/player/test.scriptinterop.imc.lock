@@ -1,0 +1,233 @@
+{
+  "format": 1,
+  "api": "test.scriptinterop",
+  "version": {
+    "major": 1,
+    "minor": 1
+  },
+  "enums": [
+    {
+      "name": "mode",
+      "underlying": "int",
+      "values": [
+        {
+          "name": "first",
+          "value": 0
+        },
+        {
+          "name": "second",
+          "value": 1
+        }
+      ]
+    }
+  ],
+  "schemas": [
+    {
+      "name": "number",
+      "fields": [
+        {
+          "id": 1,
+          "name": "value",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "wire_surface",
+      "fields": [
+        {
+          "id": 1,
+          "name": "enabled",
+          "type": "bool",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 2,
+          "name": "ratio",
+          "type": "float",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 3,
+          "name": "signed_value",
+          "type": "int64",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 4,
+          "name": "count",
+          "type": "uint64",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 5,
+          "name": "precise",
+          "type": "double",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 6,
+          "name": "text",
+          "type": "string",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 7,
+          "name": "data",
+          "type": "bytes",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 8,
+          "name": "target",
+          "type": "object",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 9,
+          "name": "uv",
+          "type": "vec2",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 10,
+          "name": "position",
+          "type": "vec3",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 11,
+          "name": "transform",
+          "type": "mat4",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 12,
+          "name": "flags",
+          "type": "array<bool>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 13,
+          "name": "integers",
+          "type": "array<int>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 14,
+          "name": "ratios",
+          "type": "array<float>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 15,
+          "name": "signed_values",
+          "type": "array<int64>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 16,
+          "name": "counts",
+          "type": "array<uint64>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 17,
+          "name": "precise_values",
+          "type": "array<double>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 18,
+          "name": "labels",
+          "type": "array<string>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 19,
+          "name": "targets",
+          "type": "array<object>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 20,
+          "name": "uvs",
+          "type": "array<vec2>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 21,
+          "name": "positions",
+          "type": "array<vec3>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 22,
+          "name": "transforms",
+          "type": "array<mat4>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 23,
+          "name": "selected_mode",
+          "type": "enum<mode>",
+          "optional": false,
+          "reserved": false
+        },
+        {
+          "id": 24,
+          "name": "note",
+          "type": "string",
+          "optional": true,
+          "reserved": false
+        }
+      ]
+    }
+  ],
+  "rpcs": [
+    {
+      "name": "native_echo",
+      "request": "number",
+      "response": "number"
+    },
+    {
+      "name": "script_echo",
+      "request": "number",
+      "response": "number"
+    }
+  ],
+  "topics": [
+    {
+      "name": "native_notice",
+      "message": "number"
+    },
+    {
+      "name": "script_notice",
+      "message": "number"
+    }
+  ]
+}
