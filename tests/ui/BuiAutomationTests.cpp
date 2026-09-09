@@ -124,6 +124,8 @@ void RegisterBuiAutomationTests(ImGuiTestEngine *engine) {
                                    fullscreen.RectFull.GetCenter().y));
         ctx->MouseClick();
         IM_CHECK_EQ(state.Fullscreen, true);
+        ctx->MouseClick();
+        IM_CHECK_EQ(state.Fullscreen, false);
 
         ctx->ItemInputValue("**/##InputInt", 7);
         IM_CHECK_EQ(state.Lives, 7);
