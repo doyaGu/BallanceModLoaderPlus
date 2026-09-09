@@ -19,7 +19,7 @@
 #include "Api/BuiltinCapabilities.h"
 #include "Api/BehaviorApi.h"
 #include "Api/InterfaceRegistry.h"
-#if BML_ENABLE_PLAYER_TESTS
+#if BML_ENABLE_BEHAVIOR_TEST_INTERFACE
 #include "Api/BehaviorTestApi.h"
 #endif
 #include "Loader/ModContext.h"
@@ -370,7 +370,7 @@ struct InterfaceEntry {
 };
 
 const InterfaceEntry kInterfaces[] = {
-#if BML_ENABLE_PLAYER_TESTS
+#if BML_ENABLE_BEHAVIOR_TEST_INTERFACE
     {BML_BEHAVIOR_TEST_INTERFACE_ID, BML_BEHAVIOR_TEST_INTERFACE_MAJOR,
      &BML::Api::BehaviorTestInterface()},
 #endif
