@@ -14,14 +14,6 @@ namespace BML {
 
 namespace {
 
-bool RejectScriptObjectConstructionHostCall(const char *apiName) {
-    return ScriptModRuntime::RecordConstructionHostCallViolation(apiName);
-}
-
-bool RejectRestrictedHostCall(const char *apiName) {
-    return RejectScriptRestrictedHostCall(apiName);
-}
-
 } // namespace
 
 ScriptModContextView::ScriptModContextView(ModContext *context, ScriptMod *owner)
@@ -139,15 +131,11 @@ bool ScriptModContextView::IsCheatEnabled() const {
 }
 
 void ScriptModContextView::EnableCheat(bool enable) const {
-    if (RejectRestrictedHostCall("ModContext::EnableCheat"))
-        return;
     if (m_Context)
         m_Context->EnableCheat(enable);
 }
 
 void ScriptModContextView::ExitGame() const {
-    if (RejectRestrictedHostCall("ModContext::ExitGame"))
-        return;
     if (m_Context)
         m_Context->ExitGame();
 }
@@ -292,29 +280,21 @@ CKBehavior *ScriptModContextView::GetScriptByName(const std::string &name) const
 }
 
 void ScriptModContextView::SetIC(CKBeObject *object, bool hierarchy) const {
-    if (RejectRestrictedHostCall("ModContext::SetIC"))
-        return;
     if (m_Context && object)
         m_Context->SetIC(object, hierarchy);
 }
 
 void ScriptModContextView::RestoreIC(CKBeObject *object, bool hierarchy) const {
-    if (RejectRestrictedHostCall("ModContext::RestoreIC"))
-        return;
     if (m_Context && object)
         m_Context->RestoreIC(object, hierarchy);
 }
 
 void ScriptModContextView::Show(CKBeObject *object, CK_OBJECT_SHOWOPTION show, bool hierarchy) const {
-    if (RejectRestrictedHostCall("ModContext::Show"))
-        return;
     if (m_Context && object)
         m_Context->Show(object, show, hierarchy);
 }
 
 ScriptTimerRef *ScriptModContextView::AddTimer(asIScriptObject *timer) const {
-    if (RejectRestrictedHostCall("ModContext::AddTimer"))
-        return nullptr;
     if (m_Owner)
         return m_Owner->AddScriptTimer(timer);
     return nullptr;
@@ -323,38 +303,28 @@ ScriptTimerRef *ScriptModContextView::AddTimer(asIScriptObject *timer) const {
 ScriptTimerRef *ScriptModContextView::SetTimeoutTicks(unsigned int delayTicks,
                                                       asIScriptFunction *callback,
                                                       const std::string &name) const {
-    if (RejectRestrictedHostCall("ModContext::SetTimeoutTicks"))
-        return nullptr;
     return m_Owner ? m_Owner->AddScriptTimeoutTicks(delayTicks, callback, name) : nullptr;
 }
 
 ScriptTimerRef *ScriptModContextView::SetTimeout(float delayMs,
                                                  asIScriptFunction *callback,
                                                  const std::string &name) const {
-    if (RejectRestrictedHostCall("ModContext::SetTimeout"))
-        return nullptr;
     return m_Owner ? m_Owner->AddScriptTimeoutMs(delayMs, callback, name) : nullptr;
 }
 
 ScriptTimerRef *ScriptModContextView::SetIntervalTicks(unsigned int delayTicks,
                                                        asIScriptFunction *callback,
                                                        const std::string &name) const {
-    if (RejectRestrictedHostCall("ModContext::SetIntervalTicks"))
-        return nullptr;
     return m_Owner ? m_Owner->AddScriptIntervalTicks(delayTicks, callback, name) : nullptr;
 }
 
 ScriptTimerRef *ScriptModContextView::SetInterval(float delayMs,
                                                   asIScriptFunction *callback,
                                                   const std::string &name) const {
-    if (RejectRestrictedHostCall("ModContext::SetInterval"))
-        return nullptr;
     return m_Owner ? m_Owner->AddScriptIntervalMs(delayMs, callback, name) : nullptr;
 }
 
 ScriptCommandRef *ScriptModContextView::RegisterCommand(asIScriptObject *command) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterCommand"))
-        return nullptr;
     if (m_Owner)
         return m_Owner->RegisterScriptCommand(command);
     return nullptr;
@@ -363,20 +333,14 @@ ScriptCommandRef *ScriptModContextView::RegisterCommand(asIScriptObject *command
 ScriptCommandRef *ScriptModContextView::RegisterCommand(const ScriptCommandDefinition &definition,
                                                         asIScriptFunction *execute,
                                                         asIScriptFunction *complete) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterCommand"))
-        return nullptr;
     return m_Owner ? m_Owner->RegisterScriptCommand(definition, execute, complete) : nullptr;
 }
 
 bool ScriptModContextView::UnregisterCommand(const std::string &name) const {
-    if (RejectRestrictedHostCall("ModContext::UnregisterCommand"))
-        return false;
     return m_Owner && m_Owner->UnregisterScriptCommand(name);
 }
 
 ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(asIScriptObject *request) const {
-    if (RejectRestrictedHostCall("ModContext::RequestDataShare"))
-        return nullptr;
     if (m_Owner)
         return m_Owner->RequestScriptDataShare(request);
     return nullptr;
@@ -386,8 +350,6 @@ ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(const std::str
                                                                   int type,
                                                                   asIScriptFunction *callback,
                                                                   const std::string &name) const {
-    if (RejectRestrictedHostCall("ModContext::RequestDataShare"))
-        return nullptr;
     return m_Owner ? m_Owner->RequestScriptDataShare(key, type, callback, name) : nullptr;
 }
 
@@ -396,8 +358,6 @@ ScriptHookBlockRef *ScriptModContextView::CreateHookBlock(CKBehavior *ownerScrip
                                                           const std::string &name,
                                                           int inputCount,
                                                           int outputCount) const {
-    if (RejectRestrictedHostCall("ModContext::CreateHookBlock"))
-        return nullptr;
     return m_Owner ? m_Owner->CreateScriptHookBlock(ownerScript, callback, name, inputCount, outputCount) : nullptr;
 }
 
@@ -407,8 +367,6 @@ ScriptHookBlockRef *ScriptModContextView::InsertHookBlockAfter(CKBehavior *owner
                                                                const std::string &name,
                                                                int sourceOutput,
                                                                int targetInput) const {
-    if (RejectRestrictedHostCall("ModContext::InsertHookBlockAfter"))
-        return nullptr;
     return m_Owner ? m_Owner->InsertScriptHookBlockAfter(ownerScript, source, callback, name, sourceOutput, targetInput) : nullptr;
 }
 
@@ -418,8 +376,6 @@ ScriptHookBlockRef *ScriptModContextView::InsertHookBlockBefore(CKBehavior *owne
                                                                 const std::string &name,
                                                                 int sourceOutput,
                                                                 int targetInput) const {
-    if (RejectRestrictedHostCall("ModContext::InsertHookBlockBefore"))
-        return nullptr;
     return m_Owner ? m_Owner->InsertScriptHookBlockBefore(ownerScript, target, callback, name, sourceOutput, targetInput) : nullptr;
 }
 
@@ -430,8 +386,6 @@ ScriptHookBlockRef *ScriptModContextView::InsertHookBlockBetween(CKBehavior *own
                                                                  const std::string &name,
                                                                  int sourceOutput,
                                                                  int targetInput) const {
-    if (RejectRestrictedHostCall("ModContext::InsertHookBlockBetween"))
-        return nullptr;
     return m_Owner ? m_Owner->InsertScriptHookBlockBetween(ownerScript, source, target, callback, name, sourceOutput, targetInput) : nullptr;
 }
 
@@ -447,8 +401,6 @@ bool ScriptModContextView::RegisterBallType(const std::string &ballFile,
                                             float rotDamp,
                                             float force,
                                             float radius) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterBallType"))
-        return false;
     return m_Owner && m_Owner->RegisterScriptBallType(ballFile, ballId, ballName, objName, friction, elasticity, mass,
                                                       collGroup, linearDamp, rotDamp, force, radius);
 }
@@ -459,8 +411,6 @@ bool ScriptModContextView::RegisterFloorType(const std::string &floorName,
                                              float mass,
                                              const std::string &collGroup,
                                              bool enableColl) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterFloorType"))
-        return false;
     return m_Owner && m_Owner->RegisterScriptFloorType(floorName, friction, elasticity, mass, collGroup, enableColl);
 }
 
@@ -476,8 +426,6 @@ bool ScriptModContextView::RegisterModulBall(const std::string &modulName,
                                              float linearDamp,
                                              float rotDamp,
                                              float radius) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterModulBall"))
-        return false;
     return m_Owner && m_Owner->RegisterScriptModulBall(modulName, fixed, friction, elasticity, mass, collGroup,
                                                        frozen, enableColl, calcMassCenter, linearDamp, rotDamp, radius);
 }
@@ -493,21 +441,15 @@ bool ScriptModContextView::RegisterModulConvex(const std::string &modulName,
                                                bool calcMassCenter,
                                                float linearDamp,
                                                float rotDamp) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterModulConvex"))
-        return false;
     return m_Owner && m_Owner->RegisterScriptModulConvex(modulName, fixed, friction, elasticity, mass, collGroup,
                                                          frozen, enableColl, calcMassCenter, linearDamp, rotDamp);
 }
 
 bool ScriptModContextView::RegisterTrafo(const std::string &modulName) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterTrafo"))
-        return false;
     return m_Owner && m_Owner->RegisterScriptTrafo(modulName);
 }
 
 bool ScriptModContextView::RegisterModul(const std::string &modulName) const {
-    if (RejectRestrictedHostCall("ModContext::RegisterModul"))
-        return false;
     return m_Owner && m_Owner->RegisterScriptModul(modulName);
 }
 
@@ -571,15 +513,11 @@ std::string ScriptModContextView::GetGlobalModId(int index) const {
 }
 
 void ScriptModContextView::ExecuteCommand(const std::string &command) const {
-    if (RejectRestrictedHostCall("ModContext::ExecuteCommand"))
-        return;
     if (m_Context)
         m_Context->ExecuteCommand(command.c_str());
 }
 
 void ScriptModContextView::SkipRenderForNextTick() const {
-    if (RejectRestrictedHostCall("ModContext::SkipRenderForNextTick"))
-        return;
     if (m_Context)
         m_Context->SkipRenderForNextTick();
 }

@@ -9,30 +9,6 @@ namespace BML {
 
 namespace {
 thread_local ScriptMod *g_CurrentScriptMod = nullptr;
-thread_local ScriptModRuntime *g_CurrentScriptModRuntime = nullptr;
-
-class ScriptCurrentRuntimeScope {
-public:
-    explicit ScriptCurrentRuntimeScope(ScriptModRuntime *runtime)
-        : m_Previous(g_CurrentScriptModRuntime) {
-        g_CurrentScriptModRuntime = runtime;
-    }
-    ~ScriptCurrentRuntimeScope() { g_CurrentScriptModRuntime = m_Previous; }
-
-    ScriptCurrentRuntimeScope(const ScriptCurrentRuntimeScope &) = delete;
-    ScriptCurrentRuntimeScope &operator=(const ScriptCurrentRuntimeScope &) = delete;
-
-private:
-    ScriptModRuntime *m_Previous = nullptr;
-};
-thread_local ScriptMod *g_ConstructingScriptMod = nullptr;
-thread_local ScriptModRuntime *g_ConstructingScriptModRuntime = nullptr;
-thread_local int g_ScriptObjectConstructionDepth = 0;
-thread_local std::string g_ScriptObjectConstructionViolation;
-thread_local ScriptMod *g_StateHookScriptMod = nullptr;
-thread_local ScriptModRuntime *g_StateHookScriptModRuntime = nullptr;
-thread_local ScriptModReloadPhase g_StateHookPhase = ScriptModReloadPhase::None;
-thread_local int g_StateHookDepth = 0;
 
 void ReplaceAll(std::string &value, const std::string &from, const std::string &to) {
     if (from.empty())
@@ -114,58 +90,7 @@ CKAS_STATUS __cdecl CaptureIncludeEdge(const CKAngelScriptIncludeEdge *edge, voi
     });
 }
 
-CKAS_STATUS __cdecl BMLScriptHostCallFilter(const char *apiName, CKDWORD flags, void *) {
-    const bool mutatesHostState = (flags & CKAS_HOSTCALL_MUTATES_HOST_STATE) != 0;
-    const bool schedulesAsyncWork = (flags & CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK) != 0;
-    if (!mutatesHostState && !schedulesAsyncWork)
-        return CKAS_OK;
-
-    if (ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
-        ScriptModRuntime::RecordStateHookHostCallViolation(apiName))
-        return CKAS_INVALIDSTATE;
-
-    if (schedulesAsyncWork && ScriptModRuntime::GetCurrentScriptMod())
-        return CKAS_INVALIDSTATE;
-
-    return CKAS_OK;
-}
-
 } // namespace
-
-bool SetScriptModHostCallFilterEnabled(const CKAngelScriptAdapter::Api &api,
-                                       CKAngelScript *angelScript,
-                                       bool enabled,
-                                       ScriptDiagnostic &diagnostic) {
-    if (!angelScript || !api.SetHostCallFilter) {
-        diagnostic = MakeScriptDiagnostic(
-            ScriptDiagnosticPhase::CkasHost,
-            "CKAngelScript host-call filter API is unavailable.");
-        diagnostic.Status = CKAS_NOTINITIALIZED;
-        return false;
-    }
-
-    CKAngelScriptResult result = {};
-    if (api.InitResult)
-        api.InitResult(&result);
-    else
-        result.Size = sizeof(result);
-
-    const CKAS_STATUS status = api.SetHostCallFilter(
-        angelScript,
-        enabled ? BMLScriptHostCallFilter : nullptr,
-        nullptr,
-        &result);
-    if (status == CKAS_OK)
-        return true;
-
-    diagnostic = MakeScriptDiagnostic(
-        ScriptDiagnosticPhase::CkasHost,
-        status,
-        result,
-        enabled ? "Failed to install CKAngelScript host-call filter"
-                : "Failed to clear CKAngelScript host-call filter");
-    return false;
-}
 
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
     : m_Previous(g_CurrentScriptMod) {
@@ -175,60 +100,6 @@ ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
 
 ScriptCurrentModScope::~ScriptCurrentModScope() {
     g_CurrentScriptMod = m_Previous;
-}
-
-ScriptObjectConstructionScope::ScriptObjectConstructionScope(ScriptMod *owner, ScriptModRuntime *runtime)
-    : m_Previous(g_ConstructingScriptMod),
-      m_PreviousRuntime(g_ConstructingScriptModRuntime),
-      m_PreviousDepth(g_ScriptObjectConstructionDepth),
-      m_PreviousViolation(g_ScriptObjectConstructionViolation),
-      m_Active(owner != nullptr) {
-    if (m_Active) {
-        if (g_ScriptObjectConstructionDepth == 0)
-            g_ScriptObjectConstructionViolation.clear();
-        g_ConstructingScriptMod = owner;
-        g_ConstructingScriptModRuntime = runtime;
-        ++g_ScriptObjectConstructionDepth;
-    }
-}
-
-ScriptObjectConstructionScope::~ScriptObjectConstructionScope() {
-    if (!m_Active)
-        return;
-    if (g_ScriptObjectConstructionDepth > 0)
-        --g_ScriptObjectConstructionDepth;
-    g_ConstructingScriptMod = m_Previous;
-    g_ConstructingScriptModRuntime = m_PreviousRuntime;
-    if (m_PreviousDepth == 0)
-        g_ScriptObjectConstructionViolation = m_PreviousViolation;
-}
-
-std::string ScriptObjectConstructionScope::GetViolation() const {
-    return m_Active ? g_ScriptObjectConstructionViolation : std::string();
-}
-
-ScriptStateHookScope::ScriptStateHookScope(ScriptMod *owner, ScriptModRuntime *runtime, ScriptModReloadPhase phase)
-    : m_PreviousMod(g_StateHookScriptMod),
-      m_PreviousRuntime(g_StateHookScriptModRuntime),
-      m_PreviousPhase(g_StateHookPhase),
-      m_PreviousDepth(g_StateHookDepth),
-      m_Active(owner != nullptr && runtime != nullptr && IsScriptModStateHookPhase(phase)) {
-    if (m_Active) {
-        g_StateHookScriptMod = owner;
-        g_StateHookScriptModRuntime = runtime;
-        g_StateHookPhase = phase;
-        ++g_StateHookDepth;
-    }
-}
-
-ScriptStateHookScope::~ScriptStateHookScope() {
-    if (!m_Active)
-        return;
-    if (g_StateHookDepth > 0)
-        --g_StateHookDepth;
-    g_StateHookScriptMod = m_PreviousMod;
-    g_StateHookScriptModRuntime = m_PreviousRuntime;
-    g_StateHookPhase = m_PreviousDepth > 0 ? m_PreviousPhase : ScriptModReloadPhase::None;
 }
 
 class ScriptRuntimeCallScope {
@@ -313,75 +184,6 @@ void ScriptModRuntime::ResetMovedFrom() noexcept {
 ScriptMod *ScriptModRuntime::GetCurrentScriptMod() {
     return g_CurrentScriptMod;
 }
-
-ScriptModRuntime *ScriptModRuntime::GetCurrentScriptModRuntime() {
-    return g_CurrentScriptModRuntime;
-}
-
-bool ScriptModRuntime::IsConstructingScriptObject() {
-    return g_ScriptObjectConstructionDepth > 0 && g_ConstructingScriptMod != nullptr;
-}
-
-bool ScriptModRuntime::RecordConstructionHostCallViolation(const char *apiName) {
-    if (!IsConstructingScriptObject())
-        return false;
-
-    if (g_ScriptObjectConstructionViolation.empty()) {
-        g_ScriptObjectConstructionViolation = apiName ? apiName : "BML host API";
-        g_ScriptObjectConstructionViolation +=
-            " is not available while constructing a script mod object; move host-visible work to OnLoad().";
-    }
-
-    ScriptModRuntime *runtime = g_ConstructingScriptModRuntime;
-    if (runtime) {
-        const ::CKAngelScriptAdapter::Api &api = runtime->m_Adapter.GetApi();
-        if (api.InitResult && api.SetActiveContextException) {
-            CKAngelScriptResult result = {};
-            api.InitResult(&result);
-            api.SetActiveContextException(runtime->m_Adapter.GetAngelScript(),
-                                          g_ScriptObjectConstructionViolation.c_str(),
-                                          &result);
-        }
-    }
-    return true;
-}
-
-bool ScriptModRuntime::IsInStateHook() {
-    return g_StateHookDepth > 0 && g_StateHookScriptMod != nullptr;
-}
-
-ScriptModReloadPhase ScriptModRuntime::GetStateHookPhase() {
-    return IsInStateHook() ? g_StateHookPhase : ScriptModReloadPhase::None;
-}
-
-bool ScriptModRuntime::RecordStateHookHostCallViolation(const char *apiName) {
-    if (!IsInStateHook())
-        return false;
-
-    std::string message = apiName ? apiName : "BML host API";
-    message += " is not available during hot reload ";
-    message += GetScriptModReloadPhaseName(g_StateHookPhase);
-    message += "; state hooks may only transfer primitive/string values through BML::StateBag and use read-only queries/logging.";
-
-    ScriptModRuntime *runtime = g_StateHookScriptModRuntime;
-    if (runtime) {
-        const ::CKAngelScriptAdapter::Api &api = runtime->m_Adapter.GetApi();
-        if (api.InitResult && api.SetActiveContextException) {
-            CKAngelScriptResult result = {};
-            api.InitResult(&result);
-            api.SetActiveContextException(runtime->m_Adapter.GetAngelScript(),
-                                          message.c_str(),
-                                          &result);
-        }
-    }
-    return true;
-}
-
-#ifdef BML_SCRIPT_RUNTIME_TEST_ACCESS
-CKAS_STATUS ScriptModRuntime::TestFilterHostCall(const char *apiName, CKDWORD flags) {
-    return BMLScriptHostCallFilter(apiName, flags, nullptr);
-}
-#endif
 
 bool ScriptModRuntime::Refresh(CKContext *context, ScriptDiagnostic &diagnostic) {
     if (m_Adapter.Refresh(context))
@@ -642,22 +444,7 @@ bool ScriptModRuntime::CreateObject(CKContext *context,
 
     CKAngelScriptResult result = {};
     api.InitResult(&result);
-    ScriptObjectConstructionScope constructionScope(m_Owner, this);
     const CKAS_STATUS status = api.CreateObject(m_Adapter.GetAngelScript(), &objectOptions, &m_Object, &result);
-    const std::string constructionViolation = constructionScope.GetViolation();
-    if (status == CKAS_OK && !constructionViolation.empty()) {
-        if (m_Object) {
-            CKAngelScriptResult releaseResult = {};
-            api.InitResult(&releaseResult);
-            api.ReleaseObject(m_Adapter.GetAngelScript(), m_Object, &releaseResult);
-            m_Object = nullptr;
-        }
-        diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CreateObject,
-                                          constructionViolation);
-        diagnostic.Status = CKAS_INVALIDSTATE;
-        return false;
-    }
-
     if (status == CKAS_OK && m_Object) {
         m_AngelScript = m_Adapter.GetAngelScript();
         m_Api = &m_Adapter.GetApi();
@@ -783,7 +570,6 @@ bool ScriptModRuntime::CallMethod(CKContext *context,
         return false;
     }
     ScriptCurrentModScope callScope(m_Owner);
-    ScriptCurrentRuntimeScope runtimeScope(this);
     BMLImGuiASCallbackRecoveryScope imguiRecovery;
     imguiRecovery.Begin();
     const CKAS_STATUS status = m_Api->CallObjectMethod(m_AngelScript, &options, &result);

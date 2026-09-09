@@ -16,7 +16,6 @@ enum class ScriptModReloadPhase : int {
 };
 
 const char *GetScriptModReloadPhaseName(ScriptModReloadPhase phase);
-bool IsScriptModStateHookPhase(ScriptModReloadPhase phase);
 
 } // namespace BML
 

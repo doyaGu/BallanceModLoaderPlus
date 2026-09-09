@@ -27,7 +27,6 @@ static constexpr CKAS_FEATURE kRequiredFeatures[] = {
     CKAS_FEATURE_ACTIVE_CONTEXT_EXCEPTION,
     CKAS_FEATURE_SOURCE_SECTIONS,
     CKAS_FEATURE_OBJECT_HANDLE_ARGS,
-    CKAS_FEATURE_HOST_CALL_FILTER,
     CKAS_FEATURE_MODULE_IMPORTS,
     CKAS_FEATURE_MODULE_BYTECODE,
     CKAS_FEATURE_MODULE_REPLACE_TRANSACTION,
@@ -61,8 +60,6 @@ static std::string MakeMissingFeatureDiagnostic(CKAS_FEATURE feature) {
         message += " BML requires CKAngelScript source-section loading for consistent script hot reload snapshots.";
     } else if (feature == CKAS_FEATURE_OBJECT_HANDLE_ARGS) {
         message += " BML requires CKAngelScript object-handle argument writing for script hot reload state migration.";
-    } else if (feature == CKAS_FEATURE_HOST_CALL_FILTER) {
-        message += " BML requires CKAngelScript host-call filtering so participating world-mutating CKAS APIs can be rejected during script hot reload state hooks.";
     } else if (feature == CKAS_FEATURE_MODULE_IMPORTS) {
         message += " BML requires CKAngelScript module import APIs for script library module binding.";
     } else if (feature == CKAS_FEATURE_MODULE_BYTECODE) {
@@ -246,8 +243,6 @@ const char *CKAngelScriptAdapter::FeatureName(CKAS_FEATURE feature) {
         return "CKAS_FEATURE_SOURCE_SECTIONS";
     case CKAS_FEATURE_OBJECT_HANDLE_ARGS:
         return "CKAS_FEATURE_OBJECT_HANDLE_ARGS";
-    case CKAS_FEATURE_HOST_CALL_FILTER:
-        return "CKAS_FEATURE_HOST_CALL_FILTER";
     case CKAS_FEATURE_MODULE_IMPORTS:
         return "CKAS_FEATURE_MODULE_IMPORTS";
     case CKAS_FEATURE_MODULE_BYTECODE:
@@ -318,7 +313,6 @@ bool CKAngelScriptAdapter::ResolveRequiredExports(void *moduleHandle) {
         Resolve(module, "CKAngelScriptReleaseMethod", m_Api.ReleaseMethod, missing) &&
         Resolve(module, "CKAngelScriptBorrowActiveContext", m_Api.BorrowActiveContext, missing) &&
         Resolve(module, "CKAngelScriptSetActiveContextException", m_Api.SetActiveContextException, missing) &&
-        Resolve(module, "CKAngelScriptSetHostCallFilter", m_Api.SetHostCallFilter, missing) &&
         Resolve(module, "CKAngelScriptAssignObjectHandle", m_Api.AssignObjectHandle, missing) &&
         Resolve(module, "CKAngelScriptArgSetBool", m_Api.ArgSetBool, missing) &&
         Resolve(module, "CKAngelScriptArgSetInt", m_Api.ArgSetInt, missing) &&

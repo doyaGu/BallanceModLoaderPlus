@@ -26,10 +26,4 @@ const char *GetScriptModReloadPhaseName(ScriptModReloadPhase phase) {
     return "unknown";
 }
 
-bool IsScriptModStateHookPhase(ScriptModReloadPhase phase) {
-    return phase == ScriptModReloadPhase::SaveState ||
-           phase == ScriptModReloadPhase::MigrateState ||
-           phase == ScriptModReloadPhase::RestoreState;
-}
-
 } // namespace BML

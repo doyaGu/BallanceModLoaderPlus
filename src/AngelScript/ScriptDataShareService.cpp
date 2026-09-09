@@ -607,8 +607,6 @@ int ScriptDataShareRequestRef::GetType() const {
 }
 
 bool ScriptDataShareRequestRef::Cancel() {
-    if (RejectScriptRestrictedHostCall("DataShareRequestRef::Cancel"))
-        return false;
     std::shared_ptr<ScriptDataShareServiceState> state = m_State.lock();
     if (!state)
         return false;

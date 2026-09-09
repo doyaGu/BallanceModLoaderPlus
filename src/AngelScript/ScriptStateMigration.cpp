@@ -88,7 +88,6 @@ static bool CallOptionalStateMethod(CKContext *context,
         }
     }
     ScriptStateBagAccessScope stateAccess(state);
-    ScriptStateHookScope stateHookScope(runtime.GetOwner(), &runtime, phase);
     const bool ok = runtime.CallMethod(context, call, diagnostic);
     called = ok;
 

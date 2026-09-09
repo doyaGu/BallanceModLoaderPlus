@@ -54,8 +54,6 @@ bool ScriptFunctionHasSignature(asIScriptFunction *function,
                                 size_t paramCount);
 
 bool ExecuteScriptFunction(const ScriptFunctionCall &call, ScriptDiagnostic &diagnostic);
-bool RejectScriptRestrictedHostCall(const char *apiName);
-
 } // namespace BML
 
 #endif

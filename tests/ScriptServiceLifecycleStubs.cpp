@@ -91,12 +91,4 @@ bool ScriptMod::CanDispatchScriptServiceCallback() {
 
 void ScriptMod::LeaveScriptCall() const {}
 
-bool ScriptModRuntime::RecordConstructionHostCallViolation(const char *) {
-    return false;
-}
-
-bool ScriptModRuntime::RecordStateHookHostCallViolation(const char *) {
-    return false;
-}
-
 } // namespace BML

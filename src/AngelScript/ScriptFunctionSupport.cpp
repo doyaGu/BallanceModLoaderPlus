@@ -155,9 +155,4 @@ bool ExecuteScriptFunction(const ScriptFunctionCall &call, ScriptDiagnostic &dia
     return true;
 }
 
-bool RejectScriptRestrictedHostCall(const char *apiName) {
-    return ScriptModRuntime::RecordConstructionHostCallViolation(apiName) ||
-           ScriptModRuntime::RecordStateHookHostCallViolation(apiName);
-}
-
 } // namespace BML

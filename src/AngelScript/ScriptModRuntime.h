@@ -12,7 +12,6 @@
 namespace BML {
 
 class ScriptMod;
-class ScriptModRuntime;
 
 class ScriptCurrentModScope {
 public:
@@ -24,40 +23,6 @@ public:
 
 private:
     ScriptMod *m_Previous = nullptr;
-};
-
-class ScriptObjectConstructionScope {
-public:
-    explicit ScriptObjectConstructionScope(ScriptMod *owner, ScriptModRuntime *runtime = nullptr);
-    ~ScriptObjectConstructionScope();
-
-    ScriptObjectConstructionScope(const ScriptObjectConstructionScope &) = delete;
-    ScriptObjectConstructionScope &operator=(const ScriptObjectConstructionScope &) = delete;
-
-    std::string GetViolation() const;
-
-private:
-    ScriptMod *m_Previous = nullptr;
-    ScriptModRuntime *m_PreviousRuntime = nullptr;
-    int m_PreviousDepth = 0;
-    std::string m_PreviousViolation;
-    bool m_Active = false;
-};
-
-class ScriptStateHookScope {
-public:
-    ScriptStateHookScope(ScriptMod *owner, ScriptModRuntime *runtime, ScriptModReloadPhase phase);
-    ~ScriptStateHookScope();
-
-    ScriptStateHookScope(const ScriptStateHookScope &) = delete;
-    ScriptStateHookScope &operator=(const ScriptStateHookScope &) = delete;
-
-private:
-    ScriptMod *m_PreviousMod = nullptr;
-    ScriptModRuntime *m_PreviousRuntime = nullptr;
-    ScriptModReloadPhase m_PreviousPhase = ScriptModReloadPhase::None;
-    int m_PreviousDepth = 0;
-    bool m_Active = false;
 };
 
 struct ScriptMethodCall {
@@ -120,11 +85,6 @@ struct ScriptRuntimeModuleInfo {
     std::vector<ScriptRuntimeIncludeInfo> IncludeEdges;
 };
 
-bool SetScriptModHostCallFilterEnabled(const CKAngelScriptAdapter::Api &api,
-                                       CKAngelScript *angelScript,
-                                       bool enabled,
-                                       ScriptDiagnostic &diagnostic);
-
 class ScriptModRuntime {
 public:
     ScriptModRuntime();
@@ -143,12 +103,6 @@ public:
     void SetOwner(ScriptMod *owner) { m_Owner = owner; }
     ScriptMod *GetOwner() const { return m_Owner; }
     static ScriptMod *GetCurrentScriptMod();
-    static ScriptModRuntime *GetCurrentScriptModRuntime();
-    static bool IsConstructingScriptObject();
-    static bool RecordConstructionHostCallViolation(const char *apiName);
-    static bool IsInStateHook();
-    static ScriptModReloadPhase GetStateHookPhase();
-    static bool RecordStateHookHostCallViolation(const char *apiName);
     bool IsModuleLoaded() const { return m_ModuleLoaded; }
     bool HasObject() const { return m_Object != nullptr; }
 
@@ -203,7 +157,6 @@ public:
     const ::CKAngelScriptAdapter::Api *TestCachedApi() const { return m_Api; }
     const ::CKAngelScriptAdapter::Api *TestAdapterApi() const { return &m_Adapter.GetApi(); }
     CKAngelScript *TestAngelScript() const { return m_AngelScript; }
-    static CKAS_STATUS TestFilterHostCall(const char *apiName, CKDWORD flags);
 #endif
 
 private:

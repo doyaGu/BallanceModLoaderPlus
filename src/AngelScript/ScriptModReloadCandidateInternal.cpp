@@ -57,7 +57,7 @@ std::vector<ScriptModReloadDiagnosticField> BuildStateMigrationFailureFields(con
         {"oldSaveStateExecuted", oldSaveStateExecuted ? "true" : "false"},
         {"oldRuntimeKept", oldRuntimeKept ? "true" : "false"},
         {"rollbackScope", kReloadRollbackBoundary},
-        {"stateHookRestrictions", "state hooks may only copy primitive/string values through BML::StateBag and use read-only queries/logging"},
+        {"stateHookSideEffects", "state hook side effects are not rolled back"},
     };
 }
 

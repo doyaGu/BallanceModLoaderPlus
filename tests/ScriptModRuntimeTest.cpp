@@ -9,32 +9,6 @@
 namespace BML {
 namespace {
 
-struct HostCallFilterSetProbe {
-    int CallCount = 0;
-    CKAngelScript *AngelScript = nullptr;
-    CKAngelScriptHostCallFilterCallback Callback = nullptr;
-    void *UserData = nullptr;
-    CKAS_STATUS Status = CKAS_OK;
-};
-
-HostCallFilterSetProbe g_HostCallFilterSetProbe;
-
-void __cdecl InitHostCallFilterResult(CKAngelScriptResult *result) {
-    if (result)
-        result->Size = sizeof(*result);
-}
-
-CKAS_STATUS __cdecl SetHostCallFilterProbe(CKAngelScript *angelScript,
-                                           CKAngelScriptHostCallFilterCallback callback,
-                                           void *userData,
-                                           CKAngelScriptResult *) {
-    ++g_HostCallFilterSetProbe.CallCount;
-    g_HostCallFilterSetProbe.AngelScript = angelScript;
-    g_HostCallFilterSetProbe.Callback = callback;
-    g_HostCallFilterSetProbe.UserData = userData;
-    return g_HostCallFilterSetProbe.Status;
-}
-
 TEST(CKAngelScriptAdapterTest, NamesModuleFoundationFeatures) {
     EXPECT_STREQ("CKAS_FEATURE_MODULE_IMPORTS",
                  CKAngelScriptAdapter::FeatureName(CKAS_FEATURE_MODULE_IMPORTS));
@@ -110,89 +84,6 @@ TEST(ScriptModRuntimeTest, ReleaseMethodKeepsHandleWhenAdapterRefreshFails) {
 
     EXPECT_EQ(original, method);
     EXPECT_FALSE(diagnostic.Message.empty());
-}
-
-TEST(ScriptModRuntimeTest, ConfiguresAndClearsCkasHostCallFilter) {
-    CKAngelScriptAdapter::Api api;
-    api.InitResult = InitHostCallFilterResult;
-    api.SetHostCallFilter = SetHostCallFilterProbe;
-    CKAngelScript *angelScript = reinterpret_cast<CKAngelScript *>(
-        static_cast<std::uintptr_t>(1));
-    ScriptDiagnostic diagnostic;
-
-    g_HostCallFilterSetProbe = HostCallFilterSetProbe();
-    ASSERT_TRUE(SetScriptModHostCallFilterEnabled(api, angelScript, true, diagnostic));
-    EXPECT_EQ(1, g_HostCallFilterSetProbe.CallCount);
-    EXPECT_EQ(angelScript, g_HostCallFilterSetProbe.AngelScript);
-    EXPECT_NE(nullptr, g_HostCallFilterSetProbe.Callback);
-    EXPECT_EQ(nullptr, g_HostCallFilterSetProbe.UserData);
-
-    ASSERT_TRUE(SetScriptModHostCallFilterEnabled(api, angelScript, false, diagnostic));
-    EXPECT_EQ(2, g_HostCallFilterSetProbe.CallCount);
-    EXPECT_EQ(nullptr, g_HostCallFilterSetProbe.Callback);
-    EXPECT_EQ(nullptr, g_HostCallFilterSetProbe.UserData);
-}
-
-TEST(ScriptModRuntimeTest, ReportsCkasHostCallFilterConfigurationFailure) {
-    CKAngelScriptAdapter::Api api;
-    api.InitResult = InitHostCallFilterResult;
-    api.SetHostCallFilter = SetHostCallFilterProbe;
-    CKAngelScript *angelScript = reinterpret_cast<CKAngelScript *>(
-        static_cast<std::uintptr_t>(1));
-    ScriptDiagnostic diagnostic;
-
-    g_HostCallFilterSetProbe = HostCallFilterSetProbe();
-    g_HostCallFilterSetProbe.Status = CKAS_INVALIDSTATE;
-    EXPECT_FALSE(SetScriptModHostCallFilterEnabled(api, angelScript, true, diagnostic));
-    EXPECT_EQ(CKAS_INVALIDSTATE, diagnostic.Status);
-    EXPECT_EQ(ScriptDiagnosticPhase::CkasHost, diagnostic.Phase);
-    EXPECT_NE(std::string::npos,
-              diagnostic.Message.find("Failed to install CKAngelScript host-call filter"));
-}
-
-TEST(ScriptModRuntimeTest, RejectsCkasAsyncWorkOnlyWhileRunningScriptMods) {
-    ScriptMod *owner = reinterpret_cast<ScriptMod *>(static_cast<std::uintptr_t>(1));
-
-    EXPECT_EQ(CKAS_OK,
-              ScriptModRuntime::TestFilterHostCall(
-                  "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
-
-    ScriptCurrentModScope scope(owner);
-    EXPECT_EQ(CKAS_INVALIDSTATE,
-              ScriptModRuntime::TestFilterHostCall(
-                  "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
-    EXPECT_EQ(CKAS_OK,
-              ScriptModRuntime::TestFilterHostCall(
-                  "Scene::Create", CKAS_HOSTCALL_MUTATES_HOST_STATE));
-}
-
-TEST(ScriptModRuntimeTest, RejectsMutationsAndAsyncWorkInRestrictedPhases) {
-    ScriptMod *owner = reinterpret_cast<ScriptMod *>(static_cast<std::uintptr_t>(1));
-
-    {
-        ScriptObjectConstructionScope scope(owner);
-        EXPECT_EQ(CKAS_INVALIDSTATE,
-                  ScriptModRuntime::TestFilterHostCall(
-                      "Scene::Create", CKAS_HOSTCALL_MUTATES_HOST_STATE));
-    }
-    {
-        ScriptObjectConstructionScope scope(owner);
-        EXPECT_EQ(CKAS_INVALIDSTATE,
-                  ScriptModRuntime::TestFilterHostCall(
-                      "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
-    }
-
-    ScriptModRuntime runtime("state-hook");
-    ScriptStateHookScope scope(owner, &runtime, ScriptModReloadPhase::SaveState);
-    EXPECT_EQ(CKAS_INVALIDSTATE,
-              ScriptModRuntime::TestFilterHostCall(
-                  "Scene::Create", CKAS_HOSTCALL_MUTATES_HOST_STATE));
-    EXPECT_EQ(CKAS_INVALIDSTATE,
-              ScriptModRuntime::TestFilterHostCall(
-                  "Async::Schedule", CKAS_HOSTCALL_SCHEDULES_ASYNC_WORK));
-    EXPECT_EQ(CKAS_OK,
-              ScriptModRuntime::TestFilterHostCall(
-                  "Scene::Current", CKAS_HOSTCALL_DEFAULT));
 }
 
 } // namespace
