@@ -537,6 +537,7 @@ if (-not $SkipPlayer) {
     Add-SmokeCheck $checks 'mod-load-clean' (-not (Test-SmokeTextContains $modLogText 'Failed to load ')) 'ModLoader.log must not contain native mod load failures'
     if (-not $SkipScriptSmoke) {
         Add-SmokeCheck $checks 'bindings' (Test-SmokeTextContains $modLogText 'Registered BML AngelScript bindings') 'Registered BML AngelScript bindings'
+        Add-SmokeCheck $checks 'bindings-unregister-clean' (-not (Test-SmokeTextContains $modLogText 'Failed to unregister BML AngelScript bindings')) 'BML AngelScript bindings must unregister cleanly'
         Add-SmokeCheck $checks 'script-summary' (Test-SmokeTextContains $modLogText 'BML script mod summary: capabilities') 'BML script mod summary: capabilities'
         Add-SmokeCheck $checks 'script-capabilities' (Test-SmokeTextContains $modLogText 'BML capability smoke: runtime=true') 'BML capability smoke: runtime=true'
         Add-SmokeCheck $checks 'script-raw-handle-validity' (Test-SmokeTextContains $modLogText 'BML raw handle validity smoke: live=true deleted=true') 'BML raw handle validity smoke: live=true deleted=true'
