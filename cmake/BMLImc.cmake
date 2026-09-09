@@ -5,7 +5,7 @@ function(bml_target_imc_api target)
         message(FATAL_ERROR "bml_target_imc_api: target '${target}' does not exist")
     endif()
 
-    cmake_parse_arguments(IMC "" "INPUT;API_ID;OUTPUT_DIR" "" ${ARGN})
+    cmake_parse_arguments(IMC "" "INPUT;API_ID;OUTPUT_DIR;SCRIPT_OUTPUT_DIR" "" ${ARGN})
     if(IMC_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
                 "bml_target_imc_api: unexpected arguments: ${IMC_UNPARSED_ARGUMENTS}")
@@ -56,6 +56,18 @@ function(bml_target_imc_api target)
     set(stem "${expected_api_id}")
     string(REPLACE "." "_" stem "${stem}")
     set(output "${output_dir}/${stem}_imc.hpp")
+    set(outputs "${output}")
+    set(script_arguments)
+    set(script_directory_command)
+    if(IMC_SCRIPT_OUTPUT_DIR)
+        get_filename_component(script_output_dir "${IMC_SCRIPT_OUTPUT_DIR}" ABSOLUTE
+                               BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+        set(script_output "${script_output_dir}/${stem}_imc.as")
+        list(APPEND outputs "${script_output}")
+        list(APPEND script_arguments --script-out-dir "${script_output_dir}")
+        list(APPEND script_directory_command
+             COMMAND "${CMAKE_COMMAND}" -E make_directory "${script_output_dir}")
+    endif()
     set(update_lock_target "bml_update_imc_locks")
     set(update_lock_command
             "cmake --build \"${CMAKE_BINARY_DIR}\" --target ${update_lock_target}")
@@ -64,6 +76,7 @@ function(bml_target_imc_api target)
             --input "${input}"
             --expected-api-id "${expected_api_id}"
             --update-lock-command "${update_lock_command}"
+            ${script_arguments}
     )
     set(dependencies "${BML_IMC_CODEGEN}" "${input}")
     if(EXISTS "${interface_lock}")
@@ -83,7 +96,7 @@ function(bml_target_imc_api target)
     endif()
 
     string(SHA256 update_step_key
-           "${target}|${input}|${expected_api_id}|${output_dir}")
+           "${target}|${input}|${expected_api_id}|${output_dir}|${script_output_dir}")
     string(SUBSTRING "${update_step_key}" 0 16 update_step_key)
     set(update_step_target "bml_update_imc_lock_${update_step_key}")
     if(TARGET "${update_step_target}")
@@ -92,6 +105,7 @@ function(bml_target_imc_api target)
     endif()
     add_custom_target("${update_step_target}"
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${output_dir}"
+            ${script_directory_command}
             COMMAND "${Python3_EXECUTABLE}" "${BML_IMC_CODEGEN}"
                     ${arguments} --update-lock
             DEPENDS "${BML_IMC_CODEGEN}" "${input}"
@@ -102,17 +116,25 @@ function(bml_target_imc_api target)
     add_dependencies("${update_lock_target}" "${update_step_target}")
 
     add_custom_command(
-            OUTPUT "${output}"
+            OUTPUT ${outputs}
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${output_dir}"
+            ${script_directory_command}
             COMMAND "${Python3_EXECUTABLE}" "${BML_IMC_CODEGEN}" ${arguments}
             DEPENDS ${dependencies}
-            COMMENT "Generating typed IMC binding ${stem}_imc.hpp"
+            COMMENT "Generating typed IMC bindings for ${expected_api_id}"
             VERBATIM
     )
-    set_source_files_properties("${output}" PROPERTIES GENERATED TRUE)
-    target_sources("${target}" PRIVATE "${output}")
+    set_source_files_properties(${outputs} PROPERTIES GENERATED TRUE)
+    if(script_output)
+        set_source_files_properties("${script_output}" PROPERTIES HEADER_FILE_ONLY TRUE)
+    endif()
+    target_sources("${target}" PRIVATE ${outputs})
     target_include_directories("${target}" PRIVATE "${output_dir}")
     target_compile_features("${target}" PRIVATE cxx_std_20)
     set_property(TARGET "${target}" APPEND PROPERTY
                  BML_IMC_GENERATED_HEADERS "${output}")
+    if(script_output)
+        set_property(TARGET "${target}" APPEND PROPERTY
+                     BML_IMC_GENERATED_SCRIPTS "${script_output}")
+    endif()
 endfunction()

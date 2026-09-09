@@ -983,6 +983,58 @@ IMC_CPP_TYPES = {
     "array<mat4>": "std::vector<BML_Mat4>",
 }
 
+IMC_AS_TYPES = {
+    "bool": "bool",
+    "int": "int",
+    "float": "float",
+    "int64": "int64",
+    "uint64": "uint64",
+    "double": "double",
+    "string": "string",
+    "bytes": "array<uint8>",
+    "object": "CKObject@",
+    "vec2": "BML::Vec2",
+    "vec3": "BML::Vec3",
+    "mat4": "BML::Mat4",
+    "array<bool>": "array<bool>",
+    "array<int>": "array<int>",
+    "array<float>": "array<float>",
+    "array<int64>": "array<int64>",
+    "array<uint64>": "array<uint64>",
+    "array<double>": "array<double>",
+    "array<string>": "array<string>",
+    "array<object>": "array<CKObject@>",
+    "array<vec2>": "array<BML::Vec2>",
+    "array<vec3>": "array<BML::Vec3>",
+    "array<mat4>": "array<BML::Mat4>",
+}
+
+IMC_AS_METHOD_SUFFIXES = {
+    "bool": "Bool",
+    "int": "Int",
+    "float": "Float",
+    "int64": "Int64",
+    "uint64": "UInt64",
+    "double": "Double",
+    "string": "String",
+    "bytes": "Bytes",
+    "object": "Object",
+    "vec2": "Vec2",
+    "vec3": "Vec3",
+    "mat4": "Mat4",
+    "array<bool>": "BoolArray",
+    "array<int>": "IntArray",
+    "array<float>": "FloatArray",
+    "array<int64>": "Int64Array",
+    "array<uint64>": "UInt64Array",
+    "array<double>": "DoubleArray",
+    "array<string>": "StringArray",
+    "array<object>": "ObjectArray",
+    "array<vec2>": "Vec2Array",
+    "array<vec3>": "Vec3Array",
+    "array<mat4>": "Mat4Array",
+}
+
 IMC_WRITERS = {
     "bool": "WriteBool", "int": "WriteInt", "float": "WriteFloat",
     "int64": "WriteInt64", "uint64": "WriteUInt64", "double": "WriteDouble",
@@ -1387,6 +1439,243 @@ def emit_imc_header(api: ApiDefinition) -> str:
     return "\n".join(lines)
 
 
+def imc_field_as_type(api: ApiDefinition, field_type: str) -> str:
+    enum = enum_definition(api, field_type)
+    if enum is None:
+        return IMC_AS_TYPES[field_type]
+    return camel(enum.name) if enum.underlying == "int" else enum.underlying
+
+
+def imc_field_as_wire_type(api: ApiDefinition, field_type: str) -> str:
+    enum = enum_definition(api, field_type)
+    return enum.underlying if enum is not None else field_type
+
+
+def as_integer_literal(value: int, underlying: str) -> str:
+    if underlying == "int":
+        return "(-2147483647 - 1)" if value == -(1 << 31) else str(value)
+    if underlying == "int64":
+        if value == -(1 << 63):
+            return "(-int64(9223372036854775807) - 1)"
+        return f"int64({value})"
+    return f"uint64({value})"
+
+
+def append_as_namespace_open(lines: list[str], segments: list[str]) -> None:
+    for segment in segments:
+        lines.extend([f"namespace {segment} {{", ""])
+
+
+def append_as_namespace_close(lines: list[str], segments: list[str]) -> None:
+    for segment in reversed(segments):
+        lines.extend([f"}} // namespace {segment}", ""])
+
+
+def append_as_record(lines: list[str], api: ApiDefinition, record: Record) -> None:
+    name = camel(record.name)
+    lines.append(f"class {name} {{")
+    for field in record.fields:
+        member = camel(field.name)
+        if field.optional:
+            lines.append(f"    bool Has{member} = false;")
+        lines.append(f"    {imc_field_as_type(api, field.type)} {member};")
+    lines.extend(["}", ""])
+
+    lines.extend([
+        f"BML::Detail::ImcRecord@ _Encode{name}(const {name} &in value) {{",
+        "    BML::Detail::ImcRecord@ record = BML::Detail::ImcRecord();",
+    ])
+    for field in record.fields:
+        member = camel(field.name)
+        wire_type = imc_field_as_wire_type(api, field.type)
+        suffix = IMC_AS_METHOD_SUFFIXES[wire_type]
+        value = f"value.{member}"
+        enum = enum_definition(api, field.type)
+        if enum is not None and enum.underlying == "int":
+            value = f"int({value})"
+        prefix = f"    if (value.Has{member}) " if field.optional else "    "
+        lines.append(f"{prefix}record.Write{suffix}({field.id}, {value});")
+    lines.extend(["    return record;", "}", ""])
+
+    lines.extend([
+        f"int _Decode{name}(const BML::Detail::ImcRecord &in record, {name} &out value) {{",
+        f"    {name} decoded;",
+        "    int status = record.Status;",
+        "    if (status != BML::ERROR_OK) return status;",
+    ])
+    for field in record.fields:
+        member = camel(field.name)
+        wire_type = imc_field_as_wire_type(api, field.type)
+        suffix = IMC_AS_METHOD_SUFFIXES[wire_type]
+        enum = enum_definition(api, field.type)
+        target = f"decoded.{member}"
+        if enum is not None and enum.underlying == "int":
+            target = f"raw{member}"
+            lines.append(f"    int {target};")
+        if field.optional:
+            lines.extend([
+                f"    if (record.Has({field.id})) {{",
+                f"        status = record.Read{suffix}({field.id}, {target});",
+                "        if (status != BML::ERROR_OK) return status;",
+            ])
+            if enum is not None and enum.underlying == "int":
+                enum_name = camel(enum.name)
+                lines.extend([
+                    f"        if (!_IsKnown{enum_name}({target})) return BML::ERROR_IMC_SCHEMA_MISMATCH;",
+                    f"        decoded.{member} = {enum_name}({target});",
+                ])
+            lines.extend([f"        decoded.Has{member} = true;", "    }"])
+        else:
+            lines.extend([
+                f"    status = record.Read{suffix}({field.id}, {target});",
+                "    if (status != BML::ERROR_OK) return status;",
+            ])
+            if enum is not None and enum.underlying == "int":
+                enum_name = camel(enum.name)
+                lines.extend([
+                    f"    if (!_IsKnown{enum_name}({target})) return BML::ERROR_IMC_SCHEMA_MISMATCH;",
+                    f"    decoded.{member} = {enum_name}({target});",
+                ])
+    lines.extend(["    value = decoded;", "    return BML::ERROR_OK;", "}", ""])
+
+
+def append_as_rpc(lines: list[str], api: ApiDefinition, endpoint: Endpoint,
+                  schemas: dict[int, Record]) -> None:
+    name = camel(endpoint.name)
+    request = schemas.get(endpoint.input_schema)
+    response = schemas.get(endpoint.output_schema)
+    callback_args = "int status"
+    if response is not None:
+        callback_args += f", const {camel(response.name)} &in response"
+    lines.extend([
+        f"funcdef void {name}Callback({callback_args});",
+        f"class _{name}Completion {{",
+        f"    {name}Callback@ Callback;",
+        f"    _{name}Completion({name}Callback@ callback) {{ @Callback = callback; }}",
+        "    void Invoke(int status, const BML::Detail::ImcRecord &in record) {",
+    ])
+    if response is not None:
+        response_name = camel(response.name)
+        lines.extend([
+            f"        {response_name} value;",
+            f"        if (status == BML::ERROR_OK) status = _Decode{response_name}(record, value);",
+            "        if (Callback !is null) Callback(status, value);",
+        ])
+    else:
+        lines.append("        if (Callback !is null) Callback(status);")
+    lines.extend(["    }", "}", ""])
+
+    request_parameter = ""
+    if request is not None:
+        request_parameter = f", const {camel(request.name)} &in request"
+    lines.extend([
+        f"bool Is{name}Available(const BML::ModContext &in ctx) {{",
+        f'    return ctx._IsImcRpcAvailable("{api.api_id}/v{api.major}/rpc/{endpoint.name}");',
+        "}",
+        "",
+        f"BML::ImcRequestRef@ {name}(const BML::ModContext &in ctx{request_parameter},",
+        f"                           {name}Callback@ callback, uint timeoutMs = 5000) {{",
+    ])
+    if request is not None:
+        lines.append(
+            f"    BML::Detail::ImcRecord@ requestRecord = _Encode{camel(request.name)}(request);"
+        )
+        request_payload = f"{api.api_id}/v{api.major}/payload/{request.name}"
+    else:
+        lines.append("    BML::Detail::ImcRecord@ requestRecord = BML::Detail::ImcRecord();")
+        request_payload = ""
+    response_payload = (
+        f"{api.api_id}/v{api.major}/payload/{response.name}" if response is not None else ""
+    )
+    lines.extend([
+        f"    _{name}Completion@ adapter = _{name}Completion(callback);",
+        "    BML::Detail::ImcCompletion@ completion = BML::Detail::ImcCompletion(adapter.Invoke);",
+        f'    return ctx._CallImc("{api.api_id}/v{api.major}/rpc/{endpoint.name}",',
+        f'                        "{request_payload}", "{response_payload}",',
+        "                        requestRecord, completion, timeoutMs);",
+        "}",
+        "",
+    ])
+
+
+def append_as_topic(lines: list[str], api: ApiDefinition, endpoint: Endpoint,
+                    schemas: dict[int, Record]) -> None:
+    name = camel(endpoint.name)
+    message = schemas[endpoint.output_schema]
+    message_name = camel(message.name)
+    lines.extend([
+        f"funcdef void {name}Callback(int status, const {message_name} &in message);",
+        f"class _{name}Subscription {{",
+        f"    {name}Callback@ Callback;",
+        f"    _{name}Subscription({name}Callback@ callback) {{ @Callback = callback; }}",
+        "    void Invoke(int status, const BML::Detail::ImcRecord &in record) {",
+        f"        {message_name} value;",
+        f"        if (status == BML::ERROR_OK) status = _Decode{message_name}(record, value);",
+        "        if (Callback !is null) Callback(status, value);",
+        "    }",
+        "}",
+        "",
+        f"BML::ImcSubscriptionRef@ Subscribe{name}(const BML::ModContext &in ctx,",
+        f"                                      {name}Callback@ callback, uint capacity = 256) {{",
+        f"    _{name}Subscription@ adapter = _{name}Subscription(callback);",
+        "    BML::Detail::ImcTopicCallback@ receiver = BML::Detail::ImcTopicCallback(adapter.Invoke);",
+        f'    return ctx._SubscribeImc("{api.api_id}/v{api.major}/topic/{endpoint.name}",',
+        f'                             "{api.api_id}/v{api.major}/payload/{message.name}",',
+        "                             receiver, capacity);",
+        "}",
+        "",
+    ])
+
+
+def emit_imc_script(api: ApiDefinition) -> str:
+    """Emit the author-facing AngelScript facade over BML's stable IMC bridge."""
+    segments = [camel(part) for part in api.api_id.split(".")]
+    schemas = {record.id: record for record in api.schemas}
+    lines = [
+        "// Generated by tools/imc_codegen.py. Do not edit by hand.",
+        "// Include this file from an ASMod; wire details below are generated-only.",
+        "",
+    ]
+    append_as_namespace_open(lines, segments)
+    lines.extend([
+        f'const string API_ID = "{api.api_id}";',
+        f"const uint API_MAJOR = {api.major};",
+        f"const uint API_MINOR = {api.minor};",
+        "",
+    ])
+    for enum in api.enums:
+        enum_name = camel(enum.name)
+        if enum.underlying == "int":
+            lines.append(f"enum {enum_name} {{")
+            for enum_value in enum.values:
+                lines.append(
+                    f"    {camel(enum_value.name)} = {as_integer_literal(enum_value.value, enum.underlying)},"
+                )
+            lines.extend(["}", ""])
+        else:
+            lines.append(f"namespace {enum_name} {{")
+            for enum_value in enum.values:
+                lines.append(
+                    f"    const {enum.underlying} {camel(enum_value.name)} = "
+                    f"{as_integer_literal(enum_value.value, enum.underlying)};"
+                )
+            lines.extend(["}", ""])
+        lines.extend([f"bool _IsKnown{enum_name}({enum.underlying} value) {{", "    switch (value) {"])
+        for enum_value in enum.values:
+            lines.append(f"    case {as_integer_literal(enum_value.value, enum.underlying)}:")
+        lines.extend(["        return true;", "    default:", "        return false;", "    }", "}", ""])
+
+    for record in api.schemas:
+        append_as_record(lines, api, record)
+    for endpoint in api.endpoints:
+        if endpoint.kind == "rpc":
+            append_as_rpc(lines, api, endpoint, schemas)
+        else:
+            append_as_topic(lines, api, endpoint, schemas)
+    append_as_namespace_close(lines, segments)
+    return "\n".join(lines)
+
+
 def write_if_changed(path: Path, text: str, check: bool) -> bool:
     current = path.read_text(encoding="utf-8") if path.exists() else None
     if current == text:
@@ -1431,6 +1720,8 @@ def main(argv: list[str]) -> int:
                         help=".imc interface input")
     parser.add_argument("--out-dir", type=Path, required=True,
                         help="directory for generated *_imc.hpp headers")
+    parser.add_argument("--script-out-dir", type=Path,
+                        help="optional directory for generated *_imc.as ASMod facades")
     parser.add_argument(
         "--update-lock", action="store_true",
         help="create or update each adjacent .imc.lock snapshot before generation",
@@ -1500,6 +1791,17 @@ def main(argv: list[str]) -> int:
                 )
             seen_output_paths[path_key] = api.api_id
             planned_outputs.append((output_path, emit_imc_header(api)))
+            if args.script_out_dir is not None:
+                script_output_path = args.script_out_dir / f"{stem}_imc.as"
+                script_path_key = str(script_output_path.resolve()).casefold()
+                previous_api_id = seen_output_paths.get(script_path_key)
+                if previous_api_id is not None:
+                    raise ApiDefinitionError(
+                        f"generated output path collision: API IDs {previous_api_id!r} "
+                        f"and {api.api_id!r} both map to {script_output_path}"
+                    )
+                seen_output_paths[script_path_key] = api.api_id
+                planned_outputs.append((script_output_path, emit_imc_script(api)))
 
         # No author-owned interface state changes until every input and generated
         # output has validated successfully.

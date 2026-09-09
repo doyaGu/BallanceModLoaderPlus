@@ -185,7 +185,8 @@ def main() -> int:
             f'include("{quote_cmake(source_root / "cmake" / "BMLImc.cmake")}")\n'
             "add_library(consumer STATIC consumer.cpp)\n"
             f'target_include_directories(consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
-            "bml_target_imc_api(consumer INPUT echo-interface.imc API_ID example.echo)\n"
+            "bml_target_imc_api(consumer INPUT echo-interface.imc API_ID example.echo "
+            "SCRIPT_OUTPUT_DIR \"${CMAKE_CURRENT_BINARY_DIR}/script-api\")\n"
             "add_library(numeric_consumer STATIC numeric_consumer.cpp)\n"
             f'target_include_directories(numeric_consumer PRIVATE "{quote_cmake(source_root / "include")}")\n'
             "bml_target_imc_api(numeric_consumer INPUT numeric-interface.imc API_ID 0)\n"
@@ -206,6 +207,16 @@ def main() -> int:
         generated = build / "bml-imc" / "example_echo_imc.hpp"
         if not generated.exists():
             raise AssertionError(f"CMake helper did not create {generated}")
+        generated_script = build / "script-api" / "example_echo_imc.as"
+        if not generated_script.exists():
+            raise AssertionError(f"CMake helper did not create {generated_script}")
+        if "BML::ImcRequestRef@ Echo" not in generated_script.read_text(encoding="utf-8"):
+            raise AssertionError("CMake helper did not emit the typed ASMod facade")
+        generated_script = build / "script-api" / "example_echo_imc.as"
+        if not generated_script.exists():
+            raise AssertionError(f"CMake helper did not create {generated_script}")
+        if "BML::ImcRequestRef@ Echo" not in generated_script.read_text(encoding="utf-8"):
+            raise AssertionError("CMake helper did not generate the typed AngelScript facade")
         unexpected = list((build / "bml-imc").glob("example_echo_api.h"))
         if unexpected:
             raise AssertionError("CMake helper generated the legacy compatibility header")

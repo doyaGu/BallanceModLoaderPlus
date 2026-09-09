@@ -53,8 +53,11 @@ def read_abi(interface: Path) -> dict:
 
 
 def generate(generator: Path, interface: Path, output: Path, *, update: bool = False,
-             check: bool = False, expect_success: bool = True) -> subprocess.CompletedProcess[str]:
+             check: bool = False, script_output: Path | None = None,
+             expect_success: bool = True) -> subprocess.CompletedProcess[str]:
     arguments = ["--out-dir", str(output), "--input", str(interface)]
+    if script_output is not None:
+        arguments.extend(["--script-out-dir", str(script_output)])
     if update:
         arguments.append("--update-lock")
     if check:
@@ -86,11 +89,37 @@ def main() -> int:
         if "input must use the .imc extension" not in old_extension_result.stderr:
             raise AssertionError("legacy interface extension was not rejected")
 
-        generate(generator, interface, output, update=True)
+        script_output = root / "script-generated"
+        generate(generator, interface, output, update=True, script_output=script_output)
         abi_path = interface.with_suffix(".imc.lock")
         header_path = output / "test_codegen_imc.hpp"
-        if not abi_path.exists() or not header_path.exists():
+        script_path = script_output / "test_codegen_imc.as"
+        if not abi_path.exists() or not header_path.exists() or not script_path.exists():
             raise AssertionError("initial generation did not create interface lock and binding")
+
+        script = script_path.read_text(encoding="utf-8")
+        expected_script_fragments = (
+            "namespace Test {",
+            "namespace Codegen {",
+            "class Sample {",
+            "funcdef void LookupCallback(int status, const Sample &in response);",
+            "BML::ImcRequestRef@ Lookup(const BML::ModContext &in ctx, const Request &in request,",
+            'return ctx._CallImc("test.codegen/v1/rpc/lookup",',
+            "BML::ImcSubscriptionRef@ SubscribeChanged(const BML::ModContext &in ctx,",
+            'return ctx._SubscribeImc("test.codegen/v1/topic/changed",',
+        )
+        for fragment in expected_script_fragments:
+            if fragment not in script:
+                raise AssertionError(f"generated AngelScript facade is missing {fragment!r}")
+        forbidden_script_fragments = (
+            "BML_ImcClient",
+            "BML_ImcRpcId",
+            "BML_ImcMessage",
+            "array<uint8>@ payload",
+        )
+        for fragment in forbidden_script_fragments:
+            if fragment in script:
+                raise AssertionError(f"generated AngelScript facade leaks transport detail {fragment!r}")
 
         abi = read_abi(interface)
         if abi["format"] != 1 or abi["api"] != "test.codegen":
@@ -99,12 +128,23 @@ def main() -> int:
         if "id" in sample or sample["fields"][0]["id"] != 1:
             raise AssertionError("interface lock did not assign dense initial wire IDs")
 
-        generate(generator, interface, output, check=True)
+        generate(generator, interface, output, check=True, script_output=script_output)
+        script_path.write_text("stale\n", encoding="utf-8")
+        stale_script = generate(
+            generator, interface, output, check=True, script_output=script_output,
+            expect_success=False,
+        )
+        if "generated output is stale" not in stale_script.stderr:
+            raise AssertionError("--check did not reject a stale generated script facade")
+        generate(generator, interface, output, script_output=script_output)
         header_path.write_text("stale\n", encoding="utf-8")
-        stale_header = generate(generator, interface, output, check=True, expect_success=False)
+        stale_header = generate(
+            generator, interface, output, check=True, script_output=script_output,
+            expect_success=False,
+        )
         if "generated output is stale" not in stale_header.stderr:
             raise AssertionError("--check did not reject a stale generated header")
-        generate(generator, interface, output)
+        generate(generator, interface, output, script_output=script_output)
 
         wrong_id = run(
             generator, "--out-dir", str(output), "--input", str(interface),
