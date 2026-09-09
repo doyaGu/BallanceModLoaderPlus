@@ -4,6 +4,40 @@
 
 `BML::Behavior` 中的领域类型和 `BML/Behavior.h` 中的 1.0 C function table 属于公开契约。`BML::Behavior::Detail` 只承载 header-only 实现；Mod 不应直接引用其中的名称，其源码兼容性不作保证。
 
+### C seam 的位置
+
+`BML/Behavior.h` 是完整的底层 interface，不是 C++ facade 的残缺传输格式。Prototype 查询、Block 执行、Frame 读取、Graph 检查、Watch、Script、Patch 和 Plan 都通过同一张 1.0 function table 提供；C++ facade 也只调用这张表，不使用私有 DLL 入口。因此，一个 C 翻译单元可以在不包含 Virtools header 或 C++ Behavior header 的情况下直接使用它：
+
+```c
+#include <BML/Behavior.h>
+
+static void UseBehavior(void) {
+    const void *found = NULL;
+    const BML_BehaviorInterface *behavior;
+    BML_BehaviorStatus status = {0};
+    BML_BehaviorSession session = NULL;
+    BML_BehaviorString owner = {NULL, 0};
+
+    if (BML_GetInterface(BML_BEHAVIOR_INTERFACE_ID,
+                         BML_BEHAVIOR_INTERFACE_MAJOR, &found) != BML_OK)
+        return;
+    behavior = (const BML_BehaviorInterface *) found;
+    if (!BML_BEHAVIOR_HAS_1_0(behavior))
+        return;
+
+    status.StructSize = sizeof(status);
+    if (behavior->OpenSession(owner, &session, &status) != BML_OK)
+        return;
+
+    /* Discover a Prototype and use the rest of the 1.0 table here. */
+    behavior->CloseSession(session);
+}
+```
+
+每个带 `StructSize` 的输入或输出结构都必须由调用方先填写该字段。输入字符串和数组只借用到调用返回；Frame、Graph 和 Layout 的变长结果使用无部分写入的 caller-buffer 协议。`BML_BEHAVIOR_HAS_1_0` 是完整 1.0 surface 的 capability gate，后续 minor 增加的成员再单独使用 `BML_IFACE_HAS` 检查。
+
+这不意味着 BML 提供纯 C 的 Mod 启动协议：现有 Native Mod host 仍由 `IMod` 定义。链接进同一个 Native Mod DLL 的 C 翻译单元或其他语言适配层可以直接调用 C seam，并仍遵守 Mod ownership、game thread、world reset 和 `BML_ObjectRef` 生命周期。它是独立的 Behavior seam，不是脱离 BML Runtime 的独立库。
+
 ## 1. 对象模型
 
 ```text

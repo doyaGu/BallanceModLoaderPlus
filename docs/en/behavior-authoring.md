@@ -4,6 +4,40 @@
 
 The domain types in `BML::Behavior` and the 1.0 C function table in `BML/Behavior.h` are public contracts. `BML::Behavior::Detail` contains the header-only implementation; Mods must not name it directly, and it carries no source-compatibility guarantee.
 
+### Where the C seam fits
+
+`BML/Behavior.h` is the complete low-level interface, not a partial transport format for the C++ facade. Prototype discovery, Block execution, Frame reads, Graph inspection, Watches, Scripts, Patches, and Plans all use the same 1.0 function table. The C++ facade calls that table and does not rely on private DLL entry points. A C translation unit can therefore use the module without including Virtools or C++ Behavior headers:
+
+```c
+#include <BML/Behavior.h>
+
+static void UseBehavior(void) {
+    const void *found = NULL;
+    const BML_BehaviorInterface *behavior;
+    BML_BehaviorStatus status = {0};
+    BML_BehaviorSession session = NULL;
+    BML_BehaviorString owner = {NULL, 0};
+
+    if (BML_GetInterface(BML_BEHAVIOR_INTERFACE_ID,
+                         BML_BEHAVIOR_INTERFACE_MAJOR, &found) != BML_OK)
+        return;
+    behavior = (const BML_BehaviorInterface *) found;
+    if (!BML_BEHAVIOR_HAS_1_0(behavior))
+        return;
+
+    status.StructSize = sizeof(status);
+    if (behavior->OpenSession(owner, &session, &status) != BML_OK)
+        return;
+
+    /* Discover a Prototype and use the rest of the 1.0 table here. */
+    behavior->CloseSession(session);
+}
+```
+
+The caller must initialize `StructSize` in every input or output record that has that member. Input strings and arrays are borrowed only for the call. Variable-size Frame, Graph, and Layout results use the all-or-nothing caller-buffer protocol. `BML_BEHAVIOR_HAS_1_0` is the capability check for the complete 1.0 surface; use `BML_IFACE_HAS` separately for members appended by a later minor.
+
+This does not add a pure C Mod bootstrap: the existing Native Mod host is still defined by `IMod`. A C translation unit or another language adapter linked into the same Native Mod DLL can call this seam directly while following the same Mod ownership, game-thread, world-reset, and `BML_ObjectRef` lifetime rules. It is an independent Behavior seam, not a library independent of the BML Runtime.
+
 ## 1. Object model
 
 ```text
