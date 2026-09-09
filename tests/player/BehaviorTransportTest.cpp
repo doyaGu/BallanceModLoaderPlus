@@ -5,6 +5,7 @@
 #include <BML/Scene.h>
 
 #include "BehaviorTransportFixtureApi.h"
+#include "BehaviorCProbe.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -276,13 +277,8 @@ public:
             return;
         }
         m_Behavior = static_cast<const BML_BehaviorInterface *>(found);
-        if (!BML_IFACE_HAS(m_Behavior, BML_BehaviorInterface, CloseRun)) {
+        if (!BML_BEHAVIOR_HAS_1_0(m_Behavior)) {
             Fail("interface-incomplete");
-            return;
-        }
-        if (!BML_IFACE_HAS(m_Behavior, BML_BehaviorInterface,
-                           CloseWatch)) {
-            Fail("prototype-discovery-unavailable");
             return;
         }
         found = nullptr;
@@ -1918,8 +1914,20 @@ private:
                                    name);
             return passed;
         };
+        BML_BehaviorCProbeResult cProbe{};
+        cProbe.StructSize = sizeof(cProbe);
+        m_CProbePassed =
+            BML_TestBehaviorFromC(
+                Guid(BML_BEHAVIOR_TRANSPORT_FIXTURE_GUID), &cProbe) == BML_OK &&
+            cProbe.Checks == BML_BEHAVIOR_C_PROBE_ALL && cProbe.Sequence != 0;
+        GetLogger()->Info(
+            "Behavior C interface: status=%s checks=%u sequence=%llu code=%d error=%u phase=%u",
+            m_CProbePassed ? "pass" : "fail", cProbe.Checks,
+            static_cast<unsigned long long>(cProbe.Sequence), cProbe.Code,
+            cProbe.Status.Error, cProbe.Status.Phase);
+
         m_CppFacadePassed = require(RunCppFacade(), "cpp-facade");
-        if (!m_CppFacadePassed ||
+        if (!require(m_CProbePassed, "c-interface") || !m_CppFacadePassed ||
             !require(OpenCall(m_Call), "call") ||
             !require(OpenStart(m_Start, 64), "start") ||
             !require(OpenCall(m_Object, "Make Object"), "object") ||
@@ -2388,8 +2396,9 @@ private:
             queueFull.Headers.size() < 2 ? 0u : queueFull.Headers[1].Error);
 
         GetLogger()->Info(
-            "Behavior functional detail: catalog=%s cpp_facade=%s parameter_types=%s detached=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_ownership=%s",
+            "Behavior functional detail: catalog=%s c_interface=%s cpp_facade=%s parameter_types=%s detached=%s all_values=%s continue=%s dynamic_layout=%s targets=%s selectors=%s wait_for_all=%s graph=%s run_ownership=%s",
             m_CatalogPassed ? "true" : "false",
+            m_CProbePassed ? "true" : "false",
             m_CppFacadePassed ? "true" : "false",
             m_ParameterTypesPassed ? "true" : "false",
             m_DetachedDiagnosticPassed ? "true" : "false",
@@ -2402,7 +2411,8 @@ private:
             graphOk ? "true" : "false",
             statesOk ? "true" : "false");
 
-        m_FunctionalPassed = m_CppFacadePassed && m_ParameterTypesPassed &&
+        m_FunctionalPassed = m_CProbePassed && m_CppFacadePassed &&
+            m_ParameterTypesPassed &&
             m_DetachedDiagnosticPassed && m_InspectPassed &&
             WatchPassed() && continuedOk && echoOk &&
             dynamicOk && targetsOk && selectorsOk && waitForAllOk &&
@@ -2482,10 +2492,11 @@ private:
         m_Done = true;
         m_Passed = passed;
         GetLogger()->Info(
-            "Behavior transport: status=%s reason=%s transport=%s wire=%s object_ref=%s session_after_reset=%s catalog=%s detached=%s inspect=%s watch=%s",
+            "Behavior transport: status=%s reason=%s transport=%s wire=%s c_interface=%s object_ref=%s session_after_reset=%s catalog=%s detached=%s inspect=%s watch=%s",
             passed ? "pass" : "fail", reason,
             m_TransportPassed ? "true" : "false",
             m_WirePassed ? "true" : "false",
+            m_CProbePassed ? "true" : "false",
             m_ObjectRefPassed ? "true" : "false",
             m_SessionOpenedBeforeLevel ? "true" : "false",
             m_CatalogPassed ? "true" : "false",
@@ -2537,6 +2548,7 @@ private:
     bool m_SessionOpenedBeforeLevel = false;
     bool m_TransportPassed = false;
     bool m_WirePassed = false;
+    bool m_CProbePassed = false;
     bool m_ObjectRefPassed = false;
     bool m_ObjectCloseRequested = false;
     bool m_CatalogPassed = false;

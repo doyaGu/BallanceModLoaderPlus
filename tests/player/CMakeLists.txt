@@ -117,6 +117,8 @@ target_include_directories(BehaviorRuntimeSemanticsTest PRIVATE
 
 bml_add_player_test(BehaviorTransportTest
         BehaviorTransportTest.cpp
+        BehaviorCProbe.c
+        BehaviorCProbe.h
         BehaviorTransportFixtureApi.h
         ${BML_PLAYER_PROBE_SOURCES}
 )

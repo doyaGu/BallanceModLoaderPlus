@@ -161,8 +161,8 @@ public:
         m_State.reset();
     }
 
-    // The escape hatch to the C ABI, for whatever this facade does not cover
-    // yet. Both stay valid until Reset, and neither transfers ownership.
+    // Direct access to the C seam used by this facade. Both values stay valid
+    // until Reset, and neither transfers ownership.
     [[nodiscard]] BML_BehaviorSession Handle() const noexcept {
         return m_State ? m_State->Handle : nullptr;
     }

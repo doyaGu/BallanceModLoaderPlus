@@ -163,9 +163,14 @@ $runtimeSemantics = [regex]::Match($log,
 $transport = [regex]::Match($log,
     'Behavior transport: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'transport=(?<transport>true|false) wire=(?<wire>true|false) ' +
+    'c_interface=(?<cInterface>true|false) ' +
     'object_ref=(?<objectRef>true|false) session_after_reset=(?<session>true|false) ' +
     'catalog=(?<catalog>true|false) detached=(?<detached>true|false) ' +
     'inspect=(?<inspect>true|false) watch=(?<watch>true|false)')
+$cInterface = [regex]::Match($log,
+    'Behavior C interface: status=(?<status>pass|fail) checks=(?<checks>\d+) ' +
+    'sequence=(?<sequence>\d+) code=(?<code>-?\d+) ' +
+    'error=(?<error>\d+) phase=(?<phase>\d+)')
 $patch = [regex]::Match($log,
     'Behavior patch: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'module=(?<module>true|false) visual=(?<visual>true|false) ' +
@@ -241,8 +246,16 @@ $checks['BehaviorRuntimeVisual'] = $run.Captures.'BehaviorRuntime'.Captured -and
 $checks['BehaviorTransportProbe'] = $transport.Success -and
     $transport.Groups['status'].Value -eq 'pass' -and
     $transport.Groups['transport'].Value -eq 'true' -and
+    $transport.Groups['cInterface'].Value -eq 'true' -and
     $transport.Groups['session'].Value -eq 'true' -and
     $transport.Groups['catalog'].Value -eq 'true'
+$checks['BehaviorCInterface'] = $cInterface.Success -and
+    $cInterface.Groups['status'].Value -eq 'pass' -and
+    $cInterface.Groups['checks'].Value -eq '127' -and
+    [uint64]$cInterface.Groups['sequence'].Value -gt 0 -and
+    $cInterface.Groups['code'].Value -eq '0' -and
+    $cInterface.Groups['error'].Value -eq '0' -and
+    $cInterface.Groups['phase'].Value -eq '0'
 $checks['BehaviorPatch'] = $patch.Success -and
     $patch.Groups['status'].Value -eq 'pass' -and
     $patch.Groups['module'].Value -eq 'true' -and

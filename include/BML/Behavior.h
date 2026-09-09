@@ -1,8 +1,10 @@
-// Native Behavior authoring. This interface uses Virtools' own author-facing
-// vocabulary: a Block is created from a Prototype, configured through Settings,
-// Pins, Locals, and a Target, and driven through its Ins and Outs. Values passed
-// in are borrowed for the duration of a call. Run frames returned by TakeFrames
-// are copied into caller-owned buffers and contain no process pointers.
+// Native Behavior authoring. This pure C header requires no Virtools headers;
+// consumers obtain the complete 1.0 function table through BML_GetInterface.
+// It uses Virtools' own author-facing vocabulary: a Block is created from a
+// Prototype, configured through Settings, Pins, Locals, and a Target, and driven
+// through its Ins and Outs. Values passed in are borrowed for the duration of a
+// call. Run frames returned by TakeFrames are copied into caller-owned buffers
+// and contain no process pointers.
 #ifndef BML_BEHAVIOR_H
 #define BML_BEHAVIOR_H
 
