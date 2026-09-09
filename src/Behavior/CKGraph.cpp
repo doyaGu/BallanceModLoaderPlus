@@ -281,20 +281,33 @@ public:
             return;
         for (int index = 0; index < count; ++index) {
             const CK_ID id = ids[index];
+            const std::uint32_t objectId = static_cast<std::uint32_t>(id);
             m_Generations.erase(id);
             m_LayoutGenerations.erase(id);
-            m_Logical.erase(static_cast<std::uint32_t>(id));
-            for (auto &[root, state] : m_Logical) {
-                std::erase_if(state.RetiredNodes,
-                              [&](const NativeRef &item) {
-                                  return item.Id ==
-                                      static_cast<std::uint32_t>(id);
+            m_Logical.erase(objectId);
+            for (auto state = m_Logical.begin(); state != m_Logical.end();) {
+                // Destruction can run before CKEdit publishes the reduced
+                // projection. Remove the object from both the current and
+                // retired sets now, or that later publication can retire a
+                // dead identity and hide a new CK object that reuses its slot.
+                const auto matches = [objectId](const NativeRef &item) {
+                    return item.Id == objectId;
+                };
+                std::erase_if(state->second.Graph.InfrastructureNodes, matches);
+                std::erase_if(state->second.Graph.Links,
+                              [&](const LogicalGraphLink &item) {
+                                  return matches(item.Object);
                               });
-                std::erase_if(state.RetiredLinks,
-                              [&](const NativeRef &item) {
-                                  return item.Id ==
-                                      static_cast<std::uint32_t>(id);
-                              });
+                std::erase_if(state->second.RetiredNodes, matches);
+                std::erase_if(state->second.RetiredLinks, matches);
+                if (state->second.Graph.InfrastructureNodes.empty() &&
+                    state->second.Graph.Links.empty() &&
+                    state->second.RetiredNodes.empty() &&
+                    state->second.RetiredLinks.empty()) {
+                    state = m_Logical.erase(state);
+                } else {
+                    ++state;
+                }
             }
         }
     }
