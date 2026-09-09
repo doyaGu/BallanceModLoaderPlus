@@ -24,7 +24,10 @@ framework.
   scenario, writes the small `bml-ui-result-v1` result, then exits cleanly.
 - `src/UI/Automation/UiTestFramework.h` is the stable scenario interface. It
   provides bounded waits, wall-clock-bounded cross-process actions,
-  native/ImGui transition helpers and `BML_REGISTER_UI_SCENARIO`.
+  native/ImGui transition helpers, reusable real-UI navigation and
+  `BML_REGISTER_UI_SCENARIO`. `NativeMenuTransition` and `SurfaceCapture`
+  keep native input separate from observation; business behavior must be
+  exercised through visible UI.
 - `src/UI/Automation/UiAutomationSession.*` is the shared cross-process Module.
   Player publishes one immutable, sequenced checkpoint and yields while keeping
   that UI state visible. The native runner performs the requested foreground
@@ -41,7 +44,7 @@ framework.
   starts Player visibly, accepts the render setup dialog, keeps Ballance in the
   foreground, sends physical keyboard events, captures the client area only
   while it is unobstructed, acknowledges each Session checkpoint, and verifies
-  restored files by content fingerprint.
+  restored files, including `BML.cfg`, by content fingerprint.
 - `UiPlayerRunner.cpp` evaluates shared acceptance checks plus the selected
   scenario's evidence.
 - `UiFrameworkTest.cpp` checks catalog completeness, uniqueness, source
@@ -95,15 +98,18 @@ run. The result is deliberately small and framework-owned:
 
 1. Add `src/UI/Automation/Scenarios/<Surface>Scenario.cpp`.
 2. Implement one registration function. Use `UiAutomation::Test` helpers for
-   native menu transitions and game-thread state changes, and ImGui Test Engine
-   actions/checks for UI interaction.
+   native menu transitions, Mod configuration navigation and Built-in Console
+   submission, and ImGui Test Engine actions/checks for UI interaction. Do not
+   call production methods to perform the business action under test.
 3. Register it with `BML_REGISTER_UI_SCENARIO`.
 4. Add `tests/ui/scenarios/<name>.scenario` with:
    - `name`: descriptor filename without `.scenario`.
    - `test`: registered ImGui test name.
    - `surface`: log/layout identity.
    - `capture`: artifact stem for the business surface.
-   - `input`: `mod-list` or `level-one`.
+   - `input`: `mod-list`, `level-one` or `custom-map`; the last profile
+     reaches the Start menu but lets the visible Custom Maps UI initiate level
+     loading.
    - `source`: scenario C++ filename.
    - optional repeated `fixture`, `requires` and `required_log` entries.
    - supported fixture: `custom-map`; supported requirement: `angelscript`.
@@ -115,11 +121,15 @@ run. The result is deliberately small and framework-owned:
 
 - `mod-menu`: every category and page, editable values, revert and the real
   New Ball Type surface.
-- `custom-maps`: Start-menu entry, search, fixture discovery, back navigation
-  and the subsequent Level 1 transition.
-- `hud`: title, FPS and speedrun timer in Level 1, followed by state restoration.
-- `console`: console interaction, a real command and message-board output.
-- `script-tools`: developer-tool window, tabs, filters and controls.
+- `custom-maps`: Start-menu entry, search, a real `Level_01.NMO` fixture
+  selected through the visible map list, and the resulting level transition.
+- `hud`: changes title, FPS and speedrun-timer settings through the real Mod
+  configuration UI, verifies the three overlays in Level 1, then restores the
+  original configuration.
+- `console`: submits a real command, verifies message-board output and captures
+  the resulting state.
+- `script-tools`: opens the developer-tool window with the real
+  `script panel` console command, then exercises tabs, filters and controls.
 
 Every Player scenario verifies the native Main -> Options -> ImGui round trip,
 foreground keyboard injection, unobstructed 800x600 captures, absence of
