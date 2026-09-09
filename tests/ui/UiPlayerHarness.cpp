@@ -168,6 +168,7 @@ class InstallTransaction {
         Snapshot(modLog);
         Snapshot(playerLog);
         Snapshot(m_Root / "Bin" / "Player.ini");
+        Snapshot(m_Root / "ModLoader" / "Configs" / "BML.cfg");
         fs::remove(modLog);
         fs::remove(playerLog);
 
