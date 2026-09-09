@@ -1,3 +1,11 @@
+void TraceStateHookPhase(BML::ReloadPhase expected, const string &in label) {
+  BML::ModContext current;
+  if (BML::BorrowCurrentContext(current)) {
+    const bool phaseOk = current.IsReloading && current.ReloadPhase == expected;
+    current.LogInfo("BML state hook phase: " + label + "=" + (phaseOk ? "valid" : "unexpected"));
+  }
+}
+
 [bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="1.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload state migration."]
 class BMLStateReloadSmokeMod {
   int frames = 0;
@@ -51,6 +59,7 @@ class BMLStateReloadSmokeMod {
   }
 
   void SaveState(BML::StateBag@ state) {
+    TraceStateHookPhase(BML::RELOAD_SAVE_STATE, "v1 save");
     if (state is null) {
       return;
     }
@@ -60,6 +69,7 @@ class BMLStateReloadSmokeMod {
   }
 
   void RestoreState(BML::StateBag@ state) {
+    TraceStateHookPhase(BML::RELOAD_RESTORE_STATE, "v1 restore");
     if (state is null) {
       return;
     }
