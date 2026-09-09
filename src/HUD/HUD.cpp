@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <unordered_map>
 
+#include "imgui_internal.h"
 #include "UI/AnsiPalette.h"
 
 // =============================================================================
@@ -853,12 +854,38 @@ void HUD::OnDraw() {
     ImDrawList *drawList = ImGui::GetWindowDrawList();
     const ImVec2 viewportSize = ImGui::GetMainViewport()->Size;
 
-    for (auto &element : m_Elements) {
+    for (size_t index = 0; index < m_Elements.size(); ++index) {
+        auto &element = m_Elements[index];
         if (element) {
             const std::string &page = element->GetPage();
             if (!m_ActivePage.empty() && !page.empty() && page != m_ActivePage) {
                 continue;
             }
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+            // HUD elements render straight into the draw list, so they do not
+            // naturally produce ImGui items. Publish the real named roots as
+            // read-only landmarks for the Test Engine without making the HUD
+            // interactive or changing release builds.
+            const auto named = std::find_if(
+                m_Named.begin(), m_Named.end(),
+                [index](const auto &entry) { return entry.second == index; });
+            if (named != m_Named.end() && element->IsVisible()) {
+                const ImVec2 size = element->GetElementSize(viewportSize);
+                const ImVec2 pos = element->ResolveDrawPosition(viewportSize);
+                if (size.x > 0.0f && size.y > 0.0f) {
+                    ImGuiWindow *window = ImGui::GetCurrentWindow();
+                    const ImGuiID id = window->GetID(named->first.c_str());
+                    const ImRect bounds(
+                        pos, ImVec2(pos.x + size.x, pos.y + size.y));
+                    if (ImGui::ItemAdd(bounds, id)) {
+                        ImGuiContext &g = *GImGui;
+                        IMGUI_TEST_ENGINE_ITEM_INFO(
+                            id, named->first.c_str(),
+                            g.LastItemData.StatusFlags);
+                    }
+                }
+            }
+#endif
             element->Draw(drawList, viewportSize);
         }
     }

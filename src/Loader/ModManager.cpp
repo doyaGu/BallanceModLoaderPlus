@@ -4,6 +4,9 @@
 
 #include "BML/InputHook.h"
 #include "UI/Overlay.h"
+#if BML_ENABLE_UI_AUTOMATION
+#include "UI/UiAutomation.h"
+#endif
 
 namespace {
 class ImGuiFrameCompletion {
@@ -138,6 +141,11 @@ CKERROR ModManager::PostProcess() {
     }
 
     inputHook->Process();
+#if BML_ENABLE_UI_AUTOMATION
+    // Test actions can reset or exit Virtools. Run them only after Render and
+    // after the final per-frame pointer use, never from inside ImGuiRender().
+    UiAutomation::AdvanceFrame();
+#endif
     return CK_OK;
 }
 

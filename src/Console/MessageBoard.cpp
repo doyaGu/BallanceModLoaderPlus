@@ -355,6 +355,24 @@ void MessageBoard::RenderMessages(ImDrawList *drawList, ImVec2 startPos, float w
         const float msgHeight = heights[j];
         const ImVec2 pos(startPos.x, startPos.y + offsets[j]);
 
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+        // Messages are custom draw-list text rather than ImGui widgets. Give
+        // each visible production message a non-interactive test landmark so
+        // acceptance can prove command output reached the board.
+        const char *label = msg.GetMessage();
+        if (label && *label) {
+            ImGuiWindow *window = ImGui::GetCurrentWindow();
+            const ImGuiID id = window->GetID(label);
+            const ImRect bounds(pos, ImVec2(pos.x + wrapWidth,
+                                            pos.y + msgHeight));
+            if (ImGui::ItemAdd(bounds, id)) {
+                ImGuiContext &g = *GImGui;
+                IMGUI_TEST_ENGINE_ITEM_INFO(
+                    id, label, g.LastItemData.StatusFlags);
+            }
+        }
+#endif
+
         const float alpha = GetMessageAlpha(msg);
         if (alpha > 0.0f) {
             const float finalAlpha = std::clamp(bgColorBase.w * std::clamp(m_MessageBgAlphaScale, 0.0f, 1.0f) * alpha, 0.0f, 1.0f);

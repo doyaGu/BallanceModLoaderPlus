@@ -13,6 +13,9 @@
 #include "Hooks/RenderHook.h"
 #include "UI/AnsiPalette.h"
 #include "UI/GameFontCatalog.h"
+#if BML_ENABLE_UI_AUTOMATION
+#include "UI/UiAutomation.h"
+#endif
 #include "Behavior/HookBlock.h"
 #include "StringUtils.h"
 #include "PathUtils.h"
@@ -181,6 +184,9 @@ void BMLMod::OnLoad() {
 }
 
 void BMLMod::OnUnload() {
+#if BML_ENABLE_UI_AUTOMATION
+    UiAutomation::Shutdown();
+#endif
     UnregisterBuiltinCapabilities(*this);
 
     m_Console.OnUnload();
@@ -288,6 +294,12 @@ void BMLMod::OnPreStartMenu() {
 
 void BMLMod::OnPostStartMenu() {
     ApplyFrameRateSettings();
+#if BML_ENABLE_UI_AUTOMATION
+    // The Player acceptance suite must exercise the shipped start-up flow.
+    // Starting here also guarantees that production ImGui frames are live
+    // before the Test Engine begins driving application windows.
+    UiAutomation::Start(*this);
+#endif
 }
 
 void BMLMod::OnExitGame() {
@@ -303,6 +315,9 @@ void BMLMod::OnStartLevel() {
 
     m_HUD.OnLevelStart();
     m_CustomMaps.OnStartLevel();
+#if BML_ENABLE_UI_AUTOMATION
+    UiAutomation::OnStartLevel();
+#endif
 }
 
 void BMLMod::OnPostExitLevel() {

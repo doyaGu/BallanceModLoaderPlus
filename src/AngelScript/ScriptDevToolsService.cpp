@@ -11,6 +11,9 @@
 #include <utility>
 
 #include "imgui.h"
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+#include "imgui_internal.h"
+#endif
 
 #include "CKAngelScriptAdapter.h"
 #include "Loader/LegacyModVersion.h"
@@ -27,6 +30,20 @@
 namespace BML {
 
 namespace {
+
+void RegisterTextTestLandmark(const char *label) {
+#ifdef IMGUI_ENABLE_TEST_ENGINE
+    ImGuiWindow *window = ImGui::GetCurrentWindow();
+    const ImGuiID id = window->GetID(label);
+    const ImRect bounds(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    if (ImGui::ItemAdd(bounds, id)) {
+        ImGuiContext &g = *GImGui;
+        IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
+    }
+#else
+    (void) label;
+#endif
+}
 
 enum LogColumn {
     LogColumnSequence = 0,
@@ -1662,6 +1679,7 @@ void ScriptDevToolsService::DrawModList() {
 void ScriptDevToolsService::DrawDiagnosticsTab(const ScriptModSnapshot *selected) {
     if (!selected) {
         ImGui::TextUnformatted("No script mod selected.");
+        RegisterTextTestLandmark("No script mod selected.");
         return;
     }
     ImGui::TextUnformatted(selected->Name.c_str());
@@ -1695,6 +1713,7 @@ void ScriptDevToolsService::DrawDiagnosticsTab(const ScriptModSnapshot *selected
 void ScriptDevToolsService::DrawReloadTab(const ScriptModSnapshot *selected) {
     if (!selected) {
         ImGui::TextUnformatted("No script mod selected.");
+        RegisterTextTestLandmark("No script mod selected.");
         return;
     }
     ImGui::Text("policy %s", selected->ReloadPolicy.c_str());
@@ -1705,6 +1724,7 @@ void ScriptDevToolsService::DrawReloadTab(const ScriptModSnapshot *selected) {
 void ScriptDevToolsService::DrawResourcesTab(const ScriptModSnapshot *selected) {
     if (!selected) {
         ImGui::TextUnformatted("No script mod selected.");
+        RegisterTextTestLandmark("No script mod selected.");
         return;
     }
     const ScriptResourceSnapshot &resources = selected->Resources;
@@ -1738,6 +1758,7 @@ void ScriptDevToolsService::DrawResourcesTab(const ScriptModSnapshot *selected) 
 void ScriptDevToolsService::DrawDependenciesTab(const ScriptModSnapshot *selected) {
     if (!selected) {
         ImGui::TextUnformatted("No script mod selected.");
+        RegisterTextTestLandmark("No script mod selected.");
         return;
     }
     ImGui::TextDisabled("runtime dependencies");

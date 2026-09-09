@@ -410,6 +410,28 @@ set(BML_SOURCES
         BML.rc
 )
 
+if (BML_BUILD_UI_AUTOMATION)
+    file(GLOB BML_UI_AUTOMATION_SCENARIO_SOURCES CONFIGURE_DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/UI/Automation/Scenarios/*.cpp")
+    set(BML_UI_AUTOMATION_SOURCES
+            UI/UiAutomation.cpp
+            ${BML_UI_AUTOMATION_SCENARIO_SOURCES}
+    )
+    list(APPEND BML_PRIVATE_HEADERS
+            UI/UiAutomation.h
+            UI/Automation/UiTestFramework.h
+    )
+    list(APPEND BML_SOURCES
+            ${BML_UI_AUTOMATION_SOURCES}
+            ${IMGUI_TEST_ENGINE_SOURCES}
+    )
+    set_source_files_properties(
+            ${BML_UI_AUTOMATION_SOURCES}
+            ${IMGUI_TEST_ENGINE_SOURCES}
+            PROPERTIES COMPILE_DEFINITIONS BML_IMGUI_TEST_ENGINE_SOURCE
+    )
+endif ()
+
 set_source_files_properties(BML.rc PROPERTIES
         OBJECT_DEPENDS "${BML_VERSION_HEADER}"
 )
@@ -547,6 +569,13 @@ target_include_directories(BML
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+if (BML_BUILD_UI_AUTOMATION)
+    target_include_directories(BML PRIVATE
+            ${imgui_test_engine_SOURCE_DIR}
+            ${IMGUI_TEST_ENGINE_DIR}
+    )
+endif ()
 
 if (BML_WITH_ANGELSCRIPT)
     target_include_directories(BML PRIVATE
