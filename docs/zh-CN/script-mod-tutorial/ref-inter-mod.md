@@ -13,10 +13,13 @@ if (runtime.InLevel) {
   // 使用 runtime 的复制快照。
 }
 
-array<BML::Gameplay::Checkpoint>@ checkpoints;
-if (BML::Gameplay::ReadCheckpoints(checkpoints) == BML::ERROR_OK) {
-  for (uint i = 0; i < checkpoints.length(); ++i) {
-    CKObject@ checkpoint = checkpoints[i].BorrowObject();
+int checkpointCount = 0;
+if (BML::Gameplay::ReadCheckpointCount(checkpointCount) == BML::ERROR_OK) {
+  for (int i = 0; i < checkpointCount; ++i) {
+    BML::Gameplay::Checkpoint checkpoint;
+    if (BML::Gameplay::ReadCheckpoint(i, checkpoint) == BML::ERROR_OK) {
+      CKObject@ object = checkpoint.BorrowObject();
+    }
   }
 }
 ```
@@ -28,11 +31,11 @@ CKAngelScript 的 `Scene` 命名空间及其可重新验证的引用类型。其
 也不要求脚本处理传输状态码。在有效脚本回调之外调用这些函数会触发脚本
 异常。Gameplay 读取也直接复用进程内的数据读取器，但对应的 Ballance
 数据数组可能尚不可用或布局不受支持，因此仍返回明确的状态码。脚本只处理
-类型化数据，不直接管理原始消息或原生 IMC 句柄。`ReadCatalog`、
-`ReadCheckpoints` 和 `ReadResetpoints` 返回标准 AngelScript 数组形式的完整
-快照；读取失败时输出句柄为 `null`，不需要游标、`Next` 循环或显式 `Close`。
-每次调用都会重新读取源数据并创建快照，因此数据稳定时应复用已返回的数组，
-不要每帧重复构建。
+类型化数据，不直接管理原始消息或原生 IMC 句柄。目录、检查点和重置点使用
+`Read*Count` 加 `Read*(index, value)` 读取；count 是当次读取的行数，随后每次
+按索引读取都会重新检查当前数据数组，关卡切换后失效的索引会返回
+`BML::ERROR_NOT_FOUND`。需要跨回调保留数据时，应复制实际需要的值，不要长期
+缓存行号。
 
 Loader 事件通过 `OnGameEvent` 同步回调到达。需要跨回调保留信息时，只复制
 Mod 后续真正需要的状态；脚本侧没有需要打开或轮询的事件队列。

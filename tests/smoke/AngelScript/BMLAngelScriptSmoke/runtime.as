@@ -28,12 +28,29 @@ class BMLBindingsSmokeMod {
 
   void OnProcess(const BML::ModContext &in ctx) {
     if (!loggedGameplay) {
-      array<BML::Gameplay::CatalogEntry>@ catalog;
-      int status = BML::Gameplay::ReadCatalog(catalog);
+      int count = 0;
+      int status = BML::Gameplay::ReadCatalogCount(count);
       if (status == BML::ERROR_OK) {
-        int count = catalog is null ? -1 : int(catalog.length());
-        bool valuesOk = catalog !is null && catalog.length() > 0 &&
-                        catalog[0].File.length() > 0;
+        BML::Gameplay::CatalogEntry first;
+        BML::Gameplay::CatalogEntry missing;
+        int checkpointCount = 0;
+        int resetpointCount = 0;
+        BML::Gameplay::Checkpoint checkpoint;
+        BML::Gameplay::Resetpoint resetpoint;
+        bool valuesOk =
+            count > 0 &&
+            BML::Gameplay::ReadCatalogEntry(0, first) == BML::ERROR_OK &&
+            first.File.length() > 0 &&
+            BML::Gameplay::ReadCatalogEntry(-1, missing) == BML::ERROR_INVALID_PARAMETER &&
+            BML::Gameplay::ReadCatalogEntry(count, missing) == BML::ERROR_NOT_FOUND &&
+            BML::Gameplay::ReadCheckpointCount(checkpointCount) == BML::ERROR_OK &&
+            (checkpointCount == 0 ||
+             BML::Gameplay::ReadCheckpoint(0, checkpoint) == BML::ERROR_OK) &&
+            BML::Gameplay::ReadCheckpoint(checkpointCount, checkpoint) == BML::ERROR_NOT_FOUND &&
+            BML::Gameplay::ReadResetpointCount(resetpointCount) == BML::ERROR_OK &&
+            (resetpointCount == 0 ||
+             BML::Gameplay::ReadResetpoint(0, resetpoint) == BML::ERROR_OK) &&
+            BML::Gameplay::ReadResetpoint(resetpointCount, resetpoint) == BML::ERROR_NOT_FOUND;
         ctx.LogInfo("BML gameplay snapshot: status=" + status +
                     " count=" + count +
                     " values=" + (valuesOk ? "true" : "false"));

@@ -4,7 +4,6 @@
 #include <limits>
 #include <new>
 #include <string>
-#include <utility>
 
 #include <angelscript.h>
 
@@ -295,164 +294,84 @@ CKObject *BorrowResetpointObject(const Resetpoint *value) {
     return value ? ResolveScriptObject(value->Object) : nullptr;
 }
 
-class ScriptArrayOutput {
-public:
-    ScriptArrayOutput() = default;
-    ScriptArrayOutput(const ScriptArrayOutput &) = delete;
-    ScriptArrayOutput &operator=(const ScriptArrayOutput &) = delete;
+using GameplayCountReader = int (*)(ModContext &, std::size_t &);
 
-    ~ScriptArrayOutput() {
-        if (m_Array && m_Api && m_Api->ArrayRelease)
-            (void)m_Api->ArrayRelease(m_Array);
-    }
-
-    int Create(const char *declaration, std::size_t count) {
-        if (count > static_cast<std::size_t>((std::numeric_limits<CKDWORD>::max)()))
-            return BML_ERROR_OUT_OF_MEMORY;
-
-        BML::ScriptMod *mod = BML::ScriptModRuntime::GetCurrentScriptMod();
-        const BML::ScriptModRuntime *runtime =
-            BML::ScriptModRuntime::GetCurrentScriptModRuntime();
-        if (!runtime && mod)
-            runtime = &mod->GetRuntimeForFacade();
-        if (!runtime || !runtime->GetAngelScript())
-            return BML_ERROR_SCRIPT_EXECUTION;
-
-        m_Api = &runtime->GetApi();
-        if (!m_Api->CreateArray || !m_Api->ArrayRelease ||
-            !m_Api->ArrayGetElementAddress) {
-            return BML_ERROR_NOT_IMPLEMENTED;
-        }
-
-        const CKAS_STATUS status = m_Api->CreateArray(
-            runtime->GetAngelScript(), declaration, static_cast<CKDWORD>(count),
-            &m_Array);
-        if (status == CKAS_EXECUTIONFAILED)
-            return BML_ERROR_OUT_OF_MEMORY;
-        return status == CKAS_OK && m_Array ? BML_OK
-                                            : BML_ERROR_SCRIPT_EXECUTION;
-    }
-
-    template <typename Value>
-    int MoveElement(CKDWORD index, Value &value) {
-        void *element = nullptr;
-        if (!m_Api || !m_Array ||
-            m_Api->ArrayGetElementAddress(m_Array, index, &element) != CKAS_OK ||
-            !element) {
-            return BML_ERROR_SCRIPT_EXECUTION;
-        }
-        *static_cast<Value *>(element) = std::move(value);
-        return BML_OK;
-    }
-
-    void *Detach() {
-        void *array = m_Array;
-        m_Array = nullptr;
-        return array;
-    }
-
-private:
-    const CKAngelScriptAdapter::Api *m_Api = nullptr;
-    void *m_Array = nullptr;
-};
-
-template <typename Value, typename Reader>
-int CreateGameplayArray(void *&out, const char *declaration,
-                        std::size_t count, Reader readElement) {
-    out = nullptr;
-    ScriptArrayOutput array;
-    int status = array.Create(declaration, count);
-    if (status != BML_OK)
-        return status;
-    try {
-        for (std::size_t i = 0; i < count; ++i) {
-            Value value{};
-            status = readElement(i, value);
-            if (status != BML_OK)
-                return status;
-            status = array.MoveElement(static_cast<CKDWORD>(i), value);
-            if (status != BML_OK)
-                return status;
-        }
-    } catch (const std::bad_alloc &) {
-        return BML_ERROR_OUT_OF_MEMORY;
-    } catch (...) {
-        return BML_ERROR_SCRIPT_EXECUTION;
-    }
-    out = array.Detach();
-    return BML_OK;
-}
-
-int ReadCatalog(void *&out) {
-    out = nullptr;
+int ReadGameplayCount(GameplayCountReader read, int &out) {
     ModContext *context = nullptr;
     int status = GetActiveFacadeContext(context, "BML::Gameplay");
     std::size_t count = 0;
     if (status == BML_OK)
-        status = ReadBuiltinGameplayCatalogCount(*context, count);
-    if (status != BML_OK)
-        return status;
-    return CreateGameplayArray<CatalogEntry>(
-        out, "array<BML::Gameplay::CatalogEntry>", count,
-        [context](std::size_t i, CatalogEntry &value) {
-            BML_GameplayCatalogEntry row = {};
-            const int rowStatus = ReadBuiltinGameplayCatalogEntry(*context, i, row);
-            if (rowStatus != BML_OK)
-                return rowStatus;
-            value = {
-                std::string(row.File),
-                std::string(row.StartBall),
-                std::string(row.Sky),
-                row.Bonus,
-                row.Music,
-                row.FileLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
-                row.StartBallLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
-                row.SkyLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
-            };
-            return BML_OK;
-        });
+        status = read(*context, count);
+    if (status == BML_OK) {
+        if (count > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
+            return BML_ERROR_FAIL;
+        out = static_cast<int>(count);
+    }
+    return status;
 }
 
-int ReadCheckpoints(void *&out) {
-    out = nullptr;
-    ModContext *context = nullptr;
-    int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    std::size_t count = 0;
-    if (status == BML_OK)
-        status = ReadBuiltinGameplayCheckpointCount(*context, count);
-    if (status != BML_OK)
-        return status;
-    return CreateGameplayArray<Checkpoint>(
-        out, "array<BML::Gameplay::Checkpoint>", count,
-        [context](std::size_t i, Checkpoint &value) {
-            BML_GameplayCheckpoint row = {};
-            const int rowStatus = ReadBuiltinGameplayCheckpoint(*context, i, row);
-            if (rowStatus != BML_OK)
-                return rowStatus;
-            value = {row.Matrix, row.Object};
-            return BML_OK;
-        });
+int ReadCatalogCount(int &out) {
+    return ReadGameplayCount(&ReadBuiltinGameplayCatalogCount, out);
 }
 
-int ReadResetpoints(void *&out) {
-    out = nullptr;
+int ReadCheckpointCount(int &out) {
+    return ReadGameplayCount(&ReadBuiltinGameplayCheckpointCount, out);
+}
+
+int ReadResetpointCount(int &out) {
+    return ReadGameplayCount(&ReadBuiltinGameplayResetpointCount, out);
+}
+
+int GetGameplayEntryContext(int index, ModContext *&outContext) {
+    if (index < 0)
+        return BML_ERROR_INVALID_PARAMETER;
+    return GetActiveFacadeContext(outContext, "BML::Gameplay");
+}
+
+int ReadCatalogEntry(int index, CatalogEntry &out) {
     ModContext *context = nullptr;
-    int status = GetActiveFacadeContext(context, "BML::Gameplay");
-    std::size_t count = 0;
+    int status = GetGameplayEntryContext(index, context);
+    BML_GameplayCatalogEntry row = {};
     if (status == BML_OK)
-        status = ReadBuiltinGameplayResetpointCount(*context, count);
-    if (status != BML_OK)
-        return status;
-    return CreateGameplayArray<Resetpoint>(
-        out, "array<BML::Gameplay::Resetpoint>", count,
-        [context](std::size_t i, Resetpoint &value) {
-            BML_GameplayResetpoint row = {};
-            const int rowStatus = ReadBuiltinGameplayResetpoint(*context, i, row);
-            if (rowStatus != BML_OK)
-                return rowStatus;
-            value = {row.Object};
-            return BML_OK;
-        });
+        status = ReadBuiltinGameplayCatalogEntry(
+            *context, static_cast<std::size_t>(index), row);
+    if (status == BML_OK) {
+        out = {
+            std::string(row.File),
+            std::string(row.StartBall),
+            std::string(row.Sky),
+            row.Bonus,
+            row.Music,
+            row.FileLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+            row.StartBallLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+            row.SkyLength >= static_cast<int>(BML_GAMEPLAY_NAME_CAPACITY),
+        };
+    }
+    return status;
+}
+
+int ReadCheckpoint(int index, Checkpoint &out) {
+    ModContext *context = nullptr;
+    int status = GetGameplayEntryContext(index, context);
+    BML_GameplayCheckpoint row = {};
+    if (status == BML_OK)
+        status = ReadBuiltinGameplayCheckpoint(
+            *context, static_cast<std::size_t>(index), row);
+    if (status == BML_OK)
+        out = {row.Matrix, row.Object};
+    return status;
+}
+
+int ReadResetpoint(int index, Resetpoint &out) {
+    ModContext *context = nullptr;
+    int status = GetGameplayEntryContext(index, context);
+    BML_GameplayResetpoint row = {};
+    if (status == BML_OK)
+        status = ReadBuiltinGameplayResetpoint(
+            *context, static_cast<std::size_t>(index), row);
+    if (status == BML_OK)
+        out = {row.Object};
+    return status;
 }
 
 bool RegisterRuntime(asIScriptEngine *engine, const char **errorMessage) {
@@ -527,9 +446,12 @@ bool RegisterGameplay(asIScriptEngine *engine, const char **errorMessage) {
            Register(engine, engine->RegisterObjectMethod("Resetpoint", "CKObject@ BorrowObject() const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BorrowResetpointObject), asCALL_GENERIC), "Resetpoint::BorrowObject", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadLevel(LevelState &out state)", BML_AS_GENERIC_FUNCTION(&ReadLevel), asCALL_GENERIC), "Gameplay::ReadLevel", errorMessage) &&
            Register(engine, engine->RegisterGlobalFunction("int ReadEnergy(EnergyState &out state)", BML_AS_GENERIC_FUNCTION(&ReadEnergy), asCALL_GENERIC), "Gameplay::ReadEnergy", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int ReadCatalog(array<CatalogEntry>@ &out entries)", BML_AS_GENERIC_FUNCTION(&ReadCatalog), asCALL_GENERIC), "Gameplay::ReadCatalog", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int ReadCheckpoints(array<Checkpoint>@ &out entries)", BML_AS_GENERIC_FUNCTION(&ReadCheckpoints), asCALL_GENERIC), "Gameplay::ReadCheckpoints", errorMessage) &&
-           Register(engine, engine->RegisterGlobalFunction("int ReadResetpoints(array<Resetpoint>@ &out entries)", BML_AS_GENERIC_FUNCTION(&ReadResetpoints), asCALL_GENERIC), "Gameplay::ReadResetpoints", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadCatalogCount(int &out count)", BML_AS_GENERIC_FUNCTION(&ReadCatalogCount), asCALL_GENERIC), "Gameplay::ReadCatalogCount", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadCatalogEntry(int index, CatalogEntry &out entry)", BML_AS_GENERIC_FUNCTION(&ReadCatalogEntry), asCALL_GENERIC), "Gameplay::ReadCatalogEntry", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadCheckpointCount(int &out count)", BML_AS_GENERIC_FUNCTION(&ReadCheckpointCount), asCALL_GENERIC), "Gameplay::ReadCheckpointCount", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadCheckpoint(int index, Checkpoint &out checkpoint)", BML_AS_GENERIC_FUNCTION(&ReadCheckpoint), asCALL_GENERIC), "Gameplay::ReadCheckpoint", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadResetpointCount(int &out count)", BML_AS_GENERIC_FUNCTION(&ReadResetpointCount), asCALL_GENERIC), "Gameplay::ReadResetpointCount", errorMessage) &&
+           Register(engine, engine->RegisterGlobalFunction("int ReadResetpoint(int index, Resetpoint &out resetpoint)", BML_AS_GENERIC_FUNCTION(&ReadResetpoint), asCALL_GENERIC), "Gameplay::ReadResetpoint", errorMessage) &&
            Register(engine, engine->SetDefaultNamespace(""), "namespace reset", errorMessage);
 }
 

@@ -15735,9 +15735,12 @@ class Checkpoint { BML::Mat4 Matrix; CKObject@ BorrowObject() const; }
 class Resetpoint { CKObject@ BorrowObject() const; }
 int ReadLevel(LevelState &out state);
 int ReadEnergy(EnergyState &out state);
-int ReadCatalog(array<CatalogEntry>@ &out entries);
-int ReadCheckpoints(array<Checkpoint>@ &out entries);
-int ReadResetpoints(array<Resetpoint>@ &out entries);
+int ReadCatalogCount(int &out count);
+int ReadCatalogEntry(int index, CatalogEntry &out entry);
+int ReadCheckpointCount(int &out count);
+int ReadCheckpoint(int index, Checkpoint &out checkpoint);
+int ReadResetpointCount(int &out count);
+int ReadResetpoint(int index, Resetpoint &out resetpoint);
 } // namespace Gameplay
 
 namespace Events {
