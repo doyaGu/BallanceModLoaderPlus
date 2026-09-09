@@ -560,7 +560,8 @@ if (-not $SkipPlayer) {
                 if ($HotReloadStateScenario -eq 'CompileFailure') {
                     Add-SmokeCheck $checks 'state-reload-compile-failed' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
                 } elseif ($HotReloadStateScenario -eq 'MigrateFailure') {
-                    Add-SmokeCheck $checks 'state-reload-migrate-failed' (Test-SmokeTextContains $modLogText 'intentional state reload migrate failure smoke') 'intentional state reload migrate failure smoke'
+                    Add-SmokeCheck $checks 'state-reload-mutation-blocked' (Test-SmokeTextContains $modLogText 'CKContext::CreateObject is not available during hot reload migrate-state') 'CKContext::CreateObject is not available during hot reload migrate-state'
+                    Add-SmokeCheck $checks 'state-reload-mutation-not-leaked' (-not (Test-SmokeTextContains $modLogText 'BML state reload mutation leaked into the live world')) 'no state-reload mutation leak'
                     Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
                 } elseif ($HotReloadStateScenario -eq 'RestoreFailure') {
                     Add-SmokeCheck $checks 'state-reload-restore-failed' (Test-SmokeTextContains $modLogText 'intentional state reload restore failure smoke') 'intentional state reload restore failure smoke'

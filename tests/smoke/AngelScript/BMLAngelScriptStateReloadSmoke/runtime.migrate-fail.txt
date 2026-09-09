@@ -1,7 +1,7 @@
-[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload state migration MigrateState failure."]
+[bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="2.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for rejecting host mutation during state migration."]
 class BMLStateReloadSmokeMod {
   void MigrateState(const string &in version, BML::StateBag@ state) {
-    throw("intentional state reload migrate failure smoke");
+    GetCKContext(0).CreateObject(CKCID_OBJECT, "__BML_StateMigrationMutationProbe");
   }
 
   void RestoreState(BML::StateBag@ state) {
