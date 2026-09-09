@@ -26,4 +26,12 @@ class BMLStateReloadSmokeMod {
       logger.Info("BML state reload smoke restore-fail candidate should not load");
     }
   }
+
+  void OnUnload(const BML::ModContext &in ctx) {
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null) {
+      const bool cleanupPhaseOk = ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_CLEANUP;
+      logger.Info("BML failed candidate cleanup phase: restore=" + (cleanupPhaseOk ? "valid" : "unexpected"));
+    }
+  }
 }
