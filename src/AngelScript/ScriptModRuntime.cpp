@@ -132,6 +132,41 @@ CKAS_STATUS __cdecl BMLScriptHostCallFilter(const char *apiName, CKDWORD flags, 
 
 } // namespace
 
+bool SetScriptModHostCallFilterEnabled(const CKAngelScriptAdapter::Api &api,
+                                       CKAngelScript *angelScript,
+                                       bool enabled,
+                                       ScriptDiagnostic &diagnostic) {
+    if (!angelScript || !api.SetHostCallFilter) {
+        diagnostic = MakeScriptDiagnostic(
+            ScriptDiagnosticPhase::CkasHost,
+            "CKAngelScript host-call filter API is unavailable.");
+        diagnostic.Status = CKAS_NOTINITIALIZED;
+        return false;
+    }
+
+    CKAngelScriptResult result = {};
+    if (api.InitResult)
+        api.InitResult(&result);
+    else
+        result.Size = sizeof(result);
+
+    const CKAS_STATUS status = api.SetHostCallFilter(
+        angelScript,
+        enabled ? BMLScriptHostCallFilter : nullptr,
+        nullptr,
+        &result);
+    if (status == CKAS_OK)
+        return true;
+
+    diagnostic = MakeScriptDiagnostic(
+        ScriptDiagnosticPhase::CkasHost,
+        status,
+        result,
+        enabled ? "Failed to install CKAngelScript host-call filter"
+                : "Failed to clear CKAngelScript host-call filter");
+    return false;
+}
+
 ScriptCurrentModScope::ScriptCurrentModScope(ScriptMod *owner)
     : m_Previous(g_CurrentScriptMod) {
     if (owner)
@@ -349,25 +384,8 @@ CKAS_STATUS ScriptModRuntime::TestFilterHostCall(const char *apiName, CKDWORD fl
 #endif
 
 bool ScriptModRuntime::Refresh(CKContext *context, ScriptDiagnostic &diagnostic) {
-    if (m_Adapter.Refresh(context)) {
-        const ::CKAngelScriptAdapter::Api &api = m_Adapter.GetApi();
-        if (api.InitResult && api.SetHostCallFilter) {
-            CKAngelScriptResult result = {};
-            api.InitResult(&result);
-            const CKAS_STATUS status = api.SetHostCallFilter(m_Adapter.GetAngelScript(),
-                                                             BMLScriptHostCallFilter,
-                                                             nullptr,
-                                                             &result);
-            if (status != CKAS_OK) {
-                diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost,
-                                                  status,
-                                                  result,
-                                                  "Failed to install CKAngelScript host-call filter");
-                return false;
-            }
-        }
+    if (m_Adapter.Refresh(context))
         return true;
-    }
     diagnostic = MakeScriptDiagnostic(ScriptDiagnosticPhase::CkasHost, m_Adapter.GetDiagnostic());
     return false;
 }

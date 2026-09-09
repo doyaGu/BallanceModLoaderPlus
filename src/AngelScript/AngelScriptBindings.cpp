@@ -3982,6 +3982,39 @@ bool BML_TryRegisterAngelScriptBindings(ModContext *context) {
         result.Size = sizeof(result);
     const CKAS_STATUS status = api.RegisterEngineExtension(angelScript, &extension, &result);
     if (status == CKAS_OK) {
+        BML::ScriptDiagnostic filterDiagnostic;
+        if (!BML::SetScriptModHostCallFilterEnabled(api,
+                                                    angelScript,
+                                                    true,
+                                                    filterDiagnostic)) {
+            CKAngelScriptResult unregisterResult = {};
+            if (api.InitResult)
+                api.InitResult(&unregisterResult);
+            else
+                unregisterResult.Size = sizeof(unregisterResult);
+            const CKAS_STATUS unregisterStatus = api.UnregisterEngineExtension(
+                angelScript,
+                kExtensionName,
+                &unregisterResult);
+
+            context->SetAngelScriptExtensionRegistered(false);
+            context->SetAngelScriptBindingsRegistered(false);
+            if (context->GetLogger()) {
+                context->GetLogger()->Warn(
+                    "Failed to install BML CKAngelScript host-call filter: %s",
+                    BML::FormatScriptDiagnostic(filterDiagnostic).c_str());
+                if (unregisterStatus != CKAS_OK) {
+                    context->GetLogger()->Warn(
+                        "Failed to roll back BML AngelScript bindings: %s",
+                        CKAngelScriptAdapter::FormatResult(unregisterStatus,
+                                                           unregisterResult).c_str());
+                }
+            }
+            if (timeManager)
+                g_NextRegistrationAttemptTick = now + kRegistrationRetryTicks;
+            return false;
+        }
+
         ResetAngelScriptUnavailableLog();
         g_NextRegistrationAttemptTick = 0;
         context->SetAngelScriptExtensionRegistered(true);
@@ -4027,13 +4060,34 @@ void BML_UnregisterAngelScriptBindings(ModContext *context) {
         return;
 
     if (g_AngelScriptHost.Refresh(context->GetCKContext())) {
-        CKAngelScriptResult result = {};
         const CKAngelScriptAdapter::Api &api = g_AngelScriptHost.GetApi();
+        CKAngelScript *angelScript = g_AngelScriptHost.GetAngelScript();
+
+        BML::ScriptDiagnostic filterDiagnostic;
+        if (!BML::SetScriptModHostCallFilterEnabled(api,
+                                                    angelScript,
+                                                    false,
+                                                    filterDiagnostic) &&
+            context->GetLogger()) {
+            context->GetLogger()->Warn(
+                "Failed to clear BML CKAngelScript host-call filter: %s",
+                BML::FormatScriptDiagnostic(filterDiagnostic).c_str());
+        }
+
+        CKAngelScriptResult result = {};
         if (api.InitResult)
             api.InitResult(&result);
         else
             result.Size = sizeof(result);
-        api.UnregisterEngineExtension(g_AngelScriptHost.GetAngelScript(), kExtensionName, &result);
+        const CKAS_STATUS status = api.UnregisterEngineExtension(
+            angelScript,
+            kExtensionName,
+            &result);
+        if (status != CKAS_OK && context->GetLogger()) {
+            context->GetLogger()->Warn(
+                "Failed to unregister BML AngelScript bindings: %s",
+                CKAngelScriptAdapter::FormatResult(status, result).c_str());
+        }
     }
 
     context->SetAngelScriptExtensionRegistered(false);

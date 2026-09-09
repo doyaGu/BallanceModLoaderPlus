@@ -120,6 +120,11 @@ struct ScriptRuntimeModuleInfo {
     std::vector<ScriptRuntimeIncludeInfo> IncludeEdges;
 };
 
+bool SetScriptModHostCallFilterEnabled(const CKAngelScriptAdapter::Api &api,
+                                       CKAngelScript *angelScript,
+                                       bool enabled,
+                                       ScriptDiagnostic &diagnostic);
+
 class ScriptModRuntime {
 public:
     ScriptModRuntime();
