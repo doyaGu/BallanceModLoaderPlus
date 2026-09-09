@@ -32,6 +32,8 @@ class BMLStateReloadSmokeMod {
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
     if (logger !is null) {
+      const bool reloadPhaseOk = ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_LOAD;
+      logger.Info("BML state reload phase: v2 load=" + (reloadPhaseOk ? "reload" : "unexpected"));
       logger.Info("BML state reload smoke v2 loaded migrated=" + (migrated ? "true" : "false") +
                   " from=" + fromVersion +
                   " counter=" + counter +
@@ -52,6 +54,14 @@ class BMLStateReloadSmokeMod {
     if (frames >= 30 && !requestedExit) {
       requestedExit = true;
       ctx.ExecuteCommand("exit");
+    }
+  }
+
+  void OnUnload(const BML::ModContext &in ctx) {
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null) {
+      const bool shutdownPhaseOk = !ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_NONE;
+      logger.Info("BML state reload phase: v2 unload=" + (shutdownPhaseOk ? "shutdown" : "unexpected"));
     }
   }
 }

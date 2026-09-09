@@ -6,7 +6,27 @@ class BMLStateReloadSmokeMod {
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
     if (logger !is null) {
+      string phase = "unexpected";
+      if (!ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_NONE) {
+        phase = "initial";
+      } else if (ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_ROLLBACK) {
+        phase = "rollback";
+      }
+      logger.Info("BML state reload phase: v1 load=" + phase);
       logger.Info("BML state reload smoke v1 ready");
+    }
+  }
+
+  void OnUnload(const BML::ModContext &in ctx) {
+    BML::Logger@ logger = ctx.BorrowLogger();
+    if (logger !is null) {
+      string phase = "unexpected";
+      if (ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_UNLOAD) {
+        phase = "reload";
+      } else if (!ctx.IsReloading && ctx.ReloadPhase == BML::RELOAD_NONE) {
+        phase = "shutdown";
+      }
+      logger.Info("BML state reload phase: v1 unload=" + phase);
     }
   }
 

@@ -555,23 +555,38 @@ if (-not $SkipPlayer) {
         if ($HotReloadStateSmoke) {
             Add-SmokeCheck $checks 'state-reload-source-patched' $hotReloadStateSourcePatched 'BML state reload smoke source patched'
             Add-SmokeCheck $checks 'state-reload-ready' (Test-SmokeTextContains $modLogText 'BML state reload smoke v1 ready') 'BML state reload smoke v1 ready'
+            Add-SmokeCheck $checks 'state-reload-initial-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=initial') 'BML state reload phase: v1 load=initial'
+            Add-SmokeCheck $checks 'state-reload-phase-valid' (-not (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=unexpected') -and
+                -not (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=unexpected') -and
+                -not (Test-SmokeTextContains $modLogText 'BML state reload phase: v2 load=unexpected') -and
+                -not (Test-SmokeTextContains $modLogText 'BML state reload phase: v2 unload=unexpected')) 'no unexpected BML state reload phase'
             if ($HotReloadStateScenario -eq 'Success') {
                 Add-SmokeCheck $checks 'state-reload-migrated' (Test-SmokeTextContains $modLogText 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated') 'BML state reload smoke v2 loaded migrated=true from=1.0.0 counter=1235 text=from-v1:migrated'
                 Add-SmokeCheck $checks 'state-reload-committed' (Test-SmokeTextContains $modLogText 'Script mod bml.state.reload.smoke hot reload succeeded.') 'Script mod bml.state.reload.smoke hot reload succeeded.'
+                Add-SmokeCheck $checks 'state-reload-old-unload-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=reload') 'BML state reload phase: v1 unload=reload'
+                Add-SmokeCheck $checks 'state-reload-new-load-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v2 load=reload') 'BML state reload phase: v2 load=reload'
+                Add-SmokeCheck $checks 'state-reload-shutdown-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v2 unload=shutdown') 'BML state reload phase: v2 unload=shutdown'
             } else {
                 $reloadFailedNeedle = 'Script mod bml.state.reload.smoke hot reload failed:'
                 Add-SmokeCheck $checks 'state-reload-rejected' (Test-SmokeTextContains $modLogText $reloadFailedNeedle) $reloadFailedNeedle
                 Add-SmokeCheck $checks 'state-reload-old-runtime-kept' (Test-SmokeTextContainsAfter $modLogText 'BML state reload smoke v1 heartbeat' $reloadFailedNeedle) 'BML state reload smoke v1 heartbeat after failed reload'
                 Add-SmokeCheck $checks 'state-reload-candidate-not-loaded' (-not (Test-SmokeTextContains $modLogText 'candidate should not load')) 'candidate should not load'
+                Add-SmokeCheck $checks 'state-reload-shutdown-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=shutdown') 'BML state reload phase: v1 unload=shutdown'
                 if ($HotReloadStateScenario -eq 'CompileFailure') {
                     Add-SmokeCheck $checks 'state-reload-compile-failed' (Test-SmokeTextContains $modLogText 'phase=compile') 'phase=compile'
+                    Add-SmokeCheck $checks 'state-reload-compile-kept-runtime-active' (-not (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=reload') -and
+                        -not (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=rollback')) 'compile rejection does not deactivate the live runtime'
                 } elseif ($HotReloadStateScenario -eq 'MigrateFailure') {
                     Add-SmokeCheck $checks 'state-reload-mutation-blocked' (Test-SmokeTextContains $modLogText 'CKContext::CreateObject is not available during hot reload migrate-state') 'CKContext::CreateObject is not available during hot reload migrate-state'
                     Add-SmokeCheck $checks 'state-reload-mutation-not-leaked' (-not (Test-SmokeTextContains $modLogText 'BML state reload mutation leaked into the live world')) 'no state-reload mutation leak'
                     Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
+                    Add-SmokeCheck $checks 'state-reload-failed-candidate-unload-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=reload') 'BML state reload phase: v1 unload=reload'
+                    Add-SmokeCheck $checks 'state-reload-rollback-load-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=rollback') 'BML state reload phase: v1 load=rollback'
                 } elseif ($HotReloadStateScenario -eq 'RestoreFailure') {
                     Add-SmokeCheck $checks 'state-reload-restore-failed' (Test-SmokeTextContains $modLogText 'intentional state reload restore failure smoke') 'intentional state reload restore failure smoke'
                     Add-SmokeCheck $checks 'state-reload-rollback-success' (Test-SmokeTextContains $modLogText 'Reload failed; rolled back to previous runtime') 'Reload failed; rolled back to previous runtime'
+                    Add-SmokeCheck $checks 'state-reload-failed-candidate-unload-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 unload=reload') 'BML state reload phase: v1 unload=reload'
+                    Add-SmokeCheck $checks 'state-reload-rollback-load-phase' (Test-SmokeTextContains $modLogText 'BML state reload phase: v1 load=rollback') 'BML state reload phase: v1 load=rollback'
                 }
             }
         }
