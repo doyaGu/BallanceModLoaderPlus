@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
                         entry.path().string());
         }
 
-        TemporaryFile sample("bml-ui-result-contract");
+        TemporaryFile sample("bml-ui-result-format");
         {
             std::ofstream output(sample.Path(), std::ios::binary | std::ios::trunc);
             output << "format=bml-ui-result-v1\n"
