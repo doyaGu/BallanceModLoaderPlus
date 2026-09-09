@@ -173,7 +173,7 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
                                    endpoints: list[Endpoint]) -> None:
     imc_top_level: dict[str, str] = {
         name: "generated IMC helper"
-        for name in ("ApiId", "Major", "Minor", "Client", "Provider")
+        for name in ("ApiId", "Major", "Minor", "Client", "Provider", "Handlers")
     }
 
     def add(symbols: dict[str, str], symbol: str, source: str) -> None:
@@ -226,9 +226,23 @@ def validate_generated_identifiers(enums: list[EnumDefinition], schemas: list[Re
         add(imc_top_level, f"{endpoint_name}Route", source)
         if endpoint.kind == "topic":
             add(imc_top_level, f"{endpoint_name}Subscription", source)
-        prefix = "Call" if endpoint.kind == "rpc" else "Open"
-        generated_method = f"{prefix}{endpoint_name}"
-        add(imc_client_symbols, generated_method, source)
+            add(imc_top_level, f"{endpoint_name}Callback", source)
+            add(imc_top_level, f"_{endpoint_name}Subscription", source)
+            add(imc_top_level, f"Subscribe{endpoint_name}", source)
+            add(imc_top_level, f"Publish{endpoint_name}", source)
+            add(imc_top_level, f"Get{endpoint_name}SubscriberCount", source)
+            add(imc_client_symbols, f"Publish{endpoint_name}", source)
+            add(imc_client_symbols, f"Subscribe{endpoint_name}", source)
+            add(imc_client_symbols, f"Get{endpoint_name}SubscriberCount", source)
+        else:
+            add(imc_top_level, f"{endpoint_name}Callback", source)
+            add(imc_top_level, f"_{endpoint_name}Completion", source)
+            add(imc_top_level, f"Is{endpoint_name}Available", source)
+            add(imc_top_level, f"BeginCall{endpoint_name}", source)
+            add(imc_top_level, f"{endpoint_name}Handler", source)
+            add(imc_top_level, f"_{endpoint_name}ProviderDispatch", source)
+            add(imc_client_symbols, f"Call{endpoint_name}", source)
+            add(imc_client_symbols, f"BeginCall{endpoint_name}", source)
         if endpoint.kind == "rpc":
             add(imc_client_symbols, f"Is{endpoint_name}Available", source)
             add(provider_handler_symbols, endpoint_name, source)
@@ -1573,8 +1587,8 @@ def append_as_rpc(lines: list[str], api: ApiDefinition, endpoint: Endpoint,
         f'    return ctx._IsImcRpcAvailable("{api.api_id}/v{api.major}/rpc/{endpoint.name}");',
         "}",
         "",
-        f"BML::ImcRequestRef@ {name}(const BML::ModContext &in ctx{request_parameter},",
-        f"                           {name}Callback@ callback, uint timeoutMs = 5000) {{",
+        f"BML::ImcRequestRef@ BeginCall{name}(const BML::ModContext &in ctx{request_parameter},",
+        f"                                    {name}Callback@ callback, uint timeoutMs = 5000) {{",
     ])
     if request is not None:
         lines.append(
@@ -1624,7 +1638,167 @@ def append_as_topic(lines: list[str], api: ApiDefinition, endpoint: Endpoint,
         "                             receiver, capacity);",
         "}",
         "",
+        f"int Publish{name}(const BML::ModContext &in ctx, const {message_name} &in message) {{",
+        "    uint64 ignored = 0;",
+        f"    return Publish{name}(ctx, message, ignored);",
+        "}",
+        "",
+        f"int Publish{name}(const BML::ModContext &in ctx, const {message_name} &in message,",
+        "                   uint64 &out delivered) {",
+        f"    BML::Detail::ImcRecord@ record = _Encode{message_name}(message);",
+        f'    return ctx._PublishImc("{api.api_id}/v{api.major}/topic/{endpoint.name}",',
+        f'                           "{api.api_id}/v{api.major}/payload/{message.name}",',
+        "                           record, delivered);",
+        "}",
+        "",
+        f"int Get{name}SubscriberCount(const BML::ModContext &in ctx, uint64 &out count) {{",
+        f'    return ctx._GetImcSubscriberCount("{api.api_id}/v{api.major}/topic/{endpoint.name}", count);',
+        "}",
+        "",
     ])
+
+
+def append_as_rpc_provider_adapter(lines: list[str], api: ApiDefinition,
+                                   endpoint: Endpoint,
+                                   schemas: dict[int, Record]) -> None:
+    name = camel(endpoint.name)
+    request = schemas.get(endpoint.input_schema)
+    response = schemas.get(endpoint.output_schema)
+    handler_args: list[str] = []
+    if request is not None:
+        handler_args.append(f"const {camel(request.name)} &in request")
+    if response is not None:
+        handler_args.append(f"{camel(response.name)} &out response")
+    lines.extend([
+        f"funcdef int {name}Handler({', '.join(handler_args)});",
+        f"class _{name}ProviderDispatch {{",
+        f"    {name}Handler@ Callback;",
+        f"    _{name}ProviderDispatch({name}Handler@ callback) {{ @Callback = callback; }}",
+        "    void Invoke(const BML::Detail::ImcRecord &in record,",
+        "                BML::Detail::ImcReply &inout reply) {",
+        "        int status = BML::ERROR_OK;",
+    ])
+    if request is not None:
+        request_name = camel(request.name)
+        lines.extend([
+            f"        {request_name} request;",
+            f"        status = _Decode{request_name}(record, request);",
+        ])
+    if response is not None:
+        lines.append(f"        {camel(response.name)} response;")
+    lines.append("        if (status == BML::ERROR_OK && Callback is null) status = BML::ERROR_INVALID_PARAMETER;")
+    call_args = []
+    if request is not None:
+        call_args.append("request")
+    if response is not None:
+        call_args.append("response")
+    lines.append(
+        f"        if (status == BML::ERROR_OK) status = Callback({', '.join(call_args)});"
+    )
+    if response is not None:
+        response_name = camel(response.name)
+        lines.extend([
+            "        if (status == BML::ERROR_OK) {",
+            f"            BML::Detail::ImcRecord@ responseRecord = _Encode{response_name}(response);",
+            "            reply.Complete(responseRecord.Status, responseRecord);",
+            "        } else {",
+            "            reply.Complete(status);",
+            "        }",
+        ])
+    else:
+        lines.append("        reply.Complete(status);")
+    lines.extend(["    }", "}", ""])
+
+
+def append_as_provider(lines: list[str], api: ApiDefinition,
+                       schemas: dict[int, Record]) -> None:
+    rpc_endpoints = [endpoint for endpoint in api.endpoints if endpoint.kind == "rpc"]
+    if not rpc_endpoints:
+        return
+    for endpoint in rpc_endpoints:
+        append_as_rpc_provider_adapter(lines, api, endpoint, schemas)
+
+    lines.extend(["class Handlers {"])
+    for endpoint in rpc_endpoints:
+        name = camel(endpoint.name)
+        lines.append(f"    {name}Handler@ {name};")
+    lines.extend(["}", "", "class Provider {", "private:",
+                  "    BML::Detail::ImcProviderRef@ _Transport;", "", "public:",
+                  "    bool get_IsOpen() const {",
+                  "        return _Transport !is null && _Transport.IsOpen;",
+                  "    }", "",
+                  "    int Open(const BML::ModContext &in ctx) {",
+                  "        if (IsOpen) return BML::ERROR_ALREADY_EXISTS;",
+                  "        @_Transport = ctx._OpenImcProvider();",
+                  "        if (_Transport is null) return BML::ERROR_OUT_OF_MEMORY;",
+                  "        int status = _Transport.Status;",
+                  "        if (status != BML::ERROR_OK) @_Transport = null;",
+                  "        return status;",
+                  "    }", "",
+                  "    int Start(const BML::ModContext &in ctx, const Handlers &in handlers) {"])
+    any_handler = " || ".join(f"handlers.{camel(endpoint.name)} !is null"
+                              for endpoint in rpc_endpoints)
+    lines.extend([
+        "        if (IsOpen) return BML::ERROR_ALREADY_EXISTS;",
+        f"        if (!({any_handler})) return BML::ERROR_INVALID_PARAMETER;",
+        "        int status = Open(ctx);",
+    ])
+    for endpoint in rpc_endpoints:
+        name = camel(endpoint.name)
+        request = schemas.get(endpoint.input_schema)
+        response = schemas.get(endpoint.output_schema)
+        request_payload = (f"{api.api_id}/v{api.major}/payload/{request.name}"
+                           if request is not None else "")
+        response_payload = (f"{api.api_id}/v{api.major}/payload/{response.name}"
+                            if response is not None else "")
+        lines.extend([
+            f"        if (status == BML::ERROR_OK && handlers.{name} !is null) {{",
+            f"            _{name}ProviderDispatch@ adapter = _{name}ProviderDispatch(handlers.{name});",
+            "            BML::Detail::ImcRpcHandler@ dispatch = BML::Detail::ImcRpcHandler(adapter.Invoke);",
+            f'            status = _Transport._RegisterRpc("{api.api_id}/v{api.major}/rpc/{endpoint.name}",',
+            f'                                                     "{request_payload}", "{response_payload}", dispatch);',
+            "        }",
+        ])
+    lines.extend([
+        "        if (status == BML::ERROR_OK) return status;",
+        "        int cleanupStatus = Close();",
+        "        return cleanupStatus == BML::ERROR_OK || cleanupStatus == BML::ERROR_INVALID_HANDLE",
+        "                   ? status : cleanupStatus;",
+        "    }",
+        "",
+        "    int Close() {",
+        "        if (_Transport is null) return BML::ERROR_OK;",
+        "        int status = _Transport.Close();",
+        "        if (!_Transport.IsOpen) @_Transport = null;",
+        "        return status;",
+        "    }",
+        "",
+    ])
+    for endpoint in api.endpoints:
+        if endpoint.kind != "topic":
+            continue
+        name = camel(endpoint.name)
+        message = schemas[endpoint.output_schema]
+        message_name = camel(message.name)
+        lines.extend([
+            f"    int Publish{name}(const {message_name} &in message) {{",
+            "        uint64 ignored = 0;",
+            f"        return Publish{name}(message, ignored);",
+            "    }",
+            f"    int Publish{name}(const {message_name} &in message, uint64 &out delivered) {{",
+            "        if (!IsOpen) { delivered = 0; return BML::ERROR_INVALID_HANDLE; }",
+            f"        BML::Detail::ImcRecord@ record = _Encode{message_name}(message);",
+            f'        return _Transport._Publish("{api.api_id}/v{api.major}/topic/{endpoint.name}",',
+            f'                                   "{api.api_id}/v{api.major}/payload/{message.name}",',
+            "                                   record, delivered);",
+            "    }",
+            f"    int Get{name}SubscriberCount(uint64 &out count) const {{",
+            "        if (!IsOpen) { count = 0; return BML::ERROR_INVALID_HANDLE; }",
+            f'        return _Transport._GetSubscriberCount("{api.api_id}/v{api.major}/topic/{endpoint.name}", count);',
+            "    }",
+            "",
+        ])
+    lines.extend(["}", ""])
 
 
 def emit_imc_script(api: ApiDefinition) -> str:
@@ -1672,6 +1846,7 @@ def emit_imc_script(api: ApiDefinition) -> str:
             append_as_rpc(lines, api, endpoint, schemas)
         else:
             append_as_topic(lines, api, endpoint, schemas)
+    append_as_provider(lines, api, schemas)
     append_as_namespace_close(lines, segments)
     return "\n".join(lines)
 

@@ -103,10 +103,16 @@ def main() -> int:
             "namespace Codegen {",
             "class Sample {",
             "funcdef void LookupCallback(int status, const Sample &in response);",
-            "BML::ImcRequestRef@ Lookup(const BML::ModContext &in ctx, const Request &in request,",
+            "BML::ImcRequestRef@ BeginCallLookup(const BML::ModContext &in ctx, const Request &in request,",
             'return ctx._CallImc("test.codegen/v1/rpc/lookup",',
             "BML::ImcSubscriptionRef@ SubscribeChanged(const BML::ModContext &in ctx,",
             'return ctx._SubscribeImc("test.codegen/v1/topic/changed",',
+            "int PublishChanged(const BML::ModContext &in ctx, const Sample &in message,",
+            "funcdef int LookupHandler(const Request &in request, Sample &out response);",
+            "class Handlers {",
+            "class Provider {",
+            'status = _Transport._RegisterRpc("test.codegen/v1/rpc/lookup",',
+            'return _Transport._Publish("test.codegen/v1/topic/changed",',
         )
         for fragment in expected_script_fragments:
             if fragment not in script:

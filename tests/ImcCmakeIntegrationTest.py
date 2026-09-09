@@ -210,13 +210,8 @@ def main() -> int:
         generated_script = build / "script-api" / "example_echo_imc.as"
         if not generated_script.exists():
             raise AssertionError(f"CMake helper did not create {generated_script}")
-        if "BML::ImcRequestRef@ Echo" not in generated_script.read_text(encoding="utf-8"):
+        if "BML::ImcRequestRef@ BeginCallEcho" not in generated_script.read_text(encoding="utf-8"):
             raise AssertionError("CMake helper did not emit the typed ASMod facade")
-        generated_script = build / "script-api" / "example_echo_imc.as"
-        if not generated_script.exists():
-            raise AssertionError(f"CMake helper did not create {generated_script}")
-        if "BML::ImcRequestRef@ Echo" not in generated_script.read_text(encoding="utf-8"):
-            raise AssertionError("CMake helper did not generate the typed AngelScript facade")
         unexpected = list((build / "bml-imc").glob("example_echo_api.h"))
         if unexpected:
             raise AssertionError("CMake helper generated the legacy compatibility header")
