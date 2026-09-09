@@ -13,8 +13,17 @@ from pathlib import Path
 
 BASE_INTERFACE = """api test.codegen 1.0
 
+enum sample_mode {
+    first = 0
+    second = 1
+}
+
 record sample {
     int value
+}
+
+record enum_sample {
+    enum<sample_mode> mode
 }
 
 record request {
@@ -101,8 +110,10 @@ def main() -> int:
         expected_script_fragments = (
             "namespace Test {",
             "namespace Codegen {",
+            "bool IsKnownSampleMode(int value)",
             "class Sample {",
             "funcdef void LookupCallback(int status, const Sample &in response);",
+            "int IsLookupAvailable(const BML::ModContext &in ctx, bool &out available)",
             "BML::ImcRequestRef@ BeginCallLookup(const BML::ModContext &in ctx, const Request &in request,",
             'return ctx._CallImc("test.codegen/v1/rpc/lookup",',
             "BML::ImcSubscriptionRef@ SubscribeChanged(const BML::ModContext &in ctx,",
@@ -117,6 +128,8 @@ def main() -> int:
         for fragment in expected_script_fragments:
             if fragment not in script:
                 raise AssertionError(f"generated AngelScript facade is missing {fragment!r}")
+        if "if (!IsKnownSampleMode" in script or "if (!_IsKnownSampleMode" in script:
+            raise AssertionError("generated AngelScript decoder rejects forward enum values")
         forbidden_script_fragments = (
             "BML_ImcClient",
             "BML_ImcRpcId",

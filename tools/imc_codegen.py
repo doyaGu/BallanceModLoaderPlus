@@ -1535,7 +1535,6 @@ def append_as_record(lines: list[str], api: ApiDefinition, record: Record) -> No
             if enum is not None and enum.underlying == "int":
                 enum_name = camel(enum.name)
                 lines.extend([
-                    f"        if (!_IsKnown{enum_name}({target})) return BML::ERROR_IMC_SCHEMA_MISMATCH;",
                     f"        decoded.{member} = {enum_name}({target});",
                 ])
             lines.extend([f"        decoded.Has{member} = true;", "    }"])
@@ -1547,7 +1546,6 @@ def append_as_record(lines: list[str], api: ApiDefinition, record: Record) -> No
             if enum is not None and enum.underlying == "int":
                 enum_name = camel(enum.name)
                 lines.extend([
-                    f"    if (!_IsKnown{enum_name}({target})) return BML::ERROR_IMC_SCHEMA_MISMATCH;",
                     f"    decoded.{member} = {enum_name}({target});",
                 ])
     lines.extend(["    value = decoded;", "    return BML::ERROR_OK;", "}", ""])
@@ -1583,8 +1581,8 @@ def append_as_rpc(lines: list[str], api: ApiDefinition, endpoint: Endpoint,
     if request is not None:
         request_parameter = f", const {camel(request.name)} &in request"
     lines.extend([
-        f"bool Is{name}Available(const BML::ModContext &in ctx) {{",
-        f'    return ctx._IsImcRpcAvailable("{api.api_id}/v{api.major}/rpc/{endpoint.name}");',
+        f"int Is{name}Available(const BML::ModContext &in ctx, bool &out available) {{",
+        f'    return ctx._IsImcRpcAvailable("{api.api_id}/v{api.major}/rpc/{endpoint.name}", available);',
         "}",
         "",
         f"BML::ImcRequestRef@ BeginCall{name}(const BML::ModContext &in ctx{request_parameter},",
@@ -1722,13 +1720,14 @@ def append_as_provider(lines: list[str], api: ApiDefinition,
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
         lines.append(f"    {name}Handler@ {name};")
-    lines.extend(["}", "", "class Provider {", "private:",
-                  "    BML::Detail::ImcProviderRef@ _Transport;", "", "public:",
+    lines.extend(["}", "", "class Provider {",
+                  "    private BML::Detail::ImcProviderRef@ _Transport;", "",
                   "    bool get_IsOpen() const {",
                   "        return _Transport !is null && _Transport.IsOpen;",
                   "    }", "",
                   "    int Open(const BML::ModContext &in ctx) {",
-                  "        if (IsOpen) return BML::ERROR_ALREADY_EXISTS;",
+                  "        int closeStatus = Close();",
+                  "        if (get_IsOpen()) return closeStatus;",
                   "        @_Transport = ctx._OpenImcProvider();",
                   "        if (_Transport is null) return BML::ERROR_OUT_OF_MEMORY;",
                   "        int status = _Transport.Status;",
@@ -1739,7 +1738,7 @@ def append_as_provider(lines: list[str], api: ApiDefinition,
     any_handler = " || ".join(f"handlers.{camel(endpoint.name)} !is null"
                               for endpoint in rpc_endpoints)
     lines.extend([
-        "        if (IsOpen) return BML::ERROR_ALREADY_EXISTS;",
+        "        if (get_IsOpen()) return BML::ERROR_ALREADY_EXISTS;",
         f"        if (!({any_handler})) return BML::ERROR_INVALID_PARAMETER;",
         "        int status = Open(ctx);",
     ])
@@ -1786,14 +1785,14 @@ def append_as_provider(lines: list[str], api: ApiDefinition,
             f"        return Publish{name}(message, ignored);",
             "    }",
             f"    int Publish{name}(const {message_name} &in message, uint64 &out delivered) {{",
-            "        if (!IsOpen) { delivered = 0; return BML::ERROR_INVALID_HANDLE; }",
+            "        if (!get_IsOpen()) { delivered = 0; return BML::ERROR_INVALID_HANDLE; }",
             f"        BML::Detail::ImcRecord@ record = _Encode{message_name}(message);",
             f'        return _Transport._Publish("{api.api_id}/v{api.major}/topic/{endpoint.name}",',
             f'                                   "{api.api_id}/v{api.major}/payload/{message.name}",',
             "                                   record, delivered);",
             "    }",
             f"    int Get{name}SubscriberCount(uint64 &out count) const {{",
-            "        if (!IsOpen) { count = 0; return BML::ERROR_INVALID_HANDLE; }",
+            "        if (!get_IsOpen()) { count = 0; return BML::ERROR_INVALID_HANDLE; }",
             f'        return _Transport._GetSubscriberCount("{api.api_id}/v{api.major}/topic/{endpoint.name}", count);',
             "    }",
             "",
@@ -1834,7 +1833,7 @@ def emit_imc_script(api: ApiDefinition) -> str:
                     f"{as_integer_literal(enum_value.value, enum.underlying)};"
                 )
             lines.extend(["}", ""])
-        lines.extend([f"bool _IsKnown{enum_name}({enum.underlying} value) {{", "    switch (value) {"])
+        lines.extend([f"bool IsKnown{enum_name}({enum.underlying} value) {{", "    switch (value) {"])
         for enum_value in enum.values:
             lines.append(f"    case {as_integer_literal(enum_value.value, enum.underlying)}:")
         lines.extend(["        return true;", "    default:", "        return false;", "    }", "}", ""])
