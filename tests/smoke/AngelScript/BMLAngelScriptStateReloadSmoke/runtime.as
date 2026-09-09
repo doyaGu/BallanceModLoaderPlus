@@ -1,6 +1,7 @@
 [bml.mod id="bml.state.reload.smoke" name="BML AngelScript State Reload Smoke" version="1.0.0" author="BML" bml="0.3.0" reload="auto" description="Smoke test for script hot reload state migration."]
 class BMLStateReloadSmokeMod {
   int frames = 0;
+  bool requestedExit = false;
 
   void OnLoad(const BML::ModContext &in ctx) {
     BML::Logger@ logger = ctx.BorrowLogger();
@@ -22,6 +23,10 @@ class BMLStateReloadSmokeMod {
         logger.Error("BML state reload mutation leaked into the live world");
       }
       logger.Info("BML state reload smoke v1 heartbeat " + frames);
+    }
+    if (frames >= 180 && !requestedExit) {
+      requestedExit = true;
+      ctx.ExecuteCommand("exit");
     }
   }
 

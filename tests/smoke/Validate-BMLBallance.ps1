@@ -503,7 +503,11 @@ if (-not $SkipPlayer) {
         }
     }
 
-    $process = Start-Process -FilePath $playerPath -WorkingDirectory (Split-Path -Parent $playerPath) -WindowStyle Hidden -PassThru
+    $playerArguments = @('--width', '800', '--height', '600', '--bpp', '32')
+    $process = Start-Process -FilePath $playerPath `
+        -ArgumentList $playerArguments `
+        -WorkingDirectory (Split-Path -Parent $playerPath) `
+        -WindowStyle Hidden -PassThru
     $playerStarted = $true
     $deadline = (Get-Date).AddSeconds($PlayerSeconds)
     while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
