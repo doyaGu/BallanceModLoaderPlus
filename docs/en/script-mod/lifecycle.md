@@ -98,7 +98,8 @@ when possible.
 hook declarations without calling lifecycle or state hooks. Adding
 `--check-state` calls the old `SaveState` and the candidate's migration/restore
 hooks, then discards the candidate without calling its `OnLoad`. State hooks
-used by this mode must therefore be pure.
+used by this mode should therefore be pure and repeatable: the calls are real,
+and BML+ cannot roll back their external side effects.
 
 Reload has these limits:
 
@@ -107,6 +108,8 @@ Reload has these limits:
 - A candidate that no longer satisfies a loaded dependent is rejected.
 - Old timers, commands, DataShare requests, hooks, and callback handles become
   invalid when replacement succeeds.
+- CKAngelScript `Async::*` tasks are not BML-owned resources. They may retain an
+  old physical module after reload; use BML+ timers for mod-owned delayed work.
 - BML+ can restore resources it owns, but cannot undo arbitrary CKAS or raw
   CK/Vx changes made to the game world.
 
@@ -151,9 +154,10 @@ objects, callbacks, ModRef, CK handles, timers, commands, or DataShare requests.
 A reload bag is enabled only during the state hook. Recreate owned resources in
 `OnLoad` after state restoration.
 
-Keep state hooks focused on copying values. BML+ does not block other APIs in
-these callbacks, but arbitrary host and game-world side effects are not part of
-the reload transaction and cannot be rolled back after a failed reload.
+Keep state hooks focused on copying values. This is a transaction contract, not
+an API allowlist: BML+ does not block other APIs in these callbacks. Any host or
+game-world side effect happens immediately and cannot be rolled back after a
+failed reload.
 
 ## Diagnostics
 
@@ -187,6 +191,8 @@ Debug in this order:
   but should still be checked before use after failure or unload.
 - Timer, Command, DataShare request, callback, and Hook Block resources are
   removed on unload and successful replacement.
+- CKAngelScript async tasks are outside BML+ resource ownership; do not rely on
+  hot reload to cancel them.
 - A hot reload does not undo script-authored game-world side effects.
 
 ## Release checklist

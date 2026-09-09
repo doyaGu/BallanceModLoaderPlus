@@ -61,7 +61,7 @@ BML+ script mods require CKAngelScript.
 This package installs the matching AngelScript.dll into BuildingBlocks next to
 BMLPlus.dll. Keep the two DLLs together when deploying this release. BML script
 support in this release requires CKAngelScript API v6, including source-section
-loading, host-call filtering, object-handle arguments, script-array access,
+loading, object-handle arguments, script-array access,
 module import binding, module bytecode, transactional replacement, module graph,
 and module fingerprint features.
 "@ | Set-Content -Path (Join-Path $DestinationDir 'CKAngelScript-README.txt') -Encoding UTF8

@@ -138,10 +138,11 @@ named after the entry stem, such as `Mods/Foo/Resources` for `Foo.mod.as`.
   the mod unloads.
 - Value classes such as event snapshots and definitions are copied by value.
   A method named `Borrow*` still returns a non-owning handle.
-- Fixed callbacks use CKAngelScript no-suspend execution. CKAngelScript
-  `Async::*` task creation is rejected in all BML+ script-mod callbacks because
-  detached tasks are not owned by the mod and would survive hot reload. Use
-  BML+ timers for delayed or repeated mod work.
+- Fixed callbacks use CKAngelScript no-suspend execution, so they cannot
+  `Await` a task. Creating an `Async::*` task is allowed, but CKAS tasks are not
+  BML-owned resources and may retain an old physical module after hot reload.
+  Use BML+ timers for delayed or repeated mod work that must follow mod
+  ownership and unload.
 - Interface signatures must match exactly, including `const`, `&in`, return
   type, and method name.
 

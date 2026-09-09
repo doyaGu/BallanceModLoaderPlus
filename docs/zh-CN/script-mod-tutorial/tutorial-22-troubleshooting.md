@@ -137,10 +137,10 @@ void OnProcess(const BML::ModContext &in ctx) {
 - **改了 mod id 或 dependency 声明**：热重载会拒绝。依赖图变化需要重启。
 - **状态迁移失败**：检查 `SaveState`、`MigrateState`、`RestoreState` 签名和日志。`--dry-run --check-state` 可以在不替换 runtime 的情况下验证迁移代码。
 
-状态迁移方法只能搬运纯数据。不要在 `SaveState`、`MigrateState`、
-`RestoreState` 中注册命令或 Timer、写入 DataShare/Config、执行命令，或修改
-CK/游戏世界对象。BML+ 只能恢复自己持有的脚本资源，不能撤销脚本已经改过的
-游戏世界状态。
+状态迁移方法应只搬运纯数据。BML+ 不会在 `SaveState`、`MigrateState`、
+`RestoreState` 中封锁其他脚本 API；注册命令或 Timer、写入 DataShare/Config、
+执行命令或修改 CK/游戏世界对象都会真实发生。BML+ 只能恢复自己持有的脚本资源，
+不能撤销这些副作用。
 
 ---
 

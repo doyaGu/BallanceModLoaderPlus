@@ -123,6 +123,7 @@ script panel
 - 运行中放入新的 `*.mod.as` 不会新增 mod。新增 mod 需要重启 Player。
 - 修改 Mod ID 或依赖声明后需要重启 Player。
 - Timer、Command、DataShare 和回调句柄在实例替换后失效，新实例必须在 `OnLoad` 中重新注册所需资源。
+- CKAngelScript `Async::*` 任务不归 BML 管理，可能在热重载后继续持有旧的物理 module。需要跟随 Mod 卸载的延迟工作应使用 BML Timer。
 - BML 只能恢复自己持有的脚本资源，不能自动撤销脚本改过的游戏世界状态。
 
 状态迁移示例：
@@ -149,7 +150,9 @@ void RestoreState(BML::StateBag@ state) {
 }
 ```
 
-`StateBag` 只保存 `bool`、`int`、`float`、`string`。不要把 CK 句柄、脚本对象、Timer、Command、DataShare 或 ModRef 放进去。状态迁移方法应只复制/转换纯数据，不注册资源、不执行命令、不修改游戏世界。资源在 `RestoreState` 后的 `OnLoad` 里按当前状态重新创建。
+`StateBag` 只保存 `bool`、`int`、`float`、`string`。不要把 CK 句柄、脚本对象、Timer、Command、DataShare 或 ModRef 放进去。状态迁移方法应只复制/转换纯数据，资源在 `RestoreState` 后的 `OnLoad` 里按当前状态重新创建。
+
+BML 不会在状态迁移方法里封锁其他脚本 API；“只搬运纯数据”是热重载的事务契约，不是运行时白名单。注册资源、执行命令或修改游戏世界都会立即产生真实副作用，失败回滚无法撤销这些副作用。
 
 ## 规则
 
