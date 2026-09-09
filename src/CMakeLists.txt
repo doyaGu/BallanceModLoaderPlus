@@ -457,6 +457,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptFacadeAccess.h
             AngelScript/ScriptFileWatcherWin32.h
             AngelScript/ScriptHookBlockService.h
+            AngelScript/ScriptImcRecord.h
+            AngelScript/ScriptImcService.h
             AngelScript/ScriptLibraryRegistry.h
             AngelScript/ScriptLibraryServices.h
             AngelScript/ScriptLibraryTools.h
@@ -500,6 +502,8 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/ScriptFileWatcherWin32.cpp
             AngelScript/ScriptFunctionSupport.cpp
             AngelScript/ScriptHookBlockService.cpp
+            AngelScript/ScriptImcRecord.cpp
+            AngelScript/ScriptImcService.cpp
             AngelScript/ScriptLibraryRegistry.cpp
             AngelScript/ScriptLibraryServices.cpp
             AngelScript/ScriptLibraryTools.cpp

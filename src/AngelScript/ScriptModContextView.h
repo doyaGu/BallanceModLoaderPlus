@@ -19,6 +19,10 @@ class ScriptCommandRef;
 struct ScriptCommandDefinition;
 class ScriptDataShareRequestRef;
 class ScriptHookBlockRef;
+class ScriptImcRecord;
+class ScriptImcRequestRef;
+class ScriptImcSubscriptionRef;
+class ScriptImcProviderRef;
 class ScriptTimerRef;
 
 class ScriptModContextView {
@@ -108,6 +112,24 @@ public:
                                                 int type,
                                                 asIScriptFunction *callback,
                                                 const std::string &name) const;
+    int IsImcRpcAvailable(const std::string &route, bool &available) const;
+    ScriptImcRequestRef *CallImc(const std::string &route,
+                                 const std::string &requestPayload,
+                                 const std::string &responsePayload,
+                                 const ScriptImcRecord &request,
+                                 asIScriptFunction *callback,
+                                 unsigned int timeoutMs) const;
+    ScriptImcSubscriptionRef *SubscribeImc(const std::string &topic,
+                                            const std::string &payload,
+                                            asIScriptFunction *callback,
+                                            unsigned int capacity) const;
+    int PublishImc(const std::string &topic,
+                   const std::string &payload,
+                   const ScriptImcRecord &message,
+                   std::uint64_t &delivered) const;
+    int GetImcSubscriberCount(const std::string &topic,
+                              std::uint64_t &count) const;
+    ScriptImcProviderRef *OpenImcProvider() const;
     ScriptHookBlockRef *CreateHookBlock(CKBehavior *ownerScript,
                                         asIScriptFunction *callback,
                                         const std::string &name,

@@ -954,13 +954,15 @@ int ScriptMod::GetActiveScriptCallCount() const {
 }
 
 size_t ScriptMod::GetQueuedScriptServiceCallbackCount() const {
-    return m_DataShareRequests.GetQueuedCallbackCount();
+    return m_DataShareRequests.GetQueuedCallbackCount() +
+           m_Imc.GetQueuedCallbackCount();
 }
 
 bool ScriptMod::RebindServices() {
     if (m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Commands.Bind(m_Context, this, &m_ContextView) &&
         m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
+        m_Imc.Bind(m_Context, this) &&
         m_HookBlocks.Bind(m_Context, this, &m_ContextView)) {
         return true;
     }
@@ -1206,6 +1208,41 @@ ScriptDataShareRequestRef *ScriptMod::RequestScriptDataShare(const std::string &
     return m_DataShareRequests.Request(key, type, callback, name);
 }
 
+int ScriptMod::IsScriptImcRpcAvailable(const std::string &route,
+                                       bool &available) {
+    return m_Imc.IsRpcAvailable(route, available);
+}
+
+ScriptImcRequestRef *ScriptMod::CallScriptImc(
+    const std::string &route, const std::string &requestPayload,
+    const std::string &responsePayload, const ScriptImcRecord &request,
+    asIScriptFunction *callback, unsigned int timeoutMs) {
+    return m_Imc.Call(route, requestPayload, responsePayload, request,
+                      callback, timeoutMs);
+}
+
+ScriptImcSubscriptionRef *ScriptMod::SubscribeScriptImc(
+    const std::string &topic, const std::string &payload,
+    asIScriptFunction *callback, unsigned int capacity) {
+    return m_Imc.Subscribe(topic, payload, callback, capacity);
+}
+
+int ScriptMod::PublishScriptImc(const std::string &topic,
+                                const std::string &payload,
+                                const ScriptImcRecord &message,
+                                std::uint64_t &delivered) {
+    return m_Imc.Publish(topic, payload, message, delivered);
+}
+
+int ScriptMod::GetScriptImcSubscriberCount(const std::string &topic,
+                                           std::uint64_t &count) {
+    return m_Imc.GetSubscriberCount(topic, count);
+}
+
+ScriptImcProviderRef *ScriptMod::OpenScriptImcProvider() {
+    return m_Imc.OpenProvider();
+}
+
 ScriptHookBlockRef *ScriptMod::CreateScriptHookBlock(CKBehavior *ownerScript,
                                                      asIScriptFunction *callback,
                                                      const std::string &name,
@@ -1245,6 +1282,7 @@ ScriptHookBlockRef *ScriptMod::InsertScriptHookBlockBetween(CKBehavior *ownerScr
 void ScriptMod::ProcessQueuedScriptServiceCallbacks() {
     m_HookBlocks.ProcessFrame();
     m_DataShareRequests.ProcessQueuedCallbacks();
+    m_Imc.ProcessQueuedCallbacks();
 }
 
 bool ScriptMod::RegisterScriptBallType(const std::string &ballFile,
@@ -1512,6 +1550,12 @@ void ScriptMod::ReleaseScriptImGuiState() {
 bool ScriptMod::ReleaseScriptServices() {
     ScriptDiagnostic releaseDiagnostic;
     bool ok = true;
+    m_Imc.Release(&releaseDiagnostic);
+    if (!releaseDiagnostic.Message.empty()) {
+        Record(releaseDiagnostic);
+        ok = false;
+    }
+    releaseDiagnostic = ScriptDiagnostic();
     m_DataShareRequests.Release(&releaseDiagnostic);
     if (!releaseDiagnostic.Message.empty()) {
         Record(releaseDiagnostic);

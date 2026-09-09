@@ -17,6 +17,7 @@
 #include "ScriptCommandService.h"
 #include "ScriptDataShareService.h"
 #include "ScriptHookBlockService.h"
+#include "ScriptImcService.h"
 #include "ScriptModEntryScanner.h"
 #include "ScriptModContextView.h"
 #include "ScriptModDefinition.h"
@@ -220,6 +221,24 @@ public:
                                                       int type,
                                                       asIScriptFunction *callback,
                                                       const std::string &name);
+    int IsScriptImcRpcAvailable(const std::string &route, bool &available);
+    ScriptImcRequestRef *CallScriptImc(const std::string &route,
+                                       const std::string &requestPayload,
+                                       const std::string &responsePayload,
+                                       const ScriptImcRecord &request,
+                                       asIScriptFunction *callback,
+                                       unsigned int timeoutMs);
+    ScriptImcSubscriptionRef *SubscribeScriptImc(const std::string &topic,
+                                                  const std::string &payload,
+                                                  asIScriptFunction *callback,
+                                                  unsigned int capacity);
+    int PublishScriptImc(const std::string &topic,
+                         const std::string &payload,
+                         const ScriptImcRecord &message,
+                         std::uint64_t &delivered);
+    int GetScriptImcSubscriberCount(const std::string &topic,
+                                    std::uint64_t &count);
+    ScriptImcProviderRef *OpenScriptImcProvider();
     ScriptHookBlockRef *CreateScriptHookBlock(CKBehavior *ownerScript,
                                               asIScriptFunction *callback,
                                               const std::string &name,
@@ -312,6 +331,7 @@ public:
     size_t GetActiveTimerCount() const { return m_Timers.GetActiveCount(); }
     size_t GetActiveCommandCount() const { return m_Commands.GetActiveCount(); }
     size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
+    size_t GetActiveImcOperationCount() const { return m_Imc.GetActiveCount(); }
     size_t GetActiveHookBlockCount() const { return m_HookBlocks.GetActiveCount(); }
     const ScriptModRuntime &GetRuntimeForFacade() const { return m_Runtime; }
     size_t GetQueuedScriptServiceCallbackCount() const;
@@ -378,6 +398,7 @@ private:
     ScriptTimerService m_Timers;
     ScriptCommandService m_Commands;
     ScriptDataShareService m_DataShareRequests;
+    ScriptImcService m_Imc;
     ScriptHookBlockService m_HookBlocks;
     ScriptModState m_State;
     Overlay::ScriptImGuiState m_ScriptImGuiState;

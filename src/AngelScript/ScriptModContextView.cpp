@@ -353,6 +353,56 @@ ScriptDataShareRequestRef *ScriptModContextView::RequestDataShare(const std::str
     return m_Owner ? m_Owner->RequestScriptDataShare(key, type, callback, name) : nullptr;
 }
 
+int ScriptModContextView::IsImcRpcAvailable(const std::string &route,
+                                            bool &available) const {
+    available = false;
+    return m_Owner
+               ? m_Owner->IsScriptImcRpcAvailable(route, available)
+               : BML_ERROR_INVALID_HANDLE;
+}
+
+ScriptImcRequestRef *ScriptModContextView::CallImc(
+    const std::string &route, const std::string &requestPayload,
+    const std::string &responsePayload, const ScriptImcRecord &request,
+    asIScriptFunction *callback, unsigned int timeoutMs) const {
+    return m_Owner
+               ? m_Owner->CallScriptImc(route, requestPayload, responsePayload,
+                                        request, callback, timeoutMs)
+               : nullptr;
+}
+
+ScriptImcSubscriptionRef *ScriptModContextView::SubscribeImc(
+    const std::string &topic, const std::string &payload,
+    asIScriptFunction *callback, unsigned int capacity) const {
+    return m_Owner
+               ? m_Owner->SubscribeScriptImc(topic, payload, callback, capacity)
+                 : nullptr;
+}
+
+int ScriptModContextView::PublishImc(const std::string &topic,
+                                     const std::string &payload,
+                                     const ScriptImcRecord &message,
+                                     std::uint64_t &delivered) const {
+    if (!m_Owner) {
+        delivered = 0;
+        return BML_ERROR_INVALID_HANDLE;
+    }
+    return m_Owner->PublishScriptImc(topic, payload, message, delivered);
+}
+
+int ScriptModContextView::GetImcSubscriberCount(
+    const std::string &topic, std::uint64_t &count) const {
+    if (!m_Owner) {
+        count = 0;
+        return BML_ERROR_INVALID_HANDLE;
+    }
+    return m_Owner->GetScriptImcSubscriberCount(topic, count);
+}
+
+ScriptImcProviderRef *ScriptModContextView::OpenImcProvider() const {
+    return m_Owner ? m_Owner->OpenScriptImcProvider() : nullptr;
+}
+
 ScriptHookBlockRef *ScriptModContextView::CreateHookBlock(CKBehavior *ownerScript,
                                                           asIScriptFunction *callback,
                                                           const std::string &name,

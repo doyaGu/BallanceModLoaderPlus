@@ -36,6 +36,8 @@
 #include "ScriptFacadeAccess.h"
 #include "ScriptFunctionSupport.h"
 #include "ScriptHookBlockService.h"
+#include "ScriptImcRecord.h"
+#include "ScriptImcService.h"
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptBuiltinFacade.h"
@@ -111,6 +113,19 @@ static BML::ScriptStateBag *BMLAS_CreateStateBag() {
         BMLAS_SetActiveContextException("Out of memory creating BML::StateBag.");
     return bag;
 }
+
+static BML::ScriptImcRecord *BMLAS_CreateImcRecord() {
+    return BMLAS_ReportOutOfMemory(
+        BML::CreateScriptImcRecord(),
+        "Unable to allocate generated IMC record storage.");
+}
+
+static BML::ScriptImcReply *BMLAS_CreateInvalidImcReply() {
+    static BML::ScriptImcReply invalidReply;
+    return &invalidReply;
+}
+
+static void BMLAS_ReleaseImcReply(BML::ScriptImcReply *) {}
 
 std::string BMLAS_GetGameEventName(int event) {
     return BML::GetScriptGameEventName(event);
@@ -2543,6 +2558,8 @@ static const ScriptObjectTypeRegistration kObjectTypeRegistrations[] = {
     {"CommandRef", "class CommandRef", 0, asOBJ_REF},
     {"DataShareEvent", "class DataShareEvent", sizeof(BML::ScriptDataShareEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptDataShareEventView>()},
     {"DataShareRequestRef", "class DataShareRequestRef", 0, asOBJ_REF},
+    {"ImcRequestRef", "class ImcRequestRef", 0, asOBJ_REF},
+    {"ImcSubscriptionRef", "class ImcSubscriptionRef", 0, asOBJ_REF},
     {"HookBlockEvent", "class HookBlockEvent", sizeof(BMLAS_HookBlockEvent), asOBJ_VALUE | asGetTypeTraits<BMLAS_HookBlockEvent>()},
     {"HookBlockRef", "class HookBlockRef", 0, asOBJ_REF},
     {"PhysicalizeEvent", "class PhysicalizeEvent", sizeof(BML::ScriptPhysicalizeEventView), asOBJ_VALUE | asGetTypeTraits<BML::ScriptPhysicalizeEventView>()},
@@ -2751,6 +2768,10 @@ static const ScriptObjectBehaviourRegistration kObjectBehaviourRegistrations[] =
     {"CommandRef", asBEHAVE_RELEASE, "void f()", "void CommandRef release", asMETHOD(BML::ScriptCommandRef, Release), asCALL_THISCALL},
     {"DataShareRequestRef", asBEHAVE_ADDREF, "void f()", "void DataShareRequestRef addref", asMETHOD(BML::ScriptDataShareRequestRef, AddRef), asCALL_THISCALL},
     {"DataShareRequestRef", asBEHAVE_RELEASE, "void f()", "void DataShareRequestRef release", asMETHOD(BML::ScriptDataShareRequestRef, Release), asCALL_THISCALL},
+    {"ImcRequestRef", asBEHAVE_ADDREF, "void f()", "void ImcRequestRef addref", asMETHOD(BML::ScriptImcRequestRef, AddRef), asCALL_THISCALL},
+    {"ImcRequestRef", asBEHAVE_RELEASE, "void f()", "void ImcRequestRef release", asMETHOD(BML::ScriptImcRequestRef, Release), asCALL_THISCALL},
+    {"ImcSubscriptionRef", asBEHAVE_ADDREF, "void f()", "void ImcSubscriptionRef addref", asMETHOD(BML::ScriptImcSubscriptionRef, AddRef), asCALL_THISCALL},
+    {"ImcSubscriptionRef", asBEHAVE_RELEASE, "void f()", "void ImcSubscriptionRef release", asMETHOD(BML::ScriptImcSubscriptionRef, Release), asCALL_THISCALL},
     {"HookBlockRef", asBEHAVE_ADDREF, "void f()", "void HookBlockRef addref", asMETHOD(BML::ScriptHookBlockRef, AddRef), asCALL_THISCALL},
     {"HookBlockRef", asBEHAVE_RELEASE, "void f()", "void HookBlockRef release", asMETHOD(BML::ScriptHookBlockRef, Release), asCALL_THISCALL},
     {"TimerRef", asBEHAVE_ADDREF, "void f()", "void TimerRef addref", asMETHOD(BML::ScriptTimerRef, AddRef), asCALL_THISCALL},
@@ -2921,6 +2942,12 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"ModContext", "bool UnregisterCommand(const string &in name) const", "bool ModContext::UnregisterCommand(const string &in name) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::UnregisterCommand), asCALL_GENERIC},
     {"ModContext", "DataShareRequestRef@ RequestDataShare(DataShareRequest@+ request) const", "DataShareRequestRef@ ModContext::RequestDataShare(DataShareRequest@+ request) const", asMETHODPR(BML::ScriptModContextView, RequestDataShare, (asIScriptObject *) const, BML::ScriptDataShareRequestRef *), asCALL_THISCALL},
     {"ModContext", "DataShareRequestRef@ RequestDataShare(const string &in key, int type, DataShareCallback@+ callback, const string &in name = \"\") const", "DataShareRequestRef@ ModContext::RequestDataShare(const string &in, int, DataShareCallback@+, const string &in) const", BML_AS_GENERIC_OBJECT_FIRST_FUNCTION(&BMLAS_ContextRequestDataShareDelegate), asCALL_GENERIC},
+    {"ModContext", "int _IsImcRpcAvailable(const string &in route, bool &out available) const", "int ModContext::_IsImcRpcAvailable(const string &in route, bool &out available) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::IsImcRpcAvailable), asCALL_GENERIC},
+    {"ModContext", "ImcRequestRef@ _CallImc(const string &in route, const string &in requestPayload, const string &in responsePayload, const BML::Detail::ImcRecord &in request, BML::Detail::ImcCompletion@+ callback, uint timeoutMs = 5000) const", "ImcRequestRef@ ModContext::_CallImc(...) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::CallImc), asCALL_GENERIC},
+    {"ModContext", "ImcSubscriptionRef@ _SubscribeImc(const string &in topic, const string &in payload, BML::Detail::ImcTopicCallback@+ callback, uint capacity = 256) const", "ImcSubscriptionRef@ ModContext::_SubscribeImc(...) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::SubscribeImc), asCALL_GENERIC},
+    {"ModContext", "int _PublishImc(const string &in topic, const string &in payload, const BML::Detail::ImcRecord &in message, uint64 &out delivered) const", "int ModContext::_PublishImc(...) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::PublishImc), asCALL_GENERIC},
+    {"ModContext", "int _GetImcSubscriberCount(const string &in topic, uint64 &out count) const", "int ModContext::_GetImcSubscriberCount(...) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::GetImcSubscriberCount), asCALL_GENERIC},
+    {"ModContext", "BML::Detail::ImcProviderRef@ _OpenImcProvider() const", "BML::Detail::ImcProviderRef@ ModContext::_OpenImcProvider() const", asMETHOD(BML::ScriptModContextView, OpenImcProvider), asCALL_THISCALL},
     {"ModContext", "HookBlockRef@ CreateHookBlock(CKBehavior@ ownerScript, HookBlockCallback@+ callback, const string &in name = \"\", int inputCount = 1, int outputCount = 1) const", "HookBlockRef@ ModContext::CreateHookBlock(CKBehavior@, HookBlockCallback@+) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::CreateHookBlock), asCALL_GENERIC},
     {"ModContext", "HookBlockRef@ InsertHookBlockAfter(CKBehavior@ ownerScript, CKBehavior@ source, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = 0, int targetInput = -1) const", "HookBlockRef@ ModContext::InsertHookBlockAfter(CKBehavior@, CKBehavior@, HookBlockCallback@+) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::InsertHookBlockAfter), asCALL_GENERIC},
     {"ModContext", "HookBlockRef@ InsertHookBlockBefore(CKBehavior@ ownerScript, CKBehavior@ target, HookBlockCallback@+ callback, const string &in name = \"\", int sourceOutput = -1, int targetInput = 0) const", "HookBlockRef@ ModContext::InsertHookBlockBefore(CKBehavior@, CKBehavior@, HookBlockCallback@+) const", BML_AS_GENERIC_METHOD(&BML::ScriptModContextView::InsertHookBlockBefore), asCALL_GENERIC},
@@ -2998,6 +3025,14 @@ static const ScriptObjectMethodRegistration kObjectMethodRegistrations[] = {
     {"DataShareRequestRef", "string get_Key() const", "string DataShareRequestRef::get_Key() const", BML_AS_GENERIC_METHOD(&BML::ScriptDataShareRequestRef::GetKey), asCALL_GENERIC},
     {"DataShareRequestRef", "int get_Type() const", "int DataShareRequestRef::get_Type() const", asMETHOD(BML::ScriptDataShareRequestRef, GetType), asCALL_THISCALL},
     {"DataShareRequestRef", "bool Cancel()", "bool DataShareRequestRef::Cancel()", asMETHOD(BML::ScriptDataShareRequestRef, Cancel), asCALL_THISCALL},
+    {"ImcRequestRef", "bool get_IsValid() const", "bool ImcRequestRef::get_IsValid() const", asMETHOD(BML::ScriptImcRequestRef, IsValid), asCALL_THISCALL},
+    {"ImcRequestRef", "bool get_IsComplete() const", "bool ImcRequestRef::get_IsComplete() const", asMETHOD(BML::ScriptImcRequestRef, IsComplete), asCALL_THISCALL},
+    {"ImcRequestRef", "int get_Status() const", "int ImcRequestRef::get_Status() const", asMETHOD(BML::ScriptImcRequestRef, GetStatus), asCALL_THISCALL},
+    {"ImcRequestRef", "int Cancel()", "int ImcRequestRef::Cancel()", asMETHOD(BML::ScriptImcRequestRef, Cancel), asCALL_THISCALL},
+    {"ImcSubscriptionRef", "bool get_IsValid() const", "bool ImcSubscriptionRef::get_IsValid() const", asMETHOD(BML::ScriptImcSubscriptionRef, IsValid), asCALL_THISCALL},
+    {"ImcSubscriptionRef", "int get_Status() const", "int ImcSubscriptionRef::get_Status() const", asMETHOD(BML::ScriptImcSubscriptionRef, GetStatus), asCALL_THISCALL},
+    {"ImcSubscriptionRef", "int GetDroppedCount(uint64 &out count) const", "int ImcSubscriptionRef::GetDroppedCount(uint64 &out count) const", asMETHOD(BML::ScriptImcSubscriptionRef, GetDroppedCount), asCALL_THISCALL},
+    {"ImcSubscriptionRef", "int Cancel()", "int ImcSubscriptionRef::Cancel()", asMETHOD(BML::ScriptImcSubscriptionRef, Cancel), asCALL_THISCALL},
     {"HookBlockEvent", "bool get_IsValid() const", "bool HookBlockEvent::get_IsValid() const", asMETHOD(BMLAS_HookBlockEvent, IsValid), asCALL_THISCALL},
     {"HookBlockEvent", "int get_BlockId() const", "int HookBlockEvent::get_BlockId() const", asMETHOD(BMLAS_HookBlockEvent, GetBlockId), asCALL_THISCALL},
     {"HookBlockEvent", "string get_BlockName() const", "string HookBlockEvent::get_BlockName() const", BML_AS_GENERIC_METHOD(&BMLAS_HookBlockEvent::GetBlockName), asCALL_GENERIC},
@@ -3538,6 +3573,176 @@ int RegisterScriptObjectTypes(asIScriptEngine *engine, const char **errorMessage
     return asSUCCESS;
 }
 
+int RegisterScriptImcBridge(asIScriptEngine *engine, const char **errorMessage) {
+    BML_AS_REGISTER(engine->SetDefaultNamespace("BML::Detail"),
+                    "namespace BML::Detail");
+
+    BML_AS_REGISTER(engine->RegisterObjectType("ImcRecord", 0, asOBJ_REF),
+                    "class BML::Detail::ImcRecord");
+    BML_AS_REGISTER(engine->RegisterObjectType(
+                        "ImcReply", 0, asOBJ_REF | asOBJ_SCOPED),
+                    "class BML::Detail::ImcReply");
+    BML_AS_REGISTER(engine->RegisterObjectType("ImcProviderRef", 0, asOBJ_REF),
+                    "class BML::Detail::ImcProviderRef");
+
+    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
+                        "ImcRecord", asBEHAVE_FACTORY, "ImcRecord@ f()",
+                        asFUNCTION(BMLAS_CreateImcRecord), asCALL_CDECL),
+                    "BML::Detail::ImcRecord factory");
+    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
+                        "ImcRecord", asBEHAVE_ADDREF, "void f()",
+                        asMETHOD(BML::ScriptImcRecord, AddRef), asCALL_THISCALL),
+                    "BML::Detail::ImcRecord addref");
+    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
+                        "ImcRecord", asBEHAVE_RELEASE, "void f()",
+                        asMETHOD(BML::ScriptImcRecord, Release), asCALL_THISCALL),
+                    "BML::Detail::ImcRecord release");
+    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
+                        "ImcReply", asBEHAVE_FACTORY, "ImcReply@ f()",
+                        asFUNCTION(BMLAS_CreateInvalidImcReply), asCALL_CDECL),
+                    "BML::Detail::ImcReply factory");
+    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
+                        "ImcReply", asBEHAVE_RELEASE, "void f()",
+                        asFUNCTION(BMLAS_ReleaseImcReply), asCALL_CDECL_OBJLAST),
+                    "BML::Detail::ImcReply release");
+    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
+                        "ImcProviderRef", asBEHAVE_ADDREF, "void f()",
+                        asMETHOD(BML::ScriptImcProviderRef, AddRef), asCALL_THISCALL),
+                    "BML::Detail::ImcProviderRef addref");
+    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
+                        "ImcProviderRef", asBEHAVE_RELEASE, "void f()",
+                        asMETHOD(BML::ScriptImcProviderRef, Release), asCALL_THISCALL),
+                    "BML::Detail::ImcProviderRef release");
+
+    BML_AS_REGISTER(engine->RegisterFuncdef(
+                        "void ImcCompletion(int status, const ImcRecord &in record)"),
+                    "funcdef BML::Detail::ImcCompletion");
+    BML_AS_REGISTER(engine->RegisterFuncdef(
+                        "void ImcTopicCallback(int status, const ImcRecord &in record)"),
+                    "funcdef BML::Detail::ImcTopicCallback");
+    BML_AS_REGISTER(engine->RegisterFuncdef(
+                        "void ImcRpcHandler(const ImcRecord &in request, ImcReply &inout reply)"),
+                    "funcdef BML::Detail::ImcRpcHandler");
+
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "int get_Status() const",
+                        asMETHOD(BML::ScriptImcRecord, GetStatus), asCALL_THISCALL),
+                    "int BML::Detail::ImcRecord::get_Status() const");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "bool Has(uint id) const",
+                        asMETHOD(BML::ScriptImcRecord, Has), asCALL_THISCALL),
+                    "bool BML::Detail::ImcRecord::Has(uint) const");
+
+#define BML_AS_REGISTER_IMC_RECORD_METHOD(declaration, method)                     \
+    BML_AS_REGISTER(engine->RegisterObjectMethod(                                 \
+                        "ImcRecord", declaration, method, asCALL_THISCALL),        \
+                    declaration)
+
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteBool(uint id, bool value)", asMETHOD(BML::ScriptImcRecord, WriteBool));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteInt(uint id, int value)", asMETHOD(BML::ScriptImcRecord, WriteInt));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteFloat(uint id, float value)", asMETHOD(BML::ScriptImcRecord, WriteFloat));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteInt64(uint id, int64 value)", asMETHOD(BML::ScriptImcRecord, WriteInt64));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteUInt64(uint id, uint64 value)", asMETHOD(BML::ScriptImcRecord, WriteUInt64));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteDouble(uint id, double value)", asMETHOD(BML::ScriptImcRecord, WriteDouble));
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "void WriteString(uint id, const string &in value)",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::WriteString),
+                        asCALL_GENERIC),
+                    "void BML::Detail::ImcRecord::WriteString(uint, const string &in)");
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteBytes(uint id, const array<uint8> &in values)", asMETHOD(BML::ScriptImcRecord, WriteBytes));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteObject(uint id, CKObject@ value)", asMETHOD(BML::ScriptImcRecord, WriteObject));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteVec2(uint id, const BML::Vec2 &in value)", asMETHOD(BML::ScriptImcRecord, WriteVec2));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteVec3(uint id, const BML::Vec3 &in value)", asMETHOD(BML::ScriptImcRecord, WriteVec3));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteMat4(uint id, const BML::Mat4 &in value)", asMETHOD(BML::ScriptImcRecord, WriteMat4));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteBoolArray(uint id, const array<bool> &in values)", asMETHOD(BML::ScriptImcRecord, WriteBoolArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteIntArray(uint id, const array<int> &in values)", asMETHOD(BML::ScriptImcRecord, WriteIntArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteFloatArray(uint id, const array<float> &in values)", asMETHOD(BML::ScriptImcRecord, WriteFloatArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteInt64Array(uint id, const array<int64> &in values)", asMETHOD(BML::ScriptImcRecord, WriteInt64Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteUInt64Array(uint id, const array<uint64> &in values)", asMETHOD(BML::ScriptImcRecord, WriteUInt64Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteDoubleArray(uint id, const array<double> &in values)", asMETHOD(BML::ScriptImcRecord, WriteDoubleArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteStringArray(uint id, const array<string> &in values)", asMETHOD(BML::ScriptImcRecord, WriteStringArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteObjectArray(uint id, const array<CKObject@> &in values)", asMETHOD(BML::ScriptImcRecord, WriteObjectArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteVec2Array(uint id, const array<BML::Vec2> &in values)", asMETHOD(BML::ScriptImcRecord, WriteVec2Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteVec3Array(uint id, const array<BML::Vec3> &in values)", asMETHOD(BML::ScriptImcRecord, WriteVec3Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("void WriteMat4Array(uint id, const array<BML::Mat4> &in values)", asMETHOD(BML::ScriptImcRecord, WriteMat4Array));
+
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadBool(uint id, bool &out value) const", asMETHOD(BML::ScriptImcRecord, ReadBool));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadInt(uint id, int &out value) const", asMETHOD(BML::ScriptImcRecord, ReadInt));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadFloat(uint id, float &out value) const", asMETHOD(BML::ScriptImcRecord, ReadFloat));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadInt64(uint id, int64 &out value) const", asMETHOD(BML::ScriptImcRecord, ReadInt64));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadUInt64(uint id, uint64 &out value) const", asMETHOD(BML::ScriptImcRecord, ReadUInt64));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadDouble(uint id, double &out value) const", asMETHOD(BML::ScriptImcRecord, ReadDouble));
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcRecord", "int ReadString(uint id, string &out value) const",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcRecord::ReadString),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcRecord::ReadString(uint, string &out) const");
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadBytes(uint id, array<uint8> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadBytes));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadObject(uint id, CKObject@ &out value) const", asMETHOD(BML::ScriptImcRecord, ReadObject));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadVec2(uint id, BML::Vec2 &out value) const", asMETHOD(BML::ScriptImcRecord, ReadVec2));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadVec3(uint id, BML::Vec3 &out value) const", asMETHOD(BML::ScriptImcRecord, ReadVec3));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadMat4(uint id, BML::Mat4 &out value) const", asMETHOD(BML::ScriptImcRecord, ReadMat4));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadBoolArray(uint id, array<bool> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadBoolArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadIntArray(uint id, array<int> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadIntArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadFloatArray(uint id, array<float> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadFloatArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadInt64Array(uint id, array<int64> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadInt64Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadUInt64Array(uint id, array<uint64> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadUInt64Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadDoubleArray(uint id, array<double> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadDoubleArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadStringArray(uint id, array<string> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadStringArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadObjectArray(uint id, array<CKObject@> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadObjectArray));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadVec2Array(uint id, array<BML::Vec2> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadVec2Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadVec3Array(uint id, array<BML::Vec3> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadVec3Array));
+    BML_AS_REGISTER_IMC_RECORD_METHOD("int ReadMat4Array(uint id, array<BML::Mat4> &out values) const", asMETHOD(BML::ScriptImcRecord, ReadMat4Array));
+
+#undef BML_AS_REGISTER_IMC_RECORD_METHOD
+
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcReply", "void Complete(int status)",
+                        asMETHODPR(BML::ScriptImcReply, Complete, (int), void),
+                        asCALL_THISCALL),
+                    "void BML::Detail::ImcReply::Complete(int)");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcReply", "void Complete(int status, const ImcRecord &in record)",
+                        asMETHODPR(BML::ScriptImcReply, Complete,
+                                   (int, const BML::ScriptImcRecord &), void),
+                        asCALL_THISCALL),
+                    "void BML::Detail::ImcReply::Complete(int, const ImcRecord &in)");
+
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcProviderRef", "bool get_IsOpen() const",
+                        asMETHOD(BML::ScriptImcProviderRef, IsOpen), asCALL_THISCALL),
+                    "bool BML::Detail::ImcProviderRef::get_IsOpen() const");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcProviderRef", "int get_Status() const",
+                        asMETHOD(BML::ScriptImcProviderRef, GetStatus), asCALL_THISCALL),
+                    "int BML::Detail::ImcProviderRef::get_Status() const");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcProviderRef",
+                        "int _RegisterRpc(const string &in route, const string &in requestPayload, const string &in responsePayload, ImcRpcHandler@+ handler)",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcProviderRef::RegisterRpc),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcProviderRef::_RegisterRpc(...)");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcProviderRef",
+                        "int _Publish(const string &in topic, const string &in payload, const ImcRecord &in message, uint64 &out delivered)",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcProviderRef::Publish),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcProviderRef::_Publish(...)");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcProviderRef",
+                        "int _GetSubscriberCount(const string &in topic, uint64 &out count) const",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcProviderRef::GetSubscriberCount),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcProviderRef::_GetSubscriberCount(...)");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcProviderRef", "int Close()",
+                        asMETHOD(BML::ScriptImcProviderRef, Close), asCALL_THISCALL),
+                    "int BML::Detail::ImcProviderRef::Close()");
+
+    BML_AS_REGISTER(engine->SetDefaultNamespace("BML"), "namespace BML");
+    return asSUCCESS;
+}
+
 int RegisterScriptInterfaces(asIScriptEngine *engine, const char **errorMessage) {
     for (const ScriptInterfaceRegistration &registration : kInterfaceRegistrations) {
         BML_AS_REGISTER(engine->RegisterInterface(registration.Name), registration.DiagnosticName);
@@ -3675,6 +3880,12 @@ int RegisterScriptFacade(asIScriptEngine *engine, const char **errorMessage) {
     const int behavioursResult = RegisterScriptObjectBehaviours(engine, errorMessage);
     if (behavioursResult < 0)
         return behavioursResult;
+    // The IMC bridge declares array<Vec2/Vec3/Mat4> parameters. AngelScript
+    // validates those template instances immediately, after the value types
+    // have their construction behaviours.
+    const int imcResult = RegisterScriptImcBridge(engine, errorMessage);
+    if (imcResult < 0)
+        return imcResult;
     const int methodsResult = RegisterScriptObjectMethods(engine, errorMessage);
     if (methodsResult < 0)
         return methodsResult;
