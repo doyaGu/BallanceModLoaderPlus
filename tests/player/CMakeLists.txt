@@ -76,6 +76,19 @@ bml_add_player_test(ExecuteBBTest
         ${BML_PLAYER_PROBE_SOURCES}
 )
 
+# A real native provider/consumer pair for the public interface registry. The
+# consumer is the probe; the provider also records cleanup from its destructor
+# after the loader has removed its outstanding interface registrations.
+bml_add_player_test(InterfaceProviderTest
+        InterfaceProviderTest.cpp
+        InterfaceProviderTestApi.h
+)
+bml_add_player_test(InterfaceConsumerTest
+        InterfaceConsumerTest.cpp
+        InterfaceProviderTestApi.h
+        ${BML_PLAYER_PROBE_SOURCES}
+)
+
 # A single .imc contract drives both the native and ASMod facades. The probe
 # exercises RPC and topic traffic in both directions inside the shipped Player.
 bml_add_player_test(ScriptImcInteropTest
