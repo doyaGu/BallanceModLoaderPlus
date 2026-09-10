@@ -13,6 +13,8 @@
 #include "BML/Version.h"
 #include "BML/Defines.h"
 #include "BML/Interface.h"
+#include "BML/Interface.hpp"
+#include "BML/ModInterface.hpp"
 #include "BML/BML.h"
 #include "BML/Guids.h"
 

@@ -38,6 +38,10 @@
 // Every function reached through an interface runs on the calling thread, with no
 // queue in between, so like the legacy C++ interfaces they belong on the game
 // thread unless their own header says otherwise.
+//
+// C++ provider and consumer Mods should include Interface.hpp instead of writing
+// these calls directly. ModInterface.hpp additionally binds a required or optional
+// provider dependency to its typed lookup without changing this C ABI.
 #ifndef BML_INTERFACE_H
 #define BML_INTERFACE_H
 

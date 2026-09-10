@@ -31,6 +31,10 @@
 
 class ModContext;
 
+namespace BML::Interfaces::Detail {
+class DependencyAccess;
+}
+
 // A three-part version, ordered by major, then minor, then patch. The default
 // constructor takes the version of the SDK headers it is compiled against, which
 // is what makes DECLARE_BML_VERSION work.
@@ -319,6 +323,7 @@ protected:
 
 private:
     friend class ModContext;
+    friend class BML::Interfaces::Detail::DependencyAccess;
 
     ILogger *m_Logger = nullptr;
     IConfig *m_Config = nullptr;

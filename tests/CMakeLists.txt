@@ -477,6 +477,10 @@ add_bml_test(InterfaceHeaderTest
         SOURCES InterfaceHeaderTest.cpp
 )
 
+add_bml_test(InterfaceAuthoringTest
+        SOURCES InterfaceAuthoringTest.cpp
+)
+
 add_bml_test(InterfaceRegistryTest
         SOURCES
         InterfaceRegistryTest.cpp
