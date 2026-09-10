@@ -122,6 +122,7 @@ def main() -> int:
             "funcdef int LookupHandler(const Request &in request, Sample &out response);",
             "class Handlers {",
             "class Provider {",
+            "bool IsOpen() const",
             "int RegisterLookup(LookupHandler@ handler)",
             "int UnregisterLookup()",
             'return _Transport._RegisterRpc("test.codegen/v1/rpc/lookup",',
