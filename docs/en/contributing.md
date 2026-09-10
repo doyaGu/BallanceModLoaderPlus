@@ -149,6 +149,14 @@ powershell -ExecutionPolicy Bypass `
 Every runner shows the Player window by default and restores the installed
 loader, the test Mods, and the logs when it finishes.
 
+The gameplay route test drives the real shipped level independently of the
+Behavior and ExecuteBB acceptance sets:
+
+| Runner | Probe | Subject |
+| --- | --- | --- |
+| `Invoke-InterfaceProviderTest.ps1` | `InterfaceConsumerTest` plus `InterfaceProviderTest` | Native provider registration, cross-DLL lookup, ownership checks, explicit unregister, and automatic cleanup before DLL release |
+| `Invoke-GameplayRouteTest.ps1` | `GameplayRouteTest` | The authored Level_01 route; reports SKIPPED while the route is under review |
+
 The Behavior Runtime probes cover the runtime semantics fixture, the transport
 seam, Patches, the published Plan and Hook facade, and the script hook a script
 Mod retires. They install together with their two Virtools fixture plugins:

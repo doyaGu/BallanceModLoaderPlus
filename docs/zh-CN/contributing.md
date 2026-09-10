@@ -135,6 +135,13 @@ powershell -ExecutionPolicy Bypass `
 
 每个 runner 默认显示 Player 窗口，结束后恢复已安装的 Loader、测试 Mod 和日志。
 
+Gameplay route 测试独立于 Behavior 与 ExecuteBB 验收集，在真实原版关卡中运行：
+
+| Runner | Probe | 被测对象 |
+| --- | --- | --- |
+| `Invoke-InterfaceProviderTest.ps1` | `InterfaceConsumerTest` 加 `InterfaceProviderTest` | 原生 Provider 注册、跨 DLL 取用、所有权校验、显式注销，以及释放 DLL 前的自动清理 |
+| `Invoke-GameplayRouteTest.ps1` | `GameplayRouteTest` | 编写好的 Level_01 路线；路线仍在复核期间报告 SKIPPED |
+
 Behavior Runtime 的各 probe 覆盖运行时语义 fixture、transport 接缝、Patch、公开的
 Plan 与 Hook facade，以及由脚本 Mod 退休的脚本 Hook。它们与两个 Virtools fixture
 插件一起安装：

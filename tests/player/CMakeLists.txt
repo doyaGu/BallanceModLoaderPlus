@@ -100,6 +100,19 @@ bml_target_imc_api(ScriptImcInteropTest
         SCRIPT_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/script-imc"
 )
 
+# The authored Level_01 route. The route is under review, so this probe reports
+# SKIPPED until it is turned back on.
+bml_add_player_test(GameplayRouteTest
+        GameplayRouteTest.cpp
+        GameplayInputDriver.cpp
+        GameplayInputDriver.h
+        GameplayPilot.cpp
+        GameplayPilot.h
+        PlayerBallLocator.cpp
+        PlayerBallLocator.h
+        ${BML_PLAYER_PROBE_SOURCES}
+)
+
 # Offers a real script graph for a script Mod to hook and retire.
 bml_add_player_test(BehaviorScriptHookTest
         BehaviorScriptHookTest.cpp
