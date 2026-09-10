@@ -448,6 +448,7 @@ if (BML_WITH_ANGELSCRIPT)
             AngelScript/AngelScriptImGuiBindings.h
             AngelScript/ScriptApiSurface.h
             AngelScript/ScriptBehavior.h
+            AngelScript/ScriptBehaviorBindings.inc
             AngelScript/ScriptAngelScriptHandle.h
             AngelScript/ScriptAvailabilityLogLimiter.h
             AngelScript/ScriptCallbackDispatcher.h
