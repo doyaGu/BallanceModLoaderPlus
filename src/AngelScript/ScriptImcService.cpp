@@ -83,6 +83,32 @@ struct RpcCookie {
     }
 };
 
+struct RpcInvocation {
+    explicit RpcInvocation(const RpcCookie *cookie) {
+        if (!cookie)
+            return;
+        Owner = cookie->Owner;
+        Handler = cookie->Handler;
+        RequestPayload = cookie->RequestPayload;
+        ResponsePayload = cookie->ResponsePayload;
+        if (Handler)
+            Handler->AddRef();
+    }
+
+    ~RpcInvocation() {
+        if (Handler)
+            Handler->Release();
+    }
+
+    RpcInvocation(const RpcInvocation &) = delete;
+    RpcInvocation &operator=(const RpcInvocation &) = delete;
+
+    ScriptMod *Owner = nullptr;
+    asIScriptFunction *Handler = nullptr;
+    BML_ImcPayloadTypeId RequestPayload = BML_IMC_INVALID_ID;
+    BML_ImcPayloadTypeId ResponsePayload = BML_IMC_INVALID_ID;
+};
+
 struct RpcRegistrationEntry {
     BML_ImcRpcId RpcId = BML_IMC_INVALID_ID;
     std::unique_ptr<RpcCookie> Cookie;
@@ -90,6 +116,7 @@ struct RpcRegistrationEntry {
 
 struct ProviderEntry {
     unsigned int Generation = 0;
+    BML_ImcClient Client = nullptr;
     std::shared_ptr<ScriptImcProviderRef::Control> Control;
     std::unordered_map<BML_ImcRpcId, RpcRegistrationEntry> Rpcs;
 };
@@ -164,12 +191,12 @@ int WriteRpcCallbackArgs(asIScriptContext *context, void *userdata) {
     return code;
 }
 
-bool ExecuteRpcCallback(RpcCookie &cookie, ScriptImcRecord &request,
+bool ExecuteRpcCallback(const RpcInvocation &invocation, ScriptImcRecord &request,
                         ScriptImcReply &reply, ScriptDiagnostic &diagnostic) {
     RpcCallbackArgs args{&request, &reply};
     ScriptFunctionCall call;
-    call.Function = cookie.Handler;
-    call.Owner = cookie.Owner;
+    call.Function = invocation.Handler;
+    call.Owner = invocation.Owner;
     call.Phase = ScriptDiagnosticPhase::Callback;
     call.FailurePrefix = "IMC provider callback failed";
     call.InvalidStateMessage = "IMC provider callback has invalid runtime state.";
@@ -182,19 +209,19 @@ bool ExecuteRpcCallback(RpcCookie &cookie, ScriptImcRecord &request,
 
 int OnRpc(BML_ImcRpcId, const BML_ImcMessage *message,
           BML_ImcResponse *response, void *userdata) {
-    auto *cookie = static_cast<RpcCookie *>(userdata);
-    if (!cookie || !cookie->Owner || !cookie->Handler)
+    const RpcInvocation invocation(static_cast<RpcCookie *>(userdata));
+    if (!invocation.Owner || !invocation.Handler)
         return BML_ERROR_INVALID_PARAMETER;
 
     ScriptImcRecord *request = nullptr;
-    if (cookie->RequestPayload == BML_IMC_INVALID_ID) {
+    if (invocation.RequestPayload == BML_IMC_INVALID_ID) {
         if (message && (message->Size < sizeof(BML_ImcMessage) || message->DataSize != 0))
             return BML_ERROR_MALFORMED_MESSAGE;
         request = CreateScriptImcRecord();
     } else {
         if (!message || message->Size < sizeof(BML_ImcMessage))
             return BML_ERROR_MALFORMED_MESSAGE;
-        if (message->PayloadType != cookie->RequestPayload)
+        if (message->PayloadType != invocation.RequestPayload)
             return BML_ERROR_TYPE_MISMATCH;
         request = ScriptImcRecord::Decode(*message);
     }
@@ -206,15 +233,15 @@ int OnRpc(BML_ImcRpcId, const BML_ImcMessage *message,
         return status;
     }
 
-    ScriptImcReply reply(cookie->ResponsePayload != BML_IMC_INVALID_ID);
+    ScriptImcReply reply(invocation.ResponsePayload != BML_IMC_INVALID_ID);
     ScriptDiagnostic diagnostic;
-    const bool executed = ExecuteRpcCallback(*cookie, *request, reply, diagnostic);
+    const bool executed = ExecuteRpcCallback(invocation, *request, reply, diagnostic);
     request->Release();
     if (!executed) {
-        cookie->Owner->RecordScriptDiagnostic(diagnostic);
+        invocation.Owner->RecordScriptDiagnostic(diagnostic);
         return BML_ERROR_IMC_TARGET_EXECUTION_FAILED;
     }
-    return reply.Commit(response, cookie->ResponsePayload);
+    return reply.Commit(response, invocation.ResponsePayload);
 }
 
 int FutureCompletionStatus(ImcRuntime &runtime, BML_ImcFuture future,
@@ -378,19 +405,27 @@ public:
                             asIScriptFunction *handler) {
         if (route.empty() || !handler || !HasRpcHandlerSignature(handler))
             return BML_ERROR_INVALID_PARAMETER;
-        int status = EnsureClient();
-        if (status != BML_OK)
-            return status;
+
+        BML_ImcClient providerClient = nullptr;
+        {
+            std::lock_guard<std::mutex> guard(Mutex);
+            const auto provider = Providers.find(providerId);
+            if (!Active || provider == Providers.end() ||
+                provider->second.Generation != generation ||
+                !provider->second.Client)
+                return BML_ERROR_INVALID_HANDLE;
+            providerClient = provider->second.Client;
+        }
 
         ImcRuntime &imc = Context->GetImcRuntime();
         BML_ImcRpcId rpcId = BML_IMC_INVALID_ID;
         BML_ImcPayloadTypeId requestType = BML_IMC_INVALID_ID;
         BML_ImcPayloadTypeId responseType = BML_IMC_INVALID_ID;
-        status = imc.GetRpcId(Client, route.c_str(), &rpcId);
+        int status = imc.GetRpcId(providerClient, route.c_str(), &rpcId);
         if (status == BML_OK && !requestPayload.empty())
-            status = imc.GetPayloadTypeId(Client, requestPayload.c_str(), &requestType);
+            status = imc.GetPayloadTypeId(providerClient, requestPayload.c_str(), &requestType);
         if (status == BML_OK && !responsePayload.empty())
-            status = imc.GetPayloadTypeId(Client, responsePayload.c_str(), &responseType);
+            status = imc.GetPayloadTypeId(providerClient, responsePayload.c_str(), &responseType);
         if (status != BML_OK)
             return status;
 
@@ -418,7 +453,7 @@ public:
 
         BML_ImcRpcRegistrationOptions options = BML_IMC_RPC_REGISTRATION_OPTIONS_INIT;
         options.Execution = BML_IMC_EXECUTION_GAME_THREAD;
-        status = imc.RegisterRpc(Client, rpcId, &options, OnRpc, cookie.get());
+        status = imc.RegisterRpc(providerClient, rpcId, &options, OnRpc, cookie.get());
         if (status != BML_OK)
             return status;
 
@@ -426,8 +461,9 @@ public:
             std::lock_guard<std::mutex> guard(Mutex);
             const auto provider = Providers.find(providerId);
             if (!Active || provider == Providers.end() ||
-                provider->second.Generation != generation) {
-                imc.UnregisterRpc(Client, rpcId);
+                provider->second.Generation != generation ||
+                provider->second.Client != providerClient) {
+                imc.UnregisterRpc(providerClient, rpcId);
                 return BML_ERROR_INVALID_HANDLE;
             }
             RpcRegistrationEntry registration;
@@ -435,49 +471,36 @@ public:
             registration.Cookie = std::move(cookie);
             provider->second.Rpcs.emplace(rpcId, std::move(registration));
         } catch (const std::bad_alloc &) {
-            imc.UnregisterRpc(Client, rpcId);
+            imc.UnregisterRpc(providerClient, rpcId);
             return BML_ERROR_OUT_OF_MEMORY;
         }
         return BML_OK;
     }
 
     int CloseProvider(int providerId, unsigned int generation) {
-        std::vector<BML_ImcRpcId> rpcIds;
+        BML_ImcClient providerClient = nullptr;
         {
             std::lock_guard<std::mutex> guard(Mutex);
             const auto provider = Providers.find(providerId);
             if (provider == Providers.end() || provider->second.Generation != generation)
                 return BML_ERROR_INVALID_HANDLE;
-            rpcIds.reserve(provider->second.Rpcs.size());
-            for (const auto &[rpcId, registration] : provider->second.Rpcs)
-                rpcIds.push_back(rpcId);
+            providerClient = provider->second.Client;
         }
 
-        int result = BML_OK;
-        for (BML_ImcRpcId rpcId : rpcIds) {
-            const int status = Context && Client
-                                   ? Context->GetImcRuntime().UnregisterRpc(Client, rpcId)
-                                   : BML_ERROR_INVALID_HANDLE;
-            if (status == BML_OK || status == BML_ERROR_NOT_FOUND) {
-                std::lock_guard<std::mutex> guard(Mutex);
-                const auto provider = Providers.find(providerId);
-                if (provider != Providers.end() && provider->second.Generation == generation)
-                    provider->second.Rpcs.erase(rpcId);
-            } else if (result == BML_OK) {
-                result = status;
-            }
-        }
+        const int status = Context && providerClient
+                               ? Context->GetImcRuntime().CloseClient(providerClient)
+                               : BML_ERROR_INVALID_HANDLE;
+        if (status != BML_OK && status != BML_ERROR_INVALID_HANDLE)
+            return status;
 
         std::lock_guard<std::mutex> guard(Mutex);
         const auto provider = Providers.find(providerId);
         if (provider == Providers.end() || provider->second.Generation != generation)
-            return result == BML_OK ? BML_ERROR_INVALID_HANDLE : result;
-        if (!provider->second.Rpcs.empty())
-            return result == BML_OK ? BML_ERROR_BUSY : result;
-        provider->second.Control->Status.store(result, std::memory_order_release);
+            return status == BML_OK ? BML_ERROR_INVALID_HANDLE : status;
+        provider->second.Control->Status.store(status, std::memory_order_release);
         provider->second.Control->Active.store(false, std::memory_order_release);
         Providers.erase(provider);
-        return result;
+        return status;
     }
 };
 
@@ -965,13 +988,17 @@ ScriptImcProviderRef *ScriptImcService::OpenProvider() {
 
     std::shared_ptr<ScriptImcProviderRef::Control> control;
     ScriptImcProviderRef *ref = nullptr;
+    BML_ImcClient providerClient = nullptr;
     try {
         control = std::make_shared<ScriptImcProviderRef::Control>();
         ref = new (std::nothrow) ScriptImcProviderRef(state, control);
         if (!ref)
             return nullptr;
 
-        const int status = state->EnsureClient();
+        const int status = state->Active && state->Context && state->Owner
+                               ? state->Context->GetImcRuntime().OpenClient(
+                                     state->Owner->GetID(), &providerClient)
+                               : BML_ERROR_FROZEN;
         control->Status.store(status, std::memory_order_release);
         if (status != BML_OK) {
             control->Active.store(false, std::memory_order_release);
@@ -979,20 +1006,36 @@ ScriptImcProviderRef *ScriptImcService::OpenProvider() {
         }
 
         ProviderEntry provider;
-        provider.Generation = state->NextGeneration++;
+        provider.Client = providerClient;
         provider.Control = control;
-        const int id = state->NextId++;
-        control->Id = id;
-        control->Generation = provider.Generation;
-        std::lock_guard<std::mutex> guard(state->Mutex);
-        if (!state->Active) {
+        bool inserted = false;
+        {
+            std::lock_guard<std::mutex> guard(state->Mutex);
+            if (state->Active) {
+                provider.Generation = state->NextGeneration++;
+                const int id = state->NextId++;
+                control->Id = id;
+                control->Generation = provider.Generation;
+                state->Providers.emplace(id, std::move(provider));
+                inserted = true;
+            }
+        }
+        if (!inserted) {
+            state->Context->GetImcRuntime().CloseClient(providerClient);
+            providerClient = nullptr;
             control->Status.store(BML_ERROR_FROZEN, std::memory_order_release);
             control->Active.store(false, std::memory_order_release);
             return ref;
         }
-        state->Providers.emplace(id, std::move(provider));
+        providerClient = nullptr;
         return ref;
     } catch (const std::bad_alloc &) {
+        if (providerClient && state->Context)
+            state->Context->GetImcRuntime().CloseClient(providerClient);
+        if (control) {
+            control->Status.store(BML_ERROR_OUT_OF_MEMORY, std::memory_order_release);
+            control->Active.store(false, std::memory_order_release);
+        }
         if (ref)
             ref->Release();
         return nullptr;
@@ -1120,13 +1163,12 @@ void ScriptImcService::Release(ScriptDiagnostic *diagnostic) {
     }
     int releaseStatus = BML_OK;
     for (auto &[id, provider] : providers) {
-        for (auto &[rpcId, registration] : provider.Rpcs) {
-            if (context && client) {
-                const int status = context->GetImcRuntime().UnregisterRpc(client, rpcId);
-                if (releaseStatus == BML_OK && status != BML_OK &&
-                    status != BML_ERROR_NOT_FOUND && status != BML_ERROR_INVALID_HANDLE)
-                    releaseStatus = status;
-            }
+        (void)id;
+        if (context && provider.Client) {
+            const int status = context->GetImcRuntime().CloseClient(provider.Client);
+            if (releaseStatus == BML_OK && status != BML_OK &&
+                status != BML_ERROR_INVALID_HANDLE)
+                releaseStatus = status;
         }
         provider.Control->Status.store(BML_ERROR_CANCELLED, std::memory_order_release);
         provider.Control->Active.store(false, std::memory_order_release);
