@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "api": "__IMC_API_ID__",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "enums": [],
+  "schemas": [
+    {
+      "name": "increment_reply",
+      "fields": [
+        {
+          "id": 1,
+          "name": "value",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    },
+    {
+      "name": "increment_request",
+      "fields": [
+        {
+          "id": 1,
+          "name": "value",
+          "type": "int",
+          "optional": false,
+          "reserved": false
+        }
+      ]
+    }
+  ],
+  "rpcs": [
+    {
+      "name": "increment",
+      "request": "increment_request",
+      "response": "increment_reply"
+    }
+  ],
+  "topics": []
+}

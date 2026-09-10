@@ -40,18 +40,43 @@ Use the native route for operations that genuinely require C++, the Virtools
 SDK, or generated IMC services.
 
 1. Open [`share/BML/docs/en/modding.md`](share/BML/docs/en/modding.md).
-2. Create the project in your source workspace:
+2. Create the project in your source workspace. Name and author are inferred
+   when omitted:
 
-   ```powershell
-   & "<BML-SDK>/scripts/New-BMLNativeMod.ps1" `
-     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new yourname.my-mod
    ```
 
-3. Follow the generated README to configure an x86 build against this SDK and
-   the Virtools SDK.
+3. Enter the project and run the complete development loop. Paths are remembered
+   locally after the first run:
+
+   ```bat
+   .\bml run
+   ```
+
+   The first run asks for the Virtools SDK and Ballance folders, then remembers
+   them. It builds and deploys the Mod, starts Player, waits for exit, and prints
+   only this Mod's new log lines. `bml.cmd` is a small Windows launcher for the
+   Python 3.10+ tool copied into the project as `bml.py`; it does not invoke
+   PowerShell.
+
+Already have a native Mod? Keep its source and CMake files:
+
+```bat
+"<BML-SDK>\scripts\bml.cmd" init owner.existing-mod --project "C:\path\to\mod"
+```
+
+This adds the local Python workflow without rewriting the project. Continuing
+to use CMake directly is also supported.
 
 You can also copy [`templates/native-mod-template`](templates/native-mod-template)
 manually.
+
+For a native-only provider interface, see the two independent projects in
+[`examples/native-interface-provider`](examples/native-interface-provider) and
+[`examples/native-interface-consumer`](examples/native-interface-consumer).
+The provider uses `bml_add_interface_package`; the consumer obtains only the
+installed header target and never links the provider binary.
 
 ## Where things are
 
@@ -63,7 +88,7 @@ manually.
 | `share/BML/docs/zh-CN/` | Chinese Mod author documentation |
 | `docs/api/` | AngelScript editor declarations, when script support is enabled |
 | `include/`, `lib/` | Native headers, libraries, and CMake package files |
-| `share/BML/tools/` | Generated IMC tooling |
+| `share/BML/tools/` | Native interface and IMC code generators |
 | `scripts/` | Mod creation and script Mod packaging tools |
 
 Use the runtime release `BMLPlus-<version>.zip` to install BML+ into the game.

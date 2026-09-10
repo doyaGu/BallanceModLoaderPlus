@@ -36,16 +36,27 @@
 只有确实需要 C++、Virtools SDK 或生成式 IMC 服务时才选择原生路线。
 
 1. 打开 [`share/BML/docs/zh-CN/modding.md`](share/BML/docs/zh-CN/modding.md)。
-2. 在你的源码工作区中创建项目：
+2. 在源码工作区中创建项目；省略名称和作者时会自动推导：
 
-   ```powershell
-   & "<BML-SDK>/scripts/New-BMLNativeMod.ps1" `
-     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new yourname.my-mod
    ```
 
-3. 按生成的 README，使用该 SDK 和 Virtools SDK 配置 x86 构建。
+3. 进入项目后运行完整开发循环；首次运行后会在本地记住路径：
+
+   ```bat
+   .\bml run
+   ```
+
+   首次运行会询问 Virtools SDK 和 Ballance 目录并记住答案。之后会自动构建、部署、
+   启动 Player，并在退出后只显示这个 Mod 本次新增的日志。
 
 也可以手动复制 [`templates/native-mod-template`](templates/native-mod-template)。
+
+需要发布仅限原生侧使用的 provider interface 时，参见两个独立工程：
+[`examples/native-interface-provider`](examples/native-interface-provider) 和
+[`examples/native-interface-consumer`](examples/native-interface-consumer)。提供方使用
+`bml_add_interface_package`；使用方只取得安装后的头文件 target，不链接提供方二进制。
 
 ## 目录用途
 
@@ -57,7 +68,7 @@
 | `share/BML/docs/zh-CN/` | 中文 Mod 开发文档 |
 | `docs/api/` | 启用脚本支持时提供的 AngelScript 编辑器声明 |
 | `include/`、`lib/` | 原生头文件、库和 CMake package |
-| `share/BML/tools/` | 生成式 IMC 工具 |
+| `share/BML/tools/` | 原生 interface 与 IMC 代码生成器 |
 | `scripts/` | Mod 创建和脚本 Mod 打包工具 |
 
 安装 BML+ 到游戏时应使用运行时发布包 `BMLPlus-<version>.zip`，不能使用 SDK

@@ -1,16 +1,32 @@
-# BML+ Native Mod Template
+# __MOD_NAME__
 
-Minimal CMake-based BML+ mod with a sample command.
+This is a working starter Mod. Edit `src/HelloMod.cpp`, then run:
 
-Read the SDK's `share/BML/docs/en/modding.md` before choosing the native route,
-then use `share/BML/docs/en/native-mod-api.md` for the native API and ownership
-rules. The same pages are published at
+```bat
+.\bml run
+```
+
+The generated Mod already logs a load message and adds a `hello` command, so
+you can verify the toolchain before changing any code.
+
+Use the SDK's `share/BML/docs/en/native-mod-api.md` when you need more APIs or
+ownership rules. The same pages are published at
 [Create mods](https://doyagu.github.io/BallanceModLoaderPlus/modding/) and
 [Native mod API](https://doyagu.github.io/BallanceModLoaderPlus/native-mod-api/).
+
+## Fast Development Loop
+
+The first run asks for the Virtools SDK and Ballance folders. It then builds and
+deploys the Mod, starts Player, and prints this Mod's new log lines when Player
+exits. The answers are remembered, so later runs use the same command.
+
+Use `.\bml build` when you only want a local build and do not want to change
+or start Ballance.
 
 ## Prerequisites
 
 - Windows + Visual Studio 2019+ (C++20)
+- Python 3.10+
 - CMake 3.15+ (`bml_add_mod` needs policy CMP0091 to pin the MSVC runtime)
 - Virtools SDK 2.1
 - An extracted BML+ SDK (so that `BMLConfig.cmake` is available).
@@ -25,7 +41,7 @@ cmake --build <BML-build-dir> --config Release --target install
 Then pass `<BML-SDK>` through `CMAKE_PREFIX_PATH` when configuring this
 template.
 
-## Configure
+## Manual Configure (CI And Troubleshooting)
 
 Ballance and the Virtools SDK are 32-bit. First run `cmake --help` and copy the
 exact Visual Studio generator name available on your machine. The example below
@@ -80,7 +96,8 @@ case where a Debug Mod is intended is the Debug SDK:
 - Entry point: `BMLEntry(IBML*) -> IMod*`
 - Cleanup: `BMLExit(IMod*)` destroys the object returned by `BMLEntry` in the
   same DLL and is required for new mods.
-- Registers a sample command: `hello [name]`
+- Registers a sample command: `hello [name]`. The Mod owns it, unregisters it
+  during `OnUnload`, and deletes it only after the loader no longer holds it.
 - `bml_add_mod` requires a 32-bit MSVC-compatible target and verifies both
   loader entry points while linking the BML SDK.
 - `bml_add_mod` enables C++20 and applies the `.bmodp` suffix.

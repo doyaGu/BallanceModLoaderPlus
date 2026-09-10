@@ -689,6 +689,9 @@ install(FILES
 
 install(DIRECTORY
         "${PROJECT_SOURCE_DIR}/templates/native-mod-template"
+        "${PROJECT_SOURCE_DIR}/templates/native-interface-provider-template"
+        "${PROJECT_SOURCE_DIR}/templates/native-interface-consumer-template"
+        "${PROJECT_SOURCE_DIR}/templates/native-imc-provider-template"
         DESTINATION "templates"
 )
 
@@ -699,7 +702,8 @@ install(DIRECTORY
 )
 
 install(FILES
-        "${PROJECT_SOURCE_DIR}/scripts/New-BMLNativeMod.ps1"
+        "${PROJECT_SOURCE_DIR}/scripts/bml.cmd"
+        "${PROJECT_SOURCE_DIR}/scripts/bml.py"
         DESTINATION "scripts"
 )
 

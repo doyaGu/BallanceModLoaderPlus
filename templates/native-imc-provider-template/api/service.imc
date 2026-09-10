@@ -1,0 +1,11 @@
+api __IMC_API_ID__ 1.0
+
+record increment_request {
+    int value
+}
+
+record increment_reply {
+    int value
+}
+
+rpc increment(increment_request) -> increment_reply

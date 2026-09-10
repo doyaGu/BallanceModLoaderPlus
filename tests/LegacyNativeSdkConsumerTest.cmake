@@ -1,5 +1,6 @@
 foreach(required_variable
         CMAKE_EXECUTABLE
+        PYTHON_EXECUTABLE
         SOURCE_ROOT
         WORK_ROOT
         GENERATOR
@@ -33,6 +34,7 @@ endif()
 
 foreach(required_path
         CMAKE_EXECUTABLE
+        PYTHON_EXECUTABLE
         SOURCE_ROOT
         VIRTOOLS_SDK_PATH
         DUMPBIN)
@@ -107,9 +109,8 @@ else()
     endif()
 endif()
 
-find_program(powershell_executable NAMES pwsh powershell REQUIRED)
 set(native_template "${install_root}/templates/native-mod-template")
-set(native_scaffolder "${install_root}/scripts/New-BMLNativeMod.ps1")
+set(native_scaffolder "${install_root}/scripts/bml.py")
 set(consumer_source_dir "${work_root}/NativeQuickStartMod")
 foreach(required_sdk_path
         "${install_root}/lib/cmake/BML/BMLConfig.cmake"
@@ -124,12 +125,10 @@ foreach(required_sdk_path
 endforeach()
 
 execute_process(
-    COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
-            -File "${native_scaffolder}"
-            -Id "sdk.quick-start"
-            -Name "SDK Quick Start"
-            -Author "SDK Test"
-            -Destination "${consumer_source_dir}"
+    COMMAND "${PYTHON_EXECUTABLE}" "${native_scaffolder}" new "sdk.quick-start"
+            --name "SDK Quick Start"
+            --author "SDK Test"
+            --destination "${consumer_source_dir}"
     RESULT_VARIABLE native_scaffold_status
     OUTPUT_VARIABLE native_scaffold_output
     ERROR_VARIABLE native_scaffold_error
@@ -149,13 +148,32 @@ file(READ "${consumer_source_dir}/src/QuickStartMod.cpp" generated_native_source
 # sufficient for authoring, while the Player probes exercise the live path.
 set(behavior_facade_probe [=[
 #include <BML/Behavior.hpp>
+#include <BML/Interface.hpp>
+#include <BML/ModInterface.hpp>
 
 #include <type_traits>
 
 namespace {
+struct InstalledInterface {
+    BML_InterfaceHeader Header;
+    int(BML_CDECL *Read)(int input, int *outValue);
+};
+BML_DECLARE_INTERFACE_TRAITS(InstalledTraits, InstalledInterface,
+                             "test.installed.interface", 1, Read);
+int BML_CDECL ReadInstalledValue(int input, int *outValue) {
+    if (!outValue) return BML_ERROR_INVALID_PARAMETER;
+    *outValue = input;
+    return BML_OK;
+}
+constexpr auto kInstalledInterface =
+    BML::Interfaces::MakeInterface<InstalledTraits>(0, &ReadInstalledValue);
+
 static_assert(std::is_move_constructible_v<BML::Behavior::Session>);
 static_assert(!std::is_copy_constructible_v<BML::Behavior::Session>);
 static_assert(std::is_copy_constructible_v<BML::Behavior::Block>);
+static_assert(std::is_move_constructible_v<BML::Interfaces::Publication<InstalledTraits>>);
+static_assert(!std::is_copy_constructible_v<BML::Interfaces::Publication<InstalledTraits>>);
+static_assert(!std::is_copy_constructible_v<BML::Interfaces::RequiredInterface<InstalledTraits>>);
 [[maybe_unused]] void CompileBehaviorAuthoringSurface() {
     using namespace BML::Behavior;
     auto session = Session::Open();
@@ -166,6 +184,18 @@ static_assert(std::is_copy_constructible_v<BML::Behavior::Block>);
         .Pins({{"Value", 2.0f}});
     (void) block.Validate();
     (void) block.Start("Run", Latest());
+}
+
+[[maybe_unused]] void CompileInterfaceAuthoringSurface(IMod &mod) {
+    BML::Interfaces::Publication<InstalledTraits> publication;
+    BML::Interfaces::Reference<InstalledTraits> reference;
+    BML::Interfaces::RequiredInterface<InstalledTraits> required(
+        mod, "InstalledProvider", BMLVersion(1, 0, 0));
+    BML::Interfaces::OptionalInterface<InstalledTraits> optional(mod, "OptionalProvider");
+    (void)publication.Open(kInstalledInterface);
+    (void)reference.Open();
+    (void)required.Open();
+    (void)optional.Open();
 }
 } // namespace
 
@@ -289,6 +319,7 @@ if(NOT found_entry OR NOT found_exit)
 endif()
 
 set(script_template "${install_root}/templates/script-mod-template")
+find_program(powershell_executable NAMES pwsh powershell REQUIRED)
 set(script_scaffolder "${install_root}/scripts/New-BMLScriptMod.ps1")
 set(script_packer "${install_root}/scripts/Pack-BMLScriptMod.ps1")
 set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")

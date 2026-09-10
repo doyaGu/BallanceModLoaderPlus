@@ -1,0 +1,4 @@
+# BML+ generates ValueInterface.h from this small definition.
+interface __INTERFACE_ID__ 1.0
+
+fn read_value(int input) -> int value

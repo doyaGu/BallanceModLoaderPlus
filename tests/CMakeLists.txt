@@ -161,6 +161,13 @@ add_test(
 set_tests_properties(InterfaceCodegenTest PROPERTIES LABELS "interface;codegen")
 
 add_test(
+        NAME BmlCliTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/BmlCliTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+)
+set_tests_properties(BmlCliTest PROPERTIES LABELS "sdk;workflow")
+
+add_test(
         NAME ImcCmakeIntegrationTest
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ImcCmakeIntegrationTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
@@ -285,6 +292,7 @@ if(MSVC)
                 NAME LegacyNativeSdkConsumerTest
                 COMMAND "${CMAKE_COMMAND}"
                         "-DCMAKE_EXECUTABLE=${CMAKE_COMMAND}"
+                        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
                         "-DSOURCE_ROOT=${PROJECT_SOURCE_DIR}"
                         "-DMAIN_BUILD_DIR=${PROJECT_BINARY_DIR}"
                         "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/legacy-native-sdk-consumer-$<CONFIG>"
@@ -322,6 +330,27 @@ if(MSVC)
                 RUN_SERIAL TRUE
                 SKIP_REGULAR_EXPRESSION "BML_TEST_SKIPPED:"
                 TIMEOUT 180)
+
+        add_test(
+                NAME NativeModProfilesIntegrationTest
+                COMMAND "${CMAKE_COMMAND}"
+                        "-DCMAKE_EXECUTABLE=${CMAKE_COMMAND}"
+                        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+                        "-DMAIN_BUILD_DIR=${PROJECT_BINARY_DIR}"
+                        "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/native-mod-profiles-$<CONFIG>"
+                        "-DGENERATOR=${CMAKE_GENERATOR}"
+                        "-DGENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+                        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                        "-DCONFIGURATION=$<CONFIG>"
+                        "-DVIRTOOLS_SDK_PATH=${VIRTOOLS_SDK_PATH}"
+                        "-DDUMPBIN=${BML_DUMPBIN}"
+                        -P "${CMAKE_CURRENT_SOURCE_DIR}/NativeModProfilesIntegrationTest.cmake"
+        )
+        set_tests_properties(NativeModProfilesIntegrationTest PROPERTIES
+                LABELS "legacy-native;interface;imc;integration;sdk"
+                RUN_SERIAL TRUE
+                SKIP_REGULAR_EXPRESSION "BML_TEST_SKIPPED:"
+                TIMEOUT 240)
     endif()
 endif()
 

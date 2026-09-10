@@ -55,21 +55,27 @@ the same pages under `share/BML/docs/en/script-mod`.
 1. Open PowerShell in the directory where you keep source projects and create
    a Mod from the SDK template:
 
-   ```powershell
-   & "<BML-SDK>/scripts/New-BMLNativeMod.ps1" `
-     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new yourname.my-mod
    ```
 
-   The command keeps the CMake target, C++ class, source filename, and metadata
-   consistent. You can also copy `templates/native-mod-template` manually.
+   The command creates a working Mod, chooses its readable name from the id, and
+   uses your Git name as the author. You do not need to edit CMake settings.
 
-2. Open the generated README. Run `cmake --help`, select an installed Visual
-   Studio generator explicitly, configure its Win32 target, and point
-   `CMAKE_PREFIX_PATH` at the extracted BML+ SDK. Keep the source and build
-   paths short, for example `C:\Mods\MyMod`, to avoid MSBuild file-tracking
-   failures in deeply nested directories.
-3. Point `VIRTOOLS_SDK_PATH` at Virtools SDK 2.1.
-4. Build `RelWithDebInfo` and install the Mod into `ModLoader/Mods`. A native
+2. Enter the generated directory and run one development command:
+
+   ```bat
+   .\bml run
+   ```
+
+   The first run asks for the Virtools SDK and Ballance folders. It then selects
+   the newest installed Visual Studio generator, configures Win32,
+   builds and deploys `RelWithDebInfo`, starts Player, and prints this Mod's new
+   log lines after Player exits. The two paths and selected generator are cached
+   in ignored `.bml/settings.json`; later runs need only `.\bml run`. The
+   project-local tool is Python 3.10+; `bml.cmd` is only its Windows launcher.
+3. Edit the source file printed by `new`, then run `.\bml run` again.
+4. The native
    Mod must link the same MSVC runtime as the loader it runs in, because the
    native interface passes C++ objects across the DLL boundary. The runtime in
    `BMLPlus-<version>.zip` is built against the Release MSVC runtime, so a Debug
@@ -83,11 +89,42 @@ the same pages under `share/BML/docs/en/script-mod`.
    you also copy that Debug loader over `BuildingBlocks/BMLPlus.dll`. Keep the
    loader and every installed native Mod on one side of that line, and go back
    to the Release loader before testing what you publish.
-5. Start that Ballance installation's Player, wait until the main menu is
-   visible, and confirm the generated Mod's in-game greeting, load line in
-   `ModLoader/ModLoader.log`, and sample command. The BML+ version banner alone
-   only proves that the loader initialized.
-6. Build Release and test the exact artifact you intend to publish.
+5. Before publishing, run `.\bml run --configuration Release` and test that
+   exact artifact. Use the generated README's manual CMake commands only for CI
+   or diagnosing the build itself.
+
+### Use it with an existing native Mod
+
+An existing CMake Mod does not need to be regenerated or rewritten. Run this
+once from the extracted SDK:
+
+```bat
+"<BML-SDK>\scripts\bml.cmd" init owner.existing-mod --project "C:\path\to\mod"
+```
+
+`init` reads the target from `bml_add_mod`, reads the version from `project`, and
+adds only `bml.mod.json`, `bml.py`, `bml.cmd`, and ignored local settings. It
+does not change `CMakeLists.txt` or source files. If the target cannot be
+inferred, pass `--target`; if the installed filename differs from the target,
+also pass `--artifact`.
+
+Afterward, `.\bml run` is available, but the existing manual CMake workflow
+remains fully supported. Adopting the helper is optional.
+
+### Advanced native starting points
+
+Ignore this section for a normal Mod. These options exist only when two Mods
+must call each other:
+
+| Need | Creation option |
+| --- | --- |
+| Let another native Mod call a small C++ API | `--profile interface-provider` |
+| Call that API from a second native Mod | `--profile interface-consumer --provider-id "owner.provider"` |
+| Expose a message-based API that isolates callers from your C++ binary | `--profile imc-provider` |
+
+Run `bml help --verbose` to see the complete commands. A provider edits its
+file under `api/`, then runs `.\bml interface update` after an intentional
+compatible API change. BML+ owns the generated headers.
 
 The SDK CMake entry point is:
 

@@ -1,8 +1,10 @@
+#include <BML/BML.h>
 #include <BML/IMod.h>
 #include <BML/IBML.h>
 #include <BML/ICommand.h>
 #include <BML/ILogger.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,13 +40,30 @@ public:
 
     void OnLoad() override {
         GetLogger()->Info("HelloMod loaded");
-        m_BML->RegisterCommand(new CommandHello());
+        m_Command = std::make_unique<CommandHello>();
+        m_BML->RegisterCommand(m_Command.get());
         m_BML->SendIngameMessage("\x1b[32mHelloMod loaded. Type 'hello' in command bar.\x1b[0m");
     }
 
     void OnUnload() override {
+        if (m_Command) {
+            const int status = BML_UnregisterCommand("hello");
+            if (status == BML_OK || status == BML_ERROR_NOT_FOUND ||
+                status == BML_ERROR_ACCESS_DENIED) {
+                m_Command.reset();
+            } else {
+                // The loader may still hold this pointer. Leaking it is safer than
+                // leaving a dangling command during abnormal shutdown.
+                (void)m_Command.release();
+                GetLogger()->Error("Could not unregister hello command: %d", status);
+            }
+            GetLogger()->Info("Native profile basic: command_cleanup_status=%d", status);
+        }
         GetLogger()->Info("HelloMod unloaded");
     }
+
+private:
+    std::unique_ptr<CommandHello> m_Command;
 };
 
 MOD_EXPORT IMod *BMLEntry(IBML *bml) {

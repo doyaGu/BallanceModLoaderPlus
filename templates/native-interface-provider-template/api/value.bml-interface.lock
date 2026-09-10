@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "interface": "__INTERFACE_ID__",
+  "version": {
+    "major": 1,
+    "minor": 0
+  },
+  "functions": [
+    {
+      "name": "read_value",
+      "parameters": [
+        {
+          "type": "int",
+          "name": "input"
+        }
+      ],
+      "output": {
+        "type": "int",
+        "name": "value"
+      }
+    }
+  ]
+}
