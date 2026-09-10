@@ -12,12 +12,18 @@ class ScriptImcInterop {
     BML::ImcRequestRef@ initialCall;
     BML::ImcRequestRef@ noticeAck;
     BML::ImcRequestRef@ scriptLoopback;
+    BML::ImcRequestRef@ dynamicLoopback;
     bool providerReady = false;
+    bool routeLifecycleReady = false;
+    bool nativeCallerServed = false;
     bool initialReply = false;
     bool nativeNoticeReceived = false;
     bool noticeAcknowledged = false;
     bool scriptLoopbackReply = false;
+    bool dynamicLoopbackReply = false;
+    bool providerSelfClosed = false;
     bool scriptNoticePublished = false;
+    bool lifecycleNoticePublished = false;
     bool reported = false;
 
     void OnLoad(const BML::ModContext &in ctx) {
@@ -26,6 +32,21 @@ class ScriptImcInterop {
         int providerStatus = provider.Start(ctx, handlers);
         providerReady = providerStatus == BML::ERROR_OK;
 
+        Test::Scriptinterop::DynamicEchoHandler@ dynamicHandler =
+            Test::Scriptinterop::DynamicEchoHandler(this.OnDynamicEcho);
+        int registerStatus = providerReady
+            ? provider.RegisterDynamicEcho(dynamicHandler)
+            : BML::ERROR_INVALID_HANDLE;
+        int unregisterStatus = registerStatus == BML::ERROR_OK
+            ? provider.UnregisterDynamicEcho()
+            : BML::ERROR_INVALID_HANDLE;
+        int reregisterStatus = unregisterStatus == BML::ERROR_OK
+            ? provider.RegisterDynamicEcho(dynamicHandler)
+            : BML::ERROR_INVALID_HANDLE;
+        routeLifecycleReady = registerStatus == BML::ERROR_OK &&
+            unregisterStatus == BML::ERROR_OK &&
+            reregisterStatus == BML::ERROR_OK;
+
         Test::Scriptinterop::NativeNoticeCallback@ notice =
             Test::Scriptinterop::NativeNoticeCallback(this.OnNativeNotice);
         @nativeNotice = Test::Scriptinterop::SubscribeNativeNotice(ctx, notice, 8);
@@ -33,13 +54,28 @@ class ScriptImcInterop {
         int subscriptionStatus = nativeNotice is null
             ? BML::ERROR_INVALID_HANDLE : nativeNotice.Status;
         ctx.LogInfo("Script IMC setup: provider=" + providerStatus +
-                    " subscription=" + subscriptionStatus);
+                    " subscription=" + subscriptionStatus +
+                    " register=" + registerStatus +
+                    " unregister=" + unregisterStatus +
+                    " reregister=" + reregisterStatus);
     }
 
     int OnScriptEcho(const Test::Scriptinterop::Number &in request,
                      Test::Scriptinterop::Number &out response) {
         response.Value = request.Value + 1;
+        if (request.Value == 30)
+            nativeCallerServed = true;
         return BML::ERROR_OK;
+    }
+
+    int OnDynamicEcho(const Test::Scriptinterop::Number &in request,
+                      Test::Scriptinterop::Number &out response) {
+        if (request.Value != 70)
+            return BML::ERROR_INVALID_PARAMETER;
+        response.Value = request.Value + 1;
+        int status = provider.Close();
+        providerSelfClosed = status == BML::ERROR_OK && !provider.IsOpen();
+        return status;
     }
 
     void OnNativeEcho(int status,
@@ -66,6 +102,11 @@ class ScriptImcInterop {
         scriptLoopbackReply = status == BML::ERROR_OK && response.Value == 61;
     }
 
+    void OnDynamicLoopback(int status,
+                           const Test::Scriptinterop::Number &in response) {
+        dynamicLoopbackReply = status == BML::ERROR_OK && response.Value == 71;
+    }
+
     void OnProcess(const BML::ModContext &in ctx) {
         bool nativeEchoAvailable = false;
         if (initialCall is null &&
@@ -90,7 +131,7 @@ class ScriptImcInterop {
         }
 
         bool scriptEchoAvailable = false;
-        if (scriptLoopback is null &&
+        if (scriptLoopback is null && nativeCallerServed &&
             Test::Scriptinterop::IsScriptEchoAvailable(
                 ctx, scriptEchoAvailable) == BML::ERROR_OK &&
             scriptEchoAvailable) {
@@ -99,6 +140,20 @@ class ScriptImcInterop {
             Test::Scriptinterop::ScriptEchoCallback@ completion =
                 Test::Scriptinterop::ScriptEchoCallback(this.OnScriptLoopback);
             @scriptLoopback = Test::Scriptinterop::BeginCallScriptEcho(
+                ctx, request, completion);
+        }
+
+        bool dynamicEchoAvailable = false;
+        if (dynamicLoopback is null && routeLifecycleReady &&
+            scriptLoopbackReply &&
+            Test::Scriptinterop::IsDynamicEchoAvailable(
+                ctx, dynamicEchoAvailable) == BML::ERROR_OK &&
+            dynamicEchoAvailable) {
+            Test::Scriptinterop::Number request;
+            request.Value = 70;
+            Test::Scriptinterop::DynamicEchoCallback@ completion =
+                Test::Scriptinterop::DynamicEchoCallback(this.OnDynamicLoopback);
+            @dynamicLoopback = Test::Scriptinterop::BeginCallDynamicEcho(
                 ctx, request, completion);
         }
 
@@ -115,22 +170,36 @@ class ScriptImcInterop {
             }
         }
 
-        if (!reported && providerReady && nativeNotice !is null &&
+        if (dynamicLoopbackReply && !lifecycleNoticePublished) {
+            Test::Scriptinterop::Number notice;
+            notice.Value = 71;
+            uint64 delivered = 0;
+            lifecycleNoticePublished =
+                Test::Scriptinterop::PublishScriptNotice(
+                    ctx, notice, delivered) == BML::ERROR_OK && delivered > 0;
+        }
+
+        if (!reported && providerReady && routeLifecycleReady &&
+            providerSelfClosed && nativeNotice !is null &&
             initialReply && nativeNoticeReceived && noticeAcknowledged &&
-            scriptLoopbackReply && scriptNoticePublished) {
+            scriptLoopbackReply && dynamicLoopbackReply && scriptNoticePublished &&
+            lifecycleNoticePublished) {
             uint64 dropped = 0;
             bool handlesOk = initialCall !is null && initialCall.IsComplete &&
                 initialCall.Status == BML::ERROR_OK && noticeAck !is null &&
                 noticeAck.IsComplete && noticeAck.Status == BML::ERROR_OK &&
                 scriptLoopback !is null && scriptLoopback.IsComplete &&
                 scriptLoopback.Status == BML::ERROR_OK &&
+                dynamicLoopback !is null && dynamicLoopback.IsComplete &&
+                dynamicLoopback.Status == BML::ERROR_OK &&
                 nativeNotice.GetDroppedCount(dropped) == BML::ERROR_OK &&
                 dropped == 0;
             if (!handlesOk)
                 return;
             ctx.LogInfo("Script IMC interop: status=pass rpc_client=true " +
                         "rpc_provider=true topic_subscriber=true topic_publisher=true " +
-                        "script_loopback=true handles=true");
+                        "script_loopback=true dynamic_routes=true " +
+                        "provider_self_close=true handles=true");
             reported = true;
         }
     }

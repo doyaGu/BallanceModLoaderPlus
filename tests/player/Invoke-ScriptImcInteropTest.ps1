@@ -112,7 +112,7 @@ $checks['ScriptLoaded'] = $log.Contains('BML script mod summary: loaded=1 failed
 $checks['NativeToScript'] = $log.Contains(
     'Script IMC native interop: status=pass rpc_client=true rpc_provider=true topic_subscriber=true topic_publisher=true')
 $checks['ScriptToNative'] = $log.Contains(
-    'Script IMC interop: status=pass rpc_client=true rpc_provider=true topic_subscriber=true topic_publisher=true script_loopback=true handles=true')
+    'Script IMC interop: status=pass rpc_client=true rpc_provider=true topic_subscriber=true topic_publisher=true script_loopback=true dynamic_routes=true provider_self_close=true handles=true')
 $checks['ProviderClosed'] = $log.Contains(
     'Script IMC interop unload: provider_closed=true subscription_cancelled=true')
 $checks['InstallRestored'] = $run.InstallRestored

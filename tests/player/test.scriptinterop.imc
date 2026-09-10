@@ -1,4 +1,4 @@
-api test.scriptinterop 1.1
+api test.scriptinterop 1.2
 
 enum mode {
     first = 0
@@ -40,5 +40,6 @@ record wire_surface {
 
 rpc native_echo(number) -> number
 rpc script_echo(number) -> number
+rpc dynamic_echo(number) -> number
 topic native_notice(number)
 topic script_notice(number)

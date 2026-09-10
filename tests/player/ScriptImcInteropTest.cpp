@@ -74,23 +74,34 @@ public:
             }
         }
 
-        const bool passed = m_ScriptRpcPassed && m_NativeNoticePublished &&
-                            m_InitialScriptCall && m_NoticeAcknowledged &&
-                            m_ScriptNoticeReceived;
+        const bool trafficPassed = m_ScriptRpcPassed && m_NativeNoticePublished &&
+                                   m_InitialScriptCall && m_NoticeAcknowledged &&
+                                   m_ScriptNoticeReceived &&
+                                   m_ScriptLifecycleComplete;
+        if (trafficPassed && !m_ScriptProviderClosed) {
+            bool available = true;
+            m_ScriptProviderClosed =
+                m_Client.IsScriptEchoAvailable(available) == BML_OK && !available;
+        }
+        const bool passed = trafficPassed && m_ScriptProviderClosed;
         if (passed) {
             GetLogger()->Info(
                 "Script IMC native interop: status=pass rpc_client=true "
-                "rpc_provider=true topic_subscriber=true topic_publisher=true");
+                "rpc_provider=true topic_subscriber=true topic_publisher=true "
+                "provider_close_observed=true");
             Finish(true, "completed");
         } else if (++m_Frames > 600) {
             GetLogger()->Error(
                 "Script IMC native timeout: rpc=%s published=%s "
-                "initial=%s acknowledged=%s received=%s",
+                "initial=%s acknowledged=%s received=%s lifecycle=%s "
+                "provider_closed=%s",
                 m_ScriptRpcPassed ? "true" : "false",
                 m_NativeNoticePublished ? "true" : "false",
                 m_InitialScriptCall ? "true" : "false",
                 m_NoticeAcknowledged ? "true" : "false",
-                m_ScriptNoticeReceived ? "true" : "false");
+                m_ScriptNoticeReceived ? "true" : "false",
+                m_ScriptLifecycleComplete ? "true" : "false",
+                m_ScriptProviderClosed ? "true" : "false");
             Finish(false, "interop-timeout");
         }
     }
@@ -120,8 +131,12 @@ private:
     static void OnScriptNotice(int status, Interop::NumberValue *notice,
                                const BML_ImcMessage *, void *userdata) {
         auto *self = static_cast<ScriptImcInteropTest *>(userdata);
-        if (self && status == BML_OK && notice && notice->Value == 50)
+        if (!self || status != BML_OK || !notice)
+            return;
+        if (notice->Value == 50)
             self->m_ScriptNoticeReceived = true;
+        else if (notice->Value == 71)
+            self->m_ScriptLifecycleComplete = true;
     }
 
     static void Finish(bool passed, const char *reason) {
@@ -142,6 +157,8 @@ private:
     bool m_InitialScriptCall = false;
     bool m_NoticeAcknowledged = false;
     bool m_ScriptNoticeReceived = false;
+    bool m_ScriptLifecycleComplete = false;
+    bool m_ScriptProviderClosed = false;
 };
 
 } // namespace

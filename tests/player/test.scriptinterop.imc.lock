@@ -3,7 +3,7 @@
   "api": "test.scriptinterop",
   "version": {
     "major": 1,
-    "minor": 1
+    "minor": 2
   },
   "enums": [
     {
@@ -209,6 +209,11 @@
     }
   ],
   "rpcs": [
+    {
+      "name": "dynamic_echo",
+      "request": "number",
+      "response": "number"
+    },
     {
       "name": "native_echo",
       "request": "number",
