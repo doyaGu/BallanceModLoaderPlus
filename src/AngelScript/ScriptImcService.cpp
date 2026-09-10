@@ -767,6 +767,7 @@ ScriptImcRequestRef *ScriptImcService::Call(
 
     std::shared_ptr<ScriptImcRequestRef::Control> control;
     ScriptImcRequestRef *ref = nullptr;
+    bool callbackRetained = false;
     try {
         control = std::make_shared<ScriptImcRequestRef::Control>();
         ref = new (std::nothrow) ScriptImcRequestRef(state, control);
@@ -776,6 +777,7 @@ ScriptImcRequestRef *ScriptImcService::Call(
         entry.Generation = state->NextGeneration++;
         entry.Callback = callback;
         entry.Callback->AddRef();
+        callbackRetained = true;
         entry.Control = control;
         const int id = state->NextId++;
         control->Id = id;
@@ -783,12 +785,16 @@ ScriptImcRequestRef *ScriptImcService::Call(
         std::lock_guard<std::mutex> guard(state->Mutex);
         if (!state->Active) {
             entry.Callback->Release();
+            callbackRetained = false;
             control->Status.store(BML_ERROR_FROZEN, std::memory_order_release);
             control->Active.store(false, std::memory_order_release);
             return ref;
         }
         state->Requests.emplace(id, std::move(entry));
+        callbackRetained = false;
     } catch (const std::bad_alloc &) {
+        if (callbackRetained)
+            callback->Release();
         if (ref) ref->Release();
         return nullptr;
     }
@@ -850,6 +856,7 @@ ScriptImcSubscriptionRef *ScriptImcService::Subscribe(
 
     std::shared_ptr<ScriptImcSubscriptionRef::Control> control;
     ScriptImcSubscriptionRef *ref = nullptr;
+    bool callbackRetained = false;
     try {
         control = std::make_shared<ScriptImcSubscriptionRef::Control>();
         ref = new (std::nothrow) ScriptImcSubscriptionRef(state, control);
@@ -859,6 +866,7 @@ ScriptImcSubscriptionRef *ScriptImcService::Subscribe(
         entry.Generation = state->NextGeneration++;
         entry.Callback = callback;
         entry.Callback->AddRef();
+        callbackRetained = true;
         entry.Control = control;
         entry.Cookie = std::make_unique<TopicCookie>();
         const int id = state->NextId++;
@@ -869,12 +877,16 @@ ScriptImcSubscriptionRef *ScriptImcService::Subscribe(
         std::lock_guard<std::mutex> guard(state->Mutex);
         if (!state->Active) {
             entry.Callback->Release();
+            callbackRetained = false;
             control->Status.store(BML_ERROR_FROZEN, std::memory_order_release);
             control->Active.store(false, std::memory_order_release);
             return ref;
         }
         state->Subscriptions.emplace(id, std::move(entry));
+        callbackRetained = false;
     } catch (const std::bad_alloc &) {
+        if (callbackRetained)
+            callback->Release();
         if (ref) ref->Release();
         return nullptr;
     }

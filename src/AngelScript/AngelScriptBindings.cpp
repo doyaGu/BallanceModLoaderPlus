@@ -120,12 +120,7 @@ static BML::ScriptImcRecord *BMLAS_CreateImcRecord() {
         "Unable to allocate generated IMC record storage.");
 }
 
-static BML::ScriptImcReply *BMLAS_CreateInvalidImcReply() {
-    static BML::ScriptImcReply invalidReply;
-    return &invalidReply;
-}
-
-static void BMLAS_ReleaseImcReply(BML::ScriptImcReply *) {}
+static void BMLAS_ReleaseBorrowedImcReply(BML::ScriptImcReply *) {}
 
 std::string BMLAS_GetGameEventName(int event) {
     return BML::GetScriptGameEventName(event);
@@ -3598,12 +3593,8 @@ int RegisterScriptImcBridge(asIScriptEngine *engine, const char **errorMessage) 
                         asMETHOD(BML::ScriptImcRecord, Release), asCALL_THISCALL),
                     "BML::Detail::ImcRecord release");
     BML_AS_REGISTER(engine->RegisterObjectBehaviour(
-                        "ImcReply", asBEHAVE_FACTORY, "ImcReply@ f()",
-                        asFUNCTION(BMLAS_CreateInvalidImcReply), asCALL_CDECL),
-                    "BML::Detail::ImcReply factory");
-    BML_AS_REGISTER(engine->RegisterObjectBehaviour(
                         "ImcReply", asBEHAVE_RELEASE, "void f()",
-                        asFUNCTION(BMLAS_ReleaseImcReply), asCALL_CDECL_OBJLAST),
+                        asFUNCTION(BMLAS_ReleaseBorrowedImcReply), asCALL_CDECL_OBJLAST),
                     "BML::Detail::ImcReply release");
     BML_AS_REGISTER(engine->RegisterObjectBehaviour(
                         "ImcProviderRef", asBEHAVE_ADDREF, "void f()",

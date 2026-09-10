@@ -126,7 +126,7 @@ template <class T>
 void ScriptImcRecord::Write(unsigned int id, T value) {
     if (m_Status != BML_OK)
         return;
-    if (!id || !m_Bytes.empty()) {
+    if (!id || m_IsDecoded) {
         SetError(BML_ERROR_INVALID_PARAMETER);
         return;
     }
@@ -202,7 +202,10 @@ int ScriptImcRecord::Find(unsigned int id, FieldSlice &field) const {
 }
 
 bool ScriptImcRecord::Has(unsigned int id) const {
-    return m_Status == BML_OK && m_Fields.find(id) != m_Fields.end();
+    if (m_Status != BML_OK)
+        return false;
+    return m_IsDecoded ? m_Fields.find(id) != m_Fields.end()
+                       : m_Values.find(id) != m_Values.end();
 }
 
 #define BML_SCRIPT_IMC_READ_SCALAR(Name, Value) \
@@ -298,7 +301,7 @@ int ScriptImcRecord::ReadObjectArray(unsigned int id, void *values) const {
 int ScriptImcRecord::Encode(std::vector<std::uint8_t> &bytes) const {
     if (m_Status != BML_OK)
         return m_Status;
-    if (!m_Bytes.empty()) {
+    if (m_IsDecoded) {
         try {
             bytes = m_Bytes;
             return BML_OK;
@@ -340,14 +343,17 @@ int ScriptImcRecord::Encode(std::vector<std::uint8_t> &bytes) const {
 }
 
 int ScriptImcRecord::Parse(const void *data, std::size_t size) {
+    m_Status = BML_OK;
+    m_IsDecoded = true;
+    m_Values.clear();
+    m_Bytes.clear();
+    m_Fields.clear();
     try {
         const auto *begin = static_cast<const std::uint8_t *>(data);
         if (size && !begin)
             return m_Status = BML_ERROR_MALFORMED_MESSAGE;
         if (size)
             m_Bytes.assign(begin, begin + size);
-        else
-            m_Bytes.clear();
         Imc::Wire::Reader reader(m_Bytes.data(), m_Bytes.size());
         int status = reader.Begin();
         Imc::Wire::FieldView field;

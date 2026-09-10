@@ -104,6 +104,7 @@ private:
 
     std::atomic<int> m_RefCount{1};
     int m_Status = BML_OK;
+    bool m_IsDecoded = false;
     std::map<unsigned int, Value> m_Values;
     std::vector<std::uint8_t> m_Bytes;
     std::map<unsigned int, FieldSlice> m_Fields;

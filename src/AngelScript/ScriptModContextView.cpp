@@ -12,10 +12,6 @@
 
 namespace BML {
 
-namespace {
-
-} // namespace
-
 ScriptModContextView::ScriptModContextView(ModContext *context, ScriptMod *owner)
     : m_Context(context), m_Owner(owner) {}
 
