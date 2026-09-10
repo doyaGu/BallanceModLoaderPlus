@@ -235,6 +235,25 @@ $gameplayPatch = [regex]::Match($log,
 $scriptHook = [regex]::Match($log,
     'Behavior script hook: status=(?<status>pass|fail) reason=(?<reason>\S+) ' +
     'installed=(?<installed>true|false) frames=(?<frames>[0-9]+)')
+$scriptApi = [regex]::Match($log,
+    'Behavior script API: status=(?<status>pass|fail) ' +
+    'use=(?<use>true|false) find=(?<find>true|false) ' +
+    'call=(?<call>true|false) pout=(?<pout>true|false)')
+$scriptGraphApi = [regex]::Match($log,
+    'Behavior script graph API: status=(?<status>pass|fail) ' +
+    'inspect=(?<inspect>true|false) topology=(?<topology>true|false) ' +
+    'patch=(?<patch>true|false) resolve=(?<resolve>true|false) ' +
+    'create=(?<create>true|false) plan=(?<plan>true|false)')
+$scriptCallbacks = [regex]::Match($log,
+    'Behavior script callbacks: status=(?<status>pass|fail) ' +
+    'hook=(?<hook>[0-9]+) watch=(?<watch>[0-9]+) ' +
+    'hook_objects=(?<hookObjects>true|false) ' +
+    'watch_graph=(?<watchGraph>true|false) ' +
+    'patch_close=(?<patchClose>true|false) ' +
+    'watch_close=(?<watchClose>true|false)')
+$scriptObjectRef = [regex]::Match($log,
+    'Behavior script ObjectRef: status=(?<status>pass|fail) ' +
+    'stale=(?<stale>true|false)')
 
 $checks['RuntimeSemanticsFixture'] = $runtimeSemantics.Success -and
     $runtimeSemantics.Groups['status'].Value -eq 'pass' -and
@@ -401,6 +420,56 @@ $checks['ScriptHookRetirement'] = $(if ($DisableAngelScript) {
         ([regex]::Matches($log,
             'ScriptHookRetirement callback=1 uninstall=true').Count -eq 1) -and
         $log.Contains('ScriptHookRetirement retired=true callbacks=1')
+    })
+$checks['BehaviorScriptApi'] = $(if ($DisableAngelScript) {
+        $true
+    } else {
+        $scriptApi.Success -and
+        $scriptApi.Groups['status'].Value -eq 'pass' -and
+        $scriptApi.Groups['use'].Value -eq 'true' -and
+        $scriptApi.Groups['find'].Value -eq 'true' -and
+        $scriptApi.Groups['call'].Value -eq 'true' -and
+        $scriptApi.Groups['pout'].Value -eq 'true' -and
+        $log.Contains('object_ref=true')
+    })
+$checks['BehaviorScriptObjectRef'] = $(if ($DisableAngelScript) {
+        $true
+    } else {
+        $scriptObjectRef.Success -and
+        $scriptObjectRef.Groups['status'].Value -eq 'pass' -and
+        $scriptObjectRef.Groups['stale'].Value -eq 'true'
+    })
+$checks['BehaviorScriptGraphApi'] = $(if ($DisableAngelScript) {
+        $true
+    } else {
+        $scriptGraphApi.Success -and
+        $scriptGraphApi.Groups['status'].Value -eq 'pass' -and
+        $scriptGraphApi.Groups['inspect'].Value -eq 'true' -and
+        $scriptGraphApi.Groups['topology'].Value -eq 'true' -and
+        $scriptGraphApi.Groups['patch'].Value -eq 'true' -and
+        $scriptGraphApi.Groups['resolve'].Value -eq 'true' -and
+        $scriptGraphApi.Groups['create'].Value -eq 'true' -and
+        $scriptGraphApi.Groups['plan'].Value -eq 'true'
+    })
+$checks['BehaviorScriptCallbacks'] = $(if ($DisableAngelScript) {
+        $true
+    } else {
+        $scriptCallbacks.Success -and
+        $scriptCallbacks.Groups['status'].Value -eq 'pass' -and
+        [int]$scriptCallbacks.Groups['hook'].Value -ge 1 -and
+        [int]$scriptCallbacks.Groups['watch'].Value -ge 1 -and
+        $scriptCallbacks.Groups['hookObjects'].Value -eq 'true' -and
+        $scriptCallbacks.Groups['watchGraph'].Value -eq 'true' -and
+        $scriptCallbacks.Groups['patchClose'].Value -eq 'true' -and
+        $scriptCallbacks.Groups['watchClose'].Value -eq 'true'
+    })
+$checks['BehaviorScriptOwnerRetirement'] = $(if ($DisableAngelScript) {
+        $true
+    } else {
+        $log.Contains(
+            'Behavior script owner retirement: active_watch=true') -and
+        -not $log.Contains(
+            'Script mod bml.lifecycle.player.test runtime release failed')
     })
 $checks['CleanExecuteBB'] = -not $log.Contains('ExecuteBB::')
 
