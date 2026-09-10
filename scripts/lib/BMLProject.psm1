@@ -217,7 +217,22 @@ function Get-BMLOptionalHash {
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
         return $null
     }
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+
+    # Get-FileHash is unavailable in the legacy Windows PowerShell host used by
+    # some CTest installations. Use the framework implementation so the Player
+    # harness has identical install/restore verification in every host.
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = $sha256.ComputeHash($stream)
+            return ([System.BitConverter]::ToString($bytes)).Replace('-', '')
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
 }
 
 function Get-BMLTextIfExists {
