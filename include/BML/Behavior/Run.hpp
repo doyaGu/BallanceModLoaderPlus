@@ -51,6 +51,10 @@ public:
         std::initializer_list<SlotValue> values) const {
         return m_Run.Settings(values);
     }
+    [[nodiscard]] Result<std::uint64_t> Settings(
+        const std::vector<SlotValue> &values) const {
+        return m_Run.Settings(values);
+    }
     [[nodiscard]] Result<CloseState> Close() noexcept { return m_Run.Close(); }
     [[nodiscard]] Result<Task> Continue();
 
@@ -110,6 +114,10 @@ public:
         std::initializer_list<SlotValue> values) const {
         return m_Run.Settings(values);
     }
+    [[nodiscard]] Result<std::uint64_t> Settings(
+        const std::vector<SlotValue> &values) const {
+        return m_Run.Settings(values);
+    }
     [[nodiscard]] Result<CloseState> Close() noexcept { return m_Run.Close(); }
 
 private:
@@ -167,6 +175,10 @@ public:
     }
     [[nodiscard]] Result<std::uint64_t> Settings(
         std::initializer_list<SlotValue> values) const {
+        return m_Run.Settings(values);
+    }
+    [[nodiscard]] Result<std::uint64_t> Settings(
+        const std::vector<SlotValue> &values) const {
         return m_Run.Settings(values);
     }
     [[nodiscard]] Result<CloseState> Close() noexcept { return m_Run.Close(); }

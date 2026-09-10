@@ -1112,6 +1112,8 @@ public:
         Relation relation = Relation::Direct) const;
     [[nodiscard]] Result<std::uint64_t> Settings(
         std::initializer_list<SlotValue> values) const;
+    [[nodiscard]] Result<std::uint64_t> Settings(
+        const std::vector<SlotValue> &values) const;
 
 private:
     Run(std::shared_ptr<SessionState> session,

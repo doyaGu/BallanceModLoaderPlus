@@ -1406,6 +1406,17 @@ inline Result<std::uint64_t> Detail::Run::Bind(
 
 inline Result<std::uint64_t> Detail::Run::Settings(
     std::initializer_list<SlotValue> values) const {
+    try {
+        return Settings(std::vector<SlotValue>(values));
+    } catch (const std::bad_alloc &) {
+        return Result<std::uint64_t>::Failure(BML_ERROR_OUT_OF_MEMORY);
+    } catch (...) {
+        return Result<std::uint64_t>::Failure(BML_ERROR_FAIL);
+    }
+}
+
+inline Result<std::uint64_t> Detail::Run::Settings(
+    const std::vector<SlotValue> &values) const {
     if (!*this || values.size() == 0 ||
         !BML_IFACE_HAS(m_Session->Api, BML_BehaviorInterface, Configure))
         return Result<std::uint64_t>::Failure(BML_ERROR_INVALID_HANDLE);
