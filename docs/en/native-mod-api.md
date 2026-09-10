@@ -222,7 +222,7 @@ Local, In, Out, Pout, Graph, Patch, and Plan vocabulary. Its C interface is the
 stable transport seam; Native C++ Mods should normally use `Behavior.hpp`, which
 owns strings, arrays, callbacks, handles, and Frame bytes. See
 [Behavior authoring](behavior-authoring.md) for the complete ownership, thread,
-world-reset, error, and hot-path contracts.
+world-reset, error-handling, and hot-path rules.
 
 The native `BML::Gameplay` collection reads return complete snapshots in a
 caller-owned `std::vector`. Read the catalog during setup and refresh level

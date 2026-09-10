@@ -294,7 +294,7 @@ view 隐藏 Patch 基础设施后重新生成连续 index，Live view 使用 nat
 进行结构解析。
 `Port::Index()` 同样保留 CK 原生 slot index。Setting 与 Local 共用 CK 的
 local-parameter 数组、但在 API 中属于不同 slot kind，因此 Local index 可能不连续；
-除非 BB contract 明确规定原生 index，否则应优先使用名称 selector。
+除非 BB 的参数布局明确要求原生 index，否则应优先使用名称 selector。
 
 `Incoming` 和 `Outgoing` 返回零分配的索引 Link view，不扫描无关 Link。
 `Links()` 和 `Incoming` 使用 graph 的 Link collection 顺序，`Outgoing` 使用每个

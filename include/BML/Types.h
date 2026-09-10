@@ -14,7 +14,7 @@
 // zero Domain is null, all three fields participate in equality, and an invalid reference
 // answers BML_ERROR_OBJECT_INVALID. It is good for this process and current world only, so do
 // not persist it or hold it across a level change. CK objects deliberately destroyed with
-// CK_DESTROY_NONOTIFY are not eligible for this cross-interface lifetime contract.
+// CK_DESTROY_NONOTIFY are not eligible for this cross-interface lifetime rule.
 #ifndef BML_TYPES_H
 #define BML_TYPES_H
 

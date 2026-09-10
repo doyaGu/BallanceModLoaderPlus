@@ -33,7 +33,7 @@ public:
         if (code != BML_OK)
             return Result<Session>::Failure(code);
         const auto *api = static_cast<const BML_BehaviorInterface *>(found);
-        // The facade needs the complete 1.0 contract. Later minor members are
+        // The facade needs the complete 1.0 interface. Later minor members are
         // probed at their call sites instead of rejecting an older loader here.
         if (!api || !BML_BEHAVIOR_HAS_1_0(api))
             return Result<Session>::Failure(BML_ERROR_VERSION_MISMATCH);

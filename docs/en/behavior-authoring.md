@@ -2,7 +2,7 @@
 
 `BML/Behavior.hpp` is the stable C++ interface for Native Mods that use Virtools Behaviors. It can create and execute registered Building Blocks whose parameters use supported value domains, create a top-level Script graph, and inspect or edit Behavior graphs. `BML/Behavior.h` exposes the stable `bml.behavior 1.0` C seam; C++ authors normally do not need its wire DTOs. This interface supports Win32 Native C++ Mods only and does not support Win64.
 
-The domain types in `BML::Behavior` and the 1.0 C function table in `BML/Behavior.h` are public contracts. `BML::Behavior::Detail` contains the header-only implementation; Mods must not name it directly, and it carries no source-compatibility guarantee.
+The domain types in `BML::Behavior` and the 1.0 C function table in `BML/Behavior.h` are public APIs. `BML::Behavior::Detail` contains the header-only implementation; Mods must not name it directly, and it carries no source-compatibility guarantee.
 
 ### Where the C seam fits
 
@@ -299,7 +299,7 @@ name, Prototype, kind, and port shape for later structural resolution.
 `Port::Index()` likewise preserves the native CK slot index. Local indexes may
 be sparse because Settings share CK's local-parameter array but are exposed as
 a separate slot kind; prefer a name selector unless the native index is part of
-the BB contract.
+the BB's documented parameter layout.
 
 `Incoming` and `Outgoing` are zero-allocation indexed Link views and do not scan
 unrelated Links. `Links()` and `Incoming` follow the graph's Link collection
