@@ -544,7 +544,49 @@ readable and Close can be retried after the conflict is repaired.
 
 Hook callbacks run on the game thread. Exceptions do not cross the DLL seam. Self-close stops later admission immediately, while graph restoration, native teardown, and callback-state release finish at a safe point without waiting for the current invocation.
 
-## 10. Named retail BBs
+## 10. AngelScript
+
+When CKAngelScript is enabled, each Script Mod receives an owner-scoped
+`BML::Behavior` projection of the same model. There is no Session to open
+manually: `Use`, `Find`, `Describe`, `Inspect`, `Edit`, and `CreateScript` use
+the current Script Mod's identity. Before unload or hot reload, BML retires the
+Run, Watch, Patch, Plan, Script, and callback objects created through it.
+
+```angelscript
+auto@ block = BML::Behavior::Find("My Building Block", "My Category")
+    .Settings({
+        BML::Behavior::SlotValue("Mode", BML::Behavior::Value(2))
+    })
+    .Pins({
+        BML::Behavior::SlotValue("Strength", BML::Behavior::Value(12.0f))
+    });
+
+auto@ instance = block.Spawn(BML::Behavior::Signals(16).Pouts());
+auto@ layout = instance.Layout();
+auto@ strength = layout.Find(
+    BML::Behavior::SlotKind::Pin, BML::Behavior::Unique("Strength"));
+instance.Set(strength, BML::Behavior::Value(18.0f));
+instance.Pulse(BML::Behavior::Unique("Run"));
+
+auto@ frames = instance.TakeFrames();
+float result = 0.0f;
+if (!frames.Empty)
+    frames[0].Read(BML::Behavior::Unique("Result"), result);
+```
+
+The graph path uses the same `Graph → Edit → Patch / Plan` vocabulary, including
+nested graphs, `NodePattern`/`Each`, Add/Replace/Remove, Flow, parameter
+relations, Parameter Operations, Hooks, and Watches. AngelScript handles are
+reference objects; call `Clone()` when deriving two independent Block
+configurations. A Script Patch currently targets one Graph and a Script Plan
+contains one Script rule; use the Native C++ facade when one handle must compose
+multiple Graphs or multiple Script rules atomically. Captured CK objects are
+returned as `ObjectRef`; call `Borrow()` only for immediate use and expect it to
+return null after the object or world becomes stale. CKAngelScript's raw
+Behavior/Param API remains available for low-level CK2 work, but it does not
+provide BML owner retirement, Patch journals, or cross-world Plan semantics.
+
+## 11. Named retail BBs
 
 `BML/Behavior/Blocks.hpp` collects header-only adapters for known retail BBs, including Object Load, Physicalize, Physics Force, Physics Impulse, Physics Wake Up, Send Message, and 2D Text. Each header contains only that BB's Prototype, Options, and slot knowledge:
 
@@ -563,7 +605,7 @@ if (made) {
 
 These adapters return ordinary Blocks and do not bypass lifecycle, execution, or teardown. New Native Mod code should not use the legacy ExecuteBB interface.
 
-## 11. Lifetime, errors, and performance
+## 12. Lifetime, errors, and performance
 
 | Event | Session | Run | Script | Watch / Patch | Plan |
 | --- | --- | --- | --- | --- | --- |
@@ -581,4 +623,4 @@ apply/restore failure pair. Detailed failures are read only after
 Script scan, Edit resolution, native installation, or allocation on unchanged
 frames.
 
-The public interface exposes native Parameter Operations but does not add a second expression language over them. `bml.behavior 1.0` does not include an AngelScript Behavior projection, third-party parameter-format registration, active Node replacement, or an exact DataChanged observer. Unsupported capabilities and Virtools parameter types fail explicitly; unknown values are never guessed to be arbitrary bytes. These are 1.0 scope boundaries, not implied support through an adjacent operation.
+The public interface exposes native Parameter Operations but does not add a second expression language over them. `bml.behavior 1.0` does not include third-party parameter-format registration, active Node replacement, or an exact DataChanged observer. Unsupported capabilities and Virtools parameter types fail explicitly; unknown values are never guessed to be arbitrary bytes. These are 1.0 scope boundaries, not implied support through an adjacent operation.

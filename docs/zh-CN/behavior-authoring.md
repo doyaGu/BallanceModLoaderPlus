@@ -509,7 +509,46 @@ Close 会比较 installation 仍然拥有的 Link、source 和 graph after-image
 
 Hook callback 在 game thread 执行。异常不会穿过 DLL seam；callback 内 self-close 只关闭后续 admission，graph restore、native teardown 和 callback state release 会在 safe point 完成，不会等待当前 callback。
 
-## 10. 已命名的 retail BB
+## 10. AngelScript
+
+启用 CKAngelScript 时，每个 Script Mod 都会得到同一模型的 owner-scoped
+`BML::Behavior` 投影。无需手动打开 Session：`Use`、`Find`、`Describe`、
+`Inspect`、`Edit` 和 `CreateScript` 会使用当前 Script Mod 的身份，卸载或热重载前
+统一关闭它创建的 Run、Watch、Patch、Plan、Script 和 callback。
+
+```angelscript
+auto@ block = BML::Behavior::Find("My Building Block", "My Category")
+    .Settings({
+        BML::Behavior::SlotValue("Mode", BML::Behavior::Value(2))
+    })
+    .Pins({
+        BML::Behavior::SlotValue("Strength", BML::Behavior::Value(12.0f))
+    });
+
+auto@ instance = block.Spawn(BML::Behavior::Signals(16).Pouts());
+auto@ layout = instance.Layout();
+auto@ strength = layout.Find(
+    BML::Behavior::SlotKind::Pin, BML::Behavior::Unique("Strength"));
+instance.Set(strength, BML::Behavior::Value(18.0f));
+instance.Pulse(BML::Behavior::Unique("Run"));
+
+auto@ frames = instance.TakeFrames();
+float result = 0.0f;
+if (!frames.Empty)
+    frames[0].Read(BML::Behavior::Unique("Result"), result);
+```
+
+Graph 路径同样使用 `Graph → Edit → Patch / Plan` 这组领域概念，包括嵌套 graph、
+`NodePattern`/`Each`、Add/Replace/Remove、Flow、parameter relation、Parameter
+Operation、Hook 和 Watch。AngelScript handle 是引用对象；需要从一个 Block 配置
+派生互不影响的副本时显式调用 `Clone()`。当前 Script Patch 一次只对应一个 Graph，
+Script Plan 一次只包含一条 Script 规则；需要由一个 handle 原子组合多个 Graph 或
+多条 Script 规则时仍使用 Native C++ facade。捕获到的 CK object 以 `ObjectRef`
+返回；`Borrow()` 只用于当前调用，object 或 world 失效后会返回 null。原始
+CKAngelScript Behavior/Param API 仍可用于低层 CK2 操作，但它不会获得 BML 的
+owner retirement、Patch journal 或跨 world Plan 语义。
+
+## 11. 已命名的 retail BB
 
 `BML/Behavior/Blocks.hpp` 汇总 BML+ 已知的 header-only adapter，例如 Object Load、Physicalize、Physics Force、Physics Impulse、Physics Wake Up、Send Message 和 2D Text。每个 header 只封装该 BB 的 Prototype、Options 和 slot knowledge：
 
@@ -528,7 +567,7 @@ if (made) {
 
 这些 adapter 仍返回普通 `Block`，不会绕过统一的 lifecycle、execution 或 teardown。新 Native Mod 不应再使用 legacy ExecuteBB interface。
 
-## 11. 生命周期、错误与性能
+## 12. 生命周期、错误与性能
 
 | 事件 | Session | Run | Script | Watch / Patch | Plan |
 | --- | --- | --- | --- | --- | --- |
@@ -544,4 +583,4 @@ if (made) {
 `LastStatus` 表示调和失败时才读取详细错误。Plan 已稳定且 Script 集合没有变化时，
 每帧不扫描 Script、不解析 Edit、不触发 native 安装，也不分配内存。
 
-当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language。`bml.behavior 1.0` 不包含 AngelScript Behavior projection、第三方 parameter format registration、active Node replacement 或精确的 DataChanged observer。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。这些是 1.0 的范围边界，不是对相邻能力已经实现的暗示。
+当前公开 interface 直接暴露 native Parameter Operation，但不在其上另造一套 expression language。`bml.behavior 1.0` 不包含第三方 parameter format registration、active Node replacement 或精确的 DataChanged observer。缺少这些能力时会明确返回 unavailable/unsupported，不会把未知 Virtools parameter 当作任意 bytes 复制。这些是 1.0 的范围边界，不是对相邻能力已经实现的暗示。
