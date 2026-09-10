@@ -477,6 +477,48 @@ public:
         return BML_OK;
     }
 
+    int UnregisterProviderRpc(int providerId, unsigned int generation,
+                              const std::string &route) {
+        if (route.empty())
+            return BML_ERROR_INVALID_PARAMETER;
+
+        BML_ImcClient providerClient = nullptr;
+        {
+            std::lock_guard<std::mutex> guard(Mutex);
+            const auto provider = Providers.find(providerId);
+            if (!Active || provider == Providers.end() ||
+                provider->second.Generation != generation ||
+                !provider->second.Client)
+                return BML_ERROR_INVALID_HANDLE;
+            providerClient = provider->second.Client;
+        }
+
+        ImcRuntime &imc = Context->GetImcRuntime();
+        BML_ImcRpcId rpcId = BML_IMC_INVALID_ID;
+        int status = imc.GetRpcId(providerClient, route.c_str(), &rpcId);
+        if (status != BML_OK)
+            return status;
+
+        {
+            std::lock_guard<std::mutex> guard(Mutex);
+            const auto provider = Providers.find(providerId);
+            if (provider == Providers.end() ||
+                provider->second.Generation != generation ||
+                provider->second.Rpcs.find(rpcId) == provider->second.Rpcs.end())
+                return BML_ERROR_NOT_FOUND;
+        }
+
+        status = imc.UnregisterRpc(providerClient, rpcId);
+        if (status == BML_OK) {
+            std::lock_guard<std::mutex> guard(Mutex);
+            const auto provider = Providers.find(providerId);
+            if (provider != Providers.end() &&
+                provider->second.Generation == generation)
+                provider->second.Rpcs.erase(rpcId);
+        }
+        return status;
+    }
+
     int CloseProvider(int providerId, unsigned int generation) {
         BML_ImcClient providerClient = nullptr;
         {
@@ -687,6 +729,16 @@ int ScriptImcProviderRef::RegisterRpc(
     const int status = state->RegisterProviderRpc(
         m_Control->Id, m_Control->Generation, route, requestPayload,
         responsePayload, handler);
+    m_Control->Status.store(status, std::memory_order_release);
+    return status;
+}
+
+int ScriptImcProviderRef::UnregisterRpc(const std::string &route) {
+    std::shared_ptr<ScriptImcServiceState> state = m_State.lock();
+    if (!state || !m_Control || !IsOpen())
+        return BML_ERROR_INVALID_HANDLE;
+    const int status = state->UnregisterProviderRpc(
+        m_Control->Id, m_Control->Generation, route);
     m_Control->Status.store(status, std::memory_order_release);
     return status;
 }

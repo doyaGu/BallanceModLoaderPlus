@@ -684,7 +684,6 @@ class ImcRecord {
   int ReadMat4Array(uint id, array<BML::Mat4> &out value) const;
 }
 class ImcReply {
-  ImcReply();
   void Complete(int status);
   void Complete(int status, const ImcRecord &in record);
 }
@@ -696,6 +695,7 @@ class ImcProviderRef {
   int get_Status() const;
   int _RegisterRpc(const string &in route, const string &in requestPayload,
                    const string &in responsePayload, ImcRpcHandler@+ handler);
+  int _UnregisterRpc(const string &in route);
   int _Publish(const string &in topic, const string &in payload,
                const ImcRecord &in message, uint64 &out delivered);
   int _GetSubscriberCount(const string &in topic, uint64 &out count) const;

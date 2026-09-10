@@ -1744,20 +1744,10 @@ def append_as_provider(lines: list[str], api: ApiDefinition,
     ])
     for endpoint in rpc_endpoints:
         name = camel(endpoint.name)
-        request = schemas.get(endpoint.input_schema)
-        response = schemas.get(endpoint.output_schema)
-        request_payload = (f"{api.api_id}/v{api.major}/payload/{request.name}"
-                           if request is not None else "")
-        response_payload = (f"{api.api_id}/v{api.major}/payload/{response.name}"
-                            if response is not None else "")
-        lines.extend([
-            f"        if (status == BML::ERROR_OK && handlers.{name} !is null) {{",
-            f"            _{name}ProviderDispatch@ adapter = _{name}ProviderDispatch(handlers.{name});",
-            "            BML::Detail::ImcRpcHandler@ dispatch = BML::Detail::ImcRpcHandler(adapter.Invoke);",
-            f'            status = _Transport._RegisterRpc("{api.api_id}/v{api.major}/rpc/{endpoint.name}",',
-            f'                                                     "{request_payload}", "{response_payload}", dispatch);',
-            "        }",
-        ])
+        lines.append(
+            f"        if (status == BML::ERROR_OK && handlers.{name} !is null) "
+            f"status = Register{name}(handlers.{name});"
+        )
     lines.extend([
         "        if (status == BML::ERROR_OK) return status;",
         "        int cleanupStatus = Close();",
@@ -1765,6 +1755,31 @@ def append_as_provider(lines: list[str], api: ApiDefinition,
         "                   ? status : cleanupStatus;",
         "    }",
         "",
+    ])
+    for endpoint in rpc_endpoints:
+        name = camel(endpoint.name)
+        request = schemas.get(endpoint.input_schema)
+        response = schemas.get(endpoint.output_schema)
+        request_payload = (f"{api.api_id}/v{api.major}/payload/{request.name}"
+                           if request is not None else "")
+        response_payload = (f"{api.api_id}/v{api.major}/payload/{response.name}"
+                            if response is not None else "")
+        lines.extend([
+            f"    int Register{name}({name}Handler@ handler) {{",
+            "        if (!get_IsOpen()) return BML::ERROR_INVALID_HANDLE;",
+            "        if (handler is null) return BML::ERROR_INVALID_PARAMETER;",
+            f"        _{name}ProviderDispatch@ adapter = _{name}ProviderDispatch(handler);",
+            "        BML::Detail::ImcRpcHandler@ dispatch = BML::Detail::ImcRpcHandler(adapter.Invoke);",
+            f'        return _Transport._RegisterRpc("{api.api_id}/v{api.major}/rpc/{endpoint.name}",',
+            f'                                       "{request_payload}", "{response_payload}", dispatch);',
+            "    }",
+            f"    int Unregister{name}() {{",
+            "        if (!get_IsOpen()) return BML::ERROR_INVALID_HANDLE;",
+            f'        return _Transport._UnregisterRpc("{api.api_id}/v{api.major}/rpc/{endpoint.name}");',
+            "    }",
+            "",
+        ])
+    lines.extend([
         "    int Close() {",
         "        if (_Transport is null) return BML::ERROR_OK;",
         "        int status = _Transport.Close();",

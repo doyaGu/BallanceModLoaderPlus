@@ -3715,6 +3715,12 @@ int RegisterScriptImcBridge(asIScriptEngine *engine, const char **errorMessage) 
                     "int BML::Detail::ImcProviderRef::_RegisterRpc(...)");
     BML_AS_REGISTER(engine->RegisterObjectMethod(
                         "ImcProviderRef",
+                        "int _UnregisterRpc(const string &in route)",
+                        BML_AS_GENERIC_METHOD(&BML::ScriptImcProviderRef::UnregisterRpc),
+                        asCALL_GENERIC),
+                    "int BML::Detail::ImcProviderRef::_UnregisterRpc(...)");
+    BML_AS_REGISTER(engine->RegisterObjectMethod(
+                        "ImcProviderRef",
                         "int _Publish(const string &in topic, const string &in payload, const ImcRecord &in message, uint64 &out delivered)",
                         BML_AS_GENERIC_METHOD(&BML::ScriptImcProviderRef::Publish),
                         asCALL_GENERIC),

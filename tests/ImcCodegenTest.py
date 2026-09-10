@@ -122,7 +122,10 @@ def main() -> int:
             "funcdef int LookupHandler(const Request &in request, Sample &out response);",
             "class Handlers {",
             "class Provider {",
-            'status = _Transport._RegisterRpc("test.codegen/v1/rpc/lookup",',
+            "int RegisterLookup(LookupHandler@ handler)",
+            "int UnregisterLookup()",
+            'return _Transport._RegisterRpc("test.codegen/v1/rpc/lookup",',
+            'return _Transport._UnregisterRpc("test.codegen/v1/rpc/lookup");',
             'return _Transport._Publish("test.codegen/v1/topic/changed",',
         )
         for fragment in expected_script_fragments:

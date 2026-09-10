@@ -91,6 +91,7 @@ public:
                     const std::string &requestPayload,
                     const std::string &responsePayload,
                     asIScriptFunction *handler);
+    int UnregisterRpc(const std::string &route);
     int Publish(const std::string &topic,
                 const std::string &payload,
                 const ScriptImcRecord &message,
