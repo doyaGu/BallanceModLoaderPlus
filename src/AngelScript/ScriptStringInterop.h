@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <exception>
+#include <memory>
 #include <new>
 #include <string>
 #include <tuple>
@@ -187,10 +188,13 @@ private:
     std::string m_Value;
 };
 
-template <typename R>
-bool SetGenericReturn(asIScriptGeneric *gen, R &&value) {
-    using T = std::remove_cv_t<std::remove_reference_t<R>>;
-    if constexpr (std::is_same_v<T, bool>) {
+template <typename Declared, typename Value>
+bool SetGenericReturn(asIScriptGeneric *gen, Value &&value) {
+    using T = std::remove_cv_t<std::remove_reference_t<Declared>>;
+    if constexpr (std::is_reference_v<Declared>) {
+        return gen->SetReturnAddress(const_cast<void *>(static_cast<const void *>(
+            std::addressof(value)))) >= 0;
+    } else if constexpr (std::is_same_v<T, bool>) {
         return gen->SetReturnByte(value ? 1 : 0) >= 0;
     } else if constexpr (std::is_floating_point_v<T> && sizeof(T) == sizeof(float)) {
         return gen->SetReturnFloat(static_cast<float>(value)) >= 0;
@@ -255,7 +259,7 @@ struct GenericFunction<Function> {
             } else {
                 R result = CallReturn(args, std::index_sequence_for<Args...>{});
                 if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                    !SetGenericReturn(gen, result)) {
+                    !SetGenericReturn<R>(gen, result)) {
                     RaiseActiveException("Failed to marshal AngelScript generic function result.");
                 }
             }
@@ -308,7 +312,7 @@ struct GenericMethod<Method> {
             } else {
                 R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
                 if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                    !SetGenericReturn(gen, result)) {
+                    !SetGenericReturn<R>(gen, result)) {
                     RaiseActiveException("Failed to marshal AngelScript generic method result.");
                 }
             }
@@ -358,7 +362,7 @@ struct GenericMethod<Method> {
             } else {
                 R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
                 if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                    !SetGenericReturn(gen, result)) {
+                    !SetGenericReturn<R>(gen, result)) {
                     RaiseActiveException("Failed to marshal AngelScript generic method result.");
                 }
             }
@@ -421,7 +425,7 @@ struct GenericObjectFirstFunction<Function> {
             } else {
                 R result = CallReturn(self, args, std::index_sequence_for<Args...>{});
                 if (!WriteBackTuple(args, gen, std::index_sequence_for<Args...>{}) ||
-                    !SetGenericReturn(gen, result)) {
+                    !SetGenericReturn<R>(gen, result)) {
                     RaiseActiveException("Failed to marshal AngelScript generic object-first method result.");
                 }
             }
