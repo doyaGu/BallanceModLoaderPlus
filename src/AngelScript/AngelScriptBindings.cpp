@@ -4072,6 +4072,7 @@ void BML_UnregisterAngelScriptBindings(ModContext *context) {
     if (!context || !context->IsAngelScriptExtensionRegistered())
         return;
 
+    bool unregistered = false;
     if (g_AngelScriptHost.Refresh(context->GetCKContext())) {
         const CKAngelScriptAdapter::Api &api = g_AngelScriptHost.GetApi();
         CKAngelScript *angelScript = g_AngelScriptHost.GetAngelScript();
@@ -4085,13 +4086,16 @@ void BML_UnregisterAngelScriptBindings(ModContext *context) {
             angelScript,
             kExtensionName,
             &result);
-        if (status != CKAS_OK && context->GetLogger()) {
+        unregistered = status == CKAS_OK;
+        if (!unregistered && context->GetLogger()) {
             context->GetLogger()->Warn(
                 "Failed to unregister BML AngelScript bindings: %s",
                 CKAngelScriptAdapter::FormatResult(status, result).c_str());
         }
     }
 
+    if (!unregistered)
+        return;
     context->SetAngelScriptExtensionRegistered(false);
     context->SetAngelScriptBindingsRegistered(false);
     g_NextRegistrationAttemptTick = 0;
