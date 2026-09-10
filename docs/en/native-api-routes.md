@@ -16,6 +16,10 @@ for driving the loader's own UI, and for Behavior authoring, and use IMC for
 ordinary services published to other Mods. Reserve a provider interface for
 native-only base infrastructure whose ABI and lifetime follow its provider DLL.
 
+If you maintain an existing Mod, no migration is required. Keep its `IBML`,
+`IMod`, raw CK SDK, and direct CMake code. Use a newer facade only when it solves
+a new requirement; old and new calls may coexist in the same Mod.
+
 ## Why there is more than one spelling
 
 `IBML`, `IMod`, `IMessageReceiver`, `IConfig`, and `ICommand` are C++ classes
@@ -96,7 +100,7 @@ declared in the header of the same name under `include/BML/`; the rest are the
 | Exit the game, initial conditions, visibility, physics type registration, skipping a render tick | `ExitGame`, `SetIC`, `RestoreIC`, `Show`, `RegisterBallType` and the rest of the registration family, `SkipRenderForNextTick` | none | Frozen C++ only. |
 | Which mods are loaded, and dependencies | `GetModCount`, `GetMod`, `FindMod`, `RegisterDependency`, `CheckDependencies` | none | Frozen C++ only. |
 | Discover, configure, and execute Virtools Building Blocks; inspect or edit Behavior graphs | raw CK SDK and `ExecuteBB` compatibility helpers | `BML::Behavior` from `Behavior.hpp` | Use `BML::Behavior` for new authoring. It gives Prototype/Layout validation, owned Frames, checked object references, and reversible Patch/Plan lifetimes. Use raw CK only when implementing engine-level infrastructure that intentionally owns those invariants itself. |
-| Publishing an API of your own to other mods | none | IMC, or a BML provider interface for a native base Mod | Prefer generated IMC for ordinary RPC/Topic services. Use `BML_RegisterInterface` only for a plain-C, process-local function table that must expose direct or borrowed native objects. The provider table and id must be static data in its DLL; every consumer must declare the provider Mod as a required dependency and use `BML_GetInterface`, never import a provider symbol. Script Mods cannot publish or consume provider interfaces. |
+| Publishing an API of your own to other mods | none | IMC, or a BML provider interface for a native base Mod | Prefer generated IMC for ordinary RPC/Topic services. For a plain-C, process-local function table that must expose direct or borrowed native objects, C++ Mods should use `Interface.hpp` plus `ModInterface.hpp`; these retain the C ABI while owning publication, typed lookup, status, and provider dependency lifetime. Publish the shared header with `bml_add_interface_package`, and never import a provider symbol. Script Mods cannot publish or consume provider interfaces. |
 | Drawing your own UI | `Bui` for ImGui widgets, `BGui` for in-game 2D entities | none | Neither of these is `BML::UI`, which controls the loader's own UI and draws nothing of yours. |
 | Strings, paths, files, allocation | none | the `BML_*` functions of `BML.h` | The C exports. Release what they return with the matching `BML_Free*`, never with the CRT `free`. |
 | The loader's directories, and where your mod is installed | none | `BML_GetLoaderPathW`, `BML_GetLoaderPathUtf8`, `BML_GetModRootW`, `BML_GetModRootUtf8`, also C exports of `BML.h` | The C exports. `IBML` never offered these. The loader path is borrowed and the mod root is allocated, so only the second needs freeing. |

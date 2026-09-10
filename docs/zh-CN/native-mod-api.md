@@ -228,6 +228,125 @@ Mod 向其他 Mod 发布普通接口时优先使用 IMC：
 链接提供者 import library，也不能解析提供者自己的 API 导出。BML 会拒绝重复 id/major，
 并在卸载提供者 DLL 前清除其全部注册。
 
+新 provider 应从 `interface-provider` profile 开始，只修改简短定义，不再手写 ABI
+头文件：
+
+```text
+interface yourname.value-provider.value 1.0
+
+fn read_value(int input) -> int value
+```
+
+`bml_add_generated_interface_package` 会生成纯 C 函数表、Traits、provider/版本常量和
+独立头文件包。相邻 lock 记录方法顺序和签名。只有在确认变更兼容后才运行
+`.\bml interface update`：追加方法必须提高次版本，修改或调整已有方法顺序必须使用
+新的主版本。
+
+生成头文件等价于下面这种供高级场景使用的手写形式。Traits 只保存编译期 interface
+元数据：interface id、主版本以及可用接口所需的最后一个成员。
+
+```cpp
+#include <BML/Interface.h>
+
+struct ExampleInterface {
+    BML_InterfaceHeader Header;
+    int(BML_CDECL *ReadValue)(int input, int *outValue);
+};
+
+#ifdef __cplusplus
+#include <BML/Interface.hpp>
+BML_DECLARE_INTERFACE_TRAITS(ExampleTraits, ExampleInterface,
+                             "example.value", 1, ReadValue);
+#endif
+```
+
+提供方用 `MakeInterface` 填 Header，由 `Publication` 持有注册状态；接口表本身仍必须
+放在静态存储中：
+
+```cpp
+constexpr auto kExample =
+    BML::Interfaces::MakeInterface<ExampleTraits>(0, &ReadValue);
+
+BML::Interfaces::Publication<ExampleTraits> m_Example;
+
+void OnLoad() override {
+    const int status = m_Example.Open(kExample);
+    // 处理 status；析构时的清理只是最后一道保险。
+}
+
+void OnUnload() override {
+    (void)m_Example.Close();
+}
+```
+
+使用方用 `RequiredInterface` 把依赖声明与类型化查询绑在一起。把它作为 `IMod` 成员
+构造，再在 `OnLoad` 中打开。它保留完整 BML 状态码；依赖按反序卸载，所以引用在
+使用方的 `OnUnload` 期间仍然有效：
+
+```cpp
+#include <BML/ModInterface.hpp>
+
+BML::Interfaces::RequiredInterface<ExampleTraits> m_Example;
+
+ExampleConsumer(IBML *bml)
+    : IMod(bml), m_Example(*this, "ExampleProvider", BMLVersion(1, 0, 0)) {}
+
+void OnLoad() override {
+    const int status = m_Example.Open();
+    if (status == BML_OK) {
+        int value = 0;
+        (void)m_Example->ReadValue(35, &value);
+    }
+}
+```
+
+提供方可选时使用同形状的 `OptionalInterface`，它的 `Open` 正常情况下也可能返回
+`BML_ERROR_NOT_FOUND`。`Interface.h` 仍保留裸 C 函数，供 C 使用方和高级所有权测试
+使用；C++ authoring 层不新增 ABI，也不会把进程内调用强制绕经 IMC。
+
+### 独立发布接口头
+
+不要把共享头复制到每个使用方，也不要发布提供方的 import library。提供方工程可以
+安装一个纯头文件 CMake package：
+
+```cmake
+find_package(BML CONFIG REQUIRED)
+
+bml_add_generated_interface_package(ExampleValue
+    VERSION 1.0.0
+    INPUT api/value.bml-interface
+    PROVIDER_ID "yourname.value-provider"
+    PROVIDER_VERSION "1.0.0"
+    NAMESPACE Example
+    OUTPUT_NAME ValueInterface.h
+)
+
+bml_add_mod(ExampleProvider src/Provider.cpp)
+target_link_libraries(ExampleProvider PRIVATE ExampleValue::Interface)
+```
+
+定义旁边的 lock 会保留生成函数表的顺序。安装时会保留生成头文件的相对路径，并生成
+`ExampleValueConfig.cmake`、同主版本兼容文件和
+纯头 target `ExampleValue::Interface`。该 target 只传递 BML SDK 依赖，不会传递提供方
+二进制。
+
+高级 provider 确实需要自行维护纯 C 头文件时，仍可直接使用
+`bml_add_interface_package`。
+
+独立的使用方工程只引用安装后的 package：
+
+```cmake
+find_package(BML CONFIG REQUIRED)
+find_package(ExampleValue 1 CONFIG REQUIRED)
+
+bml_add_mod(ExampleConsumer src/Consumer.cpp)
+target_link_libraries(ExampleConsumer PRIVATE ExampleValue::Interface)
+```
+
+SDK 的 `examples/native-interface-provider` 与 `examples/native-interface-consumer`
+提供完整工程。两者从不同源码树构建；使用方的链接路径中没有提供方源码、库或
+二进制。
+
 `DataShare` 适合共享少量命名字节数据，调用方必须遵守引用计数和借用指针
 有效期。接口需要按自己的节奏演进，或需要 RPC/Topic 语义时，使用 IMC。
 

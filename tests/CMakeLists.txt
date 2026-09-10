@@ -154,6 +154,13 @@ add_test(
 set_tests_properties(ImcCodegenTest PROPERTIES LABELS "imc;codegen")
 
 add_test(
+        NAME InterfaceCodegenTest
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/InterfaceCodegenTest.py"
+                --source-root "${PROJECT_SOURCE_DIR}"
+)
+set_tests_properties(InterfaceCodegenTest PROPERTIES LABELS "interface;codegen")
+
+add_test(
         NAME ImcCmakeIntegrationTest
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/ImcCmakeIntegrationTest.py"
                 --source-root "${PROJECT_SOURCE_DIR}"
@@ -291,6 +298,27 @@ if(MSVC)
         )
         set_tests_properties(LegacyNativeSdkConsumerTest PROPERTIES
                 LABELS "legacy-native;integration;sdk"
+                RUN_SERIAL TRUE
+                SKIP_REGULAR_EXPRESSION "BML_TEST_SKIPPED:"
+                TIMEOUT 180)
+
+        add_test(
+                NAME InterfacePackageIntegrationTest
+                COMMAND "${CMAKE_COMMAND}"
+                        "-DCMAKE_EXECUTABLE=${CMAKE_COMMAND}"
+                        "-DSOURCE_ROOT=${PROJECT_SOURCE_DIR}"
+                        "-DMAIN_BUILD_DIR=${PROJECT_BINARY_DIR}"
+                        "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/interface-package-$<CONFIG>"
+                        "-DGENERATOR=${CMAKE_GENERATOR}"
+                        "-DGENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+                        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                        "-DCONFIGURATION=$<CONFIG>"
+                        "-DVIRTOOLS_SDK_PATH=${VIRTOOLS_SDK_PATH}"
+                        "-DDUMPBIN=${BML_DUMPBIN}"
+                        -P "${CMAKE_CURRENT_SOURCE_DIR}/InterfacePackageIntegrationTest.cmake"
+        )
+        set_tests_properties(InterfacePackageIntegrationTest PROPERTIES
+                LABELS "interface;cmake;integration;sdk"
                 RUN_SERIAL TRUE
                 SKIP_REGULAR_EXPRESSION "BML_TEST_SKIPPED:"
                 TIMEOUT 180)

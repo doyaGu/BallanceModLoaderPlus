@@ -1,0 +1,6 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(BML CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/@BML_INTERFACE_PACKAGE_NAME@Targets.cmake")

@@ -663,6 +663,8 @@ install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/BMLConfigVersion.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/BMLMod.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/BMLInterface.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/BMLInterfacePackageConfig.cmake.in"
         "${PROJECT_SOURCE_DIR}/cmake/BMLImc.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/FindVirtoolsSDK.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/BML"
@@ -670,6 +672,7 @@ install(FILES
 
 install(FILES
         "${PROJECT_SOURCE_DIR}/tools/imc_codegen.py"
+        "${PROJECT_SOURCE_DIR}/tools/interface_codegen.py"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/BML/tools"
 )
 
@@ -687,6 +690,12 @@ install(FILES
 install(DIRECTORY
         "${PROJECT_SOURCE_DIR}/templates/native-mod-template"
         DESTINATION "templates"
+)
+
+install(DIRECTORY
+        "${PROJECT_SOURCE_DIR}/examples/native-interface-provider"
+        "${PROJECT_SOURCE_DIR}/examples/native-interface-consumer"
+        DESTINATION "examples"
 )
 
 install(FILES

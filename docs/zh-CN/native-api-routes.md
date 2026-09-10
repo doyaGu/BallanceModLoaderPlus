@@ -77,7 +77,7 @@ interface struct 形式出现的原因，而且每个都配了一层 inline C++ 
 | 退出游戏、初始条件、显隐、物理类型注册、跳过一次渲染 | `ExitGame`、`SetIC`、`RestoreIC`、`Show`、`RegisterBallType` 等注册族、`SkipRenderForNextTick` | 无 | 只有旧式 C++。 |
 | 已加载了哪些 Mod，以及依赖 | `GetModCount`、`GetMod`、`FindMod`、`RegisterDependency`、`CheckDependencies` | 无 | 只有旧式 C++。 |
 | 发现、配置、执行 Virtools Building Block，以及检查或编辑 Behavior Graph | 原始 CK SDK 与 `ExecuteBB` 兼容 helper | `Behavior.hpp` 的 `BML::Behavior` | 新代码使用 `BML::Behavior`。它负责 Prototype/Layout 校验、自持有 Frame、可校验对象引用以及可恢复的 Patch/Plan 生命周期。只有明确自行承担这些 invariant 的引擎基础设施才直接使用 raw CK。 |
-| 把自己的接口发布给别的 Mod | 无 | IMC；原生基础 Mod 也可发布 BML provider interface | 普通 RPC/Topic 服务优先使用生成式 IMC。只有必须暴露直接或借用原生对象时才用 `BML_RegisterInterface` 发布纯 C 函数表。接口表和 id 必须是提供者 DLL 中的静态数据；所有使用方必须声明该 Mod 为必需依赖，通过 `BML_GetInterface` 取用，不能导入提供者符号。脚本 Mod 不能发布或消费 provider interface。 |
+| 把自己的接口发布给别的 Mod | 无 | IMC；原生基础 Mod 也可发布 BML provider interface | 普通 RPC/Topic 服务优先使用生成式 IMC。必须暴露直接或借用原生对象的纯 C 进程内函数表，C++ Mod 使用 `Interface.hpp` 加 `ModInterface.hpp`：底层仍是 C ABI，但发布所有权、类型化查询、状态码和提供方依赖生命周期由 authoring 层持有。共享头用 `bml_add_interface_package` 发布，不得导入提供者符号；脚本 Mod 不能发布或消费 provider interface。 |
 | 绘制自己的界面 | `Bui` 画 ImGui 控件，`BGui` 用游戏内 2D 实体 | 无 | 这两者都不是 `BML::UI`，后者控制的是 Loader 自己的界面，不画你的东西。 |
 | 字符串、路径、文件、内存分配 | 无 | `BML.h` 的 `BML_*` 函数 | 走 C 导出。它们返回的东西要用对应的 `BML_Free*` 释放，不能用 CRT 的 `free`。 |
 | Loader 的各个目录，以及自己 Mod 的安装目录 | 无 | `BML_GetLoaderPathW`、`BML_GetLoaderPathUtf8`、`BML_GetModRootW`、`BML_GetModRootUtf8`，同样是 `BML.h` 的 C 导出 | 走 C 导出。`IBML` 从来没有提供过这些。Loader 目录是借用指针，Mod 根目录是新分配的，只有后者需要释放。 |

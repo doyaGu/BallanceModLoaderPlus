@@ -257,6 +257,130 @@ table through `BML_GetInterface`, and never link an import library or resolve an
 API export from the provider. BML rejects duplicate id/major pairs and removes a
 provider's registrations before unloading its DLL.
 
+New providers should start with the `interface-provider` profile and edit its
+small definition instead of hand-writing the ABI header:
+
+```text
+interface yourname.value-provider.value 1.0
+
+fn read_value(int input) -> int value
+```
+
+`bml_add_generated_interface_package` generates the plain-C table, Traits,
+provider/version constants, and standalone header package. The adjacent lock
+records method order and signatures. Run `.\bml interface update` only after
+reviewing an intentional compatible edit; an appended method requires a higher
+minor version, while a changed or reordered method requires a new major version.
+
+The generated header is equivalent to the following advanced, hand-written
+form. Traits contain only compile-time interface metadata: identity, major
+version, and the minimum usable member.
+
+```cpp
+#include <BML/Interface.h>
+
+struct ExampleInterface {
+    BML_InterfaceHeader Header;
+    int(BML_CDECL *ReadValue)(int input, int *outValue);
+};
+
+#ifdef __cplusplus
+#include <BML/Interface.hpp>
+BML_DECLARE_INTERFACE_TRAITS(ExampleTraits, ExampleInterface,
+                             "example.value", 1, ReadValue);
+#endif
+```
+
+The provider uses `MakeInterface` to fill the header and `Publication` to own
+the registration. The table itself must still have static storage:
+
+```cpp
+constexpr auto kExample =
+    BML::Interfaces::MakeInterface<ExampleTraits>(0, &ReadValue);
+
+BML::Interfaces::Publication<ExampleTraits> m_Example;
+
+void OnLoad() override {
+    const int status = m_Example.Open(kExample);
+    // Handle status. Destruction is a cleanup fallback.
+}
+
+void OnUnload() override {
+    (void)m_Example.Close();
+}
+```
+
+The consumer binds dependency declaration and typed lookup with
+`RequiredInterface`. Construct it as an `IMod` member, then open it from
+`OnLoad`; it preserves the exact BML status and remains valid through the
+consumer's `OnUnload` because dependencies unload in reverse order:
+
+```cpp
+#include <BML/ModInterface.hpp>
+
+BML::Interfaces::RequiredInterface<ExampleTraits> m_Example;
+
+ExampleConsumer(IBML *bml)
+    : IMod(bml), m_Example(*this, "ExampleProvider", BMLVersion(1, 0, 0)) {}
+
+void OnLoad() override {
+    const int status = m_Example.Open();
+    if (status == BML_OK) {
+        int value = 0;
+        (void)m_Example->ReadValue(35, &value);
+    }
+}
+```
+
+Use `OptionalInterface` in the same shape when the provider is optional. Its
+`Open` may normally return `BML_ERROR_NOT_FOUND`. `Interface.h` keeps the raw C
+functions for C consumers and advanced ownership tests; the C++ authoring layer
+does not add an ABI or force process-local calls through IMC.
+
+### Publish the interface header independently
+
+Do not copy the shared header into every consumer and do not publish a provider
+import library. The provider project can install a header-only CMake package:
+
+```cmake
+find_package(BML CONFIG REQUIRED)
+
+bml_add_generated_interface_package(ExampleValue
+    VERSION 1.0.0
+    INPUT api/value.bml-interface
+    PROVIDER_ID "yourname.value-provider"
+    PROVIDER_VERSION "1.0.0"
+    NAMESPACE Example
+    OUTPUT_NAME ValueInterface.h
+)
+
+bml_add_mod(ExampleProvider src/Provider.cpp)
+target_link_libraries(ExampleProvider PRIVATE ExampleValue::Interface)
+```
+
+The definition's adjacent lock preserves the order of the generated function
+table. Installation preserves the generated relative header path and emits
+`ExampleValueConfig.cmake`, a same-major version file, and the header-only
+`ExampleValue::Interface` target. That target carries the BML SDK dependency,
+not the provider binary.
+
+`bml_add_interface_package` remains available when an advanced provider needs
+to maintain its plain-C header manually.
+
+The independent consumer project uses only the installed packages:
+
+```cmake
+find_package(BML CONFIG REQUIRED)
+find_package(ExampleValue 1 CONFIG REQUIRED)
+
+bml_add_mod(ExampleConsumer src/Consumer.cpp)
+target_link_libraries(ExampleConsumer PRIVATE ExampleValue::Interface)
+```
+
+The SDK ships complete projects under `examples/native-interface-provider` and
+`examples/native-interface-consumer`. They build from separate source trees;
+the latter has no provider source, library, or binary on its link path.
+
 `DataShare` is suitable for small named byte values when both sides obey its
 reference-count and borrowed-pointer lifetime rules. Use IMC when an API has to
 evolve on its own schedule, or needs RPC or Topic semantics.
