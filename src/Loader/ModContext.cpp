@@ -473,6 +473,23 @@ BML::Behavior::Internal::Status ModContext::RetireBehaviorEdits(
     return patches;
 }
 
+BML::Behavior::Internal::Status ModContext::RetireBehaviorOwner(
+    const std::string &ownerId) {
+    using BML::Behavior::Internal::Error;
+    using BML::Behavior::Internal::Status;
+    if (!IsMainThread()) {
+        return Status(Error::WrongThread, CKERR_INVALIDPARAMETER, CKBR_OK,
+                      "Behavior owners can only retire on the game thread.");
+    }
+
+    Status result = RetireBehaviorEdits(ownerId);
+    const Status scripts = m_BehaviorScripts.RetireOwner(ownerId);
+    if (result && !scripts)
+        result = scripts;
+    m_BehaviorSessions.RetireOwner(ownerId);
+    return result;
+}
+
 bool ModContext::LoadMods() {
     if (!IsInited() || AreModsLoaded())
         return false;
@@ -2824,6 +2841,14 @@ std::string ModContext::GetNativeModOwnerId(
             return {};
         IMod *owner = m_Mods[requested->second];
         IMod *invoked = ModInvocation::Current(this);
+#if BML_ENABLE_ANGELSCRIPT
+        // Script calls enter through BMLPlus.dll too. Hot-reload and queued
+        // service callbacks are not necessarily inside the Loader's native
+        // Mod broadcast scope, but ScriptModRuntime still carries the exact
+        // physical Script Mod whose code is executing.
+        if (!invoked)
+            invoked = BML::ScriptModRuntime::GetCurrentScriptMod();
+#endif
         if (owner == invoked || (owner == m_BMLMod && !invoked))
             return requested->first;
         return {};

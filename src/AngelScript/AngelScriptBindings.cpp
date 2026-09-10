@@ -41,6 +41,7 @@
 #include "ScriptMod.h"
 #include "ScriptModContextView.h"
 #include "ScriptBuiltinFacade.h"
+#include "ScriptBehavior.h"
 #include "ScriptModRuntime.h"
 #include "ScriptStateBag.h"
 #include "ScriptTimerService.h"
@@ -3973,6 +3974,12 @@ int RegisterBMLAngelScript(asIScriptEngine *engine,
     if (facadeResult < 0) {
         engine->SetDefaultNamespace("");
         return facadeResult;
+    }
+
+    const int behaviorResult = BML::RegisterScriptBehavior(engine, errorMessage);
+    if (behaviorResult < 0) {
+        engine->SetDefaultNamespace("");
+        return behaviorResult;
     }
 
     const int imguiResult = RegisterImGuiBindings(engine, errorMessage);

@@ -959,7 +959,8 @@ size_t ScriptMod::GetQueuedScriptServiceCallbackCount() const {
 }
 
 bool ScriptMod::RebindServices() {
-    if (m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
+    if (m_Behavior.Bind(m_Context, this) &&
+        m_Timers.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Commands.Bind(m_Context, this, &m_ContextView) &&
         m_DataShareRequests.Bind(m_Context, this, &m_Runtime, &m_ContextView) &&
         m_Imc.Bind(m_Context, this) &&
@@ -1550,6 +1551,12 @@ void ScriptMod::ReleaseScriptImGuiState() {
 bool ScriptMod::ReleaseScriptServices() {
     ScriptDiagnostic releaseDiagnostic;
     bool ok = true;
+    m_Behavior.Release(&releaseDiagnostic);
+    if (!releaseDiagnostic.Message.empty()) {
+        Record(releaseDiagnostic);
+        ok = false;
+    }
+    releaseDiagnostic = ScriptDiagnostic();
     m_Imc.Release(&releaseDiagnostic);
     if (!releaseDiagnostic.Message.empty()) {
         Record(releaseDiagnostic);

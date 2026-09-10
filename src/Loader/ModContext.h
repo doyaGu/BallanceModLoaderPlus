@@ -306,6 +306,8 @@ public:
     void BehaviorScriptLoaded(CKBehavior *script);
     void ProcessVirtoolsFrame();
     void ResetVirtoolsWorld();
+    BML::Behavior::Internal::Status RetireBehaviorOwner(
+        const std::string &ownerId);
     BML::GameFontCatalog &GetGameFonts() noexcept { return m_GameFonts; }
     const BML::GameFontCatalog &GetGameFonts() const noexcept { return m_GameFonts; }
     bool IsIngame() override { return ReadGameSession().IsInGame(); }

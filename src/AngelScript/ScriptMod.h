@@ -15,6 +15,7 @@
 #include "ScriptCallbackEvents.h"
 #include "ScriptDiagnostic.h"
 #include "ScriptCommandService.h"
+#include "ScriptBehavior.h"
 #include "ScriptDataShareService.h"
 #include "ScriptHookBlockService.h"
 #include "ScriptImcService.h"
@@ -263,6 +264,31 @@ public:
                                                      const std::string &name,
                                                      int sourceOutput,
                                                      int targetInput);
+    ScriptBehaviorBlock *UseBehavior(CKGUID prototype) {
+        return m_Behavior.Use(prototype);
+    }
+    ScriptBehaviorBlock *FindBehavior(const std::string &name,
+                                      const std::string &category,
+                                      const std::string &provider) {
+        return m_Behavior.Find(name, category, provider);
+    }
+    ScriptBehaviorLayout *DescribeBehavior(CKGUID prototype) {
+        return m_Behavior.Layout(prototype);
+    }
+    ScriptBehaviorEdit *CreateBehaviorEdit() { return m_Behavior.Edit(); }
+    ScriptBehaviorGraph *InspectBehavior(CKBehavior *graph, bool live) {
+        return m_Behavior.Inspect(graph, live);
+    }
+    ScriptBehaviorPlan *PlanBehavior(const std::string &name,
+                                     const std::string &script, bool each,
+                                     ScriptBehaviorEdit *edit) {
+        return m_Behavior.Plan(name, script, each, edit);
+    }
+    ScriptBehaviorScript *CreateBehaviorScript(
+        CKBeObject *owner, const std::string &name,
+        ScriptBehaviorEdit *body, int priority) {
+        return m_Behavior.CreateScript(owner, name, body, priority);
+    }
     ScriptModContextView *BorrowContextView() { return &m_ContextView; }
     bool RegisterScriptBallType(const std::string &ballFile,
                                 const std::string &ballId,
@@ -333,6 +359,7 @@ public:
     size_t GetActiveDataShareRequestCount() const { return m_DataShareRequests.GetActiveCount(); }
     size_t GetActiveImcOperationCount() const { return m_Imc.GetActiveCount(); }
     size_t GetActiveHookBlockCount() const { return m_HookBlocks.GetActiveCount(); }
+    size_t GetActiveBehaviorCount() const { return m_Behavior.GetActiveCount(); }
     const ScriptModRuntime &GetRuntimeForFacade() const { return m_Runtime; }
     size_t GetQueuedScriptServiceCallbackCount() const;
     size_t GetHostRegistrationCount() const { return m_HostRegistrations.size(); }
@@ -400,6 +427,7 @@ private:
     ScriptDataShareService m_DataShareRequests;
     ScriptImcService m_Imc;
     ScriptHookBlockService m_HookBlocks;
+    ScriptBehaviorService m_Behavior;
     ScriptModState m_State;
     Overlay::ScriptImGuiState m_ScriptImGuiState;
     bool m_InLoadCallback = false;
