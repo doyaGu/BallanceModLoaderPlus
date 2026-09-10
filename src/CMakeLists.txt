@@ -766,9 +766,4 @@ if (BML_WITH_ANGELSCRIPT)
             DESTINATION "templates"
     )
 
-    install(FILES
-            "${PROJECT_SOURCE_DIR}/scripts/New-BMLScriptMod.ps1"
-            "${PROJECT_SOURCE_DIR}/scripts/Pack-BMLScriptMod.ps1"
-            DESTINATION "scripts"
-    )
 endif ()

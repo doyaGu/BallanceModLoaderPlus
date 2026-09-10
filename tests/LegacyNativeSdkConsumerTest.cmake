@@ -125,7 +125,7 @@ foreach(required_sdk_path
 endforeach()
 
 execute_process(
-    COMMAND "${PYTHON_EXECUTABLE}" "${native_scaffolder}" new "sdk.quick-start"
+    COMMAND "${PYTHON_EXECUTABLE}" "${native_scaffolder}" new native "sdk.quick-start"
             --name "SDK Quick Start"
             --author "SDK Test"
             --destination "${consumer_source_dir}"
@@ -319,40 +319,24 @@ if(NOT found_entry OR NOT found_exit)
 endif()
 
 set(script_template "${install_root}/templates/script-mod-template")
-find_program(powershell_executable NAMES pwsh powershell REQUIRED)
-set(script_scaffolder "${install_root}/scripts/New-BMLScriptMod.ps1")
-set(script_packer "${install_root}/scripts/Pack-BMLScriptMod.ps1")
-set(script_project_module "${install_root}/scripts/lib/BMLProject.psm1")
-set(script_sdk_markers
-        "${script_template}/HelloScript.mod.as"
-        "${script_scaffolder}"
-        "${script_packer}")
-set(script_sdk_marker_count 0)
-foreach(script_sdk_marker IN LISTS script_sdk_markers)
-    if(EXISTS "${script_sdk_marker}")
-        math(EXPR script_sdk_marker_count "${script_sdk_marker_count} + 1")
-    endif()
-endforeach()
-list(LENGTH script_sdk_markers expected_script_sdk_marker_count)
+set(script_workflow "${install_root}/scripts/bml.py")
 
 set(validated_script_tooling FALSE)
-if(script_sdk_marker_count GREATER 0)
-    if(script_sdk_marker_count LESS expected_script_sdk_marker_count OR
-       NOT EXISTS "${script_project_module}")
+if(EXISTS "${script_template}/HelloScript.mod.as")
+    if(NOT EXISTS "${script_workflow}")
         message(FATAL_ERROR
-                "The installed SDK contains an incomplete set of script Mod tools: "
-                "${script_sdk_markers};${script_project_module}")
+                "The installed SDK has Script Mod authoring assets but no Developer Workflow: "
+                "${script_workflow}")
     endif()
     set(validated_script_tooling TRUE)
     set(script_package_source "${work_root}/QuickStartMod")
     file(REMOVE_RECURSE "${script_package_source}")
     execute_process(
-        COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
-                -File "${script_scaffolder}"
-                -Id "sdk.quick-start"
-                -Name "SDK Quick Start"
-                -Author "SDK Test"
-                -Destination "${script_package_source}"
+        COMMAND "${PYTHON_EXECUTABLE}" "${script_workflow}" new script
+                "sdk.quick-start"
+                --name "SDK Quick Start"
+                --author "SDK Test"
+                --destination "${script_package_source}"
         RESULT_VARIABLE script_scaffold_status
         OUTPUT_VARIABLE script_scaffold_output
         ERROR_VARIABLE script_scaffold_error
@@ -385,9 +369,8 @@ if(script_sdk_marker_count GREATER 0)
     file(WRITE "${script_package_source}/dist/stale.zip" "old package\n")
     set(script_package "${script_package_source}/dist/QuickStartMod.zip")
     execute_process(
-        COMMAND "${powershell_executable}" -NoProfile -ExecutionPolicy Bypass
-                -File "${script_packer}"
-                -Force
+        COMMAND "${PYTHON_EXECUTABLE}" "${script_package_source}/bml.py"
+                pack --force
         WORKING_DIRECTORY "${script_package_source}"
         RESULT_VARIABLE script_pack_status
         OUTPUT_VARIABLE script_pack_output

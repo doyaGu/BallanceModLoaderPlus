@@ -76,7 +76,9 @@ foreach(required_sdk_path
     endif()
 endforeach()
 if(EXISTS "${bml_sdk}/scripts/bml.ps1" OR
-   EXISTS "${bml_sdk}/scripts/New-BMLNativeMod.ps1")
+   EXISTS "${bml_sdk}/scripts/New-BMLNativeMod.ps1" OR
+   EXISTS "${bml_sdk}/scripts/New-BMLScriptMod.ps1" OR
+   EXISTS "${bml_sdk}/scripts/Pack-BMLScriptMod.ps1")
     message(FATAL_ERROR "Installed SDK still contains the removed PowerShell workflow.")
 endif()
 
@@ -117,7 +119,8 @@ if(NOT existing_cmake_before STREQUAL existing_cmake_after OR
 endif()
 file(READ "${existing_source}/bml.mod.json" existing_manifest)
 if(NOT existing_manifest MATCHES "\"target\": \"ExistingMod\"" OR
-   NOT existing_manifest MATCHES "\"version\": \"2.3.4\"")
+   NOT existing_manifest MATCHES "\"version\": \"2.3.4\"" OR
+   NOT existing_manifest MATCHES "\"kind\": \"native\"")
     message(FATAL_ERROR "bml.py init did not infer the existing project metadata.")
 endif()
 execute_process(
@@ -135,10 +138,25 @@ if(NOT existing_build_status EQUAL 0 OR
             "Initialized existing Mod did not build.\n"
             "${existing_build_output}${existing_build_error}")
 endif()
+execute_process(
+    COMMAND "${PYTHON_EXECUTABLE}" "${existing_source}/bml.py" pack
+            --project "${existing_source}"
+            --virtools-sdk "${VIRTOOLS_SDK_PATH}"
+            --configuration "${CONFIGURATION}"
+    RESULT_VARIABLE existing_pack_status
+    OUTPUT_VARIABLE existing_pack_output
+    ERROR_VARIABLE existing_pack_error
+)
+if(NOT existing_pack_status EQUAL 0 OR
+   NOT EXISTS "${existing_source}/dist/ExistingMod.bmodp")
+    message(FATAL_ERROR
+            "Initialized existing Mod did not produce its publishable artifact.\n"
+            "${existing_pack_output}${existing_pack_error}")
+endif()
 
 function(scaffold_profile profile source_dir mod_id mod_name)
     set(command
-            "${PYTHON_EXECUTABLE}" "${workflow}" new "${mod_id}"
+            "${PYTHON_EXECUTABLE}" "${workflow}" new native "${mod_id}"
             --profile "${profile}"
             --name "${mod_name}"
             --author "SDK Profile Test"
@@ -251,7 +269,7 @@ scaffold_profile(imc-provider "${imc_source}" "test.remote-api" "Remote API")
 # discovery, generator selection input, Win32 configuration, build, and staging.
 set(cli_source "${work_root}/cli-source")
 execute_process(
-    COMMAND "${PYTHON_EXECUTABLE}" "${workflow}" new "test.one-command"
+    COMMAND "${PYTHON_EXECUTABLE}" "${workflow}" new native "test.one-command"
             --destination "${cli_source}"
     RESULT_VARIABLE cli_new_status
     OUTPUT_VARIABLE cli_new_output

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Create, build, install, and run native BML+ Mods."""
+"""The single Developer Workflow interface for Native and Script BML+ Mods."""
 
 from __future__ import annotations
 
 import argparse
+import filecmp
 import json
 import locale
 import os
@@ -12,10 +13,13 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from typing import Any
+import zipfile
 
 
 PROFILES = ("basic", "interface-provider", "interface-consumer", "imc-provider")
+MOD_KINDS = ("native", "script")
 CONFIGURATIONS = ("Debug", "Release", "RelWithDebInfo")
 MOD_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)+$")
 TARGET_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.+-]*$")
@@ -34,6 +38,28 @@ TEXT_EXTENSIONS = {
     ".bml-interface",
     ".lock",
 }
+SCRIPT_EXCLUDED_DIRECTORIES = {
+    ".bml",
+    ".git",
+    ".hg",
+    ".idea",
+    ".svn",
+    ".vscode",
+    "__pycache__",
+    "dist",
+}
+SCRIPT_EXCLUDED_FILES = {
+    ".DS_Store",
+    ".gitattributes",
+    ".gitignore",
+    "Thumbs.db",
+    "as.predefined",
+    "bml.cmd",
+    "bml.mod.json",
+    "bml.py",
+}
+SCRIPT_EXCLUDED_EXTENSIONS = {".code-workspace", ".pyc", ".pyo"}
+SCRIPT_DEPLOYMENT_MARKER = ".bml-managed.json"
 
 
 class BmlError(RuntimeError):
@@ -42,18 +68,22 @@ class BmlError(RuntimeError):
 
 def print_help(verbose: bool = False) -> None:
     print(
-        """BML+ Mod tool
+        """BML+ Developer Workflow
 
-  bml new [mod-id]   Create a working Mod.
-  bml run            Build, install, start Ballance, and show this Mod's log.
-  bml build          Build without changing or starting Ballance.
+  bml new script <mod-id>   Create the recommended beginner project.
+  bml new native <mod-id>   Create a C++ project.
+  bml run                   Prepare, start Ballance, and show this Mod's log.
+  bml build                 Prepare without changing or starting Ballance.
+  bml pack                  Produce the publishable artifact in dist.
 
 First use:
-  <BML-SDK>\\scripts\\bml.cmd new yourname.my-mod
+  <BML-SDK>\\scripts\\bml.cmd new script yourname.my-mod
   cd MyMod
   .\\bml run
 
-Missing folders are requested once and remembered locally.
+Native and Script Mods use the same commands. Their different build and reload
+behavior stays behind the workflow. Missing folders are requested once and
+remembered locally.
 Run 'bml help --verbose' to see advanced commands."""
     )
     if verbose:
@@ -61,10 +91,10 @@ Run 'bml help --verbose' to see advanced commands."""
             """
 
 Advanced:
-  bml init <id> [--project <folder>] [--target <cmake-target>]
-  bml new <id> --profile interface-provider
-  bml new <id> --profile interface-consumer --provider-id <id>
-  bml new <id> --profile imc-provider
+  bml init [id] [--project <folder>] [--kind native|script]
+  bml new native <id> --profile interface-provider
+  bml new native <id> --profile interface-consumer --provider-id <id>
+  bml new native <id> --profile imc-provider
   bml interface update
   bml interface check"""
         )
@@ -166,18 +196,29 @@ def is_inside(path: Path, directory: Path) -> bool:
     return os.path.normcase(str(common)) == os.path.normcase(str(directory))
 
 
-def create_mod(args: argparse.Namespace, script_path: Path) -> None:
-    mod_id = args.mod_id or input("Mod id (example: yourname.my-mod): ").strip()
+def validate_identity(mod_id: str, version: str, name: str, author: str) -> None:
     if not MOD_ID_PATTERN.fullmatch(mod_id):
         raise BmlError("Mod id must look like 'yourname.my-mod' and use lowercase letters.")
-    if not VERSION_PATTERN.fullmatch(args.version):
+    if not VERSION_PATTERN.fullmatch(version):
         raise BmlError("Version must look like '1.0.0'.")
-
-    name = args.name or default_name(mod_id)
-    author = args.author or default_author()
     for label, value in (("Name", name), ("Author", author)):
         if not value.strip() or "\n" in value or "\r" in value:
             raise BmlError(f"{label} must be one non-empty line.")
+
+
+def copy_workflow_files(script_path: Path, destination: Path) -> None:
+    launcher = script_path.with_name("bml.cmd")
+    require_file(script_path, "BML tool")
+    require_file(launcher, "BML launcher")
+    shutil.copy2(script_path, destination / "bml.py")
+    shutil.copy2(launcher, destination / "bml.cmd")
+
+
+def create_native_mod(args: argparse.Namespace, script_path: Path) -> None:
+    mod_id = args.mod_id or input("Mod id (example: yourname.my-mod): ").strip()
+    name = args.name or default_name(mod_id)
+    author = args.author or default_author()
+    validate_identity(mod_id, args.version, name, author)
 
     provider_id = args.provider_id
     if args.profile == "interface-consumer":
@@ -217,10 +258,7 @@ def create_mod(args: argparse.Namespace, script_path: Path) -> None:
         require_file(template / relative, "Template file")
 
     shutil.copytree(template, destination)
-    shutil.copy2(script_path, destination / "bml.py")
-    launcher = script_path.with_name("bml.cmd")
-    require_file(launcher, "BML launcher")
-    shutil.copy2(launcher, destination / "bml.cmd")
+    copy_workflow_files(script_path, destination)
 
     version_core = args.version.split("-", 1)[0].split("+", 1)[0]
     version_parts = version_core.split(".")
@@ -288,6 +326,7 @@ def create_mod(args: argparse.Namespace, script_path: Path) -> None:
 
     manifest: dict[str, Any] = {
         "format": 1,
+        "kind": "native",
         "id": mod_id,
         "name": name,
         "version": args.version,
@@ -319,6 +358,99 @@ def create_mod(args: argparse.Namespace, script_path: Path) -> None:
     print(f"  {destination}")
     print("\nEdit:")
     print(f"  src/{target}.cpp")
+    print("Run:")
+    print(f"  cd \"{destination}\"")
+    print("  .\\bml run")
+
+
+def find_script_entries(project: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in project.glob("*.mod.as")
+        if path.is_file()
+    )
+
+
+def read_script_metadata(entry: Path) -> dict[str, str]:
+    text = entry.read_text(encoding="utf-8")
+    declaration = re.search(r"\[bml\.mod\b(?P<body>.*?)\]", text, re.DOTALL)
+    if not declaration:
+        raise BmlError(f"Script entry has no [bml.mod] declaration: {entry}")
+    return {
+        name: value
+        for name, value in re.findall(
+            r"([A-Za-z][A-Za-z0-9_]*)\s*=\s*\"([^\"\r\n]*)\"",
+            declaration.group("body"),
+        )
+    }
+
+
+def create_script_mod(args: argparse.Namespace, script_path: Path) -> None:
+    mod_id = args.mod_id or input("Mod id (example: yourname.my-mod): ").strip()
+    name = args.name or default_name(mod_id)
+    author = args.author or default_author()
+    validate_identity(mod_id, args.version, name, author)
+    description = args.description or f"{name} script mod"
+
+    target = class_name(mod_id)
+    sdk_root = script_path.parent.parent
+    templates_root = sdk_root / "templates"
+    template = (templates_root / "script-mod-template").resolve()
+    if not template.is_dir():
+        raise BmlError("This SDK was built without Script Mod authoring.")
+    destination = Path(args.destination or (Path.cwd() / target)).expanduser().resolve()
+    if is_inside(destination, templates_root.resolve()):
+        raise BmlError("Destination must not be inside the SDK templates directory.")
+    if destination.exists():
+        raise BmlError(f"Destination already exists: {destination}")
+    for relative in ("HelloScript.mod.as", "README.md"):
+        require_file(template / relative, "Template file")
+
+    shutil.copytree(template, destination)
+    copy_workflow_files(script_path, destination)
+    source_path = destination / "HelloScript.mod.as"
+    entry_path = destination / f"{target}.mod.as"
+    readme_path = destination / "README.md"
+    replacements = {
+        "example.hello.script": cpp_string(mod_id),
+        "Hello Script": cpp_string(name),
+        "Your Name": cpp_string(author),
+        "1.0.0": cpp_string(args.version),
+        "Minimal BML+ script mod": cpp_string(description),
+        "HelloScript": target,
+    }
+    source = source_path.read_text(encoding="utf-8")
+    for old, new in replacements.items():
+        source = source.replace(old, new)
+    readme = readme_path.read_text(encoding="utf-8")
+    readme = readme.replace("# BML+ Script Mod Template", f"# {name}")
+    readme = readme.replace("example.hello.script", mod_id)
+    readme = readme.replace("Hello Script", name)
+    readme = readme.replace("HelloScript", target)
+    source_path.write_text(source, encoding="utf-8")
+    readme_path.write_text(readme, encoding="utf-8")
+    source_path.rename(entry_path)
+
+    write_json(
+        destination / "bml.mod.json",
+        {
+            "format": 1,
+            "kind": "script",
+            "entry": entry_path.name,
+            "deployName": target,
+        },
+    )
+    (destination / ".gitignore").write_text(".bml/\ndist/\n", encoding="utf-8")
+    local_sdk = str(sdk_root.resolve()) if (sdk_root / "scripts/bml.py").is_file() else ""
+    write_json(
+        destination / ".bml/settings.json",
+        {"format": 1, "bmlSdk": local_sdk, "ballanceRoot": ""},
+    )
+
+    print(f"Created {name}")
+    print(f"  {destination}")
+    print("\nEdit:")
+    print(f"  {entry_path.name}")
     print("Run:")
     print(f"  cd \"{destination}\"")
     print("  .\\bml run")
@@ -359,25 +491,87 @@ def infer_cmake_version(cmake_text: str) -> str:
     return match.group(1) if match else "1.0.0"
 
 
-def append_local_ignore(project: Path) -> None:
+def append_local_ignore(project: Path, entries: tuple[str, ...] = (".bml/",)) -> None:
     path = project / ".gitignore"
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
     lines = text.splitlines()
-    if ".bml/" not in lines:
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += ".bml/\n"
+    changed = False
+    for entry in entries:
+        if entry not in lines:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += f"{entry}\n"
+            lines.append(entry)
+            changed = True
+    if changed:
         path.write_text(text, encoding="utf-8")
 
 
 def init_existing_mod(args: argparse.Namespace, script_path: Path) -> None:
-    project = Path(args.project or Path.cwd()).expanduser().resolve()
+    requested_project = Path(args.project or Path.cwd()).expanduser().resolve()
+    if requested_project.is_file():
+        raise BmlError(
+            "Move a single-file Script Mod into its own folder before running init; "
+            "Player loads the folder in the same way."
+        )
+    project = requested_project
     if not project.is_dir():
         raise BmlError(f"Project directory does not exist: {project}")
     manifest_path = project / "bml.mod.json"
     if manifest_path.exists():
         raise BmlError(f"This project is already initialized: {manifest_path}")
     cmake_path = project / "CMakeLists.txt"
+    script_entries = find_script_entries(project)
+    detected = []
+    if cmake_path.is_file():
+        detected.append("native")
+    if script_entries:
+        detected.append("script")
+    kind = args.kind
+    if not kind:
+        if len(detected) != 1:
+            detail = "both Native and Script inputs" if detected else "no CMakeLists.txt or *.mod.as entry"
+            raise BmlError(f"Could not identify this Mod Project: {detail}. Pass --kind.")
+        kind = detected[0]
+    if kind == "script":
+        if len(script_entries) != 1:
+            raise BmlError(
+                f"A Script Mod Project needs exactly one top-level *.mod.as entry; found {len(script_entries)}."
+            )
+        entry = script_entries[0]
+        metadata = read_script_metadata(entry)
+        source_mod_id = metadata.get("id", "")
+        if args.mod_id and args.mod_id != source_mod_id:
+            raise BmlError(
+                f"Requested Mod id '{args.mod_id}' does not match the script entry id '{source_mod_id}'."
+            )
+        mod_id = source_mod_id
+        version = args.version or metadata.get("version", "1.0.0")
+        name = args.name or metadata.get("name") or default_name(mod_id)
+        validate_identity(mod_id, version, name, "Existing author")
+        sdk = find_local_sdk(script_path, args.bml_sdk)
+        install_workflow_files(project, script_path)
+        manifest = {
+            "format": 1,
+            "kind": "script",
+            "entry": entry.name,
+            "deployName": class_name(mod_id),
+        }
+        write_json(manifest_path, manifest)
+        append_local_ignore(project, (".bml/", "dist/"))
+        settings_path = project / ".bml/settings.json"
+        settings = read_json(settings_path) if settings_path.is_file() else {}
+        settings.update({"format": 1, "bmlSdk": str(sdk)})
+        settings.setdefault("ballanceRoot", "")
+        write_json(settings_path, settings)
+        print(f"Initialized {name}")
+        print(f"  Script entry: {entry.name}")
+        print("  Existing script files were not changed.")
+        print("\nRun:")
+        print(f"  cd \"{project}\"")
+        print("  .\\bml run")
+        return
+
     require_file(cmake_path, "CMake project")
     cmake_text = cmake_path.read_text(encoding="utf-8")
 
@@ -397,17 +591,11 @@ def init_existing_mod(args: argparse.Namespace, script_path: Path) -> None:
         raise BmlError("Version must look like '1.0.0'.")
     sdk = find_local_sdk(script_path, args.bml_sdk)
 
-    for filename in ("bml.py", "bml.cmd"):
-        source = script_path.parent / filename
-        destination = project / filename
-        require_file(source, "BML tool")
-        if destination.exists() and source.resolve() != destination.resolve():
-            raise BmlError(f"Refusing to overwrite existing file: {destination}")
-        if source.resolve() != destination.resolve():
-            shutil.copy2(source, destination)
+    install_workflow_files(project, script_path)
 
     manifest: dict[str, Any] = {
         "format": 1,
+        "kind": "native",
         "id": mod_id,
         "name": args.name or default_name(mod_id),
         "version": version,
@@ -434,6 +622,17 @@ def init_existing_mod(args: argparse.Namespace, script_path: Path) -> None:
     print("  .\\bml run")
 
 
+def install_workflow_files(project: Path, script_path: Path) -> None:
+    for filename in ("bml.py", "bml.cmd"):
+        source = script_path.parent / filename
+        destination = project / filename
+        require_file(source, "BML tool")
+        if destination.exists() and source.resolve() != destination.resolve():
+            raise BmlError(f"Refusing to overwrite existing file: {destination}")
+        if source.resolve() != destination.resolve():
+            shutil.copy2(source, destination)
+
+
 def project_state(project_arg: str | None, script_path: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     if project_arg:
         root = Path(project_arg).expanduser().resolve()
@@ -448,8 +647,29 @@ def project_state(project_arg: str | None, script_path: Path) -> tuple[Path, dic
     manifest_path = root / "bml.mod.json"
     require_file(manifest_path, "Project file")
     manifest = read_json(manifest_path)
-    if manifest.get("format") != 1 or not manifest.get("id") or not manifest.get("target"):
+    kind = manifest.get("kind")
+    valid_shape = (
+        kind == "native" and bool(manifest.get("id")) and bool(manifest.get("target"))
+    ) or (
+        kind == "script" and bool(manifest.get("entry")) and bool(manifest.get("deployName"))
+    )
+    if manifest.get("format") != 1 or not valid_shape:
         raise BmlError(f"Unsupported project file: {manifest_path}")
+    if kind == "script":
+        entry_name = str(manifest["entry"])
+        deploy_name = str(manifest["deployName"])
+        if Path(entry_name).name != entry_name or not entry_name.lower().endswith(".mod.as"):
+            raise BmlError(f"Unsafe Script entry in {manifest_path}: {entry_name}")
+        if not TARGET_PATTERN.fullmatch(deploy_name):
+            raise BmlError(f"Unsafe Script deployment name in {manifest_path}: {deploy_name}")
+        entry = root / entry_name
+        require_file(entry, "Script entry")
+        metadata = read_script_metadata(entry)
+        mod_id = metadata.get("id", "")
+        version = metadata.get("version", "1.0.0")
+        name = metadata.get("name") or default_name(mod_id)
+        validate_identity(mod_id, version, name, metadata.get("author") or "Script author")
+        manifest = {**manifest, "id": mod_id, "name": name, "version": version}
     settings_path = root / ".bml/settings.json"
     settings = read_json(settings_path) if settings_path.is_file() else {}
     return root, manifest, settings
@@ -538,7 +758,7 @@ def save_settings(
     )
 
 
-def build_or_run(args: argparse.Namespace, script_path: Path, install: bool, launch: bool) -> None:
+def native_build_or_run(args: argparse.Namespace, script_path: Path, install: bool, launch: bool) -> Path:
     root, manifest, settings = project_state(args.project, script_path)
     sdk = resolve_sdk(args, script_path, settings)
 
@@ -549,7 +769,7 @@ def build_or_run(args: argparse.Namespace, script_path: Path, install: bool, lau
     if virtools is None:
         raise BmlError("A Virtools SDK folder is required.")
 
-    game_value = args.ballance_root or settings.get("ballanceRoot") or os.environ.get("BML_BALLANCE_ROOT")
+    game_value = getattr(args, "ballance_root", None) or settings.get("ballanceRoot") or os.environ.get("BML_BALLANCE_ROOT")
     if install and not game_value:
         game_value = input("Ballance folder: ").strip()
     game = require_directory(game_value, "Ballance folder")
@@ -614,7 +834,7 @@ def build_or_run(args: argparse.Namespace, script_path: Path, install: bool, lau
     print("Ready:")
     print(f"  {mod_path}")
     if not launch:
-        return
+        return mod_path
 
     if game is None:
         raise BmlError("A Ballance folder is required to start the game.")
@@ -634,6 +854,301 @@ def build_or_run(args: argparse.Namespace, script_path: Path, install: bool, lau
         print(f"No new log lines were found. Full log: {log_path}")
     if result.returncode != 0:
         raise BmlError(f"Ballance exited with code {result.returncode}.")
+    return mod_path
+
+
+def output_path(value: str | None, default: Path, suffix: str) -> Path:
+    path = Path(value).expanduser().resolve() if value else default.resolve()
+    if path.suffix.lower() != suffix:
+        raise BmlError(f"Output must use the {suffix} extension: {path}")
+    return path
+
+
+def replace_output(source: Path, destination: Path, force: bool) -> None:
+    if destination.exists() and not force:
+        raise BmlError(f"Output already exists: {destination}. Pass --force to replace it.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.bml-write")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def native_pack(args: argparse.Namespace, script_path: Path) -> None:
+    root, manifest, _ = project_state(args.project, script_path)
+    artifact = native_build_or_run(args, script_path, install=False, launch=False)
+    name = str(manifest.get("artifact") or manifest["target"])
+    destination = output_path(args.output, root / "dist" / f"{name}.bmodp", ".bmodp")
+    replace_output(artifact, destination, args.force)
+    print("Published:")
+    print(f"  {destination}")
+
+
+def collect_script_files(root: Path) -> tuple[list[tuple[Path, str]], Path]:
+    files: list[tuple[Path, str]] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if not is_inside(path.resolve(), root.resolve()):
+            raise BmlError(f"Refusing to read a Script Mod file outside its project: {path}")
+        relative = path.relative_to(root)
+        directory_names = {part.lower() for part in relative.parts[:-1]}
+        if directory_names & SCRIPT_EXCLUDED_DIRECTORIES:
+            continue
+        if path.name.lower() in {name.lower() for name in SCRIPT_EXCLUDED_FILES}:
+            continue
+        if path.name == SCRIPT_DEPLOYMENT_MARKER:
+            continue
+        if path.suffix.lower() in SCRIPT_EXCLUDED_EXTENSIONS:
+            continue
+        files.append((path, relative.as_posix()))
+    entries = [
+        path
+        for path, relative in files
+        if "/" not in relative and path.name.lower().endswith(".mod.as")
+    ]
+    if len(entries) != 1:
+        raise BmlError(
+            f"A Script Mod Project needs exactly one top-level *.mod.as entry; found {len(entries)}."
+        )
+    return files, entries[0]
+
+
+def validate_script_files(
+    root: Path, manifest: dict[str, Any]
+) -> list[tuple[Path, str]]:
+    files, entry = collect_script_files(root)
+    if entry.name != manifest["entry"]:
+        raise BmlError(
+            f"Script entry changed from '{manifest['entry']}' to '{entry.name}'. "
+            "Update bml.mod.json deliberately before continuing."
+        )
+    metadata = read_script_metadata(entry)
+    if metadata.get("id") != manifest["id"]:
+        raise BmlError("The Script Mod id changed while the project was being prepared.")
+    return files
+
+
+def read_deployment_marker(destination: Path) -> dict[str, Any] | None:
+    marker_path = destination / SCRIPT_DEPLOYMENT_MARKER
+    if not marker_path.is_file():
+        return None
+    marker = read_json(marker_path)
+    if marker.get("format") != 1 or not isinstance(marker.get("files"), list):
+        raise BmlError(f"Unsupported managed deployment marker: {marker_path}")
+    return marker
+
+
+def mirror_script_project(
+    root: Path, manifest: dict[str, Any], destination: Path
+) -> int:
+    files = validate_script_files(root, manifest)
+    if destination.exists() and not destination.is_dir():
+        raise BmlError(f"Script Mod deployment path is not a directory: {destination}")
+    marker = read_deployment_marker(destination) if destination.exists() else None
+    if destination.exists() and marker is None and any(destination.iterdir()):
+        raise BmlError(
+            f"Refusing to replace unmanaged Script Mod directory: {destination}"
+        )
+    source_identity = os.path.normcase(str(root.resolve()))
+    if marker is not None:
+        if marker.get("modId") != manifest["id"]:
+            raise BmlError(f"Managed deployment belongs to another Mod: {destination}")
+        if os.path.normcase(str(marker.get("source", ""))) != source_identity:
+            raise BmlError(f"Managed deployment belongs to another source tree: {destination}")
+
+    destination.mkdir(parents=True, exist_ok=True)
+    current = {relative for _, relative in files}
+    previous = set(str(value) for value in (marker or {}).get("files", []))
+    changed = 0
+    for source, relative in files:
+        target = destination / Path(relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_file() and filecmp.cmp(source, target, shallow=False):
+            continue
+        temporary = target.with_name(f".{target.name}.bml-sync")
+        try:
+            shutil.copy2(source, temporary)
+            os.replace(temporary, target)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        changed += 1
+    for relative in sorted(previous - current, reverse=True):
+        target = (destination / Path(relative)).resolve()
+        if not is_inside(target, destination.resolve()):
+            raise BmlError(f"Unsafe managed path in {destination / SCRIPT_DEPLOYMENT_MARKER}: {relative}")
+        if target.is_file():
+            target.unlink()
+            changed += 1
+    write_json(
+        destination / SCRIPT_DEPLOYMENT_MARKER,
+        {
+            "format": 1,
+            "modId": manifest["id"],
+            "source": source_identity,
+            "files": sorted(current),
+        },
+    )
+    return changed
+
+
+def script_fingerprint(root: Path, manifest: dict[str, Any]) -> tuple[tuple[str, int, int], ...]:
+    files, entry = collect_script_files(root)
+    if entry.name != manifest["entry"]:
+        raise BmlError(f"Expected Script entry '{manifest['entry']}', found '{entry.name}'.")
+    return tuple(
+        (relative, path.stat().st_mtime_ns, path.stat().st_size)
+        for path, relative in files
+    )
+
+
+def script_build(args: argparse.Namespace, script_path: Path) -> Path:
+    root, manifest, _ = project_state(args.project, script_path)
+    destination = root / ".bml/stage/Mods" / str(manifest["deployName"])
+    changed = mirror_script_project(root, manifest, destination)
+    print(f"Prepared {manifest['id']} ({changed} changed files)")
+    print("Ready:")
+    print(f"  {destination}")
+    return destination
+
+
+def resolve_game(args: argparse.Namespace, settings: dict[str, Any]) -> Path:
+    value = args.ballance_root or settings.get("ballanceRoot") or os.environ.get("BML_BALLANCE_ROOT")
+    if not value:
+        value = input("Ballance folder: ").strip()
+    game = require_directory(value, "Ballance folder")
+    if game is None:
+        raise BmlError("A Ballance folder is required to run the Mod.")
+    require_file(game / "Bin/Player.exe", "Ballance Player")
+    require_file(game / "BuildingBlocks/BMLPlus.dll", "BML+ loader")
+    require_file(game / "BuildingBlocks/AngelScript.dll", "Script Mod runtime")
+    return game
+
+
+def script_run(args: argparse.Namespace, script_path: Path) -> None:
+    root, manifest, settings = project_state(args.project, script_path)
+    game = resolve_game(args, settings)
+    if player_is_running():
+        raise BmlError("Ballance is already running. Close it before starting a managed Script Mod run.")
+    destination = game / "ModLoader/Mods" / str(manifest["deployName"])
+    direct = root.resolve() == destination.resolve()
+    changed = 0 if direct else mirror_script_project(root, manifest, destination)
+    settings.update({"format": 1, "ballanceRoot": str(game)})
+    write_json(root / ".bml/settings.json", settings)
+    print(f"Prepared {manifest['id']} ({changed} changed files)")
+    print(f"Watching {root}")
+
+    player = game / "Bin/Player.exe"
+    log_path = game / "ModLoader/ModLoader.log"
+    previous_lines = len(log_path.read_text(encoding="utf-8", errors="replace").splitlines()) if log_path.is_file() else 0
+    fingerprint = script_fingerprint(root, manifest)
+    print("Starting Ballance. Save a source file to hot reload; exit the game to return here...")
+    process = subprocess.Popen([str(player)], cwd=player.parent)
+    last_sync_error = ""
+    try:
+        while process.poll() is None:
+            time.sleep(0.35)
+            try:
+                updated = script_fingerprint(root, manifest)
+                if updated == fingerprint:
+                    continue
+                changed = 0 if direct else mirror_script_project(root, manifest, destination)
+                fingerprint = updated
+                last_sync_error = ""
+                if direct:
+                    print("Source change detected; Player will hot reload it.")
+                elif changed:
+                    print(f"Synced {changed} changed file(s).")
+            except (BmlError, OSError) as error:
+                message = str(error)
+                if message != last_sync_error:
+                    print(f"Sync paused: {message}")
+                    last_sync_error = message
+    except KeyboardInterrupt:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        raise
+    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines() if log_path.is_file() else []
+    marker = f"[{manifest['id']}/"
+    mod_lines = [line for line in lines[previous_lines:] if marker in line]
+    print(f"\n{manifest['id']} log:")
+    if mod_lines:
+        print("\n".join(mod_lines))
+    else:
+        print(f"No new log lines were found. Full log: {log_path}")
+    if process.returncode != 0:
+        raise BmlError(f"Ballance exited with code {process.returncode}.")
+
+
+def script_pack(args: argparse.Namespace, script_path: Path) -> None:
+    root, manifest, _ = project_state(args.project, script_path)
+    files = validate_script_files(root, manifest)
+    destination = output_path(
+        args.output,
+        root / "dist" / f"{manifest['deployName']}.zip",
+        ".zip",
+    )
+    files = [
+        (source, relative)
+        for source, relative in files
+        if source.resolve() != destination
+    ]
+    if destination.exists() and not args.force:
+        raise BmlError(f"Output already exists: {destination}. Pass --force to replace it.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.bml-write")
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for source, relative in files:
+                archive.write(source, relative)
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    print("Published:")
+    print(f"  {destination}")
+
+
+class NativeWorkflowAdapter:
+    def create(self, args: argparse.Namespace, script_path: Path) -> None:
+        create_native_mod(args, script_path)
+
+    def build(self, args: argparse.Namespace, script_path: Path) -> None:
+        native_build_or_run(args, script_path, install=False, launch=False)
+
+    def run(self, args: argparse.Namespace, script_path: Path) -> None:
+        native_build_or_run(args, script_path, install=True, launch=True)
+
+    def pack(self, args: argparse.Namespace, script_path: Path) -> None:
+        native_pack(args, script_path)
+
+
+class ScriptWorkflowAdapter:
+    def create(self, args: argparse.Namespace, script_path: Path) -> None:
+        create_script_mod(args, script_path)
+
+    def build(self, args: argparse.Namespace, script_path: Path) -> None:
+        script_build(args, script_path)
+
+    def run(self, args: argparse.Namespace, script_path: Path) -> None:
+        script_run(args, script_path)
+
+    def pack(self, args: argparse.Namespace, script_path: Path) -> None:
+        script_pack(args, script_path)
+
+
+WORKFLOW_ADAPTERS = {
+    "native": NativeWorkflowAdapter(),
+    "script": ScriptWorkflowAdapter(),
+}
 
 
 def interface_action(args: argparse.Namespace, script_path: Path) -> None:
@@ -668,7 +1183,11 @@ def interface_action(args: argparse.Namespace, script_path: Path) -> None:
         print(f"{args.action.capitalize()} complete: {definition}")
 
 
-def add_common_build_options(parser: argparse.ArgumentParser, include_game: bool = True) -> None:
+def add_common_build_options(
+    parser: argparse.ArgumentParser,
+    include_game: bool = True,
+    default_configuration: str = "RelWithDebInfo",
+) -> None:
     parser.add_argument("--project")
     parser.add_argument("--bml-sdk", dest="bml_sdk")
     parser.add_argument("--virtools-sdk", dest="virtools_sdk")
@@ -679,7 +1198,7 @@ def add_common_build_options(parser: argparse.ArgumentParser, include_game: bool
     parser.add_argument(
         "--configuration",
         choices=CONFIGURATIONS,
-        default="RelWithDebInfo",
+        default=default_configuration,
     )
     parser.add_argument("--verbose", action="store_true")
 
@@ -688,17 +1207,22 @@ def parse_command(argv: list[str]) -> tuple[str, argparse.Namespace]:
     command = argv[0]
     parser = argparse.ArgumentParser(prog=f"bml {command}", add_help=True)
     if command == "new":
-        parser.add_argument("mod_id", nargs="?")
-        parser.add_argument("--name")
-        parser.add_argument("--author")
-        parser.add_argument("--version", default="1.0.0")
-        parser.add_argument("--profile", choices=PROFILES, default="basic")
-        parser.add_argument("--provider-id", dest="provider_id")
-        parser.add_argument("--description")
-        parser.add_argument("--destination")
+        kinds = parser.add_subparsers(dest="kind", required=True)
+        native = kinds.add_parser("native", help="Create a C++ Mod Project.")
+        script = kinds.add_parser("script", help="Create an AngelScript Mod Project.")
+        for route in (native, script):
+            route.add_argument("mod_id", nargs="?")
+            route.add_argument("--name")
+            route.add_argument("--author")
+            route.add_argument("--version", default="1.0.0")
+            route.add_argument("--description")
+            route.add_argument("--destination")
+        native.add_argument("--profile", choices=PROFILES, default="basic")
+        native.add_argument("--provider-id", dest="provider_id")
     elif command == "init":
         parser.add_argument("mod_id", nargs="?")
         parser.add_argument("--project")
+        parser.add_argument("--kind", choices=MOD_KINDS)
         parser.add_argument("--target")
         parser.add_argument("--artifact")
         parser.add_argument("--name")
@@ -706,6 +1230,10 @@ def parse_command(argv: list[str]) -> tuple[str, argparse.Namespace]:
         parser.add_argument("--bml-sdk", dest="bml_sdk")
     elif command in ("run", "build"):
         add_common_build_options(parser)
+    elif command == "pack":
+        add_common_build_options(parser, include_game=False, default_configuration="Release")
+        parser.add_argument("--output")
+        parser.add_argument("--force", action="store_true")
     elif command == "interface":
         parser.add_argument("action", choices=("update", "check"))
         parser.add_argument("--project")
@@ -725,13 +1253,13 @@ def main(argv: list[str] | None = None) -> int:
         command, args = parse_command(arguments)
         script_path = Path(__file__).resolve()
         if command == "new":
-            create_mod(args, script_path)
+            WORKFLOW_ADAPTERS[args.kind].create(args, script_path)
         elif command == "init":
             init_existing_mod(args, script_path)
-        elif command == "build":
-            build_or_run(args, script_path, install=False, launch=False)
-        elif command == "run":
-            build_or_run(args, script_path, install=True, launch=True)
+        elif command in ("build", "run", "pack"):
+            _, manifest, _ = project_state(args.project, script_path)
+            adapter = WORKFLOW_ADAPTERS[str(manifest["kind"])]
+            getattr(adapter, command)(args, script_path)
         else:
             interface_action(args, script_path)
         return 0

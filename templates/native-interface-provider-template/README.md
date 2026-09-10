@@ -35,7 +35,7 @@ under `include` and `lib/cmake/HelloModInterface`. A matching consumer can be
 created with:
 
 ```bat
-"<BML-SDK>\scripts\bml.cmd" new yourname.consumer ^
+"<BML-SDK>\scripts\bml.cmd" new native yourname.consumer ^
   --profile interface-consumer --provider-id __MOD_ID__
 ```
 

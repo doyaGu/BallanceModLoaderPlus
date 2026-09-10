@@ -175,9 +175,7 @@ function Install-ZipSmoke {
     )
 
     $zipPath = Join-Path $ModsDirectory 'BMLAngelScriptZipSmoke.zip'
-    $packScript = Join-Path $PSScriptRoot '..\..\scripts\Pack-BMLScriptMod.ps1'
-    Assert-BMLPath -Path $packScript -Type Leaf | Out-Null
-    & $packScript -Source $SourceDirectory -Output $zipPath -Force | Out-Null
+    New-BMLZipFromDirectory -SourceDir $SourceDirectory -ZipPath $zipPath
 }
 
 function Remove-SmokeInstall {

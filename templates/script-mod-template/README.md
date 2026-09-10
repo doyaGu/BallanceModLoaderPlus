@@ -10,22 +10,24 @@ Read the SDK's `share/BML/docs/en/modding.md`, then
 
 ## Run the mod
 
-1. Place this directory at `<Ballance>/ModLoader/Mods/HelloScript`; if it is
-   already there, continue.
-2. Confirm that the matching `BuildingBlocks/AngelScript.dll` is installed.
-3. Start `Bin/Player.exe` without editing the source further.
-4. Look for the greeting in game and `Hello Script loaded` in
-   `ModLoader/ModLoader.log`.
-5. Confirm that the id, name, and author at the top of the entry are yours. If
-   you copied the unmodified SDK template, change them before continuing.
+From this project directory, run:
+
+```bat
+.\bml run
+```
+
+The first run asks for the Ballance folder, verifies the matching
+`BuildingBlocks/AngelScript.dll`, deploys a managed copy, and starts Player.
+Look for the greeting in game and `Hello Script loaded` in
+`ModLoader/ModLoader.log`.
 
 BML+ discovers a new Mod only during Player startup. After the Mod has loaded,
-saving a source file in a directory package triggers automatic hot reload.
-Changing the Mod id or dependencies still requires a restart.
+saving a source file is synchronized to the managed copy and triggers automatic
+hot reload. Changing the Mod id or dependencies still requires a restart.
 
-For editor completion, open `ModLoader/Mods` as the workspace and place the
-SDK's `docs/api/as.predefined` in that workspace root. Do not package the API
-stub with the Mod.
+For editor completion, open this project directory as the workspace and copy the
+SDK's `docs/api/as.predefined` into the project root. The Developer Workflow
+keeps that editor-only file out of both the managed copy and the release zip.
 
 If the Mod does not load, use the BML+ command bar:
 
@@ -37,17 +39,16 @@ script logs error
 
 ## Package the Mod
 
-Use the packer shipped in the SDK:
+Run the same project-local workflow:
 
-```powershell
-Set-Location "<Ballance>/ModLoader/Mods/HelloScript"
-& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" -Force
+```bat
+.\bml pack
 ```
 
-The package is written to `dist/HelloScript.zip`. Pass `-Source` or `-Output`
-only when packaging from another directory or writing the zip elsewhere. The
-packer omits editor settings, version-control metadata, `as.predefined`, Python
-cache files, and the `dist` directory.
+The package is written to `dist/HelloScript.zip`. Pass `--project` or `--output`
+only for automation; pass `--force` to replace an existing package. The workflow
+omits its own files, local settings, editor settings, version-control metadata,
+`as.predefined`, Python cache files, and the `dist` directory.
 
 Test the zip without the development directory installed; two packages with
 the same Mod id conflict. `.bmodp` is reserved for native DLL mods.

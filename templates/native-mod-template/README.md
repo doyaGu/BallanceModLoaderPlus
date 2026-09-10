@@ -23,6 +23,9 @@ exits. The answers are remembered, so later runs use the same command.
 Use `.\bml build` when you only want a local build and do not want to change
 or start Ballance.
 
+After testing Release, use `.\bml pack`; the publishable `.bmodp` is copied to
+`dist` without adding SDK or build files.
+
 ## Prerequisites
 
 - Windows + Visual Studio 2019+ (C++20)

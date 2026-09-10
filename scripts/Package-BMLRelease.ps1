@@ -181,8 +181,6 @@ function Assert-BMLSdkStage {
             'examples\script-mod\command-config\CommandConfig.mod.as',
             'examples\script-mod\input-ui\InputUi.mod.as',
             'examples\script-mod\game-state\GameState.mod.as',
-            'scripts\New-BMLScriptMod.ps1',
-            'scripts\Pack-BMLScriptMod.ps1',
             'share\BML\docs\en\script-mod\index.md',
             'share\BML\docs\en\script-mod\api.md',
             'share\BML\docs\zh-CN\api.md',
@@ -197,8 +195,6 @@ function Assert-BMLSdkStage {
         foreach ($relative in @(
             'templates\script-mod-template',
             'examples\script-mod',
-            'scripts\New-BMLScriptMod.ps1',
-            'scripts\Pack-BMLScriptMod.ps1',
             'share\BML\docs\en\script-mod',
             'share\BML\docs\zh-CN\script-mod-tutorial',
             'docs\api\as.predefined'
