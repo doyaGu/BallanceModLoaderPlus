@@ -253,6 +253,13 @@ asynchronous and complete through typed callbacks. Script Provider handlers and
 Topic callbacks always execute on the game thread. BML closes their owned IMC
 resources before unloading or replacing the script module.
 
+`Provider::Start`/`Close` is the normal lifecycle in both generated languages.
+For dynamic endpoints, call `Open` once and then use the generated
+`Register*`/`Unregister*` methods. An ASMod Provider owns a separate transport,
+so `Close` removes only its routes and is safe from one of its own handlers.
+Unregistering that individual route from inside the handler still returns
+`BML_ERROR_BUSY`; retry it after the callback or close the whole Provider.
+
 Names under `BML::Detail` and underscore-prefixed methods on `ModContext` are
 generated-code plumbing. Do not call them from handwritten scripts. A native
 and a script implementation are interchangeable at the wire boundary because

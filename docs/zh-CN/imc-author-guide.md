@@ -210,6 +210,12 @@ class EchoScript {
 Provider Handler 和 Topic 回调固定在游戏线程执行。卸载或替换脚本 Module 前，
 BML 会关闭该 Mod 拥有的 IMC 资源。
 
+两种生成语言都以 `Provider::Start`/`Close` 作为常规生命周期入口。需要动态开放 Endpoint
+时，先调用一次 `Open`，再使用生成的 `Register*`/`Unregister*`。ASMod Provider 拥有
+独立 Transport，因此 `Close` 只移除自己的 Route，也可以从自身 Handler 中安全调用。
+在 Handler 内注销当前这一个 Route 仍会返回 `BML_ERROR_BUSY`；应在回调返回后重试，
+或直接关闭整个 Provider。
+
 `BML::Detail` 和 `ModContext` 上下划线开头的方法只属于生成代码，不应由手写脚本调用。
 原生实现与脚本实现可以在传输边界互换，因为两者来自同一份 `.imc` 和 `.imc.lock`。
 
