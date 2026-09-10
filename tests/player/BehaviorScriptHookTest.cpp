@@ -160,9 +160,6 @@ private:
         }
         const int children = m_ScriptHookGraph->GetSubBehaviorCount();
         if (!m_ScriptHookInstalled) {
-            if (children < 2)
-                return;
-            m_ScriptHookInstalled = true;
             CKBehavior *inserted = nullptr;
             for (int index = 0; index < children; ++index) {
                 CKBehavior *candidate = m_ScriptHookGraph->GetSubBehavior(index);
@@ -173,8 +170,22 @@ private:
                     break;
                 }
             }
-            if (!inserted || !inserted->GetInput(0)) {
-                Report(false, "script-hook-inserted-block-missing");
+            // Other Behavior patches may also add infrastructure to this
+            // fixture. Wait for the named legacy probe instead of treating an
+            // unrelated child as its installation.
+            if (!inserted) {
+                if (children > 1) {
+                    const float delta =
+                        m_BML->GetCKContext()->m_BehaviorContext.DeltaTime;
+                    m_ScriptHookGraph->ActivateInput(0, TRUE);
+                    m_ScriptHookGraph->Activate(TRUE, FALSE);
+                    (void) m_ScriptHookGraph->Execute(delta);
+                }
+                return;
+            }
+            m_ScriptHookInstalled = true;
+            if (!inserted->GetInput(0)) {
+                Report(false, "script-hook-inserted-input-missing");
                 return;
             }
             // Two executions: the first proves the inserted block runs inside
