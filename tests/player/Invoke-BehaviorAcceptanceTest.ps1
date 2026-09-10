@@ -25,6 +25,8 @@ param(
 
     [string]$ScriptMod,
 
+    [string]$AngelScriptDll = $env:BML_CKANGELSCRIPT_DLL,
+
     [string]$BmlConfig,
 
     [switch]$DisableAngelScript,
@@ -120,6 +122,12 @@ if ($DisableAngelScript) {
     $remove += $scriptModRelative
 } else {
     $install += @{ Source = $ScriptMod; Destination = $scriptModRelative }
+    if ($AngelScriptDll) {
+        $install += @{
+            Source = $AngelScriptDll
+            Destination = 'BuildingBlocks\AngelScript.dll'
+        }
+    }
 }
 
 # The real Player must not load MSVC Debug CRT clients. Besides requiring a
@@ -417,6 +425,7 @@ $result = [pscustomobject]@{
     FixtureHash = Get-BMLOptionalHash $FixtureDll
     TransportFixtureHash = Get-BMLOptionalHash $TransportFixture
     ScriptModHash = Get-BMLOptionalHash $ScriptMod
+    AngelScriptDllHash = Get-BMLOptionalHash $AngelScriptDll
     BmlConfigHash = Get-BMLOptionalHash $BmlConfig
     ArtifactsDirectory = $run.ArtifactsDirectory
     Screenshot = $run.Screenshot
