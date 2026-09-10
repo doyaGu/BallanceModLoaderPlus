@@ -13,15 +13,16 @@ Start here unless you specifically need native hooks, native memory access, a
 generated IMC Provider, or a performance-critical native loop.
 
 1. Open [`share/BML/docs/en/modding.md`](share/BML/docs/en/modding.md).
-2. Create the Mod in `ModLoader/Mods`:
+2. Create the Mod in your normal source workspace. Name and author are inferred
+   when omitted:
 
-   ```powershell
-   Set-Location "<Ballance>/ModLoader/Mods"
-   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
-     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
    ```
 
-3. Follow the generated README and run the Mod unchanged before editing it.
+3. Enter the project and run `bml run`. The first run asks for the Ballance
+   folder, deploys a managed copy, starts Player, and keeps source changes synced
+   for hot reload. Run `bml pack` to create `dist/<project>.zip`.
 
 You can copy [`templates/script-mod-template`](templates/script-mod-template)
 manually when scripting the setup yourself.
@@ -44,7 +45,7 @@ SDK, or generated IMC services.
    when omitted:
 
    ```bat
-   "<BML-SDK>\scripts\bml.cmd" new yourname.my-mod
+   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
    ```
 
 3. Enter the project and run the complete development loop. Paths are remembered
@@ -89,7 +90,7 @@ installed header target and never links the provider binary.
 | `docs/api/` | AngelScript editor declarations, when script support is enabled |
 | `include/`, `lib/` | Native headers, libraries, and CMake package files |
 | `share/BML/tools/` | Native interface and IMC code generators |
-| `scripts/` | Mod creation and script Mod packaging tools |
+| `scripts/` | Unified Native and Script Developer Workflow |
 
 Use the runtime release `BMLPlus-<version>.zip` to install BML+ into the game.
 Do not use an SDK archive as a runtime package.

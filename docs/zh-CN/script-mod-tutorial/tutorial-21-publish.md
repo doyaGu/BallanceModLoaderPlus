@@ -115,15 +115,15 @@ CompleteMod/
 
 ### zip 包分发
 
-正式发布目录形式的 Mod 时，使用 BML+ SDK 随附的打包脚本：
+正式发布目录形式的 Mod 时，使用项目内的 Developer Workflow：
 
-```powershell
-Set-Location "<Ballance>/ModLoader/Mods/CompleteMod"
-& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" -Force
+```bat
+.\bml pack
 ```
 
-默认产物是 `dist/CompleteMod.zip`。自动化流程仍可通过 `-Source` 和 `-Output`
-指定其他路径。源目录的顶层必须恰好有一个 `*.mod.as` 入口；打包脚本会保留
+默认产物是 `dist/CompleteMod.zip`。自动化流程仍可通过 `--project` 和 `--output`
+指定其他路径，覆盖现有文件时使用 `--force`。源目录的顶层必须恰好有一个
+`*.mod.as` 入口；Developer Workflow 会保留
 相对路径，并让入口位于 zip 根目录：
 
 ```text
@@ -346,7 +346,7 @@ Ballance 社区常见的发布平台：
 
 **现象**：zip 放入 `Mods/` 后 BML 拒绝加载。**原因**：包内没有入口，或存在多个
 `*.mod.as` 入口。**解决**：让源目录顶层恰好保留一个入口，并使用 SDK 的
-`Pack-BMLScriptMod.ps1` 重新打包。
+`.\bml pack --force` 重新打包。
 
 ### 残留调试代码
 

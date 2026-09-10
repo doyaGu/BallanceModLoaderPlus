@@ -4,6 +4,14 @@ This context names the loader-owned runtime features that ship with BML itself. 
 
 ## Language
 
+**Mod Project**:
+An author-owned source tree for one Native or Script Mod. Existing source files remain authoritative; optional workflow metadata describes how Developer Workflow prepares and publishes the Mod without replacing its runtime identity.
+_Avoid_: Mod workspace, generated project, CLI project
+
+**Developer Workflow**:
+The SDK's Python module for creating or adopting a Mod Project, preparing a runnable artifact, starting Player, reporting the Mod's diagnostics, and producing its publishable artifact. It presents one interface through Native and Script adapters while preserving their different build and reload semantics.
+_Avoid_: project helper, native scaffolder, script packer, workflow script
+
 **Built-in Loader Mod**:
 The loader-owned Mod registered with the id `BML`. It receives Mod lifecycle callbacks and owns the built-in runtime features without absorbing their state and behavior.
 _Avoid_: BML service, built-in feature

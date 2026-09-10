@@ -41,11 +41,10 @@ cannot start.
 
 ## Create the first mod
 
-Open PowerShell in `ModLoader/Mods` and let the SDK personalize the template:
+Create the project in your normal source workspace:
 
-```powershell
-& "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
-  -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+```bat
+"<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
 ```
 
 The command derives a safe class and entry filename from the id and refuses to
@@ -67,7 +66,8 @@ class HelloScript {
 }
 ```
 
-Start `Bin/Player.exe` once without editing the generated source. The in-game
+Run `.\bml run` once without editing the generated source. It deploys a managed
+copy, starts Player, and keeps later saved changes synchronized. The in-game
 greeting proves that `OnLoad` ran; the `My Mod loaded` line in
 `ModLoader/ModLoader.log` proves which Mod produced it. Together they confirm
 that BML+ found the entry, compiled it through CKAngelScript, accepted the
@@ -158,16 +158,16 @@ Saving a loaded source queues a reload. Adding a new mod, changing its id, or
 changing its dependency graph still requires a Player restart. Zip packages
 use manual reload and are intended for distribution testing.
 
-Run the SDK tool from the Mod directory:
+Run the project-local Developer Workflow:
 
-```powershell
-Set-Location "<Ballance>/ModLoader/Mods/MyScriptMod"
-& "<BML-SDK>/scripts/Pack-BMLScriptMod.ps1" -Force
+```bat
+.\bml pack
 ```
 
-It writes `dist/MyScriptMod.zip`. `-Source` and `-Output` remain available for
-automation. The default package excludes editor settings, version-control
-metadata, `as.predefined`, Python cache files, and `dist` itself.
+It writes `dist/MyScriptMod.zip`. `--project`, `--output`, and `--force` remain
+available for automation. The default package excludes workflow files, local
+settings, editor settings, version-control metadata, `as.predefined`, Python
+cache files, and `dist` itself.
 
 Test the zip in a clean `ModLoader/Mods` directory without the development
 directory or a single-file copy of the same mod id. Do not package editor API

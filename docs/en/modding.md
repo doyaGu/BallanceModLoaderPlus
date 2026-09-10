@@ -22,29 +22,27 @@ identity, lifecycle, configuration, commands, loader UI, and mod-level services.
 
 ## Start a script mod
 
-1. Open PowerShell in `ModLoader/Mods` and create a Mod from the SDK template:
+1. Create a Script Mod Project in your normal source workspace:
 
-   ```powershell
-   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
-     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
    ```
 
-   The command creates the destination directory, a valid class and entry
-   filename, and personalized metadata. You can also copy
-   `templates/script-mod-template` manually.
+   The command infers a readable name and author, creates a valid class and
+   entry filename, and adds the project-local Developer Workflow.
 
-2. Open the generated directory and README.
-3. Confirm that the matching `BuildingBlocks/AngelScript.dll` is installed.
-4. Start Player without editing the generated source. Confirm both the in-game
-   greeting and its load line in `ModLoader/ModLoader.log`.
-5. Keep the generated id stable; changing it later creates a different Mod and
-   requires a Player restart.
-6. Keep Player open. Saving source in the loaded directory triggers automatic
-   hot reload; only new entries, id changes, and dependency changes require a
-   restart.
-7. From the Mod directory, run `scripts/Pack-BMLScriptMod.ps1`; it writes
-   `dist/<directory-name>.zip`. Test that zip without the development copy
-   installed.
+2. Enter the generated directory and run `.\bml run`. The first run asks for
+   the Ballance folder, verifies the Script Mod runtime, deploys a managed copy,
+   starts Player, and prints only this Mod's new log lines.
+3. Keep `bml run` open while editing. Each saved source change is synchronized
+   to the managed copy so Player's normal hot reload remains active.
+4. Run `.\bml pack` to create `dist/<project>.zip`. Test that zip without the
+   managed development copy installed.
+
+An existing directory Script Mod can adopt the same commands without rewriting
+its source: `"<BML-SDK>\scripts\bml.cmd" init --project "C:\path\to\mod"`.
+Move an existing single-file Mod into its own directory first; Player loads that
+directory with the same runtime behavior.
 
 Read the [script mod guide](https://doyagu.github.io/BallanceModLoaderPlus/script-mod/),
 then use its API reference for exact declarations. A script-capable SDK installs
@@ -52,11 +50,11 @@ the same pages under `share/BML/docs/en/script-mod`.
 
 ## Start a native mod
 
-1. Open PowerShell in the directory where you keep source projects and create
+1. Open a terminal in the directory where you keep source projects and create
    a Mod from the SDK template:
 
    ```bat
-   "<BML-SDK>\scripts\bml.cmd" new yourname.my-mod
+   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
    ```
 
    The command creates a working Mod, chooses its readable name from the id, and
@@ -89,9 +87,10 @@ the same pages under `share/BML/docs/en/script-mod`.
    you also copy that Debug loader over `BuildingBlocks/BMLPlus.dll`. Keep the
    loader and every installed native Mod on one side of that line, and go back
    to the Release loader before testing what you publish.
-5. Before publishing, run `.\bml run --configuration Release` and test that
-   exact artifact. Use the generated README's manual CMake commands only for CI
-   or diagnosing the build itself.
+5. Before publishing, run `.\bml run --configuration Release`, test that exact
+   artifact, then run `.\bml pack`; it copies the Release `.bmodp` into `dist`.
+   Use the generated README's manual CMake commands only for CI or diagnosing
+   the build itself.
 
 ### Use it with an existing native Mod
 

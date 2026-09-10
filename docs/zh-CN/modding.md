@@ -21,25 +21,24 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 
 ## 开始编写脚本 Mod
 
-1. 在 `ModLoader/Mods` 中打开 PowerShell，用 SDK 模板创建 Mod：
+1. 在平常保存源码的工作区中创建 Script Mod Project：
 
-   ```powershell
-   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
-     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
    ```
 
-   命令会创建目标目录、合法的类名和入口文件名，并写入你的元数据。也可以手动复制
-   `templates/script-mod-template`。
+   命令会自动推导可读名称与作者，创建合法的类名、入口文件名和项目内
+   Developer Workflow。
 
-2. 打开生成的目录和 README。
-3. 确认配套的 `BuildingBlocks/AngelScript.dll` 已安装。
-4. 不修改生成的源码，直接启动 Player，同时确认游戏内问候语和
-   `ModLoader/ModLoader.log` 中的加载日志。
-5. 保持生成的 id 稳定；以后修改 id 会成为另一个 Mod，并且需要重启 Player。
-6. 保持 Player 运行。保存已加载目录中的源码会自动热重载；只有新增入口、修改 id
-   或修改依赖时才需要重启。
-7. 在 Mod 目录中运行 `scripts/Pack-BMLScriptMod.ps1`；产物位于
-   `dist/<目录名>.zip`。再在没有开发目录副本的环境中测试该 zip。
+2. 进入生成目录并运行 `.\bml run`。首次运行会询问 Ballance 目录，确认脚本运行时，
+   部署受管副本、启动 Player，并只显示这个 Mod 的新增日志。
+3. 编辑时保持 `bml run` 运行。每次保存都会同步到受管副本，Player 原有的热重载
+   继续生效。
+4. 运行 `.\bml pack` 生成 `dist/<项目名>.zip`，再在未安装开发副本的环境中测试。
+
+已有的目录 Script Mod 可用
+`"<BML-SDK>\scripts\bml.cmd" init --project "C:\path\to\mod"` 接入，原有源码不会
+被改写。已有单文件 Mod 需先移入独立目录；Player 对该目录的运行行为不变。
 
 先阅读[脚本 Mod 教程导读](https://doyagu.github.io/BallanceModLoaderPlus/zh-CN/script-mod-tutorial/)，
 需要准确声明时使用其中的 API 参考。支持脚本 Mod 的 SDK 会把同一套页面安装到
@@ -47,26 +46,26 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 
 ## 开始编写原生 Mod
 
-1. 在存放源码项目的目录中打开 PowerShell，用 SDK 模板创建 Mod：
+1. 在存放源码项目的目录中打开终端，用 SDK 模板创建 Mod：
 
-   ```powershell
-   & "<BML-SDK>/scripts/bml.cmd" new "yourname.my-mod"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
    ```
 
    命令会让 CMake target、C++ 类名、源文件名和元数据保持一致，默认使用 `basic`
    profile。下面三个 profile 会把跨 Mod API 的重复样板一起生成：
 
-   ```powershell
-   # 发布类型安全的进程内函数表，并安装独立头文件包。
-   & "<BML-SDK>/scripts/bml.cmd" new "yourname.value-provider" `
+   ```bat
+   rem 发布类型安全的进程内函数表，并安装独立头文件包。
+   "<BML-SDK>\scripts\bml.cmd" new native yourname.value-provider ^
      --profile interface-provider
 
-   # 消费对应的包；包名、头文件路径和 Traits 名会自动推导。
-   & "<BML-SDK>/scripts/bml.cmd" new "yourname.value-consumer" `
-     --profile interface-consumer --provider-id "yourname.value-provider"
+   rem 消费对应的包；包名、头文件路径和 Traits 名会自动推导。
+   "<BML-SDK>\scripts\bml.cmd" new native yourname.value-consumer ^
+     --profile interface-consumer --provider-id yourname.value-provider
 
-   # 定义生成式 IMC RPC provider，并同时生成已审核的 schema lock。
-   & "<BML-SDK>/scripts/bml.cmd" new "yourname.remote-api" `
+   rem 定义生成式 IMC RPC provider，并同时生成已审核的 schema lock。
+   "<BML-SDK>\scripts\bml.cmd" new native yourname.remote-api ^
      --profile imc-provider
    ```
 
@@ -75,7 +74,7 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
 
 2. 进入生成目录，只运行一条开发命令：
 
-   ```powershell
+   ```bat
    .\bml run
    ```
 
@@ -96,8 +95,9 @@ Message 或 Async API。CK/Vx 操作使用 CKAngelScript；Mod 身份、生命�
    `bin/BMLPlus.dll` 及其 `.pdb`，只要同时用这个 Debug Loader 覆盖
    `BuildingBlocks/BMLPlus.dll`，Debug Mod 就是有效的。Loader 和所有已安装的原生
    Mod 必须处于同一侧；测试待发布产物前要换回 Release 版 Loader。
-5. 发布前运行 `.\bml run --configuration Release` 并测试该产物。只有在 CI 或
-   排查构建系统本身时，才需要使用生成 README 中的手工 CMake 命令。
+5. 发布前运行 `.\bml run --configuration Release` 并测试该产物，然后运行
+   `.\bml pack` 将 Release `.bmodp` 复制到 `dist`。只有在 CI 或排查构建系统本身时，
+   才需要使用生成 README 中的手工 CMake 命令。
 
 SDK 的 CMake 入口为：
 

@@ -12,15 +12,15 @@
 否则先从脚本 Mod 开始。
 
 1. 打开 [`share/BML/docs/zh-CN/modding.md`](share/BML/docs/zh-CN/modding.md)。
-2. 在 `ModLoader/Mods` 中创建 Mod：
+2. 在平常保存源码的工作区中创建 Mod；省略名称和作者时会自动推导：
 
-   ```powershell
-   Set-Location "<Ballance>/ModLoader/Mods"
-   & "<BML-SDK>/scripts/New-BMLScriptMod.ps1" `
-     -Id "yourname.my-mod" -Name "My Mod" -Author "Your Name"
+   ```bat
+   "<BML-SDK>\scripts\bml.cmd" new script yourname.my-mod
    ```
 
-3. 按生成的 README，先原样运行成功，再开始修改。
+3. 进入项目并运行 `bml run`。首次运行会询问 Ballance 目录、部署受管副本、启动
+   Player，并持续同步源码以保留热重载。运行 `bml pack` 会生成
+   `dist/<项目名>.zip`。
 
 需要自行编写自动化流程时，也可以手动复制
 [`templates/script-mod-template`](templates/script-mod-template)。
@@ -39,7 +39,7 @@
 2. 在源码工作区中创建项目；省略名称和作者时会自动推导：
 
    ```bat
-   "<BML-SDK>\scripts\bml.cmd" new yourname.my-mod
+   "<BML-SDK>\scripts\bml.cmd" new native yourname.my-mod
    ```
 
 3. 进入项目后运行完整开发循环；首次运行后会在本地记住路径：
@@ -69,7 +69,7 @@
 | `docs/api/` | 启用脚本支持时提供的 AngelScript 编辑器声明 |
 | `include/`、`lib/` | 原生头文件、库和 CMake package |
 | `share/BML/tools/` | 原生 interface 与 IMC 代码生成器 |
-| `scripts/` | Mod 创建和脚本 Mod 打包工具 |
+| `scripts/` | 统一的原生与脚本 Mod Developer Workflow |
 
 安装 BML+ 到游戏时应使用运行时发布包 `BMLPlus-<version>.zip`，不能使用 SDK
 压缩包代替运行时包。
