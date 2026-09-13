@@ -22,6 +22,7 @@
 #include "Api/InterfaceRegistry.h"
 
 #include "Hooks/RenderHook.h"
+#include "UI/FontRuntime.h"
 #include "UI/Overlay.h"
 #include "Logging/Logger.h"
 #include "Loader/LegacyModVersion.h"
@@ -269,6 +270,9 @@ bool ModContext::Init() {
 
     InitDirectories();
 
+    m_UiFonts = std::make_unique<BML::UI::FontRuntime>(
+        utils::CombinePathUtf8(m_LoaderDirUtf8, "Fonts"));
+
     InitLogger();
 
     m_Logger->Info("Initializing Mod Loader Plus version " BML_VERSION);
@@ -352,6 +356,7 @@ void ModContext::Shutdown() {
 
     m_Logger->Info("Releasing Mod Loader");
 
+    m_UiFonts.reset();
     if (Overlay::GetImGuiContext() != nullptr) {
         Overlay::ImGuiShutdownPlatform(m_CKContext);
         Overlay::ImGuiDestroyContext();

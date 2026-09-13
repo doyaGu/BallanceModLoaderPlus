@@ -393,6 +393,28 @@ TEST_F(ConfigTest, ModificationNotification) {
     delete nullModConfig;
 }
 
+TEST_F(ConfigTest, RemovePropertyErasesLookupOrderAndPendingNotification) {
+    IProperty *kept = config->GetProperty("GUI", "FontFilename");
+    kept->SetDefaultString("unifont.otf");
+    IProperty *legacy = config->GetProperty("GUI", "FontRanges");
+    legacy->SetDefaultString("ChineseFull");
+    legacy->SetString("Japanese");
+
+    Category *category = config->GetCategory("GUI");
+    ASSERT_NE(category, nullptr);
+    ASSERT_EQ(category->GetPropertyCount(), 2u);
+    ASSERT_EQ(config->TakePendingNotifications().size(), 1u);
+
+    legacy->SetString("Korean");
+    ASSERT_TRUE(config->RemoveProperty("GUI", "FontRanges"));
+    EXPECT_FALSE(config->HasKey("GUI", "FontRanges"));
+    EXPECT_TRUE(config->HasKey("GUI", "FontFilename"));
+    EXPECT_EQ(category->GetPropertyCount(), 1u);
+    EXPECT_EQ(category->GetProperty(static_cast<std::size_t>(0)), kept);
+    EXPECT_TRUE(config->TakePendingNotifications().empty());
+    EXPECT_FALSE(config->RemoveProperty("GUI", "FontRanges"));
+}
+
 // Property utility functions
 TEST_F(ConfigTest, PropertyUtilityFunctions) {
     // Test GetStringSize

@@ -1,11 +1,9 @@
 #include "BML/Gui/Text.h"
 
 #include "Loader/ModContext.h"
+#include "UI/Gui/LegacyTextFont.h"
 
 using namespace BGui;
-
-const char *g_TextFont = nullptr;
-const char *g_AvailFonts[] = {"Microsoft YaHei UI", "Microsoft YaHei"};
 
 Text::Text(const char *name) : Element(name) {
     CKContext *context = BML_GetCKContext();
@@ -18,10 +16,11 @@ Text::Text(const char *name) : Element(name) {
     m_Sprite->SetZOrder(20);
     m_Sprite->SetTextColor(0xffffffff);
     m_Sprite->SetAlign(CKSPRITETEXT_ALIGNMENT(CKSPRITETEXT_VCENTER | CKSPRITETEXT_LEFT));
-    m_Sprite->SetFont((CKSTRING) g_TextFont, context->GetPlayerRenderContext()->GetHeight() / 85, 400);
+    InitializeLegacyTextFont(m_Sprite, context->GetPlayerRenderContext()->GetHeight());
 }
 
 Text::~Text() {
+    ForgetLegacyTextFont(m_Sprite);
     CKContext *context = BML_GetCKContext();
     if (context && m_Sprite)
         context->DestroyObject(CKOBJID(m_Sprite));
@@ -29,7 +28,9 @@ Text::~Text() {
 
 void Text::UpdateFont() {
     CKContext *context = BML_GetCKContext();
-    m_Sprite->SetFont((CKSTRING) g_TextFont, context->GetPlayerRenderContext()->GetHeight() / 85, 400);
+    if (context && context->GetPlayerRenderContext()) {
+        RefreshLegacyTextFont(m_Sprite, context->GetPlayerRenderContext()->GetHeight());
+    }
 }
 
 Vx2DVector Text::GetPosition() {
@@ -80,7 +81,7 @@ void Text::SetText(const char *text) {
 }
 
 void Text::SetFont(const char *FontName, int FontSize, int Weight, CKBOOL italic, CKBOOL underline) {
-    m_Sprite->SetFont((CKSTRING) FontName, FontSize, Weight, italic, underline);
+    SetLegacyTextFont(m_Sprite, FontName, FontSize, Weight, italic != FALSE, underline != FALSE);
 }
 
 void Text::SetAlignment(CKSPRITETEXT_ALIGNMENT align) {

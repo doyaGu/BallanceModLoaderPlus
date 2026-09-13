@@ -23,10 +23,10 @@ void RegisterModMenuScenario(ImGuiTestEngine *engine) {
         ctx->ItemClick("**/Ballance Mod Loader");
 
         IM_CHECK(OpenConfigCategory(ctx, "GUI", "**/FontFilename"));
-        IM_CHECK(hasAll({"**/FontSize", "**/FontRanges", "**/EnableSecondaryFont", "**/NextPage"}));
+        IM_CHECK(hasAll({"**/FontSize", "**/FontFallbacks",
+                         "**/UseSystemFontFallbacks", "**/NextPage"}));
         ctx->ItemClick("**/NextPage");
-        IM_CHECK(hasAll({"**/SecondaryFontFilename", "**/SecondaryFontSize",
-                         "**/SecondaryFontRanges", "**/EnableIniSettings"}));
+        IM_CHECK(WaitForItem(ctx, "**/EnableIniSettings"));
         ctx->ItemClick("**/Back");
 
         IM_CHECK(OpenConfigCategory(ctx, "Graphics", "**/UnlockFrameRate"));

@@ -30,7 +30,6 @@ struct ImGui_ImplCK2_Data
 {
     CKContext *Context;
     CKRenderContext *RenderContext;
-    CKTexture *FontTexture;
 
     ImGui_ImplCK2_Data() { memset(this, 0, sizeof(*this)); }
 };

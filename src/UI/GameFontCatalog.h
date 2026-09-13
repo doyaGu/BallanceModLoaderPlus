@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <string_view>
 
 namespace BML {
 
@@ -24,6 +25,8 @@ public:
 
     void Reset();
     bool Bind(GameFont font, int virtoolsIndex);
+    bool Bind(std::string_view runtimeName, int virtoolsIndex,
+              GameFont *boundRole = nullptr);
     int Resolve(GameFont font) const;
     GameFont Identify(int virtoolsIndex) const;
 

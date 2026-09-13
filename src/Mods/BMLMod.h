@@ -14,6 +14,7 @@
 #include "UI/ModMenu.h"
 
 class ModContext;
+struct FontCommandContext;
 
 class BMLMod : public IMod {
 public:
@@ -109,20 +110,21 @@ private:
 
     void InitConfigs();
     void InitGUI();
+    FontCommandContext GetFontCommandContext() const;
+    void ConfigureUiFonts();
+    static void ApplyUiFontSetting(BMLMod &mod, IProperty *property);
+    static void ApplyUnlockFrameRateSetting(BMLMod &mod, IProperty *property);
+    static void ApplyFrameRateLimitSetting(BMLMod &mod, IProperty *property);
+    static void ApplyWidescreenSetting(BMLMod &mod, IProperty *property);
 
     void OnEditScript_Menu_MenuInit(CKBehavior *script);
     void OnEditScript_Menu_OptionsMenu(CKBehavior *script);
+    void AcquireGameFonts();
 
     void OnProcess_Menu();
 
-    void OnResize();
-
     CKContext *m_CKContext = nullptr;
-    CKRenderContext *m_RenderContext = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
-
-    VxRect m_OldWindowRect;
-    VxRect m_WindowRect;
 
     HUDRuntime m_HUD;
     ModMenu m_ModMenu;
@@ -140,11 +142,8 @@ private:
 
     IProperty *m_FontFilename = nullptr;
     IProperty *m_FontSize = nullptr;
-    IProperty *m_FontRanges = nullptr;
-    IProperty *m_EnableSecondaryFont = nullptr;
-    IProperty *m_SecondaryFontFilename = nullptr;
-    IProperty *m_SecondaryFontSize = nullptr;
-    IProperty *m_SecondaryFontRanges = nullptr;
+    IProperty *m_FontFallbacks = nullptr;
+    IProperty *m_UseSystemFontFallbacks = nullptr;
     IProperty *m_EnableIniSettings = nullptr;
 
     IProperty *m_UnlockFPS = nullptr;

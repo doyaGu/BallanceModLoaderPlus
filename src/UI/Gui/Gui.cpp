@@ -1,16 +1,17 @@
 #include "BML/Gui/Gui.h"
 
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "BML/InputHook.h"
 #include "BML/Guids/Interface.h"
 
 #include "Loader/ModContext.h"
+#include "UI/Gui/LegacyTextFont.h"
 
 using namespace BGui;
 
-extern const char *g_TextFont;
-extern const char *g_AvailFonts[2];
 extern CKMaterial *g_Up;
 extern CKMaterial *g_Over;
 extern CKMaterial *g_Inactive;
@@ -342,21 +343,20 @@ void Gui::InitMaterials() {
     g_Highlight = modContext->GetMaterialByName("M_Keys_Highlight");
     g_AllSound = modContext->GetGroupByName("All_Sound");
 
+    std::vector<std::string> availableFaces;
     CKParameterManager *pm = modContext->GetParameterManager();
-    CKEnumStruct *data = pm->GetEnumDescByType(pm->ParameterGuidToType(CKPGUID_FONTNAME));
-    for (const char *avail_font: g_AvailFonts) {
-        for (int i = 0; i < data->GetNumEnums(); i++) {
-            const char *fontName = data->GetEnumDescription(i);
-            if (!strcmp(fontName, avail_font)) {
-                g_TextFont = avail_font;
-                break;
+    if (pm) {
+        CKEnumStruct *data = pm->GetEnumDescByType(pm->ParameterGuidToType(CKPGUID_FONTNAME));
+        if (data) {
+            availableFaces.reserve(data->GetNumEnums());
+            for (int i = 0; i < data->GetNumEnums(); ++i) {
+                const char *fontName = data->GetEnumDescription(i);
+                if (fontName)
+                    availableFaces.emplace_back(fontName);
             }
         }
-        if (g_TextFont)
-            break;
     }
-    if (!g_TextFont)
-        g_TextFont = "";
+    SelectLegacyTextDefaultFace(availableFaces);
 }
 
 void Gui::OnScreenModeChanged() {

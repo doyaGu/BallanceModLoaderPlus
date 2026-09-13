@@ -1,72 +1,15 @@
 #include "UI/ModMenu.h"
 
-#include <algorithm>
-#include <set>
-#include <vector>
-
 #include "BML/InputHook.h"
 
 #include "UI/BuiInternal.h"
 #include "Loader/ModContext.h"
-#include "PathUtils.h"
-#include "StringUtils.h"
 
 #if BML_ENABLE_ANGELSCRIPT
 #include "AngelScript/ScriptMod.h"
 #endif
 
 namespace {
-    std::vector<std::string> g_FontFilenames = {"unifont.otf"};
-
-    bool IsKnownFontFilename(const char *value) {
-        if (!value || value[0] == '\0')
-            return false;
-
-        return std::find_if(g_FontFilenames.begin(), g_FontFilenames.end(),
-                            [value](const std::string &choice) {
-                                return utils::CStringEqual(value, choice.c_str());
-                            }) != g_FontFilenames.end();
-    }
-
-    std::vector<const char *> BuildFontFilenameItems(const char *currentValue, std::string &customItem) {
-        std::vector<const char *> items;
-        items.reserve(g_FontFilenames.size() + 1);
-
-        for (const auto &choice : g_FontFilenames) {
-            items.push_back(choice.c_str());
-        }
-
-        if (currentValue && currentValue[0] != '\0' && !IsKnownFontFilename(currentValue)) {
-            customItem = currentValue;
-            items.push_back(customItem.c_str());
-        }
-
-        return items;
-    }
-
-    int FindFontFilenameItem(const char *value, const std::vector<const char *> &items) {
-        if (!value)
-            value = "";
-
-        for (size_t i = 0; i < items.size(); ++i) {
-            if (utils::CStringEqual(value, items[i]))
-                return static_cast<int>(i);
-        }
-
-        return 0;
-    }
-
-    bool IsBmlFontFilenameProperty(IMod *mod, Category *category, const Property *property) {
-        if (!mod || !category || !property)
-            return false;
-
-        if (!utils::CStringEqual(mod->GetID(), "BML") || !utils::CStringEqual(category->GetName(), "GUI"))
-            return false;
-
-        return utils::CStringEqual(property->GetName(), "FontFilename") ||
-               utils::CStringEqual(property->GetName(), "SecondaryFontFilename");
-    }
-
     const char *GetModDisplayName(IMod *mod) {
         if (!mod)
             return "";
@@ -94,31 +37,6 @@ namespace {
         default:
             return 0;
         }
-    }
-
-    void RefreshFontList() {
-        g_FontFilenames.clear();
-        std::string fontsDir = std::string(BML_GetModContext()->GetDirectoryUtf8(BML_DIR_LOADER)) + "\\Fonts";
-        std::vector<std::string> files = utils::ListFilesUtf8(fontsDir, "*");
-
-        struct CaseInsensitiveLess {
-            bool operator()(const std::string &a, const std::string &b) const {
-                return utils::CompareString(a, b) < 0;
-            }
-        };
-        std::set<std::string, CaseInsensitiveLess> sortedFonts;
-
-        for (const auto &file : files) {
-            if (utils::EndsWith(file, ".ttf", false) || utils::EndsWith(file, ".otf", false)) {
-                sortedFonts.insert(file);
-            }
-        }
-
-        if (sortedFonts.empty()) {
-            sortedFonts.insert("unifont.otf");
-        }
-
-        g_FontFilenames.assign(sortedFonts.begin(), sortedFonts.end());
     }
 
 #if BML_ENABLE_ANGELSCRIPT
@@ -295,7 +213,6 @@ void ModPage::ShowCommentBox(Category *category) {
 }
 
 void ModOptionPage::OnEnter(Bui::PageEnterReason) {
-    RefreshFontList();
     m_Category = m_State.GetCurrentCategory();
     m_PendingValues.clear();
     m_KeyCaptureProperty = nullptr;
@@ -389,19 +306,7 @@ bool ModOptionPage::DrawEditor(Property *property, IProperty::PropertyType type,
     switch (type) {
         case IProperty::STRING: {
             std::string &text = std::get<std::string>(value);
-            IMod *currentMod = m_State.GetCurrentMod();
-
-            if (IsBmlFontFilenameProperty(currentMod, m_Category, property)) {
-                std::string customFont;
-                std::vector<const char *> fontItems = BuildFontFilenameItems(text.c_str(), customFont);
-                int currentItem = FindFontFilenameItem(text.c_str(), fontItems);
-                if (Bui::RadioButton(property->GetName(), &currentItem, fontItems.data(),
-                                     static_cast<int>(fontItems.size()))) {
-                    text = fontItems[static_cast<size_t>(currentItem)];
-                }
-            } else {
-                Bui::InputTextButton(property->GetName(), &text);
-            }
+            Bui::InputTextButton(property->GetName(), &text);
             break;
         }
         case IProperty::BOOLEAN:
