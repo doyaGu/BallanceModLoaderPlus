@@ -1,5 +1,8 @@
 #include "UI/Overlay.h"
 
+#include "UI/Ime/Presentation.h"
+#include "UI/OverlayPlatformInput.h"
+
 #include "CKContext.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -7,144 +10,16 @@
 #endif
 #include <Windows.h>
 
-#include <MinHook.h>
-
 #include "imgui_internal.h"
 #include "UI/imgui_impl_ck2.h"
 #define IMGUI_IMPL_WIN32_DISABLE_GAMEPAD
 #include "backends/imgui_impl_win32.h"
 
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
 namespace Overlay {
-    typedef BOOL (WINAPI *LPFNPEEKMESSAGE)(LPMSG, HWND, UINT, UINT, UINT);
-    typedef BOOL (WINAPI *LPFNGETMESSAGE)(LPMSG, HWND, UINT, UINT);
-
-    LPFNPEEKMESSAGE g_OrigPeekMessageA = nullptr;
-    LPFNPEEKMESSAGE g_OrigPeekMessageW = nullptr;
-    LPFNGETMESSAGE g_OrigGetMessageA = nullptr;
-    LPFNGETMESSAGE g_OrigGetMessageW = nullptr;
-
-    HWND g_hWnd = nullptr;
     ImGuiContext *g_ImGuiContext = nullptr;
     bool g_RendererInitialized = false;
     bool g_DrawDataReady = false;
     bool g_NewFrame = false;
-
-    LRESULT OnWndProcA(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        ImGuiContextScope scope;
-        if (!scope.IsActive())
-            return 0;
-
-        if (msg == WM_IME_COMPOSITION) {
-            if (lParam & GCS_RESULTSTR) {
-                HIMC hIMC = ImmGetContext(hWnd);
-                LONG len = ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, nullptr, 0) / (LONG) sizeof(WCHAR);
-                auto *buf = new WCHAR[len + 1];
-                ImmGetCompositionStringW(hIMC, GCS_RESULTSTR, buf, len * sizeof(WCHAR));
-                buf[len] = L'\0';
-                ImmReleaseContext(hWnd, hIMC);
-                for (int i = 0; i < len; ++i) {
-                    ImGui::GetIO().AddInputCharacterUTF16(buf[i]);
-                }
-                delete[] buf;
-            }
-            return 1;
-        }
-
-        return ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
-    }
-
-    LRESULT OnWndProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        ImGuiContextScope scope;
-        if (!scope.IsActive())
-            return 0;
-
-        return ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
-    }
-
-    extern "C" BOOL WINAPI HookPeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
-        if (!g_OrigPeekMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
-            return FALSE;
-
-        if (g_hWnd && lpMsg->hwnd == g_hWnd && (wRemoveMsg & PM_REMOVE) != 0) {
-            if (OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                lpMsg->message = WM_NULL;
-            }
-        }
-
-        return TRUE;
-    }
-
-    extern "C" BOOL WINAPI HookPeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg) {
-        if (!g_OrigPeekMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg))
-            return FALSE;
-
-        if (g_hWnd && lpMsg->hwnd == g_hWnd && (wRemoveMsg & PM_REMOVE) != 0) {
-            if (OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-                lpMsg->message = WM_NULL;
-            }
-        }
-
-        return TRUE;
-    }
-
-    extern "C" BOOL WINAPI HookGetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-        if (!g_OrigGetMessageA(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
-            return FALSE;
-
-        if (g_hWnd && lpMsg->hwnd == g_hWnd && OnWndProcA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-            lpMsg->message = WM_NULL;
-        }
-
-        return lpMsg->message != WM_QUIT;
-    }
-
-    extern "C" BOOL WINAPI HookGetMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax) {
-        if (!g_OrigGetMessageW(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax))
-            return FALSE;
-
-        if (g_hWnd && lpMsg->hwnd == g_hWnd && OnWndProcW(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam)) {
-            lpMsg->message = WM_NULL;
-        }
-
-        return lpMsg->message != WM_QUIT;
-    }
-
-    bool ImGuiInstallWin32Hooks() {
-        if (MH_CreateHookApi(L"user32", "PeekMessageA", (LPVOID) &HookPeekMessageA, (LPVOID *) &g_OrigPeekMessageA) != MH_OK ||
-            MH_EnableHook((LPVOID) &PeekMessageA) != MH_OK) {
-            return false;
-        }
-        if (MH_CreateHookApi(L"user32", "GetMessageA", (LPVOID) &HookGetMessageA, (LPVOID *) &g_OrigGetMessageA) != MH_OK ||
-            MH_EnableHook((LPVOID) &GetMessageA) != MH_OK) {
-            return false;
-        }
-        if (MH_CreateHookApi(L"user32", "PeekMessageW", (LPVOID) &HookPeekMessageW, (LPVOID *) &g_OrigPeekMessageW) != MH_OK ||
-            MH_EnableHook((LPVOID) &PeekMessageW) != MH_OK) {
-            return false;
-        }
-        if (MH_CreateHookApi(L"user32", "GetMessageW", (LPVOID) &HookGetMessageW, (LPVOID *) &g_OrigGetMessageW) != MH_OK ||
-            MH_EnableHook((LPVOID) &GetMessageW) != MH_OK) {
-            return false;
-        }
-        return true;
-    }
-
-    bool ImGuiUninstallWin32Hooks() {
-        bool ok = true;
-
-        if (MH_DisableHook((LPVOID) &PeekMessageA) != MH_OK) ok = false;
-        if (MH_RemoveHook((LPVOID) &PeekMessageA) != MH_OK) ok = false;
-        if (MH_DisableHook((LPVOID) &GetMessageA) != MH_OK) ok = false;
-        if (MH_RemoveHook((LPVOID) &GetMessageA) != MH_OK) ok = false;
-        if (MH_DisableHook((LPVOID) &PeekMessageW) != MH_OK) ok = false;
-        if (MH_RemoveHook((LPVOID) &PeekMessageW) != MH_OK) ok = false;
-        if (MH_DisableHook((LPVOID) &GetMessageW) != MH_OK) ok = false;
-        if (MH_RemoveHook((LPVOID) &GetMessageW) != MH_OK) ok = false;
-
-        return ok;
-    }
 
     ImGuiContext *GetImGuiContext() {
         return g_ImGuiContext;
@@ -179,9 +54,10 @@ namespace Overlay {
         if (!context)
             return;
 
-        // The message hooks live until DLL_PROCESS_DETACH, which is long after the
-        // context dies, so clear the pointer they reach the context through before
-        // freeing it. They then see an inactive overlay instead of freed memory.
+        // Platform shutdown normally owns detachment. Keep destruction defensive
+        // so no thread hook can retain a path to a freed ImGui context.
+        if (!PlatformInput::Detach())
+            ::OutputDebugStringA("BML: Unable to detach Overlay platform input.\n");
         g_ImGuiContext = nullptr;
         g_RendererInitialized = false;
         g_DrawDataReady = false;
@@ -193,9 +69,13 @@ namespace Overlay {
     bool ImGuiInitPlatform(CKContext *context) {
         ImGuiContextScope scope;
 
-        g_hWnd = static_cast<HWND>(context->GetMainWindow());
-        if (!ImGui_ImplWin32_Init(g_hWnd))
+        HWND window = context ? static_cast<HWND>(context->GetMainWindow()) : nullptr;
+        if (!window || !ImGui_ImplWin32_Init(window))
             return false;
+        if (!PlatformInput::Attach(window)) {
+            ImGui_ImplWin32_Shutdown();
+            return false;
+        }
 
         return true;
     }
@@ -213,11 +93,12 @@ namespace Overlay {
     }
 
     void ImGuiShutdownPlatform(CKContext *context) {
+        (void) context;
         ImGuiContextScope scope;
 
+        if (!PlatformInput::Detach())
+            ::OutputDebugStringA("BML: Unable to detach Overlay platform input.\n");
         ImGui_ImplWin32_Shutdown();
-
-        g_hWnd = nullptr;
     }
 
     void ImGuiShutdownRenderer(CKContext *context) {
@@ -260,6 +141,8 @@ namespace Overlay {
 
     void ImGuiRender() {
         if (g_NewFrame) {
+            if (ImGuiContext *context = ImGui::GetCurrentContext())
+                Ime::Presentation::Draw(context->PlatformImeData);
             ImGui::Render();
             // Render() completes the ImGui frame. Publish that state before a
             // test callback can trigger a re-entrant Virtools reset/shutdown;
