@@ -1,13 +1,17 @@
 #ifndef BML_MESSAGEBOARD_H
 #define BML_MESSAGEBOARD_H
 
-#include <vector>
-#include <string>
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "BML/Bui.h"
 
+#include "Console/ConsoleLayout.h"
 #include "UI/AnsiPalette.h"
 #include "UI/AnsiText.h"
 
@@ -31,15 +35,10 @@
 class MessageBoard : public Bui::Window {
 public:
     using ConsoleColor = AnsiText::ConsoleColor;
-    using TextSegment = AnsiText::TextSegment;
 
     struct MessageUnit {
         AnsiText::AnsiString ansiText;
         float timer = 0.0f;
-        mutable float cachedHeight = -1.0f;
-        mutable float cachedWrapWidth = -1.0f;
-        mutable float cachedLineSpacing = -1.0f;
-        mutable float cachedFontPixels = -1.0f;
 
         MessageUnit() = default;
         MessageUnit(const char *msg, float timer);
@@ -54,18 +53,7 @@ public:
         void SetMessage(const char *msg);
         float GetTimer() const { return timer; }
         void SetTimer(float t) { timer = t; }
-        float GetTextHeight(float wrapWidth, float lineSpacing, int tabColumns) const;
-        const std::vector<TextSegment> &GetSegments() const { return ansiText.GetSegments(); }
         void Reset();
-    };
-
-    struct ScrollMetrics {
-        float contentHeight;
-        float visibleHeight;
-        float maxScroll;
-        float scrollY;
-        float scrollRatio;   // 0..1, position along scroll range
-        float visibleRatio;  // 0..1, visibleHeight/contentHeight
     };
 
     explicit MessageBoard(int size = 500);
@@ -109,15 +97,12 @@ public:
     // Settings
     void SetMaxTimer(float maxTimer) { m_MaxTimer = std::max(100.0f, maxTimer); }
     void SetCommandBarVisible(bool visible);
+    void SetFrameLayout(const ConsoleLayout::Stack &layout) { m_ConsoleLayout = layout; }
 
     // Scrolling control (only active when command bar is visible)
     void SetScrollPosition(float scrollY);
     void ScrollToTop();
     void ScrollToBottom();
-
-    // Scrolling metrics and display helpers
-    ScrollMetrics GetScrollMetrics(float contentHeight, float visibleHeight) const;
-    std::string FormatScrollPercent(float contentHeight, float visibleHeight) const;
 
     // Getters
     float GetMaxTimer() const { return m_MaxTimer; }
@@ -134,28 +119,84 @@ protected:
     void OnPostEnd() override;
 
 private:
+    struct ScrollMetrics {
+        float contentHeight = 0.0f;
+        float visibleHeight = 0.0f;
+        float maxScroll = 0.0f;
+        float scrollY = 0.0f;
+        float scrollRatio = 0.0f;
+        float visibleRatio = 1.0f;
+    };
+
+    struct MessageRow {
+        int messageIndex;
+        float top;
+        float height;
+        AnsiText::PreparedText textLayout;
+    };
+
+    struct MessageRows {
+        std::uint64_t revision = ~std::uint64_t{0};
+        bool commandBarVisible = false;
+        ImGuiContext *context = nullptr;
+        ImFont *font = nullptr;
+        ImGuiID bakedId = 0;
+        float fontSize = 0.0f;
+        float wrapWidth = 0.0f;
+        float messageGap = 0.0f;
+        float contentHeight = 0.0f;
+        int tabColumns = 0;
+        std::vector<MessageRow> rows;
+
+        bool Matches(std::uint64_t currentRevision, bool currentCommandBarVisible,
+                     ImGuiContext *currentContext, ImFont *currentFont,
+                     ImGuiID currentBakedId, float currentFontSize, float currentWrapWidth,
+                     float currentMessageGap, int currentTabColumns) const;
+        void Invalidate();
+    };
+
+    struct ScrollLabel {
+        ImGuiContext *context = nullptr;
+        ImGuiID bakedId = 0;
+        float fontSize = 0.0f;
+        int percent = -1;
+        std::array<char, 8> text{};
+        ImVec2 size;
+    };
+
     struct FrameLayout {
         float padX;
         float padY;
         float messageGap;
         float scrollbarWidth;
         float scrollbarPadding;
+        ImGuiContext *context;
+        ImFont *font;
+        ImGuiID bakedId;
+        float fontSize;
+        float lineHeight;
+        float wrapWidth;
+        float contentHeight;
+        float availableContentHeight;
+        float scrollbarReserve;
+        bool needsScrollbar;
+        const MessageRows *messageRows;
     };
 
     // Visibility and state
     bool ShouldShowMessage(const MessageUnit &msg) const;
-    float GetMessageAlpha(const MessageUnit &msg) const;
-    int CountVisibleMessages() const;
+    float GetMessageAlpha(const MessageUnit &msg, float maximumAlpha) const;
     bool HasVisibleContent() const;
 
     // Layout calculation
     FrameLayout CaptureFrameLayout() const;
-    float CalculateContentHeight(float wrapWidth, const FrameLayout &layout) const;
+    const MessageRows &PrepareMessageRows(float wrapWidth, const FrameLayout &layout);
     static float CalculateDisplayHeight(float contentHeight, const FrameLayout &layout);
 
     // Rendering
     void RenderMessages(ImDrawList *drawList, ImVec2 startPos, float wrapWidth, const FrameLayout &layout);
-    void DrawMessageText(ImDrawList *drawList, const MessageUnit &message, const ImVec2 &pos, float wrapWidth, float alpha, const FrameLayout &layout);
+    static void DrawMessageText(ImDrawList *drawList, const AnsiText::PreparedText &textLayout,
+                                const ImVec2 &position, float alpha);
     void DrawScrollIndicators(ImDrawList *drawList, const ImVec2 &contentPos, const ImVec2 &contentSize, float contentHeight, float visibleHeight, const FrameLayout &layout);
 
     // Core operations
@@ -164,7 +205,9 @@ private:
     void AddMessageInternal(MessageUnit message);
     void HandleScrolling(float visibleHeight, const FrameLayout &layout);
     void UpdateScrollBounds(float contentHeight, float windowHeight);
+    ScrollMetrics GetScrollMetrics(float contentHeight, float visibleHeight) const;
     void InvalidateLayoutCache();
+    void InvalidateMessageRows();
     MessageUnit &MessageAt(int logicalIndex);
     const MessageUnit &MessageAt(int logicalIndex) const;
 
@@ -173,6 +216,9 @@ private:
 
     // Message storage
     std::vector<MessageUnit> m_Messages;
+    std::array<MessageRows, 2> m_MessageRowLayouts;
+    std::size_t m_NextMessageRowLayout = 0;
+    std::uint64_t m_MessageRevision = 0;
     int m_MessageCount = 0;
     int m_MessageHead = 0;
     int m_DisplayMessageCount = 0;
@@ -185,15 +231,17 @@ private:
     float m_ScrollY = 0.0f;
     float m_MaxScrollY = 0.0f;
     bool m_ScrollToBottom = true;
+    ScrollLabel m_ScrollLabel;
 
     // Style-derived values captured before this window overrides the ImGui style.
     std::optional<FrameLayout> m_FrameLayout;
+    ConsoleLayout::Stack m_ConsoleLayout;
     bool m_LineSpacingOverride = false;
     float m_CustomLineSpacing = 0.0f;
     float m_ScrollEpsilon = 0.5f; // Scrollbar tolerance for bottom checks
 
     // Configurable behavior
-    int m_TabColumns = AnsiText::kDefaultTabColumns; // Tab size in columns
+    int m_TabColumns = AnsiText::DefaultTabColumns; // Tab size in columns
     bool m_HasCustomWindowBg = false;
     bool m_HasCustomMessageBg = false;
     ImVec4 m_WindowBgColor = {};        // If !m_HasCustomWindowBg, use Bui::GetMenuColor()
