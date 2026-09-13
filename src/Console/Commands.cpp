@@ -18,6 +18,9 @@
 #include "PathUtils.h"
 
 void CommandBML::Execute(IBML *bml, const std::vector<std::string> &args) {
+    if (!bml)
+        return;
+
     bml->SendIngameMessage("Ballance Mod Loader Plus " BML_VERSION);
     bml->SendIngameMessage((std::to_string(bml->GetModCount()) + " Mods Installed:").data());
 

@@ -10,7 +10,10 @@
 #include "HUD/HUDRuntime.h"
 #include "Console/CommandContext.h"
 #include "Console/Commands.h"
+#include "Console/FontCommand.h"
 #include "StringUtils.h"
+#include "UI/Ime/Presentation.h"
+#include "UI/InputSurfaceStyle.h"
 
 const Console::Setting *Console::GetSettings(size_t &count) {
     static const Setting settings[] = {
@@ -108,7 +111,8 @@ void Console::ApplySetting(const Setting &setting, IProperty *property) {
     }
 }
 
-void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud) {
+void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, HUDRuntime &hud,
+                     const FontCommandContext &fontContext) {
     m_Commands = &commands;
     m_Logger = &logger;
 
@@ -117,7 +121,7 @@ void Console::OnLoad(IBML &bml, BML::CommandContext &commands, ILogger &logger, 
         m_Logger->Warn("Could not register the built-in console output callback");
     }
 
-    RegisterCommands(bml, hud);
+    RegisterCommands(bml, hud, fontContext);
     AnsiText::Renderer::DefaultPalette().SaveSampleIfMissing();
     m_CommandBar.LoadHistory();
 }
@@ -134,17 +138,30 @@ void Console::OnUnload() {
 }
 
 void Console::OnProcess() {
-    const bool visible = m_CommandBar.IsVisible();
-    if (!visible && ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
+    if (!m_CommandBar.IsVisible() && ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
         if (m_Logger) {
             m_Logger->Info("Toggle Command Bar");
         }
         m_CommandBar.ToggleCommandBar();
     }
 
+    const bool visible = m_CommandBar.IsVisible();
+    const ImGuiViewport *viewport = ImGui::GetMainViewport();
+    const float transientHeight = InputSurfaceStyle::TransientHeight(ImGui::GetTextLineHeight());
+    const ConsoleLayout::Stack layout = ConsoleLayout::Calculate(
+        {viewport->WorkPos.x, viewport->WorkPos.y, viewport->WorkSize.x, viewport->WorkSize.y},
+        transientHeight, transientHeight);
+    m_CommandBar.SetFrameLayout(layout);
+    m_MessageBoard.SetFrameLayout(layout);
+    m_CommandBar.SetCompositionActive(Overlay::Ime::Presentation::IsActive());
     m_MessageBoard.SetCommandBarVisible(visible);
     m_MessageBoard.Render();
     m_CommandBar.Render();
+
+    if (m_CommandBar.HasActiveTextInput()) {
+        Overlay::Ime::Presentation::ReservePlacement(
+            ImVec2(layout.transientSurface.x, layout.transientSurface.y), layout.transientSurface.width);
+    }
 }
 
 void Console::AddMessage(const char *message) {
@@ -180,8 +197,9 @@ void Console::OnCommandOutput(const char *message, void *userdata) {
     }
 }
 
-void Console::RegisterCommands(IBML &bml, HUDRuntime &hud) {
+void Console::RegisterCommands(IBML &bml, HUDRuntime &hud, const FontCommandContext &fontContext) {
     bml.RegisterCommand(new CommandBML());
+    bml.RegisterCommand(new CommandFont(fontContext));
     bml.RegisterCommand(new CommandHelp());
     bml.RegisterCommand(new CommandCheat());
     bml.RegisterCommand(new CommandEcho());

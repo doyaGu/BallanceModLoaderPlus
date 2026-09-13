@@ -12,7 +12,7 @@ public:
 
     std::string GetName() override { return "bml"; }
     std::string GetAlias() override { return ""; }
-    std::string GetDescription() override { return "Show Information about Ballance Mod Loader."; }
+    std::string GetDescription() override { return "Show loader information and installed Mods."; }
     bool IsCheat() override { return false; }
     void Execute(IBML *bml, const std::vector<std::string> &args) override;
     const std::vector<std::string> GetTabCompletion(IBML *bml, const std::vector<std::string> &args) override { return {}; }
