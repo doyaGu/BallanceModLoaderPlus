@@ -320,7 +320,7 @@ private:
     float m_Scale = 1.0f;
     float m_WrapWidthPx = -1.0f;
     float m_WrapWidthFrac = 0.0f;
-    int m_TabColumns = AnsiText::kDefaultTabColumns;
+    int m_TabColumns = AnsiText::DefaultTabColumns;
 
     // Measurement cache
     mutable struct MeasureCache {
@@ -423,7 +423,7 @@ struct HUDStyle {
     float scale = 1.0f;
     float wrapWidthPx = -1.0f;
     float wrapWidthFrac = 0.0f;
-    int tabColumns = AnsiText::kDefaultTabColumns;
+    int tabColumns = AnsiText::DefaultTabColumns;
     bool drawPanel = false;
     ImU32 panelBg = IM_COL32(0, 0, 0, 128);
     ImU32 panelBorder = IM_COL32(255, 255, 255, 64);

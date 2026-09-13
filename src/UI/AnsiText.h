@@ -2,17 +2,17 @@
 #define BML_ANSITEXT_H
 
 #include <cfloat>
-#include <vector>
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "imgui.h"
 
-// Fallback for portability across Dear ImGui versions
 #ifndef IM_COL32_BLACK_TRANS
 #define IM_COL32_BLACK_TRANS IM_COL32(0, 0, 0, 0)
 #endif
 
-// Forward declaration
 class AnsiPalette;
 
 /**
@@ -22,13 +22,7 @@ class AnsiPalette;
  */
 namespace AnsiText {
     // Default tab columns (historical terminal default).
-    static constexpr int kDefaultTabColumns = 8;
-
-    // SGR 21 policy (ECMA-48: commonly double-underline; some terminals use it as bold-off)
-    enum class Sgr21Policy {
-        DoubleUnderline,
-        ResetBoldDim,
-    };
+    inline constexpr int DefaultTabColumns = 8;
 
     // ANSI color and formatting state
     struct ConsoleColor {
@@ -47,7 +41,7 @@ namespace AnsiText {
         bool bold = false;
         bool italic = false;
         bool underline = false;
-        bool doubleUnderline = false; // SGR 21 policy-dependent
+        bool doubleUnderline = false;
         bool strikethrough = false;
         bool dim = false;
         bool hidden = false;
@@ -55,7 +49,6 @@ namespace AnsiText {
 
         ConsoleColor() = default;
         explicit ConsoleColor(ImU32 fg) : foreground(fg) {}
-        ConsoleColor(ImU32 fg, ImU32 bg) : foreground(fg), background(bg) {}
 
         // Returns the final colors after applying reverse video and "hidden".
         ConsoleColor GetRendered() const;
@@ -111,24 +104,23 @@ namespace AnsiText {
 
         const std::string &GetOriginalText() const { return m_OriginalText; }
         const std::vector<TextSegment> &GetSegments() const { return m_Segments; }
-        bool HasAnsi256Background() const { return m_HasAnsi256BG; }
-        bool HasTrueColorBackground() const { return m_HasTrueColorBG; }
-        bool HasReverse() const { return m_HasReverse; }
-
         void Clear();
         bool IsEmpty() const { return m_Segments.empty(); }
 
     private:
+        friend class PreparedText;
+
         std::string m_OriginalText;
         std::vector<TextSegment> m_Segments;
-        bool m_HasAnsi256BG = false;   // Any 40-47/100-107 or 48;5 background used
-        bool m_HasTrueColorBG = false; // Any 48;2;r;g;b background used
-        bool m_HasReverse = false;     // Any SGR 7 encountered (conservative)
+        bool m_HasAnsi256BG = false;
+        bool m_HasTrueColorBG = false;
+        bool m_HasReverse = false;
+        std::uint64_t m_Revision = 0;
 
         void ParseAnsiEscapeCodes(const ConsoleColor &initialColor = {});
         void AssignAndParse(std::string &&text, const ConsoleColor &initialColor = {});
         void RebindSegmentsPointers(const char *oldBase, const char *newBase);
-        static ConsoleColor ParseAnsiColorSequence(const char *sequence, size_t length, const ConsoleColor &currentColor,
+        static ConsoleColor ParseAnsiColorSequence(const char *sequence, std::size_t length, const ConsoleColor &currentColor,
                                                   bool *out_hasAnsi256Bg = nullptr, bool *out_hasTrueColorBg = nullptr, bool *out_hasReverse = nullptr);
         static ImU32 GetRgbColor(int r, int g, int b);
     };
@@ -139,92 +131,79 @@ namespace AnsiText {
         float wrapWidth = FLT_MAX;
         float alpha = 1.0f;
         float lineSpacing = -1.0f;
-        int tabColumns = kDefaultTabColumns;
+        int tabColumns = DefaultTabColumns;
         const AnsiPalette *palette = nullptr;
     };
 
-    ImVec2 CalcTextSize(const AnsiString &text, const TextOptions &options = {});
-    float CalcTextHeight(const AnsiString &text, const TextOptions &options = {});
-    ImVec2 CalcTextSize(const char *text, const TextOptions &options = {});
-    float CalcTextHeight(const char *text, const TextOptions &options = {});
-    ImVec2 CalcTextSize(const std::string &text, const TextOptions &options = {});
-    float CalcTextHeight(const std::string &text, const TextOptions &options = {});
+    // Reusable font-aware layout for one AnsiString. Preparation owns wrapping,
+    // span styling and metrics; drawing may vary only alpha and palette.
+    class PreparedText {
+    public:
+        bool Matches(const AnsiString &text, const TextOptions &options) const;
+        bool Prepare(const AnsiString &text, const TextOptions &options);
+        void Clear();
 
-    void RenderText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &pos, const TextOptions &options = {});
-    void RenderText(ImDrawList *drawList, const char *text, const ImVec2 &pos, const TextOptions &options = {});
-    void RenderText(ImDrawList *drawList, const std::string &text, const ImVec2 &pos, const TextOptions &options = {});
+        bool IsValid() const { return m_Source != nullptr; }
+        ImVec2 GetSize() const { return m_Size; }
+        void Draw(ImDrawList *drawList, const ImVec2 &position, float alpha = 1.0f,
+                  const AnsiPalette *palette = nullptr) const;
 
-    void TextAnsi(const AnsiString &text, const TextOptions &options = {});
-    void TextUnformatted(const char *text, const TextOptions &options = {});
-    void TextUnformatted(const std::string &text, const TextOptions &options = {});
-    void TextV(const char *fmt, va_list args, const TextOptions &options = {});
-    void Text(const char *fmt, ...);
-
-    // Global configurable behavior
-    void SetSgr21Policy(Sgr21Policy policy);
-    Sgr21Policy GetSgr21Policy();
-
-    // Optional: pre-resolve ANSI 256-color indices to RGBA at parse-time when using a fixed palette.
-    // This avoids per-span palette lookups during rendering. Disabled by default.
-    void SetPreResolvePalette(const AnsiPalette *palette);
-    const AnsiPalette *GetPreResolvePalette();
-    void SetPreResolveEnabled(bool enabled);
-    bool GetPreResolveEnabled();
-
-    namespace Layout {
+    private:
         struct Span {
-            const TextSegment *seg = nullptr;
-            const char *b = nullptr;
-            const char *e = nullptr;
+            const char *begin = nullptr;
+            const char *end = nullptr;
+            ConsoleColor color;
             float width = 0.0f;
-            bool isTab = false;
+            bool tab = false;
         };
 
         struct Line {
             std::vector<Span> spans;
             float width = 0.0f;
+            bool hasDecorations = false;
         };
 
-        const char *Utf8Next(const char *s, const char *end);
-        const char *NextGrapheme(const char *s, const char *end);
-        float Measure(ImFont *font, float fontSize, const char *b, const char *e);
-        void BuildLines(ImFont *font, const std::vector<TextSegment> &segments, float wrapWidth, int tabColumns, float fontSize, std::vector<Line> &outLines);
-    }
+        static const char *NextGrapheme(const char *current, const char *end);
+        static float Measure(ImFont *font, float fontSize, const char *begin, const char *end);
+        static float MeasureFast(ImFont *font, ImFontBaked *baked, float fontSize, float scale,
+                                 const char *begin, const char *end);
+        static void FinishLine(Line &line, std::vector<Line> &lines, float &lineWidth);
+        static void AppendSpan(Line &line, float &lineWidth, const TextSegment &segment,
+                               const char *begin, const char *end, float width, bool tab);
+        static void BuildLines(ImFont *font, const std::vector<TextSegment> &segments, float wrapWidth,
+                               int tabColumns, float fontSize, std::vector<Line> &lines);
+        static void DrawBackgroundRuns(ImDrawList *drawList, const Line &line, float startX,
+                                       float lineTop, float lineBottom, float italicShear,
+                                       const AnsiPalette *palette, float alpha);
 
-    namespace Color {
-        ImU32 ApplyDim(ImU32 color);
-        ImU32 ApplyAlpha(ImU32 color, float alpha);
-    }
+        const AnsiString *m_Source = nullptr;
+        std::uint64_t m_SourceRevision = 0;
+        ImGuiContext *m_Context = nullptr;
+        ImFont *m_Font = nullptr;
+        ImFontBaked *m_Baked = nullptr;
+        ImGuiID m_BakedId = 0;
+        float m_FontSize = 0.0f;
+        float m_FontScale = 1.0f;
+        float m_FontAscent = 0.0f;
+        float m_WrapWidth = 0.0f;
+        float m_LineSpacing = 0.0f;
+        float m_LineHeight = 0.0f;
+        float m_LineStep = 0.0f;
+        float m_ItalicShear = 0.0f;
+        float m_DecorationThickness = 0.0f;
+        float m_UnderlineOffset = 0.0f;
+        float m_StrikeOffset = 0.0f;
+        int m_TabColumns = 0;
+        bool m_UsesAnsiPalette = false;
+        bool m_MayHaveBackground = false;
+        ImVec2 m_Size;
+        std::vector<Line> m_Lines;
+    };
 
-    namespace Metrics {
-        float UnderlineY(float lineTop, float fontSize);
-        float StrikeY(float lineTop, float fontSize);
-        float Thickness(float fontSize);
-    }
+    ImVec2 CalcTextSize(const AnsiString &text, const TextOptions &options = {});
 
     namespace Renderer {
-        struct BoldParams {
-            int rings = 1;
-            bool includeDiagonals = false;
-            float baseOffsetPx = 0.35f;
-            float alphaScale = 0.30f;
-            float alphaDecay = 0.80f;
-            float sizeMinPx = 12.0f;
-            float sizeMaxPx = 36.0f;
-            float offsetScaleMin = 0.6f;
-            float offsetScaleMax = 1.0f;
-        };
-
-        BoldParams &DefaultBold();
         AnsiPalette &DefaultPalette();
-
-        float ComputeItalicShear(float fontSize);
-        float ComputeBoldOffsetScale(float fontSize, const BoldParams &bp);
-        void AddTextStyled(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
-                           const char *begin, const char *end, bool italic, bool fauxBold);
-        void AddTextStyledEx(ImDrawList *drawList, ImFont *font, float fontSize, const ImVec2 &pos, ImU32 col,
-                             const char *begin, const char *end, bool italic, bool fauxBold, const BoldParams &bp);
-
         void DrawText(ImDrawList *drawList, const AnsiString &text, const ImVec2 &startPos, const TextOptions &options = {});
     }
 }

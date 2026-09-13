@@ -215,3 +215,37 @@ TEST(AnsiTextTest, DrawTextClippingUsesStartPositionNotCurrentCursor) {
     EXPECT_GT(drawList->VtxBuffer.Size, beforeVertexCount);
     context.EndFrame();
 }
+
+TEST(AnsiTextTest, PreparedTextInvalidatesOnlyWhenItsLayoutInputsChange) {
+    ScopedImGuiContext context;
+    context.BeginFrame();
+
+    AnsiText::AnsiString text("one two three");
+    AnsiText::TextOptions options;
+    options.font = ImGui::GetFont();
+    options.fontSize = ImGui::GetFontSize();
+    options.wrapWidth = FLT_MAX;
+    options.lineSpacing = 0.0f;
+
+    AnsiText::PreparedText prepared;
+    ASSERT_TRUE(prepared.Prepare(text, options));
+    EXPECT_TRUE(prepared.IsValid());
+    EXPECT_TRUE(prepared.Matches(text, options));
+
+    AnsiText::TextOptions narrower = options;
+    narrower.wrapWidth = ImGui::CalcTextSize("one two").x;
+    EXPECT_FALSE(prepared.Matches(text, narrower));
+    AnsiText::PreparedText wrapped;
+    ASSERT_TRUE(wrapped.Prepare(text, narrower));
+    EXPECT_GT(wrapped.GetSize().y, prepared.GetSize().y);
+
+    text.SetText("changed");
+    EXPECT_FALSE(prepared.Matches(text, options));
+    ASSERT_TRUE(prepared.Prepare(text, options));
+    EXPECT_TRUE(prepared.Matches(text, options));
+
+    prepared.Clear();
+    EXPECT_FALSE(prepared.IsValid());
+    EXPECT_FALSE(prepared.Matches(text, options));
+    context.EndFrame();
+}
