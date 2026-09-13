@@ -4,9 +4,9 @@ BML+ script mods run in CKAngelScript. Use the owner of each operation instead
 of building overlapping wrappers:
 
 - BML+ owns mod identity, load order, callbacks, config, commands, resources,
-  loader UI, built-in services, and DataShare.
-- CKAngelScript owns scene and behavior APIs, runtime scripts, components,
-  messages, async work, and registered CK/Vx bindings.
+  loader UI, built-in services, DataShare, and `BML::Behavior` authoring.
+- CKAngelScript owns scene APIs, raw `Behavior`/`BB`/`Param` handles, runtime
+  scripts, components, messages, async work, and registered CK/Vx bindings.
 - A native plugin owns unsafe hooks, native memory, performance-critical loops,
   and plugin-specific CKAngelScript extensions.
 
@@ -16,7 +16,8 @@ of building overlapping wrappers:
 | --- | --- |
 | Find or change scene objects, data arrays, materials, meshes, textures, cameras, or scene membership | CKAS `Scene` and CK/Vx APIs, coordinated by a BML+ script mod when mod services are also needed |
 | Add logic to one behavior instance | `AngelScript Component` |
-| Search or edit behavior graphs and Building Blocks | CKAS `Behavior`, `BB`, and `Param` |
+| Discover, execute, or reversibly edit Behavior graphs | BML `BML::Behavior` (`Inspect`, `Edit`, `Patch`, `Plan`) |
+| Low-level CK2 Behavior/Param handles | CKAS `Behavior`, `BB`, and `Param` |
 | Communicate among CKAS runtime scripts or components | CKAS `Message`; use `Async` only from an execution context that permits suspension |
 | Add BML+ config, commands, resources, lifecycle, or loader UI | BML+ script mod APIs |
 | Patch engine internals or expose a native service | Native plugin with a guarded CKAS extension if scripts need it |
@@ -99,11 +100,26 @@ void OnLoad(const BML::ModContext &in ctx) {
 
 Definitions are value objects. Keep asset paths mod-relative.
 
+## Behavior authoring
+
+`BML::Behavior` is the Script Mod projection of the same Win32 authoring model
+used by Native Mods. There is no Session to open: `Use`, `Find`, `Describe`,
+`Inspect`, `Edit`, and `CreateScript` bind to the current Script Mod and retire
+before unload or hot reload. A Script Patch currently targets one Graph and a
+Script Plan contains one Script rule. Use the Native C++ facade when one handle
+must compose multiple Graphs or multiple Script rules atomically.
+
+CKAngelScript `Behavior`/`BB`/`Param` remains available for low-level CK2 work.
+It does not provide BML owner retirement, Patch journals, or cross-world Plan
+semantics. See [Behavior authoring](../behavior-authoring.md) section 10.
+
 ## Hook Block
 
 Hook Block inserts a callback at a known point in an existing Virtools behavior
-graph. CKAngelScript should find the owner script and Building Blocks; BML+
-owns the inserted native block and retained callback.
+graph. Prefer `BML::Behavior` Hook / Before / After when the change should
+participate in a Patch or Plan. `InsertHookBlock*` is a legacy splice: BML+
+owns the inserted native block and removes it at unload, but it has no Patch
+journal. CKAngelScript should find the owner script and Building Blocks.
 
 ```angelscript
 BML::HookBlockRef@ hook;

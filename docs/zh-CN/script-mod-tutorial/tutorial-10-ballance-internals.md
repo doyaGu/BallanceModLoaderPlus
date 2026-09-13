@@ -125,8 +125,10 @@ Level_01.NMO 里的对象遵循 Ballance 的命名约定。上一章已经从 `C
 
 答案是行为图（Behavior Graph），Ballance 原版的逻辑系统。它是一种可视化编程，节点连线表示逻辑流程。Levelinit 和 Gameplay 的内部逻辑都是行为图写的。
 
-脚本 Mod 可以通过 CKAngelScript 的 `Behavior`、`BB`、`Param` 接口检查和编辑
-行为图，也可以通过 BML+ 的 Hook Block 辅助函数插入回调。不过，行为图编辑会
+脚本 Mod 检查或修改行为图应使用 `BML::Behavior`（见第 15 章和
+[Behavior 编写](../behavior-authoring.md)）。CKAngelScript 的 `Behavior` /
+`BB` / `Param` 仍可做底层 CK2 操作，但没有 BML 的 owner retirement、Patch
+journal 或跨 world Plan。`InsertHookBlock*` 只适合插入一次性回调。行为图编辑会
 直接影响原版游戏流程，必须明确节点身份、执行顺序、关卡生命周期和卸载清理。
 本教程先从只读观察开始，再在确有需要时使用范围明确、可撤销的编辑。
 
